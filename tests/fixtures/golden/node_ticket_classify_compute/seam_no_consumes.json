@@ -1,0 +1,43 @@
+{
+  "input": {
+    "correlation_id": "00000007-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": null,
+        "description": "",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": {
+          "consumes": [],
+          "produces": [],
+          "tables_read": [],
+          "tables_write": [],
+          "topics": {
+            "publish": [],
+            "subscribe": []
+          }
+        },
+        "state": "Todo",
+        "ticket_id": "OMN-7",
+        "title": "Internal pure work"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "auto_buildable",
+        "confidence": 0.7,
+        "matched_keywords": [],
+        "reason": "Contract: no consumed protocols, pure internal work",
+        "seam_source": "contract",
+        "ticket_id": "OMN-7",
+        "title": "Internal pure work"
+      }
+    ],
+    "correlation_id": "00000007-0000-4000-8000-000000000000",
+    "total_auto_buildable": 1,
+    "total_non_buildable": 0
+  },
+  "output_sha256": "sha256:a767068b1c6b443bb18531bc386c61db7aa906ccb4e8b382e5577bbfa2b1f982"
+}

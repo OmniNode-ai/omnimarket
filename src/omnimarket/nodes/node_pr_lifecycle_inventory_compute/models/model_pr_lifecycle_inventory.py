@@ -13,6 +13,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.merge_control.reason_code_classifier import EnumMergeCheckReasonCode
+
 
 class ModelPrCheckRun(BaseModel):
     """A single CI check run result."""
@@ -22,6 +24,24 @@ class ModelPrCheckRun(BaseModel):
     conclusion: str | None = None  # success | failure | cancelled | skipped | neutral
     event: str | None = (
         None  # GitHub run trigger: pull_request | workflow_dispatch | merge_group | ...
+    )
+    link: str = Field(default="", description="GitHub details URL for this check.")
+    flaky_failure_evidence: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Machine evidence that the failed check is an infrastructure/network "
+            "flake rather than a product-code failure."
+        ),
+    )
+    reason_code: EnumMergeCheckReasonCode | None = Field(
+        default=None,
+        description=(
+            "Typed merge-check reason code (OMN-14765) derived from the "
+            "jobs-API attempt (runs/<id>/jobs) for a FAILED check: one of "
+            "stale_context | github_api_outage | runner_infra | cancelled | "
+            "product_failed. None means never classified (green check, or the "
+            "jobs-API call was unavailable — treated as unknown, never product)."
+        ),
     )
 
 
@@ -64,6 +84,14 @@ class ModelPrState(BaseModel):
     reviews: tuple[ModelPrReview, ...] = Field(default_factory=tuple)
     has_conflicts: bool = False
     ci_passing: bool | None = None  # None when checks not yet complete
+    coderabbit_unresolved: int | None = Field(
+        default=None,
+        description=(
+            "Count of unresolved CodeRabbit review threads (OMN-14151). None "
+            "means the count was never collected — callers must treat that as "
+            "unknown, never as 0."
+        ),
+    )
 
 
 class ModelStuckQueueEntry(BaseModel):

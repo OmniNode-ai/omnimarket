@@ -1,0 +1,530 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""Fail-closed verdict for the ``CI Summary`` required-context poller (OMN-14127 fan-out).
+
+Why this exists
+---------------
+``CI Summary`` is a required branch-protection context on ``omnimarket``'s
+``dev`` and ``main`` branches. It used to be a ``needs``-gated aggregator job
+(``needs: [occ-preflight, zone-filter, lint, ...28 upstream jobs]``, with a
+shell loop over ``needs.<job>.result``). A ``needs``-gated job gets **no**
+GitHub check-run until its ``needs`` reach a terminal state, so under
+self-hosted runner-fleet saturation the gate jobs never terminalized and
+``CI Summary`` was **absent** — a required context that never reports leaves the
+PR wedged ``BLOCKED`` forever with no auto-recovery. This is the *exact* failure
+class OMN-14127 fixed in ``omnibase_core`` (#1397), ``omnibase_infra`` (#2230),
+and ``omniclaude`` (#1870); ``omnimarket`` was never ported and is the last
+``needs``-gated ``ci-summary`` on the fleet. This module + the no-``needs``
+poller job in ``ci.yml`` close that gap here.
+
+The ``ci-summary`` workflow job is now a NO-``needs``, GitHub-hosted poller: its
+check-run instantiates immediately (so the required context can never be
+absent), and it calls this module in a loop against the current run's job list
+until a terminal verdict is reached (or a bounded deadline fires → fail-closed).
+
+Verdict policy — DEFAULT-DENY, FAIL-CLOSED
+------------------------------------------
+This module reproduces the *exact* strictness of the old needs-based
+``ci-summary`` pass/fail loop and then adds a strictly-stronger safety net.
+Four independent checks; all must be satisfied for success:
+
+1. **Strict aggregate gates.** :data:`STRICT_GATE_JOBS` must each be *present*,
+   *completed*, and conclude ``success`` — a ``skipped``/``failure``/
+   ``cancelled`` conclusion fails the gate. These jobs carry **no legitimate
+   ``if:`` skip path** in ``omnimarket``'s ``ci.yml`` (they are gated only on
+   ``needs: occ-preflight`` and run on every ``pull_request``/``merge_group``/
+   ``push``); a skip here is anomalous and fails closed. This mirrors the old
+   loop's strict ``== "success"`` blocks (contract-topic-graph OMN-14640,
+   no-noncanonical-lifecycle-classes OMN-14350, coverage-sweep-gate OMN-14645,
+   the OMN-14590 drift trio, merge-reason-code-gate OMN-14765) *and* promotes
+   the jobs the old loose loop tolerated as ``skipped`` — none of which can
+   legitimately skip — to the same strict posture.
+
+2. **Skippable aggregate gates.** :data:`SKIPPABLE_GATE_JOBS` must each be
+   *present*, *completed*, and conclude ``success`` **or** ``skipped`` — these
+   jobs carry a legitimate skip path in ``ci.yml``: each is gated behind
+   ``needs.zone-filter.outputs.docs_only != 'true'`` (directly, or via a
+   ``needs`` on ``detect-changes`` which is itself docs-only-gated), so a
+   docs-only PR legitimately skips them. This matches the old loop's
+   ``success || skipped`` acceptance for exactly this set.
+
+3. **Test-matrix completeness.** The ``test`` job is a *dynamic* matrix
+   (``Tests (Split N/M)``) created only after ``Detect Changes`` completes, so
+   it has no stable name to anchor on. Rule: if ``Detect Changes`` is
+   present+completed+``success`` (a non-docs PR), at least one
+   ``Tests (Split …)`` job must exist and every present split must be completed
+   — zero splits present, or any split still running, is PENDING (splits are
+   created asynchronously). ``detect_test_paths`` always emits ``split_count
+   >= 1`` when it runs, so "detect-changes success + zero splits present" is
+   always the transient creation window, never a legitimate empty matrix. If
+   ``Detect Changes`` skipped (docs-only) or is not ``success``, the matrix is
+   waived here (a docs-only skip is legitimate; a ``detect-changes`` failure is
+   already caught by check (2)). A *failed* split is caught by check (4).
+
+4. **Default-deny failure sweep.** Any *other* job in the run that is *present*,
+   *completed*, and whose conclusion is not ``success``/``skipped`` fails the
+   gate — UNLESS it is the poller itself or one of a small, explicit
+   :data:`SOFT_ALLOWLIST` of jobs that already exist in ``ci.yml`` as non-gating
+   (advisory / shadow / not in the old ``ci-summary`` ``needs``). This sweep is
+   what makes the poller *stricter* than the old gate: any failed ``ci.yml`` job
+   not on the allowlist fails the summary, even one the old ``needs`` loop never
+   listed. Failed ``Tests (Split …)`` splits are caught here too.
+
+The strict + skippable gates together are the **completeness anchor**: requiring
+them present+good proves the whole substantive matrix actually ran and passed,
+which prevents a *false green* before late-created jobs have even been
+instantiated. If a gate is missing or still running, the verdict is PENDING
+(poll again). At the caller's deadline, PENDING is converted to FAILURE
+(fail-closed): the required context always reaches a terminal state.
+
+COVERAGE HONESTY — ``CI Summary`` summarizes ``ci.yml`` ONLY
+------------------------------------------------------------
+``CI Summary`` polls the jobs of **its own workflow run** (``ci.yml``). It
+therefore aggregates ONLY the ``ci.yml`` jobs enumerated in :data:`STRICT_GATE_JOBS`
++ :data:`SKIPPABLE_GATE_JOBS` + the test matrix. It does **NOT** summarize the
+many *independently-required* branch-protection contexts produced by *other*
+workflow files — those run in separate workflow runs the poller never sees.
+The known-unsummarized required contexts are listed in
+:data:`UNSUMMARIZED_REQUIRED_CONTEXTS` so the name never implies coverage it
+lacks. Measured live 2026-07-21 on ``omnimarket`` ``dev``: 58 required contexts,
+of which ``CI Summary`` covers ~20 (the ``ci.yml`` gate jobs above + itself);
+the remaining ~38 are independently required and unsummarized. Do NOT expand
+this poller to "cover" those contexts — each is separately required and gates on
+its own; folding them in here would hide their individual pass/fail behind one
+rollup.
+
+Exit codes: ``0`` success, ``1`` failure, ``2`` pending.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from dataclasses import dataclass
+
+# The poller's own job — excluded to avoid self-deadlock.
+SELF_JOB_NAME = "CI Summary"
+
+# The dynamic test-matrix jobs surface as "Tests (Split N/M)".
+TEST_SPLIT_PREFIX = "Tests (Split "
+
+# The selector job whose success proves the test matrix should exist.
+DETECT_CHANGES_JOB = "Detect Changes"
+
+# Strict aggregate gates: present + completed + conclusion == success.
+#
+# Derivation (re-derived for omnimarket — NOT copied from omnibase_core). Each
+# job below carries NO legitimate ``if:`` skip path in omnimarket's ci.yml: it
+# is gated only on ``needs: occ-preflight`` (fail-propagation, not a skip) and
+# runs on every gating event (pull_request / merge_group / push). It therefore
+# never legitimately reports ``skipped`` on a valid PR, so a skip = anomaly =
+# fail-closed. Names are the ``name:`` display strings the Actions jobs API
+# returns (verified against a live run 29799112037 on 2026-07-21).
+STRICT_GATE_JOBS: tuple[str, ...] = (
+    # OCC preflight dependency — step short-circuits to exit 0 on non-PR events;
+    # no ``if:``, so the job is always present + completed.
+    "OCC Preflight Dependency",
+    # zone-filter reusable — it IS the docs-only classifier, so it always runs
+    # (it never skips itself); only ``needs: occ-preflight``.
+    "zone-filter / Zone Filter (docs-only check)",
+    "lint",  # lint — needs occ-preflight, no if:
+    "Topic Naming Lint",  # topic-naming-lint — needs occ-preflight, no if:
+    "Runtime Sweep",  # runtime-sweep — needs occ-preflight, no if:
+    "Compliance Sweep",  # compliance-sweep — needs occ-preflight, no if:
+    "Core-Only Install Gate",  # core-only-install — needs occ-preflight, no if:
+    # contract-compliance — its ``if:`` is
+    # ``occ-preflight.result == 'success' && (pull_request||merge_group||push)``;
+    # the event clause is always true (those are the only triggers), so it never
+    # legitimately skips on a valid PR.
+    "Contract Compliance Check",
+    "Contract Sweep Gate",  # contract-sweep-gate — needs occ-preflight, no if:
+    "Dependency Health Gate",  # dep-health — needs occ-preflight, no if:
+    "uv.lock Pin Reachability",  # uv-lock-pin-reachability — needs occ-preflight, no if:
+    "Aislop Sweep (strict, PR diff)",  # aislop-sweep — needs occ-preflight, no if:
+    "Coverage Sweep Gate",  # coverage-sweep-gate — needs occ-preflight, no if: (also strict per OMN-14645)
+    "Workflow Module Resolution",  # workflow-module-refs — needs occ-preflight, no if:
+    "no-noncanonical-lifecycle-classes",  # unconditional (OMN-14350), no needs/if:
+    "Event Registry Drift",  # event-registry-drift — needs occ-preflight, no if: (strict per OMN-14590)
+    "Topic Drift Check",  # topic-drift-check — needs occ-preflight, no if: (strict per OMN-14590)
+    "Topic Enum Drift Check",  # topic-enum-drift — needs occ-preflight, no if: (strict per OMN-14590)
+    "contract-topic-graph",  # unconditional (OMN-14582/14640), no needs/if: — strict
+    "Merge Reason-Code Gate",  # merge-reason-code-gate — no needs/if: (strict per OMN-14765)
+)
+
+# Skippable aggregate gates: present + completed + success OR skipped.
+#
+# Derivation: EXACTLY the jobs gated behind
+# ``needs.zone-filter.outputs.docs_only != 'true'`` in omnimarket's ci.yml
+# (directly, or — for ``test`` handled by the matrix rule — via a ``needs`` on
+# ``detect-changes`` which is itself docs-only-gated). A docs-only PR
+# legitimately skips these, so ``skipped`` is accepted. This is the point the
+# plan makes explicit: a job strict in omnibase_core may legitimately skip in
+# omnimarket — here the entire E2E/golden/typecheck lane is docs-only-gated.
+SKIPPABLE_GATE_JOBS: tuple[str, ...] = (
+    "typecheck",  # if: docs_only != 'true'
+    "Detect Changes",  # if: docs_only != 'true' (also drives the matrix rule)
+    "Integration Silent-Skip Guard (OMN-14172)",  # if: docs_only != 'true'
+    "E2E Workflow Runner (inmemory bus)",  # if: docs_only != 'true'
+    "Golden Chain Suite (inmemory bus)",  # if: docs_only != 'true'
+    "SEA E2E Acceptance + Error Chains (OMN-12660)",  # if: docs_only != 'true'
+    "Generated-Node Golden Chain Gate (OMN-13624)",  # if: docs_only != 'true'
+)
+
+# Every job the completeness anchor must observe present+good for SUCCESS.
+GATE_JOBS: tuple[str, ...] = STRICT_GATE_JOBS + SKIPPABLE_GATE_JOBS
+
+# Jobs that do NOT gate merge today (verified against ci.yml on 2026-07-21). The
+# default-deny sweep ignores these so it never newly-wedges a PR on a job that is
+# already non-blocking. Keep this list SMALL and only add jobs that genuinely
+# already exist in ci.yml as non-gating.
+SOFT_ALLOWLIST: frozenset[str] = frozenset(
+    {
+        # coverage-aggregate-shadow: shadow/advisory rollup, not in the old
+        # ci-summary ``needs`` and not a required branch-protection context.
+        "Coverage Aggregate (shadow)",
+    }
+)
+
+# Required branch-protection contexts on omnimarket that CI Summary does NOT
+# summarize because they are produced by OTHER workflow files (separate runs the
+# poller never observes). Listed here purely for honesty/auditability — the
+# poller does not read this set. Measured live 2026-07-21 via
+# ``gh api repos/OmniNode-ai/omnimarket/branches/dev/protection/required_status_checks``.
+# This is a coverage-gap DISCLOSURE, not a to-do to fold them in: each of these
+# is independently required and gates on its own.
+UNSUMMARIZED_REQUIRED_CONTEXTS: tuple[str, ...] = (
+    "Architectural Compliance Lint",
+    "Canonical Inference Gate",
+    "CI Naming Convention",
+    "Dep Provenance Gate",
+    "Ecosystem Integration Validation",
+    "Enforce validator-requirements.yaml (OMN-13291)",
+    "Hostile Review Gate",
+    "Hostile Reviewer (adversarial gate)",
+    "Leaked Literals Gate",
+    "Legacy Compatibility Check",
+    "No Faked Boundary Gate",
+    "OCC Emitter Golden Gate",
+    "Omni Standards Gate",
+    "ONEX Change Control Schema Compatibility",
+    "PR Arch Review Gate",
+    "Precommit Fail-Loud Gate",
+    "Projection Exposure Drift Gate",
+    "Repository Structure Validation",
+    "Resolve Bot Token",
+    "Stale TODO Gate",
+    "URL Authority Gate",
+    "call / validate-docs",
+    "call-reject-skip-token / occ-preflight / eligibility",
+    "contract-validation",
+    "deploy-gate / deploy-gate",
+    "dispatcher-route-coverage",
+    "fsm-handler-drift",
+    "gate / CodeRabbit Thread Check",
+    "imperative-contract-guard / Imperative Contract Guard",
+    "main-target-guard",
+    "non-dev-base-guard",
+    "occ-preflight / eligibility",
+    "pr-title / check-title",
+    "reason-graph",
+    "receipt-honesty",
+    "shell-hygiene",
+    "skill-mapping-input-coverage-gate",
+    "state-coverage-gate",
+)
+
+# Conclusions that count as "provably passed".
+GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success", "skipped"})
+
+EXIT_SUCCESS = 0
+EXIT_FAILURE = 1
+EXIT_PENDING = 2
+
+
+@dataclass(frozen=True)
+class JobState:
+    """The latest-attempt state of a single workflow job."""
+
+    name: str
+    status: str  # queued | in_progress | completed | waiting | ...
+    conclusion: str | None  # success | failure | cancelled | skipped | timed_out | None
+    run_attempt: int
+
+
+def _state_severity(job: JobState) -> int:
+    """Rank same-attempt duplicate jobs by the most blocking state."""
+
+    if job.status != "completed":
+        return 2
+    if job.conclusion not in GOOD_CONCLUSIONS:
+        return 3
+    return 1
+
+
+def dedup_latest(
+    jobs: list[dict[str, object]],
+    *,
+    run_attempt: int | None = None,
+) -> dict[str, JobState]:
+    """Collapse the raw ``/runs/{id}/jobs`` array to one entry per job name.
+
+    When ``run_attempt`` is provided, only rows from that workflow attempt are
+    considered. This prevents stale failed/cancelled rows from an earlier
+    attempt from becoming authoritative for a current rerun. Within the same
+    attempt, duplicate display names keep the most blocking state so a failed
+    matrix leg cannot be hidden by a later same-name success.
+    """
+
+    latest: dict[str, JobState] = {}
+    for raw in jobs:
+        name = str(raw.get("name") or "")
+        if not name:
+            continue
+        try:
+            attempt = int(str(raw.get("run_attempt") or 1))
+        except (TypeError, ValueError):
+            attempt = 1
+        if run_attempt is not None and attempt != run_attempt:
+            continue
+        prev = latest.get(name)
+        if prev is not None and attempt < prev.run_attempt:
+            continue
+        conclusion = raw.get("conclusion")
+        current = JobState(
+            name=name,
+            status=str(raw.get("status") or ""),
+            conclusion=None if conclusion is None else str(conclusion),
+            run_attempt=attempt,
+        )
+        if (
+            prev is not None
+            and attempt == prev.run_attempt
+            and _state_severity(current) < _state_severity(prev)
+        ):
+            continue
+        latest[name] = current
+    return latest
+
+
+def _is_allowlisted(name: str, allowlist: frozenset[str]) -> bool:
+    """Prefix-aware allowlist check.
+
+    A reusable-workflow caller's inner jobs surface in the jobs API as
+    ``"<caller display name> / <inner job name>"``; matching the caller segment
+    lets a single allowlist entry cover all of its inner jobs.
+    """
+
+    if name in allowlist:
+        return True
+    caller = name.split(" / ", 1)[0]
+    return caller in allowlist
+
+
+def _evaluate_test_matrix(
+    latest: dict[str, JobState],
+    *,
+    detect_changes_job: str = DETECT_CHANGES_JOB,
+    split_prefix: str = TEST_SPLIT_PREFIX,
+) -> str:
+    """Return one of ``"ok"``, ``"pending"``, ``"waived"`` for the test matrix.
+
+    * ``waived``  — ``Detect Changes`` is not present+completed+``success`` (a
+      docs-only skip, or a failure already caught by the skippable-gate check).
+      The dynamic matrix is not required.
+    * ``pending`` — ``Detect Changes`` succeeded but the splits are not all
+      terminal yet (or none created yet). Keep polling.
+    * ``ok``      — ``Detect Changes`` succeeded and every present split job is
+      completed (at least one exists). A *failed* split is NOT flagged here —
+      it is caught by the default-deny sweep — so ``ok`` means "the matrix ran
+      to completion", not "the matrix passed".
+    """
+
+    dc = latest.get(detect_changes_job)
+    if dc is None or dc.status != "completed" or dc.conclusion != "success":
+        return "waived"
+
+    splits = [s for name, s in latest.items() if name.startswith(split_prefix)]
+    if not splits:
+        # detect_test_paths always emits split_count >= 1 when it runs, so zero
+        # splits present after a successful detect-changes is always the
+        # asynchronous creation window — never a legitimate empty matrix.
+        return "pending"
+    if any(s.status != "completed" for s in splits):
+        return "pending"
+    return "ok"
+
+
+def evaluate(
+    jobs: list[dict[str, object]],
+    *,
+    run_attempt: int | None = None,
+    self_name: str = SELF_JOB_NAME,
+    strict_gates: tuple[str, ...] = STRICT_GATE_JOBS,
+    skippable_gates: tuple[str, ...] = SKIPPABLE_GATE_JOBS,
+    allowlist: frozenset[str] = SOFT_ALLOWLIST,
+) -> tuple[int, str]:
+    """Return ``(exit_code, human_report)`` for the current job snapshot."""
+
+    latest = dedup_latest(jobs, run_attempt=run_attempt)
+    gate_names = frozenset(strict_gates) | frozenset(skippable_gates)
+
+    # (1) Strict aggregate gates: present + completed + conclusion == success.
+    strict_failures = sorted(
+        g
+        for g in strict_gates
+        if (
+            (st := latest.get(g)) is not None
+            and st.status == "completed"
+            and st.conclusion != "success"
+        )
+    )
+
+    # (2) Skippable aggregate gates: present + completed + success/skipped.
+    skippable_failures = sorted(
+        g
+        for g in skippable_gates
+        if (
+            (st := latest.get(g)) is not None
+            and st.status == "completed"
+            and st.conclusion not in GOOD_CONCLUSIONS
+        )
+    )
+
+    # (4) Default-deny sweep over every OTHER present+completed job. Failed
+    #     "Tests (Split N/M)" splits are caught here (they are not gate_names
+    #     and not allowlisted).
+    sweep_failures = sorted(
+        j.name
+        for name, j in latest.items()
+        if name != self_name
+        and name not in gate_names
+        and not _is_allowlisted(name, allowlist)
+        and j.status == "completed"
+        and j.conclusion not in GOOD_CONCLUSIONS
+    )
+
+    # (3) Test-matrix completeness (dynamic split jobs).
+    matrix_state = _evaluate_test_matrix(latest)
+
+    # Completeness anchor: every named gate present AND completed.
+    gate_missing_or_pending = [
+        g
+        for g in (*strict_gates, *skippable_gates)
+        if (latest.get(g) is None or latest[g].status != "completed")
+    ]
+
+    all_failures = strict_failures + skippable_failures + sweep_failures
+
+    def _rep(verdict: str) -> str:
+        return _report(
+            verdict,
+            latest,
+            strict_gates,
+            skippable_gates,
+            strict_failures,
+            skippable_failures,
+            sweep_failures,
+            gate_missing_or_pending,
+            matrix_state,
+        )
+
+    # Failures win over pending: a proven bad job is terminal, no need to wait.
+    if all_failures:
+        return EXIT_FAILURE, _rep("FAILURE")
+    if gate_missing_or_pending or matrix_state == "pending":
+        return EXIT_PENDING, _rep("PENDING")
+    return EXIT_SUCCESS, _rep("SUCCESS")
+
+
+def _report(
+    verdict: str,
+    latest: dict[str, JobState],
+    strict_gates: tuple[str, ...],
+    skippable_gates: tuple[str, ...],
+    strict_failures: list[str],
+    skippable_failures: list[str],
+    sweep_failures: list[str],
+    gate_missing_or_pending: list[str],
+    matrix_state: str,
+) -> str:
+    lines = [f"CI Summary verdict: {verdict}", f"  jobs observed: {len(latest)}"]
+    lines.append("  strict gates (must be completed + success):")
+    for g in strict_gates:
+        st = latest.get(g)
+        lines.append(
+            f"    - {g}: <absent>"
+            if st is None
+            else f"    - {g}: {st.status}/{st.conclusion}"
+        )
+    lines.append("  skippable gates (completed + success/skipped):")
+    for g in skippable_gates:
+        st = latest.get(g)
+        lines.append(
+            f"    - {g}: <absent>"
+            if st is None
+            else f"    - {g}: {st.status}/{st.conclusion}"
+        )
+    lines.append(f"  test matrix: {matrix_state}")
+    if strict_failures:
+        lines.append(f"  strict-gate failures: {', '.join(strict_failures)}")
+    if skippable_failures:
+        lines.append(f"  skippable-gate failures: {', '.join(skippable_failures)}")
+    if sweep_failures:
+        lines.append(f"  default-deny sweep failures: {', '.join(sweep_failures)}")
+    if gate_missing_or_pending:
+        lines.append(f"  gates missing/pending: {', '.join(gate_missing_or_pending)}")
+    lines.append(
+        "  NOTE: CI Summary summarizes ci.yml jobs ONLY; "
+        f"{len(UNSUMMARIZED_REQUIRED_CONTEXTS)} other required contexts "
+        "(other workflow files) are independently required and NOT summarized "
+        "here — see UNSUMMARIZED_REQUIRED_CONTEXTS."
+    )
+    return "\n".join(lines)
+
+
+def _load_jobs(path: str | None) -> list[dict[str, object]]:
+    if path is None or path == "-":
+        raw = sys.stdin.read()
+    else:
+        with open(path, encoding="utf-8") as handle:
+            raw = handle.read()
+    data = json.loads(raw)
+    # Accept either the raw endpoint object ({"jobs": [...]}) or a bare array.
+    jobs = data.get("jobs", []) if isinstance(data, dict) else data
+    if not isinstance(jobs, list):
+        raise ValueError("jobs payload must be a list or an object with a 'jobs' array")
+    return jobs
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--jobs-file",
+        default="-",
+        help="Path to the GitHub Actions jobs JSON (default: stdin). Accepts the "
+        "raw endpoint object or a bare array of job objects.",
+    )
+    parser.add_argument(
+        "--report-only",
+        action="store_true",
+        help="Print the verdict report and exit 0 regardless (diagnostics only).",
+    )
+    parser.add_argument(
+        "--run-attempt",
+        type=int,
+        default=None,
+        help="Evaluate only rows for this GitHub Actions run_attempt.",
+    )
+    args = parser.parse_args(argv)
+
+    jobs = _load_jobs(args.jobs_file)
+    code, report = evaluate(jobs, run_attempt=args.run_attempt)
+    print(report)
+    if args.report_only:
+        return EXIT_SUCCESS
+    return code
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

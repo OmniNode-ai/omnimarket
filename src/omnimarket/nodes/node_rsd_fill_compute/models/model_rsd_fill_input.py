@@ -29,7 +29,7 @@ class ModelRsdFillInput(BaseModel):
         ..., description="All scored tickets available for selection."
     )
     max_tickets: int = Field(
-        default=5, ge=1, le=20, description="Maximum tickets to select."
+        default=5, ge=0, le=20, description="Maximum tickets to select."
     )
 
 

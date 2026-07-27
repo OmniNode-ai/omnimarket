@@ -54,12 +54,17 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state i
 )
 from omnimarket.pricing import recompute_actual_cost_and_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.tenant_isolation import require_tenant_id
 
 TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
 GENERATION_TABLE = "generation_events"
 JUDGE_VERDICT_TABLE = "delegation_judge_verdict_events"
 JUDGE_VERDICT_CONFLICT_KEY = "event_hash"
+
+# OMN-14894 (tranche 2): interim single-tenant fallback, mirrors 0019/0022's
+# DEFAULT 'omninode' convention on this same projection surface.
+DEFAULT_TENANT = "omninode"
 
 # OMN-12775 (close-the-loop A3): canonical owner of the generation_events
 # projection — the node that writes the row. Persisted so the dashboard renders
@@ -154,6 +159,11 @@ class ModelProjectionTaskDelegatedEvent(BaseModel):
 
     correlation_id: str = Field(..., description="Unique correlation ID for dedup.")
     session_id: str | None = Field(default=None)
+    # string-id-ok: tenant_id is a named tenant identifier, not a UUID
+    # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carried from the source event when
+    # the delegation FSM resolved a real tenant (ONEX_TENANT_ID). None means the
+    # row falls back to the 'omninode' column default.
+    tenant_id: str | None = Field(default=None)
     task_type: str = Field(..., description="Task type (e.g. code-review, refactor).")
     delegated_to: str = Field(..., description="Agent that received the task.")
     model_name: str = Field(
@@ -279,6 +289,13 @@ class HandlerProjectionDelegation:
             raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
         event_type = str(payload.pop("_event_type", ""))
         if "delegation-judge-verdict" in event_type:
+            # OMN-14855: the multi-topic dispatch fan-out injects an envelope-only
+            # "_topic" key into input_data (same pattern as handler_instruction_eval,
+            # handler_projection_session_replay, handler_delegation_routing_feedback
+            # in this repo). ModelDelegationJudgeVerdictEvent sets extra="forbid", so
+            # leaving "_topic" in the payload always trips extra_forbidden and sends
+            # every judge-verdict event to the malformed DLQ.
+            payload.pop("_topic", None)
             verdict = ModelDelegationJudgeVerdictEvent(**payload)
             result = self.project_judge_verdict(verdict, db_raw)
             return result.model_dump(mode="json")
@@ -372,6 +389,18 @@ class HandlerProjectionDelegation:
             "request_override_applied": event.request_override_applied,
             "override_within_bounds": event.override_within_bounds,
         }
+        # OMN-14898: refuse the write before it is ever built out further when
+        # isolation enforcement is on and no tenant was resolved (raises
+        # TenantRequiredError -- no row, no fall-through to the column
+        # default). No-op while ENFORCE_TENANT_ISOLATION is False, so the
+        # OMN-14058 interim fallback below is unchanged by default.
+        require_tenant_id(event.tenant_id, table=TABLE)
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
+        # source event carried one — omitting the key (rather than writing
+        # None) lets the delegation_events column DEFAULT 'omninode' apply on
+        # INSERT and leaves an already-known tenant untouched on UPDATE.
+        if event.tenant_id:
+            row["tenant_id"] = event.tenant_id
         evidence = extract_quality_bar_evidence(row)
         evidence.update(
             extract_quality_bar_evidence(
@@ -394,7 +423,12 @@ class HandlerProjectionDelegation:
                     measurement.headroom_consumed_usd
                 ),
                 cost_usd=_as_decimal(measurement.cost_usd),
-                tenant_id=event.session_id,
+                # OMN-14058 bug fix (bundled with the interim tenant stamp):
+                # this previously passed event.session_id — a session is not a
+                # tenant. Use the real tenant_id (ONEX_TENANT_ID-sourced) and
+                # let ModelDelegationBudgetStateEvent.resolved_tenant() fall
+                # back to DEFAULT_TENANT when none was resolved.
+                tenant_id=event.tenant_id,
                 timestamp=event.timestamp,
             ),
             db,
@@ -467,6 +501,14 @@ class HandlerProjectionDelegation:
             "projection_version": row_model.projection_version,
             "reducer_version": row_model.reducer_version,
         }
+        # OMN-14898: same fail-closed guard as project() -- no-op unless
+        # ENFORCE_TENANT_ISOLATION is set.
+        require_tenant_id(row_model.tenant_id, table=TABLE)
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when
+        # present — omitting the key lets the column DEFAULT 'omninode' apply
+        # on INSERT and leaves an already-known tenant untouched on UPDATE.
+        if row_model.tenant_id:
+            row["tenant_id"] = row_model.tenant_id
         # OMN-13596: preserve an already-correct response_text when this
         # delegate-skill terminal event carries None/empty response_text.
         # Without this guard, a late-arriving timeout terminal (status="timeout",
@@ -530,8 +572,20 @@ class HandlerProjectionDelegation:
         event: ModelDelegationJudgeVerdictEvent,
         db: DatabaseAdapter,
     ) -> ModelProjectionResult:
-        """UPSERT a reproducible judge verdict event into its evidence table."""
+        """UPSERT a reproducible judge verdict event into its evidence table.
+
+        OMN-14894 (tranche 2): delegation_judge_verdict_events has no tenant
+        identity of its own -- ModelDelegationJudgeVerdictEvent never carried
+        one. Resolve tenant_id by joining the same correlation_id against
+        delegation_events (written by this same node), falling back to
+        DEFAULT_TENANT when no match exists yet, so the row is always
+        stamped and never silently tenant-less (the OMN-14058
+        writer-erasure pattern this tranche closes). See migration 0025's
+        own caveat: the join was only verified against a 4-row sample with a
+        50% miss rate -- re-verify completeness once volume grows.
+        """
         row = _judge_verdict_projection_row(event)
+        row["tenant_id"] = _resolve_judge_verdict_tenant_id(event, db)
         ok = db.upsert(JUDGE_VERDICT_TABLE, JUDGE_VERDICT_CONFLICT_KEY, row)
         return ModelProjectionResult(
             rows_upserted=1 if ok else 0, table=JUDGE_VERDICT_TABLE
@@ -551,6 +605,7 @@ class HandlerProjectionDelegation:
 
 
 __all__: list[str] = [
+    "DEFAULT_TENANT",
     "GENERATION_PROJECTION_OWNER",
     "JUDGE_VERDICT_TABLE",
     "HandlerProjectionDelegation",
@@ -562,6 +617,26 @@ __all__: list[str] = [
     "compute_generation_proof_fields",
     "validate_actual_cost_provenance",
 ]
+
+
+def _resolve_judge_verdict_tenant_id(
+    event: ModelDelegationJudgeVerdictEvent,
+    db: DatabaseAdapter,
+) -> str:
+    """Resolve tenant_id for a judge-verdict row via a correlation_id join.
+
+    Looks up delegation_events by the same correlation_id (same node, same
+    write path) and returns its tenant_id when found. Falls back to
+    DEFAULT_TENANT when no matching delegation_events row exists yet (late
+    or out-of-order projection, or a genuine correlation-id gap -- see
+    migration 0025's join-completeness caveat).
+    """
+    matches = db.query(TABLE, filters={"correlation_id": str(event.correlation_id)})
+    if matches:
+        tenant_id = matches[0].get("tenant_id")
+        if isinstance(tenant_id, str) and tenant_id.strip():
+            return tenant_id
+    return DEFAULT_TENANT
 
 
 def _judge_verdict_projection_row(
@@ -731,6 +806,11 @@ def _canonical_result_to_task_delegated_payload(
 
     return {
         "correlation_id": payload.get("correlation_id"),
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): carry the canonical terminal's
+        # tenant_id (ONEX_TENANT_ID-sourced at request-acceptance) through the
+        # converter so the delegation_events row stamps a real tenant instead
+        # of the 'omninode' column default.
+        "tenant_id": payload.get("tenant_id"),
         "task_type": payload.get("task_type") or "unknown",
         "delegated_to": payload.get("model_used") or "unknown",
         "model_name": payload.get("model_used") or "",

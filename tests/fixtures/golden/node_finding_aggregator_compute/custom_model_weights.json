@@ -1,0 +1,56 @@
+{
+  "input": {
+    "config": {
+      "jaccard_threshold": 0.7,
+      "model_weights": {
+        "strong-model": 0.8,
+        "weak-model": 0.2
+      },
+      "severity_promotes_on_conflict": true
+    },
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "sources": [
+      {
+        "findings": [
+          {
+            "file_path": "src/main.py",
+            "line_start": 10,
+            "normalized_message": "line too long",
+            "rule_id": "ruff:E501",
+            "severity": "warning"
+          }
+        ],
+        "model_name": "strong-model"
+      },
+      {
+        "findings": [],
+        "model_name": "weak-model"
+      }
+    ]
+  },
+  "output": {
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "merged_findings": [
+      {
+        "file_path": "src/main.py",
+        "line_end": null,
+        "line_start": 10,
+        "merged_count": 1,
+        "normalized_message": "line too long",
+        "rule_id": "ruff:E501",
+        "severity": "warning",
+        "source_models": [
+          "strong-model"
+        ],
+        "weighted_score": 0.8
+      }
+    ],
+    "source_model_count": 2,
+    "total_duplicates_removed": 0,
+    "total_input_findings": 1,
+    "total_merged_findings": 1,
+    "verdict": "risks_noted"
+  },
+  "output_sha256": "sha256:3572fec6661354ff942016972e3e84c2a0feab6e5f047f13c26fdf9df9da8650",
+  "scenario": "custom_model_weights"
+}

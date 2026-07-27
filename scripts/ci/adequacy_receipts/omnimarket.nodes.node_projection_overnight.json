@@ -1,0 +1,23 @@
+{
+  "branch_coverage_pct": 38.35,
+  "candidate_count": 3,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight",
+  "handler_module_sha256": "sha256:a010eb2ddb7f590f03420a77a478bb32102738642130b41a7cafe10b9850b80a",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_projection_overnight",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-19T18:36:00+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 3,
+  "selected_input_hashes": [
+    "sha256:4eba259be181ab0a9b6ca02f92efe5b7dcb8089b231b0e4a9d7f365b00302ac6",
+    "sha256:0ba7755e82accf6570291de2bc491ff73601f5e9983f6d0e54327a35dfb8a5bc",
+    "sha256:902d5c6b540b7b484c580b44a8b983b611a114c61d4d90993cec34356907df57"
+  ],
+  "uncovered_waiver": {
+    "reason": "OMN-14802 is a hand-authored def-B dispatch-entrypoint conversion for an existing projection node. Coverage is structurally below the generic compute-node target because the handler module includes three event models, timestamp/default branches, and backward-compat project() wrappers while the selected set is intentionally the dispatch/parity set from tests/test_golden_chain_projection_overnight.py: session-start, phase-end, and session-complete through handle() with injected DatabaseAdapter. The same PR preserves the existing project(event, db) golden-chain unit tests unmodified, adds RuntimeLocal dispatch proof, and reads rows back from the injected in-memory adapter, so the waiver is scoped to adequacy measurement rather than behavior proof.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": []
+}

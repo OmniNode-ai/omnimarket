@@ -1,0 +1,60 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Skill-mapping input-coverage gate (OMN-13965)
+#
+# `onex skill <name>` injects every skill_mapping.yaml arg that declares a
+# `default` into the node-input payload on every invocation. If that field is
+# not accepted by the model the backing handler validates (the handle() param
+# for compute/effect/reducer handlers; the handler_routing event_model for
+# orchestrators), the skill fails 100% of CLI calls with extra_forbidden
+# (OMN-13964). This gate diffs the installed skill_mapping.yaml (from the pinned
+# omnibase_infra dep) against each node's resolved input model and FAILs on any
+# defaulted-arg / missing-field pair.
+#
+# Runs on every PR/merge_group with no paths filter: a required status check
+# must report on every PR (mirrors state-coverage-gate.yml), otherwise it stays
+# permanently "expected" and blocks the queue.
+
+name: skill-mapping-input-coverage-gate
+
+on:
+  pull_request:
+    branches: [main, dev]
+  workflow_dispatch:
+
+concurrency:
+  group: skill-mapping-input-coverage-gate-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  skill-mapping-input-coverage-gate:
+    name: skill-mapping-input-coverage-gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Run skill-mapping input-coverage gate
+        run: uv run python scripts/validate_skill_mapping_input_coverage.py

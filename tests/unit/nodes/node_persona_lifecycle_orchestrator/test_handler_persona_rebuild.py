@@ -68,7 +68,9 @@ def test_contract_routes_resolve_to_real_handler_methods() -> None:
 
     for entry in handlers:
         assert isinstance(entry, dict)
-        module_name = entry["handler_module"]
+        handler_ref = entry["handler"]
+        assert isinstance(handler_ref, dict)
+        module_name = handler_ref["module"]
         handler_key = entry["handler_key"]
         assert isinstance(module_name, str)
         assert isinstance(handler_key, str)

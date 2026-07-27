@@ -4,17 +4,20 @@
 driven over the canonical in-memory bus.
 
 OMN-13674 (cluster wave-D-projection-correctness-verification, archetype
-compute). The pure ``HandlerProjectionReplayCheck.check`` fold is registered on
-``EventBusInmemory`` (via the ``integration_event_bus`` fixture +
-``LocalRuntimeBusAdapter``) through a thin bus-facing shim: a
-``ModelReplayCheckRequest`` lands on the declared command topic
-``onex.cmd.omnimarket.projection-replay-check-start.v1`` and the terminal
-``ModelReplayCheckResult`` is auto-published onto the declared completed topic
+compute). The pure ``HandlerProjectionReplayCheck.handle`` fold is registered
+directly on ``EventBusInmemory`` (via the ``integration_event_bus`` fixture +
+``LocalRuntimeBusAdapter``): a ``ModelReplayCheckRequest`` lands on the
+declared command topic ``onex.cmd.omnimarket.projection-replay-check-start.v1``
+and the terminal ``ModelReplayCheckResult`` is auto-published onto the
+declared completed topic
 ``onex.evt.omnimarket.projection-replay-check-completed.v1``. No live Kafka /
 ``.201``.
 
-The shim (a test-only wrapper, no production change) exists because the handler's
-public method is ``check`` while the canonical adapter dispatches ``handle``.
+OMN-14371 renamed the handler's public method ``check`` -> ``handle``
+(canonical handler-shape ratchet, definition B) so the canonical adapter now
+dispatches the production handler directly — the bus-facing shim this test
+previously needed (``_ReplayCheckBusHandler``, test-only, existed solely
+because the public method wasn't ``handle``) is retired as dead code.
 
 COMPUTE DoD covered:
   * every declared output field asserted off the terminal event
@@ -36,7 +39,7 @@ Honest findings:
   * The ``blocked`` verdict (empty ``correlation_id``) is UNREACHABLE through the
     declared contract surface: ``ModelProjectionEvent`` rejects an empty
     ``correlation_id`` at construction, so a blank-correlation event never
-    reaches ``check``. The ``blocked`` output *field* is still asserted
+    reaches ``handle``. The ``blocked`` output *field* is still asserted
     (``result.blocked == 0``), and the boundary rejection is proven directly.
   * The ``EnumReplayStatus.DASHBOARD_RENDERED`` verdict and the ``status ==
     "error"`` value are declared but never produced by this pure handler (they
@@ -68,20 +71,6 @@ _TABLE = "projection_delegation_inference_response_text"
 _TOPIC = "onex.evt.omnibase-infra.inference-response.v1"
 
 
-class _ReplayCheckBusHandler:
-    """Bus-facing shim: exposes ``handle`` so the canonical adapter can dispatch
-    the pure ``HandlerProjectionReplayCheck.check`` core over the in-memory bus.
-
-    This is a test-only wrapper — the production handler is unchanged.
-    """
-
-    def __init__(self) -> None:
-        self._handler = HandlerProjectionReplayCheck()
-
-    def handle(self, request: ModelReplayCheckRequest) -> ModelReplayCheckResult:
-        return self._handler.check(request)
-
-
 def _event(correlation_id: str, partition: int, offset: int) -> ModelProjectionEvent:
     return ModelProjectionEvent(
         correlation_id=correlation_id,
@@ -96,7 +85,7 @@ async def _drive(
     bus: Any, command: ModelReplayCheckRequest, *, group: str
 ) -> ModelReplayCheckResult:
     adapter = LocalRuntimeBusAdapter(
-        handler=_ReplayCheckBusHandler(),
+        handler=HandlerProjectionReplayCheck(),
         handler_name="projection-replay-check",
         input_model_cls=ModelReplayCheckRequest,
         output_topic=TOPIC_COMPLETED,
@@ -119,7 +108,7 @@ async def _drive_raw(bus: Any, raw: bytes, *, group: str) -> list[Any]:
     the handler ran — the boundary-rejection negative-control signal.
     """
     adapter = LocalRuntimeBusAdapter(
-        handler=_ReplayCheckBusHandler(),
+        handler=HandlerProjectionReplayCheck(),
         handler_name="projection-replay-check",
         input_model_cls=ModelReplayCheckRequest,
         output_topic=TOPIC_COMPLETED,

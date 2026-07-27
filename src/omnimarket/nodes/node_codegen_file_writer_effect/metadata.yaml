@@ -1,0 +1,20 @@
+name: node_codegen_file_writer_effect
+version: "1.0.0"
+description: "Codegen factory file-writer step — an EFFECT that writes generated node files under a target root"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_codegen_file_writer_effect: "omnimarket.nodes.node_codegen_file_writer_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  side_effect_class: filesystem
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "filesystem", "codegen", "factory"]
+pack: "core"
+display_name: "Codegen File Writer Effect"
+node_role: "effect"

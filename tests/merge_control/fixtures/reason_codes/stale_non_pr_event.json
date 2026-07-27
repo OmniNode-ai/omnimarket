@@ -1,0 +1,24 @@
+{
+  "description": "F-09/OMN-13319: a required context whose only failing run is a manually dispatched workflow_dispatch run, not the PR-associated pull_request run. Branch protection credits only PR-associated events, so this is stale w.r.t. the PR.",
+  "friction_ids": ["F-09"],
+  "evidence": "OMN-13319 _is_pr_associated filter",
+  "expected_reason_code": "stale_context",
+  "naive_would_misclassify_as_product": true,
+  "run_event": "workflow_dispatch",
+  "required_context": true,
+  "current_head_sha": "7777777777777777777777777777777777777777",
+  "log_signatures": [],
+  "job": {
+    "id": 990007,
+    "run_id": 550007,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "7777777777777777777777777777777777777777",
+    "name": "CI Summary",
+    "steps": [
+      {"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+      {"name": "Check CI results", "status": "completed", "conclusion": "failure", "number": 2}
+    ]
+  }
+}

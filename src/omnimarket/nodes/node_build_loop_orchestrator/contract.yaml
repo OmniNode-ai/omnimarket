@@ -14,6 +14,29 @@ description: >
   FSM: IDLE -> CLOSING_OUT -> VERIFYING -> FILLING -> CLASSIFYING -> BUILDING -> COMPLETE
   Circuit breaker trips after 3 consecutive failures -> FAILED.
 
+# OMN-15002: this contract previously declared 3 additional handler_routing
+# entries (linear_fill/AdapterLinearFill, llm_classify/AdapterLlmClassify,
+# llm_dispatch/AdapterLlmDispatch). Those adapters are legacy composition-only
+# classes consumed exclusively by the non-canonical assemble_live.py script
+# (constructed directly in Python, never resolved via contract dispatch) --
+# the live DI path (_ensure_sub_handlers()) always uses the real sub-handler
+# implementations declared under sub_handler_dependencies below
+# (HandlerRsdFill/HandlerTicketClassify/HandlerBuildDispatch from their own
+# node packages). Because none of those 3 entries declared an event_model,
+# omnibase_infra's auto-wiring (_topics_for_handler_entry) granted each of
+# them EVERY contract subscribe_topic unconditionally, so all 3 were
+# auto-wired as independent Kafka consumers of
+# onex.cmd.omnimarket.build-loop-orchestrator-start.v1 alongside the real
+# handler below. Every live dispatch fanned out to all 4 handlers; the 3 dead
+# adapters threw ValidationError/TypeError on the mismatched payload shape,
+# the aggregate failure was swallowed by the auto-wiring boundary catch-all
+# (no DLQ on this lane), and HandlerBuildLoopOrchestrator.handle() -- the only
+# real dispatcher -- never ran. Result: the daily build-loop trigger was a
+# 100% silent no-op for 6+ consecutive days. Removing the 3 dead entries
+# makes HandlerBuildLoopOrchestrator the SOLE handler_routing entry, so it
+# deterministically owns both subscribe_topics again (the pre-existing
+# single-handler rule in _topics_for_handler_entry). See OMN-15002/OMN-15001
+# for the full forensic trace.
 handler_routing:
   routing_strategy: operation_match
   handlers:
@@ -24,20 +47,6 @@ handler_routing:
       event_model:
         name: ModelOrchestratorStartCommand
         module: omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_start_command
-    - operation: linear_fill
-      handler:
-        name: AdapterLinearFill
-        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_linear_fill
-        handler_type: http
-    - operation: llm_classify
-      handler:
-        name: AdapterLlmClassify
-        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_classify
-    - operation: llm_dispatch
-      handler:
-        name: AdapterLlmDispatch
-        module: omnimarket.nodes.node_build_loop_orchestrator.handlers.adapter_llm_dispatch
-        handler_type: http
 
 descriptor:
   node_archetype: orchestrator

@@ -1,0 +1,26 @@
+{
+  "branch_coverage_pct": 74.51,
+  "candidate_count": 12,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage",
+  "handler_module_sha256": "sha256:2cab39ff46c3c69b496f4a3ba10d4fb3ac2c06d7211679d1e698eec5de3e3e84",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_pr_lifecycle_triage_compute",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-20T06:00:35.707176+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 6,
+  "selected_input_hashes": [
+    "sha256:06fdf5738fdd48c7726c089f6216f8d5907be3d807ee87e62dcc8d7d049649f8",
+    "sha256:a9175ecf36e7870bb1e762ad3b92500dcf46d08d81a177c8a7c5298d2c69929d",
+    "sha256:ddb0c972020bda14b84b351f0412d238c2bd9479f703df4cf34edfd2c83370e9",
+    "sha256:85993848f9aac47391701fd40b583905527f9b423b13da08d08f7c348c41a9d3",
+    "sha256:11bdc2ccd124ea5d2e418337869419d2049c99420ea04ecf4fdfdbf79a524153",
+    "sha256:0bab27616302791ff627daa391094336fb6acad63c6993a84bb5f2c0aacc1b52"
+  ],
+  "uncovered_waiver": {
+    "reason": "OMN-14837 hand-flip def-B conversion of node_pr_lifecycle_triage_compute. The 12-input candidate pool exercises EVERY reachable branch of the classification core (_classify_pr: conflicted-priority, red, receipt-only OCC-with-ticket, receipt-only-no-ticket RED fallback, and all NEEDS_REVIEW variants) and all five tally increments plus the zero-iteration path of handle(); coverage-guided selection kept 6 inputs. Branch coverage reads 74.51% (< 80% target) because the recorder starts coverage AFTER module import, so module-load-time lines (imports, module constants, the async handle() signature/docstring) are attributed uncovered. Behavior is fully pinned by the 17 green parity tests in tests/integration/node_pr_lifecycle_triage_compute/ bound to this same selected input set, and by the git-re-derived verbatim-preservation of the logic symbols in the paired .handflip.json proof. This waiver is scoped to adequacy measurement only.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": []
+}

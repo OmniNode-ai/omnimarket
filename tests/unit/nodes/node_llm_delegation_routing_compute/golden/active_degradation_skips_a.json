@@ -1,0 +1,23 @@
+{
+  "case_id": "active_degradation_skips_a",
+  "fingerprint": "sha256:df85fd3e10dedac1c0ec243b9ae76c8d96e50128368ba68e083c46c5cd18f72d",
+  "input_hash": "sha256:cd7452f5fd71c90b0bd3b0302978acfc319232f8d10e157c554b5713f9687cf4",
+  "result": {
+    "kind": "ok",
+    "output": {
+      "selection": {
+        "cost_basis": "zero_marginal_api_cost",
+        "endpoint_env": "LLM_B_URL",
+        "model_id": "model-b",
+        "selection_reason": "preferred model selected",
+        "skipped_models": [
+          {
+            "model_id": "model-a",
+            "skip_reason": "degraded until 2999-01-01T00:00:00+00:00: quality gate failure"
+          }
+        ],
+        "tier": "local"
+      }
+    }
+  }
+}

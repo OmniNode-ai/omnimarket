@@ -15,13 +15,20 @@ OMN-13351: the claude-tier ceiling backend was repointed from the dead Anthropic
 unroutable in tests that specifically need that shape).
 
 OMN-13667: the ceiling was repointed again to GLM-5.2 z.ai direct (cloud-glm)
-+ fallback openrouter-qwen3-coder-480b. BOTH ceiling backends carry NON-EMPTY
-endpoints in this fixture because ``cloud-glm`` is also the primary model for the
-``cheap_cloud`` tier (test/research tasks) — making it empty would silently break
-cheap_cloud routability. ``cloud-gemini-pro`` is kept (empty) for contract
-completeness; tests that still need an entirely-unroutable ceiling for a specific
-task type must use a task class whose tier_order ends at cheap_cloud (e.g. document)
-or supply their own fixture.
++ fallback openrouter-qwen3-coder-480b. BOTH ceiling backends carried NON-EMPTY
+endpoints in this fixture because ``cloud-glm`` was also the primary model for the
+``cheap_cloud`` tier (test/research tasks) — making it empty would have silently
+broken cheap_cloud routability.
+
+OMN-14625: cheap_cloud and the claude ceiling are repointed off z.ai GLM
+(``cloud-glm``, DEAD from the .201 runtime) to Gemini (``cloud-gemini-pro``).
+This fixture is swapped to match: ``cloud-gemini-pro`` now carries the
+NON-EMPTY endpoint (it is the primary model for both cheap_cloud and the
+claude ceiling), and ``cloud-glm`` is kept (empty) for contract completeness
+only — it is no longer referenced by any routing tier. Tests that still need
+an entirely-unroutable ceiling for a specific task type must use a task class
+whose tier_order ends at cheap_cloud (e.g. document) or supply their own
+fixture.
 """
 
 from __future__ import annotations
@@ -53,6 +60,14 @@ _CLOUD_SECRET_ENV_VARS = (
     # Legacy literal forms some paths may still read directly.
     "GEMINI_API_KEY",
     "OPENROUTER_API_KEY",
+    # OMN-13943: the bifrost contract's own ``api_key_env`` field is now a real
+    # secret-resolution fallback (secret_store_resolver.resolve_api_key_async),
+    # not dead config — a backend whose dotted secret_ref convention misses can
+    # still resolve through its own literal env var. OPEN_ROUTER_API_KEY (with
+    # underscore) is the canonical ~/.omnibase/.env name the openrouter backends
+    # declare via api_key_env; clear it too so cloud-tier routability in this
+    # suite stays independent of ambient credentials.
+    "OPEN_ROUTER_API_KEY",
 )
 
 
@@ -72,12 +87,46 @@ def _isolate_cloud_secret_env(monkeypatch: pytest.MonkeyPatch) -> None:
     clear_secret_store_resolver_cache()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_bifrost_file_overlay(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-14746: neutralize the DEV-ONLY host bifrost file overlay.
+
+    ``resolve_delegation_backend`` / ``load_bifrost_backends`` fall back to a
+    DEV-ONLY local file overlay at ``~/.omninode/delegation/bifrost_overrides.yaml``
+    when no secret store is supplied (OMN-13232). On a developer machine that
+    overlay remaps ``cloud-glm`` off z.ai GLM to a local/Gemini backend, so the
+    tests here that assert the COMMITTED contract values (``glm-5-turbo`` /
+    ``llm.glm.api_key``) pass in CI (file absent) but FAIL locally under the
+    pre-push full-suite escalation. Point the file overlay at a per-test path
+    that is never created, so resolution is hermetic on every machine.
+
+    Both functions bind ``overlay_path=_OVERLAY_PATH`` as a keyword-only default
+    captured in ``__kwdefaults__`` at ``def`` time. The judge adapter
+    (``adapter_routing_resolved_judge.resolved_model_id``) calls
+    ``resolve_delegation_backend(..., backend_id=...)`` with NO ``overlay_path``
+    passthrough, so patching the module attribute alone does not reach it — patch
+    the module attribute AND both functions' ``__kwdefaults__``.
+    """
+    from omnimarket.routing import delegation_backend_resolution as d
+
+    # Never created, so ``overlay_path.is_file()`` is False and resolution falls
+    # through to the committed bifrost contract on any machine.
+    absent_overlay = tmp_path / "no_bifrost_overrides.yaml"
+
+    monkeypatch.setattr(d, "_OVERLAY_PATH", absent_overlay, raising=False)
+    for fn_name in ("resolve_delegation_backend", "load_bifrost_backends"):
+        kwdefaults = getattr(getattr(d, fn_name), "__kwdefaults__", None)
+        if kwdefaults and "overlay_path" in kwdefaults:
+            monkeypatch.setitem(kwdefaults, "overlay_path", absent_overlay)
+
+
 # Bifrost config covering every backend_id referenced by routing_tiers.yaml.
-# OMN-13667: the claude ceiling now uses cloud-glm (primary) +
-# openrouter-qwen3-coder-480b (fallback). Both carry empty endpoint_url here so
-# escalating to the ceiling tier yields no routable backend, preserving the
-# deployed-regression shape. cloud-gemini-pro kept (empty) for contract
-# completeness; it is no longer the ceiling backend.
+# OMN-14625: the claude ceiling and cheap_cloud tier now use cloud-gemini-pro
+# (Gemini) as their primary/only model. cloud-glm carries an empty
+# endpoint_url here for contract completeness only; it is no longer
+# referenced by any routing tier (see OMN-14625 in routing_tiers.yaml).
 BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
     """\
     config_version: "1.2.0"
@@ -114,7 +163,7 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
         timeout_ms: 30000
         capabilities: [reasoning]
       - backend_id: cloud-glm
-        endpoint_url: "https://cloud.test/glm/v4/chat/completions"
+        endpoint_url: ""
         model_name: glm-5.2
         tier: cheap_cloud
         timeout_ms: 30000
@@ -138,11 +187,11 @@ BIFROST_FRONTIER_UNCONFIGURED = textwrap.dedent(
         timeout_ms: 30000
         capabilities: [code_generation]
       - backend_id: cloud-gemini-pro
-        endpoint_url: ""
+        endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
         model_name: gemini-2.5-flash
         tier: frontier_api
         timeout_ms: 60000
-        capabilities: [documentation]
+        capabilities: [code_generation, documentation]
     routing_rules:
       - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
         priority: 10
@@ -183,13 +232,13 @@ def frontier_unconfigured_bifrost(
     tests (the deployed stability-test regression shape from OMN-12939).
 
     Local, cheap_cloud, and cheap_frontier backends carry resolvable endpoints.
-    cloud-gemini-pro (the old ceiling backend) has an empty endpoint_url.
-    OMN-13667: the new ceiling backends (cloud-glm + openrouter-qwen3-coder-480b)
-    have NON-EMPTY endpoints because cloud-glm is shared with cheap_cloud — tests
-    that specifically require the ceiling to be unroutable must use a task class
-    whose tier_order ends at cheap_cloud (e.g. document) or add a local fixture.
-    Backends here declare no api_key_ref, so they are usable in unit context
-    purely on a non-empty endpoint_url — exactly the eligibility delta() applies.
+    OMN-14625: cloud-gemini-pro (the current cheap_cloud + claude ceiling
+    backend) has a NON-EMPTY endpoint_url, and cloud-glm (no longer referenced
+    by any routing tier) has an empty one. Tests that specifically require the
+    ceiling to be unroutable must use a task class whose tier_order ends at
+    cheap_cloud (e.g. document) or add a local fixture. Backends here declare
+    no api_key_ref, so they are usable in unit context purely on a non-empty
+    endpoint_url — exactly the eligibility delta() applies.
     """
     from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
         handler_delegation_routing as routing,

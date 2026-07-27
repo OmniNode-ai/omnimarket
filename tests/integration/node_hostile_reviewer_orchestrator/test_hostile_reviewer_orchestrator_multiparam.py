@@ -54,15 +54,19 @@ _CLEAN_DIFF = "diff --git a/README.md b/README.md\n+# docs typo fix\n"
 
 
 class _TypedHandlerWrapper:
-    """Bridge adapter kwargs into the orchestrator's typed command, returning the
-    terminal completed event (what the runtime publishes to the terminal topic)."""
+    """Bridge adapter kwargs into the orchestrator's typed command.
+
+    HandlerHostileReviewerOrchestrator.handle() returns the terminal
+    ModelHostileReviewerCompletedEvent directly (OMN-14242 thin canonical
+    shape — no ModelHandlerOutput envelope), which is exactly what the
+    runtime publishes to the terminal topic.
+    """
 
     def __init__(self, handler: HandlerHostileReviewerOrchestrator) -> None:
         self._handler = handler
 
     async def handle(self, **payload: Any) -> Any:
-        output = await self._handler.handle(ModelHostileReviewerStartCommand(**payload))
-        return output.events[0]
+        return await self._handler.handle(ModelHostileReviewerStartCommand(**payload))
 
 
 def _two_findings() -> str:

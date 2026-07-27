@@ -1,0 +1,24 @@
+name: node_occ_attestation_observe
+version: "1.0.0"
+description: "Read-only EFFECT: observes + attests the OCC companion on a product PR and emits one observation record. Report-only, non-blocking."
+pack: occ_companion
+node_role: effect
+display_name: "OCC Attestation Observe"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_occ_attestation_observe: "omnimarket.nodes.node_occ_attestation_observe"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "occ", "attestation", "report-only", "OMN-14393"]

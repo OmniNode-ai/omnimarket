@@ -3,18 +3,47 @@
 Checks node descriptions, handler wiring, topic symmetry (producer/consumer
 pairs), and classifies findings by type and severity.
 
-ONEX node type: COMPUTE — pure, deterministic, no LLM calls.
+ONEX node type: COMPUTE — deterministic, no LLM calls. Check phases are pure;
+when a request carries no entities the handler resolves the default input set
+from ``$OMNI_HOME`` (OMN-13919), mirroring NodeComplianceSweep's default-scan
+resolution.
 """
 
 from __future__ import annotations
 
+import os
 import re
 from enum import StrEnum
 from uuid import UUID
 
+# OMN-14528: reuse the runtime's canonical consumer-group naming so the
+# per-contract liveness check matches node_name against live group ids using
+# the EXACT normalization the runtime applies when it creates the group. These
+# are pure, deterministic helpers (no I/O) — safe to import into a COMPUTE node.
+from omnibase_infra.enums import EnumConsumerGroupPurpose
+from omnibase_infra.utils.util_consumer_group import normalize_kafka_identifier
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.events.watchdog import EnumWatchdogEventType
+
+# The canonical consumer-group id embeds the node name in the segment
+# ``.{normalized_node_name}.{consume}.`` (see
+# ``omnibase_infra.utils.util_consumer_group.compute_consumer_group_id`` —
+# ``{env}.{service}.{node_name}.{purpose}.{version}``). Precompute the
+# normalized CONSUME purpose token so the liveness matcher stays in lock-step
+# with the runtime instead of hardcoding the literal "consume".
+_CONSUME_PURPOSE_SEGMENT = normalize_kafka_identifier(
+    EnumConsumerGroupPurpose.CONSUME.value
+)
+
+# OMN-15041: the reverse-direction (present-but-undeclared) check matches a
+# live group against a declared node identity for ANY purpose, not just
+# CONSUME -- a kernel/skill consumer could legitimately use INTROSPECTION,
+# REPLAY, AUDIT, BACKFILL, or CONTRACT_REGISTRY. Precompute all normalized
+# purpose segments once (same normalize_kafka_identifier the runtime uses).
+_ALL_PURPOSE_SEGMENTS: tuple[str, ...] = tuple(
+    normalize_kafka_identifier(p.value) for p in EnumConsumerGroupPurpose
+)
 
 # ---------------------------------------------------------------------------
 # Enums
@@ -60,16 +89,30 @@ class EnumFindingType(StrEnum):
     CONSUMER_ONLY = "CONSUMER_ONLY"
     NON_DURABLE_CONTRACT = "NON_DURABLE_CONTRACT"
     STRANDED_WORKFLOW = "STRANDED_WORKFLOW"
-    # OMN-12957: manifest declares a node under a runtime_profile but no live
-    # consumer group is attached for that profile — the node is silently
-    # orphaned even though static profile membership looks valid. This is the
-    # second class of orphaning that static profile-subset validation misses.
-    PROFILE_NO_LIVE_CONSUMER = "PROFILE_NO_LIVE_CONSUMER"
+    # OMN-12957/OMN-14528: a subscribing, runtime-deployed contract whose OWN
+    # node-name identity has no live consumer group on the broker — the
+    # subscription is not being drained (a silent orphan / "dead corpse": ships
+    # in the image, declares subscribe_topics, has zero live consumer group).
+    # Per-CONTRACT, not per-profile: a sibling's live group in the same
+    # runtime_profile no longer vouches for this contract (OMN-14528 closes the
+    # profile-level vouching false-negative that hid all 13 dead consumers).
+    CONTRACT_NO_LIVE_CONSUMER = "CONTRACT_NO_LIVE_CONSUMER"
     # OMN-13589: a single-repo onex.nodes entry point that fails the structural
     # or import probe (module/__init__/contract.yaml/handler/model load). The
     # harness collects per-entry-point probes; the pure node turns a failed
     # probe into this finding.
     BROKEN_ENTRY_POINT = "BROKEN_ENTRY_POINT"
+    # OMN-15041: the REVERSE direction of CONTRACT_NO_LIVE_CONSUMER -- a LIVE
+    # consumer group on the broker whose identity segment matches NO
+    # contract-declared node_name (for any EnumConsumerGroupPurpose) and is not
+    # in the reasoned grandfather allowlist. This is the general form of the
+    # bug that produced the OMN-14843 false "delegation dead" alarm: a group
+    # minted outside compute_consumer_group_id() (a bare module constant, e.g.
+    # the pre-fix CORE_RUNTIME_GROUP) is indistinguishable from a genuine
+    # orphan/casualty without this check. CONTRACT_NO_LIVE_CONSUMER asks "does
+    # every declared consumer have a live group"; this finding asks "does
+    # every live group belong to a declared consumer."
+    UNDECLARED_CONSUMER_GROUP = "UNDECLARED_CONSUMER_GROUP"
 
 
 class EnumSweepCheck(StrEnum):
@@ -87,7 +130,11 @@ class EnumSweepCheck(StrEnum):
     SYMMETRY = "SYMMETRY"
     DURABILITY = "DURABILITY"
     STRANDED_WORKFLOW = "STRANDED_WORKFLOW"
-    PROFILE_CONSUMER = "PROFILE_CONSUMER"
+    # OMN-14528: per-contract live-consumer-group verification (replaces the
+    # per-profile PROFILE_CONSUMER vouching check). Its census is collected by a
+    # live broker probe, never a hand-typed flag; when it runs, the census is
+    # REQUIRED (absence fails closed, never a silent skip).
+    CONSUMER_LIVENESS = "CONSUMER_LIVENESS"
 
 
 # ---------------------------------------------------------------------------
@@ -169,6 +216,33 @@ class ModelEntryPointProbe(BaseModel):
     reason: str = ""
 
 
+class ModelGrandfatheredConsumerGroupPattern(BaseModel):
+    """One bounded, reasoned exemption in the OMN-15041 undeclared-group ratchet.
+
+    The reverse-direction diff (present-but-undeclared) is fail-closed by
+    default: ANY live consumer group whose identity segment does not match a
+    contract-declared node_name is a finding. A small, enumerated set of LIVE,
+    LEGITIMATE consumer groups predate this gate and are not (yet)
+    contract-declared -- either kernel-internal wiring (hardcoded node_name
+    string literals in ``service_kernel.py`` / ``runtime_host_process.py``,
+    the same gap class OMN-15040 closes for ``CORE_RUNTIME_GROUP``) or ad hoc,
+    non-ONEX-node Kafka clients. Each entry here is reasoned and ticketed --
+    NEVER an open wildcard. The list is ratcheted: see
+    ``_GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_MAX_COUNT`` and its paired test
+    (count only shrinks; a bump requires justifying the new entry in the same
+    diff, mirroring the ``FROZEN_PROTOCOLS_MODELS_MAX``-style ratchets used
+    elsewhere in this codebase).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pattern: str = Field(
+        description="Regex (re.search) tested against the lower-cased live group id."
+    )
+    reason: str
+    ticket: str
+
+
 class ModelRuntimeFinding(BaseModel):
     """A single runtime verification finding."""
 
@@ -218,14 +292,27 @@ class RuntimeSweepRequest(BaseModel):
             "DEFAULT_ARCHETYPE_SLA_MS."
         ),
     )
-    # OMN-12957: live consumer-group census — the set of runtime_profiles that
-    # actually have an attached consumer group on the broker right now. When
-    # provided (non-None), the sweep runs the dual check: any node whose
-    # declared runtime_profiles are all absent from this census is flagged as a
-    # silent orphan (manifest-declares-node != consumer-attached). When None the
-    # broker census was not collected and the dual check is skipped — distinct
-    # from an empty census (broker reachable, zero consumer groups).
-    live_consumer_profiles: list[str] | None = None
+    # OMN-12957/OMN-14528: live consumer-group census — the ACTUAL LIVE
+    # (non-Empty) consumer GROUP IDs currently attached on the broker, collected
+    # in code by ``broker_probe.collect_live_consumer_groups`` (never an
+    # operator-typed flag; the old ``--live-consumer-profiles`` census was DATA
+    # nothing automated ever supplied, so the check silently never ran). The
+    # CONSUMER_LIVENESS phase checks each subscribing contract's OWN node-name
+    # identity against this census (per-contract, not per-profile).
+    #
+    # ``None`` means the census was not collected. When ``require_live_consumer_census``
+    # is set (the real skill/CLI runtime paths always set it), a ``None`` census
+    # with the phase enabled is a HARD FAILURE (``handle`` raises) — absence of
+    # the census is never a silent skip (OMN-14528). An empty list is distinct
+    # and legal: broker reachable, zero LIVE groups exist.
+    live_consumer_groups: list[str] | None = None
+    # OMN-14528 fail-closed switch. The runtime dispatch surfaces (the skill
+    # default-input resolver and the ``__main__`` full sweep) set this True after
+    # probing the broker, so the CONSUMER_LIVENESS phase can never report a
+    # vacuous pass over an absent/empty census. Synthetic unit requests leave it
+    # False and may exercise the phase with an explicit census without tripping
+    # the fail-closed guards.
+    require_live_consumer_census: bool = False
     # OMN-13589: single-repo entry-point import probes. The harness walks this
     # repo's pyproject [project.entry-points."onex.nodes"] and produces one probe
     # per node (structural + import checks). The REGISTRATION phase turns failed
@@ -240,9 +327,9 @@ class RuntimeSweepRequest(BaseModel):
     enabled_checks: list[EnumSweepCheck] | None = None
     # OMN-13715: scope hint surfaced via `onex skill runtime_sweep --scope`.
     # Accepted values (by convention): "all-repos" (default, full sweep) or
-    # "omnidash-only" (limit sweep to the omnidash repo context). The handler
-    # currently does not filter by scope — wiring the CLI arg is the OMN-13715
-    # deliverable; behavior gating is tracked separately. None ⇒ full sweep.
+    # "omnidash-only" (limit sweep to the omnidash repo context). OMN-13919:
+    # when the request carries no entities, scope selects which repos the
+    # default $OMNI_HOME collection walks. None ⇒ full sweep ("all-repos").
     scope: str | None = None
     dry_run: bool = False
 
@@ -257,7 +344,17 @@ class RuntimeSweepResult(BaseModel):
     topics_checked: int = 0
     workflows_checked: int = 0
     entry_points_checked: int = 0
-    status: str = "clean"  # clean | findings | error | no_input
+    # OMN-14528: number of subscribing, runtime-deployed contracts evaluated by
+    # the CONSUMER_LIVENESS phase, and the size of the live-group census they
+    # were evaluated against. Both are 0 when the phase did not run. When the
+    # phase runs under a required census, the handler asserts BOTH are > 0
+    # before it can report a clean verdict — "scanned nothing" and "all healthy"
+    # must never be arithmetically identical (the detection-shelf disease).
+    consumers_checked: int = 0
+    live_consumer_groups_scanned: int = 0
+    # OMN-13919: "no_input" is no longer a reportable status — a zero-entity
+    # run raises instead of returning (vacuous passes are unrepresentable).
+    status: str = "clean"  # clean | findings | error
     dry_run: bool = False
 
     @property
@@ -293,6 +390,127 @@ _PLACEHOLDER_PATTERNS = [
 # A workflow started-but-not-terminal past this is treated as stranded.
 DEFAULT_ARCHETYPE_SLA_MS = 600_000  # 10 minutes
 
+# OMN-15041: bounded, reasoned exemptions from the undeclared-consumer-group
+# check, discovered via a live readback of omnibase-infra-stability-test-redpanda
+# on 2026-07-24 (the readback that authored this allowlist). Each pattern is
+# `re.search`-matched against the lower-cased live group id. NEVER add an entry
+# without a reason + ticket; NEVER widen a pattern beyond what the specific
+# discovered group(s) require. Triage/retirement tracked in OMN-15050.
+_GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_PATTERNS: tuple[
+    ModelGrandfatheredConsumerGroupPattern, ...
+] = (
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"\.runtime_config\.contract-registry\.contract-registry\.",
+        reason=(
+            "Kernel-internal contract-lifecycle consumer wired directly in "
+            "service_kernel.py (node_name='contract-registry' hardcoded, not "
+            "backed by a nodes/*/contract.yaml). Live, legitimate infra "
+            "component -- same gap class as OMN-15040's CORE_RUNTIME_GROUP, "
+            "not an orphan."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"\.runtime_config\.runtime-error-triage\.consume\.",
+        reason=(
+            "Kernel-internal runtime-error-triage consumer wired directly in "
+            "service_kernel.py (node_name='runtime-error-triage' hardcoded, "
+            "not backed by a nodes/*/contract.yaml, OMN-5655). Live, "
+            "legitimate infra component."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"-dynamic-contract-listener\.consume\.",
+        reason=(
+            "Kernel dynamic-contract-listener subscriber; node_name is built "
+            "as f'{base_node_name}-dynamic-contract-listener' in "
+            "runtime_host_process.py, not backed by a contract.yaml. Live, "
+            "legitimate infra component."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"\.runtime_config\.delegation-orchestrator\.consume\.",
+        reason=(
+            "STALE (unconfirmed live): node_name 'delegation-orchestrator' is "
+            "not found anywhere in current omnibase_infra source (searched "
+            "2026-07-24) -- appears to be residue from a prior deploy "
+            "generation, the same class as the onex.core-runtime.delegation "
+            "orphan already deleted this session. Grandfathered rather than "
+            "silently ignored so OMN-15050 can confirm-and-delete rather than "
+            "this gate re-litigating it every run."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^delegate-skill-runtime-port-",
+        reason=(
+            "Ad hoc skill-runtime helper consumer group (port/instance id in "
+            "the name). Not sourced to a literal in any repo cloned under "
+            "omni_home as of 2026-07-24 -- origin unconfirmed, not "
+            "independently verified live vs dead."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^onex-deploy-agent$",
+        reason=(
+            "Standalone deploy-agent process consumer group. Not sourced to a "
+            "literal in any repo cloned under omni_home as of 2026-07-24 -- "
+            "origin unconfirmed."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^pattern-b-broker-",
+        reason=(
+            "Sourced to omnibase_infra/runtime/service_pattern_b_broker.py -- "
+            "a non-node Kafka client, not backed by a contract.yaml."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^runtime-local-",
+        reason=(
+            "Sourced to omnibase_infra/runtime/runtime_host_process.py -- "
+            "local-runtime dispatch helper groups (HandlerDelegateSkill, "
+            "terminal), not backed by a contract.yaml."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^s3-stability-readback-",
+        reason=(
+            "Naming suggests an ephemeral synthetic test/readback probe group. "
+            "Not sourced to a literal in any repo cloned under omni_home as of "
+            "2026-07-24 -- origin unconfirmed; if it recurs across lane "
+            "refreshes it is not actually ephemeral and needs real accounting."
+        ),
+        ticket="OMN-15050",
+    ),
+    ModelGrandfatheredConsumerGroupPattern(
+        pattern=r"^savings-estimator\.",
+        reason=(
+            "Sourced to omnibase_infra/runtime/service_kernel.py -- "
+            "savings-estimation instrumentation consumer groups, not backed "
+            "by a contract.yaml."
+        ),
+        ticket="OMN-15050",
+    ),
+)
+
+# Ratchet ceiling: this count may only shrink (OMN-15050 retires entries),
+# never grow silently. A PR raising this constant must justify the new
+# entry(ies) inline and update the paired ratchet test
+# (test_omn_15041_undeclared_consumer_group.py::test_grandfather_allowlist_ratchet).
+_GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_MAX_COUNT = 10
+
+_GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_COMPILED: tuple[re.Pattern[str], ...] = tuple(
+    re.compile(entry.pattern)
+    for entry in _GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_PATTERNS
+)
+
 
 # ---------------------------------------------------------------------------
 # Handler
@@ -302,7 +520,13 @@ DEFAULT_ARCHETYPE_SLA_MS = 600_000  # 10 minutes
 class NodeRuntimeSweep:
     """Verify runtime registration and wiring integrity.
 
-    Pure compute handler — operates on pre-collected contract metadata.
+    The check phases are pure compute over pre-collected contract metadata.
+    When the caller supplies NO entities at all (the ``onex skill
+    runtime_sweep`` no-args dispatch path), the handler resolves a default
+    input set by walking ``$OMNI_HOME`` for contract.yaml files (OMN-13919) —
+    the same collection the ``__main__`` CLI harness performs. This mirrors
+    ``NodeComplianceSweep``, which resolves default scan dirs from
+    ``$OMNI_HOME`` inside ``handle()``.
     """
 
     @staticmethod
@@ -314,6 +538,107 @@ class NodeRuntimeSweep:
         """
         return request.enabled_checks is None or check in request.enabled_checks
 
+    @staticmethod
+    def _has_input(request: RuntimeSweepRequest) -> bool:
+        """True when the caller supplied at least one checkable entity."""
+        return bool(
+            request.contracts
+            or request.topic_producers
+            or request.topic_consumers
+            or request.workflow_observations
+            or request.entry_point_probes
+        )
+
+    @staticmethod
+    def _resolve_default_input(request: RuntimeSweepRequest) -> RuntimeSweepRequest:
+        """Collect the default entity set when the request carries none.
+
+        OMN-13919: the ``onex skill runtime_sweep`` dispatch path invokes this
+        handler with only ``{scope, dry_run}`` — before this fix every skill
+        run reported ``status=no_input`` with zero entities checked (a
+        regression of the OMN-13715/OMN-13708 vacuous-pass class). The local
+        repo set under ``$OMNI_HOME`` is the default check target: walk it for
+        contract.yaml files exactly as the ``__main__`` CLI harness does and
+        derive the topic census from the collected contracts.
+
+        OMN-14528: this resolver is ALSO the only place the live
+        consumer-group census can be collected on the skill dispatch path
+        (the generic ``onex skill`` runner has no per-skill pre-dispatch hook).
+        When the CONSUMER_LIVENESS phase is enabled it probes the broker in
+        code (``broker_probe.collect_live_consumer_groups`` against
+        ``KAFKA_BOOTSTRAP_SERVERS``) and marks the census REQUIRED, so the
+        deadness detector actually RUNS on the real skill path instead of
+        silently skipping (the exact defect this fix closes). The probe is the
+        I/O boundary; the check phases stay pure.
+
+        Raises:
+            ValueError: when ``OMNI_HOME`` is unset, or when the
+                CONSUMER_LIVENESS phase is enabled but ``KAFKA_BOOTSTRAP_SERVERS``
+                is unset (fail fast / fail closed — never a silent empty
+                default; feedback rule #8).
+        """
+        if NodeRuntimeSweep._has_input(request):
+            return request
+
+        # Local import: collection imports ModelContractInput from this
+        # module, so a top-level import would be circular.
+        from omnimarket.nodes.node_runtime_sweep.collection import collect_contracts
+
+        omni_home = os.environ.get("OMNI_HOME")
+        if not omni_home:
+            raise ValueError(
+                "runtime_sweep received no input entities and OMNI_HOME is "
+                "not set — cannot resolve the default contract set. Set "
+                "OMNI_HOME or pass contracts/topics/probes explicitly."
+            )
+
+        contracts = collect_contracts(omni_home, request.scope or "all-repos")
+        all_publish: list[str] = []
+        all_subscribe: list[str] = []
+        for contract in contracts:
+            all_publish.extend(contract.publish_topics)
+            all_subscribe.extend(contract.subscribe_topics)
+        updates: dict[str, object] = {
+            "contracts": contracts,
+            "topic_producers": all_publish,
+            "topic_consumers": all_subscribe,
+        }
+
+        # OMN-14528: collect the live consumer-group census in code (broker
+        # probe) so the CONSUMER_LIVENESS deadness check actually runs on the
+        # skill dispatch path. Fail closed when the phase is enabled but no
+        # broker is configured — a runtime sweep that cannot reach the broker
+        # cannot verify liveness, and reporting "clean" would be the exact
+        # vacuous green this fix exists to prevent.
+        #
+        # Skip the probe when the default walk found NO contracts: there is
+        # nothing to verify liveness for, and the empty-tree case belongs to
+        # the zero-entity hard-fail guard in ``handle`` (OMN-13919), which must
+        # not be shadowed by the broker requirement.
+        if contracts and NodeRuntimeSweep._enabled(
+            request, EnumSweepCheck.CONSUMER_LIVENESS
+        ):
+            from omnimarket.nodes.node_runtime_sweep.broker_probe import (
+                collect_live_consumer_groups,
+            )
+
+            bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
+            if not bootstrap_servers:
+                raise ValueError(
+                    "runtime_sweep default sweep enables the CONSUMER_LIVENESS "
+                    "check but KAFKA_BOOTSTRAP_SERVERS is not set — cannot probe "
+                    "the broker for the live consumer-group census. Set "
+                    "KAFKA_BOOTSTRAP_SERVERS (fail closed; the census is never a "
+                    "silent skip, OMN-14528), or scope enabled_checks to exclude "
+                    "CONSUMER_LIVENESS for a static-only sweep."
+                )
+            updates["live_consumer_groups"] = collect_live_consumer_groups(
+                bootstrap_servers
+            )
+            updates["require_live_consumer_census"] = True
+
+        return request.model_copy(update=updates)
+
     def handle(self, request: RuntimeSweepRequest) -> RuntimeSweepResult:
         """Execute the runtime sweep.
 
@@ -321,7 +646,13 @@ class NodeRuntimeSweep:
         phase runs exactly as before (REGISTRATION emits nothing when there are
         no entry-point probes), so existing cross-repo/skill callers are
         unaffected. A named subset (e.g. [REGISTRATION]) scopes the sweep.
+
+        A request with no entities resolves the default ``$OMNI_HOME``
+        contract set first; a run that still checks zero entities raises
+        instead of returning, so a vacuous pass is unrepresentable
+        (OMN-13919).
         """
+        request = self._resolve_default_input(request)
         findings: list[ModelRuntimeFinding] = []
 
         # REGISTRATION phase (OMN-13589): single-repo entry-point probes.
@@ -371,18 +702,57 @@ class NodeRuntimeSweep:
                     request.workflow_observations, request.archetype_sla_ms
                 )
             )
-        # Phase 6 (OMN-12957): manifest-vs-live-consumer census dual check.
-        # Only runs when the caller collected the live broker consumer-group
-        # census; static profile membership alone misses this orphan class.
-        if (
-            self._enabled(request, EnumSweepCheck.PROFILE_CONSUMER)
-            and request.live_consumer_profiles is not None
-        ):
-            findings.extend(
-                self._check_profile_consumer_census(
-                    request.contracts, request.live_consumer_profiles
+        # Phase 6 (OMN-12957/OMN-14528): per-contract live-consumer-group check.
+        # Each subscribing, runtime-deployed contract must have its OWN node-name
+        # identity present in a live consumer group on the broker — a sibling's
+        # live group in the same runtime_profile no longer vouches for it. The
+        # census is collected by a live broker probe (never a hand-typed flag),
+        # and when it is REQUIRED, its absence or emptiness is a HARD FAILURE,
+        # never a silent skip: that silent skip is exactly how all 13 dead
+        # contract-declared consumers passed this check for months.
+        consumers_checked = 0
+        live_groups_scanned = 0
+        if self._enabled(request, EnumSweepCheck.CONSUMER_LIVENESS):
+            census = request.live_consumer_groups
+            if request.require_live_consumer_census and census is None:
+                raise ValueError(
+                    "runtime_sweep CONSUMER_LIVENESS check is required but the "
+                    "live consumer-group census is None — the broker was never "
+                    "probed. Absence of the census is a FAILURE, never a silent "
+                    "skip (OMN-14528). Collect it via "
+                    "broker_probe.collect_live_consumer_groups(...) and pass the "
+                    "result."
                 )
-            )
+            if census is not None:
+                live_groups_scanned = len(census)
+                # scanned_count > 0 assertion: a reachable broker serving a
+                # runtime lane with deployed consumers MUST report live groups.
+                # Zero live groups while the check is required means the probe
+                # hit the wrong/empty broker or nothing is attached — refuse to
+                # render a liveness verdict over an empty scan (the "green over
+                # nothing" disease). A genuinely-static run must scope
+                # enabled_checks to exclude CONSUMER_LIVENESS.
+                if request.require_live_consumer_census and live_groups_scanned == 0:
+                    raise ValueError(
+                        "runtime_sweep CONSUMER_LIVENESS check is required but "
+                        "the broker probe returned ZERO live consumer groups — "
+                        "refusing to report liveness over an empty scan "
+                        "(scanned_count must be > 0). The probe target is wrong "
+                        "or no consumer is attached (OMN-14528)."
+                    )
+                liveness_findings, consumers_checked = self._check_consumer_liveness(
+                    request.contracts, census
+                )
+                findings.extend(liveness_findings)
+                # OMN-15041: reverse direction over the SAME census -- every
+                # live group must trace back to a declared contract (or a
+                # reasoned, ticketed grandfather entry). Guarded by the exact
+                # same fail-closed require_live_consumer_census / scanned>0
+                # checks above, so this direction can never render a vacuous
+                # "no undeclared groups" pass either.
+                findings.extend(
+                    self._check_undeclared_consumer_groups(request.contracts, census)
+                )
 
         entities_checked = (
             len(request.contracts)
@@ -390,16 +760,20 @@ class NodeRuntimeSweep:
             + len(request.workflow_observations)
             + len(request.entry_point_probes)
         )
-        # OMN-13708: 0 entities checked is NOT a clean pass — it is a vacuous run
-        # that verified nothing. The local runtime is always present and is the
-        # default check target; an empty sweep must report ``no_input`` (not
-        # ``clean``) so callers never mistake "checked nothing" for "all healthy".
+        # OMN-13708 established that 0 entities checked is NOT a clean pass.
+        # OMN-13919 hardens it: a zero-entity run FAILS (raises) instead of
+        # returning a reportable ``no_input`` result, because the dispatch
+        # layer mapped any returned result to exit_code=0/status=success —
+        # exactly the vacuous false-green this class of fix exists to prevent.
         if entities_checked == 0:
-            status = "no_input"
-        elif findings:
-            status = "findings"
-        else:
-            status = "clean"
+            raise ValueError(
+                "runtime_sweep checked zero entities (contracts, topics, "
+                "workflows, entry points) — refusing to report a vacuous "
+                "pass. Default $OMNI_HOME collection found no contract.yaml "
+                "files; the environment is broken or the input wiring "
+                "regressed (OMN-13919)."
+            )
+        status = "findings" if findings else "clean"
 
         return RuntimeSweepResult(
             findings=findings,
@@ -407,6 +781,8 @@ class NodeRuntimeSweep:
             topics_checked=len(all_topics),
             workflows_checked=len(request.workflow_observations),
             entry_points_checked=len(request.entry_point_probes),
+            consumers_checked=consumers_checked,
+            live_consumer_groups_scanned=live_groups_scanned,
             status=status,
             dry_run=request.dry_run,
         )
@@ -616,22 +992,86 @@ class NodeRuntimeSweep:
 
         return findings
 
-    def _check_profile_consumer_census(
+    @staticmethod
+    def _node_has_live_consumer(node_name: str, padded_live_groups: list[str]) -> bool:
+        """True when a live group id carries THIS node's own consumer identity.
+
+        The canonical consume group id is
+        ``{env}.{service}.{node_name}.{consume}.{version}[.__i.{instance}][.__t.{topic}]``
+        (``compute_consumer_group_id`` + the per-instance/per-topic suffixes the
+        runtime appends). So a node's identity is present in a group id iff the
+        segment ``.{normalized_node_name}.{consume}.`` appears in it. The
+        matcher:
+
+        * normalizes ``node_name`` with the SAME ``normalize_kafka_identifier``
+          the runtime uses, so casing/separator differences never cause a false
+          miss, and
+        * anchors on BOTH the leading ``.`` and the ``.{consume}.`` suffix, so a
+          longer sibling name never yields a false match (``node_foo`` must not
+          be vouched for by ``node_foobar``'s group) — the exact prefix-collision
+          bug a bare ``node_name in group_id`` substring test would introduce.
+
+        ``padded_live_groups`` are the live group ids lower-cased and wrapped as
+        ``f".{group}."`` so the leading/trailing boundary anchors always have a
+        character to match against.
+        """
+        try:
+            nnc = normalize_kafka_identifier(node_name)
+        except ValueError:
+            # A node whose name normalizes to empty can form no valid group id,
+            # so it can never have a live consumer group — treat as not live.
+            return False
+        needle = f".{nnc}.{_CONSUME_PURPOSE_SEGMENT}."
+        return any(needle in group for group in padded_live_groups)
+
+    def _check_consumer_liveness(
         self,
         contracts: list[ModelContractInput],
-        live_consumer_profiles: list[str],
-    ) -> list[ModelRuntimeFinding]:
-        """OMN-12957 dual check: manifest profile vs live consumer-group census.
+        live_consumer_groups: list[str],
+    ) -> tuple[list[ModelRuntimeFinding], int]:
+        """OMN-12957/OMN-14528: per-CONTRACT live-consumer-group identity check.
 
         A node may declare a valid, registered runtime_profile yet have no
-        process actually consuming for it (the runtime lane for that profile is
-        not deployed / not attached). Static profile-subset validation passes
-        but the node is still a silent orphan. Compares each subscribing node's
-        declared profiles against the set of profiles with a live consumer group
-        and flags nodes whose every declared profile is absent from the census.
+        process actually consuming for it (the runtime lane is not deployed /
+        not attached, or the consumer died). Static profile-subset validation
+        passes but the node is still a silent orphan.
+
+        The PRE-fix check (``_check_profile_consumer_census``) compared each
+        subscribing node's declared *profiles* against the set of *profile
+        names* with a live consumer group (``declared_profiles & live_profiles``)
+        — a profile-level vouching bug: ONE live group anywhere in a profile made
+        EVERY other contract sharing that profile name look healthy. That is
+        precisely how 13 dead contract-declared consumers passed this check for
+        months (OMN-14516/OMN-14517), and they still passed even with a perfect
+        census.
+
+        The fixed check is per-contract, not per-profile: it requires the
+        contract's OWN node-name identity to appear in a LIVE (non-Empty)
+        consumer group id (see ``_node_has_live_consumer``). A live group
+        belonging to a sibling contract in the same runtime_profile no longer
+        vouches for this contract.
+
+        Scope: a contract is evaluated iff it BOTH subscribes to at least one
+        topic AND declares a ``runtime_profiles`` (the auto-wired-runtime-
+        consumer signal — a library/compute node without a runtime profile is
+        not a deployed consumer and is not expected to hold a consumer group).
+        This is the same scope the runtime's own profile-ownership filter uses;
+        the 13 dead consumers are runtime-deployed and declare a profile, so
+        they remain in scope.
+
+        Returns:
+            ``(findings, consumers_checked)`` where ``consumers_checked`` is the
+            number of in-scope contracts actually evaluated. The caller asserts
+            it is > 0 before it can report a clean verdict.
         """
-        live = {p.strip().lower() for p in live_consumer_profiles if p.strip()}
+        # Lower-case + boundary-pad the live census once for anchored matching.
+        padded_live = [
+            f".{group.strip().lower()}."
+            for group in live_consumer_groups
+            if group.strip()
+        ]
         findings: list[ModelRuntimeFinding] = []
+        consumers_checked = 0
         for contract in contracts:
             # Only nodes that subscribe can be orphaned at the consumer level.
             if not contract.subscribe_topics:
@@ -641,17 +1081,136 @@ class NodeRuntimeSweep:
             }
             if not declared:
                 continue
-            if declared & live:
+            consumers_checked += 1
+
+            if self._node_has_live_consumer(contract.node_name, padded_live):
                 continue
             findings.append(
                 ModelRuntimeFinding(
-                    finding_type=EnumFindingType.PROFILE_NO_LIVE_CONSUMER,
+                    finding_type=EnumFindingType.CONTRACT_NO_LIVE_CONSUMER,
                     subject=contract.node_name,
                     message=(
-                        f"Node {contract.node_name} declares runtime_profiles "
-                        f"{sorted(declared)} but none has a live consumer group "
-                        f"(census: {sorted(live)}). Subscriptions are not being "
-                        "drained — silent orphan."
+                        f"Node {contract.node_name} subscribes "
+                        f"{sorted(contract.subscribe_topics)} under runtime_profiles "
+                        f"{sorted(declared)} but NO live consumer group carries its "
+                        f"node-name identity ({len(live_consumer_groups)} live "
+                        "group(s) scanned). Its subscriptions are not being "
+                        "drained — silent orphan. This is a per-contract identity "
+                        "check (OMN-14528): a live group belonging to a different "
+                        "node in the same runtime_profile does NOT vouch for this "
+                        "contract."
+                    ),
+                    severity="CRITICAL",
+                )
+            )
+        return findings, consumers_checked
+
+    @staticmethod
+    def _group_matches_known_node(
+        padded_group: str, known_normalized_names: frozenset[str]
+    ) -> bool:
+        """True when ``padded_group`` carries ANY known node's identity segment.
+
+        Mirrors ``_node_has_live_consumer``'s anchored-segment matcher but
+        checks EVERY :class:`EnumConsumerGroupPurpose`, not just CONSUME —
+        the reverse direction must not false-flag a legitimate
+        INTROSPECTION/REPLAY/AUDIT/BACKFILL/CONTRACT_REGISTRY consumer as
+        undeclared just because it used a non-default purpose.
+        """
+        return any(
+            f".{name}.{purpose}." in padded_group
+            for name in known_normalized_names
+            for purpose in _ALL_PURPOSE_SEGMENTS
+        )
+
+    @staticmethod
+    def _grandfathered_undeclared_group_ticket(group_lower: str) -> str | None:
+        """Return the allowlist ticket matching ``group_lower``, or None."""
+        for entry, compiled in zip(
+            _GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_PATTERNS,
+            _GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_COMPILED,
+            strict=True,
+        ):
+            if compiled.search(group_lower):
+                return entry.ticket
+        return None
+
+    def _check_undeclared_consumer_groups(
+        self,
+        contracts: list[ModelContractInput],
+        live_consumer_groups: list[str],
+    ) -> list[ModelRuntimeFinding]:
+        """OMN-15041: reverse-direction diff — present-but-undeclared groups.
+
+        ``_check_consumer_liveness`` asks "does every declared, subscribing
+        contract have a live group" (expected-but-absent — real wiring
+        death). This method asks the OPPOSITE question over the SAME live
+        census: "does every live group belong to a declared contract"
+        (present-but-undeclared — an orphan, or a group minted outside
+        ``compute_consumer_group_id()`` by a bare module constant).
+
+        Without this direction, a hardcoded group name (the pre-fix
+        ``CORE_RUNTIME_GROUP = "onex.core-runtime.delegation"`` literal is the
+        concrete case that motivated this ticket) is indistinguishable from a
+        genuine orphan/casualty: nothing ties it to a contract, so an
+        operator reading the broker cannot tell "this is expected kernel
+        wiring" from "this consumer's contract was deleted and nobody
+        cleaned up its group" — the exact ambiguity that cost a full
+        investigation lane disproving a false "delegation is dead" alarm
+        (OMN-14843).
+
+        Scope: EVERY contract collected (not just subscribing/profile-scoped
+        ones — a live group could in principle belong to any declared node
+        identity). A group is accounted for when its identity segment
+        matches ANY declared node_name for ANY purpose
+        (``_group_matches_known_node``), or when it matches a bounded,
+        reasoned, ticketed grandfather pattern
+        (``_GRANDFATHERED_UNDECLARED_CONSUMER_GROUP_PATTERNS`` — OMN-15050
+        tracks retiring these). Everything else is undeclared and CRITICAL.
+
+        There is deliberately NO "looks non-canonical, skip it" exemption:
+        the motivating bug (``onex.core-runtime.delegation``) is a 3-segment
+        string with no recognizable purpose token, so any shape-based filter
+        would have missed exactly the case this check exists to catch.
+        """
+        known_normalized: set[str] = set()
+        for contract in contracts:
+            try:
+                known_normalized.add(normalize_kafka_identifier(contract.node_name))
+            except ValueError:
+                continue
+        known_frozen = frozenset(known_normalized)
+
+        findings: list[ModelRuntimeFinding] = []
+        for group in live_consumer_groups:
+            group_stripped = group.strip()
+            if not group_stripped:
+                continue
+            group_lower = group_stripped.lower()
+            padded = f".{group_lower}."
+
+            if self._group_matches_known_node(padded, known_frozen):
+                continue
+            if self._grandfathered_undeclared_group_ticket(group_lower) is not None:
+                continue
+
+            findings.append(
+                ModelRuntimeFinding(
+                    finding_type=EnumFindingType.UNDECLARED_CONSUMER_GROUP,
+                    subject=group_stripped,
+                    message=(
+                        f"Live consumer group '{group_stripped}' matches NO "
+                        f"contract-declared node identity ({len(contracts)} "
+                        f"contract(s), {len(known_frozen)} normalized node "
+                        "name(s) checked) and is not in the grandfathered "
+                        "allowlist. Either the group belongs to a node whose "
+                        "contract was renamed/removed without deleting the "
+                        "broker-side group (orphan — delete it), or it was "
+                        "minted outside compute_consumer_group_id() (a bare "
+                        "module constant / ad hoc client — add a contract, or "
+                        "a reasoned + ticketed allowlist entry). This is the "
+                        "reverse direction of CONTRACT_NO_LIVE_CONSUMER "
+                        "(OMN-15041)."
                     ),
                     severity="CRITICAL",
                 )

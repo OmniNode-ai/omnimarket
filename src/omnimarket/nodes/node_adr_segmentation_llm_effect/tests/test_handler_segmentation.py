@@ -107,7 +107,16 @@ _LOW_CONFIDENCE_SEGMENTS = [
 _LOW_CONFIDENCE_RESPONSE = json.dumps(_LOW_CONFIDENCE_SEGMENTS)
 
 
-class _MockBridge(ModelInferenceAdapter):
+# OMN-13501 no-faked-boundary: handler-isolation unit double. This is a typed
+# contract double (signature-enforced ModelInferenceAdapter subclass) that injects
+# SYNTHETIC segmentation JSON and exceptions in a chosen sequence to drive the
+# handler's parse / retry / validation logic — inputs that are not recordable-
+# from-real and cannot be served by RecordedReplayInferenceTransport (no exception
+# hook; rejects empty completions). Kept as an ABC subclass because
+# HandlerSegmentation.inference_bridge is a nominal ModelInferenceAdapter ABC under
+# mypy-strict; a non-subclass composed double fails type-check. Real request
+# construction / routing is proven by the recorded-replay golden chain.
+class _MockBridge(ModelInferenceAdapter):  # onex-allow-faked-boundary
     """Controllable mock inference bridge supporting sequential responses."""
 
     def __init__(self, responses: list[str | Exception]) -> None:

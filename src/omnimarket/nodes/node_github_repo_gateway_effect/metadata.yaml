@@ -1,0 +1,26 @@
+name: node_github_repo_gateway_effect
+version: "1.0.0"
+description: "Typed GitHub repo status reader — one small typed object per read operation (EFFECT, read-only)"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_github_repo_gateway_effect: "omnimarket.nodes.node_github_repo_gateway_effect"
+capabilities:
+  standalone: true
+  # First slice is CLI-invoked (see __main__.py); the live Kafka runtime path
+  # (consumer group + terminal events + golden chain) is a later, human-gated
+  # slice, so this node is not yet full_runtime.
+  full_runtime: false
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "github", "read-only", "status"]
+pack: "pr-lifecycle"
+display_name: "GitHub Repo Gateway (read)"
+node_role: "effect"

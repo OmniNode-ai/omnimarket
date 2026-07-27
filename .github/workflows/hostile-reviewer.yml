@@ -6,16 +6,26 @@
 # Adversarial multi-model code review gate on every pull request.
 #
 # Invokes omniintelligence.review_pairing.cli_review (node-based path via
-# HandlerLlmCliSubprocess / adapter_codex_reviewer) with --model deepseek-r1.
+# HandlerLlmCliSubprocess / adapter_codex_reviewer) with --model qwen3-review.
 # Codex is excluded from the initial pilot — add --model codex once non-interactive
 # OAuth auth is confirmed on trusted CI runners (OMN-8524).
 #
-# Gate semantics (pilot phase):
+# Gate semantics:
 #   blocked  — critical/error findings from at least one succeeded model → exit 1
-#   degraded — all models failed (infra unavailable) → exit 0 (informational, pilot)
-#   passed   — no critical/error findings → exit 0
+#   degraded — fewer than 2 models succeeded (infra unavailable/timeout) → exit 1
+#   passed   — >=2 models succeeded, no critical/error findings → exit 0
 #
-# Reference: OMN-8524
+# OMN-15110: degraded used to exit 0 ("informational, pilot phase" per OMN-8524).
+# Live measurement 2026-07-25 showed degraded in 5 of 6 concurrent PR runs
+# (qwen3-review-b, a single-slot llama-server endpoint on .201:8001, timing out
+# under concurrent-PR contention) — a gate that is green with one of two
+# adversarial reviewers dead is not an adversarial gate, it is a formality.
+# The "Enforce hostile-review verdict" step below is the single place that
+# turns any non-"passed" verdict into job failure, regardless of which of the
+# three upstream branches (preflight short-circuit, cli_review non-zero exit,
+# or the normal verdict parse) produced it.
+#
+# Reference: OMN-8524, OMN-15066 (job-timeout raise; does not fix this), OMN-15110
 
 name: Hostile Reviewer
 
@@ -38,7 +48,25 @@ jobs:
         && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
         || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
       }}
-    timeout-minutes: 20
+    # OMN-15066: was 35 (2100s). The "Run adversarial review" step calls the
+    # two models SEQUENTIALLY (cli_review.run_review, a plain for loop), and
+    # each call retries up to max_retries=3 (4 attempts) with exponential
+    # backoff on a per-model timeout_seconds from
+    # omniintelligence/.../model_registry.yaml. Worst case:
+    #   qwen3-review:   4 x 120s + 14s backoff =  494s
+    #   qwen3-review-b: 4 x 600s + 14s backoff = 2414s
+    #   sequential sum                         = 2908s
+    # 2908s > the old 2100s ceiling — that mismatch is what silently stalled
+    # jobs 89616541439/89616551741 to a 35m21s cancellation with zero log
+    # output. 60 min (3600s) leaves ~400s of margin over 2908s plus the
+    # "Validate retry-budget invariant" step's own setup-overhead allowance
+    # below. The "Validate retry-budget invariant" step (below) asserts this
+    # arithmetic on every run against the LIVE registry + LIVE installed
+    # max_retries default, so a future edit that breaks the invariant again
+    # fails fast instead of silently stalling — keep this comment's numbers
+    # in sync with that step's --job-timeout-seconds value if you change
+    # either.
+    timeout-minutes: 60
 
     steps:
       - name: Checkout PR branch
@@ -51,20 +79,98 @@ jobs:
 
       - name: Clone omniintelligence
         run: |
-          OMNIINTELLIGENCE_SHA=$(git ls-remote https://github.com/OmniNode-ai/omniintelligence.git HEAD | cut -f1)
-          git clone --depth=1 https://github.com/OmniNode-ai/omniintelligence.git ../omniintelligence
+          set -euo pipefail
+          clone_with_retry() {
+            local repo_name="$1"
+            local target_dir="$2"
+            local sha_var_name="$3"
+            local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
+            local resolved_sha
+
+            for attempt in 1 2 3 4; do
+              rm -rf "${target_dir}"
+              if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
+                && [ -n "${resolved_sha}" ] \
+                && timeout 20s bash -c 'git init "$1" \
+                && git -C "$1" remote add origin "$2" \
+                && git -C "$1" fetch --depth=1 origin "$3" \
+                && git -C "$1" checkout --detach "$3"' \
+                _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
+                printf -v "${sha_var_name}" '%s' "${resolved_sha}"
+                return 0
+              fi
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient ls-remote/fetch failure"
+              sleep $((attempt * 5))
+            done
+            echo "::error::clone ${repo_name} failed after 4 attempts"
+            return 1
+          }
+
+          clone_with_retry omniintelligence ../omniintelligence OMNIINTELLIGENCE_SHA
           echo "omniintelligence pinned to: $OMNIINTELLIGENCE_SHA"
 
       - name: Clone omnibase_core
         run: |
-          OMNIBASE_CORE_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnibase_core.git HEAD | cut -f1)
-          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+          set -euo pipefail
+          clone_with_retry() {
+            local repo_name="$1"
+            local target_dir="$2"
+            local sha_var_name="$3"
+            local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
+            local resolved_sha
+
+            for attempt in 1 2 3 4; do
+              rm -rf "${target_dir}"
+              if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
+                && [ -n "${resolved_sha}" ] \
+                && timeout 20s bash -c 'git init "$1" \
+                && git -C "$1" remote add origin "$2" \
+                && git -C "$1" fetch --depth=1 origin "$3" \
+                && git -C "$1" checkout --detach "$3"' \
+                _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
+                printf -v "${sha_var_name}" '%s' "${resolved_sha}"
+                return 0
+              fi
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient ls-remote/fetch failure"
+              sleep $((attempt * 5))
+            done
+            echo "::error::clone ${repo_name} failed after 4 attempts"
+            return 1
+          }
+
+          clone_with_retry omnibase_core ../omnibase_core OMNIBASE_CORE_SHA
           echo "omnibase_core pinned to: $OMNIBASE_CORE_SHA"
 
       - name: Clone omnibase_compat
         run: |
-          OMNIBASE_COMPAT_SHA=$(git ls-remote https://github.com/OmniNode-ai/omnibase_compat.git HEAD | cut -f1)
-          git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+          set -euo pipefail
+          clone_with_retry() {
+            local repo_name="$1"
+            local target_dir="$2"
+            local sha_var_name="$3"
+            local remote_url="https://github.com/OmniNode-ai/${repo_name}.git"
+            local resolved_sha
+
+            for attempt in 1 2 3 4; do
+              rm -rf "${target_dir}"
+              if resolved_sha="$(timeout 20s git ls-remote "${remote_url}" HEAD | cut -f1)" \
+                && [ -n "${resolved_sha}" ] \
+                && timeout 20s bash -c 'git init "$1" \
+                && git -C "$1" remote add origin "$2" \
+                && git -C "$1" fetch --depth=1 origin "$3" \
+                && git -C "$1" checkout --detach "$3"' \
+                _ "${target_dir}" "${remote_url}" "${resolved_sha}"; then
+                printf -v "${sha_var_name}" '%s' "${resolved_sha}"
+                return 0
+              fi
+              echo "::warning::clone ${repo_name} failed (attempt ${attempt}/4); retrying after transient ls-remote/fetch failure"
+              sleep $((attempt * 5))
+            done
+            echo "::error::clone ${repo_name} failed after 4 attempts"
+            return 1
+          }
+
+          clone_with_retry omnibase_compat ../omnibase_compat OMNIBASE_COMPAT_SHA
           echo "omnibase_compat pinned to: $OMNIBASE_COMPAT_SHA"
 
       - name: Install uv
@@ -75,39 +181,334 @@ jobs:
       - name: Set up Python 3.12
         run: uv python install 3.12
 
+      - name: Preflight — probe review endpoint reachability
+        id: preflight
+        working-directory: ../omniintelligence
+        env:
+          # Resolve the SAME registry the reviewer loads (model_registry_loader)
+          # for the SAME models the review step runs
+          # (`--model qwen3-review --model qwen3-review-b`). We flip
+          # reachable=false ONLY when EVERY requested model is unreachable AND the
+          # codex api-fallback is unavailable — the exact condition under which the
+          # reviewer itself yields verdict=degraded + exit 0.
+          REVIEW_MODEL_KEYS: "qwen3-review qwen3-review-b"
+          REGISTRY_PATH: "src/omniintelligence/review_pairing/model_registry.yaml"
+          # Wired from a GitHub Actions secret (OMN-14176): the LLM HTTP transport
+          # HMAC-signs every call with LOCAL_LLM_SHARED_SECRET and fail-closes if it
+          # is absent. The old assumption that the runner env provided it
+          # (Infisical / shell profile) never held on this fleet.
+          LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
+          # Added alongside LOCAL_LLM_SHARED_SECRET for env parity with the review
+          # step (OMN-14176). This preflight uses a raw TCP probe so it does not
+          # invoke the LLM transport's CIDR check, but keeping the two LLM-contact
+          # env blocks identical avoids drift. The model host is within this subnet.
+          LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint host 192.168.86.201"
+        run: |
+          # -e is intentionally OMITTED: this probe must NEVER fail the job. Every
+          # uncertain/ambiguous outcome FAILS OPEN to the full install + review.
+          # We flip reachable=false ONLY when the reviewer would ALSO degrade:
+          # ALL requested models are TCP-unreachable (adapter_ai_reviewer._probe_tcp)
+          # AND the codex api-fallback (select_models_with_fallback ->
+          # _resolve_codex_binary) is unavailable. That keeps our short-circuit a
+          # STRICT SUBSET of the reviewer's degrade condition under all configs, so
+          # once OMN-8524 provisions codex on CI a local outage no longer suppresses
+          # a review.
+          set -o pipefail
+
+          # Resolve host:port for EACH requested model exactly as the reviewer does:
+          #   url = os.environ.get(config.env_var, config.default_url)   # per-model
+          # then urllib.parse the host/port. pyyaml runs in an isolated env
+          # (--no-project --with) so we do NOT trigger the ~3.6 GiB dependency sync.
+          # Output: one "FALLBACK|<bool>" line, then one "TARGET|host|port|url" line
+          # per resolvable model.
+          PROBE_TARGETS="$(uv run --no-project --with pyyaml python - <<'PYEOF'
+          import os
+          import shutil
+          import urllib.parse
+
+          import yaml
+
+          registry_path = os.environ["REGISTRY_PATH"]
+          model_keys = os.environ["REVIEW_MODEL_KEYS"].split()
+          with open(registry_path, encoding="utf-8") as fh:
+              registry = yaml.safe_load(fh)
+
+
+          def _codex_resolvable() -> bool:
+              # Bool-form verbatim mirror of
+              # adapter_codex_reviewer._resolve_codex_binary: CODEX_BINARY (file+exec)
+              # -> shutil.which("codex") -> known Homebrew/system fallback dirs.
+              # ASSUMPTION (load-bearing): codex resolvability is identical at
+              # preflight-time (uv run --no-project) and review-time (project uv run)
+              # ONLY because omniintelligence ships no `codex` console-script in its
+              # venv; if it ever adds one, resolve codex from the review's own env here
+              # or the preflight could miss a `.venv/bin/codex` the review would find.
+              env_override = os.environ.get("CODEX_BINARY")
+              if (
+                  env_override
+                  and os.path.isfile(env_override)
+                  and os.access(env_override, os.X_OK)
+              ):
+                  return True
+              if shutil.which("codex") is not None:
+                  return True
+              for directory in (
+                  "/opt/homebrew/bin",
+                  "/usr/local/bin",
+                  os.path.expanduser("~/.local/bin"),
+              ):
+                  candidate = os.path.join(directory, "codex")
+                  if os.path.isfile(candidate) and os.access(candidate, os.X_OK):
+                      return True
+              return False
+
+
+          # Mirror select_models_with_fallback: when the requested local models are
+          # unreachable the reviewer substitutes api_fallback_keys and only degrades
+          # if that fallback ALSO fails. fallback_blocks=True means a live fallback
+          # might still succeed -> we must NOT short-circuit; let the reviewer decide.
+          # Conservative: an unrecognized (non-codex) fallback we cannot prove
+          # unavailable also blocks the short-circuit (fail-open).
+          fallback_keys = list(registry.get("api_fallback_keys", []))
+          if not fallback_keys:
+              fallback_blocks = False
+          elif any(k != "codex" for k in fallback_keys):
+              fallback_blocks = True
+          else:
+              fallback_blocks = _codex_resolvable()
+
+          print(f"FALLBACK|{'true' if fallback_blocks else 'false'}")
+
+          for model_key in model_keys:
+              cfg = registry["models"].get(model_key)
+              if not cfg:
+                  continue
+              # env_var overrides default_url — identical to adapter_ai_reviewer.
+              url = os.environ.get(cfg["env_var"], cfg["default_url"]).strip()
+              parsed = urllib.parse.urlparse(url)
+              host = parsed.hostname or ""
+              port = parsed.port or 80
+              if url and host:
+                  print(f"TARGET|{host}|{port}|{url}")
+          PYEOF
+          )"
+
+          FALLBACK_BLOCKS="$(printf '%s\n' "$PROBE_TARGETS" | sed -n 's/^FALLBACK|//p' | head -n1)"
+          TARGETS="$(printf '%s\n' "$PROBE_TARGETS" | grep '^TARGET' || true)"
+
+          if [ -z "$TARGETS" ]; then
+            echo "Could not statically resolve any of [${REVIEW_MODEL_KEYS}]; proceeding with full review (fail-open)."
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # TCP-connect probe — SAME semantics as adapter_ai_reviewer._probe_tcp
+          # (socket.create_connection). We retry so our short-circuit is a STRICT
+          # SUBSET of the reviewer's own single-shot 2s probe. If ANY requested
+          # model is reachable, the review can succeed -> proceed. Process
+          # substitution (not a pipe) keeps this loop in the current shell so exit
+          # and UNREACHABLE persist.
+          UNREACHABLE=""
+          while IFS='|' read -r _tag HOST PORT URL; do
+            [ "$_tag" = "TARGET" ] || continue
+            model_reachable="false"
+            for attempt in 1 2 3; do
+              if timeout 5 bash -c "exec 3<>/dev/tcp/${HOST}/${PORT}" 2>/dev/null; then
+                echo "TCP connect to ${HOST}:${PORT} (${URL}) succeeded (attempt ${attempt})."
+                model_reachable="true"
+                break
+              fi
+              echo "TCP connect to ${HOST}:${PORT} (${URL}) failed (attempt ${attempt}/3)."
+              [ "$attempt" -lt 3 ] && sleep 2
+            done
+            if [ "$model_reachable" = "true" ]; then
+              echo "At least one review endpoint is reachable; proceeding with full review."
+              echo "reachable=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            UNREACHABLE="${UNREACHABLE}${HOST}:${PORT} "
+          done < <(printf '%s\n' "$TARGETS")
+
+          # EVERY requested model is unreachable. The reviewer does NOT degrade on
+          # that alone — select_models_with_fallback substitutes the codex
+          # api-fallback and only degrades if codex ALSO fails. If codex may be
+          # available, PROCEED and let the reviewer decide (fail-open; closes the
+          # OMN-8524 hole where a codex review would otherwise be suppressed).
+          if [ "$FALLBACK_BLOCKS" = "true" ]; then
+            echo "All review endpoints unreachable, but the codex api-fallback may be available; proceeding to the full review (reviewer decides) — OMN-8524."
+            echo "reachable=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # ALL models unreachable AND codex api-fallback unavailable → this is the
+          # EXACT condition under which the reviewer yields verdict=degraded + exit 0
+          # with zero models succeeded. Short-circuit with the IDENTICAL degraded
+          # verdict (see the degraded branch of "Run adversarial review").
+          echo "::warning::All review endpoints [${UNREACHABLE}] unreachable after 3 attempts and no codex api-fallback available; short-circuiting to DEGRADED and skipping the ~3.6 GiB install + review."
+          {
+            echo "reachable=false"
+            echo "verdict=degraded"
+            echo "blocking_count=0"
+            echo "total_findings=0"
+            echo "models_succeeded="
+            echo "error=all review endpoints [${UNREACHABLE}] unreachable — preflight short-circuit (no models available)"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+
       - name: Install omniintelligence dependencies
+        # Skip the heavy dependency sync when the review endpoint is unreachable
+        # (preflight short-circuit). Any non-'false' value — including a crashed
+        # or unset preflight — runs the install unchanged (fail-open).
+        if: steps.preflight.outputs.reachable != 'false'
         id: install-omniintelligence
         continue-on-error: true
         working-directory: ../omniintelligence
-        run: uv sync --locked --all-extras
+        env:
+          UV_CONCURRENT_DOWNLOADS: "1"
+          UV_HTTP_TIMEOUT: "600"
+          UV_SYNC_ATTEMPTS: "5"
+          UV_SYNC_RETRY_DELAY_SECONDS: "10"
+          UV_TORCH_BACKEND: "cpu"
+        run: |
+          set -euo pipefail
+
+          attempt=1
+          until uv sync --locked --all-extras; do
+            status=$?
+            if [ "$attempt" -ge "$UV_SYNC_ATTEMPTS" ]; then
+              echo "::error::uv sync failed after ${attempt} attempt(s)"
+              exit "$status"
+            fi
+
+            sleep_seconds=$((UV_SYNC_RETRY_DELAY_SECONDS * attempt))
+            echo "::warning::uv sync attempt ${attempt}/${UV_SYNC_ATTEMPTS} failed with exit ${status}; retrying in ${sleep_seconds}s"
+            sleep "$sleep_seconds"
+            attempt=$((attempt + 1))
+          done
+
+      - name: Validate retry-budget invariant (OMN-15066)
+        # Cheap, no GPU/network calls -- reads the just-installed
+        # omniintelligence's model_registry.yaml and reflects on the
+        # installed omnibase_infra transport's max_retries default. Asserts
+        # attempts * per_attempt_timeout + backoff, summed across the two
+        # models IN THE SAME ORDER the review step below calls them, plus a
+        # setup-overhead allowance, stays under this job's timeout-minutes
+        # (above). This is the self-verifying form of the timeout-minutes
+        # comment above: a future bump to a model's timeout_seconds, a
+        # change to max_retries, or a shrink of timeout-minutes that
+        # reintroduces the OMN-15066 mismatch fails HERE, in ~seconds,
+        # instead of silently stalling the review step for 35+ minutes.
+        # Skipped under the same condition as install/review (preflight
+        # short-circuit to DEGRADED — nothing to validate).
+        if: steps.preflight.outputs.reachable != 'false'
+        working-directory: ../omniintelligence
+        run: |
+          set -uo pipefail  # NOT -e: this step classifies its own exit code below.
+
+          # NOTE(OMN-15066 post-mortem): GH Actions runs `run:` steps under
+          # `bash -e {0}` by default -- that -e is already active before this
+          # script's own `set -uo pipefail` runs, and `set -uo pipefail` does
+          # NOT clear an inherited -e (see the identical warning on the
+          # occ-preflight job in this same repo's workflows). A bare
+          # `OUTPUT=$(cmd); STATUS=$?` is a plain assignment, not part of an
+          # if/while/until condition, so under inherited -e bash aborts the
+          # WHOLE STEP the instant `cmd` exits non-zero -- `STATUS=$?`,
+          # `echo "$OUTPUT"`, and the grep-based skip-match below never run.
+          # That is exactly what happened live: two consecutive runs
+          # (89631488717, 89641673515) hard-failed in ~4-5s with ZERO
+          # captured stdout/stderr and the skip-match branch never reached,
+          # because the module-not-found ModuleNotFoundError (exit 1) killed
+          # the step at the `OUTPUT=$(...)` line itself. Using the command
+          # substitution as the condition of an if is the errexit-safe form
+          # -- bash does not trigger -e for a command that is part of an
+          # if/while/until condition, regardless of ambient -e state.
+          if OUTPUT=$(uv run python -m omniintelligence.review_pairing.retry_budget \
+            --model qwen3-review \
+            --model qwen3-review-b \
+            --job-timeout-seconds 3600 \
+            --setup-overhead-seconds 300 2>&1); then
+            STATUS=0
+          else
+            STATUS=$?
+          fi
+
+          echo "$OUTPUT"
+
+          if [ "$STATUS" -eq 0 ]; then
+            exit 0
+          fi
+
+          # Landing-order tolerance (OMN-15066 companion PRs land across 3
+          # repos independently): this workflow always clones omniintelligence
+          # at its CURRENT default-branch HEAD, so a run of THIS workflow file
+          # can race ahead of the omniintelligence companion PR that adds the
+          # retry_budget module. Treat ONLY "module not found" as a transitional
+          # skip (warn, exit 0) — every other non-zero exit (a real invariant
+          # violation, or any other error) fails the job. This must not become
+          # a general escape hatch: do not add other strings here.
+          if echo "$OUTPUT" | grep -q "No module named.*retry_budget"; then
+            echo "::warning::retry_budget module not found on omniintelligence's current default branch — the OMN-15066 companion PR there has not merged yet. Skipping this run; this MUST start passing once it merges, and a persistent skip is itself a bug."
+            exit 0
+          fi
+
+          echo "::error::Retry-budget invariant check failed (OMN-15066) — see output above. Either the budget genuinely exceeds this job's timeout-minutes, or the check itself errored. Do not bypass; fix the underlying mismatch."
+          exit 1
 
       - name: Run adversarial review
+        # Skipped only when the preflight proved the endpoint unreachable; the
+        # identical DEGRADED verdict is emitted by the preflight step instead.
+        if: steps.preflight.outputs.reachable != 'false'
         id: review
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
-          # LLM_DEEPSEEK_URL is read directly from the selected runner's environment
-          # (Infisical-injected or shell profile) — no GitHub secret needed
+          # LOCAL_LLM_SHARED_SECRET is wired from a GitHub Actions secret
+          # (OMN-14176): the omniintelligence LLM HTTP transport HMAC-signs every
+          # call with it and fail-closes if it is absent. The earlier assumption
+          # that the runner env supplied it (Infisical / shell profile) never held
+          # on this fleet — that gap is why every review DEGRADED with "all models
+          # failed" despite a reachable endpoint.
+          LOCAL_LLM_SHARED_SECRET: ${{ secrets.LOCAL_LLM_SHARED_SECRET }}
+          # The omniintelligence LLM HTTP transport's _parse_cidr_allowlist RAISES
+          # if LLM_ENDPOINT_CIDR_ALLOWLIST is unset — there is NO code default (the
+          # docstring's LAN-subnet default is aspirational only). Without this the
+          # reviewer fail-closes on the CIDR gate → verdict=degraded even after the
+          # endpoint_url fix + the secret. The model host is within this subnet.
+          LLM_ENDPOINT_CIDR_ALLOWLIST: "192.168.86.0/24"  # onex-allow-internal-ip OMN-14176 reason="LAN subnet allowlist for the review LLM endpoint host 192.168.86.201; transport fail-closes if unset"
         working-directory: ../omniintelligence
         run: |
           set -euo pipefail
 
           # Run cli_review; stdout = ModelMultiReviewResult JSON, stderr = human summary
+          # (the per-model failure reason on a DEGRADED verdict lives here).
+          # stderr was previously discarded with `2>/dev/null`, so a
+          # "Models succeeded: none" verdict gave no per-model reason in the log
+          # (OMN-14176). Tee stderr to a log file AND back to fd 2 (the job log) so
+          # the reason is visible. stdout is still captured into REVIEW_JSON via the
+          # command substitution, and the command's exit code is still preserved via
+          # `|| REVIEW_EXIT=$?` — this only stops swallowing stderr.
+          # Two models (OMN-14176): qwen3-review (5090 :8000) + qwen3-review-b
+          # (4090 :8001). Running >=2 models makes cli_review exit 0 ("at least 2
+          # succeeded") reachable — fixing the single-model exit-2 collapse where a
+          # successful review was misreported as "all models failed".
           REVIEW_JSON=$(uv run python -m omniintelligence.review_pairing.cli_review \
             --pr "$PR_NUMBER" \
             --repo "$REPO" \
-            --model deepseek-r1 \
-            2>/dev/null) || REVIEW_EXIT=$?
+            --model qwen3-review \
+            --model qwen3-review-b \
+            2> >(tee hostile-reviewer-stderr.log >&2)) || REVIEW_EXIT=$?
 
           # If the CLI itself failed (not model degraded — actual crash), report and exit 0
           # to avoid blocking PRs due to infrastructure issues during pilot phase.
           if [ "${REVIEW_EXIT:-0}" -ne 0 ]; then
-            echo "verdict=degraded" >> "$GITHUB_OUTPUT"
-            echo "blocking_count=0" >> "$GITHUB_OUTPUT"
-            echo "total_findings=0" >> "$GITHUB_OUTPUT"
-            echo "models_succeeded=" >> "$GITHUB_OUTPUT"
-            echo "error=cli_review exited non-zero (all models failed or binary error)" >> "$GITHUB_OUTPUT"
+            {
+              echo "verdict=degraded"
+              echo "blocking_count=0"
+              echo "total_findings=0"
+              echo "models_succeeded="
+              echo "error=cli_review exited non-zero (fewer than 2 models succeeded — partial/total outage — or binary error)"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -150,15 +551,50 @@ jobs:
             exit 1
           fi
 
+      - name: Enforce hostile-review verdict (OMN-15110)
+        # DEGRADED must not satisfy the gate. Historically this workflow's
+        # three verdict-producing branches (the preflight short-circuit at
+        # ~line 260, the cli_review non-zero-exit branch at ~line 414, and the
+        # normal verdict-parse branch at ~line 460) each `exit 0` on
+        # verdict=degraded, justified as "pilot phase informational, does not
+        # block merge" (OMN-8524). Live measurement (OMN-15110) showed
+        # degraded in 5 of 6 concurrent PR runs on 2026-07-25 -- qwen3-review-b
+        # (a single-slot llama-server endpoint) timing out under concurrent-PR
+        # GPU contention even after the OMN-15066 timeout-minutes raise. This
+        # step is the single point of truth that turns ANY non-"passed"
+        # verdict into job failure, regardless of which upstream branch
+        # produced it (same fallback the PR-comment step below already uses),
+        # so `hostile-review-gate` observes `needs.hostile-review.result ==
+        # 'failure'` and blocks merge for a human decision (re-run under lower
+        # contention, or investigate further) instead of silently passing with
+        # one of two adversarial reviewers dead.
+        #
+        # Deliberately does NOT touch the three branches above: they still
+        # need to emit accurate step outputs for the PR-comment step, and
+        # `blocked` already exits 1 at its own branch -- this step is
+        # idempotent in that case, not a behavior change.
+        if: always()
+        run: |
+          VERDICT="${{ steps.review.outputs.verdict || steps.preflight.outputs.verdict }}"
+          echo "Resolved verdict: ${VERDICT:-unknown}"
+          if [ "$VERDICT" != "passed" ]; then
+            echo "::error::Hostile Reviewer verdict is '${VERDICT:-unknown}', not 'passed'. The adversarial gate requires a full review from both reviewer models; DEGRADED no longer satisfies this gate (OMN-15110). See the PR comment posted by this job for details, then either re-run once GPU contention clears or investigate the reviewer endpoint."
+            exit 1
+          fi
+
       - name: Post review summary as PR comment
         if: always()
         uses: actions/github-script@60a0d83039c74a4aee543508d2ffcb1c3799cdea # v7
         env:
-          REVIEW_VERDICT: ${{ steps.review.outputs.verdict }}
-          REVIEW_BLOCKING: ${{ steps.review.outputs.blocking_count }}
-          REVIEW_TOTAL: ${{ steps.review.outputs.total_findings }}
-          REVIEW_MODELS: ${{ steps.review.outputs.models_succeeded }}
-          REVIEW_ERROR: ${{ steps.review.outputs.error }}
+          # When the preflight short-circuits, the review step is skipped and its
+          # outputs are empty; fall back to the preflight's identical degraded
+          # outputs. On the endpoint-up path the review outputs are authoritative
+          # (non-empty) so these resolve to exactly the same values as before.
+          REVIEW_VERDICT: ${{ steps.review.outputs.verdict || steps.preflight.outputs.verdict }}
+          REVIEW_BLOCKING: ${{ steps.review.outputs.blocking_count || steps.preflight.outputs.blocking_count }}
+          REVIEW_TOTAL: ${{ steps.review.outputs.total_findings || steps.preflight.outputs.total_findings }}
+          REVIEW_MODELS: ${{ steps.review.outputs.models_succeeded || steps.preflight.outputs.models_succeeded }}
+          REVIEW_ERROR: ${{ steps.review.outputs.error || steps.preflight.outputs.error }}
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
@@ -177,13 +613,14 @@ jobs:
             const label = {
               passed: 'PASSED',
               blocked: 'BLOCKED',
-              degraded: 'DEGRADED (informational)',
+              degraded: 'DEGRADED',
             }[verdict] || verdict.toUpperCase();
 
             let note = '';
             if (verdict === 'degraded') {
-              note = '\n\n> **Note**: All reviewer models failed or were unavailable. ' +
-                'Degraded results are informational during the pilot phase (OMN-8524) and do not block merge.';
+              note = '\n\n> **Action required**: fewer than 2 reviewer models succeeded ' +
+                '(infra unavailable or timeout). This blocks merge (OMN-15110) -- re-run ' +
+                'once the reviewer endpoint is reachable/uncontended, or investigate.';
               if (error) note += ` Error: \`${error}\``;
             } else if (verdict === 'blocked') {
               note = '\n\n> **Action required**: Resolve CRITICAL/ERROR findings before merge.';
@@ -199,13 +636,13 @@ jobs:
               '',
               '---',
               '',
-              '**Gate semantics (pilot phase)**',
+              '**Gate semantics**',
               '',
               '| Verdict | Meaning | Blocks merge? |',
               '|---------|---------|---------------|',
-              '| `passed` | No critical/error findings | No |',
+              '| `passed` | >=2 models succeeded, no critical/error findings | No |',
               '| `blocked` | CRITICAL or ERROR findings found | **Yes** |',
-              '| `degraded` | All models unavailable (infra) | No (pilot) |',
+              '| `degraded` | Fewer than 2 models succeeded (infra unavailable/timeout) | **Yes** (OMN-15110) |',
               '',
               '_Powered by [omniintelligence.review_pairing.cli_review](https://github.com/OmniNode-ai/omniintelligence) — node-based adversarial review via HandlerLlmCliSubprocess (OMN-8524)_',
             ].join('\n');
@@ -254,6 +691,14 @@ jobs:
           RESULT="${{ needs.hostile-review.result }}"
           echo "hostile-review: $RESULT"
 
+          # OMN-15057: the occ-preflight cross-check that used to live here was
+          # dropped along with `needs: occ-preflight` -- OCC eligibility is
+          # already independently enforced as its own required status check
+          # (`occ-preflight / eligibility`), so re-checking it here was
+          # redundant AND was the exact skip-then-vacuous-green vector: when
+          # the same-file poller job failed, this whole job (and its required
+          # context) went `skipped`, which GitHub branch protection treats as
+          # passing. See OMN-14668 for the precedent fix.
           if [ "$RESULT" = "failure" ]; then
             echo "::error::Hostile reviewer found CRITICAL/ERROR findings — resolve before merge."
             exit 1

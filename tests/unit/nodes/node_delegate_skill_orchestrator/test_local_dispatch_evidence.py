@@ -30,9 +30,30 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_local_delegati
 from omnimarket.nodes.node_delegation_quality_gate_reducer.judge.handler_judge_adequacy import (
     HandlerJudgeAdequacy,
 )
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
+from omnimarket.nodes.node_llm_delegation_call_effect.handlers import (
+    handler_llm_delegation_call,
+    transport,
+)
 from omnimarket.routing import delegation_backend_resolution
 from tests.fixtures.judge_inference import CannedAdequacyBridge
+
+
+@pytest.fixture(autouse=True)
+def _clear_health_cache() -> None:
+    """Clear handler_llm_delegation_call's module-level health-probe cache.
+
+    The cache is keyed by endpoint_url with a TTL and is checked BEFORE any
+    monkeypatched fake_probe_health/fake_run in this file ever runs. Under
+    pytest-split, whichever test happens to land first in a given worker for
+    this shard can cache a negative probe result for the shared
+    "http://inference.example:8000/..." fixture URL, silently short-circuiting
+    every later test in the same worker regardless of that test's own patch
+    (OMN-13940 CI flake — reproduced only under specific shard/run ordering,
+    not on an unsharded local run). Autouse so it covers every test in this
+    file, including the curl-transport (macOS profile) test that does not go
+    through _patch_transport/_patch_transport_with_content below.
+    """
+    handler_llm_delegation_call._health_cache.clear()
 
 
 def _pass_judge() -> HandlerJudgeAdequacy:
@@ -144,6 +165,7 @@ def test_local_dispatch_materializes_evidence_row(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -211,6 +233,7 @@ def test_local_dispatch_evidence_is_idempotent(
                 wait=True,
                 quality_contract_mode="extend_task_class",
                 acceptance_criteria=(),
+                tenant_id=None,
             )
         )
 
@@ -255,6 +278,7 @@ def test_local_dispatch_evidence_failure_does_not_break_response(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -285,23 +309,28 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
     class _FakeProc:
         returncode = 0
         stderr = ""
-        stdout = json.dumps(
-            {
-                "choices": [{"message": {"content": "ok"}}],
-                "model": "Qwen3.6-35B-A3B",
-                "usage": {
-                    "prompt_tokens": 1,
-                    "completion_tokens": 1,
-                    "total_tokens": 2,
-                },
-            }
-        )
+
+        def __init__(self, stdout: str) -> None:
+            self.stdout = stdout
 
     def fake_run(args: list[str], **_: Any) -> _FakeProc:
         # First call is the health probe (curl ... /health); the POST follows.
         if "-X" in args and "POST" in args:
             captured["post_args"] = args
-        return _FakeProc()
+            return _FakeProc(
+                json.dumps(
+                    {
+                        "choices": [{"message": {"content": "ok"}}],
+                        "model": "Qwen3.6-35B-A3B",
+                        "usage": {
+                            "prompt_tokens": 1,
+                            "completion_tokens": 1,
+                            "total_tokens": 2,
+                        },
+                    }
+                )
+            )
+        return _FakeProc("200")
 
     monkeypatch.setattr(subprocess, "run", fake_run)
 
@@ -321,6 +350,7 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -368,6 +398,7 @@ def test_local_dispatch_unset_max_tokens_uses_backend_ceiling(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -404,6 +435,7 @@ def test_local_dispatch_explicit_max_tokens_capped_at_backend_ceiling(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -437,6 +469,7 @@ def test_local_dispatch_explicit_max_tokens_below_ceiling_passes_through(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -475,6 +508,7 @@ def test_local_dispatch_threads_backend_timeout_to_transport(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -574,6 +608,7 @@ def test_local_dispatch_refusal_fails_quality_gate(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -637,6 +672,7 @@ def test_local_dispatch_good_answer_passes_with_real_score(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 

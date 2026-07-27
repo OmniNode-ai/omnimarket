@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Liveness Demand Query Effect (OMN-15126)
+#
+# Real-I/O EFFECT half of the demand-aware liveness evaluator (OMN-14845
+# design §3.2 steps 1-2). Given a resolved ModelLivenessRegistryEntry
+# (omnibase_core), queries the declared `table_query` demand source for
+# eligible demand, then for every eligible item performs the exact
+# input-event-to-terminal-event-to-projection-key/value correlated join the
+# design requires (design §1) -- never a bare topic-offset count. Postgres
+# only, real asyncpg pool (injectable for tests).
+#
+# Related Tickets:
+#   - OMN-15126: demand-aware liveness evaluator (this node, EFFECT half)
+#   - OMN-14845: design (state machine, registry contract, receipt contract)
+#   - OMN-13976: epic — OCC real-doneness spine
+name: "node_liveness_demand_query_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Real-Postgres EFFECT: queries a registry-declared table_query demand source for eligible demand, then performs the exact correlated input-event-to-terminal-event-to-projection-key/value join for each eligible item."
+input_model:
+  name: "ModelLivenessDemandQueryRequest"
+  module: "omnimarket.nodes.node_liveness_demand_query_effect.models.model_liveness_demand_query_request"
+  description: "A resolved ModelLivenessRegistryEntry to evaluate this cycle."
+output_model:
+  name: "ModelLivenessDemandQueryResult"
+  module: "omnimarket.nodes.node_liveness_demand_query_effect.models.model_liveness_demand_query_result"
+  description: "Raw demand-query + correlated-join evidence for the downstream compute state decision."
+handler:
+  module: "omnimarket.nodes.node_liveness_demand_query_effect.handlers.handler_liveness_demand_query_effect"
+  class: "HandlerLivenessDemandQueryEffect"
+  input_model: "omnimarket.nodes.node_liveness_demand_query_effect.models.model_liveness_demand_query_request.ModelLivenessDemandQueryRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_liveness_demand_query_effect.handlers.handler_liveness_demand_query_effect:HandlerLivenessDemandQueryEffect"
+  handlers:
+    - operation: "query_liveness_demand"
+      handler:
+        name: "HandlerLivenessDemandQueryEffect"
+        module: "omnimarket.nodes.node_liveness_demand_query_effect.handlers.handler_liveness_demand_query_effect"
+# Directly-invoked only (no Kafka producer/consumer) -- matches
+# node_occ_observation_source_effect's own runtime_dispatch-only declaration.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.liveness-demand-query-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.liveness-demand-query-completed.v1"
+    failure: "onex.evt.omnimarket.liveness-demand-query-failed.v1"
+side_effects:
+  reads:
+    - postgres
+  writes: []
+  duplicate_key_fields:
+    - surface_id
+  duplicate_handling: idempotent
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  transport_type: database
+  description: "Liveness demand-source query + correlated join -- real Postgres EFFECT half of the OMN-15126 evaluator"
+  author: "OmniNode Team"
+  created: "2026-07-25"
+  tags:
+    - "effect"
+    - "liveness"
+    - "OMN-15126"
+  related_tickets:
+    - "OMN-15126"
+    - "OMN-14845"
+    - "OMN-13976"

@@ -347,6 +347,7 @@ projection_api:
         - id
         - event_hash
         - correlation_id
+        - tenant_id
         - task_type
         - score_source
         - judge_model

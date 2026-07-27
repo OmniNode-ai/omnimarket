@@ -137,25 +137,15 @@ async def _run_consumer(broker: str, group_id: str) -> None:
                     idempotency_key=raw["idempotency_key"],
                     correlation_id=UUID(str(correlation_id_raw)),
                 )
-                output = await handler.handle(command)
+                result_event = await handler.handle(command)
 
-                events = output.events or ()
-                result_event = events[0] if events else None
-
-                if result_event is not None:
-                    result_dict = result_event.model_dump()
-                    if result_dict.get("deduped"):
-                        topic = topic_deduped
-                    elif result_dict.get("success"):
-                        topic = topic_published
-                    else:
-                        topic = topic_failed
-                else:
+                result_dict = result_event.model_dump()
+                if result_dict.get("deduped"):
+                    topic = topic_deduped
+                elif result_dict.get("success"):
                     topic = topic_published
-                    result_dict = {
-                        "correlation_id": str(correlation_id_raw),
-                        "success": True,
-                    }
+                else:
+                    topic = topic_failed
 
                 await producer.send_and_wait(topic, result_dict)
                 _log.info(

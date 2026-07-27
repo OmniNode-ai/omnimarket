@@ -7,15 +7,130 @@ on:
     branches: [main, dev]
   merge_group:
 
+# OMN-14645: single-flight per ref, QUEUE — never cancel — an older candidate.
+# The coverage-sweep-gate is the longest-pole job (3 fresh sibling clones +
+# `uv sync --all-extras` + full `pytest --cov`), so any run-wide cancel almost
+# always catches it mid-flight; the resulting `cancelled` result rolls the
+# required "CI Summary" red and wedges the PR (mergeStateStatus=BLOCKED).
+# `cancel-in-progress: false` means a newer run on the SAME ref WAITS for the
+# in-flight one to reach a terminal result instead of cancelling it — so a
+# running sweep is allowed to finish. The group is keyed by ref, so different
+# PRs (and main / merge_group) never block each other.
+#
+# SCOPE / HONESTY: this guards same-ref push/synchronize churn only. It does
+# NOT stop an external `gh run rerun` on the SAME run id (a rerun is not a new
+# workflow run and is not subject to `concurrency`), which was the verified
+# driver of the 2026-07-15 cancel storm on #1754/#1758/#1774. Halting that
+# driver is an operational action, not a YAML change (see PR body).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
+  # OCC preflight is the first non-OCC CI dependency. If central OCC
+  # evidence is missing or red, no runner-heavy validation jobs fan out.
+  occ-preflight:
+    name: OCC Preflight Dependency
+    runs-on: ubuntu-latest
+    permissions:
+      checks: read
+      contents: read
+    steps:
+      - name: Wait for required OCC preflight
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -uo pipefail
+
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "OCC preflight dependency is enforced by the pull_request gate; continuing for ${GITHUB_EVENT_NAME}."
+            exit 0
+          fi
+
+          # OMN-14343: desynchronize the ~33 same-PR pollers (one per workflow file
+          # -- GH Actions `needs:` can't cross workflow-file boundaries) so they
+          # don't all hit the Checks API in the same instant every 10s and exhaust
+          # the shared per-repo GitHub App installation rate-limit bucket.
+          sleep "$(( RANDOM % 15 ))"
+
+          backoff=5
+          elapsed=0
+          deadline=720
+
+          while [ "$elapsed" -lt "$deadline" ]; do
+            # NOTE(OMN-14343): GH Actions runs run: steps under `bash -e {0}` by
+            # default -- that -e is already active before this script's own
+            # `set -uo pipefail` runs, and `set -uo pipefail` does NOT clear an
+            # inherited -e. A bare `response="$(gh api ...)"; status=$?` would
+            # therefore abort the whole step on ANY gh api failure before status
+            # is ever checked, silently defeating the retry logic below. Using
+            # the command substitution as the condition of this `if` is the
+            # errexit-safe form -- bash does not trigger -e for a command that is
+            # part of an if/while/until condition, regardless of ambient -e state.
+            response=""
+            status=0
+            if response="$(
+              gh api "repos/${REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&check_name=occ-preflight%20%2F%20eligibility&per_page=1" \
+                --jq 'first(.check_runs[] | .conclusion) // ""' \
+                2>&1
+            )"; then
+              status=0
+            else
+              status=$?
+            fi
+
+            if [ "$status" -ne 0 ]; then
+              if echo "$response" | grep -qi "rate limit"; then
+                echo "::warning::gh api rate-limited waiting for occ-preflight; backing off ${backoff}s."
+                sleep "$backoff"
+                elapsed=$((elapsed + backoff))
+                backoff=$(( backoff * 2 < 60 ? backoff * 2 : 60 ))
+                continue
+              fi
+              echo "::error::gh api call failed (non-rate-limit): ${response}"
+              exit 1
+            fi
+            backoff=5
+
+            conclusion="$response"
+
+            case "$conclusion" in
+              success)
+                echo "OCC preflight passed for ${HEAD_SHA}."
+                exit 0
+                ;;
+              failure|cancelled|timed_out|action_required|startup_failure)
+                echo "::error::OCC preflight concluded ${conclusion}; refusing to start heavy CI."
+                exit 1
+                ;;
+              "")
+                echo "Waiting for occ-preflight / eligibility to post for ${HEAD_SHA}..."
+                ;;
+              *)
+                echo "OCC preflight is ${conclusion}; waiting."
+                ;;
+            esac
+
+            sleep 10
+            elapsed=$((elapsed + 10))
+          done
+
+          echo "::error::Timed out waiting for occ-preflight / eligibility on ${HEAD_SHA}."
+          exit 1
   # Zone filter — short-circuit heavy jobs on docs / declarative-evidence PRs.
   # Calls the reusable workflow in omnibase_core. Outputs docs_only (true|false).
   zone-filter:
+    needs: occ-preflight
+    if: always()
     uses: OmniNode-ai/omnibase_core/.github/workflows/zone-filter.yml@7631ef3321e1a6561f4b2c70019ee57d24160620
     with:
       python-version: "3.12"
 
   lint:
+    needs: occ-preflight
+    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -67,6 +182,13 @@ jobs:
       # silently. SYNC with pre-commit hook 'projection-dlq-path'.
       - name: Projection-DLQ path gate
         run: uv run python scripts/ci/check_projection_dlq_path.py
+      # OMN-14285 (WI-1 / S1d): exactly one OCC companion producer. Fails if a
+      # second writer surface (inline receipt/contract template outside the
+      # occ_evidence_stamp seam, duplicate OccCompanionEmitter, or a resurrected
+      # scaffold_occ_receipt.py) reappears. SYNC with pre-commit hook
+      # 'one-occ-producer'.
+      - name: One OCC producer per contract
+        run: uv run python scripts/ci/check_one_occ_producer.py
       - name: Reject node-level topics.py files
         run: |
           FOUND=$(find src/omnimarket/nodes -name "topics.py" -path "*/node_*/*" 2>/dev/null)
@@ -78,6 +200,18 @@ jobs:
           echo "OK: No node-level topics.py files found."
       - name: ONCP node metadata dependency scope
         run: uv run python scripts/ci/check_node_metadata_dependencies.py
+      # OMN-14762 (F-18): keep the authoritative coverage-json invocation
+      # (pytest-cov, config-driven) aligned with the shadow aggregator's
+      # `coverage json -i` so a missing C-extension source can never red one gate
+      # while the other stays green. SYNC with pre-commit hook 'coverage-ignore-parity'.
+      - name: Coverage-json ignore-errors parity gate
+        run: uv run python scripts/ci/check_coverage_ignore_parity.py
+      # OMN-14762 (F-19-A): action-pin ratchet — every third-party `uses:` must be
+      # pinned to a 40-char SHA; the current unpinned set is frozen in
+      # scripts/ci/action_pin_baseline.txt (burn-down only) and NEW unpinned refs
+      # fail closed. SYNC with pre-commit hook 'check-action-pins'.
+      - name: GitHub Actions pin ratchet
+        run: uv run python scripts/ci/check_action_pins.py
       # SYNC: Pre-commit hook 'validate-no-env-fallbacks' at pre-commit stage (OMN-10738)
       # Prevents silent fallback to localhost defaults via os.getenv/os.environ.get
       - name: Validate no silent env fallbacks
@@ -175,10 +309,113 @@ jobs:
             base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
           fi
           uv run python scripts/ci/check_golden_chain_coverage.py --changed-ref "$base"
+      # Canonical handler-shape GROWTH RATCHET fan-out (OMN-14355/OMN-14368/OMN-14372).
+      # compliance_sweep checks handler hygiene but is blind to handler SHAPE, so a
+      # non-canonical handler passes green CI. This classifies each omnimarket node's
+      # contract-declared handler (definition B: typed-payload handle(request)->
+      # response, adapted by the shared runtime, no envelope in the core), WARNs the
+      # committed baseline's debt (scripts/ci/canonical_handler_shape_baseline.py),
+      # and HARD-FAILS a NEW non-canonical node or baseline growth. Sourced from the
+      # already-cloned sibling omnibase_core checkout (same pattern as "Stub
+      # implementation check" above) since the classifier lives at omnibase_core's
+      # repo-root scripts/ci/, not the installed package. Runs --full (not the
+      # default --scope changed): the classifier's diff-scoped git-diff runs with
+      # cwd = the classifier's OWN repo (omnibase_core parents[2]), which is wrong
+      # for a fan-out invocation against this sibling checkout, so --full avoids
+      # that mismatch (this job's classification is cheap: ~365 nodes, sub-second).
+      # No pre-commit mirror yet: pre-commit's language:python remote-hook install
+      # only ships the installed src/omnibase_core/ package (verified — the
+      # classifier isn't importable that way), and language:script has no dep
+      # isolation (needs pydantic/pyyaml); see OMN-14563 for the real fix
+      # (relocate the classifier into an installed omnibase_core module). This
+      # CI-only pattern already matches several sibling gates in this same job
+      # list (compliance-sweep, runtime-sweep, aislop-sweep, coverage-sweep-gate).
+      - name: Canonical handler-shape ratchet (OMN-14355 fan-out)
+        run: |
+          uv run python ../omnibase_core/scripts/ci/canonical_handler_shape.py \
+            --package omnimarket --src-root src \
+            --baseline scripts/ci/canonical_handler_shape_baseline.py \
+            --receipts-dir scripts/ci/adequacy_receipts \
+            --full
+
+      # OMN-14617: fleet-wide fan-out of the omnibase_infra OMN-14135 dispatch-ENTRYPOINT
+      # gate. A contract-declared handler exposing NEITHER handle() nor handle_async() is
+      # bound by the shared auto-wiring to _missing_handle, which raises ModelOnexError on
+      # EVERY dispatch — while the contract validates, the node boots, and CI stays green
+      # (node_pattern_b_broker's AdapterPatternBBroker* shipped exactly this way, caught
+      # only by manual OMN-14605 triage and fixed under OMN-14616/#1769). Registration and
+      # routing do NOT imply executability. Self-contained repo-local validator (the
+      # infra copy is not in a released omnibase-infra wheel), same spirit as
+      # omnimarket.validators.event_registry_drift. The validator fails closed under a
+      # non-vacuity floor (MIN_EXPECTED_DECLARED_HANDLERS) so a collapsed scan cannot pass
+      # silently (OMN-14541). Ratchet frozen in
+      # validation/handler_dispatch_entrypoint_baseline.yaml and is shrink-only.
+      # SYNC with pre-commit hook 'handler-dispatch-entrypoint'.
+      - name: Handler dispatch-entrypoint gate (OMN-14617 fan-out)
+        run: PYTHONPATH=src uv run python -m omnimarket.validators.handler_dispatch_entrypoint src/omnimarket
+
+      # ======================================================================
+      # BRANCH-SAFETY GATE (OMN-14768 / friction F-11 + F-12; F-12 flip: OMN-14773)
+      # Folded into the `lint` job — which is in ci.yml's required "CI Summary"
+      # rollup `needs:` — so F-11, F-12, and the self-tests are ALL GENUINELY
+      # blocking on every PR class. F-12 was advisory (continue-on-error) at first
+      # to avoid wedging an already-open ticket-split PR (#1811, now CLOSED); with
+      # no open omnimarket PR tripping it, the tolerance was removed (OMN-14773).
+      #
+      # WHY NOT A STANDALONE WORKFLOW: a separate workflow file gets its own
+      # run_id and CANNOT be aggregated into CI Summary (GHA `needs:` cannot
+      # cross workflow-file boundaries), and it is NOT in the dev
+      # required_status_checks (["CI Summary","reason-graph","OCC Emitter Golden
+      # Gate"]). The standalone "Branch-safety gate" workflow that shipped in
+      # #1810 was therefore ADVISORY — it could not block a merge without a
+      # separate branch-protection required-context flip. Running these checks
+      # HERE, as `lint` steps, makes F-11 part of the already-required CI Summary
+      # with no paths filter and no job-level `if` — enforcement, not detection
+      # (Operating Rule #5). The standalone branch-safety-gate.yml is retired in
+      # this follow-up PR — net-negative surface. SYNC with the two pre-commit
+      # hooks check-branch-rename-prohibited / check-branch-identity-tests.
+      #
+      # F-11 (rename prohibition): renaming an OPEN PR's head branch CLOSES the PR
+      # (the omnidash#258 class). Fails closed if any branch-rename invocation is
+      # introduced anywhere in the merge-controller node tree.
+      - name: Branch-safety F-11 — branch-rename prohibition (merge-controller tree)
+        run: uv run python scripts/ci/check_branch_identity.py --mode rename-scan
+      # Self-tests run here too so a passing rename-scan of the real tree is never
+      # vacuous (a planted rename is proven to fail — positive controls).
+      - name: Branch-safety gate self-tests (positive controls — non-vacuous)
+        run: uv run pytest tests/ci/test_check_branch_identity.py -q -p no:randomly
+      # F-12 (Evidence-Ticket branch identity): front-runs the Receipt Gate's late
+      # branch-name failure — on a PR it asserts the head branch references every
+      # `Evidence-Ticket: OMN-XXXX` in the PR body, reusing the Receipt Gate's own
+      # regexes so the two cannot drift. PR-only (needs the PR body/head ref).
+      #
+      # BLOCKING (OMN-14773): the `continue-on-error: true` that made this step
+      # advisory was removed once the only open PR that tripped it (#1811 — branch
+      # `…omn-14765…`, `Evidence-Ticket: OMN-14769`) closed and no open omnimarket
+      # PR remained to wedge. Because this step runs inside the `lint` job that
+      # feeds the required "CI Summary" rollup, removing the tolerance makes F-12
+      # merge-blocking with NO branch-protection change — it folds into the
+      # existing `CI Summary` required context (enforcement, not detection —
+      # Operating Rule #5). Pre-flip green proof: rename-scan clean, self-tests
+      # green, identity mode green vs dev (no Evidence-Ticket to bind) and vs a
+      # branch that references its Evidence-Ticket; a mismatched branch fails
+      # rc=1 (non-vacuous negative control). It is also BLOCKING at pre-commit
+      # (hook `check-branch-identity-tests`). A legitimate ticket-split PR must
+      # name the branch for the sub-ticket whose `Evidence-Ticket:` it carries
+      # (or fold that convention into `branch_binds_ticket`).
+      - name: Branch-safety F-12 — Evidence-Ticket branch identity (PR only, blocking)
+        if: github.event_name == 'pull_request'
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          printf '%s' "$PR_BODY" > /tmp/pr_body.txt
+          uv run python scripts/ci/check_branch_identity.py \
+            --mode identity --branch "$HEAD_REF" --body-file /tmp/pr_body.txt
 
   typecheck:
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -204,8 +441,8 @@ jobs:
   # ---------------------------------------------------------------------------
   detect-changes:
     name: Detect Changes
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     outputs:
       is_full_suite: ${{ steps.detect.outputs.is_full_suite }}
@@ -271,12 +508,33 @@ jobs:
 
   test:
     name: Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})
-    needs: [detect-changes]
+    needs: [occ-preflight, detect-changes]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         split: ${{ fromJson(needs.detect-changes.outputs.matrix) }}
+    # OMN-14167: real Postgres service so @pytest.mark.integration real-DB tests
+    # (e.g. tests/test_projection_delegation_tier_distribution_omn13662.py's
+    # `..._against_real_postgres` proof) actually EXECUTE instead of silently
+    # skipping. Without a broker they self-skip, which produced a false green:
+    # that gap let the OMN-14058 delegation_events tenant_id missing-column
+    # defect reach dev. Image + wiring mirror the omnibase_infra
+    # migration-integration job (postgres:16-alpine, ephemeral 5432/tcp,
+    # pg_isready health-check).
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: omnibase_infra
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     steps:
       - uses: actions/checkout@v4
       - name: Clone omnibase_core
@@ -294,6 +552,60 @@ jobs:
       - name: Install dependencies
         run: uv sync --locked --all-extras
 
+      # OMN-14167: resolve the Postgres service host + ephemeral port and export
+      # the connection env the integration fixtures read
+      # (INTEGRATION_POSTGRES_* / POSTGRES_PASSWORD). Setting POSTGRES_PASSWORD is
+      # what flips the real-DB integration tests from "skipped" to "executed".
+      # The host-resolution dance mirrors the omnibase_infra migration-integration
+      # job so this stays correct on both GitHub-hosted and self-hosted runners.
+      - name: Resolve Postgres service host and export integration env
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          host="$(python - <<'PY'
+          import os
+          import socket
+
+          port = int(os.environ["POSTGRES_PORT"])
+
+          def can_connect(candidate: str) -> bool:
+              try:
+                  with socket.create_connection((candidate, port), timeout=1.0):
+                      return True
+              except OSError:
+                  return False
+
+          if can_connect("127.0.0.1"):
+              print("127.0.0.1")
+              raise SystemExit(0)
+
+          with open("/proc/net/route", encoding="utf-8") as routes:
+              for line in routes.readlines()[1:]:
+                  fields = line.split()
+                  if len(fields) >= 3 and fields[1] == "00000000":
+                      gateway_hex = fields[2]
+                      gateway = ".".join(
+                          str(int(gateway_hex[i : i + 2], 16)) for i in (6, 4, 2, 0)
+                      )
+                      if can_connect(gateway):
+                          print(gateway)
+                          raise SystemExit(0)
+
+          raise SystemExit(
+              f"could not reach Postgres service on localhost or default gateway port {port}"
+          )
+          PY
+          )"
+          {
+            echo "INTEGRATION_POSTGRES_HOST=${host}"
+            echo "INTEGRATION_POSTGRES_PORT=${POSTGRES_PORT}"
+            echo "INTEGRATION_POSTGRES_USER=postgres"
+            echo "INTEGRATION_POSTGRES_PASSWORD=test_password"
+            echo "INTEGRATION_POSTGRES_DB=omnibase_infra"
+            echo "POSTGRES_PASSWORD=test_password"
+          } >> "$GITHUB_ENV"
+          echo "Resolved Postgres integration host=${host} port=${POSTGRES_PORT}"
+
       - name: Restore test durations cache
         uses: actions/cache/restore@v4
         with:
@@ -302,26 +614,72 @@ jobs:
           restore-keys: |
             test-durations-
 
+      # OMN-14680 (merge-flow WS2): collect coverage IN the shard where the
+      # tests already run, writing a per-shard data file to COVERAGE_FILE. The
+      # shadow aggregator combines these ONCE instead of the authoritative
+      # gate's second full `pytest --cov` pass. `--cov=src --cov-report=`
+      # mirrors the authoritative gate's measurement basis exactly (no branch
+      # coverage) so the shadow census is comparable.
       - name: Run pytest (smart selection)
         if: vars.ENABLE_SMART_TESTS == 'true' && needs.detect-changes.outputs.is_full_suite == 'false'
+        env:
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
         run: |
           paths=$(echo '${{ needs.detect-changes.outputs.selected_paths }}' | python -c "import json,sys; print(' '.join(json.load(sys.stdin)))")
           uv run pytest $paths \
             --splits ${{ needs.detect-changes.outputs.split_count }} \
             --group ${{ matrix.split }} \
+            --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --junitxml=junit-${{ matrix.split }}.xml
 
       - name: Run pytest (full suite)
         if: vars.ENABLE_SMART_TESTS != 'true' || needs.detect-changes.outputs.is_full_suite == 'true'
+        env:
+          COVERAGE_FILE: ${{ github.workspace }}/.coverage.${{ matrix.split }}
         run: |
           uv run pytest tests/ \
             --splits ${{ needs.detect-changes.outputs.split_count }} \
             --group ${{ matrix.split }} \
             --store-durations \
             --durations-path .test_durations \
+            --cov=src --cov-report= \
             -v --tb=short -m "not kafka" \
             --junitxml=junit-${{ matrix.split }}.xml
+
+      # OMN-14680: stamp a versioned metadata sidecar (head SHA, environment,
+      # test-scope, schema) so the shadow aggregator can validate the artifact
+      # is head-bound, complete, and schema-current — a missing/stale/wrong-head
+      # shard fails the aggregator closed, never a silent under-count.
+      - name: Emit coverage artifact metadata (OMN-14680)
+        if: always()
+        env:
+          HEAD_SHA: ${{ github.sha }}
+          SPLIT: ${{ matrix.split }}
+          SPLIT_COUNT: ${{ needs.detect-changes.outputs.split_count }}
+          IS_FULL: ${{ needs.detect-changes.outputs.is_full_suite }}
+          SMART_FLAG: ${{ vars.ENABLE_SMART_TESTS }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        # OMN-14762 (F-19-B): emit through the shared producer
+        # (scripts/ci/coverage_artifact_metadata.build_shard_metadata) instead of
+        # inline python, so the sidecar shape is single-sourced with
+        # aggregate_coverage_artifacts.validate_artifacts and proven by
+        # tests/ci/test_coverage_artifact_metadata_roundtrip.py — a shape drift now
+        # fails a local test, not only downstream CI.
+        run: python scripts/ci/emit_coverage_shard_metadata.py
+
+      - name: Upload coverage shard artifact (OMN-14680)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: coverage-shard-${{ matrix.split }}
+          path: |
+            .coverage.${{ matrix.split }}
+            coverage-meta-${{ matrix.split }}.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Save test durations (full suite only, split 1)
         if: |
@@ -335,13 +693,151 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: test-results-${{ matrix.split }}
           path: junit-${{ matrix.split }}.xml
           retention-days: 7
 
+  # ============================================================================
+  # INTEGRATION SILENT-SKIP GUARD (OMN-14172)
+  # Fail-closed gate against the silent-skip false-green class. An
+  # @pytest.mark.integration real-service test that self-skips because its
+  # DB/service/env is absent produces a false-green: the required Tests job
+  # reports success while the real-DB assertion never ran. This recurred across
+  # repos (OMN-10330 omninode_infra, OMN-14167 omnimarket) and each time hid a
+  # genuine latent defect (the OMN-14058 missing-tenant_id-column bug reached
+  # dev this way). Detection-only never held; this makes the class mechanically
+  # RED (Operating Rule #5: enforcement, not detection).
+  #
+  # This job PROVISIONS Postgres (mirroring the Tests job, OMN-14167) and runs
+  # ONLY the integration-marked tests, then asserts via check_integration_skips.py
+  # that (1) none skipped citing a *provisioned* service's absence and (2) at
+  # least one integration test actually executed (zero-collection is itself a
+  # false-green). Legitimately-optional skips (Kafka broker not provisioned by
+  # design, live-LLM / live-e2e opt-in flags) remain allowed — the gate is keyed
+  # to the services this job actually provisions (integration_skip_guard.yaml).
+  #
+  # Wired as: ci.yml BLOCKING gate (via ci-summary rollup) + pre-commit hook
+  # 'integration-skip-guard'. SYNC both when the config changes.
+  # ============================================================================
+  integration-guard:
+    name: Integration Silent-Skip Guard (OMN-14172)
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
+    runs-on: ubuntu-latest
+    # Same Postgres service block as the Tests job (OMN-14167): a real broker so
+    # the @pytest.mark.integration real-DB proofs EXECUTE instead of self-skipping.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: omnibase_infra
+        ports:
+          - 5432/tcp
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      # Resolve the Postgres service host + ephemeral port and export the
+      # connection env the integration fixtures read. Setting POSTGRES_PASSWORD
+      # is what flips the real-DB integration tests from "skipped" to "executed"
+      # (identical to the Tests job step; host-resolution mirrors omnibase_infra).
+      - name: Resolve Postgres service host and export integration env
+        env:
+          POSTGRES_PORT: ${{ job.services.postgres.ports['5432'] }}
+        run: |
+          host="$(python - <<'PY'
+          import os
+          import socket
+
+          port = int(os.environ["POSTGRES_PORT"])
+
+          def can_connect(candidate: str) -> bool:
+              try:
+                  with socket.create_connection((candidate, port), timeout=1.0):
+                      return True
+              except OSError:
+                  return False
+
+          if can_connect("127.0.0.1"):
+              print("127.0.0.1")
+              raise SystemExit(0)
+
+          with open("/proc/net/route", encoding="utf-8") as routes:
+              for line in routes.readlines()[1:]:
+                  fields = line.split()
+                  if len(fields) >= 3 and fields[1] == "00000000":
+                      gateway_hex = fields[2]
+                      gateway = ".".join(
+                          str(int(gateway_hex[i : i + 2], 16)) for i in (6, 4, 2, 0)
+                      )
+                      if can_connect(gateway):
+                          print(gateway)
+                          raise SystemExit(0)
+
+          raise SystemExit(
+              f"could not reach Postgres service on localhost or default gateway port {port}"
+          )
+          PY
+          )"
+          {
+            echo "INTEGRATION_POSTGRES_HOST=${host}"
+            echo "INTEGRATION_POSTGRES_PORT=${POSTGRES_PORT}"
+            echo "INTEGRATION_POSTGRES_USER=postgres"
+            echo "INTEGRATION_POSTGRES_PASSWORD=test_password"
+            echo "INTEGRATION_POSTGRES_DB=omnibase_infra"
+            echo "POSTGRES_PASSWORD=test_password"
+          } >> "$GITHUB_ENV"
+          echo "Resolved Postgres integration host=${host} port=${POSTGRES_PORT}"
+
+      # Run ONLY the integration-marked tests (kafka excluded — no broker
+      # provisioned). Real integration FAILURES fail this step directly; the
+      # silent-skip enforcement below runs regardless (if: always()).
+      - name: Run integration-marked tests (Postgres provisioned)
+        run: |
+          uv run pytest -m "integration and not kafka" \
+            -rs -v --tb=short \
+            --junitxml=integration-guard.xml
+
+      # Fail-closed silent-skip enforcement. RED if any integration test skipped
+      # citing a provisioned service's absence, or if zero integration tests ran.
+      - name: Enforce no missing-service silent-skips (OMN-14172)
+        if: always()
+        run: |
+          uv run python scripts/ci/check_integration_skips.py \
+            --junit integration-guard.xml
+
+      - name: Upload integration-guard results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: integration-guard-results
+          path: integration-guard.xml
+          retention-days: 7
+
   topic-naming-lint:
+    needs: occ-preflight
+    if: always()
     name: Topic Naming Lint
     runs-on: ubuntu-latest
     steps:
@@ -380,6 +876,8 @@ jobs:
   # # onex-topic-allow annotation). Orphaned constants are drift violations.
   # ============================================================================
   topic-enum-drift:
+    needs: occ-preflight
+    if: always()
     name: Topic Enum Drift Check
     runs-on: ubuntu-latest
     steps:
@@ -408,6 +906,8 @@ jobs:
   # --warn-only behaviour of the equivalent omnibase_infra check (OMN-5248).
   # ============================================================================
   topic-drift-check:
+    needs: occ-preflight
+    if: always()
     name: Topic Drift Check
     runs-on: ubuntu-latest
     steps:
@@ -429,7 +929,33 @@ jobs:
           echo "================================================================"
           uv run python scripts/ci/check_topic_drift.py
 
+  # ============================================================================
+  # MERGE-CHECK REASON-CODE GATE (OMN-14765, epic OMN-14643)
+  # Fixture-corpus contract regression gate for the jobs-API-keyed merge-check
+  # reason-code classifier (omnimarket.merge_control.reason_code_classifier).
+  # Rule-5 enforcement: replays every captured jobs-API fixture through the
+  # classifier and fails closed on any mismatch, a shrunk corpus, or a corpus
+  # that no longer covers all five reason codes — so a future edit can never
+  # silently re-collapse cancelled/stale/infra into product_failed. Stdlib-only
+  # (bare setup-python, no uv sync). SYNC with the .pre-commit hook
+  # `merge-reason-code-gate` and with the CI Summary strict success-only gate.
+  # ============================================================================
+  merge-reason-code-gate:
+    name: Merge Reason-Code Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Merge-check reason-code fixture-corpus gate (OMN-14765)
+        run: python scripts/ci/check_merge_reason_codes.py
+
   event-registry-drift:
+    needs: occ-preflight
+    if: always()
     name: Event Registry Drift
     runs-on: ubuntu-latest
     steps:
@@ -461,6 +987,8 @@ jobs:
   # PR merges (the PR fixing 96 broken entry points).
   # ============================================================================
   runtime-sweep:
+    needs: occ-preflight
+    if: always()
     name: Runtime Sweep
     runs-on: ubuntu-latest
     steps:
@@ -481,6 +1009,45 @@ jobs:
         run: uv run python -m omnimarket.nodes.node_runtime_sweep --import-check
 
   # ============================================================================
+  # COMPLIANCE SWEEP GATE (OMN-14541, class fix, parent OMN-14531)
+  # Handler contract compliance sweep (hardcoded topics, undeclared transport
+  # imports, orphaned MISSING_HANDLER_ROUTING handlers, logic-in-node) as a
+  # required, fail-closed CI gate — enforcement, not detection (Rule 5).
+  # Scope: this checkout only (--target-dirs .), collected by real harness
+  # code (the checkout root), never an operator-typed repo name. The sweep
+  # itself refuses to report a verdict (status=error, exit 1) when the scan
+  # scope resolves to zero handlers and zero contracts — a scanned-nothing
+  # scope can never be reported clean (the class defect this gate closes).
+  # ============================================================================
+  compliance-sweep:
+    needs: occ-preflight
+    if: always()
+    name: Compliance Sweep
+    runs-on: ubuntu-latest
+    steps:
+      # fetch-depth: 0 (full history) is required so the violation baseline
+      # ratchet can resolve the merge-base with the target branch (OMN-14541,
+      # org-jam fix) — a shallow clone cannot prove a baseline addition
+      # predates this PR.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Run handler contract compliance sweep
+        run: uv run python -m omnimarket.nodes.node_compliance_sweep --target-dirs .
+
+  # ============================================================================
   # CORE-ONLY-INSTALL GATE (OMN-13446, Phase 5, epic OMN-13442)
   # Local-First Runtime Re-Convergence: RuntimeLocal + the local-runtime protocols
   # are now CORE-RESIDENT (omnibase_core.runtime / omnibase_core.protocols.runtime,
@@ -491,6 +1058,8 @@ jobs:
   # Required via the ci-summary aggregator (Rule 5: enforcement, not detection).
   # ============================================================================
   core-only-install:
+    needs: occ-preflight
+    if: always()
     name: Core-Only Install Gate
     runs-on: ubuntu-latest
     steps:
@@ -537,8 +1106,8 @@ jobs:
 
   e2e-workflow-runner:
     name: E2E Workflow Runner (inmemory bus)
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
@@ -565,35 +1134,59 @@ jobs:
         run: uv python install 3.12
       - name: Install dependencies
         run: uv sync --locked --all-extras
-      - name: Run golden_chain_sweep workflow E2E
+      - name: Golden-chain census gate (OMN-14536)
         run: |
-          STATE_ROOT=$(mktemp -d)
-          if uv run onex node node_golden_chain_sweep \
-            --contract golden_chain_sweep_workflow.yaml \
-            --backend event_bus=inmemory \
-            --state-root "$STATE_ROOT" \
-            --timeout 60 \
-            --verbose; then
-            EXIT=0
-          else
-            EXIT=$?
-          fi
-          echo "--- workflow_result.json ---"
-          if [ -f "$STATE_ROOT/workflow_result.json" ]; then
-            cat "$STATE_ROOT/workflow_result.json"
-            if python3 -c "import json,sys; d=json.load(open('$STATE_ROOT/workflow_result.json')); sys.exit(0 if d.get('result')=='completed' else 1)"; then
-              EVIDENCE=0
-            else
-              EVIDENCE=$?
-            fi
-          else
-            EVIDENCE=1
-          fi
-          if [ $EXIT -ne 0 ] || [ $EVIDENCE -ne 0 ]; then
-            echo "::error::E2E workflow run failed: exit=$EXIT evidence_check=$EVIDENCE"
+          # The golden_chain_sweep node is a pure validator over projected_rows.
+          # This step is the HARNESS: node_golden_chain_sweep.census_collector
+          # derives the locally-reachable (Group A) chains, drives each one's REAL
+          # projection on an in-memory DB, reads the materialized row back, runs
+          # the sweep, and exits non-zero unless overall_status==pass AND
+          # scanned_count>0. The Group B (cross-repo) chains are routed to
+          # omnibase_infra CI — see .github/workflows/golden-chain-crossrepo.yml.
+          #
+          # OMN-14536: this replaces the prior "workflow E2E" check that gated on
+          # workflow_result.json result=='completed' (the workflow RAN) rather
+          # than the node's overall_status (its verdict). With projected_rows={}
+          # every chain timed out, the node returned overall_status=fail, and CI
+          # passed anyway — 0 of 13 chains verified. The gate now reads the verdict.
+          set -o pipefail
+          RESULT=$(mktemp)
+          uv run python -m omnimarket.nodes.node_golden_chain_sweep.census_collector \
+            --out "$RESULT" || GATE_EXIT=$?
+          GATE_EXIT=${GATE_EXIT:-0}
+          echo "--- census gate result ($RESULT) ---"
+          # Fail-closed cross-check on the emitted JSON (belt-and-suspenders on
+          # top of the collector's own exit code): overall_status must be pass,
+          # scanned_count must be > 0, and the derived split must cover the whole
+          # registry (no chain silently dropped from the denominator).
+          python3 - "$RESULT" <<'PY'
+          import json, sys
+          d = json.load(open(sys.argv[1]))
+          hr = d["handler_result"]
+          status = hr["overall_status"]
+          scanned = hr["scanned_count"]
+          reachable = set(d["reachable"]); routed = set(d["routed_to_omnibase_infra"])
+          print(d["coverage_boundary"])
+          errs = []
+          if scanned <= 0:
+              errs.append(f"scanned_count={scanned} (nothing observed — vacuous)")
+          if status != "pass":
+              errs.append(f"overall_status={status} (not pass)")
+          if not reachable:
+              errs.append("Group A (reachable) is empty — no chain is verified here")
+          if reachable & routed:
+              errs.append(f"chain(s) in BOTH buckets: {sorted(reachable & routed)}")
+          if errs:
+              for e in errs:
+                  print(f"::error::golden-chain census gate: {e}")
+              sys.exit(1)
+          print(f"golden-chain census gate GREEN: overall_status=pass, scanned_count={scanned}, "
+                f"reachable={len(reachable)}, routed_to_infra={len(routed)}")
+          PY
+          if [ "${GATE_EXIT}" -ne 0 ]; then
+            echo "::error::census collector exited ${GATE_EXIT}"
             exit 1
           fi
-          echo "E2E PASSED: terminal event received, evidence written, exit=0"
   # ============================================================================
   # GOLDEN CHAIN SUITE
   # Runs all 1,000+ golden chain tests (EventBusInmemory, zero infra) on every PR.
@@ -607,8 +1200,8 @@ jobs:
 
   golden-chains:
     name: Golden Chain Suite (inmemory bus)
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -631,7 +1224,7 @@ jobs:
           uv run pytest             tests/test_golden_chain_*.py             tests/unit/nodes/test_golden_chain_*.py             tests/nodes/*/test_golden_chain_*.py             -v --tb=short -q -m "not kafka"             --junit-xml=golden-chain-results.xml
       - name: Upload golden chain results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: golden-chain-results
           path: golden-chain-results.xml
@@ -646,8 +1239,8 @@ jobs:
 
   sea-e2e-chains:
     name: SEA E2E Acceptance + Error Chains (OMN-12660)
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -673,7 +1266,7 @@ jobs:
             --junit-xml=sea-e2e-chain-results.xml
       - name: Upload SEA chain results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sea-e2e-chain-results
           path: sea-e2e-chain-results.xml
@@ -692,8 +1285,8 @@ jobs:
 
   generated-node-golden-chain:
     name: Generated-Node Golden Chain Gate (OMN-13624)
-    needs: zone-filter
-    if: needs.zone-filter.outputs.docs_only != 'true'
+    needs: [occ-preflight, zone-filter]
+    if: needs.occ-preflight.result == 'success' && (needs.zone-filter.outputs.docs_only != 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -720,7 +1313,7 @@ jobs:
             --junit-xml=generated-node-golden-chain-results.xml
       - name: Upload generated-node golden-chain results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: generated-node-golden-chain-results
           path: generated-node-golden-chain-results.xml
@@ -737,7 +1330,61 @@ jobs:
   # Phase 3+ ratchet:   raise threshold as baseline shrinks over time.
   # DEAD_IMPORT pass remains advisory until scanner confidence is proven.
   # ============================================================================
+  # ============================================================================
+  # uv.lock git-SHA pin reachability (OMN-14449)
+  #
+  # Lives HERE, in ci.yml, and is wired into the ci-summary rollup below --
+  # NOT as a standalone workflow. A separate workflow file gets a separate
+  # run_id, and the only required check on dev is `CI Summary`, whose poller is
+  # run_id-scoped: a standalone job is structurally invisible to it and can
+  # never block a merge (OMN-14415). A gate that cannot block is decoration.
+  #
+  # It clones each pinned sibling FRESH, because `git branch -r --contains`
+  # reports a deleted branch's commit as reachable on any clone that fetched it
+  # before deletion. The naive check is green on every developer's machine and
+  # on nothing else -- CI is the only place it can tell the truth (OMN-14447).
+  # ============================================================================
+  uv-lock-pin-reachability:
+    needs: occ-preflight
+    if: always()
+    name: uv.lock Pin Reachability
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Clone pinned sibling repos (FRESH -- no stale refs possible)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/clones"
+          repos=$(python3 - <<'PY'
+          import re, pathlib
+          text = pathlib.Path("uv.lock").read_text()
+          pat = r'git\s*=\s*"https://github\.com/[\w-]+/([\w-]+)\.git\?rev=[0-9a-f]{40}'
+          print("\n".join(sorted(set(re.findall(pat, text)))))
+          PY
+          )
+          for r in ${repos}; do
+            git clone --quiet "https://x-access-token:${GH_TOKEN}@github.com/OmniNode-ai/${r}.git" \
+              "${RUNNER_TEMP}/clones/${r}" \
+              || echo "::warning::could not clone ${r}; it will be SKIPped"
+          done
+
+      - name: Assert every git-SHA pin is reachable from a remote branch
+        run: |
+          python3 scripts/ci/check_uv_lock_pin_reachability.py \
+            --lock uv.lock \
+            --clones-root "${RUNNER_TEMP}/clones"
+
   dep-health:
+    needs: occ-preflight
+    if: always()
     name: Dependency Health Gate
     runs-on: ubuntu-latest
     steps:
@@ -778,9 +1425,10 @@ jobs:
             --delta-mode
 
   contract-compliance:
+    needs: occ-preflight
     name: Contract Compliance Check
     runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push'
+    if: needs.occ-preflight.result == 'success' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push')
     steps:
       - uses: actions/checkout@v6
       - name: Checkout onex_change_control
@@ -811,6 +1459,54 @@ jobs:
           GH_TOKEN: ${{ github.token }}
 
   # ============================================================================
+  # CONTRACT SWEEP GATE (OMN-14542, class fix, parent OMN-14531)
+  # node_contract_sweep (`nodes/*/contract.yaml` field/topic/node_type compliance)
+  # previously had ZERO CI/pre-commit caller anywhere and its ContractSweepRequest
+  # defaulted `repos` to an empty list, which the handler silently reinterpreted as
+  # "scan whatever top-level omni_home dirs happen to have a src/" — a prior receipt
+  # reported 9 contracts checked clean while 941 actually existed (~1% coverage).
+  #
+  # This job wires scripts/ci/run_contract_sweep_gate.py as a REQUIRED gate. The
+  # script derives the census (--repos) from its own on-disk location (never an
+  # operator-typed value) and independently re-counts contract.yaml files via a
+  # second, separately-implemented filesystem probe, then asserts the node's own
+  # scanned_count matches that independent count and is > 0. Any narrowing
+  # (scanned_count mismatch), any empty scope (scanned_count == 0), or an
+  # unresolvable OMNI_HOME is a HARD, BLOCKING failure — this is what actually
+  # closes the "9 vs 941" defect.
+  #
+  # SCOPE — the pre-existing field/topic/node_type backlog (5 major, 21 minor as
+  # of the gate landing) was paid down under OMN-14544: the 5 major violations
+  # (2 contracts missing contract_version/node_version, node_emit_daemon's
+  # invalid node_type) were fixed at the source, and the 21 minor violations
+  # were re-classified — `onex.snapshot.*` is a real, cross-repo-established
+  # projection-broadcast topic kind (verified in use across omnimarket,
+  # omnidash, onex_change_control, omnibase_infra, omnibase_core, and
+  # omniintelligence), not 21 naming mistakes, so the separate
+  # `_SNAPSHOT_TOPIC_RE` accepts it. The corpus is now a real, enforced zero — this job passes
+  # --strict so any NEW violation fails closed.
+  # ============================================================================
+  contract-sweep-gate:
+    needs: occ-preflight
+    if: always()
+    name: Contract Sweep Gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Run contract sweep scope-invariant gate
+        run: uv run python scripts/ci/run_contract_sweep_gate.py --strict
+
+  # ============================================================================
   # AISLOP SWEEP GATE (OMN-13578) — failing-rollup sub-job (Model B, OMN-13574)
   # Detection sweeps that are not pre-merge gates are advisory and get ignored
   # (Operating Rule 5). aislop detection was ABSENT from omnimarket CI; this job
@@ -829,6 +1525,8 @@ jobs:
   # across repos rather than forking a second omnimarket-local copy.
   # ============================================================================
   aislop-sweep:
+    needs: occ-preflight
+    if: always()
     name: Aislop Sweep (strict, PR diff)
     runs-on: ubuntu-latest
     steps:
@@ -850,11 +1548,7 @@ jobs:
         # fetch resolves the true merge-base.
         env:
           BASE_REF: ${{ github.base_ref }}
-          HEAD_REF: ${{ github.head_ref }}
         run: |
-          if [ "$BASE_REF" = "main" ] && [[ "$HEAD_REF" == promotion/*-dev-to-main ]]; then
-            BASE_REF="dev"
-          fi
           if [ -n "$BASE_REF" ]; then
             git fetch origin "$BASE_REF" --no-tags
             FILES=$(git diff --name-only "origin/$BASE_REF"...HEAD -- '*.py' '*.md' | tr '\n' ' ')
@@ -875,47 +1569,377 @@ jobs:
           # shellcheck disable=SC2086
           python ../omnibase_core/scripts/validation/check_ai_slop.py --strict $FILES
 
+  # ============================================================================
+  # COVERAGE SWEEP GATE (OMN-14539) — failing-rollup sub-job.
+  # Detection sweeps that are not pre-merge gates are advisory and get ignored
+  # (Operating Rule 5). coverage_sweep existed but nothing ever GENERATED the
+  # coverage.json artifact it reads — the handler silently `continue`d past a
+  # missing one and reported status="clean" (OMN-14531 audit: false green
+  # over zero measured modules). This job is the harness that was missing: it
+  # generates a real coverage.json for THIS repo's own checkout via
+  # `pytest --cov` (scripts/ci/run_coverage_sweep_gate.py), then dispatches
+  # node_coverage_sweep against it.
+  #
+  # COVERAGE BOUNDARY (explicit, OMN-14531 Part 4): this job covers omnimarket
+  # only — the fleet-wide 8-repo default scan (sweep_scope.DEFAULT_REPOS)
+  # needs those repos checked out and is tracked as follow-up under OMN-14531.
+  # What this job DOES guarantee: the sweep can no longer silently pass over
+  # an unmeasured scope. Fails when status="error" (no usable coverage
+  # artifact was ever produced); existing coverage debt (status="gaps_found")
+  # is informational and does not block, matching aislop-sweep's
+  # new-vs-existing-debt precedent above.
+  # ============================================================================
+  coverage-sweep-gate:
+    needs: occ-preflight
+    if: always()
+    name: Coverage Sweep Gate
+    runs-on: ubuntu-latest
+    # OMN-14645: bound the longest-pole job explicitly. The generation step caps
+    # its inner `pytest --cov` at 1800s (30 min) in run_coverage_sweep_gate.py;
+    # 40 min leaves headroom for setup (3 clones + `uv sync --all-extras`) while
+    # ensuring a wedged/orphaned pytest child can never hold a runner slot for
+    # the 360-minute GitHub default. A timeout here surfaces as `cancelled` and
+    # is caught fail-closed by the strict CI-Summary check below (never a pass).
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Generate coverage.json and sweep it (OMN-14539)
+        run: uv run python scripts/ci/run_coverage_sweep_gate.py --target-dir "$GITHUB_WORKSPACE"
+      # OMN-14680: publish the authoritative census so the shadow aggregator can
+      # prove same-head parity against it. Additive only — this job's pass/fail
+      # is still decided solely by the sweep step above; it remains the
+      # merge-blocking authority until the shadow path is proven and cut over.
+      - name: Upload authoritative coverage.json (OMN-14680 shadow parity)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: coverage-authoritative
+          path: coverage.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  # ============================================================================
+  # COVERAGE AGGREGATE — SHADOW (OMN-14680 / merge-flow WS2)
+  # SHADOW, NON-BLOCKING: deliberately NOT in ci-summary `needs:`, so it can
+  # fail LOUD without wedging a merge. It proves the per-shard coverage
+  # artifacts emitted by `test` can be combined ONCE (no second full
+  # `pytest --cov`) into a census at parity with the authoritative
+  # `coverage-sweep-gate`. Fail-closed on missing/stale/malformed/wrong-head
+  # artifacts. The authoritative gate stays the required census until parity
+  # holds across enough real PRs to cut over (plan §2 WS2 rollback:
+  # "Restore the existing sweep as required if comparison diverges; do not
+  # waive coverage.").
+  # ============================================================================
+  coverage-aggregate-shadow:
+    name: Coverage Aggregate (shadow)
+    needs: [occ-preflight, detect-changes, test, coverage-sweep-gate]
+    # Runs even if `test`/`coverage-sweep-gate` failed (always()) so a partial
+    # shard set is surfaced fail-closed; skipped only when detect-changes was
+    # (docs-only PRs produce no shards to aggregate).
+    if: always() && needs.detect-changes.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      - name: Install uv (dependency cache — OMN-14680)
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+      - name: Download per-shard coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-shard-*
+          path: .coverage-artifacts
+          merge-multiple: true
+      - name: Download authoritative coverage.json (best-effort)
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: coverage-authoritative
+          path: .coverage-authoritative
+      - name: Aggregate + validate + shadow parity (OMN-14680)
+        run: |
+          uv run python scripts/ci/aggregate_coverage_artifacts.py \
+            --artifacts-dir .coverage-artifacts \
+            --expected-head "${{ github.sha }}" \
+            --split-count "${{ needs.detect-changes.outputs.split_count }}" \
+            --target-dir "$GITHUB_WORKSPACE" \
+            --compare-to .coverage-authoritative/coverage.json \
+            --tolerance 0.5 \
+            --max-age-seconds 21600
+
+  # ============================================================================
+  # WORKFLOW MODULE-RESOLUTION GUARD (OMN-14176) — failing-rollup sub-job.
+  # Every in-repo omnimarket module referenced by a .github/workflows/*.yml step
+  # (from X import / import X / python -m X) must resolve under src/omnimarket/.
+  # A workflow that imports a deleted node (e.g. node_pr_review_bot, deleted in
+  # OMN-13212) previously stayed green while silently no-op'ing and reporting a
+  # false CLEAN — nothing proved the module it claims to run still exists. This
+  # guard closes that gap. Same-repo scope only; sibling-repo refs (omniintelligence.*,
+  # omnibase_*) are cloned at CI runtime and out of scope. Feeds the required
+  # ci-summary rollup (Rule 5: enforcement, not detection). Pure stdlib, no uv
+  # sync. SYNC with pre-commit hook "workflow-module-refs".
+  # ============================================================================
+  workflow-module-refs:
+    needs: occ-preflight
+    if: always()
+    name: Workflow Module Resolution
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check workflow module references (OMN-14176)
+        run: python scripts/ci/check_workflow_module_refs.py
+
+  no-noncanonical-lifecycle-classes:
+    name: no-noncanonical-lifecycle-classes
+    # OMN-14350: non-canonical lifecycle-class ratchet. Unconditional (no needs/if)
+    # so it never skips; wired into the required "CI Summary" via needs: + a strict
+    # success-only verdict check (fail-closed on skipped/cancelled/failure).
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.3"
+      - name: Ratchet non-canonical lifecycle-word classes against frozen allowlist (OMN-14350)
+        run: |
+          uv run --no-project \
+            --with 'omnibase-core @ git+https://github.com/OmniNode-ai/omnibase_core@63635097705d832e0ee9c4811093efb31349105c' \
+            python -m omnibase_core.validators.no_noncanonical_lifecycle_classes \
+            --check-stale \
+            --allowlist .onex_ratchets/noncanonical_class_allowlist.yaml \
+            src/omnimarket
+
+  # ============================================================================
+  # CONTRACT TOPIC GRAPH (OMN-14527 / OMN-14568 / OMN-14582)
+  # Static producer/consumer oracle over EVERY topic-declaring package. Moved
+  # here from the standalone contract-topic-graph.yml (retired) because GHA
+  # `needs:` cannot cross workflow-file boundaries -- CI Summary can only
+  # depend on jobs defined in THIS file.
+  #
+  # OMN-14582 Phase 1: unconditional (no needs/if), mirroring
+  # no-noncanonical-lifecycle-classes exactly, so it never silently skips.
+  # OMN-14582 Phase 2 / OMN-14640: promoted to the strict success-only slot
+  # in ci-summary below (RESULT must be EXACTLY 'success'; skipped/cancelled/
+  # failure all block) -- see the strict block in the ci-summary job.
+  # ============================================================================
+  contract-topic-graph:
+    name: contract-topic-graph
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      CONTRACT_GRAPH_CHECKOUT_ROOT: ${{ github.workspace }}/.contract-graph-checkouts
+    steps:
+      # fetch-depth: 0 (full history) is required so the baseline ratchet can
+      # resolve the merge-base with the target branch -- a shallow clone
+      # cannot prove a baseline addition predates this PR.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      # Census-only siblings (OMN-14568): NOT pip dependencies, just checked
+      # out so parse_contract can read their contract.yaml text. See
+      # CHECKOUT_PACKAGES / CONTRACT_GRAPH_CHECKOUT_ROOT in
+      # contract_topic_graph.py.
+      - name: Checkout omniclaude (census-only, full topic coverage)
+        uses: actions/checkout@v4
+        with:
+          repository: OmniNode-ai/omniclaude
+          ref: dev
+          persist-credentials: false
+          path: .contract-graph-checkouts/omniclaude
+
+      - name: Checkout omniintelligence (census-only, full topic coverage)
+        uses: actions/checkout@v4
+        with:
+          repository: OmniNode-ai/omniintelligence
+          ref: dev
+          persist-credentials: false
+          path: .contract-graph-checkouts/omniintelligence
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --all-extras
+
+      # Fail closed on ANY missing package -- both the runtime-soundness pair
+      # (ACTIVE_RUNTIME_PACKAGES) and the full census scope (GRAPH_PACKAGES).
+      # A silent partial here is exactly how OMN-14527 shipped scoped to 3 of
+      # 9 topic-declaring packages for months with nothing erroring -- assert
+      # completeness loudly so a broken checkout or a dependency change
+      # surfaces as a gate failure, never as silence.
+      - name: Assert the graph surface is complete (fail closed)
+        run: |
+          uv run python - <<'PY'
+          from omnimarket.validators.contract_topic_graph import (
+              GRAPH_PACKAGES,
+              discover_contract_roots,
+          )
+
+          roots = discover_contract_roots()
+          missing = [p for p in GRAPH_PACKAGES if p not in roots]
+          if missing:
+              raise SystemExit(
+                  f"::error::Contract graph is INCOMPLETE — missing {missing}. "
+                  "A partial graph reports every cross-package producer as a phantom "
+                  "orphan. Restore the dependency/checkout or move this gate."
+              )
+          print(f"Graph surface complete: {sorted(roots)}")
+          PY
+
+      - name: Contract topic graph gate (ratcheted)
+        run: uv run python -m omnimarket.validators.contract_topic_graph
+
+      - name: Golden-chain tests (generated per edge)
+        run: uv run pytest tests/validators/test_contract_topic_graph.py -q
+
+      - name: Census (informational)
+        if: always()
+        run: uv run python -m omnimarket.validators.contract_topic_graph --report || true
+
   ci-summary:
     name: CI Summary
+    # OMN-14127 fan-out: REQUIRED branch-protection context, implemented as a
+    # NO-`needs`, GitHub-hosted, FAIL-CLOSED poller (ported from omnibase_core
+    # #1397 / omnibase_infra #2230 / omniclaude #1870 — omnimarket was the last
+    # `needs`-gated ci-summary on the fleet). A `needs`-gated job gets no
+    # check-run until its `needs` terminalize, so under self-hosted fleet
+    # saturation the old needs-based CI Summary (needs: [occ-preflight,
+    # zone-filter, lint, ...28 upstream jobs]) was ABSENT forever and the PR
+    # wedged BLOCKED with no auto-recovery. With NO `needs` this job's check-run
+    # instantiates immediately (the required context can never be absent); it
+    # polls the current run's job conclusions and posts a terminal
+    # success/failure within a bounded deadline. DEFAULT-DENY: green ONLY when
+    # every strict/skippable gate is present+good, the dynamic test matrix ran
+    # to completion, AND no non-allowlisted job failed — see
+    # scripts/ci/ci_summary_gate.py for the auditable gating set + strict/
+    # skippable split + soft-allowlist (unit-tested in
+    # tests/unit/scripts/ci/test_ci_summary_gate.py). Pure hosted GitHub-API
+    # polling: zero self-hosted/LAN dependency. DO NOT rename — the job name IS
+    # the required context; a rename re-wedges every PR.
+    #
+    # COVERAGE HONESTY: this poller summarizes ci.yml jobs ONLY. ~38 other
+    # required contexts (Hostile Review Gate, deploy-gate, OCC Emitter Golden
+    # Gate, receipt-honesty, ...) are produced by OTHER workflow files, are
+    # independently required, and are NOT summarized here — see
+    # UNSUMMARIZED_REQUIRED_CONTEXTS in the gate script. The name does not imply
+    # whole-PR coverage.
     runs-on: ubuntu-latest
-    needs: [zone-filter, lint, typecheck, detect-changes, test, topic-naming-lint, runtime-sweep, core-only-install, contract-compliance, e2e-workflow-runner, golden-chains, sea-e2e-chains, generated-node-golden-chain, dep-health, aislop-sweep]
     if: always()
+    permissions:
+      actions: read
+      contents: read
+    # Deadline (below) is comfortably under any run-cancellation window so the
+    # required context ALWAYS posts a terminal state first. The concurrency
+    # group above does NOT cancel-in-progress, so on pull_request there is
+    # effectively no shorter cancel window than GitHub's job default. This job
+    # timeout is only a hard backstop above the internal poll deadline.
+    timeout-minutes: 100
     steps:
-      - name: Check CI results
+      - name: Checkout (gate script)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ github.event_name == 'merge_group' && github.event.merge_group.base_sha || github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.sha }}
+          persist-credentials: false
+      - name: Checkout head gate script
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          path: .ci-summary-head
+          sparse-checkout: scripts/ci/ci_summary_gate.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Restore head gate script
+        if: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
+        run: cp .ci-summary-head/scripts/ci/ci_summary_gate.py scripts/ci/ci_summary_gate.py
+      - name: Poll run jobs and compute fail-closed CI Summary verdict
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          # Bounded poll window (minutes) — kept under the run-cancel window so
+          # the required context always reaches a terminal state first.
+          DEADLINE_MINUTES: "90"
+          POLL_INTERVAL_SECONDS: "45"
         run: |
-          echo "=== CI Summary ==="
-          FAILED=false
-
-          for check in \
-            "zone-filter=${{ needs.zone-filter.result }}" \
-            "lint=${{ needs.lint.result }}" \
-            "typecheck=${{ needs.typecheck.result }}" \
-            "detect-changes=${{ needs.detect-changes.result }}" \
-            "test=${{ needs.test.result }}" \
-            "topic-naming-lint=${{ needs.topic-naming-lint.result }}" \
-            "runtime-sweep=${{ needs.runtime-sweep.result }}" \
-            "core-only-install=${{ needs.core-only-install.result }}" \
-            "contract-compliance=${{ needs.contract-compliance.result }}" \
-            "e2e-workflow-runner=${{ needs.e2e-workflow-runner.result }}" \
-            "golden-chains=${{ needs.golden-chains.result }}" \
-            "sea-e2e-chains=${{ needs.sea-e2e-chains.result }}" \
-            "generated-node-golden-chain=${{ needs.generated-node-golden-chain.result }}" \
-            "dep-health=${{ needs.dep-health.result }}" \
-            "aislop-sweep=${{ needs.aislop-sweep.result }}"; do
-            NAME="${check%%=*}"
-            RESULT="${check##*=}"
-            if [ "$RESULT" != "success" ] && [ "$RESULT" != "skipped" ]; then
-              echo "::error::$NAME failed (result: $RESULT)"
-              FAILED=true
-            else
-              echo "$NAME: $RESULT"
+          # GitHub invokes this step as `bash -e {0}`; disable errexit because
+          # the gate script's non-zero exit codes are handled explicitly below
+          # (2 = PENDING must NOT terminate the poll loop).
+          set +e
+          set -uo pipefail
+          deadline=$(( $(date +%s) + DEADLINE_MINUTES * 60 ))
+          attempt=0
+          while true; do
+            attempt=$((attempt + 1))
+            if ! gh api --paginate \
+                "repos/${GH_REPO}/actions/runs/${RUN_ID}/jobs?filter=all&per_page=100" \
+                --jq '.jobs[]' | jq -s '.' > jobs.json; then
+              if [ "$(date +%s)" -ge "${deadline}" ]; then
+                echo "::error::CI Summary poll deadline (${DEADLINE_MINUTES}m) reached while fetching jobs — failing closed"
+                exit 1
+              fi
+              echo "gh api fetch failed (attempt ${attempt}); retrying after ${POLL_INTERVAL_SECONDS}s"
+              sleep "${POLL_INTERVAL_SECONDS}"
+              continue
             fi
+            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}"
+            rc=$?
+            case "${rc}" in
+              0) echo "::notice::CI Summary = SUCCESS (all gating jobs provably passed)"; exit 0 ;;
+              1) echo "::error::CI Summary = FAILURE (fail-closed: a gating job failed/cancelled)"; exit 1 ;;
+              2) : ;;  # PENDING — gating jobs still running; keep polling
+              *) echo "::error::ci_summary_gate.py returned unexpected code ${rc}; failing closed"; exit 1 ;;
+            esac
+            if [ "$(date +%s)" -ge "${deadline}" ]; then
+              echo "::error::CI Summary poll deadline (${DEADLINE_MINUTES}m) reached with gating jobs still pending — failing closed"
+              python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --report-only || true
+              exit 1
+            fi
+            sleep "${POLL_INTERVAL_SECONDS}"
           done
-
-          if [ "$FAILED" = "true" ]; then
-            echo ""
-            echo "CI Summary FAILED"
-            exit 1
-          fi
-          echo ""
-          echo "CI Summary PASSED"

@@ -23,10 +23,8 @@ import urllib.request
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, cast
-from uuid import uuid4
 
 import yaml
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.routing.model_routing_policy import ModelRoutingPolicy
 from omnibase_infra.adapters.llm.adapter_llm_provider_openai import (
     AdapterLlmProviderOpenai,
@@ -837,9 +835,14 @@ async def _run_tests(worktree_path: str) -> bool:
 
 
 class HandlerCiFixEffect:
-    """EFFECT: diagnose failing CI job via LLM, apply patch, run test gate."""
+    """EFFECT: diagnose failing CI job via LLM, apply patch, run test gate.
 
-    async def handle(self, request: ModelCiFixCommand) -> ModelHandlerOutput:  # type: ignore[type-arg]
+    Canonical thin shape (OMN-14242): ``handle()`` takes a single typed
+    ``ModelCiFixCommand`` request and returns a typed ``CiFixResult``
+    directly -- no envelope, no coercion. The runtime wraps.
+    """
+
+    async def handle(self, request: ModelCiFixCommand) -> CiFixResult:
         """Attempt CI fix. Returns CiFixResult with patch_applied/local_tests_passed.
 
         The GitHub token ref-name is sourced from the contract ``secrets`` block
@@ -1121,7 +1124,7 @@ class HandlerCiFixEffect:
             is_noop = not patch_applied
 
         elapsed = time.monotonic() - t0
-        result = CiFixResult(
+        return CiFixResult(
             pr_number=request.pr_number,
             repo=request.repo,
             run_id_github=request.run_id_github,
@@ -1132,10 +1135,4 @@ class HandlerCiFixEffect:
             is_noop=is_noop,
             error=error_msg,
             elapsed_seconds=elapsed,
-        )
-        return ModelHandlerOutput.for_effect(
-            input_envelope_id=uuid4(),
-            correlation_id=request.correlation_id,
-            handler_id="node_ci_fix_effect",
-            events=(result,),
         )

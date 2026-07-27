@@ -1,0 +1,79 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-13501 / OMN-13502 (WS-F): no-faked-boundary gate — BLOCKING MODE for omnimarket.
+#
+# A hand-written class/object standing in for the platform's OWN inference /
+# routing / dispatch boundary (inference bridge, model router, routing-contract
+# resolution, registry, dispatch surface) that returns canned / prompt-echoed
+# output, or a patch("httpx.Client") / MagicMock substituting that egress inside a
+# real-dispatch test, is a FAKE of our architecture. This gate turns the
+# feedback_real_dispatch_path_tests failure ("handler-isolation tests pass while
+# live fails") into a mechanical detector.
+#
+# The detector is the pure COMPUTE HandlerNoFakedBoundaryCompute (OMN-13497)
+# executed over the in-memory event bus by runtime_no_faked_boundary, shipped in
+# omnibase_core 0.46.4 (PR #1377 detector-FP fix + PR #1379 gate; released
+# 2026-07-03). The canonical recorded-replay seam (patch("httpx.Client",
+# return_value=<RecordedReplayInferenceTransport>), OMN-13499) is exempt.
+#
+# WHY BLOCKING NOW: the OMN-13501 burn-down landed REAL fixes for the ~50 real
+# boundary fakes (recorded-replay transports, real model objects, contract-level
+# fakes, or a justified per-line onex-allow-faked-boundary for non-inference HTTP),
+# and the detector's OWN acceptance corpus
+# (validator_corpora/corpus_no_faked_boundary.py, which embeds fake examples as
+# ground truth) is file-level-exempt (onex-allow-file-faked-boundary). omnimarket
+# src+tests now scans CLEAN (0 findings), so this gate drops --report-only and runs
+# BLOCKING — new fakes fail the job and block merge. The job name
+# "No Faked Boundary Gate" is added to the dev branch-protection required contexts
+# by the operator (wedge-safe: merge_group trigger, no paths filter,
+# fail-propagating). Mirrors omnibase_core's blocking gate
+# (.github/workflows/no-faked-boundary.yml @ core).
+#
+# Suppress an approved fixture line with:  # onex-allow-faked-boundary
+
+name: No Faked Boundary Gate
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main, dev]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  no-faked-boundary-gate:
+    name: No Faked Boundary Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Run no-faked-boundary gate (full src + tests, BLOCKING)
+        run: |
+          uv run python -m omnibase_core.validation.no_faked_boundary.runtime_no_faked_boundary \
+            src tests

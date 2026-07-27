@@ -41,12 +41,20 @@ from omnimarket.routing.delegation_backend_resolution import (
 logger = logging.getLogger(__name__)
 
 # The judge rides a concrete CLOUD backend declared in the committed routing
-# contract (bifrost_delegation.yaml). ``cloud-glm`` carries a COMPLETE verbatim
-# endpoint_url (z.ai GLM coding endpoint), a concrete model_name (glm-5.2), and
-# the logical secret_ref ``llm.glm.api_key``. It is internet-reachable (not a LAN
-# .201 backend), so the judge effect resolves it identically in every runtime
-# lane. To swap the judge backend, repoint this id — no code change in the judge.
-_DEFAULT_JUDGE_BACKEND_ID = "cloud-glm"
+# contract (bifrost_delegation.yaml). ``cloud-glm-judge`` carries a COMPLETE
+# verbatim endpoint_url (z.ai GLM coding endpoint), a concrete model_name
+# (glm-5.2, the FLAGSHIP), and the logical secret_ref ``llm.glm.api_key``. It is
+# internet-reachable (not a LAN .201 backend), so the judge effect resolves it
+# identically in every runtime lane.
+#
+# OMN-14225: the judge backend is DECOUPLED from the ``cloud-glm`` escalation
+# backend. ``cloud-glm`` is the paid ESCALATION model and was repointed to the
+# cheaper ``glm-5-turbo``; the JUDGE is a quality authority, not an escalation
+# step, so it keeps its own ``cloud-glm-judge`` backend pinned to the flagship
+# ``glm-5.2`` and is unaffected by the escalation model. To swap the judge model,
+# repoint ``cloud-glm-judge``'s model_name in the contract — no code change here,
+# and the escalation model stays independent.
+_DEFAULT_JUDGE_BACKEND_ID = "cloud-glm-judge"
 
 
 class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
@@ -101,7 +109,16 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
 
         api_key: str | None = None
         if backend.secret_ref is not None:
-            resolved = resolve_api_key(backend.secret_ref)
+            # OMN-13960: thread the backend's contract-declared ``api_key_env`` as
+            # the env-var fallback (parity with the routing-availability check and
+            # the delegation effect handler). The store-level provider-native alias
+            # (OMN-13960) already covers the default GLM/OpenRouter/Gemini refs, but
+            # passing ``api_key_env`` here keeps this call site consistent with the
+            # other two and resolves a backend whose api_key_env is not in the
+            # store-level alias map.
+            resolved = resolve_api_key(
+                backend.secret_ref, env_var_fallback=backend.api_key_env
+            )
             if resolved is None:
                 raise ValueError(
                     f"Judge backend {backend.backend_id!r} declares secret_ref "

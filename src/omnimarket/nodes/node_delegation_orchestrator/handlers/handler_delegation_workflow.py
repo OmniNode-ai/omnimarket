@@ -49,10 +49,10 @@ from omnibase_core.models.delegation.model_invocation_command import (
 )
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_core.models.primitives.model_semver import ModelSemVer
 from pydantic import BaseModel
 
+from omnimarket.config import get_settings
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
@@ -61,13 +61,12 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalati
 from omnimarket.models.delegation.quality_bar_evidence import (
     format_quality_bar_labels,
 )
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+)
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
     HandlerEscalationDecision,
-)
-from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-    TOPIC_ID_DELEGATION_COMPLETED,
-    TOPIC_ID_DELEGATION_FAILED,
 )
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
@@ -75,20 +74,15 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import (
 from omnimarket.nodes.node_delegation_orchestrator.lifecycle_reactor import (
     next_state_from_lifecycle,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_baseline_intent import (
-    ModelBaselineIntent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escalation_attempt import (
     ModelDelegationEscalationAttempt,
-)
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
-    ModelDelegationResult,
+    ModelDelegationCompleted,
+    ModelDelegationFailed,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_intent import (
     ModelInferenceIntent,
@@ -116,7 +110,10 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
     describe_no_higher_tier_available,
+    is_free_tier,
     next_eligible_tier,
+    sibling_backend_available_in_tier,
+    tier_max_retries,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
@@ -124,7 +121,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 from omnimarket.pricing import (
     ModelActualCostMeasurement,
     build_premium_counterfactual,
-    estimate_baseline_cost_usd,
     recompute_actual_cost_and_savings,
 )
 from omnimarket.routing.model_escalation_decision_request import (
@@ -341,6 +337,22 @@ _PER_STEP_DISPATCH: dict[type, str] = {
 }
 
 
+# OMN-14771 (S8 PR1): the typed def-B input union — exactly the six
+# handler_routing event_models the contract declares (routing_strategy
+# "payload_type_match"). handle() dispatches off type(request) through
+# _PER_STEP_DISPATCH; the event-envelope boundary lives in the shared
+# runtime adapter, never in this core handler (definition B, C-core: the
+# envelope type is deliberately absent from this module).
+type DelegationWorkflowInput = (
+    ModelDelegationRequest
+    | ModelInvocationCommand
+    | ModelRoutingDecision
+    | ModelInferenceResponseData
+    | ModelQualityGateResult
+    | ModelAgentTaskLifecycleEvent
+)
+
+
 def _record_inference_response(
     workflow: DelegationWorkflowState,
     response: ModelInferenceResponseData,
@@ -412,6 +424,29 @@ def _inference_timeout_seconds(workflow: DelegationWorkflowState) -> float:
     return max(1.0, min(600.0, workflow.routing_decision.timeout_ms / 1000.0))
 
 
+def _resolve_tenant_id(workflow: DelegationWorkflowState) -> str | None:
+    """Resolve tenant identity for a terminal emission (OMN-14208).
+
+    Under durable per-request state, ``workflow.tenant_id`` is persisted and
+    reloaded fresh on every leg (proven by the state_codec round-trip golden
+    test), so this recovery is normally a no-op — the acceptance-time pin
+    survives unchanged. It exists as a defensive fallback for a durably-stored
+    row whose tenant pin comes back unset (e.g. a pre-existing row from before
+    this field, or any decode path that yields ``None``): legs 2-5 carry no
+    tenant_id on their own wire payload, so without this fallback a lost pin
+    would silently degrade to the shared 'omninode' projection column default
+    — the exact OMN-14058 failure mode this design closes. Mirrors the
+    acceptance-time precedence in ``handle_delegation_request``: the workflow's
+    own pin wins, then the pinned request's tenant_id, then the single
+    process-wide ``ONEX_TENANT_ID`` read.
+    """
+    if workflow.tenant_id:
+        return workflow.tenant_id
+    if workflow.request is not None and workflow.request.tenant_id:
+        return workflow.request.tenant_id
+    return get_settings().onex_tenant_id or None
+
+
 def _build_model_inference_intent(
     *,
     base_url: str,
@@ -425,6 +460,7 @@ def _build_model_inference_intent(
     api_key_ref: str | None,
     extra_headers: dict[str, str] | None,
     provider_request_options: dict[str, Any],
+    tenant_id: str | None,
 ) -> ModelInferenceIntent:
     # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
     # authority (decision.endpoint_url); the inference effect posts it verbatim.
@@ -440,10 +476,17 @@ def _build_model_inference_intent(
         "api_key_ref": api_key_ref,
         "extra_headers": extra_headers,
     }
-    if provider_request_options and "provider_request_options" in getattr(
-        ModelInferenceIntent, "model_fields", {}
-    ):
+    model_fields = getattr(ModelInferenceIntent, "model_fields", {})
+    if provider_request_options and "provider_request_options" in model_fields:
         payload["provider_request_options"] = provider_request_options
+    # OMN-14280 (OMN-14208 slice-2 A-now): stamp the workflow tenant onto the
+    # inference intent so the inference effect independently attributes its own
+    # side effects to the owning tenant. Guarded on the model exposing the field
+    # (mirrors provider_request_options above) so the producer degrades to the
+    # slice-1 correlation_id -> tenant attribution against a pre-0.46.8 core
+    # during the coordinated release window instead of raising extra="forbid".
+    if "tenant_id" in model_fields:
+        payload["tenant_id"] = tenant_id
     return ModelInferenceIntent.model_validate(payload)
 
 
@@ -550,6 +593,9 @@ def _evaluate_compliance(
             api_key_ref=workflow.routing_decision.api_key_ref,
             extra_headers=workflow.routing_decision.extra_headers,
             provider_request_options=provider_request_options,
+            # OMN-14280: stamp the workflow tenant onto the repair-attempt intent
+            # (same precedence as slice-1 terminal attribution via _resolve_tenant_id).
+            tenant_id=_resolve_tenant_id(workflow),
         )
     ]
 
@@ -614,6 +660,12 @@ class TerminalEmissionInputs:
     prior_attempt_cost_usd: float = 0.0
     prior_attempt_prompt_tokens: int = 0
     prior_attempt_completion_tokens: int = 0
+    # OMN-14058 (OPERATOR-ACCEPTED INTERIM): tenant identity pinned onto the
+    # workflow at request-acceptance (ONEX_TENANT_ID fallback), carried onto
+    # every terminal so delegation/savings projections can stamp a real tenant
+    # instead of the shared 'omninode' column default. The durable per-tenant
+    # identity design is OMN-14107.
+    tenant_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -657,7 +709,13 @@ class DelegationWorkflowState:
     # from acceptance. Defaults to '' (OFF-arm: no context pack supplied).
     context_pack_hash: str = ""
     gate_result: ModelQualityGateResult | None = None
-    started_at_ns: int = field(default_factory=time.monotonic_ns)
+    # OMN-14208: wall-clock epoch, NOT time.monotonic_ns(). monotonic_ns has a
+    # process/boot-local epoch — durable cross-process state (a leg replayed in
+    # a different process than the one that started the workflow) makes a
+    # monotonic-vs-monotonic subtraction across processes meaningless (garbage
+    # or negative elapsed_ms). latency_ms is an observability metric on the
+    # terminal event, not an ordering authority, so an absolute epoch is correct.
+    started_at_ns: int = field(default_factory=time.time_ns)
     # Compliance-loop counters (OMN-10794). The orchestrator owns the loop,
     # ``compliance_attempts`` counts the inference attempts it has issued so
     # far (1 = first attempt) and ``accumulated_tokens`` is the running sum
@@ -687,6 +745,39 @@ class DelegationWorkflowState:
     cumulative_attempt_cost_usd: float = 0.0
     cumulative_attempt_prompt_tokens: int = 0
     cumulative_attempt_completion_tokens: int = 0
+    # OMN-14234 (retry-local / best-of-N). A FREE (free_local) tier is $0 to
+    # re-run, so a sub-bar quality result on a free tier retries the SAME tier up
+    # to its contract-declared ``max_retries`` budget (routing_tiers.yaml; local=2,
+    # so 1 initial + 2 retries = 3 $0 drafts) BEFORE escalating to a paid tier —
+    # lifting the non-deterministic local coder's $0 pass-rate (~1/3 single-shot ->
+    # ~70% at 3 attempts) instead of paying on the first weak draft.
+    # ``local_retry_count`` counts retries already issued on ``local_retry_tier``;
+    # both reset when a real tier escalation moves the workflow onto a different
+    # tier so each free tier gets its own best-of-N budget. Retry-local NEVER
+    # increments ``escalation_count`` (a same-tier retry is not a tier escalation).
+    local_retry_count: int = 0
+    local_retry_tier: str | None = None
+    # OMN-14402 (same-tier backend fallback). A TRANSPORT/inference failure of
+    # the selected backend tries a SIBLING backend in the same tier — one that
+    # also declares the task_type — before escalating the whole tier to the
+    # next (possibly paid/cloud) tier. ``same_tier_failed_backend_refs`` is the
+    # set of backend_refs already tried-and-failed on
+    # ``same_tier_failed_backend_tier``; both reset when the workflow moves
+    # onto a different tier (a real escalation), so each tier's fallback
+    # exclusion set is independent — mirrors the local_retry_tier/
+    # local_retry_count reset pattern above. Distinct from that OMN-14234 pair:
+    # local_retry_* is a same-tier RE-DRAFT on a quality-gate failure (best-of-N
+    # on a FREE tier only); this is a same-tier RE-ROUTE to a DIFFERENT backend
+    # on a transport/inference failure (any tier). Never increments
+    # ``escalation_count`` and emits no escalation event — a same-tier backend
+    # swap is not a tier escalation.
+    same_tier_failed_backend_refs: tuple[str, ...] = ()
+    same_tier_failed_backend_tier: str | None = None
+    # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolved ONCE in
+    # handle_delegation_request and carried onto every TerminalEmissionInputs
+    # for this correlation_id (mirrors the context_pack_hash acceptance-pin
+    # pattern above). The durable per-tenant identity design is OMN-14107.
+    tenant_id: str | None = None
 
 
 class HandlerDelegationWorkflow:
@@ -698,6 +789,17 @@ class HandlerDelegationWorkflow:
     """
 
     _shared_workflows: ClassVar[dict[UUID, DelegationWorkflowState]] = {}
+
+    @classmethod
+    def shared_workflows(cls) -> dict[UUID, DelegationWorkflowState]:
+        """Return the process-wide fallback workflow dict.
+
+        OMN-14208: the public accessor ``DelegationWorkflowStateProxy`` (in
+        ``state_codec.py``) uses to forward to when the state_io ContextVar is
+        unset — avoids a cross-module private-attribute reach into
+        ``_shared_workflows`` directly.
+        """
+        return cls._shared_workflows
 
     # OMN-13476: the escalation/tier decision is owned by a stateless COMPUTE
     # node. The orchestrator resolves the config-dependent inputs (next eligible
@@ -711,7 +813,30 @@ class HandlerDelegationWorkflow:
         self,
         workflows: MutableMapping[UUID, DelegationWorkflowState] | None = None,
     ) -> None:
-        self._workflows = workflows if workflows is not None else self._shared_workflows
+        if workflows is not None:
+            self._workflows = workflows
+        else:
+            # OMN-14208: default swaps from the bare ClassVar dict to the
+            # process-wide shared ContextVar-backed proxy singleton. Local
+            # import: state_codec imports DelegationWorkflowState from this
+            # module, so importing the proxy at module scope here would be
+            # circular. The proxy transparently forwards every operation to
+            # `_shared_workflows` when the state_io ContextVar is unset
+            # (tests, standalone, any caller outside the runtime dispatch-seam
+            # boundary hook), so this swap is behavior-preserving for every
+            # existing caller — it only activates decode/CAS-persist
+            # semantics under a live state_io binding. The shared singleton
+            # (rather than a fresh instance per handler) is what lets
+            # `StateIoCodec.flush` — resolved independently by
+            # omnibase_infra's wiring — reach the SAME per-request decoded
+            # cache this proxy populates (pair-verify M1); production
+            # constructs exactly one HandlerDelegationWorkflow, so this is a
+            # no-op there.
+            from omnimarket.nodes.node_delegation_orchestrator.state_codec import (
+                get_default_proxy,
+            )
+
+            self._workflows = get_default_proxy()
 
     @property
     def workflows(self) -> MutableMapping[UUID, DelegationWorkflowState]:
@@ -838,6 +963,12 @@ class HandlerDelegationWorkflow:
             # OMN-13644: pin the context-pack hash from acceptance so every
             # terminal carries it regardless of later escalation / request loss.
             context_pack_hash=_context_pack_hash_for_event(request),
+            # OMN-14058 (OPERATOR-ACCEPTED INTERIM): pin the tenant identity
+            # from acceptance for the same reason — an explicit request-level
+            # tenant_id wins; otherwise fall back to the single ONEX_TENANT_ID
+            # read for this process (no tenant identity otherwise exists
+            # anywhere in the delegation chain). Durable design: OMN-14107.
+            tenant_id=request.tenant_id or (get_settings().onex_tenant_id or None),
         )
         self._workflows[cid] = workflow
 
@@ -886,7 +1017,11 @@ class HandlerDelegationWorkflow:
             workflow.state == EnumDelegationState.ROUTED
             and workflow.routing_decision is None
         ):
-            # Escalation re-entry: ESCALATING -> ROUTED with a new routing decision.
+            # Re-route re-entry with a new routing decision: either an escalation
+            # (ESCALATING -> ROUTED, a higher tier) or an OMN-14234 retry-local
+            # (GATE_EVALUATED -> ROUTED, the SAME free tier). Both reset
+            # routing_decision to None before emitting the re-route intent, so this
+            # branch handles them identically.
             workflow.routing_decision = decision
             workflow.current_tier_name = decision.tier_name or None
             workflow.compliance_attempts += 1
@@ -935,6 +1070,9 @@ class HandlerDelegationWorkflow:
                 api_key_ref=decision.api_key_ref,
                 extra_headers=decision.extra_headers,
                 provider_request_options=provider_request_options,
+                # OMN-14280: stamp the workflow tenant onto the initial/escalation
+                # inference intent (slice-1 precedence via _resolve_tenant_id).
+                tenant_id=_resolve_tenant_id(workflow),
             )
         ]
 
@@ -961,6 +1099,24 @@ class HandlerDelegationWorkflow:
         if workflow is None:
             return []
 
+        # OMN-14280 (OMN-14208 slice-2 A-now): observability cross-check only.
+        # The inference effect round-trips the wire tenant it acted on; compare it
+        # against the workflow tenant so a divergence is *visible* in logs. This is
+        # deliberately WARN-only (not fail-closed) — the fail-closed
+        # wire==topic-tenant guard is A-enforce, gated behind the gateway
+        # topic-tenant stamp and not part of this slice. A None response tenant
+        # (pre-0.46.8 core / legacy replay) is not a mismatch and is skipped.
+        response_tenant = getattr(response, "tenant_id", None)
+        if response_tenant is not None and response_tenant != workflow.tenant_id:
+            _logger.warning(
+                "inference-response tenant divergence (A-now observability, "
+                "not enforced): correlation_id=%s response_tenant=%s "
+                "workflow_tenant=%s",
+                response.correlation_id,
+                response_tenant,
+                workflow.tenant_id,
+            )
+
         if workflow.state != EnumDelegationState.ROUTED:
             return []
 
@@ -969,7 +1125,9 @@ class HandlerDelegationWorkflow:
             return []
 
         if response.error_message:
-            elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+            # OMN-14208: wall-clock epoch subtraction (started_at_ns is now
+            # time.time_ns()) — see the field docstring above.
+            elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
             model_used = response.model_used or workflow.routing_decision.selected_model
 
             # Record this tier's failed attempt in escalation history before
@@ -994,6 +1152,30 @@ class HandlerDelegationWorkflow:
                 completion_tokens=response.completion_tokens,
             )
 
+            error_retryable = _should_escalate_inference_error(response.error_message)
+
+            # OMN-14402 (same-tier backend fallback): a RETRYABLE transport/
+            # inference failure (connection refused, timeout, unavailable —
+            # the SAME class the next branch treats as escalatable) gets one
+            # attempt per untried sibling backend in the CURRENT tier before
+            # ``next_eligible_tier`` walks to the next (possibly paid/cloud)
+            # tier below. A non-retryable error (empty content/choices) is
+            # unchanged — the existing minimal-safe classification still
+            # applies unmodified; a different local model is not assumed to
+            # fix a genuinely empty/malformed provider response either, so
+            # this stays scoped to the transport-failure class the ticket
+            # names.
+            if error_retryable:
+                sibling_retry_intents = self._maybe_retry_sibling_backend(
+                    workflow,
+                    failed_backend_ref=workflow.routing_decision.selected_backend_ref,
+                    attempt_cost_usd=attempt_cost_usd,
+                    prompt_tokens=response.prompt_tokens,
+                    completion_tokens=response.completion_tokens,
+                )
+                if sibling_retry_intents is not None:
+                    return sibling_retry_intents
+
             # OMN-13476: the escalate-or-terminate decision is owned by the
             # node_delegation_escalation_decision_compute COMPUTE. Infra errors
             # (auth failure, connection refused, timeout) are retryable at the
@@ -1008,9 +1190,7 @@ class HandlerDelegationWorkflow:
                 workflow,
                 max_escalation_attempts=_MAX_INFERENCE_ESCALATION_ATTEMPTS,
                 excluded_tiers=_INFERENCE_ERROR_EXCLUDED_TIERS,
-                error_retryable=_should_escalate_inference_error(
-                    response.error_message
-                ),
+                error_retryable=error_retryable,
                 non_retryable_reason="non_retryable_inference_response",
                 task_type=error_task_type,
             )
@@ -1102,6 +1282,7 @@ class HandlerDelegationWorkflow:
                 attempts_count=workflow.escalation_count + 1,
                 model_name=workflow.routing_decision.selected_model,
                 session_id=None,
+                tenant_id=_resolve_tenant_id(workflow),
                 # Pre-gate inference failure: no quality gate ran, so report the
                 # compat DTO's documented default gate set as "checked".
                 quality_gates_checked=["length", "refusal", "markers"],
@@ -1186,9 +1367,12 @@ class HandlerDelegationWorkflow:
 
         Returns:
         1. The single canonical delegation terminal event (completed or failed)
-        2. A baseline comparison intent for savings computation (pass only)
 
         OMN-13629: the legacy task-delegated.v1 compat event is no longer emitted.
+        OMN-15051: the secondary baseline-comparison intent previously returned
+        alongside the terminal on the pass path is gone -- it was a dead-end
+        producer (zero Kafka consumers); see the OMN-15051 comment above the
+        removed emission for the full evidence chain.
         """
         cid = result.correlation_id
         workflow = self._workflows.get(cid)
@@ -1206,7 +1390,8 @@ class HandlerDelegationWorkflow:
         assert workflow.inference_content is not None
         assert workflow.inference_model_used is not None
 
-        elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+        # OMN-14208: wall-clock epoch subtraction — see started_at_ns docstring.
+        elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
 
         # Compliance counters (OMN-10794): defaults preserve legacy single-attempt
         # semantics (1 attempt, total_tokens of that attempt) when the request
@@ -1240,6 +1425,22 @@ class HandlerDelegationWorkflow:
         actual_score = result.quality_score
         score_below_required_bar = actual_score < required_bar_authority.required_bar
         pre_filter_rejected = result.fail_category == "fail_deterministic"
+        # OMN-13959 — judge-unavailable degraded acceptance (parity with the
+        # bus-less local port ``_is_quality_accepted``). A VERIFIABLE class records
+        # ``score_source=deterministic_acceptance`` (not ``combined``) ONLY when the
+        # deterministic acceptance FLOOR passed but the LLM-judge adequacy score was
+        # NOT combined — i.e. the judge failed / was unreachable (``JUDGE_FAILED``:
+        # e.g. the cloud judge is 429-throttled). In that state the combined-score
+        # ``required_bar`` (0.85) is structurally un-meetable (the judge's 0.4
+        # adequacy band is absent, so the deterministic-only graded score tops out
+        # ~0.733), so a valid artifact that cleared the real DoD floor must fall
+        # back to the deterministic-floor verdict instead of escalating to ladder
+        # exhaustion during a cloud-judge outage. This does NOT weaken the bar: when
+        # the judge IS reachable the score is combined and the full bar applies.
+        judge_unavailable_floor = (
+            result.passed
+            and result.score_source == SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
+        )
         # OMN-13409: quality_accepted requires result.passed in addition to the
         # score-threshold and deterministic-rejection checks. Before this fix the
         # orchestrator recomputed acceptance from fail_category + score alone and
@@ -1250,7 +1451,9 @@ class HandlerDelegationWorkflow:
         # authority fails (including the extended no_refusal pre-pass) — and the
         # orchestrator must honour it.
         quality_accepted = (
-            not pre_filter_rejected and not score_below_required_bar and result.passed
+            not pre_filter_rejected
+            and result.passed
+            and (judge_unavailable_floor or not score_below_required_bar)
         )
 
         if quality_accepted:
@@ -1268,38 +1471,25 @@ class HandlerDelegationWorkflow:
                 required_bar_authority=required_bar_authority,
             )
 
-            estimated_claude_cost = estimate_baseline_cost_usd(
-                prompt_tokens=workflow.inference_prompt_tokens,
-                completion_tokens=workflow.inference_completion_tokens,
-            )
-            # OMN-13396: the candidate (delegated tier) cost is the MEASURED actual
-            # cost of the served tokens, not a hardcoded 0.0. free_local -> 0.0;
-            # metered -> rate x measured tokens. Same typed-tier-cost computation
-            # the projection uses, so baseline-vs-candidate is an honest delta.
-            candidate_cost = self._measure_terminal_cost(
-                tier_name=workflow.current_tier_name or "",
-                prompt_tokens=workflow.inference_prompt_tokens,
-                completion_tokens=workflow.inference_completion_tokens,
-                premium_counterfactual=None,
-            )
-
             self._advance(workflow, EnumDelegationState.COMPLETED)
             # OMN-13629 (WS-F Phase 1): the terminal is now a single canonical
-            # event from the one builder. Emission order is
-            # [completed-terminal, baseline-intent]; the legacy compat twin that
-            # previously trailed the baseline intent is gone.
+            # event from the one builder. OMN-15051: the secondary
+            # ``ModelBaselineIntent`` emission onto
+            # ``baseline-comparison-request.v1`` (removed here) predated this
+            # consolidation and never had a Kafka consumer (contract-topic-graph
+            # ORPHANED_PRODUCER; zero contracts anywhere subscribe to that
+            # topic). It carried no information the canonical terminal doesn't
+            # already carry: ``final_attempt_cost``/``cumulative_attempt_cost``
+            # below equal the removed ``candidate_cost_usd`` byte-for-byte (same
+            # ``recompute_actual_cost_and_savings`` call), and the Claude-cost
+            # counterfactual it also carried is independently re-derived
+            # downstream by ``node_projection_savings`` from the terminal's
+            # served tokens via ``build_premium_counterfactual`` (same
+            # ``DEFAULT_BASELINE_MODEL`` + pricing manifest) with strictly
+            # better provenance (pinned Decimal + as_of date vs. a bare float).
+            # Removing the emission is a dead-topic cleanup, not a savings/cost
+            # telemetry regression.
             events.extend(self._emit_terminal(terminal_inputs))
-            events.append(
-                ModelBaselineIntent(
-                    correlation_id=cid,
-                    task_type=workflow.request.task_type,
-                    baseline_cost_usd=estimated_claude_cost,
-                    candidate_cost_usd=candidate_cost.cash_cost_usd,
-                    prompt_tokens=workflow.inference_prompt_tokens,
-                    completion_tokens=workflow.inference_completion_tokens,
-                    total_tokens=workflow.inference_total_tokens,
-                )
-            )
             return events
 
         # --- FAILED: evaluate escalation (OMN-12254) ---
@@ -1332,6 +1522,21 @@ class HandlerDelegationWorkflow:
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
         )
+
+        # OMN-14234 (retry-local / best-of-N): before escalating off a FREE tier,
+        # retry the SAME tier up to its contract-declared ``max_retries`` budget.
+        # The local coder is non-deterministic (a trivial refactor scored
+        # 0.8/0.64/1.0 across three runs at the 0.85 bar), so ~2/3 of first drafts
+        # escalated to a PAID tier despite local inference being $0. Retrying the
+        # free tier lifts the $0 pass-rate before crossing to paid — fail-closed:
+        # a paid tier, or an exhausted per-tier budget, falls through to the normal
+        # tier escalation below. This is the same-tier leg of the RSD FSM
+        # (GENERATING -> verify -> retry <= N local -> escalate).
+        retry_local_intents = self._maybe_retry_local(
+            workflow, rejected_attempt_cost_usd
+        )
+        if retry_local_intents is not None:
+            return retry_local_intents
 
         # OMN-13476: a sub-bar quality result is always retryable on a higher
         # tier, so the decision reduces to budget / current-tier / ladder. The
@@ -1420,6 +1625,174 @@ class HandlerDelegationWorkflow:
         self._advance(workflow, EnumDelegationState.FAILED)
         events.extend(self._emit_terminal(terminal_inputs))
         return events
+
+    def _maybe_retry_sibling_backend(
+        self,
+        workflow: DelegationWorkflowState,
+        *,
+        failed_backend_ref: str,
+        attempt_cost_usd: float,
+        prompt_tokens: int,
+        completion_tokens: int,
+    ) -> list[BaseModel] | None:
+        """Try a sibling backend in the SAME tier before escalating off it (OMN-14402).
+
+        There was NO same-tier fallback for a TRANSPORT/inference failure: if the
+        selected backend's endpoint failed, ``handle_inference_response`` walked
+        straight to the NEXT tier via ``next_eligible_tier`` — even when the
+        current tier declares another backend that also serves the task_type
+        (e.g. routing_tiers.yaml's local tier carries both
+        local-heavy-reasoning and local-reasoner for "research"). This is acute
+        whenever the next tier is cloud and the cloud provider cannot serve
+        (e.g. a 429-exhausted quota window): a single local backend's transport
+        failure used to fail the whole delegation instead of trying a healthy
+        local sibling.
+
+        Fail-closed and bounded: ``sibling_backend_available_in_tier`` runs the
+        SAME deterministic selection ``delta()`` applies (routing_tiers.yaml
+        declaration order, fast-path pass before the general use_for pass) over
+        the backends NOT YET in ``same_tier_failed_backend_refs`` — so this can
+        retry at most once per eligible backend the tier declares for the task,
+        never indefinitely. Returns ``None`` (no retry) as soon as no untried
+        sibling exists, so the caller falls through to the ORIGINAL cross-tier
+        escalation path unchanged.
+
+        A retry re-routes to the SAME tier (``min_tier_name`` pinned, with the
+        growing exclusion set) via a ROUTED -> ROUTED self-loop; it does NOT
+        increment ``escalation_count`` and emits NO escalation event, because a
+        same-tier backend swap is not a tier escalation — mirrors
+        ``_maybe_retry_local``'s same-tier-is-not-an-escalation contract. This is
+        a DIFFERENT failure class from ``_maybe_retry_local`` (quality-gate
+        best-of-N on a free tier only): this path only fires on a
+        transport/inference failure, on ANY tier (free or paid), and never
+        conflates with the OMN-14234 retry-local budget or counters.
+
+        The rejected attempt's spend is banked into the cumulative totals before
+        the inference state reset, mirroring ``_bank_attempt_spend`` on every
+        other non-terminal branch.
+        """
+        tier = workflow.current_tier_name
+        # Fail closed on an unidentified failed backend (e.g. a routing decision
+        # from before OMN-14402, or a replayed/legacy row whose
+        # selected_backend_ref defaulted to ""): without a concrete ref to
+        # exclude, the deterministic selection would just re-resolve the SAME
+        # backend every time — a retry loop, not a fallback. Skip the feature
+        # entirely and preserve the prior escalate-off-tier behavior.
+        if tier is None or workflow.request is None or not failed_backend_ref:
+            return None
+        task_type = workflow.request.task_type
+
+        # Per-tier exclusion set: reset when the workflow lands on a different
+        # tier (a real escalation moved it), so each tier's fallback budget is
+        # independent — mirrors the local_retry_tier/local_retry_count reset.
+        if workflow.same_tier_failed_backend_tier != tier:
+            workflow.same_tier_failed_backend_tier = tier
+            workflow.same_tier_failed_backend_refs = ()
+        if (
+            failed_backend_ref
+            and failed_backend_ref not in workflow.same_tier_failed_backend_refs
+        ):
+            workflow.same_tier_failed_backend_refs = (
+                *workflow.same_tier_failed_backend_refs,
+                failed_backend_ref,
+            )
+
+        excluded = frozenset(workflow.same_tier_failed_backend_refs)
+        sibling = sibling_backend_available_in_tier(tier, task_type, excluded)
+        if sibling is None:
+            return None
+
+        self._bank_attempt_spend(
+            workflow,
+            cost_usd=attempt_cost_usd,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+        )
+
+        # Re-route to the SAME tier, excluding every backend already tried this
+        # tier. handle_routing_decision resumes the inference dispatch on
+        # whatever decision comes back (the sibling delta() just proved routable).
+        workflow.inference_content = None
+        workflow.inference_model_used = None
+        workflow.inference_intent_in_flight = False
+        workflow.routing_decision = None
+        self._advance(workflow, EnumDelegationState.ROUTED)
+        assert workflow.request is not None
+
+        # OMN-14402: getattr-guarded field presence so this producer degrades
+        # gracefully against a core pin that predates excluded_backend_refs
+        # (mirrors the OMN-14280 tenant_id rollout pattern) — a frozen,
+        # extra="forbid" model rejects an unknown kwarg outright.
+        intent_kwargs: dict[str, Any] = {
+            "payload": workflow.request,
+            "min_tier_name": tier,
+        }
+        model_fields = getattr(ModelRoutingIntent, "model_fields", {})
+        if "excluded_backend_refs" in model_fields:
+            intent_kwargs["excluded_backend_refs"] = tuple(sorted(excluded))
+        return [ModelRoutingIntent(**intent_kwargs)]
+
+    def _maybe_retry_local(
+        self,
+        workflow: DelegationWorkflowState,
+        attempt_cost_usd: float,
+    ) -> list[BaseModel] | None:
+        """Retry the SAME free tier before escalating off it (OMN-14234, best-of-N).
+
+        The local coder is non-deterministic: a single trivial refactor scored
+        0.8 / 0.64 / 1.0 across three runs at the 0.85 bar (OMN-14234 live
+        evidence), so ~2/3 of first drafts escalated to a PAID tier despite local
+        inference being $0. Before escalating off a FREE tier this retries the SAME
+        tier up to its contract-declared ``max_retries`` budget (routing_tiers.yaml;
+        local=2, so 1 initial + 2 retries = 3 $0 drafts), so the workflow accepts
+        the first draft that clears the gate on re-route.
+
+        Fail-closed: only a FREE tier (``is_free_tier``) is retried, and only while
+        its per-tier budget remains — a paid tier, or an exhausted budget, returns
+        ``None`` so the caller runs the normal tier escalation. A retry re-routes to
+        the SAME tier (``min_tier_name`` pinned) via GATE_EVALUATED -> ROUTED; it
+        does NOT increment ``escalation_count`` and emits NO escalation event,
+        because a same-tier retry is not a tier escalation. The rejected draft's
+        (typically $0) spend is banked into the cumulative totals so cost/token
+        accounting stays honest across every draft, mirroring the escalation
+        branch's ``_bank_attempt_spend``.
+        """
+        tier = workflow.current_tier_name
+        if tier is None or not is_free_tier(tier):
+            return None
+        # Per-tier budget: reset the counter when a real escalation moved the
+        # workflow onto a different tier, so each free tier gets its own best-of-N
+        # budget rather than sharing one global count.
+        if workflow.local_retry_tier != tier:
+            workflow.local_retry_tier = tier
+            workflow.local_retry_count = 0
+        if workflow.local_retry_count >= tier_max_retries(tier):
+            return None
+        workflow.local_retry_count += 1
+
+        # Bank this rejected draft's spend + served tokens BEFORE the inference
+        # reset below discards ``workflow.inference_*``. For a free tier the cost is
+        # $0, but banking keeps the cumulative token/cost accounting identical to
+        # the escalation path (the terminal re-prices only the FINAL draft's tokens
+        # and adds the cumulative prior spend).
+        self._bank_attempt_spend(
+            workflow,
+            cost_usd=attempt_cost_usd,
+            prompt_tokens=workflow.inference_prompt_tokens,
+            completion_tokens=workflow.inference_completion_tokens,
+        )
+
+        # Re-route to the SAME tier: GATE_EVALUATED -> ROUTED, reset inference state
+        # so ``handle_routing_decision`` re-dispatches a fresh draft on re-entry.
+        workflow.inference_content = None
+        workflow.inference_model_used = None
+        workflow.inference_intent_in_flight = False
+        workflow.routing_decision = None
+        self._advance(workflow, EnumDelegationState.ROUTED)
+        assert workflow.request is not None
+        return [
+            ModelRoutingIntent(payload=workflow.request, min_tier_name=tier),
+        ]
 
     def _build_escalation_event(
         self,
@@ -1637,10 +2010,15 @@ class HandlerDelegationWorkflow:
     def _emit_terminal(self, inputs: TerminalEmissionInputs) -> list[BaseModel]:
         """ONE builder for the single canonical terminal event (OMN-13629).
 
-        This is the sole construction site for the canonical
-        ``ModelDelegationResult`` (wrapped in a ``ModelDelegationEvent`` on the
-        completed/failed topic). Cost is measured exactly once here from the
-        inputs' token counts + serving tier.
+        This is the sole construction site for the canonical terminal —
+        ``ModelDelegationCompleted`` or ``ModelDelegationFailed`` (both thin,
+        no-new-fields subclasses of ``ModelDelegationResult``) per
+        ``inputs.completed`` (OMN-14600, canonical two-class split — executes
+        OMN-14403 A1: the bespoke ``ModelDelegationEventEnvelope`` carrier is
+        no longer used; the terminal is a bare class emit like every other
+        intent this handler emits, resolved to its topic by class name
+        alone). Cost is measured exactly once here from the inputs' token
+        counts + serving tier.
 
         OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
         co-writer (``task-delegated.v1``) was DELETED. A single terminal outcome
@@ -1744,7 +2122,16 @@ class HandlerDelegationWorkflow:
                 # cost_savings_usd == 0.0 (premium_counterfactual=None below).
                 total_savings_usd = cost.cost_savings_usd
 
-        delegation_result = ModelDelegationResult(
+        # OMN-14600: the terminal class ITSELF names the outcome — construct
+        # ModelDelegationCompleted or ModelDelegationFailed directly (both
+        # thin subclasses of ModelDelegationResult, identical flat wire
+        # shape) so class-name -> topic routing (_outbox_topic_for /
+        # DispatchResultApplier._resolve_mapped_output_topic) disambiguates
+        # completed vs failed without any embedded-topic carrier.
+        _terminal_cls = (
+            ModelDelegationCompleted if inputs.completed else ModelDelegationFailed
+        )
+        delegation_result = _terminal_cls(
             correlation_id=inputs.correlation_id,
             task_type=inputs.task_type,
             model_used=inputs.model_used,
@@ -1785,6 +2172,10 @@ class HandlerDelegationWorkflow:
             # instead of reconstructing the tier from the model name, so the
             # dashboard reads tier from the projection (deletes modelTier.ts).
             cost_tier_name=cost.cost_tier_name,
+            # OMN-14058 (OPERATOR-ACCEPTED INTERIM): tenant identity pinned at
+            # request-acceptance, carried through TerminalEmissionInputs onto
+            # every terminal shape (completed / failed / agent-lifecycle).
+            tenant_id=inputs.tenant_id,
         )
 
         # OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``
@@ -1797,14 +2188,21 @@ class HandlerDelegationWorkflow:
         # re-derived downstream from the same authoritative cost/token figures.
         assert total_savings_usd >= 0.0  # honest floor invariant (OMN-13335)
 
-        topic = (
-            TOPIC_ID_DELEGATION_COMPLETED
-            if inputs.completed
-            else TOPIC_ID_DELEGATION_FAILED
-        )
-        return [
-            ModelDelegationEvent(topic=topic, payload=delegation_result),
-        ]
+        # OMN-14600 (root-cause fix, canonical two-class split — executes
+        # OMN-14403 A1): the terminal is now a BARE class emit, no envelope
+        # carrier and no topic var — identical to how ModelRoutingIntent /
+        # ModelInferenceIntent / ModelQualityGateIntent are already emitted
+        # elsewhere in this file. The PRIOR bespoke ``ModelDelegationEvent
+        # Envelope{topic, payload}`` carrier's real class name never matched
+        # the contract's published_events key ("DelegationEvent" covered
+        # only the completed topic, ambiguous for one class on two topics)
+        # once stripped by the in-row outbox's _outbox_topic_for lookup
+        # (handler_wiring.py) -- every delegation completion raised
+        # ModelOnexError there and stranded at COMPLETED/in_flight=true.
+        # ModelDelegationCompleted / ModelDelegationFailed each resolve to
+        # their OWN contract-declared topic by class name alone — no
+        # embedded-topic resolution needed anywhere downstream.
+        return [delegation_result]
 
     def _gate_terminal_inputs(
         self,
@@ -1888,6 +2286,7 @@ class HandlerDelegationWorkflow:
             attempts_count=workflow.escalation_count + 1,
             model_name=workflow.routing_decision.selected_model,
             session_id=None,
+            tenant_id=_resolve_tenant_id(workflow),
             quality_gates_checked=quality_gates_checked,
             quality_gates_failed=[] if completed else list(result.failure_reasons),
             llm_call_id=workflow.inference_llm_call_id,
@@ -1926,7 +2325,8 @@ class HandlerDelegationWorkflow:
 
         assert workflow.request is not None
 
-        elapsed_ms = (time.monotonic_ns() - workflow.started_at_ns) // 1_000_000
+        # OMN-14208: wall-clock epoch subtraction — see started_at_ns docstring.
+        elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
         delegated_to = (
             workflow.invocation_command.target_ref
             if workflow.invocation_command is not None
@@ -1969,6 +2369,7 @@ class HandlerDelegationWorkflow:
             attempts_count=1,
             model_name=delegated_to,
             session_id=None,
+            tenant_id=_resolve_tenant_id(workflow),
             quality_gates_checked=["agent-task-lifecycle"],
             quality_gates_failed=[failure_reason] if failure_reason else [],
             llm_call_id=lifecycle_event.remote_task_handle or "",
@@ -1976,28 +2377,24 @@ class HandlerDelegationWorkflow:
         )
         return self._emit_terminal(terminal_inputs)
 
-    async def handle(self, payload: object) -> list[BaseModel]:
-        """Route a workflow payload to its per-step FSM handler by payload type.
+    async def handle(self, request: DelegationWorkflowInput) -> list[BaseModel]:
+        """Route a typed delegation payload to its per-step FSM handler.
 
-        OMN-13477 (W5): dispatch is driven by ``_PER_STEP_DISPATCH`` — a
-        declarative ``payload model class -> per-step handler method`` table,
-        one entry per ``handler_routing`` event_model the contract declares
-        (``payload_type_match``). This replaces the prior hand-maintained
-        isinstance ladder: each event model resolves to exactly one thin
-        per-step handler, and there is no catch-all branch — an undeclared
-        payload type fails closed (``ValueError``) rather than being silently
-        swallowed by a fallthrough.
+        OMN-14771 (S8 PR1): def-B typed entrypoint. The legacy kernel validates
+        each per-topic payload into the contract's declared ``event_model`` and
+        delivers that TYPED domain model straight here — the handler param is a
+        typed domain model (not an event envelope), so the shared auto-wiring
+        uses its typed-delivery branch (no envelope in this core). Dispatch is
+        driven off
+        ``_PER_STEP_DISPATCH`` (OMN-13477) — one entry per ``handler_routing``
+        event_model — with no catch-all: an undeclared payload type fails closed
+        (``ValueError``) rather than being silently swallowed by a fallthrough.
         """
-        if isinstance(payload, ModelEventEnvelope) or hasattr(payload, "payload"):
-            payload = payload.payload
-        if isinstance(payload, dict):
-            payload = self._coerce_payload_dict(payload)
-
-        handler = self._resolve_per_step_handler(type(payload))
+        handler = self._resolve_per_step_handler(type(request))
         if handler is None:
-            msg = f"Unsupported delegation workflow payload: {type(payload).__name__}"
+            msg = f"Unsupported delegation workflow payload: {type(request).__name__}"
             raise ValueError(msg)
-        return list(handler(payload))
+        return list(handler(request))
 
     def _resolve_per_step_handler(
         self, payload_type: type
@@ -2020,56 +2417,26 @@ class HandlerDelegationWorkflow:
             return None
         return cast("Callable[[Any], list[Any]]", getattr(self, method_name))
 
-    async def handle_async(self, payload: object) -> ModelHandlerOutput[None]:
-        """Runtime auto-wiring entrypoint that returns publishable handler output."""
-        events = await self.handle(payload)
+    async def handle_async(
+        self, request: DelegationWorkflowInput
+    ) -> ModelHandlerOutput[None]:
+        """Runtime auto-wiring entrypoint that returns publishable handler output.
+
+        OMN-14771 (S8 PR1, HOLE-3): the legacy runtime does not stamp outbound
+        correlation, so the orchestrator propagates ``correlation_id`` from the
+        inbound typed domain model. Every one of the six ``handler_routing``
+        event_models types ``correlation_id`` as a required ``UUID``, so it is
+        read directly — the prior ``uuid4()`` FABRICATION fallback (which silently
+        minted a brand-new workflow identity when correlation was missing) is
+        deleted; a legitimate missing correlation must fail, not be papered over.
+        """
+        events = await self.handle(request)
         return ModelHandlerOutput.for_orchestrator(
             input_envelope_id=uuid4(),
-            correlation_id=self._coerce_payload_correlation_id(payload),
+            correlation_id=request.correlation_id,
             handler_id="node_delegation_orchestrator.workflow",
             events=tuple(events),
         )
-
-    @staticmethod
-    def _coerce_payload_correlation_id(payload: object) -> UUID:
-        candidate = getattr(payload, "correlation_id", None)
-        if candidate is None and isinstance(payload, ModelEventEnvelope):
-            candidate = payload.correlation_id
-        if candidate is None and hasattr(payload, "payload"):
-            candidate = getattr(payload.payload, "correlation_id", None)
-        if candidate is None and isinstance(payload, dict):
-            nested_payload = payload.get("payload")
-            candidate = payload.get("correlation_id")
-            if candidate is None and isinstance(nested_payload, dict):
-                candidate = nested_payload.get("correlation_id")
-        if isinstance(candidate, UUID):
-            return candidate
-        if isinstance(candidate, str) and candidate:
-            return UUID(candidate)
-        return uuid4()
-
-    @staticmethod
-    def _coerce_payload_dict(payload: dict[str, object]) -> BaseModel:
-        """Convert raw event-bus payload dictionaries into workflow models."""
-        nested_payload = payload.get("payload")
-        if isinstance(nested_payload, dict) and (
-            "event_type" in payload or "envelope_id" in payload
-        ):
-            return HandlerDelegationWorkflow._coerce_payload_dict(nested_payload)
-        if "lifecycle_type" in payload:
-            return ModelAgentTaskLifecycleEvent.model_validate(payload)
-        if "invocation_kind" in payload or "target_ref" in payload:
-            return ModelInvocationCommand.model_validate(payload)
-        if "selected_model" in payload or "selected_backend_id" in payload:
-            return ModelRoutingDecision.model_validate(payload)
-        if "model_used" in payload or "llm_call_id" in payload:
-            return ModelInferenceResponseData.model_validate(payload)
-        if "quality_score" in payload or "passed" in payload:
-            return ModelQualityGateResult.model_validate(payload)
-        if "prompt" in payload and "task_type" in payload:
-            return ModelDelegationRequest.model_validate(payload)
-        msg = "Unsupported delegation workflow payload dictionary"
-        raise ValueError(msg)
 
     @staticmethod
     def _render_lifecycle_content(

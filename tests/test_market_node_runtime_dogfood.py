@@ -34,6 +34,12 @@ NATIVE_NON_ADDRESSABLE_NODES = {
     "node_projection_dep_health",
 }
 
+OMN_14151_LEGACY_ARM_SURFACES = {
+    "node_auto_merge_effect",
+    "node_merge_sweep_auto_merge_arm_effect",
+    "node_merge_sweep_triage_orchestrator",
+}
+
 
 def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> None:
     report = build_report()
@@ -115,12 +121,105 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # snapshot topic -> skill-adoption widget): 346 -> 347.
     # OMN-13859 adds node_pr_lifecycle_worktree_prune_effect (EFFECT; event-driven
     # worktree prune-on-PR-close driven by pr_lifecycle_orchestrator): 347 -> 348.
-    assert summary["node_dirs"] == 348
-    assert summary["entry_points"] == 348
-    assert summary["missing_entry_points"] == []
+    # OMN-13925 adds node_env_parity_collect_effect (EFFECT; live read-only
+    # runtime-lane env collection over ssh + parity evaluation, the live front-end
+    # for the env_parity skill): 348 -> 349.
+    # OMN-13940 adds node_pr_delegated_fix_effect (EFFECT; WS-D/D2 merge-sweep
+    # delegation harness Slice 0 -- deterministic ruff-fix path re-entering
+    # the existing pr_polish gate/verify/push flow): 349 -> 350.
+    # OMN-14285 adds node_occ_companion_compute (COMPUTE; pure deterministic
+    # OCC companion planning and attestation oracle for RSD-1): 350 -> 351.
+    # OMN-14333 adds node_generated_code_validator and node_mypy_check_effect:
+    # 351 -> 353.
+    # OMN-14325 adds node_contract_serialize_compute plus four pure compute
+    # leaves for compliant model-to-contract serialization: 353 -> 358.
+    # OMN-14336 adds node_hybrid_codegen_orchestrator,
+    # node_llm_codegen_effect, and node_codegen_file_writer_effect: 358 -> 361.
+    # OMN-14326 adds node_ast_node_analyzer and node_stub_detector pure
+    # compute nodes for codegen analysis: 361 -> 363.
+    # OMN-14307 adds node_github_repo_gateway_effect (EFFECT; typed read-only
+    # GitHub repo status gateway for merge-sweep verification): 363 -> 364.
+    # OMN-14151 adds node_pr_arm_gate_compute (COMPUTE; fail-closed ARM/WITHHOLD
+    # decider for the merge-queue governor): 364 -> 365.
+    # OMN-14608 adds node_codegen_outcome_reducer (REDUCER; joins the three raw
+    # codegen downstream verdicts to retained pipeline state so the hybrid
+    # codegen orchestrator's outcome topics have a real producer): 365 -> 366.
+    # OMN-14619 adds node_occ_state_effect (EFFECT; read-only OCC companion
+    # state gatherer for the RSD producer chain): 366 -> 367.
+    # OMN-14622 adds node_occ_companion_effect (EFFECT; deterministic OCC companion
+    # write-effect + orchestrator for the RSD producer chain): 367 -> 368.
+    # OMN-14648 adds node_merge_state_projection (REDUCER; report-only merge-flow
+    # telemetry projection): 368 -> 369.
+    # OMN-14393 adds node_occ_autoauthor_window (COMPUTE; N=10 report-only
+    # auto-authoring observation counter) and node_occ_attestation_observe
+    # (EFFECT; read-only report-only companion attestation gate): 369 -> 371.
+    # OMN-14726 adds node_delivery_replay_projection_compute (COMPUTE; B6
+    # deterministic delivery/replay projection checksum + cursor tool): 371 -> 372.
+    # OMN-14735 adds node_canary_monitoring_gate_compute (COMPUTE; B10
+    # monitoring-signal-to-threshold gate scaffold, thresholds pending A6): 372 -> 373.
+    # OMN-14851 adds node_occ_observation_projection (COMPUTE; storage-agnostic
+    # dedup projection scaffold for the OCC N=10 real-doneness counter): 373 -> 374.
+    # OMN-14888 adds node_occ_observation_effect (EFFECT; durable append-only OCC
+    # observation write, dry_run default) and node_occ_observation_source_effect
+    # (EFFECT; reads the durable OCC observation trail from a checkout and feeds
+    # the existing dedup projection): 374 -> 376.
+    # OMN-14920 adds node_push_validation_effect (EFFECT; hook-verified,
+    # suite-gated, fail-closed branch push for the gateway push-validation
+    # workflow — closes the zero-consumer window on the #624 command topic):
+    # 376 -> 377.
+    # OMN-14977 adds node_worker_memory_admission_compute (COMPUTE; D3
+    # RAM-aware worker admission — headroom formula + fail-closed staleness
+    # gate, no live bus wiring yet): 377 -> 378.
+    # OMN-14978 adds node_fleet_partition_key_compute (COMPUTE; fleet
+    # topology keying — deterministic injective repo:branch partition key,
+    # no live bus wiring yet): 378 -> 379.
+    # OMN-15126 adds node_liveness_demand_query_effect (EFFECT; real Postgres
+    # demand-source query + correlated join, design OMN-14845 §3.2 steps 1-2)
+    # and node_liveness_evaluate_compute (COMPUTE; pure demand-aware liveness
+    # state decision — NOT_READY/NO_DEMAND/HEALTHY/STALE/RED, design §3.2 —
+    # no live bus wiring yet, directly-invoked only): 379 -> 381.
+    # OMN-15164 adds node_report_anchor_probe_effect (EFFECT; content-anchor
+    # git-SHA/artifact-path/PR-number re-probes feeding the OMN-15163
+    # report-validation COMPUTE node — no live bus wiring yet, directly-invoked
+    # only, same runtime_dispatch-only pattern as node_liveness_demand_query_effect):
+    # 381 -> 382.
+    assert summary["node_dirs"] == 382
+    # OMN-14151 deliberately removes request/response entry points from the
+    # three legacy arm surfaces; the new arm-gate compute node is the single
+    # active route. OMN-14608's reducer entry point brings the count back up:
+    # 362 -> 363. OMN-14619 adds the state-effect gather route: 363 -> 364.
+    # OMN-14622 adds the companion write-effect route: 364 -> 365.
+    # OMN-14648 adds the merge-state projection route: 365 -> 366.
+    # OMN-14393 adds the window (compute) + attestation-observe (effect) routes:
+    # 366 -> 368.
+    # OMN-14726 adds the delivery-replay-projection compute route (addressable via
+    # runtime_dispatch, resolves as routable): 368 -> 369.
+    # OMN-14735 adds the canary-monitoring-gate compute route (addressable via
+    # runtime_dispatch, resolves as routable): 369 -> 370.
+    # OMN-14851 adds the observation-projection compute route (addressable via
+    # runtime_dispatch, resolves as routable): 370 -> 371.
+    # OMN-14888 adds the observation-effect (write) and observation-source-effect
+    # (read) routes (both addressable via runtime_dispatch, resolve as
+    # routable): 371 -> 373.
+    # OMN-14920 adds the push-validation write-effect route (addressable via
+    # runtime_dispatch, resolves as routable): 373 -> 374.
+    # OMN-14977 adds the worker-memory-admission compute route (addressable
+    # via runtime_dispatch, resolves as routable — same no-live-bus-yet
+    # pattern as node_canary_monitoring_gate_compute): 374 -> 375.
+    # OMN-14978 adds the fleet-partition-key compute route (addressable via
+    # runtime_dispatch, resolves as routable): 375 -> 376.
+    # OMN-15126 adds the liveness-demand-query-effect and
+    # liveness-evaluate-compute routes (both addressable via runtime_dispatch,
+    # resolve as routable — same no-live-bus-yet pattern as
+    # node_fleet_partition_key_compute): 376 -> 378.
+    # OMN-15164 adds the report-anchor-probe-effect route (addressable via
+    # runtime_dispatch, resolves as routable): 378 -> 379.
+    assert summary["entry_points"] == 379
+    assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
-    assert summary["skipped"] == 4
+    # OMN-14648's report-only projection is non-addressable: 4 -> 5.
+    assert summary["skipped"] == 5
     assert summary["failed"] == 0
     assert summary["failure_buckets"] == {}
     assert {
@@ -129,6 +228,7 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
         if item["bucket"] == "non_addressable"
     } == {
         "node_e2e_orchestrator",
+        "node_merge_state_projection",
         "node_navigation_history_reducer",
         "node_projection_dep_health",
         "node_pr_merged_projection",  # OMN-13226 T2 stub; handler pending T3

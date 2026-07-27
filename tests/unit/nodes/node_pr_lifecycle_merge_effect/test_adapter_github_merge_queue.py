@@ -125,6 +125,28 @@ class TestGitHubMergeQueueAdapter:
             == "auto-merge enabled for OmniNode-ai/small-repo#7; repo has no merge queue"
         )
 
+    async def test_already_in_queue_marker_is_idempotent_success(
+        self, subprocess_recorder: Callable[[list[_FakeProc]], list[list[str]]]
+    ) -> None:
+        subprocess_recorder(
+            [
+                _FakeProc(stdout=json.dumps({"id": "PR_node_1"}).encode()),
+                _FakeProc(stdout=b'{"data":{"enablePullRequestAutoMerge":{}}}'),
+                _FakeProc(
+                    stderr=b"GraphQL: Pull request is already in the queue",
+                    rc=1,
+                ),
+            ]
+        )
+
+        adapter = GitHubMergeQueueAdapter()
+        result = await adapter.merge_pr("OmniNode-ai/onex_change_control", 3555, True)
+
+        assert (
+            result
+            == "auto-merge enabled and already queued OmniNode-ai/onex_change_control#3555"
+        )
+
     async def test_post_pr_comment_uses_gh_comment(
         self, subprocess_recorder: Callable[[list[_FakeProc]], list[list[str]]]
     ) -> None:

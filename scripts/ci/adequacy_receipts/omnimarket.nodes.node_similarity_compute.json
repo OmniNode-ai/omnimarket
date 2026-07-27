@@ -1,0 +1,25 @@
+{
+  "branch_coverage_pct": 54.39,
+  "candidate_count": 7,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_similarity_compute.handlers.handler_similarity_compute",
+  "handler_module_sha256": "sha256:894c5436b6963a000aab98c14e7fc59863a28cafb7637869af7f56caacb183f2",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_similarity_compute",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-20T06:57:23.717032+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 5,
+  "selected_input_hashes": [
+    "sha256:dc4044dd6f1ed98c42dd96089f3491258fd5870281c14542e97238431a3ca317",
+    "sha256:ed2c6183ef846736bb81b1ad69d4084cb81985f3a5d2705c357137ded0bdfab3",
+    "sha256:2d049d9817d8a2c51d5be0e31de96fc3b11eb5c27f74ff8cee41cf64a5130296",
+    "sha256:a03a1abe4dc808d8333023ddab1a81ec88e8d8adfbf4bf570ea93f71959c12d9",
+    "sha256:150127b4afbd2ee9f43602d306e035e19a34a79a56688063c47a55bc2078f583"
+  ],
+  "uncovered_waiver": {
+    "reason": "OMN-14840 hand-flip (OMN-14781 path): the def-B handle() entrypoint and the byte-identical pure-math methods (cosine_distance/euclidean_distance/compare/_validate_vectors) it adapts are fully exercised by the selected request corpus (all three operations, cosine+euclidean metrics, threshold/no-threshold, and the ValueError->error-response branch). Branch coverage is structurally below the generic compute target because the same module retains the async container-driven lifecycle scaffolding (initialize/health_check/describe/shutdown) required to keep the preserved math methods verbatim; that scaffolding is not on the handle() path. Behavior equivalence is proven separately by the verbatim-preservation hand-flip proof and the parity/golden tests in tests/test_similarity_compute_defb_omn14840.py.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": []
+}

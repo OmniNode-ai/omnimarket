@@ -1,0 +1,24 @@
+name: node_occ_observation_effect
+version: "1.0.0"
+description: "Write-EFFECT that appends one durable, append-only OCC observation record into onex_change_control (OMN-14888)."
+pack: occ_companion
+node_role: effect
+display_name: "OCC Observation Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_occ_observation_effect: "omnimarket.nodes.node_occ_observation_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "occ", "observation", "append-only", "OMN-14888"]

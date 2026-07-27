@@ -14,6 +14,13 @@ fails") is exactly the failure this gate bans. The aislop / compliance sweeps
 detect adjacent smells advisorily; this corpus turns the fake-boundary invariant
 into the acceptance authority for a generated COMPUTE validator that BLOCKS.
 
+no-faked-boundary self-exemption: this module's SUBJECT *is* the fake-boundary
+pattern — it must quote the banned idioms verbatim as ``violation_fixtures`` so a
+generated scanner can be accepted against them. It is therefore file-level exempt,
+matching ``omnibase_core.validation.no_faked_boundary.handler``'s own docstring
+self-exemption. onex-allow-file-faked-boundary OMN-13501 reason="acceptance-corpus
+source documents verbatim the fake-boundary idioms it is the authority for".
+
 The corpus is the acceptance authority — NOT the LLM. A generated scanner is
 accepted iff it flags every ``violation_fixtures`` entry (>=1 finding) and
 produces zero findings on every ``clean_fixtures`` entry, by deterministic

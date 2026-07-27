@@ -45,8 +45,12 @@ logger = logging.getLogger(__name__)
 # OMN-13849: exposed as the single public source of the judge-combinable task set
 # so the bus-less local dispatch path applies the SAME set of classes (parity with
 # this bus intent handler) instead of re-declaring a drift-prone copy.
+# OMN-14218: `refactor` joins the verifiable code-task set (kept consistent with
+# _VERIFIABLE_TASK_TYPES in handler_quality_gate.py). It is a code-authoring class,
+# so the LLM-judge adequacy EFFECT runs for it exactly like code_generation, and it
+# degrades to the deterministic acceptance floor when the judge is unavailable.
 JUDGE_COMBINABLE_TASK_TYPES: frozenset[str] = frozenset(
-    {"code_generation", "test", "validator_generation"}
+    {"code_generation", "test", "validator_generation", "refactor"}
 )
 _JUDGE_COMBINABLE_TASK_TYPES = JUDGE_COMBINABLE_TASK_TYPES
 

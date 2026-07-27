@@ -8,8 +8,9 @@ Three subtests:
      findings include UNTESTED_HANDLER + MISSING_TOPIC_EDGE
   C. Event emission — EventBusInmemory receives dep-health-sweep-completed after handle()
 
-Evidence bundle written to docs/evidence/dep-health-sweep/<run_id>/ by the test.
-Topic constants loaded from contract.yaml, never hardcoded.
+Evidence bundle written to pytest's tmp_path/dep-health-sweep/<run_id>/ by the test
+(OMN-14632 — never into the committed repo tree). Topic constants loaded from
+contract.yaml, never hardcoded.
 """
 
 from __future__ import annotations
@@ -24,6 +25,9 @@ import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.nodes.node_dependency_health_sweep.engine.cross_reference import (
+    CrossReferenceEngine,
+)
 from omnimarket.nodes.node_dependency_health_sweep.handlers.handler_dep_health_sweep import (
     HandlerDepHealthSweep,
 )
@@ -59,8 +63,14 @@ def _load_contract() -> dict[str, Any]:
 
 _CONTRACT = _load_contract()
 _CMD_TOPIC: str = _CONTRACT["event_bus"]["subscribe_topics"][0]
+_EVT_FINDING_TOPIC: str = next(
+    t for t in _CONTRACT["event_bus"]["publish_topics"] if "dep-health-finding" in t
+)
 _EVT_COMPLETED_TOPIC: str = next(
     t for t in _CONTRACT["event_bus"]["publish_topics"] if "sweep-completed" in t
+)
+_EVT_FINDING_TOPIC: str = next(
+    t for t in _CONTRACT["event_bus"]["publish_topics"] if "dep-health-finding" in t
 )
 
 # ---------------------------------------------------------------------------
@@ -150,12 +160,38 @@ def _write_finding_fixture(tmp_path: Path) -> None:
     # onex.cmd.test.orphan-cmd.v1 is published but no subscriber → MISSING_TOPIC_EDGE fires
 
 
+def test_cross_reference_finds_top_level_tests_when_repo_root_is_src(
+    tmp_path: Path,
+) -> None:
+    """The CI gate scans ``src/`` but tests live beside it at repo root."""
+    tests_dir = tmp_path / "tests" / "nodes" / "node_demo"
+    tests_dir.mkdir(parents=True)
+    (tests_dir / "test_handler_demo.py").write_text(
+        "from pkg.handlers.handler_demo import HandlerDemo\n"
+        "def test_handler_demo() -> None:\n"
+        "    assert HandlerDemo\n",
+        encoding="utf-8",
+    )
+
+    assert CrossReferenceEngine()._has_test_coverage(
+        repo_root=tmp_path / "src",
+        handler_stem="handler_demo",
+    )
+
+
+def test_contract_declares_dep_health_output_topics() -> None:
+    """State-coverage: pin every dep-health output topic declared by contract."""
+    assert _EVT_FINDING_TOPIC == "onex.evt.omnimarket.dep-health-finding.v1"
+    assert _EVT_COMPLETED_TOPIC == "onex.evt.omnimarket.dep-health-sweep-completed.v1"
+
+
 # ---------------------------------------------------------------------------
 # Evidence bundle writer
 # ---------------------------------------------------------------------------
 
 
 def _write_evidence_bundle(
+    evidence_root: Path,
     run_id: str,
     import_graph_data: dict[str, Any],
     topology_data: dict[str, Any],
@@ -164,8 +200,13 @@ def _write_evidence_bundle(
     projection_rows: list[dict[str, Any]],
     subtest_outcomes: dict[str, str],
 ) -> Path:
-    repo_root = Path(__file__).resolve().parents[1]
-    evidence_dir = repo_root / "docs" / "evidence" / "dep-health-sweep" / run_id
+    """Write the evidence bundle under a pytest-managed temp directory.
+
+    OMN-14632: must never write into the committed repo tree — every local/CI
+    run would otherwise leave the working tree dirty. Callers pass pytest's
+    ``tmp_path`` fixture (or a subdirectory of it) as ``evidence_root``.
+    """
+    evidence_dir = evidence_root / "dep-health-sweep" / run_id
     evidence_dir.mkdir(parents=True, exist_ok=True)
 
     (evidence_dir / "run_manifest.json").write_text(
@@ -239,6 +280,18 @@ _EVIDENCE_DATA: dict[str, Any] = {
 @pytest.mark.unit
 class TestGoldenChainDepHealthSweep:
     """Golden chain: handler invoke → findings → event emission → projection."""
+
+    def test_contract_declares_finding_topic(self) -> None:
+        """OMN-13781 state-coverage gate: prove the per-finding topic is
+        really contract-declared by parsing the live contract.yaml (via the
+        module's own _load_contract), not by repeating the literal in a
+        self-tautological assertion."""
+        contract = _load_contract()
+        assert (
+            "onex.evt.omnimarket.dep-health-finding.v1"
+            in contract["event_bus"]["publish_topics"]
+        )
+        assert _EVT_FINDING_TOPIC in contract["event_bus"]["publish_topics"]
 
     def test_a_clean_fixture(self, tmp_path: Path) -> None:
         """Clean fixture: valid import chain + matched pub/sub → status=='clean'."""
@@ -390,8 +443,10 @@ class TestGoldenChainDepHealthSweep:
         )
         _EVIDENCE_DATA["projection_rows"] = rows
 
-        # Write evidence bundle on last subtest
+        # Write evidence bundle on last subtest — under tmp_path, never into
+        # the committed repo tree (OMN-14632).
         _write_evidence_bundle(
+            evidence_root=tmp_path,
             run_id=_RUN_ID_FOR_EVIDENCE,
             import_graph_data=_EVIDENCE_DATA["import_graph"],
             topology_data=_EVIDENCE_DATA["topology"],

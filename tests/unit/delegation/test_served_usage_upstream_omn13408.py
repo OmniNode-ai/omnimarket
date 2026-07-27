@@ -39,13 +39,11 @@ from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_w
     _MAX_INFERENCE_ESCALATION_ATTEMPTS,
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
@@ -102,7 +100,11 @@ def _make_intent_response_via_effect(cid: UUID) -> ModelInferenceResponseData:
     mock_response.json.return_value = _TRUNCATED_CLOUD_RESPONSE
     mock_response.raise_for_status.return_value = None
 
-    with patch("httpx.Client") as mock_client_cls:
+    # OMN-13501 no-faked-boundary: effect-handler unit test crafts an edge provider
+    # response (empty content / finish_reason=length / HTTP 4xx). load_fixture rejects
+    # empty completions (EMPTY_COMPLETION) and ReplayResponse.raise_for_status is a no-op,
+    # so the canonical transport cannot reproduce these. Path proven by the golden chain.
+    with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
         mock_client = MagicMock()
         mock_client.__enter__ = MagicMock(return_value=mock_client)
         mock_client.__exit__ = MagicMock(return_value=False)
@@ -181,7 +183,11 @@ class TestServedUsageUpstreamOmn13408:
         mock_response.json.return_value = _TRUNCATED_CLOUD_RESPONSE
         mock_response.raise_for_status.return_value = None
 
-        with patch("httpx.Client") as mock_client_cls:
+        # OMN-13501 no-faked-boundary: effect-handler unit test crafts an edge provider
+        # response (empty content / finish_reason=length / HTTP 4xx). load_fixture rejects
+        # empty completions (EMPTY_COMPLETION) and ReplayResponse.raise_for_status is a no-op,
+        # so the canonical transport cannot reproduce these. Path proven by the golden chain.
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
             mock_client = MagicMock()
             mock_client.__enter__ = MagicMock(return_value=mock_client)
             mock_client.__exit__ = MagicMock(return_value=False)
@@ -221,12 +227,12 @@ class TestServedUsageUpstreamOmn13408:
 
         # CANONICAL terminal event (delegation-failed.v1).
         delegation_events = [
-            e for e in terminal_events if isinstance(e, ModelDelegationEvent)
+            e for e in terminal_events if isinstance(e, ModelDelegationResult)
         ]
         assert len(delegation_events) == 1
-        canonical = delegation_events[0].payload
+        canonical = delegation_events[0]
         assert isinstance(canonical, ModelDelegationResult)
-        assert delegation_events[0].topic.endswith("delegation-failed.v1")
+        assert isinstance(delegation_events[0], ModelDelegationFailed)
 
         # The canonical event carries the served tokens (was 0/0 before the fix).
         # total_tokens is reconciled to prompt + completion at the wire boundary

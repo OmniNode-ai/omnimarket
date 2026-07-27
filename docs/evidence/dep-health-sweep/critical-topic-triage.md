@@ -21,7 +21,7 @@ omnibase_core). This document triages each finding by searching ALL repos under 
 | `onex.cmd.omnibase-infra.remote-agent-invoke.v1` | `node_delegation_orchestrator` (omnimarket) | YES: `node_remote_agent_invoke_effect` (omnibase_infra) | `intentionally_external` | `externally_consumed_topics` added to publisher contract |
 | `onex.cmd.omnibase-infra.delegation-inference-request.v1` | `node_delegation_orchestrator` (omnimarket) | NO — `node_llm_inference_effect` subscribes to different topic (`llm-inference-request`) | `genuinely_unwired` | Allowlisted with expiry 2026-08-15 |
 | `onex.cmd.omnibase-infra.delegation-quality-gate-request.v1` | `node_delegation_orchestrator` (omnimarket) | NO — `node_delegation_quality_gate_reducer` exists in omnibase_infra but has no `contract.yaml` | `genuinely_unwired` | Allowlisted with expiry 2026-08-15 |
-| `onex.cmd.omnibase-infra.baseline-comparison-request.v1` | `node_delegation_orchestrator` (omnimarket) | NO — `node_baseline_comparison_compute` is COMPUTE-only, no Kafka event bus | `genuinely_unwired` | Allowlisted with expiry 2026-08-15 |
+| `onex.cmd.omnibase-infra.baseline-comparison-request.v1` | `node_delegation_orchestrator` (omnimarket) | NO — `node_baseline_comparison_compute` is COMPUTE-only, no Kafka event bus | `resolved` | Producer removed (OMN-15051): the `ModelBaselineIntent` emission was a dead-end (zero consumers); deleted outright rather than wired or allowlisted. |
 | `onex.cmd.omnibase-infra.consumer-restart.v1` | `node_consumer_health_triage_effect` (omnibase_infra) | NO — runtime-worker uses process-level restart (`util_consumer_restart`), not a Kafka node | `genuinely_unwired` | Allowlisted in omnibase_infra with expiry 2026-08-15 |
 | `onex.cmd.omnimarket.alert-fix-requested.v1` | `node_monitor_alert_responder` (omnimarket) | NO — auto-remediation dispatch node not yet implemented | `genuinely_unwired` | Allowlisted with expiry 2026-08-15 |
 | `onex.cmd.omnimarket.build-dispatch-effect-start.v1` | `node_swarm_supervisor_orchestrator` (omnimarket) | NO — `node_build_dispatch_effect` subscribes to `build-loop-build.v1` (different topic) | `genuinely_unwired` (topic mismatch) | Allowlisted with expiry 2026-08-15 |
@@ -72,13 +72,30 @@ The sweep's per-repo isolation causes this to appear as an orphan when scanning 
 
 ---
 
-### Topic 4: `onex.cmd.omnibase-infra.baseline-comparison-request.v1` — ALLOWLISTED
+### Topic 4: `onex.cmd.omnibase-infra.baseline-comparison-request.v1` — RESOLVED (OMN-15051, 2026-07-24)
 
 **Publisher:** `node_delegation_orchestrator` (omnimarket)
-**Intended subscriber:** `node_baseline_comparison_compute` (omnibase_infra)
+**Originally-guessed intended subscriber:** `node_baseline_comparison_compute` (omnibase_infra) — **this guess was wrong**, corrected below.
 **Why not wired:** `node_baseline_comparison_compute` is a COMPUTE node with no `event_bus` section — it operates via direct invocation, not Kafka subscription. The Kafka-triggered path for baseline comparison is not yet implemented.
 **Action needed:** Either add a Kafka-subscribed effect wrapper node or remove this topic and use direct invocation only.
 **Expires:** 2026-08-15
+
+**Resolution (OMN-15051):** removed the producer instead of wiring a consumer.
+`node_baseline_comparison_compute` was never the real intended target — its
+`ModelBaselineComparisonInput` (paired `ModelBaselineRunResult` A/B pattern-ROI
+records, OMN-2155) is a structurally unrelated shape from the orchestrator's
+`ModelBaselineIntent` (flat per-task cost telemetry); the name match ("baseline")
+was coincidental. The actual cost-savings telemetry this event carried is
+already fully derivable from the canonical `delegation-{completed,failed}.v1`
+terminal (`final_attempt_cost`/`cumulative_attempt_cost`), which
+`node_projection_savings` already consumes directly, independently re-deriving
+the same Claude-cost counterfactual from served tokens via
+`build_premium_counterfactual` (same `DEFAULT_BASELINE_MODEL` + pricing
+manifest `estimate_baseline_cost_usd` used). Zero contracts anywhere ever
+subscribed to this topic. The emission, contract topic/published_events entry,
+and this allowlist entry were removed together; see
+`handler_delegation_workflow.py`'s OMN-15051 comment for the full evidence
+chain.
 
 ---
 

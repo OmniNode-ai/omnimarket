@@ -24,11 +24,23 @@ and cannot by itself return passed=true (OMN-13370).
 When no contract DoD is provided (both dod_deterministic and dod_heuristic are empty),
 falls back to the legacy hardcoded checks as reject-only diagnostics.
 
-Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH.
+Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH, SCHEMA_VIOLATION.
+
+OMN-15193 -- contract-declared response validation: when a caller passes
+``response_contract`` (a JSON Schema describing the expected response shape),
+structural schema validation REPLACES the task-class keyword heuristics
+(``sub_tasks_verified`` substring matching, ``no_refusal`` phrase matching) for
+that request -- it is evaluated BEFORE the contract-DoD / legacy branches below
+and, when supplied, is the sole acceptance authority. This closes the
+false-positive class where a legitimate response (e.g. a ``rationale`` field
+containing "i cannot" as part of coherent prose) trips a keyword heuristic that
+was never actually checking response structure. ``response_contract=None`` (the
+default) is byte-identical to pre-OMN-15193 behavior.
 
 Related:
     - OMN-7040: Node-based delegation pipeline
     - OMN-10616: Wire quality gate to read DoD from contract
+    - OMN-15193: Contract-declared response validation replaces keyword heuristics
 """
 
 from __future__ import annotations
@@ -38,8 +50,16 @@ import hashlib
 import json
 import re
 from collections.abc import Callable
+from typing import Any
+
+import jsonschema
+import yaml
 
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    SCORE_SOURCE_COMBINED,
+    SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+)
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_contract import (
     MAX_WORDS_PER_SENTENCE_RE,
 )
@@ -62,8 +82,13 @@ _REFUSAL_PHRASES: tuple[str, ...] = (
     "i cannot",
     "i'm sorry",
     "as an ai",
-    "error:",
     "traceback",
+    # OMN-14220: "error:" was a member of this substring-matched set and fired as a
+    # FALSE refusal on legitimate prose that names an exception type
+    # (e.g. a docstring documenting ``Raises: ZeroDivisionError:`` — "zerodivisionerror:"
+    # contains "error:"). Detection of a bare leading error message moved to the
+    # word-boundary regex ``_LEADING_ERROR_RE`` below so "Error:" as a standalone
+    # message still trips while an in-word "...Error:" does not.
     # OMN-13409: additional common refusal patterns
     "cannot be fulfilled",
     "cannot be completed",
@@ -143,7 +168,10 @@ _FALLBACK_VERDICT_PREFIXES: tuple[str, ...] = (
 )
 
 _ACCEPTANCE_VERSION = "delegation-deterministic-acceptance.v1"
-_DETERMINISTIC_SCORE_SOURCE = "deterministic_acceptance"
+# Single source of truth for the score_source identifiers lives on the shared
+# wire model so acceptance-decision callers reference the SAME constant the
+# reducer records (OMN-13959).
+_DETERMINISTIC_SCORE_SOURCE = SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE
 
 # OMN-13850: deterministic checks that require executing an acceptance command
 # against a live target (test suite, sandbox) which the reducer — a pure,
@@ -165,7 +193,7 @@ _UNEVALUATED_DETERMINISTIC_CHECKS: frozenset[str] = frozenset(
 # graded score, the result records ``score_source="combined"`` so downstream
 # experiment analysis and the orchestrator's required-bar gate can distinguish a
 # combined verdict from a deterministic-only one.
-_COMBINED_SCORE_SOURCE = "combined"
+_COMBINED_SCORE_SOURCE = SCORE_SOURCE_COMBINED
 # OMN-13470: relative weight of the deterministic graded band vs. the LLM-judge
 # semantic-adequacy band when both are present. The deterministic band still
 # carries more weight (it is the verifiable, replayable signal), but the judge
@@ -174,8 +202,18 @@ _COMBINED_SCORE_SOURCE = "combined"
 # refusal/empty stays blocked by the deterministic hard floor below.
 _COMBINED_DETERMINISTIC_WEIGHT: float = 0.6
 _COMBINED_JUDGE_WEIGHT: float = 0.4
+# OMN-14218: `refactor` is a verifiable code-authoring task class (it modifies
+# code and its output can be checked with the same deterministic acceptance floor
+# as `code_generation`). It was previously absent from this set, so the gate never
+# applied the deterministic-acceptance authority to it: a valid LOCAL refactor
+# artifact scored the code graded score (~0.867) but was rejected on a reject-only
+# heuristic marker (e.g. `no_obvious_regressions`, which clean code cannot contain),
+# force-escalating past the free/paid ladder to a 429 terminal. Adding it here (with
+# the task-class contract in task_class_contracts.v1.yaml and the judge-combinable
+# set below) gives refactor the same local-first, $0 acceptance path code_generation
+# already has.
 _VERIFIABLE_TASK_TYPES: frozenset[str] = frozenset(
-    {"code_generation", "test", "validator_generation"}
+    {"code_generation", "test", "validator_generation", "refactor"}
 )
 # OMN-13642: a FAIL judge verdict VETOES acceptance on the verifiable path even
 # when the weighted combined score clears the required_bar. The deterministic
@@ -345,6 +383,29 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
         "TASK_MISMATCH",
         ("verified", "passed", "evidence", "check"),
     ),
+    # OMN-14220: implement the two checks the `planning` task class declared but
+    # that had no executor — a bare `MALFORMED: unsupported heuristic DoD check`
+    # hard-failed every planning output and force-escalated it to the paid cloud.
+    # Both are reject-only markers (they join _REJECT_ONLY_HEURISTIC_CHECKS via the
+    # spread below); the local acceptance authority for `planning` is
+    # `semantic_adequacy`, added to its DoD in task_class_contracts.v1.yaml.
+    "structured_output": (
+        "TASK_MISMATCH",
+        ("1.", "2.", "- ", "* ", "step", "phase", "first", "then"),
+    ),
+    "covers_dependencies": (
+        "TASK_MISMATCH",
+        (
+            "depend",
+            "requires",
+            "prerequisite",
+            "after",
+            "before",
+            "blocks",
+            "order",
+            "sequence",
+        ),
+    ),
 }
 
 _ACCURACY_UNCERTAINTY_PHRASES: tuple[str, ...] = (
@@ -365,13 +426,32 @@ _ACCURACY_UNCERTAINTY_PHRASES: tuple[str, ...] = (
 
 _THINKING_TRACE_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
 
+# OMN-14220: a bare leading "error:" message (a tool/inference error surfaced as the
+# whole response) is a refusal-class signal, but the plain substring "error:" also
+# matched legitimate prose naming an exception type ("...ZeroDivisionError:"). Match
+# "error:" only when it is NOT the tail of a longer word — i.e. preceded by a
+# non-letter (start of string, whitespace, or punctuation) — so "Error:" / " error:"
+# trips while "ZeroDivisionError:" does not.
+_LEADING_ERROR_RE = re.compile(r"(?<![A-Za-z])error\s*:", re.IGNORECASE)
+
 
 def _strip_thinking_traces(content: str) -> str:
     """Remove <think>...</think> blocks produced by thinking-capable models."""
     return _THINKING_TRACE_RE.sub("", content)
 
 
-_MARKDOWN_FENCE_RE = re.compile(r"```(?:\w+)?\n(.*?)```", re.DOTALL)
+_MARKDOWN_FENCE_RE = re.compile(r"```(?:[^\r\n]*)\r?\n(.*?)```", re.DOTALL)
+_MARKDOWN_FENCE_WITH_LANG_RE = re.compile(
+    r"```([A-Za-z0-9_-]*)[^\r\n]*\r?\n(.*?)```", re.DOTALL
+)
+
+# OMN-14004: fence language tags that mark a non-Python structured artifact. A
+# `code_generation` ask is not always Python (e.g. a YAML contract fragment, a
+# JSON config), so `_check_compiles_without_errors` must not force every
+# candidate through `ast.parse`. Tags outside these two sets (or no tag at all)
+# keep the prior Python-parse behavior unchanged.
+_YAML_FENCE_LANG_TAGS: frozenset[str] = frozenset({"yaml", "yml"})
+_JSON_FENCE_LANG_TAGS: frozenset[str] = frozenset({"json"})
 
 
 def _strip_markdown_code_fence(content: str) -> str:
@@ -388,6 +468,18 @@ def _strip_markdown_code_fence(content: str) -> str:
 def _extract_fenced_code_blocks(content: str) -> list[str]:
     """Return all fenced code block bodies from mixed content."""
     return _MARKDOWN_FENCE_RE.findall(content)
+
+
+def _extract_fenced_code_blocks_with_lang(content: str) -> list[tuple[str, str]]:
+    """Return (lang_tag, body) pairs for all fenced code blocks in mixed content.
+
+    ``lang_tag`` is the lowercased fence-info-string token (e.g. ``"yaml"`` for
+    ` ```yaml`), or ``""`` when the fence carries no language tag.
+    """
+    return [
+        (lang.lower(), body)
+        for lang, body in _MARKDOWN_FENCE_WITH_LANG_RE.findall(content)
+    ]
 
 
 def _remove_fenced_code_blocks(content: str) -> str:
@@ -450,6 +542,10 @@ def _check_no_refusal(content: str) -> str | None:
     # Pass 2: extended phrase detection on the first 200 chars.
     first_200 = stripped[:200].lower()
     detected = [p for p in _REFUSAL_PHRASES if p in first_200]
+    # OMN-14220: word-boundary "error:" detection (see _LEADING_ERROR_RE) — a bare
+    # leading/standalone error message trips, an in-word "...Error:" does not.
+    if _LEADING_ERROR_RE.search(first_200):
+        detected.append("error:")
     if detected:
         return f"REFUSAL: detected refusal phrases: {', '.join(detected)}"
 
@@ -585,19 +681,42 @@ def _check_semantic_adequacy(content: str) -> str | None:
 
 
 def _check_compiles_without_errors(content: str) -> str | None:
-    """Deterministic: Python-like delegated code must parse successfully.
+    """Deterministic: delegated code must parse as its declared artifact language.
 
-    Extracts fenced code blocks (```python ... ```) from mixed content before
-    parsing. If multiple blocks are present, all must compile. Falls back to
-    raw content when no fenced blocks are found.
+    OMN-14004: ``code_generation`` is not always a Python ask — a YAML
+    contract-fragment or JSON config is an equally valid code_generation
+    artifact. A fenced block's own language tag (```yaml`` / ```json``) selects
+    the parser for that block; an untagged fence or raw (non-fenced) content
+    keeps the original Python-only behavior (``ast.parse``) unchanged, so the
+    common Python case is byte-for-byte the same check as before. Only a block
+    that fails to parse under ITS OWN declared language fails the check — a
+    correct YAML answer no longer gets rejected for not being valid Python.
     """
-    blocks = _extract_fenced_code_blocks(content)
-    candidates = blocks if blocks else [_strip_markdown_code_fence(content)]
-    for candidate in candidates:
+    tagged_blocks = _extract_fenced_code_blocks_with_lang(content)
+    if not tagged_blocks:
+        candidate = _strip_markdown_code_fence(content)
         try:
             ast.parse(candidate)
         except SyntaxError as exc:
             return f"MALFORMED: response does not compile as Python: {exc.msg}"
+        return None
+
+    for lang, body in tagged_blocks:
+        if lang in _YAML_FENCE_LANG_TAGS:
+            try:
+                yaml.safe_load(body)
+            except yaml.YAMLError as exc:
+                return f"MALFORMED: response does not compile as YAML: {exc}"
+        elif lang in _JSON_FENCE_LANG_TAGS:
+            try:
+                json.loads(body)
+            except json.JSONDecodeError as exc:
+                return f"MALFORMED: response does not compile as JSON: {exc.msg}"
+        else:
+            try:
+                ast.parse(body)
+            except SyntaxError as exc:
+                return f"MALFORMED: response does not compile as Python: {exc.msg}"
     return None
 
 
@@ -681,8 +800,17 @@ def _check_contains_any(
 
 
 def _check_covers_args_returns_raises(content: str) -> str | None:
-    """Heuristic: documentation must cover args, returns, and raises sections."""
-    missing = [m for m in ("args:", "returns:", "raises:") if m not in content.lower()]
+    """Heuristic: documentation must cover args and returns sections.
+
+    OMN-14220: ``raises:`` is NOT required. Google style documents a ``Raises:``
+    section only for functions that actually raise; a function with no exception
+    path legitimately omits it, so requiring ``raises:`` unconditionally rejected
+    correct docstrings (a reject-only false positive that force-escalated valid
+    LOCAL documentation output to the paid cloud). ``args:``/``returns:`` remain
+    required as the reject-only pre-filter; the local acceptance authority for the
+    ``documentation`` class is ``semantic_adequacy``.
+    """
+    missing = [m for m in ("args:", "returns:") if m not in content.lower()]
     if missing:
         return "TASK_MISMATCH: missing documentation sections: " + ", ".join(missing)
     return None
@@ -913,6 +1041,110 @@ def _run_contract_checks(
     )
     det_failures.extend(extra_det_failures)
     return det_failures, heuristic_failures, skipped_deterministic
+
+
+# OMN-15193: prefix for a structural JSON-Schema mismatch against a
+# caller-declared ``response_contract``. Distinct from the report-shaped
+# heuristic prefixes (REFUSAL/MALFORMED/WEAK_OUTPUT/TASK_MISMATCH) so a
+# schema-validation failure is unambiguously attributable to the declared
+# contract, not to a keyword heuristic that was bypassed for this request.
+_SCHEMA_VIOLATION_PREFIX = "SCHEMA_VIOLATION"
+
+
+def _schema_violation_reasons(
+    candidate: Any, response_contract: dict[str, object]
+) -> list[str]:
+    """Return specific per-violation reasons for a JSON-Schema mismatch.
+
+    Uses whichever ``jsonschema`` validator class matches the contract's own
+    declared ``$schema`` (falling back to the latest supported draft when the
+    contract declares none), so a per-violation reason names the exact
+    JSON-pointer path and the exact constraint that failed (e.g. "'action' is a
+    required property", "'confidence' is not of type 'number'") instead of a
+    single opaque pass/fail bit. Errors are sorted by path for a stable,
+    replay-identical ordering. Raises ``jsonschema.exceptions.SchemaError`` when
+    ``response_contract`` itself is not a valid JSON Schema -- a caller-authoring
+    bug that must surface loudly, never silently pass every candidate.
+    """
+    validator_cls = jsonschema.validators.validator_for(response_contract)
+    validator_cls.check_schema(response_contract)
+    validator = validator_cls(response_contract)
+    errors = sorted(
+        validator.iter_errors(candidate),
+        key=lambda error: [str(part) for part in error.path],
+    )
+    return [
+        f"{_SCHEMA_VIOLATION_PREFIX}: "
+        f"{'.'.join(str(part) for part in error.path) or '<root>'}: {error.message}"
+        for error in errors
+    ]
+
+
+def _evaluate_response_contract(
+    gate_input: ModelQualityGateInput, response_contract: dict[str, object]
+) -> ModelQualityGateResult:
+    """Structural schema validation REPLACES the keyword-heuristic DoD (OMN-15193).
+
+    When a caller declares a ``response_contract`` (a JSON Schema describing the
+    expected response shape), the gate validates the raw response against that
+    schema instead of running the task-class keyword heuristics
+    (``sub_tasks_verified`` substring matching, ``no_refusal`` phrase matching).
+    Schema validation subsumes what those heuristics were actually checking for
+    -- empty/malformed/truncated/wrong-shape output all fail schema validation
+    with a specific per-violation reason -- without false-positiving on
+    legitimate prose that happens to contain a refusal-adjacent substring (e.g.
+    a ``rationale`` field containing the words "i cannot" as part of a coherent
+    explanation, not an actual refusal).
+
+    This is a HARD REPLACEMENT for this request: ``dod_deterministic`` /
+    ``dod_heuristic`` / ``acceptance_criteria`` / the LLM-judge combine are not
+    consulted at all when a contract is declared -- the schema is the sole
+    acceptance authority.
+    """
+    content = _strip_thinking_traces(gate_input.llm_response_content).strip()
+    if not content:
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=False,
+            fail_category="fail_deterministic",
+            quality_score=0.0,
+            failure_reasons=(
+                "MALFORMED: empty response fails response_contract validation",
+            ),
+            fallback_recommended=True,
+        )
+
+    try:
+        candidate = json.loads(content)
+    except json.JSONDecodeError as exc:
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=False,
+            fail_category="fail_deterministic",
+            quality_score=0.0,
+            failure_reasons=(f"MALFORMED: response is not valid JSON: {exc.msg}",),
+            fallback_recommended=True,
+        )
+
+    reasons = _schema_violation_reasons(candidate, response_contract)
+    if reasons:
+        return ModelQualityGateResult(
+            correlation_id=gate_input.correlation_id,
+            passed=False,
+            fail_category="fail_deterministic",
+            quality_score=0.0,
+            failure_reasons=tuple(reasons),
+            fallback_recommended=True,
+        )
+
+    return ModelQualityGateResult(
+        correlation_id=gate_input.correlation_id,
+        passed=True,
+        fail_category="pass",
+        quality_score=1.0,
+        failure_reasons=(),
+        fallback_recommended=False,
+    )
 
 
 def _stable_hash(value: object) -> str:
@@ -1213,6 +1445,7 @@ def delta(
     *,
     judge_adequacy_score: float | None = None,
     judge_verdict: EnumDelegationJudgeVerdict | None = None,
+    response_contract: dict[str, object] | None = None,
 ) -> ModelQualityGateResult:
     """Evaluate LLM output quality for a delegation response.
 
@@ -1221,6 +1454,13 @@ def delta(
     canonical inference path; its already-resolved 0.0-1.0 adequacy score is
     passed in here, so this reducer stays pure and replay-safe (the recorded
     judge verdict is read back, never re-called).
+
+    OMN-15193: when ``response_contract`` is supplied (a caller-declared JSON
+    Schema), structural schema validation REPLACES everything below --
+    dod_deterministic/dod_heuristic/acceptance_criteria/the judge combine are
+    not consulted at all for this request. See ``_evaluate_response_contract``.
+    ``response_contract=None`` (the default) skips this branch entirely and is
+    byte-identical to pre-OMN-15193 behavior.
 
     When gate_input carries contract-declared DoD checks (dod_deterministic /
     dod_heuristic), those checks take precedence:
@@ -1257,10 +1497,17 @@ def delta(
             path. A ``FAIL`` verdict vetoes acceptance on the verifiable path
             regardless of the combined score (OMN-13642). ``None`` preserves the
             prior score-only behavior.
+        response_contract: Optional caller-declared JSON Schema (OMN-15193).
+            When supplied, REPLACES the task-class DoD / judge combine below
+            with structural schema validation. ``None`` preserves prior
+            behavior byte-for-byte.
 
     Returns:
         A quality gate result with pass/fail, fail_category, score, and reasons.
     """
+    if response_contract is not None:
+        return _evaluate_response_contract(gate_input, response_contract)
+
     if gate_input.quality_contract_mode == "replace_task_class":
         dod_deterministic = gate_input.acceptance_criteria
         dod_heuristic: tuple[str, ...] = ()

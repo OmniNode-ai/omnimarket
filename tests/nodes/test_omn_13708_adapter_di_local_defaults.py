@@ -159,15 +159,53 @@ def test_dep_cascade_dedup_defaults_to_local_github_adapter() -> None:
 def test_verification_sweep_defaults_to_local_receipt_writer(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """No receipt writer + live run → local receipt writer, no adapter error."""
+    """No receipt writer + live run over a real target → local receipt writer.
+
+    OMN-14552: this test previously ran an *empty* request (no targets) and
+    asserted ``overall_status != "fail"`` — which only held because the handler
+    greened over an empty verification set. That is the exact "green over
+    nothing" bug (OMN-14531). The receipt-writer default (OMN-13708) is now
+    proven over a NON-empty census: a probe adapter is injected (so a target is
+    verified) but NO receipt writer, so the ``LocalReceiptWriter`` default is
+    exercised and a durable receipt is written without an adapter error.
+    """
+
+    class _PassProbe:
+        """Minimal probe adapter returning one PASS result per phase."""
+
+        def resolve_targets(
+            self, request: ModelVerificationSweepOrchestratorRequest
+        ) -> tuple[str, ...]:
+            return request.targets
+
+        def verify_dashboard(
+            self, target: str, *, timeout_seconds: int
+        ) -> tuple[dict[str, object], ...]:
+            return ({"endpoint": target, "status": "PASS", "http_code": 200},)
+
+        def verify_database(
+            self, target: str, *, timeout_seconds: int
+        ) -> tuple[dict[str, object], ...]:
+            return ({"table": target, "status": "PASS", "row_count": 1},)
+
+        def verify_dod_evidence(
+            self, target: str, *, timeout_seconds: int
+        ) -> tuple[dict[str, object], ...]:
+            return ({"evidence_type": "rendered_output", "status": "PASS"},)
+
     monkeypatch.chdir(tmp_path)
-    handler = HandlerVerificationSweepOrchestrator()  # no adapters injected
+    handler = HandlerVerificationSweepOrchestrator(  # no receipt writer injected
+        probe_adapter=_PassProbe(),
+    )
     result = handler.handle(
-        ModelVerificationSweepOrchestratorRequest(dry_run=False),
+        ModelVerificationSweepOrchestratorRequest(
+            targets=("OMN-13708",), dry_run=False
+        ),
     )
 
     assert result.adapter_errors == []
-    assert result.overall_status != "fail"
+    assert result.scanned_count == 1
+    assert result.overall_status == "pass"
     assert result.receipt_path
     assert Path(result.receipt_path).exists()
 
@@ -209,14 +247,25 @@ def test_ticketing_insights_dates_not_in_epoch_when_data_supplied() -> None:
 
 
 @pytest.mark.unit
-def test_runtime_sweep_zero_entities_is_not_clean() -> None:
-    """An empty sweep checked nothing — must report no_input, not clean."""
-    result = NodeRuntimeSweep().handle(RuntimeSweepRequest())
-    assert result.contracts_checked == 0
-    assert result.topics_checked == 0
-    assert result.entry_points_checked == 0
-    assert result.status == "no_input"
-    assert result.status != "clean"
+def test_runtime_sweep_zero_entities_is_not_clean(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A sweep that checks nothing must FAIL loudly, never report clean.
+
+    OMN-13919 hardened the OMN-13708 behavior: an empty request now resolves
+    the default ``$OMNI_HOME`` contract set, and a run that still checks zero
+    entities raises instead of returning a reportable ``no_input`` result
+    (the dispatch layer mapped any returned result to success).
+    """
+    # Empty $OMNI_HOME ⇒ default collection finds nothing ⇒ hard failure.
+    monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+    with pytest.raises(ValueError, match="zero entities"):
+        NodeRuntimeSweep().handle(RuntimeSweepRequest())
+
+    # No $OMNI_HOME at all ⇒ hard failure, never a silent empty default.
+    monkeypatch.delenv("OMNI_HOME", raising=False)
+    with pytest.raises(ValueError, match="OMNI_HOME"):
+        NodeRuntimeSweep().handle(RuntimeSweepRequest())
 
 
 @pytest.mark.unit

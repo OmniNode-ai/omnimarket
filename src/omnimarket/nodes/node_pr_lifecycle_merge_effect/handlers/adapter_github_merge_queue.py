@@ -32,14 +32,18 @@ _ENQUEUE_MUTATION = (
 )
 
 _DEQUEUE_MUTATION = (
-    "mutation($id: ID!) { dequeuePullRequest(input: {id: $id}) "
-    "{ pullRequest { number } } }"
+    "mutation($id: ID!) { dequeuePullRequest(input: {id: $id}) { clientMutationId } }"
 )
 
 _NO_MERGE_QUEUE_MARKERS = (
     "does not have a merge queue",
     "merge queue is not enabled",
     "merge_queue_not_enabled",
+)
+
+_ALREADY_IN_QUEUE_MARKERS = (
+    "already in the queue",
+    "already queued",
 )
 
 _MAX_QUEUE_STALL_ATTEMPTS_PER_HOUR = 2
@@ -71,6 +75,8 @@ class GitHubMergeQueueAdapter:
         enqueued, position, skipped_no_queue = await self._enqueue_pr(node_id)
         if skipped_no_queue:
             return f"auto-merge enabled for {repo}#{pr_number}; repo has no merge queue"
+        if position is None:
+            return f"auto-merge enabled and already queued {repo}#{pr_number}"
         if not enqueued:
             raise RuntimeError(f"enqueuePullRequest did not enqueue {repo}#{pr_number}")
         return (
@@ -194,6 +200,8 @@ class GitHubMergeQueueAdapter:
         if rc != 0:
             if any(marker in combined for marker in _NO_MERGE_QUEUE_MARKERS):
                 return False, None, True
+            if any(marker in combined for marker in _ALREADY_IN_QUEUE_MARKERS):
+                return True, None, False
             detail = (stderr or stdout or "no output").strip().splitlines()[:1]
             raise RuntimeError(
                 f"enqueuePullRequest failed: {detail[0] if detail else 'unknown error'}"

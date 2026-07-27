@@ -56,7 +56,16 @@ _GOOD_RESPONSE = json.dumps(
 )
 
 
-class _MockBridge(ModelInferenceAdapter):
+# OMN-13501 no-faked-boundary: handler-isolation unit double. This is a typed
+# contract double (signature-enforced ModelInferenceAdapter subclass) that injects
+# SYNTHETIC grader-score JSON and exceptions to drive the handler's parse /
+# validation logic — inputs that are not recordable-from-real and cannot be served
+# by RecordedReplayInferenceTransport (no exception hook; rejects empty
+# completions). Kept as an ABC subclass because HandlerExtractionGrader
+# .inference_bridge is a nominal ModelInferenceAdapter ABC under mypy-strict; a
+# non-subclass composed double fails type-check. Real request construction /
+# routing is proven by the recorded-replay golden chain, not this unit test.
+class _MockBridge(ModelInferenceAdapter):  # onex-allow-faked-boundary
     """Controllable mock inference bridge."""
 
     def __init__(self, response: str | Exception) -> None:

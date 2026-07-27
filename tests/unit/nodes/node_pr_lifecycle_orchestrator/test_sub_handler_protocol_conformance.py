@@ -50,9 +50,9 @@ class _ConformingInventory:
 
 
 class _ConformingTriage:
-    """Matches HandlerPrLifecycleTriage.handle(correlation_id, prs) exactly."""
+    """Matches HandlerPrLifecycleTriage.handle(request) exactly (def-B, OMN-14837)."""
 
-    async def handle(self, correlation_id: Any, prs: Any) -> Any:
+    async def handle(self, request: Any) -> Any:
         return None
 
 
@@ -143,10 +143,10 @@ def test_conforming_inventory_satisfies_protocol() -> None:
 
 @pytest.mark.unit
 def test_conforming_triage_satisfies_protocol() -> None:
-    """A handler with handle(self, correlation_id, prs) satisfies ProtocolTriageHandler."""
+    """A handler with handle(self, request) satisfies ProtocolTriageHandler."""
     handler = _ConformingTriage()
     assert isinstance(handler, ProtocolTriageHandler), (
-        "ProtocolTriageHandler must accept handle(self, correlation_id, prs) shape"
+        "ProtocolTriageHandler must accept handle(self, request) shape"
     )
 
 
@@ -217,13 +217,13 @@ def test_real_triage_handler_conforms_to_protocol() -> None:
     handler = HandlerPrLifecycleTriage()
     assert isinstance(handler, ProtocolTriageHandler), (
         f"{type(handler).__name__} does not satisfy ProtocolTriageHandler — "
-        "handle() must accept (correlation_id, prs) positional args"
+        "handle() must accept a single (request) positional arg"
     )
     params = _sig_params(handler.handle)
     param_names = list(params.keys())
-    assert param_names[:2] == ["correlation_id", "prs"], (
+    assert param_names == ["request"], (
         f"HandlerPrLifecycleTriage.handle() must have parameters "
-        f"[correlation_id, prs, ...], got: {param_names}"
+        f"[request], got: {param_names}"
     )
 
 
@@ -472,12 +472,11 @@ def test_protocol_inventory_handle_param_count() -> None:
 
 @pytest.mark.unit
 def test_protocol_triage_handle_positional_params() -> None:
-    """ProtocolTriageHandler.handle must have (correlation_id, prs) positional params."""
+    """ProtocolTriageHandler.handle must have a single (request) positional param."""
     proto_params = _sig_params(ProtocolTriageHandler.handle)
     names = list(proto_params.keys())
-    assert names[:2] == ["correlation_id", "prs"], (
-        f"ProtocolTriageHandler.handle must start with [correlation_id, prs], "
-        f"got: {names}"
+    assert names == ["request"], (
+        f"ProtocolTriageHandler.handle must have exactly [request], got: {names}"
     )
 
 

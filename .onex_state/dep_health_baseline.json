@@ -5892,6 +5892,46 @@
       "detail": "Topic 'onex.evt.omnimarket.deep-dive-report-failed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_env_parity_collect_effect/handlers/handler_env_parity_collect.py",
+      "symbol": "handler_env_parity_collect",
+      "detail": "Contract-referenced handler 'handler_env_parity_collect' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_env_parity_collect_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.env-parity-collect-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.env-parity-collect-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "UNTESTED_HANDLER",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pr_delegated_fix_effect/handlers/handler_delegated_fix.py",
+      "symbol": "handler_delegated_fix",
+      "detail": "Contract-referenced handler 'handler_delegated_fix' has no test file and no golden-chain fixture coverage.",
+      "rule_id": "UNTESTED_HANDLER",
+      "rule_version": "v1"
+    },
+    {
+      "finding_type": "MISSING_TOPIC_EDGE",
+      "severity": "MAJOR",
+      "repo": "omnimarket",
+      "file_path": "src/omnimarket/nodes/node_pr_delegated_fix_effect/contract.yaml",
+      "symbol": "onex.evt.omnimarket.pr-delegated-fix-completed.v1",
+      "detail": "Topic 'onex.evt.omnimarket.pr-delegated-fix-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
+      "rule_id": "MISSING_TOPIC_EDGE",
+      "rule_version": "v1"
     }
   ]
 }

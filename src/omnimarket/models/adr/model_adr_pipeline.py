@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class ModelAdrDocumentRef(BaseModel):
@@ -90,7 +90,13 @@ class ModelAdrManifestEntry(BaseModel):
 
     id: str = Field(..., description="Unique slug for this entry.")
     root_paths: list[str] = Field(..., min_length=1)
-    ground_truth_adr: str = Field(..., description="Authoritative ADR text.")
+    ground_truth_adr: str | None = Field(
+        default=None,
+        description=(
+            "Authoritative ADR text. Required for benchmark (ground-truth) "
+            "entries; omitted for discovery entries where no ground truth exists."
+        ),
+    )
     models: list[ModelAdrManifestModel] = Field(..., min_length=1)
     ground_truth_adr_hash: str | None = Field(default=None)
     source_file_hash: str | None = Field(default=None)
@@ -99,6 +105,26 @@ class ModelAdrManifestEntry(BaseModel):
     expected_keywords: list[str] = Field(default_factory=list)
     source_confidence: str | None = Field(default=None)
     curation_notes: str | None = Field(default=None)
+    # Discovery-mode fields (OMN-14103): discovery entries target sources with
+    # no ground-truth ADR — the pipeline extracts candidate ADRs for human review.
+    discovery_mode: bool = Field(
+        default=False,
+        description="When true, no ground_truth_adr is required and grading is skipped.",
+    )
+    source_directory: str | None = Field(default=None)
+    topic_cluster: str | None = Field(default=None)
+    rationale: str | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _require_ground_truth_for_benchmark_entries(self) -> ModelAdrManifestEntry:
+        if not self.discovery_mode and not (
+            self.ground_truth_adr and self.ground_truth_adr.strip()
+        ):
+            raise ValueError(
+                f"manifest entry {self.id!r}: ground_truth_adr is required for "
+                "benchmark entries (discovery_mode is false)."
+            )
+        return self
 
     @field_validator("models", mode="before")
     @classmethod

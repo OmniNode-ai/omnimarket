@@ -1,0 +1,28 @@
+{
+  "branch_coverage_pct": 73.53,
+  "candidate_count": 13,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify",
+  "handler_module_sha256": "sha256:4b97a72023a36668d4604c875115c4a93fcc280fd309d4259dc97109d57a5876",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_ticket_classify_compute",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-07-19T11:51:33.413771+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 8,
+  "selected_input_hashes": [
+    "sha256:8d14ef2e567006fe3d6be6e234a10b2f4191b70aa996a212a55f807a919cc245",
+    "sha256:71e55063d9a599846dc9401984fb1c9d91ddb2706a93fd5765c36f7af0c58be1",
+    "sha256:1247d40b43542512b6e8fe3eacbd411efe8bdbffc8db1153dbcc018300fb7802",
+    "sha256:0b4575066d0d116c27071436dbb667f610e9673bc9735e3b07c67f94beb92561",
+    "sha256:f3a0304d2710a21b2a79f52584c396fa87ce5788468f60fd02bc8c9a6e2dbbb3",
+    "sha256:baa6a3ba22f435b1c948189014c63d21f7a5da4af94f10406583cf1d881e15e6",
+    "sha256:73144b4feaef60eaed9465312b7ccc149d5cc26b19f045e96b09b0b3a053700b",
+    "sha256:ea5b45729a19e8d9e7c124946590201e3e971686efc156b617dd9d4ea595b327"
+  ],
+  "uncovered_waiver": {
+    "reason": "branch_coverage_pct is structurally deflated by coverage.py measuring AFTER module import: the module-level keyword frozensets and the def/class statements (lines 13-108, 124, 136, 173, 184) execute at import time, before cov.start(), so they count as unmeasured. The handle() classification branches themselves (SKIP/BLOCKED/NEEDS_ARCH_DECISION/AUTO_BUILDABLE priority + seam-boundary resolution + contract_yaml parse paths) ARE exercised by this pool and proven byte-identical to the pre-flip def-A handler by test_ticket_classify_golden_equivalence.py (perturbation-discriminating). OMN-14799.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": []
+}

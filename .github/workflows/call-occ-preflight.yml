@@ -1,14 +1,35 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 #
-# OCC Preflight caller — gates auto-merge and merge_group on OCC eligibility.
-# (OMN-10485 / OMN-10482 epic; required-everywhere wiring: OMN-13332)
+# OCC Preflight caller — gates auto-merge and the CI Summary rollup on OCC
+# eligibility. (OMN-10485 / OMN-10482 epic; required-everywhere wiring:
+# OMN-13332; thin-caller migration: OMN-14226)
 #
 # This workflow wires the reusable occ-preflight check (hosted in omnibase_core)
-# as a required status check in this repo. Every auto-merging repo follows the
-# same pattern: a `call-occ-preflight.yml` that delegates to the reusable.
+# as the canonical cross-repo OCC eligibility gate. Every auto-merging repo
+# follows the same pattern: a `call-occ-preflight.yml` that delegates to the
+# reusable.
+#
+# Why this file was rewritten (OMN-14226): omnimarket previously reimplemented
+# the eligibility logic inline. That standalone body read the PR body from the
+# frozen triggering-event payload (`github.event.pull_request.body`), so a body
+# corrected AFTER the event fired kept failing until a manual rerun. The
+# reusable resolves the PR body LIVE (`gh pr view`, event-payload fallback only
+# if that fails), which removes those stale-event-body rerun waves.
 #
 # Required status check name: "occ-preflight / eligibility"
+#   The caller job id `occ-preflight` composed with the reusable's `eligibility`
+#   job yields the check-run name `occ-preflight / eligibility`. Many omnimarket
+#   workflows poll for a check-run with that exact name and gate on it via
+#   `needs:`, and ci.yml's required "CI Summary" rollup depends on it. Do NOT
+#   rename this job or add a `name:` — either would change the surfaced context
+#   and wedge the entire CI matrix.
+#
+# Trigger note: the omnibase_core/omniclaude callers also fire on `merge_group`,
+# but omnimarket's dev branch has no merge queue configured, so merge_group is
+# intentionally omitted here (it would never fire). `edited` is retained so the
+# OCC autobind emitter's `Evidence-Source: OCC#<n>` PATCH re-fires eligibility
+# immediately (OMN-13990 D2 self-heal) instead of waiting for an unrelated push.
 #
 # Invariants enforced by the reusable workflow (do NOT modify here):
 #   I2: merge_group events re-run eligibility fully (cache disabled in reusable).
@@ -20,9 +41,7 @@ name: OCC Preflight
 on:
   pull_request:
     branches: [main, dev, "hotfix/**"]
-    types: [opened, synchronize, reopened, ready_for_review]
-  merge_group:
-    types: [checks_requested]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions:
   contents: read
@@ -30,7 +49,32 @@ permissions:
 
 jobs:
   occ-preflight:
+    # self-gating-ok: centralized OCC preflight reusable is the canonical cross-repo gate for non-OCC repositories.
     uses: OmniNode-ai/omnibase_core/.github/workflows/occ-preflight.yml@main
     with:
       contracts-dir: contracts
       receipts-dir: drift/dod_receipts
+
+  # WS3 (OMN-14646) — representative "OCC Preflight Dependency" poller migrated
+  # to the reusable Governance Readiness orchestrator. REPORT-ONLY shadow: it
+  # consumes the occ-preflight job result and maps it to a typed reason code,
+  # WITHOUT touching the required `occ-preflight / eligibility` context above and
+  # WITHOUT being added to branch-protection required_status_checks. Its surfaced
+  # context is `governance-readiness / evaluate` (not required).
+  #
+  # This shadow is scoped to the OCC dimension only. The product / receipt /
+  # deploy inputs are documented placeholders (`success`): the authoritative
+  # product signal remains the required `CI Summary` rollup and the authoritative
+  # receipt signal remains `receipt-gate / verify`. Wiring the orchestrator to
+  # consume all four dimensions together (and the remaining ~24 pollers) is the
+  # mechanical migration checklist in the PR body — deliberately out of this PR.
+  governance-readiness:
+    needs: [occ-preflight]
+    if: always()
+    uses: ./.github/workflows/governance-readiness.yml
+    with:
+      product_conclusion: success
+      occ_conclusion: ${{ needs.occ-preflight.result }}
+      receipt_conclusion: success
+      deploy_conclusion: success
+      report_only: true

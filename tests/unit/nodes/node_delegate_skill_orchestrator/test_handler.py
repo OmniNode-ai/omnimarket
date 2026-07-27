@@ -136,6 +136,145 @@ async def test_handler_preserves_metadata_session_id_fallback() -> None:
 
 
 @pytest.mark.unit
+async def test_handler_propagates_verified_tenant_id_to_dispatch_port() -> None:
+    """OMN-14349: a verified tenant_id on the request MUST reach the dispatch port.
+
+    The stamp OMN-14208 Path A's tenant-ingress node writes into the wire model
+    is dead on arrival if HandlerDelegateSkill never threads it further -- this
+    pins the seam so the field can't silently stop being read.
+    """
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Review this file",
+        task_type="review",
+        source="claude-code",
+        tenant_id="acme",
+    )
+
+    await handler.handle(request)
+
+    port.dispatch.assert_awaited_once()
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["tenant_id"] == "acme"
+
+
+@pytest.mark.unit
+async def test_handler_passes_none_tenant_id_when_unset() -> None:
+    """No verified tenant_id upstream (e.g. bus-less local path) -> None, not a default."""
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Review this file",
+        task_type="review",
+        source="claude-code",
+    )
+
+    await handler.handle(request)
+
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["tenant_id"] is None
+
+
+@pytest.mark.unit
+async def test_handler_propagates_backend_id_pin_to_dispatch_port() -> None:
+    """OMN-15180: a caller-supplied backend_id pin on the wire request MUST
+    reach the dispatch port. Without this, the LocalDelegationDispatchPort pin
+    OMN-15156 implemented is unreachable from any wire-level caller (e.g.
+    steel's LlmBusDelegationClient) -- this pins the seam so the field can't
+    silently stop being read, mirroring
+    test_handler_propagates_verified_tenant_id_to_dispatch_port.
+    """
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Write the code",
+        task_type="code_generation",
+        source="claude-code",
+        backend_id="local-coder-mlx",
+    )
+
+    await handler.handle(request)
+
+    port.dispatch.assert_awaited_once()
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["backend_id"] == "local-coder-mlx"
+
+
+@pytest.mark.unit
+async def test_handler_passes_none_backend_id_when_unset() -> None:
+    """No pin supplied -> None reaches the dispatch port, not a default pin
+    (regression: unpinned behavior is unchanged by the backend_id addition)."""
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Write the code",
+        task_type="code_generation",
+        source="claude-code",
+    )
+
+    await handler.handle(request)
+
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["backend_id"] is None
+
+
+@pytest.mark.unit
+async def test_handler_propagates_response_contract_to_dispatch_port() -> None:
+    """OMN-15193: a caller-declared response_contract on the wire request MUST
+    reach the dispatch port. Without this, the quality-gate schema-validation
+    path is unreachable from any wire-level caller (e.g. steel's
+    LlmBusDelegationClient) -- this pins the seam so the field can't silently
+    stop being read, mirroring
+    test_handler_propagates_backend_id_pin_to_dispatch_port.
+    """
+    schema = {
+        "type": "object",
+        "properties": {"action": {"type": "string"}},
+        "required": ["action"],
+    }
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Decide the next tactical action",
+        task_type="agent_delegation",
+        source="claude-code",
+        response_contract=schema,
+    )
+
+    await handler.handle(request)
+
+    port.dispatch.assert_awaited_once()
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["response_contract"] == schema
+
+
+@pytest.mark.unit
+async def test_handler_passes_none_response_contract_when_unset() -> None:
+    """No contract declared -> None reaches the dispatch port, not an implicit
+    schema (regression: unpinned behavior is unchanged by the response_contract
+    addition)."""
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Decide the next tactical action",
+        task_type="agent_delegation",
+        source="claude-code",
+    )
+
+    await handler.handle(request)
+
+    call_kwargs = port.dispatch.await_args.kwargs
+    assert call_kwargs["response_contract"] is None
+
+
+@pytest.mark.unit
 async def test_handler_propagates_correlation_id(
     mock_dispatch_port: AsyncMock,
     event_bus: object,
@@ -329,6 +468,79 @@ async def test_handler_maps_scored_failed_delegation_terminal() -> None:
     assert response.metrics.cost_savings_usd == round(
         estimate_baseline_cost_usd(prompt_tokens=68, completion_tokens=17), 6
     )
+
+
+@pytest.mark.unit
+async def test_handler_surfaces_escalation_ladder_on_typed_response() -> None:
+    """OMN-14063: a local->cloud escalation must be visible on the typed
+    response, not only in the capture-file log. Mirrors a real dispatch result
+    shape (health-probe failure on local, success on cheap_cloud)."""
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "answer from cloud",
+        "delegated_to": "https://gemini.example/v1/chat/completions",
+        "model_name": "gemini-2.5-flash-lite",
+        "quality_gate_passed": True,
+        "quality_score": 1.0,
+        "cost_usd": 0.0018,
+        "escalation_count": 1,
+        "attempts": [
+            {
+                "tier": "local",
+                "backend_id": "local-coder",
+                "model_id": "Qwen3.6-35B-A3B",
+                "quality_gate_passed": False,
+                "quality_score": None,
+                "cost_usd": 0.0,
+                "failure_class": "model_unavailable",
+                "error_message": "endpoint http://local.example/v1/chat/completions failed health probe",
+            },
+            {
+                "tier": "cheap_cloud",
+                "backend_id": "cloud-gemini-flash",
+                "model_id": "gemini-2.5-flash-lite",
+                "quality_gate_passed": True,
+                "quality_score": 1.0,
+                "cost_usd": 0.0018,
+            },
+        ],
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Summarize this",
+        task_type="document",
+        source="claude-code",
+    )
+    response = await handler.handle(request)
+
+    assert response.escalation_count == 1
+    assert len(response.attempts) == 2
+    first, second = response.attempts
+    assert first.tier == "local"
+    assert first.backend_id == "local-coder"
+    assert first.quality_gate_passed is False
+    assert first.failure_class == "model_unavailable"
+    assert "failed health probe" in first.error_message
+    assert second.tier == "cheap_cloud"
+    assert second.quality_gate_passed is True
+    assert second.failure_class is None
+    assert second.error_message == ""
+
+
+@pytest.mark.unit
+async def test_handler_defaults_escalation_fields_when_dispatch_omits_them() -> None:
+    """A dispatch port that doesn't report per-attempt detail (e.g. the Kafka
+    bus path) must not break response construction — defaults to 0/[]."""
+    port = AsyncMock()
+    port.dispatch.return_value = {"status": "completed", "content": "ok"}
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test", task_type="test", source="claude-code"
+    )
+    response = await handler.handle(request)
+    assert response.escalation_count == 0
+    assert response.attempts == []
 
 
 @pytest.mark.unit

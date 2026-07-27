@@ -25,12 +25,21 @@ import yaml
 DTO_IMPORTS = {
     "omnimarket.events.delegation.ModelDelegationRequest": "omnibase_core.models.delegation.wire.model_delegation_wire_request.ModelDelegationRequest",
     "omnimarket.events.delegation.ModelDelegationResult": "omnibase_core.models.delegation.wire.model_delegation_result.ModelDelegationResult",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelBaselineIntent": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelBaselineIntent",
     "omnimarket.nodes.node_delegation_orchestrator.models.model_compliance_loop_result.ModelComplianceLoopResult": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelComplianceLoopResult",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationRequest": "omnibase_core.models.delegation.wire.model_delegation_wire_request.ModelDelegationRequest",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationResult": "omnibase_core.models.delegation.wire.model_delegation_result.ModelDelegationResult",
-    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationEvent": "omnibase_core.models.delegation.wire.model_delegation_wire_envelope.ModelDelegationEventEnvelope",
-    "omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event.ModelDelegationEvent": "omnibase_core.models.delegation.wire.model_delegation_wire_envelope.ModelDelegationEventEnvelope",
+    # OMN-14600 (canonical two-class split, executes OMN-14403 A1): the bespoke
+    # ModelDelegationEvent alias for ModelDelegationEventEnvelope was deleted --
+    # the orchestrator now constructs one of these two thin ModelDelegationResult
+    # subclasses directly (class identity alone drives class-name -> topic
+    # routing; no carrier, no embedded-topic field).
+    # OMN-15126: core split ModelDelegationCompleted/ModelDelegationFailed out
+    # of model_delegation_result.py into their own leaf modules (core commit
+    # 9449083a, "OMN-15028: linearize main promotion prerequisites") --
+    # updated to the current canonical leaf-module paths (still re-exported
+    # from omnibase_core.models.delegation.wire's package __init__).
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationCompleted": "omnibase_core.models.delegation.wire.model_delegation_completed.ModelDelegationCompleted",
+    "omnimarket.nodes.node_delegation_orchestrator.models.ModelDelegationFailed": "omnibase_core.models.delegation.wire.model_delegation_failed.ModelDelegationFailed",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceIntent": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelInferenceIntent",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelInferenceResponseData": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelInferenceResponseData",
     "omnimarket.nodes.node_delegation_orchestrator.models.ModelQualityGateIntent": "omnibase_core.models.delegation.wire.model_orchestrator_intents.ModelQualityGateIntent",

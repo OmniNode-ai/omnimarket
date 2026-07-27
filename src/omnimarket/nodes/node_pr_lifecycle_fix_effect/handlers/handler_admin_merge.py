@@ -3,8 +3,16 @@
 """HandlerAdminMerge — admin merge fallback for stuck merge queue PRs.
 
 Consumes ModelStuckQueueEntry list from InventoryResult.stuck_queue_prs.
-Fires when enable_admin_merge_fallback=True (default ON; pass
-`--no-admin-merge-fallback` to disable).
+
+OMN-15064: gated by the SAME OMN-14151 choke point as every other arm/merge
+surface (``ModelArmGatePolicy``: ``action_mode`` + ``kill_switch``), in
+addition to the ``enable_admin_merge_fallback`` opt-in (default OFF). All
+three must be satisfied — ``enable_admin_merge_fallback=True`` AND
+``action_mode=enforce`` AND ``kill_switch=False`` — before any PR is
+admin-merged. An opted-in caller (``enable_admin_merge_fallback=True``) whose
+policy leaves the gate closed on a real (non-dry-run) pass gets a loud
+``AdminMergeGateClosedError``, not a quiet skip — a silent skip is
+indistinguishable from the code path never being reached.
 
 Emits explicit log line "ADMIN MERGE TRIGGERED pr={pr_number} repo={repo}"
 before acting.
@@ -12,6 +20,8 @@ before acting.
 Related:
     - OMN-8207: Task 10 — Add HandlerCommentResolution + HandlerAdminMerge
     - OMN-8206: Task 9 — Stuck merge queue detection (produces stuck_queue_prs)
+    - OMN-14151: merge-queue governor arm-gate choke point
+    - OMN-15064: bring HandlerAdminMerge under the OMN-14151 choke point
 """
 
 from __future__ import annotations
@@ -24,21 +34,39 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict
 
+from omnimarket.events.pr_arm_gate import EnumArmActionMode
 from omnimarket.github_api import rest_json, split_repo
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
-from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
-    ModelStuckQueueEntry,
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_admin_merge_request import (
+    ModelAdminMergeRequest,
 )
 
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
+class AdminMergeGateClosedError(RuntimeError):
+    """Raised when an opted-in admin-merge pass is attempted with the
+    OMN-14151/OMN-15064 arm-gate choke point closed.
+
+    ``enable_admin_merge_fallback=True`` is an explicit statement of intent
+    to admin-merge stuck PRs. Silently downgrading that intent to a no-op
+    because ``policy`` also failed to open is indistinguishable from this
+    handler never being invoked at all — see OMN-15064.
+    """
+
+
 def _resolve_github_token() -> str:
-    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856).
+
+    ``env_var_fallback`` (OMN-14452): the deployed lane's secret resolver is
+    LLM/Slack-scoped with convention fallback disabled and never resolves
+    ``GITHUB_TOKEN`` — falling back to the literal env var (already passed
+    straight through as a container env var) resolves it instead of raising.
+    """
     ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-    secret = resolve_api_key(ref)
+    secret = resolve_api_key(ref, env_var_fallback=ref)
     if secret is None:
         raise RuntimeError(
             f"api_key_ref {ref!r} resolved to None — "
@@ -105,9 +133,15 @@ class _LiveAdminMergeAdapter:
 class HandlerAdminMerge:
     """Admin merge fallback for PRs stuck in merge queue >30min.
 
-    Fires when enable_admin_merge_fallback=True (default ON; pass
-    `--no-admin-merge-fallback` to disable). Logs an explicit
-    "ADMIN MERGE TRIGGERED" line before each merge action for audit trails.
+    Fires only when ALL of the following hold (OMN-14151/OMN-15064 choke
+    point, default OFF/SAFE):
+      - ``enable_admin_merge_fallback=True`` (opt-in master switch)
+      - ``policy.action_mode == EnumArmActionMode.ENFORCE``
+      - ``policy.kill_switch is False``
+
+    Logs an explicit "ADMIN MERGE TRIGGERED" line before each merge action
+    for audit trails. An opted-in but gate-closed real (non-dry-run) pass
+    raises ``AdminMergeGateClosedError`` instead of silently no-op'ing.
     """
 
     def __init__(self, adapter: ProtocolAdminMergeAdapter | None = None) -> None:
@@ -125,36 +159,66 @@ class HandlerAdminMerge:
     def correlation_id(self) -> UUID | None:
         return None
 
-    async def handle(
-        self,
-        *,
-        stuck_prs: list[ModelStuckQueueEntry],
-        enable_admin_merge_fallback: bool = True,
-        dry_run: bool = False,
-    ) -> ModelAdminMergeResult:
-        """Admin-merge all stuck PRs unless explicitly disabled.
+    async def handle(self, payload: ModelAdminMergeRequest) -> ModelAdminMergeResult:
+        """Admin-merge stuck PRs iff the opt-in AND the arm-gate policy agree.
 
         Args:
-            stuck_prs: PRs identified as stuck by inventory compute.
-            enable_admin_merge_fallback: Default ON; set False to disable.
-            dry_run: When True, log intent without merging.
+            payload: Typed request — stuck PRs, opt-in flag, arm-gate policy,
+                dry-run flag.
 
         Returns:
             ModelAdminMergeResult with merge counts.
+
+        Raises:
+            AdminMergeGateClosedError: opt-in is True, there are stuck PRs,
+                this is a real (non-dry-run) pass, but ``payload.policy``
+                does not satisfy action_mode=ENFORCE + kill_switch=False.
         """
-        if not enable_admin_merge_fallback:
+        dry_run = payload.dry_run
+
+        if not payload.enable_admin_merge_fallback:
             logger.info(
                 "admin-merge: skipped (enable_admin_merge_fallback=False), "
                 "stuck_prs=%d",
-                len(stuck_prs),
+                len(payload.stuck_prs),
             )
-            return ModelAdminMergeResult(prs_skipped=len(stuck_prs), dry_run=dry_run)
+            return ModelAdminMergeResult(
+                prs_skipped=len(payload.stuck_prs), dry_run=dry_run
+            )
+
+        gate_open = (
+            payload.policy.action_mode is EnumArmActionMode.ENFORCE
+            and not payload.policy.kill_switch
+        )
+        if not gate_open:
+            if payload.stuck_prs and not dry_run:
+                raise AdminMergeGateClosedError(
+                    "admin-merge requested (enable_admin_merge_fallback=True) "
+                    f"for {len(payload.stuck_prs)} stuck PR(s) but the "
+                    "OMN-14151/OMN-15064 arm-gate choke point is closed: "
+                    f"action_mode={payload.policy.action_mode.value!r} "
+                    f"kill_switch={payload.policy.kill_switch!r}. Admin merge "
+                    "requires policy.action_mode=enforce AND "
+                    "policy.kill_switch=False in addition to "
+                    "enable_admin_merge_fallback=True. See OMN-15064."
+                )
+            logger.info(
+                "admin-merge: withheld (arm-gate closed) "
+                "action_mode=%s kill_switch=%s dry_run=%s stuck_prs=%d",
+                payload.policy.action_mode.value,
+                payload.policy.kill_switch,
+                dry_run,
+                len(payload.stuck_prs),
+            )
+            return ModelAdminMergeResult(
+                prs_skipped=len(payload.stuck_prs), dry_run=dry_run
+            )
 
         prs_merged = 0
         prs_skipped = 0
         prs_failed = 0
 
-        for pr in stuck_prs:
+        for pr in payload.stuck_prs:
             logger.warning(
                 "ADMIN MERGE TRIGGERED pr=%s repo=%s queue_age_minutes=%.1f dry_run=%s",
                 pr.pr_number,
@@ -190,6 +254,7 @@ class HandlerAdminMerge:
 
 
 __all__: list[str] = [
+    "AdminMergeGateClosedError",
     "HandlerAdminMerge",
     "ModelAdminMergeResult",
     "ProtocolAdminMergeAdapter",

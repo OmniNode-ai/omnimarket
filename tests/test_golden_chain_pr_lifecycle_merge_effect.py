@@ -84,6 +84,26 @@ class _FailingGitHubMergeAdapter:
         pass
 
 
+class _AlreadyQueuedGitHubMergeAdapter:
+    """Reports that GitHub already has the PR in the merge queue."""
+
+    async def merge_pr(
+        self,
+        repo: str,
+        pr_number: int,
+        use_merge_queue: bool,
+    ) -> str:
+        return f"auto-merge enabled and already queued {repo}#{pr_number}"
+
+    async def post_pr_comment(
+        self,
+        repo: str,
+        pr_number: int,
+        body: str,
+    ) -> None:
+        pass
+
+
 def _make_command(
     pr_number: int = 42,
     repo: str = "OmniNode-ai/omnimarket",
@@ -158,6 +178,24 @@ class TestPrLifecycleMergeEffectGoldenChain:
         assert result.error is None
         assert "queue" in result.merge_action
         assert adapter.calls[0]["use_merge_queue"] is True
+
+    async def test_already_queued_pr_is_successful_noop(self) -> None:
+        """Already queued PRs are not counted as newly merged every sweep pass."""
+        handler = HandlerPrLifecycleMerge(
+            github_adapter=_AlreadyQueuedGitHubMergeAdapter()
+        )
+        command = _make_command(
+            pr_number=303,
+            repo="OmniNode-ai/omniclaude",
+            triage_verdict="green",
+            use_merge_queue=True,
+        )
+
+        result = await handler.handle(command)
+
+        assert result.merged is False
+        assert result.error is None
+        assert "already queued" in result.merge_action
 
     async def test_non_green_verdict_rejected(self) -> None:
         """Non-green triage verdict is rejected without calling adapter."""

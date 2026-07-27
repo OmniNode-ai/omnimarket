@@ -4,7 +4,16 @@ from pydantic import BaseModel, ConfigDict, Field
 class ModelIntegrationSweepOrchestratorResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    status: str = Field(default="", description="Sweep result status.")
+    status: str = Field(
+        default="",
+        description=(
+            "Sweep result status: 'recorded' (wet run, all checks pass), "
+            "'blocked' (stale runtime SHA or invalid planned probe target), "
+            "'planned' (dry-run enumerated a non-empty probe plan), or "
+            "'no_input' (typed non-success — zero probe targets and zero "
+            "runtime-SHA checks resolved, nothing was verified)."
+        ),
+    )
     artifact_path: str = Field(
         default="", description="Written or planned artifact path."
     )

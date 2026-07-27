@@ -27,22 +27,17 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
 )
-from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
-    TOPIC_ID_DELEGATION_FAILED,
-)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationFailed,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
@@ -72,6 +67,25 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decis
 # ---------------------------------------------------------------------------
 # Fixtures
 # ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _disable_retry_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate the tier-ESCALATION leg from OMN-14234 retry-local (best-of-N).
+
+    These tests drive gate failures on the free ``local`` tier and assert the
+    workflow escalates. With retry-local, a sub-bar draft on a FREE tier is retried
+    on the SAME tier up to its ``max_retries`` budget BEFORE escalating, so the
+    escalation assertions here would only hold after that budget is exhausted.
+    Disabling the free-tier gate keeps these focused on escalation; the retry-local
+    behavior (and its composition with escalation) is proven in
+    ``test_retry_local_omn14234.py``.
+    """
+    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+        handler_delegation_workflow as _hw,
+    )
+
+    monkeypatch.setattr(_hw, "is_free_tier", lambda _tier: False)
 
 
 def _make_request(
@@ -230,9 +244,9 @@ class TestGateFailMaxEscalationReached:
         assert workflow.state == EnumDelegationState.FAILED
 
         # Find the delegation result event
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.terminal_failure_reason == "max_escalation_attempts_reached"
 
@@ -258,9 +272,9 @@ class TestGateFailNoHigherTier:
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         # OMN-13167: precise reason — stable machine-keyable token prefix plus the
         # exhausted task-class policy that produced the dead-end.
@@ -318,16 +332,14 @@ class TestGateFailFallbackNotRecommended:
             EnumDelegationState.ROUTED,
         }
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) >= 1
         # If FAILED, the terminal event must carry quality_passed=False.
         failed_events = [
-            e
-            for e in result_events
-            if getattr(e, "topic", None) == TOPIC_ID_DELEGATION_FAILED
+            e for e in result_events if isinstance(e, ModelDelegationFailed)
         ]
         if failed_events:
-            result = failed_events[0].payload
+            result = failed_events[0]
             assert isinstance(result, ModelDelegationResult)
             assert result.quality_passed is False
 
@@ -463,9 +475,9 @@ class TestTerminalEventEscalationMetadata:
         )
         events = handler.handle_gate_result(gate)
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
 
         # Escalation metadata should be present
@@ -488,9 +500,9 @@ class TestTerminalEventEscalationMetadata:
         gate = _make_gate_result(cid, passed=True, quality_score=0.9)
         events = handler.handle_gate_result(gate)
 
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) >= 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.escalation_count == 0
         assert result.attempts_count == 1
@@ -706,14 +718,14 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
 
-        delegation_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        delegation_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(delegation_events) == 1, (
             "exactly one terminal delegation event must be emitted"
         )
         terminal = delegation_events[0]
-        assert terminal.topic == TOPIC_ID_DELEGATION_FAILED
+        assert isinstance(terminal, ModelDelegationFailed)
 
-        result = terminal.payload
+        result = terminal
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
         assert result.fallback_to_claude is True
@@ -787,10 +799,10 @@ class TestAllTiersFailMismatchedCeilingTokensTerminatesCleanly:
 
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
-        delegation_events = [e for e in events2 if isinstance(e, ModelDelegationEvent)]
+        delegation_events = [e for e in events2 if isinstance(e, ModelDelegationResult)]
         assert len(delegation_events) == 1
-        assert delegation_events[0].topic == TOPIC_ID_DELEGATION_FAILED
-        result = delegation_events[0].payload
+        assert isinstance(delegation_events[0], ModelDelegationFailed)
+        result = delegation_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
         assert result.total_tokens == result.prompt_tokens + result.completion_tokens
@@ -915,15 +927,16 @@ class TestNextEligibleTierEndpointResolvability:
     def test_code_generation_uses_contract_tier_order_after_cheap_cloud(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        # code_generation declares cheap_cloud -> local -> claude. A cheap_cloud
-        # failure must therefore try local next, even though local appears before
-        # cheap_cloud in routing_tiers.yaml declaration order.
+        # OMN-13599: code_generation declares local -> cheap_cloud -> claude
+        # (local AI-PC coder is the preferred first hop). A cheap_cloud failure
+        # must therefore advance to the claude ceiling next; local is BEFORE
+        # cheap_cloud in the closed set and is not re-tried on the way up.
         result = next_eligible_tier(
             "cheap_cloud",
             frozenset({"cheap_frontier"}),
             task_type="code_generation",
         )
-        assert result == "local"
+        assert result == "claude"
 
     def test_tier_order_unknown_tier_fails_configuration(self) -> None:
         config = _get_config()
@@ -990,9 +1003,9 @@ class TestEscalationTerminatesWhenFrontierUnconfigured:
         assert workflow.state == EnumDelegationState.FAILED, (
             "FSM must reach terminal FAILED, not strand in ROUTED"
         )
-        result_events = [e for e in events2 if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events2 if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1, "a terminal delegation event must be emitted"
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
         # OMN-13167: precise reason naming the exhausted `document` policy plus
@@ -1078,25 +1091,32 @@ class TestTestResearchTierPolicyVerified:
 
     OMN-13667: repointed again from free-tier AI Studio Gemini (cloud-gemini-pro,
     503s on escalation) to GLM-5.2 z.ai direct (cloud-glm, secret_ref
-    llm.glm.api_key). The fixture now sets llm.glm.api_key so the new ceiling
-    backend is routable.
+    llm.glm.api_key). The fixture set llm.glm.api_key so that ceiling
+    backend was routable.
+
+    OMN-14625: repointed a THIRD time — z.ai GLM is DEAD from the .201 runtime
+    (resolve_api_key succeeds but every completion call 401s / loops
+    FAILED-only) — back to Gemini (cloud-gemini-pro, secret_ref
+    llm.gemini.api_key). The fixture now sets llm.gemini.api_key so the
+    ceiling backend is routable.
     """
 
     @pytest.fixture(autouse=True)
     def _configure_ceiling_secret(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> Iterator[None]:
-        # OMN-13667: the repo-default bifrost contract maps the claude ceiling tier
-        # to cloud-glm, whose secret_ref is llm.glm.api_key. The env-backed
-        # secret store reads the ref name verbatim, so set it to make the ceiling
-        # routable.
+        # OMN-14625: the repo-default bifrost contract maps the claude ceiling tier
+        # to cloud-gemini-pro, whose secret_ref is llm.gemini.api_key. The
+        # env-backed secret store reads the ref name verbatim, so set it to make
+        # the ceiling routable.
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
             handler_delegation_routing as routing,
         )
 
-        # OMN-13667: ceiling repointed to cloud-glm (secret_ref llm.glm.api_key).
-        # Set the GLM key so the ceiling backend's secret resolves as available.
-        monkeypatch.setenv("llm.glm.api_key", "test-glm-key")
+        # OMN-14625: ceiling repointed to cloud-gemini-pro (secret_ref
+        # llm.gemini.api_key). Set the Gemini key so the ceiling backend's
+        # secret resolves as available.
+        monkeypatch.setenv("llm.gemini.api_key", "test-gemini-key")
         routing._load_bifrost_endpoints.cache_clear()
         yield
         routing._load_bifrost_endpoints.cache_clear()
@@ -1265,9 +1285,9 @@ class TestTestTaskDeadEndEmitsPreciseReason:
 
         workflow = handler.workflows[cid]
         assert workflow.state == EnumDelegationState.FAILED
-        result_events = [e for e in events if isinstance(e, ModelDelegationEvent)]
+        result_events = [e for e in events if isinstance(e, ModelDelegationResult)]
         assert len(result_events) == 1
-        result = result_events[0].payload
+        result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.fallback_to_claude is True
         assert result.terminal_failure_reason is not None
@@ -1310,93 +1330,104 @@ class TestClosedSetTierOrderOMN13157:
     to stall after cheap_cloud instead of escalating to local.
     """
 
-    def test_code_generation_after_cheap_cloud_escalates_to_local(
+    def test_code_generation_after_local_escalates_to_cheap_frontier(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        """OMN-13157 AC1: after cheap_cloud fails, code_generation MUST escalate
-        to local (contract order [cheap_cloud, local, claude]), even though local
-        appears before cheap_cloud in routing_tiers.yaml declaration order.
+        """OMN-14225: after the preferred first hop (local) fails, code_generation
+        escalates to the FREE cheap_frontier tier BEFORE any paid tier (contract
+        order [local, cheap_frontier, cheap_cloud, claude]).
 
-        cheap_frontier is NOT in code_generation's tier_order so it must be
-        excluded WITHOUT needing to put it in excluded_tiers — the closed set
-        alone enforces the exclusion.
-        """
-        result = next_eligible_tier(
-            "cheap_cloud",
-            frozenset(),  # empty: cheap_frontier must be excluded by closed-set
-            task_type="code_generation",
-        )
-        assert result == "local", (
-            "code_generation tier_order=[cheap_cloud, local, claude]: "
-            "after cheap_cloud, next must be local — NOT cheap_frontier "
-            "(which is absent from the closed set)"
-        )
-
-    def test_code_generation_after_local_advances_to_claude(
-        self, frontier_unconfigured_bifrost: None
-    ) -> None:
-        """OMN-13157 AC1 (continued) / OMN-13667: after local, code_generation
-        escalates to claude (the ceiling in the contract order). OMN-13667 repointed
-        the ceiling to cloud-glm (GLM-5.2 z.ai direct), which is also the cheap_cloud
-        primary backend and carries a non-empty endpoint_url in the test fixture.
-        The ceiling is therefore ROUTABLE for code_generation, so escalating off
-        local must return 'claude' (not None).
+        Free-before-paid: cheap_frontier (OpenRouter, free_local) precedes
+        cheap_cloud (z.ai glm-5.2, metered/PAID), so the ladder tries the free
+        frontier before spending. Supersedes the pre-OMN-14225 assertion that
+        after local came cheap_cloud.
         """
         result = next_eligible_tier(
             "local",
             frozenset(),
             task_type="code_generation",
         )
-        # OMN-13667: the ceiling backend (cloud-glm) is configured in
-        # frontier_unconfigured_bifrost (shared with cheap_cloud), so claude IS
-        # reachable after local for code_generation tasks.
-        assert result == "claude", (
-            "code_generation ceiling is claude; the ceiling backend (cloud-glm) "
-            "is configured via the shared cheap_cloud endpoint in this fixture, "
-            "so escalation must advance to claude (OMN-13667)"
+        assert result == "cheap_frontier", (
+            "code_generation tier_order=[local, cheap_frontier, cheap_cloud, "
+            "claude] (OMN-14225 free-before-paid): after local, next must be the "
+            "FREE cheap_frontier — NOT the paid cheap_cloud"
         )
 
-    def test_cheap_frontier_excluded_from_code_generation_by_closed_set(
+    def test_code_generation_after_cheap_frontier_advances_to_cheap_cloud(
         self, frontier_unconfigured_bifrost: None
     ) -> None:
-        """OMN-13157 AC3: cheap_frontier is NEVER tried for code_generation.
+        """OMN-14225: after the FREE cheap_frontier fails, code_generation escalates
+        to the paid cheap_cloud (contract order [local, cheap_frontier, cheap_cloud,
+        claude]).
 
-        The closed-set contract order for code_generation is [cheap_cloud, local,
-        claude]. cheap_frontier is absent, so it is excluded regardless of the
-        excluded_tiers argument. This test uses task_type=None (no contract order)
-        to confirm cheap_frontier IS reachable in declaration order, then
-        task_type='code_generation' to confirm it is excluded by the closed set.
-
-        The ``frontier_unconfigured_bifrost`` fixture pins resolvable ``local`` and
-        ``cheap_cloud`` backends (claude/frontier left empty) so the closed-set
-        assertion is deterministic regardless of the ambient bifrost config — the
-        ``task_type=None`` declaration-order branch never consults bifrost, so the
-        backward-compat baseline below is unaffected by the fixture.
+        The free frontier tier is exhausted before any paid tier is reached.
+        Supersedes the pre-OMN-14225 assertion that after cheap_cloud came
+        cheap_frontier.
         """
-        # Declaration-order (task_type=None) DOES advance to cheap_frontier
-        # from cheap_cloud (proves it is reachable in principle).
+        result = next_eligible_tier(
+            "cheap_frontier",
+            frozenset(),
+            task_type="code_generation",
+        )
+        assert result == "cheap_cloud", (
+            "code_generation tier_order=[local, cheap_frontier, cheap_cloud, "
+            "claude] (OMN-14225): after the free cheap_frontier, next is the paid "
+            "cheap_cloud"
+        )
+
+    def test_code_generation_after_cheap_cloud_advances_to_claude(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        """OMN-14225: cheap_cloud is not the ceiling — claude follows it (contract
+        order [local, cheap_frontier, cheap_cloud, claude]).
+
+        The ceiling backend (cloud-glm) is configured in
+        frontier_unconfigured_bifrost (shared with cheap_cloud), so claude IS
+        reachable after cheap_cloud for code_generation tasks (OMN-13667).
+        """
+        result = next_eligible_tier(
+            "cheap_cloud",
+            frozenset(),
+            task_type="code_generation",
+        )
+        assert result == "claude", (
+            "code_generation ceiling is claude; escalating past cheap_cloud must "
+            "still reach it (OMN-13667/OMN-14225)"
+        )
+
+    def test_cheap_frontier_now_included_in_code_generation_closed_set(
+        self, frontier_unconfigured_bifrost: None
+    ) -> None:
+        """OMN-13157 AC3 / OMN-14225: cheap_frontier is an explicit member of
+        code_generation's closed-set tier_order, now ordered BEFORE the paid
+        cheap_cloud (free-before-paid).
+
+        The declaration order (task_type=None, routing_tiers.yaml) is UNCHANGED by
+        OMN-14225 ([local, cheap_cloud, cheap_frontier, claude]) — only the
+        per-task-class escalation_policy.tier_order was reordered. This test proves
+        cheap_frontier is a declared member of the code_generation contract order
+        and is reached from local (before cheap_cloud), not appended past the set.
+        """
+        # Declaration-order (task_type=None) is unchanged: cheap_cloud→cheap_frontier
+        # (routing_tiers.yaml order, not reordered by OMN-14225).
         decl_result = next_eligible_tier(
             "cheap_cloud",
             frozenset(),
             task_type=None,
         )
-        assert decl_result == "cheap_frontier", (
-            "declaration-order must advance to cheap_frontier from cheap_cloud "
-            "when no task_type is given (backward compat baseline)"
-        )
+        assert decl_result == "cheap_frontier"
 
-        # Closed-set for code_generation MUST NOT return cheap_frontier.
+        # code_generation's closed-set contract order reaches cheap_frontier from
+        # local (free-before-paid, OMN-14225) — an explicit, declared member.
         contract_result = next_eligible_tier(
-            "cheap_cloud",
+            "local",
             frozenset(),
             task_type="code_generation",
         )
-        assert contract_result != "cheap_frontier", (
-            "cheap_frontier is absent from code_generation tier_order; "
-            "the closed-set must exclude it without needing it in excluded_tiers"
+        assert contract_result == "cheap_frontier", (
+            "cheap_frontier is an explicit member of code_generation's tier_order, "
+            "reached from local before the paid cheap_cloud (OMN-14225)"
         )
-        # Must return local (the next listed tier in the contract order).
-        assert contract_result == "local"
 
     def test_task_type_none_preserves_declaration_order(self) -> None:
         """OMN-13157 AC2: task_type=None uses routing_tiers.yaml declaration order.

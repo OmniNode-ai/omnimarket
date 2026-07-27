@@ -224,8 +224,16 @@ def build_run_request(
     arm_order_seed: int = 42,
     generation_timeout_seconds: float = 120.0,
     artifact_content_map: dict[str, str] | None = None,
+    target_endpoint: str = "",
 ) -> ModelContextRoiRunRequest:
-    """Construct the contract-canonical runner command for the full matrix."""
+    """Construct the contract-canonical runner command for the full matrix.
+
+    ``target_endpoint`` (OMN-14018): when set to a routing-tier backend id (e.g.
+    ``cloud-glm``) the runner pins every generation to that backend's tier so the
+    battery captures genuine per-tier graded rows for ``context_roi_scores``
+    (a real, sub-floor ``cheap_cloud`` cohort instead of the always-``local``
+    contract route). Empty preserves contract-declared routing.
+    """
     return ModelContextRoiRunRequest(
         run_id=run_id or f"context-roi-battery-{uuid.uuid4().hex[:12]}",
         tasks=build_difficulty_ladder(),
@@ -235,6 +243,7 @@ def build_run_request(
         arm_order_seed=arm_order_seed,
         generation_timeout_seconds=generation_timeout_seconds,
         artifact_content_map=artifact_content_map or {},
+        target_endpoint=target_endpoint,
     )
 
 
@@ -467,12 +476,17 @@ def run_battery(
     artifact_content_map: dict[str, str] | None = None,
     bus_factory: Callable[[], ProtocolBatteryBus] | None = None,
     run_id: str | None = None,
+    target_endpoint: str = "",
 ) -> ModelBatteryReport:
     """Run the full (task x arm x trial) battery.
 
     dry_run=True validates wiring (matrix, request models, cell count, manifest
     shape) without constructing or invoking any bus - the runner.handle() loop
     is never entered and nothing is published.
+
+    ``target_endpoint`` (OMN-14018) pins every generation to a chosen routing-tier
+    backend so the battery captures genuine per-tier graded rows; empty = normal
+    contract-declared routing.
     """
     out_dir = output_dir or _DEFAULT_OUTPUT_DIR
     experiment_id = f"context-roi-exp-{uuid.uuid4().hex[:12]}"
@@ -484,6 +498,7 @@ def run_battery(
         arm_order_seed=arm_order_seed,
         generation_timeout_seconds=generation_timeout_seconds,
         artifact_content_map=artifact_content_map,
+        target_endpoint=target_endpoint,
     )
     expected_cell_count = len(request.tasks) * len(request.arms) * trials_per_cell
 
@@ -617,6 +632,17 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--target-endpoint",
+        type=str,
+        default="",
+        help=(
+            "OMN-14018: pin every generation to this routing-tier backend id "
+            "(e.g. 'cloud-glm') so the battery captures genuine per-tier graded "
+            "rows for context_roi_scores. Empty = contract-declared routing "
+            "(always local). A ref that maps to no tier degrades to normal routing."
+        ),
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Validate wiring without any bus traffic.",
@@ -641,6 +667,7 @@ def main(argv: list[str] | None = None) -> int:
         dry_run=args.dry_run,
         output_dir=args.output_dir,
         artifact_content_map=artifact_content_map,
+        target_endpoint=args.target_endpoint,
     )
 
     if report.dry_run:

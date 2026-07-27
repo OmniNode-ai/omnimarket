@@ -1,0 +1,177 @@
+#!/usr/bin/env bash
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# merge-proof — Resolve the environment that omnimarket local proof gates need,
+# then run (or hand off to) that proof. Fails fast with the exact `export` lines
+# to run when the environment cannot be resolved — it never proceeds on a silent
+# wrong path. (OMN-14462 / F-20)
+#
+# Why: local hooks/probes (e.g. the topic-naming lint) resolve their validator
+# from a sibling `omnibase_infra` checkout. Under the mandated worktree layout
+# ($OMNI_HOME/omni_worktrees/<ticket>/omnimarket) the naive `../omnibase_infra`
+# sibling path does not exist, so a correct change fails locally until the hidden
+# environment is reconstructed by hand. This wrapper resolves that environment
+# deterministically from its own on-disk location (rule #8) and, when it cannot,
+# prints the exact `export` line to run rather than failing on a wrong path.
+#
+# Usage:
+#   scripts/merge-proof [--check | --print-env | -- CMD [ARGS...]]
+#
+#   (no args)          Resolve+export env, then run the local topic-lint proof.
+#   --check            Resolve env, verify the validator exists, print resolved
+#                      paths, exit 0. Exit non-zero with guidance if unresolved.
+#   --print-env        Print eval-able `export` lines for the resolved env.
+#   -- CMD [ARGS...]   Resolve+export env, then exec CMD with that env
+#                      (e.g. `scripts/merge-proof -- pre-commit run --files X`).
+#
+# Environment (auto-resolved from this script's location; export to override):
+#   OMNI_HOME            omni_home checkout root (anchor)
+#   OMNIBASE_INFRA_PATH  sibling omnibase_infra checkout (topic-lint validator)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
+
+RESOLVED_OMNI_HOME=""
+RESOLVED_INFRA=""
+
+_is_dir() { [ -n "${1:-}" ] && [ -d "${1}" ]; }
+
+shell_quote() {
+  printf '%q' "$1"
+}
+
+usage() {
+  sed -n '10,32p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+}
+
+# Derive the omni_home anchor from this checkout's location. Deterministic
+# Path-relative resolution (rule #8), never a hardcoded default.
+derive_omni_home() {
+  if _is_dir "${OMNI_HOME:-}"; then
+    printf '%s\n' "$(cd "${OMNI_HOME}" && pwd)"
+    return 0
+  fi
+  local candidate=""
+  case "${REPO_ROOT}" in
+    */omni_worktrees/*)
+      # $OMNI_HOME/omni_worktrees/<ticket>/omnimarket
+      candidate="${REPO_ROOT%%/omni_worktrees/*}"
+      ;;
+    *)
+      # Canonical registry layout: <omni_home>/omnimarket
+      candidate="$(cd "${REPO_ROOT}/.." >/dev/null 2>&1 && pwd)"
+      ;;
+  esac
+  # Only accept a candidate that actually looks like omni_home (has the sibling).
+  if _is_dir "${candidate}" && _is_dir "${candidate}/omnibase_infra"; then
+    printf '%s\n' "${candidate}"
+    return 0
+  fi
+  return 1
+}
+
+resolve_env() {
+  if RESOLVED_OMNI_HOME="$(derive_omni_home)"; then
+    :
+  else
+    RESOLVED_OMNI_HOME=""
+  fi
+
+  if _is_dir "${OMNIBASE_INFRA_PATH:-}"; then
+    RESOLVED_INFRA="$(cd "${OMNIBASE_INFRA_PATH}" && pwd)"
+  elif _is_dir "${RESOLVED_OMNI_HOME}/omnibase_infra"; then
+    RESOLVED_INFRA="${RESOLVED_OMNI_HOME}/omnibase_infra"
+  elif _is_dir "${REPO_ROOT}/../omnibase_infra"; then
+    RESOLVED_INFRA="$(cd "${REPO_ROOT}/../omnibase_infra" >/dev/null 2>&1 && pwd)"
+  fi
+}
+
+guidance_and_die() {
+  {
+    echo "error: merge-proof could not resolve the environment omnimarket proof gates need."
+    echo
+    echo "The topic-naming lint hook resolves its validator from a sibling omnibase_infra"
+    echo "checkout. Set the environment explicitly, then re-run:"
+    echo
+    if [ -n "${RESOLVED_OMNI_HOME}" ]; then
+      echo "  export OMNI_HOME=$(shell_quote "${RESOLVED_OMNI_HOME}")"
+    else
+      echo "  export OMNI_HOME=/path/to/omni_home"
+    fi
+    echo "  export OMNIBASE_INFRA_PATH=\"\$OMNI_HOME/omnibase_infra\""
+    echo
+    echo "Then re-run: scripts/merge-proof --check"
+  } >&2
+  exit 3
+}
+
+main() {
+  local mode="run"
+  local -a passthrough=()
+  case "${1:-}" in
+    --check) mode="check" ;;
+    --print-env) mode="print-env" ;;
+    -h | --help)
+      usage
+      exit 0
+      ;;
+    --)
+      mode="exec"
+      shift
+      passthrough=("$@")
+      ;;
+    "") mode="run" ;;
+    *)
+      echo "merge-proof: unknown option: ${1}" >&2
+      usage >&2
+      exit 2
+      ;;
+  esac
+
+  resolve_env
+
+  # OMNIBASE_INFRA_PATH is the load-bearing var for local proof; without a real
+  # sibling checkout the topic-lint validator cannot be found.
+  if [ -z "${RESOLVED_INFRA}" ]; then
+    guidance_and_die
+  fi
+
+  export OMNIBASE_INFRA_PATH="${RESOLVED_INFRA}"
+  if [ -n "${RESOLVED_OMNI_HOME}" ]; then
+    export OMNI_HOME="${RESOLVED_OMNI_HOME}"
+  fi
+  unset GIT_DIR GIT_INDEX_FILE GIT_WORK_TREE
+
+  case "${mode}" in
+    check)
+      local lint="${OMNIBASE_INFRA_PATH}/scripts/validation/lint_topic_names.py"
+      echo "merge-proof: OMNI_HOME=${OMNI_HOME:-<unresolved>}"
+      echo "merge-proof: OMNIBASE_INFRA_PATH=${OMNIBASE_INFRA_PATH}"
+      if [ ! -f "${lint}" ]; then
+        echo "error: topic-lint validator not found at ${lint}" >&2
+        echo "  (is OMNIBASE_INFRA_PATH pointing at a real omnibase_infra checkout?)" >&2
+        exit 4
+      fi
+      echo "merge-proof: environment OK"
+      ;;
+    print-env)
+      echo "export OMNI_HOME=$(shell_quote "${OMNI_HOME:-}")"
+      echo "export OMNIBASE_INFRA_PATH=$(shell_quote "${OMNIBASE_INFRA_PATH}")"
+      ;;
+    exec)
+      if [ "${#passthrough[@]}" -eq 0 ]; then
+        echo "merge-proof: -- requires a command to run" >&2
+        exit 2
+      fi
+      exec "${passthrough[@]}"
+      ;;
+    run)
+      cd "${REPO_ROOT}"
+      exec bash "${REPO_ROOT}/scripts/validation/run_topic_lint.sh"
+      ;;
+  esac
+}
+
+main "$@"

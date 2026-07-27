@@ -8,7 +8,6 @@ from collections.abc import Callable, Iterable
 from importlib import import_module
 from pathlib import Path
 from typing import Any, Literal, cast
-from uuid import UUID
 
 from omnimarket.nodes.node_omnigate_check_executor.models.model_check_executor_input import (
     ModelCheckExecutorInput,
@@ -84,15 +83,22 @@ class HandlerCheckExecutor:
         return "effect"
 
     async def handle(
-        self,
-        correlation_id: UUID,
-        config_path: str,
-        repo_path: str,
+        self, payload: ModelCheckExecutorInput
     ) -> ModelCheckExecutorResult:
-        _ = correlation_id
-        request = ModelCheckExecutorInput(config_path=config_path, repo_path=repo_path)
-        config = self._config_loader(Path(request.config_path))
-        raw_checks = tuple(self._check_executor(config, Path(request.repo_path)))
+        """Execute trusted OmniGate checks for the given config/repo pair.
+
+        Args:
+            payload: Already-validated ``ModelCheckExecutorInput``. Named
+                ``payload`` so the runtime's single-parameter dispatch passes
+                the constructed request positionally instead of keyword-fanning
+                the model fields.
+
+        Returns:
+            ModelCheckExecutorResult with per-check results and the
+            aggregate pass/fail verdict.
+        """
+        config = self._config_loader(Path(payload.config_path))
+        raw_checks = tuple(self._check_executor(config, Path(payload.repo_path)))
         checks = tuple(_check_to_node_result(check) for check in raw_checks)
         blocking = set(_BLOCKING_STATUSES)
         if _advisory_blocks(config):

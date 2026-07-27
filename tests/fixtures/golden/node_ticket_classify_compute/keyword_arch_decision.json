@@ -1,0 +1,42 @@
+{
+  "input": {
+    "correlation_id": "00000005-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": null,
+        "description": "needs a design rfc and tradeoff research",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Todo",
+        "ticket_id": "OMN-5",
+        "title": "Evaluate architecture proposal"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "needs_arch_decision",
+        "confidence": 0.6,
+        "matched_keywords": [
+          "architecture",
+          "design",
+          "evaluate",
+          "proposal",
+          "research",
+          "rfc",
+          "tradeoff"
+        ],
+        "reason": "Needs arch decision: matched ('architecture', 'design', 'evaluate', 'proposal', 'research', 'rfc', 'tradeoff')",
+        "seam_source": "keyword_fallback",
+        "ticket_id": "OMN-5",
+        "title": "Evaluate architecture proposal"
+      }
+    ],
+    "correlation_id": "00000005-0000-4000-8000-000000000000",
+    "total_auto_buildable": 0,
+    "total_non_buildable": 1
+  },
+  "output_sha256": "sha256:ede2c2858448cf61fd07a09537ecabc744d74d8d7f9b1062404613caf03b9489"
+}

@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: MIT
 """CLI entry point for node_create_ticket.
 
-Validates ticket parameters, detects seam signals, and generates the
-structured description body. The Linear API call itself is performed by
-the skill wrapper (omniclaude/plugins/onex/skills/create_ticket/SKILL.md)
-which passes the generated description_body to the MCP tool.
+Validates ticket parameters, detects seam signals, generates the structured
+description body, and creates the Linear ticket via the GraphQL API
+(``HandlerCreateTicket`` resolves ``LINEAR_API_KEY`` and performs the
+``issueCreate`` call directly — see OMN-14547). A non-dry-run request that
+does not resolve to a real ``ticket_id`` raises rather than reporting a fake
+``status="created"``; this CLI catches that and reports ``status="error"``.
 
 Usage:
     python -m omnimarket.nodes.node_create_ticket --title "Add rate limiting"
@@ -24,6 +26,7 @@ import sys
 from omnimarket.nodes.node_create_ticket.handlers.handler_create_ticket import (
     HandlerCreateTicket,
     ModelCreateTicketRequest,
+    ModelCreateTicketResult,
 )
 
 _log = logging.getLogger(__name__)
@@ -87,7 +90,19 @@ def main() -> None:
     )
 
     handler = HandlerCreateTicket()
-    result = handler.handle(request)
+    try:
+        result = handler.handle(request)
+    except RuntimeError as exc:
+        # Fail-closed guard (OMN-14547) or secret-resolution failure — report
+        # as a structured error rather than an uncaught traceback, preserving
+        # this CLI's "always prints a ModelCreateTicketResult JSON" contract.
+        result = ModelCreateTicketResult(
+            status="error",
+            title=request.title,
+            team=request.team,
+            validation_errors=[str(exc)],
+            dry_run=request.dry_run,
+        )
 
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
 

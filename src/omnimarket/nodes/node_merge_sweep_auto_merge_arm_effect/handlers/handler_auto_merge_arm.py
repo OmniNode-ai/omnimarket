@@ -11,6 +11,20 @@ Idempotent: re-arming an already-armed PR returns success.
 
 The GitHub token is resolved at handle() time from the contract-declared
 ``api_key_ref`` (``GITHUB_TOKEN``) — no direct ``os.environ`` read.
+
+OMN-14151: this is one of the three legacy arm surfaces superseded by the
+merge-queue governor's single gated arm path (node_pr_arm_gate_compute +
+node_pr_lifecycle_merge_effect). Hard-gated fail-closed — the GraphQL mutation
+never fires unless ``_LEGACY_ARM_ENV_VAR`` is explicitly enabled.
+
+OMN-15053: this exact surface landed omnimarket#1879 on 2026-07-24 as a
+"working as designed" side effect of an agent dogfooding ``/onex:merge_sweep``
+per CLAUDE.md rule 1, in direct tension with CLAUDE.md rule 3 ("agents never
+merge"). The disabled path used to return a silent no-op success event;
+it now raises ``LegacyMergeArmDisabledError`` loudly instead, so a disabled
+guard can never be mistaken for a guard that was never reached. Re-enabling
+requires a fresh operator decision — see OMN-15053 before setting
+``_LEGACY_ARM_ENV_VAR=true``.
 """
 
 from __future__ import annotations
@@ -26,6 +40,7 @@ from uuid import uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.config.env_flags import require_legacy_merge_arm_enabled
 from omnimarket.config.service_endpoints import GITHUB_GRAPHQL_URL
 from omnimarket.inference.secret_store_resolver import resolve_api_key_async
 from omnimarket.nodes.contract_topics import contract_secret_ref
@@ -41,6 +56,12 @@ from omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_r
 
 _log = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+# OMN-14151: legacy arm surface hard-gate. Safe default False — the GraphQL
+# mutation never fires unless an operator explicitly opts this surface back in.
+# OMN-15053: a disabled attempt now raises LegacyMergeArmDisabledError (loud)
+# instead of returning a no-op success event (silent).
+_LEGACY_ARM_ENV_VAR = "OMNIMARKET_LEGACY_MERGE_ARM_ENABLED"
 
 _GRAPHQL_MUTATION = (
     "mutation($id: ID!, $method: PullRequestMergeMethod!) {"
@@ -64,6 +85,14 @@ class HandlerAutoMergeArmEffect:
         (OMN-12856) and resolved at the effect boundary via the canonical
         secret-store resolver — never read from env directly in this handler.
         """
+        # OMN-15053: loud refusal, not a silent no-op. A disabled guard must
+        # never look like a guard that was simply never reached.
+        require_legacy_merge_arm_enabled(
+            _LEGACY_ARM_ENV_VAR,
+            surface="node_merge_sweep_auto_merge_arm_effect",
+            context=f"{request.repo}#{request.pr_number}",
+        )
+
         # Resolve token ref-name from contract, then value from secret store.
         _github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
         github_secret = await resolve_api_key_async(_github_ref)

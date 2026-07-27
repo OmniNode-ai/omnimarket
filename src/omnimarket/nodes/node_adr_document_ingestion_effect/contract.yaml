@@ -144,8 +144,9 @@ event_bus:
 handler_routing:
   handlers:
     - operation: "ingest_documents"
-      handler_class: "HandlerDocumentIngestion"
-      handler_module: "omnimarket.nodes.node_adr_document_ingestion_effect.handlers.handler_document_ingestion"
+      handler:
+        name: "HandlerDocumentIngestion"
+        module: "omnimarket.nodes.node_adr_document_ingestion_effect.handlers.handler_document_ingestion"
 
 # === VALIDATION RULES ===
 validation_rules:

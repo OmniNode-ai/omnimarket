@@ -236,7 +236,14 @@ class TestCoverageSweepGoldenChain:
         assert result.total_gaps == 2
 
     async def test_missing_coverage_file(self, event_bus: EventBusInmemory) -> None:
-        """Repos without coverage.json are scanned but produce no gaps."""
+        """OMN-14539: a repo without coverage.json is a FAILURE, not clean.
+
+        Before the class fix this asserted status=="clean" — a missing
+        coverage artifact was silently `continue`d past, producing a false
+        green over a repo that was never actually measured. That was
+        the exact defect audited in OMN-14531: "scanned nothing" and "all
+        healthy" were arithmetically identical.
+        """
         handler = NodeCoverageSweep()
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -245,7 +252,9 @@ class TestCoverageSweepGoldenChain:
 
         assert result.repos_scanned == 1
         assert result.total_modules == 0
-        assert result.status == "clean"
+        assert result.status == "error"
+        assert result.coverage_missing
+        assert "coverage.json not found" in result.coverage_missing[0]
 
     async def test_average_coverage_computed(self, event_bus: EventBusInmemory) -> None:
         """Average coverage should be computed across all modules."""

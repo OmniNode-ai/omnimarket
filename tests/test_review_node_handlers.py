@@ -84,9 +84,8 @@ async def test_response_parser_compute_returns_findings() -> None:
 
 
 @pytest.mark.unit
-@pytest.mark.asyncio
-async def test_convergence_compute_perfect_agreement() -> None:
-    out = await HandlerConvergenceCompute().handle(
+def test_convergence_compute_perfect_agreement() -> None:
+    result = HandlerConvergenceCompute().handle(
         ModelConvergenceInput(
             correlation_id=uuid4(),
             model_key="qwen3-coder",
@@ -100,9 +99,8 @@ async def test_convergence_compute_perfect_agreement() -> None:
             ],
         )
     )
-    assert out.node_kind == EnumNodeKind.COMPUTE
-    assert out.result is not None
-    assert out.result.overall_f1 == 1.0
+    assert result is not None
+    assert result.overall_f1 == 1.0
 
 
 @pytest.mark.unit

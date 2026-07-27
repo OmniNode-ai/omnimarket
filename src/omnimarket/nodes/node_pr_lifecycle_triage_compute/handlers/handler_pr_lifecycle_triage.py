@@ -25,13 +25,15 @@ from __future__ import annotations
 
 import logging
 from typing import Literal
-from uuid import UUID
 
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.enum_pr_triage_category import (
     EnumPrTriageCategory,
 )
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_inventory_item import (
     ModelPrInventoryItem,
+)
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_triage_input import (
+    ModelPrTriageInput,
 )
 from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_triage_output import (
     ModelPrTriageOutput,
@@ -45,11 +47,36 @@ logger = logging.getLogger(__name__)
 _CI_FAILING_STATUSES: frozenset[str] = frozenset({"failing", "error", "failed"})
 _CI_PASSING_STATUSES: frozenset[str] = frozenset({"passing", "success"})
 _RECEIPT_GATE_CHECK_NAME = "verify / verify"
+# OMN-13990 follow-up: occ-preflight (omnibase_core occ-preflight.yml, job
+# "eligibility") is a separate required check from the receipt gate and fails
+# on the same "green-except-OCC-companion" signature. A PR whose only red
+# check is occ-preflight was previously falling through to the generic RED
+# category instead of OCC_DEPENDENCY, so the downstream fix router never saw
+# it as an OCC-evidence-only failure.
+_OCC_PREFLIGHT_CHECK_NAME = "occ-preflight / eligibility"
+_OCC_EVIDENCE_CHECK_NAMES = frozenset(
+    {_RECEIPT_GATE_CHECK_NAME, _OCC_PREFLIGHT_CHECK_NAME}
+)
+# OMN-13990 follow-up (round 2): a live sweep of the still-blocked PRs found
+# the widened match above STILL never fires, because a second, cosmetic check
+# rides along in the failed set — e.g. omninode_infra#579's
+# failed_check_names is {"verify / verify", "Enable Auto-Merge"}.
+# "Enable Auto-Merge" fails BY DESIGN on every PR today (org-wide auto-merge
+# is off) and is verified NOT a required status check on any repo's `dev`
+# branch protection (checked live 2026-07-08: omnimarket, omnibase_infra,
+# omniclaude, omninode_infra all omit it). Excluding it here is deliberately
+# narrow — it does NOT include checks like `call-reject-skip-token`
+# (omninode_infra#578's second failing check), which IS a required context;
+# a required-but-flaky check needs a CI rerun, not a classifier exclusion.
+_COSMETIC_NON_REQUIRED_CHECK_NAMES = frozenset({"Enable Auto-Merge"})
 
 
 def _is_receipt_only_failure(pr: ModelPrInventoryItem) -> bool:
     failed = {name.strip() for name in pr.failed_check_names if name.strip()}
-    return failed == {_RECEIPT_GATE_CHECK_NAME}
+    evidence_signature_checks = failed - _COSMETIC_NON_REQUIRED_CHECK_NAMES
+    return bool(evidence_signature_checks) and (
+        evidence_signature_checks <= _OCC_EVIDENCE_CHECK_NAMES
+    )
 
 
 def _result(
@@ -64,6 +91,8 @@ def _result(
         category=category,
         ticket_ids=pr.ticket_ids,
         failed_check_names=pr.failed_check_names,
+        failed_check_flaky_evidence=pr.failed_check_flaky_evidence,
+        failed_check_reason_codes=pr.failed_check_reason_codes,
         reason=reason,
     )
 
@@ -99,8 +128,9 @@ def _classify_pr(pr: ModelPrInventoryItem) -> ModelPrTriageResult:
                 pr,
                 category=EnumPrTriageCategory.OCC_DEPENDENCY,
                 reason=(
-                    "Receipt Gate is the only failing check — classify as "
-                    "OCC dependency and do not dispatch product-code fixes."
+                    "Receipt Gate and/or occ-preflight is the only failing "
+                    "check — classify as OCC dependency and do not dispatch "
+                    "product-code fixes."
                 ),
             )
         if _is_receipt_only_failure(pr):
@@ -108,8 +138,9 @@ def _classify_pr(pr: ModelPrInventoryItem) -> ModelPrTriageResult:
                 pr,
                 category=EnumPrTriageCategory.RED,
                 reason=(
-                    "Receipt Gate-only failure detected, but no ticket ID was found; "
-                    "fallback to RED to avoid an untracked OCC dependency."
+                    "Receipt Gate/occ-preflight-only failure detected, but no "
+                    "ticket ID was found; fallback to RED to avoid an "
+                    "untracked OCC dependency."
                 ),
             )
         return _result(
@@ -171,18 +202,23 @@ class HandlerPrLifecycleTriage:
 
     async def handle(
         self,
-        correlation_id: UUID,
-        prs: tuple[ModelPrInventoryItem, ...],
+        request: ModelPrTriageInput,
     ) -> ModelPrTriageOutput:
         """Classify PRs into triage categories.
 
+        Canonical definition-B entrypoint: the shared runtime adapter
+        (``omnibase_core.runtime.runtime_local_adapter``) validates the wire
+        payload into ``ModelPrTriageInput`` and invokes this as the sole request
+        object. Pure compute (no I/O, no envelope).
+
         Args:
-            correlation_id: Correlation ID from the inventory event.
-            prs: PR inventory items to classify.
+            request: Validated triage input (correlation id + PR inventory items).
 
         Returns:
             ModelPrTriageOutput with per-PR results and category counts.
         """
+        correlation_id = request.correlation_id
+        prs = request.prs
         logger.info(
             "Triaging %d PRs (correlation_id=%s)",
             len(prs),

@@ -74,7 +74,7 @@ class TestFindingAggregatorGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=cid, input_data=input_data)
+        result = await handler.handle(input_data)
 
         assert result.correlation_id == cid
         assert result.total_input_findings == 2
@@ -95,7 +95,7 @@ class TestFindingAggregatorGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=cid, input_data=input_data)
+        result = await handler.handle(input_data)
 
         assert result.total_input_findings == 2
         assert result.total_merged_findings == 1
@@ -129,7 +129,7 @@ class TestFindingAggregatorGoldenChain:
             config=ModelFindingAggregatorConfig(severity_promotes_on_conflict=True),
         )
 
-        result = await handler.handle(correlation_id=cid, input_data=input_data)
+        result = await handler.handle(input_data)
 
         assert result.total_merged_findings == 1
         assert result.merged_findings[0].severity == "error"
@@ -161,7 +161,7 @@ class TestFindingAggregatorGoldenChain:
             config=ModelFindingAggregatorConfig(severity_promotes_on_conflict=False),
         )
 
-        result = await handler.handle(correlation_id=cid, input_data=input_data)
+        result = await handler.handle(input_data)
 
         assert result.total_merged_findings == 1
         assert result.merged_findings[0].severity == "warning"
@@ -175,7 +175,7 @@ class TestFindingAggregatorGoldenChain:
             sources=(ModelSourceFindings(model_name="model-a", findings=()),),
         )
 
-        result = await handler.handle(correlation_id=cid, input_data=input_data)
+        result = await handler.handle(input_data)
 
         assert result.verdict == EnumAggregatedVerdict.CLEAN
         assert result.total_merged_findings == 0
@@ -194,7 +194,7 @@ class TestFindingAggregatorGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=cid, input_data=input_data)
+        result = await handler.handle(input_data)
 
         assert result.verdict == EnumAggregatedVerdict.BLOCKING_ISSUE
 
@@ -212,7 +212,7 @@ class TestFindingAggregatorGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=cid, input_data=input_data)
+        result = await handler.handle(input_data)
 
         assert result.verdict == EnumAggregatedVerdict.RISKS_NOTED
 
@@ -231,7 +231,7 @@ class TestFindingAggregatorGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=cid, input_data=input_data)
+        result = await handler.handle(input_data)
 
         assert result.total_input_findings == 2
         assert result.total_merged_findings == 1
@@ -254,7 +254,7 @@ class TestFindingAggregatorGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=cid, input_data=input_data)
+        result = await handler.handle(input_data)
 
         assert result.total_merged_findings == 1
         # heavy model has weight 0.8, so score should reflect that
@@ -277,7 +277,7 @@ class TestFindingAggregatorGoldenChain:
                     ),
                 ),
             )
-            result = await handler.handle(correlation_id=cid, input_data=input_data)
+            result = await handler.handle(input_data)
             result_dict = result.model_dump(mode="json")
             completed_events.append(result_dict)
             await event_bus.publish(

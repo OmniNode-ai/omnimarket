@@ -1,0 +1,56 @@
+{
+  "input": {
+    "existing_profile": null,
+    "signals": [
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:01Z",
+        "evidence": "observed behavior",
+        "inferred_value": "concise",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000078",
+        "signal_type": "preferred_tone",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:02Z",
+        "evidence": "observed behavior",
+        "inferred_value": "concise",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000079",
+        "signal_type": "preferred_tone",
+        "user_id": "user-1"
+      },
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:03Z",
+        "evidence": "observed behavior",
+        "inferred_value": "explanatory",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-00000000007a",
+        "signal_type": "preferred_tone",
+        "user_id": "user-1"
+      }
+    ],
+    "user_id": "user-1"
+  },
+  "output": {
+    "error_message": null,
+    "persona": {
+      "agent_id": null,
+      "created_at": "1970-01-01T00:00:00+00:00",
+      "domain_familiarity": {},
+      "persona_version": 1,
+      "preferred_tone": "concise",
+      "rebuilt_from_signals": 3,
+      "session_count": 1,
+      "technical_level": "intermediate",
+      "user_id": "user-1",
+      "vocabulary_complexity": 0.5
+    },
+    "signals_processed": 3,
+    "status": "success"
+  },
+  "output_sha256": "sha256:365ec02564be4853223d51d372c0db56c97388412a7502ebea2290e1d18afda3"
+}

@@ -1,7 +1,5 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# onex-allow-file-internal-ip OMN-13552 reason="docstring documents the .201 runtime-lane host this collector probes over SSH; lane host is resolved by lane_target, not hardcoded here as a connection string"
-# onex-allow-file OMN-13552 reason="docstring documents the .201 runtime-lane host this collector probes over SSH; lane host is resolved by lane_target, not hardcoded here as a connection string"
 """LiveMetadataCollector — shell-out collection phase for node_data_flow_sweep.
 
 Runs rpk topic/group describe and psql row-count checks to populate
@@ -10,7 +8,8 @@ pure compute; all side-effectful I/O lives here.
 
 OMN-13552: probes target a resolved *lane* (``ModelLaneTarget``) rather than
 "whatever host this process runs on". A lane resolving to a remote runtime host
-(the dev/stability/prod/judge lanes on ``192.168.86.201``) is probed via
+(the dev/stability/prod/judge lanes on the .201 runtime host — see
+``lane_target.py`` for the concrete host resolution) is probed via
 ``ssh <user>@<host> docker exec <container> ...`` — the same SSH + ``docker
 exec`` transport already proven in ``node_integration_sweep_orchestrator``
 (OMN-7238 class fix). A lane with an empty ``runtime_host`` (``local``) is probed
@@ -255,8 +254,15 @@ def _probe_newest_message_age(target: ModelLaneTarget, topic: str) -> float | No
     return None
 
 
-def probe_consumer_lag(target: ModelLaneTarget, topic: str) -> int:
-    """Return consumer lag for the lane's default consumer group on the topic."""
+def probe_consumer_lag(target: ModelLaneTarget, topic: str) -> tuple[int, bool]:
+    """Return ``(consumer_lag, lag_unknown)`` for the lane's consumer group.
+
+    OMN-14531: a failed ``rpk group describe`` previously defaulted to
+    ``lag=0`` — indistinguishable from a genuinely quiescent group, so the
+    handler classified the flow healthy even though lag was never actually
+    observed. This now fails CLOSED: ``lag_unknown=True`` signals the probe
+    could not be trusted, so the caller must never treat it as healthy.
+    """
     code, out = _docker_exec(
         target,
         target.redpanda_container,
@@ -264,7 +270,14 @@ def probe_consumer_lag(target: ModelLaneTarget, topic: str) -> int:
         timeout=20,
     )
     if code != 0:
-        return 0  # Unknown — default 0 (handler won't flag LAGGING)
+        _log.warning(
+            "rpk group describe failed for group %s on lane %s (rc=%d) — "
+            "failing closed (lag unknown, never treated as healthy)",
+            target.consumer_group,
+            target.lane,
+            code,
+        )
+        return 0, True
 
     total_lag = 0
     for line in out.splitlines():
@@ -273,7 +286,7 @@ def probe_consumer_lag(target: ModelLaneTarget, topic: str) -> int:
             if len(parts) >= 5:
                 with contextlib.suppress(ValueError):
                     total_lag += int(parts[-1])
-    return total_lag
+    return total_lag, False
 
 
 def probe_table_row_count(target: ModelLaneTarget, table_name: str) -> tuple[int, bool]:
@@ -351,7 +364,11 @@ def collect_flow_metadata(
     MISSING so the handler classifies it as PRODUCER_DOWN rather than crashing.
     Reachability itself is asserted up-front by the caller via
     :func:`assert_lane_reachable`, so MISSING here means "topic genuinely absent
-    on a lane we could reach", not "wrong host".
+    on a lane we could reach", not "wrong host". A consumer-lag probe failure is
+    the one exception (OMN-14531): it fails CLOSED via
+    ``consumer_lag_unknown=True`` rather than being folded into MISSING, so the
+    handler can distinguish "producer gone" from "lag probe untrustworthy" while
+    still never classifying either as a healthy flow.
     """
     try:
         producer_status, newest_age = probe_producer_status(
@@ -366,17 +383,21 @@ def collect_flow_metadata(
         newest_age = None
 
     consumer_lag = 0
+    consumer_lag_unknown = False
     row_count = 0
     has_recent = False
 
     if producer_status == EnumProducerStatus.ACTIVE:
         try:
-            consumer_lag = probe_consumer_lag(target, flow_descriptor.topic)
+            consumer_lag, consumer_lag_unknown = probe_consumer_lag(
+                target, flow_descriptor.topic
+            )
         except Exception:
             _log.debug(
-                "probe_consumer_lag raised for %s — defaulting to 0",
+                "probe_consumer_lag raised for %s — failing closed (lag unknown)",
                 flow_descriptor.topic,
             )
+            consumer_lag_unknown = True
 
         try:
             row_count, has_recent = probe_table_row_count(
@@ -395,6 +416,7 @@ def collect_flow_metadata(
         dashboard_route=flow_descriptor.dashboard_route,
         producer_status=producer_status,
         consumer_lag=consumer_lag,
+        consumer_lag_unknown=consumer_lag_unknown,
         table_row_count=row_count,
         table_has_recent_data=has_recent,
         field_mapping_valid=flow_descriptor.field_mapping_valid,

@@ -22,7 +22,6 @@ from __future__ import annotations
 
 from enum import StrEnum
 from typing import Any, Protocol, runtime_checkable
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -39,6 +38,7 @@ __all__ = [
     "OccDependencyEdge",
     "PrRecord",
     "PrTriageResult",
+    "ProtocolArmGateHandler",
     "ProtocolFixHandler",
     "ProtocolInventoryHandler",
     "ProtocolMergeHandler",
@@ -86,13 +86,38 @@ class PrRecord(BaseModel):
         default_factory=tuple,
         description="Names of failed required or reported checks.",
     )
-    coderabbit_unresolved: int = Field(
-        default=0,
-        description="Count of unresolved CodeRabbit threads.",
+    failed_check_flaky_evidence: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Machine evidence that failed checks are rerunnable infra flakes.",
+    )
+    failed_check_reason_codes: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Typed merge-check reason codes (OMN-14765) for the failed checks, "
+            "jobs-API attempt-keyed: stale_context | github_api_outage | "
+            "runner_infra | cancelled | product_failed. Empty means none were "
+            "classified. The routing (_block_reason_for_fix) keys on these so "
+            "cancelled/stale/infra checks are never treated as product failures."
+        ),
+    )
+    coderabbit_unresolved: int | None = Field(
+        default=None,
+        description=(
+            "Count of unresolved CodeRabbit threads. None means the count was "
+            "never collected (OMN-14151) — the arm-gate treats that as "
+            "unknown, never as 0."
+        ),
     )
     merge_state_status: str | None = Field(
         default=None,
         description="GitHub merge state: CLEAN | DIRTY | BLOCKED | BEHIND | UNKNOWN",
+    )
+    is_draft: bool | None = Field(
+        default=None,
+        description=(
+            "GitHub isDraft (OMN-14151). None means never collected — the "
+            "arm-gate treats that as unknown, never as False."
+        ),
     )
 
 
@@ -122,6 +147,19 @@ class TriageRecord(BaseModel):
     failed_check_names: tuple[str, ...] = Field(
         default_factory=tuple,
         description="Failed checks that informed this triage decision.",
+    )
+    failed_check_flaky_evidence: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Machine evidence that failed checks are rerunnable infra flakes.",
+    )
+    failed_check_reason_codes: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Typed merge-check reason codes (OMN-14765) carried from inventory: "
+            "stale_context | github_api_outage | runner_infra | cancelled | "
+            "product_failed. Consumed by _block_reason_for_fix as the routing "
+            "decision source."
+        ),
     )
     block_reason: str = Field(
         default="",
@@ -241,6 +279,14 @@ class FixResult(BaseModel):
 
     prs_dispatched: int = Field(default=0, ge=0)
     prs_skipped: int = Field(default=0, ge=0)
+    # WS-D/D2 (OMN-13940): delegation harness counters. attempted counts every
+    # call that actually invoked the delegated-fix path (accepted +
+    # gate_failed + escalated); not_attempted PRs are outside this count.
+    prs_delegated_fix_attempted: int = Field(default=0, ge=0)
+    prs_delegated_fix_accepted: int = Field(default=0, ge=0)
+    prs_delegated_fix_gate_failed: int = Field(default=0, ge=0)
+    prs_delegated_fix_escalated: int = Field(default=0, ge=0)
+    delegation_cost_savings_usd: float = Field(default=0.0, ge=0.0)
 
 
 class PruneResult(BaseModel):
@@ -264,7 +310,7 @@ class PruneResult(BaseModel):
 # HandlerPrLifecycleInventory.handle(input_model: ModelPrInventoryInput)
 #   → ModelPrInventoryOutput
 #
-# HandlerPrLifecycleTriage.handle(correlation_id, prs: tuple[ModelPrInventoryItem])
+# HandlerPrLifecycleTriage.handle(request: ModelPrTriageInput)
 #   → ModelPrTriageOutput
 #
 # HandlerPrLifecycleStateReducer.handle(*args, correlation_id, classified, ...)
@@ -295,11 +341,7 @@ class ProtocolTriageHandler(Protocol):
     Signature matches HandlerPrLifecycleTriage.handle().
     """
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        prs: tuple[Any, ...],
-    ) -> Any: ...
+    async def handle(self, request: Any) -> Any: ...
 
 
 @runtime_checkable
@@ -346,3 +388,13 @@ class ProtocolPruneHandler(Protocol):
     """
 
     async def handle(self, command: Any) -> Any: ...
+
+
+@runtime_checkable
+class ProtocolArmGateHandler(Protocol):
+    """Fail-closed ARM/WITHHOLD decider for the merge-queue governor (OMN-14151).
+
+    Signature matches HandlerPrArmGate.handle().
+    """
+
+    async def handle(self, request: Any) -> Any: ...

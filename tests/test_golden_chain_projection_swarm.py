@@ -15,6 +15,15 @@ from omnimarket.nodes.node_projection_swarm.models.enums import (
     EnumFreshnessState,
     EnumSwarmRunStatus,
 )
+from omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch import (
+    HandlerSwarmDispatchOrchestrator,
+)
+from omnimarket.nodes.node_swarm_dispatch_orchestrator.models.enums import (
+    EnumSwarmOrchestratorState,
+)
+from omnimarket.nodes.node_swarm_dispatch_orchestrator.models.model_orchestrator_state import (
+    ModelOrchestratorState,
+)
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
@@ -125,6 +134,136 @@ class TestProjectionSwarmFailedEvent:
         HANDLER.project(event, db)
         rows = db.query("swarm_runs")
         assert rows[0]["status"] == EnumSwarmRunStatus.FAILED
+
+
+class TestSwarmDispatchFailedPathRealProducerSeam:
+    """OMN-14514: drive the REAL producer, not a hand-authored fixture.
+
+    `_failed_event()` above hand-writes ``status="failed"`` into its payload
+    dict — a value the real producer (`HandlerSwarmDispatchOrchestrator.
+    transition_failed`) never sends. That fixture is why this defect shipped:
+    it answers "does the model construct with plausible args" instead of
+    "does the model construct from what the producer actually emits".
+
+    These tests build the payload with the real orchestrator handler and
+    feed the unmodified result into the real consumer model + projector.
+    """
+
+    def _real_failed_payload(
+        self, error: str = "boom: endpoint unreachable"
+    ) -> dict[str, object]:
+        orchestrator = HandlerSwarmDispatchOrchestrator()
+        state = ModelOrchestratorState(
+            fsm_state=EnumSwarmOrchestratorState.DISPATCHING,
+            run_id="run-real-fail-001",
+            correlation_id="corr-real-fail",
+            original_task="build the thing",
+        )
+        _new_state, publishes = orchestrator.transition_failed(state, error)
+        assert len(publishes) == 1
+        _topic, payload = publishes[0]
+        return payload
+
+    def test_real_failed_payload_constructs_consumer_model(self) -> None:
+        """RED before the fix: raises pydantic.ValidationError (missing `status`)."""
+        payload = self._real_failed_payload()
+        event = ModelSwarmDispatchEvent(**payload)
+        assert event.run_id == "run-real-fail-001"
+        assert event.status == EnumSwarmRunStatus.FAILED
+
+    def test_real_failed_payload_projects_a_row(self) -> None:
+        """End-to-end: real producer payload -> real consumer model -> real projector."""
+        db = InmemoryDatabaseAdapter()
+        payload = self._real_failed_payload(error="endpoint 5090 unreachable")
+        event = ModelSwarmDispatchEvent(**payload)
+        result = HANDLER.project(event, db)
+
+        assert result.rows_upserted == 1
+        rows = db.query("swarm_runs")
+        assert len(rows) == 1
+        assert rows[0]["run_id"] == "run-real-fail-001"
+        assert rows[0]["status"] == "failed"
+
+
+class TestSwarmDispatchFullFSMGoldenChain:
+    """Root-level FSM traversal seam test (OMN-14514, contract-state-coverage).
+
+    node_swarm_dispatch_orchestrator's own FSM states are thoroughly exercised
+    by its node-local tests (``src/omnimarket/nodes/node_swarm_dispatch_orchestrator/
+    tests/test_fsm.py``), but ``scripts/validate_state_coverage.py`` only scans the
+    top-level ``tests/`` tree — so those node-local assertions never counted toward
+    this node's contract-state-coverage gate, and every declared FSM state sat as
+    baselined debt. Any PR that touches this node promotes that debt from WARN to
+    FAIL. This test drives the real orchestrator through every transition
+    (RECEIVED -> HEALTH_CHECKED -> DECOMPOSED -> ENDPOINTS_SELECTED -> DISPATCHING
+    -> AGGREGATING -> COMPLETED) and then projects the real terminal payload,
+    closing the gap at the root-level tree the gate actually reads.
+    """
+
+    def test_full_fsm_chain_projects_completed_row(self) -> None:
+        orchestrator = HandlerSwarmDispatchOrchestrator()
+        state = ModelOrchestratorState(
+            fsm_state=EnumSwarmOrchestratorState.RECEIVED,
+            run_id="run-golden-001",
+            correlation_id="corr-golden",
+            original_task="build a rest api",
+        )
+        assert state.fsm_state == EnumSwarmOrchestratorState.RECEIVED
+
+        state, _ = orchestrator.transition_health_checked(
+            state,
+            {
+                "endpoint_health": {
+                    "ep-1": {"endpoint_status": "reachable", "latency_ms": 40},
+                },
+            },
+        )
+        assert state.fsm_state == EnumSwarmOrchestratorState.HEALTH_CHECKED
+
+        state, _ = orchestrator.transition_decomposed(
+            state,
+            {"subtasks": [{"subtask_id": "st-1", "description": "define routes"}]},
+        )
+        assert state.fsm_state == EnumSwarmOrchestratorState.DECOMPOSED
+
+        state, _ = orchestrator.transition_endpoints_selected(
+            state, {"assignments": {"st-1": "ep-1"}}
+        )
+        assert state.fsm_state == EnumSwarmOrchestratorState.ENDPOINTS_SELECTED
+
+        state, _ = orchestrator.transition_dispatching(
+            state,
+            {
+                "dispatches": [
+                    {
+                        "subtask_id": "st-1",
+                        "endpoint_id": "ep-1",
+                        "status": "succeeded",
+                        "latency_ms": 500,
+                    }
+                ]
+            },
+        )
+        assert state.fsm_state == EnumSwarmOrchestratorState.DISPATCHING
+
+        state, _ = orchestrator.transition_aggregating(
+            state, {"aggregated_output": "routes defined"}, total_latency_ms=500
+        )
+        assert state.fsm_state == EnumSwarmOrchestratorState.AGGREGATING
+
+        state, publishes = orchestrator.transition_completed(state)
+        assert state.fsm_state == EnumSwarmOrchestratorState.COMPLETED
+        assert len(publishes) == 1
+
+        _topic, payload = publishes[0]
+        db = InmemoryDatabaseAdapter()
+        event = ModelSwarmDispatchEvent(**payload)
+        result = HANDLER.project(event, db)
+
+        assert result.rows_upserted == 1
+        rows = db.query("swarm_runs")
+        assert rows[0]["run_id"] == "run-golden-001"
+        assert rows[0]["status"] == "succeeded"
 
 
 class TestProjectionSwarmIdempotency:

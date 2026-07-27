@@ -166,24 +166,27 @@ handler_routing:
     # RuntimeTick handler - evaluates memory TTL expiration and archive candidates
     - operation: tick
       routing_key: "tick"
-      handler_module: "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_tick"
-      handler_class: "HandlerMemoryTick"
+      handler:
+        name: "HandlerMemoryTick"
+        module: "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_tick"
       handler_key: "HandlerMemoryTick"
       priority: 0
       output_events: []
     # Expire command handler - ACTIVE -> EXPIRED state transition
     - operation: expire
       routing_key: "expire"
-      handler_module: "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_expire"
-      handler_class: "HandlerMemoryExpire"
+      handler:
+        name: "HandlerMemoryExpire"
+        module: "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_expire"
       handler_key: "HandlerMemoryExpire"
       priority: 0
       output_events: []
     # Archive command handler - EXPIRED -> ARCHIVED state transition
     - operation: archive
       routing_key: "archive"
-      handler_module: "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_archive"
-      handler_class: "HandlerMemoryArchive"
+      handler:
+        name: "HandlerMemoryArchive"
+        module: "omnimarket.nodes.node_memory_lifecycle_orchestrator.handlers.handler_memory_archive"
       handler_key: "HandlerMemoryArchive"
       priority: 0
       output_events: []

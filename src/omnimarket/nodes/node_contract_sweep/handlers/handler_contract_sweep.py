@@ -24,6 +24,17 @@ from pydantic import BaseModel, ConfigDict, Field
 # ---------------------------------------------------------------------------
 
 _TOPIC_RE = re.compile(r"^onex\.(cmd|evt|intent)\.[a-z0-9_-]+\.[a-z0-9_-]+\.v\d+$")
+# `snapshot` is a pre-existing, cross-repo-established topic kind for
+# projection/materialized-view broadcast topics (verified in use across
+# omnimarket, omnidash, onex_change_control, omnibase_infra, omnibase_core,
+# and omniintelligence — OMN-14544). Unlike cmd/evt/intent, which are always
+# producer.event, a snapshot topic's tail reflects the projection's sub-view
+# hierarchy and is variable-depth (e.g.
+# onex.snapshot.projection.delegation.correlation-trace.v1), so it gets its
+# own pattern rather than forcing the fixed 2-segment shape onto it.
+_SNAPSHOT_TOPIC_RE = re.compile(
+    r"^onex\.snapshot\.[a-z0-9_-]+(?:\.[a-z0-9_-]+)+\.v\d+$"
+)
 _REQUIRED_FIELDS = frozenset(
     ["name", "contract_version", "node_type", "node_version", "description"]
 )
@@ -56,6 +67,16 @@ class EnumViolationType(StrEnum):
     PARSE_ERROR = "parse_error"
 
 
+class EnumSweepStatus(StrEnum):
+    """Roll-up verdict. ERROR means the scope itself could not be trusted —
+    it is distinct from FAIL (real violations found in a trusted scope) and
+    must never be silently treated as a clean PASS (OMN-14531/OMN-14542)."""
+
+    PASS = "PASS"
+    FAIL = "FAIL"
+    ERROR = "ERROR"
+
+
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
@@ -75,7 +96,16 @@ class ContractSweepRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     repos: list[str] = Field(
-        default_factory=list, description="Repos to scan; empty = all"
+        ...,
+        min_length=1,
+        description=(
+            "Repos to scan. REQUIRED — must be a non-empty, harness-collected "
+            "census (e.g. a real filesystem probe run by the CI workflow or "
+            "pre-commit hook). There is no 'empty = all' default: an "
+            "unpopulated or mis-scoped census must fail loud, never silently "
+            "narrow or widen the corpus (OMN-14531/OMN-14542 — a prior "
+            "receipt reported 9 contracts clean while 941 existed)."
+        ),
     )
     dry_run: bool = Field(default=False)
 
@@ -85,7 +115,33 @@ class ContractSweepResult(BaseModel):
 
     violations: list[ContractViolation] = Field(default_factory=list)
     contracts_checked: int = Field(default=0)
+    scanned_count: int = Field(
+        default=0,
+        description=(
+            "Same value as contracts_checked, named for parity with the "
+            "shelf-wide scanned_count>0 invariant. A PASS/FAIL verdict is "
+            "only ever reported when scanned_count > 0 (see status)."
+        ),
+    )
     summary: dict[str, int] = Field(default_factory=dict)
+    status: EnumSweepStatus = Field(
+        default=EnumSweepStatus.ERROR,
+        description=(
+            "PASS = scope resolved and zero violations. FAIL = scope "
+            "resolved and violations found. ERROR = the scope itself is "
+            "not trustworthy (missing OMNI_HOME, a requested repo that "
+            "does not exist on disk, or scanned_count == 0) — callers must "
+            "treat ERROR as a hard failure, never a clean sweep."
+        ),
+    )
+    missing_repos: list[str] = Field(
+        default_factory=list,
+        description="Requested repos that do not exist on disk under OMNI_HOME.",
+    )
+    scope_error: str = Field(
+        default="",
+        description="Human-readable reason when status == ERROR.",
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -97,23 +153,38 @@ class NodeContractSweep:
     """Pure deterministic contract compliance sweep. No I/O except filesystem reads."""
 
     def handle(self, request: ContractSweepRequest) -> ContractSweepResult:
-        env_omni_home = os.environ.get("OMNI_HOME")
-        # Installed at omni_home/omnimarket/src/omnimarket/nodes/<node>/handlers/<file>
-        # parents: 0=handlers, 1=node, 2=nodes, 3=omnimarket(pkg), 4=src, 5=omnimarket(repo), 6=omni_home
-        omni_home = Path(env_omni_home) if env_omni_home else Path(__file__).parents[6]
+        # OMN-14542: OMNI_HOME must be explicit — no `Path(__file__).parents[6]`
+        # guess. That silent fallback was the root cause of the "9 contracts
+        # clean while 941 exist" false-clean receipt: when invoked from an
+        # unexpected install layout, parents[6] resolved to some shallow,
+        # near-empty directory that happened to contain a handful of stray
+        # contracts, and the near-empty scan was reported as a clean PASS.
+        try:
+            env_omni_home = os.environ["OMNI_HOME"]
+        except KeyError:
+            return ContractSweepResult(
+                status=EnumSweepStatus.ERROR,
+                scope_error=(
+                    "OMNI_HOME is not set — cannot resolve the scan root. "
+                    "Refusing to report PASS over an unresolvable scope."
+                ),
+            )
+        omni_home = Path(env_omni_home)
+        if not omni_home.is_dir():
+            return ContractSweepResult(
+                status=EnumSweepStatus.ERROR,
+                scope_error=(
+                    f"OMNI_HOME={omni_home} is not a directory — cannot "
+                    "resolve the scan root. Refusing to report PASS over an "
+                    "unresolvable scope."
+                ),
+            )
+
+        missing_repos = [r for r in request.repos if not (omni_home / r).is_dir()]
+        repo_dirs = [omni_home / r for r in request.repos if (omni_home / r).is_dir()]
+
         violations: list[ContractViolation] = []
         contracts_checked = 0
-
-        if request.repos:
-            repo_dirs = [
-                omni_home / r for r in request.repos if (omni_home / r).is_dir()
-            ]
-        else:
-            repo_dirs = [
-                d
-                for d in omni_home.iterdir()
-                if d.is_dir() and not d.name.startswith(".") and (d / "src").exists()
-            ]
 
         for repo_dir in repo_dirs:
             for contract_path in repo_dir.rglob("contract.yaml"):
@@ -133,10 +204,49 @@ class NodeContractSweep:
         for v in violations:
             summary[v.severity] = summary.get(v.severity, 0) + 1
 
+        # A requested repo that does not exist on disk is exactly the "9 vs
+        # 941" failure mode: a syntactically valid census silently narrows to
+        # a subset of what was actually requested. Refuse to report PASS/FAIL
+        # over a narrowed scope — this is a hard ERROR regardless of whether
+        # other repos in the request DID resolve.
+        if missing_repos:
+            return ContractSweepResult(
+                violations=violations,
+                contracts_checked=contracts_checked,
+                scanned_count=contracts_checked,
+                summary=summary,
+                status=EnumSweepStatus.ERROR,
+                missing_repos=missing_repos,
+                scope_error=(
+                    f"Requested repos not found under OMNI_HOME={omni_home}: "
+                    f"{missing_repos!r}. Refusing to report PASS over a "
+                    "silently-narrowed scope."
+                ),
+            )
+
+        if contracts_checked == 0:
+            return ContractSweepResult(
+                violations=violations,
+                contracts_checked=0,
+                scanned_count=0,
+                summary=summary,
+                status=EnumSweepStatus.ERROR,
+                missing_repos=missing_repos,
+                scope_error=(
+                    f"Scanned zero contract.yaml files across repos="
+                    f"{request.repos!r} (resolved dirs="
+                    f"{[str(d) for d in repo_dirs]!r}). Refusing to report "
+                    "PASS over an empty scope."
+                ),
+            )
+
         return ContractSweepResult(
             violations=violations,
             contracts_checked=contracts_checked,
+            scanned_count=contracts_checked,
             summary=summary,
+            status=EnumSweepStatus.FAIL if violations else EnumSweepStatus.PASS,
+            missing_repos=missing_repos,
         )
 
     def _check_contract(self, path: Path) -> list[ContractViolation]:
@@ -196,13 +306,16 @@ class NodeContractSweep:
         if isinstance(event_bus, dict):
             for direction in ("subscribe_topics", "publish_topics"):
                 for topic in event_bus.get(direction, []) or []:
-                    if isinstance(topic, str) and not _TOPIC_RE.match(topic):
+                    if isinstance(topic, str) and not (
+                        _TOPIC_RE.match(topic) or _SNAPSHOT_TOPIC_RE.match(topic)
+                    ):
                         violations.append(
                             ContractViolation(
                                 node_name=node_name,
                                 violation_type=EnumViolationType.INVALID_TOPIC_NAME,
                                 severity=EnumViolationSeverity.MINOR,
-                                message=f"Topic {topic!r} does not match onex.{{cmd|evt|intent}}.producer.event.vN",
+                                message=f"Topic {topic!r} does not match onex.{{cmd|evt|intent}}.producer.event.vN "
+                                "or onex.snapshot.producer.path+.vN",
                                 field=f"event_bus.{direction}",
                             )
                         )

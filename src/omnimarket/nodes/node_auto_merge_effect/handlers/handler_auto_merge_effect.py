@@ -9,6 +9,21 @@ Steps:
     3. Execute merge via `gh pr merge` (explicit gh exception per SKILL.md)
     4. Re-query PR to capture merge commit SHA
     5. Optionally close the associated Linear ticket (non-blocking)
+
+OMN-14151: this is one of the three legacy arm surfaces superseded by the
+merge-queue governor's single gated arm path (node_pr_arm_gate_compute +
+node_pr_lifecycle_merge_effect). Hard-gated fail-closed — ``handle()`` returns
+a no-op result before any `gh` mutation unless ``_LEGACY_ARM_ENV_VAR`` is
+explicitly enabled.
+
+OMN-15053: this is the backing node for the ``/onex:auto_merge`` skill — a
+sibling of ``/onex:merge_sweep``'s ``node_merge_sweep_auto_merge_arm_effect``,
+which landed omnimarket#1879 on 2026-07-24 as a "working as designed" side
+effect of dogfooding a sanctioned skill (CLAUDE.md rule 1) in direct tension
+with CLAUDE.md rule 3 ("agents never merge"). The disabled path used to
+return a silent no-op success result; it now raises
+``LegacyMergeArmDisabledError`` loudly instead. Re-enabling requires a fresh
+operator decision — see OMN-15053 before setting ``_LEGACY_ARM_ENV_VAR=true``.
 """
 
 from __future__ import annotations
@@ -22,6 +37,7 @@ from collections.abc import Callable
 from typing import Any, Literal
 from uuid import UUID
 
+from omnimarket.config.env_flags import require_legacy_merge_arm_enabled
 from omnimarket.nodes.node_auto_merge_effect.models.model_auto_merge_input import (
     ModelAutoMergeInput,
 )
@@ -36,6 +52,13 @@ _POLL_INTERVAL_S = 60
 
 # mergeStateStatus values that mean "keep polling"
 _POLL_STATES = {"BEHIND", "BLOCKED", "UNSTABLE", "HAS_HOOKS", "UNKNOWN"}
+
+# OMN-14151: legacy arm surface hard-gate. Safe default False — this handler
+# never calls `gh pr merge` unless an operator explicitly opts this surface
+# back in. OMN-15053: a disabled attempt now raises
+# LegacyMergeArmDisabledError (loud) instead of returning a no-op result
+# (silent).
+_LEGACY_ARM_ENV_VAR = "OMNIMARKET_LEGACY_MERGE_ARM_ENABLED"
 
 
 class HandlerAutoMergeEffect:
@@ -86,6 +109,14 @@ class HandlerAutoMergeEffect:
             correlation_id,
             pr_number,
             repo,
+        )
+
+        # OMN-15053: loud refusal, not a silent no-op. A disabled guard must
+        # never look like a guard that was simply never reached.
+        require_legacy_merge_arm_enabled(
+            _LEGACY_ARM_ENV_VAR,
+            surface="node_auto_merge_effect",
+            context=f"{repo}#{pr_number}",
         )
 
         deadline = time.monotonic() + gate_timeout_hours * 3600

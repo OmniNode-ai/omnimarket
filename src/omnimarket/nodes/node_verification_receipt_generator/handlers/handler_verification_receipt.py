@@ -299,9 +299,18 @@ class HandlerVerificationReceiptGenerator:
         (OMN-13843). ``handle`` cannot simply become ``async def``: the
         ``task.execute`` orchestrator's ``ProtocolMechanicalCheckExecutor.handle``
         port is synchronous and calls this handler in-process.
+
+        ``env_var_fallback`` (OMN-14452): the deployed lane's secret resolver
+        is LLM/Slack-scoped with convention fallback disabled and never
+        resolves ``GITHUB_TOKEN`` — falling back to the literal env var
+        (already passed straight through as a container env var) resolves it
+        instead of raising. This is the declared ``resolve_api_key`` fallback
+        parameter, not an ad hoc ``os.environ`` bypass of the secret store.
         """
         github_ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-        github_secret = resolve_api_key_loop_safe(github_ref)
+        github_secret = resolve_api_key_loop_safe(
+            github_ref, env_var_fallback=github_ref
+        )
         if github_secret is None:
             raise RuntimeError(
                 f"api_key_ref {github_ref!r} resolved to None — "

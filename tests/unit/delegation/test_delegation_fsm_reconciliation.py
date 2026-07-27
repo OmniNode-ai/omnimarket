@@ -119,6 +119,13 @@ HANDLER_TRANSITION_CALLSITES: tuple[
     ),
     # handle_gate_result — ESCALATING -> ROUTED re-route with tier override
     (EnumDelegationState.ESCALATING, EnumDelegationState.ROUTED, "handle_gate_result"),
+    # handle_gate_result — OMN-14234 retry-local: sub-bar on a free tier, re-route
+    # to the SAME tier (GATE_EVALUATED -> ROUTED) for a fresh $0 draft
+    (
+        EnumDelegationState.GATE_EVALUATED,
+        EnumDelegationState.ROUTED,
+        "handle_gate_result",
+    ),
     # handle_gate_result — terminal failure on exhausted escalation
     (
         EnumDelegationState.GATE_EVALUATED,

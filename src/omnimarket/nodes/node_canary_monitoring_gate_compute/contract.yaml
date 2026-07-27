@@ -1,0 +1,104 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Canary Monitoring Gate Compute (OMN-14735/OMN-14948, B10)
+#
+# Pure COMPUTE. Classifies observed managed-staging canary monitoring signals
+# (auth, TLS, broker, lag, RDS) against threshold specs and reports a
+# PASS/WARN/ABORT/BLOCKED_PENDING_A6 verdict per the B10 task in the
+# managed-staging execution plan.
+#
+# THRESHOLD STATUS: real numeric warn/abort thresholds for all five signal
+# domains were delivered by the A6 contractor deliverable (OMN-14732,
+# 2026-07-22) and are wired via
+# handlers/threshold_config_loader.py:default_threshold_specs(), reading the
+# cited values from thresholds.yaml (never hardcoded in Python — OMN-14948).
+# A caller that omits `thresholds` from the request, or supplies its own
+# unresolved/partial specs, still gets BLOCKED_PENDING_A6 rather than a
+# fabricated PASS — the unresolved-threshold path is a permanent safety
+# fallback, not scaffold-only behavior that goes away once A6 landed. No live
+# bus/AWS/Kubernetes dependency; determinism is proven in-process/in-test.
+#
+# Directly-invoked only (no Kafka producer/consumer) — it declares no
+# event_bus topics, so it contributes no edges to the contract-topic-graph.
+# The runtime resolves it via handler_routing.default_handler (_run_compute
+# path: no terminal_event / no event bus needed).
+#
+# Related Tickets:
+#   - OMN-14735: B10 scaffold — wire monitoring signals to numeric
+#     thresholds (Done; scaffold only, thresholds pending A6).
+#   - OMN-14948: B10->B11 threshold consumption — wire the real A6 numbers
+#     (this change) and settle the B10 lane-ownership question.
+#   - OMN-14732: [AWS/Daniyal] A6 — numeric threshold deliverable this node's
+#     thresholds.yaml cites as source.
+#   - OMN-14723: [EPIC] Managed Staging Cutover — Phase 2: AWS Architecture &
+#     Identity.
+name: "node_canary_monitoring_gate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 0
+  minor: 2
+  patch: 0
+node_version: "0.2.0"
+description: >
+  Pure computation: classifies observed monitoring signal readings (auth,
+  TLS, broker, lag, RDS) against per-signal threshold specs, producing a
+  PASS/WARN/ABORT/BLOCKED_PENDING_A6 verdict. An RDS abort breach during a
+  declared single-AZ maintenance window downgrades to WARN so a maintenance
+  event is not mistaken for a canary failure. BLOCKED_PENDING_A6 is reported
+  whenever any gated signal's threshold spec is not fully resolved (A6
+  numeric input pending) — it is never conflated with PASS. Zero I/O;
+  deterministic.
+input_model:
+  name: "ModelMonitoringGateInput"
+  module: "omnimarket.nodes.node_canary_monitoring_gate_compute.models.model_monitoring_gate_input"
+  description: "Observed signal readings plus the threshold specs to gate them against."
+output_model:
+  name: "ModelMonitoringGateResult"
+  module: "omnimarket.nodes.node_canary_monitoring_gate_compute.models.model_monitoring_gate_result"
+  description: "Per-signal verdicts, aggregate status, and abort action (if any)."
+# Top-level handler block: the runtime's compute-execution path (_run_compute,
+# reached because this contract declares no terminal_event) resolves the
+# handler and builds the typed input payload from THIS block's input_model.
+handler:
+  module: "omnimarket.nodes.node_canary_monitoring_gate_compute.handlers.handler_canary_monitoring_gate"
+  class: "HandlerCanaryMonitoringGate"
+  input_model: "omnimarket.nodes.node_canary_monitoring_gate_compute.models.model_monitoring_gate_input.ModelMonitoringGateInput"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_canary_monitoring_gate_compute.handlers.handler_canary_monitoring_gate:HandlerCanaryMonitoringGate"
+  handlers:
+    - operation: "evaluate_canary_monitoring_gate"
+      handler:
+        name: "HandlerCanaryMonitoringGate"
+        module: "omnimarket.nodes.node_canary_monitoring_gate_compute.handlers.handler_canary_monitoring_gate"
+# Declared command/terminal seam (dispatch-addressable). No top-level
+# `terminal_event:` scalar is set, so the local runtime keeps using the
+# _run_compute path for `onex node`; these runtime_dispatch topics are the
+# CLI dispatcher's own command/result seam (exempt from orphan detection) and
+# carry no bus producer/consumer today.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.canary-monitoring-gate-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.canary-monitoring-gate-completed.v1"
+    failure: "onex.evt.omnimarket.canary-monitoring-gate-failed.v1"
+metadata:
+  transport_type: inmemory
+  description: "Canary monitoring-signal-to-threshold gate — classifies auth/TLS/broker/lag/RDS readings against A6 threshold specs (no external transport)"
+  author: "OmniNode Team"
+  created: "2026-07-20"
+  tags:
+    - "compute"
+    - "monitoring"
+    - "canary"
+    - "threshold"
+    - "abort-gate"
+    - "managed-staging"
+    - "OMN-14735"
+    - "OMN-14948"
+  related_tickets:
+    - "OMN-14735"
+    - "OMN-14948"
+    - "OMN-14732"
+    - "OMN-14723"

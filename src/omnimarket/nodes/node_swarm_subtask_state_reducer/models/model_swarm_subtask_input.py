@@ -35,6 +35,7 @@ class ModelDelegationEvent(BaseModel):
     model_id: str = ""
     emitted_at: str = ""
     failure_class: str = ""
+    latency_ms: int = 0
     source_topic: str = ""
     source_partition: int = 0
     source_offset: int = 0

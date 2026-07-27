@@ -1,0 +1,27 @@
+# Action-pin ratchet baseline (OMN-14762 / F-19-A) — burn-down only.
+# Frozen set of currently-unpinned `uses:` refs. NEW unpinned refs fail
+# closed (scripts/ci/check_action_pins.py). Remove an entry only by
+# pinning that action to a 40-char SHA. Do NOT add rows to silence a new
+# unpinned action — pin it instead.
+actions/cache/restore@v4
+actions/cache/save@v4
+actions/cache@v5
+actions/checkout@v4
+actions/checkout@v6
+actions/checkout@v7
+actions/create-github-app-token@v1
+actions/dependency-review-action@v4
+actions/download-artifact@v4
+actions/github-script@v7
+actions/setup-python@v5
+actions/setup-python@v6
+actions/upload-artifact@v4
+actions/upload-artifact@v7
+astral-sh/setup-uv@v4
+astral-sh/setup-uv@v5
+astral-sh/setup-uv@v7
+github/codeql-action/analyze@v4
+github/codeql-action/autobuild@v4
+github/codeql-action/init@v4
+softprops/action-gh-release@v2
+tj-actions/changed-files@v47

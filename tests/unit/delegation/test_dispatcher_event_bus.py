@@ -269,53 +269,6 @@ class TestDispatcherDelegationWorkflowBusPublish:
         assert result.output_events[0].prompt == f"/no_think\n{request.prompt}"  # type: ignore[attr-defined]
         assert "/no_think" not in request.prompt
 
-    async def test_handler_accepts_materialized_event_envelope_dict(self) -> None:
-        handler = HandlerDelegationWorkflow(workflows={})
-        cid = uuid4()
-        request = ModelDelegationRequest(
-            prompt="Write pytest unit tests for normalize_status.",
-            task_type="test",  # type: ignore[arg-type]
-            correlation_id=cid,
-            emitted_at=datetime.now(UTC),
-        )
-        await handler.handle(
-            {
-                "payload": request.model_dump(mode="json"),
-                "correlation_id": str(cid),
-                "event_type": "omnibase-infra.delegation-request",
-                "envelope_id": str(uuid4()),
-            }
-        )
-        decision = ModelRoutingDecision(
-            correlation_id=cid,
-            task_type="test",
-            selected_model="qwen3-coder-30b",
-            selected_backend_id=uuid5(
-                NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
-            ),
-            endpoint_url=TEST_ENDPOINT_URL,
-            cost_tier="low",
-            max_context_tokens=65536,
-            max_tokens=65536,  # OMN-13345: contract backend output ceiling
-            system_prompt="You are an assistant.",
-            rationale="Routing test.",
-        )
-
-        events = await handler.handle(
-            {
-                "payload": decision.model_dump(mode="json"),
-                "correlation_id": str(cid),
-                "event_type": "omnibase-infra.routing-decision",
-                "envelope_id": str(uuid4()),
-            }
-        )
-
-        assert len(events) == 1
-        assert type(events[0]).__name__ == "ModelInferenceIntent"
-        assert events[0].correlation_id == cid  # type: ignore[attr-defined]
-        assert events[0].prompt == f"/no_think\n{request.prompt}"  # type: ignore[attr-defined]
-        assert "/no_think" not in request.prompt
-
     async def test_runtime_handle_async_returns_publishable_output(self) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
         cid = uuid4()
@@ -332,41 +285,6 @@ class TestDispatcherDelegationWorkflowBusPublish:
         assert len(output.events) == 1
         assert type(output.events[0]).__name__ == "ModelRoutingIntent"
         assert output.events[0].payload.prompt == request.prompt  # type: ignore[attr-defined]
-
-    async def test_handler_accepts_envelope_like_payload_object(self) -> None:
-        class EnvelopeLike:
-            def __init__(self, payload: object) -> None:
-                self.payload = payload
-
-        handler = HandlerDelegationWorkflow(workflows={})
-        cid = uuid4()
-        request = ModelDelegationRequest(
-            prompt="Write pytest unit tests for normalize_status.",
-            task_type="test",  # type: ignore[arg-type]
-            correlation_id=cid,
-            emitted_at=datetime.now(UTC),
-        )
-        await handler.handle(EnvelopeLike(request.model_dump(mode="json")))
-        decision = ModelRoutingDecision(
-            correlation_id=cid,
-            task_type="test",
-            selected_model="qwen3-coder-30b",
-            selected_backend_id=uuid5(
-                NAMESPACE_DNS, "omninode.ai/backends/qwen3-coder-30b"
-            ),
-            endpoint_url=TEST_ENDPOINT_URL,
-            cost_tier="low",
-            max_context_tokens=65536,
-            max_tokens=65536,  # OMN-13345: contract backend output ceiling
-            system_prompt="You are an assistant.",
-            rationale="Routing test.",
-        )
-
-        events = await handler.handle(EnvelopeLike(decision.model_dump(mode="json")))
-
-        assert len(events) == 1
-        assert type(events[0]).__name__ == "ModelInferenceIntent"
-        assert events[0].correlation_id == cid  # type: ignore[attr-defined]
 
 
 @pytest.mark.unit
@@ -449,8 +367,8 @@ class TestDispatcherQualityGateResultOutputEvents:
     async def test_output_events_empty_when_bus_wired(self) -> None:
         """When bus is wired, routable events (with .topic) are published directly.
 
-        Events without a .topic attribute (e.g. ModelBaselineIntent) are not
-        routable via the direct-publish path and remain in output_events for the
+        Events without a .topic attribute are not routable via the
+        direct-publish path and remain in output_events for the
         DispatchResultApplier's type-based router.  Only topicless events may appear.
         """
         bus = _make_mock_bus()
@@ -504,11 +422,14 @@ class TestDispatcherQualityGateResultOutputEvents:
         topic_to_payload_type = {
             c.kwargs["topic"]: type(c.args[0].payload).__name__ for c in calls
         }
-        # The envelope payload is the canonical delegation event envelope; its
-        # .payload field is ModelDelegationResult.
+        # OMN-14600 (canonical two-class split): the orchestrator emits the
+        # BARE ModelDelegationCompleted / ModelDelegationFailed class directly
+        # -- no carrier to unwrap. DispatcherQualityGateResult resolves the
+        # topic by class name (_TERMINAL_TOPICS) and publishes the bare class
+        # verbatim, so the wire payload IS the terminal class itself.
         assert (
             topic_to_payload_type.get(TOPIC_DELEGATION_COMPLETED)
-            == "ModelDelegationEventEnvelope"
+            == "ModelDelegationCompleted"
         )
         # OMN-13629: no legacy compat event is published, so the topic is absent.
         assert _LEGACY_TASK_DELEGATED_TOPIC not in topic_to_payload_type

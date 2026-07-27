@@ -285,6 +285,9 @@ class TestTerminalEventEmission:
         topic, payload = publishes[0]
         assert "swarm-dispatch-failed" in topic
         assert payload["error"] == "something exploded"
+        # OMN-14514: the projection consumer's ModelSwarmDispatchEvent.status is
+        # required with no default — the FAILED payload must carry it.
+        assert payload["status"] == EnumSwarmRunStatus.FAILED.value
 
     def test_degraded_status_when_some_subtasks_fail(
         self,

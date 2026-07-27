@@ -42,11 +42,13 @@ Related:
 from __future__ import annotations
 
 import logging
+import os
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
 
 import yaml
+from omnibase_core.models.delegation.wire import EnumTierCostType
 from omnibase_infra.enums import EnumInfraTransportType
 from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.models.errors.model_infra_error_context import (
@@ -77,8 +79,26 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier 
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model import (
     ModelTierModel,
 )
+from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
 
 _logger = logging.getLogger(__name__)
+
+
+def _roi_suppressed_tiers(
+    roi_overlay: ModelRoutingRoiOverlay | None,
+) -> frozenset[str]:
+    """Return the ROI-suppressed tier names, or an empty set when no overlay.
+
+    The overlay is the captured-outcome read-back (OMN-14001): tiers whose
+    ``context_roi_scores`` success rate crossed the suppression gate. The reducer
+    treats a suppressed tier like an excluded one — but only as a FIRST pass; every
+    call site retries without suppression when honouring it would leave no routable
+    tier, so ROI can re-pick among statically-routable tiers but never dead-end
+    routing (fail-safe). ``None`` overlay -> empty set -> behaviour identical to the
+    pre-OMN-14001 static path.
+    """
+    return roi_overlay.suppressed_tiers if roi_overlay is not None else frozenset()
+
 
 # System prompts by task type — kept here because they are presentation strings,
 # not routing configuration.
@@ -149,6 +169,37 @@ _CLOUD_BLOCKED_POLICY = "blocked"
 # zero-cost local-execution tier exempt from the cloud-blocked routing policy.
 _LOCAL_TIERS = {"local"}
 
+# OMN-14225: paid escalation policy = ON by default, METERED + LOGGED (never
+# SILENT). Paid (metered, cost_per_1k_tokens > 0) tiers ARE allowed — the operator's
+# GLM subscription covers them — but every paid escalation is logged prominently
+# (model, task_type, cost_usd, reason) at the execution boundary so it can never
+# happen silently (the original OMN-14097 concern). An operator may opt OUT
+# per-process by setting ONEX_DELEGATION_ALLOW_PAID to a falsy value
+# (0/false/no/off), which fails the ladder closed to the free tiers. This gate is
+# the single eligibility point ``_tier_allowed_by_contract``, consulted by both the
+# routing reducer (``delta``) and the bus-less escalation loop
+# (``next_eligible_tier``/``first_eligible_tier`` via ``_tier_can_route_task``).
+_ALLOW_PAID_ENV = "ONEX_DELEGATION_ALLOW_PAID"
+_ALLOW_PAID_FALSY = frozenset({"0", "false", "no", "off"})
+
+
+def _paid_escalation_allowed() -> bool:
+    """Return whether paid (metered) escalation is permitted — True by default.
+
+    Paid is ON unless an operator explicitly opts OUT via a falsy
+    ``ONEX_DELEGATION_ALLOW_PAID`` (0/false/no/off). Read at call time (not import
+    time) so a test or an operator can toggle it per-process. "Never silent" is met
+    by the prominent paid-escalation log at the execution boundary, not by blocking.
+    """
+    # OMN-14225: the paid-escalation opt-out is an INTENTIONAL per-process operator
+    # toggle — read at call time (not import time) so an operator or a test can flip
+    # it per process, metered + logged at the execution boundary, never a silent
+    # config path. It is exempted from the delegation env-read scanner via the inline
+    # token below; a contract-config rewrite would defeat the per-process-toggle
+    # design this gate deliberately provides.
+    raw_opt_out = os.environ.get(_ALLOW_PAID_ENV, "")  # ONEX_FLAG_EXEMPT
+    return raw_opt_out.strip().lower() not in _ALLOW_PAID_FALSY
+
 
 def _estimate_prompt_tokens(prompt: str) -> int:
     """Estimate token count from prompt character length (4 chars/token heuristic)."""
@@ -161,8 +212,17 @@ def _backend_id_for_model(model_id: str) -> UUID:
 
 
 def _backend_secret_available(backend: BifrostBackendRef) -> bool:
-    """Return whether the runtime can resolve the backend's declared secret ref."""
-    return api_key_ref_available(backend.api_key_ref)
+    """Return whether the runtime can resolve the backend's declared secret ref.
+
+    OMN-13943: also checks the backend's contract-declared ``api_key_env`` as a
+    fallback, mirroring the effect boundary (``handler_llm_delegation_call``)
+    so tier eligibility here agrees with what the effect can actually resolve
+    at call time — a backend is not reported unroutable due to secret-ref
+    convention drift when its own literal env var IS set.
+    """
+    return api_key_ref_available(
+        backend.api_key_ref, env_var_fallback=backend.api_key_env
+    )
 
 
 def _select_model_for_task(
@@ -171,32 +231,72 @@ def _select_model_for_task(
     estimated_tokens: int,
     bifrost_backends: dict[str, BifrostBackendRef],
     contract_model_ref: str | None = None,
+    exclude_backend_refs: frozenset[str] = frozenset(),
 ) -> ModelTierModel | None:
     """Select the best model from a tier for the given task and token count.
 
     When contract_model_ref is provided (from task_model_overrides or
     default_task_model_ref in the task-class contract), the matching model is
     preferred over tier-order-based selection, provided it has an available
-    backend and fits within the token budget. Falls back to tier-order selection
-    when the contract-declared model is unavailable in this tier.
+    backend and fits within the token budget. When contract_model_ref
+    identifies more than one model in this tier (an id shared across distinct
+    backends — see OMN-14396 below), the candidate that also declares
+    task_type in use_for wins; otherwise the first id match is used regardless
+    of use_for, preserving the override as an explicit pin to a specific model
+    (OMN-10942). Falls back to tier-order selection when the contract-declared
+    model is unavailable in this tier.
 
     Prefers fast-path models when prompt fits within their threshold.
     Falls back to any model that declares the task type in use_for.
     Endpoint availability is checked via the bifrost_backends dict (keyed by backend_id).
+
+    ``exclude_backend_refs`` (OMN-14402, same-tier backend fallback) removes the
+    named ``backend_ref``s from every selection pass — including the
+    contract_model_ref id-match pass. When exclusions are active, the
+    "id-matches-but-ignores-use_for" escape hatch above is also disabled: that
+    hatch exists to preserve an EXPLICIT single-match pin to an off-use_for
+    model (e.g. OMN-10942/OMN-13140's cloud override), which is a different
+    concern than a same-tier RETRY after a transport failure, where a candidate
+    that does not even declare the task type is never a valid substitute.
     """
     # Contract-declared model takes priority — find it by model ID in this tier.
+    #
+    # OMN-14396: a model id can collide across two backends in the same tier
+    # serving DIFFERENT capabilities (e.g. local-coder and
+    # local-heavy-reasoning both declare id "Qwen3.6-35B-A3B" — one is the
+    # code_generation backend, the other the research/reasoning backend on
+    # the same physical endpoint). Matching on id alone always picked
+    # whichever backend was declared first, regardless of whether it actually
+    # served task_type — e.g. local-coder (use_for=[code_generation,
+    # code_review, refactor]) winning over local-heavy-reasoning for a
+    # "research" task purely by file order. delta() then routes to exactly
+    # that one backend; a real transport/quality failure there escalates the
+    # WHOLE tier to cheap_cloud/claude without ever trying the tier's other
+    # backend that does declare the task. Collect every id match and prefer
+    # the one that also declares task_type in use_for; only when NONE of the
+    # id matches declare task_type do we fall back to the first id match
+    # (unchanged behavior for the common case of a single, unambiguous
+    # override — e.g. pinning a task type to a cloud model that intentionally
+    # sits outside its own use_for list, OMN-10942/OMN-13140).
     if contract_model_ref is not None:
-        for model in tier_models:
-            backend = bifrost_backends.get(model.backend_ref)
-            if (
-                model.id == contract_model_ref
-                and backend
-                and _backend_secret_available(backend)
-                and estimated_tokens <= model.max_context_tokens
-            ):
+        id_matches = [
+            model
+            for model in tier_models
+            if model.id == contract_model_ref
+            and model.backend_ref not in exclude_backend_refs
+            and (backend := bifrost_backends.get(model.backend_ref)) is not None
+            and _backend_secret_available(backend)
+            and estimated_tokens <= model.max_context_tokens
+        ]
+        for model in id_matches:
+            if task_type in model.use_for:
                 return model
+        if id_matches and not exclude_backend_refs:
+            return id_matches[0]
 
     for model in tier_models:
+        if model.backend_ref in exclude_backend_refs:
+            continue
         backend = bifrost_backends.get(model.backend_ref)
         if (
             task_type in model.use_for
@@ -209,6 +309,8 @@ def _select_model_for_task(
             return model
 
     for model in tier_models:
+        if model.backend_ref in exclude_backend_refs:
+            continue
         backend = bifrost_backends.get(model.backend_ref)
         if (
             task_type in model.use_for
@@ -252,6 +354,7 @@ class BifrostBackendRef:
     """Resolved backend from the bifrost contract plus endpoint overlay."""
 
     __slots__ = (
+        "api_key_env",
         "api_key_ref",
         "endpoint_url",
         "extra_headers",
@@ -268,6 +371,7 @@ class BifrostBackendRef:
         max_tokens: int,
         api_key_ref: str | None = None,
         extra_headers: dict[str, str] | None = None,
+        api_key_env: str | None = None,
     ) -> None:
         self.endpoint_url = endpoint_url
         self.model_name = model_name
@@ -278,6 +382,11 @@ class BifrostBackendRef:
         self.max_tokens = max_tokens
         self.api_key_ref = api_key_ref
         self.extra_headers = extra_headers
+        # OMN-13943: the backend's own contract-declared literal env-var name
+        # (e.g. "GEMINI_API_KEY"), distinct from api_key_ref's dotted
+        # secret_ref convention. Used as a fallback when the dotted ref's
+        # convention-mapped env var is unset — see _backend_secret_available.
+        self.api_key_env = api_key_env
 
 
 @lru_cache(maxsize=1)
@@ -359,6 +468,15 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
             extra_headers=dict(backend.extra_headers)
             if backend.extra_headers
             else None,
+            # OMN-13943: carry the RAW api_key_env field (not resolved_secret_ref,
+            # which already folds api_key_env in as a last-resort ALTERNATIVE to
+            # secret_ref — never both). This is a genuine additional fallback
+            # checked alongside a populated secret_ref, not an either/or choice.
+            api_key_env=(
+                backend.api_key_env.strip()
+                if isinstance(backend.api_key_env, str) and backend.api_key_env.strip()
+                else None
+            ),
         )
 
     if not backends:
@@ -486,13 +604,31 @@ def _tier_allowed_by_contract(
 ) -> bool:
     """Return True if the tier is permitted by task-class contract constraints.
 
-    When no entry is declared, all tiers are allowed (graceful degradation).
     Enforces:
+      - undeclared task class (no contract entry) → only LOCAL tiers permitted
+      - OMN-14225: paid (metered) tier behind the ONEX_DELEGATION_ALLOW_PAID gate
       - cloud_routing_policy: "blocked" → only local tiers permitted
       - pricing_ceiling_per_1k_tokens: tier cost must not exceed ceiling
+
+    OMN-14224: an undeclared-but-accepted task class used to FAIL OPEN here (all
+    tiers allowed as "graceful degradation"), which let it silently escalate to the
+    PAID cloud tier — the root enabler of the OMN-14218/refactor class of bug (an
+    accepted task type with no contract has no acceptance authority, so a valid
+    LOCAL output is rejected and the ladder walks straight into paid). Fail CLOSED
+    to local instead: an undeclared class can only run on the $0 local tiers, never
+    paid. Post-OMN-14218 every accepted task class is declared, so this changes no
+    current path; it is a guardrail against any future accepted-but-undeclared class.
     """
+    # OMN-14225: paid tier gate — a metered (cost > 0) tier is eligible by default
+    # (paid is ON, metered + logged) UNLESS an operator has opted OUT via a falsy
+    # ONEX_DELEGATION_ALLOW_PAID, in which case the ladder fails closed to the free
+    # tiers. Applied first (independent of the contract entry) so the opt-out covers
+    # every routing surface. Free tiers (local, cheap_frontier) are always eligible.
+    if tier.cost_per_1k_tokens > 0 and not _paid_escalation_allowed():
+        return False
+
     if entry is None:
-        return True
+        return tier.name in _LOCAL_TIERS
 
     policy = entry.get("cloud_routing_policy")
     if policy == _CLOUD_BLOCKED_POLICY and tier.name not in _LOCAL_TIERS:
@@ -638,6 +774,7 @@ def next_eligible_tier(
     excluded_tiers: frozenset[str],
     *,
     task_type: str | None = None,
+    roi_overlay: ModelRoutingRoiOverlay | None = None,
 ) -> str | None:
     """Return the next tier name after current_tier_name, skipping excluded_tiers.
 
@@ -651,6 +788,13 @@ def next_eligible_tier(
     (OMN-12939). When ``task_type`` is None the legacy pure declaration-order
     behavior is preserved for callers without a task context.
 
+    When ``roi_overlay`` is provided (OMN-14001), ROI-suppressed tiers (those whose
+    captured ``context_roi_scores`` success rate crossed the suppression gate) are
+    skipped on a FIRST pass so escalation prefers a tier not proven to fail; if that
+    dead-ends the ladder, a fail-safe second pass ignores ROI suppression so a
+    proven-but-only-option tier is still reachable. ``None`` overlay preserves the
+    exact pre-OMN-14001 escalation order.
+
     This is the single parsing path for tier escalation order. The orchestrator
     imports and calls this directly -- no independent YAML parsing.
     """
@@ -663,22 +807,32 @@ def next_eligible_tier(
         if task_type is not None
         else config.tiers
     )
-    found_current = False
-    for tier in tiers:
-        if tier.name == current_tier_name:
-            found_current = True
-            continue
-        if not found_current or tier.name in excluded_tiers:
-            continue
-        if task_type is not None and not _tier_can_route_task(
-            tier, task_type, bifrost_backends, contract
-        ):
-            continue
-        return tier.name
+    suppressed = _roi_suppressed_tiers(roi_overlay)
+    for extra_skip in (suppressed, frozenset[str]()):
+        skip = excluded_tiers | extra_skip
+        found_current = False
+        for tier in tiers:
+            if tier.name == current_tier_name:
+                found_current = True
+                continue
+            if not found_current or tier.name in skip:
+                continue
+            if task_type is not None and not _tier_can_route_task(
+                tier, task_type, bifrost_backends, contract
+            ):
+                continue
+            return tier.name
+        # Only a non-empty ROI suppression warrants a fail-safe second pass.
+        if not suppressed:
+            break
     return None
 
 
-def first_eligible_tier(task_type: str) -> str | None:
+def first_eligible_tier(
+    task_type: str,
+    *,
+    roi_overlay: ModelRoutingRoiOverlay | None = None,
+) -> str | None:
     """Return the CHEAPEST-FIRST initial tier for ``task_type``, or None.
 
     Single parsing path for the INITIAL tier the bus-less local dispatch port
@@ -695,6 +849,15 @@ def first_eligible_tier(task_type: str) -> str | None:
     backend (e.g. the abandoned ``cloud-gemini-pro`` for ``code_generation``,
     OMN-13667) and strand the escalation loop.
 
+    When ``roi_overlay`` is provided (OMN-14001 — the first closed platform
+    learning loop), a tier whose captured ``context_roi_scores`` success rate
+    crossed the suppression gate is skipped on a FIRST pass, so the initial tier
+    becomes the cheapest tier NOT proven to fail — a stored outcome changing a live
+    routing decision. A fail-safe second pass ignores ROI suppression when honouring
+    it would leave no routable tier, so ROI can only re-pick among statically
+    routable tiers, never make routing fail. ``None`` overlay is byte-identical to
+    the pre-OMN-14001 cheapest-first resolution.
+
     Returns ``None`` when the task class declares no tier_order (no contract entry)
     or when no declared tier can route the task — the caller then falls back to the
     legacy untargeted resolution for that (contract-less) class.
@@ -710,9 +873,17 @@ def first_eligible_tier(task_type: str) -> str | None:
 
     config = _get_config()
     bifrost_backends = _load_bifrost_endpoints()
-    for tier in _tier_order_from_contract(config, entry):
-        if _tier_can_route_task(tier, task_type, bifrost_backends, contract):
-            return tier.name
+    ordered = _tier_order_from_contract(config, entry)
+    suppressed = _roi_suppressed_tiers(roi_overlay)
+    for skip in (suppressed, frozenset[str]()):
+        for tier in ordered:
+            if tier.name in skip:
+                continue
+            if _tier_can_route_task(tier, task_type, bifrost_backends, contract):
+                return tier.name
+        # Only a non-empty ROI suppression warrants a fail-safe second pass.
+        if not suppressed:
+            break
     return None
 
 
@@ -876,6 +1047,63 @@ def backend_id_for_tier(tier_name: str, task_type: str) -> str | None:
     return selected.backend_ref
 
 
+def sibling_backend_available_in_tier(
+    tier_name: str,
+    task_type: str,
+    exclude_backend_refs: frozenset[str],
+) -> str | None:
+    """Return the ``backend_ref`` of an untried sibling backend in ``tier_name``.
+
+    OMN-14402 same-tier backend fallback: before escalating a TRANSPORT/
+    inference failure off the tier entirely (walking to the next, possibly
+    paid/cloud tier via ``next_eligible_tier``), the orchestrator checks
+    whether ``tier_name`` declares another backend — besides the ones in
+    ``exclude_backend_refs`` — that also serves ``task_type`` with a
+    resolvable endpoint. This is an ELIGIBILITY check only (mirrors
+    ``_tier_can_route_task`` / ``backend_id_for_tier``): it runs the SAME
+    ``_select_model_for_task`` selection ``delta()`` applies, with a 0-token
+    availability probe, so the backend this reports is exactly the one the
+    paired ``ModelRoutingIntent(min_tier_name=tier_name,
+    excluded_backend_refs=exclude_backend_refs)`` re-route will resolve.
+
+    Ordering is deterministic and config-declared, never dict/set iteration
+    order: ``tier.models`` in ``routing_tiers.yaml`` declaration order, with
+    the fast-path-threshold pass preferred over the general use_for pass —
+    the same two-pass order ``_select_model_for_task`` always applies.
+
+    Returns ``None`` when ``tier_name`` is unknown, declares no backend for
+    ``task_type``, or every such backend is already in
+    ``exclude_backend_refs`` — the orchestrator then falls through to the
+    normal cross-tier escalation (``next_eligible_tier``), which is the
+    ORIGINAL behavior when no sibling exists.
+    """
+    config = _get_config()
+    matching_tier = next(
+        (tier for tier in config.tiers if tier.name == tier_name),
+        None,
+    )
+    if matching_tier is None:
+        return None
+
+    bifrost_backends = _load_bifrost_endpoints()
+    contract = _get_task_class_contract()
+    contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
+    # 0-token availability probe (mirrors _tier_can_route_task / backend_id_for_tier):
+    # identifies which backend the tier WOULD select excluding the failed
+    # backend(s); the real re-route re-selects with the actual token estimate.
+    selected = _select_model_for_task(
+        matching_tier.models,
+        task_type,
+        0,
+        bifrost_backends,
+        contract_model_ref=contract_model_ref,
+        exclude_backend_refs=exclude_backend_refs,
+    )
+    if selected is None:
+        return None
+    return selected.backend_ref
+
+
 def resolve_task_class_max_escalations(task_type: str) -> int | None:
     """Resolve ``escalation_policy.max_escalations`` for ``task_type`` (OMN-13849).
 
@@ -904,6 +1132,33 @@ def resolve_task_class_max_escalations(task_type: str) -> int | None:
     if raw < 0:
         return None
     return raw
+
+
+def is_free_tier(tier_name: str) -> bool:
+    """Return whether ``tier_name`` is a $0 (free_local) tier in routing_tiers.yaml.
+
+    OMN-14234 (retry-local / best-of-N): a free tier costs nothing to re-run, so
+    the delegation ladder retries it up to its per-tier ``max_retries`` budget on a
+    sub-bar quality result BEFORE escalating to a paid (metered) tier — turning a
+    non-deterministic local coder (~1/3 single-shot pass at the 0.85 bar) into a
+    best-of-N draft loop at $0 instead of paying on the first weak draft. This is
+    the single parsing path both delegation paths (the bus orchestrator's
+    ``handle_gate_result`` and the bus-less ``LocalDelegationDispatchPort``) key
+    their free-tier retry gate on, so the classification cannot drift between them.
+
+    A tier is free when its typed cost model (OMN-13234) declares ``free_local``; a
+    tier not yet migrated to the typed ``cost`` block falls back to its flat
+    ``cost_per_1k_tokens == 0``. An unknown tier name is NOT free (fail-closed: an
+    unrecognized tier is never treated as a free retry surface, so retry-local can
+    never keep a paid/unknown tier off the escalation ladder).
+    """
+    config = _get_config()
+    for tier in config.tiers:
+        if tier.name == tier_name:
+            if tier.cost is not None:
+                return tier.cost.cost_type == EnumTierCostType.FREE_LOCAL
+            return tier.cost_per_1k_tokens == 0.0
+    return False
 
 
 def tier_max_retries(tier_name: str) -> int:
@@ -937,6 +1192,8 @@ def delta(
     request: ModelDelegationRequest,
     *,
     min_tier_name: str | None = None,
+    roi_overlay: ModelRoutingRoiOverlay | None = None,
+    excluded_backend_refs: frozenset[str] = frozenset(),
 ) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
@@ -950,12 +1207,41 @@ def delta(
     ``min_tier_name`` in the tier list are skipped. This preserves the reducer
     as a pure function -- it does not need to know about escalation state.
 
+    When ``roi_overlay`` is set (OMN-14001 — the first closed platform learning
+    loop), tiers whose captured ``context_roi_scores`` success rate crossed the
+    suppression gate are skipped on a FIRST pass, so a proven-failing tier is
+    demoted and the decision changes based on stored outcomes. A fail-safe second
+    pass ignores ROI suppression when honouring it would yield no routable tier —
+    ROI only re-picks among statically routable tiers, it never makes routing fail.
+    ``roi_overlay=None`` is byte-identical to the pre-OMN-14001 static decision, so
+    every existing golden-chain replay is unaffected. The overlay is a pure INPUT
+    (resolved at the caller's I/O boundary via ``resolve_roi_overlay``); no live
+    projection read happens inside this reducer, preserving fresh-process/live
+    parity (OMN-12974).
+
+    When ``excluded_backend_refs`` is set (OMN-14402, same-tier backend
+    fallback), those ``backend_ref``s are skipped in EVERY tier's selection —
+    including ``min_tier_name``'s own tier. Combined with ``min_tier_name``
+    pinned to the CURRENT (failing) tier, this naturally does two things in one
+    call: if the tier still declares an untried sibling for the task, it is
+    selected (``tier_name`` on the result is unchanged); if not, selection
+    falls through to the next tier exactly as a real tier escalation would.
+    The orchestrator decides WHICH of those two outcomes to treat as a "retry"
+    vs a "real escalation" via ``sibling_backend_available_in_tier`` BEFORE
+    calling this — see ``handler_delegation_workflow._maybe_retry_sibling_backend``.
+    Backend refs are unique across tiers, so applying the same exclusion set
+    tier-wide is a no-op for tiers that never declared the excluded backend.
+
     Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
 
     Args:
         request: The delegation request to route.
         min_tier_name: When set, skip all tiers before this tier name in the
             iteration order. Used by the escalation path after quality gate failure.
+        roi_overlay: When set, the resolved captured-ROI signal used to demote
+            proven-failing tiers before the static order.
+        excluded_backend_refs: Backend refs to skip in every tier's selection
+            (OMN-14402 same-tier backend fallback).
 
     Returns:
         A routing decision with selected model, endpoint, and config.
@@ -976,89 +1262,120 @@ def delta(
     # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
 
-    # Escalation support (OMN-12254): skip tiers before min_tier_name.
-    skip_until_found = min_tier_name is not None
+    def _route(roi_skip: frozenset[str]) -> ModelRoutingDecision | None:
+        # Escalation support (OMN-12254): skip tiers before min_tier_name.
+        skip_until_found = min_tier_name is not None
 
-    for tier in tiers:
-        if skip_until_found:
-            if tier.name == min_tier_name:
-                skip_until_found = False
-            else:
+        for tier in tiers:
+            if skip_until_found:
+                if tier.name == min_tier_name:
+                    skip_until_found = False
+                else:
+                    continue
+
+            # OMN-14001: ROI-suppressed tiers are skipped on the first pass; the
+            # caller retries with an empty skip set if this yields no decision.
+            if tier.name in roi_skip:
                 continue
 
-        if not _tier_allowed_by_contract(tier, entry):
-            continue
+            if not _tier_allowed_by_contract(tier, entry):
+                continue
 
-        selected = _select_model_for_task(
-            tier.models,
-            task_type,
-            estimated_tokens,
-            bifrost_backends,
-            contract_model_ref=contract_model_ref,
-        )
-        if selected is None:
-            continue
-
-        backend = bifrost_backends.get(selected.backend_ref)
-        if not backend:
-            continue
-
-        system_prompt = _SYSTEM_PROMPTS.get(
-            task_type,
-            f"You are a helpful assistant completing a {task_type} task.",
-        )
-
-        # Local endpoints use the served model id declared in routing_tiers.yaml.
-        # Cloud/CLI backends keep using bifrost model_name because provider model
-        # names can differ from stable routing keys such as openrouter-glm-flash.
-        model_name = selected.id if tier.name in _LOCAL_TIERS else backend.model_name
-
-        rationale = (
-            f"Task '{task_type}' (~{estimated_tokens} tokens) routed to "
-            f"{selected.id} via tier '{tier.name}' "
-            f"(max_context={selected.max_context_tokens})."
-        )
-        if (
-            selected.fast_path_threshold_tokens
-            and estimated_tokens <= selected.fast_path_threshold_tokens
-        ):
-            rationale += f" Fast-path: tokens within {selected.fast_path_threshold_tokens} threshold."
-        if contract_model_ref is not None and selected.id == contract_model_ref:
-            rationale += f" Contract-override: model='{contract_model_ref}'."
-        if entry is not None:
-            policy_val = entry.get("cloud_routing_policy")
-            policy_str = policy_val if isinstance(policy_val, str) else "allowed"
-            rationale += (
-                f" Contract-driven: task_class='{task_type}' policy='{policy_str}'."
+            selected = _select_model_for_task(
+                tier.models,
+                task_type,
+                estimated_tokens,
+                bifrost_backends,
+                contract_model_ref=contract_model_ref,
+                exclude_backend_refs=excluded_backend_refs,
             )
-        if min_tier_name is not None:
-            rationale += f" Escalated: min_tier_name='{min_tier_name}'."
+            if selected is None:
+                continue
 
-        cost_tier_map = {"local": "low", "cheap_cloud": "medium", "claude": "high"}
-        cost_tier = cost_tier_map.get(tier.name, tier.name)
+            backend = bifrost_backends.get(selected.backend_ref)
+            if not backend:
+                continue
 
-        return ModelRoutingDecision(
-            correlation_id=request.correlation_id,
-            task_type=task_type,
-            selected_model=model_name,
-            selected_backend_id=_backend_id_for_model(selected.id),
-            endpoint_url=backend.endpoint_url,
-            api_key_ref=backend.api_key_ref,
-            extra_headers=backend.extra_headers,
-            cost_tier=cost_tier,
-            max_context_tokens=selected.max_context_tokens,
-            timeout_ms=backend.timeout_ms,
-            # OMN-13345: thread the contract-declared per-backend output ceiling
-            # onto the decision so the orchestrator posts it on the wire instead
-            # of the 8192 request default, which truncates cloud GLM
-            # (finish_reason=length) and tanks the quality gate.
-            max_tokens=backend.max_tokens,
-            system_prompt=system_prompt,
-            rationale=rationale,
-            dod_deterministic=dod_deterministic,
-            dod_heuristic=dod_heuristic,
-            tier_name=tier.name,
-        )
+            system_prompt = _SYSTEM_PROMPTS.get(
+                task_type,
+                f"You are a helpful assistant completing a {task_type} task.",
+            )
+
+            # Local endpoints use the served model id declared in routing_tiers.yaml.
+            # Cloud/CLI backends keep using bifrost model_name because provider model
+            # names can differ from stable routing keys such as openrouter-glm-flash.
+            model_name = (
+                selected.id if tier.name in _LOCAL_TIERS else backend.model_name
+            )
+
+            rationale = (
+                f"Task '{task_type}' (~{estimated_tokens} tokens) routed to "
+                f"{selected.id} via tier '{tier.name}' "
+                f"(max_context={selected.max_context_tokens})."
+            )
+            if (
+                selected.fast_path_threshold_tokens
+                and estimated_tokens <= selected.fast_path_threshold_tokens
+            ):
+                rationale += f" Fast-path: tokens within {selected.fast_path_threshold_tokens} threshold."
+            if contract_model_ref is not None and selected.id == contract_model_ref:
+                rationale += f" Contract-override: model='{contract_model_ref}'."
+            if entry is not None:
+                policy_val = entry.get("cloud_routing_policy")
+                policy_str = policy_val if isinstance(policy_val, str) else "allowed"
+                rationale += (
+                    f" Contract-driven: task_class='{task_type}' policy='{policy_str}'."
+                )
+            if min_tier_name is not None:
+                rationale += f" Escalated: min_tier_name='{min_tier_name}'."
+            if roi_skip:
+                # Reached only for a tier NOT in roi_skip (suppressed tiers are
+                # skipped above) — record that captured ROI demoted past them.
+                rationale += (
+                    f" ROI-demoted past {sorted(roi_skip)} (captured-outcome "
+                    "read-back, OMN-14001)."
+                )
+
+            cost_tier_map = {"local": "low", "cheap_cloud": "medium", "claude": "high"}
+            cost_tier = cost_tier_map.get(tier.name, tier.name)
+
+            return ModelRoutingDecision(
+                correlation_id=request.correlation_id,
+                task_type=task_type,
+                selected_model=model_name,
+                selected_backend_id=_backend_id_for_model(selected.id),
+                endpoint_url=backend.endpoint_url,
+                api_key_ref=backend.api_key_ref,
+                extra_headers=backend.extra_headers,
+                cost_tier=cost_tier,
+                max_context_tokens=selected.max_context_tokens,
+                timeout_ms=backend.timeout_ms,
+                # OMN-13345: thread the contract-declared per-backend output ceiling
+                # onto the decision so the orchestrator posts it on the wire instead
+                # of the 8192 request default, which truncates cloud GLM
+                # (finish_reason=length) and tanks the quality gate.
+                max_tokens=backend.max_tokens,
+                system_prompt=system_prompt,
+                rationale=rationale,
+                dod_deterministic=dod_deterministic,
+                dod_heuristic=dod_heuristic,
+                tier_name=tier.name,
+                # OMN-14402: the raw backend_ref, distinct from selected_backend_id
+                # (a UUID hashed from .id alone, which collides across backends
+                # sharing an id — OMN-14396). Same-tier backend fallback keys its
+                # already-tried exclusion set off this field.
+                selected_backend_ref=selected.backend_ref,
+            )
+        return None
+
+    suppressed = _roi_suppressed_tiers(roi_overlay)
+    decision = _route(suppressed)
+    if decision is None and suppressed:
+        # Fail-safe: ROI suppression would leave no routable tier — honour the
+        # static order rather than fail a request the static path would serve.
+        decision = _route(frozenset[str]())
+    if decision is not None:
+        return decision
 
     context = ModelInfraErrorContext.with_correlation(
         correlation_id=request.correlation_id,
@@ -1085,9 +1402,11 @@ __all__: list[str] = [
     "delta",
     "describe_no_higher_tier_available",
     "first_eligible_tier",
+    "is_free_tier",
     "next_eligible_tier",
     "resolve_task_class_dod_checks",
     "resolve_task_class_max_escalations",
+    "sibling_backend_available_in_tier",
     "tier_for_backend",
     "tier_max_retries",
 ]

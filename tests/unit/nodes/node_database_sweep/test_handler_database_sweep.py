@@ -62,19 +62,59 @@ class TestCheckTableFreshnessStates:
         assert result.row_count == 10
         assert result.drizzle_defined is True
 
-    def test_unknown_no_drizzle_no_threshold(self) -> None:
-        """Table not in Drizzle schema and no per-table threshold → UNKNOWN."""
+    def test_populated_no_drizzle_no_threshold_is_unknown(self) -> None:
+        """Non-Drizzle table WITH rows → UNKNOWN (staleness unassessable).
+
+        OMN-14526: this used to short-circuit to UNKNOWN without counting rows at
+        all. Staleness is genuinely unassessable here — but emptiness is not, so the
+        row count is now always taken. A populated table stays UNKNOWN.
+        """
+
+        def populated(query: str, database: str) -> tuple[int, str, str]:
+            assert "count(*)" in query
+            return 0, "17", ""
+
         result = _check_table(
             "mystery_table",
             "omnidash_analytics",
             24,
             set(),  # not drizzle-defined
             staleness_thresholds=None,
+            psql=populated,
         )
 
         assert result.status == "UNKNOWN"
+        assert result.row_count == 17
         assert result.drizzle_defined is False
-        assert "freshness metadata" in result.message
+
+    def test_empty_no_drizzle_table_is_empty_not_unknown(self) -> None:
+        """THE OMN-14525 BUG: a non-Drizzle table with ZERO rows must be EMPTY.
+
+        Pre-fix this returned UNKNOWN without ever running a row count (the emitted
+        ``row_count=0`` was the model default, not a measurement). UNKNOWN is not an
+        issue state, so every empty non-Drizzle table — including
+        ``pr_lifecycle_ledger_entries`` — was invisible to the sweep built to find it.
+        """
+
+        def empty(query: str, database: str) -> tuple[int, str, str]:
+            assert "count(*)" in query
+            return 0, "0", ""
+
+        result = _check_table(
+            "pr_lifecycle_ledger_entries",
+            "omnidash_analytics",
+            24,
+            set(),  # not drizzle-defined
+            staleness_thresholds=None,
+            psql=empty,
+        )
+
+        assert result.status == "EMPTY", (
+            "a table with zero rows is EMPTY regardless of freshness metadata; "
+            f"got {result.status!r}"
+        )
+        assert result.row_count == 0
+        assert result.drizzle_defined is False
 
     def test_unknown_no_timestamp_column(self) -> None:
         """Drizzle-defined table with no timestamp column → UNKNOWN."""
@@ -156,13 +196,13 @@ class TestCheckTableFreshnessStates:
         mock_psql.assert_not_called()
 
     def test_unknown_not_reclassified_as_orphan(self) -> None:
-        """UNKNOWN tables are not re-classified as ORPHAN by the handler."""
-        handler = NodeDatabaseSweep()
+        """UNKNOWN (populated, non-Drizzle) tables are not re-classified as ORPHAN."""
+        handler = NodeDatabaseSweep(psql_runner=lambda _q, _db: (0, "9", ""))
 
         with (
             patch(
                 "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_all_tables",
-                return_value=["mystery_table"],
+                return_value=(["mystery_table"], ""),
             ),
             patch(
                 "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_drizzle_tables",
@@ -197,13 +237,13 @@ class TestCheckTableFreshnessStates:
         assert result.tables_unknown == 1
 
     def test_tables_unknown_counted_in_result(self) -> None:
-        """Handler aggregates tables_unknown count correctly."""
-        handler = NodeDatabaseSweep()
+        """Handler aggregates tables_unknown count correctly (populated non-Drizzle)."""
+        handler = NodeDatabaseSweep(psql_runner=lambda _q, _db: (0, "5", ""))
 
         with (
             patch(
                 "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_all_tables",
-                return_value=["table_a", "table_b"],
+                return_value=(["table_a", "table_b"], ""),
             ),
             patch(
                 "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_drizzle_tables",
@@ -401,7 +441,7 @@ class TestNodeMigrationApplicationGap:
         with (
             patch(
                 "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_all_tables",
-                return_value=[],
+                return_value=([], ""),
             ),
             patch(
                 "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_drizzle_tables",
@@ -451,7 +491,7 @@ class TestNodeMigrationApplicationGap:
         with (
             patch(
                 "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_all_tables",
-                return_value=[],
+                return_value=([], ""),
             ),
             patch(
                 "omnimarket.nodes.node_database_sweep.handlers.handler_database_sweep._get_drizzle_tables",

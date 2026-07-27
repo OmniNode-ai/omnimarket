@@ -30,13 +30,13 @@ from __future__ import annotations
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 import yaml
 from omnibase_core.models.delegation.wire import (
     ModelInferenceIntent,
+    ModelInferenceResponseData,
     ModelQualityGateIntent,
     ModelRoutingIntent,
 )
@@ -48,16 +48,18 @@ from omnimarket.events.delegation_judge_verdict import (
 )
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_FAILED,
 )
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
@@ -76,9 +78,6 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
     HandlerRoutingIntent,
-)
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
-    HandlerInferenceIntent,
 )
 from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 
@@ -276,20 +275,22 @@ class TestJudgeVerdictThreadsThroughHandleAsync:
 
 # Self-contained bifrost contract: ``test`` routes (tier_order [local, ...]) to a
 # local backend declaring the ``test`` capability + a COMPLETE verbatim endpoint
-# URL, so routing resolves host-independently (CI has no ~/.omninode overlay). The
-# JUDGE backend (cloud-glm) is resolved separately by the judge adapter, not from
-# this delegation contract.
+# URL, so routing resolves host-independently (CI has no ~/.omninode overlay).
+# OMN-13599: ``test`` now routes to the local REASONER (Qwen3.6-27B-MTP), not the
+# code-only local-coder, so this contract declares local-reasoner. The JUDGE
+# backend (cloud-glm) is resolved separately by the judge adapter, not from this
+# delegation contract.
 _BIFROST_TEST = (
     "config_version: '2.0.0'\n"
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
-    "  - backend_id: local-coder\n"
-    '    endpoint_url: "http://test-testclass:8000/v1/chat/completions"\n'
-    '    model_name: "Qwen3.6-35B-A3B"\n'
+    "  - backend_id: local-reasoner\n"
+    '    endpoint_url: "http://test-testclass:8001/v1/chat/completions"\n'
+    '    model_name: "Qwen3.6-27B-MTP-IQ4_XS.gguf"\n'
     "    tier: local\n"
     "    timeout_ms: 30000\n"
     "    max_tokens: 8192\n"
-    "    capabilities: [test, code_generation, code_review, refactor, research]\n"
+    "    capabilities: [test, research, reasoning, planning, review, document]\n"
     "routing_rules:\n"
     '  - rule_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"\n'
     "    priority: 10\n"
@@ -298,14 +299,14 @@ _BIFROST_TEST = (
     '    backend_policy_version: "2.0.0"\n'
     "    match_operation_types: [chat_completion]\n"
     "    match_capabilities: [test]\n"
-    "    backend_ids: [local-coder]\n"
+    "    backend_ids: [local-reasoner]\n"
     "    fallback_policy:\n"
     "      action: escalate_to_next_tier\n"
     "      max_retries: 1\n"
     "      on_exhaust: return_error\n"
     '    shadow_policy_id: "ffffffff-ffff-4fff-8fff-ffffffffffff"\n'
     "default_backends:\n"
-    "  - local-coder\n"
+    "  - local-reasoner\n"
     "circuit_breaker:\n"
     "  failure_threshold: 5\n"
     "  window_seconds: 30\n"
@@ -328,22 +329,38 @@ def _reset_routing_cache() -> None:
     _h._load_bifrost_endpoints.cache_clear()
 
 
-def _httpx_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.json.return_value = {
-        "id": "chatcmpl-test",
-        "choices": [{"message": {"content": content}}],
-        "usage": {"prompt_tokens": 10, "completion_tokens": 8, "total_tokens": 18},
-    }
-    response.raise_for_status.return_value = None
-    return response
+def _inference_response(
+    intent: ModelInferenceIntent, content: str
+) -> ModelInferenceResponseData:
+    """Construct the primary-delegation inference OUTPUT event directly.
+
+    This test proves the JUDGE veto path: the primary artifact is a controlled
+    internal DTO (the model/HTTP boundary is NOT faked), while the veto is driven
+    by the REAL recorded ``RecordedJudgeReplayAdapter``. The integrated inference
+    request + egress is proven separately by
+    tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py.
+    """
+    return ModelInferenceResponseData(
+        correlation_id=intent.correlation_id,
+        content=content,
+        model_used=intent.model,
+        llm_call_id="chatcmpl-test",
+        latency_ms=1,
+        prompt_tokens=10,
+        completion_tokens=8,
+        total_tokens=18,
+    )
 
 
 def _terminal_topics(terminal_events: list[BaseModel]) -> list[str | None]:
     return [
-        getattr(e, "topic", None)
+        (
+            TOPIC_ID_DELEGATION_COMPLETED
+            if isinstance(e, ModelDelegationCompleted)
+            else TOPIC_ID_DELEGATION_FAILED
+        )
         for e in terminal_events
-        if isinstance(e, ModelDelegationEvent)
+        if isinstance(e, ModelDelegationResult)
     ]
 
 
@@ -376,7 +393,6 @@ class TestJudgeVerdictVetoRealDispatchPath:
         fixture_name: str,
     ) -> tuple[ModelQualityGateResult, list[BaseModel]]:
         routing_handler = HandlerRoutingIntent()
-        inference_handler = HandlerInferenceIntent()
         gate_handler = HandlerQualityGateIntent(
             judge=HandlerJudgeAdequacy(
                 inference_bridge=RecordedJudgeReplayAdapter(fixture_name)
@@ -390,13 +406,10 @@ class TestJudgeVerdictVetoRealDispatchPath:
         inference_intents = workflow.handle_routing_decision(decision)
         assert isinstance(inference_intents[0], ModelInferenceIntent)
 
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = _httpx_response(_GOOD_TEST_ARTIFACT)
-            mock_client_cls.return_value = mock_client
-            response = inference_handler.handle(inference_intents[0])
+        # Hop 4: the primary-delegation inference OUTPUT event, constructed as a
+        # controlled internal DTO — the model/HTTP boundary is NOT faked. The
+        # veto under test is driven by the REAL recorded judge adapter above.
+        response = _inference_response(inference_intents[0], _GOOD_TEST_ARTIFACT)
 
         gate_intents = workflow.handle_inference_response(response)
         assert isinstance(gate_intents[0], ModelQualityGateIntent)

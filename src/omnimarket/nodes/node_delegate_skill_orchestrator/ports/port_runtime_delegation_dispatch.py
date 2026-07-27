@@ -90,7 +90,53 @@ class RuntimeDelegationDispatchPort:
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
+        tenant_id: str | None,
+        backend_id: str | None = None,
+        response_contract: dict[str, object] | None = None,
     ) -> dict[str, object]:
+        # OMN-15180: the deployed bus path publishes ``ModelDelegationRequest``
+        # (omnibase_core), which carries no ``backend_id`` field, and the
+        # downstream consumer (``HandlerDelegationWorkflow`` in
+        # node_delegation_orchestrator) has no backend-pin input today — pinning
+        # was only threaded through the bus-less ``LocalDelegationDispatchPort``
+        # (OMN-15156). Silently accepting and dropping a caller's explicit pin
+        # here would be exactly the "pin drops at a hop" defect class OMN-15180
+        # exists to close, so a non-None pin fails loudly instead: extending the
+        # pin across the bus boundary (a cross-repo omnibase_core change) is out
+        # of this ticket's scope.
+        if backend_id is not None:
+            raise NotImplementedError(
+                "backend_id pin is not yet supported on the deployed bus "
+                "dispatch path (RuntimeDelegationDispatchPort) -- only the "
+                "bus-less LocalDelegationDispatchPort honors it today (OMN-15156/"
+                "OMN-15180). Threading the pin across the bus boundary requires "
+                "a backend_id field on omnibase_core's ModelDelegationRequest "
+                "plus HandlerDelegationWorkflow routing support, which is out of "
+                "scope here."
+            )
+        # OMN-15193: same fail-loud boundary as ``backend_id`` immediately above.
+        # ``ModelDelegationRequest`` (omnibase_core) carries no
+        # ``response_contract`` field and ``HandlerDelegationWorkflow`` /
+        # ``HandlerQualityGateIntent`` (the bus-path quality-gate consumer) have
+        # no declared-schema input today. Silently dropping a caller's declared
+        # contract here would be exactly the per-hop-drop defect class this
+        # ticket exists to close, so a non-None contract fails loudly instead:
+        # threading it across the bus boundary requires a ``response_contract``
+        # field on omnibase_core's ``ModelDelegationRequest`` plus
+        # ``HandlerQualityGateIntent`` schema-validation support, which is a
+        # cross-repo change out of this ticket's scope (OMN-15193 is scoped to
+        # the bus-less ``LocalDelegationDispatchPort`` path the OMN-15170 live
+        # driver actually exercises).
+        if response_contract is not None:
+            raise NotImplementedError(
+                "response_contract is not yet supported on the deployed bus "
+                "dispatch path (RuntimeDelegationDispatchPort) -- only the "
+                "bus-less LocalDelegationDispatchPort honors it today (OMN-15193)."
+                " Threading the contract across the bus boundary requires a "
+                "response_contract field on omnibase_core's "
+                "ModelDelegationRequest plus HandlerQualityGateIntent schema-"
+                "validation support, which is out of scope here."
+            )
         # OMN-13161: the bus runtime path carries its own routing-tier budgets in
         # the downstream delegation chain. When the request omits max_tokens, fall
         # back to the runtime model's contract default rather than forcing a value;
@@ -98,6 +144,11 @@ class RuntimeDelegationDispatchPort:
         max_tokens_fields: dict[str, int] = (
             {} if max_tokens is None else {"max_tokens": max_tokens}
         )
+        # OMN-14349: ModelDelegationRequest.tenant_id already exists (OMN-14058) --
+        # this is the missing plumbing that actually populates it on the bus path.
+        # A None here is not a silent default; the field stays None and the
+        # downstream projection writer's existing OMN-14058 NULL/omitted-key
+        # handling applies (never a masked 'omninode' default).
         request = ModelDelegationRequest(
             prompt=prompt,
             task_type=cast("Any", task_type),
@@ -108,6 +159,7 @@ class RuntimeDelegationDispatchPort:
             emitted_at=datetime.now(UTC),
             quality_contract_mode=cast("Any", quality_contract_mode),
             acceptance_criteria=acceptance_criteria,
+            tenant_id=tenant_id,
         )
 
         if not wait:
@@ -215,6 +267,12 @@ def _message_value(message: object) -> bytes | str | None:
 
 
 def _flatten_terminal_payload(payload: dict[str, object]) -> dict[str, object]:
+    # OMN-14600: retained for the legacy double-nested wire shape (a bespoke
+    # inner envelope carrying its own "topic" + "payload" keys). The runtime
+    # now publishes a SINGLE canonical envelope whose payload is the
+    # unwrapped ModelDelegationResult directly, which has no "payload" key of
+    # its own — the isinstance check below is False and this is a no-op
+    # pass-through for that (current) shape.
     nested_payload = payload.get("payload")
     if isinstance(nested_payload, dict):
         flattened = dict(nested_payload)
@@ -223,6 +281,20 @@ def _flatten_terminal_payload(payload: dict[str, object]) -> dict[str, object]:
             flattened["terminal_topic"] = topic
         return flattened
     return payload
+
+
+def _short_topic_alias(topic: str) -> str | None:
+    """Derive the '{producer}.{event-name}' alias DispatchResultApplier stamps
+    onto ``ModelEventEnvelope.event_type`` (see
+    ``service_dispatch_result_applier.py::_derive_event_type_from_topic``,
+    OMN-12116). The wire envelope's ``event_type`` carries this derived alias,
+    not the full topic string, so a failed/completed comparison against the
+    full topic must also check the derived form.
+    """
+    parts = topic.split(".")
+    if len(parts) >= 5 and parts[0] == "onex":
+        return f"{parts[2]}.{parts[3]}"
+    return None
 
 
 def _parse_delegation_terminal(
@@ -253,8 +325,25 @@ def _parse_delegation_terminal(
     if correlation_id != expected_correlation_id:
         return None
 
+    # OMN-14600: the single canonical envelope has no "topic" key on its
+    # (unwrapped) payload, so the primary signal is ``raw["event_type"]`` —
+    # which DispatchResultApplier stamps with the DERIVED short alias
+    # ("{producer}.{event-name}"), not the full topic string. Compare against
+    # both the full topic (legacy / test-simulated shape) and its derived
+    # alias so either form classifies correctly; ``failure_reason`` remains
+    # the final fallback for shapes that carry neither.
     topic = str(envelope_payload.get("topic") or raw.get("event_type") or "")
-    is_failed = topic == failed_topic or bool(terminal_payload.get("failure_reason"))
+    failed_alias = _short_topic_alias(failed_topic)
+    is_failed = (
+        topic == failed_topic
+        or (failed_alias is not None and topic == failed_alias)
+        or bool(terminal_payload.get("failure_reason"))
+    )
+    # Preserve the terminal_topic surface for callers even though the flat
+    # (single-envelope) shape no longer routes it through
+    # _flatten_terminal_payload's nested branch.
+    if topic and "terminal_topic" not in terminal_payload:
+        terminal_payload["terminal_topic"] = topic
     error_message = str(terminal_payload.get("failure_reason") or "") or None
     return ModelDispatchBusTerminalResult(
         correlation_id=correlation_id,

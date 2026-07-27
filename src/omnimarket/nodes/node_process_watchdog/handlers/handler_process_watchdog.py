@@ -14,6 +14,9 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Protocol, runtime_checkable
 
+from omnimarket.nodes.node_process_watchdog.handlers.checktargets_production import (
+    build_production_targets,
+)
 from omnimarket.nodes.node_process_watchdog.models.model_watchdog_completed_event import (
     ModelWatchdogCompletedEvent,
 )
@@ -250,18 +253,22 @@ class HandlerProcessWatchdog:
         """Serialize a completed event to bytes."""
         return json.dumps(event.model_dump(mode="json")).encode()
 
-    def handle(
-        self,
-        command: ModelWatchdogStartCommand,
-        *,
-        targets: list[CheckTarget] | None = None,
-    ) -> ModelWatchdogCompletedEvent:
+    def handle(self, payload: ModelWatchdogStartCommand) -> ModelWatchdogCompletedEvent:
         """Typed RuntimeLocal handler protocol entry point.
 
-        Delegates to run_watchdog with the provided typed command and targets.
-        Passes an empty target list when none are provided (dry-run safe).
+        Named ``payload`` (OMN-14242) so the RuntimeLocal adapter's
+        single-parameter dispatch passes the validated command positionally.
+        Wires the production check-target set internally and delegates to
+        ``run_watchdog``. Previously this method accepted an optional
+        keyword-only ``targets`` DI param that RuntimeLocal's single-arg
+        dispatch could never supply, so a real dispatch through the runtime
+        silently produced an empty, UNKNOWN-status report (fail-fast
+        violation — a wrong default hiding a broken wiring path). Tests
+        that need injectable check targets should call ``run_watchdog`` or
+        ``run_checks`` directly, which remain unchanged.
         """
-        _report, completed = self.run_watchdog(command, targets or [])
+        targets = build_production_targets()
+        _report, completed = self.run_watchdog(payload, targets)
         return completed
 
     def run_watchdog(

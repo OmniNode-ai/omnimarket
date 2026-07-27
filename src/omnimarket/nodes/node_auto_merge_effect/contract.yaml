@@ -3,6 +3,13 @@ name: node_auto_merge_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
+# OMN-14151: legacy arm surface, superseded by the merge-queue governor's
+# single gated arm path (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect).
+# entry_points deregistered from pyproject.toml/metadata.yaml; handler
+# hard-gated fail-closed (OMNIMARKET_LEGACY_MERGE_ARM_ENABLED, default False).
+# OMN-15053: backing node for /onex:auto_merge. Gate now fails LOUD (raises
+# LegacyMergeArmDisabledError) instead of a silent no-op when disabled.
+lifecycle: deprecated
 
 description: >
   Auto-merge effect node. Merges a GitHub PR after all CI gates pass and

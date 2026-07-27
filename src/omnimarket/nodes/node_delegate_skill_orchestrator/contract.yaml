@@ -62,6 +62,23 @@ output_model:
   module: omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response
   description: Typed delegation result with provider, model, response, metrics, and quality gate.
 
+# OMN-14485: declare the tenant seam on the RESPONSE/terminal side of the contract,
+# not only on the request inputs. The response is auto-published verbatim as the
+# `delegate-skill-completed.v1` terminal event that node_projection_delegation reads;
+# a response that omits tenant_id makes every projection row fall back to the
+# 'omninode' column default (the live no-op OMN-14485 fixed). Declaring it here makes
+# the tenant seam contract-first end-to-end (request tenant_id -> response/terminal
+# tenant_id -> delegation_events.tenant_id) so a future regeneration cannot silently
+# drop it, and the contract-state-coverage gate now requires a test that exercises it.
+outputs:
+  tenant_id:
+    type: str
+    description: >
+      Multi-tenant isolation identifier carried onto the terminal event so the
+      delegation_events projection row stamps a real tenant. Resolved at
+      request-acceptance from the verified request tenant_id or the ONEX_TENANT_ID
+      interim (OMN-14058); absent/None falls back to the 'omninode' column default.
+
 allowed_task_types:
   - test
   - document
@@ -106,6 +123,10 @@ inputs:
     type: str
     required: false
     description: Session that originated the delegation request.
+  tenant_id:
+    type: str
+    required: false
+    description: Verified tenant slug derived at the gateway or runtime boundary.
   recipient:
     type: str
     required: false
@@ -146,6 +167,20 @@ inputs:
     type: list
     required: false
     description: Request-level quality criteria enforced by the quality gate.
+  backend_id:
+    type: str
+    required: false
+    description: >
+      Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves
+      the backend via the normal cheapest-first tier_order selection.
+  response_contract:
+    type: object
+    required: false
+    description: >
+      Optional JSON-Schema-shaped contract describing the expected response
+      structure (OMN-15193). When set, the delegation quality gate validates
+      the response structurally against this schema instead of the
+      task-class keyword heuristics. None preserves current behavior.
 
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegate-skill.v1

@@ -4,14 +4,18 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
-  Computes contract-driven environment parity across runtime lanes from typed
-  env snapshots. The node checks required variables and configured consistency
-  rules without reading process environment as an implicit fallback.
+  Pure COMPUTE primitive: computes contract-driven environment parity across
+  lanes from CALLER-SUPPLIED typed env snapshots. It never collects
+  environment state itself, so env_by_lane payloads handed to it directly
+  (tests, fixtures, simulations) are sample data by construction — TEST-ONLY
+  input, never a live parity verdict. Live lane parity is owned by
+  node_env_parity_collect_effect, which snapshots the real runtime lanes
+  read-only over ssh and evaluates the same shared engine (OMN-13925).
 
 handler:
   module: omnimarket.nodes.node_env_parity_compute.handlers.handler_env_parity_compute
   class: HandlerEnvParityCompute
-  input_model: omnimarket.nodes.node_env_parity_compute.models.model_env_parity_compute_request.ModelEnvParityComputeRequest
+  input_model: omnimarket.parity.model_env_parity.ModelEnvParityComputeRequest
 
 handler_routing:
   handlers:

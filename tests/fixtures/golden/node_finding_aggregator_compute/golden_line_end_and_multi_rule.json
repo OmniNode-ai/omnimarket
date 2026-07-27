@@ -1,0 +1,71 @@
+{
+  "input": {
+    "config": {
+      "jaccard_threshold": 0.7,
+      "model_weights": {},
+      "severity_promotes_on_conflict": true
+    },
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "sources": [
+      {
+        "findings": [
+          {
+            "file_path": "src/foo.py",
+            "line_end": null,
+            "line_start": 10,
+            "normalized_message": "unused import os",
+            "rule_id": "R001",
+            "severity": "warning"
+          },
+          {
+            "file_path": "src/bar.py",
+            "line_end": 12,
+            "line_start": 10,
+            "normalized_message": "type error in func",
+            "rule_id": "R002",
+            "severity": "warning"
+          }
+        ],
+        "model_name": "deepseek-r1"
+      }
+    ]
+  },
+  "output": {
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "merged_findings": [
+      {
+        "file_path": "src/foo.py",
+        "line_end": null,
+        "line_start": 10,
+        "merged_count": 1,
+        "normalized_message": "unused import os",
+        "rule_id": "R001",
+        "severity": "warning",
+        "source_models": [
+          "deepseek-r1"
+        ],
+        "weighted_score": 1.0
+      },
+      {
+        "file_path": "src/bar.py",
+        "line_end": 12,
+        "line_start": 10,
+        "merged_count": 1,
+        "normalized_message": "type error in func",
+        "rule_id": "R002",
+        "severity": "warning",
+        "source_models": [
+          "deepseek-r1"
+        ],
+        "weighted_score": 1.0
+      }
+    ],
+    "source_model_count": 1,
+    "total_duplicates_removed": 0,
+    "total_input_findings": 2,
+    "total_merged_findings": 2,
+    "verdict": "risks_noted"
+  },
+  "output_sha256": "sha256:f799de4b33dd69755df2ae8f5bf3e8bb0e5be0353aaa34d761bb2eda67bafc29",
+  "scenario": "golden_line_end_and_multi_rule"
+}

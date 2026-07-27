@@ -22,20 +22,25 @@ tracked on each run.
 
 from __future__ import annotations
 
-import ast
 import asyncio
 import logging
 import re
 import time
 import tomllib
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from contextlib import asynccontextmanager
+from functools import wraps
 from pathlib import Path
-from typing import Any, Literal, Protocol, runtime_checkable
+from typing import Any, Literal, Protocol, TypeVar, runtime_checkable
 from uuid import uuid4
 
 import yaml
 
+from omnimarket.analysis.ast_import_scanner import (
+    ASTImportScanner,
+    _extract_imports,
+    _module_name,
+)
 from omnimarket.nodes.node_architecture_graph_populate_effect.models import (
     ModelArchitectureGraphPopulateConfig,
     ModelArchitectureGraphPopulateRequestedEvent,
@@ -58,6 +63,92 @@ _LABEL_KAFKA_TOPIC = "KafkaTopic"
 _LABEL_PYTHON_MODULE = "PythonModule"
 
 # ---------------------------------------------------------------------------
+# OMN-14583: directories that never contain a repo's own node contracts —
+# only vendored dependency copies, build artifacts, or caches. A contract.yaml
+# found beneath one of these is a copy of some OTHER package's node, installed
+# as a dependency; it must never be attributed to the repo it happens to be
+# nested under.
+# ---------------------------------------------------------------------------
+_EXCLUDED_DIR_NAMES = frozenset(
+    {
+        ".venv",
+        "venv",
+        "site-packages",
+        "node_modules",
+        "dist",
+        "build",
+        "__pycache__",
+        ".git",
+    }
+)
+
+
+def _iter_real_contract_paths(root: Path) -> Iterator[Path]:
+    """Yield ``contract.yaml`` paths under ``root``, skipping vendored/build
+    directories (see ``_EXCLUDED_DIR_NAMES``)."""
+    for contract_path in root.rglob("contract.yaml"):
+        rel_parts = contract_path.relative_to(root).parts[:-1]
+        if any(part in _EXCLUDED_DIR_NAMES for part in rel_parts):
+            continue
+        yield contract_path
+
+
+# ---------------------------------------------------------------------------
+# Transient-write retry — adapted from omniarchon's
+# services/intelligence/storage/memgraph_adapter.py::retry_on_transient_error
+# (OMN-14295 harvest). Memgraph raises TransientError on conflicting/
+# serialization conflicts even for sequential writes when another process
+# touches the graph concurrently — realistic once post-merge incremental
+# populate runs overlap with a manual one. Exponential backoff, only retries
+# errors that look transient; everything else re-raises immediately.
+# ---------------------------------------------------------------------------
+
+_T = TypeVar("_T")
+
+
+def _retry_on_transient_error(
+    max_attempts: int = 3,
+    initial_backoff: float = 0.1,
+    backoff_multiplier: float = 2.0,
+) -> Callable[[Callable[..., Awaitable[_T]]], Callable[..., Awaitable[_T]]]:
+    def decorator(
+        func: Callable[..., Awaitable[_T]],
+    ) -> Callable[..., Awaitable[_T]]:
+        @wraps(func)
+        async def wrapper(*args: Any, **kwargs: Any) -> _T:
+            attempt = 0
+            backoff = initial_backoff
+            while True:
+                try:
+                    return await func(*args, **kwargs)
+                except Exception as exc:
+                    error_msg = str(exc).lower()
+                    is_transient = (
+                        "transienterror" in error_msg
+                        or "transient" in error_msg
+                        or "conflicting transactions" in error_msg
+                        or "serialization" in error_msg
+                        or "transaction conflict" in error_msg
+                    )
+                    attempt += 1
+                    if not is_transient or attempt >= max_attempts:
+                        raise
+                    logger.warning(
+                        "Memgraph write retry %d/%d for %s: transient error %r",
+                        attempt,
+                        max_attempts,
+                        func.__name__,
+                        str(exc)[:200],
+                    )
+                    await asyncio.sleep(backoff)
+                    backoff *= backoff_multiplier
+
+        return wrapper
+
+    return decorator
+
+
+# ---------------------------------------------------------------------------
 # Narrow structural protocol — keeps hard neo4j dep lazy
 # ---------------------------------------------------------------------------
 
@@ -68,7 +159,9 @@ class ProtocolGraphSession(Protocol):
 
     async def run(self, query: str, **parameters: Any) -> Any: ...
 
-    def data(self) -> list[dict[str, Any]]: ...
+    async def data(self) -> list[dict[str, Any]]: ...
+
+    async def consume(self) -> Any: ...
 
 
 @runtime_checkable
@@ -204,12 +297,21 @@ class HandlerArchitectureGraphPopulate:
         for repo_path in repos:
             repo_name = repo_path.name
 
-            # Repo node — always created
+            # Repo node — always created. "repo" (not just "name") is required
+            # so cross_repo_imports can filter targets by repo (OMN-14295):
+            # IMPORTS edges target a Repository node, and the query's
+            # `b.repo <> $repo` clause silently drops every row when that
+            # property is unset (Cypher NULL comparisons are neither true
+            # nor false, so the WHERE clause filters the row out).
             all_nodes.append(
                 ModelGraphNodeSpec(
                     node_id=repo_name,
                     label=_LABEL_REPOSITORY,
-                    properties={"name": repo_name, "path": str(repo_path)},
+                    properties={
+                        "name": repo_name,
+                        "repo": repo_name,
+                        "path": str(repo_path),
+                    },
                 )
             )
 
@@ -234,7 +336,8 @@ class HandlerArchitectureGraphPopulate:
                 all_edges.extend(edges)
 
             if op in ("populate_from_imports", "populate_all"):
-                edges = self._collect_import_edges(repo_path, repo_name)
+                nodes, edges = self._collect_import_edges(repo_path, repo_name)
+                all_nodes.extend(nodes)
                 all_edges.extend(edges)
 
             if op in ("populate_from_pyproject", "populate_all"):
@@ -317,11 +420,26 @@ class HandlerArchitectureGraphPopulate:
     def _collect_contract_data(
         self, repo_path: Path, repo_name: str
     ) -> tuple[list[ModelGraphNodeSpec], list[ModelGraphEdgeSpec]]:
-        """Walk repo for contract.yaml files; parse each into node/edge specs."""
+        """Walk repo for contract.yaml files; parse each into node/edge specs.
+
+        OMN-14583: walks the full ``repo_path`` (not scoped to ``src/`` —
+        real, non-vendored node contracts can legitimately live outside
+        ``src/``, e.g. ``omnibase_core/examples/demo/model-validate/
+        contract.yaml``; scoping to ``src/`` would silently drop those),
+        filtered through ``_iter_real_contract_paths``'s vendored-directory
+        exclusion. Before this fix, a bare ``repo_path.rglob("contract.yaml")``
+        also descended into ``.venv/lib/.../site-packages/<dep>/...`` — every
+        repo that depends on omnimarket vendors a full copy of its node
+        contracts there, and each one was misattributed as a *native* node of
+        the consuming repo (``repo=repo_name``), inflating the graph with
+        phantom nodes that don't actually belong to that repo. The exclusion
+        filter removes exactly those vendored copies (``.venv``/
+        ``site-packages`` both match) and nothing else.
+        """
         nodes: list[ModelGraphNodeSpec] = []
         edges: list[ModelGraphEdgeSpec] = []
 
-        for contract_path in repo_path.rglob("contract.yaml"):
+        for contract_path in _iter_real_contract_paths(repo_path):
             try:
                 with open(contract_path) as f:
                     contract = yaml.safe_load(f)
@@ -349,9 +467,17 @@ class HandlerArchitectureGraphPopulate:
 
         node_type = contract.get("node_type", "unknown")
 
-        # ONEXNode for this node
+        # OMN-14571: node_id is repo-qualified — same pattern as PythonModule's
+        # f"{repo_name}::{dotted}" (see _collect_import_edges below). Before
+        # this fix, node_id was the bare contract `name`, and two repos
+        # declaring a node with the same name (e.g. node_delegation_orchestrator
+        # in both omnimarket and omniclaude) MERGEd into a single ONEXNode,
+        # silently collapsing their PUBLISHES_TO/SUBSCRIBES_TO/CONTAINS edges.
+        # `properties["name"]` keeps the bare node name for display/lookup-by-
+        # name; `node_id` is the graph identity key.
+        onex_node_id = f"{repo}::{node_name}"
         onex_node = ModelGraphNodeSpec(
-            node_id=node_name,
+            node_id=onex_node_id,
             label=_LABEL_ONEX_NODE,
             properties={
                 "name": node_name,
@@ -365,7 +491,7 @@ class HandlerArchitectureGraphPopulate:
         edges.append(
             ModelGraphEdgeSpec(
                 source_id=repo,
-                target_id=node_name,
+                target_id=onex_node_id,
                 edge_type="CONTAINS",
                 source_authority="authoritative",
             )
@@ -386,7 +512,7 @@ class HandlerArchitectureGraphPopulate:
                 )
                 edges.append(
                     ModelGraphEdgeSpec(
-                        source_id=node_name,
+                        source_id=onex_node_id,
                         target_id=topic,
                         edge_type="SUBSCRIBES_TO",
                         source_authority="authoritative",
@@ -404,7 +530,7 @@ class HandlerArchitectureGraphPopulate:
                 )
                 edges.append(
                     ModelGraphEdgeSpec(
-                        source_id=node_name,
+                        source_id=onex_node_id,
                         target_id=topic,
                         edge_type="PUBLISHES_TO",
                         source_authority="authoritative",
@@ -412,40 +538,6 @@ class HandlerArchitectureGraphPopulate:
                 )
 
         return nodes, edges
-
-    def _collect_import_edges(
-        self, repo_path: Path, repo_name: str
-    ) -> list[ModelGraphEdgeSpec]:
-        """Walk Python source files; extract cross-repo import edges."""
-        edges: list[ModelGraphEdgeSpec] = []
-        src_root = repo_path / "src"
-        if not src_root.exists():
-            src_root = repo_path
-
-        for py_file in src_root.rglob("*.py"):
-            try:
-                source = py_file.read_text(encoding="utf-8", errors="ignore")
-                tree = ast.parse(source, filename=str(py_file))
-            except SyntaxError:
-                continue
-            except OSError:
-                continue
-
-            for node in ast.walk(tree):
-                imported_module: str | None = None
-                if isinstance(node, ast.Import):
-                    for alias in node.names:
-                        imported_module = alias.name
-                        self._maybe_add_import_edge(
-                            edges, repo_name, str(py_file), imported_module
-                        )
-                elif isinstance(node, ast.ImportFrom) and node.module:
-                    imported_module = node.module
-                    self._maybe_add_import_edge(
-                        edges, repo_name, str(py_file), imported_module
-                    )
-
-        return edges
 
     # Known ONEX repos for cross-repo import detection
     _KNOWN_REPOS = frozenset(
@@ -464,28 +556,75 @@ class HandlerArchitectureGraphPopulate:
         ]
     )
 
-    def _maybe_add_import_edge(
-        self,
-        edges: list[ModelGraphEdgeSpec],
-        source_repo: str,
-        file_path: str,
-        imported_module: str,
-    ) -> None:
-        top_pkg = imported_module.split(".")[0]
-        if top_pkg in self._KNOWN_REPOS and top_pkg != source_repo:
-            module_id = f"{source_repo}::{file_path.split('/')[-1].replace('.py', '')}"
-            edges.append(
-                ModelGraphEdgeSpec(
-                    source_id=module_id,
-                    target_id=top_pkg,
-                    edge_type="IMPORTS",
-                    source_authority="evidence",
+    def _collect_import_edges(
+        self, repo_path: Path, repo_name: str
+    ) -> tuple[list[ModelGraphNodeSpec], list[ModelGraphEdgeSpec]]:
+        """PythonModule nodes + cross-repo IMPORTS edges for repo_path.
+
+        OMN-14295: reuses the shared ``ASTImportScanner`` (exact
+        filesystem-path resolution, OMN-11046, 13 passing tests) instead of a
+        duplicate coarse ast.walk — the module_id for both the PythonModule
+        node and every edge's source_id is derived by the SAME
+        ``_module_name`` helper the scanner uses internally for its own
+        module identity, so an IMPORTS edge can never reference a node this
+        method didn't also create (the "one canonical id-builder" fix — the
+        prior version's edge MERGE ``MATCH (a {node_id: ...})`` found zero
+        rows because nothing else ever created that node_id).
+
+        ``ASTImportScanner.scan()`` only returns edges it can resolve to a
+        real file *within* the scanned root, so it can't see cross-repo
+        imports on its own — those are still detected here via the shared,
+        tested ``_extract_imports`` helper against the ``_KNOWN_REPOS`` set,
+        but every PythonModule node this repo could need is created from
+        ``graph.nodes`` regardless of whether that file happens to import
+        cross-repo.
+        """
+        src_root = repo_path / "src"
+        if not src_root.exists():
+            src_root = repo_path
+
+        graph = ASTImportScanner().scan(src_root)
+
+        nodes: list[ModelGraphNodeSpec] = []
+        edges: list[ModelGraphEdgeSpec] = []
+
+        for rel_path in graph.nodes:
+            abs_path = src_root / rel_path
+            dotted = _module_name(abs_path, src_root)
+            module_id = f"{repo_name}::{dotted}"
+            nodes.append(
+                ModelGraphNodeSpec(
+                    node_id=module_id,
+                    label=_LABEL_PYTHON_MODULE,
                     properties={
-                        "imported_module": imported_module,
-                        "source_repo": source_repo,
+                        "name": module_id,
+                        "repo": repo_name,
+                        "rel_path": rel_path,
                     },
                 )
             )
+
+            try:
+                source = abs_path.read_text(encoding="utf-8", errors="ignore")
+            except OSError:
+                continue
+            for imported_module in _extract_imports(source):
+                top_pkg = imported_module.split(".")[0]
+                if top_pkg in self._KNOWN_REPOS and top_pkg != repo_name:
+                    edges.append(
+                        ModelGraphEdgeSpec(
+                            source_id=module_id,
+                            target_id=top_pkg,
+                            edge_type="IMPORTS",
+                            source_authority="evidence",
+                            properties={
+                                "imported_module": imported_module,
+                                "source_repo": repo_name,
+                            },
+                        )
+                    )
+
+        return nodes, edges
 
     def _parse_pyproject_deps(
         self, *, repo: str, pyproject: dict[str, Any]
@@ -519,21 +658,41 @@ class HandlerArchitectureGraphPopulate:
 
         return edges
 
-    def _build_node_merge_cypher(self, node: ModelGraphNodeSpec) -> str:
-        """Build a parameterized MERGE statement for a graph node."""
-        props_clause = ", ".join(
-            f"n.{k} = ${k}" for k in sorted(node.properties.keys())
-        )
-        set_clause = f" SET {props_clause}" if props_clause else ""
-        return f"MERGE (n:{node.label} {{node_id: $node_id}}){set_clause}"
+    def _build_node_batch_cypher(self, label: str) -> str:
+        """Build a parameterized, UNWIND-batched MERGE statement for a batch
+        of graph nodes sharing ``label``.
 
-    def _build_edge_merge_cypher(self, edge: ModelGraphEdgeSpec) -> str:
-        """Build a parameterized MERGE statement for a graph edge."""
+        OMN-14295: the label must be a literal (Cypher doesn't allow
+        parameterizing a node label), so nodes are grouped by label and one
+        UNWIND MERGE runs per batch instead of one MERGE per node. ``SET n +=
+        row.properties`` merges whatever property keys each row happens to
+        carry — nodes of the same label already share a property shape, but
+        this doesn't require it.
+        """
         return (
-            f"MATCH (a {{node_id: $source_id}}), (b {{node_id: $target_id}}) "
-            f"MERGE (a)-[r:{edge.edge_type}]->(b) "
-            f"SET r.source_authority = $source_authority"
+            "UNWIND $rows AS row "
+            f"MERGE (n:{label} {{node_id: row.node_id}}) "
+            "SET n += row.properties"
         )
+
+    def _build_edge_batch_cypher(self, edge_type: str) -> str:
+        """Build a parameterized, UNWIND-batched MERGE statement for a batch
+        of graph edges sharing ``edge_type`` (relationship type is also a
+        Cypher literal, not parameterizable)."""
+        return (
+            "UNWIND $rows AS row "
+            "MATCH (a {node_id: row.source_id}), (b {node_id: row.target_id}) "
+            f"MERGE (a)-[r:{edge_type}]->(b) "
+            "SET r += row.properties, r.source_authority = row.source_authority"
+        )
+
+    @_retry_on_transient_error()
+    async def _run_batch(self, session: Any, cypher: str, **params: Any) -> None:
+        """Run one batched write and consume its summary, retrying on a
+        Memgraph TransientError (OMN-14295 harvest from omniarchon's
+        retry_on_transient_error — see module-level comment)."""
+        result = await session.run(cypher, **params)
+        await result.consume()
 
     async def _write_to_graph(
         self,
@@ -541,7 +700,14 @@ class HandlerArchitectureGraphPopulate:
         edges: list[ModelGraphEdgeSpec],
         snapshot_meta: ModelGraphSnapshotMeta,
     ) -> None:
-        """Execute MERGE statements against Memgraph in batches."""
+        """Execute MERGE statements against Memgraph in UNWIND-batched writes.
+
+        OMN-14295: one round trip per node/edge (the prior behavior) measured
+        ~300ms/call over a real network hop to Memgraph — a full-registry
+        populate never completed within any reasonable timeout. Grouping by
+        label/edge_type and sending ``batch_size`` rows per UNWIND MERGE cuts
+        a ~1500-item populate from ~450s to single-digit seconds.
+        """
         assert self._driver is not None
         if self._config is None:
             raise RuntimeError(
@@ -550,30 +716,43 @@ class HandlerArchitectureGraphPopulate:
             )
         batch_size = self._config.batch_size
 
-        async with _open_session(self._driver) as session:
-            # Write nodes in batches
-            for i in range(0, len(nodes), batch_size):
-                node_batch = nodes[i : i + batch_size]
-                for node in node_batch:
-                    cypher = self._build_node_merge_cypher(node)
-                    params: dict[str, Any] = {"node_id": node.node_id}
-                    params.update(node.properties)
-                    await session.run(cypher, **params)
+        nodes_by_label: dict[str, list[ModelGraphNodeSpec]] = {}
+        for node in nodes:
+            nodes_by_label.setdefault(node.label, []).append(node)
 
-            # Write edges in batches
-            for i in range(0, len(edges), batch_size):
-                edge_batch = edges[i : i + batch_size]
-                for edge in edge_batch:
-                    cypher = self._build_edge_merge_cypher(edge)
-                    await session.run(
-                        cypher,
-                        source_id=edge.source_id,
-                        target_id=edge.target_id,
-                        source_authority=edge.source_authority,
-                    )
+        edges_by_type: dict[str, list[ModelGraphEdgeSpec]] = {}
+        for edge in edges:
+            edges_by_type.setdefault(edge.edge_type, []).append(edge)
+
+        async with _open_session(self._driver) as session:
+            for label, label_nodes in nodes_by_label.items():
+                cypher = self._build_node_batch_cypher(label)
+                for i in range(0, len(label_nodes), batch_size):
+                    chunk = label_nodes[i : i + batch_size]
+                    rows = [
+                        {"node_id": n.node_id, "properties": n.properties}
+                        for n in chunk
+                    ]
+                    await self._run_batch(session, cypher, rows=rows)
+
+            for edge_type, type_edges in edges_by_type.items():
+                cypher = self._build_edge_batch_cypher(edge_type)
+                for i in range(0, len(type_edges), batch_size):
+                    edge_chunk = type_edges[i : i + batch_size]
+                    rows = [
+                        {
+                            "source_id": e.source_id,
+                            "target_id": e.target_id,
+                            "properties": e.properties,
+                            "source_authority": e.source_authority,
+                        }
+                        for e in edge_chunk
+                    ]
+                    await self._run_batch(session, cypher, rows=rows)
 
             # Stamp snapshot metadata as a SnapshotMeta node
-            await session.run(
+            await self._run_batch(
+                session,
                 "MERGE (s:GraphSnapshot {snapshot_id: $snapshot_id}) "
                 "SET s.schema_version = $schema_version, "
                 "    s.repo_count = $repo_count, "

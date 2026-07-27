@@ -1,0 +1,61 @@
+{
+  "input": {
+    "correlation_id": "00000002-0000-4000-8000-000000000000",
+    "max_tickets": 2,
+    "scored_tickets": [
+      {
+        "description": "",
+        "labels": [],
+        "priority": 3,
+        "rsd_score": 5.0,
+        "state": "",
+        "ticket_id": "OMN-A",
+        "title": "T"
+      },
+      {
+        "description": "",
+        "labels": [],
+        "priority": 1,
+        "rsd_score": 5.0,
+        "state": "",
+        "ticket_id": "OMN-B",
+        "title": "T"
+      },
+      {
+        "description": "",
+        "labels": [],
+        "priority": 2,
+        "rsd_score": 5.0,
+        "state": "",
+        "ticket_id": "OMN-C",
+        "title": "T"
+      }
+    ]
+  },
+  "output": {
+    "correlation_id": "00000002-0000-4000-8000-000000000000",
+    "selected_tickets": [
+      {
+        "description": "",
+        "labels": [],
+        "priority": 1,
+        "rsd_score": 5.0,
+        "state": "",
+        "ticket_id": "OMN-B",
+        "title": "T"
+      },
+      {
+        "description": "",
+        "labels": [],
+        "priority": 2,
+        "rsd_score": 5.0,
+        "state": "",
+        "ticket_id": "OMN-C",
+        "title": "T"
+      }
+    ],
+    "total_candidates": 3,
+    "total_selected": 2
+  },
+  "output_sha256": "sha256:400cbead0aad47c14ef23467ade21216752cc925fad7437aebe3e48675c9744c"
+}

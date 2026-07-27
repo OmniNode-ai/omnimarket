@@ -11,6 +11,20 @@ All writes are idempotent (ON CONFLICT DO NOTHING / DO UPDATE).
 Out-of-order delivery: if phase-end arrives before session-start, SessionStart
 handler is called first to ensure the parent row exists before the child insert.
 
+Dispatch entrypoint (OMN-14802, canonical def-B): each handler exposes a
+``handle(event) -> dict`` that OWNS the projection behavior — it coerces the
+inbound event (a validated model from the RuntimeLocal event-bus path, or a raw
+payload mapping from the production Kafka auto-wiring), resolves the
+``DatabaseAdapter``, performs the UPSERT, and returns the serialized result. The
+shared runtime binds this method (``omnibase_infra`` ``handler_wiring``
+``_make_dispatch_callback`` and ``omnibase_core`` ``LocalRuntimeBusAdapter``);
+before this entrypoint existed all three handlers were bound to ``_missing_handle``
+/ hit a bare ``AttributeError`` on every real dispatch and were frozen into
+``validation/handler_dispatch_entrypoint_baseline.yaml`` (OMN-14617 ratchet). The
+pure ``(event, db) -> ModelProjectionResult`` reducer body is retained as a
+private ``_project`` core; ``project(event, db)`` stays as a thin typed
+backward-compat wrapper for the existing golden-chain unit tests.
+
 Target tables (schema_overnight_sessions.sql):
   overnight_sessions: session_id TEXT PK, session_start_ts, session_status, ...
   overnight_session_phases: id BIGSERIAL PK, session_id FK, phase_name, phase_status, ...
@@ -20,20 +34,29 @@ Topics (from node_overnight/topics.py):
   onex.evt.omnimarket.overnight-phase-completed.v1
   onex.evt.omnimarket.overnight-session-completed.v1
 
-Related: OMN-8455 (W2.8)
+Related: OMN-8455 (W2.8), OMN-14802 (def-B dispatch entrypoint)
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import UTC, datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.protocol_database import (
+    DatabaseAdapter,
+    InmemoryDatabaseAdapter,
+)
 
 TABLE_SESSIONS = "overnight_sessions"
 TABLE_PHASES = "overnight_session_phases"
 SESSION_CONFLICT_KEY = "session_id"
+
+# Transport/materialization keys the auto-wiring layer may fold into the payload
+# mapping alongside the domain fields; stripped before event construction (mirrors
+# node_projection_savings' handle() strip-set).
+_TRANSPORT_KEYS = frozenset({"rows", "event_landed", "latency_ms"})
 
 
 class ModelOvernightSessionStartEvent(BaseModel):
@@ -98,6 +121,41 @@ def _now_iso() -> str:
     return datetime.now(tz=UTC).isoformat()
 
 
+def _domain_fields(payload: Mapping[str, object]) -> dict[str, object]:
+    """Drop dispatch transport keys (``_db``/``_event_type``/``_topic``/…) before
+    constructing the typed domain event."""
+    return {
+        key: value
+        for key, value in payload.items()
+        if not key.startswith("_") and key not in _TRANSPORT_KEYS
+    }
+
+
+def _resolve_db(payload: Mapping[str, object]) -> DatabaseAdapter:
+    """Resolve the ``DatabaseAdapter`` for a def-B dispatch payload mapping.
+
+    The production Kafka auto-wiring path injects the real adapter as
+    ``input_data['_db']`` (``handler_wiring`` line ~2031), so a production dispatch
+    always UPSERTs into Postgres. The event-driven RuntimeLocal path forwards the
+    decoded wire dict with no ``_db`` (the contract's ``event_model`` is a dotted
+    string, so the bus adapter does not pre-validate/enrich it); there an owned
+    in-memory adapter is used so the projection still executes end-to-end — the
+    dispatch-proof default (COMPLETED + a row actually written, not merely
+    "dispatch resolved"). This default only triggers when ``_db`` is absent; a
+    ``_db`` present but of the wrong type fails loud rather than silently dropping
+    a real production adapter.
+    """
+    db = payload.get("_db")
+    if db is None:
+        return InmemoryDatabaseAdapter()
+    if not isinstance(db, DatabaseAdapter):
+        raise TypeError(
+            "def-B handle() received input_data['_db'] that is not a "
+            f"DatabaseAdapter (got {type(db).__name__})"
+        )
+    return db
+
+
 class HandlerProjectionOvernightSessionStart:
     """Project phase-start events — ensure overnight_sessions row exists.
 
@@ -106,7 +164,37 @@ class HandlerProjectionOvernightSessionStart:
     parent session row is present before phase rows are inserted.
     """
 
-    def project(
+    def handle(self, event: object) -> dict[str, object]:
+        """Canonical def-B dispatch entrypoint — owns the phase-start projection.
+
+        ``event`` is a raw payload mapping on both live dispatch paths: the
+        production Kafka auto-wiring carries the injected ``_db``, while the
+        event-driven RuntimeLocal path forwards the decoded wire dict with no
+        ``_db`` (so the projection writes into an owned in-memory adapter — the
+        dispatch-proof default). An already-validated ``ModelOvernightSessionStartEvent``
+        is also accepted (a payload_type_match / map-form ``event_model`` contract).
+        """
+        parsed, db = self._coerce(event)
+        return self._project(parsed, db).model_dump(mode="json")
+
+    @staticmethod
+    def _coerce(
+        event: object,
+    ) -> tuple[ModelOvernightSessionStartEvent, DatabaseAdapter]:
+        if isinstance(event, ModelOvernightSessionStartEvent):
+            return event, InmemoryDatabaseAdapter()
+        if isinstance(event, Mapping):
+            return (
+                ModelOvernightSessionStartEvent(**_domain_fields(event)),
+                _resolve_db(event),
+            )
+        raise TypeError(
+            "HandlerProjectionOvernightSessionStart.handle() expected "
+            "ModelOvernightSessionStartEvent or a payload mapping, got "
+            f"{type(event).__name__}"
+        )
+
+    def _project(
         self,
         event: ModelOvernightSessionStartEvent,
         db: DatabaseAdapter,
@@ -121,6 +209,14 @@ class HandlerProjectionOvernightSessionStart:
         }
         ok = db.upsert(TABLE_SESSIONS, SESSION_CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0, table=TABLE_SESSIONS)
+
+    def project(
+        self,
+        event: ModelOvernightSessionStartEvent,
+        db: DatabaseAdapter,
+    ) -> ModelProjectionResult:
+        """Backward-compat typed reducer surface (golden-chain unit tests)."""
+        return self._project(event, db)
 
 
 class HandlerProjectionOvernightPhaseEnd:
@@ -142,7 +238,29 @@ class HandlerProjectionOvernightPhaseEnd:
         )
         self._phase_sequence: dict[str, int] = {}
 
-    def project(
+    def handle(self, event: object) -> dict[str, object]:
+        """Canonical def-B dispatch entrypoint — owns the phase-end projection."""
+        parsed, db = self._coerce(event)
+        return self._project(parsed, db).model_dump(mode="json")
+
+    @staticmethod
+    def _coerce(
+        event: object,
+    ) -> tuple[ModelOvernightPhaseEndEvent, DatabaseAdapter]:
+        if isinstance(event, ModelOvernightPhaseEndEvent):
+            return event, InmemoryDatabaseAdapter()
+        if isinstance(event, Mapping):
+            return (
+                ModelOvernightPhaseEndEvent(**_domain_fields(event)),
+                _resolve_db(event),
+            )
+        raise TypeError(
+            "HandlerProjectionOvernightPhaseEnd.handle() expected "
+            "ModelOvernightPhaseEndEvent or a payload mapping, got "
+            f"{type(event).__name__}"
+        )
+
+    def _project(
         self,
         event: ModelOvernightPhaseEndEvent,
         db: DatabaseAdapter,
@@ -178,6 +296,14 @@ class HandlerProjectionOvernightPhaseEnd:
         ok = db.upsert(TABLE_PHASES, "phase_name", row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0, table=TABLE_PHASES)
 
+    def project(
+        self,
+        event: ModelOvernightPhaseEndEvent,
+        db: DatabaseAdapter,
+    ) -> ModelProjectionResult:
+        """Backward-compat typed reducer surface (golden-chain unit tests)."""
+        return self._project(event, db)
+
 
 class HandlerProjectionOvernightSessionComplete:
     """Project session-complete events — update terminal state on overnight_sessions.
@@ -196,7 +322,29 @@ class HandlerProjectionOvernightSessionComplete:
             else HandlerProjectionOvernightSessionStart()
         )
 
-    def project(
+    def handle(self, event: object) -> dict[str, object]:
+        """Canonical def-B dispatch entrypoint — owns the session-complete projection."""
+        parsed, db = self._coerce(event)
+        return self._project(parsed, db).model_dump(mode="json")
+
+    @staticmethod
+    def _coerce(
+        event: object,
+    ) -> tuple[ModelOvernightSessionCompleteEvent, DatabaseAdapter]:
+        if isinstance(event, ModelOvernightSessionCompleteEvent):
+            return event, InmemoryDatabaseAdapter()
+        if isinstance(event, Mapping):
+            return (
+                ModelOvernightSessionCompleteEvent(**_domain_fields(event)),
+                _resolve_db(event),
+            )
+        raise TypeError(
+            "HandlerProjectionOvernightSessionComplete.handle() expected "
+            "ModelOvernightSessionCompleteEvent or a payload mapping, got "
+            f"{type(event).__name__}"
+        )
+
+    def _project(
         self,
         event: ModelOvernightSessionCompleteEvent,
         db: DatabaseAdapter,
@@ -225,6 +373,14 @@ class HandlerProjectionOvernightSessionComplete:
         }
         ok = db.upsert(TABLE_SESSIONS, SESSION_CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0, table=TABLE_SESSIONS)
+
+    def project(
+        self,
+        event: ModelOvernightSessionCompleteEvent,
+        db: DatabaseAdapter,
+    ) -> ModelProjectionResult:
+        """Backward-compat typed reducer surface (golden-chain unit tests)."""
+        return self._project(event, db)
 
 
 __all__: list[str] = [

@@ -12,12 +12,17 @@ Related:
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.merge_control.reason_code_classifier import (
+    ALL_LOG_SIGNATURES,
+    EnumMergeCheckReasonCode,
+)
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.handlers.handler_pr_lifecycle_inventory import (
     HandlerPrLifecycleInventory,
 )
@@ -87,7 +92,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
 
         handler = HandlerPrLifecycleInventory()
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             joined = " ".join(cmd)
             if "/search/issues" in joined:
                 return _make_subprocess_result(
@@ -167,7 +174,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         handler = HandlerPrLifecycleInventory()
         commands: list[list[str]] = []
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             commands.append(cmd)
             return _make_subprocess_result(
                 json.dumps(
@@ -181,10 +190,96 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         with patch("subprocess.run", side_effect=fake_run):
             check_runs = handler._collect_check_runs("OmniNode-ai/omnimarket", 5)
 
-        assert "name,state,bucket,event" in commands[0]
+        assert "name,state,bucket,event,link" in commands[0]
         assert "conclusion" not in commands[0]
         assert [check.conclusion for check in check_runs] == ["success", "failure"]
         assert [check.status for check in check_runs] == ["completed", "completed"]
+
+    def test_collect_check_runs_captures_network_flake_evidence(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        commands: list[list[str]] = []
+        link = (
+            "https://github.com/OmniNode-ai/onex_change_control/"
+            "actions/runs/28760705648/job/85275485561"
+        )
+
+        def fake_run(
+            cmd: list[str],
+            capture_output: bool,
+            text: bool,
+            timeout: int | None = None,
+        ) -> MagicMock:
+            commands.append(cmd)
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return _make_subprocess_result(
+                    json.dumps(
+                        [
+                            {
+                                "name": "Kafka Boundary Parity",
+                                "state": "FAILURE",
+                                "bucket": "fail",
+                                "event": "pull_request",
+                                "link": link,
+                            }
+                        ]
+                    )
+                )
+            return _make_subprocess_result(
+                "fatal: unable to access 'https://github.com/OmniNode-ai/omnimarket.git/': "
+                "Could not resolve host: github.com\n"
+            )
+
+        with patch("subprocess.run", side_effect=fake_run):
+            check_runs = handler._collect_check_runs(
+                "OmniNode-ai/onex_change_control", 3637
+            )
+
+        assert check_runs[0].link == link
+        assert check_runs[0].flaky_failure_evidence == (
+            "could not resolve host: github.com",
+        )
+        assert commands[1][:3] == [
+            "gh",
+            "api",
+            "repos/OmniNode-ai/onex_change_control/actions/jobs/85275485561/logs",
+        ]
+
+    def test_collect_flaky_failure_evidence_timeout_fails_soft(self) -> None:
+        handler = HandlerPrLifecycleInventory()
+        link = (
+            "https://github.com/OmniNode-ai/onex_change_control/"
+            "actions/runs/28760705648/job/85275485561"
+        )
+
+        def fake_run(
+            cmd: list[str],
+            capture_output: bool,
+            text: bool,
+            timeout: int | None = None,
+        ) -> MagicMock:
+            if cmd[:2] == ["gh", "api"]:
+                raise subprocess.TimeoutExpired(cmd, timeout or 30)
+            return _make_subprocess_result(
+                json.dumps(
+                    [
+                        {
+                            "name": "Kafka Boundary Parity",
+                            "state": "FAILURE",
+                            "bucket": "fail",
+                            "event": "pull_request",
+                            "link": link,
+                        }
+                    ]
+                )
+            )
+
+        with patch("subprocess.run", side_effect=fake_run):
+            check_runs = handler._collect_check_runs(
+                "OmniNode-ai/onex_change_control", 3637
+            )
+
+        assert check_runs[0].link == link
+        assert check_runs[0].flaky_failure_evidence == ()
 
     def test_ci_failing_when_check_fails(self) -> None:
         check_runs = [
@@ -229,7 +324,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
     def test_gh_failure_records_error(self) -> None:
         handler = HandlerPrLifecycleInventory()
 
-        def fail_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fail_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             mock = MagicMock()
             mock.returncode = 1
             mock.stdout = ""
@@ -249,7 +346,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         """First PR succeeds, second fails — total_collected=1, 1 error."""
         call_count = 0
 
-        def mixed_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def mixed_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             nonlocal call_count
             call_count += 1
             # First pr view call for PR 1 succeeds, everything for PR 2 fails
@@ -290,7 +389,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
     def test_empty_pr_numbers_returns_empty_output(self) -> None:
         handler = HandlerPrLifecycleInventory()
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             # Only the org-wide census runs when no PR numbers are requested.
             return _make_subprocess_result(json.dumps({"total_count": 0, "items": []}))
 
@@ -310,7 +411,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         head_sha = "abc123"
         enqueued_at = datetime.now(tz=UTC) - timedelta(minutes=20)
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             joined = " ".join(cmd)
             if "actions/runs" in joined:
                 return _make_subprocess_result(json.dumps({"total_count": 0}))
@@ -356,7 +459,9 @@ class TestHandlerPrLifecycleInventoryGoldenChain:
         handler = HandlerPrLifecycleInventory()
         enqueued_at = datetime.now(tz=UTC) - timedelta(minutes=20)
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             joined = " ".join(cmd)
             if "actions/runs" in joined:
                 return _make_subprocess_result(json.dumps({"total_count": 1}))
@@ -430,7 +535,9 @@ class TestOrgWideOpenPrSweepGate:
             }
         ]
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             assert "/search/issues" in " ".join(cmd)
             assert any("org:OmniNode-ai is:pr is:open" in part for part in cmd)
             return _make_subprocess_result(json.dumps(_search_issues_payload(open_prs)))
@@ -450,7 +557,9 @@ class TestOrgWideOpenPrSweepGate:
     def test_close_the_pr_reports_done(self) -> None:
         handler = HandlerPrLifecycleInventory()
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             return _make_subprocess_result(json.dumps(_search_issues_payload([])))
 
         with patch("subprocess.run", side_effect=fake_run):
@@ -463,7 +572,9 @@ class TestOrgWideOpenPrSweepGate:
     def test_query_failure_is_fail_closed_not_done(self) -> None:
         handler = HandlerPrLifecycleInventory()
 
-        def fail_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fail_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             mock = MagicMock()
             mock.returncode = 1
             mock.stdout = ""
@@ -479,7 +590,9 @@ class TestOrgWideOpenPrSweepGate:
     def test_invalid_json_is_fail_closed_not_done(self) -> None:
         handler = HandlerPrLifecycleInventory()
 
-        def bad_json_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def bad_json_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             return _make_subprocess_result("not-json")
 
         with patch("subprocess.run", side_effect=bad_json_run):
@@ -494,7 +607,9 @@ class TestOrgWideOpenPrSweepGate:
             {"number": 7, "repo": "OmniNode-ai/omnimarket", "title": "open one"}
         ]
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             if "/search/issues" in " ".join(cmd):
                 return _make_subprocess_result(
                     json.dumps(_search_issues_payload(open_prs))
@@ -532,7 +647,9 @@ class TestPrAssociatedRunsOnly:
     ) -> ModelPrState:
         handler = HandlerPrLifecycleInventory()
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             if "checks" in cmd:
                 return _make_subprocess_result(json.dumps(check_runs))
             if "reviews" in cmd[-1]:
@@ -551,14 +668,16 @@ class TestPrAssociatedRunsOnly:
         handler = HandlerPrLifecycleInventory()
         commands: list[list[str]] = []
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             commands.append(cmd)
             return _make_subprocess_result(json.dumps([]))
 
         with patch("subprocess.run", side_effect=fake_run):
             handler._collect_check_runs("OmniNode-ai/omnimarket", 5)
 
-        assert "name,state,bucket,event" in commands[0]
+        assert "name,state,bucket,event,link" in commands[0]
 
     def test_event_field_is_captured_on_check_run(self) -> None:
         pr = self._run(
@@ -673,7 +792,9 @@ class TestEventBusWiring:
 
         received_events: list[dict[str, object]] = []
 
-        def fake_run(cmd: list[str], capture_output: bool, text: bool) -> MagicMock:
+        def fake_run(
+            cmd: list[str], capture_output: bool, text: bool, timeout: int | None = None
+        ) -> MagicMock:
             if "checks" in cmd:
                 return _make_subprocess_result("[]")
             if "reviews" in cmd[-1]:
@@ -709,3 +830,310 @@ class TestEventBusWiring:
         assert received_events[0]["total_collected"] == 1
 
         await event_bus.close()
+
+
+def _gh_result(stdout: str = "", returncode: int = 0, stderr: str = "") -> MagicMock:
+    mock = MagicMock()
+    mock.returncode = returncode
+    mock.stdout = stdout
+    mock.stderr = stderr
+    return mock
+
+
+@pytest.mark.unit
+class TestReasonCodeExtractionToClassification:
+    """OMN-14769: the LIVE extraction -> classification seam (not fixtures).
+
+    The OMN-14765 fixture-corpus gate replays hand-injected ``log_signatures`` /
+    ``is_superseded`` / ``api_error`` facts through the classifier, so it proves
+    the classifier keys correctly but NOT that the inventory node's live
+    extraction actually produces those facts. These tests drive the real
+    ``_collect_check_runs`` path (gh pr checks -> job-log extraction -> jobs-API
+    attempt -> classify) so the whole seam is exercised end to end.
+
+    Each test is RED against the merged OMN-14765 code (the node-local signature
+    subset dropped F-23 + API-outage signatures; ``api_error`` / ``is_superseded``
+    were never threaded) and GREEN after OMN-14769.
+    """
+
+    _REPO = "OmniNode-ai/omnimarket"
+    _HEAD = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+
+    def _classify_single_failed_check(
+        self,
+        *,
+        check_name: str,
+        failing_step_name: str,
+        run_id: str,
+        linked_job_id: str,
+        log_body: str,
+        jobs_result: MagicMock,
+        returned_job_id: str | None = None,
+        run_attempt: int = 1,
+    ) -> EnumMergeCheckReasonCode | None:
+        """Run one failed check through the real _collect_check_runs seam.
+
+        ``jobs_result`` is what the ``.../runs/<run_id>/jobs`` gh call returns;
+        ``log_body`` is what the ``.../jobs/<job_id>/logs`` call returns.
+        """
+        handler = HandlerPrLifecycleInventory()
+        link = (
+            f"https://github.com/{self._REPO}/actions/runs/{run_id}/job/{linked_job_id}"
+        )
+        checks_payload = [
+            {
+                "name": check_name,
+                "state": "FAILURE",
+                "bucket": "fail",
+                "event": "pull_request",
+                "link": link,
+            }
+        ]
+
+        def fake_run(
+            cmd: list[str],
+            capture_output: bool,
+            text: bool,
+            timeout: int | None = None,
+        ) -> MagicMock:
+            if cmd[:3] == ["gh", "pr", "checks"]:
+                return _gh_result(json.dumps(checks_payload))
+            # jobs-API attempt fetch: ".../actions/runs/<id>/jobs"
+            if cmd[:2] == ["gh", "api"] and cmd[2].endswith("/jobs"):
+                return jobs_result
+            # job-log fetch: ".../actions/jobs/<id>/logs"
+            if cmd[:2] == ["gh", "api"] and "/logs" in cmd[2]:
+                return _gh_result(log_body)
+            return _gh_result("{}")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            check_runs = handler._collect_check_runs(
+                self._REPO, 4242, current_head_sha=self._HEAD
+            )
+        assert len(check_runs) == 1
+        return check_runs[0].reason_code
+
+    def _one_job_payload(
+        self,
+        *,
+        job_id: str,
+        run_id: str,
+        step_name: str,
+        run_attempt: int = 1,
+        conclusion: str = "failure",
+    ) -> MagicMock:
+        return _gh_result(
+            json.dumps(
+                {
+                    "jobs": [
+                        {
+                            "id": int(job_id),
+                            "run_id": int(run_id),
+                            "run_attempt": run_attempt,
+                            "status": "completed",
+                            "conclusion": conclusion,
+                            "head_sha": self._HEAD,
+                            "name": "job",
+                            "steps": [
+                                {"name": "Set up job", "conclusion": "success"},
+                                {"name": step_name, "conclusion": conclusion},
+                            ],
+                        }
+                    ]
+                }
+            )
+        )
+
+    def test_f23_os_exit_hang_on_test_step_is_runner_infra(self) -> None:
+        """F-23 (G1): a real os._exit hang log on a product 'test' step.
+
+        RED before OMN-14769: the node-local signature subset carried none of the
+        isolation-hang signatures, so extraction returned an empty tuple and the
+        'Run shadow-slice tests' step classified PRODUCT_FAILED. GREEN after: the
+        canonical union extracts the hang signature -> RUNNER_INFRA.
+        """
+        log_body = (
+            "Running shadow-slice tests...\n"
+            "ERROR: 60s thread timeout exceeded; a leaked thread survived join.\n"
+            "Fatal: hard timeout reached, calling os._exit(1) to abort the runner\n"
+        )
+        jobs = self._one_job_payload(
+            job_id="990011",
+            run_id="550011",
+            step_name="Run shadow-slice tests",
+        )
+        code = self._classify_single_failed_check(
+            check_name="Dispatcher Route Coverage (shadow slice)",
+            failing_step_name="Run shadow-slice tests",
+            run_id="550011",
+            linked_job_id="990011",
+            log_body=log_body,
+            jobs_result=jobs,
+        )
+        assert code is EnumMergeCheckReasonCode.RUNNER_INFRA
+
+    def test_f07_api_outage_html_log_is_github_api_outage(self) -> None:
+        """F-07 (G1, API-outage half): an HTML/503 job-log body.
+
+        RED before: the node-local subset carried no API-outage signatures, so a
+        product-named step classified PRODUCT_FAILED. GREEN after: the extracted
+        outage signature -> GITHUB_API_OUTAGE (outranks product).
+        """
+        log_body = (
+            "<!DOCTYPE html>\n<html><head><title>Error</title></head>\n"
+            "<body>503 Service Unavailable</body></html>\n"
+        )
+        jobs = self._one_job_payload(
+            job_id="990001",
+            run_id="550001",
+            step_name="Run gh pr diff (product-diff-scope)",
+        )
+        code = self._classify_single_failed_check(
+            check_name="verify / Run Receipt-Gate",
+            failing_step_name="Run gh pr diff (product-diff-scope)",
+            run_id="550001",
+            linked_job_id="990001",
+            log_body=log_body,
+            jobs_result=jobs,
+        )
+        assert code is EnumMergeCheckReasonCode.GITHUB_API_OUTAGE
+
+    def test_f07_jobs_api_metadata_503_sets_api_error(self) -> None:
+        """F-07 (G2): the jobs-API metadata call itself returns HTTP 503.
+
+        RED before: api_error was never threaded, so with no job resolved the
+        check fell closed to RUNNER_INFRA. GREEN after: the failed metadata call
+        is detected as an outage -> api_error=True -> GITHUB_API_OUTAGE.
+        """
+        jobs_503 = _gh_result(
+            stdout="",
+            returncode=1,
+            stderr="gh: Service Unavailable (HTTP 503)",
+        )
+        code = self._classify_single_failed_check(
+            check_name="verify / Run Receipt-Gate",
+            failing_step_name="",
+            run_id="550002",
+            linked_job_id="990002",
+            log_body="",  # no log signatures — api_error is the only outage signal
+            jobs_result=jobs_503,
+        )
+        assert code is EnumMergeCheckReasonCode.GITHUB_API_OUTAGE
+
+    def test_gh_timeout_on_jobs_api_sets_api_error(self) -> None:
+        """F-07 (G2): a gh timeout on the jobs-API call is an outage, not product."""
+        timeout_result = _gh_result(
+            stdout="",
+            returncode=124,  # _GH_TIMEOUT_RETURNCODE
+            stderr="gh call timed out after 30s",
+        )
+        code = self._classify_single_failed_check(
+            check_name="mypy / type-check",
+            failing_step_name="",
+            run_id="550003",
+            linked_job_id="990003",
+            log_body="",
+            jobs_result=timeout_result,
+        )
+        assert code is EnumMergeCheckReasonCode.GITHUB_API_OUTAGE
+
+    def test_superseded_attempt_is_stale_context(self) -> None:
+        """F-14/F-26 (G3): linked job absent from latest attempt (re-run exists).
+
+        RED before: is_superseded was never threaded, so the failing step
+        ('Assert state == OPEN', not a product step) fell closed to RUNNER_INFRA.
+        GREEN after: the linked job_id is absent from the latest (attempt 2) job
+        set -> is_superseded=True -> STALE_CONTEXT.
+        """
+        # Linked job 990008 is NOT in the returned latest-attempt job set (990099),
+        # and the returned attempt is 2 -> the check row is superseded.
+        jobs = self._one_job_payload(
+            job_id="990099",
+            run_id="550008",
+            step_name="Assert state == OPEN",
+            run_attempt=2,
+        )
+        code = self._classify_single_failed_check(
+            check_name="Contract Compliance / dod-occ-4329-head",
+            failing_step_name="Assert state == OPEN",
+            run_id="550008",
+            linked_job_id="990008",
+            log_body="",
+            jobs_result=jobs,
+        )
+        assert code is EnumMergeCheckReasonCode.STALE_CONTEXT
+
+    def test_single_attempt_link_miss_is_not_superseded(self) -> None:
+        """A linked-job miss on a single-attempt run is NOT supersession.
+
+        Guards the G3 heuristic against false positives: attempt 1 + a
+        link/rollup mismatch must fall through to the failing job's own
+        classification (here a genuine product 'pytest' step -> PRODUCT_FAILED),
+        never STALE_CONTEXT.
+        """
+        jobs = self._one_job_payload(
+            job_id="990100",
+            run_id="550009",
+            step_name="Run pytest suite",
+            run_attempt=1,
+        )
+        code = self._classify_single_failed_check(
+            check_name="tests / pytest",
+            failing_step_name="Run pytest suite",
+            run_id="550009",
+            linked_job_id="990008",  # absent, but attempt is 1
+            log_body="",
+            jobs_result=jobs,
+        )
+        assert code is EnumMergeCheckReasonCode.PRODUCT_FAILED
+
+    def test_genuine_product_failure_still_classifies_product(self) -> None:
+        """Regression guard: a real product test failure with a clean infra log
+        still classifies PRODUCT_FAILED (the widened extraction must not mask it).
+        """
+        jobs = self._one_job_payload(
+            job_id="990500",
+            run_id="550500",
+            step_name="Run pytest suite",
+        )
+        code = self._classify_single_failed_check(
+            check_name="tests / pytest",
+            failing_step_name="Run pytest suite",
+            run_id="550500",
+            linked_job_id="990500",
+            log_body="assert 1 == 2\nE   AssertionError: values differ\n",
+            jobs_result=jobs,
+        )
+        assert code is EnumMergeCheckReasonCode.PRODUCT_FAILED
+
+    @pytest.mark.parametrize("signature", ALL_LOG_SIGNATURES)
+    def test_every_canonical_signature_is_extracted_live(self, signature: str) -> None:
+        """Anti-drift seam gate: every classifier signature is extractable live.
+
+        Proves the inventory extraction scans the classifier's full canonical
+        ``ALL_LOG_SIGNATURES`` union (no node-local subset can silently drop a
+        signature — the exact G1 defect). A log containing each signature must
+        surface it in ``_collect_flaky_failure_evidence``.
+        """
+        handler = HandlerPrLifecycleInventory()
+        link = f"https://github.com/{self._REPO}/actions/runs/551000/job/991000"
+        item = {
+            "name": "some / check",
+            "state": "FAILURE",
+            "bucket": "fail",
+            "event": "pull_request",
+            "link": link,
+        }
+
+        def fake_run(
+            cmd: list[str],
+            capture_output: bool,
+            text: bool,
+            timeout: int | None = None,
+        ) -> MagicMock:
+            return _gh_result(f"prefix line\n...{signature.upper()}...\nsuffix\n")
+
+        with patch("subprocess.run", side_effect=fake_run):
+            evidence = handler._collect_flaky_failure_evidence(item)
+
+        assert signature in evidence

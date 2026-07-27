@@ -1,0 +1,172 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# call-occ-companion-author.yml
+#
+# Toggle 1 (OMN-14393) — mutate-CAPABLE OCC-companion auto-authoring, DEFAULT OFF.
+# A sibling to call-occ-companion-observe.yml. The observe workflow is hardcoded
+# to dry_run forever; THIS workflow can author for real — but only when the
+# operator explicitly flips the repo variable OMNI_OCC_AUTOAUTHOR_MODE to
+# "mutate". Until then the committed default is "dry_run", so a product PR behaves
+# EXACTLY as it does today: node_occ_companion_effect reads + computes the plan
+# and returns it WITHOUT cloning, pushing, opening an OCC PR, or stamping the
+# product body (ModelOccCompanionEffectRequest.mode default = dry_run).
+#
+# SAFETY (do NOT weaken):
+#   * mode is sourced ONLY from the operator repo variable, validated against a
+#     hardcoded {dry_run,mutate} allowlist, and defaults to dry_run — it is NEVER
+#     templated from PR input (injection-safe, mirrors the observe hardcode).
+#   * This job is `continue-on-error: true`, is NOT in required_status_checks, and
+#     is NOT referenced by ci.yml's CI Summary `needs:` — it can never block a
+#     merge (same guardrail shape as OMN-14657's observe job).
+#   * OccCompanionEmitter (node_pr_lifecycle_fix_effect) + call-occ-autobind.yml
+#     remain the sole LIVE producer and are UNTOUCHED by this workflow.
+#
+# DEPENDENCY — DO NOT FLIP TO mutate UNTIL OMN-14679 IS MERGED:
+#   Pre-14679, auto-minted companions fail the substance-floor / placeholder-lint
+#   gate, so the product PR's Evidence-Source would point at a RED OCC PR and the
+#   product PR's own occ-preflight would jam. Turning mutate on early blocks
+#   product PRs at scale (design "Two-toggle plan"). Flipping mutate ON must also
+#   be coupled with disabling the call-occ-autobind emitter dispatch, or every PR
+#   gets TWO companions (dual-producer hazard) — that coupling is an operator-gated
+#   step OUT OF THIS LANE.
+#
+# When mutate is enabled the node clones onex_change_control, pushes a branch, and
+# opens the OCC PR, so it runs on the trusted self-hosted runner with a
+# write-scoped OCC_AUTOAUTHOR_TOKEN (the read-only Actions token used for
+# dry_run is insufficient - supply it via a repo/org secret backed by a GitHub
+# App/PAT with write access to OmniNode-ai/onex_change_control).
+#
+# Ticket: OMN-14393 (RSD-5). Design doc:
+#   docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §3-§4.
+
+name: OCC Companion Author (mutate-capable, DEFAULT dry_run)
+
+on:
+  pull_request:
+    branches: [main, dev, "hotfix/**"]
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  occ-companion-author:
+    name: OCC Companion Author (mode from OMNI_OCC_AUTOAUTHOR_MODE, default dry_run)
+    # Same eligibility filter as call-occ-autobind.yml / observe: skip dependency
+    # bots and ticketless PRs, and skip fork PRs (no secrets / not trusted).
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (contains(github.event.pull_request.title, 'OMN-') ||
+       contains(github.event.pull_request.head.ref, 'OMN-'))
+    # Default (dry_run) runs on ubuntu-latest — no mutation, no self-hosted
+    # contention. Only when the operator flips OMNI_OCC_AUTOAUTHOR_MODE=mutate does
+    # the job move to the trusted self-hosted runner (needed for OCC clone/push).
+    runs-on: >-
+      ${{
+        (vars.OMNI_OCC_AUTOAUTHOR_MODE == 'mutate')
+        && fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+        || 'ubuntu-latest'
+      }}
+    # Report-only guardrail: a red step here is observed, never enforced. Carries
+    # no required-status-check name and is not referenced by any `needs:`.
+    continue-on-error: true
+    timeout-minutes: 15
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Build author payload (mode from operator variable, allowlisted)
+        env:
+          PR_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          # Operator-set repo variable — NOT PR input. Absent => dry_run.
+          OMNI_OCC_AUTOAUTHOR_MODE: ${{ vars.OMNI_OCC_AUTOAUTHOR_MODE }}
+        run: |
+          set -euo pipefail
+          # Fail-closed allowlist: anything but the two known modes => dry_run.
+          MODE="${OMNI_OCC_AUTOAUTHOR_MODE:-dry_run}"
+          case "$MODE" in
+            dry_run|mutate) ;;
+            *) echo "::warning::unrecognized OMNI_OCC_AUTOAUTHOR_MODE='$MODE' — defaulting to dry_run"; MODE="dry_run" ;;
+          esac
+          echo "Resolved auto-author mode: $MODE"
+          jq -n \
+            --arg repo "$PR_REPO" \
+            --argjson pr_number "$PR_NUMBER" \
+            --arg mode "$MODE" \
+            '{repo: $repo, pr_number: $pr_number, mode: $mode}' \
+            > occ_companion_author_payload.json
+          cat occ_companion_author_payload.json
+
+      - name: Validate mutate write token
+        if: ${{ vars.OMNI_OCC_AUTOAUTHOR_MODE == 'mutate' }}
+        env:
+          OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${OCC_AUTOAUTHOR_TOKEN:-}" ]; then
+            echo "::error::OMNI_OCC_AUTOAUTHOR_MODE=mutate requires OCC_AUTOAUTHOR_TOKEN with write access to OmniNode-ai/onex_change_control."
+            exit 1
+          fi
+
+      - name: Run node_occ_companion_effect (mode-gated)
+        id: author
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
+        run: |
+          set -euo pipefail
+          MODE="$(jq -r '.mode' occ_companion_author_payload.json)"
+          if [ "$MODE" = "mutate" ]; then
+            export GITHUB_TOKEN="${OCC_AUTOAUTHOR_TOKEN:?mutate requires OCC_AUTOAUTHOR_TOKEN}"
+          fi
+          uv run onex node node_occ_companion_effect \
+            --input occ_companion_author_payload.json \
+            --output receipt \
+            | tee occ_companion_author_result.json
+
+      - name: Publish authoring result to job summary
+        if: always()
+        run: |
+          {
+            echo "### OCC Companion Author — mode-gated (report-only, non-blocking)"
+            echo
+            echo "Ticket: OMN-14393. Default mode is dry_run (no GitHub mutation);"
+            echo "mutate requires OMNI_OCC_AUTOAUTHOR_MODE=mutate AND OMN-14679 merged."
+            echo
+            echo '```json'
+            if [ -s occ_companion_author_result.json ]; then
+              cat occ_companion_author_result.json
+            else
+              echo "(node did not produce a result — see step logs above)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload authoring artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: occ-companion-author-${{ github.event.pull_request.number }}
+          path: |
+            occ_companion_author_payload.json
+            occ_companion_author_result.json
+          if-no-files-found: ignore
+          retention-days: 30

@@ -15,7 +15,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING, Literal, assert_never
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -29,6 +29,12 @@ from omnimemory.models.memory.model_similarity_result import ModelSimilarityResu
 
 from omnimarket.nodes.node_similarity_compute.models.model_handler_similarity_compute_config import (
     ModelHandlerSimilarityComputeConfig,
+)
+from omnimarket.nodes.node_similarity_compute.models.model_similarity_compute_request import (
+    ModelSimilarityComputeRequest,
+)
+from omnimarket.nodes.node_similarity_compute.models.model_similarity_compute_response import (
+    ModelSimilarityComputeResponse,
 )
 
 logger = logging.getLogger(__name__)
@@ -117,6 +123,63 @@ class HandlerSimilarityCompute:
     async def shutdown(self) -> None:
         self._config = None
         self._initialized = False
+
+    def handle(
+        self, request: ModelSimilarityComputeRequest
+    ) -> ModelSimilarityComputeResponse:
+        """Canonical def-B dispatch entrypoint (OMN-14840): typed request -> response.
+
+        Adapts the typed request onto the preserved pure-math methods
+        (``cosine_distance`` / ``euclidean_distance`` / ``compare``) and returns a
+        typed response. Deterministic COMPUTE — no I/O. Mirrors the upstream
+        ``omnimemory`` node's request->response contract (dispatch on
+        ``operation``; ``ValueError`` -> error response). The handler lazily
+        materializes its default config so dispatch needs no separate
+        ``initialize()`` round-trip.
+        """
+        if self._config is None:
+            self._config = ModelHandlerSimilarityComputeConfig()
+            self._initialized = True
+        try:
+            match request.operation:
+                case "cosine_distance":
+                    distance = self.cosine_distance(request.vector_a, request.vector_b)
+                    return ModelSimilarityComputeResponse(
+                        status="success",
+                        distance=distance,
+                        dimensions=len(request.vector_a),
+                    )
+                case "euclidean_distance":
+                    distance = self.euclidean_distance(
+                        request.vector_a, request.vector_b
+                    )
+                    return ModelSimilarityComputeResponse(
+                        status="success",
+                        distance=distance,
+                        dimensions=len(request.vector_a),
+                    )
+                case "compare":
+                    result = self.compare(
+                        request.vector_a,
+                        request.vector_b,
+                        metric=request.metric,
+                        threshold=request.threshold,
+                    )
+                    return ModelSimilarityComputeResponse(
+                        status="success",
+                        distance=result.distance,
+                        similarity=result.similarity,
+                        is_match=result.is_match,
+                        dimensions=result.dimensions,
+                        notes=result.notes,
+                    )
+                case _:
+                    assert_never(request.operation)
+        except ValueError as exc:
+            return ModelSimilarityComputeResponse(
+                status="error",
+                error_message=str(exc),
+            )
 
     def _ensure_initialized(self) -> None:
         if not self._initialized:

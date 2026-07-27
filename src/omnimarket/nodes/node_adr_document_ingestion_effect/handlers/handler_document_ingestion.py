@@ -52,7 +52,20 @@ def _matches_exclude(path: Path, extra_patterns: list[str] | None) -> bool:
 class HandlerDocumentIngestion:
     """EFFECT handler — crawls markdown files and extracts metadata. Read-only."""
 
-    async def handle(self, *, request: ModelIngestionRequest) -> ModelIngestionResult:
+    async def handle(self, payload: ModelIngestionRequest) -> ModelIngestionResult:
+        """Crawl root_paths for markdown documents and extract metadata.
+
+        Args:
+            payload: Contains root_paths and optional exclude_patterns.
+                Named ``payload`` (canonical thin-handler shape) so the
+                runtime's single-parameter dispatch passes the validated
+                request positionally instead of keyword-fanning the model
+                fields.
+
+        Returns:
+            ModelIngestionResult with the discovered document entries.
+        """
+        request = payload
         documents: list[ModelDocumentEntry] = []
 
         for root_str in request.root_paths:

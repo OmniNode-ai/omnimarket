@@ -3,33 +3,83 @@
 #
 # runtime-rebuild-trigger.yml
 #
-# Triggers a deploy-agent rebuild when a PR that touches runtime code merges
-# to main. Closes the 6-day deploy gap (OMN-7963 / pr_review_bot failure class).
+# Triggers a runtime redeploy when a PR that touches runtime code merges to dev
+# or main. Closes the 6-day deploy gap (OMN-7963 / pr_review_bot failure class).
+#
+# CI publishes onex.cmd.omnimarket.redeploy-start.v1 (consumed by
+# node_redeploy_orchestrator), NOT onex.cmd.deploy.rebuild-requested.v1 directly.
+# node_redeploy_orchestrator owns the deploy lifecycle (lane policy, digest
+# pinning, readiness, rollback) and is the SOLE emitter of the deploy-agent
+# rebuild command (OMN-12573, blocker B1; OMN-14702 completes the omnimarket
+# half).
+#
+# The triggering base branch decides the runtime lane (dev -> dev lane, main ->
+# stability-test lane) and the merge commit SHA is the ref node_redeploy
+# rebuilds — there is no hardcoded origin/main.
 #
 # Trigger conditions (evaluated by scripts/trigger_rebuild_on_merge.py):
 #   - PR had the "runtime_change" label, OR
 #   - Any changed file matches src/omnimarket/** or src/omnibase_infra/nodes/**
 #
-# Ticket: OMN-8917
+# Tickets: OMN-8917 (original auto-trigger), OMN-12573 (re-point to
+#          node_redeploy), OMN-14702 (omnimarket re-point)
 #
 # Required GitHub Secrets:
 #   KAFKA_BOOTSTRAP_SERVERS    -- e.g. pkc-xxx.us-east-1.aws.confluent.cloud:9092
 #   KAFKA_SASL_USERNAME        -- Confluent Cloud API key (or SASL username)
 #   KAFKA_SASL_PASSWORD        -- Confluent Cloud API secret (or SASL password)
-#   DEPLOY_AGENT_HMAC_SECRET   -- HMAC secret for signing rebuild commands
+#   DEPLOY_AGENT_HMAC_SECRET   -- HMAC secret for signing redeploy commands
+#
+# ============================================================================
+# DISABLED — DORMANT (workflow_dispatch-only) as of 2026-07-21, OMN-14702 / CI-C6
+# ----------------------------------------------------------------------------
+# WHY: This auto-trigger's real job — emit exactly one redeploy-start command
+# when a runtime-touching PR merges — has NEVER once succeeded in this repo. The
+# omnimarket repo has only KAFKA_BOOTSTRAP_SERVERS provisioned; the three
+# publish preconditions KAFKA_SASL_USERNAME, KAFKA_SASL_PASSWORD, and
+# DEPLOY_AGENT_HMAC_SECRET are ABSENT. Per RT-5 fail-closed discipline
+# (OMN-14470/OMN-14702) the script correctly refuses to skip-green, so every
+# runtime merge produced a RED post-merge check.
+#
+# SUCCESS vs FAILURE, measured over workflow 261435054 since 2026-07-12
+# ({failure: 61, success: 31, skipped: 8}):
+#   - FAILURE  = the merged PR touched src/omnimarket/** (or carried the
+#                runtime_change label). Runtime change detected -> attempts to
+#                publish -> RT-5 fail-closed on the missing SASL/HMAC secrets.
+#                (e.g. run 29844422698, PR #1850.)
+#   - SUCCESS  = the merged PR touched NO runtime paths and had no
+#                runtime_change label. Script prints "No rebuild trigger" and
+#                exits 0 — the NO-OP branch, ZERO deploy work done.
+#                (e.g. run 29798203123, PR #1849.)
+#   - SKIPPED  = PR closed WITHOUT merging (job `if: merged == true`).
+# The 31 "successes" therefore represent no work at all; nothing real is lost by
+# stopping this trigger.
+#
+# WHERE THE WORK NOW HAPPENS: runtime redeploy flows through the canonical gated
+# path — node_redeploy_orchestrator (invoked via the `/onex:redeploy` skill /
+# manual redeploy-start dispatch), which this header already names as the SOLE
+# owner of the deploy lifecycle. That path does not depend on this CI
+# auto-trigger.
+#
+# RE-ENABLE: provision KAFKA_SASL_USERNAME / KAFKA_SASL_PASSWORD /
+# DEPLOY_AGENT_HMAC_SECRET as omnimarket repo secrets (operator / Daniyal action
+# — cloud creds; Jonah has no cloud secrets), then restore the `pull_request`
+# trigger below. The job body and the RT-5 fail-closed guards in
+# scripts/trigger_rebuild_on_merge.py are intentionally left UNCHANGED so the
+# producer still fails closed if ever dispatched with secrets missing.
+# ============================================================================
 
 name: Runtime Rebuild Trigger
 
+# Auto-trigger disabled (see DISABLED banner above). Manual dispatch only until
+# the deploy secrets are provisioned; the job's `if: merged == true` guard means
+# a bare workflow_dispatch run is a safe no-op.
 on:
-  pull_request:
-    types: [closed]
-    branches:
-      - main
-      - dev
+  workflow_dispatch: {}
 
 jobs:
   trigger-rebuild:
-    name: Trigger Deploy Agent Rebuild
+    name: Trigger node_redeploy Start
     if: github.event.pull_request.merged == true
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -53,8 +103,8 @@ jobs:
         run: |
           pip install --quiet confluent-kafka click
 
-      - name: Trigger rebuild if runtime change detected
-        # All potentially attacker-controlled inputs (labels, head_ref) are
+      - name: Trigger node_redeploy if runtime change detected
+        # All potentially attacker-controlled inputs (labels, base_ref, sha) are
         # passed through environment variables to prevent shell injection.
         env:
           KAFKA_BOOTSTRAP_SERVERS: ${{ secrets.KAFKA_BOOTSTRAP_SERVERS }}
@@ -64,11 +114,16 @@ jobs:
           PR_CHANGED_FILES: ${{ steps.changed-files.outputs.all_changed_files }}
           PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
+          # The triggering base branch decides the runtime lane; the merge
+          # commit SHA is the exact ref node_redeploy rebuilds.
+          PR_BASE_BRANCH: ${{ github.event.pull_request.base.ref }}
+          PR_MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
           python scripts/trigger_rebuild_on_merge.py \
             --changed-files "$PR_CHANGED_FILES" \
             --labels "$PR_LABELS" \
-            --git-ref "origin/main" \
+            --base-branch "$PR_BASE_BRANCH" \
+            --source-sha "$PR_MERGE_SHA" \
             --requested-by "gha/omnimarket/pr-$PR_NUMBER" \
             --wait-for-completion \
             --completion-timeout-seconds 900

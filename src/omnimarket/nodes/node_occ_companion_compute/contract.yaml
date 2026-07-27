@@ -1,0 +1,70 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - OCC Companion Compute (RSD-1, OMN-14285)
+#
+# The pure, stateless, deterministic "what the OCC companion must be": renders the
+# exact companion files (contract, downstream receipt, self-bind, two-audiences
+# supersede) + stamped product body from PR + OCC state gathered UP FRONT. Zero
+# I/O.
+#
+# Second operation `verify_companion_attestation` (OMN-14055) is the attestation
+# oracle: it recomputes `compute_companion_plan` and byte-diffs the deterministic
+# subset against observed companion files, mechanically rejecting companions that
+# are not this handler's own output regardless of claimed identity. Standalone
+# as of 2026-07-11 — not yet wired into any CI gate; wiring behind RSD-2/3 (the
+# EFFECT nodes that make this the live producer) is a follow-up ticket.
+#
+# Related Tickets:
+#   - OMN-14285: define the OCC-producer node graph + retire the bespoke adapters
+#   - OMN-14233: per-entry hashing / two-audiences supersession (T3)
+#   - OMN-14055: COMPUTE-node-as-attestation-oracle (RSD-5, this node's second operation)
+name: "node_occ_companion_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Pure computation: renders the deterministic OCC companion plan (files + stamped body + attestation fingerprint) from PR + OCC state with zero I/O."
+input_model:
+  name: "ModelOccCompanionRequest"
+  module: "omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request"
+  description: "All PR + OCC state, gathered up front by the read-EFFECT."
+output_model:
+  name: "ModelOccCompanionPlan"
+  module: "omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_plan"
+  description: "The deterministic companion plan: net-new files + stamped body + reproducibility fingerprint."
+handler_routing:
+  routing_strategy: "operation_match"
+  handlers:
+    - operation: "compute_companion_plan"
+      handler:
+        name: "HandlerOccCompanionCompute"
+        module: "omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute"
+    - operation: "verify_companion_attestation"
+      handler:
+        name: "HandlerOccCompanionAttestation"
+        module: "omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_attestation"
+terminal_event: "onex.evt.omnimarket.occ-companion-compute-completed.v1"
+event_bus:
+  subscribe_topics:
+    - "onex.cmd.omnimarket.occ-companion-compute-requested.v1"
+  publish_topics:
+    - "onex.evt.omnimarket.occ-companion-compute-completed.v1"
+metadata:
+  transport_type: kafka
+  description: "OCC companion compute node — pure deterministic producer + attestation oracle"
+  author: "OmniNode Team"
+  created: "2026-07-10"
+  tags:
+    - "compute"
+    - "occ"
+    - "companion"
+    - "attestation-oracle"
+    - "OMN-14285"
+  related_tickets:
+    - "OMN-14285"
+    - "OMN-14233"
+    - "OMN-14055"

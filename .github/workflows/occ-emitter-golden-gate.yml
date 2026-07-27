@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-14741 — OCC Emitter Golden Gate (BLOCKING) for the LIVE companion producer.
+#
+# The LIVE OCC-companion producer that actually mints companions on the merge
+# sweep is OccCompanionEmitter (node_pr_lifecycle_fix_effect) + its rendering seam
+# occ_evidence_stamp. OMN-14679 (#1789) and OMN-14710 (#1799) hardened only the
+# UNWIRED node_occ_companion_compute oracle, so the born-path emitter kept minting
+# companions that failed the hosted OCC gates and needed manual repair (friction
+# F-01/F-02/F-03/F-04/F-17). This gate runs the golden tests that drive the REAL
+# emitter output — placeholder-clean check_values, yamlfmt-idempotent YAML,
+# append-only receipts, pre-existing-contract row append, and closed/draft/
+# do-not-merge suppression — so a regression that reintroduces a broken companion
+# shape fails BEFORE it can ship (rule 5: detection wired as a pre-merge gate).
+#
+# OMN-14783 (step 1) closes the last F-06/F-16 divergence between the born-path
+# emitter and the canonical node graph (node_occ_companion_compute) and wires two
+# previously-unenforced compute-oracle suites into THIS gate so the parity cannot
+# silently regress: the OMN-14710 golden fixtures (compute-oracle) and the new
+# emitter-vs-compute F-06/F-16 parity fixture (a real cross-producer comparison).
+#
+# yamlfmt v0.21.0 matches the onex_change_control .yamlfmt pin so the F-03
+# idempotence check mirrors the hosted yamlfmt Pre-commit exactly.
+#
+# The job name "OCC Emitter Golden Gate" is added to the dev branch-protection
+# required contexts by the operator (wedge-safe: merge_group trigger, no paths
+# filter, fail-propagating), mirroring omnimarket's other blocking gates.
+
+name: OCC Emitter Golden Gate
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main, dev]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  occ-emitter-golden:
+    name: OCC Emitter Golden Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone omnibase_core
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
+
+      - name: Clone omnibase_compat
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
+
+      - name: Clone omnimemory
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Install yamlfmt v0.21.0 (matches onex_change_control .yamlfmt pin)
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            https://github.com/google/yamlfmt/releases/download/v0.21.0/yamlfmt_0.21.0_Linux_x86_64.tar.gz \
+            -o /tmp/yamlfmt.tar.gz
+          tar -xzf /tmp/yamlfmt.tar.gz -C /usr/local/bin yamlfmt
+          yamlfmt --version
+
+      - name: Run OCC emitter golden gate (LIVE producer output, BLOCKING)
+        run: |
+          uv run pytest \
+            tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter_friction_omn_14741.py \
+            tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_companion_emitter.py \
+            tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_evidence_stamp.py \
+            tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_golden_fixtures_omn_14710.py \
+            tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_compute_f06_f16_parity_omn_14783.py \
+            -q -p no:randomly

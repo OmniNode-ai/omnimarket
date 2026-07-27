@@ -35,11 +35,11 @@ from omnimarket.nodes.node_projection_replay_check_compute.models.model_replay_c
 class HandlerProjectionReplayCheck:
     """Stateless compute handler: classify projection events for replay safety.
 
-    Call :meth:`check` with a :class:`ModelReplayCheckRequest`; returns a
+    Call :meth:`handle` with a :class:`ModelReplayCheckRequest`; returns a
     :class:`ModelReplayCheckResult` with per-correlation classifications.
     """
 
-    def check(self, request: ModelReplayCheckRequest) -> ModelReplayCheckResult:
+    def handle(self, request: ModelReplayCheckRequest) -> ModelReplayCheckResult:
         """Classify each (correlation_id, table) pair in *request*.
 
         Algorithm:

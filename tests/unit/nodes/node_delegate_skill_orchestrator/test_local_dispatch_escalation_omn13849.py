@@ -20,6 +20,13 @@ imports (``resolve_delegation_backend`` / ``next_eligible_tier`` /
 monkeypatched in the port module namespace to a deterministic in-memory ladder —
 so the loop logic is proven in isolation from live routing config. The effect
 handler is injected to return a per-tier canned result (no network).
+
+OMN-13943 supersedes this file's original "a hard transport/timeout failure is
+always terminal" assumption: a RETRYABLE failure_class (e.g. RATE_LIMITED,
+TIMEOUT, MODEL_UNAVAILABLE) now escalates through the SAME up-tier machinery a
+quality-gate FAIL uses; only a non-retryable failure_class (PROVIDER_AUTH_FAILED,
+INVALID_JSON) — or an exhausted/unreachable ladder — stays terminal. See the
+retryable/non-retryable/bounded tests below.
 """
 
 from __future__ import annotations
@@ -102,7 +109,9 @@ def _install_ladder(
             return _backend_for_tier(initial_tier)
         return _backend_for_tier(_BACKEND_TIER[backend_id])
 
-    def fake_next_eligible_tier(current, excluded, *, task_type=None):
+    # ``roi_overlay`` accepted (OMN-14001) so the doubles match the extended
+    # routing-authority signature; this ladder ignores it (no ROI suppression).
+    def fake_next_eligible_tier(current, excluded, *, task_type=None, roi_overlay=None):
         try:
             idx = _LADDER.index(current)
         except ValueError:
@@ -119,7 +128,9 @@ def _install_ladder(
     # deterministic ladder's first tier is ``initial_tier``; backend_id_for_tier +
     # the backend_id-targeted fake_resolve then re-resolve it to the ladder backend.
     monkeypatch.setattr(
-        port_mod, "first_eligible_tier", lambda _task_type: initial_tier
+        port_mod,
+        "first_eligible_tier",
+        lambda _task_type, **_kwargs: initial_tier,
     )
     monkeypatch.setattr(
         port_mod, "backend_id_for_tier", lambda tier, _task_type: _TIER_BACKEND_ID[tier]
@@ -131,6 +142,18 @@ def _install_ladder(
         port_mod,
         "resolve_task_class_max_escalations",
         lambda _task_type: max_escalations,
+    )
+    # OMN-14234: this deterministic ladder makes EVERY tier metered (``_TIER_COST``
+    # is non-zero for local too, to prove cumulative-cost banking), so no tier is a
+    # free retry-local surface here. Reflect the ladder's cost model in the
+    # ``is_free_tier`` gate so retry-local (best-of-N on a $0 tier) is inert and
+    # these tests keep proving pure up-tier ESCALATION. The retry-local behavior on
+    # a genuinely-free tier is proven separately in
+    # ``test_local_dispatch_retry_local_omn14234.py``.
+    monkeypatch.setattr(
+        port_mod,
+        "is_free_tier",
+        lambda tier: _TIER_COST.get(tier, Decimal("0")) == 0,
     )
 
 
@@ -189,6 +212,7 @@ def _dispatch(
             wait=True,
             quality_contract_mode="extend_task_class",
             acceptance_criteria=(),
+            tenant_id=None,
         )
     )
 
@@ -344,11 +368,73 @@ def test_cumulative_metered_cost_banked_across_attempts(
     assert bool(row["quality_gate_passed"]) is True
 
 
-def test_transport_failure_is_terminal_not_escalated(
+def test_retryable_transport_failure_on_tier_n_escalates_to_tier_n_plus_1(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A hard transport failure terminates FAILED — it is not a gate FAIL, so it
-    does not trigger an up-tier re-dispatch (bus-path parity)."""
+    """OMN-13943: a retryable transport failure (e.g. MODEL_UNAVAILABLE) now
+    escalates to the next tier instead of terminating — superseding the OMN-13849
+    "transport failure is always terminal" assumption this test previously
+    asserted. This is exactly what makes a GLM RATE_LIMITED (429) transparently
+    fall through to the next tier rather than terminating the whole delegation."""
+    _install_ladder(monkeypatch, max_escalations=2)
+
+    calls: list[str] = []
+
+    def failing_then_ok_effect(
+        request: ModelLlmDelegationCallRequest,
+    ) -> ModelLlmDelegationCallResult:
+        tier = request.model_tier
+        calls.append(tier)
+        if tier == "local":
+            return ModelLlmDelegationCallResult(
+                request_id=request.request_id,
+                success=False,
+                failure_class=EnumDelegationFailureClass.MODEL_UNAVAILABLE,
+                error_message="connection refused",
+            )
+        return ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=True,
+            content=(
+                "According to Smith (2020) and the theorem in section 3, the "
+                "tradeoff is significant because the evidence shows X; "
+                "therefore we conclude Y. See references [12]."
+            ),
+            tokens_in=11,
+            tokens_out=22,
+            latency_ms=5,
+            actual_cost_usd=Decimal("0.010"),
+            savings_usd=Decimal("0"),
+        )
+
+    port = LocalDelegationDispatchPort(
+        effect_handler=failing_then_ok_effect,
+        evidence_db_path=tmp_path / "d.sqlite",
+        effect_process_boundary=False,
+    )
+    result = _dispatch(port, task_type="research", correlation_id=uuid4())
+
+    assert calls == ["local", "cheap_cloud"]  # escalated past the transport failure
+    assert result["status"] == "completed"
+    assert result["escalation_count"] == 1
+    # OMN-14063: the skipped tier's WHY must be on its attempt record — this is
+    # what makes a local->cloud escalation visible to the ModelDelegateSkillResponse
+    # caller instead of only in the capture-file log.
+    failed_attempt = result["attempts"][0]
+    assert failed_attempt["tier"] == "local"
+    assert failed_attempt["failure_class"] == "model_unavailable"
+    assert failed_attempt["error_message"] == "connection refused"
+
+
+def test_non_retryable_transport_failure_terminates_without_escalating(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A non-retryable failure_class (PROVIDER_AUTH_FAILED) stays terminal.
+
+    Re-issuing the same prompt against a different backend under different
+    credentials will not turn a bad credential into a good one on the SAME
+    backend, and escalating past an auth failure would mask a real
+    credential-config bug as a transient one (OMN-13943)."""
     _install_ladder(monkeypatch, max_escalations=2)
 
     calls: list[str] = []
@@ -360,8 +446,8 @@ def test_transport_failure_is_terminal_not_escalated(
         return ModelLlmDelegationCallResult(
             request_id=request.request_id,
             success=False,
-            failure_class=EnumDelegationFailureClass.MODEL_UNAVAILABLE,
-            error_message="connection refused",
+            failure_class=EnumDelegationFailureClass.PROVIDER_AUTH_FAILED,
+            error_message="401 unauthorized",
         )
 
     port = LocalDelegationDispatchPort(
@@ -371,6 +457,40 @@ def test_transport_failure_is_terminal_not_escalated(
     )
     result = _dispatch(port, task_type="research", correlation_id=uuid4())
 
-    assert calls == ["local"]  # no escalation on transport failure
+    assert calls == ["local"]  # no escalation on a non-retryable failure_class
     assert result["status"] == "failed"
     assert result["escalation_count"] == 0
+
+
+def test_retryable_transport_failure_on_every_tier_is_bounded_no_infinite_loop(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A retryable failure on EVERY tier still terminates — bounded by ladder
+    exhaustion, never an infinite loop (OMN-13943 guardrail)."""
+    _install_ladder(monkeypatch, max_escalations=5)
+
+    calls: list[str] = []
+
+    def always_rate_limited_effect(
+        request: ModelLlmDelegationCallRequest,
+    ) -> ModelLlmDelegationCallResult:
+        calls.append(request.model_tier)
+        return ModelLlmDelegationCallResult(
+            request_id=request.request_id,
+            success=False,
+            failure_class=EnumDelegationFailureClass.RATE_LIMITED,
+            error_message="429 rate limited",
+        )
+
+    port = LocalDelegationDispatchPort(
+        effect_handler=always_rate_limited_effect,
+        evidence_db_path=tmp_path / "d.sqlite",
+        effect_process_boundary=False,
+    )
+    result = _dispatch(port, task_type="research", correlation_id=uuid4())
+
+    # The deterministic ladder has exactly 3 tiers; the loop must terminate at
+    # ladder exhaustion, not loop forever despite the generous max_escalations=5.
+    assert calls == ["local", "cheap_cloud", "claude"]
+    assert result["status"] == "failed"
+    assert result["escalation_count"] == 2

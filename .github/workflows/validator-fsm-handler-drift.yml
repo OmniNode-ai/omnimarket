@@ -25,8 +25,6 @@ on:
     branches: [main, develop, dev, "hotfix/**"]
   pull_request:
     branches: [main, develop, dev]
-  merge_group:
-    branches: [main, develop, dev]
 
 env:
   PYTHON_VERSION: "3.12"
@@ -79,6 +77,13 @@ jobs:
         run: uv pip install --python .venv/bin/python --force-reinstall --no-deps -e ../omnibase_core
 
       - name: Run fsm-handler-drift integration tests
+        # OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE declares this PYTHONPATH override as
+        # intentional (this step deliberately points omnibase_core resolution at
+        # the sibling checkout above) to the OMN-14420 hermetic-import guard in
+        # tests/conftest.py, which otherwise fails loud on any PYTHONPATH-driven
+        # dependency resolution outside this repo's own venv.
+        env:
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
         run: |
           PYTHONPATH="../omnibase_core/src${PYTHONPATH:+:$PYTHONPATH}" uv run --no-sync pytest \
             tests/validators/test_fsm_handler_drift_integration.py \

@@ -1,0 +1,42 @@
+{
+  "input": {
+    "correlation_id": "00000004-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": null,
+        "description": "blocked on external third-party dependency",
+        "labels": [
+          "area:infra"
+        ],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Todo",
+        "ticket_id": "OMN-4",
+        "title": "Integrate vendor SDK"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "blocked",
+        "confidence": 0.6,
+        "matched_keywords": [
+          "blocked",
+          "dependency",
+          "external",
+          "third-party",
+          "vendor"
+        ],
+        "reason": "Blocked: matched ('blocked', 'dependency', 'external', 'third-party', 'vendor')",
+        "seam_source": "keyword_fallback",
+        "ticket_id": "OMN-4",
+        "title": "Integrate vendor SDK"
+      }
+    ],
+    "correlation_id": "00000004-0000-4000-8000-000000000000",
+    "total_auto_buildable": 0,
+    "total_non_buildable": 1
+  },
+  "output_sha256": "sha256:9959d8e94942a938a016278ba8607b907289b1715ed8a3d5017b1c61bd80a9e5"
+}

@@ -16,9 +16,6 @@ from __future__ import annotations
 
 import json
 import logging
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.review.pr_review_node_io import (
     ModelJudgeParseRequest,
@@ -26,7 +23,6 @@ from omnimarket.review.pr_review_node_io import (
 )
 
 _log = logging.getLogger(__name__)
-_HANDLER_ID = "node_judge_verdict_parse_compute"
 
 
 def parse_judge_response(raw: str) -> ModelJudgeParseResult:
@@ -66,17 +62,9 @@ def parse_judge_response(raw: str) -> ModelJudgeParseResult:
 class HandlerJudgeVerdictParseCompute:
     """COMPUTE: parse a judge model's raw PASS/FAIL response into a typed verdict."""
 
-    async def handle(
-        self, request: ModelJudgeParseRequest
-    ) -> ModelHandlerOutput[ModelJudgeParseResult]:
-        """Parse the raw judge response. Pure; returns the result, emits nothing."""
-        result = parse_judge_response(request.raw_text)
-        return ModelHandlerOutput.for_compute(
-            input_envelope_id=uuid4(),
-            correlation_id=request.correlation_id,
-            handler_id=_HANDLER_ID,
-            result=result,
-        )
+    def handle(self, request: ModelJudgeParseRequest) -> ModelJudgeParseResult:
+        """Parse the raw judge response. Pure; returns the typed result directly."""
+        return parse_judge_response(request.raw_text)
 
 
 __all__: list[str] = ["HandlerJudgeVerdictParseCompute", "parse_judge_response"]

@@ -16,12 +16,22 @@ from __future__ import annotations
 import logging
 import socket
 import subprocess
+from typing import TYPE_CHECKING
 
 from omnimarket.nodes.node_process_watchdog.models.model_watchdog_state import (
     EnumCheckStatus,
     EnumCheckTarget,
     ModelWatchdogCheckResult,
 )
+
+if TYPE_CHECKING:
+    # Import guarded to TYPE_CHECKING only: handler_process_watchdog imports
+    # build_production_targets() at module level, so a real (runtime) import
+    # here would be circular. Safe because `from __future__ import
+    # annotations` (above) makes all annotations lazy strings.
+    from omnimarket.nodes.node_process_watchdog.handlers.handler_process_watchdog import (
+        CheckTarget,
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -252,9 +262,9 @@ class DockerContainerCheckTarget:
             return False
 
 
-def build_production_targets() -> list[object]:
+def build_production_targets() -> list[CheckTarget]:
     """Build the full set of production check targets for .201."""
-    targets: list[object] = [
+    targets: list[CheckTarget] = [
         EmitDaemonCheckTarget(),
         KafkaConsumerCheckTarget("omnidash-consumers-v2"),
     ]

@@ -1,0 +1,24 @@
+name: node_liveness_demand_query_effect
+version: "1.0.0"
+description: "Real-Postgres EFFECT: queries a table_query demand source and performs the correlated input-event-to-terminal-event-to-projection-key/value join"
+pack: liveness
+node_role: effect
+display_name: "Liveness Demand Query"
+omnibase_core_compat: ">=0.46.8,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_liveness_demand_query_effect: "omnimarket.nodes.node_liveness_demand_query_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.46.8"
+  - "asyncpg"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "liveness", "postgres", "OMN-15126"]

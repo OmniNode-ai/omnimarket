@@ -18,6 +18,7 @@ capabilities:
   side_effect_class: write
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase_compat>=0.5.6"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "pr", "fix", "ci", "conflicts", "coderabbit", "pr_lifecycle"]

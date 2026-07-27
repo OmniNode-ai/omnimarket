@@ -20,8 +20,8 @@
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
-# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351
-config_version: "2.3.0"
+# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155
+config_version: "2.4.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 # model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
@@ -145,12 +145,15 @@ backends:
   - backend_id: cloud-glm
     # OMN-12819: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
-    # OMN-13343: refreshed glm-4.5 -> glm-5.2, the current z.ai GLM Coding Plan
-    # flagship ("AI Coding Powered by GLM-5.2 & GLM-5-Turbo"). Live 1-token probe
-    # of the endpoint above with the LLM_GLM_API_KEY secret confirmed glm-5.2 is
-    # accepted (response echoes model=glm-5.2); glm-5 is an alias that resolves to
-    # glm-5.2. Use the exact verified id — a wrong id fails closed.
-    model_name: "glm-5.2"
+    # OMN-14225: repointed glm-5.2 (flagship) -> glm-5-turbo, the CHEAPER GLM
+    # coding-plan model ("AI Coding Powered by GLM-5.2 & GLM-5-Turbo"), per the
+    # operator's paid policy (paid is ON + metered + logged; use the cheap,
+    # subscription-covered GLM, never the flagship glm-5.2). Live 1-token probe of
+    # the endpoint above with LLM_GLM_API_KEY confirmed glm-5-turbo is accepted and
+    # pins CLEANLY (response echoes model=glm-5-turbo, respects max_tokens) — unlike
+    # glm-4.5-air, which the endpoint substitutes to glm-4.7 and which burns
+    # reasoning tokens. Use the exact verified id — a wrong id fails closed.
+    model_name: "glm-5-turbo"
     secret_ref: llm.glm.api_key
     api_key_env: LLM_GLM_API_KEY
     tier: cheap_cloud
@@ -164,6 +167,37 @@ backends:
       - code_generation
       - reasoning
       - research
+  - backend_id: cloud-glm-judge
+    # OMN-14225: the quality-gate JUDGE's OWN backend, DECOUPLED from the
+    # cheap_cloud escalation model. This backend is pinned by backend_id from
+    # the judge adapter (RoutingResolvedJudgeInferenceAdapter,
+    # _DEFAULT_JUDGE_BACKEND_ID) and is referenced by NO routing rule / tier, so
+    # it is never selected on the delegation escalation ladder — only the judge
+    # rides it. To move the judge model, repoint this backend — the escalation
+    # tiers are unaffected, and vice versa. The backend_id (``cloud-glm-judge``)
+    # is kept as-is (it is a stable pin string, not a provider claim) even
+    # though it no longer points at z.ai/GLM — same pattern as the ``claude``
+    # ceiling tier name.
+    #
+    # OMN-14625: repointed off z.ai GLM-5.2 to Gemini. The z.ai GLM route is
+    # DEAD from the .201 runtime: resolve_api_key succeeds but every completion
+    # call 401s / loops FAILED-only (forensics this ticket; see memory
+    # reference_glm_zai_wiring_and_consumers). Verified nothing else keys on
+    # this backend's z.ai identity (endpoint_url/model_name) — only the
+    # backend_id string is pinned by the judge adapter — so repointing this
+    # definition in place is sufficient.
+    endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
+    model_name: "gemini-2.5-flash"
+    secret_ref: llm.gemini.api_key
+    api_key_env: GEMINI_API_KEY
+    tier: judge
+    # Match the ceiling/cheap_cloud Gemini budget: the judge issues a small
+    # structured verdict but rides the same endpoint, so the same generous
+    # timeout/output ceiling apply.
+    timeout_ms: 300000
+    max_tokens: 65536
+    capabilities:
+      - judge_adequacy
   - backend_id: cloud-gemini-flash
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     # No in-code construction/append; the routing authority returns this unchanged.
@@ -250,15 +284,41 @@ backends:
       - reasoning
       - research
       - code_generation
-  # OpenRouter backends (OMN-7980) — route authority carries logical secret refs.
-  # api_key_env remains migration metadata; lane overlays map the logical ref
-  # to the concrete secret source (env/Infisical/file).
+  # Local Coder-MLX backend — Qwen3.6-35B-A3B-8bit served via mlx_lm.server on
+  # .200 port 8401 (OMN-15155, steel-node-dispatch plan P0). Unauthenticated
+  # (verified 2026-07-26): no secret_ref/api_key_env.
+  - backend_id: local-coder-mlx
+    endpoint_url_env: BIFROST_LOCAL_CODER_MLX_ENDPOINT_URL
+    endpoint_url: null
+    # endpoint_url null in repo default; overlay/store sets .200:8401  # onex-allow-internal-ip OMN-15155 reason="repo-default comment documenting local overlay target for Coder-MLX"
+    model_name: mlx-community/Qwen3.6-35B-A3B-8bit
+    tier: local
+    # Same 65536-token output budget as local-coder (same base Qwen3.6-35B-A3B
+    # model family, MLX 8bit quantization does not shrink the context window) →
+    # same 300000 ms ceiling so a full module/test-suite generation is not
+    # capped by transport timeout (OMN-13170 pattern). Overlay-overridable.
+    timeout_ms: 300000
+    max_tokens: 65536
+    capabilities:
+      - code_generation
+      - refactoring
+      - documentation
+  # OpenRouter backends (OMN-7980) — route authority carries logical secret refs
+  # (secret_ref). OMN-13943: api_key_env is a genuine ADDITIONAL fallback the
+  # effect boundary resolves when secret_ref's dotted convention mapping (→
+  # LLM_OPENROUTER_API_KEY) misses — it must name the REAL canonical env var
+  # (OPEN_ROUTER_API_KEY per ~/.omnibase/.env), not migration metadata.
   - backend_id: openrouter-glm-flash
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "thudm/glm-4-9b-chat:free"
     secret_ref: llm.openrouter.api_key
-    api_key_env: OPENROUTER_API_KEY
+    # OMN-13943: canonical ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with
+    # underscore); this was OPENROUTER_API_KEY (no underscore, never resolves
+    # against the real env). api_key_env is now genuinely resolved as a
+    # fallback (see secret_store_resolver.resolve_api_key_async), so this
+    # rename is load-bearing, not just documentation.
+    api_key_env: OPEN_ROUTER_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
     # OMN-13161: GLM-4-9B (free OpenRouter tier) — modest 8192 output budget.
@@ -276,7 +336,12 @@ backends:
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "qwen/qwen3-coder:free"
     secret_ref: llm.openrouter.api_key
-    api_key_env: OPENROUTER_API_KEY
+    # OMN-13943: canonical ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with
+    # underscore); this was OPENROUTER_API_KEY (no underscore, never resolves
+    # against the real env). api_key_env is now genuinely resolved as a
+    # fallback (see secret_store_resolver.resolve_api_key_async), so this
+    # rename is load-bearing, not just documentation.
+    api_key_env: OPEN_ROUTER_API_KEY
     tier: cheap_frontier
     # OMN-13170: 64k-output coder backend — align the timeout to the budget
     # (300000 ms); 120s was short for full 64k generations.

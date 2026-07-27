@@ -11,10 +11,12 @@ Related: OMN-11916 — Memgraph Architecture Query Node (Task 2.2)
 
 from __future__ import annotations
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from uuid import uuid4
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_architecture_graph_query_effect.handlers import (
     HandlerArchitectureGraphQuery,
@@ -39,9 +41,35 @@ def _make_handler_with_mock_driver() -> tuple[HandlerArchitectureGraphQuery, Mag
     return handler, mock_driver
 
 
+@pytest.fixture
+def node_dir() -> Path:
+    return (
+        Path(__file__).resolve().parent.parent.parent.parent
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_architecture_graph_query_effect"
+    )
+
+
+@pytest.fixture
+def contract_path(node_dir: Path) -> Path:
+    return node_dir / "contract.yaml"
+
+
 @pytest.mark.unit
 class TestArchitectureGraphQueryEffect:
     """Golden chain tests for node_architecture_graph_query_effect."""
+
+    def test_contract_declares_response_topic(self, contract_path: Path) -> None:
+        """OMN-13781 state-coverage gate: prove the response topic is really
+        contract-declared by parsing the live contract.yaml, not by repeating
+        the literal in a self-tautological assertion."""
+        contract = yaml.safe_load(contract_path.read_text())
+        publish_topics = contract["event_bus"]["publish_topics"]
+        assert (
+            "onex.evt.omnimarket.architecture-graph-query-response.v1" in publish_topics
+        )
 
     async def test_node_importable(self) -> None:
         from omnimarket.nodes import node_architecture_graph_query_effect
@@ -66,12 +94,26 @@ class TestArchitectureGraphQueryEffect:
         )
         mock_driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
 
+        # Row shape matches what the real neo4j async driver returns for
+        # nodes(p)/relationships(p) — property dicts for nodes, (start, type,
+        # end) tuples for relationships (OMN-14294: Memgraph doesn't support
+        # the list-comprehension RETURN form that used to produce plain
+        # strings here, so extraction moved from Cypher into Python).
         mock_result = MagicMock()
-        mock_result.data = MagicMock(
+        mock_result.data = AsyncMock(
             return_value=[
                 {
-                    "path_nodes": ["omnibase_core", "omnibase_infra"],
-                    "path_edges": [("omnibase_core", "DEPENDS_ON", "omnibase_infra")],
+                    "path_nodes": [
+                        {"name": "omnibase_core"},
+                        {"name": "omnibase_infra"},
+                    ],
+                    "path_rels": [
+                        (
+                            {"name": "omnibase_core"},
+                            "DEPENDS_ON",
+                            {"name": "omnibase_infra"},
+                        )
+                    ],
                     "path_length": 1,
                 }
             ]
@@ -87,7 +129,12 @@ class TestArchitectureGraphQueryEffect:
         response = await handler.execute(request)
 
         assert response.status == "success"
-        assert response.path_length is not None
+        assert response.path_length == 1
+        assert [n.name for n in response.nodes] == ["omnibase_core", "omnibase_infra"]
+        assert len(response.edges) == 1
+        assert response.edges[0].source == "omnibase_core"
+        assert response.edges[0].edge_type == "DEPENDS_ON"
+        assert response.edges[0].target == "omnibase_infra"
         mock_session.run.assert_awaited_once()
         call_args = mock_session.run.call_args
         # Verify parameterized query — no string interpolation of user values
@@ -107,7 +154,7 @@ class TestArchitectureGraphQueryEffect:
         mock_driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
 
         mock_result = MagicMock()
-        mock_result.data = MagicMock(
+        mock_result.data = AsyncMock(
             return_value=[
                 {"dependent_node": "omnibase_infra", "edge_type": "DEPENDS_ON"},
                 {"dependent_node": "omnimarket", "edge_type": "DEPENDS_ON"},
@@ -138,7 +185,7 @@ class TestArchitectureGraphQueryEffect:
         mock_driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
 
         mock_result = MagicMock()
-        mock_result.data = MagicMock(
+        mock_result.data = AsyncMock(
             return_value=[
                 {
                     "from_repo": "omnimarket",
@@ -172,8 +219,21 @@ class TestArchitectureGraphQueryEffect:
         )
         mock_driver.session.return_value.__aexit__ = AsyncMock(return_value=False)
 
+        # Row shape matches nodes(p) as returned by the real driver — a list
+        # of node property dicts (OMN-14294: see dependency_path comment above).
         mock_result = MagicMock()
-        mock_result.data = MagicMock(return_value=[])
+        mock_result.data = AsyncMock(
+            return_value=[
+                {
+                    "cycle_nodes": [
+                        {"name": "node_a", "repo": "omnibase_core"},
+                        {"name": "node_b", "repo": "omnibase_core"},
+                        {"name": "node_a", "repo": "omnibase_core"},
+                    ],
+                    "cycle_length": 2,
+                }
+            ]
+        )
         mock_session.run = AsyncMock(return_value=mock_result)
 
         request = ModelArchitectureGraphQueryRequestedEvent(
@@ -185,6 +245,8 @@ class TestArchitectureGraphQueryEffect:
 
         assert response.status == "success"
         assert isinstance(response.nodes, tuple)
+        assert {n.name for n in response.nodes} == {"node_a", "node_b"}
+        assert len(response.edges) == 2
         mock_session.run.assert_awaited_once()
 
     async def test_uninitialized_handler_returns_error(self) -> None:

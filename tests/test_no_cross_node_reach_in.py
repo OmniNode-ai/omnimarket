@@ -131,9 +131,19 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket.nodes.node_overnight.handlers.handler_overnight:omnimarket.nodes.node_build_loop.models.model_loop_start_command:ModelLoopStartCommand",
         # node_pipeline_fill → node_rsd_fill_compute
         "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill:omnimarket.nodes.node_rsd_fill_compute.models.model_scored_ticket:ModelScoredTicket",
+        # OMN-14839: def-B flip of node_rsd_fill_compute. Its in-process callers
+        # (dispatch_router, pipeline_fill) build the canonical ModelRsdFillInput to
+        # invoke handle(request). Same cross-node dependency as the pre-existing
+        # HandlerRsdFill / ModelScoredTicket imports above; resolve when the RSD-fill
+        # cluster shared models move to omnimarket.events.*.
+        "omnimarket.nodes.node_pipeline_fill.handlers.handler_pipeline_fill:omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill_input:ModelRsdFillInput",
+        "omnimarket.nodes.node_skill_dispatch_engine_orchestrator.handlers.handler_dispatch_router:omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill_input:ModelRsdFillInput",
         # node_pr_lifecycle_fix_effect → node_pr_lifecycle_inventory_compute
-        # OMN-9889: line shift from runtime ownership imports
-        "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge:omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory:ModelStuckQueueEntry",
+        # OMN-14242: import relocated from handlers/handler_admin_merge.py to
+        # models/model_admin_merge_request.py (thin canonical shape — the
+        # request payload, not the handler, now names the cross-node model).
+        # Same pre-existing reach-in relationship, net-zero allowlist growth.
+        "omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_admin_merge_request:omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory:ModelStuckQueueEntry",
         # node_pr_lifecycle_orchestrator reach-ins (OMN-9806 keeps these as
         # temporary exceptions until shared lifecycle models move to events.*)
         "omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator:omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory:ModelPrInventoryInput",
@@ -148,23 +158,6 @@ _KNOWN_VIOLATIONS: frozenset[str] = frozenset(
         "omnimarket.nodes.node_rebase_effect.handlers.handler_rebase:omnimarket.nodes.node_merge_sweep_triage_orchestrator.models.model_triage_request:ModelRebaseCommand",
         # node_thread_reply_effect → node_model_router
         "omnimarket.nodes.node_thread_reply_effect.handlers.handler_thread_reply:omnimarket.nodes.node_model_router.models.model_routing_request:ModelRoutingRequest",
-        # OMN-13210 (B1): node_hostile_reviewer_orchestrator → node_finding_aggregator_compute.
-        # The orchestrator dispatches the canonical finding aggregator COMPUTE and must
-        # construct its input; the aggregator pre-dates this rebuild and keeps its
-        # node-local input model. All other review node I/O is shared via
-        # omnimarket.review.node_io (no reach-in). Track follow-up to promote the
-        # aggregator input to omnimarket.review if a second consumer appears.
-        "omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_hostile_reviewer_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelFindingAggregatorInput",
-        "omnimarket.nodes.node_hostile_reviewer_orchestrator.handlers.handler_hostile_reviewer_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelSourceFindings",
-        # OMN-13212 (B2): node_pr_review_orchestrator → node_finding_aggregator_compute.
-        # The orchestrator dispatches the canonical finding aggregator COMPUTE and must
-        # construct its input; the aggregator pre-dates this rebuild and keeps its
-        # node-local input model (same exception as the B1 hostile_reviewer orchestrator).
-        # All other review node I/O is shared via omnimarket.review (no reach-in). Track
-        # follow-up to promote the aggregator input to omnimarket.review if a second
-        # consumer appears.
-        "omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelFindingAggregatorInput",
-        "omnimarket.nodes.node_pr_review_orchestrator.handlers.handler_pr_review_orchestrator:omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input:ModelSourceFindings",
     ]
 )
 

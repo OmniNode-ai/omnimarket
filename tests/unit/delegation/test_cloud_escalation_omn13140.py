@@ -34,7 +34,6 @@ import textwrap
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -67,9 +66,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_intent import (
     HandlerRoutingIntent,
-)
-from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
-    HandlerInferenceIntent,
 )
 
 # Bifrost contract where local AND cheap_cloud carry resolvable code_generation
@@ -170,7 +166,29 @@ _CANONICAL_VERTEX_BACKEND_ID = "cloud-vertex-gemini"
 # OMN-13667: repointed again from free-tier AI Studio Gemini (cloud-gemini-pro,
 # 503s on every escalation) to GLM-5.2 z.ai direct (cloud-glm,
 # secret_ref llm.glm.api_key) — the proven backend the judge already runs on.
-_TERMINAL_CEILING_BACKEND_ID = "cloud-glm"
+# OMN-14625: repointed a THIRD time — z.ai GLM is DEAD from the .201 runtime
+# (resolve_api_key succeeds but every completion call 401s / loops
+# FAILED-only) — back to cloud-gemini-pro (secret_ref llm.gemini.api_key,
+# model gemini-2.5-flash).
+_TERMINAL_CEILING_BACKEND_ID = "cloud-gemini-pro"
+
+
+@pytest.fixture(autouse=True)
+def _disable_retry_local(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Isolate the local->cloud ESCALATION assertions from OMN-14234 retry-local.
+
+    These tests prove a weak LOCAL output escalates to the cloud tier. With
+    retry-local a sub-bar draft on the free ``local`` tier is re-drafted on the
+    SAME tier up to its ``max_retries`` budget BEFORE escalating, so the
+    local->cloud escalation asserted here would only fire after that budget is
+    exhausted. Disabling the free-tier gate keeps these tests targeting the
+    escalation resolution; retry-local is proven in ``test_retry_local_omn14234.py``.
+    """
+    from omnimarket.nodes.node_delegation_orchestrator.handlers import (
+        handler_delegation_workflow as _hw,
+    )
+
+    monkeypatch.setattr(_hw, "is_free_tier", lambda _tier: False)
 
 
 @pytest.fixture
@@ -207,17 +225,6 @@ def _make_request() -> ModelDelegationRequest:
         max_tokens=2048,
         emitted_at=datetime.now(UTC),
     )
-
-
-def _httpx_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.json.return_value = {
-        "id": "chatcmpl-test",
-        "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
-        "usage": {"prompt_tokens": 50, "completion_tokens": 5, "total_tokens": 55},
-    }
-    response.raise_for_status.return_value = None
-    return response
 
 
 # ---------------------------------------------------------------------------
@@ -309,19 +316,19 @@ class TestQualityGateVerdictRecommendsFallback:
         "expected_min_tier",
     ),
     [
-        # OMN-13140 closed-set tier_order: code_generation declares
-        # [cheap_cloud, local, claude]. A gate failure on cheap_cloud escalates
-        # forward to the next declared tier (local), which is routable in the
-        # fixture. (Previously this case started on local and relied on the
-        # append-unlisted bug to reach cheap_frontier — a tier code_generation's
-        # tier_order does not list, so it is excluded under closed-set semantics.)
+        # OMN-14225 free-before-paid closed-set tier_order: code_generation declares
+        # [local, cheap_frontier, cheap_cloud, claude] (local AI-PC coder is the
+        # preferred first hop). A gate failure on local escalates forward to the FREE
+        # cheap_frontier tier BEFORE any paid tier — routable in the fixture
+        # (openrouter-qwen3-coder-480b carries a non-empty endpoint_url and no
+        # secret_ref requirement there).
         (
             "code_generation",
             "x = 1",
             ("min_length_chars_400",),
             "WEAK_OUTPUT",
-            "cheap_cloud",
             "local",
+            "cheap_frontier",
         ),
         # research declares [local, cheap_cloud, claude]: a gate failure on local
         # escalates forward to cheap_cloud (routable in the fixture).
@@ -449,9 +456,10 @@ class TestNextEligibleTierCodeGeneration:
 
 @pytest.mark.unit
 class TestCanonicalCloudTargetCapability:
-    """GATE 3 (config): the canonical AI Studio Gemini target declares
-    code_generation in both the bifrost capabilities and the routing tier use_for;
-    Vertex stays defined but is intentionally NOT in the code_generation path.
+    """GATE 3 (config): the canonical AI Studio Gemini target keeps the
+    code_generation bifrost CAPABILITY but (OMN-13599) is intentionally NOT in the
+    code_generation ROUTING path (routing tier use_for) — code routes local then
+    direct z.ai GLM. Vertex likewise stays defined but out of the code path.
     """
 
     def _bifrost(self) -> dict[str, object]:
@@ -474,13 +482,20 @@ class TestCanonicalCloudTargetCapability:
             "code_generation" not in by_id[_CANONICAL_VERTEX_BACKEND_ID]["capabilities"]
         )
 
-    def test_gemini_flash_routing_tier_use_for_includes_code_generation(self) -> None:
+    def test_gemini_flash_routing_tier_use_for_excludes_code_generation(self) -> None:
+        # OMN-13599: Gemini flash remains AVAILABLE for prose/simple work
+        # (summarization, simple_tasks, document) and keeps the code_generation
+        # bifrost CAPABILITY, but it is intentionally removed from the
+        # code_generation ROUTING path (routing_tiers use_for). Code routes local
+        # first, then direct z.ai GLM — avoiding the AI Studio failures seen in
+        # dogfood.
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
         cheap_cloud = tiers["cheap_cloud"]
         gemini = next(
             m for m in cheap_cloud["models"] if m["backend_id"] == "cloud-gemini-flash"
         )
-        assert "code_generation" in gemini["use_for"]
+        assert "code_generation" not in gemini["use_for"]
+        assert "summarization" in gemini["use_for"]
 
     def test_vertex_routing_tier_use_for_excludes_code_generation(self) -> None:
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
@@ -501,19 +516,23 @@ class TestCanonicalCloudTargetCapability:
         assert gemini["secret_ref"] == "llm.gemini.api_key"
 
     def test_terminal_claude_tier_routes_to_http_frontier_backend(self) -> None:
-        """OMN-13215/OMN-13351/OMN-13667: the ceiling tier executes via the canonical
-        HTTP path.
+        """OMN-13215/OMN-13351/OMN-13667/OMN-14625: the ceiling tier executes via
+        the canonical HTTP path.
 
-        OMN-13667: the claude ceiling tier maps to the HTTP cloud-glm backend (GLM-5.2
-        z.ai direct, complete verbatim endpoint_url + secret_ref llm.glm.api_key),
+        OMN-14625: the claude ceiling tier maps to the HTTP cloud-gemini-pro backend
+        (Gemini, complete verbatim endpoint_url + secret_ref llm.gemini.api_key),
         NOT a shelled CLI and NOT the dead Anthropic cloud-sonnet (llm.anthropic.api_key
-        resolves to None in every lane). The prior cloud-gemini-pro Gemini backend
-        was replaced because free-tier AI Studio Gemini 503s on every escalation.
+        resolves to None in every lane). The prior GLM-5.2 z.ai direct backend
+        (cloud-glm, added under OMN-13667) was replaced because the z.ai route is
+        DEAD from the .201 runtime (resolve_api_key succeeds but every completion
+        call 401s / loops FAILED-only).
         """
         tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
         terminal = tiers["claude"]
         assert terminal["models"][0]["backend_id"] == _TERMINAL_CEILING_BACKEND_ID
-        assert terminal["models"][0]["id"] == "glm-5.2"
+        # OMN-14625: the ceiling model repointed glm-5-turbo (z.ai, dead) ->
+        # gemini-2.5-flash.
+        assert terminal["models"][0]["id"] == "gemini-2.5-flash"
 
         backends = self._bifrost()["backends"]
         by_id = {b["backend_id"]: b for b in backends}
@@ -522,8 +541,8 @@ class TestCanonicalCloudTargetCapability:
         assert ceiling["endpoint_url"].endswith("/chat/completions")
         assert ceiling["endpoint_url"].startswith("https://")
         # Secret resolved at the effect boundary via api_key_ref (not a literal),
-        # and it is the RESOLVABLE GLM ref — not the dead Anthropic ref.
-        assert ceiling["secret_ref"] == "llm.glm.api_key"
+        # and it is the RESOLVABLE Gemini ref — not the dead z.ai or Anthropic ref.
+        assert ceiling["secret_ref"] == "llm.gemini.api_key"
 
         # OMN-13351: the dead Anthropic backends were deleted; nothing routes to them.
         assert "cloud-sonnet" not in by_id
@@ -553,7 +572,6 @@ class TestCodeGenerationEscalatesToGeminiCloud:
     ) -> None:
         workflow = HandlerDelegationWorkflow(workflows={})
         routing_handler = HandlerRoutingIntent()
-        inference_handler = HandlerInferenceIntent()
         gate_handler = HandlerQualityGateIntent()
         request = _make_request()
         cid = request.correlation_id
@@ -564,16 +582,16 @@ class TestCodeGenerationEscalatesToGeminiCloud:
         decision = routing_handler.handle(routing_intents[0])
         assert decision.tier_name == "local"
 
-        # Hop 3-4: orchestrator -> inference effect (mock a too-short local output).
+        # Hop 3-4: orchestrator -> inference effect. This test proves the
+        # DOWNSTREAM gate-fails-then-escalates behavior for a too-short local
+        # output, so the inference effect's OUTPUT event is constructed directly
+        # as a controlled internal DTO (via `_inference`) — the model/HTTP
+        # boundary is NOT faked. The integrated inference request + egress path
+        # is proven separately by
+        # tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py.
         inference_intents = workflow.handle_routing_decision(decision)
         assert isinstance(inference_intents[0], ModelInferenceIntent)
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = _httpx_response("x=1")
-            mock_client_cls.return_value = mock_client
-            response = inference_handler.handle(inference_intents[0])
+        response = _inference(cid, "x=1")
 
         # Hop 5-6: orchestrator -> quality gate reducer (WEAK_OUTPUT, 400-char DoD).
         gate_intents = workflow.handle_inference_response(response)

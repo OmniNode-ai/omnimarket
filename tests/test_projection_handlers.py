@@ -480,6 +480,75 @@ class TestRegistrationHandler:
         mock_db.execute.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_introspection_rich_fields_survive_metadata_jsonb(
+        self, mock_db: AsyncMock
+    ) -> None:
+        """OMN-14490: the async runner (the live Kafka->Postgres projector) must
+        NOT silently drop the producer's rich introspection fields on the very
+        hot node-introspection.v1 topic. Drive the producer's ACTUAL canonical
+        wire payload and assert endpoints / declared_capabilities /
+        discovered_capabilities / contract_capabilities / current_state all
+        survive into the metadata JSONB bind.
+
+        RED against exists-but-wrong: the prior runner persisted only
+        node_name/node_id into metadata, so these keys were absent (KeyError).
+        """
+        import json
+        from datetime import UTC, datetime
+        from uuid import uuid4
+
+        from omnibase_core.enums.enum_node_kind import EnumNodeKind
+        from omnibase_core.models.primitives.model_semver import ModelSemVer
+        from omnibase_infra.models.registration.model_node_introspection_event import (
+            ModelContractCapabilities,
+            ModelDiscoveredCapabilities,
+            ModelNodeCapabilities,
+            ModelNodeIntrospectionEvent,
+        )
+
+        from omnimarket.nodes.node_projection_registration.handlers.handler_registration import (
+            RegistrationProjectionRunner,
+        )
+
+        runner = RegistrationProjectionRunner()
+        runner._db = mock_db
+
+        event = ModelNodeIntrospectionEvent(
+            node_id=uuid4(),
+            node_name="rich-runner-svc",
+            node_type=EnumNodeKind.COMPUTE,
+            correlation_id=uuid4(),
+            timestamp=datetime.now(tz=UTC),
+            endpoints={"http": "http://rich-runner:8080"},
+            declared_capabilities=ModelNodeCapabilities(),
+            discovered_capabilities=ModelDiscoveredCapabilities(has_fsm=True),
+            contract_capabilities=ModelContractCapabilities(
+                contract_type="COMPUTE_GENERIC",
+                contract_version=ModelSemVer(major=2, minor=0, patch=0),
+                capability_tags=["omn14490-runner"],
+            ),
+            current_state="RUNNING",
+        )
+        # Drive the EXACT producer wire payload through the async projector.
+        wire = event.model_dump(mode="json")
+        result = await runner.project_event(
+            "onex.evt.platform.node-introspection.v1", wire, _make_meta()
+        )
+        assert result is True
+        mock_db.execute.assert_called_once()
+
+        # Positional binds: (sql, service_name, service_url, service_type,
+        # health_status, metadata_json) -> metadata_json is index 5.
+        metadata = json.loads(mock_db.execute.call_args[0][5])
+        assert metadata["endpoints"] == {"http": "http://rich-runner:8080"}
+        assert metadata["declared_capabilities"] == wire["declared_capabilities"]
+        assert metadata["discovered_capabilities"]["has_fsm"] is True
+        assert metadata["contract_capabilities"]["capability_tags"] == [
+            "omn14490-runner"
+        ]
+        assert metadata["current_state"] == "RUNNING"
+
+    @pytest.mark.asyncio
     async def test_heartbeat(self, mock_db: AsyncMock) -> None:
         from omnimarket.nodes.node_projection_registration.handlers.handler_registration import (
             RegistrationProjectionRunner,
@@ -517,6 +586,30 @@ class TestRegistrationHandler:
 class TestBaselinesHandler:
     @pytest.mark.asyncio
     async def test_basic_projection(self, mock_db: AsyncMock) -> None:
+        """OMN-14513: drive a real producer-shaped ModelBaselinesSnapshotEvent.
+
+        Previously this test hand-built a fictional payload
+        (comparisons.pattern_id/recommendation, trend.date/avg_cost_savings,
+        breakdown.action/count) that the real producer never sends. Building
+        the payload from the producer's own model_dump() proves the fix
+        parses what the wire contract actually carries.
+        """
+        from datetime import UTC, date, datetime
+        from uuid import uuid4
+
+        from omnibase_infra.services.observability.baselines.models.model_baselines_breakdown_row import (
+            ModelBaselinesBreakdownRow,
+        )
+        from omnibase_infra.services.observability.baselines.models.model_baselines_comparison_row import (
+            ModelBaselinesComparisonRow,
+        )
+        from omnibase_infra.services.observability.baselines.models.model_baselines_snapshot_event import (
+            ModelBaselinesSnapshotEvent,
+        )
+        from omnibase_infra.services.observability.baselines.models.model_baselines_trend_row import (
+            ModelBaselinesTrendRow,
+        )
+
         from omnimarket.nodes.node_projection_baselines.handlers.handler_baselines import (
             BaselinesProjectionRunner,
         )
@@ -524,30 +617,49 @@ class TestBaselinesHandler:
         runner = BaselinesProjectionRunner()
         runner._db = mock_db
 
-        data = {
-            "snapshot_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
-            "contract_version": 2,
-            "computed_at_utc": "2026-04-06T12:00:00Z",
-            "comparisons": [
-                {
-                    "pattern_id": "p1",
-                    "pattern_name": "test_pattern",
-                    "sample_size": 100,
-                    "window_start": "2026-04-01",
-                    "window_end": "2026-04-06",
-                    "recommendation": "promote",
-                    "confidence": "high",
-                }
+        now = datetime(2026, 4, 6, 12, 0, 0, tzinfo=UTC)
+        producer_event = ModelBaselinesSnapshotEvent(
+            snapshot_id=uuid4(),
+            contract_version=2,
+            computed_at_utc=now,
+            comparisons=[
+                ModelBaselinesComparisonRow(
+                    id=uuid4(),
+                    comparison_date=date(2026, 4, 6),
+                    treatment_sessions=100,
+                    control_sessions=90,
+                    roi_pct=12.5,
+                    sample_size=190,
+                    computed_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
             ],
-            "trend": [
-                {
-                    "date": "2026-04-05",
-                    "avg_cost_savings": 0.15,
-                    "avg_outcome_improvement": 0.2,
-                }
+            trend=[
+                ModelBaselinesTrendRow(
+                    id=uuid4(),
+                    trend_date=date(2026, 4, 5),
+                    cohort="treatment",
+                    session_count=50,
+                    success_rate=0.9,
+                    computed_at=now,
+                    created_at=now,
+                )
             ],
-            "breakdown": [{"action": "promote", "count": 5, "avg_confidence": 0.8}],
-        }
+            breakdown=[
+                ModelBaselinesBreakdownRow(
+                    id=uuid4(),
+                    pattern_id=uuid4(),
+                    pattern_label="retry-guard",
+                    treatment_success_rate=0.92,
+                    sample_count=100,
+                    computed_at=now,
+                    created_at=now,
+                    updated_at=now,
+                )
+            ],
+        )
+        data = producer_event.model_dump(mode="json")
 
         result = await runner.project_event(
             "onex.evt.omnibase-infra.baselines-computed.v1", data, _make_meta()

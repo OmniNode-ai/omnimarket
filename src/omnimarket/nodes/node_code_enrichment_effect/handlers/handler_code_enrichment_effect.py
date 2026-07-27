@@ -28,6 +28,9 @@ from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
+from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_request import (
+    ModelCodeEnrichmentRequest,
+)
 from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_result import (
     ModelCodeEnrichmentResult,
 )
@@ -89,19 +92,24 @@ class ProtocolCodeEntityRepository(Protocol):
 
 
 class HandlerCodeEnrichmentEffect:
-    """EFFECT handler — enriches code entities with LLM classification and description."""
+    """EFFECT handler — enriches code entities with LLM classification and description.
+
+    Dependencies are injected via constructor for testability (canonical thin
+    shape, OMN-14242). ``handle()`` takes a single typed
+    ``ModelCodeEnrichmentRequest`` payload — no envelope, no coercion; the
+    runtime wraps.
+    """
+
+    def __init__(self, repository: ProtocolCodeEntityRepository) -> None:
+        self._repository = repository
 
     async def handle(
-        self,
-        *,
-        correlation_id: str,
-        repository: ProtocolCodeEntityRepository,
-        llm_endpoint_override: str | None = None,
-        batch_size: int | None = None,
+        self, payload: ModelCodeEnrichmentRequest
     ) -> ModelCodeEnrichmentResult:
         """Enrich a batch of unenriched code entities with LLM classification."""
+        correlation_id = payload.correlation_id
         primary_endpoint = (
-            llm_endpoint_override
+            payload.llm_endpoint_override
             or os.environ.get(  # contract-config-ok: config
                 "LLM_CODER_URL", ""
             )
@@ -124,11 +132,11 @@ class HandlerCodeEnrichmentEffect:
         enrichment_version = os.environ.get(  # contract-config-ok: config
             "CODE_ENRICHMENT_VERSION", DEFAULT_ENRICHMENT_VERSION
         )
-        if batch_size is not None and batch_size <= 0:
-            raise ValueError(f"batch_size must be a positive integer, got {batch_size}")
+        # batch_size <= 0 is rejected at payload construction (Field(gt=0) on
+        # ModelCodeEnrichmentRequest) — no manual re-validation needed here.
         effective_batch_size = (
-            batch_size
-            if batch_size is not None and batch_size > 0
+            payload.batch_size
+            if payload.batch_size is not None
             else int(
                 os.environ.get(  # contract-config-ok: config
                     "CODE_ENRICHMENT_BATCH_SIZE", str(DEFAULT_ENRICHMENT_BATCH_SIZE)
@@ -136,7 +144,7 @@ class HandlerCodeEnrichmentEffect:
             )
         )
 
-        entities = await repository.get_entities_needing_enrichment(
+        entities = await self._repository.get_entities_needing_enrichment(
             limit=effective_batch_size
         )
         if not entities:
@@ -185,7 +193,7 @@ class HandlerCodeEnrichmentEffect:
                         else:
                             classification = raw_classification
 
-                        await repository.update_enrichment(
+                        await self._repository.update_enrichment(
                             entity_id=str(entity["id"]),
                             classification=classification,
                             llm_description=result.get("description", ""),

@@ -71,11 +71,27 @@ def _resolve_omni_home() -> str:
 
 
 def _make_hermetic_omni_home(tmpdir: Path) -> str:
-    """Build a throwaway omni_home with empty stubs so nodes can scan without
+    """Build a throwaway omni_home with minimal stubs so nodes can scan without
     depending on the operator's real checkout layout.
+
+    Seeds one minimal node contract: runtime_sweep now hard-fails on a
+    zero-entity environment (OMN-13919 — a sweep that checks nothing must
+    never pass), so a hermetic tree with no contract.yaml at all would
+    (correctly) crash the subprocess instead of emitting a JSON result.
     """
     for repo in ("omnibase_core", "omnimarket", "omnibase_infra", "omniclaude"):
         (tmpdir / repo / "src").mkdir(parents=True, exist_ok=True)
+    stub_node = tmpdir / "omnimarket" / "src" / "omnimarket" / "nodes" / "node_stub"
+    stub_node.mkdir(parents=True, exist_ok=True)
+    (stub_node / "contract.yaml").write_text(
+        "name: node_stub\n"
+        "description: Hermetic stub contract for skill-dispatch tests.\n"
+        "event_bus:\n"
+        "  publish_topics:\n"
+        "    - onex.evt.hermetic.stub-done.v1\n"
+        "  subscribe_topics:\n"
+        "    - onex.evt.hermetic.stub-done.v1\n"
+    )
     return str(tmpdir)
 
 
@@ -126,7 +142,10 @@ def hermetic_omni_home(tmp_path: Path) -> str:
         ),
         (
             "omnimarket.nodes.node_runtime_sweep",
-            ["--scope", "all-repos"],
+            # OMN-14528: the hermetic tree has no broker, so run a static-only
+            # sweep (the full sweep now fails closed when it cannot probe the
+            # broker for the live consumer-group census).
+            ["--scope", "all-repos", "--skip-consumer-liveness"],
         ),
         (
             "omnimarket.nodes.node_aislop_sweep",
@@ -214,7 +233,8 @@ def test_runtime_sweep_parity(hermetic_omni_home: str) -> None:
 
     proc_data = _run_node_subprocess(
         "omnimarket.nodes.node_runtime_sweep",
-        ["--scope", "all-repos"],
+        # OMN-14528: hermetic tree has no broker → static-only sweep.
+        ["--scope", "all-repos", "--skip-consumer-liveness"],
         omni_home=hermetic_omni_home,
     )
     assert "findings" in proc_data

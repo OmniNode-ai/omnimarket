@@ -1,0 +1,10 @@
+{
+  "case_id": "unhealthy_fallback_raises",
+  "fingerprint": "sha256:5d82cb09efda60d5d735b9b55b407e80ff0ee724cf8ea0cbcf09724c1ea94328",
+  "input_hash": "sha256:905379b5ce7782ad63899c1f997228387e0298d8e76bda96b2c341f818c04056",
+  "result": {
+    "error_type": "ValueError",
+    "kind": "error",
+    "message": "Fallback model 'model-c' is also unhealthy: endpoint 'LLM_C_URL' reported unhealthy at 2000-01-01T00:00:00+00:00. All routing options exhausted."
+  }
+}

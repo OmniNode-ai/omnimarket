@@ -13,6 +13,7 @@ import yaml
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_dispatch_queue_drainer.models import (
+    ModelDispatchQueueDrainerRequest,
     ModelDispatchQueueDrainerResult,
     ModelDispatchQueueItem,
 )
@@ -51,22 +52,19 @@ class HandlerDispatchQueueDrainer:
             self._dispatch_worker = HandlerDispatchWorker()
 
     def handle(
-        self,
-        *,
-        queue_item_path: Path | None = None,
-        queue_dir: Path | None = None,
-        limit: int = 1,
-        state_dir: Path | None = None,
-        tasks_dir: Path | None = None,
-        omni_home: Path | None = None,
+        self, payload: ModelDispatchQueueDrainerRequest
     ) -> ModelDispatchQueueDrainerResult:
-        """Compile one queue item and persist a terminal result artifact."""
-        if limit != 1:
-            raise ValueError("first drainer slice supports limit=1 only")
+        """Compile one queue item and persist a terminal result artifact.
 
-        resolved_state_dir = _resolve_state_dir(state_dir)
-        resolved_queue_dir = queue_dir or resolved_state_dir / "dispatch_queue"
-        selected_path = queue_item_path or self._oldest_queue_item(resolved_queue_dir)
+        ``limit`` is validated on ``payload`` at construction time (fail-fast,
+        OMN-14242) rather than as a late guard here — an out-of-range limit
+        never reaches this method because the request model rejects it.
+        """
+        resolved_state_dir = _resolve_state_dir(payload.state_dir)
+        resolved_queue_dir = payload.queue_dir or resolved_state_dir / "dispatch_queue"
+        selected_path = payload.queue_item_path or self._oldest_queue_item(
+            resolved_queue_dir
+        )
         if selected_path is None:
             result = ModelDispatchQueueDrainerResult(status="empty")
             return self._write_result(result, resolved_state_dir)
@@ -99,7 +97,9 @@ class HandlerDispatchQueueDrainer:
             )
             return self._write_result(result, resolved_state_dir)
 
-        missing_repo_reason = self._missing_repo_reason(item, omni_home=omni_home)
+        missing_repo_reason = self._missing_repo_reason(
+            item, omni_home=payload.omni_home
+        )
         if missing_repo_reason:
             result = ModelDispatchQueueDrainerResult(
                 status="blocked",
@@ -110,7 +110,7 @@ class HandlerDispatchQueueDrainer:
             return self._write_result(result, resolved_state_dir)
 
         compiled = self._dispatch_worker.handle(
-            command, tasks_dir=tasks_dir, state_dir=resolved_state_dir
+            command, tasks_dir=payload.tasks_dir, state_dir=resolved_state_dir
         )
 
         if compiled.rejected_reason:

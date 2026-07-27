@@ -1,0 +1,318 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# call-occ-attestation-observe.yml
+#
+# Toggle 2 (OMN-14393) — the REPORT-ONLY attestation gate. NON-BLOCKING.
+#
+# Distinct from call-occ-companion-observe.yml:
+#   * observe   = "what the producer WOULD author" (node_occ_companion_effect dry_run).
+#   * attest    = "does the companion actually ON THIS PR byte-match the canonical
+#                  plan AND pass occ-preflight" (node_occ_attestation_observe).
+#
+# node_occ_attestation_observe resolves the product PR's Evidence-Source OCC PR,
+# byte-diffs its on-PR companion against a recomputed compute_companion_plan
+# (verify_companion_attestation), checks the occ:machine-minted marker label, and
+# reads the product PR's occ-preflight eligibility. It emits ONE typed
+# ModelOccAutoauthorObservation — the durable evidence unit the N=10 window
+# (node_occ_autoauthor_window) aggregates for the FUTURE fail-closed flip.
+#
+# SAFETY — an ATTESTATION MISMATCH IS STILL NEVER ENFORCED (do NOT weaken):
+#   * NOT added to required_status_checks and NOT referenced by ci.yml's CI Summary
+#     `needs:` (GHA `needs:` cannot cross workflow-file boundaries — CI Summary can
+#     only gate on jobs defined in ci.yml). So this structurally cannot block a
+#     merge, exactly like the OMN-14657 observe job.
+#   * A mismatch is DATA, not an exit code: HandlerOccAttestationObserve.handle
+#     catches every exception and returns a fail-soft ModelOccAutoauthorObservation
+#     (attestation_match=False + reason). It cannot fail the step. The report-only
+#     guarantee therefore does NOT depend on `continue-on-error`.
+#   * The FAIL-CLOSED flip (relocate oracle to omnibase_compat, wire into
+#     validator_receipt_gate / validator_occ_merge_eligibility as required CI +
+#     pre-commit) is a LATER operator-gated step, OUT OF THIS LANE.
+#
+# A4 ACTIVATION (OMN-14904) — the observation store is LIVE by default:
+#   The job-level `continue-on-error: true` was REMOVED. It was not protecting the
+#   report-only property (see above); it was swallowing infrastructure failures —
+#   precisely the class of defect OMN-14844 was (a sync-in-async call that made
+#   every observation silently fail-soft while the job stayed green). A broken
+#   durable write must now be RED, because a broken activation that looks green is
+#   worse than no activation.
+#
+#   * `node_occ_observation_effect` runs in `mutate` by DEFAULT. The operator repo
+#     variable OMNI_OCC_OBSERVATION_STORE_MODE is a KILL SWITCH only: it is read
+#     from `vars.*` (never PR input), validated against a hardcoded
+#     {dry_run,mutate} allowlist, and can force the write back to dry_run.
+#   * FORK GUARD: the job-level `if` already excludes fork heads; the mode resolver
+#     re-checks head.repo.full_name == github.repository and forces dry_run if it
+#     ever changes. `pull_request` (not `pull_request_target`) also means a fork
+#     never receives the write secret.
+#   * `permissions:` STAYS READ-ONLY, deliberately. Raising it would NOT enable this
+#     write and would be a pure over-grant: `permissions:` scopes only the ambient
+#     per-run GITHUB_TOKEN, which is repo-scoped to `omnimarket` and can never push
+#     to `onex_change_control` at ANY permission level. The cross-repo write needs a
+#     DIFFERENT credential, passed explicitly below. (Committed gate:
+#     tests/unit/workflows/test_report_only_occ_workflows.py
+#     ::test_attestation_workflow_has_no_write_permissions.)
+#   * CREDENTIAL (OMN-14955, supersedes the OMN-14904 `OCC_AUTOAUTHOR_TOKEN`
+#     plan): an installation token minted per-run from the least-privilege
+#     **OnexBot-OCC-Writer** GitHub App (org secrets ONEXBOT_OCC_APP_ID /
+#     ONEXBOT_OCC_PRIVATE_KEY — the A3/E2 credential, verified least-privilege
+#     2026-07-22: contents+PR write, selected-repo). The mint step is the SAME
+#     canonical `actions/create-github-app-token@v1` pattern `pr-arch-review.yml`
+#     already uses, scoped down further with `owner`/`repositories` to
+#     OmniNode-ai/onex_change_control ONLY. The `OCC_AUTOAUTHOR_TOKEN` PAT this
+#     workflow previously referenced was never provisioned (live readback on
+#     OMN-14904) and is NOT a real credential — do not reintroduce it here. The
+#     org-wide CROSS_REPO_PAT remains explicitly REJECTED (rolling plan §2 A3).
+#     No new credential surface: the App already exists for the OCC writer lane.
+#   * If the App secrets are absent, the job FAILS LOUD with an actionable error
+#     rather than degrading to a silent no-op. Stand down with the kill switch,
+#     never by re-adding a swallow.
+#   * WRITE-SURFACE BOUND (A3 guard context): in mutate, node_occ_observation_effect
+#     can only append ONE net-new record under drift/occ_observations/** —
+#     occ_observation_record_relpath pins the path and
+#     HandlerOccObservationEffect._assert_append_only (F-01) fails CLOSED on any
+#     other touched path, so this token cannot be steered at grants/** or
+#     allowlists/** through this workflow.
+#
+# Tickets: OMN-14393 (RSD-5, original report-only gate), OMN-14888 (observation
+# store nodes), OMN-14904 (activation shape), OMN-14955 (App-mint credential). Design:
+#   docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §3-§4
+#   docs/plans/2026-07-20-occ-real-doneness-working-path-and-liveness-plan.md
+
+name: OCC Attestation Observe (report-only)
+
+on:
+  pull_request:
+    branches: [main, dev, "hotfix/**"]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
+jobs:
+  occ-attestation-observe:
+    name: OCC Attestation Observe (report-only, non-blocking)
+    # Same eligibility filter as the observe / autobind workflows.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (contains(github.event.pull_request.title, 'OMN-') ||
+       contains(github.event.pull_request.head.ref, 'OMN-'))
+    runs-on: ubuntu-latest
+    # NOTE (OMN-14904): `continue-on-error: true` was REMOVED here. The
+    # report-only property is structural (no required-status-check name, no
+    # cross-file `needs:`, and the observer node cannot raise), so the swallow
+    # bought nothing except hiding a broken durable write. See the header block.
+    timeout-minutes: 10
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+
+      - name: Resolve observation-store write mode (allowlist + fork guard)
+        id: obsmode
+        env:
+          # Operator KILL SWITCH repo variable — NOT PR input. Absent => mutate
+          # (A4 activation, OMN-14904: the committed default is LIVE).
+          OMNI_OCC_OBSERVATION_STORE_MODE: ${{ vars.OMNI_OCC_OBSERVATION_STORE_MODE }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          THIS_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # Fail-closed allowlist: anything but the two known modes => dry_run.
+          MODE="${OMNI_OCC_OBSERVATION_STORE_MODE:-mutate}"
+          case "$MODE" in
+            dry_run|mutate) ;;
+            *) echo "::warning::unrecognized OMNI_OCC_OBSERVATION_STORE_MODE='$MODE' — defaulting to dry_run"; MODE="dry_run" ;;
+          esac
+          # FORK GUARD (belt-and-braces — the job-level `if` already excludes fork
+          # heads). No cross-repo write is ever attempted from a fork: a fork PR
+          # cannot receive the ONEXBOT_OCC_APP_ID/ONEXBOT_OCC_PRIVATE_KEY secrets
+          # under `pull_request`, so force dry_run explicitly instead of relying
+          # on the App-token mint failing on empty secrets.
+          if [ "$HEAD_REPO" != "$THIS_REPO" ]; then
+            echo "::notice::fork head '$HEAD_REPO' != '$THIS_REPO' — forcing dry_run (no cross-repo write from forks)"
+            MODE="dry_run"
+          fi
+          echo "Resolved observation-store mode: $MODE"
+          echo "mode=$MODE" >> "$GITHUB_OUTPUT"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        run: uv sync --locked --all-extras
+
+      - name: Build attestation-observe payload
+        env:
+          PR_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          jq -n \
+            --arg repo "$PR_REPO" \
+            --argjson pr_number "$PR_NUMBER" \
+            '{repo: $repo, pr_number: $pr_number}' \
+            > occ_attestation_observe_payload.json
+          cat occ_attestation_observe_payload.json
+
+      - name: Run node_occ_attestation_observe (read-only)
+        id: observe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -o pipefail
+          uv run onex node node_occ_attestation_observe \
+            --input occ_attestation_observe_payload.json \
+            --output receipt \
+            | tee occ_attestation_observe_result.json
+
+      - name: Build node_occ_observation_effect payload (OMN-14888)
+        # Durable-storage half (OMN-14888, resolves the OMN-14851 open storage
+        # question: Option A, git-committed files in onex_change_control). This
+        # renders the ModelOccObservationEffectRequest payload from the real
+        # observation this run just produced + the GitHub Actions run identity
+        # (workflow_run_id/run_attempt make reruns of the same head_sha
+        # distinguishable raw attempts that dedupe to ONE qualifying
+        # observation downstream — see project_qualifying_observations).
+        #
+        # NO SILENT SKIP (OMN-14904): an absent/empty observation used to `echo`
+        # and pass. An absent input must FAIL — a check that silently skips is a
+        # check that does not exist.
+        env:
+          OBS_MODE: ${{ steps.obsmode.outputs.mode }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          if [ ! -s occ_attestation_observe_result.json ]; then
+            echo "::error::occ_attestation_observe_result.json is missing/empty — there is no observation to persist. Failing loud instead of skipping."
+            exit 1
+          fi
+          uv run python scripts/ci/build_occ_observation_effect_payload.py \
+            --observe-result occ_attestation_observe_result.json \
+            --head-sha "$HEAD_SHA" \
+            --policy-version "v1" \
+            --workflow-run-id "$WORKFLOW_RUN_ID" \
+            --run-attempt "$RUN_ATTEMPT" \
+            --recorded-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+            --mode "$OBS_MODE" \
+            --output occ_observation_effect_payload.json
+
+      - name: Validate OCC cross-repo write credential (mutate only)
+        # Fail LOUD, never silently degrade to dry_run. `permissions:` cannot
+        # substitute for this: it scopes only the ambient omnimarket-scoped
+        # GITHUB_TOKEN, which can never push to onex_change_control. The check
+        # runs BEFORE the mint step so an unprovisioned App surfaces as an
+        # actionable error, not an opaque create-github-app-token failure.
+        if: ${{ steps.obsmode.outputs.mode == 'mutate' }}
+        env:
+          ONEXBOT_OCC_APP_ID: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          ONEXBOT_OCC_PRIVATE_KEY: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ONEXBOT_OCC_APP_ID:-}" ] || [ -z "${ONEXBOT_OCC_PRIVATE_KEY:-}" ]; then
+            echo "::error::observation-store mode=mutate requires org secrets ONEXBOT_OCC_APP_ID + ONEXBOT_OCC_PRIVATE_KEY (the least-privilege OnexBot-OCC-Writer GitHub App with contents:write + pull-requests:write on OmniNode-ai/onex_change_control; the org-wide CROSS_REPO_PAT is NOT an acceptable substitute). Provision them, or set repo variable OMNI_OCC_OBSERVATION_STORE_MODE=dry_run to stand the durable write down. See OMN-14955 / OMN-14904."
+            exit 1
+          fi
+
+      - name: Mint OCC write token (OnexBot-OCC-Writer App, mutate only)
+        # Canonical App-token mint pattern (same as pr-arch-review.yml), scoped
+        # down to the single target repo: the installation token can touch
+        # OmniNode-ai/onex_change_control ONLY, for this run only (~1h TTL) —
+        # strictly narrower than any long-lived PAT.
+        id: occ-app-token
+        if: ${{ steps.obsmode.outputs.mode == 'mutate' }}
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: OmniNode-ai
+          repositories: onex_change_control
+
+      - name: Run node_occ_observation_effect (mode-gated — A4 activation, OMN-14904)
+        # mutate: clones onex_change_control, appends exactly ONE net-new record
+        # file (F-01 append-only diff assertion enforced in the handler), pushes
+        # a deterministic branch, and opens/reuses the OCC PR. Re-ingesting the
+        # identical raw attempt is an idempotent no-op, not a duplicate.
+        # dry_run: renders the deterministic path + content, no GitHub mutation.
+        env:
+          OBS_MODE: ${{ steps.obsmode.outputs.mode }}
+          OCC_WRITE_TOKEN: ${{ steps.occ-app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          if [ ! -s occ_observation_effect_payload.json ]; then
+            echo "::error::occ_observation_effect_payload.json is missing/empty — the observation was NOT persisted. Failing loud instead of skipping."
+            exit 1
+          fi
+          if [ "$OBS_MODE" = "mutate" ]; then
+            # HandlerOccObservationEffect resolves its write credential from
+            # GITHUB_TOKEN; point that at the minted, onex_change_control-scoped
+            # OnexBot-OCC-Writer installation token.
+            export GITHUB_TOKEN="${OCC_WRITE_TOKEN:?mode=mutate requires the minted OnexBot-OCC-Writer token}"
+          fi
+          uv run onex node node_occ_observation_effect \
+            --input occ_observation_effect_payload.json \
+            --output receipt \
+            | tee occ_observation_effect_result.json
+
+      - name: Publish observation to job summary
+        if: always()
+        env:
+          OBS_MODE: ${{ steps.obsmode.outputs.mode }}
+        run: |
+          {
+            echo "### OCC Attestation — report-only observation (non-blocking)"
+            echo
+            echo "Ticket: OMN-14393. The ATTESTATION result is observed, never enforced — it is"
+            echo "data in the receipt below, it carries no required-status-check name, and it is"
+            echo "not in ci.yml's CI Summary needs, so it cannot block a merge. (A failure of the"
+            echo "durable WRITE below does fail this job — deliberately, per OMN-14904.)"
+            echo "One ModelOccAutoauthorObservation is emitted per run; the N=10 window"
+            echo "(node_occ_autoauthor_window) aggregates them for the future flip."
+            echo
+            echo '```json'
+            if [ -s occ_attestation_observe_result.json ]; then
+              cat occ_attestation_observe_result.json
+            else
+              echo "(node did not produce a result — see step logs above)"
+            fi
+            echo '```'
+            echo
+            echo "### OCC Observation Effect — durable append-only store (OMN-14888 / OMN-14904)"
+            echo
+            echo "Resolved mode: \`${OBS_MODE:-unresolved}\` (kill switch: repo variable OMNI_OCC_OBSERVATION_STORE_MODE)."
+            echo "mutate appends exactly one net-new record file to onex_change_control and opens/reuses"
+            echo "the OCC PR; dry_run renders the deterministic path/content with no GitHub mutation."
+            echo
+            echo '```json'
+            if [ -s occ_observation_effect_result.json ]; then
+              cat occ_observation_effect_result.json
+            else
+              echo "(node did not produce a result — see step logs above)"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload observation artifact
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: occ-attestation-observe-${{ github.event.pull_request.number }}
+          path: |
+            occ_attestation_observe_payload.json
+            occ_attestation_observe_result.json
+            occ_observation_effect_payload.json
+            occ_observation_effect_result.json
+          if-no-files-found: ignore
+          retention-days: 30

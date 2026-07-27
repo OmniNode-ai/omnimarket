@@ -31,9 +31,6 @@ Phase 2 classification table:
 from __future__ import annotations
 
 import logging
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.nodes.node_sweep_outcome_classify.models.model_sweep_outcome import (
     EnumSweepOutcome,
@@ -48,11 +45,11 @@ _log = logging.getLogger(__name__)
 class HandlerSweepOutcomeClassify:
     """COMPUTE: classify completion events → outcome enum. Fully pure."""
 
-    def handle(self, request: ModelSweepOutcomeInput) -> ModelHandlerOutput:  # type: ignore[type-arg]
+    def handle(self, request: ModelSweepOutcomeInput) -> ModelSweepOutcomeClassified:
         """Classify the completion event into an outcome."""
         outcome, error, conflict_files = self._classify(request)
 
-        classified = ModelSweepOutcomeClassified(
+        return ModelSweepOutcomeClassified(
             pr_number=request.pr_number,
             repo=request.repo,
             correlation_id=request.correlation_id,
@@ -62,12 +59,6 @@ class HandlerSweepOutcomeClassify:
             source_event_type=request.event_type,
             error=error,
             conflict_files=conflict_files,
-        )
-        return ModelHandlerOutput.for_compute(
-            input_envelope_id=uuid4(),
-            correlation_id=request.correlation_id,
-            handler_id="node_sweep_outcome_classify",
-            result=classified,
         )
 
     def _classify(

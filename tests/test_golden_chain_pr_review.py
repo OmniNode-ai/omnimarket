@@ -242,18 +242,26 @@ class TestJudgeVerdictParseCompute:
         result = parse_judge_response('{"verdict": "MAYBE", "reasoning": "x"}')
         assert result.passed is False
 
-    async def test_compute_handler_returns_result(self) -> None:
+    def test_compute_handler_returns_result(self) -> None:
         handler = HandlerJudgeVerdictParseCompute()
-        output = await handler.handle(
+        result = handler.handle(
             ModelJudgeParseRequest(
                 correlation_id=uuid4(),
                 raw_text='{"verdict": "PASS", "reasoning": "ok"}',
             )
         )
-        assert output.node_kind == EnumNodeKind.COMPUTE
-        assert output.result is not None
-        assert output.result.passed is True
-        assert output.events == ()
+        assert result.passed is True
+
+    def test_contract_declares_both_terminal_event_topics(self) -> None:
+        """The judge COMPUTE contract declares both terminal-event topics: the
+        success/parsed topic and the parse-failed topic."""
+        from pathlib import Path
+
+        import omnimarket.nodes.node_judge_verdict_parse_compute as node_pkg
+
+        contract_text = (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+        assert "onex.evt.omnimarket.judge-verdict-parsed.v1" in contract_text
+        assert "onex.evt.omnimarket.judge-verdict-parse-failed.v1" in contract_text
 
 
 # ---------------------------------------------------------------------------
@@ -412,14 +420,10 @@ class TestPrReviewOrchestratorGoldenChain:
             github_review_effect=HandlerGithubReviewEffect(),
         )
         request = _make_request(dry_run=True)
-        output = await orchestrator.handle(request)
+        # Thin canonical shape (OMN-14242): handle() returns the typed
+        # ModelPrReviewCompletedEvent directly -- no ModelHandlerOutput wrapper.
+        completed = await orchestrator.handle(request)
 
-        assert output.node_kind == EnumNodeKind.ORCHESTRATOR
-        # ORCHESTRATOR: events only.
-        assert output.projections == ()
-        assert output.result is None
-        assert len(output.events) == 1
-        completed = output.events[0]
         assert isinstance(completed, ModelPrReviewCompletedEvent)
         assert completed.final_phase == EnumFsmPhase.DONE
         assert completed.verdict.correlation_id == request.correlation_id
@@ -443,8 +447,7 @@ class TestPrReviewOrchestratorGoldenChain:
             github_diff_effect=_BoomDiff(),
             github_review_effect=HandlerGithubReviewEffect(),
         )
-        output = await orchestrator.handle(_make_request(dry_run=True))
-        completed = output.events[0]
+        completed = await orchestrator.handle(_make_request(dry_run=True))
         assert isinstance(completed, ModelPrReviewCompletedEvent)
         assert completed.final_phase == EnumFsmPhase.FAILED
         assert completed.verdict.verdict == EnumPrVerdict.BLOCKING_ISSUE

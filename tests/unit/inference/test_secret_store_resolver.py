@@ -122,6 +122,144 @@ class TestResolveApiKeyAsync:
         store: ProtocolSecretStore = _FakeSecretStore({"K": "v"})
         assert isinstance(store, ProtocolSecretStore)
 
+    async def test_env_var_fallback_resolves_when_primary_ref_misses(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-13943: a dotted secret_ref whose store lookup misses still
+        resolves through the declared literal env_var_fallback name — the
+        backend's own contract-declared ``api_key_env`` (e.g. the canonical
+        ``OPEN_ROUTER_API_KEY`` / ``GEMINI_API_KEY`` already defined in
+        ``~/.omnibase/.env``, distinct from the dotted convention's
+        ``LLM_*_API_KEY`` mapping)."""
+        store = _FakeSecretStore({})  # dotted ref never resolves
+        monkeypatch.setenv("OMN13943_CANONICAL_KEY", "sk-canonical-fallback")
+
+        resolved = await resolve_api_key_async(
+            "llm.openrouter.api_key",
+            store=store,
+            env_var_fallback="OMN13943_CANONICAL_KEY",
+        )
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-canonical-fallback"
+
+    async def test_env_var_fallback_not_consulted_when_primary_ref_resolves(
+        self,
+    ) -> None:
+        """The fallback is a LAST RESORT — it never overrides a resolvable
+        primary ref, even when both are set."""
+        store = _FakeSecretStore({"llm.glm.api_key": "sk-primary"})
+
+        resolved = await resolve_api_key_async(
+            "llm.glm.api_key",
+            store=store,
+            env_var_fallback="OMN13943_SHOULD_NOT_BE_USED",
+        )
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-primary"
+
+    async def test_missing_ref_fails_closed_even_with_unset_fallback(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fail-fast (Rule 8): a declared env_var_fallback that is ALSO unset
+        must still raise — no silent default, no partial fallback chain."""
+        store = _FakeSecretStore({})
+        monkeypatch.delenv("OMN13943_ALSO_ABSENT", raising=False)
+
+        with pytest.raises(SecretResolutionError, match=r"llm\.openrouter\.api_key"):
+            await resolve_api_key_async(
+                "llm.openrouter.api_key",
+                store=store,
+                env_var_fallback="OMN13943_ALSO_ABSENT",
+            )
+
+
+class TestGithubTokenAgainstDeployedLaneSecretResolverConfig:
+    """Pins the live OMN-14452 defect against the ACTUAL deployed shape.
+
+    The rendered lane config below is copied verbatim (mapping keys +
+    ``enable_convention_fallback: false``) from
+    ``/app/data/delegation/secret_resolver.yaml`` observed live on the
+    ``omninode-runtime-effects`` container (render_runtime_policy_env.py,
+    omnibase_infra, always renders with convention fallback disabled). It is
+    LLM/Slack-scoped and never declares ``GITHUB_TOKEN`` — which is not an
+    LLM secret and was never meant to route through this store. GITHUB_TOKEN
+    is nonetheless genuinely present as a literal container env var
+    (``runtime-effects.yaml`` ``required_env``). This is the EXISTS-but-WRONG
+    shape: the secret is present in the environment, but the specific
+    resolution path the deployed emitter used could not see it — not a
+    synthetic "the ref is simply absent" case.
+    """
+
+    _DEPLOYED_LANE_CONFIG = textwrap.dedent("""\
+        mappings:
+        - logical_name: llm.openrouter.api_key
+          source:
+            source_type: env
+            source_path: OPEN_ROUTER_API_KEY
+        - logical_name: llm.glm.api_key
+          source:
+            source_type: env
+            source_path: LLM_GLM_API_KEY
+        - logical_name: llm.gemini.api_key
+          source:
+            source_type: env
+            source_path: GEMINI_API_KEY
+        - logical_name: slack.bot_token
+          source:
+            source_type: env
+            source_path: SLACK_BOT_TOKEN
+        enable_convention_fallback: false
+    """)
+
+    def _render_deployed_lane_config(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        config_file = tmp_path / "secret_resolver.yaml"
+        config_file.write_text(self._DEPLOYED_LANE_CONFIG)
+        monkeypatch.setenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", str(config_file))
+        clear_secret_store_resolver_cache()
+
+    async def test_red_github_token_unresolvable_without_env_var_fallback(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RED: reproduces the exact live ``SecretResolutionError`` (OMN-14452)."""
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_livevaluepresentinenv0000")
+        self._render_deployed_lane_config(tmp_path, monkeypatch)
+
+        with pytest.raises(SecretResolutionError, match="GITHUB_TOKEN"):
+            await resolve_api_key_async("GITHUB_TOKEN")
+
+    async def test_green_github_token_resolves_via_env_var_fallback(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GREEN: the OMN-14452 fix — ``env_var_fallback`` resolves the same
+        literal container env var the deployed lane's mapped store could not
+        see, without weakening fail-closed semantics for a truly absent
+        secret (see ``test_missing_ref_fails_closed_even_with_unset_fallback``)."""
+        monkeypatch.setenv("GITHUB_TOKEN", "ghp_livevaluepresentinenv0000")
+        self._render_deployed_lane_config(tmp_path, monkeypatch)
+
+        resolved = await resolve_api_key_async(
+            "GITHUB_TOKEN", env_var_fallback="GITHUB_TOKEN"
+        )
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "ghp_livevaluepresentinenv0000"
+
+    async def test_still_fails_closed_when_token_is_genuinely_absent(
+        self, tmp_path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The fix must not become a silent default (Rule 8): if GITHUB_TOKEN
+        is genuinely unset, resolution still raises even with the fallback
+        declared."""
+        monkeypatch.delenv("GITHUB_TOKEN", raising=False)
+        self._render_deployed_lane_config(tmp_path, monkeypatch)
+
+        with pytest.raises(SecretResolutionError, match="GITHUB_TOKEN"):
+            await resolve_api_key_async("GITHUB_TOKEN", env_var_fallback="GITHUB_TOKEN")
+
 
 class TestResolveApiKeySync:
     def test_none_ref_resolves_to_none(self) -> None:
@@ -221,3 +359,122 @@ class TestApiKeyRefAvailable:
     async def test_missing_ref_is_unavailable_from_async_context(self) -> None:
         store = _FakeSecretStore({})
         assert api_key_ref_available("OPENROUTER_API_KEY", store=store) is False
+
+    def test_env_var_fallback_makes_a_ref_available(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-13943: routing-tier eligibility must agree with what the effect
+        boundary will actually resolve — a backend whose dotted secret_ref
+        convention misses but whose own literal env var IS set must be
+        reported available, or a reachable tier is wrongly excluded."""
+        store = _FakeSecretStore({})
+        monkeypatch.setenv("OMN13943_AVAILABLE_KEY", "sk-present")
+
+        assert (
+            api_key_ref_available(
+                "llm.openrouter.api_key",
+                store=store,
+                env_var_fallback="OMN13943_AVAILABLE_KEY",
+            )
+            is True
+        )
+
+    def test_env_var_fallback_unset_stays_unavailable(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        store = _FakeSecretStore({})
+        monkeypatch.delenv("OMN13943_UNAVAILABLE_KEY", raising=False)
+
+        assert (
+            api_key_ref_available(
+                "llm.openrouter.api_key",
+                store=store,
+                env_var_fallback="OMN13943_UNAVAILABLE_KEY",
+            )
+            is False
+        )
+
+
+class TestProviderNativeAliasStoreLevel:
+    """OMN-13960: the DEFAULT delegation store accepts provider-native env-var
+    names as aliases, so OpenRouter/Gemini secrets resolve from ANY call site
+    WITHOUT threading the per-backend ``env_var_fallback`` (``api_key_env``).
+
+    ~/.omnibase/.env carries ``OPEN_ROUTER_API_KEY`` / ``GEMINI_API_KEY`` — names
+    that do NOT match the dotted-ref → ``LLM_*_API_KEY`` convention. OMN-13943
+    only threaded these at two call sites; the LLM-judge adapter did not, so an
+    OpenRouter/Gemini-backed judge would fail-closed. These tests exercise the
+    DEFAULT store (no injected store, NO ``env_var_fallback``) so the store-level
+    alias is what resolves.
+    """
+
+    def _isolate_default_store(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Force the default _ConventionFallbackSecretStore (no lane config), and
+        # remove the convention/literal names so ONLY the provider-native alias
+        # can satisfy the lookup.
+        monkeypatch.delenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", raising=False)
+        monkeypatch.delenv("LLM_OPENROUTER_API_KEY", raising=False)
+        monkeypatch.delenv("LLM_GEMINI_API_KEY", raising=False)
+        monkeypatch.delenv("llm.openrouter.api_key", raising=False)
+        monkeypatch.delenv("llm.gemini.api_key", raising=False)
+        clear_secret_store_resolver_cache()
+
+    async def test_openrouter_ref_resolves_via_provider_native_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._isolate_default_store(monkeypatch)
+        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-or-provider-native")
+
+        resolved = await resolve_api_key_async("llm.openrouter.api_key")
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-or-provider-native"
+
+    async def test_gemini_ref_resolves_via_provider_native_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._isolate_default_store(monkeypatch)
+        monkeypatch.setenv("GEMINI_API_KEY", "sk-gemini-provider-native")
+
+        resolved = await resolve_api_key_async("llm.gemini.api_key")
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-gemini-provider-native"
+
+    async def test_convention_name_wins_over_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The dotted → ``LLM_*_API_KEY`` convention resolves BEFORE the alias, so
+        an explicit ``LLM_OPENROUTER_API_KEY`` still takes precedence."""
+        monkeypatch.delenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", raising=False)
+        clear_secret_store_resolver_cache()
+        monkeypatch.setenv("LLM_OPENROUTER_API_KEY", "sk-convention")
+        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-alias-should-not-win")
+
+        resolved = await resolve_api_key_async("llm.openrouter.api_key")
+
+        assert isinstance(resolved, SecretStr)
+        assert resolved.get_secret_value() == "sk-convention"
+
+    async def test_alias_absent_still_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Fail-fast (Rule 8): when NEITHER the convention name NOR the
+        provider-native alias is set, a required lookup still raises — the alias
+        is a last-resort accept, never a silent default."""
+        self._isolate_default_store(monkeypatch)
+        monkeypatch.delenv("OPEN_ROUTER_API_KEY", raising=False)
+
+        with pytest.raises(SecretResolutionError, match=r"llm\.openrouter\.api_key"):
+            await resolve_api_key_async("llm.openrouter.api_key")
+
+    async def test_non_provider_ref_unaffected_by_alias_map(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A ref with no provider-native alias entry is unchanged: it still fails
+        closed when its convention name is unset."""
+        self._isolate_default_store(monkeypatch)
+        monkeypatch.delenv("LLM_GLM_API_KEY", raising=False)
+
+        with pytest.raises(SecretResolutionError, match=r"llm\.glm\.api_key"):
+            await resolve_api_key_async("llm.glm.api_key")

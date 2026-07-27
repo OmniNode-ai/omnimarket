@@ -4,6 +4,9 @@
 
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+from typing import get_args
 from uuid import UUID, uuid4
 
 import pytest
@@ -13,9 +16,13 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+    ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
+
+# src/omnimarket -- parents[4] from this test file's directory.
+_SRC_ROOT = Path(__file__).resolve().parents[4] / "src" / "omnimarket"
 
 
 def test_valid_request_minimal() -> None:
@@ -71,6 +78,120 @@ def test_valid_request_full() -> None:
     )
 
 
+def test_backend_id_defaults_to_none() -> None:
+    """OMN-15180: omitting backend_id preserves pre-existing behavior — None,
+    not a default pin, so unpinned callers are unaffected by this field's
+    addition."""
+    req = ModelDelegateSkillRequest(
+        prompt="Write tests for the payment webhook retry path",
+        task_type="test",
+        source="claude-code",
+    )
+    assert req.backend_id is None
+
+
+def test_backend_id_round_trips_through_model_dump_and_validate() -> None:
+    """OMN-15180: an explicit backend_id pin survives a full serialize/parse
+    round-trip — the exact shape a wire-level caller (e.g. steel's
+    LlmBusDelegationClient) sends and the shape the orchestrator's own
+    contract-validation/CLI compile path parses back."""
+    req = ModelDelegateSkillRequest(
+        prompt="Write tests for the payment webhook retry path",
+        task_type="code_generation",
+        source="claude-code",
+        backend_id="local-coder-mlx",
+    )
+    assert req.backend_id == "local-coder-mlx"
+
+    dumped = req.model_dump(mode="json")
+    assert dumped["backend_id"] == "local-coder-mlx"
+
+    round_tripped = ModelDelegateSkillRequest.model_validate(dumped)
+    assert round_tripped.backend_id == "local-coder-mlx"
+    assert round_tripped == req
+
+
+def test_backend_id_widening_preserves_frozen_extra_forbid() -> None:
+    """OMN-15180: adding backend_id is additive-only — the model stays frozen
+    and still rejects unknown fields (extra='forbid' is not silently loosened)."""
+    req = ModelDelegateSkillRequest(
+        prompt="Write tests for the payment webhook retry path",
+        task_type="test",
+        source="claude-code",
+    )
+    with pytest.raises(ValidationError):
+        req.backend_id = "should-not-be-settable"  # type: ignore[misc]
+
+    with pytest.raises(ValidationError):
+        ModelDelegateSkillRequest(
+            prompt="Write tests for the payment webhook retry path",
+            task_type="test",
+            source="claude-code",
+            unknown_field="not allowed",  # type: ignore[call-arg]
+        )
+
+
+def test_response_contract_defaults_to_none() -> None:
+    """OMN-15193: omitting response_contract preserves pre-existing behavior --
+    None, not an implicit schema, so unpinned callers are unaffected."""
+    req = ModelDelegateSkillRequest(
+        prompt="Write tests for the payment webhook retry path",
+        task_type="test",
+        source="claude-code",
+    )
+    assert req.response_contract is None
+
+
+def test_response_contract_round_trips_through_model_dump_and_validate() -> None:
+    """OMN-15193: a declared JSON-Schema response contract survives a full
+    serialize/parse round-trip -- the exact shape a wire-level caller (e.g.
+    steel's LlmBusDelegationClient) sends and the shape the orchestrator's own
+    contract-validation/CLI compile path parses back."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "action": {"type": "string"},
+            "confidence": {"type": "number"},
+        },
+        "required": ["action", "confidence"],
+    }
+    req = ModelDelegateSkillRequest(
+        prompt="Decide the next tactical action",
+        task_type="agent_delegation",
+        source="claude-code",
+        response_contract=schema,
+    )
+    assert req.response_contract == schema
+
+    dumped = req.model_dump(mode="json")
+    assert dumped["response_contract"] == schema
+
+    round_tripped = ModelDelegateSkillRequest.model_validate(dumped)
+    assert round_tripped.response_contract == schema
+    assert round_tripped == req
+
+
+def test_response_contract_widening_preserves_frozen_extra_forbid() -> None:
+    """OMN-15193: adding response_contract is additive-only -- the model stays
+    frozen and still rejects unknown fields (extra='forbid' is not silently
+    loosened)."""
+    req = ModelDelegateSkillRequest(
+        prompt="Write tests for the payment webhook retry path",
+        task_type="test",
+        source="claude-code",
+    )
+    with pytest.raises(ValidationError):
+        req.response_contract = {"type": "object"}  # type: ignore[misc]
+
+    with pytest.raises(ValidationError):
+        ModelDelegateSkillRequest(
+            prompt="Write tests for the payment webhook retry path",
+            task_type="test",
+            source="claude-code",
+            unknown_field="not allowed",  # type: ignore[call-arg]
+        )
+
+
 def test_invalid_task_type_rejected() -> None:
     with pytest.raises(ValidationError):
         ModelDelegateSkillRequest(
@@ -96,6 +217,74 @@ def test_invalid_source_rejected() -> None:
             task_type="test",
             source="unknown-adapter",  # type: ignore[arg-type]
         )
+
+
+def test_valid_request_external_client_source() -> None:
+    """OMN-15158: widen source with a third member for non-adapter callers
+    (e.g. the steel/battery delegation client) that are neither the Claude
+    Code CLI nor the Codex adapter."""
+    req = ModelDelegateSkillRequest(
+        prompt="Route a battery match through the delegation node",
+        task_type="agent_delegation",
+        source="external-client",
+    )
+    assert req.source == "external-client"
+
+
+def test_source_literal_has_exactly_three_members() -> None:
+    """OMN-15158: pin the widened Literal set so a future edit cannot silently
+    narrow it back to two members or grow it beyond the ticketed third."""
+    assert get_args(ModelDelegateSkillRequest.model_fields["source"].annotation) == (
+        "claude-code",
+        "codex",
+        "external-client",
+    )
+
+
+def _files_referencing_delegate_skill_models() -> list[Path]:
+    """Every src/omnimarket file that imports the request or response model.
+
+    ``model_delegate_skill_request.py`` itself is excluded by the caller --
+    the ``source:`` field declaration is not a "reader", it's the field.
+    """
+    hits: list[Path] = []
+    for path in _SRC_ROOT.rglob("*.py"):
+        text = path.read_text()
+        if "ModelDelegateSkillRequest" in text or "ModelDelegateSkillResponse" in text:
+            hits.append(path)
+    return hits
+
+
+def test_no_reader_assumes_two_member_source_set() -> None:
+    """OMN-15158 grep-style guard: no code path may read ``.source`` off a
+    constructed ``ModelDelegateSkillRequest``/``ModelDelegateSkillResponse``
+    instance and branch/compare against the stale two-member set.
+
+    Verified by live grep (2026-07-26) that ``.source`` has zero readers
+    across every src/omnimarket file that references either model -- this
+    test pins that fact so a future equality/exhaustive-match reader (which
+    would silently misroute or misattribute an ``"external-client"``-sourced
+    request the same way hostile finding #7 warned about) fails CI instead of
+    landing quietly. The wire model's own field declaration is excluded (it
+    defines ``source``, it doesn't read it).
+    """
+    offenders: list[str] = []
+    excluded = (
+        _SRC_ROOT / "models" / "delegation" / "wire" / "model_delegate_skill_request.py"
+    )
+    for path in _files_referencing_delegate_skill_models():
+        if path == excluded:
+            continue
+        tree = ast.parse(path.read_text(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and node.attr == "source":
+                offenders.append(f"{path.relative_to(_SRC_ROOT)}:{node.lineno}")
+    assert not offenders, (
+        "Found `.source` attribute access in a file that references "
+        "ModelDelegateSkillRequest/ModelDelegateSkillResponse -- this may be "
+        "a reader that assumes the stale 2-member Literal set "
+        f"(claude-code/codex only): {offenders}"
+    )
 
 
 def test_non_uuid_correlation_id_rejected() -> None:
@@ -194,3 +383,41 @@ def test_response_defaults() -> None:
     assert resp.metrics.tokens_to_compliance == 0
     assert resp.metrics.compliance_attempts == 0
     assert resp.error_message == "boom"
+    # OMN-14063: no escalation ladder by default — a construction that doesn't
+    # pass these fields must not break.
+    assert resp.escalation_count == 0
+    assert resp.attempts == []
+
+
+def test_response_carries_escalation_ladder() -> None:
+    """OMN-14063: a local->cloud escalation is representable on the typed
+    response, carrying WHY the earlier tier was skipped."""
+    resp = ModelDelegateSkillResponse(
+        status="completed",
+        correlation_id=uuid4(),
+        task_type="document",
+        escalation_count=1,
+        attempts=[
+            ModelDelegateSkillAttemptRecord(
+                tier="local",
+                backend_id="local-coder",
+                model_id="Qwen3.6-35B-A3B",
+                quality_gate_passed=False,
+                failure_class="model_unavailable",
+                error_message="endpoint http://local.example/health failed health probe",
+            ),
+            ModelDelegateSkillAttemptRecord(
+                tier="cheap_cloud",
+                backend_id="cloud-gemini-flash",
+                model_id="gemini-2.5-flash-lite",
+                quality_gate_passed=True,
+                quality_score=1.0,
+                cost_usd=0.0018,
+            ),
+        ],
+    )
+    assert resp.escalation_count == 1
+    assert len(resp.attempts) == 2
+    assert resp.attempts[0].failure_class == "model_unavailable"
+    assert "failed health probe" in resp.attempts[0].error_message
+    assert resp.attempts[1].quality_gate_passed is True

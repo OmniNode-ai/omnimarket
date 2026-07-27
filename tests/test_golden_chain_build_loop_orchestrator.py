@@ -32,10 +32,12 @@ from omnimarket.nodes.node_build_loop_orchestrator.models.model_orchestrator_sta
 )
 from omnimarket.nodes.node_build_loop_orchestrator.protocols.protocol_sub_handlers import (
     BuildTarget,
+    ClassifyRequest,
     ClassifyResult,
     CloseoutResult,
     DelegationPayload,
     DispatchResult,
+    RsdFillRequest,
     RsdFillResult,
     ScoredTicket,
     VerifyResult,
@@ -88,13 +90,7 @@ class MockRsdFill:
         self._tickets = tickets
         self.call_count = 0
 
-    async def handle(
-        self,
-        *,
-        correlation_id: UUID,
-        scored_tickets: tuple[ScoredTicket, ...],
-        max_tickets: int = 5,
-    ) -> RsdFillResult:
+    async def handle(self, request: RsdFillRequest) -> RsdFillResult:
         self.call_count += 1
         return RsdFillResult(
             selected_tickets=self._tickets,
@@ -111,9 +107,7 @@ class MockClassify:
 
     async def handle(
         self,
-        *,
-        correlation_id: UUID,
-        tickets: tuple[ScoredTicket, ...],
+        request: ClassifyRequest,
     ) -> ClassifyResult:
         self.call_count += 1
         return ClassifyResult(classifications=self._targets)

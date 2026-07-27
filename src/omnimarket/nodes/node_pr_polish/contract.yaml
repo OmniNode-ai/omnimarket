@@ -95,6 +95,11 @@ inputs:
     type: str
     description: "Explicit state directory for breadcrumbs and result.json"
     required: false
+  skip_repair_dispatch:
+    type: bool
+    description: "Skip compiling and dispatching the repair-worker agent spec"
+    required: false
+    default: false
 
 outputs:
   final_phase:

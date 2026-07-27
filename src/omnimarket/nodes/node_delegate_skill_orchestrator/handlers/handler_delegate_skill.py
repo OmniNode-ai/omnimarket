@@ -16,10 +16,12 @@ from uuid import UUID
 
 from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
 
+from omnimarket.config import get_settings
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
+    ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
@@ -43,6 +45,23 @@ class ProtocolDelegationDispatchPort(Protocol):
     OMN-13161: ``max_tokens`` is ``int | None``. ``None`` means the request
     omitted an explicit budget; the dispatch implementation resolves the effective
     value from the selected backend's per-backend ceiling in the routing contract.
+
+    OMN-15180: ``backend_id`` is ``str | None``, default ``None``. ``None``
+    preserves the pre-existing cheapest-first tier_order resolution.
+    ``LocalDelegationDispatchPort`` (bus-less local path) honors a non-None pin
+    end-to-end via the OMN-15156 seam. ``RuntimeDelegationDispatchPort`` (deployed
+    bus path) declares the same parameter to satisfy this Protocol but does not
+    yet thread it downstream — see that port's docstring for the explicit
+    fail-loud boundary.
+
+    OMN-15193: ``response_contract`` is ``dict[str, object] | None``, default
+    ``None``. ``None`` preserves the exact pre-existing quality-gate behavior
+    (task-class keyword heuristics). A non-None value is a caller-declared JSON
+    Schema; ``LocalDelegationDispatchPort`` threads it into the quality-gate
+    reducer, where structural schema validation REPLACES the keyword heuristics
+    for that request. ``RuntimeDelegationDispatchPort`` declares the same
+    parameter to satisfy this Protocol but does not yet thread it downstream —
+    see that port's docstring for the explicit fail-loud boundary.
     """
 
     async def dispatch(
@@ -57,6 +76,9 @@ class ProtocolDelegationDispatchPort(Protocol):
         wait: bool,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
+        tenant_id: str | None,
+        backend_id: str | None = None,
+        response_contract: dict[str, object] | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -119,6 +141,47 @@ def _frontier_cost_estimates(result: dict[str, object]) -> dict[str, float]:
     )
 
 
+def _attempt_records(
+    result: dict[str, object],
+) -> list[ModelDelegateSkillAttemptRecord]:
+    """Build the typed per-tier attempt ladder (OMN-14063).
+
+    ``result["attempts"]`` is the dispatch port's internal per-attempt list
+    (present on the bus-less local port; absent — defaults to ``[]`` — on ports
+    that don't yet report per-attempt detail). Surfacing it here is what makes a
+    local->cloud escalation visible on the typed response instead of only in the
+    capture-file log.
+    """
+    raw_attempts = result.get("attempts")
+    if not isinstance(raw_attempts, list):
+        return []
+    records: list[ModelDelegateSkillAttemptRecord] = []
+    for raw in raw_attempts:
+        if not isinstance(raw, dict):
+            continue
+        records.append(
+            ModelDelegateSkillAttemptRecord(
+                tier=str(raw.get("tier", "")),
+                backend_id=str(raw.get("backend_id", "")),
+                model_id=str(raw.get("model_id", "")),
+                quality_gate_passed=bool(raw.get("quality_gate_passed", False)),
+                quality_score=(
+                    _as_float(raw["quality_score"])
+                    if raw.get("quality_score") is not None
+                    else None
+                ),
+                cost_usd=_as_float(raw.get("cost_usd")),
+                failure_class=(
+                    str(raw["failure_class"])
+                    if raw.get("failure_class") is not None
+                    else None
+                ),
+                error_message=str(raw.get("error_message", "")),
+            )
+        )
+    return records
+
+
 def _premium_counterfactual(
     result: dict[str, object],
 ) -> ModelPremiumCounterfactual | None:
@@ -140,7 +203,10 @@ def _premium_counterfactual(
 
 
 def _response_from_result(
-    request: ModelDelegateSkillRequest, result: dict[str, object]
+    request: ModelDelegateSkillRequest,
+    result: dict[str, object],
+    *,
+    tenant_id: str | None,
 ) -> ModelDelegateSkillResponse:
     raw_status = str(result.get("status", "completed"))
     is_known_status = raw_status in _TERMINAL_STATUSES
@@ -161,6 +227,9 @@ def _response_from_result(
         status=status_value,
         correlation_id=request.correlation_id,
         task_type=request.task_type,
+        # OMN-14485: carry the resolved tenant onto the response so the terminal
+        # event this becomes stamps a real tenant on the projection row.
+        tenant_id=tenant_id,
         provider=str(result.get("delegated_to") or result.get("endpoint_url") or ""),
         model_name=str(result.get("model_name") or result.get("model_used") or ""),
         model_cloud_baseline=str(
@@ -201,6 +270,8 @@ def _response_from_result(
                 result.get("delegation_latency_ms", result.get("latency_ms", 0))
             ),
         ),
+        escalation_count=_as_int(result.get("escalation_count")),
+        attempts=_attempt_records(result),
     )
 
 
@@ -237,6 +308,15 @@ class HandlerDelegateSkill:
         On any dispatch exception, returns ``status="failed"`` with the error text
         rather than propagating — failed delegations must remain observable.
         """
+        # OMN-14485: resolve the tenant identity ONCE at request-acceptance and
+        # carry it onto the response (and thus the auto-published terminal event
+        # node_projection_delegation reads). Precedence mirrors the local dispatch
+        # port and HandlerDelegationWorkflow: a verified request-carried tenant_id
+        # wins; otherwise the ONEX_TENANT_ID interim (OMN-14058) applies; else None.
+        # The dispatch port still receives the verified request tenant_id (OMN-14349
+        # seam) — the env-var interim is a projection-stamping fallback, not a
+        # verified-identity source at the port boundary.
+        resolved_tenant_id = request.tenant_id or get_settings().onex_tenant_id or None
         try:
             result = await self._dispatch_port.dispatch(
                 prompt=request.prompt,
@@ -249,13 +329,32 @@ class HandlerDelegateSkill:
                 wait=request.wait,
                 quality_contract_mode=request.quality_contract_mode,
                 acceptance_criteria=request.acceptance_criteria,
+                # OMN-14349: thread the verified tenant_id (stamped upstream by
+                # OMN-14208 Path A's ingress node from a verified source, never
+                # self-reported) to the dispatch port. A stamp that stops here is
+                # dead on arrival -- this is the seam pinned by
+                # test_handler_propagates_verified_tenant_id_to_dispatch_port.
+                tenant_id=request.tenant_id,
+                # OMN-15180: thread the optional wire-level backend pin to the
+                # dispatch port. A pin that stops here is dead on arrival -- this
+                # is the seam pinned by
+                # test_handler_propagates_backend_id_pin_to_dispatch_port.
+                backend_id=request.backend_id,
+                # OMN-15193: thread the optional wire-level declared response
+                # contract to the dispatch port. A contract that stops here is
+                # dead on arrival -- this is the seam pinned by
+                # test_handler_propagates_response_contract_to_dispatch_port.
+                response_contract=request.response_contract,
             )
         except Exception as exc:
             return ModelDelegateSkillResponse(
                 status="failed",
                 correlation_id=request.correlation_id,
                 task_type=request.task_type,
+                # OMN-14485: a failed delegation still writes a projection row —
+                # stamp the resolved tenant so per-tenant failure visibility holds.
+                tenant_id=resolved_tenant_id,
                 error_message=str(exc),
             )
 
-        return _response_from_result(request, result)
+        return _response_from_result(request, result, tenant_id=resolved_tenant_id)

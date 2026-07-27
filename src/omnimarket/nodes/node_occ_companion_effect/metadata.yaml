@@ -1,0 +1,24 @@
+name: node_occ_companion_effect
+version: "1.0.0"
+description: "Write-EFFECT + orchestrator that authors the deterministic OCC companion PR from the node_occ_companion_compute plan and stamps the product PR body."
+pack: occ_companion
+node_role: effect
+display_name: "OCC Companion Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_occ_companion_effect: "omnimarket.nodes.node_occ_companion_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "orchestrator", "occ", "companion", "producer", "OMN-14622"]

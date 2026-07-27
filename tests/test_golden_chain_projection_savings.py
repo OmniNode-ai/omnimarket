@@ -550,3 +550,29 @@ class TestSavingsSeriesTierMix:
         assert list(exposure["columns"]) == _SERIES_COLUMNS
         for col in ("local_pct", "cheap_pct", "prem_pct"):
             assert col in exposure["columns"]
+
+
+@pytest.mark.unit
+class TestSavingsContractDeclaredStates:
+    """OMN-14058: the terminal event and cost-savings-overview snapshot topic
+    stay contract-declared — the terminal is the reducer-materialization
+    signal the runtime publishes after every savings_estimates write, and the
+    overview snapshot is the surface the cost-savings dashboard panel reads.
+    """
+
+    def test_terminal_event_is_savings_applied(self) -> None:
+        contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+        assert (
+            contract["terminal_event"]
+            == "onex.evt.omnimarket.projection-savings-applied.v1"
+        )
+
+    def test_contract_exposes_cost_savings_overview_snapshot(self) -> None:
+        contract = yaml.safe_load(_CONTRACT_PATH.read_text())
+        exposures = contract["projection_api"]["exposures"]
+        overview = next(
+            exposure
+            for exposure in exposures
+            if exposure["topic"] == "onex.snapshot.projection.cost.savings-overview.v1"
+        )
+        assert overview["table"] == "projection_cost_savings_overview"

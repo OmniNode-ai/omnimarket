@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Delegation graded ladder benchmark — rung roster (OMN-13935, operator plan §3.6).
+#
+# The FULL delegation ladder, floor -> ceiling by genuine model capability,
+# sourced from routing_tiers.yaml + bifrost_delegation.yaml. It spans the local
+# GPU rungs (incl. the mandated 5090/4090 AI-PC rungs) AND the paid-cloud ceiling:
+# GLM-5.2 (z.ai direct, the cheap_cloud primary + current claude-ceiling default,
+# OMN-13667) and the cheap_frontier OpenRouter FREE tier. Paid-cloud is NOT
+# deferred — the operator holds a GLM key and an OpenRouter key (free models
+# only), and the delegation product routes to these tiers, so the benchmark
+# exercises them as the true ceiling.
+#
+# Endpoints: local site-specific endpoints are NOT embedded (cross-machine
+# portability, CLAUDE.md rule #6) — each local rung names the capability env var
+# carrying the COMPLETE chat-completions URL at record time. Public CLOUD
+# endpoints carry the complete URL directly (public URLs are safe to commit) and
+# authenticate with the Bearer key named by `api_key_env` (env var NAME only,
+# never a value). The committed benchmark grades RECORDED outputs, so no endpoint
+# or key is needed to run it in CI.
+#
+# Verified live 2026-07-04: local endpoints returned HTTP 200 with the model id
+# below; glm-5.2 (z.ai) and the OpenRouter free rung answered live (captured in
+# recorded_rung_outputs.json). See the OpenRouter rung's FALLBACK NOTE below.
+#
+# NOTE on ordering: `order` reflects MEASURED capability from the recorded run —
+# rungs are ordered by their graded weighted score, not by assumption. Recorded
+# 2026-07-04: 4090-27B 0.719 < openrouter-free(laguna-xs) 0.844 < 5090-35B 1.0 =
+# 284B 1.0 = cloud-GLM 1.0. The frontier tier (35B / 284B / GLM) SATURATES this
+# corpus at 1.0 — GLM does not show daylight over the 284B here; the corpus
+# discriminates the 27B floor and the small free rung, not the frontier top.
+
+rungs:
+  # FLOOR — smallest local rung. RTX 4090 on the AI-PC. Qwen3.6-27B MTP.
+  - rung_id: rung_4090_reasoner
+    order: 0
+    model_name: Qwen3.6-27B-MTP-IQ4_XS.gguf
+    backend_id: local-reasoner
+    endpoint_url_env: BIFROST_LOCAL_REASONER_ENDPOINT_URL
+    gpu: rtx_4090
+    host_label: ai-pc
+    tier_name: local
+
+  # LOCAL-MID — RTX 5090 on the AI-PC. Qwen3.6-35B-A3B (local-coder / heavy slot).
+  - rung_id: rung_5090_coder
+    order: 2
+    model_name: Qwen3.6-35B-A3B
+    backend_id: local-coder
+    endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
+    gpu: rtx_5090
+    host_label: ai-pc
+    tier_name: local
+
+  # LOCAL-CEILING — DeepSeek V4 Flash, 284B MoE on the Mac Studio.
+  - rung_id: rung_ds_v4_flash
+    order: 3
+    model_name: ds-v4-flash
+    backend_id: local-ds-v4-flash
+    endpoint_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
+    gpu: mac_studio_m3_ultra
+    host_label: mac-studio
+    tier_name: local
+
+  # PAID-CLOUD — GLM-5.2 via z.ai direct (backend cloud-glm; cheap_cloud primary
+  # AND the current claude-ceiling default, OMN-13667). secret_ref llm.glm.api_key.
+  - rung_id: rung_cloud_glm
+    order: 4
+    model_name: glm-5.2
+    backend_id: cloud-glm
+    endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
+    api_key_env: LLM_GLM_API_KEY
+    gpu: cloud
+    host_label: cloud-zai
+    tier_name: cheap_cloud
+
+  # PAID-CLOUD FREE-TIER — OpenRouter, FREE models only (backend
+  # openrouter-qwen3-coder-480b; the cheap_frontier tier the product reserves
+  # OpenRouter for). secret_ref llm.openrouter.api_key.
+  #
+  # FALLBACK NOTE (recorded 2026-07-04): the canonical reserved free model
+  # `qwen/qwen3-coder:free` — and every larger free model on OpenRouter
+  # (qwen3-next-80b:free, llama-3.3-70b:free, gpt-oss-120b:free,
+  # nemotron-3-ultra-550b:free) — returned HTTP 429 "Provider returned error"
+  # from the upstream provider at record time (a global free-tier throttle, NOT
+  # an account limit: the key is a paid key with headroom). Per the operator
+  # fallback directive (free models only, never paid OpenRouter), a reliably
+  # available FREE code model was used: `poolside/laguna-xs-2.1:free`. Re-run the
+  # recorder to refresh against qwen3-coder:free once the upstream throttle clears.
+  - rung_id: rung_openrouter_free
+    order: 1
+    model_name: "poolside/laguna-xs-2.1:free"
+    backend_id: openrouter-qwen3-coder-480b
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
+    api_key_env: OPEN_ROUTER_API_KEY
+    extra_headers:
+      HTTP-Referer: "https://omninode.ai"
+      X-Title: "OmniNode ONEX"
+    gpu: cloud
+    host_label: cloud-openrouter-free
+    tier_name: cheap_frontier

@@ -1,0 +1,20 @@
+name: node_llm_codegen_effect
+version: "1.0.0"
+description: "Codegen factory LLM step — an EFFECT that generates node source from a spec via an injectable inference adapter"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_llm_codegen_effect: "omnimarket.nodes.node_llm_codegen_effect"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  side_effect_class: network
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "llm", "codegen", "factory"]
+pack: "core"
+display_name: "LLM Codegen Effect"
+node_role: "effect"

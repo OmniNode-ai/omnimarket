@@ -31,6 +31,12 @@ from pydantic import BaseModel, ValidationError
 
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_AGENT_TASK_LIFECYCLE,
+    TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_FAILED,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationFailed,
 )
 
 if TYPE_CHECKING:
@@ -43,6 +49,15 @@ if TYPE_CHECKING:
 __all__ = ["DispatcherAgentTaskLifecycle"]
 
 logger = logging.getLogger(__name__)
+# OMN-14600: the terminal is now a bare class emit (ModelDelegationCompleted /
+# ModelDelegationFailed, no .topic field) -- resolve it by class the same way
+# DispatcherDelegationWorkflow's _INTENT_TOPICS resolves its own class-keyed
+# emits, since this dispatcher publishes the terminal directly rather than
+# handing it to the external applier.
+_TERMINAL_TOPICS: dict[type, str] = {
+    ModelDelegationCompleted: TOPIC_ID_DELEGATION_COMPLETED,
+    ModelDelegationFailed: TOPIC_ID_DELEGATION_FAILED,
+}
 
 
 class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):  # type: ignore[misc]
@@ -79,6 +94,8 @@ class DispatcherAgentTaskLifecycle(MixinAsyncCircuitBreaker):  # type: ignore[mi
         unpublished: list[BaseModel] = []
         for idx, event in enumerate(events):
             topic = getattr(event, "topic", None)
+            if topic is None:
+                topic = _TERMINAL_TOPICS.get(type(event))
             if topic is None:
                 unpublished.append(event)
                 continue

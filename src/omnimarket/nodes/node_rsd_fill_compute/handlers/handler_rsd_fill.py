@@ -8,6 +8,7 @@ Related:
     - OMN-7315: node_rsd_fill_compute
     - OMN-7578: Migration to omnimarket
     - OMN-5113: Autonomous Build Loop epic
+    - OMN-14839: canonical def-B flip (epic OMN-14355)
 """
 
 from __future__ import annotations
@@ -16,6 +17,9 @@ import logging
 from typing import Literal
 from uuid import UUID
 
+from omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill_input import (
+    ModelRsdFillInput,
+)
 from omnimarket.nodes.node_rsd_fill_compute.models.model_rsd_fill_output import (
     ModelRsdFillOutput,
 )
@@ -48,22 +52,24 @@ class HandlerRsdFill:
     def handler_category(self) -> HandlerCategory:
         return HANDLER_CATEGORY
 
-    async def handle(
+    async def handle(self, request: ModelRsdFillInput) -> ModelRsdFillOutput:
+        """Select top-N tickets by RSD score (canonical def-B typed-payload core).
+
+        The runtime adapter builds ``ModelRsdFillInput`` from the command and calls
+        this bare handler; ``correlation_id`` / ``scored_tickets`` / ``max_tickets``
+        are read from the request. Selection logic is unchanged (``_select_top_n``).
+        """
+        return self._select_top_n(
+            request.correlation_id, request.scored_tickets, request.max_tickets
+        )
+
+    def _select_top_n(
         self,
         correlation_id: UUID,
         scored_tickets: tuple[ModelScoredTicket, ...],
         max_tickets: int,
     ) -> ModelRsdFillOutput:
-        """Select top-N tickets by RSD score with deterministic tie-breaking.
-
-        Args:
-            correlation_id: Cycle correlation ID.
-            scored_tickets: All candidate tickets with RSD scores.
-            max_tickets: Maximum tickets to select.
-
-        Returns:
-            ModelRsdFillOutput with selected tickets.
-        """
+        """Pure top-N-by-RSD-score selection with deterministic tie-breaking."""
         logger.info(
             "RSD fill: selecting top-%d from %d candidates (correlation_id=%s)",
             max_tickets,

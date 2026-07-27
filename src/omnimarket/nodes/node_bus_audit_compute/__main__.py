@@ -12,6 +12,9 @@ from omnimarket.nodes.node_bus_audit_compute.handlers.handler_bus_audit_compute 
 from omnimarket.nodes.node_bus_audit_compute.models.model_bus_audit_compute_request import (
     ModelBusAuditComputeRequest,
 )
+from omnimarket.nodes.node_bus_audit_compute.models.model_bus_audit_compute_result import (
+    EnumBusAuditStatus,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -69,7 +72,9 @@ def main(argv: list[str] | None = None) -> int:
     # The skill contract asks for JSON stdout. Keep --json for compatibility,
     # but emit JSON unconditionally so `onex run` has one stable parse surface.
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
-    return 0
+    # A verification CLI must fail loudly: ERROR-severity audit results exit
+    # non-zero (the JSON above still carries the full typed result).
+    return 1 if result.status is EnumBusAuditStatus.ERROR else 0
 
 
 if __name__ == "__main__":

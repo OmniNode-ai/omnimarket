@@ -13,35 +13,35 @@ description: >
   Absorbs pr_polish conflict-resolution and coderabbit_triage auto-reply
   logic into a proper node with contract-declared behavior.
 
+# OMN-13990: the runtime resolver zero-arg-constructs the declared handler on the
+# consume path; HandlerPrLifecycleFixRuntime binds the LIVE OCC adapters there so
+# the born-path autobind command does real work (the base HandlerPrLifecycleFix
+# would default to no-op adapters). The merge-sweep tick keeps its own explicit
+# live wiring via the orchestrator and does NOT read this handler block.
 handler:
-  module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix
-  class: HandlerPrLifecycleFix
+  module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix_runtime
+  class: HandlerPrLifecycleFixRuntime
   input_model: omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command.ModelPrLifecycleFixCommand
 
+# OMN-13990 (routing fix, OMN-13551 pattern): a SINGLE typed dispatch entry.
+# With two subscribe_topics, a multi-entry handler_routing pushed the typed
+# handler into the ambiguity guard in _topics_for_handler_entry (return () ->
+# ZERO dispatch routes -> the occ-autobind command was silently DLQ'd). The
+# other former entries (GitHubCliAdapter, PrPolishDispatchAdapter,
+# HandlerAdminMerge, HandlerAutoRebase, HandlerCommentResolution) are internal
+# collaborators of HandlerPrLifecycleFix / the orchestrator — NOT
+# runtime-dispatched targets — so they are removed here. A sole typed entry
+# deterministically owns every subscribe topic (both pr-lifecycle-fix-start.v1
+# and occ-autobind.v1).
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
     - handler:
-        name: HandlerPrLifecycleFix
-        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix
+        name: HandlerPrLifecycleFixRuntime
+        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix_runtime
       event_model:
         name: ModelPrLifecycleFixCommand
         module: omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command
-    - handler:
-        name: GitHubCliAdapter
-        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli
-    - handler:
-        name: PrPolishDispatchAdapter
-        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_pr_polish_dispatch
-    - handler:
-        name: HandlerAdminMerge
-        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge
-    - handler:
-        name: HandlerAutoRebase
-        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_auto_rebase
-    - handler:
-        name: HandlerCommentResolution
-        module: omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_comment_resolution
 
 descriptor:
   node_archetype: effect
@@ -110,6 +110,18 @@ secrets:
   GITHUB_TOKEN:
     description: "GitHub PAT or Actions token for REST and GraphQL API calls."
     required: true
+  # OMN-14893: the onexbot-occ-writer GitHub App credentials. Consumed ONLY
+  # when OMNI_OCC_GITHUB_AUTH_MODE=app; declared `required: false` at the
+  # contract level because the default `pat` mode does not need them, but the
+  # app-auth code path (github_app_auth.resolve_app_installation_token_from_contract)
+  # itself fails loud, naming this ref, if the mode is switched to `app`
+  # without these being resolvable — no silent PAT fallback exists there.
+  ONEXBOT_OCC_APP_ID:
+    description: "onexbot-occ-writer GitHub App id (app-auth mode only)."
+    required: false
+  ONEXBOT_OCC_PRIVATE_KEY:
+    description: "onexbot-occ-writer GitHub App private key PEM (app-auth mode only)."
+    required: false
 
 metadata:
   transport_type: kafka

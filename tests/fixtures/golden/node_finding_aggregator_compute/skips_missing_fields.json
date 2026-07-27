@@ -1,0 +1,52 @@
+{
+  "input": {
+    "config": {
+      "jaccard_threshold": 0.7,
+      "model_weights": {},
+      "severity_promotes_on_conflict": true
+    },
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "sources": [
+      {
+        "findings": [
+          {
+            "rule_id": "ruff:E501"
+          },
+          {
+            "file_path": "src/main.py",
+            "line_start": 10,
+            "normalized_message": "line too long",
+            "rule_id": "ruff:E501",
+            "severity": "warning"
+          }
+        ],
+        "model_name": "model-a"
+      }
+    ]
+  },
+  "output": {
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "merged_findings": [
+      {
+        "file_path": "src/main.py",
+        "line_end": null,
+        "line_start": 10,
+        "merged_count": 1,
+        "normalized_message": "line too long",
+        "rule_id": "ruff:E501",
+        "severity": "warning",
+        "source_models": [
+          "model-a"
+        ],
+        "weighted_score": 1.0
+      }
+    ],
+    "source_model_count": 1,
+    "total_duplicates_removed": 0,
+    "total_input_findings": 2,
+    "total_merged_findings": 1,
+    "verdict": "risks_noted"
+  },
+  "output_sha256": "sha256:2fedc0fed416f6d31e9f86f188779d46d701d827b37b8317a346227e8b90790d",
+  "scenario": "skips_missing_fields"
+}

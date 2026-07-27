@@ -29,6 +29,17 @@ class ModelPrTriageResult(BaseModel):
         default_factory=tuple,
         description="Failed checks that informed this classification.",
     )
+    failed_check_flaky_evidence: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Machine evidence that failed checks are rerunnable infra flakes.",
+    )
+    failed_check_reason_codes: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description=(
+            "Typed merge-check reason codes (OMN-14765) carried through triage "
+            "so the orchestrator routes on the classified code."
+        ),
+    )
     reason: str = Field(
         ..., description="Human-readable explanation of the classification."
     )

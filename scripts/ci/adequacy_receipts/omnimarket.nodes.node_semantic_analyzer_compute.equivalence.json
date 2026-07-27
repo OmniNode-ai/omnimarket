@@ -1,0 +1,14 @@
+{
+  "node_id": "omnimarket.nodes.node_semantic_analyzer_compute",
+  "provenance": {
+    "authored_by": "jonah@omninode.ai",
+    "base_ref_exec_sha": "7eacd93786d34bbd733de8132e10cab2043902c3",
+    "def_b_commit": "b0d44ec884bd797e191845f5ca58de92f3b856e0"
+  },
+  "selected_input_hashes": [
+    "sha256:4ebe82c91f30586ca30694c23b5206443561e0bd826180b26250876326ea8584",
+    "sha256:12541582abe517c82e16c8f2c1e684ca46b9c86343c4834cee8fcc4868b0d910",
+    "sha256:298e12918d3807e049fc7c9a0f3dd9403cf224ce08ff8815e81ea501d1736b94"
+  ],
+  "status": "pass"
+}

@@ -569,6 +569,8 @@ class EnumProdGrantReason(StrEnum):
     GRANT_LANE_MISMATCH = "grant_lane_mismatch"
     GRANT_DIGEST_MISMATCH = "grant_digest_mismatch"
     GRANT_BATCH_MISMATCH = "grant_batch_mismatch"
+    # OMN-14814: dual-control was removed (solo CODEOWNER), so the gate no longer
+    # PRODUCES this reason. Retained for enum/wire stability and back-compat.
     SELF_GRANTED = "self_granted"
     # OMN-13656: a stability-candidate / non-main-lineage image was offered to the
     # prod lane but the grant does not authorize the candidate class.
@@ -640,9 +642,11 @@ class ModelProdPromotionGrant(BaseModel):
     approver-set ABSOLUTE timestamp (not a 30-minute relative TTL): the prod gate
     fails closed once the deterministic ``evaluated_at`` passes it.
 
-    Known follow-on gap (NOT closed by this model): the requester identity threaded
-    into the gate is forgeable, so ``approved_by != requested_by`` is an
-    anti-self-grant check, NOT cryptographic two-person integrity.
+    Dual-control is intentionally NOT enforced (OMN-14814): with a single
+    CODEOWNER, requiring ``approved_by != requested_by`` would permanently wedge
+    prod promotion. The anti-self-*issuance* guarantee is instead that the grant
+    is fetched from ``onex_change_control@main`` (a request cannot author the
+    authorization that approves it), not an approver-identity comparison.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -666,7 +670,7 @@ class ModelProdPromotionGrant(BaseModel):
     approved_by: str = Field(
         ...,
         min_length=1,
-        description="Approver identity; must differ from the requester (anti-self-grant).",
+        description="Approver identity that authored the grant (a CODEOWNER).",
     )
     created_at: datetime = Field(..., description="When the approver issued the grant.")
     expires_at: datetime = Field(
@@ -832,9 +836,9 @@ def verify_prod_deploy_grant_binding(
 
     This mirrors ``_evaluate_promotion_grant`` in the prod gate COMPUTE but runs at
     the deploy EFFECT boundary so the deploy-agent off-gate path is closed even if
-    the upstream gate were bypassed. ``approved_by != requested_by`` (anti-self-
-    grant) is enforced upstream at the gate; the deploy EFFECT does not re-thread a
-    forgeable requester identity, so it does not duplicate that check here.
+    the upstream gate were bypassed. Dual-control (``approved_by != requested_by``)
+    is intentionally NOT enforced anywhere (OMN-14814): a solo CODEOWNER authors
+    and approves their own grant, so the deploy EFFECT does not check it either.
     """
     if runtime_lane is not EnumRuntimeLane.PROD:
         return None
@@ -898,7 +902,7 @@ class ModelProdPromotionInputs(BaseModel):
     )
     requested_by: str = Field(
         default="node_redeploy_orchestrator",
-        description="Identity that requested the promotion; gated against the grant approver.",
+        description="Identity that requested the promotion; carried for audit provenance.",
     )
     promotion_grant: ModelProdPromotionGrant | None = Field(
         default=None,
@@ -1116,8 +1120,12 @@ def _evaluate_promotion_grant(
     authorizes the request so the caller proceeds to allow.
 
     The grant must satisfy ALL of: ``approved_lane == PROD``, digest match, batch
-    match, ``approved_by != requested_by`` (anti-self-grant), and
-    ``evaluated_at <= expires_at`` (absolute expiry, inclusive boundary).
+    match, and ``evaluated_at <= expires_at`` (absolute expiry, inclusive
+    boundary). Dual-control (``approved_by != requested_by``) is intentionally NOT
+    enforced (OMN-14814): with a single CODEOWNER a second-approver requirement
+    would permanently wedge prod promotion. The anti-self-issuance guarantee is
+    that the grant is fetched from ``onex_change_control@main`` upstream, not an
+    approver-identity comparison here.
     """
     grant = inputs.promotion_grant
     if grant is None:
@@ -1157,15 +1165,10 @@ def _evaluate_promotion_grant(
             ),
         )
 
-    if grant.approved_by == inputs.requested_by:
-        return _grant_blocked(
-            inputs,
-            EnumProdGrantReason.SELF_GRANTED,
-            (
-                "promotion grant approver equals the requester "
-                f"({grant.approved_by!r}); self-granted promotions are blocked"
-            ),
-        )
+    # Dual-control removed (OMN-14814): a self-approved grant (approver equals the
+    # requester) is NOT blocked here — a solo CODEOWNER authors and approves their
+    # own grant. EnumProdGrantReason.SELF_GRANTED stays defined but is no longer
+    # produced.
 
     if inputs.evaluated_at > grant.expires_at:
         return _grant_blocked(
@@ -1465,7 +1468,7 @@ class ModelProdPromotionGateCommand(BaseModel):
     )
     requested_by: str = Field(
         default="node_redeploy_orchestrator",
-        description="Identity that requested the promotion; gated against the grant approver.",
+        description="Identity that requested the promotion; carried for audit provenance.",
     )
     promotion_grant: ModelProdPromotionGrant | None = Field(
         default=None,
@@ -1593,6 +1596,8 @@ class EnumGrantResolution(StrEnum):
     ABSENT = "absent"
     EXPIRED = "expired"
     CONSUMED = "consumed"
+    # OMN-14814: dual-control was removed (solo CODEOWNER), so the resolver no
+    # longer PRODUCES this outcome. Retained for enum/wire stability.
     SELF_GRANTED = "self_granted"
 
 
@@ -1626,7 +1631,7 @@ class ModelProdPromotionGrantResolveCommand(BaseModel):
     )
     requested_by: str = Field(
         default="node_redeploy_orchestrator",
-        description="Requester identity; a grant whose approver equals it is rejected.",
+        description="Requester identity, carried for audit provenance.",
     )
     evaluated_at: datetime = Field(
         ...,

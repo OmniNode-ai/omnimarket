@@ -347,7 +347,11 @@ class TestSeaAcceptanceGoldenChain:
                 },
             }
 
-            with patch("httpx.Client") as mock_client_cls:
+            # OMN-13501 no-faked-boundary: SEA minimum-proof diagnostic asserts the verbatim
+            # endpoint_url (OMN-12815) and exact served-token counts against a synthetic
+            # test-hostname response; recording real bytes would delete those assertions.
+            # Integrated inference path proven by the recorded-replay golden chain.
+            with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
                 mock_client = MagicMock()
                 mock_client.__enter__ = MagicMock(return_value=mock_client)
                 mock_client.__exit__ = MagicMock(return_value=False)

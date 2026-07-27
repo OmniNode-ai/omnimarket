@@ -29,12 +29,20 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    # OMN-13836: bump core lower bound to the current resolvable range
-    # (core>=0.46.1) consistent with OMN-13822 and omnibase_infra @main
-    # (core>=0.46.1,<0.47.0 / spi>=0.23.0,<0.24.0). Name normalized to the
-    # hyphenated distribution name to match the rest of the block.
-    "omnibase-core>=0.46.1,<0.47.0",
-    "omnibase-compat==0.5.5",
+    # OMN-14168 requires EnumEvidenceClass.RUNTIME_OPS and
+    # runtime_ops_verb_loader from omnibase-core 0.46.7.
+    # OMN-14280 (OMN-14208 slice-2 A-now): the inference-wire tenant_id feature
+    # (producer + cross-boundary test) requires the tenant_id field on
+    # ModelInferenceIntent / ModelInferenceResponseData, first released in
+    # omnibase-core 0.46.8 (the paired core PR #1415). The lower bound is kept at
+    # 0.46.7 so the resolver/toolchain stays functional until 0.46.8 publishes;
+    # relock onto 0.46.8 (uv lock --upgrade-package omnibase-core) at landing.
+    "omnibase-core>=0.46.7,<0.47.0",
+    # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
+    # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
+    # and this emitter share one zero-dep vocabulary): the single seam
+    # omnibase_compat.contracts.pr_occ_stamp.
+    "omnibase-compat==0.5.6",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
     "onex-change-control>=0.5.1",
@@ -44,6 +52,9 @@ dependencies = [
     "pyyaml>=6.0.2,<7.0.0",
     "packaging>=24.0",
     "aiokafka>=0.13.0",
+    # OMN-14528: node_runtime_sweep.broker_probe uses the confluent AdminClient
+    # (list_consumer_groups) to collect the live consumer-group census in code.
+    "confluent-kafka>=2.12.0,<3.0.0",
     "asyncpg>=0.30.0",
     "fastapi>=0.115.0",
     "uvicorn>=0.30.0",
@@ -51,17 +62,32 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "httpx>=0.27.0",
     "anthropic>=0.25.0",
-    "omninode-memory==0.15.0",
+    "omninode-memory==0.17.0",
     "radon>=6.0.1",
     "pytest>=8.4.0",
     "pytest-asyncio>=1.3.0",
     "docker>=7.0.0",
     "rich>=13.0.0",
+    # OMN-14893: GitHub App JWT signing + installation-token exchange for the
+    # OCC machine-auth path (github_app_auth.py). Already an unconditional
+    # transitive dep via omnibase-infra>=... (pyjwt>=2.12.0); declared
+    # directly so this repo does not depend on that transitivity holding.
+    "pyjwt[crypto]>=2.12.0",
+    # OMN-15193: JSON-Schema structural validation for a contract-declared
+    # delegation response_contract (handler_quality_gate.py). Already an
+    # unconditional transitive dep (dependency-injector / mcp pull in
+    # jsonschema>=4.26.0); declared directly so this repo does not depend on
+    # that transitivity holding -- it is a boring, already-resolved validator,
+    # not a new addition to the resolved dependency set.
+    "jsonschema>=4.18.0",
 ]
 
 [project.optional-dependencies]
 dep-health = [
     "graphifyy==0.8.2",
+]
+intelligence = [
+    "adaptive-classifier>=0.1.2",
 ]
 
 [project.urls]
@@ -86,7 +112,15 @@ node_aislop_sweep = "omnimarket.nodes.node_aislop_sweep"
 node_architectural_invariant_loop = "omnimarket.nodes.node_architectural_invariant_loop"
 node_authorize = "omnimarket.nodes.node_authorize"
 node_budget_policy_compute = "omnimarket.nodes.node_budget_policy_compute"
+node_subcontract_render_compute = "omnimarket.nodes.node_subcontract_render_compute"
+node_advanced_features_resolve_compute = "omnimarket.nodes.node_advanced_features_resolve_compute"
+node_contract_assemble_compute = "omnimarket.nodes.node_contract_assemble_compute"
+node_contract_digest_compute = "omnimarket.nodes.node_contract_digest_compute"
+node_contract_serialize_compute = "omnimarket.nodes.node_contract_serialize_compute"
+node_codegen_outcome_reducer = "omnimarket.nodes.node_codegen_outcome_reducer"
 node_chain_diff_compute = "omnimarket.nodes.node_chain_diff_compute"
+node_ast_node_analyzer = "omnimarket.nodes.node_ast_node_analyzer"
+node_stub_detector = "omnimarket.nodes.node_stub_detector"
 node_contract_graph_ir_compute = "omnimarket.nodes.node_contract_graph_ir_compute"
 node_delegation_escalation_decision_compute = "omnimarket.nodes.node_delegation_escalation_decision_compute"
 node_closeout_verifier_compute = "omnimarket.nodes.node_closeout_verifier_compute"
@@ -96,6 +130,8 @@ node_context_exploration_policy_compute = "omnimarket.nodes.node_context_explora
 node_context_selection_policy_compute = "omnimarket.nodes.node_context_selection_policy_compute"
 node_design_plan_context_compute = "omnimarket.nodes.node_design_plan_context_compute"
 node_golden_chain_generator_compute = "omnimarket.nodes.node_golden_chain_generator_compute"
+node_delivery_replay_projection_compute = "omnimarket.nodes.node_delivery_replay_projection_compute"
+node_canary_monitoring_gate_compute = "omnimarket.nodes.node_canary_monitoring_gate_compute"
 node_test_generator_compute = "omnimarket.nodes.node_test_generator_compute"
 node_tool_reuse_matcher_compute = "omnimarket.nodes.node_tool_reuse_matcher_compute"
 node_session_phase_evaluator = "omnimarket.nodes.node_session_phase_evaluator"
@@ -125,6 +161,7 @@ node_review_prompt_builder_compute = "omnimarket.nodes.node_review_prompt_builde
 node_review_response_parser_compute = "omnimarket.nodes.node_review_response_parser_compute"
 node_review_convergence_compute = "omnimarket.nodes.node_review_convergence_compute"
 node_github_diff_effect = "omnimarket.nodes.node_github_diff_effect"
+node_github_repo_gateway_effect = "omnimarket.nodes.node_github_repo_gateway_effect"
 node_local_review = "omnimarket.nodes.node_local_review"
 node_pr_polish = "omnimarket.nodes.node_pr_polish"
 node_dod_verify = "omnimarket.nodes.node_dod_verify"
@@ -141,12 +178,18 @@ node_golden_chain_generator = "omnimarket.nodes.node_golden_chain_generator"
 node_runtime_sweep = "omnimarket.nodes.node_runtime_sweep"
 node_log_projection = "omnimarket.nodes.node_log_projection"
 node_pr_merged_projection = "omnimarket.nodes.node_pr_merged_projection"
+node_merge_state_projection = "omnimarket.nodes.node_merge_state_projection"
 node_renderer_capability_projection = "omnimarket.nodes.node_renderer_capability_projection"
 node_log_persistence_effect = "omnimarket.nodes.node_log_persistence_effect"
 node_data_verification = "omnimarket.nodes.node_data_verification"
 node_process_watchdog = "omnimarket.nodes.node_process_watchdog"
 node_generate_node_effect = "omnimarket.nodes.node_generate_node_effect"
 node_generated_node_publish_effect = "omnimarket.nodes.node_generated_node_publish_effect"
+node_hybrid_codegen_orchestrator = "omnimarket.nodes.node_hybrid_codegen_orchestrator"
+node_llm_codegen_effect = "omnimarket.nodes.node_llm_codegen_effect"
+node_codegen_file_writer_effect = "omnimarket.nodes.node_codegen_file_writer_effect"
+node_generated_code_validator = "omnimarket.nodes.node_generated_code_validator"
+node_mypy_check_effect = "omnimarket.nodes.node_mypy_check_effect"
 node_projection_session_outcome = "omnimarket.nodes.node_projection_session_outcome"
 node_projection_session_replay = "omnimarket.nodes.node_projection_session_replay"
 node_projection_swarm = "omnimarket.nodes.node_projection_swarm"
@@ -185,7 +228,10 @@ node_loop_state_reducer = "omnimarket.nodes.node_loop_state_reducer"
 node_ticket_classify_compute = "omnimarket.nodes.node_ticket_classify_compute"
 node_build_dispatch_effect = "omnimarket.nodes.node_build_dispatch_effect"
 node_closeout_effect = "omnimarket.nodes.node_closeout_effect"
-node_auto_merge_effect = "omnimarket.nodes.node_auto_merge_effect"
+# OMN-14151: node_auto_merge_effect entry point DEREGISTERED — legacy arm
+# surface superseded by the merge-queue governor's single gated arm path
+# (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect). Handler source
+# remains, hard-gated fail-closed (contract.yaml lifecycle: deprecated).
 node_finding_aggregator_compute = "omnimarket.nodes.node_finding_aggregator_compute"
 node_pr_snapshot_effect = "omnimarket.nodes.node_pr_snapshot_effect"
 node_pr_health_monitor = "omnimarket.nodes.node_pr_health_monitor"
@@ -214,12 +260,24 @@ node_redeploy_fsm_reducer = "omnimarket.nodes.node_redeploy_fsm_reducer"
 node_baseline_capture = "omnimarket.nodes.node_baseline_capture"
 node_baseline_compare = "omnimarket.nodes.node_baseline_compare"
 node_pr_lifecycle_triage_compute = "omnimarket.nodes.node_pr_lifecycle_triage_compute"
+node_pr_arm_gate_compute = "omnimarket.nodes.node_pr_arm_gate_compute"
 node_nightly_loop_controller = "omnimarket.nodes.node_nightly_loop_controller"
 node_overseer_verifier = "omnimarket.nodes.node_overseer_verifier"
 node_claim_resolver = "omnimarket.nodes.node_claim_resolver"
 node_verified_dispatch_orchestrator = "omnimarket.nodes.node_verified_dispatch_orchestrator"
 node_pr_lifecycle_inventory_compute = "omnimarket.nodes.node_pr_lifecycle_inventory_compute"
 node_pr_lifecycle_fix_effect = "omnimarket.nodes.node_pr_lifecycle_fix_effect"
+node_occ_companion_compute = "omnimarket.nodes.node_occ_companion_compute"
+node_occ_state_effect = "omnimarket.nodes.node_occ_state_effect"
+node_occ_companion_effect = "omnimarket.nodes.node_occ_companion_effect"
+node_occ_autoauthor_window = "omnimarket.nodes.node_occ_autoauthor_window"
+node_occ_attestation_observe = "omnimarket.nodes.node_occ_attestation_observe"
+node_occ_observation_projection = "omnimarket.nodes.node_occ_observation_projection"
+node_occ_observation_effect = "omnimarket.nodes.node_occ_observation_effect"
+node_occ_observation_source_effect = "omnimarket.nodes.node_occ_observation_source_effect"
+# OMN-14920: push-validation EFFECT (gateway P2 tenant #1)
+node_push_validation_effect = "omnimarket.nodes.node_push_validation_effect"
+node_pr_delegated_fix_effect = "omnimarket.nodes.node_pr_delegated_fix_effect"
 node_ci_watch = "omnimarket.nodes.node_ci_watch"
 node_coderabbit_triage = "omnimarket.nodes.node_coderabbit_triage"
 node_overnight = "omnimarket.nodes.node_overnight"
@@ -291,8 +349,11 @@ node_pipeline_fill = "omnimarket.nodes.node_pipeline_fill"
 node_session_compose = "omnimarket.nodes.node_session_compose"
 node_ticket_query = "omnimarket.nodes.node_ticket_query"
 node_monitor_alert_responder = "omnimarket.nodes.node_monitor_alert_responder"
-node_merge_sweep_triage_orchestrator = "omnimarket.nodes.node_merge_sweep_triage_orchestrator"
-node_merge_sweep_auto_merge_arm_effect = "omnimarket.nodes.node_merge_sweep_auto_merge_arm_effect"
+# OMN-14151: node_merge_sweep_triage_orchestrator and
+# node_merge_sweep_auto_merge_arm_effect entry points DEREGISTERED — legacy
+# arm surfaces superseded by the merge-queue governor's single gated arm path
+# (node_pr_arm_gate_compute + node_pr_lifecycle_merge_effect). Handler source
+# remains, hard-gated fail-closed (contract.yaml lifecycle: deprecated).
 node_rebase_effect = "omnimarket.nodes.node_rebase_effect"
 node_ci_rerun_effect = "omnimarket.nodes.node_ci_rerun_effect"
 node_ci_fix_effect = "omnimarket.nodes.node_ci_fix_effect"
@@ -351,6 +412,7 @@ node_ticketing_epic_org_orchestrator = "omnimarket.nodes.node_ticketing_epic_org
 node_ticketing_insights_compute = "omnimarket.nodes.node_ticketing_insights_compute"
 node_report_format_compute = "omnimarket.nodes.node_report_format_compute"
 node_env_parity_compute = "omnimarket.nodes.node_env_parity_compute"
+node_env_parity_collect_effect = "omnimarket.nodes.node_env_parity_collect_effect"
 node_friction_triage_orchestrator = "omnimarket.nodes.node_friction_triage_orchestrator"
 node_tech_debt_sweep_orchestrator = "omnimarket.nodes.node_tech_debt_sweep_orchestrator"
 node_test_generator = "omnimarket.nodes.node_test_generator"
@@ -416,8 +478,13 @@ node_skill_functional_audit_compute = "omnimarket.nodes.node_skill_functional_au
 node_dispatch_outcome_bridge_effect = "omnimarket.nodes.node_dispatch_outcome_bridge_effect"
 node_repo_health_classify_compute = "omnimarket.nodes.node_repo_health_classify_compute"
 node_repo_health_repair_effect = "omnimarket.nodes.node_repo_health_repair_effect"
+node_liveness_demand_query_effect = "omnimarket.nodes.node_liveness_demand_query_effect"
+node_liveness_evaluate_compute = "omnimarket.nodes.node_liveness_evaluate_compute"
 node_projection_sandbox_decisions = "omnimarket.nodes.node_projection_sandbox_decisions"
 node_projection_delegation_inference_response = "omnimarket.nodes.node_projection_delegation_inference_response"
+node_worker_memory_admission_compute = "omnimarket.nodes.node_worker_memory_admission_compute"
+node_fleet_partition_key_compute = "omnimarket.nodes.node_fleet_partition_key_compute"
+node_report_anchor_probe_effect = "omnimarket.nodes.node_report_anchor_probe_effect"
 
 [project.scripts]
 onex-integration-test-runner = "omnimarket.nodes.node_integration_test_runner.cli:main"
@@ -441,20 +508,98 @@ omnimarket = "omnimarket.nodes"
 [tool.uv.sources]
 # OMN-13878: omnibase-core and omnibase-compat now resolve from PyPI (removed
 # their git-source overrides). The version-range overrides below already target
-# the released artifacts: core>=0.46.1,<0.47.0 (PyPI 0.46.1; the former
-# rev 29e9057 was an unreleased 0.46.1+1-commit whose only delta is core's
-# validator_receipt_gate CI validator, which omnimarket does not import) and
+# the released artifacts: core>=0.46.7,<0.47.0 and
 # compat==0.5.5 (the former rev c0fc716 IS the v0.5.5 tag == PyPI 0.5.5).
+# OMN-14402: TEMPORARY coordinated core->market pin. This PR's same-tier
+# backend fallback needs ModelRoutingIntent.excluded_backend_refs, added on
+# omnibase_core by PR OmniNode-ai/omnibase_core#1432 (not yet published on
+# PyPI -- latest release is 0.46.7). REMOVE WHEN RELEASED: once omnibase-core
+# publishes a version containing this commit, delete this override (the
+# version-range pin above already covers it) and `uv lock`.
+#
+# OMN-14447: the rev MUST be reachable from a remote branch. This previously
+# pinned af567d7c -- the HEAD of the *feature branch*
+# `jonah/omn-14402-routing-intent-excluded-backend-refs`. GitHub deleted that
+# branch when #1432 merged, so the commit became reachable from nothing on the
+# remote: a fresh clone (CI, the .201 build host) cannot fetch it even with a
+# full `+refs/heads/*` refspec, and the OMN-12977 sibling-pin preflight aborts
+# the workspace build for everyone, permanently. A local clone that fetched the
+# branch before deletion keeps the object and hides the breakage, which is why
+# it went unnoticed. Pin the MERGED commit on dev instead -- squash-merges are
+# reachable forever; feature-branch heads are not.
+#
+# OMN-14600: re-pinned from d08bb231 (OMN-14402's merged commit, 0.46.8) to
+# a9f25887 -- the MERGED squash commit of core #1439 on dev (also 0.46.8),
+# which adds ModelDelegationCompleted/ModelDelegationFailed. d08bb231 is a
+# strict ancestor of a9f25887, so this supersedes the 14402 pin and keeps its
+# excluded_backend_refs feature. REMOVE WHEN RELEASED: once core publishes a
+# version containing #1439, delete this override (the range pin covers it).
+#
+# OMN-14779: re-pinned from a9f25887 to aca32f24 -- the omnibase-infra bump in
+# this same PR (see below) pulls in omnibase_infra runtime/auto_wiring code
+# that imports omnibase_core.runtime.runtime_fanout_resolver at module scope
+# (added by core commit ed0a45bf3, OMN-14403). That module does not exist at
+# a9f25887, so importing omnibase_infra with the old core pin raised
+# ModuleNotFoundError. aca32f244 is a direct descendant of ed0a45bf3 (the
+# adjacent OMN-14743 fail-closed fix to the same resolver) and remains a
+# strict descendant of a9f25887, so no prior feature is lost. REMOVE WHEN
+# RELEASED: once core publishes a version containing this commit, delete this
+# override (the range pin above already covers it) and `uv lock`.
+#
+# OMN-15126: re-pinned from aca32f24 to 15096be7 -- the merged squash commit
+# of core #1507 on dev (per that PR's own body: "bump omnimarket's
+# omnibase-core git-rev override... to this PR's merged dev SHA"), which adds
+# EnumLivenessState / ModelLivenessRegistryEntry / ModelLivenessReceipt +
+# supporting refs (design docs/design/2026-07-20-demand-aware-liveness-...).
+# 15096be7 is a direct descendant of aca32f24 (34 commits ahead on core dev,
+# verified via `git merge-base --is-ancestor`), so no prior feature is lost.
+# This is a MERGED commit on dev, never a feature-branch head (memory
+# reference_never_pin_a_feature_branch_head), so it is reachable forever.
+# REMOVE WHEN RELEASED: once core publishes a version containing this
+# commit, delete this override (the range pin above already covers it) and
+# `uv lock`.
+#
+# OMN-15163: re-pinned from 15096be7 to 3f2998b3 -- the merged squash commit
+# of core #1510 on dev (feat(OMN-15161): port per-role dispatch report
+# contract as fleet wire type), which adds
+# omnibase_core.models.dispatch.report (ModelDispatchReportImplementer/
+# Lander/Registry/Scout/Verifier, ROLE_TO_MODEL) plus
+# validator_dispatch_report_anchors / check_dispatch_report_content_anchors.
+# 3f2998b3 is a direct descendant of 15096be7 -- verified
+# `git merge-base --is-ancestor 15096be7 3f2998b3` on core -- and is itself
+# the current core dev tip (no later dev squash exists as of this pin), so no
+# prior feature is lost. This is a MERGED commit on dev, never a
+# feature-branch head (memory reference_never_pin_a_feature_branch_head), so
+# it is reachable forever. The 15 commits in the 15096be7..3f2998b3 range are
+# all core-internal CI/validator/test/promotion churn (required-checks.yaml,
+# occ-preflight.yml, validator_receipt_gate.py, no_faked_boundary handler,
+# MixinNodeDispatch tests, dev->main promotion merges) with zero omnimarket
+# surface impact; 3f2998b3 itself is a pure-addition commit (+1922/-0, new
+# files only). REMOVE WHEN RELEASED: once core publishes a version containing
+# this commit, delete this override (the range pin above already covers it)
+# and `uv lock`.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "3f2998b3337e4050b4758e0dd2a0fe1061ce0d98" }  # raw-override-ok: OMN-15163
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "7e52d5b0046c394b38454b97157e7a7191e6f008" }
-omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "9843dd18cedaa4f5939289ba527532262b87003c" }
+#
+# OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to 77144f83 -- current
+# omnibase_infra dev, a descendant of the merged #2402/#2419 squashes that package
+# src/omnibase_infra/contracts/canary/model_replay_projection_seam.json as
+# wheel data. This omnimarket-side half imports that seam JSON and asserts
+# ModelReplayProjection / ModelReplayCursor / ModelDeliveryPosition
+# .model_fields against it field-by-field. The newer pin also includes
+# post-#2402 graph repairs required by omnimarket's contract-topic graph gate.
+# REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing #2402
+# plus the graph repairs, delete this override (the range pin above already
+# covers it) and `uv lock`.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "77144f83a9f720fb4a97f1e35c48b588b748a892" }
+omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "1cd318d5ca3071a24585191592d3a84fafd30cf7" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
 [tool.uv]
 # OMN-13836: these overrides exist to force the ONEX core/spi/infra/compat
-# versions past omninode-memory==0.15.0's stale transitive hard-pins
-# (core==0.40.1 / spi==0.20.6 / infra==0.34.2) so omnimarket's own lock
-# resolves during local cross-repo dev.
+# versions past omninode-memory's stale transitive hard-pins (observed at
+# omninode-memory==0.15.0: core==0.40.1 / spi==0.20.6 / infra==0.34.2) so
+# omnimarket's own lock resolves during local cross-repo dev.
 #
 # The previous form git-pinned core/infra/compat to foreign revs
 # (core@29e9057=0.46.2, infra@7e52d5b=0.38.4, compat@c0fc716=0.5.5). Those
@@ -462,13 +607,15 @@ onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_contro
 # unresolvable when consumed as a declared dependency (OMN-13829): a git-URL
 # override forces a URL requirement that clashes with a consumer's own
 # core/infra pins. Relaxed to version-range overrides that match the
-# current resolvable ranges (core>=0.46.1, spi>=0.23.0) — same override
+# current resolvable ranges (core>=0.46.7, spi>=0.23.0) — same override
 # function, no foreign URLs.
 override-dependencies = [
-    "omnibase-core>=0.46.1,<0.47.0",
+    # OMN-14280: the tenant_id inference-wire feature needs core 0.46.8; lower
+    # bound kept at 0.46.7 so the resolver stays functional until it publishes.
+    "omnibase-core>=0.46.7,<0.47.0",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
-    "omnibase-compat==0.5.5",
+    "omnibase-compat==0.5.6",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -486,6 +633,7 @@ dev = [
     "ruff>=0.14.13,<0.16.0",
     "mypy>=1.19.1",
     "types-pyyaml>=6.0.12.20250822",
+    "types-jsonschema>=4.25.1.20251222",
 ]
 
 [tool.coverage.run]
@@ -495,6 +643,12 @@ omit = ["*/tests/*"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
+# OMN-14762 (F-18): ignore records whose source is not on disk (e.g. the
+# dependency_injector `providers.pyx` C-extension, which ships only as a `.so`).
+# pytest-cov's json report in run_coverage_sweep_gate.py reads this section, so
+# setting it here makes the authoritative gate's `--cov-report=json` match the
+# shadow aggregator's `coverage json -i`. Enforced by check_coverage_ignore_parity.py.
+ignore_errors = true
 
 [tool.ruff]
 target-version = "py312"
@@ -520,6 +674,9 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["T201", "SLF001"]
 "scripts/**/*.py" = ["T201"]
+# CLI entrypoint for the SWE-discriminator smoke battery (OMN-13988) — prints
+# progress/results to stdout like the sibling recorder scripts.
+"src/omnimarket/delegation/swe_discriminator/run_smoke.py" = ["T201"]
 
 [tool.mypy]
 strict = true
@@ -577,6 +734,7 @@ module = [
     "omnimarket.nodes.node_pr_lifecycle_merge_effect.*",
     "omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.*",
     "omnimarket.nodes.node_pr_lifecycle_fix_effect.*",
+    "omnimarket.nodes.node_pr_delegated_fix_effect.*",
 ]
 ignore_missing_imports = true
 
@@ -622,4 +780,5 @@ markers = [
     "slow: Tests that take a long time to run (>1s)",
     "kafka: marks tests requiring a running Kafka broker",
     "e2e: End-to-end probe tests against a live lane (requires OMN_ALLOW_LIVE_E2E_PROBE=true)",
+    "live_model: Tests that call live local LLM endpoints (requires OMN_ALLOW_LIVE_LADDER=1)",
 ]

@@ -382,8 +382,7 @@ class TestHandlerSuccessfulFix:
 
             output = await handler.handle(_cmd())
 
-        assert len(output.events) == 1
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is True
         assert evt.local_tests_passed is True
@@ -451,7 +450,7 @@ class TestHandlerSuccessfulFix:
 
             output = await handler.handle(_cmd())
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.pr_number == 333
         assert evt.repo == "OmniNode-ai/omnimarket"
@@ -461,10 +460,14 @@ class TestHandlerSuccessfulFix:
 
     @pytest.mark.asyncio
     @pytest.mark.unit
-    async def test_handler_output_result_is_none(
+    async def test_handler_returns_typed_result_directly(
         self, handler: HandlerCiFixEffect
     ) -> None:
-        """Effect handler output.result is None (events carry the payload)."""
+        """Canonical thin shape (OMN-14242): handle() returns CiFixResult
+
+        directly -- no ModelHandlerOutput envelope, no coercion. The runtime
+        wraps.
+        """
         with (
             patch(
                 "omnimarket.nodes.node_ci_fix_effect.handlers.handler_ci_fix._fetch_ci_log",
@@ -472,7 +475,9 @@ class TestHandlerSuccessfulFix:
             ),
         ):
             output = await handler.handle(_cmd())
-        assert output.result is None
+        assert isinstance(output, CiFixResult)
+        assert output.patch_applied is False
+        assert output.error == "gh run view failed"
 
 
 class TestHandlerLlmFailure:
@@ -499,7 +504,7 @@ class TestHandlerLlmFailure:
 
             output = await handler.handle(_cmd())
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is False
         assert evt.local_tests_passed is False
@@ -528,7 +533,7 @@ class TestHandlerLlmFailure:
 
             output = await handler.handle(_cmd())
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is False
         assert "diff block" in (evt.error or "")
@@ -590,7 +595,7 @@ class TestHandlerLlmFailure:
 
             output = await handler.handle(_cmd())
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is True
         assert mock_provider.generate_async.await_count == 2
@@ -625,7 +630,7 @@ class TestHandlerInvalidPatchRejection:
 
             output = await handler.handle(_cmd())
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is False
         assert "unified diff" in (evt.error or "")
@@ -660,7 +665,7 @@ class TestHandlerInvalidPatchRejection:
 
             output = await handler.handle(_cmd())
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is False
         assert "too large" in (evt.error or "")
@@ -696,7 +701,7 @@ class TestHandlerInvalidPatchRejection:
 
             output = await handler.handle(_cmd())
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is False
         assert evt.is_noop is True
@@ -719,7 +724,7 @@ class TestHandlerRoutingPolicyResolution:
         ):
             output = await handler.handle(invalid_cmd)
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is False
 
@@ -780,7 +785,7 @@ class TestHandlerDepChangeGuard:
         ):
             output = await handler.handle(_cmd())
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is False
         assert "pyproject.toml" in (evt.error or "")
@@ -797,7 +802,7 @@ class TestHandlerDepChangeGuard:
         ):
             output = await handler.handle(_cmd())
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is False
         assert "uv.lock" in (evt.error or "")
@@ -815,7 +820,7 @@ class TestHandlerDepChangeGuard:
         ):
             output = await handler.handle(_cmd())
 
-        evt = output.events[0]
+        evt = output
         assert isinstance(evt, CiFixResult)
         assert evt.patch_applied is False
         assert "too large" in (evt.error or "")
@@ -885,3 +890,20 @@ class TestEndpointEnvVarRequired:
         endpoint = cfg.model_endpoints["ci_fixer_primary"]
         assert endpoint.base_url == "http://test-fast:8001"
         assert endpoint.model_id == "test-deepseek-r1-distill-14b"
+
+
+def test_contract_declares_ci_fix_attempted_topic() -> None:
+    """State-coverage: the node declares the pr-ci-fix-attempted output topic."""
+    from pathlib import Path
+
+    import yaml
+
+    import omnimarket.nodes.node_ci_fix_effect as _ci_fix_node_pkg
+
+    contract = yaml.safe_load(
+        (Path(_ci_fix_node_pkg.__file__).parent / "contract.yaml").read_text()
+    )
+    assert (
+        "onex.evt.omnimarket.pr-ci-fix-attempted.v1"
+        in contract["event_bus"]["publish_topics"]
+    )

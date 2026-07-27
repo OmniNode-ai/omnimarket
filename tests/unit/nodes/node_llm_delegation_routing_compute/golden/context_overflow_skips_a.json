@@ -1,0 +1,23 @@
+{
+  "case_id": "context_overflow_skips_a",
+  "fingerprint": "sha256:062a01d807e440fc7dbed62f0e3a724166a5adf04370929f81fd70ea6541050d",
+  "input_hash": "sha256:516322057ebb3353061dc4136ab3bd4a383e304df4e15f90405dd8c9e406c569",
+  "result": {
+    "kind": "ok",
+    "output": {
+      "selection": {
+        "cost_basis": "zero_marginal_api_cost",
+        "endpoint_env": "LLM_B_URL",
+        "model_id": "model-b",
+        "selection_reason": "preferred model selected",
+        "skipped_models": [
+          {
+            "model_id": "model-a",
+            "skip_reason": "estimated_tokens=80001 exceeds 80% of max_context=100000 (80000)"
+          }
+        ],
+        "tier": "local"
+      }
+    }
+  }
+}

@@ -628,11 +628,17 @@ class HandlerSwarmDispatchOrchestrator:
         error: str,
         request: ModelSwarmDispatchRequest | None = None,
     ) -> tuple[ModelOrchestratorState, list[_PendingPublish]]:
-        """Any state → FAILED: build terminal swarm-dispatch-failed event."""
+        """Any state → FAILED: build terminal swarm-dispatch-failed event.
+
+        `status` is required by the projection consumer's ModelSwarmDispatchEvent
+        (OMN-14514) — a transition to this terminal state is always a FAILED run,
+        so the value is not derived from `fsm_state`, it IS the terminal status.
+        """
         state = state.with_error(error)
         payload: dict[str, Any] = {
             "run_id": state.run_id,
             "correlation_id": state.correlation_id,
+            "status": EnumSwarmRunStatus.FAILED.value,
             "fsm_state": state.fsm_state.value,
             "error": state.error,
             "task": request.task if request else state.original_task,

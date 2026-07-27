@@ -52,15 +52,34 @@ ROUTING_FEEDBACK_UPDATED_TOPIC_V1 = "onex.evt.omnimarket.routing-feedback-update
 # GET /projection/onex.evt.github.pr-merged.v1 on the .201 lane (:3002).
 PR_MERGED_TOPIC_V1 = "onex.evt.github.pr-merged.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_merged_projection contract.yaml subscribe_topics (OMN-13226/13227)
 
+# Merge-flow state-transition telemetry (OMN-14648 / WS6). Emitted per PR state
+# transition through the merge flow; consumed by node_merge_state_projection,
+# which materializes the merge_state_transitions projection so the merge-flow
+# metrics (per-state duration, evidence-volume ratio baseline 1.67 -> target
+# <=1.1, same-head reruns by reason) can be measured from the event log.
+# REPORT-ONLY: no enforcement wired off this topic in the WS6 first PR.
+MERGE_STATE_TRANSITION_TOPIC_V1 = "onex.evt.omnimarket.merge-state-transition.v1"  # onex-topic-allow: canonical topic registry; declared in node_merge_state_projection contract.yaml subscribe_topics (OMN-14648)
+
 # OCC Evidence-Source autobind command (OMN-13317 / F1). Thin-published by the
 # call-occ-autobind GHA workflow on product-PR opened/synchronize; consumed by
-# node_pr_lifecycle_fix_effect, which routes it to the OccAutobindAdapter under
+# node_pr_lifecycle_fix_effect, which routes it to the OccCompanionEmitter under
 # the receipt_evidence_source_autobind block reason. The effect generates a
 # receipt stamped with the real PR head + number, opens/syncs the OCC binding
 # PR, recomputes contract_sha256 across all matching receipts, and PATCHes
 # Evidence-Source: OCC#<n> back onto the product PR so occ-preflight goes green
 # with zero manual edits.
 OCC_AUTOBIND_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-autobind.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml subscribe_topics (OMN-13317)
+
+# Canonical RSD-3 write-EFFECT command (OMN-14941 born path). Thin-published by
+# the call-occ-companion-effect GHA caller (via the omniclaude reusable) on
+# product-PR opened/synchronize; consumed by node_occ_companion_effect, which
+# runs the deterministic read -> compute -> write OCC-companion producer cycle
+# (RSD-2 state read, RSD-1 pure compute, git/gh side effects) and stamps
+# Evidence-Source: OCC#<n> back onto the product PR. Only THIS path mints
+# occ:machine-minted + minted_by_node=true. The published command MUST set
+# mode="mutate" explicitly — the model defaults to dry_run (fail-safe), so an
+# omitted mode is a silent no-mint (the optional-input-silent-skip trap).
+OCC_COMPANION_EFFECT_COMMAND_TOPIC_V1 = "onex.cmd.omnimarket.occ-companion-effect-requested.v1"  # onex-topic-allow: canonical topic registry; declared in node_occ_companion_effect contract.yaml subscribe_topics (OMN-14941)
 
 # Typed FSM watchdog topics (OMN-12959). Canonical terminal-state-invariant
 # vocabulary: every workflow FSM reaches a declared terminal OR trips one of

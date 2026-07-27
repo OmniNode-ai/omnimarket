@@ -6,7 +6,7 @@ Uses EventBusInmemory, zero infra required.
 
 Mock handler signatures match real sub-handler signatures (OMN-9234 fix):
   - MockInventory.handle(input_model: ModelPrInventoryInput) → sync
-  - MockTriage.handle(correlation_id, prs: tuple[ModelPrInventoryItem, ...]) → async
+  - MockTriage.handle(request: ModelPrTriageInput) → async
   - MockReducer.handle(*args, **kwargs) → async (accepts orchestrator kwargs)
   - MockMerge.handle(command: ModelPrMergeCommand) → async
   - MockFix.handle(command: ModelPrLifecycleFixCommand) → async
@@ -29,6 +29,9 @@ import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
+from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_policy import (
+    EnumArmActionMode,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_fix_command import (
     EnumPrBlockReason,
 )
@@ -91,21 +94,17 @@ class MockInventory:
 
 
 class MockTriage:
-    """Mock matching HandlerPrLifecycleTriage.handle(correlation_id, prs) signature."""
+    """Mock matching HandlerPrLifecycleTriage.handle(request) signature."""
 
     def __init__(self, classified: tuple[TriageRecord, ...] = ()) -> None:
         self._classified = classified
         self.call_count = 0
         self.last_correlation_id: UUID | None = None
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        prs: Any,
-    ) -> Any:
-        """Positional args: (correlation_id, prs) — no keyword-only."""
+    async def handle(self, request: Any) -> Any:
+        """Def-B: single ModelPrTriageInput request (OMN-14837)."""
         self.call_count += 1
-        self.last_correlation_id = correlation_id
+        self.last_correlation_id = request.correlation_id
         green = sum(1 for r in self._classified if r.category == EnumPrCategory.GREEN)
         non_green = len(self._classified) - green
         return PrTriageResult(
@@ -208,6 +207,13 @@ class MockFix:
 
             result = MagicMock()
             result.fix_applied = True
+            # OMN-14173: happy-path double = fix applied AND the OCC companion
+            # was verified as pushed. `is True` gating in _fix_one requires a
+            # real bool here (a bare MagicMock attribute would not equal True),
+            # so the autobind arm counts prs_fixed exactly as before. The
+            # fail-closed (companion-not-verified) case is exercised by a
+            # dedicated double in test_occ_companion_fail_closed_accounting.py.
+            result.occ_companion_verified = True
             result.pr_number = pr_number
             return result
         finally:
@@ -271,6 +277,11 @@ _PR_GREEN = PrRecord(
     repo="OmniNode-ai/omnimarket",
     checks_status="success",
     review_status="approved",
+    # OMN-14151: arm-gate-ready facts so tests asserting a real merge continue
+    # to pass under the merge-queue governor's fail-closed arm gate.
+    is_draft=False,
+    coderabbit_unresolved=0,
+    merge_state_status="CLEAN",
 )
 _PR_RED = PrRecord(
     pr_number=102,
@@ -296,9 +307,30 @@ def _make_command(**kwargs: object) -> ModelPrLifecycleStartCommand:
     defaults: dict[str, object] = {
         "correlation_id": uuid4(),
         "run_id": "20260411-000000-test01",
+        # OMN-14151: this golden-chain suite proves the merge orchestration
+        # wiring works end to end with mocked sub-handlers — it is not
+        # exercising the arm-gate's report-only default (that has its own
+        # dedicated coverage). Opt into ENFORCE by default so existing
+        # merge-path assertions keep passing under the fail-closed arm gate;
+        # individual tests can still override action_mode/kill_switch.
+        "action_mode": EnumArmActionMode.ENFORCE,
+        "merge_queue_mutation_kill_switch": False,
     }
     defaults.update(kwargs)
     return ModelPrLifecycleStartCommand(**defaults)  # type: ignore[arg-type]
+
+
+def test_command_normalizes_repo_filter_shorthand_to_github_slugs() -> None:
+    """User-facing repo filters accept local repo names from merge-sweep skills."""
+    command = _make_command(
+        repos=["omnibase_infra", "OmniNode-ai/omnimarket", " omniclaude "]
+    )
+    csv_command = _make_command(repos="omnibase_core, OmniNode-ai/omnimarket")
+
+    assert command.repos == (
+        "OmniNode-ai/omnibase_infra,OmniNode-ai/omnimarket,OmniNode-ai/omniclaude"
+    )
+    assert csv_command.repos == "OmniNode-ai/omnibase_core,OmniNode-ai/omnimarket"
 
 
 class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
@@ -351,6 +383,27 @@ class _TestOrchestrator(HandlerPrLifecycleOrchestrator):
         return self._probe_outcome
 
 
+class _LandedStampReadback:
+    """OMN-14191 test double: the fix landed a verified OCC companion.
+
+    The golden-chain / FSM / routing tests here assert ``prs_fixed`` reflects a
+    dispatched-and-landed fix; they do NOT exercise the read-back gate itself
+    (that lives in ``test_occ_stamp_readback_gate.py``), so they inject a
+    read-back that confirms the companion. Injecting it also keeps these tests
+    hermetic — without an injected read-back ``_ensure_sub_handlers`` wires the
+    live ``OccStampReadback`` (a real ``gh pr view`` subprocess).
+    """
+
+    async def verify_fix_landed(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> Any:
+        from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+            ModelOccStampReadbackResult,
+        )
+
+        return ModelOccStampReadbackResult(verified=True, reason="test: landed")
+
+
 async def _make_orchestrator(
     *,
     inventory: Any = None,
@@ -361,6 +414,7 @@ async def _make_orchestrator(
     event_bus: EventBusInmemory | None = None,
     changed_files_by_pr: dict[tuple[str, int], list[str]] | None = None,
     probe_outcome: EnumVerificationOutcome = EnumVerificationOutcome.MERGED,
+    occ_stamp_readback: Any = None,
 ) -> _TestOrchestrator:
     from typing import cast
 
@@ -385,6 +439,9 @@ async def _make_orchestrator(
         merge=merge or MockMerge(),
         fix=fix or MockFix(),
         event_bus=bus,
+        # OMN-14191: inject a hermetic read-back so prs_fixed counts a landed
+        # fix without wiring the live gh OccStampReadback subprocess.
+        occ_stamp_readback=occ_stamp_readback or _LandedStampReadback(),
     )
 
 
@@ -522,7 +579,10 @@ class TestPrLifecycleOrchestratorGoldenChain:
             triage=triage,
             reducer=reducer,
         )
-        result = await orch.handle(_make_command())
+        # OMN-14151: stall remediation is a separate opt-in from the arm-gate's
+        # readiness-arm decision — _make_command()'s ENFORCE default alone is
+        # not enough, enable_stall_remediation must also be set.
+        result = await orch.handle(_make_command(enable_stall_remediation=True))
 
         assert result.final_state == "COMPLETE"
         assert orch.queue_stall_adapter.calls == [("OmniNode-ai/omnimarket", 101)]
@@ -648,7 +708,7 @@ class TestPrLifecycleOrchestratorGoldenChain:
         """
 
         class BrokenTriage:
-            async def handle(self, correlation_id: Any, prs: Any) -> Any:
+            async def handle(self, request: Any) -> Any:
                 msg = "triage classifier crashed"
                 raise RuntimeError(msg)
 
@@ -1128,6 +1188,29 @@ class TestPrLifecycleOrchestratorResultFile:
         assert payload["final_state"] == "COMPLETE"
         assert payload["correlation_id"] == str(cmd.correlation_id)
 
+    async def test_root_state_dir_falls_back_to_omni_home(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A bad root ONEX_STATE_DIR must not write under /.onex_state."""
+        monkeypatch.setenv("ONEX_STATE_DIR", "/.onex_state")
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path / "omni_home"))
+        orch = await _make_orchestrator(inventory=MockInventory(prs=()))
+        cmd = _make_command(run_id="20260411-root-fallback")
+
+        result = await orch.handle(cmd)
+        assert result.final_state == "COMPLETE"
+
+        result_path = (
+            tmp_path
+            / "omni_home"
+            / ".onex_state"
+            / "merge-sweep"
+            / "20260411-root-fallback"
+            / "result.json"
+        )
+        assert result_path.exists()
+        assert not Path("/.onex_state/merge-sweep/20260411-root-fallback").exists()
+
     async def test_failure_writes_result_json(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -1378,10 +1461,16 @@ class TestOrchestratorFixReasonRouting:
                 EnumPrBlockReason.CONFLICT,
             ),
             (
+                # OMN-13987 CP1: a receipt-gate-ONLY failure that carries a
+                # ticket (the inventory record below sets ticket_ids) is the
+                # Evidence-Source-autobind class (OMN-13317) — machine routing
+                # keys off ticket presence, not prose. The no-ticket case that
+                # stays RECEIPT_FAILURE is covered in
+                # test_omn_13987_pr_lifecycle_arm_activation.py.
                 EnumPrCategory.RED,
-                "Receipt Gate-only failure detected, but no ticket ID was found.",
+                "Receipt Gate-only failure with a ticket — Evidence-Source autobind.",
                 ("verify / verify",),
-                EnumPrBlockReason.RECEIPT_FAILURE,
+                EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND,
             ),
             (
                 EnumPrCategory.RED,
@@ -1434,6 +1523,45 @@ class TestOrchestratorFixReasonRouting:
         assert fix.last_command.block_reason == expected
         assert fix.last_command.ticket_id == "OMN-11171"
 
+    async def test_network_flake_evidence_routes_to_ci_rerun(self) -> None:
+        """Network/clone log evidence routes a scary check name to CI rerun."""
+        inventory_record = PrRecord(
+            pr_number=502,
+            repo="OmniNode-ai/onex_change_control",
+            checks_status="failure",
+            review_status="pending",
+            ticket_ids=("OMN-13998",),
+            failed_check_names=("Kafka Boundary Parity",),
+            failed_check_flaky_evidence=("could not resolve host: github.com",),
+        )
+        triage_record = TriageRecord(
+            pr_number=inventory_record.pr_number,
+            repo=inventory_record.repo,
+            category=EnumPrCategory.RED,
+            ticket_ids=inventory_record.ticket_ids,
+            failed_check_names=inventory_record.failed_check_names,
+            failed_check_flaky_evidence=inventory_record.failed_check_flaky_evidence,
+            block_reason="CI status is 'failing' - fix required before merge.",
+        )
+        fix_intent = ReducerIntent(
+            pr_number=inventory_record.pr_number,
+            repo=inventory_record.repo,
+            intent=EnumReducerIntent.FIX,
+        )
+        fix = MockFix()
+        orch = await _make_orchestrator(
+            inventory=MockInventory(prs=(inventory_record,)),
+            triage=MockTriage(classified=(triage_record,)),
+            reducer=MockReducer(intents=(fix_intent,)),
+            fix=fix,
+        )
+
+        result = await orch.handle(_make_command())
+
+        assert result.final_state == "COMPLETE"
+        assert result.prs_fixed == 1
+        assert fix.last_command.block_reason == EnumPrBlockReason.CI_FAILURE
+
 
 # ---------------------------------------------------------------------------
 # OMN-9114: admin-merge-fallback default is ON
@@ -1463,17 +1591,23 @@ class TestAdminMergeFallbackDefaultOn:
         )
         assert cmd.enable_admin_merge_fallback is False
 
-    def test_handler_admin_merge_handle_default_opt_in_true(self) -> None:
-        """HandlerAdminMerge.handle(enable_admin_merge_fallback=...) defaults to True."""
-        import inspect
+    def test_handler_admin_merge_handle_default_opt_in_false(self) -> None:
+        """ModelAdminMergeRequest.enable_admin_merge_fallback defaults to False.
 
-        from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_admin_merge import (
-            HandlerAdminMerge,
+        HandlerAdminMerge.handle() takes a single typed
+        ModelAdminMergeRequest payload (OMN-14242 thin canonical shape); the
+        default now lives on the request model field, not a handle() kwarg.
+
+        OMN-15064: a destructive raw admin-merge capability must not default
+        on. The opt-in flipped True->False; even opted in, the OMN-14151
+        arm-gate ``policy`` field must independently open before any merge.
+        """
+        from omnimarket.nodes.node_pr_lifecycle_fix_effect.models.model_admin_merge_request import (
+            ModelAdminMergeRequest,
         )
 
-        sig = inspect.signature(HandlerAdminMerge.handle)
-        param = sig.parameters["enable_admin_merge_fallback"]
-        assert param.default is True
+        field = ModelAdminMergeRequest.model_fields["enable_admin_merge_fallback"]
+        assert field.default is False
 
 
 @pytest.mark.asyncio
@@ -1523,6 +1657,8 @@ class TestOrchestratorForwardsAdminMergeFallbackFlag:
             merge=MockMerge(),
             fix=fix,
             event_bus=cast(ProtocolEventBusPublisher, bus),
+            # OMN-14191: hermetic read-back (avoid the live gh subprocess).
+            occ_stamp_readback=_LandedStampReadback(),
         )
         await node.handle(
             ModelPrLifecycleStartCommand(

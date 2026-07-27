@@ -8,11 +8,17 @@ file_path, symbol). Idempotent: projecting the same event twice leaves
 exactly N rows, not 2N.
 """
 
+# dlq-path-not-required: a malformed dep-health event raises pydantic ValidationError
+# from Model(**payload); the handler does NOT catch it — it propagates to the runtime
+# projection callback, which routes to the contract DLQ (a durable signal, not a
+# silent drop). The injected _event_type key is stripped by split_projection_input,
+# so a well-formed event no longer trips extra_forbidden (OMN-13825 defect-1).
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.events.dep_health import ModelDepHealthSweepCompletedEvent
+from omnimarket.projection.handler_shim import split_projection_input
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "dep_health_findings"
@@ -34,17 +40,21 @@ class HandlerProjectionDepHealth:
 
         The runtime auto-wiring dispatches projection reducers via ``handle()``,
         not ``project()`` — it injects the ``DatabaseAdapter`` at
-        ``input_data['_db']`` and passes the remaining keys as the event payload.
-        Without this shim the runtime raised ``AttributeError: 'HandlerProjectionDepHealth'
-        object has no attribute 'handle'`` and silently dropped every event, so
-        ``dep_health_findings`` never materialized a row (OMN-13825). Mirrors
-        ``HandlerProjectionSwarm.handle``.
+        ``input_data['_db']`` and an ``_event_type`` derived from the source
+        topic, then passes the remaining keys as the event payload.
+
+        OMN-13825 (defect-1): ``ModelDepHealthSweepCompletedEvent`` is declared
+        ``extra="forbid"``, so an earlier shim that popped only ``_db`` left the
+        injected ``_event_type`` key in the dict and ``Model(**input_data)``
+        raised ``ValidationError [extra_forbidden]``. The runtime committed the
+        offset and dropped the event (``LAG=0`` yet zero rows). Routing through
+        :func:`split_projection_input` strips **all** injected leading-underscore
+        keys before model construction — the canonical path every projection
+        shim shares.
         """
-        db_raw = input_data.pop("_db", None)
-        if not isinstance(db_raw, DatabaseAdapter):
-            raise TypeError("handle() requires a DatabaseAdapter in input_data['_db']")
-        event = ModelDepHealthSweepCompletedEvent(**input_data)
-        result = self.project(event, db_raw)
+        db, payload, _meta = split_projection_input(input_data)
+        event = ModelDepHealthSweepCompletedEvent(**payload)
+        result = self.project(event, db)
         return result.model_dump(mode="json")
 
     def project(

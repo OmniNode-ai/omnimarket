@@ -1,0 +1,128 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Report Anchor-Probe EFFECT (OMN-15164)
+---
+name: report_anchor_probe_effect
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Executes live content-anchor re-probes for a dispatch report's claimed
+  fields: *_sha fields are resolved to a real commit against a caller-
+  supplied git_dir (commit-peeled `cat-file -e <sha>^{commit}`, so a blob or
+  tree hash does not satisfy the anchor); *_paths field entries are resolved
+  and containment-checked under a caller-supplied repo_root (relative_to) and
+  must be a file, not a directory; an optional PR-number claim is confirmed
+  via `gh pr view`. This node never introspects or imports a report model
+  directly -- callers lift field_name/sha/path/pr_number claims off whatever
+  report shape they have, so it works independent of the caller's
+  omnibase_core pin. I/O lives here; OMN-15163's report-validation COMPUTE
+  node consumes this node's typed output alongside its own shape checks.
+  Replaces the ad-hoc probe logic in omniclaude's unwired
+  subagent_claim_verifier.py (OMN-15165 deletion, separate ticket).
+
+handler:
+  module: omnimarket.nodes.node_report_anchor_probe_effect.handlers.handler_report_anchor_probe
+  class: HandlerReportAnchorProbe
+  input_model: omnimarket.nodes.node_report_anchor_probe_effect.models.model_probe_request.ModelReportAnchorProbeRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: probe_report_content_anchors
+      handler:
+        name: HandlerReportAnchorProbe
+        module: omnimarket.nodes.node_report_anchor_probe_effect.handlers.handler_report_anchor_probe
+      description: "Probe git-SHA, artifact-path, and PR-number content anchors."
+      input_model:
+        name: ModelReportAnchorProbeRequest
+        module: omnimarket.nodes.node_report_anchor_probe_effect.models.model_probe_request
+        description: "Anchor claims (sha/path/pr) plus git_dir/repo_root checking context."
+
+input_model:
+  name: ModelReportAnchorProbeRequest
+  module: omnimarket.nodes.node_report_anchor_probe_effect.models.model_probe_request
+  description: "Anchor claims (sha/path/pr) plus git_dir/repo_root checking context."
+
+output_model:
+  name: ModelReportAnchorProbeResult
+  module: omnimarket.nodes.node_report_anchor_probe_effect.models.model_probe_result
+  description: "Typed per-claim probe results (sha/path/pr) -- SEAM input to OMN-15163's COMPUTE validator."
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles:
+    - effects
+
+inputs:
+  correlation_id:
+    type: uuid
+    required: true
+    description: "Runtime correlation ID."
+  sha_claims:
+    type: list
+    required: false
+    default: []
+    description: "*_sha content-anchor claims: [{field_name, sha}, ...]."
+  path_claims:
+    type: list
+    required: false
+    default: []
+    description: "*_paths content-anchor claims: [{field_name, path}, ...]."
+  pr_claim:
+    type: object
+    required: false
+    default: null
+    description: "Optional PR-number claim: {field_name, pr_number, repo}."
+  git_dir:
+    type: str
+    required: false
+    default: null
+    description: "git dir (e.g. <worktree>/.git) used to resolve sha_claims. Missing context on a present sha_claims list is a fail-closed MISSING_CONTEXT result, never a silent skip."
+  repo_root:
+    type: str
+    required: false
+    default: null
+    description: "Repo root used to resolve+contain path_claims. Missing context on a present path_claims list is a fail-closed MISSING_CONTEXT result, never a silent skip."
+
+outputs:
+  sha_results:
+    type: list[ModelShaProbeResult]
+    description: "Per-claim sha resolution results."
+  path_results:
+    type: list[ModelPathProbeResult]
+    description: "Per-claim path existence+containment results."
+  pr_result:
+    type: ModelPrProbeResult
+    description: "PR-number confirmation result, or null when no pr_claim was supplied."
+
+# Directly-invoked only (no Kafka producer/consumer) -- matches
+# node_liveness_demand_query_effect / node_occ_observation_source_effect's own
+# runtime_dispatch-only declaration. OMN-15163's COMPUTE validator calls this
+# node's handler in-process (same pattern node_dispatch_worker_execution_effect
+# uses for its own EFFECT/COMPUTE-adjacent callers); there is no bus producer
+# for a start command or consumer for a completed event yet, so declaring
+# event_bus.subscribe_topics/publish_topics here would fail the contract
+# topic-graph gate as an orphaned consumer/producer.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.report-anchor-probe-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.report-anchor-probe-completed.v1
+    failure: onex.evt.omnimarket.report-anchor-probe-failed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "report anchor-probe EFFECT golden-chain tests"
+    command: "uv run pytest tests/test_golden_chain_report_anchor_probe_effect.py -q"
+    pass_criteria: "all RED (unresolvable sha, blob-not-commit, escaping path, missing file, dir-not-file) and GREEN probe cases pass"
+  ARCHITECTURE:
+    description: "def-B handler; no ModelEventEnvelope/ModelHandlerOutput in the handler signature; no report-model duplication"
+    pass_criteria: "handle(request: ModelReportAnchorProbeRequest) -> ModelReportAnchorProbeResult; handler never imports omnibase_core.models.dispatch.report"
+
+metadata:
+  transport_type: inmemory

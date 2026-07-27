@@ -22,10 +22,8 @@ from omnibase_infra.runtime.models import ModelDomainPluginConfig
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED as TOPIC_DELEGATION_COMPLETED,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
     ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_orchestrator.plugin import (
@@ -33,6 +31,8 @@ from omnimarket.nodes.node_delegation_orchestrator.plugin import (
     PluginDelegation,
     _build_delegation_result_applier,
 )
+
+from ._dispatch_engine_spy import RecordingDispatchEngine
 
 
 class _RecordingEventBus:
@@ -76,15 +76,17 @@ def test_delegation_contract_has_no_legacy_compatibility_publish_topic() -> None
 async def test_dispatcher_routes_are_contract_managed() -> None:
     plugin = PluginDelegation()
     config = _plugin_config()
-    config.dispatch_engine = MagicMock()
+    engine = RecordingDispatchEngine()
+    config.dispatch_engine = engine
 
     result = await plugin.wire_dispatchers(config)
 
     assert result.success
     assert result.message == "Delegation dispatcher routes are contract-managed"
     assert plugin._dispatcher_wiring_succeeded is True
-    config.dispatch_engine.register_dispatcher.assert_not_called()
-    config.dispatch_engine.register_route.assert_not_called()
+    # Routes are contract-managed: wire_dispatchers must register nothing on the engine.
+    assert engine.dispatcher_calls == []
+    assert engine.route_calls == []
 
 
 @pytest.mark.unit
@@ -101,19 +103,16 @@ async def test_plugin_result_applier_allows_contract_terminal_topics() -> None:
         published_events_map=load_published_events_map(_CONTRACT_PATH),
         publish_topics=subcontract.publish_topics,
     )
-    terminal = ModelDelegationEvent(
-        topic=TOPIC_DELEGATION_COMPLETED,
-        payload=ModelDelegationResult(
-            correlation_id=cid,
-            task_type="test",
-            model_used="local-coder",
-            endpoint_url="http://127.0.0.1:8001",
-            content="def test_example():\n    assert True",
-            quality_passed=True,
-            quality_score=1.0,
-            latency_ms=42,
-            fallback_to_claude=False,
-        ),
+    terminal = ModelDelegationCompleted(
+        correlation_id=cid,
+        task_type="test",
+        model_used="local-coder",
+        endpoint_url="http://127.0.0.1:8001",
+        content="def test_example():\n    assert True",
+        quality_passed=True,
+        quality_score=1.0,
+        latency_ms=42,
+        fallback_to_claude=False,
     )
     # OMN-13629: a delegation terminal is now a SINGLE canonical event — no
     # compat twin in output_events.

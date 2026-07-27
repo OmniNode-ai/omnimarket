@@ -139,10 +139,10 @@ _CASES = [
     pytest.param(
         None,
         {
-            "ok_skill": "ok",
+            "ok_skill": "STATIC_OK",
             "stub_skill": "stub",
             "gap_skill": "gap",
-            "pure_skill": "ok",
+            "pure_skill": "STATIC_OK",
             "facade_skill": "gap",
         },
         {"stub_skill"},
@@ -151,7 +151,7 @@ _CASES = [
     ),
     pytest.param(
         ["ok_skill"],
-        {"ok_skill": "ok"},
+        {"ok_skill": "STATIC_OK"},
         set(),
         set(),
         id="filter-ok-only",
@@ -179,7 +179,7 @@ _CASES = [
     ),
     pytest.param(
         ["pure_skill"],
-        {"pure_skill": "ok"},
+        {"pure_skill": "STATIC_OK"},
         set(),
         set(),
         id="filter-pure-instruction-exemption",
@@ -219,7 +219,8 @@ def test_skill_functional_audit_multiparam(
 
     # Verdict structural truth: status enum and finding-list coherence.
     for verdict in result.verdicts:
-        assert verdict.status in {"ok", "stub", "gap", "error"}
+        assert verdict.status in {"STATIC_OK", "LIVE_VERIFIED", "stub", "gap", "error"}
+        assert verdict.status != "ok"
         if verdict.status == "stub":
             assert verdict.stubs_found
         if verdict.status == "gap":

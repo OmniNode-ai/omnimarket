@@ -1,0 +1,26 @@
+{
+  "description": "Genuine product failure: pytest step failed with a real failure conclusion on the current head, PR-associated. This MUST classify as product_failed (dispatch a code fix) — the RED-vs-correct counterexample proving the classifier does not blanket-demote every failure to infra.",
+  "friction_ids": [],
+  "evidence": "control counterexample",
+  "expected_reason_code": "product_failed",
+  "naive_would_misclassify_as_product": false,
+  "run_event": "pull_request",
+  "required_context": true,
+  "current_head_sha": "9999999999999999999999999999999999999999",
+  "log_signatures": [],
+  "job": {
+    "id": 990009,
+    "run_id": 550009,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "9999999999999999999999999999999999999999",
+    "name": "test",
+    "steps": [
+      {"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+      {"name": "Run actions/checkout@v4", "status": "completed", "conclusion": "success", "number": 2},
+      {"name": "Run astral-sh/setup-uv@v4", "status": "completed", "conclusion": "success", "number": 3},
+      {"name": "Run pytest -m 'not kafka'", "status": "completed", "conclusion": "failure", "number": 4}
+    ]
+  }
+}

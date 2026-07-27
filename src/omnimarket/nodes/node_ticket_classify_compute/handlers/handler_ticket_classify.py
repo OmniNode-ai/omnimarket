@@ -15,7 +15,6 @@ from __future__ import annotations
 import logging
 import re
 from typing import Literal
-from uuid import UUID
 
 import yaml
 
@@ -27,6 +26,9 @@ from omnimarket.nodes.node_ticket_classify_compute.models.model_seam_boundaries 
 )
 from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classification import (
     ModelTicketClassification,
+)
+from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classify_input import (
+    ModelTicketClassifyInput,
 )
 from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classify_output import (
     ModelTicketClassifyOutput,
@@ -104,10 +106,18 @@ _SKIP_KEYWORDS: frozenset[str] = frozenset(
 
 
 def _match_keywords(text: str, keywords: frozenset[str]) -> tuple[str, ...]:
-    """Return matching keywords found in text (case-insensitive)."""
+    """Return matching keywords found in text, in deterministic sorted order.
+
+    Iterating ``sorted(keywords)`` rather than the raw ``frozenset`` makes the
+    match order (and the ``reason`` strings that embed it) deterministic across
+    processes — required for a COMPUTE node under the deterministic-truth
+    doctrine and for a stable byte-identical golden-equivalence oracle. This is
+    set-preserving: the SET of matched keywords is unchanged, only the ordering
+    is now canonical (OMN-14799).
+    """
     text_lower = text.lower()
     return tuple(
-        kw for kw in keywords if re.search(rf"\b{re.escape(kw)}\b", text_lower)
+        kw for kw in sorted(keywords) if re.search(rf"\b{re.escape(kw)}\b", text_lower)
     )
 
 
@@ -173,8 +183,7 @@ class HandlerTicketClassify:
 
     async def handle(
         self,
-        correlation_id: UUID,
-        tickets: tuple[ModelTicketForClassification, ...],
+        request: ModelTicketClassifyInput,
     ) -> ModelTicketClassifyOutput:
         """Classify tickets by buildability.
 
@@ -185,12 +194,14 @@ class HandlerTicketClassify:
             4. AUTO_BUILDABLE — matches buildable keywords (default)
 
         Args:
-            correlation_id: Cycle correlation ID.
-            tickets: Tickets to classify.
+            request: The classification request payload.
 
         Returns:
             ModelTicketClassifyOutput with all classifications.
         """
+        correlation_id = request.correlation_id
+        tickets = request.tickets
+
         logger.info(
             "Classifying %d tickets (correlation_id=%s)",
             len(tickets),

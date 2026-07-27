@@ -1,0 +1,33 @@
+{
+  "base_ref": "478583ce6c8ce0d424000f715a28b0fd78289f05",
+  "canonical_handler_module": "omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill",
+  "legacy_handler_module": "omnimarket.nodes.node_rsd_fill_compute.handlers.handler_rsd_fill",
+  "node_id": "omnimarket.nodes.node_rsd_fill_compute",
+  "parity": {
+    "selected_input_hashes": [
+      "sha256:af6af24de4189ace2fad93310d8044da921d83562f824416e041fa8b48b6ea2e",
+      "sha256:68df023b4bf241622da5fc01ad7ec06c7c4d377dd313bc95f1437b6a5ff1ae42",
+      "sha256:ec583db30fbbc46e5d70c24a755efce3277eef4f8107f8c2ed0f88edace07a3d",
+      "sha256:c6f54943210b2496f94a1c2650abf3fac8f4b24f266b1fe6e67ce8e77194e76f",
+      "sha256:968124f4fde2d153619be312bd2fb158b9686106b3730af00cbef1d8b2951561",
+      "sha256:7922c9372d6591299c241392fbb28d79660dc82cadb490120f9e43e5d74666ce",
+      "sha256:d9e23547f864fa52e98e0e4f7b36ec9961e17ac71d403d21bc2bdb46b57970ad",
+      "sha256:f42d2229e2e9b5f8f279ae9b8e20b40e650abfede257ddc320000931a5644728"
+    ],
+    "status": "pass",
+    "test_ids": [
+      "tests/unit/nodes/node_rsd_fill_compute/test_rsd_fill_golden_equivalence.py::test_handle_reproduces_recorded_golden[empty]",
+      "tests/unit/nodes/node_rsd_fill_compute/test_rsd_fill_golden_equivalence.py::test_handle_reproduces_recorded_golden[full_fields]",
+      "tests/unit/nodes/node_rsd_fill_compute/test_rsd_fill_golden_equivalence.py::test_handle_reproduces_recorded_golden[larger_pool]",
+      "tests/unit/nodes/node_rsd_fill_compute/test_rsd_fill_golden_equivalence.py::test_handle_reproduces_recorded_golden[max_exceeds]",
+      "tests/unit/nodes/node_rsd_fill_compute/test_rsd_fill_golden_equivalence.py::test_handle_reproduces_recorded_golden[single]",
+      "tests/unit/nodes/node_rsd_fill_compute/test_rsd_fill_golden_equivalence.py::test_handle_reproduces_recorded_golden[tie_by_priority]",
+      "tests/unit/nodes/node_rsd_fill_compute/test_rsd_fill_golden_equivalence.py::test_handle_reproduces_recorded_golden[tie_by_ticket_id]",
+      "tests/unit/nodes/node_rsd_fill_compute/test_rsd_fill_golden_equivalence.py::test_handle_reproduces_recorded_golden[top_n_distinct]"
+    ]
+  },
+  "preserved_symbols": [
+    "HandlerRsdFill._select_top_n"
+  ],
+  "receipt_schema": "handflip_proof.v1"
+}

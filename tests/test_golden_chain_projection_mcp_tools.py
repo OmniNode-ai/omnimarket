@@ -131,6 +131,73 @@ class TestProjectionMcpToolsMcpEligible:
 
 
 # ---------------------------------------------------------------------------
+# Real producer wire shape (OMN-14005)
+#
+# node_generation_consumer._emit_registration sends a generic `tags: list[str]`
+# field (e.g. "mcp-enabled", "mcp-tool:<name>") — it deliberately does NOT send
+# mcp_eligible/mcp_tags (removed as legacy, see
+# test_registration_payload_tags_are_mcp_conformant in node_generation_consumer's
+# tests). Before the _derive_mcp_eligibility_from_tags model_validator, every
+# real generation-sourced registration event silently acked with
+# rows_upserted=0 because mcp_eligible defaulted False.
+# ---------------------------------------------------------------------------
+
+
+class TestProjectionMcpToolsRealProducerShape:
+    def test_real_producer_tags_derive_mcp_eligible_and_upsert(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelMcpToolRegistrationEvent(
+            event_type="registered",
+            correlation_id="corr-gen-001",
+            node_name="node_stub_compute",
+            service_name="node_stub_compute",
+            tags=[
+                "mcp-enabled",
+                "node-type:orchestrator",
+                "mcp-tool:node_stub_compute",
+            ],
+            source="node_generation_consumer",
+        )
+        assert event.mcp_eligible is True
+        assert "mcp-enabled" in event.mcp_tags
+
+        result = HANDLER.project(event, db)
+        assert result.rows_upserted == 1
+        row = db.query("mcp_tools")[0]
+        assert row["tool_name"] == "node_stub_compute"
+        assert row["correlation_id"] == "corr-gen-001"
+        assert "mcp-enabled" in row["mcp_tags"]
+
+    def test_real_producer_tags_without_mcp_enabled_stays_ineligible(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelMcpToolRegistrationEvent(
+            node_name="node_pure_compute",
+            tags=["node-type:compute"],
+        )
+        assert event.mcp_eligible is False
+        result = HANDLER.project(event, db)
+        assert result.rows_upserted == 0
+        assert db.query("mcp_tools") == []
+
+    def test_explicit_mcp_eligible_wins_over_tags_derivation(self) -> None:
+        """An explicit mcp_eligible/mcp_tags is never overridden by `tags`."""
+        event = ModelMcpToolRegistrationEvent(
+            node_name="tool_explicit",
+            tags=["node-type:compute"],  # would derive mcp_eligible=False
+            mcp_eligible=True,
+            mcp_tags=("mcp-enabled",),
+        )
+        assert event.mcp_eligible is True
+        assert event.mcp_tags == ("mcp-enabled",)
+
+    def test_absent_tags_field_is_unaffected(self) -> None:
+        """No `tags` key at all: existing mcp_eligible default behaviour holds."""
+        event = ModelMcpToolRegistrationEvent(node_name="tool_no_tags")
+        assert event.mcp_eligible is False
+        assert event.mcp_tags == ()
+
+
+# ---------------------------------------------------------------------------
 # Non-MCP events: acknowledged but no write
 # ---------------------------------------------------------------------------
 
@@ -184,18 +251,29 @@ class TestProjectionMcpToolsIdempotency:
 
 
 # ---------------------------------------------------------------------------
-# Rejected status
+# Rejected status (OMN-14532)
+#
+# The old ``event.status == "rejected"`` branch in project() was dead code:
+# node_contract_registry's reject path (_reject()) never sets
+# mcp_eligible=True and publishes to a DIFFERENT topic
+# (node-registration-rejected.v1) this node does not subscribe to;
+# node_generation_consumer never sends a `status` field valued "rejected" at
+# all. Any event that reaches project() past the `mcp_eligible` gate is,
+# by construction, never a real rejection. Removed the branch — this test
+# now proves that a manually-constructed status="rejected" (a combination
+# that never occurs on the real wire) does NOT flip status/is_active,
+# rather than asserting the dead behavior.
 # ---------------------------------------------------------------------------
 
 
 class TestProjectionMcpToolsRejected:
-    def test_rejected_status_projects_inactive(self) -> None:
+    def test_status_field_no_longer_affects_projection(self) -> None:
         db = InmemoryDatabaseAdapter()
         event = _mcp_event(status="rejected")
         HANDLER.project(event, db)
         row = db.query("mcp_tools")[0]
-        assert row["status"] == EnumMcpToolStatus.REJECTED
-        assert row["is_active"] is False
+        assert row["status"] == EnumMcpToolStatus.ACTIVE
+        assert row["is_active"] is True
 
 
 # ---------------------------------------------------------------------------

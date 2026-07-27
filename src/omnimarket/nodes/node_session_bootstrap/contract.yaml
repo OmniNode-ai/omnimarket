@@ -111,7 +111,7 @@ required_crons:
       PRs. Skill-first routing: invoke /onex:merge_sweep before any raw Agent call.
       Route all LLM calls through .201 local models. Report only actionable events;
       silent on clean state.
-    schedule: "23 * * * *"
+    schedule: "*/30 * * * *"
     active_modes: [build, close-out]
     phase: 2
     status: active

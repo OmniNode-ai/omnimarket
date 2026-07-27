@@ -1,0 +1,32 @@
+{
+  "base_ref": "origin/dev",
+  "canonical_handler_module": "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage",
+  "flip_summary": "Hand-authored def-B signature flip: HandlerPrLifecycleTriage.handle changed from the multi-positional def-A shape handle(correlation_id, prs) to the canonical single typed-payload entrypoint handle(request: ModelPrTriageInput) -> ModelPrTriageOutput. The classification business logic (the preserved_symbols) is byte-identical (AST-normalized) between origin/dev and HEAD; only the entrypoint boundary moved so the shared runtime adapter drives it directly.",
+  "legacy_handler_module": "omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage",
+  "node_id": "omnimarket.nodes.node_pr_lifecycle_triage_compute",
+  "parity": {
+    "selected_input_hashes": [
+      "sha256:06fdf5738fdd48c7726c089f6216f8d5907be3d807ee87e62dcc8d7d049649f8",
+      "sha256:a9175ecf36e7870bb1e762ad3b92500dcf46d08d81a177c8a7c5298d2c69929d",
+      "sha256:ddb0c972020bda14b84b351f0412d238c2bd9479f703df4cf34edfd2c83370e9",
+      "sha256:85993848f9aac47391701fd40b583905527f9b423b13da08d08f7c348c41a9d3",
+      "sha256:11bdc2ccd124ea5d2e418337869419d2049c99420ea04ecf4fdfdbf79a524153",
+      "sha256:0bab27616302791ff627daa391094336fb6acad63c6993a84bb5f2c0aacc1b52"
+    ],
+    "status": "pass",
+    "test_ids": [
+      "tests/integration/node_pr_lifecycle_triage_compute/test_pr_lifecycle_triage_bus_coverage.py::test_triage_verdict_over_bus",
+      "tests/integration/node_pr_lifecycle_triage_compute/test_pr_lifecycle_triage_bus_coverage.py::test_triage_negative_control_conflicting_is_not_green",
+      "tests/integration/node_pr_lifecycle_triage_compute/test_pr_lifecycle_triage_bus_coverage.py::test_triage_mixed_batch_tallies_over_bus",
+      "tests/integration/node_pr_lifecycle_triage_compute/test_pr_lifecycle_triage_bus_coverage.py::test_triage_empty_batch_over_bus",
+      "tests/integration/node_pr_lifecycle_triage_compute/test_pr_lifecycle_triage_bus_coverage.py::test_triage_correlation_id_type_is_uuid",
+      "tests/integration/node_pr_lifecycle_triage_compute/test_pr_lifecycle_triage_state_coverage.py::test_triage_verdict_classes_are_pinned"
+    ]
+  },
+  "preserved_symbols": [
+    "_classify_pr",
+    "_result",
+    "_is_receipt_only_failure"
+  ],
+  "receipt_schema": "handflip_proof.v1"
+}

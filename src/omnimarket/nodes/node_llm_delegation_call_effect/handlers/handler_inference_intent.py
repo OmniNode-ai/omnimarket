@@ -109,6 +109,23 @@ def _parse_usage(data: dict[str, Any]) -> tuple[int, int, int]:
     return prompt_tokens, completion_tokens, total_tokens
 
 
+def _tenant_round_trip_fields(intent: ModelInferenceIntent) -> dict[str, Any]:
+    """Return the tenant round-trip kwarg for the inference response, if supported.
+
+    OMN-14280 (OMN-14208 slice-2 A-now): the inference effect READS the wire
+    tenant the orchestrator stamped onto the intent and ACTS on it — it
+    tenant-tags its logs (below) and echoes the tenant back onto
+    ``ModelInferenceResponseData`` so the owning tenant is auditable on the
+    response and the orchestrator can observability-cross-check it. Guarded on
+    the response model exposing ``tenant_id`` (mirrors the producer guard) so
+    the effect degrades cleanly against a pre-0.46.8 core during the coordinated
+    release window instead of raising ``extra="forbid"`` on every call.
+    """
+    if "tenant_id" in getattr(ModelInferenceResponseData, "model_fields", {}):
+        return {"tenant_id": getattr(intent, "tenant_id", None)}
+    return {}
+
+
 def _get_inference_response_topic() -> str:
     """Return the full inference-response publish topic from the contract.
 
@@ -252,9 +269,11 @@ class HandlerInferenceIntent:
             latency_ms = int((time.monotonic() - started) * 1000)
             error_msg = str(exc)
             logger.warning(
-                "HandlerInferenceIntent failed: model=%s correlation_id=%s error=%s",
+                "HandlerInferenceIntent failed: model=%s correlation_id=%s "
+                "tenant_id=%s error=%s",
                 intent.model,
                 intent.correlation_id,
+                getattr(intent, "tenant_id", None),
                 error_msg,
             )
             # OMN-13408: when the failure carries served usage (truncation /
@@ -279,6 +298,7 @@ class HandlerInferenceIntent:
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
                 error_message=error_msg,
+                **_tenant_round_trip_fields(intent),
             )
 
     def _call_llm(
@@ -380,11 +400,13 @@ class HandlerInferenceIntent:
         response_id: str = data.get("id") or call_id
 
         logger.info(
-            "HandlerInferenceIntent succeeded: model=%s tokens=%d latency=%dms correlation_id=%s",
+            "HandlerInferenceIntent succeeded: model=%s tokens=%d latency=%dms "
+            "correlation_id=%s tenant_id=%s",
             intent.model,
             total_tokens,
             latency_ms,
             intent.correlation_id,
+            getattr(intent, "tenant_id", None),
         )
 
         return ModelInferenceResponseData(
@@ -396,6 +418,7 @@ class HandlerInferenceIntent:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
+            **_tenant_round_trip_fields(intent),
         )
 
 

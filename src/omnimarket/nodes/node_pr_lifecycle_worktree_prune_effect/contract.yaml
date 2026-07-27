@@ -31,6 +31,14 @@ handler:
   class: HandlerWorktreePrune
   input_model: omnimarket.events.worktree_prune.ModelWorktreePruneCommand
 
+# Only HandlerWorktreePrune is a routable message handler. GitWorktreeAdapter is
+# a plain git side-effect dependency injected into the handler's constructor
+# (see handler_worktree_prune.ProtocolGitWorktreeAdapter) — it is NOT an
+# event-payload-routed handler and must never be listed here. Under the
+# payload_type_match strategy RuntimeLocal._validate_routing requires every
+# entry to declare event_model.name + event_model.module; an adapter entry with
+# no event_model fails routing validation before dispatch, blocking the node on
+# every invocation (OMN-13882).
 handler_routing:
   routing_strategy: payload_type_match
   handlers:
@@ -40,9 +48,6 @@ handler_routing:
       event_model:
         name: ModelWorktreePruneCommand
         module: omnimarket.events.worktree_prune
-    - handler:
-        name: GitWorktreeAdapter
-        module: omnimarket.nodes.node_pr_lifecycle_worktree_prune_effect.handlers.adapter_git_worktree
 
 descriptor:
   node_archetype: effect

@@ -117,15 +117,22 @@ externally_consumed_topics:
 
 # === HANDLER ROUTING ===
 handler_routing:
+  routing_strategy: operation_match
   handlers:
     - operation: "document_discovered"
       handler_class: "HandlerKreuzbergParse"
       handler_module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
       event_model: omnimemory.models.crawl.model_document_discovered_event.ModelDocumentDiscoveredEvent
+      handler:
+        name: "HandlerKreuzbergParse"
+        module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
     - operation: "document_changed"
       handler_class: "HandlerKreuzbergParse"
       handler_module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
       event_model: omnimemory.models.crawl.model_document_changed_event.ModelDocumentChangedEvent
+      handler:
+        name: "HandlerKreuzbergParse"
+        module: "omnimarket.nodes.node_kreuzberg_parse_effect.handlers.handler_kreuzberg_parse"
 
 # === CONFIGURATION FIELDS ===
 config_fields:

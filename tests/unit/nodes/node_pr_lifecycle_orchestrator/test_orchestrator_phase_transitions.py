@@ -21,7 +21,9 @@ import pytest
 
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecycle_orchestrator import (
     HandlerPrLifecycleOrchestrator,
+    ModelPrLifecycleResult,
     ModelPrLifecycleStartCommand,
+    OrgWideOpenPrRemainderRef,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -34,6 +36,9 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     ReducerIntent,
     ReducerResult,
     TriageRecord,
+)
+from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage import (
+    HandlerPrLifecycleTriage,
 )
 from omnimarket.nodes.pr_ledger_native import (
     EnumPrLedgerConclusion,
@@ -63,7 +68,7 @@ class _MockTriage:
     def __init__(self, classified: tuple[TriageRecord, ...]) -> None:
         self._classified = classified
 
-    async def handle(self, correlation_id: Any, prs: Any) -> PrTriageResult:
+    async def handle(self, request: Any) -> PrTriageResult:
         green = sum(1 for r in self._classified if r.category == EnumPrCategory.GREEN)
         return PrTriageResult(
             classified=self._classified,
@@ -123,6 +128,102 @@ class _Orchestrator(HandlerPrLifecycleOrchestrator):
 
     def _write_occ_dependency_edges_file(self, run_id: str, edges: Any) -> None:
         return None
+
+
+class _LoopingOrchestrator(HandlerPrLifecycleOrchestrator):
+    """Test double that returns scripted sweep results."""
+
+    def __init__(self, results: tuple[ModelPrLifecycleResult, ...]) -> None:
+        super().__init__(event_bus=_RecordingBus())
+        self._results = list(results)
+        self.writes: list[ModelPrLifecycleResult] = []
+        self.calls = 0
+
+    async def _run_sweep(
+        self, command: ModelPrLifecycleStartCommand
+    ) -> ModelPrLifecycleResult:
+        self.calls += 1
+        if not self._results:
+            raise AssertionError("unexpected extra sweep pass")
+        return self._results.pop(0)
+
+    def _write_result_file(self, run_id: str, result: ModelPrLifecycleResult) -> None:
+        self.writes.append(result)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_call_triage_treats_clean_merge_state_as_merge_ready() -> None:
+    """GitHub CLEAN means branch protection is satisfied even without a review row."""
+    pr = PrRecord(
+        pr_number=3555,
+        repo="OmniNode-ai/onex_change_control",
+        checks_status="success",
+        review_status="unknown",
+        merge_state_status="CLEAN",
+    )
+    orch = _Orchestrator(
+        _prs=(pr,),
+        inventory=_MockInventory((pr,)),
+        triage=HandlerPrLifecycleTriage(),
+        reducer=_MockReducer(()),
+        merge=_MockMerge(),
+        fix=_MockFix(),
+        event_bus=_RecordingBus(),
+    )
+
+    result = await orch._call_triage(correlation_id=uuid4(), prs=(pr,))
+
+    assert result.green_count == 1
+    assert result.classified[0].category is EnumPrCategory.GREEN
+
+
+@pytest.mark.unit
+def test_pr_lifecycle_defaults_to_standing_sweep_cadence() -> None:
+    command = ModelPrLifecycleStartCommand(
+        correlation_id=uuid4(),
+        run_id="standing-sweep-defaults",
+    )
+
+    assert command.loop_until_done is True
+    assert command.sweep_sleep_seconds == 30 * 60
+    assert command.max_sweep_passes == 17_520
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handle_loops_until_done_after_not_done_result() -> None:
+    """A NOT_DONE report is a continuation condition, not command completion."""
+    correlation_id = uuid4()
+    first = ModelPrLifecycleResult(
+        correlation_id=correlation_id,
+        final_state="NOT_DONE",
+        prs_inventoried=1,
+        org_wide_open_count=1,
+        org_wide_open_remainders=(
+            OrgWideOpenPrRemainderRef(
+                repo="OmniNode-ai/omnibase_core",
+                pr_number=1386,
+                title="queued",
+                url="https://github.com/OmniNode-ai/omnibase_core/pull/1386",
+            ),
+        ),
+    )
+    second = ModelPrLifecycleResult(correlation_id=correlation_id)
+    orch = _LoopingOrchestrator((first, second))
+
+    result = await orch.handle(
+        ModelPrLifecycleStartCommand(
+            correlation_id=correlation_id,
+            run_id="loop-proof",
+            max_sweep_passes=2,
+            sweep_sleep_seconds=0,
+        )
+    )
+
+    assert result is second
+    assert orch.calls == 2
+    assert orch.writes == [first, second]
 
 
 @pytest.mark.unit

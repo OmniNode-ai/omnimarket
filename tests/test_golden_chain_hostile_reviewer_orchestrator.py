@@ -14,7 +14,9 @@ substituted with a fixed-diff stub (a NON-inference boundary — not a fake of t
 platform's inference/routing/dispatch egress). The chain asserts:
   - the start command -> completed event chain preserves the
     ModelHostileReviewerCompletedEvent shape on the preserved topic,
-  - the orchestrator emits via for_orchestrator(events=...) (events only),
+  - the orchestrator's ``handle()`` returns the typed
+    ModelHostileReviewerCompletedEvent directly (OMN-14242 thin canonical
+    shape — no ModelHandlerOutput envelope; the runtime wraps),
   - per-model degradation does not abort the run,
   - all-models-fail still yields a DONE completed event (CLEAN, zero findings),
   - a fatal error yields a FAILED completed event with an error_message.
@@ -26,7 +28,6 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
-from omnibase_core.enums.enum_node_kind import EnumNodeKind
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
@@ -138,14 +139,11 @@ class TestHostileReviewerOrchestratorGoldenChain:
         adapter = _replay_adapter(["review_primary", "review_b"])
         command = _command(models=["review_primary", "review_b"])
 
-        output = await _orchestrator(adapter).handle(command)
+        # Thin canonical shape (OMN-14242): handle() returns the typed
+        # ModelHostileReviewerCompletedEvent directly — no ModelHandlerOutput
+        # envelope. The runtime wraps it for bus publication.
+        completed = await _orchestrator(adapter).handle(command)
 
-        assert output.node_kind == EnumNodeKind.ORCHESTRATOR
-        # ORCHESTRATOR output: events only, no result/projections.
-        assert output.result is None
-        assert output.projections == ()
-        assert len(output.events) == 1
-        completed = output.events[0]
         assert isinstance(completed, ModelHostileReviewerCompletedEvent)
         assert completed.correlation_id == command.correlation_id
         assert completed.final_phase == EnumHostileReviewerPhase.DONE
@@ -157,8 +155,7 @@ class TestHostileReviewerOrchestratorGoldenChain:
         adapter = _replay_adapter(["review_primary"])
         command = _command()
 
-        output = await _orchestrator(adapter).handle(command)
-        completed = output.events[0]
+        completed = await _orchestrator(adapter).handle(command)
         payload = completed.model_dump(mode="json")
 
         # Preserved ModelHostileReviewerCompletedEvent shape (OMN-13210 replay).
@@ -179,16 +176,14 @@ class TestHostileReviewerOrchestratorGoldenChain:
         adapter = _replay_adapter([])
         command = _command(models=["review_primary", "review_b"])
 
-        output = await _orchestrator(adapter).handle(command)
-        completed = output.events[0]
+        completed = await _orchestrator(adapter).handle(command)
         assert completed.final_phase == EnumHostileReviewerPhase.DONE
         assert completed.total_findings == 0
 
     async def test_all_models_fail_yields_clean_done(self) -> None:
         command = _command(models=["review_primary"])
 
-        output = await _orchestrator(_FailInferenceAdapter()).handle(command)
-        completed = output.events[0]
+        completed = await _orchestrator(_FailInferenceAdapter()).handle(command)
         # Per-model transport failures degrade gracefully -> DONE, zero findings.
         assert completed.final_phase == EnumHostileReviewerPhase.DONE
         assert completed.total_findings == 0
@@ -208,8 +203,7 @@ class TestHostileReviewerOrchestratorGoldenChain:
         )
         command = _command()
 
-        output = await handler.handle(command)
-        completed = output.events[0]
+        completed = await handler.handle(command)
         assert completed.final_phase == EnumHostileReviewerPhase.FAILED
         assert completed.error_message is not None
         assert "exploded" in completed.error_message

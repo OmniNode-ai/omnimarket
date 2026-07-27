@@ -26,6 +26,9 @@ from typing import Any, Protocol, runtime_checkable
 
 import httpx
 
+from omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_request import (
+    ModelCodeEmbeddingRequest,
+)
 from omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_result import (
     ModelCodeEmbeddingResult,
 )
@@ -54,21 +57,29 @@ class ProtocolCodeEntityRepository(Protocol):
 
 
 class HandlerCodeEmbeddingEffect:
-    """EFFECT handler — embeds code entities and stores vectors in Qdrant."""
+    """EFFECT handler — embeds code entities and stores vectors in Qdrant.
 
-    async def handle(
+    Dependencies are injected via constructor for testability (canonical thin
+    shape, OMN-14242). ``handle()`` takes a single typed
+    ``ModelCodeEmbeddingRequest`` payload — no envelope, no coercion; the
+    runtime wraps.
+    """
+
+    def __init__(
         self,
-        *,
-        correlation_id: str,
         repository: ProtocolCodeEntityRepository,
         qdrant_client: Any | None = None,
-        embedding_endpoint_override: str | None = None,
-        qdrant_collection_override: str | None = None,
-        batch_size: int | None = None,
+    ) -> None:
+        self._repository = repository
+        self._qdrant_client = qdrant_client
+
+    async def handle(
+        self, payload: ModelCodeEmbeddingRequest
     ) -> ModelCodeEmbeddingResult:
         """Embed a batch of code entities and upsert into Qdrant."""
+        correlation_id = payload.correlation_id
         endpoint = (
-            embedding_endpoint_override
+            payload.embedding_endpoint_override
             or os.environ.get(  # contract-config-ok: config
                 "EMBEDDING_MODEL_URL", ""
             )
@@ -80,28 +91,29 @@ class HandlerCodeEmbeddingEffect:
             )
 
         collection = (
-            qdrant_collection_override
+            payload.qdrant_collection_override
             or os.environ.get(  # contract-config-ok: config
                 "QDRANT_CODE_COLLECTION", DEFAULT_QDRANT_COLLECTION
             )
         )
-        if batch_size is None:
-            effective_batch_size = int(
+        # batch_size <= 0 is rejected at payload construction (Field(gt=0) on
+        # ModelCodeEmbeddingRequest) — no manual re-validation needed here.
+        effective_batch_size = (
+            payload.batch_size
+            if payload.batch_size is not None
+            else int(
                 os.environ.get(  # contract-config-ok: config
                     "CODE_EMBEDDING_BATCH_SIZE", str(DEFAULT_EMBEDDING_BATCH_SIZE)
                 )
             )
-        elif batch_size <= 0:
-            raise ValueError(f"batch_size must be positive, got {batch_size}")
-        else:
-            effective_batch_size = batch_size
+        )
         vector_size = int(
             os.environ.get(  # contract-config-ok: config
                 "CODE_EMBEDDING_VECTOR_SIZE", str(DEFAULT_VECTOR_SIZE)
             )
         )
 
-        resolved_client = qdrant_client
+        resolved_client = self._qdrant_client
         if resolved_client is None:
             resolved_client = _build_qdrant_client()
             if resolved_client is None:
@@ -132,7 +144,7 @@ class HandlerCodeEmbeddingEffect:
                 batch_size_used=effective_batch_size,
             )
 
-        entities = await repository.get_entities_needing_embedding(
+        entities = await self._repository.get_entities_needing_embedding(
             limit=effective_batch_size
         )
         if not entities:
@@ -174,7 +186,7 @@ class HandlerCodeEmbeddingEffect:
                     failed += 1
 
         if embedded_ids:
-            await repository.update_embedded_at(embedded_ids)
+            await self._repository.update_embedded_at(embedded_ids)
 
         logger.info(
             "Embedding complete: %d embedded, %d failed (correlation_id=%s)",

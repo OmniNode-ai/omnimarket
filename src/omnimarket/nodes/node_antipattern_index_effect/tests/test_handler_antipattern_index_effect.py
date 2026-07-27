@@ -22,6 +22,9 @@ from omnimarket.nodes.node_antipattern_index_effect.handlers.handler_antipattern
     _build_entry_text,
     _entry_point_id,
 )
+from omnimarket.nodes.node_antipattern_index_effect.models.model_antipattern_index_request import (
+    ModelAntipatternIndexRequest,
+)
 
 # =============================================================================
 # Minimal stubs for omnibase_core models (avoid cross-repo import in unit tests)
@@ -125,6 +128,18 @@ def _make_registry_loader(registry: _FakeRegistry) -> Any:
     return lambda _root: registry
 
 
+def _make_request(**overrides: Any) -> ModelAntipatternIndexRequest:
+    """Build a ModelAntipatternIndexRequest with sane defaults for tests.
+
+    ``correlation_id`` defaults to a fixed value; override as needed. Canonical
+    shape: DI (qdrant_client, registry_loader) is constructor-injected on the
+    handler, NOT part of the request model.
+    """
+    params: dict[str, Any] = {"correlation_id": "test-corr"}
+    params.update(overrides)
+    return ModelAntipatternIndexRequest(**params)
+
+
 # =============================================================================
 # Unit tests: _entry_point_id
 # =============================================================================
@@ -199,7 +214,9 @@ class TestHandlerAntipatternIndexEffect:
         registry = _make_fake_registry(vector_entries=2, non_vector_entries=1)
         qdrant = _make_mock_qdrant()
         fake_embedding = [0.1] * 4096
-        handler = HandlerAntipatternIndexEffect()
+        handler = HandlerAntipatternIndexEffect(
+            qdrant_client=qdrant, registry_loader=_make_registry_loader(registry)
+        )
 
         with patch(
             "omnimarket.nodes.node_antipattern_index_effect.handlers.handler_antipattern_index_effect.httpx.AsyncClient"
@@ -207,10 +224,10 @@ class TestHandlerAntipatternIndexEffect:
             mock_client_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-001",
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
-                registry_loader=_make_registry_loader(registry),
+                _make_request(
+                    correlation_id="test-001",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert result.correlation_id == "test-001"
@@ -223,7 +240,9 @@ class TestHandlerAntipatternIndexEffect:
         registry = _make_fake_registry(vector_entries=1, non_vector_entries=0)
         qdrant = _make_mock_qdrant()
         fake_embedding = [0.2] * 4096
-        handler = HandlerAntipatternIndexEffect()
+        handler = HandlerAntipatternIndexEffect(
+            qdrant_client=qdrant, registry_loader=_make_registry_loader(registry)
+        )
 
         with patch(
             "omnimarket.nodes.node_antipattern_index_effect.handlers.handler_antipattern_index_effect.httpx.AsyncClient"
@@ -231,10 +250,10 @@ class TestHandlerAntipatternIndexEffect:
             mock_client_cls.return_value = _make_mock_http_client(fake_embedding)
 
             await handler.handle(
-                correlation_id="test-002",
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
-                registry_loader=_make_registry_loader(registry),
+                _make_request(
+                    correlation_id="test-002",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         # First upsert call is the entry itself
@@ -254,13 +273,15 @@ class TestHandlerAntipatternIndexEffect:
     async def test_no_vector_entries_returns_zero_indexed(self) -> None:
         registry = _make_fake_registry(vector_entries=0, non_vector_entries=3)
         qdrant = _make_mock_qdrant()
-        handler = HandlerAntipatternIndexEffect()
+        handler = HandlerAntipatternIndexEffect(
+            qdrant_client=qdrant, registry_loader=_make_registry_loader(registry)
+        )
 
         result = await handler.handle(
-            correlation_id="test-003",
-            qdrant_client=qdrant,
-            embedding_endpoint_override="http://test-embed:8100",
-            registry_loader=_make_registry_loader(registry),
+            _make_request(
+                correlation_id="test-003",
+                embedding_endpoint_override="http://test-embed:8100",
+            )
         )
 
         assert result.indexed_count == 0
@@ -272,16 +293,15 @@ class TestHandlerAntipatternIndexEffect:
         import os
 
         registry = _make_fake_registry(vector_entries=1)
-        handler = HandlerAntipatternIndexEffect()
+        handler = HandlerAntipatternIndexEffect(
+            qdrant_client=_make_mock_qdrant(),
+            registry_loader=_make_registry_loader(registry),
+        )
 
         backup = os.environ.pop("EMBEDDING_MODEL_URL", None)
         try:
             with pytest.raises(OSError, match="EMBEDDING_MODEL_URL"):
-                await handler.handle(
-                    correlation_id="test-004",
-                    qdrant_client=_make_mock_qdrant(),
-                    registry_loader=_make_registry_loader(registry),
-                )
+                await handler.handle(_make_request(correlation_id="test-004"))
         finally:
             if backup is not None:
                 os.environ["EMBEDDING_MODEL_URL"] = backup
@@ -291,15 +311,17 @@ class TestHandlerAntipatternIndexEffect:
         import os
 
         registry = _make_fake_registry(vector_entries=2)
-        handler = HandlerAntipatternIndexEffect()
+        handler = HandlerAntipatternIndexEffect(
+            qdrant_client=None, registry_loader=_make_registry_loader(registry)
+        )
 
         backup = os.environ.pop("QDRANT_HOST", None)
         try:
             result = await handler.handle(
-                correlation_id="test-005",
-                qdrant_client=None,
-                embedding_endpoint_override="http://test-embed:8100",
-                registry_loader=_make_registry_loader(registry),
+                _make_request(
+                    correlation_id="test-005",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
         finally:
             if backup is not None:
@@ -315,13 +337,15 @@ class TestHandlerAntipatternIndexEffect:
         qdrant.retrieve.return_value = [
             MagicMock(payload={"registry_version": "1.0.0", "_meta": True})
         ]
-        handler = HandlerAntipatternIndexEffect()
+        handler = HandlerAntipatternIndexEffect(
+            qdrant_client=qdrant, registry_loader=_make_registry_loader(registry)
+        )
 
         result = await handler.handle(
-            correlation_id="test-006",
-            qdrant_client=qdrant,
-            embedding_endpoint_override="http://test-embed:8100",
-            registry_loader=_make_registry_loader(registry),
+            _make_request(
+                correlation_id="test-006",
+                embedding_endpoint_override="http://test-embed:8100",
+            )
         )
 
         assert result.was_no_op is True
@@ -336,7 +360,9 @@ class TestHandlerAntipatternIndexEffect:
             MagicMock(payload={"registry_version": "1.0.0", "_meta": True})
         ]
         fake_embedding = [0.3] * 4096
-        handler = HandlerAntipatternIndexEffect()
+        handler = HandlerAntipatternIndexEffect(
+            qdrant_client=qdrant, registry_loader=_make_registry_loader(registry)
+        )
 
         with patch(
             "omnimarket.nodes.node_antipattern_index_effect.handlers.handler_antipattern_index_effect.httpx.AsyncClient"
@@ -344,11 +370,11 @@ class TestHandlerAntipatternIndexEffect:
             mock_client_cls.return_value = _make_mock_http_client(fake_embedding)
 
             result = await handler.handle(
-                correlation_id="test-007",
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
-                force_reindex=True,
-                registry_loader=_make_registry_loader(registry),
+                _make_request(
+                    correlation_id="test-007",
+                    embedding_endpoint_override="http://test-embed:8100",
+                    force_reindex=True,
+                )
             )
 
         assert result.was_no_op is False
@@ -358,7 +384,9 @@ class TestHandlerAntipatternIndexEffect:
     async def test_embedding_failure_increments_skipped(self) -> None:
         registry = _make_fake_registry(vector_entries=2, non_vector_entries=0)
         qdrant = _make_mock_qdrant()
-        handler = HandlerAntipatternIndexEffect()
+        handler = HandlerAntipatternIndexEffect(
+            qdrant_client=qdrant, registry_loader=_make_registry_loader(registry)
+        )
 
         with patch(
             "omnimarket.nodes.node_antipattern_index_effect.handlers.handler_antipattern_index_effect.httpx.AsyncClient"
@@ -370,10 +398,10 @@ class TestHandlerAntipatternIndexEffect:
             mock_client_cls.return_value = mock_http
 
             result = await handler.handle(
-                correlation_id="test-008",
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
-                registry_loader=_make_registry_loader(registry),
+                _make_request(
+                    correlation_id="test-008",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert result.indexed_count == 0
@@ -383,13 +411,15 @@ class TestHandlerAntipatternIndexEffect:
     async def test_correlation_id_propagated(self) -> None:
         registry = _make_fake_registry(vector_entries=0)
         qdrant = _make_mock_qdrant()
-        handler = HandlerAntipatternIndexEffect()
+        handler = HandlerAntipatternIndexEffect(
+            qdrant_client=qdrant, registry_loader=_make_registry_loader(registry)
+        )
 
         result = await handler.handle(
-            correlation_id="unique-xyz-789",
-            qdrant_client=qdrant,
-            embedding_endpoint_override="http://test-embed:8100",
-            registry_loader=_make_registry_loader(registry),
+            _make_request(
+                correlation_id="unique-xyz-789",
+                embedding_endpoint_override="http://test-embed:8100",
+            )
         )
 
         assert result.correlation_id == "unique-xyz-789"
@@ -423,12 +453,13 @@ async def test_integration_collection_exists_after_run() -> None:
     except Exception as exc:
         pytest.skip(f"Qdrant unreachable: {exc}")
 
-    handler = HandlerAntipatternIndexEffect()
+    handler = HandlerAntipatternIndexEffect(qdrant_client=client)
     result = await handler.handle(
-        correlation_id="integration-probe-001",
-        qdrant_client=client,
-        embedding_endpoint_override=endpoint,
-        force_reindex=True,
+        _make_request(
+            correlation_id="integration-probe-001",
+            embedding_endpoint_override=endpoint,
+            force_reindex=True,
+        )
     )
 
     collections = [c.name for c in client.get_collections().collections]

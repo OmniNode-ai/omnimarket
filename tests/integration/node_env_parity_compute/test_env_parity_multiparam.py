@@ -18,9 +18,7 @@ import pytest
 from omnimarket.nodes.node_env_parity_compute.handlers.handler_env_parity_compute import (
     HandlerEnvParityCompute,
 )
-from omnimarket.nodes.node_env_parity_compute.models.model_env_parity_compute_request import (
-    ModelEnvParityComputeRequest,
-)
+from omnimarket.parity.model_env_parity import ModelEnvParityComputeRequest
 
 _KAFKA_VARS = ["ENABLE_KAFKA", "KAFKA_BOOTSTRAP_SERVERS", "KAFKA_CONSUMER_GROUP"]
 

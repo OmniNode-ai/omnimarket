@@ -52,7 +52,7 @@ async def test_protected_head_ref_refuses_without_git(tmp_path: Path) -> None:
     """Rule: refuse to rebase if head_ref is a protected branch (main/master/develop)."""
     handler = HandlerRebaseEffect()
     # No git calls should happen — guard fires before any subprocess
-    output = await handler.handle(
+    evt = await handler.handle(
         ModelRebaseCommand(
             pr_number=300,
             repo="OmniNode-ai/omni_home",
@@ -64,8 +64,6 @@ async def test_protected_head_ref_refuses_without_git(tmp_path: Path) -> None:
             total_prs=1,
         )
     )
-    assert len(output.events) == 1
-    evt = output.events[0]
     assert isinstance(evt, ModelRebaseCompletedEvent)
     assert evt.success is False
     assert "protected_head_ref" in (evt.error or "")
@@ -75,7 +73,7 @@ async def test_protected_head_ref_refuses_without_git(tmp_path: Path) -> None:
 async def test_head_equals_base_refuses() -> None:
     """Refuse if head_ref == base_ref."""
     handler = HandlerRebaseEffect()
-    output = await handler.handle(
+    evt = await handler.handle(
         ModelRebaseCommand(
             pr_number=301,
             repo="OmniNode-ai/omni_home",
@@ -87,7 +85,6 @@ async def test_head_equals_base_refuses() -> None:
             total_prs=1,
         )
     )
-    evt = output.events[0]
     assert isinstance(evt, ModelRebaseCompletedEvent)
     assert evt.success is False
     assert "head_ref == base_ref" in (evt.error or "")
@@ -98,9 +95,8 @@ async def test_missing_source_clone_returns_failure(tmp_path: Path) -> None:
     """If source clone doesn't exist, fail gracefully (not loud crash)."""
     handler = HandlerRebaseEffect()
     with patch.dict("os.environ", {"ONEX_REBASE_SOURCE_CLONE_ROOT": str(tmp_path)}):
-        output = await handler.handle(_cmd())
+        evt = await handler.handle(_cmd())
 
-    evt = output.events[0]
     assert isinstance(evt, ModelRebaseCompletedEvent)
     assert evt.success is False
     assert "Source clone not found" in (evt.error or "")
@@ -118,9 +114,8 @@ async def test_missing_env_fails_loud() -> None:
         if k not in ("ONEX_REBASE_SOURCE_CLONE_ROOT", "OMNI_HOME")
     }
     with patch.dict("os.environ", env_without, clear=True):
-        output = await handler.handle(_cmd())
+        evt = await handler.handle(_cmd())
 
-    evt = output.events[0]
     assert isinstance(evt, ModelRebaseCompletedEvent)
     assert evt.success is False
     assert "ONEX_REBASE_SOURCE_CLONE_ROOT" in (evt.error or "")
@@ -161,9 +156,8 @@ async def test_successful_rebase(tmp_path: Path) -> None:
         patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
     ):
         handler = HandlerRebaseEffect()
-        output = await handler.handle(_cmd())
+        evt = await handler.handle(_cmd())
 
-    evt = output.events[0]
     assert isinstance(evt, ModelRebaseCompletedEvent)
     assert evt.success is True
     assert evt.conflict_files == []
@@ -203,9 +197,16 @@ async def test_rebase_conflict_aborts_and_records_files(tmp_path: Path) -> None:
         patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
     ):
         handler = HandlerRebaseEffect()
-        output = await handler.handle(_cmd())
+        evt = await handler.handle(_cmd())
 
-    evt = output.events[0]
     assert isinstance(evt, ModelRebaseCompletedEvent)
     assert evt.success is False
     assert "a.py" in evt.conflict_files
+
+
+def test_contract_declares_output_topic() -> None:
+    """The rebase EFFECT contract declares the topic it publishes on."""
+    import omnimarket.nodes.node_rebase_effect as node_pkg
+
+    contract_text = (Path(node_pkg.__file__).parent / "contract.yaml").read_text()
+    assert "onex.evt.omnimarket.pr-rebase-completed.v1" in contract_text

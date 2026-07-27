@@ -35,6 +35,15 @@ from omnimarket.events.knowledge_context import (
     ModelKnowledgeContextState,
 )
 from omnimarket.events.ledger import ModelLedgerAppendedEvent, ModelLedgerHashComputed
+from omnimarket.events.llm_delegation_call import ModelLlmDelegationCallRequest
+from omnimarket.events.pr_arm_gate import (
+    EnumArmActionMode,
+    EnumArmDecision,
+    ModelArmCandidate,
+    ModelArmGateDecision,
+    ModelArmGatePolicy,
+    ModelArmGateRequest,
+)
 from omnimarket.events.repo_health import (
     EnumFailureOrigin,
     ModelRepoHealthClassification,
@@ -65,6 +74,7 @@ from omnimarket.events.runtime_deployment import (
     evaluate_prod_promotion_gate,
     lane_target,
 )
+from omnimarket.events.swarm_fanout import ModelSwarmFanoutResult
 from omnimarket.intelligence.events import (
     ModelIntentClassifiedEnvelope,
     ModelIntentDriftDetectedEnvelope,
@@ -75,6 +85,8 @@ from omnimarket.intelligence.events import (
 __all__ = [
     "DEFAULT_PREVIOUS_IMAGE",
     "EmitClient",
+    "EnumArmActionMode",
+    "EnumArmDecision",
     "EnumBuildSource",
     "EnumBundleStatus",
     "EnumDelegationJudgeVerdict",
@@ -87,6 +99,10 @@ __all__ = [
     "EnumRedeployScope",
     "EnumRedeployStatus",
     "EnumTestGenerationStatus",
+    "ModelArmCandidate",
+    "ModelArmGateDecision",
+    "ModelArmGatePolicy",
+    "ModelArmGateRequest",
     "ModelCheckpointRequest",
     "ModelDaemonHealthProbeResult",
     "ModelDashboardProjectionEvent",
@@ -106,6 +122,7 @@ __all__ = [
     "ModelKnowledgeContextState",
     "ModelLedgerAppendedEvent",
     "ModelLedgerHashComputed",
+    "ModelLlmDelegationCallRequest",
     "ModelPlanToTicketsCompletedEvent",
     "ModelPlanToTicketsStartCommand",
     "ModelProdPromotionGateDecision",
@@ -120,6 +137,7 @@ __all__ = [
     "ModelRepoHealthFailureEnvelope",
     "ModelRuntimeDeploymentProof",
     "ModelRuntimeImageBuilt",
+    "ModelSwarmFanoutResult",
     "ModelTestGenerationRequest",
     "ModelTestGenerationResult",
     "RuntimeLaneLike",

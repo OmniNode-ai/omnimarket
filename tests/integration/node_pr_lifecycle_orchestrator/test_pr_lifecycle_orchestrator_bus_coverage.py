@@ -50,10 +50,13 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from typing import Any
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 import pytest
 
+from omnimarket.nodes.node_pr_arm_gate_compute.models.model_arm_gate_policy import (
+    EnumArmActionMode,
+)
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
     ModelOrgWideOpenPrInventory,
     ModelOrgWideOpenPrRemainder,
@@ -66,6 +69,9 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.handler_pr_lifecyc
     HandlerPrLifecycleOrchestrator,
     ModelPrLifecycleResult,
     ModelPrLifecycleStartCommand,
+)
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+    ModelOccStampReadbackResult,
 )
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
@@ -156,9 +162,7 @@ class _MockTriage:
         self._result = result
         self._raises = raises
 
-    async def handle(
-        self, correlation_id: UUID, prs: tuple[Any, ...]
-    ) -> PrTriageResult:
+    async def handle(self, request: Any) -> PrTriageResult:
         self._calls.triage += 1
         if self._raises:
             raise RuntimeError("triage boom")
@@ -205,6 +209,19 @@ class _MockFix:
         return FixResult(prs_dispatched=1, prs_skipped=0)
 
 
+class _VerifiedOccStampReadback:
+    """Hermetic OCC-companion read-back stub (OMN-14151 arm-gate).
+
+    Always verifies so the arm-gate's occ_companion_verified criterion is
+    satisfied without any live gh/remote call.
+    """
+
+    async def verify_fix_landed(
+        self, repo: str, pr_number: int, ticket_id: str | None = None
+    ) -> ModelOccStampReadbackResult:
+        return ModelOccStampReadbackResult(verified=True, reason="test: stubbed")
+
+
 class _HarnessOrchestrator(HandlerPrLifecycleOrchestrator):
     """Orchestrator with the gh-CLI seams replaced by injected fixtures.
 
@@ -224,6 +241,7 @@ class _HarnessOrchestrator(HandlerPrLifecycleOrchestrator):
         fault_on_action: EnumOrchestratorAction | None = None,
         **kwargs: Any,
     ) -> None:
+        kwargs.setdefault("occ_stamp_readback", _VerifiedOccStampReadback())
         super().__init__(**kwargs)
         self._census = census
         self._probe_outcome = probe_outcome
@@ -281,7 +299,19 @@ class _HarnessOrchestrator(HandlerPrLifecycleOrchestrator):
 def _inventory(pr_numbers: tuple[int, ...]) -> InventoryResult:
     return InventoryResult(
         prs=tuple(
-            PrRecord(pr_number=n, repo=_REPO, title=f"pr {n}") for n in pr_numbers
+            PrRecord(
+                pr_number=n,
+                repo=_REPO,
+                title=f"pr {n}",
+                # OMN-14151: arm-gate-ready facts so scenarios asserting a real
+                # merge continue to pass under the merge-queue governor's
+                # fail-closed arm gate. Harmless for non-merge paths.
+                checks_status="success",
+                is_draft=False,
+                coderabbit_unresolved=0,
+                merge_state_status="CLEAN",
+            )
+            for n in pr_numbers
         ),
         total_collected=len(pr_numbers),
     )
@@ -391,8 +421,16 @@ async def _drive(
 
 
 def _command(run_id: str, **flags: Any) -> ModelPrLifecycleStartCommand:
+    defaults: dict[str, Any] = {
+        # OMN-14151: this suite proves FSM/routing/ledger wiring, not the
+        # arm-gate's report-only default (covered separately) — opt into
+        # ENFORCE by default so existing merge-path assertions keep passing.
+        "action_mode": EnumArmActionMode.ENFORCE,
+        "merge_queue_mutation_kill_switch": False,
+    }
+    defaults.update(flags)
     return ModelPrLifecycleStartCommand(
-        correlation_id=uuid4(), run_id=run_id, repos=_REPO, **flags
+        correlation_id=uuid4(), run_id=run_id, repos=_REPO, **defaults
     )
 
 
@@ -1026,7 +1064,7 @@ async def test_org_wide_open_downgrades_complete_to_not_done_over_bus(
         )
         scenario = await _drive(
             bus,
-            command=_command("run-notdone"),
+            command=_command("run-notdone", loop_until_done=False),
             inventory=_MockInventory(calls, _inventory((1,)), raises=False),
             triage=_MockTriage(
                 calls, _triage((1,), EnumPrCategory.GREEN), raises=False

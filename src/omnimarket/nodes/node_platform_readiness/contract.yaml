@@ -33,7 +33,7 @@ descriptor:
 env_dependencies:
   ONEX_INFRA_SSH_TARGET:
     required: false
-    description: "SSH target string for infrastructure checks; module-level default used when no runtime override is provided"
+    description: "SSH target (user@host) for infrastructure probes. Required for auto-collected SSH dimensions; the handler fails fast with InfraSshTargetNotConfiguredError when unset — no empty-string default (OMN-13921). Not required when explicit dimensions are supplied in the request."
 
 terminal_event: onex.evt.omnimarket.platform-readiness-completed.v1
 
@@ -67,5 +67,5 @@ config:
     description: "Dashboard API endpoint URL."
     required: false
   ONEX_INFRA_SSH_TARGET:
-    description: "SSH target for infrastructure commands (user@host)."
+    description: "SSH target for infrastructure commands (user@host). Fail-fast typed error when unset and SSH probes are requested (OMN-13921)."
     required: false

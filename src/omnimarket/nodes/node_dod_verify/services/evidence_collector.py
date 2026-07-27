@@ -19,17 +19,33 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import re
 import shlex
+import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import yaml
+from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
+from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
+    HandlerDodEvidenceGithubEffect,
+)
+from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
+    EnumDodEvidenceGithubOperation,
+    ModelDodEvidenceGithubLookupCommand,
+    ModelDodEvidenceGithubLookupResultEvent,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
     ModelEvidenceCheckResult,
+)
+from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
+    apply_supersessions,
+    extract_receipt_merge_commits,
 )
 
 logger = logging.getLogger(__name__)
@@ -39,6 +55,67 @@ _DEFAULT_CONTRACT_ROOTS: list[str] = [
     "${ONEX_CC_REPO_PATH}/contracts",
     "${OMNI_HOME}/onex_change_control/contracts",
 ]
+
+# OMN-13888 (scope 6): OCC governance is dev-targeted — contracts and receipts
+# land on the OCC ``dev`` branch first and are batched to ``main`` later. The
+# canonical omni_home clones track ``main``, so a contract merged only to ``dev``
+# is invisible to a working-tree search (the OMN-13899 "No contract found",
+# correlation 93b4e964). Resolve from this ref instead. Overridable via
+# ``OCC_GOVERNANCE_REF`` for tests / operators. Mirrors
+# ``DurableEvidenceGate.DEFAULT_OCC_GOVERNANCE_REF``.
+_DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
+
+# Wall-clock ceiling for the OCC git worktree/fetch subprocesses. A shared OCC
+# clone can hit lock contention under concurrent collect() calls, or a fetch can
+# stall on the network; without a timeout a stuck git op would block the whole
+# collect() with no recovery (CodeRabbit — Stability). Kept generous because a
+# fetch of the OCC repo may transfer real objects.
+_GIT_OP_TIMEOUT_S = 60
+
+# OMN-14207: live GitHub PR-state verification.
+#
+# A dod_evidence item that BINDS to a GitHub PR is additionally verified against
+# the LIVE PR state: the PR must be MERGED and all status checks green. This runs
+# ALONGSIDE the contract's declared hash/receipt checks (it never replaces them).
+#
+# It closes a false-positive class: a static receipt can record ``status: PASS``
+# while the product PR is actually unmerged / CI-red, so the grep-the-receipt
+# check passes and dod_verify reports ``verified`` for work that is neither merged
+# nor green. OMN-13996 is the discovery case — ``dod_verify`` said ``verified 3/3``
+# while ``omnibase_infra#2216`` was OPEN with 7 failing required checks.
+#
+# The binding source is authoritative, not heuristic (evidence-item ``id`` slugs
+# are unreliable repo names): an explicit ``pr`` field on the item, else the
+# durable receipt's ``pr_number`` + probed ``--repo owner/repo`` — the SAME fields
+# the DurableEvidenceGate binds against.
+_LIVE_PR_CHECK_ENV = "DOD_VERIFY_LIVE_PR_CHECK"
+_DEFAULT_GITHUB_ORG = "OmniNode-ai"
+# NOTE: the gh-CLI timeout and check-green-state constants formerly declared
+# here (``_GH_PR_TIMEOUT_S``, ``_GH_CHECK_GREEN_STATES``) moved to
+# ``handler_dod_evidence_github_effect.py`` with the subprocess calls that used
+# them (OMN-14400, RSD-1 of OMN-14398).
+
+# OMN-14637: merged-state re-anchoring of a self-referential live-PR-state gate.
+#
+# A contract ``command`` check that asserts its product PR is still live-OPEN —
+# the canonical ``gh pr view <n> --repo <r> --json state,... --jq '.state ==
+# "OPEN" and ...'`` idiom — becomes PERMANENTLY false the moment the PR
+# squash-merges: GitHub flips ``.state`` to ``MERGED`` and deletes the head
+# branch. The sanctioned ``dod_verify`` closeout then fails-closed forever on a
+# normal, successful merge (13/26 checks failed on the OMN-11878 re-run) unless a
+# human hand-authors one more "merged" superseding evidence entry in the same
+# breath as the merge.
+#
+# When an evidence item is authoritatively bound to a CONFIRMED-MERGED PR (the
+# SAME binding + live-probe machinery the OMN-14207 live-state check uses), the
+# collector re-anchors ONLY the ``.state == "OPEN"`` equality to the merged
+# terminal state (``.state == "MERGED"``). Every other predicate in the command
+# (``.headRefOid``, ``.files``, ``.title``, ``.baseRefName``, receipt greps) still
+# runs — all of which ``gh pr view`` still reports for a merged PR — so a
+# genuinely-incomplete ticket (merge commit missing the expected files) STILL
+# FAILS. The relaxation is therefore verification-preserving and non-vacuous, and
+# it never touches an unrelated ``"OPEN"`` literal (e.g. ``.title == "OPEN"``).
+_PR_OPEN_STATE_PREDICATE_RE = re.compile(r"""(\.state\s*==\s*)(["'])OPEN\2""")
 
 
 class EvidenceCollector:
@@ -53,6 +130,26 @@ class EvidenceCollector:
 
     def __init__(self, timeout_per_check: int = 30) -> None:
         self._timeout = timeout_per_check
+        # When set (during a dev-resolved collect), an origin/dev worktree of the
+        # OCC repo. Contract-load AND the shell greps run inside it so dev-only
+        # contracts + receipts are visible (OMN-13888 scope 6).
+        self._occ_dev_root: str | None = None
+        self._occ_governance_ref = (
+            os.environ.get("OCC_GOVERNANCE_REF", _DEFAULT_OCC_GOVERNANCE_REF).strip()
+            or _DEFAULT_OCC_GOVERNANCE_REF
+        )
+
+    @staticmethod
+    def _github_lookup_result(
+        output: ModelHandlerOutput[None],
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        """Type-narrow HandlerDodEvidenceGithubEffect's single emitted event.
+
+        ``ModelHandlerOutput.events`` is ``tuple[Any, ...]`` (the generic
+        dispatch-engine shape); this handler always emits exactly one
+        ``ModelDodEvidenceGithubLookupResultEvent`` per call (OMN-14400).
+        """
+        return cast(ModelDodEvidenceGithubLookupResultEvent, output.events[0])
 
     def collect(
         self,
@@ -60,6 +157,210 @@ class EvidenceCollector:
         contract_path: str | None = None,
     ) -> list[ModelEvidenceCheckResult]:
         """Load contract and run all dod_evidence checks.
+
+        When no explicit ``contract_path`` is given, OCC governance is dev-first
+        (contracts and receipts land on the OCC ``dev`` branch first and are
+        batched to ``main`` later; the canonical clones track ``main``). Per the
+        OMN-13888 scope-6 decision of record, an auto-detected OCC contract is
+        ALWAYS resolved from an ``origin/dev`` worktree when that worktree can be
+        materialised and carries the contract — even when a (possibly STALE) copy
+        exists on the ``main``-tracking working tree. This closes the round-1
+        residual edge where a stale ``main`` copy was used as-is because the
+        contract was merely *present* on the working tree so the rider never
+        fired. The working tree is used only as a fallback (dev worktree cannot be
+        materialised, or the contract is absent on dev). The worktree is removed
+        before returning.
+        """
+        if contract_path is not None:
+            return self._collect_impl(ticket_id, contract_path)
+
+        created_worktree: Path | None = None
+        try:
+            dev_root, created_worktree = self._materialize_occ_dev_worktree()
+            if dev_root is not None:
+                dev_candidate = Path(dev_root) / "contracts" / f"{ticket_id}.yaml"
+                if dev_candidate.exists():
+                    # dev is authoritative — prefer it over any working-tree copy.
+                    self._occ_dev_root = dev_root
+                    logger.info(
+                        "Resolved OCC contract for %s from %s worktree at %s "
+                        "(dev-first, overrides any main working-tree copy)",
+                        ticket_id,
+                        self._occ_governance_ref,
+                        dev_root,
+                    )
+                elif self._find_contract(ticket_id) is None:
+                    logger.info(
+                        "Contract %s absent on %s and on the working tree; "
+                        "collect will report it missing",
+                        ticket_id,
+                        self._occ_governance_ref,
+                    )
+            return self._collect_impl(ticket_id, contract_path)
+        finally:
+            self._occ_dev_root = None
+            if created_worktree is not None:
+                self._remove_occ_dev_worktree(created_worktree)
+
+    def _resolve_occ_root(self) -> Path | None:
+        """Return the OCC repo root from the environment, or None."""
+        cc_repo_path = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
+        if cc_repo_path and Path(cc_repo_path).is_dir():
+            return Path(cc_repo_path)
+        omni_home = os.environ.get("OMNI_HOME", "").strip()
+        if omni_home:
+            occ = Path(omni_home) / "onex_change_control"
+            if occ.is_dir():
+                return occ
+        return None
+
+    def _materialize_occ_dev_worktree(self) -> tuple[str | None, Path | None]:
+        """Add a detached ``origin/dev`` worktree of the OCC repo.
+
+        Returns ``(worktree_path_str, worktree_path)`` on success, else
+        ``(None, None)``. The worktree is placed under ``OMNI_HOME`` (when set) so
+        relative ``file_exists`` checks stay inside the containment boundary.
+        """
+        occ = self._resolve_occ_root()
+        if occ is None:
+            return None, None
+        # Refresh the remote-tracking ref first so a long-lived OMNI_HOME clone
+        # does not materialise a STALE origin/dev and miss the very contract this
+        # rider exists to pick up (CodeRabbit — Data Integrity). Best-effort: a
+        # fetch failure (offline, no remote — e.g. the local-branch test ref)
+        # falls through to whatever the local clone already has.
+        self._refresh_occ_ref(occ)
+        omni_home = os.environ.get("OMNI_HOME", "").strip()
+        parent = Path(omni_home) if omni_home and Path(omni_home).is_dir() else None
+        try:
+            tmp = Path(tempfile.mkdtemp(prefix=".occ-dev-wt-", dir=parent))
+        except OSError:
+            return None, None
+        try:
+            proc = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(occ),
+                    "worktree",
+                    "add",
+                    "--detach",
+                    "--force",
+                    str(tmp),
+                    self._occ_governance_ref,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_GIT_OP_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Timed out materialising %s worktree of OCC after %ss",
+                self._occ_governance_ref,
+                _GIT_OP_TIMEOUT_S,
+            )
+            shutil.rmtree(tmp, ignore_errors=True)
+            return None, None
+        if proc.returncode != 0:
+            logger.warning(
+                "Could not materialise %s worktree of OCC: %s",
+                self._occ_governance_ref,
+                proc.stderr.strip(),
+            )
+            shutil.rmtree(tmp, ignore_errors=True)
+            return None, None
+        return str(tmp), tmp
+
+    def _refresh_occ_ref(self, occ: Path) -> None:
+        """Best-effort ``git fetch`` of the OCC governance ref's remote branch.
+
+        Only fires for a ``<remote>/<branch>`` ref (e.g. ``origin/dev``); a bare
+        local-branch ref (test override) is left untouched. Failures are logged
+        and swallowed — the worktree add proceeds against the local clone.
+        """
+        ref = self._occ_governance_ref
+        if "/" not in ref:
+            return
+        remote, branch = ref.split("/", 1)
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(occ), "fetch", "--quiet", remote, branch],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_GIT_OP_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("Timed out fetching %s for OCC worktree refresh", ref)
+            return
+        if proc.returncode != 0:
+            logger.info(
+                "OCC ref refresh (git fetch %s %s) failed; using local clone: %s",
+                remote,
+                branch,
+                proc.stderr.strip(),
+            )
+
+    def _remove_occ_dev_worktree(self, worktree: Path) -> None:
+        occ = self._resolve_occ_root()
+        if occ is not None:
+            try:
+                proc = subprocess.run(
+                    [
+                        "git",
+                        "-C",
+                        str(occ),
+                        "worktree",
+                        "remove",
+                        "--force",
+                        str(worktree),
+                    ],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                    timeout=_GIT_OP_TIMEOUT_S,
+                )
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Timed out removing OCC worktree %s after %ss",
+                    worktree,
+                    _GIT_OP_TIMEOUT_S,
+                )
+                proc = None
+            # A failed/timed-out `worktree remove` leaves a stale registration
+            # under .git/worktrees/ even after rmtree deletes the directory;
+            # prune it so the shared OCC clone does not accumulate dead entries
+            # (CodeRabbit — Stability).
+            if proc is None or proc.returncode != 0:
+                if proc is not None:
+                    logger.warning(
+                        "git worktree remove failed for %s: %s; pruning registration",
+                        worktree,
+                        proc.stderr.strip(),
+                    )
+                self._prune_occ_worktrees(occ)
+        shutil.rmtree(worktree, ignore_errors=True)
+
+    def _prune_occ_worktrees(self, occ: Path) -> None:
+        """Best-effort ``git worktree prune`` to clear stale registrations."""
+        try:
+            subprocess.run(
+                ["git", "-C", str(occ), "worktree", "prune"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_GIT_OP_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("Timed out pruning OCC worktrees under %s", occ)
+
+    def _collect_impl(
+        self,
+        ticket_id: str,
+        contract_path: str | None = None,
+    ) -> list[ModelEvidenceCheckResult]:
+        """Load contract and run all dod_evidence checks (worktree-agnostic core).
 
         Args:
             ticket_id: Linear ticket ID (e.g. OMN-1234).
@@ -145,11 +446,24 @@ class EvidenceCollector:
         for item in dod_items:
             result = self._check_evidence_item(item, ticket_id, path)
             results.append(result)
+            # OMN-14207: verify the LIVE PR state for any PR-bound item. Emitted
+            # as additional check result(s) ALONGSIDE the item's declared checks
+            # so a static ``status: PASS`` receipt can no longer mask an unmerged
+            # or CI-red product PR.
+            if isinstance(item, dict):
+                results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
 
         return results
 
     def _find_contract(self, ticket_id: str) -> Path | None:
         """Search standard locations for a ticket contract."""
+        # OMN-13888 (scope 6): a materialised origin/dev worktree wins so a
+        # dev-only contract resolves instead of falling through to "No contract".
+        if self._occ_dev_root:
+            dev_candidate = Path(self._occ_dev_root) / "contracts" / f"{ticket_id}.yaml"
+            if dev_candidate.exists():
+                logger.info("Found contract at %s (dev worktree)", dev_candidate)
+                return dev_candidate
         for root_template in _DEFAULT_CONTRACT_ROOTS:
             root = Path(os.path.expandvars(root_template))
             candidate = root / f"{ticket_id}.yaml"
@@ -208,6 +522,16 @@ class EvidenceCollector:
                 message="No checks defined for this evidence item.",
             )
 
+        # OMN-14637: when this evidence item is authoritatively bound to a PR that
+        # GitHub now confirms MERGED, relax any live-OPEN-state gate in its command
+        # checks to the merged terminal state, so the sanctioned closeout does not
+        # fail-closed forever on a normal, successful merge (branch deleted +
+        # ``.state`` flipped to MERGED). Resolved ONCE per item; the merge state is
+        # read from the live GitHub surface, never caller-supplied.
+        relax_merged_state = self._item_bound_to_merged_pr(
+            item, ticket_id, contract_path
+        )
+
         # Run each check; all must pass for the item to be VERIFIED
         messages: list[str] = []
         for check in checks:
@@ -220,7 +544,12 @@ class EvidenceCollector:
                 # can declare intent (running tests) distinct from generic
                 # commands without forcing every shell-based check into the same
                 # bucket. Regression for OMN-10046.
-                ok, msg = self._run_command_check(check, ticket_id, contract_path)
+                ok, msg = self._run_command_check(
+                    check,
+                    ticket_id,
+                    contract_path,
+                    relax_merged_state=relax_merged_state,
+                )
                 if not ok:
                     return ModelEvidenceCheckResult(
                         evidence_id=evidence_id,
@@ -329,76 +658,40 @@ class EvidenceCollector:
     def _lookup_pr_for_ticket(self, ticket_id: str) -> str:
         """Return the merged PR number string for ticket_id, or empty string.
 
-        Checks PR_NUMBER env var first. Falls back to ``gh pr list`` search.
-        Returns empty string when nothing can be resolved (caller must handle
-        unresolved placeholders gracefully).
+        Checks PR_NUMBER env var first (not gh I/O — stays here). Falls back
+        to HandlerDodEvidenceGithubEffect's ``gh pr list`` search (OMN-14400,
+        RSD-1 of OMN-14398 — behavior-identical carve-out of the gh-CLI I/O
+        into a canonical EFFECT handler). Returns empty string when nothing
+        can be resolved (caller must handle unresolved placeholders
+        gracefully).
         """
         env_val = os.environ.get("PR_NUMBER", "").strip()
         if env_val:
             return env_val
-        try:
-            result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "list",
-                    "--search",
-                    ticket_id,
-                    "--state",
-                    "merged",
-                    "--json",
-                    "number",
-                    "--jq",
-                    ".[0].number",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            if result.returncode == 0:
-                num = result.stdout.strip()
-                if num and num != "null":
-                    return num
-        except Exception:
-            pass
-        return ""
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_PR_FOR_TICKET,
+            ticket_id=ticket_id,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        return self._github_lookup_result(output).text_value
 
     def _lookup_repo_for_ticket(self, ticket_id: str) -> str:
         """Return the ``owner/repo`` string for ticket_id, or empty string.
 
-        Checks REPO env var first. Falls back to ``gh pr list`` search
-        to discover which repo contains a merged PR for this ticket.
+        Checks REPO env var first (not gh I/O — stays here). Falls back to
+        HandlerDodEvidenceGithubEffect's ``gh pr list`` search to discover
+        which repo contains a merged PR for this ticket (OMN-14400, RSD-1 of
+        OMN-14398).
         """
         env_val = os.environ.get("REPO", "").strip()
         if env_val:
             return env_val
-        try:
-            # Search across all repos known to the gh CLI for the ticket in the PR title/body.
-            result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "list",
-                    "--search",
-                    ticket_id,
-                    "--state",
-                    "merged",
-                    "--json",
-                    "number,headRepository",
-                    "--jq",
-                    '.[0] | .headRepository.nameWithOwner // ""',
-                ],
-                capture_output=True,
-                text=True,
-                timeout=15,
-            )
-            if result.returncode == 0:
-                repo = result.stdout.strip()
-                if repo and repo != "null":
-                    return repo
-        except Exception:
-            pass
-        return ""
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_REPO_FOR_TICKET,
+            ticket_id=ticket_id,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        return self._github_lookup_result(output).text_value
 
     def _resolve_command_placeholders(
         self,
@@ -455,6 +748,10 @@ class EvidenceCollector:
         ``onex_change_control`` as a path component. Returns None for all
         other contracts (cwd stays inherited).
         """
+        # OMN-13888 (scope 6): during a dev-resolved collect, greps must run
+        # inside the origin/dev worktree so dev-only receipt files are visible.
+        if self._occ_dev_root:
+            return self._occ_dev_root
         if contract_path is None:
             return None
         if "onex_change_control" not in contract_path.parts:
@@ -495,6 +792,11 @@ class EvidenceCollector:
         if explicit:
             return explicit
 
+        # OMN-13888 (scope 6): a materialised origin/dev worktree is the OCC root
+        # for receipt-backed greps during a dev-resolved collect.
+        if self._occ_dev_root:
+            return self._occ_dev_root
+
         # Derive from the contract path when it lives inside the OCC clone.
         if contract_path is not None and "onex_change_control" in contract_path.parts:
             parts = contract_path.parts
@@ -515,11 +817,339 @@ class EvidenceCollector:
 
         return None
 
+    # ------------------------------------------------------------------
+    # OMN-14207: live GitHub PR-state verification for PR-bound evidence.
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _live_pr_check_enabled() -> bool:
+        """Whether the live PR-state check runs (default: on).
+
+        Disabled only when ``DOD_VERIFY_LIVE_PR_CHECK`` is explicitly set to a
+        falsey value (``0``/``false``/``off``/``no``). This is a deliberate,
+        logged operator opt-out for environments without an authenticated
+        ``gh`` CLI — NOT a silent fallback. When disabled, the live check is
+        emitted as SKIPPED (surfaced, not swallowed).
+        """
+        raw = os.environ.get(_LIVE_PR_CHECK_ENV, "1").strip().lower()
+        return raw not in ("0", "false", "off", "no")
+
+    @staticmethod
+    def _normalize_repo(repo: str) -> str:
+        """Return ``owner/repo``, defaulting a bare name to the OmniNode org."""
+        repo = repo.strip()
+        return repo if "/" in repo else f"{_DEFAULT_GITHUB_ORG}/{repo}"
+
+    def _resolve_pr_bindings(
+        self,
+        item: dict[str, Any],
+        ticket_id: str,
+        contract_path: Path | None,
+    ) -> list[tuple[str, int]]:
+        """Resolve every ``(owner/repo, pr_number)`` this evidence item binds to.
+
+        Two authoritative sources, in precedence order:
+
+        1. An explicit ``pr`` mapping on the item (``{repo, number}``) or explicit
+           ``repo`` + ``pr_number`` scalar fields — lets a contract declare the
+           binding directly (future-proof).
+        2. The durable receipt(s) for the item under
+           ``<occ_root>/drift/dod_receipts/<ticket>/<item_id>/*.yaml``: the receipt
+           records ``pr_number`` and the probed ``--repo owner/repo`` (the SAME
+           fields the DurableEvidenceGate binds against). This is what catches a
+           contract (e.g. OMN-13996) that never declared the binding explicitly.
+
+        Returns a de-duplicated list; empty when the item does not bind to any PR
+        (a non-PR evidence item is therefore unaffected by the live check). The
+        evidence-item ``id`` slug is deliberately NOT parsed for a repo — those
+        slugs are frequently descriptive labels (``product``, ``sea``,
+        ``release-*``), not repo names, so guessing a repo from them would be a
+        false-positive machine.
+        """
+        bindings: list[tuple[str, int]] = []
+        seen: set[tuple[str, int]] = set()
+
+        def _add(repo_val: object, number_val: object) -> None:
+            if not isinstance(repo_val, str) or not repo_val.strip():
+                return
+            # bool is an int subclass — reject it as a PR number.
+            if isinstance(number_val, bool):
+                return
+            if isinstance(number_val, int):
+                number = number_val
+            elif isinstance(number_val, str) and number_val.strip().isdigit():
+                number = int(number_val.strip())
+            else:
+                return
+            if number <= 0:
+                return
+            key = (self._normalize_repo(repo_val), number)
+            if key not in seen:
+                seen.add(key)
+                bindings.append(key)
+
+        # 1. Explicit fields on the item.
+        explicit = item.get("pr")
+        if isinstance(explicit, dict):
+            _add(
+                explicit.get("repo"),
+                explicit.get("number", explicit.get("pr_number")),
+            )
+        _add(item.get("repo"), item.get("pr_number"))
+
+        # 2. Receipt-derived bindings (only when nothing explicit was declared).
+        if not bindings:
+            item_id = item.get("id")
+            if isinstance(item_id, str) and item_id:
+                receipts = apply_supersessions(
+                    self._load_item_receipts(item_id, ticket_id, contract_path)
+                )
+                for citation in extract_receipt_merge_commits(receipts):
+                    _add(citation.repo, citation.pr_number)
+
+        return bindings
+
+    def _load_item_receipts(
+        self,
+        item_id: str,
+        ticket_id: str,
+        contract_path: Path | None,
+    ) -> list[dict[str, Any]]:
+        """Load the durable receipt payloads for a single evidence item.
+
+        Receipts live at the canonical platform layout
+        ``<occ_root>/drift/dod_receipts/<ticket>/<item_id>/*.yaml``. Each payload
+        is tagged with ``__source_name__`` so :func:`apply_supersessions` can
+        order any supersession chain by the unforgeable filename ordinal (matching
+        the DurableEvidenceGate). Returns ``[]`` when the OCC root or the receipt
+        directory cannot be resolved.
+        """
+        occ_root = self._resolve_contract_repo_dir(contract_path)
+        if occ_root is None:
+            return []
+        receipt_dir = Path(occ_root) / "drift" / "dod_receipts" / ticket_id / item_id
+        if not receipt_dir.is_dir():
+            return []
+        payloads: list[dict[str, Any]] = []
+        for receipt_file in sorted(receipt_dir.glob("*.yaml")):
+            raw = self._load_yaml(receipt_file)
+            if raw is None:
+                continue
+            raw.setdefault("__source_name__", receipt_file.name)
+            payloads.append(raw)
+        return payloads
+
+    def _live_pr_checks_for_item(
+        self,
+        item: dict[str, Any],
+        ticket_id: str,
+        contract_path: Path | None,
+    ) -> list[ModelEvidenceCheckResult]:
+        """Emit the live PR-state check result(s) for a PR-bound evidence item.
+
+        Returns ``[]`` for a non-PR item (leaving its declared-check result the
+        sole authority). Otherwise one result per bound PR: VERIFIED when the PR
+        is MERGED and all checks are green; FAILED otherwise, INCLUDING when the
+        live state cannot be resolved (fail-closed — a Done-flip must not proceed
+        on unverifiable PR state).
+        """
+        bindings = self._resolve_pr_bindings(item, ticket_id, contract_path)
+        if not bindings:
+            return []
+
+        item_id = str(item.get("id", "unknown"))
+        description = str(item.get("description", item_id))
+
+        if not self._live_pr_check_enabled():
+            logger.warning(
+                "Live PR check disabled via %s; %d binding(s) NOT verified for %s",
+                _LIVE_PR_CHECK_ENV,
+                len(bindings),
+                item_id,
+            )
+            return [
+                ModelEvidenceCheckResult(
+                    evidence_id=f"{item_id}::pr-live-state",
+                    description=f"Live PR state for {description}",
+                    status=EnumEvidenceCheckStatus.SKIPPED,
+                    message=(
+                        f"Live PR check disabled via {_LIVE_PR_CHECK_ENV}; "
+                        f"bindings not verified: {bindings}"
+                    ),
+                )
+            ]
+
+        results: list[ModelEvidenceCheckResult] = []
+        multi = len(bindings) > 1
+        for repo, pr_number in bindings:
+            evidence_id = (
+                f"{item_id}::pr-{pr_number}-live-state"
+                if multi
+                else f"{item_id}::pr-live-state"
+            )
+            ok, message = self._verify_live_pr(repo, pr_number)
+            results.append(
+                ModelEvidenceCheckResult(
+                    evidence_id=evidence_id,
+                    description=f"Live GitHub state for {repo}#{pr_number} ({item_id})",
+                    status=(
+                        EnumEvidenceCheckStatus.VERIFIED
+                        if ok
+                        else EnumEvidenceCheckStatus.FAILED
+                    ),
+                    message=message,
+                )
+            )
+        return results
+
+    def _verify_live_pr(self, repo: str, pr_number: int) -> tuple[bool, str]:
+        """Return ``(ok, message)`` for the live state of ``repo#pr_number``.
+
+        ``ok`` is True only when the PR is MERGED AND every REQUIRED status check
+        is green (OMN-14390) — a red non-required/informational check does not
+        block. A failure to resolve the merge state (gh missing/auth/network/not-found)
+        fails closed.
+        """
+        merge = self._fetch_pr_merge_state(repo, pr_number)
+        if merge is None:
+            return False, (
+                f"{repo}#{pr_number}: could not resolve live PR state via gh "
+                "(missing/auth/network/not-found). Failing closed — a Done-flip "
+                "must not proceed on unverifiable PR state."
+            )
+        merged, state = merge
+        reasons: list[str] = []
+        if not merged:
+            reasons.append(f"PR not merged (state={state})")
+        checks_green, checks_detail = self._fetch_pr_checks_green(repo, pr_number)
+        if not checks_green:
+            reasons.append(f"required checks not green ({checks_detail})")
+        if reasons:
+            return False, f"{repo}#{pr_number}: " + "; ".join(reasons)
+        return True, f"{repo}#{pr_number}: MERGED (state={state}); {checks_detail}"
+
+    def _fetch_pr_merge_state(
+        self,
+        repo: str,
+        pr_number: int,
+    ) -> tuple[bool, str] | None:
+        """Return ``(merged, state)`` for ``repo#pr_number`` via the GitHub
+        effect handler's ``gh pr view`` lookup (OMN-14400, RSD-1 of
+        OMN-14398 — behavior-identical carve-out of the gh-CLI I/O into a
+        canonical EFFECT handler).
+
+        Returns ``None`` on any inability to resolve the PR (timeout, missing gh,
+        non-zero exit, unparseable output) so the caller can fail closed.
+        """
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_MERGE_STATE,
+            repo=repo,
+            pr_number=pr_number,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        result = self._github_lookup_result(output)
+        if not result.resolved:
+            return None
+        return bool(result.merged), result.state or "UNKNOWN"
+
+    def _fetch_pr_checks_green(
+        self,
+        repo: str,
+        pr_number: int,
+    ) -> tuple[bool, str]:
+        """Return ``(all_green, detail)`` for ``repo#pr_number`` REQUIRED status
+        checks via the GitHub effect handler (OMN-14400, RSD-1 of OMN-14398).
+
+        Scoped to required checks only via ``gh pr checks --required`` (OMN-14390)
+        — a non-green *non-required* check (e.g. an informational/advisory job)
+        must never fail a Done-flip; only branch-protection-required contexts are
+        load-bearing here. Fails closed: any non-green required check
+        (FAILURE/CANCELLED/PENDING/...), an empty required-check set, or an
+        inability to enumerate checks yields ``False``.
+        """
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=repo,
+            pr_number=pr_number,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        result = self._github_lookup_result(output)
+        return bool(result.checks_green), result.detail or ""
+
+    # ------------------------------------------------------------------
+    # OMN-14637: merged-state re-anchoring of self-referential live-OPEN gates.
+    # ------------------------------------------------------------------
+
+    def _item_bound_to_merged_pr(
+        self,
+        item: dict[str, Any],
+        ticket_id: str,
+        contract_path: Path | None,
+    ) -> bool:
+        """Whether this evidence item binds to a PR that GitHub confirms MERGED.
+
+        Reuses the SAME authoritative binding resolution the OMN-14207 live-state
+        check uses (:meth:`_resolve_pr_bindings` — an explicit ``pr`` field or the
+        durable receipt's ``pr_number`` + probed repo), then reads live merge
+        state via :meth:`_fetch_pr_merge_state`. Returns ``True`` only when at
+        least one bound PR is CONFIRMED MERGED.
+
+        Fails safe (no relaxation → command runs verbatim) when:
+
+        * the live-PR check is disabled (``DOD_VERIFY_LIVE_PR_CHECK`` off) — merge
+          state cannot then be authoritatively confirmed;
+        * the item binds to no PR;
+        * the probe is unresolved / errored, or the PR is not merged (OPEN/CLOSED).
+
+        The merge fact is therefore never caller-supplied — it is read from the
+        live GitHub surface, mirroring the fail-closed posture of the live check.
+        """
+        if not self._live_pr_check_enabled():
+            return False
+        bindings = self._resolve_pr_bindings(item, ticket_id, contract_path)
+        for repo, pr_number in bindings:
+            merge = self._fetch_pr_merge_state(repo, pr_number)
+            if merge is not None and merge[0]:
+                logger.info(
+                    "OMN-14637: evidence item %s binds to MERGED PR %s#%d — "
+                    "relaxing any live-OPEN-state gate to the merged terminal "
+                    "state for its command checks.",
+                    item.get("id", "unknown"),
+                    repo,
+                    pr_number,
+                )
+                return True
+        return False
+
+    @staticmethod
+    def _relax_merged_pr_state_predicate(cmd_str: str) -> tuple[str, bool]:
+        """Rewrite ``.state == "OPEN"`` → ``.state == "MERGED"`` (OMN-14637).
+
+        Applied ONLY when the evidence item is confirmed bound to a MERGED PR
+        (see :meth:`_item_bound_to_merged_pr`). It targets the canonical
+        ``gh pr view ... --json state ... --jq '.state == "OPEN" and ...'`` idiom
+        precisely: only the ``.state`` equality against ``OPEN`` (single- or
+        double-quoted) is rewritten, preserving the quote style. Every other
+        predicate — ``.headRefOid``, ``.files``, ``.title``, ``.baseRefName``,
+        receipt greps, and any unrelated ``"OPEN"`` literal such as
+        ``.title == "OPEN"`` — is left untouched, so the check still re-verifies
+        the merged PR's retained content rather than vacuously passing.
+
+        Returns ``(new_cmd, changed)`` where ``changed`` is ``True`` when at least
+        one predicate was rewritten.
+        """
+        new_cmd, count = _PR_OPEN_STATE_PREDICATE_RE.subn(
+            lambda m: f"{m.group(1)}{m.group(2)}MERGED{m.group(2)}", cmd_str
+        )
+        return new_cmd, count > 0
+
     def _run_command_check(
         self,
         check: dict[str, Any],
         ticket_id: str,
         contract_path: Path | None = None,
+        *,
+        relax_merged_state: bool = False,
     ) -> tuple[bool, str]:
         """Execute a command-type check. Returns (success, message).
 
@@ -544,6 +1174,19 @@ class EvidenceCollector:
         )
         if placeholder_err is not None:
             return False, placeholder_err
+
+        # OMN-14637: when the evidence item is bound to a CONFIRMED-MERGED PR,
+        # re-anchor any live-OPEN-state gate to the merged terminal state so a
+        # normal, successful merge (head branch deleted, ``.state`` → MERGED) no
+        # longer fails the sanctioned closeout forever. All other predicates in the
+        # command still execute, so an unmet DoD still FAILS (non-vacuous).
+        if relax_merged_state:
+            cmd_str, relaxed = self._relax_merged_pr_state_predicate(cmd_str)
+            if relaxed:
+                logger.info(
+                    "OMN-14637: relaxed live-OPEN-state gate to MERGED for a "
+                    "merged-PR-bound command check."
+                )
 
         # OMN-10078: resolve optional cwd via template-substitution +
         # containment-check pipeline. None => inherit caller cwd.

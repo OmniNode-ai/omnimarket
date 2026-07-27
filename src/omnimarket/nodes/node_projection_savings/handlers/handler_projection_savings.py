@@ -21,11 +21,31 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelTaskDelegatedSavingsSource,
 )
+from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
+    _normalize_savings_estimate_payload,
+)
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 TABLE = "savings_estimates"
 CONFLICT_KEY = "session_id,event_timestamp,model_local,model_cloud_baseline"
+
+# Fields ModelSavingsEstimatedEvent (extra="forbid") declares — used to strip
+# _normalize_savings_estimate_payload's additive output (old + new keys) back
+# down to a constructible shape (OMN-14533).
+_CANONICAL_SAVINGS_FIELDS: frozenset[str] = frozenset(
+    {
+        "event_timestamp",
+        "session_id",
+        "model_local",
+        "model_cloud_baseline",
+        "local_cost_usd",
+        "cloud_cost_usd",
+        "savings_usd",
+        "repo_name",
+        "machine_id",
+    }
+)
 
 
 class ModelSavingsEstimatedEvent(BaseModel):
@@ -146,6 +166,23 @@ class HandlerProjectionSavings:
             if not key.startswith("_")
             and key not in {"rows", "event_landed", "latency_ms"}
         }
+        # OMN-14533: the real onex.evt.omnibase-infra.savings-estimated.v1
+        # producer (ModelSavingsEstimate) never matches this model's field
+        # names (actual_model_id/counterfactual_model_id/actual_cost_usd/
+        # estimated_total_savings_usd/timestamp_iso vs this model's
+        # model_local/model_cloud_baseline/local_cost_usd/savings_usd/
+        # event_timestamp) — every real event hit extra="forbid" plus
+        # multiple missing-required-field errors simultaneously. Normalize
+        # onto the canonical shape, then keep only the fields
+        # ModelSavingsEstimatedEvent (extra="forbid") actually declares —
+        # normalization is additive (old + new keys), so the raw
+        # ModelSavingsEstimate keys must be dropped before construction.
+        event_data = _normalize_savings_estimate_payload(event_data)
+        event_data = {
+            key: event_data[key]
+            for key in _CANONICAL_SAVINGS_FIELDS
+            if key in event_data
+        }
         event = ModelSavingsEstimatedEvent(**event_data)
         result = self.project(event, db_raw)
         return result.model_dump(mode="json")
@@ -198,6 +235,12 @@ class HandlerProjectionSavings:
             "created_at": now,
             "updated_at": now,
         }
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
+        # source projection carried one — omitting the key lets the
+        # savings_estimates column DEFAULT 'omninode' apply on INSERT and
+        # leaves an already-known tenant untouched on UPDATE.
+        if projection.tenant_id:
+            row["tenant_id"] = projection.tenant_id
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 

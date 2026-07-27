@@ -34,6 +34,7 @@ import json
 import logging
 import os
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
@@ -44,7 +45,26 @@ from uuid import UUID, uuid4
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+from omnimarket.events.pr_arm_gate import (
+    EnumArmActionMode,
+    EnumArmDecision,
+    ModelArmCandidate,
+    ModelArmGatePolicy,
+    ModelArmGateRequest,
+)
 from omnimarket.events.repo_health import EnumFailureOrigin
+from omnimarket.merge_control.outage_circuit_breaker import (
+    EnumOutageBreakerState,
+    OutageCircuitBreaker,
+)
+from omnimarket.merge_control.reason_code_classifier import (
+    EnumMergeCheckReasonCode,
+    dominant_reason_code,
+)
+from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+    ProtocolOccStampReadback,
+    _UnverifiedOccStampReadback,
+)
 from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_handlers import (
     EnumPrCategory,
     EnumReducerIntent,
@@ -52,6 +72,7 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     InventoryResult,
     MergeResult,
     OccDependencyEdge,
+    ProtocolArmGateHandler,
     ProtocolFixHandler,
     ProtocolInventoryHandler,
     ProtocolMergeHandler,
@@ -146,6 +167,10 @@ class ChangedFilesUnavailableError(RuntimeError):
 # ---------------------------------------------------------------------------
 
 
+_DEFAULT_SWEEP_SLEEP_SECONDS = 30 * 60
+_DEFAULT_STANDING_SWEEP_PASSES = 17_520  # 365 days at a 30-minute cadence.
+
+
 class ModelPrLifecycleStartCommand(BaseModel):
     """Start command for the PR lifecycle orchestrator."""
 
@@ -211,13 +236,76 @@ class ModelPrLifecycleStartCommand(BaseModel):
         ge=1,
         description="Hard per-PR verification timeout in seconds.",
     )
+    loop_until_done: bool = Field(
+        default=True,
+        description=(
+            "Keep re-running sweep passes while the org-wide done gate reports "
+            "NOT_DONE."
+        ),
+    )
+    max_sweep_passes: int = Field(
+        default=_DEFAULT_STANDING_SWEEP_PASSES,
+        ge=1,
+        description=(
+            "Maximum sweep passes for one invocation. The default keeps the "
+            "operator sweep standing for roughly one year at the default cadence."
+        ),
+    )
+    sweep_sleep_seconds: int = Field(
+        default=_DEFAULT_SWEEP_SLEEP_SECONDS,
+        ge=0,
+        description="Backoff between NOT_DONE sweep passes.",
+    )
+    # OMN-14151: merge-queue governor action mode. action_mode and kill_switch
+    # are folded into node_pr_arm_gate_compute's ARM/WITHHOLD decision — a
+    # single choke point, not a second check the orchestrator could bypass.
+    # Both default to the SAFE (zero-mutation) value: an operator must
+    # explicitly select ENFORCE *and* explicitly disengage the kill switch
+    # before any PR can be armed. This replaces the pre-OMN-14151 posture where
+    # dry_run=False alone was sufficient to mutate the merge queue.
+    action_mode: EnumArmActionMode = Field(
+        default=EnumArmActionMode.REPORT_ONLY,
+        description="report_only (default, zero mutation) or enforce (opt-in).",
+    )
+    merge_queue_mutation_kill_switch: bool = Field(
+        default=True,
+        description=(
+            "Emergency stop, engaged by default. Must be explicitly set False "
+            "in addition to action_mode=enforce before any PR can arm."
+        ),
+    )
+    merge_wave_cap: int = Field(
+        default=3,
+        ge=0,
+        description=(
+            "Maximum PRs armed in one enforce pass. 0 arms nothing regardless "
+            "of action_mode."
+        ),
+    )
+    enable_stall_remediation: bool = Field(
+        default=False,
+        description=(
+            "Opt-in flag for merge-queue stall remediation (dequeue + "
+            "re-enqueue an ALREADY-armed PR to re-mint a stuck merge-group "
+            "SHA). This is a separate operation from readiness-arming an "
+            "unarmed PR, gated by this flag rather than the arm-gate's "
+            "per-PR ARM decision. Still requires action_mode=enforce and a "
+            "disengaged kill switch."
+        ),
+    )
 
     @field_validator("repos", mode="before")
     @classmethod
     def _coerce_repos(cls, value: object) -> str:
         if isinstance(value, list | tuple):
-            return ",".join(str(item).strip() for item in value if str(item).strip())
-        return str(value or "")
+            return ",".join(
+                repo for item in value if (repo := _normalize_repo_slug(str(item)))
+            )
+        return ",".join(
+            repo
+            for item in str(value or "").split(",")
+            if (repo := _normalize_repo_slug(item))
+        )
 
 
 class OrgWideOpenPrRemainderRef(BaseModel):
@@ -264,6 +352,26 @@ class ModelPrLifecycleResult(BaseModel):
             "final_state is NOT_DONE."
         ),
     )
+    # WS-D/D2 (OMN-13940): sweep-level delegation harness counters, summed
+    # across all FixResult entries the same way prs_fixed sums prs_dispatched.
+    prs_delegated_fix_attempted: int = Field(default=0, ge=0)
+    prs_delegated_fix_accepted: int = Field(default=0, ge=0)
+    prs_delegated_fix_gate_failed: int = Field(default=0, ge=0)
+    prs_delegated_fix_escalated: int = Field(default=0, ge=0)
+    delegation_cost_savings_usd: float = Field(default=0.0, ge=0.0)
+    # OMN-14774 (F-07): the outage circuit breaker tripped this pass — a
+    # GITHUB_API_OUTAGE reason code was observed and REST-dependent mutations
+    # (merge / enqueue / rerun) were WITHHELD rather than issued into a degraded
+    # API. ``outage_mutations_withheld`` counts the merge/fix/stall PRs skipped
+    # because the breaker was OPEN.
+    outage_active: bool = Field(
+        default=False,
+        description=(
+            "True when a GITHUB_API_OUTAGE was detected and the circuit breaker "
+            "withheld REST-dependent mutations this pass (fail-closed backoff)."
+        ),
+    )
+    outage_mutations_withheld: int = Field(default=0, ge=0)
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +444,13 @@ class _SweepState:
     prs_skipped: int = 0
     prs_verified: int = 0
     error_message: str | None = None
+    # WS-D/D2 (OMN-13940): delegation harness counters, aggregated the same
+    # way prs_fixed sums FixResult.prs_dispatched.
+    prs_delegated_fix_attempted: int = 0
+    prs_delegated_fix_accepted: int = 0
+    prs_delegated_fix_gate_failed: int = 0
+    prs_delegated_fix_escalated: int = 0
+    delegation_cost_savings_usd: float = 0.0
 
     # Inter-phase data
     inventory_result: InventoryResult | None = None
@@ -353,9 +468,25 @@ class _SweepState:
     verification_outcomes: dict[tuple[str, int], str] = field(default_factory=dict)
     prs_verification_blocked: int = 0
 
+    # OMN-14774 (F-07): outage circuit-breaker state for this pass. ``outage_
+    # active`` is True once a GITHUB_API_OUTAGE was observed and the breaker
+    # could not be recovered (mutations withheld); ``outage_mutations_withheld``
+    # tallies the merge/fix/stall PRs skipped because the breaker was OPEN.
+    outage_active: bool = False
+    outage_mutations_withheld: int = 0
+
 
 # ---------------------------------------------------------------------------
-# Default stub implementations (used when sub-nodes not yet available)
+# Stub sub-handler doubles.
+#
+# As of OMN-13984 these are NOT silent import-failure fallbacks for the core
+# sweep handlers (inventory/triage/reducer/merge/fix): an ImportError on any of
+# those now RAISES in _ensure_sub_handlers instead of degrading to a 0-result
+# "successful" sweep (a false positive that could mask real merge/fix work).
+# They remain for two legitimate uses only:
+#   (a) worktree-prune GC — the one intentional optional (OMN-13859: prune
+#       degrading must never fail a sweep); its ImportError fallback is kept.
+#   (b) lightweight test doubles imported directly by the unit tests.
 # ---------------------------------------------------------------------------
 
 
@@ -368,13 +499,9 @@ class _StubInventoryHandler:
 
 
 class _StubTriageHandler:
-    """Stub matching HandlerPrLifecycleTriage.handle(correlation_id, prs) signature."""
+    """Stub matching HandlerPrLifecycleTriage.handle(request) signature."""
 
-    async def handle(
-        self,
-        correlation_id: UUID,
-        prs: Any,
-    ) -> Any:
+    async def handle(self, request: Any) -> Any:
         logger.warning("[PR-LIFECYCLE-ORCH] triage stub called (sub-node not wired)")
         return PrTriageResult(classified=(), green_count=0, non_green_count=0)
 
@@ -440,6 +567,135 @@ _REVIEW_STATUS_MAP: dict[str, str] = {
 _TICKET_ID_PATTERN = re.compile(r"\bOMN-\d+\b", re.IGNORECASE)
 _UNKNOWN_OCC_MERGE_SHA = "unknown-occ-merge-sha"
 _RECEIPT_GATE_CHECK_NAME = "verify / verify"
+# OMN-13990 follow-up: occ-preflight is a SEPARATE required check from the
+# receipt gate (omnibase_core occ-preflight.yml, job "eligibility") and fails
+# on the exact same "green-except-OCC-companion" signature — a PR whose only
+# red check is the OCC eligibility gate. Before this fix, only
+# _RECEIPT_GATE_CHECK_NAME was recognized here, so an occ-preflight-only
+# failure fell through to the generic RED/CODE_FAILURE branch below and never
+# reached the autobind arm (omninode_infra#2238 / omnibase_infra#2238 class).
+_OCC_PREFLIGHT_CHECK_NAME = "occ-preflight / eligibility"
+_OCC_EVIDENCE_CHECK_NAMES = frozenset(
+    {_RECEIPT_GATE_CHECK_NAME, _OCC_PREFLIGHT_CHECK_NAME}
+)
+# OMN-13990 follow-up (round 2): a live sweep of the still-blocked PRs found
+# the widened subset match above STILL never fires, because a second,
+# cosmetic check rides along in the failed set — e.g. omninode_infra#579's
+# failed_check_names is {"verify / verify", "Enable Auto-Merge"}.
+# "Enable Auto-Merge" fails BY DESIGN on every PR today (org-wide auto-merge
+# is off) and is verified NOT a required status check on any repo's `dev`
+# branch protection (checked live 2026-07-08: omnimarket, omnibase_infra,
+# omniclaude, omninode_infra all omit it from
+# `branches/dev/protection/required_status_checks`). Excluding it from the
+# OCC-evidence-signature comparison (below) lets the subset match see through
+# it. This denylist is deliberately narrow — it does NOT include checks like
+# `call-reject-skip-token` (omninode_infra#578's second failing check), which
+# IS a required context; a required-but-flaky check needs a CI rerun, not a
+# classifier exclusion (see the existing `_FLAKY_INFRA_CHECK_SUBSTRINGS` /
+# `_has_flaky_failure_evidence` path below for that case).
+_COSMETIC_NON_REQUIRED_CHECK_NAMES = frozenset({"Enable Auto-Merge"})
+_DEFAULT_GITHUB_OWNER = "OmniNode-ai"
+
+
+def _normalize_repo_slug(value: str) -> str:
+    """Return a GitHub ``OWNER/REPO`` slug for user-facing repo filters."""
+    repo = value.strip()
+    if not repo:
+        return ""
+    if "/" in repo:
+        return repo
+    return f"{_DEFAULT_GITHUB_OWNER}/{repo}"
+
+
+# ---------------------------------------------------------------------------
+# Machine failure-signature constants (OMN-13987 CP1)
+#
+# _block_reason_for_fix classifies off the machine failure signature
+# (failed_check_names + triage category + ticket presence), never off the
+# human-readable block_reason prose. These constants drive the three arms that
+# were previously dead because nothing emitted their machine enum literal.
+# ---------------------------------------------------------------------------
+
+# deploy-gate required-status-check name substring. Covers the reusable-workflow
+# form ("deploy-gate / deploy-gate") and the inline form ("deploy-gate").
+_DEPLOY_GATE_CHECK_SIGNATURE = "deploy-gate"
+
+# Check-name substrings that indicate a GENUINE code failure (lint / type /
+# test / build). If ANY failed check matches one of these, the failure is never
+# treated as a cheap flaky rerun — it routes to CODE_FAILURE (delegatable fix).
+_CODE_SIGNAL_CHECK_SUBSTRINGS: tuple[str, ...] = (
+    "lint",
+    "ruff",
+    "mypy",
+    "type-check",
+    "typecheck",
+    "test",
+    "pytest",
+    "format",
+    "compile",
+    "build",
+    "coverage",
+    "pre-commit",
+)
+
+# Check-name substrings for KNOWN flaky/infra failures that a bare re-run
+# (``gh run rerun --failed``) can clear without any code change. CI_FAILURE is
+# emitted ONLY when EVERY failed check matches one of these AND none match a
+# code-signal substring — a deliberately narrow, fail-safe guard so a real
+# lint/type/test failure is never silently rerun instead of fixed.
+_FLAKY_INFRA_CHECK_SUBSTRINGS: tuple[str, ...] = (
+    "runner",
+    "self-hosted",
+    "fleet",
+    "flaky",
+    "network",
+    "timeout",
+    "timed out",
+    "set up job",
+    "set up runner",
+    "queue",
+    "infrastructure",
+    "provision",
+)
+
+
+def _has_deploy_gate_failure(failed_check_names: tuple[str, ...]) -> bool:
+    """True iff a deploy-gate required check is among the failed checks."""
+    return any(
+        _DEPLOY_GATE_CHECK_SIGNATURE in name.lower() for name in failed_check_names
+    )
+
+
+def _is_flaky_infra_only(failed_check_names: tuple[str, ...]) -> bool:
+    """True iff every failed check is a known flaky/infra check (rerunnable).
+
+    Fail-safe: returns False when there are no failed check names, or when any
+    failed check looks like a genuine code failure (lint/type/test/build). Only
+    when the whole failed-check set is unambiguously flaky/infra does a cheap
+    ``gh run rerun --failed`` become the right routed action.
+    """
+    if not failed_check_names:
+        return False
+    lowered = [name.lower() for name in failed_check_names]
+    if any(sub in name for name in lowered for sub in _CODE_SIGNAL_CHECK_SUBSTRINGS):
+        return False
+    return all(
+        any(sub in name for sub in _FLAKY_INFRA_CHECK_SUBSTRINGS) for name in lowered
+    )
+
+
+def _has_code_signal_failure(failed_check_names: tuple[str, ...]) -> bool:
+    """True when any failed check name indicates code that must be fixed."""
+    return any(
+        sub in name.lower()
+        for name in failed_check_names
+        for sub in _CODE_SIGNAL_CHECK_SUBSTRINGS
+    )
+
+
+def _has_flaky_failure_evidence(pr: TriageRecord) -> bool:
+    """True when inventory found hard network/clone evidence for failed checks."""
+    return bool(tuple(e.strip() for e in pr.failed_check_flaky_evidence if e.strip()))
 
 
 def _map_ci_status(pr_state: Any) -> str:
@@ -461,6 +717,40 @@ def _failed_check_names(pr_state: Any) -> tuple[str, ...]:
             if name:
                 names.append(name)
     return tuple(sorted(set(names)))
+
+
+def _failed_check_flaky_evidence(pr_state: Any) -> tuple[str, ...]:
+    """Return machine flaky evidence collected for failed checks."""
+    evidence: list[str] = []
+    for check in getattr(pr_state, "check_runs", ()) or ():
+        conclusion = str(getattr(check, "conclusion", "") or "").lower()
+        if conclusion not in {"failure", "cancelled", "timed_out", "action_required"}:
+            continue
+        evidence.extend(
+            str(item).strip()
+            for item in getattr(check, "flaky_failure_evidence", ()) or ()
+            if str(item).strip()
+        )
+    return tuple(sorted(set(evidence)))
+
+
+def _failed_check_reason_codes(pr_state: Any) -> tuple[str, ...]:
+    """Return the typed merge-check reason codes for a PR's failed checks.
+
+    OMN-14765: the jobs-API-keyed ``reason_code`` populated on each
+    ``ModelPrCheckRun`` by the inventory node. The orchestrator routes on these
+    typed codes (``_block_reason_for_fix``) instead of guessing infra-vs-product
+    from check names. Deterministic ordering (sorted) keeps the record stable.
+    """
+    codes: list[str] = []
+    for check in getattr(pr_state, "check_runs", ()) or ():
+        conclusion = str(getattr(check, "conclusion", "") or "").lower()
+        if conclusion not in {"failure", "cancelled", "timed_out", "action_required"}:
+            continue
+        code = getattr(check, "reason_code", None)
+        if code:
+            codes.append(str(code))
+    return tuple(sorted(set(codes)))
 
 
 def _extract_ticket_ids(*values: str) -> tuple[str, ...]:
@@ -529,17 +819,100 @@ def _block_reason_for_fix(pr: TriageRecord) -> Any:
 
     if pr.category == EnumPrCategory.CONFLICTED:
         return EnumPrBlockReason.CONFLICT
-    if failed_check_names and set(failed_check_names) == {_RECEIPT_GATE_CHECK_NAME}:
+
+    # OMN-13987 CP1: a failed deploy-gate check means the PR's own OCC deploy
+    # contract is missing (or the trivial-infra fast-path applies). Route to the
+    # contract auto-create arm. Keyed on the machine check name, so it never
+    # collides with the receipt-gate (OCC_DEPENDENCY) or genuine code failures.
+    if _has_deploy_gate_failure(failed_check_names):
+        return EnumPrBlockReason.DEPLOY_GATE_CONTRACT_NOT_FOUND
+
+    # OMN-13990 follow-up (round 2): drop cosmetic non-required checks (e.g.
+    # "Enable Auto-Merge", which fails BY DESIGN org-wide) before comparing
+    # against the OCC-evidence signature — see _COSMETIC_NON_REQUIRED_CHECK_NAMES
+    # above. Scoped to this comparison only; the raw failed_check_names tuple
+    # (still including cosmetic entries) is used unchanged everywhere else in
+    # this function.
+    evidence_signature_checks = (
+        set(failed_check_names) - _COSMETIC_NON_REQUIRED_CHECK_NAMES
+    )
+    if (
+        evidence_signature_checks
+        and evidence_signature_checks <= _OCC_EVIDENCE_CHECK_NAMES
+    ):
+        # OMN-13987 CP1 (extended, OMN-13990 follow-up): a failure set drawn
+        # ENTIRELY from {receipt gate, occ-preflight} plus cosmetic checks —
+        # either alone, or both together — has a ticket is the
+        # Evidence-Source-autobind class (OMN-13317 — the "green-except-OCC-
+        # companion" PR). Route to the cheap machine rebind; the adapter is
+        # self-guarding (no-ops when Evidence-Source is already an OCC
+        # source). Without a ticket, autobind cannot run, so genuine receipt
+        # failures keep the existing agent RECEIPT_FAILURE path.
+        if pr.ticket_ids:
+            return EnumPrBlockReason.RECEIPT_EVIDENCE_SOURCE_AUTOBIND
         return EnumPrBlockReason.RECEIPT_FAILURE
+
     if "coderabbit" in reason_lower or any(
         "coderabbit" in name for name in failed_check_names_lower
     ):
         return EnumPrBlockReason.CODERABBIT
     if pr.category == EnumPrCategory.NEEDS_REVIEW:
         return EnumPrBlockReason.CHANGES_REQUESTED
+
+    # OMN-14765: the typed, jobs-API-keyed reason codes are the AUTHORITATIVE
+    # decision source for the RED CI_FAILURE-vs-CODE_FAILURE split — they replace
+    # the check-NAME substring guess that rendered `cancelled` as fail (F-10),
+    # counted runner/stale/outage failures as product reds (F-07/F-08/F-09), and
+    # misrouted a hung test as a code failure (F-23). A PR whose failed checks
+    # carry reason codes routes on the dominant code: only an affirmative
+    # PRODUCT_FAILED becomes a code fix; runner_infra / cancelled / outage /
+    # stale never do (rerun/withhold/refresh).
     if pr.category == EnumPrCategory.RED:
+        dominant = dominant_reason_code(pr.failed_check_reason_codes)
+        if dominant is not None:
+            if dominant is EnumMergeCheckReasonCode.PRODUCT_FAILED:
+                return EnumPrBlockReason.CODE_FAILURE
+            # runner_infra / cancelled / github_api_outage / stale_context:
+            # never a product code fix. The merge controller reruns (an active
+            # outage backoff / recovery-probe control loop is a follow-up).
+            return EnumPrBlockReason.CI_FAILURE
+
+        # Fallback (no typed reason codes — older inventory data / jobs-API
+        # unavailable): OMN-13987 CP1 substring heuristic. Deliberately narrow +
+        # fail-safe: any code-signal check present falls through to CODE_FAILURE.
+        if _is_flaky_infra_only(failed_check_names) or (
+            _has_flaky_failure_evidence(pr)
+            and not _has_code_signal_failure(failed_check_names)
+        ):
+            return EnumPrBlockReason.CI_FAILURE
         return EnumPrBlockReason.CODE_FAILURE
     return EnumPrBlockReason.CODE_FAILURE
+
+
+# Maps a triage EnumPrCategory to the fixer-dispatcher EnumStallCategory wire
+# literal (OMN-13987 CP2). Values MUST equal EnumStallCategory members in
+# node_fixer_dispatcher.models.model_fixer_dispatch — asserted by a test rather
+# than importing another node's model package at runtime (repo boundary rule).
+# Only RED and CONFLICTED have machine auto-fix routes (node_ci_fix_effect and
+# node_conflict_hunk_effect respectively); every other category maps to
+# ``unknown`` so the dispatcher escalates deterministically.
+_PR_CATEGORY_TO_STALL_CATEGORY: dict[EnumPrCategory, str] = {
+    EnumPrCategory.RED: "red",
+    EnumPrCategory.CONFLICTED: "conflicted",
+}
+
+
+def _stall_category_for_dispatch(category: EnumPrCategory) -> str:
+    """Map a triage EnumPrCategory to a fixer-dispatcher EnumStallCategory literal.
+
+    node_fixer_dispatcher routes on machine EnumStallCategory literals
+    (red / conflicted / behind / deploy_gate); publishing the human-readable
+    ``block_reason`` prose always missed the routing table and forced every
+    dispatch to escalate — leaving node_ci_fix_effect / node_conflict_hunk_effect
+    dead. RED→``red`` reaches node_ci_fix_effect and CONFLICTED→``conflicted``
+    reaches node_conflict_hunk_effect; unmapped categories return ``unknown``.
+    """
+    return _PR_CATEGORY_TO_STALL_CATEGORY.get(category, "unknown")
 
 
 def _render_verification_breakdown(
@@ -583,9 +956,12 @@ class HandlerPrLifecycleOrchestrator:
         merge: ProtocolMergeHandler | None = None,
         fix: ProtocolFixHandler | None = None,
         prune: ProtocolPruneHandler | None = None,
+        arm_gate: ProtocolArmGateHandler | None = None,
         event_bus: ProtocolEventBusPublisher,
         ledger_store: ProtocolPrLedgerStore | None = None,
         projection_db: ProtocolProjectionDatabaseSync | None = None,
+        occ_stamp_readback: ProtocolOccStampReadback | None = None,
+        outage_recovery_probe: Callable[[], bool] | None = None,
     ) -> None:
         self._topic_phase_transition = TOPIC_PHASE_TRANSITION
         self._topic_completed = TOPIC_COMPLETED
@@ -600,6 +976,10 @@ class HandlerPrLifecycleOrchestrator:
         # OMN-13859: worktree-prune effect invoked in POST_MERGE_TAIL, one
         # command per merged (ticket, repo). Optional like the other sub-handlers.
         self._prune = prune
+        # OMN-14151: sole ARM/WITHHOLD decider for the merge fanout. Optional
+        # like the other sub-handlers; _ensure_sub_handlers wires the real
+        # HandlerPrArmGate for live runs.
+        self._arm_gate = arm_gate
         self._event_bus = event_bus
         # Durable, reconstructable PR-ledger projection (OMN-12569). Defaults to
         # the in-memory store for local/test runs; the runtime injects a
@@ -615,6 +995,28 @@ class HandlerPrLifecycleOrchestrator:
         # runtime injects the control-plane projection database so a clean
         # ledger row lands per PR per iteration.
         self._projection_db: ProtocolProjectionDatabaseSync | None = projection_db
+        # OMN-14191: independent OCC-stamp read-back gate. prs_fixed is counted
+        # per fix arm ONLY after this reads the ACTUAL pushed OCC companion + the
+        # product PR body back (Piece-2 parser, live gh state) and confirms the
+        # stamp landed — never on the fix handler's self-reported return
+        # (CLAUDE.md Rule 3). Defaults fail-closed (proves nothing -> counts
+        # nothing); _ensure_sub_handlers wires the live OccStampReadback for real
+        # runs. This generalizes the OMN-14173 autobind read-back to every arm
+        # and closes OMN-14174's dispatch-vs-effect over-count.
+        self._occ_stamp_readback: ProtocolOccStampReadback = (
+            occ_stamp_readback
+            if occ_stamp_readback is not None
+            else _UnverifiedOccStampReadback()
+        )
+        self._occ_stamp_readback_injected = occ_stamp_readback is not None
+        # OMN-14774 (F-07): optional read-only recovery probe the outage circuit
+        # breaker calls to decide whether GitHub's API has recovered enough to
+        # resume REST-dependent mutations. It MUST be side-effect-free (a bare
+        # read, e.g. GET /rate_limit) — never a mutation. When None, the breaker
+        # has no in-pass recovery path and stays OPEN for the pass once tripped
+        # (fail-closed); the next sweep's fresh inventory re-observation is then
+        # the recovery signal. A probe that raises counts as a failed probe.
+        self._outage_recovery_probe: Callable[[], bool] | None = outage_recovery_probe
 
     def _record_ledger_event(
         self,
@@ -897,8 +1299,13 @@ class HandlerPrLifecycleOrchestrator:
                     inv_handler, ProtocolInventoryHandler, "inventory"
                 )
                 self._inventory = inv_handler
-            except ImportError:
-                self._inventory = _StubInventoryHandler()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PR-lifecycle inventory sub-handler failed to import; refusing "
+                    "to run a merge sweep on a silent no-op stub that would report "
+                    "0 PRs as a successful pass. Fix the omnimarket install/"
+                    "packaging drift instead of degrading silently (OMN-13984)."
+                ) from exc
         if self._triage is None:
             try:
                 from omnimarket.nodes.node_pr_lifecycle_triage_compute.handlers.handler_pr_lifecycle_triage import (
@@ -910,8 +1317,13 @@ class HandlerPrLifecycleOrchestrator:
                     triage_handler, ProtocolTriageHandler, "triage"
                 )
                 self._triage = triage_handler
-            except ImportError:
-                self._triage = _StubTriageHandler()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PR-lifecycle triage sub-handler failed to import; refusing to "
+                    "run a merge sweep on a silent no-op stub that would classify "
+                    "0 PRs as a successful pass. Fix the omnimarket install/"
+                    "packaging drift instead of degrading silently (OMN-13984)."
+                ) from exc
         if self._reducer is None:
             try:
                 from omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer import (
@@ -923,8 +1335,14 @@ class HandlerPrLifecycleOrchestrator:
                     reducer_handler, ProtocolStateReducerHandler, "reducer"
                 )
                 self._reducer = reducer_handler
-            except ImportError:
-                self._reducer = _StubReducerHandler()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PR-lifecycle state-reducer sub-handler failed to import; "
+                    "refusing to run a merge sweep on a silent no-op stub that "
+                    "would produce 0 merge/fix intents as a successful pass. Fix "
+                    "the omnimarket install/packaging drift instead of degrading "
+                    "silently (OMN-13984)."
+                ) from exc
         if self._merge is None:
             try:
                 from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue import (
@@ -941,36 +1359,69 @@ class HandlerPrLifecycleOrchestrator:
                     merge_handler, ProtocolMergeHandler, "merge"
                 )
                 self._merge = merge_handler
-            except ImportError:
-                self._merge = _StubMergeHandler()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PR-lifecycle merge sub-handler failed to import; refusing to "
+                    "run a merge sweep on a silent no-op stub that would report "
+                    "0 merges as a successful pass. Fix the omnimarket install/"
+                    "packaging drift instead of degrading silently (OMN-13984)."
+                ) from exc
         if self._fix is None:
             try:
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_delegated_fix import (
+                    DelegatedFixAdapter,
+                )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_github_cli import (
                     GitHubCliAdapter,
-                )
-                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_autobind import (
-                    OccAutobindAdapter,
-                )
-                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_occ_contract import (
-                    OccContractAdapter,
                 )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_pr_polish_dispatch import (
                     PrPolishDispatchAdapter,
                 )
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.adapter_two_strike_store import (
+                    JsonFileTwoStrikeStore,
+                )
                 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.handler_pr_lifecycle_fix import (
                     HandlerPrLifecycleFix,
                 )
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
+                    OccCompanionEmitter,
+                )
+                from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_verifier import (
+                    OccCompanionVerifier,
+                )
 
+                # WS-D/D2 (OMN-13940): DelegatedFixAdapter + JsonFileTwoStrikeStore
+                # are wired explicitly (not left to HandlerPrLifecycleFix's
+                # test-convenience noop/in-memory defaults) so real merge-sweep
+                # runs actually attempt the delegated path and the two-strike
+                # counter survives across ticks.
+                # OMN-14285: one OCC producer (OccCompanionEmitter) serves both the
+                # deploy-gate and autobind failure classes; the single instance is
+                # shared across both slots.
+                occ_emitter = OccCompanionEmitter()
                 fix_handler = HandlerPrLifecycleFix(
                     github_adapter=GitHubCliAdapter(),
                     agent_dispatch_adapter=PrPolishDispatchAdapter(),
-                    occ_contract_adapter=OccContractAdapter(),
-                    occ_autobind_adapter=OccAutobindAdapter(),
+                    occ_contract_adapter=occ_emitter,
+                    occ_autobind_adapter=occ_emitter,
+                    # OMN-14173: live read-back verifier so prs_fixed is gated on
+                    # a CONFIRMED pushed OCC companion, not on fix_applied. Without
+                    # this the autobind arm reported prs_fixed while authoring zero
+                    # companions (merge_sweep --fix-only false-success).
+                    occ_companion_verifier=OccCompanionVerifier(),
+                    delegation_fix_adapter=DelegatedFixAdapter(),
+                    two_strike_store=JsonFileTwoStrikeStore(),
                 )
                 self._check_protocol_conformance(fix_handler, ProtocolFixHandler, "fix")
                 self._fix = fix_handler
-            except ImportError:
-                self._fix = _StubFixHandler()
+            except ImportError as exc:
+                raise RuntimeError(
+                    "PR-lifecycle fix sub-handler failed to import; refusing to "
+                    "run a merge sweep on a silent no-op stub that would report "
+                    "0 fixes dispatched as a successful pass (masking the real "
+                    "delegated-fix path). Fix the omnimarket install/packaging "
+                    "drift instead of degrading silently (OMN-13984)."
+                ) from exc
         if self._prune is None:
             # OMN-13859: worktree-prune effect. Falls back to a no-op stub when
             # the node is unavailable so the merge sweep never fails for lack of
@@ -990,34 +1441,100 @@ class HandlerPrLifecycleOrchestrator:
                 self._prune = prune_handler
             except ImportError:
                 self._prune = _StubPruneHandler()
+        if self._arm_gate is None:
+            # OMN-14151: the arm-gate is a pure compute with zero optional
+            # dependencies — no ImportError fallback stub is needed, but a
+            # missing import must still fail loudly (never a silent no-op
+            # decider) per OMN-13984's "no silent successful no-op" rule.
+            from omnimarket.nodes.node_pr_arm_gate_compute.handlers.handler_arm_gate import (
+                HandlerPrArmGate,
+            )
+
+            arm_gate_handler = HandlerPrArmGate()
+            self._check_protocol_conformance(
+                arm_gate_handler, ProtocolArmGateHandler, "arm_gate"
+            )
+            self._arm_gate = arm_gate_handler
+        # OMN-14191: wire the live OCC-stamp read-back for real runs so prs_fixed
+        # is gated on a CONFIRMED landed OCC companion (read back over live gh
+        # state), not on the fix handler's dispatch-time self-report. Skipped when
+        # an explicit read-back was injected (tests inject a hermetic double).
+        if not self._occ_stamp_readback_injected:
+            from omnimarket.nodes.node_pr_lifecycle_orchestrator.handlers.occ_stamp_readback import (
+                OccStampReadback,
+            )
+
+            self._occ_stamp_readback = OccStampReadback()
 
     async def handle(
         self,
         command: ModelPrLifecycleStartCommand,
     ) -> ModelPrLifecycleResult:
-        """Run the PR lifecycle sweep and persist the result for skill polling.
+        """Run the PR lifecycle sweep loop and persist each pass result.
 
         Writes ``$ONEX_STATE_DIR/merge-sweep/{run_id}/result.json`` on both
         success and failure paths. The merge_sweep skill (v4.0.0+) polls this
         file to determine orchestrator completion.
         """
-        try:
-            result = await self._run_sweep(command)
-        except BaseException as exc:
-            # Final safety net — even unexpected errors must produce a result.json
-            # so the polling skill can terminate instead of timing out.
-            logger.exception(
-                "[PR-LIFECYCLE-ORCH] unexpected failure outside FSM: %s", exc
-            )
-            result = ModelPrLifecycleResult(
-                correlation_id=command.correlation_id,
-                final_state=EnumOrchestratorState.FAILED.value,
-                error_message=str(exc),
-            )
+        result: ModelPrLifecycleResult | None = None
+        for pass_index in range(1, command.max_sweep_passes + 1):
+            try:
+                logger.info(
+                    "[PR-LIFECYCLE-ORCH] sweep pass %d/%d run_id=%s",
+                    pass_index,
+                    command.max_sweep_passes,
+                    command.run_id,
+                )
+                result = await self._run_sweep(command)
+            except BaseException as exc:
+                # Final safety net — even unexpected errors must produce a result.json
+                # so the polling skill can terminate instead of timing out.
+                logger.exception(
+                    "[PR-LIFECYCLE-ORCH] unexpected failure outside FSM: %s", exc
+                )
+                result = ModelPrLifecycleResult(
+                    correlation_id=command.correlation_id,
+                    final_state=EnumOrchestratorState.FAILED.value,
+                    error_message=str(exc),
+                )
+                self._write_result_file(command.run_id, result)
+                raise
+
             self._write_result_file(command.run_id, result)
-            raise
-        self._write_result_file(command.run_id, result)
+            if result.final_state != _FINAL_STATE_NOT_DONE:
+                return result
+            if (
+                not command.loop_until_done
+                or command.dry_run
+                or command.inventory_only
+                or not self._should_continue_sweep_loop(result)
+                or pass_index >= command.max_sweep_passes
+            ):
+                return result
+
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] sweep pass %d/%d reported NOT_DONE; "
+                "sleeping %ds before re-inventory",
+                pass_index,
+                command.max_sweep_passes,
+                command.sweep_sleep_seconds,
+            )
+            if command.sweep_sleep_seconds > 0:
+                await asyncio.sleep(command.sweep_sleep_seconds)
+
+        assert result is not None
         return result
+
+    @staticmethod
+    def _should_continue_sweep_loop(result: ModelPrLifecycleResult) -> bool:
+        """Return whether another pass can still act on the NOT_DONE result."""
+        if result.final_state != _FINAL_STATE_NOT_DONE:
+            return False
+        if result.prs_inventoried > 0:
+            return True
+        if result.prs_merged > 0 or result.prs_fixed > 0 or result.prs_verified > 0:
+            return True
+        return False
 
     async def _run_sweep(
         self,
@@ -1082,7 +1599,27 @@ class HandlerPrLifecycleOrchestrator:
                     orchestrator_action=EnumOrchestratorAction.INVENTORY,
                     phase=state.phase,
                 )
-            await self._remediate_stalled_queue_prs(command, inv_result)
+
+            # OMN-14774 (F-07): active outage backoff. If the classifier tagged
+            # any failed check GITHUB_API_OUTAGE, open the circuit breaker and
+            # withhold REST-dependent mutations (stall-remediation enqueue, merge
+            # fanout, fix reruns) for this pass rather than issue them into a
+            # degraded API — the rerun-storm / false-red failure mode F-07
+            # documented. Resumption is gated on a recovery probe (or the next
+            # sweep's fresh inventory re-observation).
+            outage_active = self._apply_outage_breaker(state, inv_result)
+
+            if outage_active:
+                withheld_stall = len(inv_result.stuck_queue_prs)
+                if withheld_stall:
+                    state.outage_mutations_withheld += withheld_stall
+                    logger.warning(
+                        "[PR-LIFECYCLE-ORCH] outage breaker OPEN — withholding "
+                        "stall-remediation for %d stuck queue PR(s) this pass",
+                        withheld_stall,
+                    )
+            else:
+                await self._remediate_stalled_queue_prs(command, inv_result)
 
             if command.inventory_only:
                 await self._transition_phase(
@@ -1102,7 +1639,7 @@ class HandlerPrLifecycleOrchestrator:
             )
 
             assert self._triage is not None
-            # Real triage handler signature: handle(correlation_id, prs: tuple[ModelPrInventoryItem])
+            # Real triage handler signature: handle(request: ModelPrTriageInput)
             # Convert PrRecord → ModelPrInventoryItem before calling.
             triage_result = await self._call_triage(
                 correlation_id=command.correlation_id,
@@ -1224,7 +1761,16 @@ class HandlerPrLifecycleOrchestrator:
             # Phase: MERGING (merge-group checks; skip if fix_only). ``merge_prs``
             # here is the verification-cleared subset when verify=True — PRs whose
             # verification failed have already been removed and left open.
-            if merge_prs and not command.fix_only:
+            # OMN-14774 (F-07): a merge (enqueue) is a REST-dependent mutation —
+            # withhold it while the outage breaker is OPEN.
+            if merge_prs and not command.fix_only and outage_active:
+                state.outage_mutations_withheld += len(merge_prs)
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] outage breaker OPEN — withholding merge "
+                    "of %d ready PR(s) this pass (F-07)",
+                    len(merge_prs),
+                )
+            if merge_prs and not command.fix_only and not outage_active:
                 await self._transition_phase(
                     state,
                     EnumOrchestratorState.MERGING,
@@ -1234,11 +1780,19 @@ class HandlerPrLifecycleOrchestrator:
 
                 assert self._merge is not None
                 # Real merge handler signature: handle(command: ModelPrMergeCommand)
-                # Fan out: one command per PR, aggregate the results.
+                # Fan out: one command per PR, gated per-PR by the arm-gate
+                # (OMN-14151), aggregate the results.
                 merge_result = await self._call_merge_fanout(
                     correlation_id=command.correlation_id,
                     prs_to_merge=merge_prs,
                     dry_run=command.dry_run,
+                    inv_result=state.inventory_result,
+                    policy=ModelArmGatePolicy(
+                        action_mode=command.action_mode,
+                        kill_switch=command.merge_queue_mutation_kill_switch,
+                        wave_cap=command.merge_wave_cap,
+                        enable_stall_remediation=command.enable_stall_remediation,
+                    ),
                 )
                 state.prs_merged = merge_result.prs_merged
                 logger.info(
@@ -1298,8 +1852,19 @@ class HandlerPrLifecycleOrchestrator:
                     )
                     return self._build_result(state, command.correlation_id)
 
-            # Phase: FIXING (branch checks; skip if merge_only)
-            if fix_prs and not command.merge_only:
+            # Phase: FIXING (branch checks; skip if merge_only). OMN-14774
+            # (F-07): the fix arm issues REST-dependent mutations (gh run rerun
+            # for CI_FAILURE, agent-pushed code fixes) — withhold the whole fix
+            # dispatch while the outage breaker is OPEN so no rerun/mutation is
+            # fired into a degraded API.
+            if fix_prs and not command.merge_only and outage_active:
+                state.outage_mutations_withheld += len(fix_prs)
+                logger.warning(
+                    "[PR-LIFECYCLE-ORCH] outage breaker OPEN — withholding fix "
+                    "dispatch (incl. reruns) for %d PR(s) this pass (F-07)",
+                    len(fix_prs),
+                )
+            if fix_prs and not command.merge_only and not outage_active:
                 await self._transition_phase(
                     state,
                     EnumOrchestratorState.FIXING,
@@ -1327,10 +1892,30 @@ class HandlerPrLifecycleOrchestrator:
                 )
                 state.prs_fixed = sum(r.prs_dispatched for r in fix_results)
                 state.prs_skipped += sum(r.prs_skipped for r in fix_results)
+                state.prs_delegated_fix_attempted = sum(
+                    r.prs_delegated_fix_attempted for r in fix_results
+                )
+                state.prs_delegated_fix_accepted = sum(
+                    r.prs_delegated_fix_accepted for r in fix_results
+                )
+                state.prs_delegated_fix_gate_failed = sum(
+                    r.prs_delegated_fix_gate_failed for r in fix_results
+                )
+                state.prs_delegated_fix_escalated = sum(
+                    r.prs_delegated_fix_escalated for r in fix_results
+                )
+                state.delegation_cost_savings_usd = sum(
+                    r.delegation_cost_savings_usd for r in fix_results
+                )
                 logger.info(
-                    "[PR-LIFECYCLE-ORCH] fix completed: %d dispatched, %d skipped",
+                    "[PR-LIFECYCLE-ORCH] fix completed: %d dispatched, %d skipped, "
+                    "delegated attempted=%d accepted=%d gate_failed=%d escalated=%d",
                     state.prs_fixed,
                     sum(r.prs_skipped for r in fix_results),
+                    state.prs_delegated_fix_attempted,
+                    state.prs_delegated_fix_accepted,
+                    state.prs_delegated_fix_gate_failed,
+                    state.prs_delegated_fix_escalated,
                 )
                 # Ledger (OMN-12569): record a terminal FAILED conclusion (a
                 # non-green PR routed to remediation) with FIX action provenance.
@@ -1555,8 +2140,21 @@ class HandlerPrLifecycleOrchestrator:
                         review_status=_map_review_status(pr_state),
                         has_conflicts=getattr(pr_state, "has_conflicts", False),
                         failed_check_names=_failed_check_names(pr_state),
+                        failed_check_flaky_evidence=_failed_check_flaky_evidence(
+                            pr_state
+                        ),
+                        failed_check_reason_codes=_failed_check_reason_codes(pr_state),
                         merge_state_status=getattr(
                             pr_state, "merge_state_status", None
+                        ),
+                        # OMN-14151: genuine tri-state facts for the arm-gate.
+                        # ``is_draft`` is threaded straight from the inventory
+                        # read; ``coderabbit_unresolved`` is None when the
+                        # inventory handler never collected it (never
+                        # defaulted to 0).
+                        is_draft=getattr(pr_state, "is_draft", None),
+                        coderabbit_unresolved=getattr(
+                            pr_state, "coderabbit_unresolved", None
                         ),
                     )
                 )
@@ -1566,6 +2164,65 @@ class HandlerPrLifecycleOrchestrator:
             total_collected=len(all_prs),
             stuck_queue_prs=tuple(stuck_queue_prs),
         )
+
+    @staticmethod
+    def _collect_sweep_reason_codes(
+        inv_result: InventoryResult | None,
+    ) -> tuple[str, ...]:
+        """Flatten every failed-check reason code across the inventory (OMN-14774).
+
+        The jobs-API-keyed ``reason_code`` populated on each PR's failed checks
+        by the inventory node (OMN-14765). A single GITHUB_API_OUTAGE anywhere in
+        the sweep is enough to trip the outage circuit breaker, because a
+        degraded GitHub API poisons every REST-dependent mutation, not just the
+        PR that surfaced the outage signature.
+        """
+        if inv_result is None:
+            return ()
+        return tuple(
+            str(code)
+            for pr in inv_result.prs
+            for code in (getattr(pr, "failed_check_reason_codes", ()) or ())
+        )
+
+    def _apply_outage_breaker(
+        self, state: _SweepState, inv_result: InventoryResult | None
+    ) -> bool:
+        """Drive the outage circuit breaker for this pass (OMN-14774 / F-07).
+
+        Observes the sweep-wide reason codes; when a GITHUB_API_OUTAGE is present
+        the breaker OPENS so REST-dependent mutations (stall-remediation enqueue,
+        merge fanout, fix reruns) are WITHHELD rather than issued into a degraded
+        API. When an in-pass recovery probe is wired it is attempted once — a
+        PASS closes the breaker and resumes normal mutation; a FAIL (or no probe)
+        keeps it OPEN (fail-closed). Records the decision on ``state`` and returns
+        True iff mutations must be withheld this pass.
+
+        A fresh breaker is used per pass: the next sweep re-inventories live PR
+        state, so a now-clean reason-code set keeps the breaker CLOSED — the
+        natural cross-pass recovery path.
+        """
+        breaker = OutageCircuitBreaker()
+        breaker.observe(self._collect_sweep_reason_codes(inv_result))
+        if breaker.is_open and self._outage_recovery_probe is not None:
+            resumed = breaker.probe_recovery(self._outage_recovery_probe)
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] GITHUB_API_OUTAGE recovery probe %s",
+                (
+                    "PASSED — resuming REST-dependent mutations"
+                    if resumed
+                    else "FAILED — mutations remain withheld this pass"
+                ),
+            )
+        outage_active = breaker.state is EnumOutageBreakerState.OPEN
+        state.outage_active = outage_active
+        if outage_active:
+            logger.warning(
+                "[PR-LIFECYCLE-ORCH] GITHUB_API_OUTAGE detected — outage circuit "
+                "breaker OPEN; withholding REST-dependent mutations "
+                "(merge/enqueue/rerun) this pass (F-07 fail-closed backoff)",
+            )
+        return outage_active
 
     def _make_merge_queue_adapter(self) -> Any:
         from omnimarket.nodes.node_pr_lifecycle_merge_effect.handlers.adapter_github_merge_queue import (
@@ -1588,6 +2245,28 @@ class HandlerPrLifecycleOrchestrator:
                 len(inv_result.stuck_queue_prs),
                 command.dry_run,
                 command.inventory_only,
+            )
+            return
+        # OMN-14151: stall remediation dequeues + re-enqueues an ALREADY-armed
+        # PR to re-mint a stuck merge-group SHA — a separate operation from
+        # readiness-arming an unarmed PR, so it is NOT routed through the
+        # arm-gate. It is instead gated behind its own explicit opt-in
+        # (enable_stall_remediation) plus the same action_mode/kill_switch
+        # envelope, so the shipped conservative config has exactly one active
+        # arm path.
+        if (
+            command.action_mode is not EnumArmActionMode.ENFORCE
+            or command.merge_queue_mutation_kill_switch
+            or not command.enable_stall_remediation
+        ):
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] detected %d stalled queue PRs; "
+                "remediation withheld action_mode=%s kill_switch=%s "
+                "enable_stall_remediation=%s",
+                len(inv_result.stuck_queue_prs),
+                command.action_mode.value,
+                command.merge_queue_mutation_kill_switch,
+                command.enable_stall_remediation,
             )
             return
 
@@ -1642,7 +2321,7 @@ class HandlerPrLifecycleOrchestrator:
     ) -> PrTriageResult:
         """Call the triage handler with its real signature.
 
-        HandlerPrLifecycleTriage.handle(correlation_id, prs: tuple[ModelPrInventoryItem])
+        HandlerPrLifecycleTriage.handle(request: ModelPrTriageInput)
         → ModelPrTriageOutput.
 
         Adapts PrRecord → ModelPrInventoryItem before the call, then maps
@@ -1650,8 +2329,9 @@ class HandlerPrLifecycleOrchestrator:
         """
         assert self._triage is not None
 
-        from omnimarket.nodes.node_pr_lifecycle_triage_compute.models.model_pr_inventory_item import (
+        from omnimarket.events.pr_lifecycle_triage import (
             ModelPrInventoryItem,
+            ModelPrTriageInput,
         )
 
         items = tuple(
@@ -1663,13 +2343,20 @@ class HandlerPrLifecycleOrchestrator:
                 ticket_ids=pr.ticket_ids,
                 ci_status=_orch_checks_to_ci_status(pr.checks_status),
                 has_conflicts=pr.has_conflicts,
-                approved=(pr.review_status == "approved"),
+                approved=(
+                    pr.review_status == "approved"
+                    or str(pr.merge_state_status or "").upper() == "CLEAN"
+                ),
                 failed_check_names=pr.failed_check_names,
+                failed_check_flaky_evidence=pr.failed_check_flaky_evidence,
+                failed_check_reason_codes=pr.failed_check_reason_codes,
             )
             for pr in prs
         )
 
-        raw = await self._triage.handle(correlation_id, items)
+        raw = await self._triage.handle(
+            ModelPrTriageInput(correlation_id=correlation_id, prs=items)
+        )
 
         # Short-circuit: test stub returned PrTriageResult directly.
         if isinstance(raw, PrTriageResult):
@@ -1696,6 +2383,12 @@ class HandlerPrLifecycleOrchestrator:
                     category=category,
                     ticket_ids=getattr(result, "ticket_ids", ()),
                     failed_check_names=getattr(result, "failed_check_names", ()),
+                    failed_check_flaky_evidence=getattr(
+                        result, "failed_check_flaky_evidence", ()
+                    ),
+                    failed_check_reason_codes=getattr(
+                        result, "failed_check_reason_codes", ()
+                    ),
                     block_reason=getattr(result, "reason", ""),
                 )
             )
@@ -1710,26 +2403,137 @@ class HandlerPrLifecycleOrchestrator:
             non_green_count=non_green_count,
         )
 
+    @staticmethod
+    def _status_checks_for_arm(checks_status: str) -> str | None:
+        """Map the genuinely-collected orchestrator checks_status to the
+        arm-gate's SUCCESS/FAILURE/PENDING vocabulary (OMN-14151).
+
+        ``checks_status`` already reflects a positively-collected fact (PR-
+        associated check runs only, per F3/OMN-13319) — this is a vocabulary
+        translation, not a second inference path. "unknown" maps to None so
+        the arm-gate WITHHOLDs rather than treating unknown as a pass.
+        """
+        mapping = {"success": "SUCCESS", "failure": "FAILURE", "pending": "PENDING"}
+        return mapping.get(checks_status.lower())
+
+    async def _evaluate_arm_gate(
+        self,
+        *,
+        pr: TriageRecord,
+        pr_record: PrRecord | None,
+        policy: ModelArmGatePolicy,
+    ) -> EnumArmDecision:
+        """Evaluate the sole ARM/WITHHOLD decider for one merge-intent PR.
+
+        Builds a ModelArmCandidate from genuine facts collected at inventory
+        time (never re-derived here) plus a live OCC-companion read-back, and
+        delegates the ARM/WITHHOLD call entirely to node_pr_arm_gate_compute.
+
+        The OCC-companion read-back (a live gh/remote call) is skipped
+        whenever the policy alone already guarantees WITHHOLD (action_mode is
+        not ENFORCE, or the kill switch is engaged) — report_only is the
+        default posture and must cost zero extra external calls, not just
+        zero mutation.
+        """
+        assert self._arm_gate is not None
+        occ_companion_verified: bool | None = None
+        if policy.action_mode is EnumArmActionMode.ENFORCE and not policy.kill_switch:
+            occ_readback = await self._occ_stamp_readback.verify_fix_landed(
+                pr.repo, pr.pr_number
+            )
+            occ_companion_verified = occ_readback.verified
+        candidate = ModelArmCandidate(
+            repo=pr.repo,
+            pr_number=pr.pr_number,
+            is_draft=pr_record.is_draft if pr_record is not None else None,
+            coderabbit_unresolved=(
+                pr_record.coderabbit_unresolved if pr_record is not None else None
+            ),
+            merge_state_status=(
+                pr_record.merge_state_status if pr_record is not None else None
+            ),
+            status_checks=(
+                self._status_checks_for_arm(pr_record.checks_status)
+                if pr_record is not None
+                else None
+            ),
+            occ_companion_verified=occ_companion_verified,
+        )
+        raw_decision = await self._arm_gate.handle(
+            ModelArmGateRequest(candidate=candidate, policy=policy)
+        )
+        # Short-circuit: a test double may return the bare EnumArmDecision.
+        if isinstance(raw_decision, EnumArmDecision):
+            return raw_decision
+        decision: EnumArmDecision = raw_decision.decision
+        return decision
+
     async def _call_merge_fanout(
         self,
         *,
         correlation_id: UUID,
         prs_to_merge: tuple[TriageRecord, ...],
         dry_run: bool,
+        inv_result: InventoryResult | None = None,
+        policy: ModelArmGatePolicy | None = None,
     ) -> MergeResult:
         """Fan out merge commands to the merge handler (one command per PR).
 
+        Every PR is first evaluated by node_pr_arm_gate_compute (OMN-14151),
+        the sole ARM/WITHHOLD decider — this is the ONE gated path that can
+        mutate the merge queue. Only ARM-decided PRs, priority-ordered and
+        capped at ``policy.wave_cap``, reach the merge handler; every other PR
+        is a report-only no-op this pass (default posture: zero mutation).
+
         HandlerPrLifecycleMerge.handle(command: ModelPrMergeCommand) → ModelPrMergeResult.
         """
+        self._ensure_sub_handlers()
         assert self._merge is not None
+        assert self._arm_gate is not None
 
         from omnimarket.nodes.node_pr_lifecycle_merge_effect.models.model_merge_command import (
             ModelPrMergeCommand,
         )
 
+        effective_policy = policy if policy is not None else ModelArmGatePolicy()
+        pr_lookup: dict[tuple[str, int], PrRecord] = {}
+        if inv_result is not None:
+            pr_lookup = {(p.repo, p.pr_number): p for p in inv_result.prs}
+
+        armed: list[TriageRecord] = []
+        for pr in prs_to_merge:
+            decision = await self._evaluate_arm_gate(
+                pr=pr,
+                pr_record=pr_lookup.get((pr.repo, pr.pr_number)),
+                policy=effective_policy,
+            )
+            if decision is EnumArmDecision.ARM:
+                armed.append(pr)
+            else:
+                logger.info(
+                    "[PR-LIFECYCLE-ORCH] arm-gate WITHHOLD %s#%s (report-only "
+                    "this pass)",
+                    pr.repo,
+                    pr.pr_number,
+                )
+
+        # Wave-cap: bound blast radius to the first N ARM-decided PRs,
+        # deterministically ordered (repo, pr_number) since this slice ships
+        # with a flat priority_hint of 0 for every candidate.
+        armed = sorted(armed, key=lambda pr: (pr.repo, pr.pr_number))
+        capped = armed[: effective_policy.wave_cap]
+        if len(armed) > len(capped):
+            logger.info(
+                "[PR-LIFECYCLE-ORCH] wave_cap=%d bounded %d ARM-decided PR(s) "
+                "to %d this pass",
+                effective_policy.wave_cap,
+                len(armed),
+                len(capped),
+            )
+
         prs_merged = 0
         prs_failed = 0
-        for pr in prs_to_merge:
+        for pr in capped:
             merge_command = ModelPrMergeCommand(
                 correlation_id=correlation_id,
                 pr_number=pr.pr_number,
@@ -1756,7 +2560,7 @@ class HandlerPrLifecycleOrchestrator:
                 continue
             if getattr(raw, "merged", False):
                 prs_merged += 1
-            else:
+            elif getattr(raw, "error", None):
                 prs_failed += 1
 
         return MergeResult(prs_merged=prs_merged, prs_failed=prs_failed)
@@ -2209,9 +3013,56 @@ class HandlerPrLifecycleOrchestrator:
                 if isinstance(raw, FixResult):
                     return raw
                 fix_applied: bool = getattr(raw, "fix_applied", False)
+                # OMN-14191 (generalizes OMN-14173; closes OMN-14174): never count
+                # prs_fixed on DISPATCH. Every fix arm — not just the OCC-autobind
+                # arm — is gated on an INDEPENDENT read-back over live gh/remote
+                # state: the orchestrator re-reads the ACTUAL pushed OCC companion
+                # PR + the product PR body (Piece-2 canonical parser) and counts
+                # the fix ONLY when the OCC stamp is confirmed landed. This never
+                # trusts the fix handler's self-reported fix_applied /
+                # occ_companion_verified flag (CLAUDE.md Rule 3). Arms that legit-
+                # imately land no OCC stamp (a bare CI rerun, a dispatched-but-not-
+                # yet-landed polish) fail-closed to NOT counted — the safe under-
+                # count direction OMN-14174 requires ("do not treat dispatch as
+                # success"). dry_run lands nothing, so it is never counted and
+                # never hits the network.
+                counted_as_fixed = False
+                if fix_applied and not dry_run:
+                    readback = await self._occ_stamp_readback.verify_fix_landed(
+                        pr.repo, pr.pr_number, fix_command.ticket_id
+                    )
+                    counted_as_fixed = readback.verified
+                    logger.info(
+                        "[PR-LIFECYCLE-ORCH] fix read-back pr=%s repo=%s "
+                        "reason=%s counted=%s",
+                        pr.pr_number,
+                        pr.repo,
+                        readback.reason,
+                        counted_as_fixed,
+                    )
+                delegation_outcome = getattr(raw, "delegation_outcome", None)
+                delegation_outcome_value = (
+                    getattr(delegation_outcome, "value", delegation_outcome)
+                    if delegation_outcome is not None
+                    else None
+                )
+                # `is True` (not just truthy) so a MagicMock/duck-typed test
+                # double without an explicit `delegated` attribute never
+                # spuriously counts as an attempted delegation.
+                delegated: bool = getattr(raw, "delegated", False) is True
                 return FixResult(
-                    prs_dispatched=1 if fix_applied else 0,
-                    prs_skipped=0 if fix_applied else 1,
+                    prs_dispatched=1 if counted_as_fixed else 0,
+                    prs_skipped=0 if counted_as_fixed else 1,
+                    prs_delegated_fix_attempted=1 if delegated else 0,
+                    prs_delegated_fix_accepted=(
+                        1 if delegation_outcome_value == "accepted" else 0
+                    ),
+                    prs_delegated_fix_gate_failed=(
+                        1 if delegation_outcome_value == "gate_failed" else 0
+                    ),
+                    prs_delegated_fix_escalated=(
+                        1 if delegation_outcome_value == "escalated" else 0
+                    ),
                 )
 
         logger.info(
@@ -2304,6 +3155,13 @@ class HandlerPrLifecycleOrchestrator:
             error_message=state.error_message,
             org_wide_open_count=int(getattr(state.org_wide_open, "open_count", 0) or 0),
             org_wide_open_remainders=remainders,
+            prs_delegated_fix_attempted=state.prs_delegated_fix_attempted,
+            prs_delegated_fix_accepted=state.prs_delegated_fix_accepted,
+            prs_delegated_fix_gate_failed=state.prs_delegated_fix_gate_failed,
+            prs_delegated_fix_escalated=state.prs_delegated_fix_escalated,
+            delegation_cost_savings_usd=state.delegation_cost_savings_usd,
+            outage_active=state.outage_active,
+            outage_mutations_withheld=state.outage_mutations_withheld,
         )
 
     @staticmethod
@@ -2350,9 +3208,7 @@ class HandlerPrLifecycleOrchestrator:
         return _FINAL_STATE_NOT_DONE, remainders
 
     def _sweep_run_dir(self, run_id: str) -> Path | None:
-        state_dir = os.environ.get(
-            "ONEX_STATE_DIR", os.path.expanduser("~/.onex_state")
-        )
+        state_dir = self._resolved_state_dir()
         base = (Path(state_dir) / "merge-sweep").resolve()
         out_dir = (base / run_id).resolve()
         if not out_dir.is_relative_to(base):
@@ -2365,6 +3221,21 @@ class HandlerPrLifecycleOrchestrator:
             )
             return None
         return out_dir
+
+    @staticmethod
+    def _resolved_state_dir() -> Path:
+        """Resolve a writable state root and reject root-anchored fallbacks."""
+        raw_state_dir = os.environ.get("ONEX_STATE_DIR")
+        if raw_state_dir:
+            candidate = Path(raw_state_dir).expanduser()
+            resolved = candidate.resolve()
+            if resolved not in {Path("/"), Path("/.onex_state")}:
+                return resolved
+
+        omni_home = os.environ.get("OMNI_HOME")
+        if omni_home:
+            return (Path(omni_home).expanduser() / ".onex_state").resolve()
+        return Path(os.path.expanduser("~/.onex_state")).resolve()
 
     def _write_occ_dependency_edges_file(
         self,
@@ -2440,11 +3311,18 @@ class HandlerPrLifecycleOrchestrator:
             "prs_verified": result.prs_verified,
             "prs_verification_blocked": result.prs_verification_blocked,
             "verification_breakdown": result.verification_breakdown,
+            "prs_delegated_fix_attempted": result.prs_delegated_fix_attempted,
+            "prs_delegated_fix_accepted": result.prs_delegated_fix_accepted,
+            "prs_delegated_fix_gate_failed": result.prs_delegated_fix_gate_failed,
+            "prs_delegated_fix_escalated": result.prs_delegated_fix_escalated,
+            "delegation_cost_savings_usd": result.delegation_cost_savings_usd,
             "org_wide_open_count": result.org_wide_open_count,
             "org_wide_open_remainders": [
                 remainder.model_dump(mode="json")
                 for remainder in result.org_wide_open_remainders
             ],
+            "outage_active": result.outage_active,
+            "outage_mutations_withheld": result.outage_mutations_withheld,
             "error_message": result.error_message,
         }
 
@@ -2497,10 +3375,15 @@ class HandlerPrLifecycleOrchestrator:
         if not self._topic_fixer_dispatch_start:
             return
         for pr in fix_prs:
+            # OMN-13987 CP2: the fixer dispatcher routes on machine
+            # EnumStallCategory literals, not on the human-readable block_reason
+            # prose. Emit the machine category so RED→node_ci_fix_effect and
+            # CONFLICTED→node_conflict_hunk_effect actually route. block_reason
+            # prose stays as the advisory ``blocking_reason`` for humans/logs.
             payload = {
                 "pr_number": pr.pr_number,
                 "repo": pr.repo,
-                "stall_category": pr.block_reason or "unknown",
+                "stall_category": _stall_category_for_dispatch(pr.category),
                 "blocking_reason": pr.block_reason or "",
                 "correlation_id": str(correlation_id),
             }

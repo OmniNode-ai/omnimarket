@@ -68,9 +68,9 @@ io_operations:
     validation_enabled: true
 
 secrets:
-  - env_var: OPENROUTER_API_KEY
+  - env_var: OPEN_ROUTER_API_KEY
     required: false
-    description: "OpenRouter API key for authenticated model listing (optional for free-tier discovery)"
+    description: "OpenRouter API key for authenticated model listing (optional for free-tier discovery). Resolved via the secret store's llm.openrouter.api_key alias (OMN-15048); literal OPENROUTER_API_KEY (no underscore) is never set by any real deployment surface."
 
 metadata:
   transport_type: kafka

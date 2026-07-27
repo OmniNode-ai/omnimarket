@@ -212,10 +212,7 @@ class TestSlackPublishGoldenChain:
     async def test_successful_publish_returns_result(self) -> None:
         handler, _stub, _ledger = _make_handler()
         cmd = _cmd()
-        output = await handler.handle(cmd)
-        events = output.events or ()
-        assert len(events) == 1
-        result = events[0]
+        result = await handler.handle(cmd)
         assert isinstance(result, ModelSlackPublishResult)
         assert result.success is True
         assert result.ts == _SLACK_TS
@@ -237,10 +234,7 @@ class TestSlackPublishGoldenChain:
             ledger={_IDEM_KEY: prior_ts},
         )
         cmd = _cmd()
-        output = await handler.handle(cmd)
-        events = output.events or ()
-        assert len(events) == 1
-        result = events[0]
+        result = await handler.handle(cmd)
         assert isinstance(result, ModelSlackPublishResult)
         assert result.deduped is True
         assert result.ts == prior_ts
@@ -256,10 +250,7 @@ class TestSlackPublishGoldenChain:
             error_code="SLACK_API_CHANNEL_NOT_FOUND",
         )
         cmd = _cmd()
-        output = await handler.handle(cmd)
-        events = output.events or ()
-        assert len(events) == 1
-        result = events[0]
+        result = await handler.handle(cmd)
         assert isinstance(result, ModelSlackPublishResult)
         assert result.success is False
         assert result.ts is None

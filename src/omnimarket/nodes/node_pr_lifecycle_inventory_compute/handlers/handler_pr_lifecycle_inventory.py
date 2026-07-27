@@ -15,8 +15,16 @@ import json
 import logging
 import subprocess
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Literal, NamedTuple
 
+from omnimarket.merge_control.reason_code_classifier import (
+    ALL_LOG_SIGNATURES,
+    EnumMergeCheckReasonCode,
+    MergeCheckFacts,
+    classify,
+    classify_job,
+    text_has_api_outage_signature,
+)
 from omnimarket.nodes.node_pr_lifecycle_inventory_compute.models.model_pr_lifecycle_inventory import (
     ModelOrgWideOpenPrInventory,
     ModelOrgWideOpenPrRemainder,
@@ -44,6 +52,38 @@ _CHECK_BUCKET_TO_CONCLUSION = {
     "cancel": "cancelled",
 }
 _TERMINAL_CHECK_BUCKETS = {"pass", "fail", "skipping", "cancel"}
+# OMN-14151: bot logins whose unresolved review threads count toward
+# ``coderabbit_unresolved``. Mirrors the bot-login precedent already used by
+# node_pr_lifecycle_fix_effect's trivial-comment-resolution adapter.
+_CODERABBIT_LOGINS = frozenset({"coderabbitai", "coderabbitai[bot]"})
+
+# OMN-14769: the job-log signature set the classifier keys on is imported from
+# ``reason_code_classifier.ALL_LOG_SIGNATURES`` (the single source of truth).
+# A node-local subset (the former ``_CHECK_LOG_NETWORK_SIGNATURES``) had drifted
+# from it — it carried NONE of the classifier's F-23 isolation-hang signatures
+# (``os._exit(1)`` / ``thread timeout`` / ``hard timeout`` / ``leaked thread``)
+# and NONE of the API-outage signatures — so an os._exit hang on a product-named
+# step extracted an empty tuple and classified PRODUCT_FAILED live while every
+# fixture passed. Extracting against the canonical union makes that drift
+# structurally impossible.
+
+# gh renders a GitHub HTTP error to stderr as e.g. "gh: Service Unavailable
+# (HTTP 503)". These markers detect an API OUTAGE (5xx / rate-limit) in a gh
+# error blob, complementing the classifier's job-LOG outage signatures (which
+# use a different phrasing, e.g. "503 service unavailable"). Feeds ``api_error``
+# so a failed jobs-API metadata call during a platform incident emits
+# GITHUB_API_OUTAGE (F-07) rather than failing closed to an infra rerun.
+_GH_API_OUTAGE_STDERR_MARKERS: tuple[str, ...] = (
+    "http 502",
+    "http 503",
+    "http 504",
+    "bad gateway",
+    "service unavailable",
+    "gateway time-out",
+    "gateway timeout",
+    "secondary rate limit",
+    "api rate limit exceeded",
+)
 
 # F3 (OMN-13319): only PR-associated runs count toward required contexts.
 # A green `workflow_dispatch` "CI Summary" must NOT satisfy arm — branch
@@ -55,6 +95,18 @@ _TERMINAL_CHECK_BUCKETS = {"pass", "fail", "skipping", "cancel"}
 # manually re-triggered the way `workflow_dispatch` runs can.
 _PR_ASSOCIATED_EVENTS = {"pull_request", "pull_request_target"}
 
+# OMN-14031: every `gh` call must be time-bounded. An un-timed gh subprocess can
+# block forever under GitHub API throttling or fleet egress saturation (the
+# OMN-13932 / OMN-14017 conditions), wedging the whole org-wide sweep with zero
+# output — the merge-sweep skill then drives ZERO merges and never returns.
+# Bound each call so a slow gh invocation is skipped (fail-soft) instead of
+# hanging the sweep. 90s is generous for the paginated org-wide census while
+# still turning an infinite hang into a bounded, observable failure.
+_GH_SUBPROCESS_TIMEOUT_SECONDS = 90
+# Conventional shell timeout exit code (matches coreutils `timeout`); non-zero
+# so every caller's existing `returncode != 0` fail-soft branch handles it.
+_GH_TIMEOUT_RETURNCODE = 124
+
 logger = logging.getLogger(__name__)
 
 HandlerType = Literal["NODE_HANDLER"]
@@ -62,6 +114,25 @@ HandlerCategory = Literal["COMPUTE"]
 
 HANDLER_TYPE: HandlerType = "NODE_HANDLER"
 HANDLER_CATEGORY: HandlerCategory = "COMPUTE"
+
+
+class _JobsApiResult(NamedTuple):
+    """Outcome of a jobs-API attempt fetch for a single failed check (OMN-14769).
+
+    Carries the failing job object (or ``None`` when none could be resolved)
+    plus the two live-derived context facts the classifier needs but that a
+    bare job object does not encode:
+
+    - ``api_error``: the jobs-API metadata call itself failed as a GitHub
+      OUTAGE (HTTP 5xx / rate-limit / timeout / HTML body) → GITHUB_API_OUTAGE.
+    - ``is_superseded``: the check's linked job is absent from the run's LATEST
+      attempt and a re-run exists → the row is from a superseded attempt →
+      STALE_CONTEXT (refresh/supersede, do not fix).
+    """
+
+    job: dict[str, object] | None
+    api_error: bool = False
+    is_superseded: bool = False
 
 
 class HandlerPrLifecycleInventory:
@@ -78,6 +149,38 @@ class HandlerPrLifecycleInventory:
     @property
     def handler_category(self) -> HandlerCategory:
         return HANDLER_CATEGORY
+
+    @staticmethod
+    def _run_gh(
+        cmd: list[str],
+        *,
+        timeout: int = _GH_SUBPROCESS_TIMEOUT_SECONDS,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run a ``gh`` command with a bounded timeout (OMN-14031).
+
+        A bare ``subprocess.run`` on a ``gh`` command has no timeout, so a
+        throttled or stalled GitHub call blocks forever and wedges the entire
+        sweep. On timeout this returns a synthetic non-zero
+        :class:`subprocess.CompletedProcess` (returncode
+        ``_GH_TIMEOUT_RETURNCODE``) so every caller's existing
+        ``returncode != 0`` branch treats the timeout exactly like any other
+        gh failure — fail-soft, never a hang. ``subprocess.run`` is still the
+        underlying call so tests that patch it keep working.
+        """
+        try:
+            return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "gh call timed out after %ds (skipping, fail-soft): %s",
+                timeout,
+                " ".join(cmd),
+            )
+            return subprocess.CompletedProcess(
+                cmd,
+                _GH_TIMEOUT_RETURNCODE,
+                stdout="",
+                stderr=f"gh call timed out after {timeout}s",
+            )
 
     def handle(self, input_model: ModelPrInventoryInput) -> ModelPrInventoryOutput:
         """Collect raw PR state for all requested PR numbers.
@@ -129,7 +232,7 @@ class HandlerPrLifecycleInventory:
         ``query_failed=True`` so the sweep is never reported done on missing
         evidence.
         """
-        result = subprocess.run(
+        result = self._run_gh(
             [
                 "gh",
                 "api",
@@ -141,9 +244,7 @@ class HandlerPrLifecycleInventory:
                 f"q={_ORG_WIDE_OPEN_PR_QUERY}",
                 "-f",
                 f"per_page={_ORG_WIDE_REMAINDER_LIMIT}",
-            ],
-            capture_output=True,
-            text=True,
+            ]
         )
         if result.returncode != 0:
             logger.warning(
@@ -245,7 +346,7 @@ class HandlerPrLifecycleInventory:
 
         for pr in candidate_prs:
             try:
-                result = subprocess.run(
+                result = self._run_gh(
                     [
                         "gh",
                         "pr",
@@ -255,9 +356,7 @@ class HandlerPrLifecycleInventory:
                         repo,
                         "--json",
                         "mergeQueueEntry",
-                    ],
-                    capture_output=True,
-                    text=True,
+                    ]
                 )
                 if result.returncode != 0:
                     continue
@@ -352,14 +451,12 @@ class HandlerPrLifecycleInventory:
 
     def _count_merge_group_runs(self, repo: str, head_sha: str) -> int | None:
         """Count merge_group workflow runs for the queue head SHA."""
-        result = subprocess.run(
+        result = self._run_gh(
             [
                 "gh",
                 "api",
                 f"repos/{repo}/actions/runs?head_sha={head_sha}&event=merge_group",
-            ],
-            capture_output=True,
-            text=True,
+            ]
         )
         if result.returncode != 0:
             logger.debug(
@@ -395,7 +492,10 @@ class HandlerPrLifecycleInventory:
             RuntimeError: If gh CLI call fails.
         """
         pr_data = self._gh_pr_view(repo, pr_number)
-        check_runs = self._collect_check_runs(repo, pr_number)
+        current_head_sha = str(pr_data.get("headRefOid") or "") or None
+        check_runs = self._collect_check_runs(
+            repo, pr_number, current_head_sha=current_head_sha
+        )
         reviews = self._collect_reviews(repo, pr_number)
 
         state_raw = str(pr_data.get("state", "open")).lower()
@@ -453,7 +553,64 @@ class HandlerPrLifecycleInventory:
             reviews=tuple(reviews),
             has_conflicts=has_conflicts,
             ci_passing=ci_passing,
+            coderabbit_unresolved=self._collect_coderabbit_unresolved(repo, pr_number),
         )
+
+    def _collect_coderabbit_unresolved(self, repo: str, pr_number: int) -> int | None:
+        """Count unresolved CodeRabbit review threads (OMN-14151).
+
+        Returns None (unknown) on any gh failure or parse error — the
+        merge-queue arm-gate treats None as WITHHOLD, never as "0 unresolved".
+        """
+        result = self._run_gh(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_number),
+                "--repo",
+                repo,
+                "--json",
+                "reviewThreads",
+            ]
+        )
+        if result.returncode != 0:
+            logger.debug(
+                "gh pr view reviewThreads failed for %s#%s: %s",
+                repo,
+                pr_number,
+                result.stderr.strip(),
+            )
+            return None
+        try:
+            data: dict[str, object] = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            logger.debug(
+                "reviewThreads returned invalid JSON for %s#%s", repo, pr_number
+            )
+            return None
+        threads = data.get("reviewThreads")
+        if not isinstance(threads, list):
+            return None
+
+        count = 0
+        for thread in threads:
+            if not isinstance(thread, dict) or thread.get("isResolved"):
+                continue
+            comments = thread.get("comments") or []
+            if not isinstance(comments, list) or not comments:
+                continue
+            first = comments[0] if isinstance(comments[0], dict) else {}
+            author = first.get("author")
+            if isinstance(author, dict):
+                login = str(author.get("login", "")).lower()
+            elif isinstance(author, str):
+                login = author.lower()
+            else:
+                login = ""
+            if login in _CODERABBIT_LOGINS:
+                count += 1
+        return count
 
     def _gh_pr_view(self, repo: str, pr_number: int) -> dict[str, object]:
         """Run gh pr view and return parsed JSON.
@@ -477,19 +634,28 @@ class HandlerPrLifecycleInventory:
             repo,
             "--json",
             "title,state,isDraft,mergeable,mergeStateStatus,reviewDecision,"
-            "baseRefName,headRefName",
+            "baseRefName,headRefName,headRefOid",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = self._run_gh(cmd)
         if result.returncode != 0:
             raise RuntimeError(
                 f"gh pr view failed (exit {result.returncode}): {result.stderr.strip()}"
             )
         return json.loads(result.stdout)  # type: ignore[no-any-return]
 
-    def _collect_check_runs(self, repo: str, pr_number: int) -> list[ModelPrCheckRun]:
+    def _collect_check_runs(
+        self,
+        repo: str,
+        pr_number: int,
+        *,
+        current_head_sha: str | None = None,
+    ) -> list[ModelPrCheckRun]:
         """Collect CI check runs for a PR via gh pr checks.
 
-        Returns empty list on failure (non-fatal).
+        Returns empty list on failure (non-fatal). For FAILED checks (the
+        decision-critical subset) the jobs-API attempt is pulled and a typed
+        ``reason_code`` is classified (OMN-14765); green/pending checks are left
+        unclassified. The green-path rollup stays on ``gh pr checks``.
         """
         cmd = [
             "gh",
@@ -499,9 +665,9 @@ class HandlerPrLifecycleInventory:
             "--repo",
             repo,
             "--json",
-            "name,state,bucket,event",
+            "name,state,bucket,event,link",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = self._run_gh(cmd)
         if result.returncode != 0:
             logger.debug(
                 "gh pr checks failed for PR #%d in %s: %s",
@@ -512,18 +678,246 @@ class HandlerPrLifecycleInventory:
             return []
         try:
             raw: list[dict[str, object]] = json.loads(result.stdout)
-            return [
-                ModelPrCheckRun(
-                    name=str(item.get("name", "")),
-                    status=self._normalize_check_status(item),
-                    conclusion=self._normalize_check_conclusion(item),
-                    event=self._normalize_check_event(item),
+            check_runs: list[ModelPrCheckRun] = []
+            for item in raw:
+                flaky_evidence = self._collect_flaky_failure_evidence(item)
+                check_runs.append(
+                    ModelPrCheckRun(
+                        name=str(item.get("name", "")),
+                        status=self._normalize_check_status(item),
+                        conclusion=self._normalize_check_conclusion(item),
+                        event=self._normalize_check_event(item),
+                        link=str(item.get("link", "") or ""),
+                        flaky_failure_evidence=flaky_evidence,
+                        reason_code=self._classify_check_reason_code(
+                            repo,
+                            item,
+                            current_head_sha=current_head_sha,
+                            flaky_evidence=flaky_evidence,
+                        ),
+                    )
                 )
-                for item in raw
-            ]
+            return check_runs
         except (json.JSONDecodeError, KeyError) as exc:
             logger.debug("Failed to parse check runs for PR #%d: %s", pr_number, exc)
             return []
+
+    def _classify_check_reason_code(
+        self,
+        repo: str,
+        item: dict[str, object],
+        *,
+        current_head_sha: str | None,
+        flaky_evidence: tuple[str, ...],
+    ) -> EnumMergeCheckReasonCode | None:
+        """Classify a FAILED check into a typed merge-check reason code.
+
+        Reads the jobs-API attempt (``runs/<run_id>/jobs`` — latest attempt) to
+        recover the failed STEP name, run head SHA and attempt, then keys the
+        classifier on (failed step, run event, head vs current head, job
+        conclusion, already-collected infra log signatures). Fail-soft: any
+        unavailable/unparseable jobs-API response yields the classifier's
+        fail-closed result on whatever facts are present (never ``None`` masking
+        a real failure as green — a green check simply returns ``None`` early).
+        """
+        conclusion = self._normalize_check_conclusion(item)
+        if conclusion not in {"failure", "cancelled", "timed_out"}:
+            # Only failed checks are decision-critical; leave the rest unclassified.
+            return None
+
+        event = self._normalize_check_event(item)
+        link = str(item.get("link", "") or "")
+        fetch = self._fetch_jobs_api_job(repo, link)
+        if fetch.job is not None:
+            return classify_job(
+                fetch.job,
+                run_event=event,
+                current_head_sha=current_head_sha,
+                required_context=True,
+                api_error=fetch.api_error,
+                is_superseded=fetch.is_superseded,
+                log_signatures=flaky_evidence,
+            )
+        # No jobs-API job resolved — classify on the gh-pr-checks facts we have
+        # (event / conclusion / infra evidence) plus the live-derived
+        # ``api_error`` (an OUTAGE on the metadata call itself, F-07). Fail-closed
+        # inside the classifier.
+        return classify(
+            MergeCheckFacts(
+                run_event=event,
+                current_head_sha=current_head_sha,
+                required_context=True,
+                api_error=fetch.api_error,
+                is_superseded=fetch.is_superseded,
+                job_conclusion=conclusion,
+                log_signatures=flaky_evidence,
+            )
+        )
+
+    def _fetch_jobs_api_job(self, repo: str, link: str) -> _JobsApiResult:
+        """Fetch the jobs-API attempt facts for a check's linked run (fail-soft).
+
+        Parses ``run_id`` and ``job_id`` from a ``gh pr checks`` link of the form
+        ``.../actions/runs/<run_id>/job/<job_id>`` and returns the matching job
+        from ``repos/<repo>/actions/runs/<run_id>/jobs`` (latest attempt), plus
+        the two live-derived facts the classifier needs (OMN-14769):
+
+        - ``api_error``: the jobs-API metadata call itself failed as a GitHub
+          OUTAGE (HTTP 5xx / rate-limit / timeout / HTML body). Distinguished
+          from a plain not-found so an incident emits GITHUB_API_OUTAGE (F-07)
+          rather than failing closed to an infra rerun.
+        - ``is_superseded``: the linked ``job_id`` is a real job that is ABSENT
+          from the run's latest attempt and a re-run exists (max ``run_attempt``
+          > 1) — the check row is from a superseded earlier attempt (F-14/F-26).
+
+        Returns an empty :class:`_JobsApiResult` on any parse/not-found failure
+        so classification degrades gracefully.
+        """
+        if "/actions/runs/" not in link:
+            return _JobsApiResult(None)
+        try:
+            after_runs = link.split("/actions/runs/", 1)[1]
+            run_id = after_runs.split("/", 1)[0].strip()
+        except (IndexError, ValueError):
+            return _JobsApiResult(None)
+        if not run_id.isdigit():
+            return _JobsApiResult(None)
+        job_id = ""
+        if "/job/" in link:
+            job_id = link.rsplit("/job/", 1)[1].split("?", 1)[0].strip()
+        result = self._run_gh(
+            ["gh", "api", f"repos/{repo}/actions/runs/{run_id}/jobs"],
+            timeout=30,
+        )
+        if result.returncode != 0:
+            api_error = self._gh_result_is_api_outage(result)
+            logger.debug(
+                "jobs-API fetch failed for %s run %s (api_outage=%s): %s",
+                repo,
+                run_id,
+                api_error,
+                result.stderr.strip(),
+            )
+            return _JobsApiResult(None, api_error=api_error)
+        try:
+            payload = json.loads(result.stdout or "{}")
+        except json.JSONDecodeError:
+            # A non-JSON body (an HTML 5xx error page passed straight through) is
+            # an OUTAGE, not a plain miss.
+            return _JobsApiResult(
+                None, api_error=text_has_api_outage_signature(result.stdout)
+            )
+        jobs = payload.get("jobs") if isinstance(payload, dict) else None
+        if not isinstance(jobs, list) or not jobs:
+            return _JobsApiResult(None)
+        job_dicts = [j for j in jobs if isinstance(j, dict)]
+        is_superseded = False
+        if job_id.isdigit():
+            for j in job_dicts:
+                if str(j.get("id")) == job_id:
+                    return _JobsApiResult(j)
+            # The linked job is absent from the run's LATEST attempt. If a re-run
+            # exists (max attempt > 1) the check row is from a superseded attempt
+            # — refresh/supersede, do not fix (F-14/F-26). A single-attempt miss
+            # is treated as a benign link/rollup mismatch, not supersession.
+            is_superseded = self._max_run_attempt(job_dicts) > 1
+        # Fall back to the first non-successful job (the failing one) of the
+        # latest attempt.
+        for j in job_dicts:
+            if str(j.get("conclusion") or "").lower() in {
+                "failure",
+                "cancelled",
+                "timed_out",
+                "action_required",
+            }:
+                return _JobsApiResult(j, is_superseded=is_superseded)
+        return _JobsApiResult(
+            job_dicts[0] if job_dicts else None, is_superseded=is_superseded
+        )
+
+    @classmethod
+    def _gh_result_is_api_outage(cls, result: subprocess.CompletedProcess[str]) -> bool:
+        """True when a failed gh call failed as a GitHub API OUTAGE (F-07).
+
+        An OUTAGE is an HTTP 5xx / rate-limit / timeout on the API itself, as
+        opposed to a plain not-found / auth error. A ``gh`` timeout surfaces as
+        the synthetic ``_GH_TIMEOUT_RETURNCODE``; an HTTP error surfaces its
+        status/body in stdout+stderr. Combines the classifier's job-LOG outage
+        signatures (HTML/5xx phrasing) with gh-CLI stderr markers so both
+        renderings are caught.
+        """
+        if result.returncode == _GH_TIMEOUT_RETURNCODE:
+            return True
+        blob = f"{result.stdout}\n{result.stderr}".lower()
+        if text_has_api_outage_signature(blob):
+            return True
+        return any(marker in blob for marker in _GH_API_OUTAGE_STDERR_MARKERS)
+
+    @staticmethod
+    def _max_run_attempt(job_dicts: list[dict[str, object]]) -> int:
+        """Highest ``run_attempt`` across a run's returned jobs (>= 1)."""
+        attempts = [
+            j.get("run_attempt")
+            for j in job_dicts
+            if isinstance(j.get("run_attempt"), int)
+        ]
+        return max((a for a in attempts if isinstance(a, int)), default=1)
+
+    def _collect_flaky_failure_evidence(
+        self, item: dict[str, object]
+    ) -> tuple[str, ...]:
+        """Return classifier log signatures from a failed check's linked job log.
+
+        Scans the job log for every signature in the classifier's canonical
+        ``ALL_LOG_SIGNATURES`` union (runner-infra + API-outage families), so the
+        extracted tuple fed to ``classify`` is exactly what the classifier keys
+        on — the F-23 isolation-hang and API-outage signatures included
+        (OMN-14769). The result also populates ``ModelPrCheckRun.flaky_failure_
+        evidence`` used by the orchestrator's fallback rerun heuristic.
+        """
+        conclusion = self._normalize_check_conclusion(item)
+        if conclusion not in {"failure", "cancelled", "timed_out"}:
+            return ()
+        link = str(item.get("link", "") or "")
+        if "/actions/runs/" not in link or "/job/" not in link:
+            return ()
+        job_id = link.rsplit("/job/", 1)[1].split("?", 1)[0].strip()
+        repo_name = self._repo_name_from_link(link)
+        if not job_id.isdigit() or not repo_name:
+            return ()
+        result = self._run_gh(
+            [
+                "gh",
+                "api",
+                f"repos/{_ORG_WIDE_OPEN_PR_ORG}/{repo_name}/actions/jobs/{job_id}/logs",
+                "--header",
+                "Accept: application/vnd.github+json",
+            ],
+            timeout=30,
+        )
+        if result.returncode != 0:
+            logger.debug(
+                "failed to inspect check log %s for flaky evidence: %s",
+                link,
+                result.stderr.strip(),
+            )
+            return ()
+        lowered = result.stdout.lower()
+        return tuple(
+            signature for signature in ALL_LOG_SIGNATURES if signature in lowered
+        )
+
+    @staticmethod
+    def _repo_name_from_link(link: str) -> str:
+        parts = link.split("/")
+        try:
+            owner_index = parts.index(_ORG_WIDE_OPEN_PR_ORG)
+        except ValueError:
+            return ""
+        repo_index = owner_index + 1
+        if repo_index >= len(parts):
+            return ""
+        return parts[repo_index]
 
     @staticmethod
     def _normalize_check_status(item: dict[str, object]) -> str:
@@ -603,7 +997,7 @@ class HandlerPrLifecycleInventory:
             "--json",
             "reviews",
         ]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        result = self._run_gh(cmd)
         if result.returncode != 0:
             return []
         try:

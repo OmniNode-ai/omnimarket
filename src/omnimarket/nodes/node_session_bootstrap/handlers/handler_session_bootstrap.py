@@ -173,7 +173,7 @@ _REQUIRED_CRONS: list[ModelCronSpec] = [
     ModelCronSpec(
         cron_name="merge-sweep",
         prompt_template_key="MERGE_SWEEP_PROMPT",
-        cron_expression="23 * * * *",
+        cron_expression="*/30 * * * *",
         active_modes=["build", "close-out"],
         timeout_budget_ms=600000,
         description=(
@@ -288,9 +288,11 @@ def build_pulse_prompt(
     if cron_name == "merge-sweep":
         return (
             f"## merge_sweep -- Session {session_id}\n\n"
-            f"Invoke /onex:merge_sweep — org-wide PR sweep.\n\n"
+            f"Invoke /onex:merge_sweep --loop-until-done --max-sweep-passes 3 "
+            f"--sweep-sleep-seconds 60 — org-wide PR sweep.\n\n"
             f"### Standing orders\n"
             f"- Skill-first: invoke /onex:merge_sweep before any raw Agent call.\n"
+            f"- Use bounded in-tick retries; durable recurrence is this 30-minute cron.\n"
             f"- Route all LLM calls through .201 local models (local-first).\n"
             f"- Report only actionable events (PRs merged, PRs blocked, errors).\n"
             f"- Silent on clean state (no open PRs, all PRs already in merge queue).\n"

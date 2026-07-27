@@ -65,7 +65,11 @@ def test_model_config_is_frozen():
 def test_openrouter_models_registered_when_api_key_and_base_url_set(
     monkeypatch: pytest.MonkeyPatch,
 ):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-abc")
+    # OMN-15048: the loader resolves the canonical ``OPEN_ROUTER_API_KEY`` (the
+    # name every real deployment surface sets), not the legacy no-underscore
+    # ``OPENROUTER_API_KEY`` literal that never resolved.
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("OPEN_ROUTER_API_KEY", "test-key-abc")
     monkeypatch.setenv("OPENROUTER_BASE_URL", "https://openrouter.ai/api")
 
     from omnimarket.inference.bridge_config_loader import (
@@ -91,7 +95,8 @@ def test_openrouter_models_registered_when_api_key_and_base_url_set(
 @pytest.mark.unit
 def test_openrouter_missing_base_url_fails_closed(monkeypatch: pytest.MonkeyPatch):
     """OMN-12824: key present but base URL missing → fail closed, no in-code default."""
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key-abc")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("OPEN_ROUTER_API_KEY", "test-key-abc")
     monkeypatch.delenv("OPENROUTER_BASE_URL", raising=False)
 
     from omnimarket.inference.bridge_config_loader import (
@@ -107,6 +112,8 @@ def test_openrouter_models_not_registered_without_api_key(
     monkeypatch: pytest.MonkeyPatch,
 ):
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("OPEN_ROUTER_API_KEY", raising=False)
+    monkeypatch.delenv("LLM_OPENROUTER_API_KEY", raising=False)
 
     from omnimarket.inference.bridge_config_loader import (
         load_inference_bridge_config_from_env,
@@ -120,7 +127,8 @@ def test_openrouter_models_not_registered_without_api_key(
 
 @pytest.mark.unit
 def test_openrouter_base_url_override(monkeypatch: pytest.MonkeyPatch):
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("OPEN_ROUTER_API_KEY", "test-key")
     monkeypatch.setenv("OPENROUTER_BASE_URL", "https://proxy.example.com/api")
 
     from omnimarket.inference.bridge_config_loader import (
@@ -138,7 +146,8 @@ def test_openrouter_base_url_override(monkeypatch: pytest.MonkeyPatch):
 @pytest.mark.unit
 def test_openrouter_blank_base_url_fails_closed(monkeypatch: pytest.MonkeyPatch):
     """OMN-12824: a blank base URL is not a valid config and must not fall back."""
-    monkeypatch.setenv("OPENROUTER_API_KEY", "test-key")
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("OPEN_ROUTER_API_KEY", "test-key")
     monkeypatch.setenv("OPENROUTER_BASE_URL", "   ")
 
     from omnimarket.inference.bridge_config_loader import (

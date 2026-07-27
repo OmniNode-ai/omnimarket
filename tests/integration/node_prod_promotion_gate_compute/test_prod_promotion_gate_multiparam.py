@@ -2,18 +2,20 @@
 # SPDX-License-Identifier: MIT
 """Multi-parameter integration test for node_prod_promotion_gate_compute (OMN-13683, WS-5 Wave 9).
 
-Variant A (COMPUTE): drives the real ``HandlerProdPromotionGate.handle`` dispatch
-end-to-end over a ``ModelEventEnvelope`` and asserts the typed
-``ModelProdPromotionGateDecision`` carried on ``ModelHandlerOutput`` for a matrix
-of distinct gate-fact param sets. This is the prod-promotion *gate sub-node ONLY*
+Variant A (COMPUTE): drives the real def-B ``HandlerProdPromotionGate.handle``
+dispatch end-to-end and asserts the typed ``ModelProdPromotionGateDecision``
+returned directly (OMN-14838 canonical flip) for a matrix of distinct gate-fact
+param sets. This is the prod-promotion *gate sub-node ONLY*
 — it is a pure, in-process decision (a rejection or an allow). It NEVER exercises
 a live deploy EFFECT, live prod, or the .201 server.
 
 Surface covered (each a parametrized case, >=1 negative control):
   * non-prod lanes (dev / stability) -> ALLOW unconditionally (gate is a no-op);
   * prod + full valid facts (MERGED / RECEIPT_GATE_PASS) -> ALLOW, digest reused;
+  * prod + solo-CODEOWNER self-approved grant -> ALLOW (dual-control removed,
+    OMN-14814: ``approved_by == requested_by`` is no longer blocked);
   * prod BLOCK modes: no readiness projection, not-READY, digest drift, batch
-    mismatch, OCC pending, missing/blank rollback, missing grant, self-granted,
+    mismatch, OCC pending, missing/blank rollback, missing grant,
     expired grant, grant lane mismatch, stability-candidate / non-main lineage;
   * UNKNOWN-fail-closed: ``prod_health`` resolved UNKNOWN with no grant still
     BLOCKS. NOTE: this COMPUTE node does NOT consult ``prod_health`` — the
@@ -30,8 +32,6 @@ from datetime import UTC, datetime, timedelta
 from uuid import uuid4
 
 import pytest
-from omnibase_core.enums.enum_node_kind import EnumNodeKind
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
     EnumOccGateState,
@@ -207,6 +207,17 @@ _CASES: list[
         "prod reuses the stability digest",
         True,
     ),
+    (
+        # OMN-14814: dual-control removed. A solo-CODEOWNER self-approved grant
+        # (approved_by == requested_by) with all other facts valid now ALLOWS.
+        "prod-sole-owner-self-grant-allow",
+        lambda: _command(
+            projection=_ready_projection(), grant=_grant(approved_by=_REQUESTER)
+        ),
+        True,
+        "prod reuses the stability digest",
+        True,
+    ),
     # --- BLOCK paths (negative controls) ---
     (
         "prod-no-projection-fail-closed",
@@ -262,19 +273,22 @@ _CASES: list[
         False,
     ),
     (
-        "prod-self-granted-block",
-        lambda: _command(
-            projection=_ready_projection(), grant=_grant(approved_by=_REQUESTER)
-        ),
-        False,
-        EnumProdGrantReason.SELF_GRANTED.value,
-        False,
-    ),
-    (
         "prod-expired-grant-block",
         lambda: _command(
             projection=_ready_projection(),
             grant=_grant(expires_delta=timedelta(hours=-1)),
+        ),
+        False,
+        EnumProdGrantReason.EXPIRED_PROMOTION_GRANT.value,
+        False,
+    ),
+    (
+        # OMN-14814: removing dual-control does NOT weaken the other conditions —
+        # a self-approved grant that is also expired still fails closed.
+        "prod-sole-owner-self-grant-expired-block",
+        lambda: _command(
+            projection=_ready_projection(),
+            grant=_grant(approved_by=_REQUESTER, expires_delta=timedelta(hours=-1)),
         ),
         False,
         EnumProdGrantReason.EXPIRED_PROMOTION_GRANT.value,
@@ -332,23 +346,10 @@ async def test_prod_promotion_gate_multiparam(
 ) -> None:
     handler = HandlerProdPromotionGate()
     command = builder()
-    envelope: ModelEventEnvelope[ModelProdPromotionGateCommand] = ModelEventEnvelope(
-        payload=command,
-        correlation_id=command.correlation_id,
-        event_type="onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1",
-    )
 
-    output = await handler.handle(envelope)
+    # def-B (OMN-14838): handle(request) returns the decision directly.
+    decision = await handler.handle(command)
 
-    # Typed dispatch envelope assertions.
-    assert output.node_kind == EnumNodeKind.COMPUTE
-    assert output.correlation_id == command.correlation_id
-    # COMPUTE purity: a gate is a pure decision, never an effect.
-    assert output.events == ()
-    assert output.intents == ()
-    assert output.projections == ()
-
-    decision = output.result
     assert isinstance(decision, ModelProdPromotionGateDecision)
     assert decision.allowed is expected_allowed
     assert reason_substr.lower() in decision.reason.lower()

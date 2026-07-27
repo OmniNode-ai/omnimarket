@@ -1,0 +1,100 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Fleet Partition Key Compute (D-topology, OMN-14978)
+#
+# Spec source: docs/plans/2026-07-23-distributed-validation-context-aware-runtime-plan.md
+# §2 D-topology (Rev 2, hostile-reviewed): "Converting to real parallel
+# capacity requires a partition/keying design (key by repo+branch so no two
+# hosts ever hold the same branch concurrently)." This node is that keying
+# design's deterministic, tested primitive.
+#
+# Pure COMPUTE (rule 7a): no I/O. See the handler module docstring for the
+# explicit residuals NOT built this session: (1) wiring this key into
+# omnibase_infra's PublisherTopicScoped.publish() (which today derives the
+# Kafka message key ONLY from correlation_id — a cross-cutting, shared-infra
+# change out of scope for this same-repo ticket); (2) live Kafka topic
+# partition-count provisioning.
+#
+# Directly-invoked only (no Kafka producer/consumer) — it declares no
+# event_bus topics, so it contributes no edges to the contract-topic-graph.
+# Same no-bus-yet pattern as node_canary_monitoring_gate_compute and
+# node_worker_memory_admission_compute (OMN-14977).
+name: "node_fleet_partition_key_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >-
+  Fleet topology keying (D-topology): derives a deterministic, injective
+  "repo:branch" partition key so Kafka's same-key-same-partition guarantee
+  keeps one branch's push-validation stream on a single partition — the
+  prerequisite for a second worker host to add real parallel capacity
+  instead of standing by idle (HA-standby, per plan §1). Also computes an
+  illustrative (not Kafka-exact) partition_index_preview for operator
+  reasoning.
+input_model:
+  name: "ModelPartitionKeyRequest"
+  module: "omnimarket.nodes.node_fleet_partition_key_compute.models.model_fleet_partition_key"
+  description: "One (repo, branch) pair plus the declared target topology partition count."
+output_model:
+  name: "ModelPartitionKeyResult"
+  module: "omnimarket.nodes.node_fleet_partition_key_compute.models.model_fleet_partition_key"
+  description: "Deterministic, injective partition_key plus an illustrative partition_index_preview."
+
+# Top-level handler block: the runtime's compute-execution path (_run_compute,
+# reached because this contract declares no terminal_event) resolves the
+# handler and builds the typed input payload from THIS block's input_model.
+handler:
+  module: "omnimarket.nodes.node_fleet_partition_key_compute.handlers.handler_fleet_partition_key_compute"
+  class: "HandlerFleetPartitionKeyCompute"
+  input_model: "omnimarket.nodes.node_fleet_partition_key_compute.models.model_fleet_partition_key.ModelPartitionKeyRequest"
+
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_fleet_partition_key_compute.handlers.handler_fleet_partition_key_compute:HandlerFleetPartitionKeyCompute"
+  handlers:
+    - operation: "derive_fleet_partition_key"
+      handler:
+        name: "HandlerFleetPartitionKeyCompute"
+        module: "omnimarket.nodes.node_fleet_partition_key_compute.handlers.handler_fleet_partition_key_compute"
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  runtime_profiles: [main]
+  idempotent: true
+  timeout_ms: 5000
+
+# Declared command/terminal seam (dispatch-addressable). No top-level
+# `terminal_event:` scalar is set, so the local runtime keeps using the
+# _run_compute path for `onex node`; these runtime_dispatch topics are the
+# CLI dispatcher's own command/result seam (exempt from orphan detection) and
+# carry no bus producer/consumer today.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.fleet-partition-key-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.fleet-partition-key-derived.v1"
+    failure: "onex.evt.omnimarket.fleet-partition-key-derivation-failed.v1"
+
+replay:
+  requires_validator_version: true
+  timestamp_authority: ingest_sequence
+  deterministic: true
+
+metadata:
+  transport_type: inmemory
+  description: "Fleet topology keying COMPUTE — deterministic injective repo:branch partition key (D-topology, OMN-14978, no external transport)"
+  author: "OmniNode Team"
+  created: "2026-07-24"
+  tags:
+    - "compute"
+    - "fleet-topology"
+    - "partition-keying"
+    - "distributed-validation"
+    - "OMN-14978"
+  related_tickets:
+    - "OMN-14978"

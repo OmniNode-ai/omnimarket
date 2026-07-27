@@ -17,7 +17,6 @@ from __future__ import annotations
 
 import logging
 from typing import Literal
-from uuid import UUID
 
 from omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_config import (
     ModelFindingAggregatorConfig,
@@ -200,9 +199,7 @@ class HandlerFindingAggregator:
         return "COMPUTE"
 
     async def handle(
-        self,
-        correlation_id: UUID,
-        input_data: ModelFindingAggregatorInput,
+        self, request: ModelFindingAggregatorInput
     ) -> ModelFindingAggregatorOutput:
         """Aggregate findings from multiple models.
 
@@ -217,19 +214,18 @@ class HandlerFindingAggregator:
             6. Determine verdict based on merged findings.
 
         Args:
-            correlation_id: Pipeline correlation ID.
-            input_data: Findings grouped by source model with config.
+            request: Findings grouped by source model with aggregation config.
 
         Returns:
             ModelFindingAggregatorOutput with merged findings and verdict.
         """
-        config: ModelFindingAggregatorConfig = input_data.config
-        sources = input_data.sources
+        config: ModelFindingAggregatorConfig = request.config
+        sources = request.sources
 
         logger.info(
             "Aggregating findings from %d models (correlation_id=%s, threshold=%.2f)",
             len(sources),
-            correlation_id,
+            request.correlation_id,
             config.jaccard_threshold,
         )
 
@@ -295,7 +291,7 @@ class HandlerFindingAggregator:
         )
 
         return ModelFindingAggregatorOutput(
-            correlation_id=correlation_id,
+            correlation_id=request.correlation_id,
             verdict=verdict,
             merged_findings=merged_findings,
             total_input_findings=total_input,

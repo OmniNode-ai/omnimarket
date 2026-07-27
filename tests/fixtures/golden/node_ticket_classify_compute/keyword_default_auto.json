@@ -1,0 +1,34 @@
+{
+  "input": {
+    "correlation_id": "00000006-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": null,
+        "description": "lorem ipsum dolor",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Todo",
+        "ticket_id": "OMN-6",
+        "title": "Zzz qqq"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "auto_buildable",
+        "confidence": 0.3,
+        "matched_keywords": [],
+        "reason": "Keyword fallback: auto-buildable, default classification",
+        "seam_source": "keyword_fallback",
+        "ticket_id": "OMN-6",
+        "title": "Zzz qqq"
+      }
+    ],
+    "correlation_id": "00000006-0000-4000-8000-000000000000",
+    "total_auto_buildable": 1,
+    "total_non_buildable": 0
+  },
+  "output_sha256": "sha256:9ed5fa7f3e56a3ee9c05ca6c34e8401d9b22a401f920644fa3cc3973e83c6689"
+}

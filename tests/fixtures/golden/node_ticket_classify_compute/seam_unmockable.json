@@ -1,0 +1,49 @@
+{
+  "input": {
+    "correlation_id": "00000009-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": null,
+        "description": "",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": {
+          "consumes": [
+            {
+              "mock_available": false,
+              "module": "omnibase_core.protocols.protocol_kafka",
+              "protocol": "ProtocolKafka"
+            }
+          ],
+          "produces": [],
+          "tables_read": [],
+          "tables_write": [],
+          "topics": {
+            "publish": [],
+            "subscribe": []
+          }
+        },
+        "state": "Todo",
+        "ticket_id": "OMN-9",
+        "title": "Work behind unmockable seam"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "blocked",
+        "confidence": 0.9,
+        "matched_keywords": [],
+        "reason": "Contract: unmockable protocols: ProtocolKafka",
+        "seam_source": "contract",
+        "ticket_id": "OMN-9",
+        "title": "Work behind unmockable seam"
+      }
+    ],
+    "correlation_id": "00000009-0000-4000-8000-000000000000",
+    "total_auto_buildable": 0,
+    "total_non_buildable": 1
+  },
+  "output_sha256": "sha256:86d454c0670acad1bc9e78c8baedc8906803e459dddae713f9cacfb299c9a801"
+}

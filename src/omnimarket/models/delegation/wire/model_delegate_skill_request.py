@@ -53,7 +53,7 @@ class ModelDelegateSkillRequest(BaseModel):
             "Task classification for routing. Must match contract allowed_task_types."
         ),
     )
-    source: Literal["claude-code", "codex"] = Field(
+    source: Literal["claude-code", "codex", "external-client"] = Field(
         ...,
         description="Registered adapter source.",
     )
@@ -102,6 +102,59 @@ class ModelDelegateSkillRequest(BaseModel):
         description=(
             "Request-level quality criteria validated before dispatch and enforced "
             "by the delegation quality gate."
+        ),
+    )
+    # string-id-ok: tenant_id is a named tenant identifier (slug), not a UUID.
+    # Mirrors the field already shipped on omnibase_core's ModelDelegationRequest
+    # (OMN-14058). None on construction means no verified identity was stamped
+    # upstream -- OMN-14208 Path A's tenant-ingress node stamps a real value into
+    # the raw payload (topic-prefix-derived) before this model validates, on the
+    # bus path; the bus-less local CLI path leaves this None and falls back to
+    # the ONEX_TENANT_ID interim (OMN-14058) further downstream.
+    tenant_id: str | None = Field(
+        default=None,
+        description=(
+            "Multi-tenant isolation identifier, verified upstream when present. "
+            "Never a self-reported/client-writable value."
+        ),
+    )
+    # OMN-15180: optional caller-supplied backend PIN. None (the default)
+    # preserves the exact pre-existing cheapest-first task_type + tier_order
+    # resolution. A non-None value is threaded verbatim to
+    # HandlerDelegateSkill.handle() -> dispatch_port.dispatch(backend_id=...),
+    # reusing the OMN-15156 pin LocalDelegationDispatchPort already implements
+    # (resolve_delegation_backend(task_type, backend_id=...), bypassing tier
+    # selection for the INITIAL attempt only). This is what makes a wire-level
+    # caller (e.g. steel's LlmBusDelegationClient, OMN-15159) able to reach a
+    # specific backend such as local-coder-mlx deterministically.
+    backend_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves "
+            "the backend via the normal cheapest-first tier_order selection."
+        ),
+    )
+    # OMN-15193: optional caller-declared JSON-Schema response contract. None
+    # (the default) preserves the exact pre-existing quality-gate behavior —
+    # the task-class keyword heuristics (sub_tasks_verified substring matching,
+    # no_refusal phrase matching) still apply. A non-None value is threaded
+    # verbatim to HandlerDelegateSkill.handle() -> dispatch_port.dispatch(
+    # response_contract=...) -> the quality-gate reducer (`delta`), where
+    # structural JSON-Schema validation against this schema REPLACES the
+    # keyword heuristics for THIS request only -- it does not touch the
+    # task-class contract (task_class_contracts.v1.yaml) any other caller of
+    # the same task_type still sees. This is what makes a caller that knows its
+    # own response shape (e.g. steel's LlmBusDelegationClient, OMN-15170) immune
+    # to a false-positive refusal match on a legitimate rationale substring like
+    # "i cannot" and to the report-shaped `sub_tasks_verified` literal-substring
+    # requirement.
+    response_contract: dict[str, object] | None = Field(
+        default=None,
+        description=(
+            "Optional JSON-Schema-shaped contract describing the expected "
+            "response structure. When set, the quality gate validates the "
+            "response structurally against this schema instead of the "
+            "task-class keyword heuristics. None preserves current behavior."
         ),
     )
 

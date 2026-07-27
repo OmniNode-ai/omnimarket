@@ -187,6 +187,15 @@ class ContractRegistryHandler:
                     "contract_yaml": registration_contract_yaml,
                     "runtime_profile": request.target_profile,
                     "materialization_result": result.status.value,
+                    # OMN-14532: node_projection_mcp_tools reads description
+                    # from contract_metadata — never populated here before,
+                    # so a registry-sourced mcp_tools row had description=""
+                    # forever. No model_id equivalent exists for a manually
+                    # registered contract (not LLM-generated), so it stays
+                    # absent rather than fabricated.
+                    "contract_metadata": {
+                        "description": parsed.get("description", ""),
+                    },
                 },
             )
         return result

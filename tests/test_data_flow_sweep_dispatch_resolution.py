@@ -152,3 +152,30 @@ class TestContractMappingReconciliation:
         fields = set(DataFlowSweepRequest.model_fields.keys())
         # The skill_mapping surfaces exactly these payload fields.
         assert {"flows", "collect", "dry_run"} <= fields
+
+    def test_contract_declares_summary_output(self) -> None:
+        contract_path = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_data_flow_sweep"
+            / "contract.yaml"
+        )
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        assert "summary" in contract["outputs"]
+
+    def test_contract_publishes_result_topic(self) -> None:
+        contract_path = (
+            Path(__file__).resolve().parents[1]
+            / "src"
+            / "omnimarket"
+            / "nodes"
+            / "node_data_flow_sweep"
+            / "contract.yaml"
+        )
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+        assert (
+            "onex.evt.omnimarket.data-flow-sweep-result.v1"
+            in contract["event_bus"]["publish_topics"]
+        )

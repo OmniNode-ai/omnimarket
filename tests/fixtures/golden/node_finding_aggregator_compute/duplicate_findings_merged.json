@@ -1,0 +1,62 @@
+{
+  "input": {
+    "config": {
+      "jaccard_threshold": 0.7,
+      "model_weights": {},
+      "severity_promotes_on_conflict": true
+    },
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "sources": [
+      {
+        "findings": [
+          {
+            "file_path": "src/main.py",
+            "line_start": 10,
+            "normalized_message": "line too long",
+            "rule_id": "ruff:E501",
+            "severity": "warning"
+          }
+        ],
+        "model_name": "deepseek-r1"
+      },
+      {
+        "findings": [
+          {
+            "file_path": "src/main.py",
+            "line_start": 10,
+            "normalized_message": "line too long",
+            "rule_id": "ruff:E501",
+            "severity": "warning"
+          }
+        ],
+        "model_name": "qwen3-coder"
+      }
+    ]
+  },
+  "output": {
+    "correlation_id": "11111111-1111-4111-8111-111111111111",
+    "merged_findings": [
+      {
+        "file_path": "src/main.py",
+        "line_end": null,
+        "line_start": 10,
+        "merged_count": 2,
+        "normalized_message": "line too long",
+        "rule_id": "ruff:E501",
+        "severity": "warning",
+        "source_models": [
+          "deepseek-r1",
+          "qwen3-coder"
+        ],
+        "weighted_score": 1.0
+      }
+    ],
+    "source_model_count": 2,
+    "total_duplicates_removed": 1,
+    "total_input_findings": 2,
+    "total_merged_findings": 1,
+    "verdict": "risks_noted"
+  },
+  "output_sha256": "sha256:4a29319c2012abb9fbadf743e14d3f055ec9c8c3f209e075494edc7a9545694e",
+  "scenario": "duplicate_findings_merged"
+}

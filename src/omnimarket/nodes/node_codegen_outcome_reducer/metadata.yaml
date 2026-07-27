@@ -1,0 +1,27 @@
+name: node_codegen_outcome_reducer
+version: "1.0.0"
+description: "Codegen outcome-adapter reducer — joins raw downstream verdicts to retained pipeline state on correlation_id and republishes the state-carrying *Outcome events (OMN-14608)"
+omnibase_core_compat: ">=0.40.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_codegen_outcome_reducer: "omnimarket.nodes.node_codegen_outcome_reducer"
+capabilities:
+  standalone: true
+  # Process-local correlation store cannot join a seed and a verdict across
+  # separately routed handler instances on the real multi-instance runtime —
+  # replay-proven only until durable state lands (OMN-14598). Gate full_runtime
+  # false so the golden-chain coverage gate does not treat this as a live path.
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.40.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["reducer", "codegen", "tier-4a", "outcome-adapter"]
+pack: "core"
+display_name: "Codegen Outcome Reducer"
+node_role: "reducer"

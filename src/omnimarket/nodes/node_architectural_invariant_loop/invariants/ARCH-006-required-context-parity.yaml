@@ -1,0 +1,37 @@
+principle_code: ARCH-006
+name: required_context_parity
+violation_category: ci_gate
+severity: ERROR
+enforcement_surfaces:
+  - ci_gate
+  - static_architecture
+description: >
+  Every load-bearing safety gate that CLAUDE.md / doctrine CLAIMS is enforced on
+  a repo+branch MUST actually be present in that branch's live
+  required_status_checks -- either as a DIRECT required context, or as a
+  transitive needs-child of a required aggregator job. A gate that runs but is
+  neither required directly nor inside a required aggregator's intra-workflow
+  needs-closure does NOT block merge, so the doctrine's enforcement claim is
+  false. This is GOVERNANCE-OF-RECORD ONLY: the live probe is NOT hosted here.
+  node_architectural_invariant_loop is purity:pure (static source scanning, no
+  network I/O), and live GitHub branch-protection state is external, mutable,
+  network-fetched -- fetching it would violate the node's purity contract.
+  Enforcement therefore lives on the branch-protection-audit EFFECT surface
+  (omnibase_infra: audit_branch_protection_lib.py +
+  enforcement_parity_manifest.yaml + audit_required_context_parity_cli.py, wired
+  into branch-protection-audit.yml), which is the correct archetype for external
+  network state. This entry keeps the invariant catalogue the single index of
+  "what must be true" and POINTS to that enforcement surface; it does not run the
+  probe. There is deliberately no checker for ARCH-006 in the handler's
+  _CHECKER_MAP -- the catalogue counts it as evaluated (declaration) but emits no
+  violation from this node.
+violation_examples:
+  - 'omnimarket dev required_status_checks == ["CI Summary"] while deploy-gate lives in a separate workflow file (unenforced)'
+  - 'a claimed-enforced gate declared coverage:needs_child whose emitting job is absent from the aggregator''s transitive needs closure (cross-workflow)'
+runtime_scope: repo
+generated_from_principle: ARCH-006
+generated_at: "2026-07-10T00:00:00+00:00"
+source_incidents:
+  - OMN-14288
+  - OMN-9034
+generator_tag: "1.0.0"

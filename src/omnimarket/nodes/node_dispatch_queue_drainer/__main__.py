@@ -12,6 +12,9 @@ from pathlib import Path
 from omnimarket.nodes.node_dispatch_queue_drainer.handlers import (
     HandlerDispatchQueueDrainer,
 )
+from omnimarket.nodes.node_dispatch_queue_drainer.models import (
+    ModelDispatchQueueDrainerRequest,
+)
 
 
 def main() -> None:
@@ -66,7 +69,7 @@ def main() -> None:
     )
 
     args = parser.parse_args()
-    result = HandlerDispatchQueueDrainer().handle(
+    payload = ModelDispatchQueueDrainerRequest(
         queue_item_path=args.queue_item_path,
         queue_dir=args.queue_dir,
         limit=args.limit,
@@ -74,6 +77,7 @@ def main() -> None:
         tasks_dir=args.tasks_dir,
         omni_home=args.omni_home,
     )
+    result = HandlerDispatchQueueDrainer().handle(payload)
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")
 
 

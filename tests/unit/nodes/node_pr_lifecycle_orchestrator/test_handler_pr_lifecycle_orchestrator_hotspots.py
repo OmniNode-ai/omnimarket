@@ -269,7 +269,8 @@ class TestStubSubHandlers:
     @pytest.mark.asyncio
     async def test_stub_triage_returns_triage_result(self) -> None:
         stub = _StubTriageHandler()
-        result = await stub.handle(uuid4(), [])
+        # def-B: single request arg (stub ignores it) — OMN-14837.
+        result = await stub.handle(MagicMock())
         assert hasattr(result, "classified")
         assert result.green_count == 0
 

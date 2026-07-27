@@ -86,10 +86,6 @@ jobs:
           # For push/merge_group events there is no PR diff; run full scan.
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             BASE="${{ github.event.pull_request.base.sha }}"
-            if [[ "${{ github.base_ref }}" == "main" && "${{ github.head_ref }}" == promotion/*-dev-to-main ]]; then
-              git fetch origin dev --no-tags
-              BASE="origin/dev"
-            fi
             HEAD="${{ github.event.pull_request.head.sha }}"
             CHANGED=$(git diff --name-only "$BASE" "$HEAD" -- '**/contract.yaml' || true)
             if [[ -n "$CHANGED" ]]; then
@@ -101,7 +97,7 @@ jobs:
                 echo "EOF"
               } >> "$GITHUB_OUTPUT"
               echo "Found changed contracts:"
-              printf '%s\n' "$CHANGED" | sed -n '1,20p'
+              echo "$CHANGED" | head -20
             else
               echo "changed_contracts=" >> "$GITHUB_OUTPUT"
               echo "No contract.yaml files changed; full scan will run."

@@ -29,9 +29,9 @@ The invariant under test, per class:
     ``quality_gate_passed=false`` and never emit ``delegation-completed``.
 
 The chain is exercised over the REAL handlers (HandlerRoutingIntent,
-HandlerInferenceIntent, HandlerQualityGateIntent, HandlerDelegationWorkflow); only
-the outbound httpx provider call is patched to inject a deterministic candidate
-body (same substitution boundary the OMN-13409 suite uses), and the judge inference
+HandlerQualityGateIntent, HandlerDelegationWorkflow); the inference effect's OUTPUT
+event is constructed as a controlled internal DTO (the model/HTTP boundary is not
+faked — same downstream-DTO seam the OMN-13409 suite uses), and the judge inference
 rides the OMN-13470 RecordedJudgeReplayAdapter (a response captured from a real
 z.ai GLM call, pinned to the concrete model id). No handler is mocked.
 """
@@ -41,13 +41,13 @@ from __future__ import annotations
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
 import yaml
 from omnibase_core.models.delegation.wire import (
     ModelInferenceIntent,
+    ModelInferenceResponseData,
     ModelQualityGateIntent,
     ModelRoutingIntent,
 )
@@ -58,16 +58,18 @@ from omnimarket.events.delegation_judge_verdict import (
 )
 from omnimarket.nodes.node_delegation_orchestrator.contract_topics import (
     TOPIC_ID_DELEGATION_COMPLETED,
+    TOPIC_ID_DELEGATION_FAILED,
 )
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
@@ -91,7 +93,6 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_inference_intent import (
     TOPIC_INFERENCE_RESPONSE,
-    HandlerInferenceIntent,
 )
 from tests.fixtures.judge_inference import RecordedJudgeReplayAdapter
 
@@ -128,17 +129,19 @@ _INADEQUATE_CODE = "Sorry, here is a description instead of code."
 _INADEQUATE_RESEARCH = "It works fine."
 
 # code_generation routes (per task_class_contracts.v1.yaml) to the cheap_cloud
-# tier first (tier_order [cheap_cloud, local, claude]) on model glm-5.2 / backend
-# cloud-glm. The self-contained bifrost contract below declares exactly that
-# backend with a COMPLETE verbatim endpoint URL and NO api_key_ref, so routing
-# resolves host-independently (CI has no ~/.omninode overlay and no secret store).
+# tier first (tier_order [cheap_cloud, local, claude]) on model gemini-2.5-flash /
+# backend cloud-gemini-pro (OMN-14625: repointed off z.ai GLM, DEAD from the
+# .201 runtime). The self-contained bifrost contract below declares exactly
+# that backend with a COMPLETE verbatim endpoint URL and NO api_key_ref, so
+# routing resolves host-independently (CI has no ~/.omninode overlay and no
+# secret store).
 _BIFROST_CODE_GENERATION = (
     "config_version: '2.0.0'\n"
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
-    "  - backend_id: cloud-glm\n"
+    "  - backend_id: cloud-gemini-pro\n"
     '    endpoint_url: "http://test-codegen:8000/v1/chat/completions"\n'
-    '    model_name: "glm-5.2"\n'
+    '    model_name: "gemini-2.5-flash"\n'
     "    tier: cheap_cloud\n"
     "    timeout_ms: 30000\n"
     "    max_tokens: 8192\n"
@@ -151,14 +154,14 @@ _BIFROST_CODE_GENERATION = (
     '    backend_policy_version: "2.0.0"\n'
     "    match_operation_types: [chat_completion]\n"
     "    match_capabilities: [code_generation]\n"
-    "    backend_ids: [cloud-glm]\n"
+    "    backend_ids: [cloud-gemini-pro]\n"
     "    fallback_policy:\n"
     "      action: escalate_to_next_tier\n"
     "      max_retries: 1\n"
     "      on_exhaust: return_error\n"
     '    shadow_policy_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"\n'
     "default_backends:\n"
-    "  - cloud-glm\n"
+    "  - cloud-gemini-pro\n"
     "circuit_breaker:\n"
     "  failure_threshold: 5\n"
     "  window_seconds: 30\n"
@@ -241,26 +244,39 @@ class _CapturingPublisher:
         return [t for t, _ in self.published]
 
 
-def _httpx_response(content: str) -> MagicMock:
-    response = MagicMock()
-    response.json.return_value = {
-        "id": "chatcmpl-test",
-        "choices": [{"message": {"content": content}}],
-        "usage": {
-            "prompt_tokens": 10,
-            "completion_tokens": 2,
-            "total_tokens": 12,
-        },
-    }
-    response.raise_for_status.return_value = None
-    return response
+def _inference_response(
+    intent: ModelInferenceIntent, content: str
+) -> ModelInferenceResponseData:
+    """Construct the inference effect's OUTPUT event directly.
+
+    These tests prove the DOWNSTREAM gate + orchestrator behavior (refusal /
+    weak-output handling, judge combine) for a given candidate body, so the
+    inference-response is a controlled internal DTO — the model/HTTP boundary is
+    NOT faked. The judge combine runs over the REAL recorded GLM replay adapter.
+    The integrated inference request + egress is proven separately by
+    tests/integration/golden_chain/test_golden_chain_delegation_useful_artifact_chain.py.
+    """
+    return ModelInferenceResponseData(
+        correlation_id=intent.correlation_id,
+        content=content,
+        model_used=intent.model,
+        llm_call_id="chatcmpl-test",
+        latency_ms=1,
+        prompt_tokens=10,
+        completion_tokens=2,
+        total_tokens=12,
+    )
 
 
 def _terminal_topics(terminal_events: list[BaseModel]) -> list[str | None]:
     return [
-        getattr(e, "topic", None)
+        (
+            TOPIC_ID_DELEGATION_COMPLETED
+            if isinstance(e, ModelDelegationCompleted)
+            else TOPIC_ID_DELEGATION_FAILED
+        )
         for e in terminal_events
-        if isinstance(e, ModelDelegationEvent)
+        if isinstance(e, ModelDelegationResult)
     ]
 
 
@@ -441,13 +457,13 @@ class TestCodeGenerationRefusalRealDispatchPath:
     ) -> tuple[ModelQualityGateResult, list[BaseModel]]:
         """Drive orchestrator -> routing -> inference -> gate(async judge) -> terminal.
 
-        Every hop is the real handler. httpx is patched at the inference hop to
-        inject the candidate body; the gate hop runs the async judge-combine path
-        over the recorded GLM replay (concrete model id pinned).
+        The routing, gate, and orchestrator hops are real handlers. The inference
+        hop's OUTPUT event is constructed as a controlled internal DTO (the
+        model/HTTP boundary is not faked); the gate hop runs the async
+        judge-combine path over the recorded GLM replay (concrete model id pinned).
         """
         publisher = _CapturingPublisher()
         routing_handler = HandlerRoutingIntent()
-        inference_handler = HandlerInferenceIntent()
         gate_handler = HandlerQualityGateIntent(
             judge=HandlerJudgeAdequacy(inference_bridge=RecordedJudgeReplayAdapter())
         )
@@ -466,14 +482,10 @@ class TestCodeGenerationRefusalRealDispatchPath:
         assert len(inference_intents) == 1
         assert isinstance(inference_intents[0], ModelInferenceIntent)
 
-        # Hop 4: LLM call effect (httpx patched) -> ModelInferenceResponseData.
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = _httpx_response(llm_content)
-            mock_client_cls.return_value = mock_client
-            response = inference_handler.handle(inference_intents[0])
+        # Hop 4: the LLM call effect's OUTPUT event, constructed as a controlled
+        # internal DTO — the model/HTTP boundary is NOT faked. The judge combine
+        # in hop 6 runs over the REAL recorded GLM replay adapter.
+        response = _inference_response(inference_intents[0], llm_content)
         publisher.publish(TOPIC_INFERENCE_RESPONSE, response)
 
         # Hop 5: orchestrator emits quality gate intent.
@@ -579,7 +591,6 @@ class TestResearchRefusalRealDispatchPath:
     ) -> tuple[ModelQualityGateResult, list[BaseModel]]:
         publisher = _CapturingPublisher()
         routing_handler = HandlerRoutingIntent()
-        inference_handler = HandlerInferenceIntent()
         gate_handler = HandlerQualityGateIntent()
 
         routing_intents = workflow.handle_delegation_request(request)
@@ -593,13 +604,10 @@ class TestResearchRefusalRealDispatchPath:
         assert len(inference_intents) == 1
         assert isinstance(inference_intents[0], ModelInferenceIntent)
 
-        with patch("httpx.Client") as mock_client_cls:
-            mock_client = MagicMock()
-            mock_client.__enter__ = MagicMock(return_value=mock_client)
-            mock_client.__exit__ = MagicMock(return_value=False)
-            mock_client.post.return_value = _httpx_response(llm_content)
-            mock_client_cls.return_value = mock_client
-            response = inference_handler.handle(inference_intents[0])
+        # Hop 4: the LLM call effect's OUTPUT event, constructed as a controlled
+        # internal DTO — the model/HTTP boundary is NOT faked. This test proves
+        # the DOWNSTREAM gate + orchestrator behavior for a given candidate body.
+        response = _inference_response(inference_intents[0], llm_content)
         publisher.publish(TOPIC_INFERENCE_RESPONSE, response)
 
         gate_intents = workflow.handle_inference_response(response)

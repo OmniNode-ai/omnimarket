@@ -20,11 +20,20 @@ from omnimarket.nodes.node_bus_audit_compute.models.model_bus_audit_compute_resu
     ModelBusAuditTopic,
 )
 
-_REPO_ROOT = Path(__file__).resolve().parents[5]
+# Resolve defaults relative to the omnimarket PACKAGE directory, never a
+# reconstructed repo root. ``parents[3]`` of this file is the ``omnimarket``
+# package dir in BOTH layouts: source checkout (``<repo>/src/omnimarket``) and
+# installed wheel (``<site-packages>/omnimarket``). The registry and contract
+# YAMLs ship in the wheel (pyproject ``[tool.hatch.build].artifacts``), so this
+# resolution needs no repo checkout. The previous
+# ``parents[5] / "src/omnimarket/..."`` reconstruction only existed in a source
+# checkout; installed, it pointed at ``<venv>/lib/pythonX.Y/src/...`` and the
+# audit silently checked zero topics.
+_PACKAGE_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_REGISTRY_PATH = (
-    _REPO_ROOT / "src/omnimarket/nodes/node_emit_daemon/registries/topics.yaml"
+    _PACKAGE_ROOT / "nodes" / "node_emit_daemon" / "registries" / "topics.yaml"
 )
-_DEFAULT_CONTRACT_ROOT = _REPO_ROOT / "src/omnimarket/nodes"
+_DEFAULT_CONTRACT_ROOT = _PACKAGE_ROOT / "nodes"
 _TOPIC_RE = re.compile(
     r"^onex\.(cmd|evt)\.[a-z0-9_]+(?:\.[a-z0-9][a-z0-9-]*)+\.v[0-9]+$"
 )
@@ -36,6 +45,24 @@ class HandlerBusAuditCompute:
     def handle(
         self, request: ModelBusAuditComputeRequest
     ) -> ModelBusAuditComputeResult:
+        """Run the static bus audit.
+
+        Raises:
+            FileNotFoundError: when no ``registry_path`` was supplied and the
+                packaged default topic registry is missing — that is a broken
+                install, not an audit result.
+            ValueError: when the audit would be vacuous (zero contracts
+                scanned, or zero topics audited without an ERROR finding
+                explaining why). A verification node must never report a
+                clean result for work it did not do.
+        """
+        if request.registry_path is None and not _DEFAULT_REGISTRY_PATH.is_file():
+            raise FileNotFoundError(
+                "bus_audit default topic registry is missing: "
+                f"{_DEFAULT_REGISTRY_PATH}. The registry ships inside the "
+                "omnimarket package; a missing default means the install is "
+                "broken. Pass an explicit registry_path to audit another file."
+            )
         registry_path = Path(request.registry_path or _DEFAULT_REGISTRY_PATH)
         contract_roots = [
             Path(item)
@@ -68,6 +95,28 @@ class HandlerBusAuditCompute:
                 registry_topics={item.topic for item in registry_topics},
             )
         )
+
+        # Vacuous-audit guards (fail loudly, never a silent zero-work pass).
+        # Checked against the UNFILTERED findings so failures_only/verbose
+        # cannot mask them.
+        if contracts_checked == 0:
+            raise ValueError(
+                "Vacuous bus audit: zero contract.yaml files found under "
+                f"contract_roots={[str(p) for p in contract_roots]}. The "
+                "contract-declared topic set was never checked; refusing to "
+                "report a result."
+            )
+        has_error_finding = any(
+            finding.severity == EnumBusAuditSeverity.ERROR for finding in findings
+        )
+        if not registry_topics and not contract_topics and not has_error_finding:
+            raise ValueError(
+                "Vacuous bus audit: zero topics audited "
+                f"(registry={registry_path}, "
+                f"contract_roots={[str(p) for p in contract_roots]}) and no "
+                "ERROR finding explains why. Refusing to report a clean "
+                "result for zero audited topics."
+            )
 
         if request.failures_only:
             findings = [

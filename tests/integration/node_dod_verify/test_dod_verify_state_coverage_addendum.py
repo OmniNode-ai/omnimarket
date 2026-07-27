@@ -37,12 +37,23 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 
 
 @pytest.mark.integration
-def test_dry_run_true_propagates_through_dict_path() -> None:
+def test_dry_run_true_propagates_through_dict_path(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # Hermetic: clear the OCC repo pointers so the OMN-13888 dev-resolution rider
+    # cannot resolve an ambient contract for the synthetic ticket. Without this,
+    # a locally-present OCC clone would let the rider materialise an origin/dev
+    # worktree and resolve a REAL dev-only contract, flipping the verdict to
+    # VERIFIED and making the test depend on ambient repo state. The intent here
+    # is only to prove dry_run threads through a SKIPPED verdict.
+    monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
+    monkeypatch.delenv("OMNI_HOME", raising=False)
+
     handler = HandlerDodVerify()
     result = handler.handle(
         {
             "correlation_id": str(uuid4()),
-            "ticket_id": "OMN-13783",
+            "ticket_id": "OMN-99999999",
             "contract_path": None,
             "dry_run": True,
         }
@@ -50,7 +61,7 @@ def test_dry_run_true_propagates_through_dict_path() -> None:
 
     assert isinstance(result, dict)
     assert result["dry_run"] is True
-    # No contract on disk for this synthetic ticket -> SKIPPED, but dry_run
+    # No contract resolvable for this synthetic ticket -> SKIPPED, but dry_run
     # must still be threaded through regardless of the resulting verdict.
     assert result["status"] == EnumDodVerifyStatus.SKIPPED.value
 

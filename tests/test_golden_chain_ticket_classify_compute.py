@@ -19,6 +19,9 @@ from omnimarket.enums.enum_buildability import (
 from omnimarket.nodes.node_ticket_classify_compute.handlers.handler_ticket_classify import (
     HandlerTicketClassify,
 )
+from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_classify_input import (
+    ModelTicketClassifyInput,
+)
 from omnimarket.nodes.node_ticket_classify_compute.models.model_ticket_for_classification import (
     ModelTicketForClassification,
 )
@@ -42,7 +45,9 @@ class TestTicketClassifyComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, tickets=tickets)
+        result = await handler.handle(
+            ModelTicketClassifyInput(correlation_id=correlation_id, tickets=tickets)
+        )
 
         assert result.correlation_id == correlation_id
         assert len(result.classifications) == 1
@@ -62,7 +67,9 @@ class TestTicketClassifyComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, tickets=tickets)
+        result = await handler.handle(
+            ModelTicketClassifyInput(correlation_id=correlation_id, tickets=tickets)
+        )
 
         assert len(result.classifications) == 1
         assert result.classifications[0].buildability == EnumBuildability.SKIP
@@ -80,7 +87,9 @@ class TestTicketClassifyComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, tickets=tickets)
+        result = await handler.handle(
+            ModelTicketClassifyInput(correlation_id=correlation_id, tickets=tickets)
+        )
 
         assert result.classifications[0].buildability == EnumBuildability.SKIP
 
@@ -97,7 +106,9 @@ class TestTicketClassifyComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, tickets=tickets)
+        result = await handler.handle(
+            ModelTicketClassifyInput(correlation_id=correlation_id, tickets=tickets)
+        )
 
         assert result.classifications[0].buildability == EnumBuildability.BLOCKED
         assert result.total_non_buildable == 1
@@ -114,7 +125,9 @@ class TestTicketClassifyComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, tickets=tickets)
+        result = await handler.handle(
+            ModelTicketClassifyInput(correlation_id=correlation_id, tickets=tickets)
+        )
 
         assert (
             result.classifications[0].buildability
@@ -143,7 +156,9 @@ class TestTicketClassifyComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, tickets=tickets)
+        result = await handler.handle(
+            ModelTicketClassifyInput(correlation_id=correlation_id, tickets=tickets)
+        )
 
         assert len(result.classifications) == 3
         assert result.total_auto_buildable == 1
@@ -161,7 +176,9 @@ class TestTicketClassifyComputeGoldenChain:
             ),
         )
 
-        result = await handler.handle(correlation_id=correlation_id, tickets=tickets)
+        result = await handler.handle(
+            ModelTicketClassifyInput(correlation_id=correlation_id, tickets=tickets)
+        )
 
         assert result.classifications[0].buildability == EnumBuildability.AUTO_BUILDABLE
         assert result.classifications[0].confidence == 0.3  # base confidence
@@ -181,7 +198,7 @@ class TestTicketClassifyComputeGoldenChain:
                 ),
             )
             result = await handler.handle(
-                correlation_id=correlation_id, tickets=tickets
+                ModelTicketClassifyInput(correlation_id=correlation_id, tickets=tickets)
             )
             completion = {
                 "total_auto_buildable": result.total_auto_buildable,
@@ -213,6 +230,30 @@ class TestTicketClassifyComputeGoldenChain:
 
         history = await event_bus.get_event_history(
             topic="onex.evt.omnimarket.ticket-classify-completed.v1"
+        )
+        assert len(history) == 1
+
+        failure_history = await event_bus.get_event_history(
+            topic="onex.evt.omnimarket.ticket-classify-failed.v1"
+        )
+        assert failure_history == []
+
+        await event_bus.close()
+
+    async def test_declared_failure_topic_is_event_bus_addressable(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """The contract-declared failure terminal event has runtime bus coverage."""
+        await event_bus.start()
+
+        await event_bus.publish(
+            "onex.evt.omnimarket.ticket-classify-failed.v1",
+            key=None,
+            value=b'{"error": "classification failed"}',
+        )
+
+        history = await event_bus.get_event_history(
+            topic="onex.evt.omnimarket.ticket-classify-failed.v1"
         )
         assert len(history) == 1
 

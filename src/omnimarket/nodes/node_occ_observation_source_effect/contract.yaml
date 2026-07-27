@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - OCC Observation Source Effect (OMN-14888)
+#
+# Read-EFFECT. This is the concrete answer to "point the dedup projection at
+# OCC as its source": given a local onex_change_control checkout directory,
+# walks drift/occ_observations/**/*.yaml, parses each file back into a
+# ModelOccObservationRecord (OMN-14851, unchanged), and hands the raw log —
+# completely unmodified — to the EXISTING project_qualifying_observations. No
+# change to that function's dedup/aggregation semantics; this node is purely
+# the disk-read boundary in front of it. Filesystem-only (no network), so
+# requires_network is false and no secret is declared.
+#
+# Related Tickets:
+#   - OMN-14888: this node (durable read-EFFECT, OCC-as-source)
+#   - OMN-14851: ModelOccObservationRecord + project_qualifying_observations (reused, unmodified)
+#   - OMN-14393: RSD-5 N-window this projection ultimately feeds
+name: "node_occ_observation_source_effect"
+lifecycle: experimental
+node_type: "EFFECT_GENERIC"
+runtime_profiles: [effects]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: "Read-EFFECT: loads the durable append-only OCC observation trail from a onex_change_control checkout and dedupes it via the existing project_qualifying_observations. Filesystem-only, no network, no secrets."
+input_model:
+  name: "ModelOccObservationSourceEffectRequest"
+  module: "omnimarket.nodes.node_occ_observation_source_effect.models.model_occ_observation_source_effect_request"
+  description: "A local onex_change_control checkout directory to read the observation trail from."
+output_model:
+  name: "ModelOccObservationSourceEffectResult"
+  module: "omnimarket.nodes.node_occ_observation_source_effect.models.model_occ_observation_source_effect_result"
+  description: "The deduplicated qualifying-observation projection read from OCC, ready for ModelOccAutoauthorWindowRequest.observations."
+handler:
+  module: "omnimarket.nodes.node_occ_observation_source_effect.handlers.handler_occ_observation_source_effect"
+  class: "HandlerOccObservationSourceEffect"
+  input_model: "omnimarket.nodes.node_occ_observation_source_effect.models.model_occ_observation_source_effect_request.ModelOccObservationSourceEffectRequest"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_occ_observation_source_effect.handlers.handler_occ_observation_source_effect:HandlerOccObservationSourceEffect"
+  handlers:
+    - operation: "load_occ_observation_trail"
+      handler:
+        name: "HandlerOccObservationSourceEffect"
+        module: "omnimarket.nodes.node_occ_observation_source_effect.handlers.handler_occ_observation_source_effect"
+# Directly-invoked only (no Kafka producer/consumer) — matches
+# node_occ_observation_projection's own runtime_dispatch-only declaration.
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.occ-observation-source-effect-requested.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.occ-observation-source-effect-completed.v1"
+    failure: "onex.evt.omnimarket.occ-observation-source-effect-failed.v1"
+side_effects:
+  reads:
+    - filesystem
+  writes: []
+  duplicate_key_fields:
+    - checkout_dir
+  duplicate_handling: idempotent
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  runtime_profiles: [effects]
+  idempotent: true
+  timeout_ms: 30000
+metadata:
+  transport_type: inmemory
+  description: "OCC observation trail read-EFFECT — filesystem-only, feeds the existing dedup projection from a real onex_change_control checkout"
+  author: "OmniNode Team"
+  created: "2026-07-21"
+  tags:
+    - "effect"
+    - "occ"
+    - "observation"
+    - "dedup"
+    - "OMN-14888"
+  related_tickets:
+    - "OMN-14888"
+    - "OMN-14851"
+    - "OMN-14393"

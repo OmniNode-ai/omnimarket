@@ -16,7 +16,6 @@ on:
     branches: [main, 'hotfix/**']
   pull_request:
     branches: [main, dev]
-  merge_group:
   workflow_dispatch:
 
 env:
@@ -27,6 +26,14 @@ jobs:
     name: ONEX Change Control Schema Compatibility
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # OMN-15057: the `needs.occ-preflight.result == 'success' &&` clause that
+    # used to gate this `if:` was dropped along with `needs: occ-preflight`.
+    # OCC eligibility is already independently enforced as its own required
+    # status check (`occ-preflight / eligibility`); re-checking it here was
+    # redundant AND was a compound skip vector (vector-2 ungated-if PLUS
+    # vector-5 needs-cascade) -- when the same-file poller job failed, this
+    # `if:` evaluated false and the whole job SKIPPED, which GitHub branch
+    # protection treats as passing. See OMN-14668 for the precedent fix.
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
 
     steps:

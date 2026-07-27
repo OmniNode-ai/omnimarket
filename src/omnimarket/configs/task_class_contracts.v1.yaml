@@ -35,15 +35,23 @@
 version: "1.0"
 default_task_model_ref: "Qwen3.6-35B-A3B"
 task_model_overrides:
-  # OMN-13380: Direct z.ai GLM-5.2 is the primary code-gen backend (preferred in
-  # the cheap_cloud tier, backend cloud-glm, secret_ref llm.glm.api_key). The
+  # OMN-13380/OMN-13599: Direct z.ai GLM-5.2 was the cloud fallback for code/test/
+  # refactor (preferred inside the cheap_cloud tier, backend cloud-glm,
+  # secret_ref llm.glm.api_key). The
   # former openrouter-glm-flash override was repointed here: we hold a direct GLM
-  # key, so GLM routes direct to z.ai rather than through the OpenRouter
-  # aggregator (routing-cost principle — OpenRouter is for FREE models only). The
-  # model id "glm-5.2" matches the cheap_cloud tier model id in routing_tiers.yaml.
-  code_generation: "glm-5.2"
-  test: "glm-5.2"
-  refactor: "glm-5.2"
+  # key, so GLM routed direct to z.ai rather than through the OpenRouter
+  # aggregator (routing-cost principle — OpenRouter is for FREE models only).
+  #
+  # OMN-14625: repointed off GLM ("glm-5-turbo") to Gemini ("gemini-2.5-flash")
+  # — the z.ai GLM route is DEAD from the .201 runtime (resolve_api_key
+  # succeeds but every completion call 401s / loops FAILED-only). The model id
+  # "gemini-2.5-flash" matches the cheap_cloud tier model id in
+  # routing_tiers.yaml (backend cloud-gemini-pro, secret_ref
+  # llm.gemini.api_key). A dangling override here would strand routing (see
+  # test_code_generation_contract_model_ref_is_resolvable).
+  code_generation: "gemini-2.5-flash"
+  test: "gemini-2.5-flash"
+  refactor: "gemini-2.5-flash"
   reasoning: "Qwen3.6-35B-A3B"
   complex_reasoning: "Qwen3.6-35B-A3B"
   planning: "Qwen3.6-35B-A3B"
@@ -88,12 +96,85 @@ task_classes:
         min: 0.6
         max: 1.0
     escalation_policy:
-      max_escalations: 2
-      # OMN-13380: cheap_cloud is primary (direct z.ai GLM-5.2 via cloud-glm);
-      # local is the fallback when the GLM key is absent.
+      # OMN-13943: bumped 2 -> 3 so the ladder can actually reach `claude` now
+      # that `cheap_frontier` sits between `cheap_cloud` and it — 3 escalations
+      # are required to walk local -> cheap_cloud -> cheap_frontier -> claude.
+      max_escalations: 3
+      # OMN-13599: local AI-PC coder is primary when the Tailscale hostname overlay
+      # supplies a complete endpoint. Direct z.ai GLM-5.2 remains the metered
+      # cloud fallback/ceiling; Gemini is not in the code-generation first-hop path.
+      # OMN-13943: `cheap_frontier` (OpenRouter Qwen3-Coder-480B, free tier) is
+      # now reachable via escalation — previously declared in routing_tiers.yaml
+      # but absent from every task class's tier_order, so a `cheap_cloud`
+      # RATE_LIMITED (GLM 429) had nowhere retryable to escalate to before
+      # `claude`. Inserted between `cheap_cloud` and `claude` so a GLM 429
+      # transparently falls through to OpenRouter before exhausting the ladder.
       tier_order:
-        - cheap_cloud
+        # OMN-14225: free before paid. cheap_frontier (OpenRouter Qwen3-Coder-480B,
+        # free_local) precedes cheap_cloud (z.ai glm-5.2, metered/PAID) so a task that
+        # must escalate off local tries the FREE frontier tier before any paid tier.
         - local
+        - cheap_frontier
+        - cheap_cloud
+        - claude
+  # OMN-14218: `refactor` is accepted at the delegation surface (allowed_task_types,
+  # the CLI --task-type enum, task_model_overrides, and routing_tiers.yaml `use_for`)
+  # but had NO task-class contract here. Consequence: with no acceptance_authority
+  # and no adequacy_authority the quality gate returned _NO_ADEQUACY_AUTHORITY_REASON
+  # ("TASK_MISMATCH: no deterministic acceptance or judge adequacy authority") on
+  # every tier, so a valid LOCAL code artifact could never PASS and the workflow
+  # force-escalated local -> cheap_cloud (PAID glm-5.2, real spend) -> cheap_frontier
+  # (OpenRouter 429) -> failed. This mirrors the OMN-13541 fix that gave `code_review`
+  # a contract for the same "accepted at surface, no contract" gap. `refactor` is a
+  # code-writing task, so its contract mirrors `code_generation`: a deterministic
+  # acceptance authority + code DoD with the same closed tier_order, which lets local
+  # output PASS at $0 exactly like code_generation. (A minimal-diff / precision DoD
+  # for surgical edits to large files is tracked separately under OMN-14214.)
+  refactor:
+    score_source: deterministic_acceptance
+    acceptance_authority:
+      type: deterministic_acceptance
+      acceptance_version: delegation-deterministic-acceptance.v1
+      evidence_fields:
+        - acceptance_version
+        - corpus_hash
+        - validator_or_artifact_hash
+        - acceptance_command
+        - actual_score
+        - pass
+        - failure_cases
+    required_capabilities:
+      - code_completion
+      - context_window_large
+    pricing_ceiling_per_1k_tokens: 0.015
+    latency_sla_p99_ms: 30000
+    cloud_routing_policy: allowed
+    definition_of_done:
+      deterministic:
+        - compiles_without_errors
+        - final_artifact_only
+      heuristic:
+        - no_refusal
+        - follows_codebase_conventions
+        - no_obvious_regressions
+    quality_gate:
+      score_source: quality_gate_graded_score
+      required_bar: 0.85
+      request_override_bounds:
+        min: 0.6
+        max: 1.0
+    escalation_policy:
+      # Same closed ladder as code_generation (OMN-13943): local -> cheap_cloud ->
+      # cheap_frontier -> claude. With a working local acceptance authority the
+      # common path terminates at local ($0) and never escalates.
+      max_escalations: 3
+      tier_order:
+        # OMN-14225: free before paid. cheap_frontier (OpenRouter Qwen3-Coder-480B,
+        # free_local) precedes cheap_cloud (z.ai glm-5.2, metered/PAID) so a task that
+        # must escalate off local tries the FREE frontier tier before any paid tier.
+        - local
+        - cheap_frontier
+        - cheap_cloud
         - claude
   documentation:
     required_capabilities:
@@ -300,8 +381,19 @@ task_classes:
       deterministic:
         - response_non_empty
       heuristic:
+        # OMN-13963: `semantic_adequacy` is the LOCAL acceptance authority. Without
+        # a non-reject-only check the quality gate had NO adequacy authority for
+        # `reasoning` (response_non_empty / no_refusal / step_by_step_explanation
+        # are all reject-only), so a valid LOCAL Qwen answer could never PASS —
+        # the gate returned TASK_MISMATCH:no-adequacy-authority, force-escalated
+        # local→cheap_cloud, and hit the throttled GLM (429), killing the whole
+        # class during a cloud outage. `semantic_adequacy` (a real completeness
+        # check) is the SAME local authority the sibling reproducible_judge classes
+        # `document`/`research`/`summarization` already carry and complete on local
+        # with; it accepts a complete answer while a refusal/empty still fails.
         - no_refusal
         - step_by_step_explanation
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -330,8 +422,12 @@ task_classes:
       deterministic:
         - response_non_empty
       heuristic:
+        # OMN-13963: LOCAL acceptance authority (see `reasoning` above). Without a
+        # non-reject-only check `complex_reasoning` had no adequacy authority and
+        # force-escalated valid local output to the throttled cloud judge.
         - step_by_step_explanation
         - methodical_analysis
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -362,6 +458,11 @@ task_classes:
       heuristic:
         - structured_output
         - covers_dependencies
+        # OMN-14220: local acceptance authority. structured_output/covers_dependencies
+        # are reject-only markers; without a non-reject-only check a valid LOCAL plan
+        # could never PASS and force-escalated to paid cloud. semantic_adequacy is the
+        # same local authority the reproducible_judge siblings use.
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -391,7 +492,14 @@ task_classes:
         - response_non_empty
       heuristic:
         - cites_specific_lines
-        - explains_tradeoffs
+        # OMN-14220: `explains_tradeoffs` removed — it was a reject-only catch-22
+        # (identical to the OMN-13354 research fix): a valid bug-focused review cites
+        # lines but need not discuss tradeoffs, so requiring tradeoff language
+        # false-rejected correct reviews (live: a line-cited review scored 0.867 but
+        # failed `explains_tradeoffs`). `cites_specific_lines` stays as the genuine
+        # "is this a code review" reject-only filter; `semantic_adequacy` is the local
+        # acceptance authority so a complete review PASSES locally.
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -421,7 +529,12 @@ task_classes:
         - response_non_empty
       heuristic:
         - cites_specific_lines
-        - no_obvious_regressions
+        # OMN-14220: `no_obvious_regressions` removed — same reject-only catch-22 as
+        # `review` above: a valid code review that finds bugs need not use
+        # regression/backward-compat language, so requiring it false-rejected correct
+        # reviews. `cites_specific_lines` stays as the reject-only filter;
+        # `semantic_adequacy` is the local acceptance authority.
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
@@ -481,6 +594,9 @@ task_classes:
       heuristic:
         - no_refusal
         - sub_tasks_verified
+        # OMN-14220: local acceptance authority (no_refusal/sub_tasks_verified are
+        # reject-only). Without it a valid LOCAL agent-delegation report escalated to paid.
+        - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8

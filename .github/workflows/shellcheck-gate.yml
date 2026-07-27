@@ -1,0 +1,73 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: Shell Hygiene Gate (OMN-14761)
+
+# F-22: fail-closed shellcheck gate over tracked shell scripts. Runs the SAME
+# script the `shell-hygiene` pre-commit hook runs
+# (scripts/ci/check_shell_hygiene.sh) so local and CI enforcement cannot drift.
+# The whole tree is held to --severity=error (clean today -> zero baseline; any
+# scripts/lib/** would be held to the strict --severity=style). Runs on every PR
+# (no path filter) so it always reports and can be promoted to a required status
+# check without the "path-filtered required check wedges the PR" trap.
+on:
+  push:
+    branches: [main, dev, develop]
+  pull_request:
+    branches: [main, dev, develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  SHELLCHECK_VERSION: "v0.10.0"
+
+jobs:
+  shell-hygiene:
+    name: shell-hygiene
+    # OMNI_RUNNER_SELECTOR_V1 — trusted CI defaults to self-hosted omnibase-ci; public forks default to ubuntu-latest
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Ensure shellcheck is installed
+        run: |
+          set -euo pipefail
+          if command -v shellcheck >/dev/null 2>&1; then
+            shellcheck --version
+            exit 0
+          fi
+          case "$(uname -m)" in
+            x86_64 | amd64) sc_arch="x86_64" ;;
+            aarch64 | arm64) sc_arch="aarch64" ;;
+            *) echo "unsupported arch $(uname -m) for shellcheck install" >&2; exit 2 ;;
+          esac
+          echo "shellcheck not found; installing ${SHELLCHECK_VERSION} (${sc_arch}) to ~/.local/bin"
+          mkdir -p "${HOME}/.local/bin"
+          url="https://github.com/koalaman/shellcheck/releases/download/${SHELLCHECK_VERSION}/shellcheck-${SHELLCHECK_VERSION}.linux.${sc_arch}.tar.xz"
+          curl -fsSL "${url}" -o /tmp/shellcheck.tar.xz
+          # Extract without needing the `xz` binary (self-hosted runner lacks it);
+          # python3 stdlib lzma handles .tar.xz.
+          python3 -c "import tarfile; tarfile.open('/tmp/shellcheck.tar.xz','r:xz').extractall('/tmp')"
+          cp "/tmp/shellcheck-${SHELLCHECK_VERSION}/shellcheck" "${HOME}/.local/bin/shellcheck"
+          chmod +x "${HOME}/.local/bin/shellcheck"
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+          "${HOME}/.local/bin/shellcheck" --version
+
+      - name: Run shell hygiene gate (fail-closed)
+        run: bash scripts/ci/check_shell_hygiene.sh

@@ -13,8 +13,18 @@ REDUCER_VERSION = "1.0.0"
 #: Number of recent inference responses retained in the snapshot window.
 MAX_HISTORY: int = 10
 
-#: The single row always uses this conflict key so the table stays a singleton.
+#: OMN-13088 legacy singleton key, retained only as the pre-tranche-2 default
+#: for ModelInferenceResponseProjectionResult.singleton_key documentation.
+#: The table itself is no longer a single global singleton as of OMN-14894
+#: tranche 2 -- see DEFAULT_TENANT and the handler's per-tenant re-key.
 SINGLETON_KEY: str = "global"
+
+#: OMN-14894 (tranche 2): interim single-tenant fallback used as both the
+#: tenant_id value and the singleton_key/conflict-key value when an
+#: inference-response event carries no tenant_id. Mirrors the DEFAULT
+#: 'omninode' convention already used by delegation_events (0022) and
+#: delegation_budget_state (0019).
+DEFAULT_TENANT: str = "omninode"
 
 
 class ModelRecentInferenceResponse(BaseModel):
@@ -43,6 +53,7 @@ class ModelInferenceResponseProjectionResult(BaseModel):
 
 
 __all__: list[str] = [
+    "DEFAULT_TENANT",
     "MAX_HISTORY",
     "REDUCER_VERSION",
     "SINGLETON_KEY",

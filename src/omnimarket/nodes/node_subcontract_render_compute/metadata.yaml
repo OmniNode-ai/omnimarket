@@ -1,0 +1,19 @@
+name: node_subcontract_render_compute
+version: "1.0.0"
+description: "Pure discriminated-union subcontract fragment renderer for contract serialization"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_subcontract_render_compute: "omnimarket.nodes.node_subcontract_render_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "contract", "serialization", "subcontract", "deterministic"]
+pack: "codegen"
+display_name: "Subcontract Render Compute"
+node_role: "compute"

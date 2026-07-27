@@ -28,9 +28,15 @@ _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
 
 
 def _resolve_github_token() -> str:
-    """Resolve the GitHub token from the contract-declared ref (OMN-12856)."""
+    """Resolve the GitHub token from the contract-declared ref (OMN-12856).
+
+    ``env_var_fallback`` (OMN-14452): the deployed lane's secret resolver is
+    LLM/Slack-scoped with convention fallback disabled and never resolves
+    ``GITHUB_TOKEN`` — falling back to the literal env var (already passed
+    straight through as a container env var) resolves it instead of raising.
+    """
     ref = contract_secret_ref(_CONTRACT_PATH, "GITHUB_TOKEN")
-    secret = resolve_api_key(ref)
+    secret = resolve_api_key(ref, env_var_fallback=ref)
     if secret is None:
         raise RuntimeError(
             f"api_key_ref {ref!r} resolved to None — "
@@ -40,8 +46,18 @@ def _resolve_github_token() -> str:
 
 
 # ---------------------------------------------------------------------------
-# Result model
+# Request / Result models
 # ---------------------------------------------------------------------------
+
+
+class ModelRebaseRequest(BaseModel):
+    """Request to auto-rebase a single stale PR branch."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    pr_number: int
+    repo: str
+    dry_run: bool = False
 
 
 class ModelRebaseResult(BaseModel):
@@ -136,19 +152,19 @@ class HandlerAutoRebase:
     def correlation_id(self) -> UUID | None:
         return None
 
-    async def handle(
-        self, *, pr_number: int, repo: str, dry_run: bool = False
-    ) -> ModelRebaseResult:
+    async def handle(self, payload: ModelRebaseRequest) -> ModelRebaseResult:
         """Rebase a stale PR branch.
 
         Args:
-            pr_number: GitHub PR number.
-            repo: Repo slug (owner/repo).
-            dry_run: When True, log intent and return success without calling gh.
+            payload: Typed request carrying pr_number, repo, and dry_run.
 
         Returns:
             ModelRebaseResult indicating success or failure.
         """
+        pr_number = payload.pr_number
+        repo = payload.repo
+        dry_run = payload.dry_run
+
         logger.info(
             "auto-rebase: pr=%s repo=%s dry_run=%s",
             pr_number,
@@ -193,6 +209,7 @@ class HandlerAutoRebase:
 
 __all__: list[str] = [
     "HandlerAutoRebase",
+    "ModelRebaseRequest",
     "ModelRebaseResult",
     "ProtocolRebaseAdapter",
 ]

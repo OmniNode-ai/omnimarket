@@ -1,15 +1,23 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# onex-allow-file-internal-ip OMN-13552 reason="lane registry resolves the canonical .201 runtime-lane host; overridable via --runtime-host; not a shipping connection string"
-# onex-allow-file OMN-13552 reason="lane registry resolves the canonical .201 runtime-lane host; overridable via --runtime-host; not a shipping connection string"
 """Lane/target resolution for node_data_flow_sweep collection probes.
 
 OMN-13552: the collector previously probed *whatever host the CLI process is on*
 (``docker exec omnibase-infra-redpanda ...`` / ``psql -h localhost ...``) rather
 than the lane it was nominally verifying. For the dev/stability/prod lanes that
-run on ``192.168.86.201`` this produced false-broken (no local container =>
+run on the .201 runtime host this produced false-broken (no local container =>
 "Topic does not exist" => PRODUCER_DOWN) or false-clean (a stale local stack)
 verdicts for a lane that was never actually probed.
+
+OMN-14531: the default runtime host was a hardcoded raw private LAN IP that is
+unroutable off-network — the exact bug class node_database_sweep already hit
+and fixed under OMN-14526 by defaulting to the Tailscale MagicDNS host
+instead. This module's own docstring/comment also claimed
+``ONEX_DATA_FLOW_RUNTIME_HOST`` overrode the default, but the code never read
+that env var — the override was inert. Both are fixed here:
+:func:`_resolve_default_runtime_host` reads ``ONEX_DATA_FLOW_RUNTIME_HOST``
+(the same var node_database_sweep reads so the two sweeps agree on which host
+they probe) and falls back to the Tailscale hostname, never the raw IP.
 
 This module resolves a lane name to the concrete broker + Postgres endpoints for
 that lane (container names + the host they live on), mirroring the runtime
@@ -28,6 +36,7 @@ A ``ModelLaneTarget`` carries either:
 
 from __future__ import annotations
 
+import os
 from typing import Final
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,9 +55,24 @@ from pydantic import BaseModel, ConfigDict, Field
 # lane's containers on that remote host.
 # ---------------------------------------------------------------------------
 
-# onex-allow-internal-ip OMN-13552 reason="default runtime host for the .201 lanes; overridden by --runtime-host / ONEX_DATA_FLOW_RUNTIME_HOST; not a shipping connection string"
-_DEFAULT_RUNTIME_HOST: Final[str] = "192.168.86.201"
+# Tailscale MagicDNS name for the .201 runtime host — resolves both on-LAN and
+# off-network, unlike a raw private IP (OMN-14531, mirrors OMN-14526).
+_DEFAULT_RUNTIME_HOST: Final[str] = "omninode-pc.tail75df5e.ts.net"
 _SSH_USER: Final[str] = "jonah"
+
+
+def _resolve_default_runtime_host() -> str:
+    """Resolve the default lane runtime host, honoring the env override.
+
+    ``ONEX_DATA_FLOW_RUNTIME_HOST`` overrides :data:`_DEFAULT_RUNTIME_HOST`
+    when set (mirrors node_database_sweep's ``_resolve_pg_runtime_host``, which
+    reads this same var, OMN-14526). A caller-supplied ``runtime_host=`` kwarg
+    to :func:`resolve_lane_target` still takes precedence over both.
+    """
+    return (
+        os.environ.get("ONEX_DATA_FLOW_RUNTIME_HOST", "").strip()
+        or _DEFAULT_RUNTIME_HOST
+    )
 
 
 class ModelLaneTarget(BaseModel):
@@ -144,8 +168,9 @@ def resolve_lane_target(
 
     ``lane="local"`` keeps the legacy in-stack behavior (local docker/psql). Any
     of the .201 lanes (``dev`` / ``stability-test`` / ``prod`` / ``judge``)
-    resolve to that lane's container names on the runtime host (default
-    ``192.168.86.201``, overridable). An unknown lane raises
+    resolve to that lane's container names on the runtime host (default the
+    Tailscale MagicDNS host, overridable via ``runtime_host=`` or
+    ``ONEX_DATA_FLOW_RUNTIME_HOST``). An unknown lane raises
     :class:`LaneResolutionError` so the caller can fail loud instead of probing
     the wrong host.
     """
@@ -174,7 +199,7 @@ def resolve_lane_target(
         )
     redpanda_container, postgres_container = containers
 
-    host = (runtime_host or _DEFAULT_RUNTIME_HOST).strip()
+    host = (runtime_host or _resolve_default_runtime_host()).strip()
     return ModelLaneTarget(
         lane=normalized,
         runtime_host=host,

@@ -345,6 +345,32 @@ def test_validate_node_baseline_promoted_to_fail_when_strict(
 
 
 @pytest.mark.unit
+def test_validate_node_baseline_stays_warn_when_strict_and_deprecated(
+    scc_module: object, tmp_path: Path
+) -> None:
+    """A node explicitly marked lifecycle: deprecated (OMN-14151) is exempt
+    from strict-mode baseline promotion — a hard-gated legacy surface neuters
+    itself rather than needing new test investment for the states it will
+    stop emitting."""
+    node_dir = tmp_path / "node_example_reducer"
+    node_dir.mkdir()
+    (node_dir / "contract.yaml").write_text(
+        "node_type: reducer\n"
+        "lifecycle: deprecated\n"
+        "state_machine:\n  states:\n    - state_name: idle\n"
+    )
+    baseline = {("node_example_reducer", "idle")}
+
+    result = scc_module.validate_node(  # type: ignore[attr-defined]
+        node_dir, baseline=baseline, strict=True, test_corpus=[]
+    )
+    assert result.passed is True, (
+        "deprecated node's baselined gap must stay WARN even in strict mode"
+    )
+    assert result.baselined_uncovered == ["idle"]
+
+
+@pytest.mark.unit
 def test_validate_node_no_contract_returns_empty_kind(
     scc_module: object, tmp_path: Path
 ) -> None:
@@ -412,6 +438,307 @@ def test_changed_nodes_uses_exact_segment_not_prefix_substring(
         return types.SimpleNamespace(returncode=0, stdout=diff, stderr="")
 
     monkeypatch.setattr(subprocess, "run", _fake_run)
-    _nodes, directly_modified = scc_module._get_changed_nodes("origin/dev")  # type: ignore[attr-defined]
+    _nodes, directly_modified, _contract_touched = scc_module._get_changed_nodes(  # type: ignore[attr-defined]
+        "origin/dev"
+    )
     assert long_node in directly_modified
     assert short_node not in directly_modified
+
+
+# ---------------------------------------------------------------------------
+# OMN-14009: missing_handler_routing ratchet fixes collide with the
+# state-coverage-gate grandfather clause.
+#
+# A purely-additive handler_routing fix (adding a nested handler: sibling to
+# make the node's canonical handler reachable) touches contract.yaml but
+# leaves the node's declared FSM states / output classes / published topics
+# completely unchanged. Strict mode must not promote that node's unrelated,
+# pre-existing baselined state-coverage debt to FAIL just because the two
+# ratchets happen to share a file.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_declared_state_shape_changed_false_for_handler_routing_only_diff(
+    scc_module: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A handler_routing-only contract edit must NOT register as a declared-
+    state-shape change (OMN-14009 concrete repro: node_code_embedding_effect)."""
+    import subprocess
+    import types
+
+    node_name = "node_example_effect"
+    node_dir = tmp_path / node_name
+    node_dir.mkdir()
+    after_contract = (
+        "node_type: effect\n"
+        "handler:\n"
+        "  module: omnimarket.nodes.node_example_effect.handlers.handler_example\n"
+        "  name: HandlerExample\n"
+        "handler_routing:\n"
+        "  handlers:\n"
+        "    - operation: do_thing\n"
+        "      handler:\n"
+        "        module: omnimarket.nodes.node_example_effect.handlers.handler_example\n"
+        "        name: HandlerExample\n"
+        "outputs:\n"
+        "  result: {type: string}\n"
+    )
+    before_contract = (
+        "node_type: effect\n"
+        "handler:\n"
+        "  module: omnimarket.nodes.node_example_effect.handlers.handler_example\n"
+        "  name: HandlerExample\n"
+        "outputs:\n"
+        "  result: {type: string}\n"
+    )
+    (node_dir / "contract.yaml").write_text(after_contract)
+
+    monkeypatch.setattr(scc_module, "NODES_DIR", tmp_path)  # type: ignore[attr-defined]
+    monkeypatch.setattr(scc_module, "REPO_ROOT", tmp_path)  # type: ignore[attr-defined]
+
+    def _fake_run(args: list[str], **_kwargs: object) -> types.SimpleNamespace:
+        assert args[:2] == ["git", "show"]
+        return types.SimpleNamespace(returncode=0, stdout=before_contract, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    assert (
+        scc_module._declared_state_shape_changed(node_name, "origin/dev")  # type: ignore[attr-defined]
+        is False
+    )
+
+
+@pytest.mark.unit
+def test_read_contract_at_ref_uses_rev_path_object_syntax_no_delimiter(
+    scc_module: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``git show <ref>:<path>`` (no ``--`` delimiter) is the correct invocation.
+
+    OMN-15005 regression: a prior revision inserted ``--`` before the combined
+    ``<ref>:<path>`` argument. Git's ``rev:path`` object-notation is ONLY
+    recognized when NOT preceded by ``--`` -- with the delimiter present, git
+    instead treats the whole string as a literal pathspec, which never matches
+    an on-disk file and silently returns empty output (exit 0) instead of
+    erroring. That silently defeated ``_declared_state_shape_changed``'s
+    before/after comparison for EVERY call (``before`` was always parsed as
+    ``{}``), which broke the OMN-14009 "purely-additive handler_routing edit
+    stays strict-exempt" guarantee for every node with real declared outputs.
+
+    A ref that looks like an option flag (e.g. ``-untrusted-ref``) still fails
+    safely without the delimiter: git rejects it with a non-zero exit
+    ("unrecognized argument"), which the caller already treats as unreadable
+    and maps to ``None`` (fail-safe -> shape treated as changed). No delimiter
+    is needed to preserve that fail-safe property.
+    """
+    import subprocess
+    import types
+
+    before_contract = "node_type: effect\noutputs:\n  result: {type: string}\n"
+    seen_args: list[str] = []
+
+    monkeypatch.setattr(scc_module, "REPO_ROOT", tmp_path)  # type: ignore[attr-defined]
+
+    def _fake_run(args: list[str], **_kwargs: object) -> types.SimpleNamespace:
+        seen_args.extend(args)
+        return types.SimpleNamespace(returncode=0, stdout=before_contract, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    result = scc_module._read_contract_at_ref(  # type: ignore[attr-defined]
+        "src/omnimarket/nodes/node_example_effect/contract.yaml",
+        "origin/dev",
+    )
+
+    assert seen_args == [
+        "git",
+        "show",
+        "origin/dev:src/omnimarket/nodes/node_example_effect/contract.yaml",
+    ]
+    assert result == {"node_type": "effect", "outputs": {"result": {"type": "string"}}}
+
+
+@pytest.mark.unit
+def test_read_contract_at_ref_returns_none_on_unrecognized_ref_like_flag(
+    scc_module: object,
+) -> None:
+    """A ref shaped like an option flag hits the REAL git binary (no mock) and
+    fails closed: non-zero exit -> ``None`` -> caller treats shape as changed."""
+    result = scc_module._read_contract_at_ref(  # type: ignore[attr-defined]
+        "src/omnimarket/nodes/node_agent_coordinator_orchestrator/contract.yaml",
+        "-untrusted-ref",
+    )
+    assert result is None
+
+
+@pytest.mark.unit
+def test_declared_state_shape_changed_true_for_real_output_change(
+    scc_module: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A contract edit that genuinely adds/removes a declared output/state
+    DOES register as a shape change and keeps the node strict-eligible."""
+    import subprocess
+    import types
+
+    node_name = "node_example_effect"
+    node_dir = tmp_path / node_name
+    node_dir.mkdir()
+    after_contract = "node_type: effect\noutputs:\n  result: {type: string}\n  extra: {type: string}\n"
+    before_contract = "node_type: effect\noutputs:\n  result: {type: string}\n"
+    (node_dir / "contract.yaml").write_text(after_contract)
+
+    monkeypatch.setattr(scc_module, "NODES_DIR", tmp_path)  # type: ignore[attr-defined]
+    monkeypatch.setattr(scc_module, "REPO_ROOT", tmp_path)  # type: ignore[attr-defined]
+
+    def _fake_run(args: list[str], **_kwargs: object) -> types.SimpleNamespace:
+        assert args[:2] == ["git", "show"]
+        return types.SimpleNamespace(returncode=0, stdout=before_contract, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    assert (
+        scc_module._declared_state_shape_changed(node_name, "origin/dev")  # type: ignore[attr-defined]
+        is True
+    )
+
+
+@pytest.mark.unit
+def test_declared_state_shape_changed_true_when_ref_unreadable(
+    scc_module: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A brand-new contract (unreadable at the diff-base ref) fails safe —
+    stays strict-eligible rather than being silently exempted."""
+    import subprocess
+    import types
+
+    node_name = "node_example_effect"
+    node_dir = tmp_path / node_name
+    node_dir.mkdir()
+    (node_dir / "contract.yaml").write_text(
+        "node_type: effect\noutputs:\n  result: {type: string}\n"
+    )
+
+    monkeypatch.setattr(scc_module, "NODES_DIR", tmp_path)  # type: ignore[attr-defined]
+    monkeypatch.setattr(scc_module, "REPO_ROOT", tmp_path)  # type: ignore[attr-defined]
+
+    def _fake_run(args: list[str], **_kwargs: object) -> types.SimpleNamespace:
+        assert args[:2] == ["git", "show"]
+        return types.SimpleNamespace(
+            returncode=1, stdout="", stderr="fatal: path does not exist"
+        )
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    assert (
+        scc_module._declared_state_shape_changed(node_name, "origin/dev")  # type: ignore[attr-defined]
+        is True
+    )
+
+
+@pytest.mark.unit
+def test_resolve_strict_eligible_excludes_handler_routing_only_contract_touch(
+    scc_module: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """OMN-14009 core fix: a node whose ONLY diff is a handler_routing-only
+    contract.yaml edit is excluded from strict eligibility, so its unrelated
+    pre-existing baselined state-coverage debt stays WARN, not FAIL."""
+    import subprocess
+    import types
+
+    node_name = "node_example_effect"
+    node_dir = tmp_path / node_name
+    node_dir.mkdir()
+    after_contract = (
+        "node_type: effect\n"
+        "handler:\n  module: pkg.handlers.handler_example\n  name: HandlerExample\n"
+        "handler_routing:\n"
+        "  handlers:\n"
+        "    - operation: do_thing\n"
+        "      handler:\n        module: pkg.handlers.handler_example\n        name: HandlerExample\n"
+        "outputs:\n  result: {type: string}\n"
+    )
+    before_contract = (
+        "node_type: effect\n"
+        "handler:\n  module: pkg.handlers.handler_example\n  name: HandlerExample\n"
+        "outputs:\n  result: {type: string}\n"
+    )
+    (node_dir / "contract.yaml").write_text(after_contract)
+
+    monkeypatch.setattr(scc_module, "NODES_DIR", tmp_path)  # type: ignore[attr-defined]
+    monkeypatch.setattr(scc_module, "REPO_ROOT", tmp_path)  # type: ignore[attr-defined]
+
+    def _fake_run(args: list[str], **_kwargs: object) -> types.SimpleNamespace:
+        assert args[:2] == ["git", "show"]
+        return types.SimpleNamespace(returncode=0, stdout=before_contract, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    eligible = scc_module._resolve_strict_eligible(  # type: ignore[attr-defined]
+        {node_name}, {node_name}, "origin/dev"
+    )
+    assert node_name not in eligible
+
+
+@pytest.mark.unit
+def test_resolve_strict_eligible_keeps_test_only_touch_strict_eligible(
+    scc_module: object,
+) -> None:
+    """A node flagged via its OWN test files (not contract_touched) keeps its
+    strict eligibility unchanged — this fix only narrows the contract.yaml
+    handler_routing collision, not test-driven coverage investment."""
+    node_name = "node_untouched_contract"
+    eligible = scc_module._resolve_strict_eligible(  # type: ignore[attr-defined]
+        {node_name}, set(), "origin/dev"
+    )
+    assert node_name in eligible
+
+
+@pytest.mark.unit
+def test_get_changed_nodes_reports_contract_touched_files(
+    scc_module: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``_get_changed_nodes`` reports which directly-modified nodes were
+    touched via their OWN contract.yaml (third return value, OMN-14009)."""
+    import subprocess
+    import types
+
+    node_name = "node_code_embedding_effect"
+    assert (scc_module.NODES_DIR / node_name).is_dir()  # type: ignore[attr-defined]
+
+    diff = f"src/omnimarket/nodes/{node_name}/contract.yaml\n"
+
+    def _fake_run(*_args: object, **_kwargs: object) -> types.SimpleNamespace:
+        return types.SimpleNamespace(returncode=0, stdout=diff, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    _nodes, directly_modified, contract_touched = scc_module._get_changed_nodes(  # type: ignore[attr-defined]
+        "origin/dev"
+    )
+    assert node_name in directly_modified
+    assert node_name in contract_touched
+
+
+@pytest.mark.unit
+def test_get_changed_nodes_test_file_diff_not_contract_touched(
+    scc_module: object, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A node flagged via a test-file diff (not its own contract.yaml) must
+    NOT appear in ``contract_touched`` — only the file path determines that,
+    matching the ``handler_routing``-collision distinction this ticket fixes."""
+    import subprocess
+    import types
+
+    node_name = "node_code_embedding_effect"
+    assert (scc_module.NODES_DIR / node_name).is_dir()  # type: ignore[attr-defined]
+
+    diff = f"tests/integration/{node_name}/test_code_embedding_state_coverage.py\n"
+
+    def _fake_run(*_args: object, **_kwargs: object) -> types.SimpleNamespace:
+        return types.SimpleNamespace(returncode=0, stdout=diff, stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+    _nodes, directly_modified, contract_touched = scc_module._get_changed_nodes(  # type: ignore[attr-defined]
+        "origin/dev"
+    )
+    assert node_name in directly_modified
+    assert node_name not in contract_touched

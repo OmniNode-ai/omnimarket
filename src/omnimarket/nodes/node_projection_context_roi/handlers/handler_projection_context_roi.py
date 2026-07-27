@@ -103,6 +103,17 @@ class HandlerProjectionContextRoi:
                 "run_order": row.run_order,
                 "context_factor_subset": row.context_factor_subset,
                 "context_pack_hash": row.context_pack_hash,
+                # OMN-14535: the runner has populated both fields on every
+                # row since their introduction (handler_context_roi_runner.py
+                # _factor_subset_hash / routing_source) — this projection
+                # never captured either into the row dict, so every row ever
+                # written silently lost them (migration 002 adds the
+                # matching columns). Historical rows cannot be backfilled:
+                # the real values were never persisted anywhere to recover
+                # from, and '' is not distinguishable from a legitimately
+                # empty off-arm value — see migration 002's comment.
+                "factor_subset_hash": row.factor_subset_hash,
+                "routing_source": row.routing_source,
                 "attempt_count": row.attempt_count,
                 "first_pass_success": row.first_pass_success,
                 "final_success": row.final_success,

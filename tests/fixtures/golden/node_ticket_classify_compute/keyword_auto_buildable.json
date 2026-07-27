@@ -1,0 +1,44 @@
+{
+  "input": {
+    "correlation_id": "00000001-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": null,
+        "description": "Create and wire the handler and model",
+        "labels": [
+          "area:core"
+        ],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Todo",
+        "ticket_id": "OMN-1",
+        "title": "Add a new compute node handler"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "auto_buildable",
+        "confidence": 0.6,
+        "matched_keywords": [
+          "add",
+          "compute",
+          "create",
+          "handler",
+          "model",
+          "node",
+          "wire"
+        ],
+        "reason": "Keyword fallback: auto-buildable, matched ('add', 'compute', 'create', 'handler', 'model', 'node', 'wire')",
+        "seam_source": "keyword_fallback",
+        "ticket_id": "OMN-1",
+        "title": "Add a new compute node handler"
+      }
+    ],
+    "correlation_id": "00000001-0000-4000-8000-000000000000",
+    "total_auto_buildable": 1,
+    "total_non_buildable": 0
+  },
+  "output_sha256": "sha256:4e8fc08035792309d073d2a248841e3bf049d05c31a5db3cdafb866a41d34efd"
+}

@@ -1,0 +1,47 @@
+{
+  "input": {
+    "existing_profile": {
+      "agent_id": null,
+      "created_at": "2026-01-01T00:00:00Z",
+      "domain_familiarity": {},
+      "persona_version": 2,
+      "preferred_tone": "explanatory",
+      "rebuilt_from_signals": 2,
+      "session_count": 2,
+      "technical_level": "beginner",
+      "user_id": "user-1",
+      "vocabulary_complexity": 0.3
+    },
+    "signals": [
+      {
+        "confidence": 0.9,
+        "emitted_at": "2026-01-01T00:00:00Z",
+        "evidence": "observed behavior",
+        "inferred_value": "advanced",
+        "session_id": "sess-1",
+        "signal_id": "00000000-0000-0000-0000-000000000008",
+        "signal_type": "technical_level",
+        "user_id": "user-1"
+      }
+    ],
+    "user_id": "user-1"
+  },
+  "output": {
+    "error_message": null,
+    "persona": {
+      "agent_id": null,
+      "created_at": "1970-01-01T00:00:00+00:00",
+      "domain_familiarity": {},
+      "persona_version": 3,
+      "preferred_tone": "explanatory",
+      "rebuilt_from_signals": 1,
+      "session_count": 3,
+      "technical_level": "advanced",
+      "user_id": "user-1",
+      "vocabulary_complexity": 0.3
+    },
+    "signals_processed": 1,
+    "status": "success"
+  },
+  "output_sha256": "sha256:651ca97eba20e7313280cfaa83a7db8e3064dd9950c1b58094f8b3bbf61a8c7b"
+}

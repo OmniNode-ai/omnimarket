@@ -38,13 +38,29 @@ __all__ = ["HandlerArchitectureGraphQuery", "ProtocolGraphDriver"]
 # ---------------------------------------------------------------------------
 # Parameterized Cypher query templates
 # All user-supplied values passed as parameters — never interpolated.
+#
+# OMN-14294: openCypher's ``shortestPath()`` function and list-comprehension
+# RETURN expressions (``[n IN nodes(p) | n.name]``) are not implemented by
+# Memgraph 2.18 — both raised parse/runtime errors when this handler was
+# actually exercised against a live Memgraph instance for the first time (the
+# golden-chain suite only ever mocked the driver, so this dialect gap shipped
+# undetected). ``_CYPHER_DEPENDENCY_PATH`` and ``_CYPHER_CIRCULAR_DEPS`` use
+# Memgraph's ``*BFS``/plain variable-length path syntax instead, and return
+# ``nodes(p)``/``relationships(p)`` directly — the driver deserializes those
+# into property dicts and (start, type, end) tuples, and node-name extraction
+# happens in Python instead of in the query.
+#
+# ``max_depth`` is the config-declared ``max_path_depth`` bound (never
+# previously wired into a query) — Memgraph's ``*BFS`` syntax requires an
+# explicit upper bound, so this closes both the dialect gap and the dead
+# config field in the same fix. ``max_depth`` is operator config, never
+# user-supplied, so string-formatting it into the template does not reopen
+# the parameterization guarantee below.
 # ---------------------------------------------------------------------------
 
-_CYPHER_DEPENDENCY_PATH = (
-    "MATCH p = shortestPath((a {name: $from_node})-[:DEPENDS_ON*]->(b {name: $to_node})) "
-    "RETURN [n IN nodes(p) | n.name] AS path_nodes, "
-    "[r IN relationships(p) | [startNode(r).name, type(r), endNode(r).name]] AS path_edges, "
-    "length(p) AS path_length"
+_CYPHER_DEPENDENCY_PATH_TEMPLATE = (
+    "MATCH p = (a {{name: $from_node}})-[:DEPENDS_ON *BFS 1..{max_depth}]->(b {{name: $to_node}}) "
+    "RETURN nodes(p) AS path_nodes, relationships(p) AS path_rels, size(p) AS path_length"
 )
 
 _CYPHER_BLAST_RADIUS = (
@@ -61,10 +77,9 @@ _CYPHER_CROSS_REPO_IMPORTS = (
     "a.name AS from_module, b.name AS to_module, type(r) AS edge_type"
 )
 
-_CYPHER_CIRCULAR_DEPS = (
-    "MATCH p = (a {repo: $repo})-[:DEPENDS_ON*]->(a) "
-    "RETURN [n IN nodes(p) | n.name] AS cycle_nodes, "
-    "length(p) AS cycle_length "
+_CYPHER_CIRCULAR_DEPS_TEMPLATE = (
+    "MATCH p = (a {{repo: $repo}})-[:DEPENDS_ON*1..{max_depth}]->(a) "
+    "RETURN nodes(p) AS cycle_nodes, size(p) AS cycle_length "
     "LIMIT 50"
 )
 
@@ -81,7 +96,7 @@ class ProtocolGraphSession(Protocol):
 
     async def run(self, query: str, **parameters: Any) -> Any: ...
 
-    def data(self) -> list[dict[str, Any]]: ...
+    async def data(self) -> list[dict[str, Any]]: ...
 
 
 @runtime_checkable
@@ -236,13 +251,17 @@ class HandlerArchitectureGraphQuery:
             )
 
         assert self._driver is not None
+        assert self._config is not None
+        cypher = _CYPHER_DEPENDENCY_PATH_TEMPLATE.format(
+            max_depth=self._config.max_path_depth
+        )
         async with _open_session(self._driver) as session:
             result = await session.run(
-                _CYPHER_DEPENDENCY_PATH,
+                cypher,
                 from_node=request.from_node,
                 to_node=request.to_node,
             )
-            rows: list[dict[str, Any]] = result.data()
+            rows: list[dict[str, Any]] = await result.data()
 
         if not rows:
             return ModelArchitectureGraphQueryResponseEvent(
@@ -255,16 +274,25 @@ class HandlerArchitectureGraphQuery:
             )
 
         row = rows[0]
-        path_nodes: list[str] = row.get("path_nodes", [])
-        path_edges_raw: list[Any] = row.get("path_edges", [])
+        # nodes(p)/relationships(p) deserialize to property dicts and
+        # (start_props, type, end_props) tuples — Memgraph doesn't support the
+        # list-comprehension RETURN form used to extract names in the query.
+        path_nodes_raw: list[dict[str, Any]] = row.get("path_nodes", [])
+        path_rels_raw: list[Any] = row.get("path_rels", [])
         path_length: int | None = row.get("path_length")
 
         nodes = tuple(
-            ModelArchQueryGraphNode(name=n, node_type="module") for n in path_nodes
+            ModelArchQueryGraphNode(name=n["name"], node_type="module")
+            for n in path_nodes_raw
+            if isinstance(n, dict) and n.get("name")
         )
         edges = tuple(
-            ModelArchQueryGraphEdge(source=e[0], edge_type=e[1], target=e[2])
-            for e in path_edges_raw
+            ModelArchQueryGraphEdge(
+                source=e[0].get("name", "") if isinstance(e[0], dict) else str(e[0]),
+                edge_type=e[1],
+                target=e[2].get("name", "") if isinstance(e[2], dict) else str(e[2]),
+            )
+            for e in path_rels_raw
             if len(e) == 3
         )
 
@@ -298,7 +326,7 @@ class HandlerArchitectureGraphQuery:
                 _CYPHER_BLAST_RADIUS,
                 target=request.target,
             )
-            rows = result.data()
+            rows = await result.data()
 
         nodes = tuple(
             ModelArchQueryGraphNode(
@@ -348,7 +376,7 @@ class HandlerArchitectureGraphQuery:
                 _CYPHER_CROSS_REPO_IMPORTS,
                 repo=request.repo,
             )
-            rows = result.data()
+            rows = await result.data()
 
         seen_nodes: set[str] = set()
         nodes_list: list[ModelArchQueryGraphNode] = []
@@ -401,19 +429,31 @@ class HandlerArchitectureGraphQuery:
             )
 
         assert self._driver is not None
+        assert self._config is not None
+        cypher = _CYPHER_CIRCULAR_DEPS_TEMPLATE.format(
+            max_depth=self._config.max_path_depth
+        )
         async with _open_session(self._driver) as session:
             result = await session.run(
-                _CYPHER_CIRCULAR_DEPS,
+                cypher,
                 repo=request.repo,
             )
-            rows = result.data()
+            rows = await result.data()
 
         seen_nodes: set[str] = set()
         nodes_list: list[ModelArchQueryGraphNode] = []
         edges_list: list[ModelArchQueryGraphEdge] = []
 
         for row in rows:
-            cycle_nodes: list[str] = row.get("cycle_nodes", [])
+            # nodes(p) deserializes to a list of property dicts — Memgraph
+            # doesn't support the list-comprehension RETURN form used to
+            # extract names in the query.
+            cycle_nodes_raw: list[dict[str, Any]] = row.get("cycle_nodes", [])
+            cycle_nodes: list[str] = [
+                n["name"]
+                for n in cycle_nodes_raw
+                if isinstance(n, dict) and n.get("name")
+            ]
             for name in cycle_nodes:
                 if name and name not in seen_nodes:
                     seen_nodes.add(name)

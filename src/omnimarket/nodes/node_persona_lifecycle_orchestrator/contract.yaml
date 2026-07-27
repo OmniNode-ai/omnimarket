@@ -33,16 +33,18 @@ handler_routing:
   handlers:
     - operation: on_tick
       routing_key: "on_tick"
-      handler_module: "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild"
-      handler_class: "HandlerPersonaRebuild"
+      handler:
+        name: "HandlerPersonaRebuild"
+        module: "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild"
       handler_key: "HandlerPersonaRebuild.on_tick"
       priority: 0
       output_events:
         - "onex.evt.omnimemory.persona-snapshot-created.v1"
     - operation: on_demand
       routing_key: "on_demand"
-      handler_module: "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild"
-      handler_class: "HandlerPersonaRebuild"
+      handler:
+        name: "HandlerPersonaRebuild"
+        module: "omnimarket.nodes.node_persona_lifecycle_orchestrator.handlers.handler_persona_rebuild"
       handler_key: "HandlerPersonaRebuild.on_demand"
       priority: 0
       output_events:

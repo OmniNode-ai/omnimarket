@@ -1,0 +1,34 @@
+{
+  "input": {
+    "correlation_id": "00000011-0000-4000-8000-000000000000",
+    "tickets": [
+      {
+        "contract_yaml": "::: not: [valid: yaml",
+        "description": "qqq",
+        "labels": [],
+        "priority": 0,
+        "seam_boundaries": null,
+        "state": "Todo",
+        "ticket_id": "OMN-11",
+        "title": "Broken yaml zzz"
+      }
+    ]
+  },
+  "output": {
+    "classifications": [
+      {
+        "buildability": "auto_buildable",
+        "confidence": 0.3,
+        "matched_keywords": [],
+        "reason": "Keyword fallback: auto-buildable, default classification",
+        "seam_source": "keyword_fallback",
+        "ticket_id": "OMN-11",
+        "title": "Broken yaml zzz"
+      }
+    ],
+    "correlation_id": "00000011-0000-4000-8000-000000000000",
+    "total_auto_buildable": 1,
+    "total_non_buildable": 0
+  },
+  "output_sha256": "sha256:c7ef49bb21632d9c9389875248d0764699864334c4af323c6a9f8417be25f483"
+}

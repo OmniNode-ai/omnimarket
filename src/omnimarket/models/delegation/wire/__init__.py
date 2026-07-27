@@ -22,11 +22,14 @@ from omnibase_core.models.delegation.wire.model_budget import (
     EnumBudgetAction,
     ModelBudgetLimits,
 )
+from omnibase_core.models.delegation.wire.model_delegation_completed import (
+    ModelDelegationCompleted,
+)
+from omnibase_core.models.delegation.wire.model_delegation_failed import (
+    ModelDelegationFailed,
+)
 from omnibase_core.models.delegation.wire.model_delegation_result import (
     ModelDelegationResult,
-)
-from omnibase_core.models.delegation.wire.model_delegation_wire_envelope import (
-    ModelDelegationEventEnvelope,
 )
 from omnibase_core.models.delegation.wire.model_delegation_wire_request import (
     MAX_WORDS_PER_SENTENCE_RE,
@@ -63,6 +66,7 @@ from omnimarket.models.delegation.wire.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
+    ModelDelegateSkillAttemptRecord,
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
 )
@@ -90,6 +94,7 @@ __all__: list[str] = [
     "ModelBifrostDelegationConfig",
     "ModelBudgetLimits",
     "ModelComplianceLoopResult",
+    "ModelDelegateSkillAttemptRecord",
     "ModelDelegateSkillRequest",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
@@ -97,9 +102,10 @@ __all__: list[str] = [
     "ModelDelegateSkillTerminalProjection",
     "ModelDelegationBackendConfig",
     "ModelDelegationCircuitBreakerConfig",
+    "ModelDelegationCompleted",
     "ModelDelegationConfig",
-    "ModelDelegationEventEnvelope",
     "ModelDelegationEventProjectionRow",
+    "ModelDelegationFailed",
     "ModelDelegationFailoverConfig",
     "ModelDelegationFallbackPolicy",
     "ModelDelegationRequest",

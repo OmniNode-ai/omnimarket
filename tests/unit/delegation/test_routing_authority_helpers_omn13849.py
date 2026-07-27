@@ -58,6 +58,16 @@ _BIFROST_CODE_GEN_ROUTABLE = textwrap.dedent(
         timeout_ms: 30000
         max_tokens: 8192
         capabilities: [code_generation]
+      # OMN-14625: cheap_cloud and the claude ceiling now select cloud-gemini-pro
+      # (see routing_tiers.yaml); a complete endpoint is required here so
+      # next_eligible_tier can resolve past cheap_cloud to the claude ceiling.
+      - backend_id: cloud-gemini-pro
+        endpoint_url: "https://cloud.test/gemini-pro/v1/chat/completions"
+        model_name: gemini-2.5-flash
+        tier: frontier_api
+        timeout_ms: 60000
+        max_tokens: 65536
+        capabilities: [code_generation]
     routing_rules:
       - rule_id: "c0ffee00-0011-4000-8000-000000000001"
         priority: 10
@@ -66,7 +76,7 @@ _BIFROST_CODE_GEN_ROUTABLE = textwrap.dedent(
         backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-coder, cloud-glm]
+        backend_ids: [local-coder, cloud-glm, cloud-gemini-pro]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1
@@ -107,8 +117,15 @@ def code_gen_routable(
 
 
 def test_resolve_max_escalations_reads_contract_budget() -> None:
-    """code_generation declares max_escalations=2; research=2; documentation=1."""
-    assert resolve_task_class_max_escalations("code_generation") == 2
+    """code_generation declares max_escalations=3 (OMN-13943); research=2;
+    documentation=1.
+
+    OMN-13943 bumped code_generation's budget 2 -> 3: the tier_order gained a
+    fourth tier (cheap_frontier, inserted between cheap_cloud and claude), so 3
+    escalations are now required to walk local -> cheap_cloud -> cheap_frontier
+    -> claude.
+    """
+    assert resolve_task_class_max_escalations("code_generation") == 3
     assert resolve_task_class_max_escalations("research") == 2
     assert resolve_task_class_max_escalations("documentation") == 1
 
@@ -122,13 +139,12 @@ def test_resolve_max_escalations_unknown_task_returns_none() -> None:
 def test_backend_id_for_tier_resolves_a_local_backend() -> None:
     """The local tier resolves a concrete local backend for code_generation.
 
-    The exact backend is whatever ``_select_model_for_task`` selects (the same
-    logic ``delta`` uses); it must be a backend the local tier declares — asserted
-    via the tier round-trip, so this test tracks the real selection instead of a
-    brittle literal.
+    OMN-13599 pins code_generation to the AI-PC local-coder path when the local
+    overlay supplies a complete endpoint. This guards against fast-path drift to
+    another local backend.
     """
     backend_id = backend_id_for_tier("local", "code_generation")
-    assert backend_id is not None
+    assert backend_id == "local-coder"
     assert tier_for_backend(backend_id) == "local"
 
 
@@ -151,30 +167,30 @@ def test_backend_id_for_tier_round_trips_through_tier_for_backend() -> None:
 
 @pytest.mark.usefixtures("code_gen_routable")
 def test_next_eligible_tier_advances_up_closed_set_order() -> None:
-    """code_generation tier_order is [cheap_cloud, local, claude]; from cheap_cloud
-    the next un-excluded eligible tier is a declared, routable higher tier
-    (closed-set order, OMN-13140)."""
+    """code_generation tier_order is [local, cheap_cloud, claude].
+
+    From cheap_cloud, the next un-excluded eligible tier is the declared ceiling
+    tier (closed-set order, OMN-13599).
+    """
     nxt = next_eligible_tier("cheap_cloud", frozenset(), task_type="code_generation")
     # The next tier after cheap_cloud in the code_generation closed-set order that
     # can route the task with a resolvable backend.
-    assert nxt is not None
-    assert nxt in {"local", "claude"}
+    assert nxt == "claude"
 
 
 # --- OMN-13861: initial (cheapest-first) tier resolution -------------------------
 
 
 @pytest.mark.usefixtures("code_gen_routable")
-def test_first_eligible_tier_is_cheapest_in_closed_set_order() -> None:
-    """OMN-13861: the INITIAL tier is the FIRST of the closed-set tier_order.
+def test_first_eligible_tier_is_local_in_closed_set_order() -> None:
+    """OMN-13599: the INITIAL tier is the FIRST of the closed-set tier_order.
 
     code_generation's ``escalation_policy.tier_order`` is
-    ``[cheap_cloud, local, claude]``; the initial resolution must pick
-    ``cheap_cloud`` (the cheapest declared tier that can route the task), NOT the
-    first bifrost-file-order backend the untargeted resolver landed on. This is the
-    closed-set + cheapest-first guardrail the untargeted resolution violated.
+    ``[local, cheap_cloud, claude]``; the initial resolution must pick ``local``
+    when the AI-PC endpoint overlay makes the tier routable, NOT the first
+    bifrost-file-order backend the untargeted resolver landed on.
     """
-    assert first_eligible_tier("code_generation") == "cheap_cloud"
+    assert first_eligible_tier("code_generation") == "local"
 
 
 @pytest.mark.usefixtures("code_gen_routable")

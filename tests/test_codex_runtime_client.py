@@ -37,6 +37,7 @@ from omnimarket.adapters.codex.runtime_client import (
     default_target_runtime_address,
     main,
 )
+from omnimarket.events.pr_lifecycle_triage import ModelPrTriageInput
 from omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep import (
     AislopSweepRequest,
     NodeAislopSweep,
@@ -447,7 +448,7 @@ class _NativePrLifecycleContractTransport:
         raw = json.loads(value)
         assert raw["event_type"] == "omnimarket.pr-lifecycle-orchestrator-start"
         command = ModelPrLifecycleStartCommand.model_validate(raw["payload"])
-        assert command.repos == "omnimarket,onex_change_control"
+        assert command.repos == "OmniNode-ai/omnimarket,OmniNode-ai/onex_change_control"
 
         terminal_topic = "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"
         assert terminal_topic in self.callbacks
@@ -609,11 +610,9 @@ class _PatternBInventoryHandler:
 
 
 class _PatternBTriageHandler:
-    async def handle(
-        self,
-        correlation_id: object,
-        prs: tuple[object, ...],
-    ) -> PrTriageResult:
+    async def handle(self, request: ModelPrTriageInput) -> PrTriageResult:
+        correlation_id = request.correlation_id
+        prs = tuple(request.prs)
         assert correlation_id
         assert len(prs) == 2
         return PrTriageResult(

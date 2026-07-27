@@ -1,0 +1,23 @@
+name: node_delivery_replay_projection_compute
+version: "0.1.0"
+description: "Pure computation: folds an ordered delivery/event sequence into a deterministic projection checksum + terminal cursor, with per-signal divergence reporting. Evidence-only, zero I/O."
+pack: pipeline
+node_role: compute
+display_name: "Delivery Replay Projection Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_delivery_replay_projection_compute: "omnimarket.nodes.node_delivery_replay_projection_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "replay", "determinism", "projection", "golden-chain"]

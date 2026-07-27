@@ -1,0 +1,149 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# call-occ-autobind.yml
+#
+# Born-path trigger (OMN-13990 / OMN-13317 F1). Publishes
+# onex.cmd.omnimarket.occ-autobind.v1 when a ticketed product PR is opened or
+# synchronized, so the OCC evidence companion is authored mechanically by the
+# .201 effects runtime (node_pr_lifecycle_fix_effect -> OccAutobindAdapter)
+# rather than by a human/agent post-hoc. The runtime PATCHes
+# `Evidence-Source: OCC#<n>` onto the PR body and occ-preflight (which now also
+# fires on `edited`) re-evaluates green — zero manual authoring.
+#
+# BROKER DECISION (mirrors pr-merged-publisher.yml, OMN-13226; corrected under
+# OMN-14451; secret dependency removed under OMN-14813):
+#   Trusted (non-fork) PR events run on the self-hosted omnibase-ci runner on
+#   .201. That runner reaches the dev-lane Redpanda across the bridge network.
+#   The broker is now resolved SECRET-FREE from the checked-in
+#   `config/ci_bus_lanes.yaml` overlay: `dev` declares the concrete external
+#   listener `omninode-pc.tail75df5e.ts.net:19092` directly, so the publisher
+#   publishes to that committed address with NO `KAFKA_BOOTSTRAP_SERVERS` secret
+#   injected (OMN-14813 completes OMN-14801 design point 3 -- no raw broker
+#   address in any GHA secret). Fork PRs fall back to ubuntu-latest and skip
+#   gracefully (exit 0). On the trusted runner an unreachable broker still fails
+#   loud (RuntimeError / exit 1, OMN-14639 undelivered-flush guard), so a real
+#   misconfiguration is a red signal, not a silent green -- the safety posture is
+#   strictly better than trusting an opaque secret.
+#
+# OVERLAY-DRIVEN LANE RESOLUTION (OMN-14801 / OMN-14813):
+#   The publish step passes `--lane dev`, which the script resolves against the
+#   checked-in `config/ci_bus_lanes.yaml` overlay to decide the bus target. `dev`
+#   is declared as the concrete broker above, so the publisher uses it directly.
+#   The overlay's fail-loud divergence guard (silent dev->stability repoint,
+#   incident OMN-14800) still fires if a `KAFKA_BOOTSTRAP_SERVERS` secret is ever
+#   re-injected and diverges -- but this workflow no longer injects one.
+#
+# TRIGGER COVERAGE (OMN-14989, identical gap to OMN-14987/omnibase_infra):
+# opened/synchronize alone miss two born-path holes. (1) draft->ready_for_review
+# WITHOUT an intervening push never re-fires either event -- GitHub emits a
+# distinct ready_for_review event that this workflow did not listen for, so a
+# PR opened as draft and later marked ready was permanently stranded unbound.
+# (2) closed-then-reopened has the same hole via the reopened event. Both are
+# now listed. The F-17 draft-suppression guard is NOT a trigger-level gate --
+# it lives downstream in node_occ_companion_compute
+# (handler_occ_companion_compute.py), which checks live pr_is_draft state at
+# compute time, so adding ready_for_review here cannot cause a mint while the
+# PR is still a draft; it only unblocks the mint for the transition OUT of
+# draft.
+#
+# BRANCH FILTER (OMN-14989, #2377 stacked-PR vector): the prior
+# branches: [main, dev, "hotfix/**"] filter meant a PR whose BASE is a
+# feature branch (a stacked PR) never instantiated this workflow at all -- the
+# born path silently never ran, and if the base later retargeted dev the
+# opened/synchronize events had already passed. Removed to match
+# omnibase_infra's call-occ-autobind.yml / call-occ-companion-effect.yml
+# already-deliberate no-filter design: every pull_request now fires here; the
+# job's own bot/OMN-ticket gate below filters what should not publish. Any
+# future base-branch filtering must be IN-JOB with a logged skip, never at the
+# trigger.
+#
+# Ticket: OMN-13990, OMN-14451, OMN-14801, OMN-14813, OMN-14989
+
+name: OCC Autobind Publisher
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: read
+
+jobs:
+  publish-occ-autobind:
+    name: Publish occ-autobind command
+    # Skip dependency bots (exempt from occ-preflight too) and PRs with no OMN
+    # ticket token in the title or branch — a ticketless PR must be fixed by the
+    # pr-title gate, not papered over with a mechanical companion (OMN-13990 H4).
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'renovate[bot]' &&
+      (contains(github.event.pull_request.title, 'OMN-') ||
+       contains(github.event.pull_request.head.ref, 'OMN-'))
+    # OMNI_RUNNER_SELECTOR_V1 — trusted (non-fork) PRs run on the self-hosted
+    # omnibase-ci runner so the publisher reaches the local lane broker; fork
+    # PRs fall back to ubuntu-latest (publisher skips gracefully, no broker).
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
+    # OMN-14451: same fork/non-fork test as `runs-on:` above, threaded into the
+    # publish step so the script can fail loudly (not silently exit 0) when the
+    # broker is unresolvable on the trusted lane where a real broker MUST exist.
+    env:
+      RUNNER_IS_TRUSTED: >-
+        ${{
+          (github.event_name == 'pull_request' &&
+           github.event.pull_request.head.repo.full_name != github.repository)
+          && 'false' || 'true'
+        }}
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          # This job only runs a Python publisher; it never pushes to git, so do
+          # not persist the auto-injected token into .git/config (supply-chain
+          # exposure surface for later steps). CodeRabbit hardening.
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          # pyyaml: parse the checked-in config/ci_bus_lanes.yaml lane overlay
+          # (OMN-14801). Kept deliberately thin -- no product graph import.
+          pip install --quiet confluent-kafka click pydantic pyyaml
+
+      - name: Publish onex.cmd.omnimarket.occ-autobind.v1
+        # All potentially attacker-controlled inputs (branch name, PR title) are
+        # passed through environment variables to prevent shell injection.
+        #
+        # OMN-14813: SECRET-FREE. `KAFKA_BOOTSTRAP_SERVERS` (and the dev-lane's
+        # dead SASL creds -- the dev lane is plaintext, no SASL) are no longer
+        # injected. The broker is resolved from the checked-in
+        # config/ci_bus_lanes.yaml overlay, where `dev` declares the concrete
+        # external listener directly. No per-repo `gh secret set` is required for
+        # this fan-out anymore.
+        env:
+          PR_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          # Best-effort ticket extraction; the script also parses the branch ref.
+          PR_TICKET: ""
+        # OMN-14801/OMN-14813: --lane dev selects the authoring lane from the
+        # checked-in config/ci_bus_lanes.yaml overlay. `dev` declares the concrete
+        # dev-lane broker there, so the publisher resolves it straight from the
+        # committed overlay with no secret. An unreachable broker still fails loud
+        # (OMN-14639); the overlay divergence guard still fires if a secret is
+        # ever re-injected and diverges.
+        run: |
+          python scripts/publish_occ_autobind_command.py --lane dev

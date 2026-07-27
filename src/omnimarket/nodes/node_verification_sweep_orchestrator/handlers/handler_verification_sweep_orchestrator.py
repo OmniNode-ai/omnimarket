@@ -125,6 +125,48 @@ class HandlerVerificationSweepOrchestrator:
         adapter_errors: list[ModelVerificationAdapterError] = []
 
         targets = self._resolve_targets(request, adapter_errors)
+        scanned_count = len(targets)
+
+        # Fail-closed census gate (OMN-14552). A verification sweep over an
+        # empty target set certifies nothing, so refuse to emit any non-``fail``
+        # verdict when scanned_count == 0 — the exact "green over nothing"
+        # failure the detection-shelf audit (OMN-14531) exists to kill, and the
+        # same invariant runtime_sweep ("zero entities is not clean") and
+        # dashboard_sweep ("no_targets") already enforce. The census REQUIRED
+        # invariant is enforced here in the harness, not as a single required
+        # Pydantic field: "at least one of targets|epic|pr" cannot be expressed
+        # by one required field, and enforcing it against the census the harness
+        # itself resolved also catches epic→[] and resolution failures that a
+        # required input field would miss.
+        if scanned_count == 0:
+            adapter_errors.append(
+                ModelVerificationAdapterError(
+                    phase="empty_scope",
+                    target="",
+                    adapter=self.__class__.__name__,
+                    error=(
+                        "Refusing to report PASS over an empty verification set: "
+                        "no targets resolved from targets/epic/pr, so the sweep "
+                        "certified nothing (scanned_count=0)."
+                    ),
+                )
+            )
+            result = ModelVerificationSweepOrchestratorResult(
+                scanned_count=0,
+                overall_status="fail",
+                dry_run=request.dry_run,
+                adapter_errors=adapter_errors,
+            )
+            if request.dry_run:
+                return result
+            receipt_path = self._write_receipt(result, request, targets, adapter_errors)
+            return result.model_copy(
+                update={
+                    "receipt_path": receipt_path,
+                    "adapter_errors": adapter_errors,
+                }
+            )
+
         for target in targets:
             if "dashboard" in check_types:
                 endpoint_results.extend(
@@ -147,6 +189,7 @@ class HandlerVerificationSweepOrchestrator:
             endpoint_results=endpoint_results,
             db_checks=db_checks,
             dod_receipts=dod_receipts,
+            scanned_count=scanned_count,
             overall_status=overall_status,
             dry_run=request.dry_run,
             adapter_errors=adapter_errors,

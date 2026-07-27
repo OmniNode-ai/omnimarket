@@ -1,0 +1,23 @@
+{
+  "case_id": "no_capacity_a_skips",
+  "fingerprint": "sha256:e5185019969548e3c41b73a289448c3dff72b0db23d359b61e0189aaf3b657f4",
+  "input_hash": "sha256:8e15e1e770ef1a3d8f3e9bcd4bd71f6740ddf626b2ea411d845596cff34603a5",
+  "result": {
+    "kind": "ok",
+    "output": {
+      "selection": {
+        "cost_basis": "zero_marginal_api_cost",
+        "endpoint_env": "LLM_B_URL",
+        "model_id": "model-b",
+        "selection_reason": "preferred model selected",
+        "skipped_models": [
+          {
+            "model_id": "model-a",
+            "skip_reason": "endpoint 'LLM_A_URL' has no capacity (rate-limited) at 2000-01-01T00:00:00+00:00"
+          }
+        ],
+        "tier": "local"
+      }
+    }
+  }
+}

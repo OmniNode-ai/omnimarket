@@ -278,9 +278,21 @@ class TestRuntimeSweepGoldenChain:
         assert result.by_type.get("NON_DURABLE_CONTRACT", 0) == 0
 
     async def test_dry_run_flag(self, event_bus: EventBusInmemory) -> None:
-        """dry_run flag should propagate from request to result."""
+        """dry_run flag should propagate from request to result.
+
+        Carries one contract so the request does not trigger the OMN-13919
+        default $OMNI_HOME collection path (empty input now self-collects).
+        """
         handler = NodeRuntimeSweep()
-        request = RuntimeSweepRequest(contracts=[], dry_run=True)
+        request = RuntimeSweepRequest(
+            contracts=[
+                ModelContractInput(
+                    node_name="node_dry_run_probe",
+                    description="A real description for the dry-run probe node.",
+                )
+            ],
+            dry_run=True,
+        )
         result = handler.handle(request)
 
         assert result.dry_run is True
@@ -302,13 +314,32 @@ class TestRuntimeSweepGoldenChain:
 
 
 @pytest.mark.unit
-class TestRuntimeSweepProfileConsumerCensus:
-    """OMN-12957 dual check: manifest profile vs live consumer-group census."""
+class TestRuntimeSweepConsumerLiveness:
+    """OMN-14528 per-contract live-consumer-group check.
 
-    async def test_profile_without_live_consumer_flagged(
+    Replaces the OMN-12957 per-profile ``PROFILE_CONSUMER`` vouching check. The
+    census is now the set of LIVE consumer GROUP IDS on the broker, and each
+    subscribing contract's OWN node-name identity must appear in one — a
+    sibling's live group in the same runtime_profile no longer vouches for it.
+    """
+
+    # A live consumer group id for a node has the canonical shape
+    # ``{env}.{service}.{node_name}.consume.{version}[.__t.{topic}]``.
+    @staticmethod
+    def _live_group(node_name: str) -> str:
+        return f"dev.omnimarket.{node_name}.consume.v1.__t.onex.cmd.demo.do.v1"
+
+    async def test_dead_corpse_flagged_despite_live_sibling(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """A subscribing node whose profile has no live consumer is a silent orphan."""
+        """A subscribing node with NO live group of its own is a silent orphan.
+
+        The class-fix proof: the census contains a LIVE group for a sibling
+        contract in the SAME runtime_profile, yet the corpse — which ships and
+        declares subscribe_topics but has zero consumer group — must still be
+        flagged. Under the old per-profile check the live sibling vouched for
+        the corpse (the exact 13-dead-contract false negative OMN-14528 closes).
+        """
         handler = NodeRuntimeSweep()
         request = RuntimeSweepRequest(
             contracts=[
@@ -321,24 +352,28 @@ class TestRuntimeSweepProfileConsumerCensus:
                     runtime_profiles=["effects"],
                 )
             ],
-            # effects has no live consumer; only main is attached.
-            live_consumer_profiles=["main"],
+            # A live sibling in the SAME profile — must NOT vouch for the corpse.
+            live_consumer_groups=[self._live_group("node_live_sibling")],
+            require_live_consumer_census=True,
+            enabled_checks=[EnumSweepCheck.CONSUMER_LIVENESS],
         )
         result = handler.handle(request)
 
-        assert result.by_type.get("PROFILE_NO_LIVE_CONSUMER", 0) == 1
+        assert result.by_type.get("CONTRACT_NO_LIVE_CONSUMER", 0) == 1
         finding = next(
             f
             for f in result.findings
-            if f.finding_type == EnumFindingType.PROFILE_NO_LIVE_CONSUMER
+            if f.finding_type == EnumFindingType.CONTRACT_NO_LIVE_CONSUMER
         )
         assert finding.subject == "node_orphan_effect"
         assert finding.severity == "CRITICAL"
+        assert result.consumers_checked == 1
+        assert result.live_consumer_groups_scanned == 1
 
-    async def test_profile_with_live_consumer_passes(
+    async def test_node_with_own_live_group_passes(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """A node whose profile is in the live census is not orphaned."""
+        """A node whose OWN node-name identity is in a live group is not orphaned."""
         handler = NodeRuntimeSweep()
         request = RuntimeSweepRequest(
             contracts=[
@@ -349,16 +384,26 @@ class TestRuntimeSweepProfileConsumerCensus:
                     runtime_profiles=["effects"],
                 )
             ],
-            live_consumer_profiles=["main", "effects", "workers"],
+            live_consumer_groups=[
+                self._live_group("node_live_effect"),
+                self._live_group("node_other"),
+            ],
+            require_live_consumer_census=True,
+            enabled_checks=[EnumSweepCheck.CONSUMER_LIVENESS],
         )
         result = handler.handle(request)
 
-        assert result.by_type.get("PROFILE_NO_LIVE_CONSUMER", 0) == 0
+        assert result.by_type.get("CONTRACT_NO_LIVE_CONSUMER", 0) == 0
 
-    async def test_census_not_collected_skips_check(
+    async def test_census_required_but_none_raises(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """When live census is None, the dual check does not run (no false orphans)."""
+        """A required census that is None is a HARD FAILURE, never a silent skip.
+
+        This is the exact anti-pattern OMN-14528 closes: the pre-fix check
+        skipped silently when the census was not collected (an operator-typed
+        flag nothing ever supplied), so it always passed with zero findings.
+        """
         handler = NodeRuntimeSweep()
         request = RuntimeSweepRequest(
             contracts=[
@@ -369,16 +414,38 @@ class TestRuntimeSweepProfileConsumerCensus:
                     runtime_profiles=["effects"],
                 )
             ],
-            live_consumer_profiles=None,
+            live_consumer_groups=None,
+            require_live_consumer_census=True,
+            enabled_checks=[EnumSweepCheck.CONSUMER_LIVENESS],
         )
-        result = handler.handle(request)
+        with pytest.raises(ValueError, match="census is None"):
+            handler.handle(request)
 
-        assert result.by_type.get("PROFILE_NO_LIVE_CONSUMER", 0) == 0
+    async def test_required_but_empty_census_raises(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A required census of zero live groups fails closed (scanned_count > 0)."""
+        handler = NodeRuntimeSweep()
+        request = RuntimeSweepRequest(
+            contracts=[
+                ModelContractInput(
+                    node_name="node_effect",
+                    description="An effect node with a real description here",
+                    subscribe_topics=["onex.cmd.demo.do.v1"],
+                    runtime_profiles=["effects"],
+                )
+            ],
+            live_consumer_groups=[],
+            require_live_consumer_census=True,
+            enabled_checks=[EnumSweepCheck.CONSUMER_LIVENESS],
+        )
+        with pytest.raises(ValueError, match="ZERO live consumer groups"):
+            handler.handle(request)
 
     async def test_non_subscribing_node_exempt(
         self, event_bus: EventBusInmemory
     ) -> None:
-        """A publish-only node cannot be consumer-orphaned even with empty census."""
+        """A publish-only node cannot be consumer-orphaned; it is not in scope."""
         handler = NodeRuntimeSweep()
         request = RuntimeSweepRequest(
             contracts=[
@@ -387,13 +454,25 @@ class TestRuntimeSweepProfileConsumerCensus:
                     description="A publisher node with a real description here",
                     publish_topics=["onex.evt.demo.done.v1"],
                     runtime_profiles=["effects"],
-                )
+                ),
+                # A second, subscribing node keeps the check scanning a non-zero
+                # count so the required-census scanned assertion is satisfied.
+                ModelContractInput(
+                    node_name="node_live_effect",
+                    description="An effect node with a real description here",
+                    subscribe_topics=["onex.cmd.demo.do.v1"],
+                    runtime_profiles=["effects"],
+                ),
             ],
-            live_consumer_profiles=[],
+            live_consumer_groups=[self._live_group("node_live_effect")],
+            require_live_consumer_census=True,
+            enabled_checks=[EnumSweepCheck.CONSUMER_LIVENESS],
         )
         result = handler.handle(request)
 
-        assert result.by_type.get("PROFILE_NO_LIVE_CONSUMER", 0) == 0
+        assert result.by_type.get("CONTRACT_NO_LIVE_CONSUMER", 0) == 0
+        # Only the subscribing node was in scope; the publisher was not scanned.
+        assert result.consumers_checked == 1
 
 
 @pytest.mark.unit

@@ -1,6 +1,6 @@
 name: node_plan_audit_compute
 version: "1.0.0"
-description: "YAML validation, field checks, and cycle detection for plan files"
+description: "Plan-file audit for YAML and Markdown plans: schema/cycle checks for YAML, structure/linkage/verified-state checks for Markdown, SKIPPED reporting for unsupported formats"
 omnibase_core_compat: ">=0.40.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -13,7 +13,7 @@ dependencies:
   - "omnibase_core>=0.40.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
-tags: ["compute", "plan", "audit", "validation", "yaml"]
+tags: ["compute", "plan", "audit", "validation", "yaml", "markdown"]
 pack: "planning"
 display_name: "Plan Audit Compute"
 node_role: "compute"

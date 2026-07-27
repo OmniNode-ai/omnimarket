@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Pure prod-promotion-gate COMPUTE handler (OMN-13211 / B3).
+"""Pure prod-promotion-gate COMPUTE handler (OMN-13211 / B3; def-B flip OMN-14838).
 
 Re-expresses the ``node_redeploy`` ``_evaluate_prod_gate`` logic as a canonical
 COMPUTE node. Pure: no I/O, no bus, no DB, no subprocess. It decides whether a
@@ -15,20 +15,17 @@ Rules (delegated to the shared gate functions):
   * prod without a readiness projection (legacy/un-gated request): fails closed
     via the same-digest gate with no stability readiness.
 
-Dispatch:
-  The runtime delivers a ``ModelEventEnvelope`` whose payload is a
-  ``ModelProdPromotionGateCommand`` (or its dict form). The handler returns a
-  ``ModelHandlerOutput.for_compute`` carrying the ``ModelProdPromotionGateDecision``.
+Dispatch (canonical definition B, OMN-14355):
+  The handler core is ``handle(request: ModelProdPromotionGateCommand) ->
+  ModelProdPromotionGateDecision`` — a single typed-payload positional returning
+  the decision directly. The event-envelope boundary (dict/envelope coercion,
+  the handler-output wrapping, correlation-id propagation, the runtime-
+  synthesized terminal event) is owned by the shared runtime adapter
+  (``omnibase_core.runtime.runtime_local_adapter``), NOT this per-node core. The
+  core imports no envelope type and no handler-output wrapper (C-core).
 """
 
 from __future__ import annotations
-
-from collections.abc import Mapping
-from typing import Any
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
-from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_deployment import (
     EnumProdGrantReason,
@@ -129,31 +126,17 @@ class HandlerProdPromotionGate:
     """Canonical COMPUTE handler: prod promotion facts -> gate decision."""
 
     async def handle(
-        self, envelope: ModelEventEnvelope[Any]
-    ) -> ModelHandlerOutput[ModelProdPromotionGateDecision]:
-        """Pure compute: evaluate the prod gate for the request payload."""
-        command = _coerce_command(envelope.payload)
-        decision = evaluate_gate(command)
-        return ModelHandlerOutput.for_compute(
-            input_envelope_id=envelope.envelope_id,
-            correlation_id=envelope.correlation_id or command.correlation_id or uuid4(),
-            handler_id=HANDLER_ID,
-            result=decision,
-        )
+        self, request: ModelProdPromotionGateCommand
+    ) -> ModelProdPromotionGateDecision:
+        """def-B compute: evaluate the prod gate for the typed request payload.
 
-
-def _coerce_command(payload: Any) -> ModelProdPromotionGateCommand:
-    """Coerce the dispatched payload into a ``ModelProdPromotionGateCommand``."""
-    if isinstance(payload, ModelProdPromotionGateCommand):
-        return payload
-    if isinstance(payload, Mapping):
-        return ModelProdPromotionGateCommand.model_validate(dict(payload))
-    if hasattr(payload, "model_dump"):
-        return ModelProdPromotionGateCommand.model_validate(payload.model_dump())
-    raise TypeError(
-        f"prod promotion gate payload must be ModelProdPromotionGateCommand or a "
-        f"mapping; got {type(payload).__name__}"
-    )
+        Pure and stateless. The shared runtime adapter resolves the contract
+        ``input_model`` from the envelope/dict payload and passes the concrete
+        ``ModelProdPromotionGateCommand`` positionally; this core returns the
+        ``ModelProdPromotionGateDecision`` directly (no envelope wrapper, no
+        handler-output wrapper).
+        """
+        return evaluate_gate(request)
 
 
 __all__: list[str] = ["HANDLER_ID", "HandlerProdPromotionGate", "evaluate_gate"]

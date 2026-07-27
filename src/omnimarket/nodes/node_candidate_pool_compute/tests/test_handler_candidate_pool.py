@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import json
 
 import pytest
@@ -18,6 +19,7 @@ from omnimarket.nodes.node_candidate_pool_compute.models.model_pool_request impo
 )
 from omnimarket.nodes.node_candidate_pool_compute.models.model_pool_result import (
     EnumPoolStatus,
+    ModelCandidatePoolResult,
 )
 
 _OBJECT_SCHEMA: dict[str, object] = {
@@ -209,3 +211,36 @@ class TestCandidatePoolRequestValidation:
     def test_negative_max_loc_rejected(self) -> None:
         with pytest.raises(ValidationError):
             _req([_VALID_JSON], max_loc=-1)
+
+
+@pytest.mark.unit
+class TestCanonicalThinShape:
+    """Shape contract test: locks HandlerCandidatePool to the thin canonical
+    shape (OMN-14242) — no envelope, no ModelHandlerOutput wrapper, no
+    coercion in the handler; single typed request in, single typed
+    result out.
+    """
+
+    def test_handle_signature_is_thin(self) -> None:
+        import inspect
+        import typing
+
+        import omnimarket.nodes.node_candidate_pool_compute.handlers.handler_candidate_pool as mod
+
+        sig = inspect.signature(HandlerCandidatePool.handle)
+        params = list(sig.parameters.values())
+        assert [p.name for p in params] == ["self", "request"]
+        hints = typing.get_type_hints(mod.HandlerCandidatePool.handle)
+        assert hints["request"] is ModelCandidatePoolRequest
+        assert hints["return"] is ModelCandidatePoolResult
+
+    def test_handler_module_has_no_envelope_or_mho_imports(self) -> None:
+        import omnimarket.nodes.node_candidate_pool_compute.handlers.handler_candidate_pool as mod
+
+        source = inspect.getsource(mod)
+        assert "ModelHandlerOutput" not in source
+        assert "ModelEventEnvelope" not in source
+
+    def test_handle_returns_typed_result_directly(self) -> None:
+        result = HandlerCandidatePool().handle(_req([_VALID_JSON], max_loc=20))
+        assert isinstance(result, ModelCandidatePoolResult)

@@ -64,11 +64,12 @@ from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationSt
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_event import (
-    ModelDelegationEvent,
-)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationResult,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.handlers.handler_quality_gate import (
     delta as quality_gate_delta,
@@ -145,6 +146,58 @@ _BIFROST_CONTRACT_CODE = (
     '    shadow_policy_id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"\n'
     "default_backends:\n"
     "  - cloud-gemini-flash\n"
+    "circuit_breaker:\n"
+    "  failure_threshold: 5\n"
+    "  window_seconds: 30\n"
+    "failover:\n"
+    "  max_attempts: 3\n"
+    "  backoff_base_ms: 500\n"
+    "shadow_mode:\n"
+    "  enabled: false\n"
+    '  policy_version: "test"\n'
+    "  log_sample_rate: 1.0\n"
+    "  comparison_logging_enabled: true\n"
+    "  max_shadow_latency_ms: 5.0\n"
+)
+
+# OMN-13599: code_generation routes local -> cheap_cloud -> claude.
+# OMN-14625: cheap_cloud's code_generation primary was repointed off z.ai GLM
+# (cloud-glm, DEAD from the .201 runtime) to Gemini (cloud-gemini-pro). The
+# real-bus chain routes a code_generation request, so its self-contained
+# bifrost contract must carry the cloud-gemini-pro backend (the cheap_cloud
+# code-gen primary) with a COMPLETE verbatim endpoint_url and NO secret_ref —
+# so routing resolves deterministically to gemini-2.5-flash without a host
+# overlay and without the LLM_GEMINI_API_KEY the delegation conftest
+# deliberately clears. (The earlier gemini-only contract could not resolve
+# code_generation once OMN-13599 removed gemini from that routing path, and
+# local-coder has no endpoint off-host.)
+_BIFROST_CONTRACT_CODE_GLM = (
+    "config_version: '2.0.0'\n"
+    "schema_version: bifrost_delegation.v1\n"
+    "backends:\n"
+    "  - backend_id: cloud-gemini-pro\n"
+    '    endpoint_url: "https://example.test/v1/chat/completions"\n'
+    '    model_name: "gemini-2.5-flash"\n'
+    "    tier: cheap_cloud\n"
+    "    timeout_ms: 30000\n"
+    "    max_tokens: 8192\n"
+    "    capabilities: [code_generation, code_review, reasoning, research, test, refactor]\n"
+    "routing_rules:\n"
+    '  - rule_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc"\n'
+    "    priority: 10\n"
+    "    task_class: code_generation\n"
+    '    task_class_contract_version: "1.0.0"\n'
+    '    backend_policy_version: "2.0.0"\n'
+    "    match_operation_types: [chat_completion]\n"
+    "    match_capabilities: [code_generation]\n"
+    "    backend_ids: [cloud-gemini-pro]\n"
+    "    fallback_policy:\n"
+    "      action: escalate_to_next_tier\n"
+    "      max_retries: 1\n"
+    "      on_exhaust: return_error\n"
+    '    shadow_policy_id: "dddddddd-dddd-4ddd-8ddd-dddddddddddd"\n'
+    "default_backends:\n"
+    "  - cloud-gemini-pro\n"
     "circuit_breaker:\n"
     "  failure_threshold: 5\n"
     "  window_seconds: 30\n"
@@ -251,6 +304,30 @@ class TestJudgeResolvesConcreteModelNotTier:
         model_id = adapter.resolved_model_id()
         assert model_id not in {"cheap_cloud", "cheap_frontier", "local", "unknown"}
         assert model_id  # non-empty concrete id
+
+    def test_judge_backend_decoupled_from_escalation_model(self) -> None:
+        """OMN-14225: the JUDGE model is decoupled from the cheap_cloud escalation.
+
+        OMN-14625: the escalation backend (``cloud-glm``) is UNCHANGED by this
+        ticket — cheap_cloud/claude were repointed to a different backend
+        (``cloud-gemini-pro``), leaving ``cloud-glm`` itself defined-but-unused
+        (still ``glm-5-turbo``). The JUDGE's OWN ``cloud-glm-judge`` backend was
+        separately repointed off z.ai GLM to Gemini (``gemini-2.5-flash``) because
+        the z.ai route is DEAD from the .201 runtime. This test's load-bearing
+        invariant survives both repoints unchanged: the judge and the escalation
+        backend resolve from DIFFERENT backend definitions and are never forced
+        to the same model — repointing one can never again drag the other along
+        (the OMN-14225 coupling this fix originally closed).
+        """
+        judge_model = RoutingResolvedJudgeInferenceAdapter().resolved_model_id()
+        escalation_model = resolve_delegation_backend(
+            "code_generation", backend_id="cloud-glm"
+        ).model_id
+        assert judge_model == "gemini-2.5-flash"
+        assert escalation_model == "glm-5-turbo"
+        # The load-bearing invariant: the two are resolved from DIFFERENT backends
+        # and are NOT the same model — the judge does not ride the escalation model.
+        assert judge_model != escalation_model
 
     @pytest.mark.asyncio
     async def test_recorded_replay_rejects_tier_name_as_model_key(self) -> None:
@@ -420,7 +497,10 @@ class TestJudgeCombineRealBusChain:
         _h._config = None
         _h._load_bifrost_endpoints.cache_clear()
         contract_path = tmp_path / "bifrost_delegation.yaml"
-        contract_path.write_text(_BIFROST_CONTRACT_CODE, encoding="utf-8")
+        # OMN-13599: the chain routes a code_generation request; use the GLM
+        # contract so resolution is deterministic (cloud-glm) under the new
+        # local -> cheap_cloud -> claude order, independent of host overlay.
+        contract_path.write_text(_BIFROST_CONTRACT_CODE_GLM, encoding="utf-8")
         monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
         yield
         _h._config = None
@@ -431,6 +511,7 @@ class TestJudgeCombineRealBusChain:
         *,
         llm_content: str,
         judge_adapter: RecordedJudgeReplayAdapter,
+        min_tier_name: str | None = None,
     ) -> tuple[object, list[object], HandlerDelegationWorkflow, list[str]]:
         bus = EventBusInmemory()
         await bus.start()
@@ -470,6 +551,16 @@ class TestJudgeCombineRealBusChain:
         # --- orchestrator FSM start: emit routing intent ---
         routing_intents = workflow.handle_delegation_request(request)
         assert isinstance(routing_intents[0], ModelRoutingIntent)
+        # OMN-13599: for the fail-closed refusal proof, pin the terminal ceiling
+        # tier so a single-pass gate failure has no higher tier to escalate to
+        # and MUST emit a terminal delegation-failed event. (Under the new
+        # local -> cheap_cloud -> claude order the cheap_cloud primary and the
+        # claude ceiling share the cloud-glm backend, so a cheap_cloud refusal
+        # would otherwise escalate to claude rather than terminate in one pass.)
+        if min_tier_name is not None:
+            routing_intents = [
+                ModelRoutingIntent(payload=request, min_tier_name=min_tier_name)
+            ]
 
         # --- routing reducer resolves a concrete backend (REAL resolution) ---
         decision = routing_handler.handle(routing_intents[0])
@@ -501,15 +592,20 @@ class TestJudgeCombineRealBusChain:
         # --- terminal: publish the gate-driven terminal events OVER THE BUS ---
         terminal_events = workflow.handle_gate_result(gate_result)
         for ev in terminal_events:
-            if isinstance(ev, ModelDelegationEvent):
+            if isinstance(ev, ModelDelegationResult):
+                topic = (
+                    TOPIC_ID_DELEGATION_COMPLETED
+                    if isinstance(ev, ModelDelegationCompleted)
+                    else TOPIC_ID_DELEGATION_FAILED
+                )
                 await bus.publish(
-                    ev.topic,
+                    topic,
                     key=str(request.correlation_id).encode(),
                     value=json.dumps(
                         {
-                            "topic": ev.topic,
+                            "topic": topic,
                             "correlation_id": str(request.correlation_id),
-                            "payload": ev.payload.model_dump(mode="json"),
+                            "payload": ev.model_dump(mode="json"),
                         }
                     ).encode("utf-8"),
                 )
@@ -539,6 +635,7 @@ class TestJudgeCombineRealBusChain:
         gate_result, _terminal, _workflow, consumed = await self._drive_chain(
             llm_content="I cannot complete this task.",
             judge_adapter=RecordedJudgeReplayAdapter(),
+            min_tier_name="claude",
         )
         assert gate_result.passed is False  # type: ignore[attr-defined]
         assert TOPIC_ID_DELEGATION_COMPLETED not in consumed, (

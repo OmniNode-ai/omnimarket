@@ -36,6 +36,17 @@ class ModelPrPolishStartCommand(BaseModel):
     run_dir: str | None = Field(
         default=None, description="Explicit state dir for breadcrumbs and result.json."
     )
+    skip_repair_dispatch: bool = Field(
+        default=False,
+        description=(
+            "Skip compiling/dispatching the repair-worker (fixer) agent spec. "
+            "Set by callers that supply an already-fixed worktree_path (e.g. "
+            "node_pr_delegated_fix_effect, WS-D/D2 OMN-13940) — without this, "
+            "_prepare_repair_worker_dispatch fires unconditionally even when "
+            "worktree_path is set, spawning a redundant repair-worker agent "
+            "for a PR that was already fixed by the delegated path."
+        ),
+    )
     requested_at: datetime = Field(..., description="When the command was issued.")
 
 

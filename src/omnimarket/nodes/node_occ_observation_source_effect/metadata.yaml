@@ -1,0 +1,24 @@
+name: node_occ_observation_source_effect
+version: "1.0.0"
+description: "Read-EFFECT that loads the durable, append-only OCC observation trail from a onex_change_control checkout and dedupes it via the existing project_qualifying_observations (OMN-14888)."
+pack: occ_companion
+node_role: effect
+display_name: "OCC Observation Source Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_occ_observation_source_effect: "omnimarket.nodes.node_occ_observation_source_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: read_only
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "omnibase-compat>=0.3.1"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "occ", "observation", "dedup", "OMN-14888"]

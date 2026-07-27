@@ -1,0 +1,18 @@
+{
+  "case_id": "context_at_limit_not_skipped",
+  "fingerprint": "sha256:6240a3bf19586d93939ef2f852bb8d6865b891774d1e22e91a117eddebfc500c",
+  "input_hash": "sha256:62e718d31d244eb25f7c86b0ae80ec93b8adf8efa9c30cc96d7d397a8d0305e2",
+  "result": {
+    "kind": "ok",
+    "output": {
+      "selection": {
+        "cost_basis": "zero_marginal_api_cost",
+        "endpoint_env": "LLM_A_URL",
+        "model_id": "model-a",
+        "selection_reason": "preferred model selected",
+        "skipped_models": [],
+        "tier": "local"
+      }
+    }
+  }
+}

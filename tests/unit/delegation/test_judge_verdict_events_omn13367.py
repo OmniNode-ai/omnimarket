@@ -300,3 +300,47 @@ def test_sync_projection_writes_judge_verdict_row() -> None:
     assert row["score_source"] == "reproducible_judge"
     assert row["actual_score"] == pytest.approx(0.88)
     assert row["verdict"] == "pass"
+
+
+@pytest.mark.unit
+def test_judge_verdict_projection_tolerates_topic_metadata_key_omn14855() -> None:
+    """OMN-14855 regression: the multi-topic dispatch fan-out injects an
+    envelope-only "_topic" key into input_data (same pattern documented for
+    handler_instruction_eval, handler_projection_session_replay, and
+    handler_delegation_routing_feedback in this repo). Because
+    ModelDelegationJudgeVerdictEvent sets extra="forbid", a live judge-verdict
+    event carrying "_topic" previously raised extra_forbidden and was routed to
+    the malformed DLQ (confirmed live on the .201 stability-test lane:
+    onex.dlq.omnimarket.projection-delegation-malformed.v1). handle() must
+    strip "_topic" before constructing the model.
+    """
+    event = build_delegation_judge_verdict_event(
+        correlation_id=UUID("33333333-3333-4333-8333-333333333333"),
+        task_type="summarization",
+        judge_model="fixture-judge",
+        judge_model_version="2026-06-20",
+        judge_provider="fixture",
+        rubric_id="delegation_non_verifiable_v1",
+        rubric_hash=str(_base_event_kwargs()["rubric_hash"]),
+        prompt="summarize",
+        judged_input="source and response",
+        temperature=0.0,
+        judge_node_version="delegation-judge-verdict/1.0.0",
+        reasoning="accurate and complete",
+        verdict=EnumDelegationJudgeVerdict.PASS,
+        actual_score=0.9,
+    )
+    db = InmemoryDatabaseAdapter()
+    payload = event.model_dump(mode="json")
+    payload["_db"] = db
+    payload["_event_type"] = "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
+    # Envelope-only key injected by the multi-topic dispatch fan-out — must not
+    # reach ModelDelegationJudgeVerdictEvent's extra="forbid" constructor.
+    payload["_topic"] = "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
+
+    result = HandlerProjectionDelegation().handle(payload)
+
+    assert result == {"rows_upserted": 1, "table": JUDGE_VERDICT_TABLE}
+    row = db.query(JUDGE_VERDICT_TABLE, {"event_hash": event.event_hash})[0]
+    assert row["correlation_id"] == str(event.correlation_id)
+    assert row["verdict"] == "pass"

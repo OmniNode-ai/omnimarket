@@ -1,0 +1,26 @@
+{
+  "description": "F-07/F-08: astral-sh/setup-uv failed fetching uv metadata (omnibase_core#1454). The failing step is env provisioning, not product logic.",
+  "friction_ids": ["F-07", "F-08"],
+  "evidence": "omnibase_core#1454; 2026-07-17T05:25Z",
+  "expected_reason_code": "runner_infra",
+  "naive_would_misclassify_as_product": true,
+  "run_event": "pull_request",
+  "required_context": true,
+  "current_head_sha": "4444444444444444444444444444444444444444",
+  "log_signatures": [],
+  "job": {
+    "id": 990004,
+    "run_id": 550004,
+    "run_attempt": 1,
+    "status": "completed",
+    "conclusion": "failure",
+    "head_sha": "4444444444444444444444444444444444444444",
+    "name": "lint",
+    "steps": [
+      {"name": "Set up job", "status": "completed", "conclusion": "success", "number": 1},
+      {"name": "Run actions/checkout@v4", "status": "completed", "conclusion": "success", "number": 2},
+      {"name": "Run astral-sh/setup-uv@v4", "status": "completed", "conclusion": "failure", "number": 3},
+      {"name": "Run ruff check", "status": "completed", "conclusion": "skipped", "number": 4}
+    ]
+  }
+}

@@ -6,6 +6,10 @@
 Unit tests: mocked Qdrant and embedding client, exercising real code paths.
 Integration stubs: @pytest.mark.integration — skipped unless .201 is available.
 
+Canonical thin shape (OMN-14242 fam4b): repository and qdrant_client are
+constructor-injected; handle() takes a single ModelCodeEmbeddingRequest
+payload.
+
 [OMN-5657, OMN-5665]
 """
 
@@ -21,6 +25,9 @@ import pytest
 from omnimarket.nodes.node_code_embedding_effect.handlers.handler_code_embedding_effect import (
     HandlerCodeEmbeddingEffect,
     build_embedding_text,
+)
+from omnimarket.nodes.node_code_embedding_effect.models.model_code_embedding_request import (
+    ModelCodeEmbeddingRequest,
 )
 
 # =============================================================================
@@ -107,7 +114,7 @@ class TestHandlerCodeEmbeddingEffect:
         repo = _make_mock_repository([entity])
         qdrant = _make_mock_qdrant()
         fake_embedding = [0.1] * 4096
-        handler = HandlerCodeEmbeddingEffect()
+        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_code_embedding_effect.handlers.handler_code_embedding_effect.httpx.AsyncClient"
@@ -122,10 +129,10 @@ class TestHandlerCodeEmbeddingEffect:
             mock_client_cls.return_value = mock_http
 
             result = await handler.handle(
-                correlation_id="test-corr-001",
-                repository=repo,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelCodeEmbeddingRequest(
+                    correlation_id="test-corr-001",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert result.correlation_id == "test-corr-001"
@@ -150,7 +157,7 @@ class TestHandlerCodeEmbeddingEffect:
         entity = _make_entity()
         repo = _make_mock_repository([entity])
         qdrant = _make_mock_qdrant()
-        handler = HandlerCodeEmbeddingEffect()
+        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=qdrant)
 
         with patch(
             "omnimarket.nodes.node_code_embedding_effect.handlers.handler_code_embedding_effect.httpx.AsyncClient"
@@ -162,10 +169,10 @@ class TestHandlerCodeEmbeddingEffect:
             mock_client_cls.return_value = mock_http
 
             result = await handler.handle(
-                correlation_id="test-corr-002",
-                repository=repo,
-                qdrant_client=qdrant,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelCodeEmbeddingRequest(
+                    correlation_id="test-corr-002",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
 
         assert result.embedded_count == 0
@@ -176,13 +183,13 @@ class TestHandlerCodeEmbeddingEffect:
     async def test_no_entities_returns_zero_counts(self) -> None:
         repo = _make_mock_repository([])
         qdrant = _make_mock_qdrant()
-        handler = HandlerCodeEmbeddingEffect()
+        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=qdrant)
 
         result = await handler.handle(
-            correlation_id="test-corr-003",
-            repository=repo,
-            qdrant_client=qdrant,
-            embedding_endpoint_override="http://test-embed:8100",
+            ModelCodeEmbeddingRequest(
+                correlation_id="test-corr-003",
+                embedding_endpoint_override="http://test-embed:8100",
+            )
         )
 
         assert result.embedded_count == 0
@@ -193,7 +200,7 @@ class TestHandlerCodeEmbeddingEffect:
     async def test_missing_embedding_url_raises(self) -> None:
         repo = _make_mock_repository([_make_entity()])
         qdrant = _make_mock_qdrant()
-        handler = HandlerCodeEmbeddingEffect()
+        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=qdrant)
 
         import os
 
@@ -201,9 +208,7 @@ class TestHandlerCodeEmbeddingEffect:
         try:
             with pytest.raises(EnvironmentError, match="EMBEDDING_MODEL_URL"):
                 await handler.handle(
-                    correlation_id="test-corr-004",
-                    repository=repo,
-                    qdrant_client=qdrant,
+                    ModelCodeEmbeddingRequest(correlation_id="test-corr-004")
                 )
         finally:
             if env_backup is not None:
@@ -212,17 +217,17 @@ class TestHandlerCodeEmbeddingEffect:
     @pytest.mark.asyncio
     async def test_qdrant_none_and_host_missing_returns_graceful_skip(self) -> None:
         repo = _make_mock_repository([_make_entity()])
-        handler = HandlerCodeEmbeddingEffect()
+        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=None)
 
         import os
 
         env_backup = os.environ.pop("QDRANT_HOST", None)
         try:
             result = await handler.handle(
-                correlation_id="test-corr-005",
-                repository=repo,
-                qdrant_client=None,
-                embedding_endpoint_override="http://test-embed:8100",
+                ModelCodeEmbeddingRequest(
+                    correlation_id="test-corr-005",
+                    embedding_endpoint_override="http://test-embed:8100",
+                )
             )
         finally:
             if env_backup is not None:
@@ -235,17 +240,25 @@ class TestHandlerCodeEmbeddingEffect:
     async def test_correlation_id_propagated_to_output(self) -> None:
         repo = _make_mock_repository([])
         qdrant = _make_mock_qdrant()
-        handler = HandlerCodeEmbeddingEffect()
+        handler = HandlerCodeEmbeddingEffect(repository=repo, qdrant_client=qdrant)
         corr = "unique-correlation-xyz-789"
 
         result = await handler.handle(
-            correlation_id=corr,
-            repository=repo,
-            qdrant_client=qdrant,
-            embedding_endpoint_override="http://test-embed:8100",
+            ModelCodeEmbeddingRequest(
+                correlation_id=corr,
+                embedding_endpoint_override="http://test-embed:8100",
+            )
         )
 
         assert result.correlation_id == corr
+
+    @pytest.mark.asyncio
+    async def test_invalid_batch_size_rejected_by_model(self) -> None:
+        """batch_size <= 0 is rejected at model construction (Pydantic gt=0),
+        not by a manual handler-side check — validation moved to the typed
+        payload (fail-fast, construction-time)."""
+        with pytest.raises(ValueError, match="greater than 0"):
+            ModelCodeEmbeddingRequest(correlation_id="test-corr-006", batch_size=0)
 
 
 # =============================================================================

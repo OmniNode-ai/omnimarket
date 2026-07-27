@@ -24,33 +24,27 @@ call, and NO ``asyncio.run`` / ``ThreadPoolExecutor`` inside ``handle()``:
 
 Phase progression + the 3-failure circuit breaker are folded by the pure FSM
 helpers in ``omnimarket.review.pr_review_fsm`` (the same fold the
-node_pr_review_fsm_reducer REDUCER applies). The orchestrator emits
-``ModelPrReviewCompletedEvent`` (preserving the ``ReviewVerdict`` shape) on
-``onex.evt.omnimarket.pr-review-bot-completed.v1`` via
-``ModelHandlerOutput.for_orchestrator(events=...)`` — the bus is the transport.
+node_pr_review_fsm_reducer REDUCER applies). The orchestrator returns the
+typed ``ModelPrReviewCompletedEvent`` (preserving the ``ReviewVerdict`` shape)
+directly from ``handle()``; the runtime publishes it on
+``onex.evt.omnimarket.pr-review-bot-completed.v1`` — the bus is the transport.
 
 The inference adapter is resolved per-run from the contract ``model_routing``
 policy + route-config env, and is injectable for deterministic tests (DI; no
 global state, no ``set_adapter()`` mutation).
+
+Thin canonical shape (OMN-14242): ``handle()`` returns the typed
+``ModelPrReviewCompletedEvent`` directly -- no ``ModelHandlerOutput`` wrapper,
+no envelope, no coercion. The runtime classifies/wraps the return value.
 """
 
 from __future__ import annotations
 
 import logging
-from uuid import uuid4
-
-from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
-)
-from omnimarket.nodes.node_finding_aggregator_compute.handlers.handler_finding_aggregator import (
-    HandlerFindingAggregator,
-)
-from omnimarket.nodes.node_finding_aggregator_compute.models.model_finding_aggregator_input import (
-    ModelFindingAggregatorInput,
-    ModelSourceFindings,
 )
 from omnimarket.nodes.node_github_diff_effect.handlers.handler_github_diff import (
     HandlerGithubDiffEffect,
@@ -73,6 +67,7 @@ from omnimarket.nodes.node_review_prompt_builder_compute.handlers.handler_prompt
 from omnimarket.nodes.node_review_response_parser_compute.handlers.handler_response_parser_compute import (
     HandlerResponseParserCompute,
 )
+from omnimarket.review.finding_aggregator import FindingAggregatorGateway
 from omnimarket.review.node_io import (
     ModelGithubDiffCommand,
     ModelGithubDiffResolvedEvent,
@@ -102,7 +97,6 @@ from omnimarket.review.pr_review_node_io import (
 )
 
 _log = logging.getLogger(__name__)
-_HANDLER_ID = "node_pr_review_orchestrator"
 
 DEFAULT_MODEL_CONTEXT_WINDOW = 32_000
 DEFAULT_TIMEOUT_SECONDS = 90.0
@@ -183,20 +177,22 @@ class HandlerPrReviewOrchestrator:
         self._github_review_effect = github_review_effect or HandlerGithubReviewEffect()
         self._prompt_builder = HandlerPromptBuilderCompute()
         self._response_parser = HandlerResponseParserCompute()
-        self._aggregator = HandlerFindingAggregator()
+        self._aggregator = FindingAggregatorGateway()
         self._judge_parser = HandlerJudgeVerdictParseCompute()
 
-    async def handle(self, command: ReviewRequest) -> ModelHandlerOutput[None]:
-        """Run the PR review pipeline and emit the completed event.
+    async def handle(self, command: ReviewRequest) -> ModelPrReviewCompletedEvent:
+        """Run the PR review pipeline and return the completed event.
 
-        ORCHESTRATOR output: events only. On any failure the orchestrator still
-        emits a completed event with a fail-closed BLOCKING_ISSUE verdict and the
-        terminal FSM phase — silence on failure is worse than a typed failure.
+        Thin canonical shape (OMN-14242): returns the typed
+        ``ModelPrReviewCompletedEvent`` directly -- the runtime wraps it. On any
+        failure the orchestrator still returns a completed event with a
+        fail-closed BLOCKING_ISSUE verdict and the terminal FSM phase — silence
+        on failure is worse than a typed failure.
         """
         state = start_state(command)
         try:
             state = await self._run_pipeline(command, state)
-        except Exception as exc:  # boundary-ok: orchestrator emits typed failure event
+        except Exception as exc:  # boundary-ok: returns typed failure event
             _log.error(
                 "pr review orchestration failed (correlation_id=%s): %s",
                 command.correlation_id,
@@ -206,14 +202,8 @@ class HandlerPrReviewOrchestrator:
             state = self._force_failed(state, str(exc))
 
         verdict = make_verdict(state, judge_model_used=command.judge_model)
-        completed = ModelPrReviewCompletedEvent(
+        return ModelPrReviewCompletedEvent(
             final_phase=state.current_phase, verdict=verdict
-        )
-        return ModelHandlerOutput.for_orchestrator(
-            input_envelope_id=uuid4(),
-            correlation_id=command.correlation_id,
-            handler_id=_HANDLER_ID,
-            events=(completed,),
         )
 
     async def _run_pipeline(
@@ -359,18 +349,12 @@ class HandlerPrReviewOrchestrator:
         by_model: dict[str, list[ReviewFinding]] = {}
         for f in findings:
             by_model.setdefault(f.source_model, []).append(f)
-        sources = tuple(
-            ModelSourceFindings(
-                model_name=model_key,
-                findings=tuple(_finding_to_aggregator_dict(f) for f in model_findings),
-            )
-            for model_key, model_findings in by_model.items()
-        )
-        output = await self._aggregator.handle(
+        output = await self._aggregator.aggregate(
             correlation_id=command.correlation_id,
-            input_data=ModelFindingAggregatorInput(
-                correlation_id=command.correlation_id, sources=sources
-            ),
+            findings_by_model={
+                model_key: tuple(_finding_to_aggregator_dict(f) for f in model_findings)
+                for model_key, model_findings in by_model.items()
+            },
         )
         _log.info(
             "pr review aggregator verdict=%s (correlation_id=%s, merged=%d)",
@@ -494,12 +478,9 @@ class HandlerPrReviewOrchestrator:
             _log.warning("judge call failed for finding %s: %s", finding.id, exc)
             return False, f"Judge model call failed: {exc}. Treating as FAIL."
 
-        output = await self._judge_parser.handle(
+        result = self._judge_parser.handle(
             ModelJudgeParseRequest(correlation_id=command.correlation_id, raw_text=raw)
         )
-        result = output.result
-        if result is None:
-            return False, "Judge parse returned no result. Treating as FAIL."
         return result.passed, result.reasoning
 
 
