@@ -1,0 +1,123 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Report Validation COMPUTE (OMN-15163)
+---
+name: node_report_validation_compute
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Deterministically validates a dispatched worker's raw final-report payload
+  against the role-resolved omnibase_core.models.dispatch.report contract
+  (OMN-15161, per-role closed shapes for implementer/verifier/lander/scout).
+  Two independent checks: (1) shape -- does the raw payload dict construct
+  into the resolved report model (including that model's own
+  placeholder/bare-acknowledgement content rejection, the fix for the
+  2026-07-25 literal-"test"-passed-validation incident); (2) content anchors
+  -- for every *_sha/*_paths field the constructed report actually carries a
+  value for, does node_report_anchor_probe_effect's (OMN-15164) caller-
+  supplied probe result show it RESOLVED. A dispatch_role with no
+  ROLE_MAPPING_TABLE entry (declared out-of-scope; see model_role_mapping.py)
+  and any anchor claim with no matching probe-result entry both fail closed
+  rather than pass silently. Pure COMPUTE: no subprocess, filesystem, network,
+  or model calls in this handler -- all anchor I/O already happened upstream
+  in the OMN-15164 EFFECT node. Modeled on node_dispatch_worker's canonical
+  def-B shape, NOT node_verified_dispatch_orchestrator (WARN-baselined
+  dispatch()/dict-return shape -- copying it hard-fails the OMN-14355
+  canon-shape ratchet).
+
+handler:
+  module: omnimarket.nodes.node_report_validation_compute.handlers.handler_report_validation
+  class: HandlerReportValidation
+  input_model: omnimarket.nodes.node_report_validation_compute.models.model_report_validation_request.ModelReportValidationRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: validate_dispatch_report
+      handler:
+        name: HandlerReportValidation
+        module: omnimarket.nodes.node_report_validation_compute.handlers.handler_report_validation
+      description: "Validate one raw dispatch-worker report payload (shape + content anchors)."
+      input_model:
+        name: ModelReportValidationRequest
+        module: omnimarket.nodes.node_report_validation_compute.models.model_report_validation_request
+        description: "dispatch_role, raw_report_payload dict, optional anchor probe_result."
+
+input_model:
+  name: ModelReportValidationRequest
+  module: omnimarket.nodes.node_report_validation_compute.models.model_report_validation_request
+  description: "dispatch_role, raw_report_payload dict, optional anchor probe_result."
+
+output_model:
+  name: ModelReportValidationResult
+  module: omnimarket.nodes.node_report_validation_compute.models.model_report_validation_result
+  description: "verdict (VALID/INVALID_SHAPE/INVALID_CONTENT/ANCHOR_UNCHECKABLE) + per-field violations."
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 2000
+
+inputs:
+  correlation_id:
+    type: uuid
+    required: true
+    description: "Runtime correlation ID."
+  dispatch_role:
+    type: str
+    required: true
+    description: "node_dispatch_worker role (watcher|fixer|designer|auditor|synthesizer|sweep|ops) the report was filed under."
+  raw_report_payload:
+    type: object
+    required: true
+    description: "The dispatched worker's raw final-report payload dict, validated (never trusted) as-is."
+  probe_result:
+    type: object
+    required: false
+    default: null
+    description: "OMN-15164 EFFECT node's ModelReportAnchorProbeResult for this report's *_sha/*_paths claims. Missing on a report that carries an anchor claim yields ANCHOR_UNCHECKABLE, never a silent pass."
+
+outputs:
+  dispatch_role:
+    type: str
+    description: "Echoed input dispatch_role."
+  report_role:
+    type: str
+    description: "Resolved omnibase_core report role (implementer|verifier|lander|scout), or null when dispatch_role is declared out-of-scope."
+  verdict:
+    type: str
+    enum: [valid, invalid_shape, invalid_content, anchor_uncheckable]
+  violations:
+    type: array
+    items:
+      type: str
+    description: "One entry per violating field/check; empty iff verdict is valid."
+
+# Directly-invoked only (no Kafka producer/consumer), matching the OMN-15164
+# EFFECT sibling this node consumes: there is no bus producer for a start
+# command or consumer for a completed event yet (the caller -- the future
+# dispatch-execution enforcement point -- invokes this node's handler
+# in-process), so declaring event_bus.subscribe_topics/publish_topics here
+# would fail the contract topic-graph gate as an orphaned consumer/producer.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.report-validation-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.report-validation-completed.v1
+    failure: onex.evt.omnimarket.report-validation-failed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "report-validation COMPUTE golden-chain tests"
+    command: "uv run pytest tests/test_golden_chain_report_validation_compute.py -q"
+    pass_criteria: "all RED (bare-ack summary, placeholder-literal summary, anchor-context-absent, probe-says-unresolved) and GREEN (one per resolvable dispatch role) cases pass through the real handler"
+  ARCHITECTURE:
+    description: "def-B handler; no ModelEventEnvelope/ModelHandlerOutput in the handler signature; no report-model or probe-model duplication"
+    pass_criteria: "handle(request: ModelReportValidationRequest) -> ModelReportValidationResult; handler never imports omnibase_core.validation.validator_dispatch_report_anchors (I/O) or subprocess/pathlib.exists"
+
+metadata:
+  transport_type: inmemory
+  related_tickets: ["OMN-15163", "OMN-15161", "OMN-15164", "OMN-14355"]

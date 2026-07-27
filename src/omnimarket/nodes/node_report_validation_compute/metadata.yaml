@@ -1,0 +1,23 @@
+name: node_report_validation_compute
+version: "1.0.0"
+description: "Pure deterministic dispatch-report validator -- shape (omnibase_core report contracts) + content-anchor cross-check (OMN-15164 probe output), no I/O"
+omnibase_core_compat: ">=0.46.7,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_report_validation_compute: "omnimarket.nodes.node_report_validation_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.46.7"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "deterministic", "dispatch", "report", "validation", "OMN-15163"]
+pack: "orchestration"
+display_name: "Report Validation Compute"
+node_role: "compute"
