@@ -17,11 +17,16 @@ class AsyncpgAdapter:
     """DatabaseAdapter backed by asyncpg connection pool."""
 
     def __init__(
-        self, dsn: str | None = None, min_size: int = 2, max_size: int = 10
+        self,
+        dsn: str | None = None,
+        min_size: int = 2,
+        max_size: int = 10,
+        command_timeout: float = 30,
     ) -> None:
         self._dsn = dsn or os.environ.get(DB_URL_ENV, "")
         self._min_size = min_size
         self._max_size = max_size
+        self._command_timeout = command_timeout
         self._pool: asyncpg.Pool | None = None
 
     async def connect(self) -> None:
@@ -31,7 +36,7 @@ class AsyncpgAdapter:
             self._dsn,
             min_size=self._min_size,
             max_size=self._max_size,
-            command_timeout=30,
+            command_timeout=self._command_timeout,
         )
         logger.info(
             "asyncpg pool connected (min=%d, max=%d)", self._min_size, self._max_size

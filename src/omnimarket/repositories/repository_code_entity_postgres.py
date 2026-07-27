@@ -29,10 +29,11 @@ and the same key the runtime's contract ``database: omniintelligence`` binding
 maps to. There is **no default DSN**: an unset env var raises at first use rather
 than silently pointing at some other database (CLAUDE.md rule 8).
 
-The pool is created lazily, on first query — not in ``__init__`` — so the
-repository can be constructed and registered in the container at kernel boot
+The pool adapter is connected lazily, on first query — not in ``__init__`` — so
+the repository can be constructed and registered in the container at kernel boot
 without opening a connection, and a mis-set DSN surfaces at the effect boundary
-with a message naming the env var.
+with a message naming the env var. Raw pool construction stays behind
+``AsyncpgAdapter``; this module owns repository queries, not DB-driver setup.
 """
 
 from __future__ import annotations
@@ -40,6 +41,8 @@ from __future__ import annotations
 import logging
 import os
 from typing import TYPE_CHECKING, Any
+
+from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 
 if TYPE_CHECKING:
     import asyncpg
@@ -96,6 +99,7 @@ class RepositoryCodeEntityPostgres:
     ) -> None:
         self._pool: asyncpg.Pool | None = pool
         self._owns_pool = pool is None
+        self._pool_adapter: AsyncpgAdapter | None = None
         self._dsn = dsn
 
     # -- connection -----------------------------------------------------
@@ -120,19 +124,20 @@ class RepositoryCodeEntityPostgres:
         if self._pool is not None:
             return self._pool
 
-        import asyncpg as _asyncpg
-
-        pool = await _asyncpg.create_pool(
+        adapter = AsyncpgAdapter(
             dsn=self._resolve_dsn(),
             min_size=_POOL_MIN_SIZE,
             max_size=_POOL_MAX_SIZE,
             command_timeout=_COMMAND_TIMEOUT_SECONDS,
         )
+        await adapter.connect()
+        pool = adapter.pool
         if pool is None:  # pragma: no cover - asyncpg only returns None on misuse
             raise OSError(
                 f"asyncpg returned no pool for {CODE_ENTITY_DB_URL_ENV}; "
                 "the DSN is present but unusable."
             )
+        self._pool_adapter = adapter
         self._pool = pool
         return pool
 
@@ -141,7 +146,10 @@ class RepositoryCodeEntityPostgres:
 
         An injected pool is owned by the caller and is left alone.
         """
-        if self._pool is not None and self._owns_pool:
+        if self._pool_adapter is not None:
+            await self._pool_adapter.close()
+            self._pool_adapter = None
+        elif self._pool is not None and self._owns_pool:
             await self._pool.close()
         self._pool = None
 
