@@ -29,18 +29,35 @@ Failure categories: REFUSAL, MALFORMED, WEAK_OUTPUT, TASK_MISMATCH, SCHEMA_VIOLA
 OMN-15193 -- contract-declared response validation: when a caller passes
 ``response_contract`` (a JSON Schema describing the expected response shape),
 structural schema validation REPLACES the task-class keyword heuristics
-(``sub_tasks_verified`` substring matching, ``no_refusal`` phrase matching) for
-that request -- it is evaluated BEFORE the contract-DoD / legacy branches below
-and, when supplied, is the sole acceptance authority. This closes the
-false-positive class where a legitimate response (e.g. a ``rationale`` field
-containing "i cannot" as part of coherent prose) trips a keyword heuristic that
-was never actually checking response structure. ``response_contract=None`` (the
-default) is byte-identical to pre-OMN-15193 behavior.
+(the retired ``sub_tasks_verified`` substring matching, ``no_refusal`` phrase
+matching) for that request -- it is evaluated BEFORE the contract-DoD / legacy
+branches below and, when supplied, is the sole acceptance authority. This
+closes the false-positive class where a legitimate response (e.g. a
+``rationale`` field containing "i cannot" as part of coherent prose) trips a
+keyword heuristic that was never actually checking response structure. For a
+request with no caller-declared ``response_contract``, ``delta`` itself still
+behaves byte-identically to pre-OMN-15193 (``None`` in, legacy/contract-DoD
+path out) -- OMN-15196 pushes the DEFAULT resolution up one layer, into the
+local dispatch port (see ``resolve_task_class_response_contract`` below), so a
+migrated task class's calls still reach this branch without every caller
+needing to declare the schema itself.
+
+OMN-15196 -- migrated task classes retire their keyword heuristics: a task
+class that declares ``response_contract_ref`` in task_class_contracts.v1.yaml
+(currently ``agent_delegation`` -> the per-role dispatch report contract,
+OMN-15161) has that keyword-heuristic dispatch-table entry DELETED here, not
+merely bypassed -- ``sub_tasks_verified`` no longer has an implementation in
+this module at all. See ``resolve_task_class_response_contract``
+(node_delegation_routing_reducer) for how the local dispatch path resolves the
+declared schema as the default when a caller supplies none of its own.
 
 Related:
     - OMN-7040: Node-based delegation pipeline
     - OMN-10616: Wire quality gate to read DoD from contract
+    - OMN-15161: Per-role dispatch report contracts ported into omnibase_core
     - OMN-15193: Contract-declared response validation replaces keyword heuristics
+    - OMN-15196: Migrate task classes to declared response contracts; retire
+      the keyword heuristics those classes made obsolete
 """
 
 from __future__ import annotations
@@ -379,10 +396,13 @@ _HEURISTIC_CONTAINS_ANY_CHECKS: dict[str, tuple[str, tuple[str, ...]]] = {
         "TASK_MISMATCH",
         ("because", "therefore", "evidence", "risk"),
     ),
-    "sub_tasks_verified": (
-        "TASK_MISMATCH",
-        ("verified", "passed", "evidence", "check"),
-    ),
+    # OMN-15196: "sub_tasks_verified" (substring match on "verified"/"passed"/
+    # "evidence"/"check") RETIRED -- net-negative-surface, not exempted around.
+    # It was the sole heuristic consumer for `agent_delegation`, which now
+    # declares response_contract_ref (task_class_contracts.v1.yaml) so the
+    # quality gate validates structurally against the per-role dispatch report
+    # contract (OMN-15161) instead. See resolve_task_class_response_contract
+    # (node_delegation_routing_reducer) and _evaluate_response_contract below.
     # OMN-14220: implement the two checks the `planning` task class declared but
     # that had no executor — a bare `MALFORMED: unsupported heuristic DoD check`
     # hard-failed every planning output and force-escalated it to the paid cloud.
@@ -1087,8 +1107,8 @@ def _evaluate_response_contract(
 
     When a caller declares a ``response_contract`` (a JSON Schema describing the
     expected response shape), the gate validates the raw response against that
-    schema instead of running the task-class keyword heuristics
-    (``sub_tasks_verified`` substring matching, ``no_refusal`` phrase matching).
+    schema instead of running the task-class keyword heuristics (the retired
+    ``sub_tasks_verified`` substring matching, ``no_refusal`` phrase matching).
     Schema validation subsumes what those heuristics were actually checking for
     -- empty/malformed/truncated/wrong-shape output all fail schema validation
     with a specific per-violation reason -- without false-positiving on

@@ -41,6 +41,7 @@ Related:
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
 from functools import lru_cache
@@ -54,6 +55,7 @@ from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.models.errors.model_infra_error_context import (
     ModelInfraErrorContext,
 )
+from pydantic import TypeAdapter
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
@@ -737,6 +739,75 @@ def resolve_task_class_dod_checks(
     return _definition_of_done_checks(entry)
 
 
+def _response_contract_ref(entry: dict[str, object] | None) -> str | None:
+    """Return the task-class-declared ``response_contract_ref`` dotted path.
+
+    ``None`` when the entry declares no ref (the class has not been migrated
+    to a declared response contract, OMN-15196) or the entry itself is absent.
+    """
+    if entry is None:
+        return None
+    ref = entry.get("response_contract_ref")
+    return ref if isinstance(ref, str) and ref else None
+
+
+@lru_cache(maxsize=32)
+def _load_response_contract_schema(dotted_path: str) -> dict[str, object]:
+    """Import ``dotted_path`` and return its JSON Schema (OMN-15196).
+
+    ``dotted_path`` names a pydantic model or type alias (e.g. a discriminated
+    ``Union``, as with ``omnibase_core.models.dispatch.report.DispatchReport``)
+    ported for exactly this purpose (OMN-15161/OMN-15193). The schema is built
+    once per process via ``pydantic.TypeAdapter`` and cached — schema
+    generation is pure/deterministic for a fixed import, so re-deriving it per
+    request would be wasted work, not a correctness concern either way.
+
+    Raises ``ProtocolConfigurationError`` when ``dotted_path`` does not resolve
+    to an importable attribute — a contract-authoring bug that must surface
+    loudly at first use, never silently fall back to "no declared contract"
+    (which would silently re-open the keyword-heuristic gap OMN-15196 closes).
+    """
+    module_path, sep, attr_name = dotted_path.rpartition(".")
+    if not sep:
+        msg = (
+            "task-class response_contract_ref must be a dotted "
+            "'module.path.AttrName' string"
+        )
+        raise ProtocolConfigurationError(msg, response_contract_ref=dotted_path)
+    try:
+        module = importlib.import_module(module_path)
+        target = getattr(module, attr_name)
+    except (ImportError, AttributeError) as exc:
+        msg = (
+            "task-class response_contract_ref does not resolve to an "
+            "importable attribute"
+        )
+        raise ProtocolConfigurationError(
+            msg, response_contract_ref=dotted_path
+        ) from exc
+    return TypeAdapter(target).json_schema()
+
+
+def resolve_task_class_response_contract(task_type: str) -> dict[str, object] | None:
+    """Resolve the task-class-declared default ``response_contract`` (OMN-15196).
+
+    Public routing-authority surface, mirroring ``resolve_task_class_dod_checks``:
+    returns the JSON Schema declared for ``task_type`` via
+    ``response_contract_ref`` in ``task_class_contracts.v1.yaml``, or ``None``
+    when the task class has not declared one (the caller then falls back to its
+    own DoD-based evaluation, unaffected). Callers thread the result as the
+    ``response_contract`` default only when the CALLER itself supplied none —
+    an explicit caller-declared ``response_contract`` (e.g. a per-request
+    schema) always takes precedence over the task-class default.
+    """
+    contract = _get_task_class_contract()
+    entry = _task_class_entry(contract, task_type)
+    ref = _response_contract_ref(entry)
+    if ref is None:
+        return None
+    return dict(_load_response_contract_schema(ref))
+
+
 def _tier_can_route_task(
     tier: ModelRoutingTier,
     task_type: str,
@@ -1406,6 +1477,7 @@ __all__: list[str] = [
     "next_eligible_tier",
     "resolve_task_class_dod_checks",
     "resolve_task_class_max_escalations",
+    "resolve_task_class_response_contract",
     "sibling_backend_available_in_tier",
     "tier_for_backend",
     "tier_max_retries",

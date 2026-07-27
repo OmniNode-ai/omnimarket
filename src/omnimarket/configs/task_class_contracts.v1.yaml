@@ -29,9 +29,27 @@
 #   prioritizes the declared model over tier-order selection when the model is
 #   available in the tier with a configured bifrost endpoint (OMN-10942).
 #
+# response_contract_ref: OPTIONAL dotted "module.path.AttrName" naming a pydantic
+#   model (or a discriminated Union type alias) whose JSON Schema
+#   (resolve_task_class_response_contract, node_delegation_routing_reducer)
+#   becomes the DEFAULT response_contract for a local dispatch of this task
+#   class when the caller supplies none of its own (OMN-15196). This is a
+#   structural REPLACEMENT for that class's dod_heuristic keyword checks (the
+#   quality gate validates the response against the schema instead of
+#   substring-matching) — a migrated class's dod_heuristic keyword entries for
+#   the retired checks are deleted, not merely superseded, per the
+#   net-negative-surface rule. A caller-declared response_contract (e.g. a
+#   per-request schema) always takes precedence over this default. Absent —
+#   the pre-OMN-15196 DoD-heuristic-only behavior — for every class not listed
+#   here.
+#
 # Related Tickets:
 #   - OMN-10615: Wire routing reducer to read task-class contracts
 #   - OMN-10942: Task routing policy from contract with model defaults
+#   - OMN-15161: Per-role dispatch report contracts ported into omnibase_core
+#   - OMN-15193: Contract-declared response validation replaces keyword heuristics
+#   - OMN-15196: Migrate task classes to declared response contracts; retire
+#     the keyword heuristics those classes made obsolete
 version: "1.0"
 default_task_model_ref: "Qwen3.6-35B-A3B"
 task_model_overrides:
@@ -588,14 +606,31 @@ task_classes:
     pricing_ceiling_per_1k_tokens: 0.015
     latency_sla_p99_ms: 120000
     cloud_routing_policy: opt_in
+    # OMN-15196: declared response contract replaces the retired
+    # sub_tasks_verified/no_refusal keyword heuristics below (OMN-15193 gave the
+    # quality gate the ability to validate structurally against a declared JSON
+    # Schema instead of substring-matching). DispatchReport is the per-role
+    # (implementer/verifier/lander/scout) closed report contract ported from
+    # steel_onslaught PR #213 into omnibase_core (OMN-15161). The routing
+    # authority (resolve_task_class_response_contract) resolves this ref to a
+    # JSON Schema and threads it as the default response_contract for any local
+    # dispatch that does not supply its own (e.g. steel's per-request tactical
+    # decision schema still takes precedence when a caller declares one).
+    response_contract_ref: "omnibase_core.models.dispatch.report.DispatchReport"
     definition_of_done:
       deterministic:
         - task_completed
       heuristic:
-        - no_refusal
-        - sub_tasks_verified
-        # OMN-14220: local acceptance authority (no_refusal/sub_tasks_verified are
-        # reject-only). Without it a valid LOCAL agent-delegation report escalated to paid.
+        # OMN-15196: sub_tasks_verified (substring match on "verified"/"passed"/
+        # "evidence"/"check") and no_refusal (phrase match) are RETIRED for this
+        # class -- response_contract_ref above is now the sole acceptance
+        # authority for any request that reaches the quality gate without its
+        # own caller-declared response_contract. This DoD block is retained ONLY
+        # as the fallback for a request that somehow reaches the gate with
+        # response_contract_ref unresolved (defensive; not expected in normal
+        # operation) and for the bus-intent path, which does not yet thread a
+        # response_contract at all (wire-model gap, OMN-15193 note) -- semantic_adequacy
+        # stays as that path's local acceptance authority.
         - semantic_adequacy
     quality_gate:
       score_source: quality_gate_graded_score

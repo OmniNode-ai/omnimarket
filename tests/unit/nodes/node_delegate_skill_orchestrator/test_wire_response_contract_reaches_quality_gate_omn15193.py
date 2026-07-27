@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""End-to-end wire-model response_contract reachability (OMN-15193).
+"""End-to-end wire-model response_contract reachability (OMN-15193/OMN-15196).
 
 Drives the FULL seam a wire-level caller (e.g. steel's LlmBusDelegationClient,
 OMN-15170) actually exercises -- the OMN-14208 cross-boundary discipline: one
@@ -12,16 +12,25 @@ reducer, not two independent unit suites:
       -> LocalDelegationDispatchPort.dispatch(response_contract=...)
       -> HandlerLlmDelegationCall (effect, injected) returns tactical JSON
       -> node_delegation_quality_gate_reducer.handlers.handler_quality_gate.delta()
-         validates structurally against the declared schema
+         validates structurally against the declared (or task-class default) schema
 
 This is the live-reproduced OMN-15193 defect (deterministic 6/6, see
 omni_home/docs/evidence/2026-07-26-omn15170-live-driver.md): the
 ``agent_delegation`` task-class heuristics (``sub_tasks_verified`` substring
 match + ``no_refusal`` phrase match) reject a well-formed tactical response
 whose ``rationale`` field legitimately contains the substring "i cannot". A
-declared ``response_contract`` makes the SAME response PASS; the SAME response
-with no declared contract still gets REJECTED (fallback intact, unchanged
-behavior for every caller that does not opt in).
+declared ``response_contract`` makes the SAME response PASS.
+
+OMN-15196 retires those heuristics entirely: ``agent_delegation`` now declares
+a task-class DEFAULT response contract (``response_contract_ref`` ->
+``omnibase_core.models.dispatch.report.DispatchReport``, OMN-15161) that
+``LocalDelegationDispatchPort`` resolves and applies whenever the CALLER
+supplies no ``response_contract`` of its own. So the tactical response with no
+caller-declared contract still gets REJECTED, but now via SCHEMA_VIOLATION
+against the class default, not the retired keyword heuristics; a caller (like
+steel) that supplies its OWN schema still takes precedence over the class
+default, unchanged from OMN-15193; and a response actually shaped like a
+dispatch-worker report PASSES with no caller-declared contract at all.
 
 Only ``delegation_backend_resolution.load_bifrost_backends`` is patched (to an
 in-memory backends list pinned by ``backend_id``, avoiding a dependency on live
@@ -181,12 +190,17 @@ async def test_declared_contract_passes_steel_shaped_response_with_i_cannot_rati
 
 
 @pytest.mark.unit
-async def test_same_response_without_declared_contract_still_rejected(
+async def test_same_response_without_declared_contract_rejected_by_class_default(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Fallback regression: the IDENTICAL response with NO declared contract
-    keeps failing the pre-existing task-class keyword heuristics -- proves the
-    OMN-15193 addition changed nothing for callers that do not opt in."""
+    """OMN-15196: the IDENTICAL response with NO CALLER-declared contract is
+    still rejected -- but now via the ``agent_delegation`` task-class's OWN
+    declared default (the per-role dispatch report contract, OMN-15161), not
+    the retired ``sub_tasks_verified``/``no_refusal`` keyword heuristics. The
+    steel-shaped tactical JSON (action/action_params/confidence/rationale)
+    satisfies none of the four closed report shapes (implementer/verifier/
+    lander/scout), so it fails SCHEMA_VIOLATION -- proving the class default is
+    actually consulted, not merely declared and ignored."""
     handler, effect = _make_handler(
         tmp_path,
         monkeypatch,
@@ -197,13 +211,15 @@ async def test_same_response_without_declared_contract_still_rejected(
         task_type="agent_delegation",
         source="claude-code",
         backend_id="local-coder-mlx",
-        # No response_contract declared.
+        # No response_contract declared -- resolves the agent_delegation
+        # task-class default (response_contract_ref) instead.
     )
 
     response = await handler.handle(request)
 
     assert response.status == "failed"
-    assert any("REFUSAL" in reason for reason in response.quality_gates_failed)
+    assert any("SCHEMA_VIOLATION" in reason for reason in response.quality_gates_failed)
+    assert not any("REFUSAL" in reason for reason in response.quality_gates_failed)
     # The local tier retries the SAME backend (OMN-14234 best-of-N) before
     # escalating; every retry sees the identical deterministic content and
     # fails identically, and escalation off "local" then exhausts the ladder
@@ -211,6 +227,45 @@ async def test_same_response_without_declared_contract_still_rejected(
     # every call was to the pinned backend, never a different one.
     assert len(effect.calls) >= 1
     assert all(call.provider == "local-coder-mlx" for call in effect.calls)
+
+
+@pytest.mark.unit
+async def test_task_class_default_contract_passes_a_real_dispatch_report(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-15196 RED/GREEN proof: a response shaped as a REAL dispatch-worker
+    report (the per-role contract ``agent_delegation`` now declares, OMN-15161)
+    PASSES the gate with no caller-declared response_contract at all -- the
+    task-class default alone is sufficient acceptance authority. This is the
+    positive case the retired ``sub_tasks_verified`` heuristic could only ever
+    approximate by substring luck."""
+    scout_report = json.dumps(
+        {
+            "role": "scout",
+            "verdict": "found",
+            "findings_paths": ["tests/unit/delegation/test_gap.py"],
+            "summary": (
+                "Investigated the reported coverage gap and confirmed a missing "
+                "null-check regression test at the cited path."
+            ),
+        }
+    )
+    handler, effect = _make_handler(tmp_path, monkeypatch, content=scout_report)
+    request = ModelDelegateSkillRequest(
+        prompt="Investigate the reported gap",
+        task_type="agent_delegation",
+        source="claude-code",
+        backend_id="local-coder-mlx",
+        # No response_contract declared -- the scout report satisfies the
+        # agent_delegation task-class's declared default (DispatchReport).
+    )
+
+    response = await handler.handle(request)
+
+    assert response.status == "completed"
+    assert response.quality_gate_passed is True
+    assert response.quality_gates_failed == []
+    assert len(effect.calls) == 1
 
 
 @pytest.mark.unit
