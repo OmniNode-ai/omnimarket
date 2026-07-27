@@ -187,7 +187,7 @@ _DOWNSTREAM_RECEIPT_TEMPLATE = textwrap.dedent("""\
     probe_command: "{probe_command}"
     probe_stdout: |
       {probe_stdout}
-    actual_output: "PASS: Evidence-Source autobind for {ticket_id} from {repo}#{pr_number}."
+    actual_output: "{actual_output}"
     exit_code: {exit_code}
     pr_number: {pr_number}
     branch: "{branch}"
@@ -673,6 +673,7 @@ def render_downstream_receipt(
     runner: str = DEFAULT_RUNNER,
     verifier: str = DEFAULT_VERIFIER,
     check_value: str | None = None,
+    actual_output: str | None = None,
 ) -> str:
     """Render the downstream (product-PR-bound) DoD receipt YAML.
 
@@ -681,6 +682,12 @@ def render_downstream_receipt(
     hosted-safe :func:`receipt_local_check_value` for a private product repo
     (OMN-14766 F-16). The live probe stays recorded in ``probe_command`` /
     ``probe_stdout`` / ``exit_code`` regardless.
+
+    ``actual_output`` (OMN-15247) is the ONLY schema-compatible place to record a
+    content-bound check's RED derivation: ``ModelDodReceipt`` is ``extra="forbid"``
+    and frozen, so no ``red_derivation:`` key can be invented. It defaults to the
+    pre-OMN-15247 literal, byte-for-byte, so the ``pr_existence`` default path is
+    unchanged.
     """
     return _DOWNSTREAM_RECEIPT_TEMPLATE.format(
         ticket_id=ticket_id,
@@ -698,6 +705,10 @@ def render_downstream_receipt(
         check_value=(
             check_value
             or downstream_receipt_public_check_value(pr_number=pr_number, repo=repo)
+        ),
+        actual_output=(
+            actual_output
+            or f"PASS: Evidence-Source autobind for {ticket_id} from {repo}#{pr_number}."
         ),
     )
 

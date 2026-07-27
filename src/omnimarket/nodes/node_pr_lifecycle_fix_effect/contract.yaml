@@ -123,5 +123,37 @@ secrets:
     description: "onexbot-occ-writer GitHub App private key PEM (app-auth mode only)."
     required: false
 
+config:
+  # OMN-15247: the two OCC producer mode vars. Both are DEFAULT-OFF — the unset
+  # default reproduces today's emitted companion bytes exactly. Resolution is
+  # fail-closed (omnimarket.occ_contention.resolve_occ_producer_policy): an
+  # unrecognized value raises naming the variable and the accepted set, never
+  # silently picks a default. Declared here so the env surface is visible to
+  # scripts/audit/contract_config_audit.py rather than living only in code
+  # (feedback_no_invisible_env_config_in_contract_overlays).
+  #
+  # NOTE: detection runs in BOTH modes of each var; only the ENFORCEMENT is
+  # gated. `optional: true` on a load-bearing key would be the silent-skip
+  # defect (feedback_optional_input_means_the_check_does_not_exist) — these are
+  # mode selectors over an always-on check, not on/off switches for the check.
+  OMNI_OCC_CONTENTION_POLICY:
+    description: >-
+      OCC companion contention policy: 'observe' (default — detect and log a
+      competing hand-authored companion, mint anyway, today's behavior) or
+      'defer' (suppress the mint with zero side effects when an open
+      hand-authored or unknown-provenance companion already carries evidence
+      for the ticket).
+    required: false
+    default: "observe"
+  OMNI_OCC_CHECK_BINDING:
+    description: >-
+      What the generated CONTRACT dod_evidence check_value asserts:
+      'pr_existence' (default — today's `gh pr view ${PR_NUMBER} --repo ${REPO}
+      --json number,state` byte-for-byte) or 'content_bound' (a RED-proven
+      content read pinned to a literal merge-base-falsifiable ref; fail-closed,
+      never falls back to the existence probe).
+    required: false
+    default: "pr_existence"
+
 metadata:
   transport_type: kafka
