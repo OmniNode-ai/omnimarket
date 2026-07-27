@@ -2134,6 +2134,7 @@ class HandlerPrLifecycleOrchestrator:
                         repo=pr_state.repo,
                         title=title,
                         branch=branch,
+                        base_ref=getattr(pr_state, "base_ref", "") or "",
                         head_sha=getattr(pr_state, "head_sha", None),
                         ticket_ids=_extract_ticket_ids(title, branch),
                         checks_status=_map_ci_status(pr_state),
@@ -2592,16 +2593,25 @@ class HandlerPrLifecycleOrchestrator:
 
         # Recover branch per (repo, pr_number) from inventory for provenance/logging.
         branch_by_pr: dict[tuple[str, int], str] = {}
+        # OMN-15251: the base branch the PR merged INTO is the merge target the
+        # closeout proves reachability against. Absent (empty) base_ref stays
+        # absent — the prune effect fails closed on a missing merge target.
+        base_ref_by_pr: dict[tuple[str, int], str] = {}
         if inventory is not None:
             for rec in inventory.prs:
                 if rec.branch:
                     branch_by_pr[(rec.repo, rec.pr_number)] = rec.branch
+                if getattr(rec, "base_ref", ""):
+                    base_ref_by_pr[(rec.repo, rec.pr_number)] = rec.base_ref
 
         pruned = 0
+        pruned_superseded = 0
         flagged_dirty = 0
         skipped = 0
         for tr in merged:
             branch = branch_by_pr.get((tr.repo, tr.pr_number))
+            base_ref = base_ref_by_pr.get((tr.repo, tr.pr_number))
+            merge_target_ref = f"origin/{base_ref}" if base_ref else None
             for ticket_id in tr.ticket_ids:
                 try:
                     command = ModelWorktreePruneCommand(
@@ -2610,6 +2620,7 @@ class HandlerPrLifecycleOrchestrator:
                         repo=tr.repo,
                         branch=branch,
                         pr_number=tr.pr_number,
+                        merge_target_ref=merge_target_ref,
                     )
                     result = await self._prune.handle(command)
                 except Exception as exc:
@@ -2627,21 +2638,39 @@ class HandlerPrLifecycleOrchestrator:
                 outcome_value = getattr(outcome, "value", outcome)
                 if outcome_value == "pruned":
                     pruned += 1
+                elif outcome_value == "pruned_superseded":
+                    # OMN-15251: dirty, but every path proven already on the
+                    # merge target. Counted separately so the tail never reads
+                    # as "we deleted uncommitted work".
+                    pruned_superseded += 1
                 elif outcome_value == "skipped_dirty":
                     flagged_dirty += 1
+                    unreachable = getattr(result, "unreachable_paths", ())
+                    if unreachable:
+                        logger.warning(
+                            "[PR-LIFECYCLE-ORCH] worktree closeout DECISION REQUIRED "
+                            "ticket=%s repo=%s pr=%s — %d path(s) not on %s: %s",
+                            ticket_id,
+                            tr.repo,
+                            tr.pr_number,
+                            len(unreachable),
+                            merge_target_ref,
+                            ", ".join(unreachable[:20]),
+                        )
                 else:
                     skipped += 1
 
-        if pruned or flagged_dirty:
+        if pruned or pruned_superseded or flagged_dirty:
             logger.info(
                 "[PR-LIFECYCLE-ORCH] worktree prune tail: %d pruned, "
-                "%d flagged-dirty (kept), %d skipped",
+                "%d pruned-superseded, %d flagged-dirty (kept), %d skipped",
                 pruned,
+                pruned_superseded,
                 flagged_dirty,
                 skipped,
             )
         return PruneResult(
-            worktrees_pruned=pruned,
+            worktrees_pruned=pruned + pruned_superseded,
             worktrees_flagged_dirty=flagged_dirty,
             worktrees_skipped=skipped,
         )

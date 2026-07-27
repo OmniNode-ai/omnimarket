@@ -65,6 +65,15 @@ class PrRecord(BaseModel):
     repo: str = Field(..., description="Repo slug, e.g. 'OmniNode-ai/omnimarket'.")
     title: str = Field(default="")
     branch: str = Field(default="")
+    base_ref: str = Field(
+        default="",
+        description=(
+            "Base branch the PR targets (e.g. 'dev'). Used by the POST_MERGE_TAIL "
+            "worktree closeout to prove a dirty worktree's content already landed "
+            "(OMN-15251). Empty means unknown, which fails closed: the closeout "
+            "preserves the worktree rather than guessing a merge target."
+        ),
+    )
     head_sha: str | None = Field(
         default=None,
         description="Branch (head) commit SHA at inventory time, for ledger provenance.",

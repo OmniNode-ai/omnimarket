@@ -66,6 +66,15 @@ class ModelWorktreePruneCommand(BaseModel):
             "ONEX_WORKTREES_ROOT env var (fail-loud if unset)."
         ),
     )
+    merge_target_ref: str | None = Field(
+        default=None,
+        description=(
+            "Git ref the PR merged into (e.g. 'origin/dev'), used to prove that a "
+            "dirty worktree's content is already landed (OMN-15251). When None, no "
+            "reachability proof is possible and any dirty worktree is preserved as "
+            "SKIPPED_DIRTY — the classifier fails closed."
+        ),
+    )
     dry_run: bool = Field(
         default=False,
         description="Classify the worktree and report the intended action without removing it.",
@@ -81,8 +90,14 @@ class EnumPruneOutcome(StrEnum):
     """
 
     PRUNED = "pruned"
+    # OMN-15251 — dirty, but every dirty path's working content was positively
+    # proven reachable from the merge target, so nothing recoverable is lost.
+    # Removed, and distinguished from PRUNED so the audit trail shows why.
+    PRUNED_SUPERSEDED = "pruned_superseded"
     DRY_RUN = "dry_run"
-    # Rail #1 — uncommitted changes present; flagged for recovery, NOT removed.
+    # Rail #1 — uncommitted changes present that are NOT provably landed;
+    # flagged for recovery, NOT removed. Also the fail-closed landing point for
+    # every inconclusive reachability check (OMN-15251).
     SKIPPED_DIRTY = "skipped_dirty"
     # No filesystem path (worktree already gone / never created) — idempotent no-op.
     SKIPPED_NOT_FOUND = "skipped_not_found"
@@ -112,6 +127,16 @@ class ModelWorktreePruneResult(BaseModel):
         default=0,
         ge=0,
         description="Count of dirty (uncommitted) paths when outcome is SKIPPED_DIRTY.",
+    )
+    unreachable_paths: tuple[str, ...] = Field(
+        default=(),
+        description=(
+            "Repo-relative dirty paths whose content could NOT be proven reachable "
+            "from the merge target (OMN-15251). Non-empty only for SKIPPED_DIRTY, "
+            "and it is precisely this list the operator decision request is about. "
+            "Empty on SKIPPED_DIRTY means the check was inconclusive (no merge "
+            "target, or a probe error) rather than positively divergent."
+        ),
     )
     detail: str = Field(
         default="", description="Human-readable explanation of the outcome."
