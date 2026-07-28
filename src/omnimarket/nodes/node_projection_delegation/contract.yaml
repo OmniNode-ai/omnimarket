@@ -55,7 +55,7 @@ db_io:
       database: omnidash_analytics
       role: shadow_comparisons
     - name: generation_events
-      migration: "0015_generation_corpus_acceptance.sql"
+      migration: "0027_generation_events_tenant_rls.sql"
       access: write
       database: omnidash_analytics
       role: generation_events
