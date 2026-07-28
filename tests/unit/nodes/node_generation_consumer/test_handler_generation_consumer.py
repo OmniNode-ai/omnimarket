@@ -21,6 +21,7 @@ import yaml
 
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
     HandlerGenerationConsumer,
+    ModelActiveRoute,
     _extract_blocks,
     _validate_generation,
 )
@@ -1086,7 +1087,6 @@ def _write_routing_contract(
     endpoint_ref: str,
     provider: str,
     served_model_id: str,
-    inference_extra_body: dict[str, Any] | None = None,
 ) -> Path:
     """Write a generation contract declaring the three contract-side routing keys."""
     model_routing: dict[str, Any] = {
@@ -1095,8 +1095,6 @@ def _write_routing_contract(
         "endpoint_ref": endpoint_ref,
         "routing_source": "contract",
     }
-    if inference_extra_body is not None:
-        model_routing["inference_extra_body"] = inference_extra_body
     contract = {
         "name": "node_generation_consumer",
         "contract_version": {"major": 1, "minor": 0, "patch": 0},
@@ -1199,11 +1197,11 @@ async def _request_for_endpoint(monkeypatch: Any, tmp_path: Path, endpoint: str)
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_contract_inference_extra_body_flows_to_request(
+async def test_qwen_protocol_request_options_flow_to_generation_request(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
-    # OMN-12816: model_routing.inference_extra_body (e.g. enable_thinking:false)
-    # must reach ModelLlmInferenceRequest.extra_body so the effect merges it.
+    # The model-matched inference protocol, not a static generation-contract
+    # payload, owns Qwen's provider-specific thinking switch.
     _write_bifrost_authority(
         monkeypatch,
         tmp_path,
@@ -1217,7 +1215,6 @@ async def test_contract_inference_extra_body_flows_to_request(
             endpoint_ref="local-coder",
             provider="local",
             served_model_id="Qwen3.6-35B-A3B",
-            inference_extra_body={"chat_template_kwargs": {"enable_thinking": False}},
         ),
         event_publisher=lambda _t, _p: None,
     )
@@ -1239,17 +1236,36 @@ async def test_contract_inference_extra_body_flows_to_request(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_contract_without_inference_extra_body_defaults_empty(
-    monkeypatch: Any, tmp_path: Path
+async def test_gemini_generation_uses_only_gemini_protocol_options(
+    tmp_path: Path,
 ) -> None:
-    # A contract that omits inference_extra_body yields an empty extra_body
-    # (no behavior change for callers that do not declare it).
-    request = await _request_for_endpoint(
-        monkeypatch,
-        tmp_path,
-        "http://192.168.86.201:8000/v1/chat/completions",  # onex-allow-internal-ip OMN-12816 reason="test fixture complete endpoint"
+    # Live staging proof (2026-07-28): Gemini accepts reasoning_effort:none but
+    # rejects Qwen's chat_template_kwargs as an unknown field. An escalated
+    # route must therefore re-resolve request options for its active model.
+    capturing = _CapturingEffect()
+    handler = HandlerGenerationConsumer(
+        event_publisher=lambda _t, _p: None,
     )
-    assert request.extra_body == {}
+    handler._effect = capturing
+    handler._injected_effect = False
+    handler._active_route = ModelActiveRoute(
+        tier_name="cheap_cloud",
+        provider="cloud",
+        served_model_id="gemini-2.5-flash",
+        authority_resolved=True,
+        endpoint_url=_GEMINI_FULL_ENDPOINT,
+        max_tokens=1024,
+    )
+
+    await handler._call_llm(
+        task_description="Build a stub node",
+        attempt=2,
+        previous_errors=["local route unavailable"],
+    )
+
+    assert capturing.captured is not None
+    assert capturing.captured.extra_body == {"reasoning_effort": "none"}
+    assert "chat_template_kwargs" not in capturing.captured.extra_body
 
 
 async def _final_post_url_for_endpoint(

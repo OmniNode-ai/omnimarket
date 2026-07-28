@@ -40,6 +40,7 @@ profiles:
       - "*gemini-2.5-flash*"
     task_types:
       - "code_generation"
+      - "node_generation"
       - "test"
       - "validator_generation"
       - "refactor"

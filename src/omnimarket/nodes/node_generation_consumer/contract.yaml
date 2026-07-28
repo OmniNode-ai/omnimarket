@@ -182,14 +182,10 @@ model_routing:
   # via AI Studio key GEMINI_API_KEY). The prior model gemini-2.0-flash hit free-tier
   # quota (HTTP 429); gemini-2.5-flash-lite is quota-available on the same key.
   task_type: code_generation
-  # OMN-12816: provider-specific inference params merged into the LLM request body
-  # (ModelLlmInferenceRequest.extra_body). enable_thinking:false suppresses the
-  # reasoning preamble on Qwen vLLM backends so the FIRST attempt returns clean
-  # fenced blocks (deterministic; turns attempt_count=2 into 1). Contract-native —
-  # no env var, no code literal. Backends that ignore the key are unaffected.
-  inference_extra_body:
-    chat_template_kwargs:
-      enable_thinking: false
+  # Provider-specific request shaping is selected per active model from
+  # configs/inference_protocols.v1.yaml. Keeping it out of this route contract
+  # prevents local Qwen fields from leaking into cloud-provider payloads when
+  # the routing authority escalates the run.
   auth:
     shared_secret_env: LOCAL_LLM_SHARED_SECRET
     cidr_allowlist_env: LLM_ENDPOINT_CIDR_ALLOWLIST

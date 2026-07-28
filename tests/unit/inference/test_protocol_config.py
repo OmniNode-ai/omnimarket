@@ -38,6 +38,20 @@ def test_default_protocol_config_does_not_rewrite_non_qwen_model() -> None:
     assert prompt == "Write pytest unit tests."
 
 
+def test_gemini_node_generation_uses_gemini_request_options_only() -> None:
+    system_prompt, prompt, request_options = apply_inference_protocol(
+        system_prompt="Generate a valid ONEX node.",
+        prompt="Build a hello world node.",
+        model="gemini-2.5-flash",
+        task_type="node_generation",
+    )
+
+    assert "complete, final code artifact" in system_prompt
+    assert prompt == "Build a hello world node."
+    assert request_options == {"reasoning_effort": "none"}
+    assert "chat_template_kwargs" not in request_options
+
+
 def test_default_protocol_config_adds_qwen_provider_non_thinking_options() -> None:
     system_prompt, prompt, request_options = apply_inference_protocol(
         system_prompt="You are a production-quality code generation assistant.",

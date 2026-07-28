@@ -115,7 +115,6 @@ _MODEL_ROUTING_PROVIDER_KEY = "provider"
 _MODEL_ROUTING_SERVED_MODEL_ID_KEY = "served_model_id"
 _MODEL_ROUTING_ENDPOINT_REF_KEY = "endpoint_ref"
 _MODEL_ROUTING_ROUTING_SOURCE_KEY = "routing_source"
-_MODEL_ROUTING_INFERENCE_EXTRA_BODY_KEY = "inference_extra_body"
 # OMN-12829 (C1): the task class that drives the routing-authority escalation
 # ladder (task_class_contracts.escalation_policy.tier_order). Generation is a
 # code-generation task by default; declared in the contract so the escalation
@@ -910,15 +909,6 @@ class HandlerGenerationConsumer:
         # as evidence. Empty until the first endpoint resolution.
         self._resolved_endpoint: str = ""
 
-        # OMN-12816: provider-specific inference params merged into the LLM request
-        # body (e.g. chat_template_kwargs:{enable_thinking:false} to suppress Qwen
-        # reasoning). Contract-declared, not a code literal. Default empty so a
-        # contract that omits the block behaves exactly as before.
-        extra_body = model_routing.get(_MODEL_ROUTING_INFERENCE_EXTRA_BODY_KEY, {})
-        self._inference_extra_body: dict[str, Any] = (
-            dict(extra_body) if isinstance(extra_body, dict) else {}
-        )
-
         # OMN-13359: the model/endpoint the run is currently routing to. The
         # STARTING route is the contract-declared tier (resolved lazily in
         # handle()); each quality-gate failure advances it to the next tier via
@@ -1151,11 +1141,11 @@ class HandlerGenerationConsumer:
         assert route is not None, "_active_route must be set before _call_llm"
 
         # OMN-12813: Apply inference protocol directives for the model.
-        # task_type="node_generation" activates the local-qwen-generation-* profiles
-        # declared in inference_protocols.v1.yaml, which add /no_think (user prefix)
-        # and the one-shot exemplar (system suffix) for Qwen models.  Non-Qwen models
-        # and models that don't match any profile are unaffected.
-        system_prompt, user_content, _ = apply_inference_protocol(
+        # task_type="node_generation" activates the model-specific profiles in
+        # inference_protocols.v1.yaml: Qwen gets /no_think, its exemplar, and
+        # chat_template_kwargs; Gemini gets its supported reasoning_effort option.
+        # Models that match no profile remain unchanged.
+        system_prompt, user_content, request_options = apply_inference_protocol(
             system_prompt=_DEFAULT_SYSTEM_PROMPT,
             prompt=user_content,
             model=route.served_model_id,
@@ -1239,11 +1229,11 @@ class HandlerGenerationConsumer:
                 # hardcoded literal. OMN-13359: on an escalated route this is the
                 # authority's per-tier ceiling, carried verbatim on the route.
                 max_tokens=max_tokens,
-                # OMN-12816: contract-declared inference params (e.g.
-                # chat_template_kwargs:{enable_thinking:false}) merged into the
-                # request body by the effect, suppressing Qwen reasoning so the
-                # first attempt returns clean fenced blocks.
-                extra_body=self._inference_extra_body,
+                # Provider-specific request options are resolved for the ACTIVE
+                # model on every attempt. This preserves Qwen's
+                # chat_template_kwargs while preventing that local-only field
+                # from leaking into an authority-escalated Gemini request.
+                extra_body=request_options,
                 timeout_seconds=120.0,
             )
             response = await self._effect.handle(request)
