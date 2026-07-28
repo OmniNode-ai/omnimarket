@@ -1,0 +1,102 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - Staging Readiness Compute (OMN-15253 slice 1)
+#
+# Pure COMPUTE: evaluates a CALLER-SUPPLIED live snapshot of a staging
+# environment against a typed staging-composition contract and returns a
+# non-mutating READY / BLOCKED / INDETERMINATE verdict.
+#
+# The node never captures the snapshot. Capture is declared as DATA in the
+# composition document's `snapshot_sources[]` (read-only probes) and executed by
+# slice 2's collect EFFECT, so a human running the preflight by hand runs the
+# same commands the machine does.
+---
+name: node_staging_readiness_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure COMPUTE: evaluates a caller-supplied staging environment snapshot against
+  a typed ModelStagingCompositionContract and emits a fail-closed readiness
+  verdict. Fifteen checks cover cluster identity, runtime/migration image
+  digests and single-source-rev bundling, broker auth mode and topic budget,
+  consumer-group prefix exclusivity, handler owner-package activation, required
+  secret KEY NAMES and their per-workload sync coverage, host sysctl minimums,
+  exact Service selectors, applied migrations and schema objects, publisher IAM
+  grants, workload replicas, and rollback resource availability. An absent
+  snapshot field yields INDETERMINATE for its check and BLOCKED overall — absent
+  is never a pass. Snapshots handed to this node directly (tests, fixtures,
+  simulations) are sample data by construction, never a live verdict.
+
+input_model:
+  name: ModelStagingReadinessRequest
+  module: omnimarket.staging_readiness.model_staging_composition
+  description: "Parsed composition contract + parsed live snapshot + evaluated_at."
+
+output_model:
+  name: ModelStagingReadinessVerdict
+  module: omnimarket.staging_readiness.model_staging_composition
+  description: "READY | BLOCKED | INDETERMINATE with per-check findings and provenance."
+
+handler:
+  module: omnimarket.nodes.node_staging_readiness_compute.handlers.handler_staging_readiness_compute
+  class: HandlerStagingReadinessCompute
+  input_model: omnimarket.staging_readiness.model_staging_composition.ModelStagingReadinessRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: staging_readiness
+      handler:
+        name: HandlerStagingReadinessCompute
+        module: omnimarket.nodes.node_staging_readiness_compute.handlers.handler_staging_readiness_compute
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 15000
+  runtime_profiles:
+    - effects
+
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.staging-readiness-compute.v1
+  terminal_events:
+    success: onex.evt.omnimarket.staging-readiness-evaluated.v1
+    failure: onex.evt.omnimarket.staging-readiness-failed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.staging-readiness-compute.v1
+  publish_topics:
+    - onex.evt.omnimarket.staging-readiness-evaluated.v1
+    - onex.evt.omnimarket.staging-readiness-failed.v1
+
+terminal_event: onex.evt.omnimarket.staging-readiness-evaluated.v1
+
+externally_consumed_topics:
+  # The verdict is consumed by the operator-facing preflight (skill CLI) today
+  # and, in slice 3, by the fail-closed pre-deploy gate in the deploy workflow.
+  - onex.evt.omnimarket.staging-readiness-evaluated.v1
+  - onex.evt.omnimarket.staging-readiness-failed.v1
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.39.0"
+
+metadata:
+  transport_type: kafka
+  description: "Typed staging-composition readiness preflight (non-mutating)"
+  author: "OmniNode Team"
+  tags:
+    - "compute"
+    - "staging"
+    - "readiness"
+    - "preflight"
+    - "cloud"
+  related_tickets:
+    - "OMN-15253"
+    - "OMN-14724"
+    - "OMN-15123"
+    - "OMN-15125"

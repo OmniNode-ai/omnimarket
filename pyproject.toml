@@ -413,6 +413,7 @@ node_ticketing_insights_compute = "omnimarket.nodes.node_ticketing_insights_comp
 node_report_format_compute = "omnimarket.nodes.node_report_format_compute"
 node_env_parity_compute = "omnimarket.nodes.node_env_parity_compute"
 node_env_parity_collect_effect = "omnimarket.nodes.node_env_parity_collect_effect"
+node_staging_readiness_compute = "omnimarket.nodes.node_staging_readiness_compute"
 node_friction_triage_orchestrator = "omnimarket.nodes.node_friction_triage_orchestrator"
 node_tech_debt_sweep_orchestrator = "omnimarket.nodes.node_tech_debt_sweep_orchestrator"
 node_test_generator = "omnimarket.nodes.node_test_generator"

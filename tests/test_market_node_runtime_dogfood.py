@@ -187,7 +187,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # shape + content-anchor validation of dispatch-worker report payloads
     # against the OMN-15161 report contract, consuming OMN-15164's probe
     # output — no live bus wiring yet, directly-invoked only): 382 -> 383.
-    assert summary["node_dirs"] == 383
+    # OMN-15253 adds node_staging_readiness_compute (COMPUTE; pure fail-closed
+    # evaluation of a caller-supplied staging snapshot against the typed
+    # staging-composition contract — zero I/O, no live bus wiring yet,
+    # directly-invoked only, same pattern as node_report_validation_compute):
+    # 383 -> 384.
+    assert summary["node_dirs"] == 384
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -220,7 +225,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # runtime_dispatch, resolves as routable): 378 -> 379.
     # OMN-15163 adds the report-validation-compute route (addressable via
     # runtime_dispatch, resolves as routable): 379 -> 380.
-    assert summary["entry_points"] == 380
+    # OMN-15253 adds the staging-readiness-compute route (addressable via
+    # runtime_dispatch, resolves as routable): 380 -> 381.
+    assert summary["entry_points"] == 381
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
