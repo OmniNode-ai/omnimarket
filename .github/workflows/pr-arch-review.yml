@@ -389,22 +389,41 @@ jobs:
       - name: Evaluate gate
         run: |
           echo "=== PR Arch Review Gate ==="
-          FAILED=false
 
           ARCH_LINT="${{ needs.arch-lint.result }}"
 
           echo "arch-lint  : $ARCH_LINT"
 
-          # arch-lint is a hard gate — structural violations block merge
-          if [ "$ARCH_LINT" != "success" ] && [ "$ARCH_LINT" != "skipped" ]; then
-            echo "::error::arch-lint failed — architectural violations must be resolved before merge."
-            FAILED=true
-          fi
+          # OMN-15315 (OMN-15304 vector 6 — result triage). The previous shape
+          # was `[ "$ARCH_LINT" != "success" ] && [ "$ARCH_LINT" != "skipped" ]`,
+          # which reads as "!= success" locally while letting `skipped` reach
+          # the PASSED path. `skipped` is the ABSENCE of a verdict exactly like
+          # `cancelled`, and it is precisely the state a conditional `if:` or a
+          # needs-cascade produces — so vector 5 and vector 6 composed into a
+          # bypass: strand arch-lint, and the gate that was supposed to catch
+          # it reports green (omnimarket#1920 run 30298837182: reviewer
+          # cancelled 04:13:14Z, gate SUCCESS 04:13:21Z).
+          #
+          # `arch-lint` carries `if: always()` and depends only on
+          # `resolve-bot-token`, so it has NO legitimate skip: every non-success
+          # value fails this gate, and an unrecognised future result value fails
+          # closed too (the `*` catch-all).
+          case "$ARCH_LINT" in
+            success)
+              ;;
+            failure)
+              echo "::error::arch-lint failed — architectural violations must be resolved before merge."
+              exit 1
+              ;;
+            cancelled|skipped)
+              echo "::error::arch-lint produced no verdict (result: $ARCH_LINT) — the absence of a verdict is not a passing one."
+              exit 1
+              ;;
+            *)
+              echo "::error::Unrecognised arch-lint result '$ARCH_LINT' — failing closed."
+              exit 1
+              ;;
+          esac
 
-          if [ "$FAILED" = "true" ]; then
-            echo ""
-            echo "PR Arch Review Gate FAILED"
-            exit 1
-          fi
           echo ""
           echo "PR Arch Review Gate PASSED"
