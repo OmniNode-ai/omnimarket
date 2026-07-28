@@ -52,6 +52,8 @@ import hashlib
 import re
 import textwrap
 
+from omnimarket.occ_content_probe import render_check_value_field
+
 # Ticket id pattern. Product PR titles/bodies cite OMN-XXXX (PR title gate).
 TICKET_RE = re.compile(r"\bOMN-\d+\b")
 # Product PR head SHA validation (from the GitHub REST snapshot, not a stamp).
@@ -138,25 +140,30 @@ _CI_ITEM_PUBLIC_CHECK_VALUE = "gh pr view ${PR_NUMBER} --repo ${REPO} --json fil
 # Downstream (Evidence-Source binding) dod_evidence item — an existence probe
 # (tier L0). 2-space list indent so it continues the head template's
 # ``dod_evidence:`` sequence; NOT textwrap.dedent'd (every line is indented).
-_DOWNSTREAM_DOD_ITEM_TEMPLATE = (
+#
+# OMN-15247 foldproof follow-up: the ``check_value:`` line is rendered by
+# :func:`render_check_value_field`, not inlined in this template — a
+# content-bound value can exceed yamlfmt's column-100 fold budget at this
+# indent-8 line, and that function picks the byte-identical quoted form or a
+# fold-proof literal block scalar depending on the value's rendered length.
+_DOWNSTREAM_DOD_ITEM_HEAD_TEMPLATE = (
     '  - id: "{evidence_id}"\n'
     '    description: "PR #{pr_number} on {repo} — Evidence-Source autobind."\n'
     '    source: "generated"\n'
     "    checks:\n"
     '      - check_type: "command"\n'
-    '        check_value: "{check_value}"\n'
 )
 
 # Product-diff-scope dod_evidence item — the substantive check (tier L1 via the
 # substance floor's diff-assert family: ``--json files`` names the files the PR
 # touches). GraphQL-backed (OMN-14741 F-06), not the REST-fragile ``gh pr diff``.
-_CI_DOD_ITEM_TEMPLATE = (
+# See the OMN-15247 foldproof note above the downstream item template.
+_CI_DOD_ITEM_HEAD_TEMPLATE = (
     '  - id: "{ci_evidence_id}"\n'
     '    description: "PR #{pr_number} on {repo} — product diff scope check (OMN-14425)."\n'
     '    source: "generated"\n'
     "    checks:\n"
     '      - check_type: "command"\n'
-    '        check_value: "{check_value}"\n'
 )
 
 # Downstream receipt — stamped with the REAL product PR head + number so
@@ -170,13 +177,30 @@ _CI_DOD_ITEM_TEMPLATE = (
 # from the live GitHub probe (OMN-13990 item 4 / OMN-14055) — no fabricated
 # template output. probe_stdout is a single compact JSON line so the literal
 # block stays valid.
-_DOWNSTREAM_RECEIPT_TEMPLATE = textwrap.dedent("""\
+#
+# OMN-15247 foldproof follow-up: ``check_value``, ``probe_command`` and
+# ``actual_output`` are ALL rendered by :func:`render_check_value_field`
+# rather than inlined here — a content-bound value carries the same 200+ char
+# shell command into every one of these fields (``downstream_probe_command``
+# IS ``check_value`` for a content-bound mint; ``actual_output`` embeds the
+# same pinned 40-hex SHAs). MEASURED: the receipt's indent-0 quoted rendering
+# folds for this value just as the contract's indent-8 rendering does — a
+# fold here restales the SAME ``contract_entry_sha256``/hash the contract
+# fold does, so this receipt needed the identical fix, not just the contract.
+# The template is split into HEAD/MID1/MID2/TAIL fragments around those three
+# fields so each can independently choose quoted vs. literal-block; the
+# already-block-scalar ``probe_stdout`` field (unaffected — see
+# ``_represent_str_block`` precedent in ``handler_occ_companion_compute.py``)
+# is unchanged, in the MID2 fragment.
+_DOWNSTREAM_RECEIPT_HEAD_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
     check_type: "command"
-    check_value: "{check_value}"
+    """)
+
+_DOWNSTREAM_RECEIPT_MID1_TEMPLATE = textwrap.dedent("""\
     contract_sha256: "sha256:PENDING"
     contract_entry_sha256: "sha256:PENDING"
     status: PASS
@@ -184,10 +208,14 @@ _DOWNSTREAM_RECEIPT_TEMPLATE = textwrap.dedent("""\
     commit_sha: "{commit_sha}"
     runner: "{runner}"
     verifier: "{verifier}"
-    probe_command: "{probe_command}"
+    """)
+
+_DOWNSTREAM_RECEIPT_MID2_TEMPLATE = textwrap.dedent("""\
     probe_stdout: |
       {probe_stdout}
-    actual_output: "{actual_output}"
+    """)
+
+_DOWNSTREAM_RECEIPT_TAIL_TEMPLATE = textwrap.dedent("""\
     exit_code: {exit_code}
     pr_number: {pr_number}
     branch: "{branch}"
@@ -283,9 +311,12 @@ _SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
 # check_type is "command" so the receipt path resolves to
 # <ticket>/<evidence_id>/command.yaml. Written with explicit indentation (NOT
 # dedent) so the 2-space list item aligns byte-for-byte with the base item blocks
-# (_DOWNSTREAM_DOD_ITEM_TEMPLATE / _CI_DOD_ITEM_TEMPLATE) and can be structurally
-# inserted at the end of the dod_evidence list by the effect writer (OMN-14741
-# F-04), robust to a non-dod_evidence-terminal contract.
+# (_DOWNSTREAM_DOD_ITEM_HEAD_TEMPLATE / _CI_DOD_ITEM_HEAD_TEMPLATE) and can be
+# structurally inserted at the end of the dod_evidence list by the effect writer
+# (OMN-14741 F-04), robust to a non-dod_evidence-terminal contract. Its
+# check_value is a fixed short literal with no override — never at risk of the
+# yamlfmt fold, so it stays inlined rather than routed through
+# render_check_value_field.
 _SELF_BIND_DOD_EVIDENCE_ITEM_TEMPLATE = (
     '  - id: "{evidence_id}"\n'
     '    description: "OCC companion PR #{occ_pr_number} — self-bind for {ticket_id} (OMN-14650)."\n'
@@ -586,12 +617,18 @@ def render_downstream_dod_evidence_item(
     so it clears ``lint-contract-check-values`` (OMN-14741 F-02). A private product
     repo passes the hosted-safe :func:`receipt_local_check_value` (OMN-14766 F-16),
     since a ``gh pr view --repo <private>`` re-run fails under the OCC token scope.
+
+    OMN-15247 foldproof follow-up: the ``check_value:`` line is rendered by
+    :func:`render_check_value_field`, which auto-selects the byte-identical
+    quoted form for every value above (all short) and a fold-proof literal
+    block scalar for anything long enough to fold (a content-bound check).
     """
-    return _DOWNSTREAM_DOD_ITEM_TEMPLATE.format(
+    return _DOWNSTREAM_DOD_ITEM_HEAD_TEMPLATE.format(
         evidence_id=evidence_id,
         repo=repo,
         pr_number=pr_number,
-        check_value=check_value or _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE,
+    ) + render_check_value_field(
+        "check_value", check_value or _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE
     )
 
 
@@ -607,12 +644,16 @@ def render_ci_dod_evidence_item(
     id is derived from the base evidence id via :func:`ci_check_evidence_id` so the
     contract's declared id and the backing receipt's directory can never diverge
     (OMN-14425).
+
+    OMN-15247 foldproof follow-up: see :func:`render_downstream_dod_evidence_item`
+    — the same auto-selecting :func:`render_check_value_field` renders this line.
     """
-    return _CI_DOD_ITEM_TEMPLATE.format(
+    return _CI_DOD_ITEM_HEAD_TEMPLATE.format(
         ci_evidence_id=ci_check_evidence_id(evidence_id),
         repo=repo,
         pr_number=pr_number,
-        check_value=check_value or _CI_ITEM_PUBLIC_CHECK_VALUE,
+    ) + render_check_value_field(
+        "check_value", check_value or _CI_ITEM_PUBLIC_CHECK_VALUE
     )
 
 
@@ -688,28 +729,43 @@ def render_downstream_receipt(
     and frozen, so no ``red_derivation:`` key can be invented. It defaults to the
     pre-OMN-15247 literal, byte-for-byte, so the ``pr_existence`` default path is
     unchanged.
+
+    OMN-15247 foldproof follow-up: ``check_value``, ``probe_command`` and
+    ``actual_output`` all render through :func:`render_check_value_field` at
+    indent 0. A content-bound mint puts the SAME long shell command in
+    ``check_value``/``probe_command`` and embeds pinned 40-hex SHAs in
+    ``actual_output`` — MEASURED to fold at this receipt's indent-0 quoted
+    rendering exactly like the contract's indent-8 rendering does, which
+    would restale this receipt's own ``contract_entry_sha256``. Every
+    pre-OMN-15247 value (all short) renders in the byte-identical quoted form.
     """
-    return _DOWNSTREAM_RECEIPT_TEMPLATE.format(
-        ticket_id=ticket_id,
-        evidence_id=evidence_id,
-        pr_number=pr_number,
-        repo=repo,
-        run_timestamp=run_timestamp,
-        commit_sha=commit_sha,
-        branch=branch,
-        probe_command=probe_command,
-        probe_stdout=probe_stdout,
-        exit_code=exit_code,
-        runner=runner,
-        verifier=verifier,
-        check_value=(
+    return (
+        _DOWNSTREAM_RECEIPT_HEAD_TEMPLATE.format(
+            ticket_id=ticket_id, evidence_id=evidence_id
+        )
+        + render_check_value_field(
+            "check_value",
             check_value
-            or downstream_receipt_public_check_value(pr_number=pr_number, repo=repo)
-        ),
-        actual_output=(
+            or downstream_receipt_public_check_value(pr_number=pr_number, repo=repo),
+            indent=0,
+        )
+        + _DOWNSTREAM_RECEIPT_MID1_TEMPLATE.format(
+            run_timestamp=run_timestamp,
+            commit_sha=commit_sha,
+            runner=runner,
+            verifier=verifier,
+        )
+        + render_check_value_field("probe_command", probe_command, indent=0)
+        + _DOWNSTREAM_RECEIPT_MID2_TEMPLATE.format(probe_stdout=probe_stdout)
+        + render_check_value_field(
+            "actual_output",
             actual_output
-            or f"PASS: Evidence-Source autobind for {ticket_id} from {repo}#{pr_number}."
-        ),
+            or f"PASS: Evidence-Source autobind for {ticket_id} from {repo}#{pr_number}.",
+            indent=0,
+        )
+        + _DOWNSTREAM_RECEIPT_TAIL_TEMPLATE.format(
+            exit_code=exit_code, pr_number=pr_number, branch=branch
+        )
     )
 
 

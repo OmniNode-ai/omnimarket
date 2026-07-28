@@ -248,13 +248,16 @@ def _contract_check_values(contract_path: Path) -> list[str]:
     ]
 
 
-# The SHORT repo slug + path the stable-path fixtures use. With a 40-hex pinned
-# ref the space before ``--jq`` lands at column ``91 + len(repo) + len(path)``,
-# so a yamlfmt-stable content-bound check needs ``len(repo) + len(path) <= 9``
-# (see ``is_yamlfmt_stable_check``). ``o/r`` + ``x.py`` = 7, the widest synthetic
-# that still clears the formatter. Every REAL OmniNode repo slug alone exceeds
-# the budget, which is exactly why ``content_bound`` is fail-closed inert today
-# and ships default-OFF — proven by ``test_a_deep_path_candidate_is_never_emitted``.
+# A SHORT repo slug + path kept for fixture continuity across the OMN-15247
+# lineage. Pre-foldproof-fix, this was the ONLY combination narrow enough for a
+# double-quoted rendering to clear yamlfmt's column-100 fold (``o/r`` + ``x.py``
+# = 7, the widest synthetic that survived quoted). Post-fix
+# (``render_check_value_field`` auto-selects a literal block scalar whenever the
+# quoted form would fold — see ``occ_content_probe.render_check_value_field``),
+# EVERY realistic repo/path combination emits successfully; this fixture is
+# retained only because several tests below reuse ``_stable_emit`` and do not
+# depend on the repo slug being short. ``TestContentBoundChecks`` now proves the
+# REAL, full-length repo/path shape (``OmniNode-ai/omnimarket``) also emits.
 _STABLE_REPO = "o/r"
 _STABLE_PATH = "x.py"
 
@@ -541,34 +544,45 @@ class TestDeferOnContention:
 
 @pytest.mark.unit
 class TestContentBoundChecks:
-    """``content_bound`` is a complete mechanism that is currently FAIL-CLOSED INERT.
+    """``content_bound`` is a complete, no-longer-inert mechanism (OMN-15247 foldproof).
 
     Measured against yamlfmt v0.21.0 with the real onex_change_control
-    ``.yamlfmt``: a double-quoted scalar is folded at the first space occurring
-    past column 100. The rendered contract line is ``<8 spaces>check_value:
-    "<value>"``, a 22-column prefix, so a value is a fixpoint only when every
-    space in it sits at index <= 78. The SHORTEST possible content-bound read —
-    ``gh api repos/o/r/contents/x.py?ref=<7hex> --jq '.content' | base64 -d |
-    grep -c 'class H'`` — is 90 characters with spaces throughout its tail, so
-    **no content-bound check of this grammar can ever be a yamlfmt fixpoint.**
+    ``.yamlfmt``: a double-quoted plain scalar folds at the first space
+    occurring past column 100. The rendered contract line is ``<8 spaces>
+    check_value: "<value>"``, a 22-column prefix, so a QUOTED value is a
+    fixpoint only when every space in it sits at index <= 78 — the SHORTEST
+    possible content-bound read (``gh api repos/o/r/contents/x.py?ref=<7hex>
+    --jq '.content' | base64 -d | grep -c 'class H'``, 90 chars) already
+    crosses that. Pre-fix, the producer therefore emitted NOTHING and returned
+    ``skip:NO_RED_DERIVABLE_CHECK`` for every real candidate — a fail-closed
+    posture that was honest but made the binding an observable no-op.
 
-    Emitting one anyway would be rewritten by the hosted yamlfmt pre-commit and
-    restale ``contract_sha256`` (F-03 / OMN-14684), breaking every receipt bound
-    to that contract. So the producer emits NOTHING and returns
-    ``skip:NO_RED_DERIVABLE_CHECK`` — the §B5 fail-closed posture. What the
-    build spec did not anticipate is that this rejects *every* candidate, not a
-    rare one.
-
-    Unblocking it needs deterministic pre-folding of the emitted scalar, or a
-    check grammar whose post-URL segment is space-free. Both are follow-up, not
-    slice 1 — and are precisely why this binding ships DEFAULT-OFF. The
-    rendering + consumer-gate wiring is proven at the seam in
-    ``TestContentBoundRenderingSeam`` so none of it is untested dead code.
+    The fix (``occ_content_probe.render_check_value_field``) renders any value
+    that would fold as a literal block scalar (``|-``) instead — MEASURED to
+    be a yamlfmt fixpoint at ANY length, for the contract's indent-8
+    ``check_value`` line and the receipt's indent-0 ``check_value`` /
+    ``probe_command`` / ``actual_output`` lines alike (every realistic shape
+    verified against the real binary in
+    ``TestContentBoundSurvivesRealYamlfmt``). The mint-time ``accept=``
+    column-length filter in ``_derive_content_bound_check`` is therefore
+    removed: fold-safety is now a property of RENDERING, not of candidate
+    selection, so every RED-derivable candidate is emitted regardless of its
+    rendered length.
     """
 
-    def test_a_real_repo_and_path_candidate_is_never_emitted(
+    def test_a_real_repo_and_path_candidate_now_emits_the_content_bound_check(
         self, tmp_path: Path
     ) -> None:
+        """OMN-15247 foldproof RED test #2: the emitter no longer skips.
+
+        Drives the real full-length ``OmniNode-ai/omnimarket`` repo slug and a
+        real handler path — the exact shape that was ALWAYS rejected pre-fix
+        (``test_a_real_repo_and_path_candidate_is_never_emitted``, the prior
+        name of this test). MUST FAIL pre-fix: the mint-time
+        ``accept=is_yamlfmt_stable_check`` filter rejects this 201-char
+        candidate outright, so the action is ``skip:NO_RED_DERIVABLE_CHECK``
+        rather than a real mint.
+        """
         emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
         action, clone_root, rec = _run_emit(
             emitter,
@@ -579,24 +593,33 @@ class TestContentBoundChecks:
                 symbol="HandlerContentBoundProbe",
             ),
         )
-        assert action.startswith("skip:NO_RED_DERIVABLE_CHECK")
-        assert not clone_root.exists()
-        assert rec.lease_calls == []
-        assert rec.pr_open_calls == 0
-        assert rec.patch_evidence_calls == 0
+        assert not action.startswith("skip:")
+        assert rec.lease_calls, "a real mint must still take the lease"
+        assert rec.pr_open_calls == 1
+        values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
+        assert values[0] == _CONTENT_BOUND_CHECK
 
-    def test_even_the_shortest_possible_candidate_is_never_emitted(
+    def test_even_the_shortest_possible_candidate_also_emits(
         self, tmp_path: Path
     ) -> None:
-        """The blocker is structural, not a function of path depth."""
+        """Fold-safety no longer depends on path depth — every length now emits."""
         emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
-        action, _clone, _rec = _stable_emit(emitter, tmp_path)
-        assert action.startswith("skip:NO_RED_DERIVABLE_CHECK")
+        action, clone_root, _rec = _stable_emit(emitter, tmp_path)
+        assert not action.startswith("skip:")
+        values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
+        assert values[0] == build_content_read_check(
+            repo=_STABLE_REPO,
+            path=_STABLE_PATH,
+            kind="class",
+            symbol="H",
+            head_sha=_HEAD_SHA,
+        )
 
     def test_the_default_binding_still_mints_on_the_same_pr(
         self, tmp_path: Path
     ) -> None:
-        """The fail-closed skip is scoped to ``content_bound``, never the default."""
+        """The content-bound derivation runs in BOTH modes; only the default
+        binding's declared check_value is unaffected by it."""
         _action, clone_root, rec = _stable_emit(OccCompanionEmitter(), tmp_path)
         values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
         assert values[0] == "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
@@ -605,7 +628,11 @@ class TestContentBoundChecks:
     def test_no_candidate_at_all_fails_closed_without_falling_back(
         self, tmp_path: Path
     ) -> None:
-        """A silent fallback here is the exact behavior OMN-15247 files as a defect."""
+        """A silent fallback here is the exact behavior OMN-15247 files as a defect.
+
+        Zero RED-derivable candidates (a README-only diff) is orthogonal to
+        the fold fix — this must stay a fail-closed skip regardless.
+        """
         emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
         action, clone_root, rec = _run_emit(
             emitter,
@@ -618,6 +645,7 @@ class TestContentBoundChecks:
         assert rec.lease_calls == []
 
     def test_an_unresolvable_merge_base_fails_closed(self, tmp_path: Path) -> None:
+        """Merge-base resolution failure is orthogonal to the fold fix."""
         emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
         action, _clone, _rec = _stable_emit(emitter, tmp_path, merge_base=None)
         assert action.startswith("skip:NO_RED_DERIVABLE_CHECK")
@@ -625,8 +653,14 @@ class TestContentBoundChecks:
     def test_no_red_derivable_posts_one_marked_note_on_the_product_pr(
         self, tmp_path: Path
     ) -> None:
+        """Uses the genuine no-candidate fixture — ``_stable_emit`` now mints."""
         emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
-        _action, _clone, rec = _stable_emit(emitter, tmp_path)
+        _action, _clone, rec = _run_emit(
+            emitter,
+            tmp_path,
+            product_repo=_STABLE_REPO,
+            pr_files=[{"filename": "README.md", "status": "modified", "patch": "+hi"}],
+        )
         assert len(rec.posted_comments) == 1
         path, body = rec.posted_comments[0]
         assert "/repos/o/r/issues/321/comments" in path
@@ -727,6 +761,49 @@ class TestContentBoundRenderingSeam:
         assert values[0] == _CONTENT_BOUND_CHECK
         # The OMN-14409 diff-scope item is untouched — removing it is not in scope.
         assert values[1] == "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+
+    def test_the_content_bound_check_value_survives_real_yamlfmt_byte_identical(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-15247 foldproof RED test #1.
+
+        Renders a REAL content-bound candidate through the CURRENT emitter
+        rendering seam (:func:`render_companion_contract`), runs the ACTUAL
+        pinned yamlfmt v0.21.0 binary against the resulting contract file
+        (mirroring the real onex_change_control ``.yamlfmt``), and asserts the
+        file's bytes are unchanged and the parsed ``check_value`` byte-equals
+        the intended command. MUST FAIL pre-fix: the emitter's quoted plain
+        scalar rendering folds this 201-char value at the first space past
+        column 100 (measured, ``is_yamlfmt_stable_check`` returns False for it
+        at indent 8), which would restale ``contract_sha256`` on the hosted
+        Pre-commit run.
+        """
+        yamlfmt = shutil.which("yamlfmt")
+        if yamlfmt is None:
+            pytest.skip("yamlfmt binary not available (installed in the CI gate)")
+
+        contract = tmp_path / "OMN-9999.yaml"
+        contract.write_text(self._contract_text())
+        before = contract.read_bytes()
+
+        conf = tmp_path / ".yamlfmt"
+        conf.write_text(_OCC_YAMLFMT_CONF)
+        result = subprocess.run(
+            [yamlfmt, "-conf", str(conf), str(contract)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, f"{result.stdout}\n{result.stderr}"
+        after = contract.read_bytes()
+
+        assert after == before, (
+            "yamlfmt rewrote the rendered contract — the check_value line is "
+            "not a formatter fixpoint, which would restale contract_sha256:\n"
+            f"before:\n{before.decode()}\nafter:\n{after.decode()}"
+        )
+        values = _contract_check_values(contract)
+        assert values[0] == _CONTENT_BOUND_CHECK
 
     def test_the_receipt_carries_the_same_string_and_the_red_derivation(self) -> None:
         receipt = yaml.safe_load(
