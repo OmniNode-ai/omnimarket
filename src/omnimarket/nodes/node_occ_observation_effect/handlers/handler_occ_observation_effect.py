@@ -23,6 +23,23 @@ without ANY GitHub mutation — same shadow-wired convention as
 ``node_occ_companion_effect`` before it goes live. See the OMN-14888 ticket for
 the two documented activation routes (bus + sibling adapter vs. a new
 write-scoped GHA secret) — neither is wired here.
+
+SELF-BIND (OMN-15323). A well-shaped PR is not a mergeable one: ``occ-preflight
+/ eligibility`` also demands a PASS receipt that is DECLARED in the cited
+ticket's contract and BOUND to this PR. This handler therefore writes THREE
+files, not one, in two commits on the same branch:
+
+  1. commit A — ``drift/occ_observations/**`` : the record (unchanged).
+  2. commit B — ``contracts/<ticket>.yaml``   : append one dod_evidence item.
+                ``drift/dod_receipts/<ticket>/<item>/command.yaml`` : the PASS
+                receipt, bound to commit A's sha.
+
+Both commits are pushed BEFORE the PR is opened, so eligibility sees complete
+evidence on its first run. The append-only guard is re-asserted before each
+push against an EXACT allowlist of those three paths, so the OCC write token
+still cannot be steered anywhere else (``grants/**``, ``allowlists/**`` and
+every other path stay unreachable — proven by
+``test_append_only_guard_omn_14888`` / ``test_self_bind_eligibility_omn_15323``).
 """
 
 from __future__ import annotations
@@ -30,12 +47,26 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
+import yaml
+from omnibase_core.validation.validator_receipt_gate import (
+    compute_contract_entry_sha256,
+)
+
 from omnimarket.events.occ_observation_store import (
+    declares_dod_evidence_id,
+    insert_dod_evidence_item,
+    occ_observation_contract_relpath,
+    occ_observation_evidence_item_id,
+    occ_observation_receipt_relpath,
     occ_observation_record_relpath,
+    occ_observation_self_bind_check_value,
+    render_occ_observation_dod_evidence_item,
     render_occ_observation_record,
+    render_occ_observation_self_bind_receipt,
 )
 from omnimarket.github_api import GitHubApiError, rest_json, rest_json_array, split_repo
 from omnimarket.inference.secret_store_resolver import resolve_api_key
@@ -159,6 +190,18 @@ def render_occ_observation_commit_subject(evidence_ticket: str, relpath: str) ->
     return f"evidence({evidence_ticket}): OCC observation append {relpath}"
 
 
+def render_occ_observation_self_bind_commit_subject(
+    evidence_ticket: str, evidence_item_id: str
+) -> str:
+    """Commit subject for the self-bind commit (OMN-15323).
+
+    Carries the ticket for the same reason the record commit does: every commit
+    text on the branch is a binding axis, so a squash or a dropped commit cannot
+    silently unbind the PR.
+    """
+    return f"evidence({evidence_ticket}): OCC observation self-bind {evidence_item_id}"
+
+
 class HandlerOccObservationEffect:
     """EFFECT handler: append one durable OCC observation record."""
 
@@ -249,11 +292,31 @@ class HandlerOccObservationEffect:
             base_sha = self._head_sha(clone_dir)
             run_git(["git", "checkout", "-B", branch], cwd=clone_dir)
             self._write_file(clone_dir, relpath, content)
-            self._commit_all(
+            self._commit_paths(
                 clone_dir,
+                [relpath],
                 render_occ_observation_commit_subject(request.evidence_ticket, relpath),
             )
+            record_commit_sha = self._head_sha(clone_dir)
             self._assert_append_only(clone_dir, base_sha, {relpath})
+            self._push(clone_dir, branch, token, request.occ_repo)
+
+            # OMN-15323: the record alone can never merge — eligibility needs a
+            # DECLARED, PR-BOUND PASS receipt. Authored as a second commit on
+            # the same branch so it can cite the record commit's sha, and
+            # pushed BEFORE the PR is opened so occ-preflight's first run
+            # already sees complete evidence.
+            self_bind_paths = self._author_self_bind(
+                clone_dir=clone_dir,
+                request=request,
+                relpath=relpath,
+                record_commit_sha=record_commit_sha,
+                branch=branch,
+                token=token,
+                occ_owner=occ_owner,
+                occ_name=occ_name,
+            )
+            self._assert_append_only(clone_dir, base_sha, {relpath, *self_bind_paths})
             self._push(clone_dir, branch, token, request.occ_repo)
 
         occ_pr_number, occ_pr_url = self._open_or_sync_occ_pr(
@@ -292,9 +355,135 @@ class HandlerOccObservationEffect:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(content, encoding="utf-8")
 
-    def _commit_all(self, clone_dir: str, message: str) -> None:
-        run_git(["git", "add", "drift"], cwd=clone_dir)
+    def _commit_paths(self, clone_dir: str, relpaths: list[str], message: str) -> None:
+        """Stage EXACTLY ``relpaths`` and commit them.
+
+        Path-scoped rather than ``git add <dir>``: this run now writes into two
+        top-level trees (``drift/`` and ``contracts/``), and a directory-wide add
+        would stage anything else that happened to be dirty in the clone. The
+        append-only assertion still backstops the committed tree.
+        """
+        run_git(["git", "add", "--", *relpaths], cwd=clone_dir)
         run_git(["git", "commit", "-m", message], cwd=clone_dir)
+
+    # -- self-bind evidence (OMN-15323) -------------------------------------
+
+    def _author_self_bind(
+        self,
+        *,
+        clone_dir: str,
+        request: ModelOccObservationEffectRequest,
+        relpath: str,
+        record_commit_sha: str,
+        branch: str,
+        token: str,
+        occ_owner: str,
+        occ_name: str,
+    ) -> tuple[str, str]:
+        """Author + commit the contract entry and the PASS receipt.
+
+        Returns the two repo-relative paths touched, for the append-only
+        allowlist. Raises (fail LOUD) on any inconsistency: a PR carrying the
+        record without its binding evidence is precisely the state OMN-15323
+        exists to remove, so a partial write must never be reported as success.
+        """
+        ticket = request.evidence_ticket
+        evidence_item_id = occ_observation_evidence_item_id(request.record)
+        contract_relpath = occ_observation_contract_relpath(ticket)
+        receipt_relpath = occ_observation_receipt_relpath(ticket, evidence_item_id)
+
+        contract_path = Path(clone_dir) / contract_relpath
+        if not contract_path.is_file():
+            raise RuntimeError(
+                f"OCC observation self-bind cannot proceed: {contract_relpath} is "
+                f"absent from {request.occ_repo}. The evidence ticket must be one "
+                "whose contract already exists on the OCC default branch — that is "
+                "why this producer binds to the observation-store ticket and not "
+                "to the triggering product PR's ticket (OMN-15323)."
+            )
+
+        # The probe is REAL: confirm with the OCC remote that the record commit
+        # this receipt binds to actually landed. `gh api ... --jq .sha` is the
+        # replayable form of this exact REST read; the node has no gh binary.
+        check_value = occ_observation_self_bind_check_value(
+            occ_repo=request.occ_repo, record_commit_sha=record_commit_sha
+        )
+        probe_stdout = self._probe_commit_sha(
+            occ_owner, occ_name, record_commit_sha, token
+        )
+
+        contract_text = contract_path.read_text(encoding="utf-8")
+        if not declares_dod_evidence_id(contract_text, evidence_item_id):
+            contract_text = insert_dod_evidence_item(
+                contract_text,
+                render_occ_observation_dod_evidence_item(
+                    record=request.record,
+                    evidence_item_id=evidence_item_id,
+                    check_value=check_value,
+                ),
+            )
+            contract_path.write_text(contract_text, encoding="utf-8")
+
+        # Hash the entry AFTER the append, from the parsed contract — the same
+        # canonical hasher occ-preflight and OCC's honesty gate recompute.
+        contract_entry_sha256 = compute_contract_entry_sha256(
+            yaml.safe_load(contract_text), evidence_item_id
+        )
+        self._write_file(
+            clone_dir,
+            receipt_relpath,
+            render_occ_observation_self_bind_receipt(
+                evidence_ticket=ticket,
+                evidence_item_id=evidence_item_id,
+                check_value=check_value,
+                contract_entry_sha256=contract_entry_sha256,
+                run_timestamp=datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                record_commit_sha=record_commit_sha,
+                probe_stdout=probe_stdout,
+                branch=branch,
+                occ_repo=request.occ_repo,
+                runner=request.runner,
+                verifier=request.verifier,
+            ),
+        )
+        self._commit_paths(
+            clone_dir,
+            [contract_relpath, receipt_relpath],
+            render_occ_observation_self_bind_commit_subject(ticket, evidence_item_id),
+        )
+        logger.info(
+            "occ_observation_effect: self-bind authored ticket=%s item=%s "
+            "record_commit=%s relpath=%s",
+            ticket,
+            evidence_item_id,
+            record_commit_sha,
+            relpath,
+        )
+        return contract_relpath, receipt_relpath
+
+    def _probe_commit_sha(
+        self, occ_owner: str, occ_name: str, commit_sha: str, token: str
+    ) -> str:
+        """Read back the pushed record commit from the OCC remote (fail-closed).
+
+        The receipt's ``probe_stdout`` must be the captured output of a probe
+        that really ran — an executable check_type with empty stdout is
+        indistinguishable from "never ran" and ModelDodReceipt rejects it.
+        """
+        payload = rest_json(
+            "GET",
+            f"/repos/{occ_owner}/{occ_name}/commits/{commit_sha}",
+            token=token,
+        )
+        observed = payload.get("sha")
+        if not isinstance(observed, str) or observed.lower() != commit_sha.lower():
+            raise GitHubApiError(
+                "OCC observation self-bind probe failed: "
+                f"/repos/{occ_owner}/{occ_name}/commits/{commit_sha} returned "
+                f"sha={observed!r}; the record commit is not readable on the remote, "
+                "so no honest receipt can bind to it."
+            )
+        return observed
 
     def _push(self, clone_dir: str, branch: str, token: str, occ_repo: str) -> None:
         url = authenticated_occ_url(token, occ_repo)
@@ -313,8 +502,15 @@ class HandlerOccObservationEffect:
         """Fail CLOSED if the committed tree touched anything unexpected (F-01).
 
         Ported from ``HandlerOccCompanionEffect._assert_append_only``
-        (OMN-14741 F-01) — same diff-based guard, applied to this node's
-        single-file write instead of a multi-file companion plan.
+        (OMN-14741 F-01) — same diff-based guard.
+
+        OMN-15323 widened the allowlist from one path to three (record, the
+        cited contract, that contract's receipt) but NOT the mechanism: the
+        allowlist is still an exact set computed from this run's own inputs, so
+        every other path in ``onex_change_control`` — ``grants/**``,
+        ``allowlists/**``, another ticket's contract or receipts — remains
+        unreachable, and any deletion is still rejected outright. It is called
+        once per commit, before each push, so nothing unverified is ever pushed.
         """
         diff = run_git(
             ["git", "diff", "--no-renames", "--name-status", base_sha, "HEAD"],
@@ -424,4 +620,5 @@ __all__ = [
     "render_occ_observation_commit_subject",
     "render_occ_observation_pr_body",
     "render_occ_observation_pr_title",
+    "render_occ_observation_self_bind_commit_subject",
 ]

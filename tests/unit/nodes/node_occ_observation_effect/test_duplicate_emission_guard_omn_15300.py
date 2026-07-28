@@ -34,18 +34,13 @@ from omnimarket.nodes.node_occ_observation_effect.handlers.handler_occ_observati
 from omnimarket.nodes.node_occ_observation_effect.models.model_occ_observation_effect_request import (
     ModelOccObservationEffectRequest,
 )
+from tests.unit.nodes.node_occ_observation_effect.conftest import OCC_FIXTURE_ROOT
 
 _HANDLER_MODULE = (
     "omnimarket.nodes.node_occ_observation_effect.handlers."
     "handler_occ_observation_effect"
 )
 HEAD_SHA = "cac88675d0419cb9ac4e102270dc9c43954ab613"
-
-
-@pytest.fixture(autouse=True)
-def _clear_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    for var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
-        monkeypatch.delenv(var, raising=False)
 
 
 def _record(workflow_run_id: int) -> ModelOccObservationRecord:
@@ -78,24 +73,30 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 def _seed_repo(tmp_path: Path) -> Path:
+    """Seeded from the shared OCC fixture (see conftest).
+
+    OMN-15323: the clone must carry contracts/ + drift/dod_receipts/, because
+    the write path now authors self-bind evidence into them. An empty repo is a
+    shape onex_change_control never has.
+    """
     seed = tmp_path / "seed"
-    seed.mkdir()
+    shutil.copytree(OCC_FIXTURE_ROOT, seed)
     _git(seed, "init", "-q")
     _git(seed, "config", "user.name", "test")
     _git(seed, "config", "user.email", "test@omninode.ai")
-    (seed / "README.md").write_text("seed\n", encoding="utf-8")
     _git(seed, "add", "-A")
-    _git(seed, "commit", "-q", "-m", "base")
+    _git(seed, "commit", "-q", "-m", "OCC fixture base")
     return seed
 
 
 class FakeGitHub:
-    """Minimal stand-in for the two REST calls the handler makes."""
+    """Minimal stand-in for the REST calls the handler makes."""
 
     def __init__(self) -> None:
         self.open_prs: list[dict[str, Any]] = []
         self.created_titles: list[str] = []
         self.created_bodies: list[str] = []
+        self.commit_probes: list[str] = []
         self._next_number = 5245
 
     def rest_json_array(
@@ -107,8 +108,19 @@ class FakeGitHub:
         return list(reversed(self.open_prs))
 
     def rest_json(
-        self, _method: str, _path: str, *, body: dict[str, Any], **_kwargs: Any
+        self,
+        _method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+        **_kwargs: Any,
     ) -> dict[str, Any]:
+        # OMN-15323: the self-bind receipt's probe reads the pushed record
+        # commit back from the remote before claiming PASS.
+        if body is None:
+            sha = path.rsplit("/", 1)[-1]
+            self.commit_probes.append(sha)
+            return {"sha": sha}
         number = self._next_number
         self._next_number += 1
         url = f"https://github.com/OmniNode-ai/onex_change_control/pull/{number}"

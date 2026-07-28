@@ -69,10 +69,16 @@
 #     rather than degrading to a silent no-op. Stand down with the kill switch,
 #     never by re-adding a swallow.
 #   * WRITE-SURFACE BOUND (A3 guard context): in mutate, node_occ_observation_effect
-#     can only append ONE net-new record under drift/occ_observations/** —
-#     occ_observation_record_relpath pins the path and
-#     HandlerOccObservationEffect._assert_append_only (F-01) fails CLOSED on any
-#     other touched path, so this token cannot be steered at grants/** or
+#     can only touch THREE paths, all derived from this run's own inputs
+#     (OMN-15323 widened the set from one; it did NOT widen the mechanism):
+#       - drift/occ_observations/**            — the record (occ_observation_record_relpath)
+#       - contracts/<evidence-ticket>.yaml     — append ONE dod_evidence item
+#       - drift/dod_receipts/<evidence-ticket>/<item>/command.yaml — the PASS receipt
+#     The record alone can never merge: occ-preflight/eligibility also requires a
+#     DECLARED, PR-BOUND PASS receipt, which is why the latter two exist.
+#     HandlerOccObservationEffect._assert_append_only (F-01) recomputes that exact
+#     allowlist and fails CLOSED — before EVERY push — on any other touched path or
+#     any deletion, so this token still cannot be steered at grants/** or
 #     allowlists/** through this workflow.
 #
 # Tickets: OMN-14393 (RSD-5, original report-only gate), OMN-14888 (observation

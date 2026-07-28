@@ -1,6 +1,6 @@
 name: node_occ_observation_effect
 version: "1.0.0"
-description: "Write-EFFECT that appends one durable, append-only OCC observation record into onex_change_control (OMN-14888)."
+description: "Write-EFFECT that appends one durable, append-only OCC observation record into onex_change_control, plus the self-bind evidence that makes its PR merge-eligible (OMN-14888 / OMN-15323)."
 pack: occ_companion
 node_role: effect
 display_name: "OCC Observation Effect"
