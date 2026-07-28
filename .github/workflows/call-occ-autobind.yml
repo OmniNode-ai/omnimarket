@@ -66,6 +66,15 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
 
+# OMN-15300: one autobind publisher per PR at a time.
+# This workflow MUTATES the product PR (it stamps the body). Two publishers racing
+# on the same PR is a lost-update hazard, not merely wasted CI, so the group is
+# keyed on the PR alone — deliberately NOT on head sha. A newer push should cancel
+# an in-flight stamp for an older sha; only the latest state should be written.
+concurrency:
+  group: occ-autobind-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
