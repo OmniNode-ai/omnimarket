@@ -12,6 +12,9 @@ Usage:
     uv run python scripts/run-projection-migrations.py --dry-run
     uv run python scripts/run-projection-migrations.py
     uv run python scripts/run-projection-migrations.py --node node_projection_registration
+    uv run python scripts/run-projection-migrations.py \
+        --node node_projection_delegation \
+        --through 0022_delegation_events_tenant_id.sql
 """
 
 from __future__ import annotations
@@ -64,6 +67,17 @@ def discover_migration_dirs(node_filter: str | None = None) -> list[tuple[str, P
 def get_migration_files(migrations_dir: Path) -> list[Path]:
     """Return SQL files sorted by filename (lexicographic order)."""
     return sorted(migrations_dir.glob("*.sql"), key=lambda f: f.name)
+
+
+def select_migration_files(files: list[Path], through: str | None) -> list[Path]:
+    """Return migrations through an inclusive, exact filename boundary."""
+    if through is None:
+        return files
+
+    names = [path.name for path in files]
+    if through not in names:
+        raise ValueError(f"migration boundary not found: {through}")
+    return files[: names.index(through) + 1]
 
 
 async def ensure_migrations_table(conn: asyncpg.Connection) -> None:
@@ -127,6 +141,7 @@ async def run(
     db_url: str,
     dry_run: bool,
     node_filter: str | None,
+    through: str | None = None,
 ) -> int:
     """Apply all pending migrations. Returns count applied (or pending if dry_run)."""
     conn = await asyncpg.connect(db_url)
@@ -143,7 +158,10 @@ async def run(
 
         total = 0
         for node_name, migrations_dir in migration_dirs:
-            files = get_migration_files(migrations_dir)
+            files = select_migration_files(
+                get_migration_files(migrations_dir),
+                through,
+            )
             if not files:
                 continue
 
@@ -189,13 +207,24 @@ def main() -> None:
         default=os.environ.get("OMNIMARKET_DB_URL"),
         help="PostgreSQL connection URL (default: OMNIMARKET_DB_URL env var)",
     )
+    parser.add_argument(
+        "--through",
+        default=None,
+        metavar="FILENAME",
+        help=(
+            "Apply migrations only through this inclusive exact filename; "
+            "requires --node"
+        ),
+    )
     args = parser.parse_args()
 
     if not args.db_url:
         print("ERROR: --db-url or OMNIMARKET_DB_URL required", file=sys.stderr)
         sys.exit(1)
+    if args.through and not args.node:
+        parser.error("--through requires --node")
 
-    asyncio.run(run(args.db_url, args.dry_run, args.node))
+    asyncio.run(run(args.db_url, args.dry_run, args.node, args.through))
 
 
 if __name__ == "__main__":
