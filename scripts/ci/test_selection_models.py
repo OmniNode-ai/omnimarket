@@ -18,6 +18,14 @@ class EnumFullSuiteReason(StrEnum):
     MERGE_GROUP = "merge_group"
     SCHEDULED = "scheduled"
     FEATURE_FLAG_OFF = "feature_flag_off"
+    # OMN-15277: a changed path directly under tests/ (root-level, no
+    # subdirectory) cannot be narrowed below `tests/` itself -- `_resolve()`
+    # would otherwise construct a non-existent pseudo-directory
+    # (`tests/<file>.py/`) that the on-disk filter silently drops, or (when
+    # the file happens to exist) a `TestPath` value that is file-shaped, not
+    # the directory-only shape the model documents. Escalate to the real
+    # full suite instead of relying on either.
+    CHANGED_TEST_UNNARROWABLE = "changed_test_unnarrowable"
 
 
 TestPath = Annotated[
