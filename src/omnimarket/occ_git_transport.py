@@ -23,18 +23,31 @@ from __future__ import annotations
 
 import json
 import logging
+import random
 import re
 import subprocess
+import time
+from collections.abc import Callable
 from datetime import UTC, datetime
+from typing import Any
 
 from omnimarket.github_api import (
     GitHubApiError,
     rest_json,
+    rest_json_array,
     rest_no_content,
     split_repo,
 )
 
 logger = logging.getLogger(__name__)
+
+# OMN-15347: bounded retry for transient GitHub transport failures observed
+# live 2026-07-28 (RemoteDisconnected inside _resolve_reusable_tree_sha, zero
+# retry anywhere in the acquire chain). 3 attempts total, short exponential
+# backoff with jitter — retries only network/5xx transport shapes, never a 422
+# (contention is a semantic outcome, not a transport error) or any other 4xx.
+_RETRY_MAX_ATTEMPTS = 3
+_RETRY_BASE_DELAY_SECONDS = 0.2
 
 # Canonical OCC repo slug (owner/repo). The companion PRs land here.
 OCC_REPO = "OmniNode-ai/onex_change_control"
@@ -126,6 +139,50 @@ def run_git(argv: list[str], *, cwd: str, timeout: float = 300.0) -> str:
     return result.stdout.strip()
 
 
+def _is_transient_github_error(exc: GitHubApiError) -> bool:
+    """True for transport shapes worth retrying.
+
+    ``status_code is None`` covers the network/decode branch of
+    :func:`omnimarket.github_api.rest_json` (``urllib.error.URLError`` /
+    ``OSError`` — e.g. the ``RemoteDisconnected`` seen live in OMN-15347); a 5xx
+    is a transient server-side failure. A 422 (contention — the ref/commit
+    already exists, a normal outcome of the lease protocol) and every other 4xx
+    (client error — retrying cannot help) are never retried.
+    """
+    return exc.status_code is None or exc.status_code >= 500
+
+
+def _call_with_retry[T](fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    """Call ``fn(*args, **kwargs)``, retrying transient :class:`GitHubApiError`.
+
+    Bounded at :data:`_RETRY_MAX_ATTEMPTS` attempts total with short exponential
+    backoff plus jitter between attempts. Only errors classified transient by
+    :func:`_is_transient_github_error` are retried — a 422 or any other
+    non-transient error propagates unchanged on the first attempt, preserving
+    the module's existing fail-closed posture. After the attempt cap is
+    exhausted the last exception is re-raised exactly as raised today (never
+    swallowed).
+    """
+    for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
+        try:
+            return fn(*args, **kwargs)
+        except GitHubApiError as exc:
+            if not _is_transient_github_error(exc) or attempt == _RETRY_MAX_ATTEMPTS:
+                raise
+            delay = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+            delay += random.uniform(0, delay * 0.5)
+            logger.warning(
+                "occ_companion_lease: transient GitHub API error on attempt "
+                "%d/%d: %s (retrying in %.2fs)",
+                attempt,
+                _RETRY_MAX_ATTEMPTS,
+                exc,
+                delay,
+            )
+            time.sleep(delay)
+    raise AssertionError("unreachable: loop always returns or raises")
+
+
 # ---------------------------------------------------------------------------
 # Single-producer lease (OMN-14793 / OMN-14783 rec #2)
 # ---------------------------------------------------------------------------
@@ -159,13 +216,16 @@ def _resolve_reusable_tree_sha(owner: str, repo_name: str, token: str) -> str:
     merged, and no consumer ever reads its tree contents — so reuse the
     repo's current default-branch tree instead of trying to create one.
     """
-    repo_info = rest_json("GET", f"/repos/{owner}/{repo_name}", token=token)
+    repo_info = _call_with_retry(
+        rest_json, "GET", f"/repos/{owner}/{repo_name}", token=token
+    )
     default_branch = repo_info.get("default_branch")
     if not isinstance(default_branch, str) or not default_branch:
         raise GitHubApiError(
             f"repo {owner}/{repo_name} has no default_branch: {repo_info!r}"
         )
-    head_commit = rest_json(
+    head_commit = _call_with_retry(
+        rest_json,
         "GET",
         f"/repos/{owner}/{repo_name}/commits/{default_branch}",
         token=token,
@@ -210,7 +270,8 @@ def _create_lease_commit(
         },
         sort_keys=True,
     )
-    commit = rest_json(
+    commit = _call_with_retry(
+        rest_json,
         "POST",
         f"/repos/{owner}/{repo_name}/git/commits",
         token=token,
@@ -278,7 +339,8 @@ def _create_lease_ref(
     other status propagates (fail-closed).
     """
     try:
-        rest_json(
+        _call_with_retry(
+            rest_json,
             "POST",
             f"/repos/{owner}/{repo_name}/git/refs",
             token=token,
@@ -289,6 +351,103 @@ def _create_lease_ref(
         if exc.status_code == 422:
             return False
         raise
+
+
+_OCC_LEASE_REF_NAMESPACE = _OCC_LEASE_REF_PREFIX.removeprefix("refs/")
+
+
+def _reap_stale_sibling_leases(
+    owner: str,
+    repo_name: str,
+    repo_slug: str,
+    pr_number: int,
+    head_sha: str,
+    token: str,
+    lease_ttl_seconds: int,
+) -> None:
+    """Opportunistically GC expired same-PR, different-head lease refs.
+
+    OMN-15347: a lease is keyed on ``(repo, pr_number, head_sha)``. When a PR
+    receives new commits (or is force-pushed) after a lease was acquired for its
+    prior head, that old ``(repo, pr, old_head)`` key is never revisited by any
+    future acquire — the existing TTL-steal path only fires on a *same-key* 422
+    contention, so the stale ref becomes permanent debris (the live orphan:
+    ``omnibase_core#1494``, head moved past the leased SHA). This lists sibling
+    lease refs under the same repo+PR prefix and deletes any whose head_sha
+    differs from ``head_sha`` (this acquisition's target) AND whose TTL has
+    expired, giving that orphan class an actual deletion path.
+
+    Scope discipline: never touches another PR's refs (prefix-filtered), never
+    touches an unexpired sibling, and never touches the current-head key (that
+    ref only ever moves through the existing steal-on-contention logic below).
+
+    Best-effort by contract: any failure — listing, staleness read, or delete —
+    is logged and swallowed. This runs opportunistically alongside a real
+    acquire attempt and must never fail (or slow down, beyond one extra list
+    call) that acquire.
+    """
+    normalized = repo_slug.replace("/", "-").lower()
+    pr_prefix = f"{normalized}-pr-{pr_number}-"
+    try:
+        matches = rest_json_array(
+            "GET",
+            f"/repos/{owner}/{repo_name}/git/matching-refs/"
+            f"{_OCC_LEASE_REF_NAMESPACE}{pr_prefix}",
+            token=token,
+        )
+    except GitHubApiError as exc:
+        if exc.status_code == 404:
+            matches = []
+        else:
+            logger.warning(
+                "occ_companion_lease: sibling-reap listing failed for pr=%s: %s",
+                pr_number,
+                exc,
+            )
+            return
+    except OSError as exc:  # fallback-ok: reap must never fail the real acquire
+        logger.warning(
+            "occ_companion_lease: sibling-reap listing errored for pr=%s: %s",
+            pr_number,
+            exc,
+        )
+        return
+
+    for match in matches:
+        ref_name = match.get("ref") if isinstance(match, dict) else None
+        if not isinstance(ref_name, str) or not ref_name.startswith(
+            _OCC_LEASE_REF_PREFIX
+        ):
+            continue
+        key = ref_name[len(_OCC_LEASE_REF_PREFIX) :]
+        if not key.startswith(pr_prefix):
+            continue  # defensive: matching-refs can prefix-match beyond our PR
+        sibling_head = key[len(pr_prefix) :]
+        if sibling_head == head_sha:
+            continue  # current-head key — only ever moves via steal-on-contention
+        ref_short = ref_name.removeprefix("refs/")
+        try:
+            if not _lease_is_stale(
+                owner, repo_name, ref_short, token, lease_ttl_seconds
+            ):
+                continue  # unexpired sibling — leave it alone
+            rest_no_content(
+                "DELETE",
+                f"/repos/{owner}/{repo_name}/git/refs/{ref_short}",
+                token=token,
+            )
+        except GitHubApiError as exc:
+            logger.warning(
+                "occ_companion_lease: best-effort sibling reap of %s failed: %s",
+                key,
+                exc,
+            )
+        except OSError as exc:  # fallback-ok: reap must never fail the real acquire
+            logger.warning(
+                "occ_companion_lease: best-effort sibling reap of %s errored: %s",
+                key,
+                exc,
+            )
 
 
 def acquire_occ_companion_lease(
@@ -320,6 +479,22 @@ def acquire_occ_companion_lease(
     key = _lease_key(repo_slug, pr_number, head_sha)
     ref_full = f"{_OCC_LEASE_REF_PREFIX}{key}"
     ref_short = f"occ-companion-leases/{key}"
+
+    # OMN-15347: opportunistic GC for expired same-PR, different-head lease
+    # refs. Runs before the real acquire attempt. _reap_stale_sibling_leases is
+    # itself best-effort (swallows every GitHubApiError/OSError internally) —
+    # this call-site firewall is defense in depth so a real acquire can never
+    # be taken down by an unanticipated bug in the opportunistic GC path.
+    try:
+        _reap_stale_sibling_leases(
+            owner, repo_name, repo_slug, pr_number, head_sha, token, lease_ttl_seconds
+        )
+    except Exception as exc:
+        logger.warning(
+            "occ_companion_lease: sibling-reap for pr=%s raised unexpectedly: %s",
+            pr_number,
+            exc,
+        )
 
     lease_sha = _create_lease_commit(
         owner,
@@ -371,7 +546,8 @@ def release_occ_companion_lease(
     owner, repo_name = split_repo(occ_repo)
     key = _lease_key(repo_slug, pr_number, head_sha)
     try:
-        rest_no_content(
+        _call_with_retry(
+            rest_no_content,
             "DELETE",
             f"/repos/{owner}/{repo_name}/git/refs/occ-companion-leases/{key}",
             token=token,

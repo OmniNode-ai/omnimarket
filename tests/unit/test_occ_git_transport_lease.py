@@ -13,16 +13,18 @@ network I/O (OMN-14783 rec #2).
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from omnimarket.github_api import GitHubApiError
 from omnimarket.occ_git_transport import (
+    _call_with_retry,
     _create_lease_commit,
     _create_lease_ref,
     _lease_is_stale,
     _lease_key,
+    _reap_stale_sibling_leases,
     _resolve_reusable_tree_sha,
     acquire_occ_companion_lease,
     release_occ_companion_lease,
@@ -232,6 +234,16 @@ def _acquire() -> bool:
 
 @pytest.mark.unit
 class TestAcquireOrchestration:
+    # OMN-15347: acquire now runs opportunistic sibling-lease reaping as a
+    # side effect before the real acquire attempt. Neutralise it here so these
+    # pre-existing orchestration tests keep exercising only the win/lose/steal
+    # semantics they were written for — reaping itself is covered by
+    # TestReapStaleSiblingLeases and TestAcquireReapsSiblingLeases below.
+    @pytest.fixture(autouse=True)
+    def _no_reap(self):  # type: ignore[no-untyped-def]
+        with patch(f"{_MOD}._reap_stale_sibling_leases") as reap_mock:
+            yield reap_mock
+
     def test_first_acquirer_wins_and_uses_head_keyed_ref(self) -> None:
         with (
             patch(f"{_MOD}._create_lease_commit", return_value="c" * 40),
@@ -348,3 +360,302 @@ class TestReleaseLease:
             side_effect=GitHubApiError("server error", status_code=500),
         ):
             _release()  # must not raise
+
+
+# ---------------------------------------------------------------------------
+# _call_with_retry — bounded retry with jitter (OMN-15347)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestCallWithRetry:
+    def test_transient_then_success_retries_and_returns(self) -> None:
+        fn = MagicMock(
+            side_effect=[
+                GitHubApiError("Remote end closed connection without response"),
+                {"ok": True},
+            ]
+        )
+        with patch(f"{_MOD}.time.sleep") as sleep_mock:
+            result = _call_with_retry(fn, "GET", "/x", token="t")
+        assert result == {"ok": True}
+        assert fn.call_count == 2
+        sleep_mock.assert_called_once()
+
+    def test_422_is_not_retried(self) -> None:
+        fn = MagicMock(
+            side_effect=GitHubApiError("Reference already exists", status_code=422)
+        )
+        with (
+            patch(f"{_MOD}.time.sleep") as sleep_mock,
+            pytest.raises(GitHubApiError) as exc_info,
+        ):
+            _call_with_retry(fn, "POST", "/x", token="t")
+        assert exc_info.value.status_code == 422
+        assert fn.call_count == 1
+        sleep_mock.assert_not_called()
+
+    def test_other_4xx_is_not_retried(self) -> None:
+        fn = MagicMock(side_effect=GitHubApiError("nope", status_code=404))
+        with (
+            patch(f"{_MOD}.time.sleep") as sleep_mock,
+            pytest.raises(GitHubApiError),
+        ):
+            _call_with_retry(fn, "GET", "/x", token="t")
+        assert fn.call_count == 1
+        sleep_mock.assert_not_called()
+
+    def test_cap_exhausted_reraises_original_error_shape(self) -> None:
+        original = GitHubApiError("boom", status_code=502)
+        fn = MagicMock(side_effect=original)
+        with (
+            patch(f"{_MOD}.time.sleep"),
+            pytest.raises(GitHubApiError) as exc_info,
+        ):
+            _call_with_retry(fn, "GET", "/x", token="t")
+        assert exc_info.value is original
+        assert exc_info.value.status_code == 502
+        assert fn.call_count == 3  # _RETRY_MAX_ATTEMPTS
+
+    def test_network_error_shape_status_none_is_retried(self) -> None:
+        # status_code=None is the rest_json network/decode branch (the
+        # RemoteDisconnected shape observed live in OMN-15347).
+        fn = MagicMock(
+            side_effect=[
+                GitHubApiError("Remote end closed connection without response"),
+                GitHubApiError("Remote end closed connection without response"),
+                "ok",
+            ]
+        )
+        with patch(f"{_MOD}.time.sleep"):
+            assert _call_with_retry(fn) == "ok"
+        assert fn.call_count == 3
+
+
+# ---------------------------------------------------------------------------
+# _resolve_reusable_tree_sha / _create_lease_commit / _create_lease_ref /
+# release — retry wiring end-to-end through the real call sites (OMN-15347)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestRetryWiredAtCallSites:
+    def test_resolve_tree_sha_retries_transient_then_succeeds(self) -> None:
+        with (
+            patch(
+                f"{_MOD}.rest_json",
+                side_effect=[
+                    GitHubApiError("Remote end closed connection without response"),
+                    {"default_branch": "dev"},
+                    {"commit": {"tree": {"sha": "t" * 40}}},
+                ],
+            ),
+            patch(f"{_MOD}.time.sleep"),
+        ):
+            assert _resolve_reusable_tree_sha("o", "r", "tok") == "t" * 40
+
+    def test_create_lease_ref_422_still_not_retried(self) -> None:
+        # Regression guard: wiring retry into _create_lease_ref must not change
+        # its 201/422 discrimination — 422 propagates on the FIRST attempt.
+        with (
+            patch(
+                f"{_MOD}.rest_json",
+                side_effect=GitHubApiError("Reference already exists", status_code=422),
+            ) as rest_mock,
+            patch(f"{_MOD}.time.sleep") as sleep_mock,
+        ):
+            assert _create_lease_ref("o", "r", _REF_FULL, "c" * 40, "t") is False
+        assert rest_mock.call_count == 1
+        sleep_mock.assert_not_called()
+
+    def test_release_delete_retries_transient_then_succeeds(self) -> None:
+        with (
+            patch(
+                f"{_MOD}.rest_no_content",
+                side_effect=[
+                    GitHubApiError("Remote end closed connection without response"),
+                    None,
+                ],
+            ) as del_mock,
+            patch(f"{_MOD}.time.sleep"),
+        ):
+            _release()  # must not raise
+        assert del_mock.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# _reap_stale_sibling_leases — opportunistic GC for orphaned lease refs
+# (OMN-15347: the omnibase_core#1494 permanent-orphan class)
+# ---------------------------------------------------------------------------
+
+_OTHER_HEAD = "f" * 40
+_OTHER_PR_HEAD = "a" * 40
+
+
+def _matching_ref(pr: int, head: str) -> dict:
+    return {
+        "ref": f"refs/occ-companion-leases/omninode-ai-omnimarket-pr-{pr}-{head}",
+        "node_id": "x",
+        "url": "https://api.github.com/x",
+        "object": {"sha": "s" * 40, "type": "commit"},
+    }
+
+
+@pytest.mark.unit
+class TestReapStaleSiblingLeases:
+    def test_reaps_expired_different_head_sibling(self) -> None:
+        with (
+            patch(
+                f"{_MOD}.rest_json_array",
+                return_value=[_matching_ref(321, _OTHER_HEAD)],
+            ),
+            patch(f"{_MOD}._lease_is_stale", return_value=True) as stale_mock,
+            patch(f"{_MOD}.rest_no_content") as del_mock,
+        ):
+            _reap_stale_sibling_leases(
+                "o", "r", "OmniNode-ai-omnimarket", 321, _HEAD, "t", 900
+            )
+        stale_mock.assert_called_once()
+        del_mock.assert_called_once()
+        assert del_mock.call_args.args[1].endswith(
+            f"/git/refs/occ-companion-leases/omninode-ai-omnimarket-pr-321-{_OTHER_HEAD}"
+        )
+
+    def test_leaves_unexpired_different_head_sibling_alone(self) -> None:
+        with (
+            patch(
+                f"{_MOD}.rest_json_array",
+                return_value=[_matching_ref(321, _OTHER_HEAD)],
+            ),
+            patch(f"{_MOD}._lease_is_stale", return_value=False),
+            patch(f"{_MOD}.rest_no_content") as del_mock,
+        ):
+            _reap_stale_sibling_leases(
+                "o", "r", "OmniNode-ai-omnimarket", 321, _HEAD, "t", 900
+            )
+        del_mock.assert_not_called()
+
+    def test_never_touches_current_head_key(self) -> None:
+        with (
+            patch(
+                f"{_MOD}.rest_json_array",
+                return_value=[_matching_ref(321, _HEAD)],
+            ),
+            patch(f"{_MOD}._lease_is_stale") as stale_mock,
+            patch(f"{_MOD}.rest_no_content") as del_mock,
+        ):
+            _reap_stale_sibling_leases(
+                "o", "r", "OmniNode-ai-omnimarket", 321, _HEAD, "t", 900
+            )
+        stale_mock.assert_not_called()
+        del_mock.assert_not_called()
+
+    def test_never_touches_other_prs_leases(self) -> None:
+        # matching-refs could, in principle, return a broader prefix match —
+        # the function must defensively filter to the exact PR prefix.
+        with (
+            patch(
+                f"{_MOD}.rest_json_array",
+                return_value=[_matching_ref(9999, _OTHER_PR_HEAD)],
+            ),
+            patch(f"{_MOD}._lease_is_stale") as stale_mock,
+            patch(f"{_MOD}.rest_no_content") as del_mock,
+        ):
+            _reap_stale_sibling_leases(
+                "o", "r", "OmniNode-ai-omnimarket", 321, _HEAD, "t", 900
+            )
+        stale_mock.assert_not_called()
+        del_mock.assert_not_called()
+
+    def test_listing_404_is_treated_as_no_matches(self) -> None:
+        with patch(
+            f"{_MOD}.rest_json_array",
+            side_effect=GitHubApiError("Not Found", status_code=404),
+        ):
+            _reap_stale_sibling_leases(
+                "o", "r", "OmniNode-ai-omnimarket", 321, _HEAD, "t", 900
+            )  # must not raise
+
+    def test_listing_failure_does_not_raise(self) -> None:
+        with patch(
+            f"{_MOD}.rest_json_array",
+            side_effect=GitHubApiError("server error", status_code=500),
+        ):
+            _reap_stale_sibling_leases(
+                "o", "r", "OmniNode-ai-omnimarket", 321, _HEAD, "t", 900
+            )  # must not raise
+
+    def test_delete_failure_does_not_raise(self) -> None:
+        with (
+            patch(
+                f"{_MOD}.rest_json_array",
+                return_value=[_matching_ref(321, _OTHER_HEAD)],
+            ),
+            patch(f"{_MOD}._lease_is_stale", return_value=True),
+            patch(
+                f"{_MOD}.rest_no_content",
+                side_effect=GitHubApiError("server error", status_code=500),
+            ),
+        ):
+            _reap_stale_sibling_leases(
+                "o", "r", "OmniNode-ai-omnimarket", 321, _HEAD, "t", 900
+            )  # must not raise
+
+    def test_staleness_check_error_does_not_raise(self) -> None:
+        with (
+            patch(
+                f"{_MOD}.rest_json_array",
+                return_value=[_matching_ref(321, _OTHER_HEAD)],
+            ),
+            patch(
+                f"{_MOD}._lease_is_stale",
+                side_effect=GitHubApiError("server error", status_code=500),
+            ),
+            patch(f"{_MOD}.rest_no_content") as del_mock,
+        ):
+            _reap_stale_sibling_leases(
+                "o", "r", "OmniNode-ai-omnimarket", 321, _HEAD, "t", 900
+            )  # must not raise
+        del_mock.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# acquire_occ_companion_lease — reap wiring (OMN-15347)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAcquireReapsSiblingLeases:
+    def test_acquire_calls_reap_before_minting(self) -> None:
+        with (
+            patch(f"{_MOD}._reap_stale_sibling_leases") as reap_mock,
+            patch(f"{_MOD}._create_lease_commit", return_value="c" * 40),
+            patch(f"{_MOD}._create_lease_ref", return_value=True),
+        ):
+            assert _acquire() is True
+        reap_mock.assert_called_once_with(
+            "OmniNode-ai",
+            "onex_change_control",
+            "OmniNode-ai-omnimarket",
+            321,
+            _HEAD,
+            "tok",
+            900,
+        )
+
+    def test_reap_failure_does_not_fail_the_acquire(self) -> None:
+        # _reap_stale_sibling_leases is itself best-effort/never-raises by
+        # contract (proven above); this proves the acquire path does not
+        # additionally guard against it raising — i.e. a well-behaved reap
+        # implementation cannot regress acquire even if a future edit breaks
+        # its internal error handling, because acquire's own try/except firewall
+        # around the reap call absorbs it.
+        with (
+            patch(
+                f"{_MOD}._reap_stale_sibling_leases",
+                side_effect=RuntimeError("unexpected reap bug"),
+            ),
+            patch(f"{_MOD}._create_lease_commit", return_value="c" * 40),
+            patch(f"{_MOD}._create_lease_ref", return_value=True),
+        ):
+            assert _acquire() is True
