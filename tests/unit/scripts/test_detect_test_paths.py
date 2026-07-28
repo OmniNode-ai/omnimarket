@@ -366,6 +366,34 @@ def test_resolve_test_paths_never_emits_nonexistent_root_pseudo_dir() -> None:
     assert "tests/test_agent_registry.py/" not in paths
 
 
+def test_resolve_test_paths_direct_api_handles_an_existing_root_file_too(
+    tmp_path: Path,
+) -> None:
+    """CodeRabbit-flagged gap: the synthetic-nonexistent-file test above only
+    proves the "file absent" half of the defect for the direct
+    resolve_test_paths() API. compute_selection()'s CHANGED_TEST_UNNARROWABLE
+    check never reaches _resolve() for a root-level test path (it
+    short-circuits first), so a caller of resolve_test_paths() directly
+    still needs _resolve() itself to never emit the malformed
+    tests/<file>.py/ shape for a file that DOES exist on disk.
+    """
+    tests_dir = tmp_path / "tests"
+    tests_dir.mkdir()
+    real_root_file = tests_dir / "test_something_real.py"
+    real_root_file.write_text("def test_x() -> None:\n    assert True\n")
+
+    paths = resolve_test_paths(
+        ["tests/test_something_real.py"],
+        ADJACENCY_PATH,
+        repo_root=tmp_path,
+    )
+    assert not any(p.endswith(".py/") for p in paths)
+    assert "tests/test_something_real.py/" not in paths
+    # The real containing scope (tests/ itself) must be returned instead of
+    # nothing and instead of a malformed per-file path.
+    assert paths == ["tests/"]
+
+
 def test_real_existing_root_test_file_also_escalates_not_malformed_path() -> None:
     """A REAL, on-disk root-level test file (not the synthetic nonexistent
     fixture used above) must escalate the same way.

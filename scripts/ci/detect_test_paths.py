@@ -88,7 +88,24 @@ def _resolve(
                 direct_modules.add(module)
         elif path.startswith(TEST_PREFIX):
             parts = path.split("/")
-            if len(parts) >= 2:
+            if len(parts) == 2 and path.endswith(".py"):
+                # OMN-15277: a root-level test file (no subdirectory) has no
+                # containing directory below tests/ itself. Constructing
+                # tests/<file>.py/ here would produce a pseudo-directory that
+                # is either silently dropped by the on-disk filter below
+                # (file absent at resolution time) or a file-shaped TestPath
+                # value that only "works" via an accidental pathlib
+                # trailing-slash normalization (file present). This function
+                # has no full-suite-escalation concept of its own (that lives
+                # in compute_selection()'s CHANGED_TEST_UNNARROWABLE check,
+                # which short-circuits before ever reaching this function) --
+                # contribute the real containing scope, tests/ itself,
+                # instead of a malformed pseudo-path. CodeRabbit-flagged gap:
+                # this direct resolve_test_paths() API has no equivalent
+                # escalation of its own, so it must never emit the malformed
+                # shape either.
+                selected.add(TEST_PREFIX)
+            elif len(parts) >= 2:
                 selected.add(f"{TEST_PREFIX}{parts[1]}/")
 
     expanded: set[str] = set(direct_modules)
