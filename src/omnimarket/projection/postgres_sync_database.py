@@ -27,9 +27,17 @@ silently mutating a shared, migration-governed table.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import re
+from collections.abc import Iterator
 from typing import Any
+
+from omnimarket.projection.tenant_isolation import (
+    TENANT_GUC,
+    resolve_read_tenant,
+    resolve_write_tenant,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -77,6 +85,39 @@ class PostgresSyncProjectionAdapter:
         return conn
 
     @staticmethod
+    @contextlib.contextmanager
+    def _tenant_scoped(conn: Any, tenant: str) -> Iterator[None]:
+        """Run the enclosed statements in one tenant-scoped transaction.
+
+        OMN-15306. Tenant-scoped projection tables carry an RLS policy comparing
+        ``tenant_id`` against the ``app.tenant_id`` GUC, so a write with no
+        tenant context is rejected outright:
+        ``new row violates row-level security policy``.
+
+        ``set_config(..., is_local => true)`` is the parameterized,
+        transaction-scoped form of ``SET LOCAL`` (``SET LOCAL`` itself takes no
+        bind parameter, so the tenant would have to be interpolated into the SQL
+        text). It is the same mechanism the onex-api reader seam uses, so both
+        sides of the policy agree.
+
+        Autocommit is dropped only for the duration of the statement and always
+        restored: a bare ``SET LOCAL`` under autocommit is a no-op, because each
+        statement becomes its own implicit transaction and the GUC evaporates
+        before the INSERT runs.
+        """
+        conn.autocommit = False
+        try:
+            with conn.cursor() as cur:
+                cur.execute("SELECT set_config(%s, %s, true)", (TENANT_GUC, tenant))
+            yield
+            conn.commit()
+        except BaseException:
+            conn.rollback()
+            raise
+        finally:
+            conn.autocommit = True
+
+    @staticmethod
     def _adapt(value: object) -> object:
         """Adapt a Python value for a psycopg2 parameter.
 
@@ -97,6 +138,9 @@ class PostgresSyncProjectionAdapter:
         conflict_key: str,
         row: dict[str, object],
     ) -> bool:
+        # OMN-15306: resolved before any connection or SQL, so an enforced
+        # refusal cannot leave a partially-written row.
+        tenant = resolve_write_tenant(row.get("tenant_id"), table=table)
         conflict_keys = [key.strip() for key in conflict_key.split(",") if key.strip()]
         if not conflict_keys:
             raise ValueError("conflict_key must contain at least one key")
@@ -123,7 +167,7 @@ class PostgresSyncProjectionAdapter:
 
         conn = self._connect()
         try:
-            with conn.cursor() as cur:
+            with self._tenant_scoped(conn, tenant), conn.cursor() as cur:
                 cur.execute(statement, params)
             return True
         finally:
@@ -137,9 +181,16 @@ class PostgresSyncProjectionAdapter:
         from psycopg2.extras import RealDictCursor
 
         table_ident = _validate_identifier(table, kind="table")
+        # OMN-15306: reads need the GUC too. Without it an RLS-covered table
+        # returns ZERO rows rather than erroring, so existing-row probes would
+        # silently conclude no prior row exists and clobber real evidence.
+        tenant = resolve_read_tenant((filters or {}).get("tenant_id"))
         conn = self._connect()
         try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            with (
+                self._tenant_scoped(conn, tenant),
+                conn.cursor(cursor_factory=RealDictCursor) as cur,
+            ):
                 if filters:
                     filter_cols = [
                         _validate_identifier(key, kind="filter-column")
