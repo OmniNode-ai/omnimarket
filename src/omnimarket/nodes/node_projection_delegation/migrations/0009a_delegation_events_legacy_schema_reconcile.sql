@@ -8,6 +8,13 @@
 -- partial conversion. The staging table was measured at 6 rows / 128 kB before
 -- rollout, so the in-place JSONB-to-integer rewrite is deliberately preferred
 -- over a permanent dual-column compatibility path.
+-- The runner (scripts/run-forward-migrations.sh) applies node migrations with
+-- `psql -f` in autocommit, one statement per implicit transaction. The SET LOCAL
+-- scoping and the LOCK TABLE below are only legal inside an explicit transaction
+-- block, and the partial-conversion guarantee described above requires one, so
+-- this migration opens its own (OMN-15312).
+BEGIN;
+
 SET LOCAL lock_timeout = '5s';
 SET LOCAL statement_timeout = '2min';
 LOCK TABLE delegation_events IN ACCESS EXCLUSIVE MODE;
@@ -173,3 +180,5 @@ BEGIN
         ALTER COLUMN quality_gates_failed SET NOT NULL;
 END
 $reconcile_failed$;
+
+COMMIT;
