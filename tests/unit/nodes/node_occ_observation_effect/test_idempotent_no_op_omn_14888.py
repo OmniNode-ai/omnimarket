@@ -86,6 +86,9 @@ async def test_reingesting_the_same_attempt_is_a_no_op(
         "omnimarket.nodes.node_occ_observation_effect.handlers.handler_occ_observation_effect._resolve_github_token",
         lambda: "dummy-token",
     )
+    # OMN-15300: the write path now probes for an open sibling PR before
+    # cloning. No sibling exists in this scenario.
+    monkeypatch.setattr(handler, "_open_pr_for_identity", lambda *_a, **_k: None)
     monkeypatch.setattr(
         handler,
         "_clone_default",

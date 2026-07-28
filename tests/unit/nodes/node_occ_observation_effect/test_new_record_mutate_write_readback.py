@@ -115,6 +115,9 @@ async def test_new_record_mutate_write_readback(
         "omnimarket.nodes.node_occ_observation_effect.handlers.handler_occ_observation_effect._resolve_github_token",
         lambda: "dummy-token",
     )
+    # OMN-15300: the write path now probes for an open sibling PR before
+    # cloning. No sibling exists in this scenario.
+    monkeypatch.setattr(handler, "_open_pr_for_identity", lambda *_a, **_k: None)
 
     def _clone_stub(clone_dir_arg: str, _token: str, _occ_repo: str) -> str:
         _copy_into(seed_dir, clone_dir_arg)

@@ -83,10 +83,37 @@ def occ_observation_record_relpath(record: ModelOccObservationRecord) -> str:
     )
 
 
+#: Line width handed to PyYAML so its wrapping decisions match the formatter that
+#: gates the destination repo. `onex_change_control/.yamlfmt` sets
+#: `max_line_length: 100`; PyYAML's default `width` is 80, so an unset width
+#: produced files yamlfmt immediately rewrapped.
+YAMLFMT_MAX_LINE_LENGTH = 100
+
+
 def render_occ_observation_record(record: ModelOccObservationRecord) -> str:
-    """Pure: deterministic YAML bytes for one record (stable across calls/hosts)."""
+    """Pure: deterministic YAML bytes for one record (stable across calls/hosts).
+
+    The output is also YAMLFMT-STABLE against ``onex_change_control/.yamlfmt``
+    (OMN-15300). These files are committed into that repo, whose pre-commit
+    yamlfmt hook fails any file it would rewrite ("files were modified by this
+    hook"). Two settings carry that:
+
+      * ``explicit_start=True`` — the config sets ``include_document_start: true``,
+        so a file without a leading ``---`` is rewritten on sight.
+      * ``width=YAMLFMT_MAX_LINE_LENGTH`` — PyYAML defaults to 80 and yamlfmt
+        wraps at 100, so every long ``reason`` string got rewrapped.
+
+    Both are proven by ``test_render_is_yamlfmt_stable``, which runs the real
+    yamlfmt binary over the rendered bytes and asserts zero modification.
+    """
     payload = {"schema_version": "1.0.0", **record.model_dump(mode="json")}
-    return yaml.safe_dump(payload, sort_keys=True, default_flow_style=False)
+    return yaml.safe_dump(
+        payload,
+        sort_keys=True,
+        default_flow_style=False,
+        explicit_start=True,
+        width=YAMLFMT_MAX_LINE_LENGTH,
+    )
 
 
 def parse_occ_observation_record(text: str) -> ModelOccObservationRecord:
@@ -105,6 +132,7 @@ def parse_occ_observation_record(text: str) -> ModelOccObservationRecord:
 
 __all__ = [
     "OCC_OBSERVATIONS_ROOT",
+    "YAMLFMT_MAX_LINE_LENGTH",
     "occ_observation_record_relpath",
     "parse_occ_observation_record",
     "render_occ_observation_record",

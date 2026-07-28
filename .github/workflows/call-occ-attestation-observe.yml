@@ -87,6 +87,22 @@ on:
     branches: [main, dev, "hotfix/**"]
     types: [opened, synchronize, reopened, ready_for_review, edited]
 
+# OMN-15300: one observation per (PR, head sha), not one per event.
+# `types:` includes `edited`, which fires on every title/body change — and the
+# OCC evidence-stamp bots rewrite PR bodies. omnimarket#1922 therefore produced
+# three runs for head sha cac88675 inside 32 seconds (runs 30328534324 /
+# 30328537148 / 30328560931), each writing its own attempt-scoped observation
+# file and opening its own OCC PR (#5245/#5246/#5247). The observations were
+# byte-identical and collapse to ONE qualifying observation in the N=10 window,
+# so the extra runs bought nothing and burned a full CI cycle each.
+#
+# Keyed on the head sha, not just the PR: a genuine new push is a genuine new
+# observation and must not be cancelled by an unrelated body edit. Cancelling a
+# same-sha predecessor is safe because the record it would write is identical.
+concurrency:
+  group: occ-attestation-observe-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: read
