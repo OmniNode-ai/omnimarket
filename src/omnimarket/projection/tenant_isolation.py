@@ -54,6 +54,57 @@ class TenantRequiredError(ValueError):
     """
 
 
+# OMN-15306: the GUC the RLS policies compare ``tenant_id`` against (migration
+# 0023 and siblings). Shared with the onex-api and omnidash reader seams -- a
+# cross-repo contract, not a local choice.
+TENANT_GUC = "app.tenant_id"
+
+# The DEFAULT on every landed tenant_id column (0019/0022, savings 080). When an
+# event resolves no tenant the row takes this value, so the GUC must match it or
+# the policy's WITH CHECK rejects a write it would otherwise accept.
+INTERIM_DEFAULT_TENANT = "omninode"
+
+
+def resolve_write_tenant(tenant_value: object, *, table: str) -> str:
+    """Resolve the tenant a projection WRITE runs under.
+
+    The GUC must equal what the database will actually store, so the only
+    authorities are the row itself and, when the row omits ``tenant_id``, the
+    column DEFAULT that Postgres then applies.
+
+    Deliberately does NOT consult ``Settings.onex_tenant_id``: resolving a
+    tenant from configuration is the HANDLER's job (it stamps
+    ``row["tenant_id"]`` when it resolves one). Reading it again at this
+    boundary would set the session to a tenant the stored row does not carry,
+    and the policy rejects the write -- proven by execution against a real
+    policy in OMN-15301.
+
+    Raises :class:`TenantRequiredError` under enforcement, before any SQL is
+    issued, so a refused write leaves zero rows.
+    """
+    if isinstance(tenant_value, str) and tenant_value.strip():
+        return tenant_value.strip()
+    require_tenant_id(None, table=table)
+    return INTERIM_DEFAULT_TENANT
+
+
+def resolve_read_tenant(tenant_value: object) -> str:
+    """Resolve the tenant a projection READ runs under.
+
+    Mirrors the HANDLER's resolution order (explicit value, then the lane's
+    configured tenant, then the interim default) rather than the write path's
+    column-default rule: where a lane configures a tenant, the handler stamped
+    it onto the rows, so that is where existing-row probes must look.
+
+    Never raises. An unresolvable read tenant already fails closed at the policy
+    (zero rows visible, no leak), and raising here would break the probes that
+    guard against clobbering already-written evidence.
+    """
+    if isinstance(tenant_value, str) and tenant_value.strip():
+        return tenant_value.strip()
+    return get_settings().onex_tenant_id.strip() or INTERIM_DEFAULT_TENANT
+
+
 def require_tenant_id(tenant_id: str | None, *, table: str) -> None:
     """Raise :class:`TenantRequiredError` when isolation is enforced and blank.
 
@@ -74,4 +125,11 @@ def require_tenant_id(tenant_id: str | None, *, table: str) -> None:
     )
 
 
-__all__: list[str] = ["TenantRequiredError", "require_tenant_id"]
+__all__: list[str] = [
+    "INTERIM_DEFAULT_TENANT",
+    "TENANT_GUC",
+    "TenantRequiredError",
+    "require_tenant_id",
+    "resolve_read_tenant",
+    "resolve_write_tenant",
+]
