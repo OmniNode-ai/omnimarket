@@ -18,6 +18,7 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.events.occ_observation_record import ModelOccObservationRecord
+from omnimarket.events.occ_observation_store import OCC_OBSERVATION_EVIDENCE_TICKET
 
 
 class ModelOccObservationEffectRequest(BaseModel):
@@ -45,7 +46,7 @@ class ModelOccObservationEffectRequest(BaseModel):
         "pushes, and opens/reuses the OCC PR.",
     )
     evidence_ticket: str = Field(
-        default="OMN-14888",
+        default=OCC_OBSERVATION_EVIDENCE_TICKET,
         pattern=r"^OMN-\d+$",
         description="The ONE ticket every generated OCC PR binds to. It is "
         "rendered into the title, the body's closing-keyword and Evidence-Ticket "
@@ -53,7 +54,11 @@ class ModelOccObservationEffectRequest(BaseModel):
         "both EXTRACT it and prove it BOUND. Constrained to a single OMN token "
         "so the emitted PR can never pull an unintended ticket into gate scope "
         "(OMN-15300; guards against the OMN-15194 / OMN-14658 title-scan "
-        "over-demand).",
+        "over-demand). It is the observation-store ticket, NOT the triggering "
+        "product PR's ticket — see OCC_OBSERVATION_EVIDENCE_TICKET for why "
+        "citing the product ticket returns missing_contract (OMN-15323). The "
+        "payload builder now emits this field EXPLICITLY rather than relying on "
+        "this default, so the choice is a visible seam at the call site.",
     )
     correlation_id: UUID = Field(default_factory=uuid4)
 

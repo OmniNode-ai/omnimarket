@@ -15,6 +15,15 @@ detail of ``omnimarket.cli.reporting`` this script does not own.
 Writes a ``ModelOccObservationEffectRequest`` payload (``mode="dry_run"`` by
 default — see the OMN-14888 ticket's Architecture note for what going live
 requires) ready for ``onex node node_occ_observation_effect --input <path>``.
+
+``evidence_ticket`` is emitted EXPLICITLY (OMN-15323). It used to be omitted, so
+every emission silently inherited the request model's field default and no
+caller could see — let alone choose — which ticket the generated OCC PR would
+bind its evidence to. The default is unchanged
+(``OCC_OBSERVATION_EVIDENCE_TICKET``, the observation-store ticket): it must be
+a ticket whose contract already exists on the OCC default branch, which the
+triggering product PR's own ticket is NOT at the moment an observation fires —
+citing it returns ``missing_contract`` rather than a merged PR.
 """
 
 from __future__ import annotations
@@ -23,6 +32,8 @@ import argparse
 import json
 import sys
 from pathlib import Path
+
+from omnimarket.events.occ_observation_store import OCC_OBSERVATION_EVIDENCE_TICKET
 
 _OBSERVATION_SIGNATURE_FIELDS = frozenset(
     {"product_repo", "product_pr_number", "observed_at", "reason"}
@@ -56,6 +67,7 @@ def build_payload(
     recorded_at: str,
     occ_repo: str,
     mode: str,
+    evidence_ticket: str,
 ) -> dict[str, object]:
     record = {
         "product_repo": observation["product_repo"],
@@ -67,7 +79,12 @@ def build_payload(
         "recorded_at": recorded_at,
         "observation": observation,
     }
-    return {"record": record, "occ_repo": occ_repo, "mode": mode}
+    return {
+        "record": record,
+        "occ_repo": occ_repo,
+        "mode": mode,
+        "evidence_ticket": evidence_ticket,
+    }
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -80,6 +97,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--recorded-at", required=True)
     parser.add_argument("--occ-repo", default="OmniNode-ai/onex_change_control")
     parser.add_argument("--mode", default="dry_run", choices=["dry_run", "mutate"])
+    parser.add_argument(
+        "--evidence-ticket",
+        default=OCC_OBSERVATION_EVIDENCE_TICKET,
+        help=(
+            "OMN ticket the generated OCC PR binds its evidence to. Must be a "
+            "ticket whose contract already exists on the OCC default branch."
+        ),
+    )
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
 
@@ -112,6 +137,7 @@ def main(argv: list[str] | None = None) -> int:
         recorded_at=args.recorded_at,
         occ_repo=args.occ_repo,
         mode=args.mode,
+        evidence_ticket=args.evidence_ticket,
     )
     args.output.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n")
     print(f"build_occ_observation_effect_payload: wrote {args.output}")

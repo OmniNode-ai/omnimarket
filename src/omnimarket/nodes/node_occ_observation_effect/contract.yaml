@@ -30,7 +30,7 @@ contract_version:
   minor: 0
   patch: 0
 node_version: "1.0.0"
-description: "Write-EFFECT: appends one durable, append-only OCC observation record into onex_change_control at its deterministic path. mode=dry_run by default (no GitHub mutation)."
+description: "Write-EFFECT: appends one durable, append-only OCC observation record into onex_change_control at its deterministic path, then a self-bind dod_evidence entry + PASS receipt so occ-preflight/eligibility can pass (OMN-15323). mode=dry_run by default (no GitHub mutation)."
 input_model:
   name: "ModelOccObservationEffectRequest"
   module: "omnimarket.nodes.node_occ_observation_effect.models.model_occ_observation_effect_request"

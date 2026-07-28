@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.events.occ_observation_store import OCC_OBSERVATION_EVIDENCE_TICKET
 from scripts.ci.build_occ_observation_effect_payload import (
     build_payload,
     find_observation_payload,
@@ -58,6 +59,7 @@ class TestBuildPayload:
             recorded_at="2026-07-21T00:00:01Z",
             occ_repo="OmniNode-ai/onex_change_control",
             mode="dry_run",
+            evidence_ticket=OCC_OBSERVATION_EVIDENCE_TICKET,
         )
         assert payload["mode"] == "dry_run"
         assert payload["occ_repo"] == "OmniNode-ai/onex_change_control"
@@ -99,6 +101,37 @@ class TestMainCli:
         payload = json.loads(output.read_text())
         assert payload["record"]["head_sha"] == "b" * 40
         assert payload["mode"] == "dry_run"
+        # OMN-15323: emitted EXPLICITLY, not inherited from the model default —
+        # the caller must be able to see which ticket the OCC PR will bind to.
+        assert payload["evidence_ticket"] == OCC_OBSERVATION_EVIDENCE_TICKET
+
+    def test_evidence_ticket_is_overridable(self, tmp_path: Path) -> None:
+        """The ticket is a real CLI seam, not a constant nobody can reach."""
+        observe_result = tmp_path / "occ_attestation_observe_result.json"
+        observe_result.write_text(json.dumps({"observation": _OBSERVATION}))
+        output = tmp_path / "occ_observation_effect_payload.json"
+
+        exit_code = main(
+            [
+                "--observe-result",
+                str(observe_result),
+                "--head-sha",
+                "b" * 40,
+                "--workflow-run-id",
+                "999",
+                "--run-attempt",
+                "1",
+                "--recorded-at",
+                "2026-07-21T00:00:02Z",
+                "--evidence-ticket",
+                "OMN-99999",
+                "--output",
+                str(output),
+            ]
+        )
+
+        assert exit_code == 0
+        assert json.loads(output.read_text())["evidence_ticket"] == "OMN-99999"
 
     def test_missing_observation_fails_loud_not_silent(self, tmp_path: Path) -> None:
         observe_result = tmp_path / "occ_attestation_observe_result.json"

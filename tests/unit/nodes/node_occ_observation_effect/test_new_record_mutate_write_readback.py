@@ -31,6 +31,10 @@ import pytest
 from omnimarket.events.occ_autoauthor import ModelOccAutoauthorObservation
 from omnimarket.events.occ_observation_record import ModelOccObservationRecord
 from omnimarket.events.occ_observation_store import (
+    OCC_OBSERVATION_EVIDENCE_TICKET,
+    occ_observation_contract_relpath,
+    occ_observation_evidence_item_id,
+    occ_observation_receipt_relpath,
     occ_observation_record_relpath,
     render_occ_observation_record,
 )
@@ -40,14 +44,7 @@ from omnimarket.nodes.node_occ_observation_effect.handlers.handler_occ_observati
 from omnimarket.nodes.node_occ_observation_effect.models.model_occ_observation_effect_request import (
     ModelOccObservationEffectRequest,
 )
-
-
-@pytest.fixture(autouse=True)
-def _clear_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Clear inherited GIT_* vars so git ops target the temp repo, not the real
-    worktree (reference_git_env_vars_override_c_and_cwd)."""
-    for var in ("GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"):
-        monkeypatch.delenv(var, raising=False)
+from tests.unit.nodes.node_occ_observation_effect.conftest import OCC_FIXTURE_ROOT
 
 
 def _record() -> ModelOccObservationRecord:
@@ -80,16 +77,20 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 def _seed_empty_repo(tmp_path: Path) -> tuple[Path, str]:
-    """A local "clone" that does NOT carry this attempt's file yet — an empty,
-    real onex_change_control-shaped repo with one base commit."""
+    """A local "clone" that does NOT carry this attempt's record yet.
+
+    It DOES carry the real contract + receipt tree (OMN-15323): the write path
+    now authors self-bind evidence into it, and onex_change_control is never
+    without those directories."""
     seed_dir = tmp_path / "seed"
-    seed_dir.mkdir()
+    shutil.copytree(OCC_FIXTURE_ROOT, seed_dir)
     _git(seed_dir, "init", "-q")
     _git(seed_dir, "config", "user.name", "test")
     _git(seed_dir, "config", "user.email", "test@omninode.ai")
-    (seed_dir / "README.md").write_text("seed\n", encoding="utf-8")
     _git(seed_dir, "add", "-A")
-    _git(seed_dir, "commit", "-q", "-m", "base (no observation records yet)")
+    _git(
+        seed_dir, "commit", "-q", "-m", "OCC fixture base (no observation records yet)"
+    )
     base_sha = _git(seed_dir, "rev-parse", "HEAD")
     return seed_dir, base_sha
 
@@ -125,22 +126,36 @@ async def test_new_record_mutate_write_readback(
 
     monkeypatch.setattr(handler, "_clone_default", _clone_stub)
 
-    captured: dict[str, object] = {}
+    pushes: list[dict[str, object]] = []
 
     def _capture_push(
         clone_dir_arg: str, _branch: str, _token: str, _occ_repo: str
     ) -> None:
         # Read back BEFORE the tempdir context tears down: this is the exact
         # moment the real `_write_sync` would have pushed a real commit.
-        captured["head_sha"] = handler._head_sha(clone_dir_arg)
-        captured["diff_names"] = _git(
-            Path(clone_dir_arg), "diff", "--name-only", base_sha, "HEAD"
-        ).splitlines()
-        captured["content"] = (Path(clone_dir_arg) / relpath).read_text(
-            encoding="utf-8"
+        # OMN-15323: two pushes now — the record commit, then the self-bind
+        # commit — and each is captured so both trees can be asserted.
+        pushes.append(
+            {
+                "head_sha": handler._head_sha(clone_dir_arg),
+                "diff_names": _git(
+                    Path(clone_dir_arg), "diff", "--name-only", base_sha, "HEAD"
+                ).splitlines(),
+                "content": (Path(clone_dir_arg) / relpath).read_text(encoding="utf-8"),
+            }
         )
 
     monkeypatch.setattr(handler, "_push", _capture_push)
+
+    def _rest_json(_method: str, path: str, **_kw: object) -> dict[str, object]:
+        """The self-bind probe: read the pushed record commit back."""
+        return {"sha": path.rsplit("/", 1)[-1]}
+
+    monkeypatch.setattr(
+        "omnimarket.nodes.node_occ_observation_effect.handlers."
+        "handler_occ_observation_effect.rest_json",
+        _rest_json,
+    )
 
     fixed_pr_number = 4700
     fixed_pr_url = "https://github.com/OmniNode-ai/onex_change_control/pull/4700"
@@ -161,14 +176,35 @@ async def test_new_record_mutate_write_readback(
     assert result.occ_pr_url == fixed_pr_url
 
     # -- the real write actually happened (read back from real git) ----
-    assert captured, "handler never reached _push — no commit was produced"
-    assert captured["head_sha"] != base_sha, (
+    assert pushes, "handler never reached _push — no commit was produced"
+    assert len(pushes) == 2, (
+        "OMN-15323: the record commit and the self-bind commit are both pushed "
+        f"before the PR is opened; saw {len(pushes)} push(es)"
+    )
+    first, final = pushes
+    assert first["head_sha"] != base_sha, (
         "HEAD did not move — no commit was made against the real clone"
     )
-    assert captured["diff_names"] == [relpath], (
-        "commit touched something other than exactly the one new record path "
-        f"(append-only violation): {captured['diff_names']!r}"
+    assert first["diff_names"] == [relpath], (
+        "the record commit touched something other than exactly the one new "
+        f"record path (append-only violation): {first['diff_names']!r}"
     )
-    assert captured["content"] == expected_content, (
+    assert first["content"] == expected_content, (
         "committed file content does not byte-match the rendered record"
+    )
+
+    ticket = OCC_OBSERVATION_EVIDENCE_TICKET
+    item = occ_observation_evidence_item_id(record)
+    assert sorted(final["diff_names"]) == sorted(  # type: ignore[arg-type]
+        [
+            relpath,
+            occ_observation_contract_relpath(ticket),
+            occ_observation_receipt_relpath(ticket, item),
+        ]
+    ), (
+        "the pushed branch must carry exactly the record plus its self-bind "
+        f"evidence: {final['diff_names']!r}"
+    )
+    assert final["content"] == expected_content, (
+        "the self-bind commit must not disturb the record's bytes"
     )
