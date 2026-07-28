@@ -30,6 +30,8 @@ import asyncpg
 
 REPO_ROOT = Path(__file__).parent.parent
 NODES_ROOT = REPO_ROOT / "src" / "omnimarket" / "nodes"
+LOCK_RETRY_ATTEMPTS = 3
+LOCK_RETRY_SQLSTATES = frozenset({"55P03", "57014"})
 
 CREATE_MIGRATIONS_TABLE = """
 CREATE TABLE IF NOT EXISTS omnimarket_schema_migrations (
@@ -121,7 +123,22 @@ async def apply_migration(
         return
 
     sql = sql_file.read_text()
-    await conn.execute(sql)
+    for attempt in range(1, LOCK_RETRY_ATTEMPTS + 1):
+        try:
+            await conn.execute(sql)
+            break
+        except asyncpg.PostgresError as exc:
+            retryable = exc.sqlstate in LOCK_RETRY_SQLSTATES
+            if not retryable or attempt == LOCK_RETRY_ATTEMPTS:
+                raise
+            delay_seconds = 2 ** (attempt - 1)
+            print(
+                f"  lock contention applying {node_name}/{version}; "
+                f"retrying in {delay_seconds}s "
+                f"({attempt}/{LOCK_RETRY_ATTEMPTS})",
+                file=sys.stderr,
+            )
+            await asyncio.sleep(delay_seconds)
     await conn.execute(
         """
         INSERT INTO omnimarket_schema_migrations

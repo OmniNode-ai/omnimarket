@@ -45,6 +45,12 @@ INSERT INTO delegation_events (
 ) VALUES (
     gen_random_uuid(), 'legacy-correlation',
     '["contract", "quality"]'::jsonb, '["latency"]'::jsonb
+), (
+    gen_random_uuid(), 'unsupported-correlation',
+    '{"contract": true}'::jsonb, '"latency"'::jsonb
+), (
+    gen_random_uuid(), 'out-of-range-correlation',
+    '2147483648'::jsonb, '2147483648'::jsonb
 );
 """
 
@@ -69,6 +75,15 @@ def test_reconcile_declares_current_handler_shape_and_preserves_gate_evidence() 
     assert "quality_gates_failed_jsonb" in sql
     assert "jsonb_array_length" in sql
     assert "TYPE INTEGER" in sql
+
+
+def test_reconcile_uses_a_bounded_maintenance_lock_and_warns_on_coercion() -> None:
+    sql = _RECONCILE.read_text(encoding="utf-8")
+    assert "SET LOCAL lock_timeout = '5s'" in sql
+    assert "SET LOCAL statement_timeout = '2min'" in sql
+    assert "LOCK TABLE delegation_events IN ACCESS EXCLUSIVE MODE" in sql
+    assert "RAISE WARNING" in sql
+    assert "unsupported JSONB shape" in sql
 
 
 @pytest.mark.integration
@@ -116,6 +131,36 @@ async def test_real_postgres_reconciles_live_legacy_shape_idempotently() -> None
             "quality",
         ]
         assert json.loads(row["quality_gates_failed_jsonb"]) == ["latency"]
+
+        unsupported = await conn.fetchrow(
+            """
+            SELECT quality_gates_checked, quality_gates_failed,
+                   quality_gates_checked_jsonb, quality_gates_failed_jsonb
+            FROM delegation_events
+            WHERE correlation_id = 'unsupported-correlation'
+            """
+        )
+        assert unsupported is not None
+        assert unsupported["quality_gates_checked"] == 0
+        assert unsupported["quality_gates_failed"] == 0
+        assert json.loads(unsupported["quality_gates_checked_jsonb"]) == {
+            "contract": True
+        }
+        assert json.loads(unsupported["quality_gates_failed_jsonb"]) == "latency"
+
+        out_of_range = await conn.fetchrow(
+            """
+            SELECT quality_gates_checked, quality_gates_failed,
+                   quality_gates_checked_jsonb, quality_gates_failed_jsonb
+            FROM delegation_events
+            WHERE correlation_id = 'out-of-range-correlation'
+            """
+        )
+        assert out_of_range is not None
+        assert out_of_range["quality_gates_checked"] == 0
+        assert out_of_range["quality_gates_failed"] == 0
+        assert json.loads(out_of_range["quality_gates_checked_jsonb"]) == 2147483648
+        assert json.loads(out_of_range["quality_gates_failed_jsonb"]) == 2147483648
 
         await conn.execute(
             """
