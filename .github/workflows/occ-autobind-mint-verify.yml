@@ -1,0 +1,109 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# occ-autobind-mint-verify.yml
+#
+# OMN-15261 defect #2: `occ-autobind` reports SUCCESS when the Kafka command
+# publish succeeds -- it has zero visibility into whether the downstream
+# dev-lane consumer (node_pr_lifecycle_fix_effect -> OccCompanionEmitter)
+# actually minted a companion. Live evidence (OMN-15241 fan-out,
+# 2026-07-27T17:25-17:55Z): omnimarket#1919's `OCC Autobind Publisher` run
+# concluded SUCCESS (the publish step really did run:
+# `gh run view 30289157148` shows the job green), yet 30+ minutes later the
+# PR carried no `Evidence-Source: OCC#<n>` and no dod_evidence entry existed
+# for it in `contracts/OMN-15241.yaml` -- a publish-only green with no
+# falsifiable claim about the mint outcome. This is the same "check is a
+# liar" class as OMN-15214.
+#
+# This workflow adds the missing falsifiable signal WITHOUT touching the
+# fenced mint/no-op logic itself (OccCompanionEmitter /
+# omnimarket.occ_contention, owned by a separate in-flight lane, OMN-15247):
+# it watches the `OCC Autobind Publisher` run, waits out the SLA window the
+# dev-lane consumer needs to react (observed mint latency on this same
+# incident: omnibase_spi#269 bound within ~2 minutes of publish), then reads
+# the PR body BACK from GitHub for a real `Evidence-Source: OCC#<n>` stamp.
+# Absence after the SLA is reported as a real failing step (visible red, not
+# a required merge gate -- matching the born-path caller's own
+# additive/non-blocking design) and triggers exactly one automatic retry via
+# the existing OMN-14993 manual-replay entrypoint, with a PR comment so the
+# retry is visible rather than silent.
+#
+# Bounded, no retry loop: this job only reacts to a run whose ORIGINAL
+# trigger was `pull_request` (`github.event.workflow_run.event ==
+# 'pull_request'`); the manual-replay retry it dispatches is
+# `workflow_dispatch`-triggered, so a second unbound outcome does not
+# re-trigger this workflow -- a repeat miss is a signal for a human to
+# root-cause (second failure of the same check is a bug, not a flake), not
+# something to loop on automatically.
+#
+# Scope: reacts to a SUCCESS (published) conclusion only. CANCELLED is a
+# distinct signal handled by a parallel cancel-recovery workflow
+# (OMN-15261, shipped on the repos that showed it live).
+#
+# Ticket: OMN-15261
+
+name: OCC Autobind Mint Verify
+
+on:
+  workflow_run:
+    workflows:
+      - "OCC Autobind Publisher"
+    types: [completed]
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: write
+
+jobs:
+  verify-mint:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
+      WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+    steps:
+      - name: Resolve the PR number the publish run was for
+        id: pr
+        run: |
+          number="$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}" --jq '.pull_requests[0].number // empty')"
+          if [ -z "${number}" ]; then
+            echo "no associated PR number found on run ${RUN_ID}; nothing to verify." >&2
+            echo "number=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "number=${number}" >> "$GITHUB_OUTPUT"
+
+      - name: Wait out the dev-lane mint SLA window
+        if: steps.pr.outputs.number != ''
+        run: sleep 150
+
+      - name: Read the PR body back and check for a real OCC binding
+        id: check
+        if: steps.pr.outputs.number != ''
+        run: |
+          body="$(gh pr view "${{ steps.pr.outputs.number }}" --repo "${{ github.repository }}" --json body --jq '.body // ""')"
+          if echo "${body}" | grep -qE 'Evidence-Source:[[:space:]]*OCC#[0-9]+'; then
+            echo "bound=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "bound=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: FALSIFIABLE mint-verify signal (visible red, non-blocking)
+        if: steps.pr.outputs.number != '' && steps.check.outputs.bound == 'false'
+        run: |
+          echo "::error::occ-autobind published SUCCESS for PR #${{ steps.pr.outputs.number }} (run ${RUN_ID}) but no Evidence-Source: OCC#<n> binding is present after the SLA window -- the publish-only green is not proof of a mint (OMN-15261)." >&2
+          exit 1
+
+      - name: Comment + trigger one retry when unbound
+        if: steps.pr.outputs.number != '' && steps.check.outputs.bound == 'false'
+        run: |
+          gh pr comment "${{ steps.pr.outputs.number }}" --repo "${{ github.repository }}" --body \
+            "OCC autobind mint-verify (OMN-15261): \`${WORKFLOW_NAME}\` reported SUCCESS (run ${RUN_ID}) but no \`Evidence-Source: OCC#<n>\` binding landed within the SLA window. Auto-retried once via the OMN-14993 manual-replay entrypoint. A second miss after this retry is a repeat failure, not a flake -- it needs root-causing, not another automatic retry."
+          gh workflow run "${WORKFLOW_NAME}" \
+            --repo "${{ github.repository }}" \
+            -f pr_number="${{ steps.pr.outputs.number }}"
