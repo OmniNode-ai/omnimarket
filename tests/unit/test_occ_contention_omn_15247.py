@@ -60,15 +60,22 @@ def _finding(
 
 
 # ---------------------------------------------------------------------------
-# Policy resolution — fail-closed, defaults reproduce today's behavior
+# Policy resolution — fail-closed; the default is the FALSIFIABLE binding
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 class TestPolicyResolution:
     def test_empty_env_resolves_to_the_shipped_default(self) -> None:
+        """OMN-15317: the unset default is ``content_bound``, not ``pr_existence``.
+
+        The production producer is constructed with no kwargs and no env, so the
+        unset default IS production behavior. A ``pr_existence`` default meant
+        every minted contract declared a check that exits 0 for any PR that
+        exists — the OMN-15247 defect, shipped as the default.
+        """
         policy = resolve_occ_producer_policy({})
-        assert policy.check_binding is EnumCheckBinding.PR_EXISTENCE
+        assert policy.check_binding is EnumCheckBinding.CONTENT_BOUND
 
     def test_defer_on_contention_has_no_env_var_to_resolve(self) -> None:
         """The guard is unconditional — no policy field exists to be turned off.
@@ -80,8 +87,9 @@ class TestPolicyResolution:
         """
         policy = resolve_occ_producer_policy({"OMNI_OCC_CONTENTION_POLICY": "observe"})
         assert not hasattr(policy, "contention_policy")
-        # An ignored legacy value must not silently re-enable minting either.
-        assert policy.check_binding is EnumCheckBinding.PR_EXISTENCE
+        # An ignored legacy value must not silently re-enable minting either, and
+        # must not drag the check binding off its default (OMN-15317).
+        assert policy.check_binding is EnumCheckBinding.CONTENT_BOUND
 
     @pytest.mark.parametrize(
         ("env", "expected_binding"),
@@ -91,7 +99,8 @@ class TestPolicyResolution:
                 {CHECK_BINDING_ENV_VAR: "  PR_EXISTENCE  "},
                 EnumCheckBinding.PR_EXISTENCE,
             ),
-            ({}, EnumCheckBinding.PR_EXISTENCE),
+            ({}, EnumCheckBinding.CONTENT_BOUND),
+            ({CHECK_BINDING_ENV_VAR: "  "}, EnumCheckBinding.CONTENT_BOUND),
         ],
     )
     def test_recognized_values_resolve(

@@ -124,11 +124,15 @@ secrets:
     required: false
 
 config:
-  # OMN-15247: the OCC check-binding mode var. DEFAULT-OFF — the unset default
-  # reproduces today's emitted companion bytes exactly. Resolution is
-  # fail-closed (omnimarket.occ_contention.resolve_occ_producer_policy): an
-  # unrecognized value raises naming the variable and the accepted set, never
-  # silently picks a default. Declared here so the env surface is visible to
+  # OMN-15247 minted this var; OMN-15317 flipped its default to 'content_bound'.
+  # The unset default is now the FALSIFIABLE binding: the two production
+  # construction sites pass no kwargs and set no env, so the shipped default IS
+  # the production behavior, and a 'pr_existence' default meant the emitted
+  # contract check exited 0 for any PR that exists (reverts and empty PRs
+  # included) — the OMN-15247 defect itself. Resolution is fail-closed
+  # (omnimarket.occ_contention.resolve_occ_producer_policy): an unrecognized
+  # value raises naming the variable and the accepted set, never silently picks
+  # a default. Declared here so the env surface is visible to
   # scripts/audit/contract_config_audit.py rather than living only in code
   # (feedback_no_invisible_env_config_in_contract_overlays).
   #
@@ -140,12 +144,14 @@ config:
   OMNI_OCC_CHECK_BINDING:
     description: >-
       What the generated CONTRACT dod_evidence check_value asserts:
-      'pr_existence' (default — today's `gh pr view ${PR_NUMBER} --repo ${REPO}
-      --json number,state` byte-for-byte) or 'content_bound' (a RED-proven
-      content read pinned to a literal merge-base-falsifiable ref; fail-closed,
-      never falls back to the existence probe).
+      'content_bound' (default — a RED-proven content read pinned to a literal
+      merge-base-falsifiable ref; fail-closed, DEFERS the whole mint rather than
+      falling back to the existence probe) or 'pr_existence' (the legacy
+      non-falsifiable `gh pr view ${PR_NUMBER} --repo ${REPO} --json
+      number,state` byte-for-byte shape, retained as the explicit reversal path
+      and for the golden/parity fixtures).
     required: false
-    default: "pr_existence"
+    default: "content_bound"
 
 metadata:
   transport_type: kafka

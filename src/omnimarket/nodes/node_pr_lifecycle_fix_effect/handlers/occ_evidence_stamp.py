@@ -727,8 +727,8 @@ def render_downstream_receipt(
     ``actual_output`` (OMN-15247) is the ONLY schema-compatible place to record a
     content-bound check's RED derivation: ``ModelDodReceipt`` is ``extra="forbid"``
     and frozen, so no ``red_derivation:`` key can be invented. It defaults to the
-    pre-OMN-15247 literal, byte-for-byte, so the ``pr_existence`` default path is
-    unchanged.
+    pre-OMN-15247 literal, byte-for-byte, so an explicit ``pr_existence`` mint
+    (no longer the default since OMN-15317) is unchanged.
 
     OMN-15247 foldproof follow-up: ``check_value``, ``probe_command`` and
     ``actual_output`` all render through :func:`render_check_value_field` at

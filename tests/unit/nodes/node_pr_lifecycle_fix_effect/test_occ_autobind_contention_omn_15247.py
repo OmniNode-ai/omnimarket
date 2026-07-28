@@ -21,9 +21,14 @@ defects are covered:
   assertion below is therefore made on the **contract**, never the receipt.
 
 Defer-on-contention is ALWAYS ON — no env var, no constructor argument (see
-``test_defer_is_mandatory_with_no_env_and_no_constructor_argument``). The
-content-bound binding ships default-OFF, and ``TestDefaultsAreByteIdentical``
-proves that: with no env set and no contender, the emitted bytes are unchanged.
+``test_defer_is_mandatory_with_no_env_and_no_constructor_argument``).
+
+OMN-15317 flipped the check-binding default from ``pr_existence`` to
+``content_bound``: ``TestShippedDefaultIsContentBound`` now owns the
+default-path assertion, and ``TestPrExistenceOptInIsByteIdentical`` keeps the
+byte-identical legacy proof under an EXPLICIT ``pr_existence`` selection (it is
+the reversal path and the shape the golden/parity fixtures assert), which is all
+that assertion ever proved.
 """
 
 from __future__ import annotations
@@ -52,7 +57,10 @@ from omnimarket.occ_content_probe import (
     build_content_read_check,
     is_yamlfmt_stable_check,
 )
-from omnimarket.occ_contention import EnumCheckBinding
+from omnimarket.occ_contention import (
+    EnumCheckBinding,
+    resolve_occ_producer_policy,
+)
 
 _MOD = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter"
 
@@ -289,20 +297,28 @@ def _stable_emit(emitter: OccCompanionEmitter, tmp_path: Path, **kwargs: object)
 
 
 # ---------------------------------------------------------------------------
-# Default-OFF: the shipped default reproduces today's bytes
+# The explicit pr_existence opt-in still reproduces the legacy bytes
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-class TestDefaultsAreByteIdentical:
-    def test_defaults_produce_the_pre_omn_15247_contract_and_receipt_bytes(
+class TestPrExistenceOptInIsByteIdentical:
+    def test_pr_existence_produces_the_pre_omn_15247_contract_and_receipt_bytes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("OMNI_OCC_CHECK_BINDING", raising=False)
+        """OMN-15317: this was the DEFAULT-path assertion until the flip.
+
+        It is retained verbatim under an explicit ``pr_existence`` selection
+        because that binding is the reversal path and the shape the golden and
+        consumer-gate parity fixtures assert; what changed is that nothing
+        selects it implicitly any more. The default path is asserted by
+        ``TestShippedDefaultIsContentBound``.
+        """
+        monkeypatch.setenv("OMNI_OCC_CHECK_BINDING", "pr_existence")
         emitter = OccCompanionEmitter()
         assert emitter._check_binding is EnumCheckBinding.PR_EXISTENCE
 
-        # A fully RED-derivable PR is present and UNCONTENDED: with the default
+        # A fully RED-derivable PR is present and UNCONTENDED: under this
         # binding, not one emitted byte may change. (Contention is covered by
         # TestDeferOnContention — under contention there are no bytes at all.)
         fixture = _content_bound_fixture()
@@ -361,6 +377,143 @@ class TestDefaultsAreByteIdentical:
         monkeypatch.setenv("OMNI_OCC_CONTENTION_POLICY", "observe")
         emitter = OccCompanionEmitter()
         assert not hasattr(emitter, "_contention_policy")
+
+
+# ---------------------------------------------------------------------------
+# OMN-15317 — the shipped default is the FALSIFIABLE binding
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestShippedDefaultIsContentBound:
+    """The flip, asserted on the artifact that runs, not on the enum.
+
+    The two production sites construct ``OccCompanionEmitter()`` with no kwargs
+    and set no env, so "what does the no-arg emitter write" IS the production
+    question. Every test here drives the real ``_emit_companion_sync``.
+    """
+
+    def test_no_env_and_no_kwargs_resolves_content_bound(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("OMNI_OCC_CHECK_BINDING", raising=False)
+        assert (
+            resolve_occ_producer_policy({}).check_binding
+            is EnumCheckBinding.CONTENT_BOUND
+        )
+        assert OccCompanionEmitter()._check_binding is EnumCheckBinding.CONTENT_BOUND
+
+    def test_the_default_mint_writes_a_content_bound_contract_check(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The CONTRACT check — the string the OCC runner executes — is bound.
+
+        Asserted on ``contracts/<ticket>.yaml``, never on a receipt: the
+        compliance runner executes contract check_values and ignores receipt
+        ones, which is why OMN-14619's receipt-only content read was provenance
+        rather than a gate.
+        """
+        monkeypatch.delenv("OMNI_OCC_CHECK_BINDING", raising=False)
+        emitter = OccCompanionEmitter()
+        action, clone_root, rec = _stable_emit(emitter, tmp_path)
+
+        assert not action.startswith("skip:")
+        assert rec.pr_open_calls == 1
+        values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
+        assert values[0] == build_content_read_check(
+            repo=_STABLE_REPO,
+            path=_STABLE_PATH,
+            kind="class",
+            symbol="H",
+            head_sha=_HEAD_SHA,
+        )
+        assert (
+            "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
+            not in (values[0])
+        )
+
+    def test_a_revert_shaped_pr_defers_under_the_default_and_minted_under_the_old(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RED/GREEN of the flip itself, on one input, driven end to end.
+
+        A revert-shaped PR removes declarations and adds none, so no candidate is
+        RED-derivable. Under the OLD default the producer still minted a
+        companion whose contract check was ``gh pr view … --json number,state``
+        — which exits 0 for any PR that exists, so the evidence PASSES for a
+        revert. Under the OMN-15317 default the mint is refused outright, with
+        zero side effects and a marked note on the product PR. There is no third
+        outcome: the fallback-to-existence-probe path does not exist.
+        """
+        monkeypatch.delenv("OMNI_OCC_CHECK_BINDING", raising=False)
+        revert_files: list[dict[str, object]] = [
+            {
+                "filename": _STABLE_PATH,
+                "status": "modified",
+                # Removal-only hunk: `extract_symbol_candidates` reads ADDED
+                # declaration lines, so a revert yields zero candidates.
+                "patch": "@@ -1,3 +0,0 @@\n-class H:\n-    pass\n",
+            }
+        ]
+
+        legacy = OccCompanionEmitter(check_binding=EnumCheckBinding.PR_EXISTENCE)
+        legacy_action, legacy_root, legacy_rec = _run_emit(
+            legacy,
+            tmp_path / "legacy",
+            product_repo=_STABLE_REPO,
+            pr_files=revert_files,
+            content_at_ref=lambda _p, _r: "# nothing here\n",
+            probe_exits={_HEAD_SHA: 1, _MERGE_BASE_SHA: 1},
+        )
+        assert not legacy_action.startswith("skip:")
+        assert legacy_rec.pr_open_calls == 1
+        assert _contract_check_values(legacy_root / "contracts" / "OMN-9999.yaml")[
+            0
+        ] == ("gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state")
+
+        current = OccCompanionEmitter()
+        action, clone_root, rec = _run_emit(
+            current,
+            tmp_path / "current",
+            product_repo=_STABLE_REPO,
+            pr_files=revert_files,
+            content_at_ref=lambda _p, _r: "# nothing here\n",
+            probe_exits={_HEAD_SHA: 1, _MERGE_BASE_SHA: 1},
+        )
+        assert action.startswith("skip:NO_RED_DERIVABLE_CHECK")
+        assert rec.lease_calls == []
+        assert rec.git_calls == []
+        assert rec.pr_open_calls == 0
+        assert rec.patch_evidence_calls == 0
+        assert not clone_root.exists()
+        assert any(
+            "<!-- occ-autobind-no-red-derivable:321 -->" in body
+            for _path, body in rec.posted_comments
+        )
+
+    def test_the_node_contract_declares_the_same_default_as_the_code(self) -> None:
+        """The config overlay and the resolver must not drift.
+
+        ``feedback_no_invisible_env_config_in_contract_overlays``: the declared
+        default is what an operator reads; a contract that still advertises
+        ``pr_existence`` while the code resolves ``content_bound`` would be a
+        documented lie about production behavior.
+        """
+        contract = yaml.safe_load(
+            (
+                Path(__file__).resolve().parents[4]
+                / "src"
+                / "omnimarket"
+                / "nodes"
+                / "node_pr_lifecycle_fix_effect"
+                / "contract.yaml"
+            ).read_text()
+        )
+        declared = contract["config"]["OMNI_OCC_CHECK_BINDING"]["default"]
+        assert declared == EnumCheckBinding.CONTENT_BOUND.value
+        assert resolve_occ_producer_policy({}).check_binding is EnumCheckBinding(
+            declared
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -455,9 +608,14 @@ class TestDeferOnContention:
 
         Without the own-branch skip, the emitter's first mint would make every
         subsequent re-fire defer to itself, permanently wedging the producer.
+
+        OMN-15317: driven through ``_stable_emit`` so the PR is RED-derivable.
+        Under the content-bound default a candidate-less PR is refused for a
+        different reason (NO_RED_DERIVABLE_CHECK), which would make "did the
+        contention guard let this through" unobservable.
         """
         emitter = OccCompanionEmitter()
-        action, clone_root, rec = _run_emit(
+        action, clone_root, rec = _stable_emit(
             emitter,
             tmp_path,
             contending={
@@ -477,7 +635,7 @@ class TestDeferOnContention:
     ) -> None:
         """Machine-vs-machine is the OMN-14793 lease's axis, not this one."""
         emitter = OccCompanionEmitter()
-        action, _clone, rec = _run_emit(
+        action, _clone, rec = _stable_emit(
             emitter,
             tmp_path,
             contending={
@@ -496,7 +654,7 @@ class TestDeferOnContention:
     ) -> None:
         """The onex_change_control#5129 shape — a doc declares no dod_evidence."""
         emitter = OccCompanionEmitter()
-        action, _clone, rec = _run_emit(
+        action, _clone, rec = _stable_emit(
             emitter,
             tmp_path,
             contending={
@@ -615,12 +773,19 @@ class TestContentBoundChecks:
             head_sha=_HEAD_SHA,
         )
 
-    def test_the_default_binding_still_mints_on_the_same_pr(
+    def test_the_pr_existence_binding_still_mints_on_the_same_pr(
         self, tmp_path: Path
     ) -> None:
-        """The content-bound derivation runs in BOTH modes; only the default
-        binding's declared check_value is unaffected by it."""
-        _action, clone_root, rec = _stable_emit(OccCompanionEmitter(), tmp_path)
+        """The content-bound derivation runs in BOTH modes; only the
+        ``pr_existence`` binding's declared check_value is unaffected by it.
+
+        OMN-15317 moved this from "the default binding" to "the explicitly
+        selected legacy binding" — the derivation running in both modes is what
+        keeps the OFF state observable rather than absent.
+        """
+        _action, clone_root, rec = _stable_emit(
+            OccCompanionEmitter(check_binding=EnumCheckBinding.PR_EXISTENCE), tmp_path
+        )
         values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
         assert values[0] == "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
         assert rec.pr_open_calls == 1

@@ -246,8 +246,16 @@ class OccCompanionEmitter:
         # (handler_pr_lifecycle_fix_runtime.py and
         # handler_pr_lifecycle_orchestrator.py) need no change; tests inject
         # directly. Resolution is FAIL-CLOSED — an unrecognized value raises
-        # naming the var and the accepted set, never silently defaults. The
-        # shipped default (pr_existence) reproduces today's bytes.
+        # naming the var and the accepted set, never silently defaults.
+        #
+        # OMN-15317: the shipped default is now CONTENT_BOUND. Because those two
+        # sites construct with no kwargs and no env, the default IS production;
+        # the former pr_existence default meant the contract check the OCC
+        # compliance runner executes was `gh pr view … --json number,state`,
+        # which exits 0 for any PR that exists — non-falsifiable, and the exact
+        # defect OMN-15247 was filed for. Under CONTENT_BOUND a producer that
+        # cannot derive a RED-proven probe DEFERS (see the fail-closed branch in
+        # _emit_companion_sync); it never falls back to the existence probe.
         resolved_policy = resolve_occ_producer_policy(os.environ)
         self._check_binding = (
             check_binding
