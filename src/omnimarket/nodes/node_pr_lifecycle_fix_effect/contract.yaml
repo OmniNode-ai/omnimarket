@@ -124,27 +124,19 @@ secrets:
     required: false
 
 config:
-  # OMN-15247: the two OCC producer mode vars. Both are DEFAULT-OFF — the unset
-  # default reproduces today's emitted companion bytes exactly. Resolution is
+  # OMN-15247: the OCC check-binding mode var. DEFAULT-OFF — the unset default
+  # reproduces today's emitted companion bytes exactly. Resolution is
   # fail-closed (omnimarket.occ_contention.resolve_occ_producer_policy): an
   # unrecognized value raises naming the variable and the accepted set, never
   # silently picks a default. Declared here so the env surface is visible to
   # scripts/audit/contract_config_audit.py rather than living only in code
   # (feedback_no_invisible_env_config_in_contract_overlays).
   #
-  # NOTE: detection runs in BOTH modes of each var; only the ENFORCEMENT is
-  # gated. `optional: true` on a load-bearing key would be the silent-skip
-  # defect (feedback_optional_input_means_the_check_does_not_exist) — these are
-  # mode selectors over an always-on check, not on/off switches for the check.
-  OMNI_OCC_CONTENTION_POLICY:
-    description: >-
-      OCC companion contention policy: 'observe' (default — detect and log a
-      competing hand-authored companion, mint anyway, today's behavior) or
-      'defer' (suppress the mint with zero side effects when an open
-      hand-authored or unknown-provenance companion already carries evidence
-      for the ticket).
-    required: false
-    default: "observe"
+  # NOTE: this is a mode selector over WHICH shape of check is emitted, not an
+  # on/off switch for a check. The OMN-15247 defer-on-contention guard has NO
+  # env var at all — it is unconditional, like the OMN-14793 single-producer
+  # lease; an opt-in guard would be the silent-skip defect
+  # (feedback_optional_input_means_the_check_does_not_exist).
   OMNI_OCC_CHECK_BINDING:
     description: >-
       What the generated CONTRACT dod_evidence check_value asserts:

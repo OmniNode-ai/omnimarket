@@ -33,19 +33,26 @@ Different axis, not a duplicate. The lease is **machine-vs-machine**, keyed on
 the product PR head SHA, and arbitrates two copies of the *same* producer racing
 to mint the *same* bytes. Contention-defer is **machine-vs-human**, keyed on the
 ticket plus the companion's provenance, and arbitrates a machine mint against a
-*different, stronger* artifact. The lease is deliberately always-on with no
-toggle; see the policy note below for why these flags are not the "silent
-no-check" that reasoning rejects.
+*different, stronger* artifact.
 
-Default-OFF, but never a silent no-check
-----------------------------------------
-``OccCompanionEmitter``'s lease comment (``occ_companion_emitter.py`` L222-226)
-rejects an optional toggle on the grounds that it would be a silent no-check
-(memory ``feedback_optional_input_means_the_check_does_not_exist``). These flags
-avoid that trap by construction: **detection always runs in both modes.** Under
-``observe`` (the shipped default) the probe still executes and logs
-``would_defer=…`` per finding; only the *enforcement* — suppressing the mint —
-is gated. The check exists unconditionally; the mutation does not.
+Always-on, with no toggle — same posture as the lease
+-----------------------------------------------------
+Defer-on-contention has **no enable flag and no observe mode**. The earlier
+slice shipped it behind ``OMNI_OCC_CONTENTION_POLICY=observe|defer`` defaulting
+to ``observe``; that default reproduced the exact defect OMN-15247 was filed
+for, because the producer that actually runs is constructed with no kwargs and
+no env, so the guard never fired in production. A guard that only fires when an
+operator opts in is not a guard (memory
+``feedback_optional_input_means_the_check_does_not_exist``), and
+``OccCompanionEmitter``'s own lease comment rejects an optional toggle on
+exactly those grounds. The toggle is therefore deleted, not re-defaulted, so
+there is no configuration under which the mint can displace a hand-authored
+companion again.
+
+``OMNI_OCC_CHECK_BINDING`` (fix direction #2, the content-bound check grammar)
+is a separate axis and keeps its mode selector: it is fail-closed inert today
+for the measured yamlfmt-fold reason recorded in the emitter, so it selects
+between *shapes of a check*, not between checking and not checking.
 """
 
 from __future__ import annotations
@@ -63,11 +70,9 @@ logger = logging.getLogger(__name__)
 
 __all__ = [
     "CHECK_BINDING_ENV_VAR",
-    "CONTENTION_POLICY_ENV_VAR",
     "ContentionFinding",
     "EnumCheckBinding",
     "EnumCompanionProvenance",
-    "EnumContentionPolicy",
     "ModelOccProducerPolicy",
     "classify_companion_provenance",
     "companion_touches_ticket",
@@ -76,7 +81,6 @@ __all__ = [
     "resolve_occ_producer_policy",
 ]
 
-CONTENTION_POLICY_ENV_VAR = "OMNI_OCC_CONTENTION_POLICY"
 CHECK_BINDING_ENV_VAR = "OMNI_OCC_CHECK_BINDING"
 
 # Both machine producers (the legacy OccCompanionEmitter and the RSD-3
@@ -109,16 +113,6 @@ class EnumCompanionProvenance(StrEnum):
     """Neither machine signal present and the branch shape is unrecognized."""
 
 
-class EnumContentionPolicy(StrEnum):
-    """What the producer does when it finds a contending companion."""
-
-    OBSERVE = "observe"
-    """Detect + log only. Mint proceeds exactly as today. **Shipped default.**"""
-
-    DEFER = "defer"
-    """Suppress the mint on contention, with zero side effects."""
-
-
 class EnumCheckBinding(StrEnum):
     """What the producer's generated contract ``check_value`` asserts."""
 
@@ -131,9 +125,12 @@ class EnumCheckBinding(StrEnum):
 
 @dataclass(frozen=True)
 class ModelOccProducerPolicy:
-    """The resolved, immutable producer policy for one emitter instance."""
+    """The resolved, immutable producer policy for one emitter instance.
 
-    contention_policy: EnumContentionPolicy
+    Carries only the check-binding axis: defer-on-contention is unconditional
+    and therefore has nothing to resolve.
+    """
+
     check_binding: EnumCheckBinding
 
 
@@ -149,29 +146,19 @@ class ContentionFinding:
 
 
 def resolve_occ_producer_policy(env: Mapping[str, str]) -> ModelOccProducerPolicy:
-    """Resolve both OMN-15247 mode vars, FAIL-CLOSED on an unrecognized value.
+    """Resolve the check-binding mode var, FAIL-CLOSED on an unrecognized value.
 
-    Modes, not booleans, so a third policy is addable without flag-soup. An
-    unset var takes the shipped default (``observe`` / ``pr_existence``), which
-    reproduces today's emitter bytes exactly. A typo raises ``RuntimeError``
-    naming the variable and the accepted set rather than silently picking a
-    default — CLAUDE.md rule 8 (fail-fast on missing/bad env, never a silent
-    fallback), same shape as ``_resolve_github_token``'s auth-mode branch.
+    A mode, not a boolean, so a third binding is addable without flag-soup. An
+    unset var takes the shipped default (``pr_existence``), which reproduces
+    today's emitter bytes exactly. A typo raises ``RuntimeError`` naming the
+    variable and the accepted set rather than silently picking a default —
+    CLAUDE.md rule 8 (fail-fast on bad env, never a silent fallback), same shape
+    as ``_resolve_github_token``'s auth-mode branch.
+
+    Defer-on-contention is deliberately NOT resolved here: it has no toggle (see
+    the module docstring).
     """
-    policy_raw = (env.get(CONTENTION_POLICY_ENV_VAR) or "").strip().lower()
     binding_raw = (env.get(CHECK_BINDING_ENV_VAR) or "").strip().lower()
-
-    if not policy_raw:
-        policy = EnumContentionPolicy.OBSERVE
-    else:
-        try:
-            policy = EnumContentionPolicy(policy_raw)
-        except ValueError:
-            accepted = ", ".join(sorted(m.value for m in EnumContentionPolicy))
-            raise RuntimeError(
-                f"{CONTENTION_POLICY_ENV_VAR}={policy_raw!r} is not a recognized "
-                f"OCC contention policy (expected one of: {accepted})."
-            ) from None
 
     if not binding_raw:
         binding = EnumCheckBinding.PR_EXISTENCE
@@ -185,7 +172,7 @@ def resolve_occ_producer_policy(env: Mapping[str, str]) -> ModelOccProducerPolic
                 f"check binding (expected one of: {accepted})."
             ) from None
 
-    return ModelOccProducerPolicy(contention_policy=policy, check_binding=binding)
+    return ModelOccProducerPolicy(check_binding=binding)
 
 
 def classify_companion_provenance(
@@ -240,15 +227,15 @@ def companion_touches_ticket(*, changed_paths: Sequence[str], ticket_id: str) ->
 
 
 def decide_contention(
-    findings: Sequence[ContentionFinding], policy: EnumContentionPolicy
+    findings: Sequence[ContentionFinding],
 ) -> tuple[bool, str]:
     """Pure: ``(should_defer, human_reason)`` for a set of findings.
 
-    Defers only under ``DEFER`` policy and only for a HAND_AUTHORED or UNKNOWN
-    contender. A MACHINE contender is never deferred to: that is the
-    single-producer lease's axis (OMN-14793), and deferring to a machine
-    companion — including the emitter's own in-flight branch — would deadlock a
-    ``synchronize`` re-fire against itself.
+    Unconditional — there is no policy argument and no observe mode. Defers for
+    a HAND_AUTHORED or UNKNOWN contender. A MACHINE contender is never deferred
+    to: that is the single-producer lease's axis (OMN-14793), and deferring to a
+    machine companion — including the emitter's own in-flight branch — would
+    deadlock a ``synchronize`` re-fire against itself.
     """
     blocking = [
         f
@@ -266,8 +253,6 @@ def decide_contention(
         f"carries evidence for {f.ticket_id}"
         for f in blocking
     )
-    if policy is not EnumContentionPolicy.DEFER:
-        return False, f"contention observed but policy={policy.value}: {detail}"
     return True, detail
 
 
@@ -301,8 +286,8 @@ def find_open_companions(
 
     Any exception from any callable degrades that candidate (or, for a failed
     search, that ticket) to an UNKNOWN finding with the error recorded in
-    ``reason``: under ``defer`` the emitter then fails toward deferring
-    (recoverable), under ``observe`` nothing changes.
+    ``reason``: the emitter then fails toward deferring, which is the
+    recoverable direction (the next ``synchronize`` re-fires the producer).
     """
     findings: list[ContentionFinding] = []
     for ticket in tickets:

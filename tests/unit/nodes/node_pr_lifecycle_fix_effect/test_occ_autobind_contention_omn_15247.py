@@ -20,8 +20,10 @@ defects are covered:
   ``check_value``, which the runner does not execute. Every content-bound
   assertion below is therefore made on the **contract**, never the receipt.
 
-Both behaviors ship DEFAULT-OFF. ``TestDefaultsAreByteIdentical`` is the
-load-bearing proof of that: with no env set, the emitted bytes are unchanged.
+Defer-on-contention is ALWAYS ON — no env var, no constructor argument (see
+``test_defer_is_mandatory_with_no_env_and_no_constructor_argument``). The
+content-bound binding ships default-OFF, and ``TestDefaultsAreByteIdentical``
+proves that: with no env set and no contender, the emitted bytes are unchanged.
 """
 
 from __future__ import annotations
@@ -50,7 +52,7 @@ from omnimarket.occ_content_probe import (
     build_content_read_check,
     is_yamlfmt_stable_check,
 )
-from omnimarket.occ_contention import EnumCheckBinding, EnumContentionPolicy
+from omnimarket.occ_contention import EnumCheckBinding
 
 _MOD = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter"
 
@@ -293,25 +295,17 @@ class TestDefaultsAreByteIdentical:
     def test_defaults_produce_the_pre_omn_15247_contract_and_receipt_bytes(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.delenv("OMNI_OCC_CONTENTION_POLICY", raising=False)
         monkeypatch.delenv("OMNI_OCC_CHECK_BINDING", raising=False)
         emitter = OccCompanionEmitter()
-        assert emitter._contention_policy is EnumContentionPolicy.OBSERVE
         assert emitter._check_binding is EnumCheckBinding.PR_EXISTENCE
 
-        # A fully RED-derivable PR *and* a hand-authored contender are BOTH
-        # present: under the defaults neither may change a single byte.
+        # A fully RED-derivable PR is present and UNCONTENDED: with the default
+        # binding, not one emitted byte may change. (Contention is covered by
+        # TestDeferOnContention — under contention there are no bytes at all.)
         fixture = _content_bound_fixture()
         action, clone_root, rec = _run_emit(
             emitter,
             tmp_path,
-            contending={
-                5115: {
-                    "ref": "jonah/omn-9999-occ",
-                    "labels": [],
-                    "files": ["contracts/OMN-9999.yaml"],
-                }
-            },
             **fixture,  # type: ignore[arg-type]
         )
 
@@ -342,20 +336,28 @@ class TestDefaultsAreByteIdentical:
             "gh pr view 321 --repo OmniNode-ai/omnimarket --json number,state,headRefName"
         )
 
-    @pytest.mark.parametrize(
-        ("var", "value"),
-        [
-            ("OMNI_OCC_CONTENTION_POLICY", "yes"),
-            ("OMNI_OCC_CHECK_BINDING", "1"),
-        ],
-    )
     def test_unknown_mode_raises_at_construction(
-        self, var: str, value: str, monkeypatch: pytest.MonkeyPatch
+        self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv(var, value)
+        monkeypatch.setenv("OMNI_OCC_CHECK_BINDING", "1")
         with pytest.raises(RuntimeError) as excinfo:
             OccCompanionEmitter()
-        assert var in str(excinfo.value)
+        assert "OMNI_OCC_CHECK_BINDING" in str(excinfo.value)
+
+    def test_no_contention_toggle_can_be_constructed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The retired opt-in cannot be re-introduced through either surface.
+
+        A stale caller passing ``contention_policy=`` must fail loudly rather
+        than being silently accepted, and a stale ``OMNI_OCC_CONTENTION_POLICY``
+        left in a runtime env must not disable the guard.
+        """
+        with pytest.raises(TypeError):
+            OccCompanionEmitter(contention_policy="observe")  # type: ignore[call-arg]
+        monkeypatch.setenv("OMNI_OCC_CONTENTION_POLICY", "observe")
+        emitter = OccCompanionEmitter()
+        assert not hasattr(emitter, "_contention_policy")
 
 
 # ---------------------------------------------------------------------------
@@ -365,10 +367,20 @@ class TestDefaultsAreByteIdentical:
 
 @pytest.mark.unit
 class TestDeferOnContention:
-    def test_observe_mints_despite_a_hand_authored_contender(
-        self, tmp_path: Path
+    def test_defer_is_mandatory_with_no_env_and_no_constructor_argument(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        emitter = OccCompanionEmitter(contention_policy=EnumContentionPolicy.OBSERVE)
+        """The load-bearing test: the SHIPPED producer defers, with no opt-in.
+
+        Drives the real ``_emit_companion_sync`` on an emitter built exactly the
+        way the two production sites build it (``OccCompanionEmitter()``, no
+        kwargs) with no OMN-15247 env var set at all. A guard that only fires
+        when an operator opts in is not a guard
+        (``feedback_optional_input_means_the_check_does_not_exist``); this
+        asserts the mint is suppressed on the default path.
+        """
+        monkeypatch.delenv("OMNI_OCC_CHECK_BINDING", raising=False)
+        emitter = OccCompanionEmitter()
         action, clone_root, rec = _run_emit(
             emitter,
             tmp_path,
@@ -380,14 +392,18 @@ class TestDeferOnContention:
                 }
             },
         )
-        assert not action.startswith("skip:")
-        assert (clone_root / "contracts" / "OMN-9999.yaml").is_file()
-        assert rec.pr_open_calls == 1
+        assert action.startswith("skip:DEFER_HAND_AUTHORED")
+        assert "OCC#5115" in action
+        assert rec.lease_calls == []
+        assert rec.git_calls == []
+        assert rec.pr_open_calls == 0
+        assert rec.patch_evidence_calls == 0
+        assert not clone_root.exists()
 
     def test_defer_suppresses_the_mint_with_zero_side_effects(
         self, tmp_path: Path
     ) -> None:
-        emitter = OccCompanionEmitter(contention_policy=EnumContentionPolicy.DEFER)
+        emitter = OccCompanionEmitter()
         action, clone_root, rec = _run_emit(
             emitter,
             tmp_path,
@@ -411,7 +427,7 @@ class TestDeferOnContention:
     def test_defer_posts_one_idempotent_marked_note_on_the_contending_occ_pr(
         self, tmp_path: Path
     ) -> None:
-        emitter = OccCompanionEmitter(contention_policy=EnumContentionPolicy.DEFER)
+        emitter = OccCompanionEmitter()
         _action, _clone, rec = _run_emit(
             emitter,
             tmp_path,
@@ -437,7 +453,7 @@ class TestDeferOnContention:
         Without the own-branch skip, the emitter's first mint would make every
         subsequent re-fire defer to itself, permanently wedging the producer.
         """
-        emitter = OccCompanionEmitter(contention_policy=EnumContentionPolicy.DEFER)
+        emitter = OccCompanionEmitter()
         action, clone_root, rec = _run_emit(
             emitter,
             tmp_path,
@@ -457,7 +473,7 @@ class TestDeferOnContention:
         self, tmp_path: Path
     ) -> None:
         """Machine-vs-machine is the OMN-14793 lease's axis, not this one."""
-        emitter = OccCompanionEmitter(contention_policy=EnumContentionPolicy.DEFER)
+        emitter = OccCompanionEmitter()
         action, _clone, rec = _run_emit(
             emitter,
             tmp_path,
@@ -476,7 +492,7 @@ class TestDeferOnContention:
         self, tmp_path: Path
     ) -> None:
         """The onex_change_control#5129 shape — a doc declares no dod_evidence."""
-        emitter = OccCompanionEmitter(contention_policy=EnumContentionPolicy.DEFER)
+        emitter = OccCompanionEmitter()
         action, _clone, rec = _run_emit(
             emitter,
             tmp_path,
@@ -494,7 +510,7 @@ class TestDeferOnContention:
     def test_defer_fails_toward_deferring_when_the_search_api_raises(
         self, tmp_path: Path
     ) -> None:
-        emitter = OccCompanionEmitter(contention_policy=EnumContentionPolicy.DEFER)
+        emitter = OccCompanionEmitter()
 
         def exploding_rest(method: str, path: str, *, body=None, token=None) -> dict:
             if "/search/issues" in path:

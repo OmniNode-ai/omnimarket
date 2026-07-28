@@ -115,13 +115,13 @@ from omnimarket.occ_content_probe import (
     select_asserted_check,
 )
 
-# OMN-15247: contention detection + the two default-OFF producer mode vars. Both
-# live in shared top-level modules (never a cross-node private import) so the
-# born-path emitter and node_occ_state_effect derive from ONE definition each.
+# OMN-15247: contention detection (ALWAYS-ON, no toggle) + the check-binding mode
+# var. Both live in shared top-level modules (never a cross-node private import)
+# so the born-path emitter and node_occ_state_effect derive from ONE definition
+# each.
 from omnimarket.occ_contention import (
     ContentionFinding,
     EnumCheckBinding,
-    EnumContentionPolicy,
     decide_contention,
     find_open_companions,
     resolve_occ_producer_policy,
@@ -238,21 +238,18 @@ class OccCompanionEmitter:
         verifier: str = _DEFAULT_VERIFIER,
         producer_id: str | None = None,
         lease_ttl_seconds: int = _DEFAULT_LEASE_TTL_SECONDS,
-        contention_policy: EnumContentionPolicy | None = None,
         check_binding: EnumCheckBinding | None = None,
     ) -> None:
-        # OMN-15247: both new behaviors resolve from the environment here, so the
-        # two no-arg construction sites (handler_pr_lifecycle_fix_runtime.py and
+        # OMN-15247: defer-on-contention is UNCONDITIONAL — it takes no
+        # constructor argument and reads no env var, exactly like the OMN-14793
+        # lease below. The check-binding mode resolves from the environment here
+        # so the two no-arg construction sites
+        # (handler_pr_lifecycle_fix_runtime.py and
         # handler_pr_lifecycle_orchestrator.py) need no change; tests inject
         # directly. Resolution is FAIL-CLOSED — an unrecognized value raises
-        # naming the var and the accepted set, never silently defaults.
-        # Shipped defaults (observe / pr_existence) reproduce today's bytes.
+        # naming the var and the accepted set, never silently defaults. The
+        # shipped default (pr_existence) reproduces today's bytes.
         resolved_policy = resolve_occ_producer_policy(os.environ)
-        self._contention_policy = (
-            contention_policy
-            if contention_policy is not None
-            else resolved_policy.contention_policy
-        )
         self._check_binding = (
             check_binding
             if check_binding is not None
@@ -446,29 +443,29 @@ class OccCompanionEmitter:
         evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
         ci_evidence_id = ci_check_evidence_id(evidence_id)
 
-        # OMN-15247 deliverable A — DEFER-ON-CONTENTION. Placed AFTER the
-        # already-bound idempotency check and ticket extraction, and BEFORE
+        # OMN-15247 deliverable A — DEFER-ON-CONTENTION, ALWAYS ON. Placed AFTER
+        # the already-bound idempotency check and ticket extraction, and BEFORE
         # ``acquire_occ_companion_lease``, so a defer takes the lease-free,
         # zero-side-effect path (no lease, no clone, no branch, no push, no PR,
         # no ``_patch_evidence_source``).
         #
-        # The DETECTION runs unconditionally in BOTH modes — only the enforcement
-        # is gated (see occ_contention's module docstring on why that is not the
-        # silent no-check the always-on lease reasoning rejects).
+        # There is no policy argument and no observe mode: a guard that fires
+        # only when an operator opts in is not a guard (memory
+        # feedback_optional_input_means_the_check_does_not_exist), and the
+        # displacement it prevents is structurally unrecoverable once the hollow
+        # contract merges (OCC is append-only; the repair is rejected with
+        # pr_ticket_mismatch). Same posture as the lease guard below.
         findings = self._find_contending_companions(
             tickets=tickets, own_branch=branch, token=token
         )
-        should_defer, contention_reason = decide_contention(
-            findings, self._contention_policy
-        )
+        should_defer, contention_reason = decide_contention(findings)
         for finding in findings:
             logger.warning(
                 "occ_companion_emitter contention: ticket=%s occ_pr=%s "
-                "provenance=%s policy=%s would_defer=%s reason=%s",
+                "provenance=%s defer=%s reason=%s",
                 finding.ticket_id,
                 finding.occ_pr_number,
                 finding.provenance.value,
-                self._contention_policy.value,
                 should_defer,
                 finding.reason,
             )
@@ -1037,9 +1034,9 @@ class OccCompanionEmitter:
     ) -> tuple[ContentionFinding, ...]:
         """Index open OCC companions that already carry evidence for ``tickets``.
 
-        Runs in BOTH modes — only the enforcement is policy-gated. The three I/O
-        halves are bound here and the decision logic stays pure in
-        :func:`omnimarket.occ_contention.find_open_companions`.
+        Runs unconditionally on every mint attempt — there is no mode that
+        skips it. The three I/O halves are bound here and the decision logic
+        stays pure in :func:`omnimarket.occ_contention.find_open_companions`.
         """
         occ_owner, occ_repo_name = split_repo(self._occ_repo)
 

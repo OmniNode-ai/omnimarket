@@ -26,11 +26,9 @@ from omnimarket.occ_content_probe import (
 )
 from omnimarket.occ_contention import (
     CHECK_BINDING_ENV_VAR,
-    CONTENTION_POLICY_ENV_VAR,
     ContentionFinding,
     EnumCheckBinding,
     EnumCompanionProvenance,
-    EnumContentionPolicy,
     classify_companion_provenance,
     companion_touches_ticket,
     decide_contention,
@@ -68,46 +66,45 @@ def _finding(
 
 @pytest.mark.unit
 class TestPolicyResolution:
-    def test_empty_env_resolves_to_the_shipped_defaults(self) -> None:
+    def test_empty_env_resolves_to_the_shipped_default(self) -> None:
         policy = resolve_occ_producer_policy({})
-        assert policy.contention_policy is EnumContentionPolicy.OBSERVE
+        assert policy.check_binding is EnumCheckBinding.PR_EXISTENCE
+
+    def test_defer_on_contention_has_no_env_var_to_resolve(self) -> None:
+        """The guard is unconditional — no policy field exists to be turned off.
+
+        This is the structural half of the OMN-15247 fix: the earlier slice's
+        ``OMNI_OCC_CONTENTION_POLICY=observe`` default reproduced the defect,
+        because the production producer reads no env. Asserting the field is
+        GONE (not merely re-defaulted) is what stops it coming back.
+        """
+        policy = resolve_occ_producer_policy({"OMNI_OCC_CONTENTION_POLICY": "observe"})
+        assert not hasattr(policy, "contention_policy")
+        # An ignored legacy value must not silently re-enable minting either.
         assert policy.check_binding is EnumCheckBinding.PR_EXISTENCE
 
     @pytest.mark.parametrize(
-        ("env", "expected_policy", "expected_binding"),
+        ("env", "expected_binding"),
         [
+            ({CHECK_BINDING_ENV_VAR: "content_bound"}, EnumCheckBinding.CONTENT_BOUND),
             (
-                {CONTENTION_POLICY_ENV_VAR: "defer"},
-                EnumContentionPolicy.DEFER,
+                {CHECK_BINDING_ENV_VAR: "  PR_EXISTENCE  "},
                 EnumCheckBinding.PR_EXISTENCE,
             ),
-            (
-                {CHECK_BINDING_ENV_VAR: "content_bound"},
-                EnumContentionPolicy.OBSERVE,
-                EnumCheckBinding.CONTENT_BOUND,
-            ),
-            (
-                {CONTENTION_POLICY_ENV_VAR: "  DEFER  "},
-                EnumContentionPolicy.DEFER,
-                EnumCheckBinding.PR_EXISTENCE,
-            ),
+            ({}, EnumCheckBinding.PR_EXISTENCE),
         ],
     )
     def test_recognized_values_resolve(
         self,
         env: dict[str, str],
-        expected_policy: EnumContentionPolicy,
         expected_binding: EnumCheckBinding,
     ) -> None:
         policy = resolve_occ_producer_policy(env)
-        assert policy.contention_policy is expected_policy
         assert policy.check_binding is expected_binding
 
     @pytest.mark.parametrize(
         ("var", "value"),
         [
-            (CONTENTION_POLICY_ENV_VAR, "yes"),
-            (CONTENTION_POLICY_ENV_VAR, "true"),
             (CHECK_BINDING_ENV_VAR, "1"),
             (CHECK_BINDING_ENV_VAR, "content-bound"),
         ],
@@ -121,12 +118,7 @@ class TestPolicyResolution:
         message = str(excinfo.value)
         assert var in message
         assert value in message
-        expected = (
-            ("observe", "defer")
-            if var == CONTENTION_POLICY_ENV_VAR
-            else ("pr_existence", "content_bound")
-        )
-        for accepted in expected:
+        for accepted in ("pr_existence", "content_bound"):
             assert accepted in message
 
 
@@ -214,40 +206,36 @@ class TestCompanionTouchesTicket:
 
 @pytest.mark.unit
 class TestDecideContention:
-    def test_observe_never_defers_even_with_a_hand_authored_contender(self) -> None:
+    def test_defers_on_a_hand_authored_contender(self) -> None:
         should_defer, reason = decide_contention(
-            [_finding(EnumCompanionProvenance.HAND_AUTHORED)],
-            EnumContentionPolicy.OBSERVE,
-        )
-        assert should_defer is False
-        assert "policy=observe" in reason
-
-    def test_defer_defers_on_a_hand_authored_contender(self) -> None:
-        should_defer, reason = decide_contention(
-            [_finding(EnumCompanionProvenance.HAND_AUTHORED)],
-            EnumContentionPolicy.DEFER,
+            [_finding(EnumCompanionProvenance.HAND_AUTHORED)]
         )
         assert should_defer is True
         assert "OCC#5115" in reason
 
-    def test_defer_defers_on_unknown_provenance(self) -> None:
+    def test_defers_on_unknown_provenance(self) -> None:
         """Asymmetric on purpose: a needless defer is recoverable, a wrong mint is not."""
         should_defer, _reason = decide_contention(
-            [_finding(EnumCompanionProvenance.UNKNOWN, ref="")],
-            EnumContentionPolicy.DEFER,
+            [_finding(EnumCompanionProvenance.UNKNOWN, ref="")]
         )
         assert should_defer is True
 
-    def test_defer_does_not_defer_to_a_machine_contender(self) -> None:
+    def test_does_not_defer_to_a_machine_contender(self) -> None:
         """Machine-vs-machine is the lease's axis (OMN-14793), not this one."""
         should_defer, _reason = decide_contention(
-            [_finding(EnumCompanionProvenance.MACHINE, ref="auto/x-occ-autobind")],
-            EnumContentionPolicy.DEFER,
+            [_finding(EnumCompanionProvenance.MACHINE, ref="auto/x-occ-autobind")]
         )
         assert should_defer is False
 
     def test_no_findings_never_defers(self) -> None:
-        assert decide_contention([], EnumContentionPolicy.DEFER)[0] is False
+        assert decide_contention([])[0] is False
+
+    def test_the_rule_takes_no_policy_argument(self) -> None:
+        """No caller can pass an observe mode back in — the parameter is gone."""
+        with pytest.raises(TypeError):
+            decide_contention(  # type: ignore[call-arg]
+                [_finding(EnumCompanionProvenance.HAND_AUTHORED)], "observe"
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -308,7 +296,7 @@ class TestFindOpenCompanions:
         assert len(findings) == 1
         assert findings[0].provenance is EnumCompanionProvenance.UNKNOWN
         assert "search API 503" in findings[0].reason
-        assert decide_contention(findings, EnumContentionPolicy.DEFER)[0] is True
+        assert decide_contention(findings)[0] is True
 
     def test_files_failure_degrades_to_unknown(self) -> None:
         def _boom(_n: int) -> list[dict[str, object]]:
@@ -361,8 +349,7 @@ class TestFindOpenCompanions:
             get_pull=lambda _n: {"head": {"ref": head_ref}, "labels": []},
             list_pr_files=lambda _n: [{"filename": f"contracts/{ticket}.yaml"}],
         )
-        assert decide_contention(findings, EnumContentionPolicy.DEFER)[0] is True
-        assert decide_contention(findings, EnumContentionPolicy.OBSERVE)[0] is False
+        assert decide_contention(findings)[0] is True
 
 
 # ---------------------------------------------------------------------------
