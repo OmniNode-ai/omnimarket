@@ -27,9 +27,15 @@ What OMN-15247 adds on top of the OMN-14619 machinery
   rather than emit it.
 * :func:`is_yamlfmt_stable_check` — the MEASURED yamlfmt fold rule. The build
   spec's assumption that long double-quoted ``check_value`` scalars are left
-  alone by yamlfmt is **false**; see that function for the counter-example, the
-  real rule, and the consequence (``content_bound`` is fail-closed inert on
-  realistic paths today, which is why it ships default-OFF).
+  alone by yamlfmt is **false**; see that function for the counter-example and
+  the real rule.
+* :func:`render_check_value_field` (OMN-15247 foldproof follow-up) — the fix
+  for the consequence above. A double-quoted plain scalar that would fold is
+  rendered instead as a literal block scalar (``|-``), which yamlfmt NEVER
+  refolds regardless of length. This is what makes ``content_bound`` a
+  functioning binding rather than a fail-closed no-op: fold-safety moves from
+  candidate SELECTION (rejecting anything long) to RENDERING (emitting
+  anything, safely).
 
 Everything in this module is pure; the network halves are injected as callables
 so the whole derivation is unit-testable with no live GitHub.
@@ -50,6 +56,7 @@ __all__ = [
     "extract_symbol_candidates",
     "is_shell_safe_check",
     "is_yamlfmt_stable_check",
+    "render_check_value_field",
     "resolve_red_ref",
     "select_asserted_check",
 ]
@@ -206,6 +213,7 @@ def is_yamlfmt_stable_check(
     *,
     indent: int = _CONTRACT_CHECK_VALUE_INDENT,
     max_line_length: int = _OCC_YAMLFMT_MAX_LINE_LENGTH,
+    key: str = "check_value",
 ) -> bool:
     """Pure: True iff the rendered ``check_value:`` line is a yamlfmt FIXPOINT.
 
@@ -240,11 +248,67 @@ def is_yamlfmt_stable_check(
     ``tests/unit/.../test_occ_autobind_contention_omn_15247.py`` validates this
     predicate against the REAL yamlfmt binary, so it can never silently drift
     from the formatter it models.
+
+    OMN-15247 foldproof follow-up: this predicate is no longer a mint-time
+    ACCEPTANCE filter (a candidate is never rejected merely for being long) —
+    it is the internal decision :func:`render_check_value_field` uses to pick
+    between the byte-identical quoted form and the fold-proof literal-block
+    form. ``key`` defaults to ``"check_value"`` for the contract's 8-indent
+    line; the receipt's ``probe_command``/``actual_output`` lines pass their
+    own key so the rendered prefix length (``key: "``) is measured correctly.
     """
-    line = f'{" " * indent}check_value: "{check_value}"'
+    line = f'{" " * indent}{key}: "{check_value}"'
     return not any(
         char == " " and column > max_line_length for column, char in enumerate(line)
     )
+
+
+def render_check_value_field(
+    key: str,
+    value: str,
+    *,
+    indent: int = _CONTRACT_CHECK_VALUE_INDENT,
+) -> str:
+    """Pure: render one ``{key}: <value>`` YAML mapping line, fold-proof.
+
+    OMN-15247 foldproof follow-up. This is the fix for the "already-deployed
+    OMNI_OCC_CHECK_BINDING=content_bound mode is a fail-closed no-op" defect:
+    ``content_bound`` was structurally unable to emit ANY realistic check,
+    because the emitter rejected every candidate whose quoted rendering would
+    fold (:func:`is_yamlfmt_stable_check`) rather than emit a byte the hosted
+    yamlfmt pre-commit would rewrite. Moving the fold-safety decision from
+    candidate SELECTION to RENDERING removes that ceiling entirely:
+
+    * If the double-quoted plain-scalar rendering at ``indent`` would survive
+      yamlfmt unchanged (:func:`is_yamlfmt_stable_check`), keep that exact
+      form — byte-for-byte identical to every pre-OMN-15247 companion (the
+      short existence-probe placeholders, the private-repo hosted-safe
+      ``receipt_local_check_value`` form, and any other value that happens to
+      already fit).
+    * Otherwise render ``value`` as a literal block scalar (``|-``). MEASURED
+      against yamlfmt v0.21.0 with the real onex_change_control ``.yamlfmt``:
+      a literal block is NEVER refolded regardless of length, for every
+      realistic shape probed — the contract's indent-8 ``check_value`` line
+      and the receipt's indent-0 ``check_value``/``probe_command``/
+      ``actual_output`` lines alike (``TestContentBoundSurvivesRealYamlfmt``,
+      ``test_the_content_bound_check_value_survives_real_yamlfmt_byte_identical``).
+      The chomping indicator ``-`` strips the trailing newline so the parsed
+      string carries none. ``value`` is guaranteed single-line by every caller
+      in this seam (a generated shell command, or a fixed-shape prose string
+      built from short prose + pinned SHAs), so no multi-line handling is
+      needed here.
+
+    Consumers that parse the resulting YAML (``lint_contract_check_values.py``,
+    ``check_contract_substance_floor.py``, ``contract_compliance_check.py``,
+    ``check_generated_checks_red_derivable.py``) all read the value via
+    ``yaml.safe_load`` and compare the PARSED Python string, never the raw
+    byte layout — so switching rendering STYLE changes zero consumer-gate
+    behavior; only the on-disk bytes and their fold-stability change.
+    """
+    if is_yamlfmt_stable_check(value, indent=indent, key=key):
+        return f'{" " * indent}{key}: "{value}"\n'
+    body_indent = " " * (indent + 2)
+    return f"{' ' * indent}{key}: |-\n{body_indent}{value}\n"
 
 
 def select_asserted_check(

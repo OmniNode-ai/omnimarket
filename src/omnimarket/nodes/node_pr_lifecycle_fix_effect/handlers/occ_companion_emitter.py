@@ -110,7 +110,6 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring 
 )
 from omnimarket.occ_content_probe import (
     extract_symbol_candidates,
-    is_yamlfmt_stable_check,
     resolve_red_ref,
     select_asserted_check,
 )
@@ -1286,18 +1285,24 @@ class OccCompanionEmitter:
         def _fetch(path: str, ref: str) -> str | None:
             return self._content_at_ref(owner, repo_name, path, ref, token)
 
+        # OMN-15247 foldproof follow-up: no ``accept=`` filter here anymore.
+        # Pre-fix, this candidate was rejected outright whenever its rendered
+        # length would fold the CONTRACT's ``check_value:`` line (indent 8) —
+        # yamlfmt folds a double-quoted scalar at the first space past column
+        # 100, which would restale contract_sha256 (F-03 / OMN-14684) — and
+        # every realistic content-bound check crosses that budget, making
+        # ``content_bound`` a fail-closed no-op on every real PR. Fold-safety
+        # now lives in RENDERING (``occ_evidence_stamp.render_check_value_field``,
+        # used for both the contract's check_value and the receipt's
+        # check_value/probe_command/actual_output), which picks a fold-proof
+        # literal block scalar whenever the quoted form would fold — so any
+        # RED-derivable candidate is safe to emit regardless of length.
         check = select_asserted_check(
             candidates,
             repo=repo,
             head_sha=evidence_ref,
             base_sha=red_ref,
             fetch_content=_fetch,
-            # Destination-specific constraint: this string is written to a
-            # CONTRACT's ``check_value:`` line (indent 8). yamlfmt folds it at
-            # the first space past column 100, which would restale
-            # contract_sha256 (F-03 / OMN-14684). The selector cannot know the
-            # destination indent, so the guard is applied here.
-            accept=is_yamlfmt_stable_check,
         )
         if check is None:
             logger.info(
