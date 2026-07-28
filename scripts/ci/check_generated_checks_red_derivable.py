@@ -2,10 +2,10 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Static RED-derivability grammar gate for GENERATED OCC companion contracts.
+"""RED-derivability gate for GENERATED OCC companion contracts (static + live).
 
-OMN-15247 layer 2 of the acceptance bar
----------------------------------------
+OMN-15247 layer 2/3 of the acceptance bar
+-----------------------------------------
 OMN-15247's mechanical bar is: *"for every generated check, the same check run
 against the PR's merge-base must return non-zero."* That bar is enforced in
 three layers:
@@ -13,34 +13,72 @@ three layers:
 1. **Mint-time (runtime, fail-closed).** ``OccCompanionEmitter`` executes the
    selected probe at the evidence ref (must exit 0) and at the merge base (must
    exit non-zero) before writing it. See ``_derive_content_bound_check``.
-2. **This gate (offline, deterministic, no network).** Every ``dod_evidence``
-   check_value in a rendered companion contract must match either the
-   content-bound grammar or one of the explicitly allowlisted forms. Structural
-   only — it proves the SHAPE could go RED, never that it did.
-3. **Live corpus mode** (``--live``, opt-in, deliberately NOT wired to a gate):
-   rewrite the pinned ``?ref=`` to a caller-supplied merge base and assert
-   non-zero.
+2. **Static grammar mode (offline, deterministic, no network).** Every
+   ``dod_evidence`` check_value in a rendered companion contract must match
+   either the content-bound grammar or one of the explicitly allowlisted forms.
+   Structural only — it proves the SHAPE could go RED, never that it did.
+3. **Live replay mode** (``--live``). Re-executes each content-bound check at
+   its pinned ref (must exit 0) AND at the recorded RED ref (must exit
+   non-zero). Needs network + ``GH_TOKEN``.
+
+Where this is wired (OMN-15317 — verify before trusting this paragraph)
+-----------------------------------------------------------------------
+Before OMN-15317 this script was invoked by **nothing**: the only reference to
+it in ``occ-emitter-golden-gate.yml`` was its *unit test* in the pytest arg
+list, and the only reference in ``.pre-commit-config.yaml`` was inside a
+``files:`` trigger regex, which decides *when* the pytest hook runs and never
+executes the script. A 222-line detector that no step invokes is advisory
+(CLAUDE.md rule 5), which is what OMN-15317 was filed for.
+
+It is now invoked by two executing steps in ``.github/workflows/
+occ-emitter-golden-gate.yml`` — the existing blocking gate, not a new workflow:
+
+* *static* over ``tests/fixtures/occ_red_derivable/companion/contracts/`` with
+  ``--min-checks``/``--min-content-bound``, so a vacuous run (zero files, zero
+  checks, or a producer that stopped emitting content-bound checks) FAILS
+  instead of passing silently;
+* *live* over the same corpus, executing both legs against real public
+  omnimarket refs (the sidecar receipt under
+  ``companion/drift/dod_receipts/`` carries the RED ref).
+
+``tests/fixtures/occ_red_derivable/negative/`` holds the deliberately-bad
+counterparts (a pre-flip ``pr_existence`` revert mint; a content-bound check
+pinned where the symbol does not exist) that prove this gate goes RED — see
+``TestNonVacuityFloors`` / ``TestLiveReplay``. They are NOT passed to the gate
+steps, only to the tests.
+
+None of those fixtures are free-floating YAML: ``tests/unit/scripts/
+test_check_generated_checks_red_derivable.py`` re-renders every one through the
+real producer seam (``occ_evidence_stamp.render_companion_contract`` /
+``render_downstream_receipt``) and asserts byte equality, so they cannot drift
+from what the producer actually emits.
 
 Scope, stated honestly
 ----------------------
-This gate runs over contracts THIS repo's producer renders (fixtures + any path
-passed on the command line). It is deliberately **not** run across the merged
-``onex_change_control`` corpus: that corpus is dominated by pre-existing
-existence-probe contracts, so a corpus-wide fail-closed gate today would reject
-essentially all traffic — the same reject-everything trap documented by
-``check_contract_substance_floor.py``'s ``GATE_SELF_REFERENTIAL`` kill switch
-(flag ON => 2,277/6,916 rejected, 98.4% of new contracts blocked). Corpus
-enforcement follows the producer flip, which is an operator decision.
+This gate runs over contracts THIS repo's producer renders (the fixtures above
+plus any path passed on the command line). It is deliberately **not** run across
+the merged ``onex_change_control`` corpus: that corpus is dominated by
+pre-existing existence-probe contracts, so a corpus-wide fail-closed gate today
+would reject essentially all traffic — the same reject-everything trap
+documented by ``check_contract_substance_floor.py``'s ``GATE_SELF_REFERENTIAL``
+kill switch (flag ON => 2,277/6,916 rejected, 98.4% of new contracts blocked).
 
-Because the ``pr_existence`` binding is still the shipped default, the
-allowlisted forms below are ACCEPTED, not rejected. This gate's job in slice 1
-is to guarantee that when a content-bound check IS emitted it is structurally
-RED-derivable, and that no third, un-vetted check shape appears. Tightening it
-to reject the existence probes is the follow-up that lands with the flip.
+The allowlisted forms below are still ACCEPTED rather than rejected, and that is
+deliberate even though OMN-15317 flipped the producer default to
+``content_bound``: a minted companion still carries the ``--json files``
+diff-scope item (the OMN-14409 substance-floor carrier) and the private-repo
+hosted-safe receipt grep (OMN-14766 F-16), and the ``pr_existence`` binding
+remains explicitly selectable as the reversal path. What the gate enforces is
+that (a) every content-bound check is structurally RED-derivable, (b) no third,
+un-vetted shape appears, and (c) at least ``--min-content-bound`` content-bound
+checks are actually present — which is the assertion that goes RED if the
+default is flipped back.
 
 Usage:
     python scripts/ci/check_generated_checks_red_derivable.py <contract.yaml>...
     python scripts/ci/check_generated_checks_red_derivable.py --json <paths>
+    python scripts/ci/check_generated_checks_red_derivable.py --live \\
+        --min-content-bound 1 <contract.yaml>...
 """
 
 from __future__ import annotations
@@ -48,7 +86,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
-import sys
+import subprocess
 from pathlib import Path
 
 import yaml
@@ -148,18 +186,39 @@ def classify_check(check_value: str) -> tuple[str, str | None]:
     return "unknown", "check_value matches no known generated-check form"
 
 
-def check_contract(path: Path) -> list[dict[str, str]]:
-    """Return a list of violation records for one rendered companion contract."""
+def inspect_contract(
+    path: Path,
+) -> tuple[list[dict[str, str]], list[tuple[str, str]], int]:
+    """Return ``(violations, content_bound_checks, inspected_check_count)``.
+
+    ``content_bound_checks`` is ``(evidence_item_id, check_value)`` for every
+    check that classified ``content_bound`` — the live-replay work list, and the
+    population :func:`main`'s ``--min-content-bound`` floor counts.
+    ``inspected_check_count`` includes allowlisted checks, since it answers "did
+    this gate look at anything at all" (the ``--min-checks`` non-vacuity floor).
+    """
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
     except (OSError, yaml.YAMLError) as exc:
-        return [{"path": str(path), "item": "<file>", "reason": f"unreadable: {exc}"}]
+        unreadable = {
+            "path": str(path),
+            "item": "<file>",
+            "reason": f"unreadable: {exc}",
+        }
+        return [unreadable], [], 0
     if not isinstance(data, dict):
-        return [{"path": str(path), "item": "<file>", "reason": "not a YAML mapping"}]
+        not_mapping = {
+            "path": str(path),
+            "item": "<file>",
+            "reason": "not a YAML mapping",
+        }
+        return [not_mapping], [], 0
 
     violations: list[dict[str, str]] = []
-    for item_id, value in _iter_check_values(data):
-        _classification, reason = classify_check(value)
+    content_bound: list[tuple[str, str]] = []
+    checks = _iter_check_values(data)
+    for item_id, value in checks:
+        classification, reason = classify_check(value)
         if reason is not None:
             violations.append(
                 {
@@ -169,7 +228,164 @@ def check_contract(path: Path) -> list[dict[str, str]]:
                     "reason": reason,
                 }
             )
+        elif classification == "content_bound":
+            content_bound.append((item_id, value.strip()))
+    return violations, content_bound, len(checks)
+
+
+def check_contract(path: Path) -> list[dict[str, str]]:
+    """Return a list of violation records for one rendered companion contract."""
+    violations, _content_bound, _count = inspect_contract(path)
     return violations
+
+
+# --- Live replay mode (OMN-15317) -------------------------------------------
+#
+# Layer 3. The static grammar above proves a check COULD go RED; this proves the
+# committed check DOES: it re-executes the exact ``check_value`` at its pinned
+# ref (must exit 0) and at the recorded RED ref (must exit non-zero). Both legs
+# are required — asserting only the RED leg would credit a permanently broken
+# probe (a deleted ref, a revoked scope, a typo'd path all exit non-zero at
+# every ref), which is the same non-falsifiability this whole ticket is about,
+# just inverted.
+
+_PINNED_REF_RE = re.compile(r"\?ref=(?P<ref>[0-9a-f]{7,40})")
+
+
+def run_probe(check_value: str, *, timeout: int = 60) -> tuple[str, int]:
+    """Execute a probe and return ``(stdout, TRUE exit code)`` — never normalized.
+
+    Mirrors ``OccCompanionEmitter._execute_probe_raw`` deliberately: the probe is
+    a shell PIPELINE (``gh api … | base64 -d | grep -c …``), so without
+    ``pipefail`` the status would be ``grep``'s alone and a failed ``gh api``
+    would still report ``grep``'s verdict on empty input. A launch failure
+    returns a non-zero sentinel, so an unrunnable probe is never read as passing.
+    """
+    try:
+        result = subprocess.run(
+            ["bash", "-o", "pipefail", "-c", check_value],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+    except (OSError, ValueError, subprocess.SubprocessError) as exc:
+        return f"probe launch failed: {exc}", 127
+    return result.stdout.strip(), result.returncode
+
+
+def run_green_leg(check_value: str, *, attempts: int = 2) -> tuple[str, int]:
+    """Run the GREEN leg, retrying a non-zero result ``attempts-1`` times.
+
+    Bounded retry on THIS leg only, and it does not weaken the assertion: a
+    genuinely absent symbol fails every attempt, while a single GitHub 5xx would
+    otherwise fail a merge on a fact that is true. The RED leg is never retried —
+    its non-zero result is the PASS outcome, and a RED leg that exits 0 is a real
+    non-falsifiability finding, not a transport question.
+    """
+    out, code = "", 1
+    for _attempt in range(max(1, attempts)):
+        out, code = run_probe(check_value)
+        if code == 0:
+            return out, code
+    return out, code
+
+
+def resolve_red_ref(
+    contract_path: Path, item_id: str, *, explicit: str | None = None
+) -> tuple[str | None, str]:
+    """Resolve the RED (merge-base) ref for one content-bound check.
+
+    ``explicit`` (``--merge-base``) wins. Otherwise the ref is read from the
+    sidecar receipt the producer wrote next to the contract —
+    ``<root>/drift/dod_receipts/<TICKET>/<item_id>/command.yaml`` — whose
+    ``probe_stdout`` carries the mint-time derivation record
+    ``{"evidence_ref":…,"green_exit":0,"red_ref":…,"red_exit":…}``. That is the
+    real corpus shape; nothing is invented for the gate.
+
+    Returns ``(ref_or_None, source_description)``. ``None`` is a VIOLATION at the
+    call site, never a skip: a content-bound check whose RED ref cannot be
+    recovered has no evidence that it is falsifiable.
+    """
+    if explicit:
+        return explicit, "--merge-base"
+    ticket = contract_path.stem
+    receipt = (
+        contract_path.parent.parent
+        / "drift"
+        / "dod_receipts"
+        / ticket
+        / item_id
+        / "command.yaml"
+    )
+    if not receipt.is_file():
+        return None, f"no sidecar receipt at {receipt}"
+    try:
+        data = yaml.safe_load(receipt.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        return None, f"unreadable sidecar receipt {receipt}: {exc}"
+    if not isinstance(data, dict):
+        return None, f"sidecar receipt {receipt} is not a YAML mapping"
+    try:
+        derivation = json.loads(str(data.get("probe_stdout", "")).strip())
+    except (TypeError, ValueError) as exc:
+        return None, f"sidecar receipt {receipt} probe_stdout is not JSON: {exc}"
+    red_ref = derivation.get("red_ref") if isinstance(derivation, dict) else None
+    if not isinstance(red_ref, str) or not _PINNED_REF_RE.match(f"?ref={red_ref}"):
+        return None, f"sidecar receipt {receipt} records no usable red_ref"
+    return red_ref, str(receipt)
+
+
+def replay_check_live(
+    *,
+    contract_path: Path,
+    item_id: str,
+    check_value: str,
+    explicit_merge_base: str | None = None,
+) -> dict[str, str] | None:
+    """Execute both legs of one content-bound check. Returns a violation or None."""
+
+    def _violation(reason: str) -> dict[str, str]:
+        return {
+            "path": str(contract_path),
+            "item": item_id,
+            "check_value": check_value,
+            "reason": reason,
+        }
+
+    pinned = _PINNED_REF_RE.search(check_value)
+    if pinned is None:  # pragma: no cover - grammar guarantees a pinned ref
+        return _violation("live replay: no pinned ?ref=<hex> to rewrite")
+    green_ref = pinned.group("ref")
+
+    red_ref, source = resolve_red_ref(
+        contract_path, item_id, explicit=explicit_merge_base
+    )
+    if red_ref is None:
+        return _violation(f"live replay: RED ref unresolvable ({source})")
+    if red_ref == green_ref:
+        return _violation(
+            f"live replay: RED ref equals the pinned ref ({green_ref[:8]}) — "
+            "a probe cannot be falsified against the state it asserts"
+        )
+
+    green_out, green_exit = run_green_leg(check_value)
+    if green_exit != 0:
+        return _violation(
+            f"live replay: GREEN leg failed at pinned ref {green_ref[:8]} "
+            f"(exit {green_exit}) — the committed check does not hold at the ref "
+            f"it pins: {green_out[:200]}"
+        )
+
+    red_check = check_value.replace(f"?ref={green_ref}", f"?ref={red_ref}")
+    red_out, red_exit = run_probe(red_check)
+    if red_exit == 0:
+        return _violation(
+            f"live replay: NON-FALSIFIABLE — the same check also passes at the "
+            f"RED ref {red_ref[:8]} (exit 0, stdout {red_out[:80]!r}); RED ref "
+            f"source: {source}"
+        )
+    return None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -180,30 +396,106 @@ def main(argv: list[str] | None = None) -> int:
         "--live",
         action="store_true",
         help=(
-            "opt-in corpus mode (NOT wired to a gate): rewrite the pinned ref to "
-            "--merge-base and assert the probe exits non-zero. Requires network."
+            "live replay: execute each content-bound check at its pinned ref "
+            "(must exit 0) and at the RED ref from --merge-base or the sidecar "
+            "receipt (must exit non-zero). Requires network + GH_TOKEN."
         ),
     )
-    parser.add_argument("--merge-base", default=None)
+    parser.add_argument(
+        "--merge-base",
+        default=None,
+        help="RED ref for every replayed check; default reads the sidecar receipt.",
+    )
+    parser.add_argument(
+        "--min-checks",
+        type=int,
+        default=0,
+        help=(
+            "fail if fewer than N command checks were inspected. The "
+            "non-vacuity floor: a gate that inspects nothing must not report "
+            "green (CLAUDE.md rule 5)."
+        ),
+    )
+    parser.add_argument(
+        "--min-content-bound",
+        type=int,
+        default=0,
+        help=(
+            "fail if fewer than N checks classify content_bound. Binds the gate "
+            "to the OMN-15317 producer default: reverting the default to "
+            "pr_existence makes the rendered fixtures carry zero content-bound "
+            "checks and this floor goes RED."
+        ),
+    )
     args = parser.parse_args(argv)
 
-    if args.live:
-        # Deliberately not implemented as a gate path — see the module docstring.
-        # The live transcript is produced by hand and recorded as evidence.
-        print(
-            "--live is an operator-run mode; run the rewritten probe manually "
-            "and record the transcript. No gate consumes this path.",
-            file=sys.stderr,
-        )
-        return 0
-
     violations: list[dict[str, str]] = []
+    inspected_files = 0
+    inspected_checks = 0
+    content_bound_total = 0
     for path in args.paths:
-        if path.is_file():
-            violations.extend(check_contract(path))
+        if not path.is_file():
+            continue
+        inspected_files += 1
+        file_violations, content_bound, file_check_count = inspect_contract(path)
+        violations.extend(file_violations)
+        inspected_checks += file_check_count
+        content_bound_total += len(content_bound)
+
+        if args.live:
+            for item_id, check_value in content_bound:
+                replay_violation = replay_check_live(
+                    contract_path=path,
+                    item_id=item_id,
+                    check_value=check_value,
+                    explicit_merge_base=args.merge_base,
+                )
+                if replay_violation is not None:
+                    violations.append(replay_violation)
+
+    if inspected_checks < args.min_checks:
+        violations.append(
+            {
+                "path": ", ".join(str(p) for p in args.paths) or "<no paths>",
+                "item": "<gate>",
+                "reason": (
+                    f"VACUOUS RUN: inspected {inspected_checks} command check(s) "
+                    f"across {inspected_files} file(s), below the --min-checks "
+                    f"floor of {args.min_checks}. A gate that inspects nothing "
+                    "cannot report green."
+                ),
+            }
+        )
+    if content_bound_total < args.min_content_bound:
+        violations.append(
+            {
+                "path": ", ".join(str(p) for p in args.paths) or "<no paths>",
+                "item": "<gate>",
+                "reason": (
+                    f"inspected {content_bound_total} content-bound check(s), "
+                    f"below the --min-content-bound floor of "
+                    f"{args.min_content_bound}. Either the producer default was "
+                    "reverted to the non-falsifiable pr_existence binding "
+                    "(OMN-15317) or the fixtures no longer carry a content-bound "
+                    "check."
+                ),
+            }
+        )
 
     if args.json:
-        print(json.dumps({"violations": violations}, indent=2, sort_keys=True))
+        print(
+            json.dumps(
+                {
+                    "violations": violations,
+                    "inspected_files": inspected_files,
+                    "inspected_checks": inspected_checks,
+                    "content_bound_checks": content_bound_total,
+                    "live": args.live,
+                },
+                indent=2,
+                sort_keys=True,
+            )
+        )
     elif violations:
         print("Generated dod_evidence checks that are not RED-derivable:\n")
         for v in violations:
@@ -212,7 +504,14 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"    check_value: {v['check_value']}")
         print(
             "\nEvery generated check must be structurally capable of returning "
-            "non-zero at the PR's merge base (OMN-15247)."
+            "non-zero at the PR's merge base (OMN-15247), and every content-bound "
+            "check must actually do so on live replay (OMN-15317)."
+        )
+    else:
+        mode = "live replay" if args.live else "static grammar"
+        print(
+            f"OK ({mode}): {inspected_checks} check(s) across {inspected_files} "
+            f"contract(s), {content_bound_total} content-bound."
         )
 
     return 1 if violations else 0

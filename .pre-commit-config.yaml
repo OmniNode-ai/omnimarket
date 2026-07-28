@@ -312,6 +312,30 @@ repos:
             |tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247\.py
             |tests/unit/test_occ_contention_omn_15247\.py
             |tests/unit/scripts/test_check_generated_checks_red_derivable\.py
+            |tests/fixtures/occ_red_derivable/.*
+          )$
+        stages: [pre-commit]
+
+      # OMN-15317: EXECUTE the RED-derivability checker locally, not just its
+      # unit test. Static mode only — the live replay needs network + GH_TOKEN
+      # and runs in the blocking CI gate; a pre-commit hook that reaches GitHub
+      # would make every local commit fail offline. --min-content-bound is what
+      # goes RED if the producer default is reverted to the non-falsifiable
+      # pr_existence binding. BLOCKING.
+      - id: occ-red-derivable-static
+        name: OCC generated-check RED-derivability (OMN-15317) — static grammar
+        entry: >-
+          uv run python scripts/ci/check_generated_checks_red_derivable.py
+          --min-checks 2 --min-content-bound 1
+          tests/fixtures/occ_red_derivable/companion/contracts/OMN-15317.yaml
+        language: system
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            scripts/ci/check_generated_checks_red_derivable\.py
+            |tests/fixtures/occ_red_derivable/.*
+            |src/omnimarket/occ_content_probe\.py
+            |src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/occ_evidence_stamp\.py
           )$
         stages: [pre-commit]
 

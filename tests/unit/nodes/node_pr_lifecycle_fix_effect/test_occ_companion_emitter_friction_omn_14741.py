@@ -51,6 +51,35 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitte
 
 _MOD = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter"
 
+
+# ---------------------------------------------------------------------------
+# OMN-15317 — this suite asserts the LEGACY (pr_existence) companion bytes
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def _pin_legacy_check_binding(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin ``OMNI_OCC_CHECK_BINDING=pr_existence`` for every test in this module.
+
+    OMN-15317 flipped the producer default to ``content_bound``. These tests
+    assert byte-for-byte properties of the legacy check shape and drive
+    ``_emit_companion_sync`` WITHOUT injecting a RED-derivable diff or faking
+    ``_execute_probe_raw``, so under the new default every one of them would
+    (correctly) take the fail-closed ``skip:NO_RED_DERIVABLE_CHECK`` branch and
+    assert nothing about the property it was written for.
+
+    Pinning is explicit rather than implicit: the properties covered here
+    (F-01 append-only, F-02 placeholder-clean, F-03 yamlfmt idempotence, F-04
+    pre-existing-contract append, F-06/F-16 probe parity, F-17 suppression, the
+    OMN-14793 lease) are binding-orthogonal. The CONTENT-BOUND default path is
+    driven end to end in the same blocking gate by
+    ``test_occ_autobind_contention_omn_15247.py``
+    (``TestShippedDefaultIsContentBound`` / ``TestContentBoundChecks``), which
+    injects the probe results instead of reaching the network.
+    """
+    monkeypatch.setenv("OMNI_OCC_CHECK_BINDING", "pr_existence")
+
+
 # Mirror of onex_change_control/scripts/lint_contract_check_values.py's
 # _HARDCODED_PR_NUMBER_RE — the exact regex the hosted lint-contract-check-values
 # gate rejects (OMN-9350 / OMN-14673). Re-derived here because OCC is not an

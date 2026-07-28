@@ -107,3 +107,37 @@ jobs:
             -q -p no:randomly
         env:
           OCC_REPO_DIR: ${{ github.workspace }}/../onex_change_control
+
+      # OMN-15317: the RED-derivability CHECKER, executed. Until this ticket the
+      # only reference to scripts/ci/check_generated_checks_red_derivable.py in
+      # this workflow was its unit test in the pytest list above, and the only
+      # reference in .pre-commit-config.yaml was inside a `files:` trigger
+      # regex — a 222-line detector that no step ran (CLAUDE.md rule 5).
+      #
+      # Corpus: tests/fixtures/occ_red_derivable/companion/, rendered by the REAL
+      # producer seam (occ_evidence_stamp) and held to byte equality with it by
+      # TestFixturesAreRealProducerBytes, so the gate cannot enforce a shape
+      # nothing emits. --min-checks/--min-content-bound are the non-vacuity
+      # floors: zero files (an unexpanded glob, a moved fixture dir) or zero
+      # content-bound checks (the OMN-15317 producer default reverted) FAILS
+      # instead of passing silently.
+      - name: RED-derivability gate — static grammar over rendered contracts (BLOCKING)
+        run: |
+          uv run python scripts/ci/check_generated_checks_red_derivable.py \
+            --min-checks 2 --min-content-bound 1 \
+            tests/fixtures/occ_red_derivable/companion/contracts/*.yaml
+
+      # Layer 3, executed against the live GitHub API on real public omnimarket
+      # refs: each content-bound check must exit 0 at the ref it pins AND
+      # non-zero at the RED ref recorded in its sidecar receipt. Both legs are
+      # required — asserting only the RED leg would credit a permanently broken
+      # probe. The job already depends on network (four clones above), so this
+      # adds no new class of failure; the GREEN leg is retried once so a single
+      # GitHub 5xx cannot fail a merge on a fact that is true.
+      - name: RED-derivability gate — LIVE replay against real refs (BLOCKING)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          uv run python scripts/ci/check_generated_checks_red_derivable.py \
+            --live --min-checks 2 --min-content-bound 1 \
+            tests/fixtures/occ_red_derivable/companion/contracts/*.yaml

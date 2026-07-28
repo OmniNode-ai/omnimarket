@@ -50,9 +50,38 @@ there is no configuration under which the mint can displace a hand-authored
 companion again.
 
 ``OMNI_OCC_CHECK_BINDING`` (fix direction #2, the content-bound check grammar)
-is a separate axis and keeps its mode selector: it is fail-closed inert today
-for the measured yamlfmt-fold reason recorded in the emitter, so it selects
-between *shapes of a check*, not between checking and not checking.
+is a separate axis and keeps its mode selector: it selects between *shapes of a
+check*, not between checking and not checking.
+
+The check-binding default is ``content_bound`` (OMN-15317)
+-----------------------------------------------------------
+OMN-15247 shipped ``content_bound`` behind a default of ``pr_existence`` so the
+first slice changed zero emitted bytes. That default is itself the defect
+OMN-15247 was filed for: ``gh pr view ${PR_NUMBER} --repo ${REPO} --json
+number,state`` exits 0 for **any** PR that exists — any state, any diff — so it
+passes for a revert, for an empty PR, and for a PR whose fix is wrong. The
+producer that actually runs is constructed with no kwargs and no env
+(``handler_pr_lifecycle_fix_runtime`` / ``handler_pr_lifecycle_orchestrator``),
+so the shipped default IS the production behavior; a falsifiable binding nobody
+selects is not a check (``feedback_optional_input_means_the_check_does_not_exist``
+— the same argument that deleted the contention toggle above).
+
+The content-bound path is built and proven: the emitter executes the selected
+probe at the evidence ref (must exit 0) and at the merge base (must exit
+non-zero) before a single byte is written, and it fired in production on
+2026-07-28 (markers ``occ-autobind-no-red-derivable:5312`` / ``:5321``).
+
+``pr_existence`` is retained as an explicitly selectable value, not deleted: it
+is the byte-for-byte legacy shape the golden fixtures and the consumer-gate
+parity suites still assert, and keeping it selectable is what makes the flip
+reversible by env without a code change.
+
+**No hollow fallback.** Under ``content_bound`` a producer that cannot derive a
+RED-proven probe DEFERS — it mints nothing and posts a marked note on the
+product PR — rather than falling back to the existence probe (the fail-closed
+branch in ``OccCompanionEmitter._emit_companion_sync``). Same asymmetry as
+defer-on-contention: a missing companion is recoverable on the next
+``synchronize``; a merged hollow contract is frozen forever.
 """
 
 from __future__ import annotations
@@ -117,10 +146,19 @@ class EnumCheckBinding(StrEnum):
     """What the producer's generated contract ``check_value`` asserts."""
 
     PR_EXISTENCE = "pr_existence"
-    """Today's ``gh pr view ${PR_NUMBER} …`` shape, byte-for-byte. **Shipped default.**"""
+    """The legacy ``gh pr view ${PR_NUMBER} …`` shape, byte-for-byte.
+
+    NON-FALSIFIABLE: exits 0 for any PR that exists. Selectable by env for the
+    golden/parity fixtures and as the reversal path, never the default
+    (OMN-15317).
+    """
 
     CONTENT_BOUND = "content_bound"
-    """A RED-derived content read pinned to a literal ref (OMN-15247 §3)."""
+    """A RED-proven content read pinned to a literal ref (OMN-15247 §3).
+
+    **Shipped default (OMN-15317).** Fail-closed: no derivable RED probe means
+    the producer defers, never a fallback to :attr:`PR_EXISTENCE`.
+    """
 
 
 @dataclass(frozen=True)
@@ -149,11 +187,12 @@ def resolve_occ_producer_policy(env: Mapping[str, str]) -> ModelOccProducerPolic
     """Resolve the check-binding mode var, FAIL-CLOSED on an unrecognized value.
 
     A mode, not a boolean, so a third binding is addable without flag-soup. An
-    unset var takes the shipped default (``pr_existence``), which reproduces
-    today's emitter bytes exactly. A typo raises ``RuntimeError`` naming the
-    variable and the accepted set rather than silently picking a default —
-    CLAUDE.md rule 8 (fail-fast on bad env, never a silent fallback), same shape
-    as ``_resolve_github_token``'s auth-mode branch.
+    unset var takes the shipped default (``content_bound`` since OMN-15317 —
+    the falsifiable binding; see the module docstring for why the former
+    ``pr_existence`` default was the defect and not the safe choice). A typo
+    raises ``RuntimeError`` naming the variable and the accepted set rather than
+    silently picking a default — CLAUDE.md rule 8 (fail-fast on bad env, never a
+    silent fallback), same shape as ``_resolve_github_token``'s auth-mode branch.
 
     Defer-on-contention is deliberately NOT resolved here: it has no toggle (see
     the module docstring).
@@ -161,7 +200,7 @@ def resolve_occ_producer_policy(env: Mapping[str, str]) -> ModelOccProducerPolic
     binding_raw = (env.get(CHECK_BINDING_ENV_VAR) or "").strip().lower()
 
     if not binding_raw:
-        binding = EnumCheckBinding.PR_EXISTENCE
+        binding = EnumCheckBinding.CONTENT_BOUND
     else:
         try:
             binding = EnumCheckBinding(binding_raw)
