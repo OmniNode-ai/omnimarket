@@ -37,6 +37,7 @@ discover_migration_dirs = _mod.discover_migration_dirs
 file_checksum = _mod.file_checksum
 get_migration_files = _mod.get_migration_files
 apply_migration = _mod.apply_migration
+select_migration_files = _mod.select_migration_files
 
 _MODULE_NAME = "run_projection_migrations"
 
@@ -170,6 +171,26 @@ def test_migration_files_only_sql(tmp_path: Path) -> None:
 @pytest.mark.unit
 def test_migration_files_empty_dir(tmp_path: Path) -> None:
     assert get_migration_files(tmp_path) == []
+
+
+@pytest.mark.unit
+def test_select_migration_files_stops_at_inclusive_boundary(tmp_path: Path) -> None:
+    files = [
+        _make_sql_file(tmp_path, name)
+        for name in ("0007_base.sql", "0009a_reconcile.sql", "0023_rls.sql")
+    ]
+
+    selected = select_migration_files(files, "0009a_reconcile.sql")
+
+    assert [path.name for path in selected] == ["0007_base.sql", "0009a_reconcile.sql"]
+
+
+@pytest.mark.unit
+def test_select_migration_files_rejects_unknown_boundary(tmp_path: Path) -> None:
+    files = [_make_sql_file(tmp_path, "0007_base.sql")]
+
+    with pytest.raises(ValueError, match="not found"):
+        select_migration_files(files, "0022_missing.sql")
 
 
 # ---------------------------------------------------------------------------
