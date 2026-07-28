@@ -293,6 +293,9 @@ repos:
           tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_evidence_stamp.py
           tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_golden_fixtures_omn_14710.py
           tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_compute_f06_f16_parity_omn_14783.py
+          tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247.py
+          tests/unit/test_occ_contention_omn_15247.py
+          tests/unit/scripts/test_check_generated_checks_red_derivable.py
           -q
         language: system
         pass_filenames: false
@@ -304,6 +307,11 @@ repos:
             |src/omnimarket/events/occ_companion\.py
             |tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_(companion_emitter|evidence_stamp|companion_emitter_friction_omn_14741)\.py
             |tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_(golden_fixtures_omn_14710|compute_f06_f16_parity_omn_14783)\.py
+            |src/omnimarket/occ_(contention|content_probe)\.py
+            |scripts/ci/check_generated_checks_red_derivable\.py
+            |tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247\.py
+            |tests/unit/test_occ_contention_omn_15247\.py
+            |tests/unit/scripts/test_check_generated_checks_red_derivable\.py
           )$
         stages: [pre-commit]
 

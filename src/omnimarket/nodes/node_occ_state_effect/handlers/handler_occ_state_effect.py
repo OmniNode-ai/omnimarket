@@ -35,8 +35,6 @@ import re
 import shlex
 import subprocess
 import urllib.parse
-from collections.abc import Callable
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
@@ -54,6 +52,14 @@ from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_state_effect.models.model_occ_state_request import (
     ModelOccStateRequest,
+)
+from omnimarket.occ_content_probe import (
+    SymbolCandidate,
+    build_content_read_check,
+    declaration_count,
+    extract_symbol_candidates,
+    resolve_red_ref,
+    select_asserted_check,
 )
 
 logger = logging.getLogger(__name__)
@@ -112,116 +118,24 @@ def _resolve_github_token() -> str:
     return secret.get_secret_value()
 
 
-@dataclass(frozen=True)
-class SymbolCandidate:
-    """One (path, kind, symbol) triple extracted from an added diff line — pure."""
+# OMN-15247: the OMN-14619 pure content-probe functions (``SymbolCandidate``,
+# ``extract_symbol_candidates``, ``declaration_count``, ``build_content_read_check``,
+# ``select_asserted_check``) MOVED to ``omnimarket.occ_content_probe`` so the
+# born-path producer (``OccCompanionEmitter``) can derive the same content-bound
+# check without importing this node's private handler package. They are re-exported
+# here — unchanged behavior, one definition each (feedback_one_canonical_model_per
+# _shape) — so this module's public names and its existing tests are untouched.
 
-    path: str
-    kind: Literal["class", "def"]
-    symbol: str
-
-
-def extract_symbol_candidates(
-    files: list[dict[str, object]],
-) -> tuple[SymbolCandidate, ...]:
-    """Pure: parse GitHub PR-files ``patch`` hunks for added top-level class/def lines.
-
-    Only considers Python files with status ``added``/``modified`` (never a pure
-    rename/removal) — the diff patch is the only place we look, never file
-    content, so this stays a function of ``files`` alone.
-    """
-    candidates: list[SymbolCandidate] = []
-    for f in files:
-        path = str(f.get("filename", ""))
-        status = f.get("status")
-        patch = f.get("patch")
-        if not path.endswith(".py") or status not in ("added", "modified"):
-            continue
-        if not isinstance(patch, str):
-            continue
-        for line in patch.splitlines():
-            match = _DECLARATION_RE.match(line)
-            if not match:
-                continue
-            kind: Literal["class", "def"] = (
-                "class" if match.group(1) == "class" else "def"
-            )
-            candidates.append(
-                SymbolCandidate(path=path, kind=kind, symbol=match.group(2))
-            )
-    return tuple(candidates)
-
-
-def declaration_count(
-    content: str | None, kind: Literal["class", "def"], symbol: str
-) -> int:
-    """Pure: count ``class X`` / ``def X`` / ``async def X`` declaration lines."""
-    if not content:
-        return 0
-    verb = "class" if kind == "class" else r"(?:async\s+def|def)"
-    pattern = re.compile(rf"^\s*{verb}\s+{re.escape(symbol)}\b", re.MULTILINE)
-    return len(pattern.findall(content))
-
-
-def build_content_read_check(
-    *, repo: str, path: str, kind: Literal["class", "def"], symbol: str, head_sha: str
-) -> str:
-    """Canonical honest content-read check_value (reference_occ_receipt_gate_flow).
-
-    Pinned to the PR head SHA; ``grep -c`` exits non-zero (RED) when the
-    declaration is absent from the file at that ref — never a bare existence
-    probe (a `.sha`/`.content` presence check would rubber-stamp a MODIFIED
-    file that already existed on the base branch).
-
-    NOTE (OMN-14619 live proof, 2026-07-14): the reference memory's form
-    (``--jq -r .content``) is WRONG — ``gh api`` rejects it
-    ("accepts 1 arg(s), received 2") because ``-r`` is not a valid ``--jq``
-    sub-flag; ``gh api --jq`` already prints scalar results raw with no ``-r``
-    needed. Live-verified against omnimarket#1760 (OMN-14608): the corrected
-    form below returns ``1``/exit 0 at the PR head and ``0``/exit 1 (RED) at
-    the PR base — this handler's own canary evidence, not the memory's text.
-    """
-    needle = f"{kind} {symbol}"
-    return (
-        f"gh api repos/{repo}/contents/{path}?ref={head_sha} --jq '.content' "
-        f"| base64 -d | grep -c '{needle}'"
-    )
-
-
-def select_asserted_check(
-    candidates: tuple[SymbolCandidate, ...],
-    *,
-    repo: str,
-    head_sha: str,
-    base_sha: str,
-    fetch_content: Callable[[str, str], str | None],
-) -> str | None:
-    """Pick the first candidate that is RED-controllable, or None.
-
-    A candidate passes only when its declaration is present at ``head_sha`` AND
-    strictly more numerous there than at ``base_sha`` (feedback_prove_red_against
-    _exists_but_wrong: assert against the PR-introduced state, never a symbol
-    that already existed before the PR). ``fetch_content`` is injected so this
-    function stays pure and unit-testable without live network calls — the
-    effect boundary supplies a real GitHub content reader.
-    """
-    for candidate in candidates:
-        head_content = fetch_content(candidate.path, head_sha)
-        head_count = declaration_count(head_content, candidate.kind, candidate.symbol)
-        if head_count < 1:
-            continue
-        base_content = fetch_content(candidate.path, base_sha)
-        base_count = declaration_count(base_content, candidate.kind, candidate.symbol)
-        if base_count >= head_count:
-            continue  # not RED-controlled: already present at base, same or more
-        return build_content_read_check(
-            repo=repo,
-            path=candidate.path,
-            kind=candidate.kind,
-            symbol=candidate.symbol,
-            head_sha=head_sha,
-        )
-    return None
+__all__ = [
+    "HandlerOccStateEffect",
+    "SymbolCandidate",
+    "build_content_read_check",
+    "declaration_count",
+    "extract_pr_label_names",
+    "extract_symbol_candidates",
+    "resolve_red_ref",
+    "select_asserted_check",
+]
 
 
 class HandlerOccStateEffect:
@@ -261,7 +175,6 @@ class HandlerOccStateEffect:
         head = _as_dict(pr.get("head"))
         base = _as_dict(pr.get("base"))
         head_sha = str(head.get("sha") or "")
-        base_sha = str(base.get("sha") or "")
         title = str(pr.get("title") or "")
         body = str(pr.get("body") or "")
         pr_state = str(pr.get("state") or "open")
@@ -299,8 +212,18 @@ class HandlerOccStateEffect:
         # PRIVATE product repo. Suppress it there so the COMPUTE falls back to the
         # hosted-safe receipt-local check_value (driven by product_repo_private)
         # instead of shipping an un-runnable hosted content-read.
+        #
+        # OMN-15247 (B2): the RED reference is the MERGE BASE, not ``base.sha``.
+        # ``base.sha`` is the base branch TIP recorded on the PR object; on a base
+        # branch that moved after the PR was cut it may already contain the symbol,
+        # wrongly rejecting a genuinely RED-derivable candidate. OMN-15247's
+        # acceptance bar names the merge base explicitly. ``resolve_red_ref``
+        # returns None when the ref cannot be resolved, and a None ``red_ref``
+        # emits NO content-bound check (fail-closed) rather than silently reverting
+        # to the old, weaker reference.
         downstream_check_value: str | None = None
-        if head_sha and base_sha and not product_repo_private:
+        red_ref = self._resolve_red_ref_live(owner, repo_name, pr, token)
+        if head_sha and red_ref and not product_repo_private:
             candidates = extract_symbol_candidates(files)
 
             def _fetch(path: str, ref: str) -> str | None:
@@ -310,7 +233,7 @@ class HandlerOccStateEffect:
                 candidates,
                 repo=request.repo,
                 head_sha=head_sha,
-                base_sha=base_sha,
+                base_sha=red_ref,
                 fetch_content=_fetch,
             )
 
@@ -403,6 +326,42 @@ class HandlerOccStateEffect:
             whole_file_sha256=whole_hash,
             raw_contract_text=content,
         )
+
+    def _resolve_red_ref_live(
+        self, owner: str, repo_name: str, pr: dict[str, object], token: str
+    ) -> str | None:
+        """Resolve the merge-base RED ref for this PR, or None (OMN-15247 B2).
+
+        Thin live-I/O wrapper over the pure :func:`resolve_red_ref`: it supplies
+        the two GitHub reads (``/commits/{sha}`` for a merged PR's squash parent,
+        ``/compare/{base}...{head}`` for an open PR) and degrades every API
+        failure to ``None``. ``None`` means *no content-bound check is emitted*
+        — fail-closed, never a fallback to the weaker ``base.sha``.
+        """
+
+        def _commit(sha: str) -> dict[str, object]:
+            return rest_json(
+                "GET", f"/repos/{owner}/{repo_name}/commits/{sha}", token=token
+            )
+
+        def _compare(base_ref: str, head_ref_sha: str) -> dict[str, object]:
+            return rest_json(
+                "GET",
+                f"/repos/{owner}/{repo_name}/compare/{base_ref}...{head_ref_sha}",
+                token=token,
+            )
+
+        try:
+            return resolve_red_ref(pr_data=pr, compare=_compare, commit=_commit)
+        except (GitHubApiError, OSError) as exc:  # fallback-ok: fail CLOSED to None
+            logger.warning(
+                "occ_state_effect: could not resolve merge-base RED ref for "
+                "%s/%s (%s); no content-bound check will be derived",
+                owner,
+                repo_name,
+                exc,
+            )
+            return None
 
     def _content_at_ref(self, repo: str, path: str, ref: str, token: str) -> str | None:
         """Fetch decoded file content at ``ref``, or None if absent/undecodable."""

@@ -23,6 +23,12 @@
 # yamlfmt v0.21.0 matches the onex_change_control .yamlfmt pin so the F-03
 # idempotence check mirrors the hosted yamlfmt Pre-commit exactly.
 #
+# OMN-15247 adds the contention/content-binding suites to THIS gate rather than
+# creating a new workflow (rule 5 satisfied without a new surface;
+# net-negative-surface preserved). Both new behaviors are default-OFF, so the
+# load-bearing assertion is that the DEFAULT output is byte-identical to the
+# pre-OMN-15247 companion.
+#
 # The job name "OCC Emitter Golden Gate" is added to the dev branch-protection
 # required contexts by the operator (wedge-safe: merge_group trigger, no paths
 # filter, fail-propagating), mirroring omnimarket's other blocking gates.
@@ -57,6 +63,16 @@ jobs:
       - name: Clone omnimemory
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
 
+      # OMN-15247: the consumer-gate parity tests import the REAL
+      # onex_change_control gate scripts (lint_contract_check_values,
+      # check_contract_substance_floor, contract_compliance_check) and drive the
+      # emitted contract through them. Without this checkout those tests SKIP,
+      # and a seam mismatch between producer bytes and consumer gates would ship
+      # unnoticed (CLAUDE.md OMN-14208: a real cross-boundary regression test,
+      # not two independent unit suites).
+      - name: Clone onex_change_control (consumer-gate parity)
+        run: git clone --depth=1 https://github.com/OmniNode-ai/onex_change_control.git ../onex_change_control
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -85,4 +101,9 @@ jobs:
             tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_evidence_stamp.py \
             tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_golden_fixtures_omn_14710.py \
             tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_compute_f06_f16_parity_omn_14783.py \
+            tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247.py \
+            tests/unit/test_occ_contention_omn_15247.py \
+            tests/unit/scripts/test_check_generated_checks_red_derivable.py \
             -q -p no:randomly
+        env:
+          OCC_REPO_DIR: ${{ github.workspace }}/../onex_change_control

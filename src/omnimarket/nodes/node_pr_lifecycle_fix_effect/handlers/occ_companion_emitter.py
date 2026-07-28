@@ -39,6 +39,8 @@ guard (OMN-12791), and ``detect_occ_gap``.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import json
 import logging
 import os
@@ -47,6 +49,7 @@ import shlex
 import socket
 import subprocess
 import tempfile
+import urllib.parse
 from collections.abc import Iterable, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
@@ -71,7 +74,12 @@ from omnibase_core.validation.validator_receipt_gate import (
 )
 
 from omnimarket.events.occ_autoauthor import OCC_MACHINE_MINTED_LABEL
-from omnimarket.github_api import GitHubApiError, rest_json, split_repo
+from omnimarket.github_api import (
+    GitHubApiError,
+    rest_json,
+    rest_json_array,
+    split_repo,
+)
 from omnimarket.github_app_auth import resolve_app_installation_token_from_contract
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
@@ -99,6 +107,24 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring 
     product_pr_occ_binding,
     render_occ_companion_pr_body,
     render_product_pr_body_with_occ_source,
+)
+from omnimarket.occ_content_probe import (
+    extract_symbol_candidates,
+    is_yamlfmt_stable_check,
+    resolve_red_ref,
+    select_asserted_check,
+)
+
+# OMN-15247: contention detection (ALWAYS-ON, no toggle) + the check-binding mode
+# var. Both live in shared top-level modules (never a cross-node private import)
+# so the born-path emitter and node_occ_state_effect derive from ONE definition
+# each.
+from omnimarket.occ_contention import (
+    ContentionFinding,
+    EnumCheckBinding,
+    decide_contention,
+    find_open_companions,
+    resolve_occ_producer_policy,
 )
 from omnimarket.occ_git_transport import (
     OCC_REPO,
@@ -212,7 +238,23 @@ class OccCompanionEmitter:
         verifier: str = _DEFAULT_VERIFIER,
         producer_id: str | None = None,
         lease_ttl_seconds: int = _DEFAULT_LEASE_TTL_SECONDS,
+        check_binding: EnumCheckBinding | None = None,
     ) -> None:
+        # OMN-15247: defer-on-contention is UNCONDITIONAL — it takes no
+        # constructor argument and reads no env var, exactly like the OMN-14793
+        # lease below. The check-binding mode resolves from the environment here
+        # so the two no-arg construction sites
+        # (handler_pr_lifecycle_fix_runtime.py and
+        # handler_pr_lifecycle_orchestrator.py) need no change; tests inject
+        # directly. Resolution is FAIL-CLOSED — an unrecognized value raises
+        # naming the var and the accepted set, never silently defaults. The
+        # shipped default (pr_existence) reproduces today's bytes.
+        resolved_policy = resolve_occ_producer_policy(os.environ)
+        self._check_binding = (
+            check_binding
+            if check_binding is not None
+            else resolved_policy.check_binding
+        )
         self._occ_repo = occ_repo
         self._git_author_name = git_author_name
         self._git_author_email = git_author_email
@@ -401,6 +443,46 @@ class OccCompanionEmitter:
         evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
         ci_evidence_id = ci_check_evidence_id(evidence_id)
 
+        # OMN-15247 deliverable A — DEFER-ON-CONTENTION, ALWAYS ON. Placed AFTER
+        # the already-bound idempotency check and ticket extraction, and BEFORE
+        # ``acquire_occ_companion_lease``, so a defer takes the lease-free,
+        # zero-side-effect path (no lease, no clone, no branch, no push, no PR,
+        # no ``_patch_evidence_source``).
+        #
+        # There is no policy argument and no observe mode: a guard that fires
+        # only when an operator opts in is not a guard (memory
+        # feedback_optional_input_means_the_check_does_not_exist), and the
+        # displacement it prevents is structurally unrecoverable once the hollow
+        # contract merges (OCC is append-only; the repair is rejected with
+        # pr_ticket_mismatch). Same posture as the lease guard below.
+        findings = self._find_contending_companions(
+            tickets=tickets, own_branch=branch, token=token
+        )
+        should_defer, contention_reason = decide_contention(findings)
+        for finding in findings:
+            logger.warning(
+                "occ_companion_emitter contention: ticket=%s occ_pr=%s "
+                "provenance=%s defer=%s reason=%s",
+                finding.ticket_id,
+                finding.occ_pr_number,
+                finding.provenance.value,
+                should_defer,
+                finding.reason,
+            )
+        if should_defer:
+            action = (
+                f"skip:DEFER_HAND_AUTHORED — {repo}#{pr_number}: "
+                f"{contention_reason} (OMN-15247)"
+            )
+            logger.warning("occ_companion_emitter: %s", action)
+            self._comment_deferred(
+                repo=repo,
+                pr_number=pr_number,
+                findings=findings,
+                token=token,
+            )
+            return action
+
         run_timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Genuine product-PR probe, observed once and shared across tickets.
@@ -447,13 +529,101 @@ class OccCompanionEmitter:
         # THIS emitter (which has repo scope) and is recorded in each receipt's
         # probe_command/probe_stdout/exit_code. Public repos keep None so the
         # OMN-14741 shape is preserved byte-for-byte.
-        def _hosted_safe_check_values(ticket: str) -> tuple[str | None, str | None]:
-            if not is_private:
-                return None, None
-            return (
-                receipt_local_check_value(ticket_id=ticket, evidence_id=evidence_id),
-                receipt_local_check_value(ticket_id=ticket, evidence_id=ci_evidence_id),
+        # OMN-15247 deliverable B — CONTENT-BOUND CHECKS. Derive a RED-proven
+        # content read for the DOWNSTREAM item so the CONTRACT's declared check —
+        # the one the OCC contract-compliance runner actually executes — is
+        # falsifiable, not `gh pr view --json number,state` (which exits 0 for any
+        # PR that exists, in any state, with any diff: the OMN-15247 defect).
+        # OMN-14619 already computed a content read but only ever landed it in a
+        # RECEIPT's check_value, which the runner does not execute — provenance,
+        # never a gate.
+        #
+        # Private product repos keep the OMN-14766 F-16 hosted-safe receipt-local
+        # form: a hosted `gh api …/contents` has no token scope on a private repo.
+        # The `--json files` diff-scope item is UNCHANGED — it carries the
+        # OMN-14409 substance floor and removing it is not in scope.
+        content_bound_check: str | None = None
+        content_bound_red_ref: str | None = None
+        content_bound_red_exit: int | None = None
+        if not is_private:
+            content_bound_check, content_bound_red_ref, content_bound_red_exit = (
+                self._derive_content_bound_check(
+                    repo=repo,
+                    owner=owner,
+                    repo_name=repo_name,
+                    pr_number=pr_number,
+                    pr_data=pr_data,
+                    evidence_ref=receipt_commit_sha,
+                    token=token,
+                )
             )
+        if (
+            self._check_binding is EnumCheckBinding.CONTENT_BOUND
+            and not is_private
+            and content_bound_check is None
+        ):
+            # FAIL-CLOSED (§B4): under content_bound a producer that cannot derive
+            # a RED-proven check must NOT silently fall back to the hollow
+            # existence probe — that silent fallback is exactly the behavior
+            # OMN-15247 files as a defect, and would make this flag cosmetic.
+            action = (
+                f"skip:NO_RED_DERIVABLE_CHECK — {repo}#{pr_number}: no changed-file "
+                "candidate is RED-derivable against the merge base; hand-authored "
+                "evidence is required (OMN-15247)"
+            )
+            logger.warning("occ_companion_emitter: %s", action)
+            self._comment_no_red_derivable(repo=repo, pr_number=pr_number, token=token)
+            return action
+
+        # §B3.7 — record the RED derivation in the receipt's EXISTING free-text
+        # fields. ``ModelDodReceipt`` is ``extra="forbid"`` and frozen, so no
+        # ``red_derivation:`` key can be invented; ``probe_command`` /
+        # ``probe_stdout`` / ``actual_output`` are the only schema-compatible
+        # carriers. ``probe_stdout`` stays a single compact JSON line so the YAML
+        # block scalar shape is preserved exactly as today.
+        downstream_actual_output: str | None = None
+        if (
+            self._check_binding is EnumCheckBinding.CONTENT_BOUND
+            and content_bound_check is not None
+        ):
+            downstream_probe_command = content_bound_check
+            downstream_stdout = json.dumps(
+                {
+                    "evidence_ref": receipt_commit_sha,
+                    "green_exit": 0,
+                    "red_ref": content_bound_red_ref,
+                    "red_exit": content_bound_red_exit,
+                },
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+            downstream_exit = 0
+            downstream_actual_output = (
+                f"PASS: content-bound probe GREEN at {receipt_commit_sha}, "
+                f"RED at merge-base {content_bound_red_ref} "
+                f"(exit {content_bound_red_exit})."
+            )
+
+        def _hosted_safe_check_values(ticket: str) -> tuple[str | None, str | None]:
+            # Precedence: private-repo hosted-safe form (OMN-14766 F-16) wins,
+            # since a hosted content read cannot run there at all. Otherwise a
+            # content_bound-enabled producer overrides the DOWNSTREAM check with
+            # the RED-proven content read; the CI/diff-scope check is untouched.
+            if is_private:
+                return (
+                    receipt_local_check_value(
+                        ticket_id=ticket, evidence_id=evidence_id
+                    ),
+                    receipt_local_check_value(
+                        ticket_id=ticket, evidence_id=ci_evidence_id
+                    ),
+                )
+            if (
+                self._check_binding is EnumCheckBinding.CONTENT_BOUND
+                and content_bound_check is not None
+            ):
+                return content_bound_check, None
+            return None, None
 
         # OMN-14793 (OMN-14783 rec #2) single-producer lease: atomically claim
         # this product PR head in the shared OCC repo BEFORE any clone/branch/
@@ -543,6 +713,7 @@ class OccCompanionEmitter:
                             probe_command=downstream_probe_command,
                             probe_stdout=downstream_stdout,
                             exit_code=downstream_exit,
+                            actual_output=downstream_actual_output,
                             runner=self._runner,
                             verifier=self._verifier,
                             check_value=downstream_check_value,
@@ -853,6 +1024,364 @@ class OccCompanionEmitter:
         except json.JSONDecodeError:
             return result.stdout.strip().replace("\n", " "), 0
         return json.dumps(parsed, separators=(",", ":"), sort_keys=True), 0
+
+    # ------------------------------------------------------------------
+    # OMN-15247 — contention detection (deliverable A)
+    # ------------------------------------------------------------------
+
+    def _find_contending_companions(
+        self, *, tickets: Sequence[str], own_branch: str, token: str
+    ) -> tuple[ContentionFinding, ...]:
+        """Index open OCC companions that already carry evidence for ``tickets``.
+
+        Runs unconditionally on every mint attempt — there is no mode that
+        skips it. The three I/O halves are bound here and the decision logic
+        stays pure in :func:`omnimarket.occ_contention.find_open_companions`.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+
+        def _search(path: str) -> dict[str, object]:
+            return rest_json("GET", path, token=token)
+
+        def _get_pull(number: int) -> dict[str, object]:
+            return rest_json(
+                "GET", f"/repos/{occ_owner}/{occ_repo_name}/pulls/{number}", token=token
+            )
+
+        def _files(number: int) -> list[dict[str, object]]:
+            return self._paginated_pr_files(occ_owner, occ_repo_name, number, token)
+
+        return find_open_companions(
+            tickets=tickets,
+            occ_repo=self._occ_repo,
+            own_branch=own_branch,
+            search_issues=_search,
+            get_pull=_get_pull,
+            list_pr_files=_files,
+        )
+
+    def _comment_deferred(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        findings: Sequence[ContentionFinding],
+        token: str,
+    ) -> None:
+        """Idempotently note the defer on each CONTENDING OCC PR (best-effort).
+
+        Guarded by a marker comment so a ``synchronize`` storm cannot spam: the
+        existing comments are fetched and the marker checked BEFORE posting. The
+        comment lands on the contending OCC PR, not the product PR, so the human
+        who authored the stronger companion sees that the machine stood down.
+        Best-effort and swallowed, exactly like ``_apply_machine_minted_label``:
+        the load-bearing half of the defer is the mutation suppression, and a
+        comment API hiccup must never turn a clean defer into a failure.
+        """
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        for finding in findings:
+            if finding.occ_pr_number <= 0:
+                continue
+            marker = f"<!-- occ-autobind-deferred:{repo}#{pr_number} -->"
+            try:
+                existing = rest_json_array(
+                    "GET",
+                    f"/repos/{occ_owner}/{occ_repo_name}/issues/"
+                    f"{finding.occ_pr_number}/comments?per_page=100",
+                    token=token,
+                )
+                if any(marker in str(c.get("body") or "") for c in existing):
+                    continue
+                rest_json(
+                    "POST",
+                    f"/repos/{occ_owner}/{occ_repo_name}/issues/"
+                    f"{finding.occ_pr_number}/comments",
+                    token=token,
+                    body={
+                        "body": (
+                            f"{marker}\nOCC autobind stood down for "
+                            f"`{repo}#{pr_number}` ({finding.ticket_id}): this PR "
+                            f"({finding.provenance.value}) already carries evidence "
+                            "for that ticket, so no competing companion was minted "
+                            "(OMN-15247 defer-on-contention)."
+                        )
+                    },
+                )
+            except (
+                GitHubApiError,
+                OSError,
+            ) as exc:  # fallback-ok: comment is courtesy, the suppression is the gate
+                logger.warning(
+                    "occ_companion_emitter: could not post defer note on OCC#%s: %s",
+                    finding.occ_pr_number,
+                    exc,
+                )
+
+    def _comment_no_red_derivable(
+        self, *, repo: str, pr_number: int, token: str
+    ) -> None:
+        """Idempotently tell the PRODUCT PR that hand-authored evidence is needed."""
+        owner, repo_name = split_repo(repo)
+        marker = f"<!-- occ-autobind-no-red-derivable:{pr_number} -->"
+        try:
+            existing = rest_json_array(
+                "GET",
+                f"/repos/{owner}/{repo_name}/issues/{pr_number}/comments?per_page=100",
+                token=token,
+            )
+            if any(marker in str(c.get("body") or "") for c in existing):
+                return
+            rest_json(
+                "POST",
+                f"/repos/{owner}/{repo_name}/issues/{pr_number}/comments",
+                token=token,
+                body={
+                    "body": (
+                        f"{marker}\nOCC autobind did not mint a companion for this "
+                        "PR: no changed-file candidate could be proven RED against "
+                        "the merge base, and emitting a PR-existence probe instead "
+                        "would be non-falsifiable evidence (OMN-15247). "
+                        "Hand-authored evidence is required."
+                    )
+                },
+            )
+        except (GitHubApiError, OSError) as exc:  # fallback-ok: courtesy comment
+            logger.warning(
+                "occ_companion_emitter: could not post no-red-derivable note on "
+                "%s#%s: %s",
+                repo,
+                pr_number,
+                exc,
+            )
+
+    # ------------------------------------------------------------------
+    # OMN-15247 — content-bound check derivation (deliverable B)
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _paginated_pr_files(
+        owner: str, repo_name: str, pr_number: int, token: str
+    ) -> list[dict[str, object]]:
+        """Return every ``/pulls/{n}/files`` entry (mirrors HandlerOccStateEffect)."""
+        files: list[dict[str, object]] = []
+        page = 1
+        while True:
+            batch = rest_json_array(
+                "GET",
+                f"/repos/{owner}/{repo_name}/pulls/{pr_number}/files"
+                f"?per_page=100&page={page}",
+                token=token,
+            )
+            files.extend(batch)
+            if len(batch) < 100:
+                break
+            page += 1
+        return files
+
+    def _content_at_ref(
+        self, owner: str, repo_name: str, path: str, ref: str, token: str
+    ) -> str | None:
+        """Fetch decoded file content at ``ref``, or None if absent/undecodable."""
+        encoded_path = urllib.parse.quote(path, safe="/")
+        try:
+            data = rest_json(
+                "GET",
+                f"/repos/{owner}/{repo_name}/contents/{encoded_path}?ref={ref}",
+                token=token,
+            )
+        except GitHubApiError:
+            return None
+        if data.get("encoding") != "base64":
+            return None
+        try:
+            raw = base64.b64decode(str(data.get("content", "")), validate=False)
+        except (binascii.Error, ValueError):
+            return None
+        return raw.decode("utf-8", errors="replace")
+
+    def _resolve_red_ref_live(
+        self, owner: str, repo_name: str, pr_data: dict[str, object], token: str
+    ) -> str | None:
+        """Resolve the MERGE-BASE ref a generated check must go RED against.
+
+        Live-I/O wrapper over the pure :func:`resolve_red_ref` (OMN-15247 B2).
+        Every API failure degrades to ``None``, which means *no content-bound
+        check is emitted* — fail-closed, never a fallback to ``pr.base.sha``.
+        """
+
+        def _commit(sha: str) -> dict[str, object]:
+            return rest_json(
+                "GET", f"/repos/{owner}/{repo_name}/commits/{sha}", token=token
+            )
+
+        def _compare(base_ref: str, head_ref_sha: str) -> dict[str, object]:
+            return rest_json(
+                "GET",
+                f"/repos/{owner}/{repo_name}/compare/{base_ref}...{head_ref_sha}",
+                token=token,
+            )
+
+        try:
+            return resolve_red_ref(pr_data=pr_data, compare=_compare, commit=_commit)
+        except (GitHubApiError, OSError) as exc:  # fallback-ok: fail CLOSED to None
+            logger.warning(
+                "occ_companion_emitter: could not resolve merge-base RED ref for "
+                "%s/%s#%s (%s); no content-bound check will be derived",
+                owner,
+                repo_name,
+                pr_data.get("number"),
+                exc,
+            )
+            return None
+
+    def _derive_content_bound_check(
+        self,
+        *,
+        repo: str,
+        owner: str,
+        repo_name: str,
+        pr_number: int,
+        pr_data: dict[str, object],
+        evidence_ref: str,
+        token: str,
+    ) -> tuple[str | None, str | None, int | None]:
+        """Derive a RED-PROVEN content-bound check, or ``(None, red_ref, None)``.
+
+        Returns ``(check_value, red_ref, red_exit_code)``. The derivation ALWAYS
+        runs (both binding modes) and logs its outcome — under ``pr_existence``
+        the result is observed and discarded, changing zero committed bytes; that
+        is what makes the OFF state observable rather than absent
+        (``feedback_optional_input_means_the_check_does_not_exist``).
+
+        The mint-time acceptance bar (OMN-15247 §5 layer 1) is enforced here and
+        is fail-closed: the selected probe MUST exit 0 at ``evidence_ref`` and
+        NON-zero at the merge base before it is allowed to be written. Any missing
+        leg yields ``None``.
+        """
+        red_ref = self._resolve_red_ref_live(owner, repo_name, pr_data, token)
+        if red_ref is None:
+            logger.info(
+                "occ_companion_emitter content-bound: %s#%s no_red_derivable "
+                "(merge base unresolvable) binding=%s",
+                repo,
+                pr_number,
+                self._check_binding.value,
+            )
+            return None, None, None
+
+        try:
+            files = self._paginated_pr_files(owner, repo_name, pr_number, token)
+        except (GitHubApiError, OSError) as exc:  # fallback-ok: fail CLOSED
+            logger.warning(
+                "occ_companion_emitter content-bound: could not list files for "
+                "%s#%s (%s); no content-bound check derived",
+                repo,
+                pr_number,
+                exc,
+            )
+            return None, red_ref, None
+
+        candidates = extract_symbol_candidates(files)
+
+        def _fetch(path: str, ref: str) -> str | None:
+            return self._content_at_ref(owner, repo_name, path, ref, token)
+
+        check = select_asserted_check(
+            candidates,
+            repo=repo,
+            head_sha=evidence_ref,
+            base_sha=red_ref,
+            fetch_content=_fetch,
+            # Destination-specific constraint: this string is written to a
+            # CONTRACT's ``check_value:`` line (indent 8). yamlfmt folds it at
+            # the first space past column 100, which would restale
+            # contract_sha256 (F-03 / OMN-14684). The selector cannot know the
+            # destination indent, so the guard is applied here.
+            accept=is_yamlfmt_stable_check,
+        )
+        if check is None:
+            logger.info(
+                "occ_companion_emitter content-bound: %s#%s no_red_derivable "
+                "(0 of %d candidates RED-controlled at %s) binding=%s",
+                repo,
+                pr_number,
+                len(candidates),
+                red_ref[:8],
+                self._check_binding.value,
+            )
+            return None, red_ref, None
+
+        # Mint-time RED/GREEN execution — the acceptance bar, enforced before the
+        # check is allowed anywhere near a committed byte.
+        _green_out, green_exit = self._execute_probe_raw(check, token=token)
+        if green_exit != 0:
+            logger.warning(
+                "occ_companion_emitter content-bound: %s#%s candidate did NOT go "
+                "GREEN at %s (exit %s); rejected",
+                repo,
+                pr_number,
+                evidence_ref[:8],
+                green_exit,
+            )
+            return None, red_ref, None
+
+        red_check = check.replace(f"?ref={evidence_ref}", f"?ref={red_ref}")
+        _red_out, red_exit = self._execute_probe_raw(red_check, token=token)
+        if red_exit == 0:
+            logger.warning(
+                "occ_companion_emitter content-bound: %s#%s candidate ALSO passes "
+                "at merge base %s (exit 0) — non-falsifiable, rejected",
+                repo,
+                pr_number,
+                red_ref[:8],
+            )
+            return None, red_ref, None
+
+        logger.info(
+            "occ_companion_emitter content-bound: %s#%s would_bind=%r "
+            "green_at=%s red_at=%s red_exit=%s binding=%s",
+            repo,
+            pr_number,
+            check,
+            evidence_ref[:8],
+            red_ref[:8],
+            red_exit,
+            self._check_binding.value,
+        )
+        return check, red_ref, red_exit
+
+    @staticmethod
+    def _execute_probe_raw(probe_command: str, *, token: str) -> tuple[str, int]:
+        """Run a probe and return its TRUE exit code (OMN-15247 §5 / §9 trap).
+
+        ``_observe_pr_probe`` deliberately NORMALIZES every failure to exit 0 —
+        correct for provenance capture (the PR *was* observed), but fatal for RED
+        derivation: reusing it would report exit 0 at the merge base for a probe
+        that genuinely failed, manufacturing a false RED-proof and defeating the
+        entire acceptance bar. This executor never normalizes.
+
+        The content-bound probe is a shell PIPELINE (``gh api … | base64 -d |
+        grep -c …``), so it runs under ``bash -o pipefail -c`` rather than
+        ``shlex.split``: without ``pipefail`` the exit status would be ``grep``'s
+        alone, and a failed ``gh api`` (deleted ref, revoked scope) would still
+        report ``grep``'s verdict on empty input. A non-zero exit from ANY stage
+        is the honest answer. Any launch failure returns a non-zero sentinel, so
+        an unrunnable probe is never mistaken for a passing one.
+        """
+        env = os.environ.copy()
+        env["GH_TOKEN"] = token
+        try:
+            result = subprocess.run(
+                ["bash", "-o", "pipefail", "-c", probe_command],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=60,
+                check=False,
+            )
+        except (OSError, ValueError, subprocess.SubprocessError) as exc:
+            return f"probe launch failed: {exc}", 127
+        return result.stdout.strip(), result.returncode
 
     def _clone_and_branch(
         self, clone_dir: Path, branch: str, tmpdir: str, token: str
