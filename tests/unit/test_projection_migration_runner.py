@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
+import asyncpg
 import pytest
 
 # ---------------------------------------------------------------------------
@@ -255,6 +256,49 @@ async def test_apply_migration_inserts_record_on_success(tmp_path: Path) -> None
     assert "CREATE TABLE t" in first_call_sql
     second_call_sql = conn.execute.call_args_list[1][0][0]
     assert "omnimarket_schema_migrations" in second_call_sql
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_apply_migration_retries_a_busy_table_lock(tmp_path: Path) -> None:
+    sql_file = _make_sql_file(tmp_path, "0000_create.sql", "SELECT 1;")
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=[])
+    conn.execute = AsyncMock(
+        side_effect=[
+            asyncpg.exceptions.LockNotAvailableError("busy"),
+            "SELECT 1",
+            "INSERT 0 1",
+        ]
+    )
+
+    with patch.object(_mod.asyncio, "sleep", new=AsyncMock()) as sleep:
+        await apply_migration(conn, "node_test", sql_file, dry_run=False)
+
+    assert conn.execute.call_count == 3
+    sleep.assert_awaited_once_with(1)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_apply_migration_stops_after_bounded_lock_retries(
+    tmp_path: Path,
+) -> None:
+    sql_file = _make_sql_file(tmp_path, "0000_create.sql", "SELECT 1;")
+    conn = AsyncMock()
+    conn.fetch = AsyncMock(return_value=[])
+    conn.execute = AsyncMock(
+        side_effect=asyncpg.exceptions.LockNotAvailableError("busy")
+    )
+
+    with (
+        patch.object(_mod.asyncio, "sleep", new=AsyncMock()) as sleep,
+        pytest.raises(asyncpg.exceptions.LockNotAvailableError),
+    ):
+        await apply_migration(conn, "node_test", sql_file, dry_run=False)
+
+    assert conn.execute.call_count == 3
+    assert sleep.await_count == 2
 
 
 # ---------------------------------------------------------------------------

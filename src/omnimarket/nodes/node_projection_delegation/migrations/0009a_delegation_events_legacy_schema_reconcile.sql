@@ -2,6 +2,16 @@
 -- contract-driven projection schema. This migration intentionally sorts after
 -- the base/metrics migrations and before views that require model_name.
 
+-- This is an explicitly bounded maintenance operation. PostgreSQL must acquire
+-- the table lock before making any schema change; a busy writer makes the
+-- migration fail within five seconds so the runner can retry without leaving a
+-- partial conversion. The staging table was measured at 6 rows / 128 kB before
+-- rollout, so the in-place JSONB-to-integer rewrite is deliberately preferred
+-- over a permanent dual-column compatibility path.
+SET LOCAL lock_timeout = '5s';
+SET LOCAL statement_timeout = '2min';
+LOCK TABLE delegation_events IN ACCESS EXCLUSIVE MODE;
+
 ALTER TABLE delegation_events
     ADD COLUMN IF NOT EXISTS model_name TEXT NOT NULL DEFAULT '',
     ADD COLUMN IF NOT EXISTS llm_call_id TEXT,
@@ -23,6 +33,7 @@ ALTER TABLE delegation_events
 DO $reconcile_checked$
 DECLARE
     current_type TEXT;
+    unsupported_shape_count BIGINT;
 BEGIN
     SELECT data_type
       INTO current_type
@@ -39,6 +50,23 @@ BEGIN
            SET quality_gates_checked_jsonb =
                COALESCE(quality_gates_checked_jsonb, quality_gates_checked)
          WHERE quality_gates_checked IS NOT NULL;
+
+        SELECT COUNT(*)
+          INTO unsupported_shape_count
+          FROM delegation_events
+         WHERE quality_gates_checked IS NOT NULL
+           AND NOT (
+               jsonb_typeof(quality_gates_checked) = 'array'
+               OR (
+                   jsonb_typeof(quality_gates_checked) = 'number'
+                   AND (quality_gates_checked #>> '{}') ~ '^[0-9]+$'
+               )
+           );
+        IF unsupported_shape_count > 0 THEN
+            RAISE WARNING
+                'delegation_events.quality_gates_checked has % row(s) with an unsupported JSONB shape; original values are preserved in quality_gates_checked_jsonb and counts are coerced to zero',
+                unsupported_shape_count;
+        END IF;
 
         ALTER TABLE delegation_events
             ALTER COLUMN quality_gates_checked DROP DEFAULT;
@@ -75,6 +103,7 @@ $reconcile_checked$;
 DO $reconcile_failed$
 DECLARE
     current_type TEXT;
+    unsupported_shape_count BIGINT;
 BEGIN
     SELECT data_type
       INTO current_type
@@ -91,6 +120,23 @@ BEGIN
            SET quality_gates_failed_jsonb =
                COALESCE(quality_gates_failed_jsonb, quality_gates_failed)
          WHERE quality_gates_failed IS NOT NULL;
+
+        SELECT COUNT(*)
+          INTO unsupported_shape_count
+          FROM delegation_events
+         WHERE quality_gates_failed IS NOT NULL
+           AND NOT (
+               jsonb_typeof(quality_gates_failed) = 'array'
+               OR (
+                   jsonb_typeof(quality_gates_failed) = 'number'
+                   AND (quality_gates_failed #>> '{}') ~ '^[0-9]+$'
+               )
+           );
+        IF unsupported_shape_count > 0 THEN
+            RAISE WARNING
+                'delegation_events.quality_gates_failed has % row(s) with an unsupported JSONB shape; original values are preserved in quality_gates_failed_jsonb and counts are coerced to zero',
+                unsupported_shape_count;
+        END IF;
 
         ALTER TABLE delegation_events
             ALTER COLUMN quality_gates_failed DROP DEFAULT;
