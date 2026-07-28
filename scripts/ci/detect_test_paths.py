@@ -45,6 +45,34 @@ def resolve_test_paths(
     return _resolve(changed_files, config, repo_root=repo_root or REPO_ROOT)
 
 
+def _requires_unnarrowable_full_suite(changed_files: list[str]) -> bool:
+    """True when a changed path directly under tests/ cannot be narrowed.
+
+    A path is "root-level" when it has exactly one path separator after the
+    `tests/` prefix (i.e. `parts[1]` is the file itself, not a subdirectory
+    name) -- `tests/test_foo.py`, not `tests/nodes/test_foo.py`. Such a path
+    has no containing directory below `tests/` itself.
+
+    Before this check, `_resolve()` built the string `tests/<parts[1]>/` for
+    every tests/-prefixed change regardless of whether `parts[1]` names a
+    directory or a file. For a root-level file that construction is wrong:
+    it is either a non-existent pseudo-directory the on-disk filter silently
+    drops (changed file absent at selection time -- e.g. deleted), or a
+    `TestPath` value that is file-shaped rather than the directory-only shape
+    the model documents (changed file present at selection time). Escalating
+    to the real full suite, attributed by reason, replaces both outcomes with
+    one deterministic and provable answer -- it does not depend on whether
+    the file happens to exist on disk when the selector runs.
+    """
+    for path in changed_files:
+        if not path.startswith(TEST_PREFIX) or not path.endswith(".py"):
+            continue
+        parts = path.split("/")
+        if len(parts) == 2:
+            return True
+    return False
+
+
 def _resolve(
     changed_files: list[str],
     config: ModelAdjacencyMap,
@@ -100,6 +128,13 @@ def compute_selection(
             for infra in config.test_infrastructure_paths
         ):
             return _full_suite(EnumFullSuiteReason.TEST_INFRASTRUCTURE)
+
+    # OMN-15277: a changed test path directly under tests/ root (no
+    # subdirectory) cannot be narrowed below tests/ itself. Checked after the
+    # test-infrastructure loop so paths already declared there (e.g.
+    # tests/conftest.py) keep reporting TEST_INFRASTRUCTURE, not this reason.
+    if _requires_unnarrowable_full_suite(changed_files):
+        return _full_suite(EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE)
 
     changed_modules = {
         path[len(SRC_PREFIX) :].split("/", 1)[0]
