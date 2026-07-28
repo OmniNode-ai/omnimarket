@@ -338,6 +338,39 @@ jobs:
             --receipts-dir scripts/ci/adequacy_receipts \
             --full
 
+      # Fail-closed flip-bundle SEAM gate fan-out (OMN-14809 / OMN-15340 / OMN-15344).
+      # The ratchet above proves a node's SHAPE. It is structurally blind to whether the
+      # PROOF a flip carries is coherent, and — since OMN-15340 — to whether the declared
+      # hand-flip parity tests are RED-for-the-right-reason at the receipt's own base_ref.
+      # A parity test that is ALREADY GREEN on the pre-change tree discriminates nothing,
+      # and the flip is credited with a behavior proof it never earned.
+      #
+      # That mechanism shipped in omnibase_core#1519 but ran in omnibase_core's CI ONLY,
+      # while ALL 22 committed hand-flip receipts live in this repo (7) and
+      # omnimarket/omnibase_infra — zero coverage over 100% of the population it was
+      # built for. This step wires it HERE, in the same job, from the sibling
+      # ../omnibase_core checkout already cloned above: no new job, no new workflow, no new
+      # hook (net-negative-surface). Flags mirror the ratchet's so it reads THIS repo's
+      # tree/receipts/baseline, not the ephemeral core checkout's — same --receipts-dir
+      # reason as OMN-14633 above.
+      #
+      # NOT path-filtered, deliberately. The gate self-scopes to nodes NEWLY flipped vs
+      # origin/dev and exits 0 when there are none (measured 2.4s on .200), so an
+      # everyday PR pays nothing; a path filter on a fail-closed proof gate is a bypass.
+      #
+      # It also enforces scripts/ci/parity_red_on_base_baseline.py as a SHRINK-ONLY
+      # ratchet: growth hard-fails, a stale entry hard-fails, and removing an entry
+      # re-arms assertion 7 for that node and EXECUTES it. The inline fetch makes
+      # origin/dev's tip available for flip-discovery (this checkout is shallow); the
+      # gate NOTEs and exits 0 if it is still unavailable, exactly as in core.
+      - name: Canonical-shape flip-bundle seam gate (OMN-15344 fan-out)
+        run: |
+          git fetch --no-tags --prune origin +refs/heads/dev:refs/remotes/origin/dev || true
+          uv run python ../omnibase_core/scripts/ci/verify_flip_bundle.py \
+            --package omnimarket --src-root src \
+            --baseline scripts/ci/canonical_handler_shape_baseline.py \
+            --receipts-dir scripts/ci/adequacy_receipts
+
       # OMN-14617: fleet-wide fan-out of the omnibase_infra OMN-14135 dispatch-ENTRYPOINT
       # gate. A contract-declared handler exposing NEITHER handle() nor handle_async() is
       # bound by the shared auto-wiring to _missing_handle, which raises ModelOnexError on
