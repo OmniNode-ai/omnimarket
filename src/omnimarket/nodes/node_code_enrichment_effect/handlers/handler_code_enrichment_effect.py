@@ -24,7 +24,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -33,6 +33,9 @@ from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_r
 )
 from omnimarket.nodes.node_code_enrichment_effect.models.model_code_enrichment_result import (
     ModelCodeEnrichmentResult,
+)
+from omnimarket.protocols.protocol_code_entity_repository import (
+    ProtocolCodeEntityRepository,
 )
 
 if TYPE_CHECKING:
@@ -77,32 +80,6 @@ PROMPT_TEMPLATE: str = (
 )
 
 
-@runtime_checkable
-class ProtocolCodeEntityRepository(Protocol):
-    """Enrichment-side code entity repository.
-
-    NOTE(OMN-15230): a *different* protocol with the same name and a different
-    method set lives in ``handler_code_embedding_effect``
-    (``get_entities_needing_embedding`` / ``update_embedded_at``). The two are
-    independent DI keys and must not be conflated; consolidating them is
-    tracked separately and is deliberately out of scope here.
-    """
-
-    async def get_entities_needing_enrichment(
-        self, *, limit: int
-    ) -> list[dict[str, Any]]: ...
-    async def update_enrichment(
-        self,
-        *,
-        entity_id: str,
-        classification: str,
-        llm_description: str,
-        architectural_pattern: str,
-        classification_confidence: float,
-        enrichment_version: str,
-    ) -> None: ...
-
-
 class HandlerCodeEnrichmentEffect:
     """EFFECT handler — enriches code entities with LLM classification and description.
 
@@ -111,9 +88,12 @@ class HandlerCodeEnrichmentEffect:
     ``container`` so the boot resolver
     (``tests/test_handler_routing_boot_resolvable.py`` / OMN-13551) can build
     this handler from known-injectable params alone. The
-    ``ProtocolCodeEntityRepository`` is resolved from the container at the
-    effect boundary *inside* ``handle()`` — never at construction — and
-    resolution failure is loud, never a silent empty result.
+    ``ProtocolCodeEntityRepository`` (canonical declaration in
+    ``omnimarket.protocols.protocol_code_entity_repository`` since OMN-15230,
+    which merged this module's copy with the identically-named embedding-side
+    copy) is resolved from the container at the effect boundary *inside*
+    ``handle()`` — never at construction — and resolution failure is loud, never
+    a silent empty result.
 
     ``handle()`` keeps the canonical definition-B shape: a single typed
     ``ModelCodeEnrichmentRequest`` payload in, ``ModelCodeEnrichmentResult``
@@ -340,5 +320,6 @@ __all__ = [
     "ENRICHMENT_CLASSIFICATIONS",
     "PROMPT_TEMPLATE",
     "HandlerCodeEnrichmentEffect",
+    # Re-exported (OMN-15230): canonical declaration is in omnimarket.protocols.
     "ProtocolCodeEntityRepository",
 ]
