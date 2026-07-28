@@ -25,6 +25,13 @@
 # three upstream branches (preflight short-circuit, cli_review non-zero exit,
 # or the normal verdict parse) produced it.
 #
+# OMN-15296: the aggregating `hostile-review-gate` job below fails closed on
+# every `needs.hostile-review.result` that is not `success`. `cancelled` and
+# `skipped` are not verdicts; treating them as passing made a required context
+# green on a review that never ran. Covered by
+# tests/ci/test_hostile_review_gate_fail_closed_omn15296.py, which executes this
+# workflow's own gate script across all four result values.
+#
 # Reference: OMN-8524, OMN-15066 (job-timeout raise; does not fix this), OMN-15110
 
 name: Hostile Reviewer
@@ -699,8 +706,32 @@ jobs:
           # the same-file poller job failed, this whole job (and its required
           # context) went `skipped`, which GitHub branch protection treats as
           # passing. See OMN-14668 for the precedent fix.
-          if [ "$RESULT" = "failure" ]; then
-            echo "::error::Hostile reviewer found CRITICAL/ERROR findings — resolve before merge."
-            exit 1
-          fi
-          echo "Hostile Review Gate PASSED"
+          # OMN-15296: `needs.<job>.result` is one of success/failure/cancelled/
+          # skipped. Only `success` is a real reviewer verdict. This block used to
+          # test `= "failure"` alone, so `cancelled` and `skipped` fell straight
+          # through to the PASSED line and turned this required context green with
+          # no adversarial verdict in existence -- observed live on #1920 (run
+          # 30298837182: reviewer cancelled 04:13:14Z, gate SUCCESS 04:13:21Z, 7s
+          # later). Everything that is not `success` now fails closed, including a
+          # result value GitHub may add in future.
+          case "$RESULT" in
+            success)
+              echo "Hostile Review Gate PASSED"
+              ;;
+            failure)
+              echo "::error::Hostile reviewer found CRITICAL/ERROR findings — resolve before merge. If instead the job died before emitting a verdict (runner or reviewer-endpoint loss), this signal is today indistinguishable from real findings — that split is OMN-14046; re-run the reviewer rather than merging on it."
+              exit 1
+              ;;
+            cancelled)
+              echo "::error::Hostile reviewer run was cancelled, so it produced no adversarial verdict. A cancelled review is not evidence that the review passed — re-run it before merge (OMN-15296)."
+              exit 1
+              ;;
+            skipped)
+              echo "::error::Hostile reviewer job was skipped, so it produced no adversarial verdict. Failing closed: a skipped required check must never read as review evidence (OMN-15296)."
+              exit 1
+              ;;
+            *)
+              echo "::error::Unrecognised hostile-review result '$RESULT'. Failing closed by default-deny — a result this gate cannot interpret must never open the merge path (OMN-15296)."
+              exit 1
+              ;;
+          esac
