@@ -48,6 +48,9 @@ INSERT INTO delegation_events (
 ), (
     gen_random_uuid(), 'unsupported-correlation',
     '{"contract": true}'::jsonb, '"latency"'::jsonb
+), (
+    gen_random_uuid(), 'out-of-range-correlation',
+    '2147483648'::jsonb, '2147483648'::jsonb
 );
 """
 
@@ -144,6 +147,20 @@ async def test_real_postgres_reconciles_live_legacy_shape_idempotently() -> None
             "contract": True
         }
         assert json.loads(unsupported["quality_gates_failed_jsonb"]) == "latency"
+
+        out_of_range = await conn.fetchrow(
+            """
+            SELECT quality_gates_checked, quality_gates_failed,
+                   quality_gates_checked_jsonb, quality_gates_failed_jsonb
+            FROM delegation_events
+            WHERE correlation_id = 'out-of-range-correlation'
+            """
+        )
+        assert out_of_range is not None
+        assert out_of_range["quality_gates_checked"] == 0
+        assert out_of_range["quality_gates_failed"] == 0
+        assert json.loads(out_of_range["quality_gates_checked_jsonb"]) == 2147483648
+        assert json.loads(out_of_range["quality_gates_failed_jsonb"]) == 2147483648
 
         await conn.execute(
             """

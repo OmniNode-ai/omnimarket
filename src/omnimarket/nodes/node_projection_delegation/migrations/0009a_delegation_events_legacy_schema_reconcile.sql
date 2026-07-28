@@ -60,6 +60,7 @@ BEGIN
                OR (
                    jsonb_typeof(quality_gates_checked) = 'number'
                    AND (quality_gates_checked #>> '{}') ~ '^[0-9]+$'
+                   AND (quality_gates_checked #>> '{}')::NUMERIC <= 2147483647
                )
            );
         IF unsupported_shape_count > 0 THEN
@@ -80,6 +81,7 @@ BEGIN
                             THEN jsonb_array_length(quality_gates_checked)
                         WHEN jsonb_typeof(quality_gates_checked) = 'number'
                              AND (quality_gates_checked #>> '{}') ~ '^[0-9]+$'
+                             AND (quality_gates_checked #>> '{}')::NUMERIC <= 2147483647
                             THEN (quality_gates_checked #>> '{}')::INTEGER
                         ELSE 0
                     END
@@ -130,6 +132,7 @@ BEGIN
                OR (
                    jsonb_typeof(quality_gates_failed) = 'number'
                    AND (quality_gates_failed #>> '{}') ~ '^[0-9]+$'
+                   AND (quality_gates_failed #>> '{}')::NUMERIC <= 2147483647
                )
            );
         IF unsupported_shape_count > 0 THEN
@@ -150,6 +153,7 @@ BEGIN
                             THEN jsonb_array_length(quality_gates_failed)
                         WHEN jsonb_typeof(quality_gates_failed) = 'number'
                              AND (quality_gates_failed #>> '{}') ~ '^[0-9]+$'
+                             AND (quality_gates_failed #>> '{}')::NUMERIC <= 2147483647
                             THEN (quality_gates_failed #>> '{}')::INTEGER
                         ELSE 0
                     END
