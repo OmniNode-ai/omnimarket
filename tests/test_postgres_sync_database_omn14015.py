@@ -57,6 +57,8 @@ class _FakeConn:
     def __init__(self, rows: list[dict[str, Any]] | None = None) -> None:
         self.autocommit = False
         self.closed = False
+        self.commits = 0
+        self.rollbacks = 0
         self.cursors: list[_FakeCursor] = []
         self._rows = rows or []
 
@@ -67,6 +69,12 @@ class _FakeConn:
 
     def close(self) -> None:
         self.closed = True
+
+    def commit(self) -> None:
+        self.commits += 1
+
+    def rollback(self) -> None:
+        self.rollbacks += 1
 
 
 @pytest.fixture
@@ -90,7 +98,9 @@ def test_upsert_builds_on_conflict_do_update(fake_conn: _FakeConn) -> None:
     assert ok is True
     assert fake_conn.autocommit is True
     assert fake_conn.closed is True
-    statement, params = fake_conn.cursors[0].executed[0]
+    assert fake_conn.commits == 1
+    assert fake_conn.rollbacks == 0
+    statement, params = fake_conn.cursors[-1].executed[0]
     assert statement.startswith("INSERT INTO delegation_events (")
     assert "ON CONFLICT (correlation_id) DO UPDATE SET" in statement
     # The conflict key is excluded from the SET clause; the other columns update.
@@ -112,7 +122,7 @@ def test_upsert_adapts_list_and_dict_to_jsonb(fake_conn: _FakeConn) -> None:
 
     adapter.upsert("delegation_events", "correlation_id", row)
 
-    _, params = fake_conn.cursors[0].executed[0]
+    _, params = fake_conn.cursors[-1].executed[0]
     assert isinstance(params["quality_gates_failed_jsonb"], psycopg2.extras.Json)
     assert isinstance(params["premium_counterfactual"], psycopg2.extras.Json)
     # Scalar conflict key is not JSON-wrapped.
@@ -124,7 +134,7 @@ def test_upsert_do_nothing_when_only_conflict_key(fake_conn: _FakeConn) -> None:
 
     adapter.upsert("delegation_events", "correlation_id", {"correlation_id": "x"})
 
-    statement, _ = fake_conn.cursors[0].executed[0]
+    statement, _ = fake_conn.cursors[-1].executed[0]
     assert "ON CONFLICT (correlation_id) DO NOTHING" in statement
 
 
@@ -137,7 +147,7 @@ def test_upsert_never_mutates_schema(fake_conn: _FakeConn) -> None:
         {"correlation_id": "x", "task_type": "test"},
     )
 
-    for statement, _ in fake_conn.cursors[0].executed:
+    for statement, _ in fake_conn.cursors[-1].executed:
         upper = statement.upper()
         assert "ALTER TABLE" not in upper
         assert "CREATE TABLE" not in upper
@@ -175,7 +185,7 @@ def test_query_builds_parameterized_select(monkeypatch: pytest.MonkeyPatch) -> N
     result = adapter.query("delegation_events", {"correlation_id": "abc-123"})
 
     assert result == rows
-    statement, params = conn.cursors[0].executed[0]
+    statement, params = conn.cursors[-1].executed[0]
     assert (
         statement
         == "SELECT * FROM delegation_events WHERE correlation_id = %(correlation_id)s"
@@ -191,7 +201,7 @@ def test_query_without_filters_selects_all(monkeypatch: pytest.MonkeyPatch) -> N
 
     adapter.query("delegation_events")
 
-    statement, _ = conn.cursors[0].executed[0]
+    statement, _ = conn.cursors[-1].executed[0]
     assert statement == "SELECT * FROM delegation_events"
 
 
