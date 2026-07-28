@@ -69,7 +69,7 @@ def test_contract_references_corpus_migration() -> None:
     contract = yaml.safe_load(CONTRACT_PATH.read_text())
     tables = contract["db_io"]["db_tables"]
     gen = next(t for t in tables if t["name"] == "generation_events")
-    assert gen["migration"] == "0015_generation_corpus_acceptance.sql"
+    assert gen["migration"] == "0027_generation_events_tenant_rls.sql"
 
 
 def test_contract_exposes_corpus_columns() -> None:

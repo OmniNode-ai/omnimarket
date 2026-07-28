@@ -56,6 +56,14 @@ omissions:
       reads it yet. The durable per-tenant identity design (org/tenant model,
       auth-derived resolution, RLS-aware readers) is OMN-14107 — surface this
       column in an exposure when that lands.
+  - node: node_projection_delegation
+    table: generation_events
+    column: tenant_id
+    reason: >-
+      OMN-14974 tenant key used by database RLS to isolate generation proof rows.
+      The projection reader sets the authenticated tenant as app.tenant_id; the
+      raw tenant key is intentionally not returned as dashboard data. Surface it
+      only if the durable per-tenant identity design in OMN-14107 requires it.
   - node: node_projection_savings
     table: savings_estimates
     column: tenant_id
