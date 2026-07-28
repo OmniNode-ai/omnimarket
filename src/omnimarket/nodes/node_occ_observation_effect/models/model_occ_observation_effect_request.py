@@ -44,6 +44,17 @@ class ModelOccObservationEffectRequest(BaseModel):
         description="'dry_run' renders the path+content only; 'mutate' clones, "
         "pushes, and opens/reuses the OCC PR.",
     )
+    evidence_ticket: str = Field(
+        default="OMN-14888",
+        pattern=r"^OMN-\d+$",
+        description="The ONE ticket every generated OCC PR binds to. It is "
+        "rendered into the title, the body's closing-keyword and Evidence-Ticket "
+        "lines, and the commit subject, so validator_occ_merge_eligibility can "
+        "both EXTRACT it and prove it BOUND. Constrained to a single OMN token "
+        "so the emitted PR can never pull an unintended ticket into gate scope "
+        "(OMN-15300; guards against the OMN-15194 / OMN-14658 title-scan "
+        "over-demand).",
+    )
     correlation_id: UUID = Field(default_factory=uuid4)
 
 

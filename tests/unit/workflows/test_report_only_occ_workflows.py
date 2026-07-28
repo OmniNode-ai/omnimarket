@@ -315,3 +315,65 @@ def test_observation_store_mode_flows_into_the_effect_payload() -> None:
     assert '--mode "$OBS_MODE"' in build["run"]
     # The old hardcoded dry_run wiring is gone from the whole workflow.
     assert "--mode dry_run" not in _ATTEST.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# OMN-15300: the OCC PR-event workflow family must serialize per PR.
+# ---------------------------------------------------------------------------
+
+#: Every omnimarket workflow driven by `pull_request` that acts on the OCC
+#: evidence surface. The family shared one gap: none declared `concurrency`, so a
+#: PR receiving several events in quick succession ran the whole family several
+#: times over. For the observation producer that was not merely wasted CI — each
+#: run wrote its own attempt-scoped record and opened its own OCC PR, which is how
+#: one head sha produced three PRs in 29 seconds.
+_OCC_PR_EVENT_WORKFLOWS = (
+    "call-occ-attestation-observe.yml",
+    "call-occ-autobind.yml",
+    "call-occ-companion-observe.yml",
+)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("filename", _OCC_PR_EVENT_WORKFLOWS)
+def test_occ_pr_event_workflow_declares_concurrency(filename: str) -> None:
+    """Each family member serializes on its PR and cancels superseded runs."""
+    workflow = _load(_WORKFLOWS / filename)
+    concurrency = workflow.get("concurrency")
+    assert concurrency is not None, (
+        f"{filename} declares no `concurrency` group, so duplicate pull_request "
+        "events for one PR each run the whole workflow"
+    )
+    assert concurrency.get("cancel-in-progress") is True, (
+        f"{filename} must cancel superseded runs; queueing them preserves the burn"
+    )
+    group = concurrency["group"]
+    assert "github.event.pull_request.number" in group, (
+        f"{filename} concurrency group must be scoped per PR, got: {group}"
+    )
+
+
+@pytest.mark.unit
+def test_observer_workflows_key_concurrency_on_head_sha() -> None:
+    """Observers key on head sha; the mutating publisher deliberately does not.
+
+    An observer produces one record per sha, so a new push must NOT cancel the
+    observation for the previous sha — only redundant runs for the SAME sha are
+    collapsed, and those emit byte-identical output. The autobind publisher is the
+    opposite case: it rewrites the PR body, so two publishers racing on one PR is
+    a lost-update hazard and the newest state must always win.
+    """
+    for filename in (
+        "call-occ-attestation-observe.yml",
+        "call-occ-companion-observe.yml",
+    ):
+        group = _load(_WORKFLOWS / filename)["concurrency"]["group"]
+        assert "github.event.pull_request.head.sha" in group, (
+            f"{filename} is an observer and must not drop a per-sha observation"
+        )
+
+    autobind = _load(_WORKFLOWS / "call-occ-autobind.yml")["concurrency"]["group"]
+    assert "head.sha" not in autobind, (
+        "call-occ-autobind mutates the PR; keying on head sha would let two "
+        "publishers run concurrently for different shas on the same PR"
+    )
