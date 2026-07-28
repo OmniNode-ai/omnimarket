@@ -74,6 +74,30 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
 
 logger = logging.getLogger(__name__)
 
+# onex_change_control/.yamlfmt ``formatter.max_line_length``. PyYAML's dump
+# ``width`` must match it so the emitted bytes are already at the formatter's
+# fixed point instead of being re-wrapped by hosted Pre-commit (OMN-14714).
+_OCC_YAMLFMT_MAX_LINE_LENGTH = 100
+
+
+class _BlockScalarDumper(yaml.SafeDumper):
+    """SafeDumper that renders multi-line strings as literal block scalars.
+
+    PyYAML's default single-quoted form for a string ending in ``\\n`` places the
+    closing quote alone on a line after a blank line; yamlfmt deletes that line,
+    yielding unparseable YAML. Literal ``|`` blocks round-trip byte-stably.
+    """
+
+
+def _represent_str_block(dumper: yaml.SafeDumper, value: str) -> yaml.ScalarNode:
+    """Emit ``|`` for multi-line strings, default style otherwise."""
+    if "\n" in value:
+        return dumper.represent_scalar("tag:yaml.org,2002:str", value, style="|")
+    return dumper.represent_scalar("tag:yaml.org,2002:str", value)
+
+
+_BlockScalarDumper.add_representer(str, _represent_str_block)
+
 # F-17 (2026-07-16 merge-sweep friction report): a companion must NOT be authored
 # for a product PR that is closed/merged, a draft, or explicitly marked
 # do-not-merge/WIP. occ#4333 was generated for a closed draft
@@ -360,10 +384,27 @@ def _supersede_file(
     # ``yaml.safe_dump`` omits the ``---`` document-start marker AND wraps long
     # scalars (e.g. ``actual_output``) at PyYAML's default width 80 — both of
     # which yamlfmt then rewrites, so the generated companion is formatter-dirty
-    # and fails hosted Pre-commit (OCC#4313/#4333). Emit the ``---`` marker and a
-    # width wide enough that PyYAML never wraps a scalar, so the bytes are a
-    # yamlfmt no-op before push. (The flat receipt/contract templates already
-    # start with ``---`` and stay single-line, so only this dumped path drifted.)
+    # and fails hosted Pre-commit (OCC#4313/#4333). Emit the ``---`` marker so
+    # the bytes are a yamlfmt no-op before push. (The flat receipt/contract
+    # templates already start with ``---`` and stay single-line, so only this
+    # dumped path drifted.)
+    #
+    # OMN-14714: the original F-03 fix set ``width=1_000_000`` reasoning that a
+    # width "wide enough that PyYAML never wraps a scalar" would be a yamlfmt
+    # no-op. That is backwards — never wrapping is precisely what emits lines
+    # past yamlfmt's ``max_line_length: 100``, so yamlfmt re-wraps every one of
+    # them. Match the formatter's own limit instead (``width=100``) so PyYAML
+    # breaks at the same places yamlfmt would and the bytes are already clean.
+    #
+    # ``_BlockScalarDumper`` is load-bearing, not cosmetic: ``probe_stdout``
+    # holds captured stdout ending in ``\n``. PyYAML renders a trailing-newline
+    # string as a single-quoted scalar whose closing ``'`` sits alone on a line
+    # after a blank line, and yamlfmt DELETES that closing quote — producing
+    # YAML that no longer parses ("mapping values are not allowed in this
+    # context"), i.e. the formatter corrupts the evidence rather than merely
+    # reformatting it. Reproduced live 2026-07-28 against OCC#5251. Emitting
+    # multi-line strings as literal block scalars (``|``) round-trips through
+    # yamlfmt byte-stably and preserves the trailing newline exactly.
     #
     # ``exclude_defaults=True`` (OMN-15028): this is the ONLY render path in the
     # repo that dumps a full ``ModelDodReceipt``/``ModelReceiptSupersession``
@@ -390,12 +431,13 @@ def _supersede_file(
     # hygiene, not a version-detection hack — it holds for every future
     # optional field omnibase_core adds ahead of its next main promotion, not
     # just today's six.
-    content = "---\n" + yaml.safe_dump(
+    content = "---\n" + yaml.dump(
         record.model_dump(mode="json", exclude_defaults=True),
+        Dumper=_BlockScalarDumper,
         sort_keys=False,
         default_flow_style=False,
         allow_unicode=True,
-        width=1_000_000,
+        width=_OCC_YAMLFMT_MAX_LINE_LENGTH,
     )
     # Fail loud if the rendered bytes do not round-trip back to the strict schema
     # the gate parses — a silent malformed supersede is exactly the OMN-14623 bug.

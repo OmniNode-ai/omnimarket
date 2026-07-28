@@ -358,6 +358,28 @@ def yamlfmt_is_noop(content: str) -> tuple[bool, str]:
     return result.returncode == 0, (result.stdout + result.stderr)
 
 
+def yamlfmt_output(content: str) -> str:
+    """Return the bytes ``yamlfmt`` (OCC config) would write for ``content``."""
+    yamlfmt = shutil.which("yamlfmt")
+    if yamlfmt is None:  # pragma: no cover - environment guard
+        pytest.skip("yamlfmt binary not available")
+    with tempfile.NamedTemporaryFile(
+        "w", suffix=".yaml", delete=False, encoding="utf-8"
+    ) as tf:
+        tf.write(content)
+        name = tf.name
+    try:
+        subprocess.run(
+            [yamlfmt, "-conf", str(_OCC_YAMLFMT), name],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return Path(name).read_text(encoding="utf-8")
+    finally:
+        Path(name).unlink(missing_ok=True)
+
+
 # ---------------------------------------------------------------------------
 # F-01 non-append-only
 # ---------------------------------------------------------------------------
@@ -444,19 +466,12 @@ class TestF03FormatterClean:
 
     def test_merged_path_files_carry_document_start(self) -> None:
         # Always-on partial guarantee: every merged-path companion file (incl. the
-        # safe_dump'd supersession) begins with the ``---`` document-start marker
-        # OCC's yamlfmt config requires. The full nested-scalar re-wrap is tracked
-        # by OMN-14714 (xfail below).
+        # dumped supersession) begins with the ``---`` document-start marker
+        # OCC's yamlfmt config requires.
         plan = compute_companion_plan(_merged_path_request())
         for f in plan.companion_files:
             assert f.content.startswith("---\n"), f"{f.path} lacks --- doc start"
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="OMN-14714: merged-path (OMN-14623) supersession YAML is re-wrapped "
-        "by yamlfmt (long nested scalars + probe_stdout block artifact). Fresh path "
-        "is enforced clean; this flips green when OMN-14714 lands.",
-    )
     def test_merged_path_supersession_is_yamlfmt_clean(self) -> None:
         plan = compute_companion_plan(_merged_path_request())
         supersedes = [
@@ -468,6 +483,30 @@ class TestF03FormatterClean:
         for f in supersedes:
             ok, detail = yamlfmt_is_noop(f.content)
             assert ok, f"yamlfmt would reformat {f.path}:\n{detail}"
+
+    def test_yamlfmt_does_not_corrupt_supersession_multiline_scalars(self) -> None:
+        # OMN-14714 regression. Stronger than the no-op assertion above: it pins
+        # the specific way the old shape FAILED. ``probe_stdout`` carries captured
+        # stdout ending in ``\n``; rendered as a single-quoted scalar its closing
+        # quote sits alone on a line, and yamlfmt DELETES that line, leaving YAML
+        # that no longer parses. The formatter corrupted evidence rather than
+        # reformatting it (reproduced live against OCC#5251, 2026-07-28). Assert
+        # yamlfmt's own output still parses and is semantically identical.
+        plan = compute_companion_plan(_merged_path_request())
+        supersedes = [
+            f
+            for f in plan.companion_files
+            if f.kind == EnumCompanionFileKind.SUPERSEDE_RECEIPT
+        ]
+        assert supersedes
+        for f in supersedes:
+            before = yaml.safe_load(f.content)
+            assert "\n" in before["replacement"]["probe_stdout"], (
+                "fixture no longer exercises a multi-line scalar — this guard "
+                "would pass vacuously"
+            )
+            after = yaml.safe_load(yamlfmt_output(f.content))
+            assert after == before, f"yamlfmt altered {f.path} semantics"
 
     def test_negative_misformatted_yaml_is_flagged(self) -> None:
         # RED control: badly-indented / trailing-whitespace YAML is NOT a no-op.
