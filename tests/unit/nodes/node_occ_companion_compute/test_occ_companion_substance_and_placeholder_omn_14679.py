@@ -196,10 +196,18 @@ class TestMintedContractClearsSubstanceFloor:
     def test_pass2_declares_a_substantive_check(self) -> None:
         assert any(_is_substantive(cv) for cv in _minted_contract_checks(**_PASS2))
 
-    def test_pass2_still_declares_the_binding_existence_probe(self) -> None:
-        # The substance floor keeps existence/binding probes valid; the fix ADDS
-        # a substantive check, it does not drop the Evidence-Source binding probe.
-        assert any(_is_existence_probe(cv) for cv in _minted_contract_checks(**_PASS2))
+    def test_pass2_declares_no_existence_probe_at_all(self) -> None:
+        # OMN-15247 R21 INVERTS this assertion, and the inversion is the point.
+        # Before R21 the binding item was a pure existence probe (tier L0), which
+        # the substance floor tolerated but the OMN-15309 admissibility predicate
+        # refuses as NOT_EXECUTED -- that is one of the three checks that made
+        # OCC#5406 / #5415 / #5418 born BLOCKED. The Evidence-Source binding item
+        # is NOT dropped; its check is upgraded to an admissible ``gh api
+        # .../files`` assertion, so no minted check is an existence probe any more.
+        checks = _minted_contract_checks(**_PASS2)
+        assert checks, "pass 2 must still declare checks"
+        assert not any(_is_existence_probe(cv) for cv in checks), checks
+        assert all(_is_substantive(cv) for cv in checks), checks
 
 
 @pytest.mark.unit

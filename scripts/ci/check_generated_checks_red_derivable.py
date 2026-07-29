@@ -103,32 +103,100 @@ _CONTENT_BOUND_RE = re.compile(
 # Tails that would make ANY check non-falsifiable by swallowing its exit code.
 _INERT_TAIL_RE = re.compile(r"\|\|\s*(?:true|exit\s+0)|2>\s*/dev/null\s*$")
 
-# --- Allowlisted pre-existing forms (the shipped default is still these) -----
+# --- Allowlisted generated forms -- ADMISSIBLE-ONLY RATCHET (OMN-15247 R21) --
+#
+# This tuple IS the mechanism, not a comment: it is the complete vocabulary this
+# repo's producer is permitted to emit, and this gate runs blocking in
+# ``occ-emitter-golden-gate.yml`` plus pre-commit. Emitting anything else fails
+# the gate.
+#
+# The four forms that used to sit here were REMOVED, not amended, and the
+# removal is the ratchet. Every one of them was inadmissible under the OMN-15309
+# predicate that OCC's ``Contract Compliance Check`` now enforces, which is why
+# three consecutive machine-minted companions (OCC#5406 / #5415 / #5418) were
+# born BLOCKED at 0-of-3 admissible and needed hand repair:
+#
+#   REMOVED  gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state
+#   REMOVED  gh pr view ${PR_NUMBER} --repo ${REPO} --json files
+#            -> NOT_EXECUTED. A bare ``gh`` in command position is not an
+#               admissible probe; only the compound ``gh api`` token is.
+#   REMOVED  gh pr diff ${PR_NUMBER} --repo ${REPO} --name-only | grep -qiE '...'
+#            -> admissible for the OCC runner (via ``grep``) but NOT-FALSIFIABLE
+#               for deploy-gate, whose ALLOW set is live probes only and which is
+#               fail-closed for every ticket outside its frozen grandfather
+#               snapshot -- i.e. for every newly minted companion.
+#   REMOVED  grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/.../command.yaml
+#            -> INSIDE_OWN_DIFF, matched unconditionally by two independent DENY
+#               patterns. The companion greps a receipt it authors in the same
+#               PR: the check passes because the producer typed the text.
+#
+# Re-adding any of them regresses the producer to born-red and this gate goes
+# RED first. Keeping them "accepted but deprecated" was rejected deliberately --
+# an allowlist that still admits the defect is not a ratchet.
+#
+# Every allowlisted form is ANCHORED (``^...$`` inside the grep pattern), and an
+# UNANCHORED variant is rejected. That is not pedantry: on a 404 -- which is what
+# a token WITHOUT SCOPE on the repo produces -- ``gh api`` writes its error body
+# to STDOUT, ``--jq '.[].x'`` iterates that object's values, and an unanchored
+# ``| grep -q .`` returns 0. The check would then report PASS precisely when it
+# could not observe the repo at all. Measured live against ``/pulls/99999999``
+# while building OMN-15247 R21.
 _ALLOWLISTED_RE = (
-    # Evidence-Source binding / existence probe (tier L0, OMN-14741 shape).
-    re.compile(r"^gh pr view \$\{PR_NUMBER\} --repo \$\{REPO\} --json number,state$"),
-    # Product-diff-scope probe (tier L1 via the substance floor, OMN-14425).
-    re.compile(r"^gh pr view \$\{PR_NUMBER\} --repo \$\{REPO\} --json files$"),
-    # Deploy-scope assertion (OMN-14623).
+    # Binding assertion: the PR's file list carries real 40-hex blob SHAs.
+    # ADMISSIBLE (probes {gh-api, grep}); FALSIFIABLE for deploy-gate (gh-api is
+    # a live probe); tier L1 via the substance floor's ``| grep`` family.
     re.compile(
-        r"^gh pr diff \$\{PR_NUMBER\} --repo \$\{REPO\} --name-only \| grep -qiE '.+'$"
+        r"^gh api repos/\$\{REPO\}/pulls/\$\{PR_NUMBER\}/files --paginate "
+        r"--jq '\.\[\]\.sha' \| grep -qE '\^\[0-9a-f\]\{40\}\$'$"
     ),
-    # Private-repo hosted-safe receipt-local grep (OMN-14766 F-16).
+    # Diff-scope assertion: the PR's file list carries real GitHub statuses.
     re.compile(
-        r"^grep -q '\^status: PASS\$' "
-        r"\$CONTRACT_REPO_DIR/drift/dod_receipts/[^\s]+/command\.yaml$"
+        r"^gh api repos/\$\{REPO\}/pulls/\$\{PR_NUMBER\}/files --paginate "
+        r"--jq '\.\[\]\.status' \| grep -qE "
+        r"'\^\(added\|modified\|removed\|renamed\|changed\|copied\)\$'$"
+    ),
+    # Deploy-scope assertion (F-05 / OMN-14742), same admissible family, still
+    # carrying the literal ``deploy`` keyword deploy-gate's legacy rule greps.
+    # ``select(.status)`` is the fail-closed guard here: on a 404 body jq errors
+    # instead of emitting the message strings.
+    re.compile(
+        r"^gh api repos/\$\{REPO\}/pulls/\$\{PR_NUMBER\}/files --paginate "
+        r"--jq '\.\[\] \| select\(\.status\) \| \.filename' "
+        r"\| grep -qiE '[^']*deploy[^']*'$"
     ),
 )
 
+# --- Named anti-regression rules (OMN-15247 R21) -----------------------------
+#
+# The allowlist above is exact-match, so these are strictly redundant for a
+# conforming producer. They exist so the FAILURE MESSAGE names the OMN-15309
+# rule that was violated instead of the generic "matches no known form", which
+# is the difference between a gate an author can act on and one they route
+# around.
+_SELF_REFERENTIAL_RE = re.compile(r"dod_receipts|\$\{?CONTRACT_REPO_DIR\b", re.I)
+_BARE_GH_PR_RE = re.compile(r"(^|\||&&|;)\s*gh\s+pr\s+")
+
 
 def _iter_check_values(contract: dict[str, object]) -> list[tuple[str, str]]:
-    """Return ``(evidence_item_id, check_value)`` for every command check."""
+    """Return ``(evidence_item_id, check_value)`` for every GENERATED command check.
+
+    OMN-15247 R21: items whose ``source`` is not ``generated`` are skipped. This
+    gate's subject is the producer's own output (its name says so), and the
+    admissible-only allowlist below is deliberately narrower than the OMN-15309
+    predicate -- narrow enough that a legitimate HAND-authored repair (e.g. the
+    ``source: manual`` ``uv run pytest ...`` item Codex appended to OCC#5406 and
+    OCC#5415) would be rejected by it. Scoping to ``generated`` keeps the ratchet
+    tight on the machine without turning it into a trap for humans; admissibility
+    of hand-authored items is decided by the predicate in OCC, which is its job.
+    """
     out: list[tuple[str, str]] = []
     items = contract.get("dod_evidence")
     if not isinstance(items, list):
         return out
     for item in items:
         if not isinstance(item, dict):
+            continue
+        if str(item.get("source", "generated")).strip().lower() != "generated":
             continue
         item_id = str(item.get("id", "<no-id>"))
         checks = item.get("checks")
@@ -160,6 +228,25 @@ def classify_check(check_value: str) -> tuple[str, str | None]:
         return "unknown", (
             "check_value swallows its exit code (|| true / || exit 0 / "
             "trailing 2>/dev/null) and can therefore never go RED"
+        )
+
+    # OMN-15247 R21 -- named diagnoses for the two shapes that made three
+    # consecutive companions born-red. Checked BEFORE the allowlist so the
+    # message names the violated property, not just "unrecognised form".
+    if _SELF_REFERENTIAL_RE.search(value):
+        return "unknown", (
+            "check_value reads back the receipt/contract tree this same "
+            "companion PR authors (dod_receipts / $CONTRACT_REPO_DIR) -- "
+            "INSIDE_OWN_DIFF under the OMN-15309 predicate, so it can never "
+            "produce a PASS. Assert the PR's own file list via "
+            "`gh api repos/${REPO}/pulls/${PR_NUMBER}/files ... | grep` instead"
+        )
+    if _BARE_GH_PR_RE.search(value):
+        return "unknown", (
+            "check_value invokes bare `gh pr ...`, which the OMN-15309 "
+            "predicate classifies NOT_EXECUTED (only the compound `gh api` "
+            "token is an admissible probe; `gh pr view` reports PR metadata "
+            "and is trivially true for any live PR). Use `gh api`"
         )
 
     match = _CONTENT_BOUND_RE.match(value)

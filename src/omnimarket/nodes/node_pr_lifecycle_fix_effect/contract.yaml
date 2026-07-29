@@ -146,10 +146,16 @@ config:
       What the generated CONTRACT dod_evidence check_value asserts:
       'content_bound' (default — a RED-proven content read pinned to a literal
       merge-base-falsifiable ref; fail-closed, DEFERS the whole mint rather than
-      falling back to the existence probe) or 'pr_existence' (the legacy
-      non-falsifiable `gh pr view ${PR_NUMBER} --repo ${REPO} --json
-      number,state` byte-for-byte shape, retained as the explicit reversal path
-      and for the golden/parity fixtures).
+      falling back to the generic binding) or 'pr_existence' (the generic
+      binding: `gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate --jq
+      '.[].sha' | grep -qE '^[0-9a-f]{40}$'`, retained as the explicit reversal
+      path and for the golden/parity fixtures). OMN-15247 R21 re-spelled the
+      generic binding from `gh pr view ... --json number,state` (refused
+      NOT_EXECUTED by the OMN-15309 admissibility predicate) to the `gh api`
+      form above; the axis is unchanged. The terminal assertion is ANCHORED to a
+      40-hex blob sha rather than `| grep -q .` because `gh api` writes its 404
+      error body to STDOUT, which an unanchored assertion accepts as a false
+      green (MEASURED; see occ_evidence_stamp and TestAnchorIsLoadBearing).
     required: false
     default: "content_bound"
 

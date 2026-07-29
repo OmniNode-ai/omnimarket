@@ -50,6 +50,9 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitte
     OccCompanionEmitter,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    downstream_receipt_public_check_value,
+    hosted_safe_binding_check_value,
+    hosted_safe_diff_scope_check_value,
     render_companion_contract,
     render_downstream_receipt,
 )
@@ -333,10 +336,15 @@ class TestPrExistenceOptInIsByteIdentical:
         assert rec.pr_open_calls == 1
 
         contract = clone_root / "contracts" / "OMN-9999.yaml"
+        # OMN-15247 R21: the pr_existence binding still selects the GENERIC
+        # (non-content-bound) vocabulary; that vocabulary is now the admissible
+        # `gh api .../pulls/<n>/files` family rather than the NOT_EXECUTED
+        # `gh pr view` family. The pr_existence-vs-content_bound distinction is
+        # unchanged; only the generic spelling moved.
         assert _contract_check_values(contract) == [
-            "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state",
-            "gh pr view ${PR_NUMBER} --repo ${REPO} --json files",
-            "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state",
+            hosted_safe_binding_check_value(),
+            hosted_safe_diff_scope_check_value(),
+            hosted_safe_binding_check_value(),
         ]
         receipt = yaml.safe_load(
             (
@@ -351,8 +359,8 @@ class TestPrExistenceOptInIsByteIdentical:
         assert receipt["actual_output"] == (
             "PASS: Evidence-Source autobind for OMN-9999 from OmniNode-ai/omnimarket#321."
         )
-        assert receipt["check_value"] == (
-            "gh pr view 321 --repo OmniNode-ai/omnimarket --json number,state,headRefName"
+        assert receipt["check_value"] == downstream_receipt_public_check_value(
+            pr_number=321, repo="OmniNode-ai/omnimarket"
         )
 
     def test_unknown_mode_raises_at_construction(
@@ -467,9 +475,10 @@ class TestShippedDefaultIsContentBound:
         )
         assert not legacy_action.startswith("skip:")
         assert legacy_rec.pr_open_calls == 1
-        assert _contract_check_values(legacy_root / "contracts" / "OMN-9999.yaml")[
-            0
-        ] == ("gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state")
+        assert (
+            _contract_check_values(legacy_root / "contracts" / "OMN-9999.yaml")[0]
+            == hosted_safe_binding_check_value()
+        )
 
         current = OccCompanionEmitter()
         action, clone_root, rec = _run_emit(
@@ -787,7 +796,7 @@ class TestContentBoundChecks:
             OccCompanionEmitter(check_binding=EnumCheckBinding.PR_EXISTENCE), tmp_path
         )
         values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
-        assert values[0] == "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
+        assert values[0] == hosted_safe_binding_check_value()
         assert rec.pr_open_calls == 1
 
     def test_no_candidate_at_all_fails_closed_without_falling_back(
@@ -831,14 +840,18 @@ class TestContentBoundChecks:
         assert "/repos/o/r/issues/321/comments" in path
         assert "<!-- occ-autobind-no-red-derivable:321 -->" in body
 
-    def test_private_product_repo_keeps_the_hosted_safe_receipt_local_form(
+    def test_private_product_repo_never_pins_the_private_repo_or_its_own_receipts(
         self, tmp_path: Path
     ) -> None:
-        """OMN-14766 F-16 regression guard: a hosted content read has no scope there.
+        """OMN-15247 R21 replaces the old F-16 assertion, which asserted the defect.
 
-        The private path takes precedence over ``content_bound`` and therefore
-        still mints — proving the new binding never widened the private-repo
-        shape.
+        The old test required the private-repo path to emit
+        ``grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/...`` --
+        a form the OMN-15309 predicate refuses UNCONDITIONALLY as
+        INSIDE_OWN_DIFF, and the direct cause of the born-red companions on
+        OCC#5406 / #5415 / #5418. The invariant it was standing in for (the
+        hosted OCC runner must never need scope on the private repo) is now met
+        by the placeholder form, which is asserted here instead.
         """
         emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
         action, clone_root, _rec = _stable_emit(
@@ -848,8 +861,16 @@ class TestContentBoundChecks:
         )
         assert not action.startswith("skip:")
         values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
-        assert all("gh api repos/" not in v for v in values)
-        assert values[0].startswith("grep -q '^status: PASS$'")
+        assert values, "a private-repo companion must still declare checks"
+        for cv in values:
+            # No LITERAL cross-repo pin: the hosted OCC job cannot read it.
+            assert "gh api repos/OmniNode-ai/" not in cv, cv
+            # No self-reference: this is the shape R21 removes.
+            assert "dod_receipts" not in cv, cv
+            assert "CONTRACT_REPO_DIR" not in cv, cv
+            # Placeholder form only, so the executing job's own token suffices.
+            assert "${REPO}" in cv, cv
+            assert "${PR_NUMBER}" in cv, cv
 
     def test_every_generated_yaml_stays_yamlfmt_idempotent(
         self, tmp_path: Path
@@ -925,7 +946,7 @@ class TestContentBoundRenderingSeam:
         values = _contract_check_values(contract)
         assert values[0] == _CONTENT_BOUND_CHECK
         # The OMN-14409 diff-scope item is untouched — removing it is not in scope.
-        assert values[1] == "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+        assert values[1] == hosted_safe_diff_scope_check_value()
 
     def test_the_content_bound_check_value_survives_real_yamlfmt_byte_identical(
         self, tmp_path: Path

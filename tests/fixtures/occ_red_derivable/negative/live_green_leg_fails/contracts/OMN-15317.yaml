@@ -9,7 +9,7 @@ interfaces_touched: []
 evidence_requirements:
   - kind: "ci"
     description: "PR #1922 product diff scope present"
-    command: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+    command: "gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -27,4 +27,5 @@ dod_evidence:
     source: "generated"
     checks:
       - check_type: "command"
-        check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+        check_value: |-
+          gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate --jq '.[].status' | grep -qE '^(added|modified|removed|renamed|changed|copied)$'

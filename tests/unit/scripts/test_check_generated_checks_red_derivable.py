@@ -23,6 +23,9 @@ import pytest
 import yaml
 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    DEPLOY_ASSESSMENT_CHECK_VALUE,
+    hosted_safe_binding_check_value,
+    hosted_safe_diff_scope_check_value,
     render_companion_contract,
     render_downstream_receipt,
 )
@@ -56,6 +59,12 @@ _CONTENT_BOUND = build_content_read_check(
     head_sha="b" * 40,
 )
 
+# The admissible vocabulary, imported from the producer's ONE authoring home so
+# this suite can never assert a shape the producer does not emit.
+_ADMISSIBLE_BINDING = hosted_safe_binding_check_value()
+_ADMISSIBLE_DIFF_SCOPE = hosted_safe_diff_scope_check_value()
+_ADMISSIBLE_DEPLOY_SCOPE = DEPLOY_ASSESSMENT_CHECK_VALUE
+
 
 @pytest.mark.unit
 class TestClassifyCheck:
@@ -67,17 +76,48 @@ class TestClassifyCheck:
     @pytest.mark.parametrize(
         "value",
         [
-            "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state",
-            "gh pr view ${PR_NUMBER} --repo ${REPO} --json files",
-            "gh pr diff ${PR_NUMBER} --repo ${REPO} --name-only | grep -qiE 'nodes/'",
-            "grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/"
-            "OMN-9999/dod-x/command.yaml",
+            _ADMISSIBLE_BINDING,
+            _ADMISSIBLE_DIFF_SCOPE,
+            _ADMISSIBLE_DEPLOY_SCOPE,
         ],
     )
     def test_the_shipped_default_forms_are_allowlisted(self, value: str) -> None:
         classification, reason = _GATE.classify_check(value)
         assert classification == "allowlisted"
         assert reason is None
+
+    @pytest.mark.parametrize(
+        ("value", "fragment"),
+        [
+            # OMN-15247 R21 ratchet: the four forms this gate used to allowlist
+            # are now REJECTED, each with the OMN-15309 rule it violates named.
+            # These are the exact strings the producer emitted on OCC#5406 /
+            # #5415 / #5418, all three of which were born BLOCKED -- so this
+            # parametrize IS the RED control for the ratchet, driven over the
+            # real gate rather than a restatement of it.
+            (
+                "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state",
+                "NOT_EXECUTED",
+            ),
+            ("gh pr view ${PR_NUMBER} --repo ${REPO} --json files", "NOT_EXECUTED"),
+            (
+                "gh pr diff ${PR_NUMBER} --repo ${REPO} --name-only | grep -qiE 'nodes/'",
+                "NOT_EXECUTED",
+            ),
+            (
+                "grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/"
+                "OMN-9999/dod-x/command.yaml",
+                "INSIDE_OWN_DIFF",
+            ),
+        ],
+    )
+    def test_the_pre_r21_born_red_forms_are_now_rejected_by_name(
+        self, value: str, fragment: str
+    ) -> None:
+        classification, reason = _GATE.classify_check(value)
+        assert classification == "unknown"
+        assert reason is not None
+        assert fragment in reason, reason
 
     @pytest.mark.parametrize(
         ("value", "fragment"),

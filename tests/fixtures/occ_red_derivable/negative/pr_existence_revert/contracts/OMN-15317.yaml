@@ -9,7 +9,7 @@ interfaces_touched: []
 evidence_requirements:
   - kind: "ci"
     description: "PR #1922 product diff scope present"
-    command: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+    command: "gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -20,10 +20,12 @@ dod_evidence:
     source: "generated"
     checks:
       - check_type: "command"
-        check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
+        check_value: |-
+          gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate --jq '.[].sha' | grep -qE '^[0-9a-f]{40}$'
   - id: "dod-OmniNode-ai-omnimarket-pr-1922-ci"
     description: "PR #1922 on OmniNode-ai/omnimarket — product diff scope check (OMN-14425)."
     source: "generated"
     checks:
       - check_type: "command"
-        check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+        check_value: |-
+          gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate --jq '.[].status' | grep -qE '^(added|modified|removed|renamed|changed|copied)$'

@@ -572,10 +572,18 @@ def _receipt_field(receipt_path: Path, field: str) -> str:
 
 @pytest.mark.unit
 class TestF06RuntimeProbeIsGraphQL:
-    """The emitter's product-diff RUNTIME probe must be `gh pr view --json files`,
-    not the REST-fragile `gh pr diff ... --name-only` (OCC#4297 HTML/503), and it
-    must match the declared check_value on the public path. RED against the pre-fix
-    emitter (probe_command was `gh pr diff`)."""
+    """The emitter's product-diff RUNTIME probe must observe the SAME surface the
+    declared check_value asserts over, and must never be the REST-fragile
+    `gh pr diff ... --name-only` (OCC#4297 HTML/503).
+
+    OMN-15247 R21 restates F-06's target: the surface is
+    `gh api repos/<repo>/pulls/<n>/files`, not `gh pr view --json files`. The old
+    spelling is refused by the OMN-15309 predicate as NOT_EXECUTED (bare `gh`),
+    and `probe_command == check_value` can no longer hold byte-for-byte because
+    the check_value carries the `| grep` assertion while the probe must stay
+    pipe-free (the emitter shlex-splits and executes it). The invariant is
+    therefore the strictly stronger one it was standing in for: the check_value
+    IS the probe_command plus its assertion."""
 
     _CI_RECEIPT = (
         "drift/dod_receipts/OMN-9999/dod-OmniNode-ai-omnimarket-pr-321-ci/command.yaml"
@@ -588,30 +596,40 @@ class TestF06RuntimeProbeIsGraphQL:
         _action, clone_root, _ = _run_emit(emitter, tmp_path)
         receipt = clone_root / self._CI_RECEIPT
         probe = _receipt_field(receipt, "probe_command")
-        assert "gh pr view" in probe, (
-            f"F-06: CI receipt probe_command must be the GraphQL `gh pr view`, "
-            f"got: {probe!r}"
+        assert probe.startswith("gh api repos/"), (
+            f"F-06: CI receipt probe_command must be a `gh api` read, got: {probe!r}"
         )
-        assert "--json files" in probe, (
-            f"F-06: CI receipt probe_command must request `--json files`, "
-            f"got: {probe!r}"
+        assert "/pulls/321/files" in probe, (
+            f"F-06: CI receipt probe_command must read the PR file list, got: {probe!r}"
         )
         assert "gh pr diff" not in probe, (
             f"F-06: CI receipt probe_command still uses the REST-fragile `gh pr "
             f"diff` (OCC#4297): {probe!r}"
         )
+        assert "gh pr view" not in probe, (
+            f"F-06/R21: CI receipt probe_command still uses the NOT_EXECUTED "
+            f"`gh pr view` spelling: {probe!r}"
+        )
 
-    def test_public_ci_receipt_probe_command_equals_check_value(
+    def test_ci_receipt_check_value_is_the_probe_plus_its_assertion(
         self, tmp_path: Path
     ) -> None:
-        # On a PUBLIC repo the runtime probe and the re-run check_value must be the
-        # same command (the F-06 remainder OMN-14741 left open).
+        # The runtime probe and the re-run check_value must observe the SAME
+        # surface: the check_value is the probe_command with a `| grep` assertion
+        # appended. Anything else means the receipt records one fact and the
+        # contract asserts another.
         emitter = OccCompanionEmitter()
         _action, clone_root, _ = _run_emit(emitter, tmp_path)
         receipt = clone_root / self._CI_RECEIPT
-        assert _receipt_field(receipt, "probe_command") == _receipt_field(
-            receipt, "check_value"
-        ), "F-06: public CI receipt probe_command must equal its check_value"
+        probe = _receipt_field(receipt, "probe_command")
+        check = _receipt_field(receipt, "check_value")
+        assert check.startswith(probe), (
+            f"F-06: CI receipt check_value must extend its probe_command; "
+            f"probe={probe!r} check={check!r}"
+        )
+        assert check[len(probe) :].lstrip().startswith("| grep"), (
+            f"F-06: the extension must be the falsifiable grep assertion: {check!r}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -647,9 +665,17 @@ def _dod_item_check_values(contract_path: Path, item_id: str) -> list[str]:
 @pytest.mark.unit
 class TestF16PrivateRepoHostedSafe:
     """A private product repo cannot be re-probed by the hosted OCC runner (token
-    scope). The generator must emit a receipt-local check_value for the downstream
-    + CI product-diff items/receipts instead of a `gh pr view --repo <private>`
-    probe. RED against the pre-fix emitter (which always emitted `gh pr view`)."""
+    scope -- the item-13 gap recorded on OCC#5406).
+
+    OMN-15247 R21 replaces F-16's MECHANISM, not its goal. The receipt-local
+    `grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/...` form it
+    used to emit is refused UNCONDITIONALLY by the OMN-15309 predicate as
+    INSIDE_OWN_DIFF, which is precisely why the three companions minted for the
+    one private product repo (OCC#5406 / #5415 / #5418) were born BLOCKED. The
+    goal is met instead by the PLACEHOLDER form: `${REPO}` / `${PR_NUMBER}` are
+    pre-substituted by the compliance runner with the repo/PR whose CI is
+    executing, so the hosted OCC job never dereferences the private repo at all.
+    """
 
     _EID = "dod-OmniNode-ai-omnimarket-pr-321"
     _CI_EID = "dod-OmniNode-ai-omnimarket-pr-321-ci"
@@ -663,11 +689,21 @@ class TestF16PrivateRepoHostedSafe:
 
     @staticmethod
     def _is_receipt_local(cv: str) -> bool:
+        """The pre-R21 self-referential form. Retained ONLY as a RED control."""
         return cv.startswith("grep -q '^status: PASS$'") and (
             "$CONTRACT_REPO_DIR/drift/dod_receipts/" in cv
         )
 
-    def test_private_repo_downstream_and_ci_items_are_receipt_local(
+    def test_the_red_control_matches_the_pre_r21_form(self) -> None:
+        # feedback_prove_red_against_exists_but_wrong: the assertions below are
+        # only load-bearing if this predicate matches the exact string the
+        # producer used to emit for a private repo.
+        assert self._is_receipt_local(
+            "grep -q '^status: PASS$' "
+            "$CONTRACT_REPO_DIR/drift/dod_receipts/OMN-9999/dod-x/command.yaml"
+        )
+
+    def test_private_repo_items_never_dereference_the_private_repo(
         self, tmp_path: Path
     ) -> None:
         emitter = OccCompanionEmitter()
@@ -675,25 +711,31 @@ class TestF16PrivateRepoHostedSafe:
             emitter, tmp_path, pr_data=_private_pr_data()
         )
         contract = clone_root / self._CONTRACT
-        for item_id, eid in ((self._EID, self._EID), (self._CI_EID, self._CI_EID)):
-            for cv in _dod_item_check_values(contract, item_id):
-                assert self._is_receipt_local(cv), (
-                    f"F-16: private-repo contract item {item_id} must be a "
-                    f"receipt-local check, got: {cv!r}"
+        for item_id in (self._EID, self._CI_EID):
+            values = _dod_item_check_values(contract, item_id)
+            assert values, f"private-repo contract must declare item {item_id}"
+            for cv in values:
+                # The R21 invariant: placeholder form, so the executing job's own
+                # token always suffices and the private repo is never named.
+                placeholder_msg = (
+                    f"F-16/R21: private-repo item {item_id} must use the "
+                    f"placeholder form, got: {cv!r}"
                 )
-                assert "gh pr view" not in cv, (
-                    f"F-16: private-repo item {item_id} still emits a hosted gh "
-                    f"pr view the OCC token cannot run: {cv!r}"
+                assert "${REPO}" in cv, placeholder_msg
+                assert "${PR_NUMBER}" in cv, placeholder_msg
+                assert "omninode_infra" not in cv, (
+                    f"F-16: private-repo item {item_id} dereferences the private "
+                    f"repo the hosted OCC token cannot read: {cv!r}"
                 )
-                assert "gh pr diff" not in cv, (
-                    f"F-16: private-repo item {item_id} still emits a hosted gh "
-                    f"pr diff the OCC token cannot run: {cv!r}"
+                # And it must NOT be the self-referential form R21 removed.
+                assert not self._is_receipt_local(cv), (
+                    f"F-16/R21: private-repo item {item_id} regressed to the "
+                    f"INSIDE_OWN_DIFF receipt grep: {cv!r}"
                 )
-                assert eid in cv, (
-                    f"receipt-local path must name its own receipt: {cv!r}"
-                )
+                assert "gh pr view" not in cv, cv
+                assert "gh pr diff" not in cv, cv
 
-    def test_private_repo_receipts_are_receipt_local_but_keep_live_probe(
+    def test_private_repo_receipts_keep_the_live_cross_repo_probe(
         self, tmp_path: Path
     ) -> None:
         emitter = OccCompanionEmitter()
@@ -702,34 +744,34 @@ class TestF16PrivateRepoHostedSafe:
         )
         for rel in (self._DOWN_RECEIPT, self._CI_RECEIPT):
             receipt = clone_root / rel
-            cv = _receipt_field(receipt, "check_value")
-            assert self._is_receipt_local(cv), (
-                f"F-16: private-repo receipt {rel} check_value must be receipt-local, "
-                f"got: {cv!r}"
-            )
-            # The LIVE probe is preserved as captured provenance in the receipt.
+            # A receipt records what the emitter (which HAS repo scope) actually
+            # ran, and is never re-executed by the hosted runner -- so it names
+            # the real repo. That is the provenance F-16 always preserved.
             probe = _receipt_field(receipt, "probe_command")
-            assert "gh pr view" in probe, (
-                f"F-16: the live gh pr view probe must be preserved in the receipt "
-                f"probe_command, got: {probe!r}"
+            assert probe.startswith("gh api repos/"), probe
+            assert "/files" in probe, probe
+            # The receipt's own check_value must not be the self-referential form.
+            assert not self._is_receipt_local(_receipt_field(receipt, "check_value")), (
+                rel
             )
 
-    def test_public_repo_still_uses_hosted_gh_pr_view(self, tmp_path: Path) -> None:
-        # GREEN anchor: a PUBLIC product repo is unchanged — hosted `gh pr view`.
-        emitter = OccCompanionEmitter()
-        _action, clone_root, _ = _run_emit(emitter, tmp_path, pr_data=_public_pr_data())
-        contract = clone_root / self._CONTRACT
-        ci_values = _dod_item_check_values(contract, self._CI_EID)
-        assert ci_values, "F-16: public repo must declare a CI product-diff item"
-        assert all("gh pr view" in cv for cv in ci_values), (
-            f"F-16: public repo must keep the hosted gh pr view check: {ci_values!r}"
-        )
-        assert all("--json files" in cv for cv in ci_values), (
-            f"F-16: public repo must keep the --json files diff scope: {ci_values!r}"
-        )
-        assert all(not self._is_receipt_local(cv) for cv in ci_values), (
-            "F-16: public repo must NOT be downgraded to receipt-local"
-        )
+    def test_public_and_private_declare_the_same_admissible_checks(
+        self, tmp_path: Path
+    ) -> None:
+        # R21 collapses the public/private fork in the CONTRACT: both render the
+        # identical placeholder vocabulary, so there is no private-repo downgrade
+        # left to regress. The fork survives only for the LITERAL content-bound
+        # pin, which is gated separately on repo visibility.
+        pub_root = _run_emit(
+            OccCompanionEmitter(), tmp_path / "pub", pr_data=_public_pr_data()
+        )[1]
+        priv_root = _run_emit(
+            OccCompanionEmitter(), tmp_path / "priv", pr_data=_private_pr_data()
+        )[1]
+        for item_id in (self._EID, self._CI_EID):
+            assert _dod_item_check_values(
+                pub_root / self._CONTRACT, item_id
+            ) == _dod_item_check_values(priv_root / self._CONTRACT, item_id)
 
 
 # ---------------------------------------------------------------------------

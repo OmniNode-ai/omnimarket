@@ -66,8 +66,8 @@ from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_requ
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     DEPLOY_ASSESSMENT_CHECK_VALUE,
     DEPLOY_ASSESSMENT_EVIDENCE_ID,
+    downstream_receipt_public_check_value,
     find_deploy_sensitive_paths,
-    receipt_local_check_value,
     render_compute_companion_contract,
     render_compute_receipt,
 )
@@ -576,8 +576,15 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     # PR-state probe. The generic form is a legitimate fallback — never a
     # rubber stamp on its own claim — but it proves only that the PR exists,
     # not that the claimed work landed; see reference_occ_receipt_gate_flow.
-    downstream_check = request.downstream_check_value or (
-        f"gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
+    #
+    # OMN-15247 R21: the fallback moved off ``gh pr view`` (a bare ``gh``, which
+    # the OMN-15309 predicate refuses as NOT_EXECUTED) onto the literal
+    # product-PR-pinned ``gh api .../files`` form. This value lands in the
+    # RECEIPT's ``check_value``/``probe_command`` as recorded provenance; the
+    # CONTRACT declares the placeholder form the hosted runner executes.
+    downstream_check = (
+        request.downstream_check_value
+        or downstream_receipt_public_check_value(pr_number=pr_number, repo=repo)
     )
 
     # F-05 (OMN-14742): does the product PR touch runtime/deploy-sensitive paths
@@ -606,26 +613,26 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             else None
         )
 
-        # OMN-14783 F-16: a private product repo cannot be re-probed by the hosted
-        # OCC contract-compliance runner (`gh pr view --repo <private>` has no token
-        # scope — OCC#4307/#4318). Render the DECLARED check_values receipt-local
-        # (the born-path emitter's hosted-safe form), so the runner asserts the
-        # committed receipt attests PASS instead of re-running a private-repo probe.
-        # Both contract checks resolve to the SAME per-item receipt, so both point
-        # at it. The live probe stays in the receipt's probe_command/probe_stdout.
-        # Public repos keep the accepted hosted shape byte-for-byte (fresh-path
-        # only; the frozen merged path is deferred convergence, OMN-14783 step 1).
+        # OMN-15247 R21: the OMN-14783 F-16 private-repo carve-out is GONE. It
+        # rendered both DECLARED check_values as a receipt-local grep
+        # (``$CONTRACT_REPO_DIR/drift/dod_receipts/...``) which the OMN-15309
+        # predicate refuses unconditionally as INSIDE_OWN_DIFF — that carve-out is
+        # exactly why every companion for the one private product repo was born
+        # BLOCKED (OCC#5406 / #5415 / #5418, three-for-three).
+        #
+        # Its purpose is met with no self-reference at all: the DECLARED checks
+        # are placeholder-form (``${REPO}`` / ``${PR_NUMBER}``), which the
+        # compliance runner pre-substitutes with the repo/PR whose CI is
+        # executing — so a hosted OCC job never dereferences the private product
+        # repo, and the product repo's own job probes itself with its own token.
+        # ``product_repo_private`` therefore no longer gates the CONTRACT shape;
+        # it still (correctly) gates the LITERAL cross-repo content-bound pin, in
+        # ``handler_occ_state_effect`` where that pin is derived.
+        #
+        # The receipt keeps the literal product-PR-pinned probe as provenance.
         contract_binding_check: str | None = None
         contract_diff_scope_check: str | None = None
-        if request.product_repo_private:
-            receipt_local = receipt_local_check_value(
-                ticket_id=ticket, evidence_id=evidence_id
-            )
-            receipt_check_value = receipt_local
-            contract_binding_check = receipt_local
-            contract_diff_scope_check = receipt_local
-        else:
-            receipt_check_value = downstream_check
+        receipt_check_value = downstream_check
 
         if state.exists and state.merged:
             # Two-audiences merged path (OMN-14233 / OMN-14623): the merged base
@@ -846,9 +853,12 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             and request.occ_probe is not None
             and self_bind_evidence_id is not None
         ):
-            occ_check = (
-                f"gh pr view {request.occ_pr_number} --repo {request.occ_repo} "
-                "--json number,state"
+            # OMN-15247 R21: literal OCC-PR-pinned ``gh api`` form, replacing the
+            # bare ``gh pr view`` the predicate refuses as NOT_EXECUTED. This is
+            # the RECEIPT's recorded probe; the contract's self-bind item carries
+            # the placeholder form (``_SELF_BIND_ITEM_CHECK_VALUE``).
+            occ_check = downstream_receipt_public_check_value(
+                pr_number=request.occ_pr_number, repo=request.occ_repo
             )
             occ_commit = request.occ_head_sha or request.pr_head_sha
             # OMN-14622: on the FRESH path the self-bind id IS a declared

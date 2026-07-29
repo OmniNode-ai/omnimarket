@@ -146,11 +146,21 @@ class EnumCheckBinding(StrEnum):
     """What the producer's generated contract ``check_value`` asserts."""
 
     PR_EXISTENCE = "pr_existence"
-    """The legacy ``gh pr view ${PR_NUMBER} …`` shape, byte-for-byte.
+    """The generic, non-content-bound binding: assert the PR's own file list.
 
-    NON-FALSIFIABLE: exits 0 for any PR that exists. Selectable by env for the
-    golden/parity fixtures and as the reversal path, never the default
-    (OMN-15317).
+    Historically this was the literal ``gh pr view ${PR_NUMBER} … --json
+    number,state`` existence probe, which exits 0 for any PR that exists. Under
+    OMN-15247 R21 the SPELLING changed — it is now
+    ``gh api repos/${REPO}/pulls/${PR_NUMBER}/files … --jq '.[].sha' |
+    grep -qE '^[0-9a-f]{40}$'``, which is admissible under the OMN-15309
+    predicate and goes RED on an empty diff, an absent PR, and an unreadable
+    repo. The terminal anchor is load-bearing, not style: ``gh api`` writes its
+    404 error body to STDOUT, so the unanchored ``| grep -q .`` spelling exits 0
+    on a failed probe (MEASURED). The AXIS is unchanged: this binding asserts a
+    generic fact
+    about the PR rather than a symbol the PR introduces. It remains selectable by
+    env as the reversal path, never the default (OMN-15317). See
+    ``occ_evidence_stamp.hosted_safe_binding_check_value``.
     """
 
     CONTENT_BOUND = "content_bound"

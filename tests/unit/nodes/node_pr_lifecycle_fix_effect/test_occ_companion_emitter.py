@@ -29,6 +29,11 @@ from omnibase_core.validation.validator_receipt_gate import (
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
 )
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    ci_receipt_public_check_value,
+    hosted_safe_binding_check_value,
+    hosted_safe_diff_scope_check_value,
+)
 
 _MOD = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter"
 
@@ -489,12 +494,14 @@ class TestFullEmitFlow:
         )
         assert ci_check.is_file()
         ci_text = ci_check.read_text()
-        # OMN-14741 F-06: the CI receipt records a concrete GraphQL diff-scope
-        # probe (`gh pr view --json files`), not the REST-fragile `gh pr diff`.
+        # OMN-14741 F-06 / OMN-15247 R21: the CI receipt records a concrete
+        # diff-scope probe over `gh api .../pulls/<n>/files`, not the REST-fragile
+        # `gh pr diff` and not the NOT_EXECUTED `gh pr view` spelling.
         assert (
-            'check_value: "gh pr view 321 --repo OmniNode-ai/omnimarket '
-            '--json files"' in ci_text
+            ci_receipt_public_check_value(pr_number=321, repo="OmniNode-ai/omnimarket")
+            in ci_text
         )
+        assert "gh pr view" not in ci_text
         assert 'evidence_item_id: "dod-OmniNode-ai-omnimarket-pr-321-ci"' in ci_text
 
         # OMN-14741 F-02: the contract declares all three items in canonical
@@ -502,15 +509,14 @@ class TestFullEmitFlow:
         # NOT interpolated integers — existence probe, diff-scope `--json files`
         # check (not `gh pr diff`/`gh pr checks`), and the self-bind item.
         contract_text = contract.read_text()
-        assert (
-            "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
-            in contract_text
-        )
-        assert "gh pr view ${PR_NUMBER} --repo ${REPO} --json files" in contract_text
+        assert hosted_safe_binding_check_value() in contract_text
+        assert hosted_safe_diff_scope_check_value() in contract_text
         assert "gh pr checks" not in contract_text
         assert "gh pr diff" not in contract_text
+        # R21: no bare `gh pr` anywhere in the contract (NOT_EXECUTED).
+        assert "gh pr view" not in contract_text
         # No hardcoded integer PR number in any contract check command (F-02).
-        assert "gh pr view 321" not in contract_text
+        assert "/pulls/321/" not in contract_text
         assert 'id: "occ-self-bind-pr-55"' in contract_text
 
         # Action reports the single-producer companion bind.

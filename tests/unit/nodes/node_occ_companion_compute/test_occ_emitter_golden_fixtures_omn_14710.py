@@ -287,7 +287,12 @@ def files_outside_cited_namespace(
 
 # --- F-05 deploy-scope ---------------------------------------------------------
 _RUNTIME_TOUCHING_RE = re.compile(r"(^|/)(nodes/|migrations/)|\.py$", re.IGNORECASE)
-_DIFF_SCOPE_RE = re.compile(r"\bgh pr diff\b")
+# OMN-15247 R21: the deploy/diff-scope claim is spelled `gh api .../pulls/<n>/files`
+# rather than `gh pr diff`, because deploy-gate's own falsifiability classifier
+# (LIVE-probe vocabulary only) rejects `gh pr diff ... | grep` as NOT-FALSIFIABLE
+# while accepting `gh api` — MEASURED against
+# omniclaude/.github/actions/deploy-gate/validate_pr_deploy_required.py.
+_DIFF_SCOPE_RE = re.compile(r"\bgh api repos/\S+/pulls/\S+/files\b")
 
 
 def is_runtime_touching(changed_files: tuple[str, ...]) -> bool:

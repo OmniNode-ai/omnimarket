@@ -90,7 +90,6 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     extract_evidence_item_id,
     rebind_contract_entry_sha256_in_text,
     rebind_contract_sha256_in_text,
-    receipt_local_check_value,
     render_ci_check_receipt,
     render_ci_dod_evidence_item,
     render_companion_contract,
@@ -493,8 +492,16 @@ class OccCompanionEmitter:
         run_timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Genuine product-PR probe, observed once and shared across tickets.
+        #
+        # OMN-15247 R21: the probe is the ``gh api .../pulls/<n>/files`` read that
+        # the DECLARED check_value asserts over, so the receipt's recorded probe
+        # and the contract's executed check observe the SAME surface (the check is
+        # this exact command plus its ``| grep`` assertion — a pipe cannot be
+        # shlex-executed here, which is the only difference). The former
+        # ``gh pr view ... --json number,state,headRefName`` observed PR metadata,
+        # which the OMN-15309 predicate refuses as NOT_EXECUTED.
         downstream_probe_command = (
-            f"gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
+            f"gh api repos/{repo}/pulls/{pr_number}/files --paginate --jq '.[].sha'"
         )
         downstream_stdout, downstream_exit = self._observe_pr_probe(
             probe_command=downstream_probe_command,
@@ -522,7 +529,9 @@ class OccCompanionEmitter:
         # (`probe_command == check_value` on the public path). `gh pr view --json
         # files` is pipe-free JSON, so _observe_pr_probe can shlex.split + json.loads
         # it directly.
-        ci_probe_command = f"gh pr view {pr_number} --repo {repo} --json files"
+        ci_probe_command = (
+            f"gh api repos/{repo}/pulls/{pr_number}/files --paginate --jq '.[].status'"
+        )
         ci_stdout, ci_exit = self._observe_pr_probe(
             probe_command=ci_probe_command,
             token=token,
@@ -612,19 +621,21 @@ class OccCompanionEmitter:
             )
 
         def _hosted_safe_check_values(ticket: str) -> tuple[str | None, str | None]:
-            # Precedence: private-repo hosted-safe form (OMN-14766 F-16) wins,
-            # since a hosted content read cannot run there at all. Otherwise a
-            # content_bound-enabled producer overrides the DOWNSTREAM check with
-            # the RED-proven content read; the CI/diff-scope check is untouched.
+            # OMN-15247 R21: the OMN-14766 F-16 private-repo branch is GONE. It
+            # returned the receipt-local grep for BOTH checks, which the
+            # OMN-15309 predicate refuses unconditionally as INSIDE_OWN_DIFF —
+            # the producer-side cause of the three-for-three born-red companions
+            # (OCC#5406 / #5415 / #5418). ``None`` now means "use the defaults",
+            # and the defaults are the admissible placeholder-form probes, which
+            # resolve to the executing job's OWN repo/PR and therefore need no
+            # cross-repo token scope for a private product repo.
+            #
+            # ``is_private`` still (correctly) suppresses the LITERAL content-bound
+            # pin below, because THAT value dereferences the private product repo
+            # by name and cannot be read by the hosted OCC job's github.token —
+            # the item-13 gap recorded on OCC#5406.
             if is_private:
-                return (
-                    receipt_local_check_value(
-                        ticket_id=ticket, evidence_id=evidence_id
-                    ),
-                    receipt_local_check_value(
-                        ticket_id=ticket, evidence_id=ci_evidence_id
-                    ),
-                )
+                return None, None
             if (
                 self._check_binding is EnumCheckBinding.CONTENT_BOUND
                 and content_bound_check is not None
@@ -815,8 +826,8 @@ class OccCompanionEmitter:
                 occ_state = occ_pr_data.get("state") or "open"
                 occ_head_sha = self._head_sha(str(clone_dir))
                 occ_probe_command = (
-                    f"gh pr view {occ_pr_number} --repo {self._occ_repo} "
-                    "--json number,state"
+                    f"gh api repos/{self._occ_repo}/pulls/{occ_pr_number}/files "
+                    "--paginate --jq '.[].sha'"
                 )
                 occ_stdout, occ_exit = self._observe_pr_probe(
                     probe_command=occ_probe_command,
