@@ -111,6 +111,143 @@ CREATE TABLE IF NOT EXISTS llm_call_metrics (
     )
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: llm_call_metrics ----
+-- The CREATE TABLE IF NOT EXISTS above SILENTLY NO-OPS when a table of this
+-- name already exists with a DIFFERENT shape (an out-of-band or legacy apply
+-- that predates this migration). Everything below it in this file is NOT so
+-- forgiving: CREATE INDEX IF NOT EXISTS guards the index NAME, not the COLUMN,
+-- so the first column-dependent statement raises
+--   ERROR: column "<col>" does not exist
+-- and ON_ERROR_STOP=1 kills the whole migration Job there. Because the runner
+-- halts at the first failure, instances of this class surface strictly one per
+-- deploy cycle -- OMN-15376 (llm_cost_aggregates.aggregation_key, run
+-- 30418878385) and OMN-15302 (baselines_comparisons.snapshot_id) each cost one.
+--
+-- The guarded adds below converge a drifted pre-existing table onto the shape
+-- declared above. On the fresh-create path every one is a no-op (the column
+-- already exists), so BOTH paths end at the same schema. No DROP, no recreate,
+-- no TRUNCATE: pre-existing rows are preserved. A column that cannot be made
+-- NOT NULL without inventing data fails LOUD and names the exact conflict
+-- instead of guessing.
+--
+-- Gated by tests/ci/test_node_migration_shape_reconciliation.py (static) and
+-- tests/integration/migrations/test_node_migration_shape_drift_omn15376.py
+-- (RED/GREEN + fresh-vs-drifted schema equality on real Postgres).
+
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid();
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS correlation_id UUID;
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS session_id VARCHAR(255);
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS run_id VARCHAR(255);
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS model_id VARCHAR(255);
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER;
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS completion_tokens INTEGER;
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS total_tokens INTEGER;
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS estimated_cost_usd NUMERIC(12, 6);
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS latency_ms NUMERIC(10, 2);
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS usage_source usage_source_type DEFAULT 'MISSING';
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS usage_is_estimated BOOLEAN DEFAULT FALSE;
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS usage_raw JSONB;
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS input_hash VARCHAR(71);
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS code_version VARCHAR(64);
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS contract_version VARCHAR(64);
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS source VARCHAR(255);
+ALTER TABLE llm_call_metrics ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
+DO $$
+DECLARE
+    v_col  TEXT;
+    v_nulls BIGINT;
+BEGIN
+    FOREACH v_col IN ARRAY ARRAY['id', 'model_id', 'usage_source', 'usage_is_estimated', 'created_at']
+    LOOP
+        EXECUTE format(
+            'SELECT count(*) FROM %s WHERE %I IS NULL', 'llm_call_metrics'::regclass, v_col
+        ) INTO v_nulls;
+        IF v_nulls = 0 THEN
+            EXECUTE format(
+                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL', 'llm_call_metrics'::regclass, v_col
+            );
+        ELSE
+            RAISE EXCEPTION
+                'OMN-15376: cannot converge llm_call_metrics.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+                v_col, v_nulls;
+        END IF;
+    END LOOP;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'llm_call_metrics'::regclass AND contype = 'p'
+    ) THEN
+        ALTER TABLE llm_call_metrics ADD CONSTRAINT llm_call_metrics_pkey PRIMARY KEY (id);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'llm_call_metrics'::regclass AND conname = 'non_negative_prompt_tokens'
+    ) THEN
+        ALTER TABLE llm_call_metrics ADD CONSTRAINT non_negative_prompt_tokens CHECK ( prompt_tokens IS NULL OR prompt_tokens >= 0 );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'llm_call_metrics'::regclass AND conname = 'non_negative_completion_tokens'
+    ) THEN
+        ALTER TABLE llm_call_metrics ADD CONSTRAINT non_negative_completion_tokens CHECK ( completion_tokens IS NULL OR completion_tokens >= 0 );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'llm_call_metrics'::regclass AND conname = 'non_negative_total_tokens'
+    ) THEN
+        ALTER TABLE llm_call_metrics ADD CONSTRAINT non_negative_total_tokens CHECK ( total_tokens IS NULL OR total_tokens >= 0 );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'llm_call_metrics'::regclass AND conname = 'non_negative_estimated_cost_usd'
+    ) THEN
+        ALTER TABLE llm_call_metrics ADD CONSTRAINT non_negative_estimated_cost_usd CHECK ( estimated_cost_usd IS NULL OR estimated_cost_usd >= 0 );
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'llm_call_metrics'::regclass AND conname = 'non_negative_latency_ms'
+    ) THEN
+        ALTER TABLE llm_call_metrics ADD CONSTRAINT non_negative_latency_ms CHECK (latency_ms IS NULL OR latency_ms >= 0);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'llm_call_metrics'::regclass AND conname = 'usage_raw_size_limit'
+    ) THEN
+        ALTER TABLE llm_call_metrics ADD CONSTRAINT usage_raw_size_limit CHECK ( usage_raw IS NULL OR octet_length(usage_raw::text) <= 65536 );
+    END IF;
+END$$;
+
+-- ---- END OMN-15376 shape reconciliation: llm_call_metrics ----
+
+
 -- ============================================================================
 -- IDEMPOTENCY: input_hash unique (mirrors omnibase_infra migration 071)
 -- ============================================================================

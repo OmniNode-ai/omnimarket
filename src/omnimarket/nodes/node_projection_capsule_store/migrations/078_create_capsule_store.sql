@@ -40,6 +40,129 @@ CREATE TABLE IF NOT EXISTS capsule_store (
         )
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: capsule_store ----
+-- The CREATE TABLE IF NOT EXISTS above SILENTLY NO-OPS when a table of this
+-- name already exists with a DIFFERENT shape (an out-of-band or legacy apply
+-- that predates this migration). Everything below it in this file is NOT so
+-- forgiving: CREATE INDEX IF NOT EXISTS guards the index NAME, not the COLUMN,
+-- so the first column-dependent statement raises
+--   ERROR: column "<col>" does not exist
+-- and ON_ERROR_STOP=1 kills the whole migration Job there. Because the runner
+-- halts at the first failure, instances of this class surface strictly one per
+-- deploy cycle -- OMN-15376 (llm_cost_aggregates.aggregation_key, run
+-- 30418878385) and OMN-15302 (baselines_comparisons.snapshot_id) each cost one.
+--
+-- The guarded adds below converge a drifted pre-existing table onto the shape
+-- declared above. On the fresh-create path every one is a no-op (the column
+-- already exists), so BOTH paths end at the same schema. No DROP, no recreate,
+-- no TRUNCATE: pre-existing rows are preserved. A column that cannot be made
+-- NOT NULL without inventing data fails LOUD and names the exact conflict
+-- instead of guessing.
+--
+-- Gated by tests/ci/test_node_migration_shape_reconciliation.py (static) and
+-- tests/integration/migrations/test_node_migration_shape_drift_omn15376.py
+-- (RED/GREEN + fresh-vs-drifted schema equality on real Postgres).
+
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS capsule_id UUID;
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS capsule_hash TEXT;
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS factor TEXT;
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS source_commit TEXT;
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS source_artifact TEXT;
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS schema_version TEXT;
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS validity_scope TEXT;
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS success_rate NUMERIC(6, 5);
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS first_pass_rate NUMERIC(6, 5);
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS cost_per_success NUMERIC(18, 6);
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS hit_count BIGINT;
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS last_scored TIMESTAMPTZ;
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE capsule_store ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+DO $$
+DECLARE
+    v_col  TEXT;
+    v_nulls BIGINT;
+BEGIN
+    FOREACH v_col IN ARRAY ARRAY['capsule_id', 'capsule_hash', 'factor', 'source_commit', 'source_artifact', 'schema_version', 'validity_scope', 'success_rate', 'first_pass_rate', 'cost_per_success', 'hit_count', 'last_scored', 'created_at', 'updated_at']
+    LOOP
+        EXECUTE format(
+            'SELECT count(*) FROM %s WHERE %I IS NULL', 'capsule_store'::regclass, v_col
+        ) INTO v_nulls;
+        IF v_nulls = 0 THEN
+            EXECUTE format(
+                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL', 'capsule_store'::regclass, v_col
+            );
+        ELSE
+            RAISE EXCEPTION
+                'OMN-15376: cannot converge capsule_store.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+                v_col, v_nulls;
+        END IF;
+    END LOOP;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'capsule_store'::regclass AND contype = 'p'
+    ) THEN
+        ALTER TABLE capsule_store ADD CONSTRAINT capsule_store_pkey PRIMARY KEY (capsule_id);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'capsule_store'::regclass AND conname = 'capsule_store_success_rate_check'
+    ) THEN
+        ALTER TABLE capsule_store ADD CONSTRAINT capsule_store_success_rate_check CHECK (success_rate >= 0 AND success_rate <= 1);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'capsule_store'::regclass AND conname = 'capsule_store_first_pass_rate_check'
+    ) THEN
+        ALTER TABLE capsule_store ADD CONSTRAINT capsule_store_first_pass_rate_check CHECK (first_pass_rate >= 0 AND first_pass_rate <= 1);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'capsule_store'::regclass AND conname = 'capsule_store_cost_per_success_check'
+    ) THEN
+        ALTER TABLE capsule_store ADD CONSTRAINT capsule_store_cost_per_success_check CHECK (cost_per_success >= 0);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'capsule_store'::regclass AND conname = 'capsule_store_hit_count_check'
+    ) THEN
+        ALTER TABLE capsule_store ADD CONSTRAINT capsule_store_hit_count_check CHECK (hit_count >= 1);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'capsule_store'::regclass AND conname = 'capsule_store_scored_effectiveness_non_null'
+    ) THEN
+        ALTER TABLE capsule_store ADD CONSTRAINT capsule_store_scored_effectiveness_non_null CHECK ( hit_count >= 1 AND success_rate IS NOT NULL AND first_pass_rate IS NOT NULL AND cost_per_success IS NOT NULL AND last_scored IS NOT NULL );
+    END IF;
+END$$;
+
+-- ---- END OMN-15376 shape reconciliation: capsule_store ----
+
+
 CREATE UNIQUE INDEX IF NOT EXISTS ux_capsule_identity
     ON capsule_store (capsule_hash);
 

@@ -49,6 +49,93 @@ CREATE TABLE IF NOT EXISTS public.pr_lifecycle_ledger_entries (
     UNIQUE (sweep_id, repo, pr_number, iteration)
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: pr_lifecycle_ledger_entries ----
+-- The CREATE TABLE IF NOT EXISTS above SILENTLY NO-OPS when a table of this
+-- name already exists with a DIFFERENT shape (an out-of-band or legacy apply
+-- that predates this migration). Everything below it in this file is NOT so
+-- forgiving: CREATE INDEX IF NOT EXISTS guards the index NAME, not the COLUMN,
+-- so the first column-dependent statement raises
+--   ERROR: column "<col>" does not exist
+-- and ON_ERROR_STOP=1 kills the whole migration Job there. Because the runner
+-- halts at the first failure, instances of this class surface strictly one per
+-- deploy cycle -- OMN-15376 (llm_cost_aggregates.aggregation_key, run
+-- 30418878385) and OMN-15302 (baselines_comparisons.snapshot_id) each cost one.
+--
+-- The guarded adds below converge a drifted pre-existing table onto the shape
+-- declared above. On the fresh-create path every one is a no-op (the column
+-- already exists), so BOTH paths end at the same schema. No DROP, no recreate,
+-- no TRUNCATE: pre-existing rows are preserved. A column that cannot be made
+-- NOT NULL without inventing data fails LOUD and names the exact conflict
+-- instead of guessing.
+--
+-- Gated by tests/ci/test_node_migration_shape_reconciliation.py (static) and
+-- tests/integration/migrations/test_node_migration_shape_drift_omn15376.py
+-- (RED/GREEN + fresh-vs-drifted schema equality on real Postgres).
+
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS id BIGSERIAL;
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS sweep_id TEXT;
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS iteration INTEGER;
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS found_at TIMESTAMPTZ;
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS repo TEXT;
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS pr_number INTEGER;
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS initial_state TEXT;
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS action_taken TEXT;
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS evidence TEXT DEFAULT '';
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS final_state TEXT;
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS next_check_at TIMESTAMPTZ;
+ALTER TABLE public.pr_lifecycle_ledger_entries ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
+DO $$
+DECLARE
+    v_col  TEXT;
+    v_nulls BIGINT;
+BEGIN
+    FOREACH v_col IN ARRAY ARRAY['id', 'sweep_id', 'iteration', 'found_at', 'repo', 'pr_number', 'initial_state', 'action_taken', 'evidence', 'final_state', 'next_check_at', 'created_at']
+    LOOP
+        EXECUTE format(
+            'SELECT count(*) FROM %s WHERE %I IS NULL', 'public.pr_lifecycle_ledger_entries'::regclass, v_col
+        ) INTO v_nulls;
+        IF v_nulls = 0 THEN
+            EXECUTE format(
+                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL', 'public.pr_lifecycle_ledger_entries'::regclass, v_col
+            );
+        ELSE
+            RAISE EXCEPTION
+                'OMN-15376: cannot converge public.pr_lifecycle_ledger_entries.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+                v_col, v_nulls;
+        END IF;
+    END LOOP;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'public.pr_lifecycle_ledger_entries'::regclass AND contype = 'p'
+    ) THEN
+        ALTER TABLE public.pr_lifecycle_ledger_entries ADD CONSTRAINT pr_lifecycle_ledger_entries_pkey PRIMARY KEY (id);
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint c
+        WHERE c.conrelid = 'public.pr_lifecycle_ledger_entries'::regclass
+          AND c.contype IN ('p', 'u')
+          AND (
+              SELECT array_agg(a.attname::text ORDER BY a.attname)
+              FROM unnest(c.conkey) AS k(attnum)
+              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+          ) = ARRAY['iteration', 'pr_number', 'repo', 'sweep_id']::text[]
+    ) THEN
+        ALTER TABLE public.pr_lifecycle_ledger_entries ADD CONSTRAINT pr_lifecycle_ledger_entries_sweep_id_repo_pr_number_iterati_key UNIQUE (sweep_id, repo, pr_number, iteration);
+    END IF;
+END$$;
+
+-- ---- END OMN-15376 shape reconciliation: pr_lifecycle_ledger_entries ----
+
+
 -- Primary DoD query: count rows for a sweep.
 CREATE INDEX IF NOT EXISTS idx_pr_lifecycle_ledger_sweep
     ON public.pr_lifecycle_ledger_entries (sweep_id);

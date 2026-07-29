@@ -51,6 +51,78 @@ CREATE TABLE IF NOT EXISTS agent_routing_decisions (
     claude_session_id VARCHAR(255)
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: agent_routing_decisions ----
+-- The CREATE TABLE IF NOT EXISTS above SILENTLY NO-OPS when a table of this
+-- name already exists with a DIFFERENT shape (an out-of-band or legacy apply
+-- that predates this migration). Everything below it in this file is NOT so
+-- forgiving: CREATE INDEX IF NOT EXISTS guards the index NAME, not the COLUMN,
+-- so the first column-dependent statement raises
+--   ERROR: column "<col>" does not exist
+-- and ON_ERROR_STOP=1 kills the whole migration Job there. Because the runner
+-- halts at the first failure, instances of this class surface strictly one per
+-- deploy cycle -- OMN-15376 (llm_cost_aggregates.aggregation_key, run
+-- 30418878385) and OMN-15302 (baselines_comparisons.snapshot_id) each cost one.
+--
+-- The guarded adds below converge a drifted pre-existing table onto the shape
+-- declared above. On the fresh-create path every one is a no-op (the column
+-- already exists), so BOTH paths end at the same schema. No DROP, no recreate,
+-- no TRUNCATE: pre-existing rows are preserved. A column that cannot be made
+-- NOT NULL without inventing data fails LOUD and names the exact conflict
+-- instead of guessing.
+--
+-- Gated by tests/ci/test_node_migration_shape_reconciliation.py (static) and
+-- tests/integration/migrations/test_node_migration_shape_drift_omn15376.py
+-- (RED/GREEN + fresh-vs-drifted schema equality on real Postgres).
+
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS id UUID;
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS correlation_id UUID;
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS selected_agent VARCHAR(255);
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS confidence_score DECIMAL(5, 4);
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS request_type VARCHAR(100);
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS alternatives JSONB;
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS routing_reason TEXT;
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS domain VARCHAR(255);
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS metadata JSONB;
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS project_path TEXT;
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS project_name VARCHAR(255);
+ALTER TABLE agent_routing_decisions ADD COLUMN IF NOT EXISTS claude_session_id VARCHAR(255);
+
+DO $$
+DECLARE
+    v_col  TEXT;
+    v_nulls BIGINT;
+BEGIN
+    FOREACH v_col IN ARRAY ARRAY['id', 'created_at']
+    LOOP
+        EXECUTE format(
+            'SELECT count(*) FROM %s WHERE %I IS NULL', 'agent_routing_decisions'::regclass, v_col
+        ) INTO v_nulls;
+        IF v_nulls = 0 THEN
+            EXECUTE format(
+                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL', 'agent_routing_decisions'::regclass, v_col
+            );
+        ELSE
+            RAISE EXCEPTION
+                'OMN-15376: cannot converge agent_routing_decisions.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+                v_col, v_nulls;
+        END IF;
+    END LOOP;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'agent_routing_decisions'::regclass AND contype = 'p'
+    ) THEN
+        ALTER TABLE agent_routing_decisions ADD CONSTRAINT agent_routing_decisions_pkey PRIMARY KEY (id);
+    END IF;
+END$$;
+
+-- ---- END OMN-15376 shape reconciliation: agent_routing_decisions ----
+
+
 -- Minimal indexing for write-heavy workload - only TTL cleanup index.
 CREATE INDEX IF NOT EXISTS idx_agent_routing_decisions_created_at
     ON agent_routing_decisions (created_at);
