@@ -157,6 +157,24 @@ def _contract_check_values(plan: ModelOccCompanionPlan) -> list[str]:
     return [ck["check_value"] for item in data["dod_evidence"] for ck in item["checks"]]
 
 
+def _contract_check_values_by_item(
+    plan: ModelOccCompanionPlan,
+) -> list[tuple[str, str]]:
+    """Same as :func:`_contract_check_values` but pairs each value with its
+    owning item id (OMN-15382: the self-bind item is a deliberate,
+    id-scoped exception to the placeholder-only rule).
+    """
+    contract = next(
+        f for f in plan.companion_files if f.kind == EnumCompanionFileKind.CONTRACT
+    )
+    data = yaml.safe_load(contract.content)
+    return [
+        (str(item.get("id", "")), ck["check_value"])
+        for item in data["dod_evidence"]
+        for ck in item["checks"]
+    ]
+
+
 # ---------------------------------------------------------------------------
 # occ#4284 captured negative fixture — parse the git diff into {path: content}
 # for the NEW files it adds.
@@ -445,7 +463,18 @@ class TestF02PlaceholderLint:
             assert lint_check_value(cv) is None, f"lint rejects minted check: {cv}"
 
     def test_pass2_contract_checks_are_placeholder_normalized(self) -> None:
-        for cv in _contract_check_values(compute_companion_plan(_request(**_PASS2))):
+        pairs = _contract_check_values_by_item(
+            compute_companion_plan(_request(**_PASS2))
+        )
+        for item_id, cv in pairs:
+            if item_id.startswith("occ-self-bind-pr-"):
+                # OMN-15382 (F1x follow-up): deliberate exception — see the
+                # matching branch in test_occ_companion_substance_and_placeholder_omn_14679.py
+                # for the full rationale (Rule B requires a literal pin here).
+                assert _HARDCODED_PR_NUMBER_RE.search(cv), cv
+                assert "${PR_NUMBER}" not in cv, cv
+                assert "${REPO}" not in cv, cv
+                continue
             assert lint_check_value(cv) is None, f"lint rejects minted check: {cv}"
 
     def test_negative_occ_4284_contract_has_hardcoded_pr_ints(self) -> None:

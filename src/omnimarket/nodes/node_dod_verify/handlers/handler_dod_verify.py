@@ -107,13 +107,19 @@ class HandlerDodVerify:
         )
         failed = sum(1 for r in checks if r.status == EnumEvidenceCheckStatus.FAILED)
         skipped = sum(1 for r in checks if r.status == EnumEvidenceCheckStatus.SKIPPED)
+        # OMN-15382: a superseded item is neither executed nor a failure — it
+        # is excluded from the failure count (and from "all skipped" below)
+        # entirely; the superseding item's own checks carry the verdict.
+        superseded = sum(
+            1 for r in checks if r.status == EnumEvidenceCheckStatus.SUPERSEDED
+        )
 
+        non_superseded_total = len(checks) - superseded
         if failed > 0:
             overall = EnumDodVerifyStatus.FAILED
-        elif len(checks) == 0 or skipped == len(checks):
-            # No checks ran, or every check that ran was skipped — nothing was
-            # actually verified. Do not claim VERIFIED (OMN-15380: an empty
-            # verification set is not a pass).
+        elif non_superseded_total == 0 or skipped == non_superseded_total:
+            # Either nothing but superseded entries remain, or every
+            # non-superseded check was skipped — do not claim VERIFIED.
             overall = EnumDodVerifyStatus.SKIPPED
         else:
             overall = EnumDodVerifyStatus.VERIFIED
@@ -153,6 +159,7 @@ class HandlerDodVerify:
             failed_count=failed,
             skipped_count=skipped,
             error_message=error_message,
+            superseded_count=superseded,
         )
 
         return state
@@ -189,6 +196,7 @@ class HandlerDodVerify:
             verified_count=state.verified_count,
             failed_count=state.failed_count,
             skipped_count=state.skipped_count,
+            superseded_count=state.superseded_count,
             error_message=state.error_message,
         )
 

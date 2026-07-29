@@ -217,6 +217,23 @@ def _contract_check_values(contract_path: Path) -> list[str]:
     return values
 
 
+def _contract_check_values_by_item(contract_path: Path) -> list[tuple[str, str]]:
+    """Same as :func:`_contract_check_values` but pairs each value with its
+    owning item id, so a test can carve out a deliberate, id-scoped
+    exception (the OMN-15382 self-bind literal pin) rather than exempting
+    by string shape.
+    """
+    data = yaml.safe_load(contract_path.read_text())
+    pairs: list[tuple[str, str]] = []
+    for item in data.get("dod_evidence") or []:
+        item_id = str(item.get("id", ""))
+        for check in item.get("checks") or []:
+            cv = check.get("check_value")
+            if isinstance(cv, str):
+                pairs.append((item_id, cv))
+    return pairs
+
+
 # ---------------------------------------------------------------------------
 # F-02 — placeholder-clean contract check_values (lint-contract-check-values)
 # ---------------------------------------------------------------------------
@@ -230,9 +247,37 @@ class TestF02PlaceholderCleanContract:
         emitter = OccCompanionEmitter()
         _action, clone_root, _ = _run_emit(emitter, tmp_path)
 
-        values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
-        assert values, "contract must declare at least one check_value"
-        for cv in values:
+        pairs = _contract_check_values_by_item(
+            clone_root / "contracts" / "OMN-9999.yaml"
+        )
+        assert pairs, "contract must declare at least one check_value"
+        for item_id, cv in pairs:
+            # OMN-15382 (F1x follow-up): the self-bind item is the ONE
+            # deliberate exception to F-02's placeholder rule. Its id embeds
+            # a PR number (occ-self-bind-pr-<N>), so lint-contract-check-values'
+            # OMN-15382 Rule B (landed onex_change_control@06d4294e,
+            # .onex_ratchets/omn_15382_rule_b_baseline.yaml) now REQUIRES a
+            # literal pin there -- the placeholder form is a NEW Rule B
+            # violation on every freshly-minted companion. See
+            # self_bind_check_value's docstring (occ_evidence_stamp.py) for
+            # the full rationale. A standalone hardcoded PR number with a
+            # literal --repo is the sanctioned cross-PR-reference shape under
+            # the SAME lint's Rule A (OMN-14431), so this item stays
+            # lint-clean under both rules simultaneously.
+            if item_id.startswith("occ-self-bind-pr-"):
+                assert _HARDCODED_PR_NUMBER_RE.search(cv), (
+                    "self-bind check_value must hardcode the literal OCC PR "
+                    f"number (OMN-15382 Rule B), got: {cv!r}"
+                )
+                assert "${PR_NUMBER}" not in cv, (
+                    f"self-bind check_value must not carry the runner "
+                    f"placeholder alongside the literal pin: {cv!r}"
+                )
+                assert "${REPO}" not in cv, (
+                    f"self-bind check_value must not carry the runner "
+                    f"placeholder alongside the literal pin: {cv!r}"
+                )
+                continue
             assert not _HARDCODED_PR_NUMBER_RE.search(cv), (
                 f"contract check_value carries a hardcoded integer PR number and "
                 f"would fail lint-contract-check-values: {cv!r}"

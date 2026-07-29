@@ -269,13 +269,19 @@ class TestSelfBindDodEvidenceItemRender:
 
         assert rendered.startswith('  - id: "occ-self-bind-pr-42"\n')
         assert "OCC companion PR #42" in rendered
-        # OMN-14741 F-02: placeholder-var check_value (lint-clean), not the OCC PR
-        # integer that failed lint-contract-check-values on the self-bind command.
+        # OMN-15382: literal occ_pr_number/occ_repo pin (Rule-B-compliant), NOT
+        # the ${PR_NUMBER}/${REPO} runner placeholder (OMN-14741 F-02's prior
+        # form) -- the placeholder resolves correctly only on the item's OWN
+        # Contract Compliance run and is a NEW Rule B (per-item PR binding)
+        # violation on every freshly-minted companion when evaluated by a
+        # different out-of-band surface (dod_verify). See
+        # self_bind_check_value's docstring / .onex_ratchets/omn_15382_rule_b_baseline.yaml.
         assert (
-            'check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} '
+            'check_value: "gh pr view 42 --repo OmniNode-ai/onex_change_control '
             '--json number,state"' in rendered
         )
-        assert "gh pr view 42" not in rendered
+        assert "${PR_NUMBER}" not in rendered
+        assert "${REPO}" not in rendered
         assert _NAMED_PLACEHOLDER_RE.findall(rendered) == []
 
 
