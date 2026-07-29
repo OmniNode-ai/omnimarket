@@ -41,10 +41,12 @@ from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_r
     EnumSuiteVerdict,
 )
 from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_request import (
+    ModelBundleRef,
     ModelPushValidationRequest,
 )
 from omnimarket.nodes.node_push_validation_effect.protocols.protocol_push_validation_client import (
     ModelBranchObservation,
+    ModelBundleMaterialization,
     ModelHookInstallation,
     ModelPushResult,
     ModelSuiteRun,
@@ -107,8 +109,11 @@ class StubPushValidationClient:
         push: ModelPushResult | None = None,
         host: str = "omninode-pc",
         credential: str = "gh:test-user",
+        materialization: ModelBundleMaterialization | None = None,
     ) -> None:
         self.calls: list[str] = []
+        self.suite_source_refs: list[str | None] = []
+        self._materialization = materialization
         self._observation = observation or ModelBranchObservation(
             observed_head_sha=SHA,
             remote_head_sha=OTHER_SHA,
@@ -132,9 +137,32 @@ class StubPushValidationClient:
         self.calls.append("install_hooks")
         return self._hooks
 
+    def materialize_bundle(
+        self,
+        repo: str,
+        branch: str,
+        bundle: ModelBundleRef,
+        correlation_id: str,
+    ) -> ModelBundleMaterialization:
+        self.calls.append("materialize_bundle")
+        return self._materialization or ModelBundleMaterialization(
+            materialized=True,
+            materialized_ref=f"refs/onex/bundle/{correlation_id}",
+            observed_sha256=bundle.sha256,
+            observed_size_bytes=bundle.size_bytes,
+        )
+
     def run_suite(
-        self, repo: str, branch: str, expected_head_sha: str
+        self,
+        repo: str,
+        branch: str,
+        expected_head_sha: str,
+        source_ref: str | None = None,
     ) -> ModelSuiteRun:
+        # Record the ref the suite actually ran against. A bundle leg whose
+        # suite silently ran the origin commit would be theater, so the seam
+        # test asserts on this value rather than merely on the call name.
+        self.suite_source_refs.append(source_ref)
         self.calls.append("run_suite")
         return suite_run_from_seeded_log(self._suite_log)
 

@@ -319,6 +319,7 @@ class TestReceiptWireValues:
             "push_failed",
             "refused",
             "validated",  # Contract v2 (OMN-14976)
+            "bundle_unavailable",  # Bundle transfer leg (OMN-14979)
         ]
         assert [verdict.value for verdict in EnumSuiteVerdict] == [
             "pass",

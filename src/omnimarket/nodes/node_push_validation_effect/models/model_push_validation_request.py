@@ -76,6 +76,105 @@ class EnumSourceIdentityType(StrEnum):
     COMMIT_PATCH = "commit+patch"
 
 
+# Bundle size cap (OMN-14979). A pre-push bundle carries only the commits that
+# are NOT yet on origin, so it is small in every honest case; 256 MiB is a
+# generous ceiling that still bounds what a single request can make the shared
+# worker download and unpack. Declared in contract.yaml alongside the transfer
+# timeout so the cap is a contract fact, not a buried constant.
+MAX_BUNDLE_BYTES: int = 268_435_456
+
+# bundles/<tenant_principal_id>/<correlation_id>/<sha256>.bundle
+#
+# The tenant segment is LOAD-BEARING, not cosmetic: it is what makes
+# "tenant A cannot dereference tenant B's bundle" checkable. The handler
+# recomputes the expected prefix from request.tenant_principal_id and refuses
+# any key that does not match, so a forged key naming another tenant is
+# rejected before any dereference. IAM cannot express this (the worker runs
+# under a shared node role), which is exactly why it is enforced here.
+_BUNDLE_KEY_PATTERN = (
+    r"^bundles/t-[0-9a-f]{32}/"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/"
+    r"[0-9a-f]{64}\.bundle$"
+)
+
+
+class ModelBundleRef(BaseModel):
+    """Reference to a transferred git bundle in the transfer bucket (OMN-14979).
+
+    The bundle-transfer leg exists because pre-push commits are, by definition,
+    NOT on origin — the worker cannot clone what has never been pushed. The
+    client uploads a ``git bundle`` via a gateway-issued presigned PUT; the
+    worker dereferences it via presigned GET and fetches it into the workroot.
+
+    NO CREDENTIAL CROSSES THE BUS. This model deliberately carries no presigned
+    URL: a presigned URL is a bearer credential, and putting one in a Kafka
+    payload would persist it in the log, the projection, and every DLQ copy.
+    The worker holds its own scoped ``s3:GetObject`` grant
+    (``omninode-push-validation-bundle-reader-dev``) and mints its own
+    short-lived GET from ``bucket`` + ``key``.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    bucket: str = Field(
+        ...,
+        pattern=r"^[a-z0-9][a-z0-9.\-]{1,61}[a-z0-9]$",
+        description="Transfer bucket name (S3 naming rules). The worker "
+        "resolves this against its own configured allowed bucket and refuses "
+        "a mismatch — a request cannot redirect the worker at an arbitrary "
+        "bucket it happens to have credentials for.",
+    )
+    key: str = Field(
+        ...,
+        pattern=_BUNDLE_KEY_PATTERN,
+        max_length=1024,
+        description="Object key, exactly "
+        "bundles/<tenant_principal_id>/<correlation_id>/<sha256>.bundle. The "
+        "tenant segment is authorization-relevant: the handler requires it to "
+        "equal request.tenant_principal_id.",
+    )
+    sha256: str = Field(
+        ...,
+        pattern=r"^[0-9a-f]{64}$",
+        description="sha256 hex of the COMPLETE bundle bytes, computed by the "
+        "client before upload. The worker recomputes over the downloaded "
+        "bytes and refuses on mismatch — content-addressed, so a swapped or "
+        "truncated object cannot be validated.",
+    )
+    size_bytes: int = Field(
+        ...,
+        gt=0,
+        le=MAX_BUNDLE_BYTES,
+        description=f"Declared bundle size in bytes; hard cap "
+        f"{MAX_BUNDLE_BYTES} (256 MiB). Checked twice: here at parse time "
+        "against the declared value, and again by the worker against the "
+        "bytes actually received, so a lying declaration cannot smuggle an "
+        "oversize object past the cap.",
+    )
+    expires_at: str = Field(
+        ...,
+        description="ISO-8601 UTC 'Z' deadline after which the worker MUST "
+        "refuse to dereference this bundle. This is the HARD access bound. "
+        "The bucket lifecycle rule (<=24h) is only a durability backstop: S3 "
+        "evaluates expiration on a daily asynchronous schedule, so lifecycle "
+        "alone would leave an object readable for materially longer than a "
+        "day. Fail-closed — an absent or past deadline never dereferences.",
+    )
+
+    @field_validator("expires_at")
+    @classmethod
+    def _expires_at_is_utc_z(cls, value: str) -> str:
+        if not value.endswith("Z"):
+            raise ValueError("expires_at must be ISO-8601 UTC with a 'Z' suffix")
+        datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return value
+
+    @staticmethod
+    def tenant_key_prefix(tenant_principal_id: str) -> str:
+        """The only key prefix a given tenant is allowed to dereference."""
+        return f"bundles/{tenant_principal_id}/"
+
+
 class ModelSourceIdentityCommit(BaseModel):
     """A pushed/pushable commit — the only member the push flow accepts."""
 
@@ -113,6 +212,13 @@ class ModelSourceIdentityTree(BaseModel):
         "commit) — the distinguishing value for two dirty trees at the same "
         "branch+head.",
     )
+    bundle: ModelBundleRef = Field(
+        ...,
+        description="REQUIRED (OMN-14979). A tree identity names state that is "
+        "not on origin, so it can only be materialized from a transferred "
+        "bundle — an optional bundle here would be a check that does not "
+        "exist. Fail-closed: no bundle, no request.",
+    )
 
 
 class ModelSourceIdentityCommitPatch(BaseModel):
@@ -136,6 +242,12 @@ class ModelSourceIdentityCommitPatch(BaseModel):
         pattern=r"^[0-9a-f]{64}$",
         description="sha256 hex of the patch content — the distinguishing "
         "value for two different patches on the same base.",
+    )
+    bundle: ModelBundleRef = Field(
+        ...,
+        description="REQUIRED (OMN-14979). Same reasoning as the tree member: "
+        "an uncommitted patch is not on origin, so the bundle is the only way "
+        "to materialize it. Fail-closed: no bundle, no request.",
     )
 
 
@@ -257,10 +369,54 @@ class ModelPushValidationRequest(BaseModel):
 
         return self
 
+    @model_validator(mode="after")
+    def _bundle_key_binds_to_this_request(self) -> ModelPushValidationRequest:
+        """The bundle key must name THIS tenant, THIS correlation, THIS content.
+
+        Bundle transfer (OMN-14979). The key is structurally
+        ``bundles/<tenant_principal_id>/<correlation_id>/<sha256>.bundle``;
+        the pattern on ModelBundleRef.key proves the SHAPE, this validator
+        proves the BINDING. Without it a well-formed key belonging to another
+        tenant, another request, or other content would parse cleanly.
+
+        This is checked here AND re-checked in the handler on purpose:
+        ``model_construct`` bypasses validation entirely, so a model-only
+        check is not an authorization control.
+        """
+        bundle = getattr(self.source_identity, "bundle", None)
+        if bundle is None:
+            return self
+
+        expected_prefix = ModelBundleRef.tenant_key_prefix(self.tenant_principal_id)
+        if not bundle.key.startswith(expected_prefix):
+            raise ValueError(
+                f"bundle.key {bundle.key!r} is not under this tenant's prefix "
+                f"{expected_prefix!r} — refusing cross-tenant bundle "
+                "dereference"
+            )
+
+        _, _, correlation_segment, filename = bundle.key.split("/", 3)
+        if correlation_segment != self.correlation_id:
+            raise ValueError(
+                f"bundle.key correlation segment {correlation_segment!r} != "
+                f"request.correlation_id {self.correlation_id!r} — a bundle "
+                "from a different request must not be dereferenced"
+            )
+        if filename != f"{bundle.sha256}.bundle":
+            raise ValueError(
+                f"bundle.key filename {filename!r} does not match "
+                f"bundle.sha256 {bundle.sha256!r} — the key is "
+                "content-addressed and must agree with the declared digest"
+            )
+
+        return self
+
 
 __all__ = [
+    "MAX_BUNDLE_BYTES",
     "EnumPushValidationMode",
     "EnumSourceIdentityType",
+    "ModelBundleRef",
     "ModelPushValidationRequest",
     "ModelSourceIdentity",
     "ModelSourceIdentityCommit",

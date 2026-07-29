@@ -50,13 +50,33 @@ receipt — the receipt model's own pattern would reject it — so the handler
 REFUSES by raising (failure terminal topic) rather than fabricating tenant
 identity in a completed-topic receipt.
 
+(7) Bundle transfer (OMN-14979): a ``tree`` / ``commit+patch``
+    ``source_identity`` carries a REQUIRED ``bundle`` reference, because that
+    state is by definition NOT on origin — the worker cannot clone what was
+    never pushed. For those requests the handler takes a separate path:
+    materialize the bundle, then run the suite against the UNPACKED REF.
+    The origin-state checks (already_pushed, stale_head) are deliberately
+    NOT applied — they describe the remote branch, not the bundle, and
+    applying them would short-circuit every bundle request whose base commit
+    happens to be on origin. Failure modes are honest and distinguishable
+    (url_expired / oversize / checksum_mismatch / unusable_bundle) and
+    surface as outcome=bundle_unavailable on the COMPLETED topic, because
+    they are deterministic facts about the request; S3/transport faults RAISE
+    to the failure topic instead. Tenant isolation is enforced HERE, not by
+    IAM: the worker runs under a shared node role, so the handler requires
+    the bundle key's tenant segment to equal ``tenant_principal_id`` and
+    refuses otherwise (outcome=refused). The push flow is unreachable for a
+    bundle — the request model forces mode=validate_only for every
+    non-commit identity, and the handler re-asserts it rather than trusting
+    it.
+
 Named residuals NOT built this session (see OMN-14976 ticket comment): the
-gateway-side (omninode_infra) advertisement of ``mode``/``source_identity``;
-``environment_identity`` population (the receipt field exists, defaults to
-``None`` — no runtime-lane-identity source is wired into this handler yet);
-the bundle-transfer leg for non-commit source identities (OMN-14979); the
-pre-push client that would actually set mode=validate_only from a laptop
-(OMN-14980).
+gateway-side (omninode_infra) advertisement of ``mode``/``source_identity``
+and of the bundle ref, plus the gateway grant that would mint the presigned
+PUT; ``environment_identity`` population (the receipt field exists, defaults
+to ``None`` — no runtime-lane-identity source is wired into this handler
+yet); the pre-push client that would actually build the bundle and set
+mode=validate_only from a laptop (OMN-14980).
 """
 
 from __future__ import annotations
@@ -74,6 +94,7 @@ from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_r
 )
 from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_request import (
     EnumPushValidationMode,
+    ModelBundleRef,
     ModelPushValidationRequest,
 )
 from omnimarket.nodes.node_push_validation_effect.protocols.git_push_validation_subprocess import (
@@ -185,6 +206,107 @@ class HandlerPushValidationEffect:
             return receipt(
                 EnumPushValidationOutcome.REFUSED,
                 failure_detail="protected_branch_refused",
+            )
+
+        # (7) Bundle transfer leg (OMN-14979). A tree/commit+patch identity
+        # names state that is NOT on origin, so the origin-state checks below
+        # (already_pushed, stale_head) are meaningless for it — the state
+        # under test is the bundle, not the remote branch. Materialize first,
+        # then run the suite against the unpacked ref.
+        #
+        # The push path is unreachable here: the request model already
+        # enforces mode=validate_only for every non-commit identity, so a
+        # bundle can never reach push_branch. That invariant is re-asserted
+        # below rather than assumed.
+        bundle = getattr(request.source_identity, "bundle", None)
+        if bundle is not None:
+            # Tenant isolation re-check. The request model validates this too,
+            # but model_construct bypasses validation entirely, so a
+            # model-only check is not an authorization control (same reasoning
+            # as the tenant_principal_id gate above).
+            expected_prefix = ModelBundleRef.tenant_key_prefix(
+                request.tenant_principal_id
+            )
+            if not bundle.key.startswith(expected_prefix):
+                return receipt(
+                    EnumPushValidationOutcome.REFUSED,
+                    failure_detail=(
+                        "cross_tenant_bundle_refused: bundle key is not under "
+                        "this tenant's prefix"
+                    ),
+                )
+
+            if request.mode != EnumPushValidationMode.VALIDATE_ONLY:
+                raise RuntimeError(
+                    "a bundle-backed source identity reached the handler with "
+                    f"mode={request.mode.value} — the push flow must never "
+                    "push an unpushed bundle; refusing to emit a receipt for "
+                    "an impossible request shape"
+                )
+
+            materialization = self._client.materialize_bundle(
+                request.repo,
+                request.branch,
+                bundle,
+                request.correlation_id,
+            )
+            if not materialization.materialized:
+                mode_value = (
+                    materialization.failure_mode.value
+                    if materialization.failure_mode is not None
+                    else "unspecified"
+                )
+                return receipt(
+                    EnumPushValidationOutcome.BUNDLE_UNAVAILABLE,
+                    failure_detail=(
+                        f"bundle_{mode_value}"
+                        f"; observed_sha256={materialization.observed_sha256 or 'none'}"
+                        f"; observed_size_bytes={materialization.observed_size_bytes}"
+                        + (
+                            f"; {materialization.detail}"
+                            if materialization.detail
+                            else ""
+                        )
+                    ),
+                )
+
+            hooks = self._client.install_hooks(request.repo, request.branch)
+            if not hooks.installed or not hooks.hook_id_readback.strip():
+                return receipt(
+                    EnumPushValidationOutcome.REFUSED,
+                    failure_detail=(
+                        "hook_readback_failed_refusing_unhooked_push"
+                        + (f": {hooks.detail}" if hooks.detail else "")
+                    ),
+                )
+
+            # The suite MUST run against the materialized ref. Running the
+            # origin commit here would make the whole leg theater.
+            bundle_suite = self._client.run_suite(
+                request.repo,
+                request.branch,
+                request.expected_head_sha,
+                source_ref=materialization.materialized_ref,
+            )
+            if not bundle_suite.log_digest.strip():
+                raise RuntimeError(
+                    "governed suite returned an empty log digest — a run "
+                    "suite always has a complete log digest; refusing to emit "
+                    "an unverifiable receipt"
+                )
+            if not bundle_suite.passed:
+                return receipt(
+                    EnumPushValidationOutcome.SUITE_FAILED,
+                    hook_id_readback=hooks.hook_id_readback,
+                    suite_verdict=EnumSuiteVerdict.FAIL,
+                    suite_log_digest=bundle_suite.log_digest,
+                    failure_detail=bundle_suite.detail or "governed suite red",
+                )
+            return receipt(
+                EnumPushValidationOutcome.VALIDATED,
+                hook_id_readback=hooks.hook_id_readback,
+                suite_verdict=EnumSuiteVerdict.PASS,
+                suite_log_digest=bundle_suite.log_digest,
             )
 
         # Exactly ONE observation — never refetch-and-continue.
