@@ -33,11 +33,28 @@
 #
 # When mutate is enabled the node clones onex_change_control, pushes a branch, and
 # opens the OCC PR, so it runs on the trusted self-hosted runner with a
-# write-scoped OCC_AUTOAUTHOR_TOKEN (the read-only Actions token used for
-# dry_run is insufficient - supply it via a repo/org secret backed by a GitHub
-# App/PAT with write access to OmniNode-ai/onex_change_control).
+# cross-repo write credential (the ambient omnimarket-scoped Actions token used
+# for dry_run can never push to onex_change_control).
 #
-# Ticket: OMN-14393 (RSD-5). Design doc:
+# CREDENTIAL (OMN-15350) — the mutate path mints a per-run installation token
+# from the least-privilege **OnexBot-OCC-Writer** GitHub App (org secrets
+# ONEXBOT_OCC_APP_ID / ONEXBOT_OCC_PRIVATE_KEY), scoped down to
+# OmniNode-ai/onex_change_control ONLY, via the canonical
+# `actions/create-github-app-token` pattern already used by
+# call-occ-attestation-observe.yml (OMN-14955) and pr-arch-review.yml.
+#   * The prior OCC_AUTOAUTHOR_TOKEN secret (OMN-14904) was NEVER provisioned —
+#     live readback 2026-07-29 shows it in neither the org nor the omnimarket
+#     repo secret set, so the mutate path was credential-dead on arrival. Do not
+#     reintroduce it. (Named without the `secrets.` prefix on purpose: the
+#     shape test asserts that prefix is absent, so the assertion measures real
+#     credential usage rather than prose.)
+#   * The org-wide `CROSS_REPO_PAT` is explicitly REJECTED here: it is broader
+#     than this job needs and is not attributable to a machine identity.
+#   * Operator ruling 2026-07-29: verifier / merge-path / OCC-authoring machine
+#     identity uses the EXISTING OnexBot + OnexBot-OCC-Writer Apps. OCC companion
+#     authoring is the OnexBot-OCC-Writer lane. Never create a new bot account.
+#
+# Ticket: OMN-14393 (RSD-5), credential re-point OMN-15350. Design doc:
 #   docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §3-§4.
 
 name: OCC Companion Author (mutate-capable, DEFAULT dry_run)
@@ -115,27 +132,50 @@ jobs:
             > occ_companion_author_payload.json
           cat occ_companion_author_payload.json
 
-      - name: Validate mutate write token
+      - name: Validate OCC cross-repo write credential
+        # Fail LOUD, before the mint, when the App secrets are absent — an
+        # unprovisioned App must surface as an actionable error, never as a
+        # silent degradation to dry_run. The ambient `secrets.GITHUB_TOKEN` is
+        # not a substitute: it is omnimarket-scoped and can never push to
+        # onex_change_control.
         if: ${{ vars.OMNI_OCC_AUTOAUTHOR_MODE == 'mutate' }}
         env:
-          OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
+          ONEXBOT_OCC_APP_ID: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          ONEXBOT_OCC_PRIVATE_KEY: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
         run: |
           set -euo pipefail
-          if [ -z "${OCC_AUTOAUTHOR_TOKEN:-}" ]; then
-            echo "::error::OMNI_OCC_AUTOAUTHOR_MODE=mutate requires OCC_AUTOAUTHOR_TOKEN with write access to OmniNode-ai/onex_change_control."
+          if [ -z "${ONEXBOT_OCC_APP_ID:-}" ] || [ -z "${ONEXBOT_OCC_PRIVATE_KEY:-}" ]; then
+            echo "::error::OMNI_OCC_AUTOAUTHOR_MODE=mutate requires org secrets ONEXBOT_OCC_APP_ID + ONEXBOT_OCC_PRIVATE_KEY (the least-privilege OnexBot-OCC-Writer GitHub App with contents:write + pull-requests:write on OmniNode-ai/onex_change_control; the org-wide CROSS_REPO_PAT is NOT an acceptable substitute). Provision them, or set repo variable OMNI_OCC_AUTOAUTHOR_MODE=dry_run to stand the durable write down. See OMN-15350 / OMN-14955."
             exit 1
           fi
+
+      - name: Mint OCC write token (OnexBot-OCC-Writer App, mutate only)
+        # Canonical App-token mint pattern (same as call-occ-attestation-observe.yml
+        # and pr-arch-review.yml), scoped down to the single target repo: the
+        # installation token can touch OmniNode-ai/onex_change_control ONLY, for
+        # this run only (~1h TTL) — strictly narrower than any long-lived PAT.
+        id: occ-app-token
+        if: ${{ vars.OMNI_OCC_AUTOAUTHOR_MODE == 'mutate' }}
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: OmniNode-ai
+          repositories: onex_change_control
 
       - name: Run node_occ_companion_effect (mode-gated)
         id: author
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}
+          OCC_WRITE_TOKEN: ${{ steps.occ-app-token.outputs.token }}
         run: |
           set -euo pipefail
           MODE="$(jq -r '.mode' occ_companion_author_payload.json)"
           if [ "$MODE" = "mutate" ]; then
-            export GITHUB_TOKEN="${OCC_AUTOAUTHOR_TOKEN:?mutate requires OCC_AUTOAUTHOR_TOKEN}"
+            # HandlerOccCompanionEffect resolves its write credential from
+            # GITHUB_TOKEN; point that at the minted, onex_change_control-scoped
+            # OnexBot-OCC-Writer installation token.
+            export GITHUB_TOKEN="${OCC_WRITE_TOKEN:?mode=mutate requires the minted OnexBot-OCC-Writer token}"
           fi
           uv run onex node node_occ_companion_effect \
             --input occ_companion_author_payload.json \
