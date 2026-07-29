@@ -220,6 +220,16 @@ def _field_confirms_pair(value: str, repo: str, pr_number: int) -> bool:
 #      command-not-found exit code that looks like a real check failure.
 _VAR_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
+# Shell control operators that can legitimately separate an assignment (or a
+# preceding pipeline stage) from the command this guard actually judges —
+# e.g. ``body="$(...)" && printf '%s' "$body" | grep -qF '<marker>'`` (the
+# OMN-15170 sigpipe-safe shape, OMN-15430): the first shlex token is the
+# whole ``body=$(...)`` assignment, the next is ``&&``, and only the token
+# after that is a real command name. These are skipped the same way a
+# leading ``VAR=VAL`` assignment is skipped — they are punctuation, not
+# prose and not a command.
+_SHELL_CONTROL_OPERATORS = frozenset({"&&", "||", ";", ";;", "|", "&"})
+
 # Shell keywords/builtins that are legitimate as the first token of a real
 # command but that ``shutil.which()`` cannot resolve (they are not
 # standalone executables on PATH).
@@ -252,12 +262,29 @@ _SHELL_KEYWORD_ALLOWLIST = frozenset(
 def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str | None:
     """Return a reason string when ``cmd_str`` looks like prose, not a command.
 
-    Strips leading ``VAR=VAL`` assignment tokens, then inspects the first
-    remaining token: if it ends with ``:`` (e.g. a stray ``"Recorded:"``
-    label) or cannot be resolved and is not a known shell keyword, this is
-    prose that must never be shelled out. Returns ``None`` when the shape
-    looks like a real command — this is a pure shape check; it never
-    executes anything and never judges by output content.
+    Tokenizes with ``shlex.split(cmd_str, posix=True)`` — a quote-respecting
+    parse, not a naive whitespace split — so a quoted command substitution
+    such as ``body="$(gh api ... | base64 -d)" && printf '%s' "$body" |
+    grep -qF '<marker>'`` (the OMN-15170 sigpipe-safe shape, OMN-15430) is
+    never split apart *inside* the quotes. A naive ``str.split()`` broke
+    into that substitution and inspected an inner word (``api``) as if it
+    were the command's first token, producing a false
+    ``INVALID_CHECK_VALUE_NOT_A_COMMAND`` on a check that runs correctly.
+
+    Strips leading ``VAR=VAL`` assignment tokens and leading shell control
+    operators (``&&``, ``||``, ``;``, ``;;``, ``|``, ``&`` — punctuation
+    that can legitimately separate an assignment from the command this
+    guard judges), then inspects the first remaining token: if it ends with
+    ``:`` (e.g. a stray ``"Recorded:"`` label) or cannot be resolved and is
+    not a known shell keyword, this is prose that must never be shelled
+    out. Returns ``None`` when the shape looks like a real command — this
+    is a pure shape check; it never executes anything and never judges by
+    output content.
+
+    If ``cmd_str`` cannot be tokenized at all (e.g. an unbalanced quote),
+    ``shlex.split`` raises ``ValueError`` — that is treated as fail-closed
+    INVALID: a check_value bash itself cannot parse is genuinely invalid,
+    never silently passed through.
 
     ``cwd`` is the check's OMN-10078-resolved working directory (or
     ``None`` to inherit the caller's cwd). A first token containing a path
@@ -268,14 +295,28 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
     against ``cwd`` (or the process cwd when ``cwd`` is ``None``) instead of
     going through ``shutil.which``.
     """
-    tokens = cmd_str.strip().split()
+    stripped = cmd_str.strip()
+    if not stripped:
+        return "empty command"
+    try:
+        tokens = shlex.split(stripped, posix=True)
+    except ValueError as exc:
+        return (
+            f"command could not be parsed as shell syntax ({exc}) — this "
+            "looks like prose, not a command"
+        )
     if not tokens:
         return "empty command"
     idx = 0
-    while idx < len(tokens) and _VAR_ASSIGNMENT_RE.match(tokens[idx]):
+    while idx < len(tokens) and (
+        _VAR_ASSIGNMENT_RE.match(tokens[idx]) or tokens[idx] in _SHELL_CONTROL_OPERATORS
+    ):
         idx += 1
     if idx >= len(tokens):
-        return "command is only VAR=VAL assignments; no executable token"
+        return (
+            "command has no resolvable executable token after leading "
+            "VAR=VAL assignments/shell operators"
+        )
     first = tokens[idx]
     if first.endswith(":"):
         return f"first token {first!r} looks like prose, not a command (ends with ':')"
