@@ -100,9 +100,14 @@ def _build_receipt(
     sha, branch = _git_info(working_dir)
     commit_sha = sha[:40] if sha and len(sha) >= 7 else _FALLBACK_SHA
 
+    # OMN-15380: PASS requires an actual VERIFIED outcome. A SKIPPED run
+    # (no contract found, or every check that ran was skipped) verified zero
+    # checks and must never receipt as PASS — the prior condition only
+    # excluded FAILED, so a SKIPPED run with failed_count == 0 receipted PASS
+    # despite proving nothing.
     status = (
         EnumReceiptStatus.PASS
-        if state.failed_count == 0 and state.status != EnumDodVerifyStatus.FAILED
+        if state.status == EnumDodVerifyStatus.VERIFIED
         else EnumReceiptStatus.FAIL
     )
 
@@ -247,7 +252,12 @@ def main() -> None:
         _write_receipt(receipt_path, receipt)
         sys.stdout.write(f"Receipt written to: {receipt_path}\n")
 
-    if state.status == EnumDodVerifyStatus.FAILED:
+    # OMN-15380: fail closed on anything short of an actual VERIFIED outcome.
+    # A SKIPPED run (no contract found -> zero checks; or every check that ran
+    # was skipped) verified nothing and must not exit 0 — the prior check only
+    # covered FAILED, so "no contract found for OMN-XXXX" (0 verified, 0
+    # failed, 1 skipped) exited 0 / printed no failure signal.
+    if state.status != EnumDodVerifyStatus.VERIFIED:
         sys.exit(1)
 
 

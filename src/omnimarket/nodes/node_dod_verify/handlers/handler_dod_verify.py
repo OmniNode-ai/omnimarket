@@ -111,12 +111,36 @@ class HandlerDodVerify:
         if failed > 0:
             overall = EnumDodVerifyStatus.FAILED
         elif len(checks) == 0 or skipped == len(checks):
-            overall = EnumDodVerifyStatus.SKIPPED
-        elif skipped == len(checks):
-            # All checks were skipped — do not claim VERIFIED
+            # No checks ran, or every check that ran was skipped — nothing was
+            # actually verified. Do not claim VERIFIED (OMN-15380: an empty
+            # verification set is not a pass).
             overall = EnumDodVerifyStatus.SKIPPED
         else:
             overall = EnumDodVerifyStatus.VERIFIED
+
+        error_message: str | None = None
+        if overall == EnumDodVerifyStatus.SKIPPED:
+            # OMN-15380: surface a distinct, machine-checkable reason so callers
+            # that only read ``error_message`` (e.g. RuntimeLocal._classify_result,
+            # which treats a populated error_message as an unambiguous failure
+            # signal) fail closed instead of silently succeeding on zero verified
+            # checks. Missing/unresolvable contract gets its own reason code
+            # because it is the highest-risk case: a ticket with no DoD contract
+            # at all is exactly the one most likely to be a false-Done.
+            if (
+                len(checks) == 1
+                and checks[0].evidence_id == "contract"
+                and checks[0].status == EnumEvidenceCheckStatus.SKIPPED
+            ):
+                error_message = (
+                    f"CONTRACT_MISSING: no DoD contract found for "
+                    f"{command.ticket_id}; zero checks were verified"
+                )
+            else:
+                error_message = (
+                    f"NO_CHECKS_VERIFIED: 0/{len(checks)} evidence checks "
+                    f"verified for {command.ticket_id}"
+                )
 
         state = ModelDodVerifyState(
             correlation_id=command.correlation_id,
@@ -128,6 +152,7 @@ class HandlerDodVerify:
             verified_count=verified,
             failed_count=failed,
             skipped_count=skipped,
+            error_message=error_message,
         )
 
         return state
