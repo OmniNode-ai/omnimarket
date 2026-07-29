@@ -52,6 +52,50 @@ def test_generation_events_migration_grants_only_required_access() -> None:
     assert "GRANT DELETE ON generation_events" not in sql
 
 
+def test_absent_role_omnidash_warns_instead_of_aborting_the_migration() -> None:
+    """OMN-15351: role_omnidash is environment-provisioned, so its absence WARNs.
+
+    role_omnidash exists on cloud RDS (out-of-band) and on a compose cluster only
+    when ROLE_OMNIDASH_PASSWORD was set at first-startup init; no migration
+    creates it. A RAISE EXCEPTION on its absence made every local-lane deploy
+    fatal at this file. Where the role exists the grants are unchanged.
+
+    Execution proof in both role states (real psql against an ephemeral cluster)
+    lives with the vendored copy that the deploy actually applies:
+    omnibase_infra tests/integration/db/test_generation_events_role_tolerance_omn15351.py.
+    """
+    sql = _normalized_sql()
+
+    assert "RAISE WARNING 'role_omnidash role missing" in sql
+    assert "RAISE EXCEPTION 'role_omnidash role missing" not in sql
+    # Not a silent skip: the warning names both grants it skips.
+    assert "SKIPPING 2 grants" in sql
+    assert "(1) GRANT USAGE ON SCHEMA public TO role_omnidash" in sql
+    assert (
+        "(2) GRANT SELECT, INSERT, UPDATE ON generation_events TO role_omnidash" in sql
+    )
+    # The grants themselves are guarded by the same existence check.
+    assert (
+        "IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'role_omnidash') THEN "
+        "EXECUTE 'GRANT USAGE ON SCHEMA public TO role_omnidash'; "
+        "EXECUTE 'GRANT SELECT, INSERT, UPDATE ON generation_events TO role_omnidash';"
+        in sql
+    )
+
+
+def test_app_dashboard_guard_stays_fail_closed() -> None:
+    """OMN-15351 relaxed the role_omnidash guard ONLY.
+
+    omnibase_infra forward migration 094 (OMN-14899) creates app_dashboard
+    in-repo, so its absence is a migration-ordering bug, not an environment
+    difference — the posture every sibling RLS migration takes.
+    """
+    sql = _normalized_sql()
+
+    assert "RAISE EXCEPTION 'app_dashboard role missing" in sql
+    assert "RAISE WARNING 'app_dashboard role missing" not in sql
+
+
 def test_generation_events_tenant_key_is_an_explicit_exposure_omission() -> None:
     allowlist = yaml.safe_load(_EXPOSURE_ALLOWLIST.read_text())
 
