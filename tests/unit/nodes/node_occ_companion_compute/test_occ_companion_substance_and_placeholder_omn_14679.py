@@ -156,6 +156,26 @@ def _minted_contract_checks(**request_overrides: object) -> list[str]:
     return [ck["check_value"] for item in data["dod_evidence"] for ck in item["checks"]]
 
 
+def _minted_contract_checks_by_item(
+    **request_overrides: object,
+) -> list[tuple[str, str]]:
+    """Same as :func:`_minted_contract_checks` but pairs each value with its
+    owning item id (OMN-15382: the self-bind item is a deliberate,
+    id-scoped exception to the placeholder-only rule — see
+    ``TestMintedContractClearsPlaceholderLint``).
+    """
+    plan = compute_companion_plan(_request(**request_overrides))
+    contract = next(
+        f for f in plan.companion_files if f.kind == EnumCompanionFileKind.CONTRACT
+    )
+    data = yaml.safe_load(contract.content)
+    return [
+        (str(item.get("id", "")), ck["check_value"])
+        for item in data["dod_evidence"]
+        for ck in item["checks"]
+    ]
+
+
 # A request whose OCC PR is known -> the contract ALSO declares the self-bind
 # item, exercising every check_value the producer can mint.
 _PASS2 = {
@@ -179,10 +199,25 @@ class TestMintedContractClearsPlaceholderLint:
             )
 
     def test_pass2_every_check_value_is_placeholder_normalized(self) -> None:
-        checks = _minted_contract_checks(**_PASS2)
+        pairs = _minted_contract_checks_by_item(**_PASS2)
         # downstream (view + diff) + validator + self-bind (view) = 4 checks.
-        assert len(checks) == 4
-        for cv in checks:
+        assert len(pairs) == 4
+        for item_id, cv in pairs:
+            if item_id.startswith("occ-self-bind-pr-"):
+                # OMN-15382 (F1x follow-up): the self-bind item is the ONE
+                # deliberate exception — its id embeds a PR number, so the
+                # live lint's Rule B (.onex_ratchets/omn_15382_rule_b_baseline.yaml,
+                # onex_change_control@06d4294e) now REQUIRES a literal pin
+                # there, not the placeholder. This local ``_lint_legacy_gh_pr``
+                # mirror predates Rule A/B and unconditionally rejects any
+                # hardcoded PR number, so it is intentionally not applied to
+                # this item; a real standalone hardcoded PR + literal --repo
+                # is lint-clean under the LIVE gate's Rule A (OMN-14431).
+                assert (
+                    cv
+                    == "gh pr view 4284 --repo OmniNode-ai/onex_change_control --json number,state"
+                ), cv
+                continue
             assert _lint_legacy_gh_pr(cv) is None, (
                 f"lint-contract-check-values rejects: {cv}"
             )

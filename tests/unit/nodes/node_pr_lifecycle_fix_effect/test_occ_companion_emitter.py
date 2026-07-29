@@ -497,10 +497,10 @@ class TestFullEmitFlow:
         )
         assert 'evidence_item_id: "dod-OmniNode-ai-omnimarket-pr-321-ci"' in ci_text
 
-        # OMN-14741 F-02: the contract declares all three items in canonical
-        # ${PR_NUMBER}/${REPO} placeholder form (lint-contract-check-values clean),
-        # NOT interpolated integers — existence probe, diff-scope `--json files`
-        # check (not `gh pr diff`/`gh pr checks`), and the self-bind item.
+        # OMN-14741 F-02: the downstream + CI items declare canonical
+        # ${PR_NUMBER}/${REPO} placeholder form (lint-contract-check-values
+        # clean) — existence probe and diff-scope `--json files` check (not
+        # `gh pr diff`/`gh pr checks`).
         contract_text = contract.read_text()
         assert (
             "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
@@ -509,9 +509,19 @@ class TestFullEmitFlow:
         assert "gh pr view ${PR_NUMBER} --repo ${REPO} --json files" in contract_text
         assert "gh pr checks" not in contract_text
         assert "gh pr diff" not in contract_text
-        # No hardcoded integer PR number in any contract check command (F-02).
+        # No hardcoded integer PR number for the PRODUCT PR in any contract
+        # check command (F-02).
         assert "gh pr view 321" not in contract_text
         assert 'id: "occ-self-bind-pr-55"' in contract_text
+        # OMN-15382: the self-bind item's OWN check_value is the literal
+        # OCC PR pin, NOT the ${PR_NUMBER}/${REPO} placeholder — a
+        # placeholder-only self-bind is a NEW Rule B (per-item PR binding)
+        # violation on every freshly-minted companion (see
+        # self_bind_check_value's docstring).
+        assert (
+            'check_value: "gh pr view 55 --repo OmniNode-ai/onex_change_control '
+            '--json number,state"' in contract_text
+        )
 
         # Action reports the single-producer companion bind.
         assert "OCC#55" in action

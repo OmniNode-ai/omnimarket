@@ -208,11 +208,42 @@ _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE = (
 )
 _CI_ITEM_PUBLIC_CHECK_VALUE = "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
 
-#: OCC self-bind provenance value. ``${REPO}``/``${PR_NUMBER}`` resolve to the OCC
-#: companion PR on its own Contract Compliance run, which is exactly the surface
-#: this item names -- so here the self-reference IS the point, and the item is
-#: honestly a binding record rather than a product proof.
+#: OCC self-bind provenance value (legacy placeholder form). ``${REPO}``/
+#: ``${PR_NUMBER}`` resolve to the OCC companion PR on its OWN Contract
+#: Compliance run -- but that is only ONE evaluation surface. OMN-15382
+#: (``.onex_ratchets/omn_15382_rule_b_baseline.yaml``, landed
+#: onex_change_control@06d4294e) hard-fails any NEW ``occ-self-bind-pr-<N>``
+#: dod_evidence item whose id embeds a PR number but whose ``gh pr
+#: view/checks/diff`` check_value never literally pins that number -- the
+#: bare placeholder silently re-targets whatever PR the evaluating runner
+#: (dod_verify, a DIFFERENT out-of-band surface with no ambient PR context)
+#: happens to be looking at instead. No longer used to render a self-bind
+#: item; kept only as the historical constant name some call sites still
+#: reference for the non-self-bind downstream item.
 _SELF_BIND_ITEM_CHECK_VALUE = _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE
+
+
+def self_bind_check_value(*, occ_pr_number: int, occ_repo: str) -> str:
+    """Return the literal, Rule-B-compliant self-bind ``check_value``.
+
+    OMN-15382 (F1x follow-up): the producer KNOWS its own OCC PR number and
+    repo at emission time -- ``occ_pr_number`` / ``occ_repo`` are already
+    passed to every self-bind call site. Rendering the bare ``${PR_NUMBER}``/
+    ``${REPO}`` placeholder here (the pre-fix form) is a genuinely NEW Rule B
+    (per-item PR binding) violation on every freshly-minted companion PR,
+    because ``occ-self-bind-pr-<N>``'s id embeds a PR number the check never
+    literally pins -- see ``.onex_ratchets/omn_15382_rule_b_baseline.yaml``
+    and ``lint_contract_check_values._pr_binding_violation`` on
+    ``onex_change_control``. A standalone hardcoded PR number with a literal
+    ``--repo`` (this shape) is the SANCTIONED cross-PR-reference form under
+    the SAME lint's Rule A/``_check_legacy_gh_pr`` (OMN-14431) -- it is
+    executable exactly as written, with no runner-side substitution, so it
+    also stays lint-clean under Rule A. This is the exact shape the
+    hand-authored ``occ-self-bind-pr-<N>-strict`` supersession entries used
+    to repair the pre-fix companions (see contracts/OMN-15382.yaml).
+    """
+    return f"gh pr view {occ_pr_number} --repo {occ_repo} --json number,state"
+
 
 # --- The minted admissible check (OMN-15247 R21b) ----------------------------
 #
@@ -586,15 +617,25 @@ _COMPUTE_CONTRACT_SECOND_CHECK_TEMPLATE = '      - check_type: "command"\n'
 # The rendered _COMPUTE_CONTRACT_TEMPLATE puts dod_evidence list items at 2-space
 # indent, so this block matches that exactly and continues the same sequence.
 #
-# OMN-14679: the check_value is rendered in the canonical placeholder-var form
-# (``${PR_NUMBER}`` / ``${REPO}``), never the live OCC PR integer, so the
-# self-bind item clears ``lint-contract-check-values`` (OMN-9350 / OMN-14673)
-# like the downstream item.
+# OMN-14679 (SUPERSEDED by OMN-15382, see below): the check_value used to be
+# rendered in the placeholder-var form (``${PR_NUMBER}`` / ``${REPO}``),
+# never the live OCC PR integer, on the theory that this cleared
+# ``lint-contract-check-values`` (OMN-9350 / OMN-14673) like the downstream
+# item. That theory only holds for the item's OWN Contract Compliance run
+# (where the runner-injected tokens happen to resolve to the same PR); a
+# DIFFERENT out-of-band evaluator (``dod_verify``) has no such ambient
+# context and cannot resolve a bare placeholder for an id that does not
+# embed owner/repo.
 #
-# OMN-15247 R21: it is no longer a bare existence probe (tier L0 /
-# NOT_EXECUTED). ``_SELF_BIND_ITEM_CHECK_VALUE`` asserts the bound PR has a
-# non-empty file list via ``gh api``, which is admissible under the OMN-15309
-# predicate and derives L1 via the substance floor's ``| grep`` family.
+# OMN-15382 (F1x follow-up): the check_value is rendered with the LITERAL
+# ``occ_pr_number`` / ``occ_repo`` (:func:`self_bind_check_value`), which the
+# producer already knows at emission time. The literal form is the
+# sanctioned standalone-hardcoded-PR-plus-literal-``--repo`` shape under the
+# SAME lint's Rule A (OMN-14431), and it is REQUIRED by that lint's Rule B
+# (``.onex_ratchets/omn_15382_rule_b_baseline.yaml``) — a placeholder-only
+# ``occ-self-bind-pr-<N>`` item is a genuinely NEW Rule B violation on every
+# freshly-minted companion, since the frozen baseline can never contain a
+# not-yet-existing PR number.
 _COMPUTE_SELF_BIND_ENTRY_HEAD_TEMPLATE = (
     '  - id: "{self_bind_evidence_id}"\n'
     '    description: "Binds {ticket_id} to OCC companion PR'
@@ -1163,13 +1204,22 @@ def render_self_bind_dod_evidence_item(
     ``check_type`` is ``command`` so the receipt path resolves to
     ``<ticket>/<evidence_id>/command.yaml``. The rendered item is a pure function
     of its inputs and carries no unsubstituted named placeholder.
+
+    OMN-15382: the check_value hardcodes the literal ``occ_pr_number`` /
+    ``occ_repo`` (via :func:`self_bind_check_value`) rather than the
+    ``${PR_NUMBER}``/``${REPO}`` runner placeholder -- see that function's
+    docstring for why the placeholder form is a Rule B violation on every
+    freshly-minted companion.
     """
     return _SELF_BIND_DOD_EVIDENCE_ITEM_TEMPLATE.format(
         evidence_id=evidence_id,
         occ_pr_number=occ_pr_number,
         occ_repo=occ_repo,
         ticket_id=ticket_id,
-    ) + render_check_value_field("check_value", _SELF_BIND_ITEM_CHECK_VALUE)
+    ) + render_check_value_field(
+        "check_value",
+        self_bind_check_value(occ_pr_number=occ_pr_number, occ_repo=occ_repo),
+    )
 
 
 def render_compute_companion_contract(
@@ -1265,7 +1315,12 @@ def render_compute_companion_contract(
                 occ_pr_number=occ_pr_number,
                 occ_repo=occ_repo,
             )
-            + render_check_value_field("check_value", _SELF_BIND_ITEM_CHECK_VALUE)
+            + render_check_value_field(
+                "check_value",
+                # OMN-15382: literal pin, not the ${PR_NUMBER}/${REPO}
+                # placeholder -- see self_bind_check_value's docstring.
+                self_bind_check_value(occ_pr_number=occ_pr_number, occ_repo=occ_repo),
+            )
         )
     return "".join(parts)
 
