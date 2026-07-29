@@ -45,6 +45,10 @@ _DELEGATION_FAIL_TOPIC = "onex.evt.omnibase-infra.delegation-failed.v1"
 _DELEGATE_COMMAND_TOPIC = "onex.cmd.omnimarket.delegate-skill.v1"
 _DELEGATE_DONE_TOPIC = "onex.evt.omnimarket.delegate-skill-completed.v1"
 _DELEGATE_FAIL_TOPIC = "onex.evt.omnimarket.delegate-skill-failed.v1"
+_DELEGATION_REQUEST_TOPIC = "onex.cmd.omnibase-infra.delegation-request.v1"
+_ROUTING_DECISION_TOPIC = "onex.evt.omnibase-infra.routing-decision.v1"
+_INFERENCE_RESPONSE_TOPIC = "onex.evt.omnibase-infra.inference-response.v1"
+_QUALITY_GATE_RESULT_TOPIC = "onex.evt.omnibase-infra.quality-gate-result.v1"
 _GENERATION_COMMAND_TOPIC = "onex.cmd.omnimarket.node-generation-requested.v1"
 _GENERATION_DONE_TOPIC = "onex.evt.omnimarket.node-generation-completed.v1"
 _GENERATION_FAIL_TOPIC = "onex.evt.omnimarket.node-generation-failed.v1"
@@ -461,6 +465,43 @@ class TestHandlerProjectionLiveEventsHandle:
         assert rows[0]["source"] == "omnibase-infra"
         assert rows[0]["correlation_id"] == "corr-xyz"
 
+    def test_handle_deduplicates_redelivery_by_typed_envelope_id(self) -> None:
+        handler = HandlerProjectionLiveEvents()
+        db = InmemoryDatabaseAdapter()
+        envelope_id = uuid4()
+        payload: dict[str, object] = {
+            "_db": db,
+            "_topic": _INFERENCE_RESPONSE_TOPIC,
+            "_envelope_id": envelope_id,
+            "correlation_id": "corr-redelivery-1",
+            "status": "completed",
+        }
+
+        first = handler.handle(dict(payload))
+        second = handler.handle(dict(payload))
+
+        assert first["event_id"] == str(envelope_id)
+        assert second["event_id"] == str(envelope_id)
+        rows = db.query(TABLE)
+        assert len(rows) == 1
+        assert "_envelope_id" not in json.loads(rows[0]["payload"])
+
+    def test_handle_classifies_routing_decision_as_routing(self) -> None:
+        handler = HandlerProjectionLiveEvents()
+        db = InmemoryDatabaseAdapter()
+
+        handler.handle(
+            {
+                "_db": db,
+                "_topic": _ROUTING_DECISION_TOPIC,
+                "_envelope_id": uuid4(),
+                "correlation_id": "corr-routing-1",
+            }
+        )
+
+        rows = db.query(TABLE)
+        assert rows[0]["type"] == "ROUTING"
+
 
 # ---------------------------------------------------------------------------
 # 5. Contract schema sanity
@@ -489,6 +530,10 @@ class TestContractSchema:
         assert _DELEGATE_COMMAND_TOPIC in topics
         assert _DELEGATE_DONE_TOPIC in topics
         assert _DELEGATE_FAIL_TOPIC in topics
+        assert _DELEGATION_REQUEST_TOPIC in topics
+        assert _ROUTING_DECISION_TOPIC in topics
+        assert _INFERENCE_RESPONSE_TOPIC in topics
+        assert _QUALITY_GATE_RESULT_TOPIC in topics
         assert _GENERATION_COMMAND_TOPIC in topics
         assert _GENERATION_DONE_TOPIC in topics
         assert _GENERATION_FAIL_TOPIC in topics

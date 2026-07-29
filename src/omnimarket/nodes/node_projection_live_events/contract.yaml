@@ -1,8 +1,8 @@
 ---
 name: projection_live_events
-contract_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 1, minor: 2, patch: 0}
 node_type: reducer
-node_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 2, patch: 0}
 input_model: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events.ModelLiveEvent
 description: >
   Projects operator-relevant platform and workflow bus events into the live_events table.
@@ -63,6 +63,10 @@ event_bus:
     - onex.cmd.omnimarket.delegate-skill.v1
     - onex.evt.omnimarket.delegate-skill-completed.v1
     - onex.evt.omnimarket.delegate-skill-failed.v1
+    - onex.cmd.omnibase-infra.delegation-request.v1
+    - onex.evt.omnibase-infra.routing-decision.v1
+    - onex.evt.omnibase-infra.inference-response.v1
+    - onex.evt.omnibase-infra.quality-gate-result.v1
     - onex.evt.omnibase-infra.delegation-completed.v1
     - onex.evt.omnibase-infra.delegation-failed.v1
     # Node-generation lifecycle

@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
@@ -52,7 +52,7 @@ def _classify_topic(topic: str) -> tuple[str, str]:
         return "ERROR", service
     if ".cmd." in topic_lower:
         return "COMMAND", service
-    if "delegation-completed" in topic_lower or "delegation" in topic_lower:
+    if "routing-decision" in topic_lower or "delegation" in topic_lower:
         return "ROUTING", service
     if "state-change" in topic_lower or "transformation" in topic_lower:
         return "TRANSFORMATION", service
@@ -145,7 +145,13 @@ class ModelLiveEvent(BaseModel):
     )
 
     @classmethod
-    def from_raw(cls, raw: dict[str, Any], topic: str) -> ModelLiveEvent:
+    def from_raw(
+        cls,
+        raw: dict[str, Any],
+        topic: str,
+        *,
+        envelope_id: UUID | None = None,
+    ) -> ModelLiveEvent:
         """Construct from a raw event dict and the source topic string.
 
         Applies topic-derived defaults for fields not present in the payload
@@ -153,7 +159,9 @@ class ModelLiveEvent(BaseModel):
         """
         topic_type, topic_source = _classify_topic(topic)
         return cls(
-            event_id=_resolve_event_id(raw),
+            event_id=str(envelope_id)
+            if envelope_id is not None
+            else _resolve_event_id(raw),
             type=raw.get("type") or raw.get("event_type") or topic_type,
             timestamp=_resolve_timestamp(raw),
             source=raw.get("source")
@@ -202,8 +210,12 @@ class HandlerProjectionLiveEvents:
                 "handle() requires input_data['_topic'] as a non-empty string"
             )
 
+        envelope_id = input_data.pop("_envelope_id", None)
+        if envelope_id is not None and not isinstance(envelope_id, UUID):
+            raise TypeError("input_data['_envelope_id'] must be a UUID when present")
+
         raw: dict[str, Any] = dict(input_data)
-        event = ModelLiveEvent.from_raw(raw, topic)
+        event = ModelLiveEvent.from_raw(raw, topic, envelope_id=envelope_id)
         result = self.project(event, db_raw)
         return result.model_dump(mode="json")
 
