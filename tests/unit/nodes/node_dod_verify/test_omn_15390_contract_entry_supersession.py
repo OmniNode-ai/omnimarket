@@ -34,6 +34,32 @@ mechanism did not:
    FALSE red; it may never manufacture a green. Asserted at the RECEIPT layer —
    the durable artifact — not just at the inner state.
 
+Adversarial-review remediation (2026-07-29, after omnimarket#1952 merged into
+its stacked parent). Two of the above were asserted but did not hold, and the
+tests that named them were built so they could not notice:
+
+* **The anti-laundering guard was scoped to a GLOBAL ``verified == 0``**, which
+  any single unrelated passing sibling defeats. Executed against the real
+  collector/handler/``_build_receipt`` path, the contract ``[dod-fail(false),
+  dod-other(true), dod-marker(checks: [], supersedes dod-fail)]`` receipted
+  **PASS** while the identical contract without the marker receipted **FAIL** —
+  appending one evidence-free item still laundered a red into a green. Only the
+  degenerate zero-passing-item case had been closed, and the test named for the
+  property exercised only that case. The rule is now PER-EDGE
+  (``EvidenceCollector._supersession_is_in_effect``): an edge fires only when
+  the item that ultimately carries the verdict is itself VERIFIED.
+* **The "identical for every input" parity claim was false.** The runner skipped
+  a marker-carrying item BEFORE reading its marker whenever the carrier's own
+  ``id`` was missing/empty/non-string/null, while OCC's real
+  ``_superseded_dod_ids`` evaluates ``supersedes in seen`` regardless — 4 of 5
+  such shapes diverged, in the runner-STRICTER-than-gate direction (this
+  ticket's original bug class), and with an EMPTY ``malformed`` map, i.e.
+  silently. The exhaustive differential could not catch it because its domain
+  emitted only well-formed string ids. The domain now includes those shapes
+  (:func:`_non_canonical_id_contracts`), and
+  :func:`test_the_exhaustive_domain_actually_contains_the_divergence_it_claims`
+  stops it being narrowed back.
+
 RED-before / GREEN-after (recorded, both directions):
 
 * Reverting the ordering rule in ``_resolve_supersessions`` to the position-blind
@@ -41,9 +67,15 @@ RED-before / GREEN-after (recorded, both directions):
   exhaustive differential RED (the forward-marker cases diverge from the gate).
 * Reverting ``total_checks=non_superseded_total`` to ``len(checks)`` turns
   ``test_total_checks_is_the_verdict_bearing_denominator`` RED.
-* Reverting the ``superseded > 0 and verified == 0`` branch turns
-  ``test_marker_that_proves_nothing_cannot_launder_a_fail_into_a_pass_receipt``
-  RED — that assertion is exactly the fail-open an adversarial review found.
+* Reverting ``_supersession_is_in_effect`` to "any well-formed edge fires" turns
+  ``test_marker_that_proves_nothing_cannot_launder_a_fail_into_a_pass_receipt``,
+  ``test_a_superseder_that_does_not_verify_retires_nothing`` and
+  ``test_a_chain_is_carried_by_its_terminal_item`` RED.
+* Restoring the ``if not isinstance(item_id, str) or not item_id: continue``
+  guard ahead of the marker read turns
+  ``test_runner_matches_the_gate_algorithm_over_every_small_contract``,
+  ``test_a_marker_on_an_id_less_item_is_honoured_exactly_like_the_gate`` and
+  ``test_a_broken_marker_on_an_id_less_item_is_not_a_silent_skip`` RED.
 """
 
 from __future__ import annotations
@@ -89,13 +121,26 @@ _MARKER_PREFIX = "supersedes_dod_evidence:"
 # ---------------------------------------------------------------------------
 
 
+_NO_ID = object()
+"""Sentinel for ``_item(..., item_id=_NO_ID)`` — emit an item with no ``id`` key."""
+
+
 def _item(
-    item_id: str,
+    item_id: Any,
     *,
     check_value: str | None = None,
     supersedes: str | None = None,
 ) -> dict[str, Any]:
-    item: dict[str, Any] = {"id": item_id, "description": f"item {item_id}"}
+    """Build one dod_evidence item.
+
+    ``item_id`` is deliberately typed ``Any``: the OCC gate honours a marker
+    regardless of whether the CARRYING item has a usable ``id``, so the parity
+    tests must be able to express a carrier with no ``id`` key (``_NO_ID``), an
+    empty string, a non-string, or ``None``.
+    """
+    item: dict[str, Any] = {"description": f"item {item_id}"}
+    if item_id is not _NO_ID:
+        item["id"] = item_id
     item["checks"] = (
         []
         if check_value is None
@@ -143,9 +188,26 @@ def _by_id(state: ModelDodVerifyState) -> dict[str, EnumEvidenceCheckStatus]:
 
 
 def _resolve(dod_evidence: list[Any]) -> tuple[set[str], set[str]]:
-    """(superseded ids, ids carrying a marker that resolved to nothing)."""
+    """(superseded ids, LABELS of items carrying a marker that resolved to nothing).
+
+    ``_SupersessionResolution.malformed`` is keyed by item INDEX so a broken
+    marker on an item with a missing/empty/non-string ``id`` is still
+    reportable instead of being a silent no-op. Tests and the shared corpus
+    stay id-expressed, so this translates each index back to the carrier's
+    label — its ``id`` when it has a usable one, else ``dod_evidence[<n>]``,
+    which is exactly what the runner puts in the receipt.
+    """
     resolution = EvidenceCollector._resolve_supersessions(dod_evidence)
-    return set(resolution.superseded), set(resolution.malformed)
+    labels: set[str] = set()
+    for index in resolution.malformed:
+        item = dod_evidence[index]
+        item_id = item.get("id") if isinstance(item, dict) else None
+        labels.add(
+            item_id
+            if isinstance(item_id, str) and item_id
+            else f"dod_evidence[{index}]"
+        )
+    return set(resolution.superseded), labels
 
 
 # ---------------------------------------------------------------------------
@@ -237,13 +299,24 @@ class TestSupersessionCannotRescueAnUnrelatedFailure:
         """Anti-laundering, asserted at the RECEIPT — the durable artifact.
 
         Appending ONE marker item that declares no passing check of its own
-        retires a genuinely-failing entry and drops ``failed_count`` to 0. If
-        the verdict were merely "not FAILED" that would receipt as PASS: a
-        strictly worse outcome than the FAIL it replaced, on the only
-        sanctioned Done-flip path. Supersession may remove a FALSE red; it may
-        never manufacture a green.
+        must not retire a genuinely-failing entry. Supersession may remove a
+        FALSE red; it may never manufacture a green.
+
+        The contract carries a PASSING sibling on purpose. An earlier revision
+        of this fix guarded only on a GLOBAL ``verified == 0``, which the
+        single-item shape below satisfies but which ANY unrelated passing
+        entry defeats — so that guard closed only the degenerate case while
+        the property this test names still did not hold. The real rule is
+        per-edge (``_supersession_is_in_effect``): the SUPERSEDING item must
+        verify in its own right.
         """
-        without_marker = _verify(tmp_path, [_item("dod-a", check_value="false")])
+        without_marker = _verify(
+            tmp_path,
+            [
+                _item("dod-a", check_value="false"),
+                _item("dod-pass", check_value="true"),
+            ],
+        )
         assert without_marker.status == EnumDodVerifyStatus.FAILED
         assert _build_receipt(without_marker, None, tmp_path)["status"] == "FAIL"
 
@@ -251,13 +324,124 @@ class TestSupersessionCannotRescueAnUnrelatedFailure:
             tmp_path,
             [
                 _item("dod-a", check_value="false"),
-                _item("dod-b", supersedes="dod-a"),
+                _item("dod-pass", check_value="true"),
+                _item("dod-marker", supersedes="dod-a"),
             ],
         )
-        assert with_marker.superseded_count == 1
-        assert with_marker.verified_count == 0
+        statuses = _by_id(with_marker)
+
+        # The marker proved nothing (``checks: []`` -> SKIPPED), so it retired
+        # nothing and the failing entry was executed normally.
+        assert statuses["dod-marker"] == EnumEvidenceCheckStatus.SKIPPED
+        assert statuses["dod-a"] == EnumEvidenceCheckStatus.FAILED
+        assert with_marker.superseded_count == 0
+        assert with_marker.failed_count == 1
         assert with_marker.status == EnumDodVerifyStatus.FAILED
         assert _build_receipt(with_marker, None, tmp_path)["status"] == "FAIL"
+
+        # The rejection is stated on the entry, not inferred from a bare red.
+        rejected = next(c for c in with_marker.checks if c.evidence_id == "dod-a")
+        assert "SUPERSESSION_NOT_IN_EFFECT" in rejected.message
+
+    @pytest.mark.parametrize(
+        ("superseder_check", "expected_superseder_status"),
+        [
+            (None, EnumEvidenceCheckStatus.SKIPPED),  # checks: []
+            ("false", EnumEvidenceCheckStatus.FAILED),  # its own check fails
+        ],
+        ids=["superseder_declares_no_checks", "superseder_own_check_fails"],
+    )
+    def test_a_superseder_that_does_not_verify_retires_nothing(
+        self,
+        tmp_path: Path,
+        superseder_check: str | None,
+        expected_superseder_status: EnumEvidenceCheckStatus,
+    ) -> None:
+        """A well-formed marker is NOT sufficient — the superseder must prove itself.
+
+        Resolution says which edges are legal; effectiveness says which fire.
+        A superseder that skips or fails retires nothing, so its target is
+        executed and its own verdict stands.
+        """
+        state = _verify(
+            tmp_path,
+            [
+                _item("dod-orig", check_value="false"),
+                _item("dod-pass", check_value="true"),
+                _item(
+                    "dod-repair", check_value=superseder_check, supersedes="dod-orig"
+                ),
+            ],
+        )
+        statuses = _by_id(state)
+
+        assert statuses["dod-repair"] == expected_superseder_status
+        assert statuses["dod-orig"] == EnumEvidenceCheckStatus.FAILED
+        assert state.superseded_count == 0
+        assert state.status == EnumDodVerifyStatus.FAILED
+        assert _build_receipt(state, None, tmp_path)["status"] == "FAIL"
+
+    def test_a_verifying_superseder_still_retires_its_target(
+        self, tmp_path: Path
+    ) -> None:
+        """The positive control for the rule above — the repair idiom still works.
+
+        Without this, "make the superseder prove itself" could be satisfied by
+        never superseding anything, which would re-break the ticket.
+        """
+        state = _verify(
+            tmp_path,
+            [
+                _item("dod-orig", check_value="false"),
+                _item("dod-pass", check_value="true"),
+                _item("dod-repair", check_value="true", supersedes="dod-orig"),
+            ],
+        )
+        statuses = _by_id(state)
+
+        assert statuses["dod-orig"] == EnumEvidenceCheckStatus.SUPERSEDED
+        assert statuses["dod-repair"] == EnumEvidenceCheckStatus.VERIFIED
+        assert state.superseded_count == 1
+        assert state.failed_count == 0
+        assert state.status == EnumDodVerifyStatus.VERIFIED
+        assert _build_receipt(state, None, tmp_path)["status"] == "PASS"
+
+    def test_a_chain_is_carried_by_its_terminal_item(self, tmp_path: Path) -> None:
+        """A retires-B-retires-C chain hangs on the TERMINAL item's verdict.
+
+        The gate retires both ``dod-a`` and ``dod-b``, so ``dod-c`` is what
+        actually proves anything. If ``dod-c`` proves nothing, neither earlier
+        entry may be retired on its behalf.
+        """
+        proven = _verify(
+            tmp_path,
+            [
+                _item("dod-a", check_value="false"),
+                _item("dod-b", check_value="false", supersedes="dod-a"),
+                _item("dod-c", check_value="true", supersedes="dod-b"),
+            ],
+        )
+        assert _by_id(proven) == {
+            "dod-a": EnumEvidenceCheckStatus.SUPERSEDED,
+            "dod-b": EnumEvidenceCheckStatus.SUPERSEDED,
+            "dod-c": EnumEvidenceCheckStatus.VERIFIED,
+        }
+        assert proven.status == EnumDodVerifyStatus.VERIFIED
+
+        unproven = _verify(
+            tmp_path,
+            [
+                _item("dod-a", check_value="false"),
+                _item("dod-b", check_value="false", supersedes="dod-a"),
+                _item("dod-c", supersedes="dod-b"),  # checks: [] -> proves nothing
+            ],
+        )
+        statuses = _by_id(unproven)
+        assert statuses["dod-a"] == EnumEvidenceCheckStatus.FAILED
+        assert statuses["dod-b"] == EnumEvidenceCheckStatus.FAILED
+        assert unproven.superseded_count == 0
+        assert unproven.status == EnumDodVerifyStatus.FAILED
+        assert _build_receipt(unproven, None, tmp_path)["status"] == "FAIL"
 
 
 # ---------------------------------------------------------------------------
@@ -411,6 +595,18 @@ def _gate_algorithm_superseded_ids(dod_evidence: list[Any]) -> set[str]:
     return superseded
 
 
+_NON_CANONICAL_IDS: list[Any] = [_NO_ID, "", 7, None]
+"""Carrying-item ``id`` shapes the gate tolerates and the runner once did not.
+
+``_superseded_dod_ids`` evaluates ``if supersedes in seen`` BEFORE (and
+independently of) anything about the carrier's own ``id``. A revision of this
+runner gated on the carrier's id first and so silently missed the supersession
+for every one of these four shapes — runner-STRICTER-than-gate, this ticket's
+original bug class re-created. The exhaustive differential below is only
+non-vacuous on that axis if the domain actually contains them.
+"""
+
+
 def _small_contracts() -> list[list[dict[str, Any]]]:
     """Every contract of 1..3 items over a fixed id alphabet and marker space."""
     ids = ["dod-0", "dod-1", "dod-2"]
@@ -427,6 +623,36 @@ def _small_contracts() -> list[list[dict[str, Any]]]:
     return contracts
 
 
+def _non_canonical_id_contracts() -> list[list[dict[str, Any]]]:
+    """The same marker space, but with a NON-CANONICAL id on the carrier.
+
+    Two-item contracts ``[dod-0, <carrier>]`` where the carrier's ``id`` is
+    each shape in :data:`_NON_CANONICAL_IDS` and its marker ranges over the
+    whole marker space (backward, self-ish, absent, none). Kept separate from
+    :func:`_small_contracts` so the well-formed domain's arity assertion still
+    documents its own size.
+    """
+    marker_choices: list[str | None] = [None, "dod-0", "dod-1", "dod-absent", ""]
+    contracts: list[list[dict[str, Any]]] = []
+    for carrier_id in _NON_CANONICAL_IDS:
+        for marker in marker_choices:
+            contracts.append(
+                [
+                    _item("dod-0", check_value="true"),
+                    _item(carrier_id, check_value="true", supersedes=marker),
+                ]
+            )
+            # ...and with the non-canonical carrier declared FIRST, so the
+            # ordering rule is exercised from both sides.
+            contracts.append(
+                [
+                    _item(carrier_id, check_value="true", supersedes=marker),
+                    _item("dod-0", check_value="true"),
+                ]
+            )
+    return contracts
+
+
 @pytest.mark.unit
 def test_runner_matches_the_gate_algorithm_over_every_small_contract() -> None:
     """Set-equality with the gate, proven exhaustively over a bounded domain.
@@ -436,16 +662,120 @@ def test_runner_matches_the_gate_algorithm_over_every_small_contract() -> None:
     marker, a marker to any of the three ids, or a marker to an absent id —
     including every forward, backward, self and mutually-referential shape —
     must produce the SAME superseded set in the runner as in the gate
-    algorithm. Runs unconditionally: no OCC checkout required.
+    algorithm. The domain also includes carriers whose OWN ``id`` is missing,
+    empty, non-string or null, which is the axis on which the runner most
+    recently diverged. Runs unconditionally: no OCC checkout required.
     """
     contracts = _small_contracts()
     assert len(contracts) == 5 + 25 + 125
 
-    for contract in contracts:
+    non_canonical = _non_canonical_id_contracts()
+    assert len(non_canonical) == len(_NON_CANONICAL_IDS) * 5 * 2
+
+    for contract in contracts + non_canonical:
         superseded, _ = _resolve(contract)
         assert superseded == _gate_algorithm_superseded_ids(contract), (
             f"runner/gate divergence on {[i.get('evidence_artifact') for i in contract]}"
         )
+
+
+@pytest.mark.unit
+def test_the_exhaustive_domain_actually_contains_the_divergence_it_claims() -> None:
+    """Guard against the domain being (re)chosen so it cannot fail.
+
+    The previous domain emitted only well-formed string ids, so it could not
+    contain the missing/empty/non-string/null-carrier divergence at all — it
+    passed while the invariant it named did not hold. This pins that at least
+    one contract in the domain BOTH supersedes something AND does so from a
+    carrier with an unusable id.
+    """
+    discriminating = [
+        contract
+        for contract in _non_canonical_id_contracts()
+        if _gate_algorithm_superseded_ids(contract)
+    ]
+    assert discriminating, "domain no longer exercises non-canonical carriers"
+    for contract in discriminating:
+        carrier = contract[-1]
+        assert not isinstance(carrier.get("id"), str) or not carrier.get("id")
+
+
+@pytest.mark.unit
+def test_a_marker_on_an_id_less_item_is_honoured_exactly_like_the_gate(
+    tmp_path: Path,
+) -> None:
+    """End-to-end, through the real collector: parity is not just set-level.
+
+    A carrier with no usable ``id`` still supersedes, and still has to prove
+    itself first — the two rules compose rather than one excusing the other.
+    """
+    state = _verify(
+        tmp_path,
+        [
+            _item("dod-a", check_value="false"),
+            _item(_NO_ID, check_value="true", supersedes="dod-a"),
+        ],
+    )
+    assert _by_id(state)["dod-a"] == EnumEvidenceCheckStatus.SUPERSEDED
+    assert state.superseded_count == 1
+    assert state.status == EnumDodVerifyStatus.VERIFIED
+
+    unproven = _verify(
+        tmp_path,
+        [
+            _item("dod-a", check_value="false"),
+            _item(_NO_ID, supersedes="dod-a"),  # checks: [] -> proves nothing
+        ],
+    )
+    assert _by_id(unproven)["dod-a"] == EnumEvidenceCheckStatus.FAILED
+    assert unproven.superseded_count == 0
+    assert unproven.status == EnumDodVerifyStatus.FAILED
+
+
+@pytest.mark.unit
+def test_a_broken_marker_on_an_id_less_item_is_not_a_silent_skip(
+    tmp_path: Path,
+) -> None:
+    """Fail-closed reporting must not depend on the carrier having an ``id``.
+
+    Keying the malformed map by id made this exact case a silent no-op: the
+    marker resolved to nothing, nothing was reported, and the contract read
+    clean. It is reported against the carrier's POSITION instead.
+    """
+    state = _verify(
+        tmp_path,
+        [
+            _item("dod-a", check_value="true"),
+            _item(_NO_ID, check_value="true", supersedes="dod-typo"),
+        ],
+    )
+    statuses = _by_id(state)
+
+    assert statuses["dod_evidence[1]"] == EnumEvidenceCheckStatus.FAILED
+    assert state.status == EnumDodVerifyStatus.FAILED
+    carrier = next(c for c in state.checks if c.evidence_id == "dod_evidence[1]")
+    assert "DANGLING_SUPERSESSION" in carrier.message
+
+
+@pytest.mark.unit
+def test_a_superseded_entry_always_implies_a_verified_carrier_across_the_domain(
+    tmp_path: Path,
+) -> None:
+    """The invariant that makes the handler's global backstop unreachable.
+
+    ``HandlerDodVerify._handle_typed`` keeps a ``superseded > 0 and
+    verified == 0`` branch for the caller-supplied-results path. Via the
+    collector it must be dead code, because an edge only fires when its
+    carrier VERIFIED. Asserted over the whole executable domain rather than by
+    reading the code.
+    """
+    for contract in _non_canonical_id_contracts()[:20]:
+        state = _verify(tmp_path, contract)
+        if state.superseded_count > 0:
+            assert state.verified_count > 0, (
+                "superseded entry with no verified carrier: "
+                f"{[i.get('evidence_artifact') for i in contract]}"
+            )
 
 
 @pytest.mark.unit
@@ -514,6 +844,14 @@ def test_occ_gate_agrees_with_the_runner_on_the_shared_corpus() -> None:
         assert superseded == expected
 
     # Pin the transcribed oracle to the real function over the whole
-    # exhaustive domain, not just the corpus.
-    for contract in _small_contracts():
+    # exhaustive domain, not just the corpus — including the non-canonical
+    # carrier-id shapes, which is where the runner last diverged from the
+    # REAL function while the transcribed oracle agreed with both.
+    for contract in _small_contracts() + _non_canonical_id_contracts():
         assert occ_superseded_ids(contract) == _gate_algorithm_superseded_ids(contract)
+        superseded, _ = _resolve(contract)
+        assert superseded == occ_superseded_ids(contract), (
+            "runner diverges from the REAL OCC gate on "
+            f"{[i.get('id', '<no id>') for i in contract]} / "
+            f"{[i.get('evidence_artifact') for i in contract]}"
+        )

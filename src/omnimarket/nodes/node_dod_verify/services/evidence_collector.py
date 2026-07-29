@@ -334,24 +334,46 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
 # while the OCC gate still executed it — a runner-more-permissive-than-gate
 # divergence on the only sanctioned Done-flip path.
 #
-# This runner is deliberately STRICTER than the OCC-side scripts on the
-# shapes where a marker resolves to NOTHING. Those scripts simply no-op
-# there (they are advisory lint/compliance surfaces); here supersession
-# DELETES a FAILED verdict, so a marker that silently did nothing would
-# leave an author believing a contract was repaired when it was not. Each of
-# these is a hard RED on the entry CARRYING the marker — never on the target,
-# and never a silent skip:
+# The parity above is on the superseded SET ONLY, and it is unconditional:
+# the marker is resolved BEFORE any judgement about the CARRYING item's own
+# ``id``, because ``_superseded_dod_ids`` evaluates ``if supersedes in seen``
+# whether or not the carrier has a usable id. An earlier revision of this
+# runner gated on the carrier's id first and so MISSED four non-canonical
+# shapes the gate honours (carrier with no ``id`` key, ``id: ""``, ``id: 7``,
+# ``id: None``) — runner-STRICTER-than-gate, which is this ticket's original
+# bug class re-created, and silent besides. Hence ``superseded`` is keyed to
+# the superseder's INDEX and ``malformed`` to the carrier's INDEX; ids are
+# used for display only.
+#
+# On the shapes where a marker resolves to NOTHING this runner is deliberately
+# STRICTER than the OCC-side scripts. Those scripts simply no-op there (they
+# are advisory lint/compliance surfaces); here supersession DELETES a FAILED
+# verdict, so a marker that silently did nothing would leave an author
+# believing a contract was repaired when it was not. Each of these is a hard
+# RED on the entry CARRYING the marker — never on the target, never a silent
+# skip, and reported even when the carrier has no usable id:
 #   * "dangling" — the target id exists nowhere in the contract (typo, or the
 #     target item was removed);
 #   * "forward" — the target exists but is declared LATER, which supersedes
 #     nothing under the ordering rule above;
 #   * "self-reference" — an item naming its own id.
-# The superseded SET is unaffected by these diagnostics, so parity with OCC
-# holds: in every such case both consumers agree that nothing was superseded.
+# The superseded SET is unaffected by these diagnostics, so set-parity with
+# OCC holds: in every such case both consumers agree nothing was superseded.
 #
 # Because every accepted edge points strictly backwards in declaration order,
 # the relation is acyclic by construction and resolution is a single forward
-# pass — there is no graph to walk and no cycle to detect.
+# pass — there is no cycle to detect. Chains (A retired by B, B retired by C)
+# are legal and terminate at C, which is the item that actually proves
+# something; see ``_terminal_superseder``.
+#
+# WELL-FORMED IS NOT SUFFICIENT (OMN-15390 anti-laundering). Resolution says
+# which edges are legal; it does NOT say which ones fire. An edge retires its
+# target only when the item that ultimately carries the verdict is itself
+# VERIFIED — see ``_supersession_is_in_effect``. A superseder that declares
+# ``checks: []``, skips, or fails retires nothing, and its target is executed
+# normally with the rejection stated on the result. Without that condition,
+# appending one evidence-free marker item flips a FAIL receipt to PASS on the
+# only sanctioned Done-flip path.
 #
 # A superseded item's checks are not executed and no ``::pr-live-state``
 # check is appended for it (see ``_collect_impl``).
@@ -383,18 +405,25 @@ def _supersedes_marker(value: object) -> str | None:
 class _SupersessionResolution:
     """Result of resolving a contract's ``supersedes_dod_evidence`` markers.
 
-    ``superseded`` maps a superseded item's id -> the id of the LATER item
-    that supersedes it (for the audit message); this mapping is exactly the
-    set ``contract_compliance_check._superseded_dod_ids`` computes.
-    ``malformed`` maps an item's id -> a fail-closed reason string for a
+    ``superseded`` maps a superseded item's id -> the INDEX of the LATER item
+    that supersedes it; ``set(superseded)`` is exactly the set
+    ``contract_compliance_check._superseded_dod_ids`` computes, for every
+    input. The value is an index rather than an id because the OCC gate
+    honours a marker regardless of whether its CARRYING item has a usable
+    ``id``, so the superseder is not always nameable — but it must still be
+    identifiable, both for the audit message and for the effectiveness check
+    in ``_collect_impl``.
+
+    ``malformed`` maps an item's INDEX -> a fail-closed reason string for a
     marker on THAT item that resolved to nothing (dangling target, forward
-    reference, or self-reference). An id present in both is reported as
-    malformed (checked first) — a broken marker is surfaced loudly rather
-    than silently treated as a clean supersession.
+    reference, or self-reference). Indexed for the same reason: keying by id
+    made a broken marker on an id-less item a SILENT no-op (OMN-15390
+    remediation). A marker is never both superseding and malformed, since the
+    two outcomes are exclusive branches of the same resolution step.
     """
 
-    superseded: dict[str, str] = field(default_factory=dict)
-    malformed: dict[str, str] = field(default_factory=dict)
+    superseded: dict[str, int] = field(default_factory=dict)
+    malformed: dict[int, str] = field(default_factory=dict)
 
 
 class EvidenceCollector:
@@ -745,8 +774,45 @@ class EvidenceCollector:
 
         supersession = self._resolve_supersessions(dod_items)
 
+        # OMN-15390 (remediation): resolving the markers only says which EDGES
+        # are well-formed. Whether an edge actually RETIRES its target is a
+        # second, stricter question — it depends on the superseding item's own
+        # executed verdict, which is not known until that item runs. Hence two
+        # phases: run every item that is not a supersession target, then let
+        # each target's terminal superseder decide whether the target is
+        # retired or executed normally. See ``_supersession_is_in_effect``.
+        target_ids = set(supersession.superseded)
+        id_at: dict[int, str | None] = {
+            index: (
+                item.get("id")
+                if isinstance(item, dict) and isinstance(item.get("id"), str)
+                else None
+            )
+            for index, item in enumerate(dod_items)
+        }
+
+        # Phase 1 — execute everything that is neither malformed nor a target.
+        executed: dict[int, list[ModelEvidenceCheckResult]] = {}
+        for index, item in enumerate(dod_items):
+            if index in supersession.malformed:
+                continue
+            if (id_at[index] or None) in target_ids:
+                continue
+            executed[index] = self._execute_item(item, ticket_id, path)
+
+        # Phase 2 — an edge takes effect only if the item that ultimately
+        # carries the verdict proved something in its own right.
+        in_effect: dict[str, int] = {}
+        for target_id in supersession.superseded:
+            carrier = self._terminal_superseder(
+                target_id, supersession.superseded, id_at
+            )
+            if self._supersession_is_in_effect(executed.get(carrier)):
+                in_effect[target_id] = carrier
+
+        # Phase 3 — emit one result group per item, in declaration order.
         results: list[ModelEvidenceCheckResult] = []
-        for item in dod_items:
+        for index, item in enumerate(dod_items):
             item_id = item.get("id") if isinstance(item, dict) else None
             item_id_str = item_id if isinstance(item_id, str) and item_id else None
             description = (
@@ -755,18 +821,17 @@ class EvidenceCollector:
                 else "unknown"
             )
 
-            # OMN-15382: a malformed marker (dangling target, self-reference,
-            # or cycle) hard-fails the ITEM CARRYING the marker — it is
-            # neither executed nor treated as a clean supersession. Checked
-            # before the superseded lookup so a broken marker never masquerades
-            # as a quiet SUPERSEDED skip.
-            malformed_reason = (
-                supersession.malformed.get(item_id_str) if item_id_str else None
-            )
+            # OMN-15382: a malformed marker (dangling, forward, or
+            # self-referential target) hard-fails the ITEM CARRYING the marker
+            # — it is neither executed nor treated as a clean supersession.
+            # Keyed by INDEX (OMN-15390 remediation) so a marker on an item
+            # with a missing/empty/non-string ``id`` is still reported rather
+            # than silently dropped.
+            malformed_reason = supersession.malformed.get(index)
             if malformed_reason is not None:
                 results.append(
                     ModelEvidenceCheckResult(
-                        evidence_id=item_id_str or "unknown",
+                        evidence_id=item_id_str or f"dod_evidence[{index}]",
                         description=description,
                         status=EnumEvidenceCheckStatus.FAILED,
                         message=malformed_reason,
@@ -774,21 +839,23 @@ class EvidenceCollector:
                 )
                 continue
 
-            # OMN-15382: an item a LATER item in this contract explicitly
-            # supersedes is not executed and gets no ::pr-live-state check —
-            # its checks are preserved for audit but the superseding item's
-            # checks carry the verdict.
-            superseded_by = (
-                supersession.superseded.get(item_id_str) if item_id_str else None
+            carrier_index = (
+                in_effect.get(item_id_str) if item_id_str is not None else None
             )
-            if superseded_by is not None:
+            if carrier_index is not None:
+                # OMN-15382: an item a LATER, VERIFIED item in this contract
+                # supersedes is not executed and gets no ::pr-live-state check
+                # — its checks are preserved for audit while the superseding
+                # item's checks carry the verdict.
                 results.append(
                     ModelEvidenceCheckResult(
-                        evidence_id=item_id_str or "unknown",
+                        evidence_id=item_id_str,
                         description=description,
                         status=EnumEvidenceCheckStatus.SUPERSEDED,
                         message=(
-                            f"SUPERSEDED by {superseded_by!r} (evidence_artifact: "
+                            f"SUPERSEDED by "
+                            f"{self._carrier_label(carrier_index, id_at)!r} "
+                            f"(evidence_artifact: "
                             f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{item_id_str}'); "
                             "not re-executed — preserved for audit."
                         ),
@@ -796,16 +863,109 @@ class EvidenceCollector:
                 )
                 continue
 
-            result = self._check_evidence_item(item, ticket_id, path)
-            results.append(result)
-            # OMN-14207: verify the LIVE PR state for any PR-bound item. Emitted
-            # as additional check result(s) ALONGSIDE the item's declared checks
-            # so a static ``status: PASS`` receipt can no longer mask an unmerged
-            # or CI-red product PR.
-            if isinstance(item, dict):
-                results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
+            group = executed.get(index)
+            if group is None:
+                # A declared target whose supersession did NOT take effect:
+                # execute it now so its own verdict stands, and say loudly why
+                # the marker did not retire it (OMN-15390 remediation — the
+                # anti-laundering rule). Never a silent pass.
+                group = self._execute_item(item, ticket_id, path)
+                if group:
+                    carrier = self._terminal_superseder(
+                        item_id_str or "", supersession.superseded, id_at
+                    )
+                    group[0] = group[0].model_copy(
+                        update={
+                            "message": (
+                                "SUPERSESSION_NOT_IN_EFFECT: a later item "
+                                f"({self._carrier_label(carrier, id_at)}) declares "
+                                f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{item_id_str}' "
+                                "but did not verify in its own right — a "
+                                "superseder that declares no checks, skips, or "
+                                "fails retires NOTHING — so this entry was "
+                                f"executed normally. {group[0].message}"
+                            )
+                        }
+                    )
+            results.extend(group)
 
         return results
+
+    def _execute_item(
+        self,
+        item: Any,
+        ticket_id: str,
+        path: Path | None,
+    ) -> list[ModelEvidenceCheckResult]:
+        """Execute one dod_evidence item and return its full result group.
+
+        The group is the item's own check result followed by any OMN-14207
+        live-PR-state checks: verify the LIVE PR state for a PR-bound item and
+        emit it ALONGSIDE the item's declared checks, so a static
+        ``status: PASS`` receipt can no longer mask an unmerged or CI-red
+        product PR. Group element 0 is always the item's own result.
+        """
+        results = [self._check_evidence_item(item, ticket_id, path)]
+        if isinstance(item, dict):
+            results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
+        return results
+
+    @staticmethod
+    def _carrier_label(index: int, id_at: dict[int, str | None]) -> str:
+        """Human label for the item at ``index`` — its id, else its position."""
+        return id_at.get(index) or f"dod_evidence[{index}]"
+
+    @staticmethod
+    def _terminal_superseder(
+        target_id: str,
+        superseded: dict[str, int],
+        id_at: dict[int, str | None],
+    ) -> int:
+        """Follow a supersession chain to the item that carries the verdict.
+
+        With ``A`` superseded by ``B`` and ``B`` in turn superseded by ``C``,
+        the OCC gate retires both ``A`` and ``B`` and ``C`` is what actually
+        proves anything — so ``C``'s verdict, not ``B``'s, decides whether
+        ``A``'s edge takes effect. Every accepted edge points strictly
+        backwards in declaration order (see ``_resolve_supersessions``), so the
+        walk is acyclic by construction and terminates; the visited-set guard
+        is a defensive backstop, not a live path.
+        """
+        index = superseded[target_id]
+        visited = {index}
+        while True:
+            carrier_id = id_at.get(index)
+            if carrier_id is None or carrier_id not in superseded:
+                return index
+            following = superseded[carrier_id]
+            if following in visited:
+                return index
+            visited.add(following)
+            index = following
+
+    @staticmethod
+    def _supersession_is_in_effect(
+        carrier_group: list[ModelEvidenceCheckResult] | None,
+    ) -> bool:
+        """True only if the superseding item proved something in its own right.
+
+        OMN-15390 anti-laundering, and the reason a well-formed marker is not
+        sufficient on its own: supersession may remove a FALSE red, never
+        manufacture a green. Appending ONE marker item that declares no passing
+        check of its own (``checks: []``, a check that skips, or a check that
+        fails) would otherwise retire a genuinely-failing entry, drop
+        ``failed`` to 0, and land as a PASS receipt on the only sanctioned
+        Done-flip path — strictly worse than the FAIL it replaced. A repair
+        must carry its own proof, so the carrier's own result must be VERIFIED
+        and nothing in its group may have FAILED.
+        """
+        if not carrier_group:
+            return False
+        if carrier_group[0].status is not EnumEvidenceCheckStatus.VERIFIED:
+            return False
+        return not any(
+            result.status is EnumEvidenceCheckStatus.FAILED for result in carrier_group
+        )
 
     @staticmethod
     def _resolve_supersessions(dod_items: list[Any]) -> _SupersessionResolution:
@@ -835,53 +995,67 @@ class EvidenceCollector:
                 all_ids.add(item_id)
 
         seen: set[str] = set()
-        superseded: dict[str, str] = {}
-        malformed: dict[str, str] = {}
+        superseded: dict[str, int] = {}
+        malformed: dict[int, str] = {}
 
-        for item in dod_items:
+        for index, item in enumerate(dod_items):
             if not isinstance(item, dict):
                 continue
             item_id = item.get("id")
-            if not isinstance(item_id, str) or not item_id:
-                continue
+            item_id_str = item_id if isinstance(item_id, str) and item_id else None
+            label = item_id_str or f"dod_evidence[{index}]"
 
+            # OMN-15390 (remediation): the marker is read and resolved BEFORE
+            # any judgement about the CARRYING item's own id, because
+            # ``_superseded_dod_ids`` evaluates ``if supersedes in seen``
+            # unconditionally. Gating on the carrier's id first (the earlier
+            # shape of this loop) made the runner MISS supersessions the gate
+            # honours whenever the carrier's ``id`` was missing, empty,
+            # non-string or null — leaving the runner STRICTER than the gate
+            # and re-creating this ticket's original bug class, silently.
             target = _supersedes_marker(item.get("evidence_artifact"))
-            if target is None:
+
+            if target is not None:
+                if target == item_id_str:
+                    malformed[index] = (
+                        "MALFORMED_SUPERSESSION: item "
+                        f"{label!r} declares evidence_artifact "
+                        f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}', which "
+                        "supersedes itself and therefore retires nothing. Fix "
+                        "the marker before this item can execute."
+                    )
+                elif target in seen:
+                    # The OCC rule verbatim: a LATER item retires an EARLIER
+                    # one. Recorded by INDEX, not id, so an id-less carrier is
+                    # still an identifiable superseder for the effectiveness
+                    # check in ``_collect_impl``.
+                    superseded[target] = index
+                elif target in all_ids:
+                    malformed[index] = (
+                        "FORWARD_SUPERSESSION: item "
+                        f"{label!r} declares evidence_artifact "
+                        f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}' but "
+                        f"{target!r} is declared LATER in this contract. "
+                        "Supersession is append-only — only a later item may "
+                        "retire an earlier one — so this marker retires "
+                        "nothing. Move the repair below the entry it replaces."
+                    )
+                else:
+                    malformed[index] = (
+                        "DANGLING_SUPERSESSION: item "
+                        f"{label!r} declares evidence_artifact "
+                        f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}' but no "
+                        f"dod_evidence item with id {target!r} exists in this "
+                        "contract. Fix the marker (typo, or the target item "
+                        "was removed) before this item can execute."
+                    )
+
+            # Mirrors ``_superseded_dod_ids`` exactly, including its acceptance
+            # of the empty string and its placement AFTER the marker check
+            # (which is what makes a self-reference match nothing in either
+            # consumer).
+            if isinstance(item_id, str):
                 seen.add(item_id)
-                continue
-
-            if target == item_id:
-                malformed[item_id] = (
-                    "MALFORMED_SUPERSESSION: item "
-                    f"{item_id!r} declares evidence_artifact "
-                    f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}', which "
-                    "supersedes itself and therefore retires nothing. Fix the "
-                    "marker before this item can execute."
-                )
-            elif target in seen:
-                # The OCC rule verbatim: a LATER item retires an EARLIER one.
-                superseded[target] = item_id
-            elif target in all_ids:
-                malformed[item_id] = (
-                    "FORWARD_SUPERSESSION: item "
-                    f"{item_id!r} declares evidence_artifact "
-                    f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}' but "
-                    f"{target!r} is declared LATER in this contract. "
-                    "Supersession is append-only — only a later item may "
-                    "retire an earlier one — so this marker retires nothing. "
-                    "Move the repair below the entry it replaces."
-                )
-            else:
-                malformed[item_id] = (
-                    "DANGLING_SUPERSESSION: item "
-                    f"{item_id!r} declares evidence_artifact "
-                    f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}' but no "
-                    f"dod_evidence item with id {target!r} exists in this "
-                    "contract. Fix the marker (typo, or the target item was "
-                    "removed) before this item can execute."
-                )
-
-            seen.add(item_id)
 
         return _SupersessionResolution(superseded=superseded, malformed=malformed)
 

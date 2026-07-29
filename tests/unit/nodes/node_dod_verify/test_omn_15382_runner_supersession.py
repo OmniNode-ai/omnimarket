@@ -356,6 +356,13 @@ class TestLiveStateBindingFromHardcodedOwnCheck:
         occ_root = tmp_path / "onex_change_control"
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
         monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
+        # OMN-15390: ``_resolve_contract_repo_dir`` consults
+        # ``ONEX_CC_REPO_PATH`` BEFORE falling back to
+        # ``$OMNI_HOME/onex_change_control``, so an ambient value (this
+        # workspace exports one) silently redirects the receipt lookup away
+        # from ``tmp_path`` and the assertions below read a vacuous green.
+        # Hosted CI has no such value, which is why this only bit locally.
+        monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
         ticket = "OMN-99010"
         item_id = "dod-omn-99010-pr-2536-rebind"
         item = {
@@ -420,6 +427,13 @@ class TestLiveStateOmittedAndNotedForUnresolvableBinding:
         occ_root = tmp_path / "onex_change_control"
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
         monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
+        # OMN-15390: ``_resolve_contract_repo_dir`` consults
+        # ``ONEX_CC_REPO_PATH`` BEFORE falling back to
+        # ``$OMNI_HOME/onex_change_control``, so an ambient value (this
+        # workspace exports one) silently redirects the receipt lookup away
+        # from ``tmp_path`` and the assertions below read a vacuous green.
+        # Hosted CI has no such value, which is why this only bit locally.
+        monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
         ticket = "OMN-99012"
         item_id = "dod-unparseable-id"
         item = {
@@ -447,6 +461,13 @@ class TestLiveStateOmittedAndNotedForUnresolvableBinding:
         occ_root = tmp_path / "onex_change_control"
         monkeypatch.setenv("OMNI_HOME", str(tmp_path))
         monkeypatch.delenv("CONTRACT_REPO_DIR", raising=False)
+        # OMN-15390: ``_resolve_contract_repo_dir`` consults
+        # ``ONEX_CC_REPO_PATH`` BEFORE falling back to
+        # ``$OMNI_HOME/onex_change_control``, so an ambient value (this
+        # workspace exports one) silently redirects the receipt lookup away
+        # from ``tmp_path`` and the assertions below read a vacuous green.
+        # Hosted CI has no such value, which is why this only bit locally.
+        monkeypatch.delenv("ONEX_CC_REPO_PATH", raising=False)
         ticket = "OMN-99013"
         item_id = "dod-unparseable-id-2"
         item = {

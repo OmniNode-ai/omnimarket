@@ -126,14 +126,27 @@ class HandlerDodVerify:
         if failed > 0:
             overall = EnumDodVerifyStatus.FAILED
         elif superseded > 0 and verified == 0:
-            # OMN-15390 anti-laundering, and the reason this is FAILED rather
-            # than SKIPPED: supersession is allowed to remove a FALSE red, never
-            # to manufacture a green. Without this, appending ONE marker item
-            # that declares no passing check of its own (``checks: []``, or a
-            # check that skips) retires a genuinely-failing entry, drops
-            # ``failed`` to 0, and lands as a PASS receipt on the only
-            # sanctioned Done-flip path — a strictly worse outcome than the FAIL
-            # it replaced. A repair must carry its own proof.
+            # OMN-15390 anti-laundering BACKSTOP, and the reason it is FAILED
+            # rather than SKIPPED: supersession may remove a FALSE red, never
+            # manufacture a green.
+            #
+            # This is NOT the primary guard, and must not be mistaken for one:
+            # a GLOBAL ``verified == 0`` is defeated by any single unrelated
+            # passing sibling, so on its own it only caught the degenerate
+            # all-superseded contract. The real rule is per-edge and lives in
+            # the collector — ``EvidenceCollector._supersession_is_in_effect``
+            # retires a target only when the superseding item is itself
+            # VERIFIED, so a ``checks: []`` / skipping / failing marker item
+            # retires nothing and its target executes normally.
+            #
+            # That makes this branch unreachable via the collector path
+            # (SUPERSEDED implies a VERIFIED carrier implies ``verified > 0``;
+            # asserted by ``test_a_superseded_entry_always_implies_a_verified
+            # _carrier_across_the_whole_domain``). It is retained because
+            # ``_handle_typed`` also accepts caller-supplied
+            # ``evidence_results``, and that path has no such invariant — it
+            # fails closed here rather than receipting a PASS built purely out
+            # of supersessions.
             overall = EnumDodVerifyStatus.FAILED
         elif non_superseded_total == 0 or skipped == non_superseded_total:
             # Either nothing but superseded entries remain, or every
