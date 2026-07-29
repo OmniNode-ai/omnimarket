@@ -1,6 +1,6 @@
 name: node_projection_live_events
-version: "1.0.0"
-description: "Projects platform-wide bus events into a queryable live_events table for the dashboard live-event-stream widget"
+version: "1.1.0"
+description: "Projects platform lifecycle, delegation, and node-generation events into the OmniDash System Event Stream"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:

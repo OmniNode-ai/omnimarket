@@ -156,7 +156,6 @@ accepted:
 - ORPHANED_CONSUMER::node_gap_compute::onex.cmd.omnimarket.gap-compute-start.v1
 - ORPHANED_CONSUMER::node_generate_node_effect::onex.cmd.omnimarket.generate-node-start.v1
 - ORPHANED_CONSUMER::node_generated_node_publish_effect::onex.cmd.omnimarket.generated-node-publish-requested.v1
-- ORPHANED_CONSUMER::node_generation_consumer::onex.cmd.omnimarket.node-generation-requested.v1
 - ORPHANED_CONSUMER::node_github_repo_gateway_effect::onex.cmd.omnimarket.github-repo-gateway-read-requested.v1
 - ORPHANED_CONSUMER::node_golden_chain_generator::onex.cmd.omnimarket.golden-chain-generation-requested.v1
 - ORPHANED_CONSUMER::node_golden_chain_generator_compute::onex.cmd.omnimarket.golden-chain-generation-requested.v1

@@ -1,15 +1,15 @@
 ---
 name: projection_live_events
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
 node_type: reducer
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 input_model: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events.ModelLiveEvent
 description: >
-  Projects platform-wide bus events into the live_events table.
-  Provides a real-time event feed for the omnidash live-event-stream widget.
+  Projects operator-relevant platform and workflow bus events into the live_events table.
+  Provides the single real-time event feed for the OmniDash System Event Stream.
   Deduplicates by event_id. Retains the most recent 1000 events.
-  Source topics: platform log entries, node heartbeats, node introspection,
-  node state changes, and delegation terminal events.
+  Source topics cover platform lifecycle, node generation, delegation commands,
+  routing outcomes, failures, registration, deployment, and generated-node invocation.
 
 handler:
   module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
@@ -24,6 +24,13 @@ handler_routing:
         module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
       handler_module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
       event_model: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events.ModelLiveEvent
+
+descriptor:
+  node_archetype: reducer
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
 
 terminal_event: onex.evt.omnimarket.projection-live-events-applied.v1
 
@@ -46,12 +53,28 @@ db_io:
 
 event_bus:
   subscribe_topics:
+    # Platform lifecycle and health
     - onex.evt.platform.log-entry.v1
     - onex.evt.platform.node-heartbeat.v1
     - onex.evt.platform.node-introspection.v1
     - onex.evt.platform.node-state-change.v1
+    - onex.evt.platform.node-registration.v1
+    # Delegation lifecycle
+    - onex.cmd.omnimarket.delegate-skill.v1
+    - onex.evt.omnimarket.delegate-skill-completed.v1
+    - onex.evt.omnimarket.delegate-skill-failed.v1
     - onex.evt.omnibase-infra.delegation-completed.v1
     - onex.evt.omnibase-infra.delegation-failed.v1
+    # Node-generation lifecycle
+    - onex.cmd.omnimarket.node-generation-requested.v1
+    - onex.evt.omnimarket.node-generation-completed.v1
+    - onex.evt.omnimarket.node-generation-failed.v1
+    - onex.cmd.omnimarket.node-deploy.v1
+    - onex.evt.omnimarket.generated-node-invoked.v1
+    - onex.evt.omnimarket.delegation-escalation-triggered.v1
+    - onex.cmd.omnimarket.tool-reuse-match-requested.v1
+    - onex.evt.omnimarket.tool-reuse-matched.v1
+    - onex.evt.omnimarket.tool-reuse-no-match.v1
   publish_topics:
     - onex.evt.omnimarket.projection-live-events-applied.v1
     - onex.snapshot.projection.live-events.v1  # onex-topic-allow: projection snapshot topic
@@ -85,6 +108,7 @@ projection_api:
 
 metadata:
   transport_type: kafka
-  demo_path: true
+  operator_surface: true
+  demo_path: false
   widget_topics:
     - onex.snapshot.projection.live-events.v1  # onex-topic-allow: projection snapshot topic
