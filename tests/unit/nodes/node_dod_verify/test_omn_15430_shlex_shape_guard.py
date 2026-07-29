@@ -52,7 +52,7 @@ from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
 # ``str.split()`` shape guard because it splits inside the quoted
 # ``$(...)`` command substitution.
 OMN_15170_SHAPE = (
-    'body="$(gh api repos/jonahgabriel/steel_onslaught/contents/tests/live/'
+    'body="$(gh api repos/jonahgabriel/steel_onslaught/contents/tests/live/'  # onex-allow-test-fixture OMN-15430 reason="literal reproduction of the real OMN-15170/OMN-15411 check_value evidence string, required verbatim for the RED/GREEN shape-guard regression proof"
     "test_omn15170_live_driver.py?ref=24f3f5174ee47d26e0c9abe564c6da58e23497f2 "
     '--jq .content | base64 -d)" && printf \'%s\' "$body" | grep -qF '
     "'def test_live_match_produces_real_kafka_terminal_event_via_delegation_pin'"
