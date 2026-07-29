@@ -538,7 +538,8 @@ class TestF02PlaceholderLint:
             reason = lint_check_value(cv)
             assert reason is None, f"{item_id}: lint rejects {cv!r}: {reason}"
             digits = "".join(ch for ch in item_id if ch.isdigit())
-            assert digits and digits in cv, (
+            assert digits, f"{item_id}: no digits in id"
+            assert digits in cv, (
                 f"{item_id}: literal pin does not match its own id: {cv!r}"
             )
 

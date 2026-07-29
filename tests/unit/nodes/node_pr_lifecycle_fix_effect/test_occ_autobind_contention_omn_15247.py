@@ -371,9 +371,7 @@ class TestPrExistenceOptInIsByteIdentical:
             downstream_dod_evidence_check_value(
                 pr_number=321, repo="OmniNode-ai/omnimarket"
             ),
-            ci_dod_evidence_check_value(
-                pr_number=321, repo="OmniNode-ai/omnimarket"
-            ),
+            ci_dod_evidence_check_value(pr_number=321, repo="OmniNode-ai/omnimarket"),
             ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
             self_bind_check_value(
                 occ_pr_number=55, occ_repo="OmniNode-ai/onex_change_control"
@@ -510,10 +508,9 @@ class TestShippedDefaultIsContentBound:
         assert legacy_rec.pr_open_calls == 1
         # OMN-15407: literal, not the hosted_safe_* placeholder — see the Rule B
         # note above TestPrExistenceOptInIsByteIdentical's equivalent assertion.
-        assert (
-            _contract_check_values(legacy_root / "contracts" / "OMN-9999.yaml")[0]
-            == downstream_dod_evidence_check_value(pr_number=321, repo=_STABLE_REPO)
-        )
+        assert _contract_check_values(legacy_root / "contracts" / "OMN-9999.yaml")[
+            0
+        ] == downstream_dod_evidence_check_value(pr_number=321, repo=_STABLE_REPO)
 
         current = OccCompanionEmitter()
         action, clone_root, rec = _run_emit(
@@ -918,7 +915,8 @@ class TestContentBoundChecks:
             # check is repo-independent -- it names neither, so there is
             # nothing to pin.
             if "repos/" in cv or " --repo " in cv:
-                assert "${REPO}" not in cv and "${PR_NUMBER}" not in cv, cv
+                assert "${REPO}" not in cv, cv
+                assert "${PR_NUMBER}" not in cv, cv
                 if item_id.startswith("occ-self-bind-pr-"):
                     # Pins OCC's OWN (public onex_change_control) PR, never
                     # the private product repo this test is about.

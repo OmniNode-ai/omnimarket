@@ -99,6 +99,7 @@ def _binding_json_state(repo: str) -> str:
 def _diff_scope_json_files(repo: str) -> str:
     return f"gh pr view {PR} --repo {repo} --json files"
 
+
 # RED-control regexes. Proven load-bearing below (they DO match the pre-fix forms).
 REST_DIFF_RE = re.compile(r"\bgh pr diff\b.*--name-only")
 HOSTED_RE = re.compile(r"\bgh\s+(?:pr\s+(?:view|diff|checks)|api)\b")
@@ -313,7 +314,8 @@ class TestF16PrivateRepoParity:
                 continue
             assert PRIVATE_REPO in cv, f"private-repo check must pin its own repo: {cv}"
             assert str(PR) in cv, f"private-repo check must pin its own PR: {cv}"
-            assert "${PR_NUMBER}" not in cv and "${REPO}" not in cv, cv
+            assert "${PR_NUMBER}" not in cv, cv
+            assert "${REPO}" not in cv, cv
 
     def test_private_contract_never_regresses_to_the_circular_receipt_grep(
         self,

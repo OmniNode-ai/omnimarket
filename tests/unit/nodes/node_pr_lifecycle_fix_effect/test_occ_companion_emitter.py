@@ -507,8 +507,7 @@ class TestFullEmitFlow:
             in contract_text
         )
         assert (
-            "gh pr view 321 --repo OmniNode-ai/omnimarket --json files"
-            in contract_text
+            "gh pr view 321 --repo OmniNode-ai/omnimarket --json files" in contract_text
         )
         assert "gh pr checks" not in contract_text
         assert "gh pr diff" not in contract_text
