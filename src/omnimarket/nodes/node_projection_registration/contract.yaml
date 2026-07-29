@@ -59,9 +59,10 @@ dod_evidence:
 db_io:
   db_tables:
     - name: node_service_registry
-      migration: "0001_omnidash_analytics_read_model.sql"
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_node_service_registry.sql"
       access: write
-      database: omnidash_analytics
       role: registry
 
 event_bus:

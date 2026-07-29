@@ -46,9 +46,10 @@ golden_path:
 db_io:
   db_tables:
     - name: live_events
+      database_ref: application
+      schema: omninode_internal
       migration: "0000_create_live_events.sql"
       access: write
-      database: omnidash_analytics
       role: live_events
 
 event_bus:

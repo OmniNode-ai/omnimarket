@@ -34,9 +34,10 @@ terminal_event: onex.evt.omnimarket.projection-savings-applied.v1
 db_io:
   db_tables:
     - name: savings_estimates
+      database_ref: application
+      schema: tenant
       migration: "075_add_savings_estimates_updated_at.sql"
       access: write
-      database: omnidash_analytics
       role: estimates
 
 event_bus:

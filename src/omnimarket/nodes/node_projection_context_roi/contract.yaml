@@ -46,9 +46,10 @@ terminal_event: onex.evt.omnimarket.projection-context-roi-applied.v1
 db_io:
   db_tables:
     - name: context_roi_scores
+      database_ref: application
+      schema: omninode_internal
       migration: "001_create_context_roi_scores.sql"
       access: write
-      database: omnidash_analytics
       role: scores
 
 event_bus:

@@ -41,9 +41,10 @@ terminal_event: onex.evt.omnimarket.projection-baselines-roi-applied.v1
 db_io:
   db_tables:
     - name: baselines_roi_snapshots
+      database_ref: application
+      schema: omninode_internal
       migration: "002_realign_roi_snapshots_to_producer_schema.sql"
       access: write
-      database: omnidash_analytics
       role: roi_snapshots
 
 event_bus:

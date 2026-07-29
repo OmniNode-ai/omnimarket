@@ -55,9 +55,10 @@ freshness_sla:
 db_io:
   db_tables:
     - name: swarm_runs
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_swarm_runs.sql"
       access: write
-      database: omnidash_analytics
       role: projection
 
 projection_api:

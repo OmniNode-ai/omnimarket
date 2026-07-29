@@ -45,9 +45,10 @@ golden_path:
 db_io:
   db_tables:
     - name: dispatch_eval_results
+      database_ref: omniintelligence
+      schema: public
       migration: "omniintelligence/deployment/database/migrations/023_create_debug_intelligence_tables.sql"
       access: write
-      database: omniintelligence
       role: eval_results
 
 env_dependencies:

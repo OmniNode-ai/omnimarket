@@ -179,7 +179,8 @@ def test_contract_declares_db_io_so_runtime_wires_materialization() -> None:
     assert len(traces_tables) == 1, "db_io must declare the traces table"
     table = traces_tables[0]
     assert table["access"] == "write"
-    assert table["database"] == "omnidash_analytics"
+    assert table["database_ref"] == "application"
+    assert table["schema"] == "omninode_internal"
     assert table["migration"] == "0001_create_traces.sql"
 
 

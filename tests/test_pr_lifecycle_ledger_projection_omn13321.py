@@ -325,7 +325,8 @@ class TestContractDeclaresProjection:
         tables = data["db_io"]["db_tables"]
         match = [t for t in tables if t["name"] == PR_LEDGER_PROJECTION_TABLE]
         assert match, "db_io must declare the ledger table"
-        assert match[0]["database"] == "omnidash_analytics"
+        assert match[0]["database_ref"] == "application"
+        assert match[0]["schema"] == "omninode_internal"
         assert match[0]["migration"]
 
     def test_conflict_key_matches_constant(self) -> None:

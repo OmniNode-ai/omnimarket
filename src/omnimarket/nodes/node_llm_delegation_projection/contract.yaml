@@ -38,9 +38,10 @@ externally_consumed_topics:
 db_io:
   db_tables:
     - name: llm_delegation_daily_projection
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_llm_delegation_daily_projection.sql"
       access: write
-      database: omnidash_analytics
       role: projection
 
 reducer_contract:

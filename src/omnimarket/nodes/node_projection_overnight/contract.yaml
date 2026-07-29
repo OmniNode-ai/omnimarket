@@ -40,15 +40,17 @@ terminal_event: onex.evt.omnimarket.projection-overnight-applied.v1
 db_io:
   db_tables:
     - name: overnight_sessions
+      database_ref: application
+      schema: omninode_internal
       migration: "0000_create_overnight_sessions_tables.sql"
       access: write
-      database: omnibase_infra
-      role: projection
+      role: sessions
     - name: overnight_session_phases
+      database_ref: application
+      schema: omninode_internal
       migration: "0000_create_overnight_sessions_tables.sql"
       access: write
-      database: omnibase_infra
-      role: projection
+      role: phases
 
 event_bus:
   subscribe_topics:

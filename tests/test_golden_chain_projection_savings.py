@@ -350,7 +350,7 @@ class TestProjectionSavingsContractConfig:
     Every sibling projection uses omnidash_analytics; this test gates regression.
     """
 
-    def test_db_io_database_is_omnidash_analytics(self) -> None:
+    def test_db_io_location_is_tenant_application_schema(self) -> None:
         contract_path = Path(
             "src/omnimarket/nodes/node_projection_savings/contract.yaml"
         )
@@ -358,10 +358,8 @@ class TestProjectionSavingsContractConfig:
             contract = yaml.safe_load(f)
         tables = contract["db_io"]["db_tables"]
         savings_table = next(t for t in tables if t["name"] == "savings_estimates")
-        assert savings_table["database"] == "omnidash_analytics", (
-            "savings_estimates must target omnidash_analytics (not omnibase_infra); "
-            "migration 075 applied updated_at to omnidash_analytics only"
-        )
+        assert savings_table["database_ref"] == "application"
+        assert savings_table["schema"] == "tenant"
 
 
 _CONTRACT_PATH = Path("src/omnimarket/nodes/node_projection_savings/contract.yaml")

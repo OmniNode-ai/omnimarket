@@ -543,7 +543,11 @@ class TestBuildProjectionTopicMap:
             db_io:
               db_tables:
                 - name: some_table
+                  database_ref: application
+                  schema: omninode_internal
+                  migration: 0001_create_some_table.sql
                   access: write
+                  role: projection
             """,
         )
         manifest = _make_manifest([_make_contract_stub(p, "node_x")])

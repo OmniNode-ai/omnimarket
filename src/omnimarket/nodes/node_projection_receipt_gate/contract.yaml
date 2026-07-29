@@ -58,9 +58,10 @@ projection_api:
 db_io:
   db_tables:
     - name: receipt_gate_rows
+      database_ref: application
+      schema: omninode_internal
       migration: "0000_create_receipt_gate_projection_table.sql"
       access: write
-      database: omnidash_analytics
       role: receipt_gate_projection
 
 event_bus:

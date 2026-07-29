@@ -44,9 +44,10 @@ terminal_event: onex.evt.omnimarket.cost-by-repo-snapshot.v1
 db_io:
   db_tables:
     - name: cost_by_repo_snapshots
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_cost_by_repo_snapshots.sql"
       access: write
-      database: omnidash_analytics
       role: cost_by_repo_aggregate
 
 event_bus:
