@@ -105,24 +105,123 @@ class TestLookupOperations:
     def test_lookup_pr_for_ticket_resolves(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(hd_mod.subprocess, "run", _fake_completed("2216"))
+        # OMN-15382: LOOKUP_PR_FOR_TICKET now requires an explicit ``repo``
+        # (never guesses one) and requests number+title+headRefName so it can
+        # filter to an exact ticket-id-token match instead of trusting
+        # ``gh``'s fuzzy full-text ranking + a blind ``.[0]`` take.
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _fake_completed(
+                '[{"number":2216,"title":"fix(OMN-13996): x",'
+                '"headRefName":"jonah/omn-13996-x"}]'
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_PR_FOR_TICKET,
+            ticket_id="OMN-13996",
+            repo=_REPO,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        assert output.events[0].text_value == "2216"
+        assert output.events[0].error_code is None
+
+    def test_lookup_pr_for_ticket_missing_repo_fails_closed(self) -> None:
+        """OMN-15382: no repo => fail closed WITHOUT ever calling gh."""
         command = ModelDodEvidenceGithubLookupCommand(
             operation=EnumDodEvidenceGithubOperation.LOOKUP_PR_FOR_TICKET,
             ticket_id="OMN-13996",
         )
         output = HandlerDodEvidenceGithubEffect().handle(command)
-        assert output.events[0].text_value == "2216"
+        assert output.events[0].text_value == ""
+        assert output.events[0].error_code == "PR_LOOKUP_FAILED"
+
+    def test_lookup_pr_for_ticket_ambiguous_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-15382: 2+ exact-token candidates => fail closed, never the
+        most recent."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _fake_completed(
+                '[{"number":2216,"title":"fix(OMN-13996): x",'
+                '"headRefName":"a"},'
+                '{"number":2217,"title":"fix(OMN-13996): y",'
+                '"headRefName":"b"}]'
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_PR_FOR_TICKET,
+            ticket_id="OMN-13996",
+            repo=_REPO,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        assert output.events[0].text_value == ""
+        assert output.events[0].error_code == "PR_LOOKUP_AMBIGUOUS"
+
+    def test_lookup_pr_for_ticket_mismatched_candidate_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-15382: a fuzzy-matched but wrong-ticket candidate (the
+        OMN-15382 incident shape — a similarly-worded PR for a different
+        ticket ranked first) must not be silently trusted."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _fake_completed(
+                '[{"number":2454,"title":"fix(OMN-13995): unrelated",'
+                '"headRefName":"someone/omn-13995-fix"}]'
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_PR_FOR_TICKET,
+            ticket_id="OMN-13996",
+            repo=_REPO,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        assert output.events[0].text_value == ""
+        assert output.events[0].error_code == "PR_LOOKUP_FAILED"
+
+    def test_lookup_pr_for_ticket_gh_invocation_passes_repo_flag(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, list[str]] = {}
+
+        def _run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
+            argv = [str(a) for a in (list(args[0]) if args else [])]
+            captured["argv"] = argv
+            return subprocess.CompletedProcess(
+                args=argv,
+                returncode=0,
+                stdout=(
+                    '[{"number":2216,"title":"fix(OMN-13996): x","headRefName":"a"}]'
+                ),
+                stderr="",
+            )
+
+        monkeypatch.setattr(hd_mod.subprocess, "run", _run)
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_PR_FOR_TICKET,
+            ticket_id="OMN-13996",
+            repo=_REPO,
+        )
+        HandlerDodEvidenceGithubEffect().handle(command)
+        assert "--repo" in captured["argv"]
+        assert _REPO in captured["argv"]
 
     def test_lookup_pr_for_ticket_no_match(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(hd_mod.subprocess, "run", _fake_completed("null"))
+        monkeypatch.setattr(hd_mod.subprocess, "run", _fake_completed("[]"))
         command = ModelDodEvidenceGithubLookupCommand(
             operation=EnumDodEvidenceGithubOperation.LOOKUP_PR_FOR_TICKET,
             ticket_id="OMN-99999",
+            repo=_REPO,
         )
         output = HandlerDodEvidenceGithubEffect().handle(command)
         assert output.events[0].text_value == ""
+        assert output.events[0].error_code == "PR_LOOKUP_FAILED"
 
     def test_lookup_pr_for_ticket_gh_error(
         self, monkeypatch: pytest.MonkeyPatch
@@ -131,15 +230,23 @@ class TestLookupOperations:
         command = ModelDodEvidenceGithubLookupCommand(
             operation=EnumDodEvidenceGithubOperation.LOOKUP_PR_FOR_TICKET,
             ticket_id="OMN-13996",
+            repo=_REPO,
         )
         output = HandlerDodEvidenceGithubEffect().handle(command)
         assert output.events[0].text_value == ""
+        assert output.events[0].error_code == "PR_LOOKUP_FAILED"
 
     def test_lookup_repo_for_ticket_resolves(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
-            hd_mod.subprocess, "run", _fake_completed("OmniNode-ai/omnibase_infra")
+            hd_mod.subprocess,
+            "run",
+            _fake_completed(
+                '[{"number":2216,"title":"fix(OMN-13996): x",'
+                '"headRefName":"a","headRepository":'
+                '{"nameWithOwner":"OmniNode-ai/omnibase_infra"}}]'
+            ),
         )
         command = ModelDodEvidenceGithubLookupCommand(
             operation=EnumDodEvidenceGithubOperation.LOOKUP_REPO_FOR_TICKET,
@@ -147,17 +254,40 @@ class TestLookupOperations:
         )
         output = HandlerDodEvidenceGithubEffect().handle(command)
         assert output.events[0].text_value == "OmniNode-ai/omnibase_infra"
+        assert output.events[0].error_code is None
 
     def test_lookup_repo_for_ticket_no_match(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(hd_mod.subprocess, "run", _fake_completed(""))
+        monkeypatch.setattr(hd_mod.subprocess, "run", _fake_completed("[]"))
         command = ModelDodEvidenceGithubLookupCommand(
             operation=EnumDodEvidenceGithubOperation.LOOKUP_REPO_FOR_TICKET,
             ticket_id="OMN-99999",
         )
         output = HandlerDodEvidenceGithubEffect().handle(command)
         assert output.events[0].text_value == ""
+        assert output.events[0].error_code == "REPO_LOOKUP_FAILED"
+
+    def test_lookup_repo_for_ticket_ambiguous_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _fake_completed(
+                '[{"number":1,"title":"fix(OMN-13996): a","headRefName":"x",'
+                '"headRepository":{"nameWithOwner":"OmniNode-ai/omnimarket"}},'
+                '{"number":2,"title":"fix(OMN-13996): b","headRefName":"y",'
+                '"headRepository":{"nameWithOwner":"OmniNode-ai/omnibase_core"}}]'
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_REPO_FOR_TICKET,
+            ticket_id="OMN-13996",
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        assert output.events[0].text_value == ""
+        assert output.events[0].error_code == "REPO_LOOKUP_AMBIGUOUS"
 
 
 # ---------------------------------------------------------------------------
@@ -206,10 +336,56 @@ class TestEvidenceCollectorDelegatesToEffectHandler:
     def test_lookup_pr_for_ticket_delegates(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # OMN-15382: PR lookup now REQUIRES a resolvable repo before it will
+        # call gh at all; REPO env var is the simplest way to supply one from
+        # outside an evidence-item context.
         monkeypatch.delenv("PR_NUMBER", raising=False)
-        monkeypatch.setattr(hd_mod.subprocess, "run", _fake_completed("2216"))
+        monkeypatch.setenv("REPO", _REPO)
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _fake_completed(
+                '[{"number":2216,"title":"fix(OMN-13996): x","headRefName":"a"}]'
+            ),
+        )
         collector = EvidenceCollector()
         assert collector._lookup_pr_for_ticket("OMN-13996") == "2216"
+
+    def test_lookup_pr_for_ticket_no_repo_fails_closed_without_gh(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-15382: no REPO env var, no id-derived binding => fail closed
+        WITHOUT ever calling gh (closes the root cause: the prior code ran an
+        unscoped ``gh pr list`` that resolved whatever repo the process cwd's
+        git remote pointed at)."""
+        monkeypatch.delenv("PR_NUMBER", raising=False)
+        monkeypatch.delenv("REPO", raising=False)
+
+        def _boom(*args: object, **kwargs: object) -> None:
+            raise AssertionError("gh must not be invoked with no resolvable repo")
+
+        monkeypatch.setattr(hd_mod.subprocess, "run", _boom)
+        collector = EvidenceCollector()
+        assert collector._lookup_pr_for_ticket("OMN-13996") == ""
+        assert collector._last_pr_lookup_error is not None
+        assert "PR_LOOKUP_FAILED" in collector._last_pr_lookup_error
+
+    def test_lookup_pr_for_ticket_id_derived_binding_skips_gh(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-15382: when the current evidence item's id follows the
+        ``dod-<owner>-<repo>-pr-<number>`` autobind convention, both repo and
+        PR number resolve from it directly — zero gh calls."""
+        monkeypatch.delenv("PR_NUMBER", raising=False)
+        monkeypatch.delenv("REPO", raising=False)
+
+        def _boom(*args: object, **kwargs: object) -> None:
+            raise AssertionError("gh must not be invoked for an id-derived binding")
+
+        monkeypatch.setattr(hd_mod.subprocess, "run", _boom)
+        collector = EvidenceCollector()
+        collector._current_evidence_item_id = "dod-OmniNode-ai-omnibase_infra-pr-2536"
+        assert collector._lookup_pr_for_ticket("OMN-13996") == "2536"
 
     def test_lookup_pr_for_ticket_env_short_circuit_skips_gh(
         self, monkeypatch: pytest.MonkeyPatch
@@ -228,7 +404,13 @@ class TestEvidenceCollectorDelegatesToEffectHandler:
     ) -> None:
         monkeypatch.delenv("REPO", raising=False)
         monkeypatch.setattr(
-            hd_mod.subprocess, "run", _fake_completed("OmniNode-ai/omnibase_infra")
+            hd_mod.subprocess,
+            "run",
+            _fake_completed(
+                '[{"number":2216,"title":"fix(OMN-13996): x",'
+                '"headRefName":"a","headRepository":'
+                '{"nameWithOwner":"OmniNode-ai/omnibase_infra"}}]'
+            ),
         )
         collector = EvidenceCollector()
         assert (

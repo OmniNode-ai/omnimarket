@@ -43,7 +43,10 @@ class ModelDodEvidenceGithubLookupCommand(BaseModel):
     repo: str | None = Field(
         default=None,
         description=(
-            "owner/repo; required for FETCH_PR_MERGE_STATE / FETCH_PR_CHECKS_GREEN."
+            "owner/repo; required for FETCH_PR_MERGE_STATE / FETCH_PR_CHECKS_GREEN. "
+            "Also accepted (and, as of OMN-15382, required to run any `gh` search) "
+            "for LOOKUP_PR_FOR_TICKET, so the search is explicitly scoped instead of "
+            "resolving whatever repo the process cwd's git remote happens to point at."
         ),
     )
     pr_number: int | None = Field(
@@ -86,6 +89,20 @@ class ModelDodEvidenceGithubLookupResultEvent(BaseModel):
     # FETCH_PR_CHECKS_GREEN
     checks_green: bool | None = Field(default=None)
     detail: str | None = Field(default=None)
+
+    # LOOKUP_PR_FOR_TICKET / LOOKUP_REPO_FOR_TICKET failure classification
+    # (OMN-15382). Set only when ``text_value`` is empty; ``None`` on success
+    # or for other operations. ``*_LOOKUP_AMBIGUOUS`` means more than one
+    # candidate survived exact-ticket-token filtering (never silently take
+    # the most recent); ``*_LOOKUP_FAILED`` covers zero candidates, missing
+    # required ``repo`` scoping, or a gh/transport/parse error.
+    error_code: str | None = Field(
+        default=None,
+        description=(
+            "PR_LOOKUP_FAILED | PR_LOOKUP_AMBIGUOUS | REPO_LOOKUP_FAILED | "
+            "REPO_LOOKUP_AMBIGUOUS, else None."
+        ),
+    )
 
 
 __all__ = [
