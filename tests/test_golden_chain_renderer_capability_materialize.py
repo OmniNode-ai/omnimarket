@@ -129,7 +129,16 @@ class TestRendererCapabilityLiveDispatchMaterializes:
 
         callback = handler_wiring._make_projection_dispatch_callback(
             HandlerRendererCapabilityProjection(),
-            db_tables=[{"name": TABLE, "database": "omnidash_analytics"}],
+            db_tables=[
+                {
+                    "name": TABLE,
+                    "database_ref": "application",
+                    "schema": "omninode_internal",
+                    "migration": "0001_create_renderer_capability_projection.sql",
+                    "access": "write",
+                    "role": "projection",
+                }
+            ],
             subscribe_topics=(RENDERER_CAPABILITY_DECLARED_TOPIC_V1,),
         )
 
@@ -172,7 +181,16 @@ class TestRendererCapabilityLiveDispatchMaterializes:
 
         callback = handler_wiring._make_projection_dispatch_callback(
             HandlerRendererCapabilityProjection(),
-            db_tables=[{"name": TABLE, "database": "omnidash_analytics"}],
+            db_tables=[
+                {
+                    "name": TABLE,
+                    "database_ref": "application",
+                    "schema": "omninode_internal",
+                    "migration": "0001_create_renderer_capability_projection.sql",
+                    "access": "write",
+                    "role": "projection",
+                }
+            ],
             subscribe_topics=(RENDERER_CAPABILITY_DECLARED_TOPIC_V1,),
         )
 

@@ -49,9 +49,10 @@ externally_consumed_topics:
 db_io:
   db_tables:
     - name: llm_routing_decisions
-      migration: "065_create_llm_routing_decisions.sql"
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_llm_routing_decisions.sql"
       access: write
-      database: omnidash_analytics
       role: projection
 
 projection_api:

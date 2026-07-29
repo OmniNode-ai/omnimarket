@@ -1,0 +1,44 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+schema_version: "1.0"
+ticket: OMN-15423
+service: omnimarket_projection_migration_runner
+owner_declaration: service:omnimarket_projection_migration_runner
+migration_root: scripts
+migration_stream: run-projection-migrations.py
+current_physical_database: omnidash_analytics
+target_database_ref: application
+
+# This repository-owned ledger is created by the migration runner, not by a
+# node, so it uses the typed table shape without inventing a node owner.
+db_io:
+  db_tables:
+    - name: omnimarket_schema_migrations
+      database_ref: application
+      schema: omninode_internal
+      migration: run-projection-migrations.py
+      access: read_write
+      role: projection_migration_ledger
+
+relation_evidence:
+  - name: omnimarket_schema_migrations
+    kind: table
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: scripts/run-projection-migrations.py
+    readers: [scripts/run-projection-migrations.py]
+    writers: [scripts/run-projection-migrations.py]
+    authoritative_sources: [scripts/run-projection-migrations.py]
+    dependent_objects: [omnimarket_schema_migrations_id_seq]
+    keys:
+      - PRIMARY KEY (id)
+      - UNIQUE (node_name, version)
+    foreign_keys: []
+    indexes: []
+    partitioning: none
+    grants: []
+    dsn_consumers: [OMNIDASH_ANALYTICS_DB_URL]
+    classification_evidence: >-
+      checksum ledger for the repository-owned projection migration stream;
+      operational state with no customer-owned rows

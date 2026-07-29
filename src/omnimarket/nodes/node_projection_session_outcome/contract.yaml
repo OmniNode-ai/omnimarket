@@ -33,9 +33,10 @@ terminal_event: onex.evt.omnimarket.projection-session-outcome-applied.v1
 db_io:
   db_tables:
     - name: session_outcomes
+      database_ref: application
+      schema: omninode_internal
       migration: "0021_session_outcomes.sql"
       access: write
-      database: omnidash_analytics
       role: outcomes
 
 event_bus:

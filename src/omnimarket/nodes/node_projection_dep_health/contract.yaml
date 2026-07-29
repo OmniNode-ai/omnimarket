@@ -33,9 +33,10 @@ runtime_dispatch:
 db_io:
   db_tables:
     - name: dep_health_findings
+      database_ref: application
+      schema: omninode_internal
       migration: "001_create_dep_health_findings.sql"
       access: write
-      database: omnidash_analytics
       role: findings
 
 event_bus:

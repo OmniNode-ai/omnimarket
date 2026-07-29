@@ -54,6 +54,8 @@ dod_evidence:
 db_io:
   db_tables:
     - name: agent_routing_decisions
+      database_ref: application
+      schema: omninode_internal
       migration: "0021_create_agent_routing_decisions.sql"
       access: write
       # OMN-13150 (FIX-1): canonical DB home is omnidash_analytics — the projection
@@ -74,7 +76,6 @@ db_io:
       # 2026-06-14-post-closeout/). DDL is owned by this node's per-node migration
       # (0021_create_agent_routing_decisions.sql), vendored into omnibase_infra
       # forward/nodes/ and applied to $NODE_PGDB (omnidash_analytics).
-      database: omnidash_analytics
       role: routing_decisions
 
 event_bus:

@@ -31,6 +31,15 @@ idempotency:
     - window
     - snapshot_timestamp_minute
 
+db_io:
+  db_tables:
+    - name: llm_cost_aggregates
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_llm_cost_aggregates.sql"
+      access: write
+      role: cost_summary
+
 event_bus:
   consumer_group: local.omnibase_infra.node_projection_cost_summary.consume.v1
   subscribe_topics:

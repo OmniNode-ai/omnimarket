@@ -52,31 +52,38 @@ golden_path:
 db_io:
   db_tables:
     - name: delegation_events
+      database_ref: application
+      schema: tenant
       migration: "0020_delegation_context_pack_hash.sql"
       access: write
-      database: omnidash_analytics
       role: events
     - name: delegation_shadow_comparisons
+      database_ref: application
+      schema: tenant
       migration: "0007_delegation_events.sql"
       access: write
-      database: omnidash_analytics
       role: shadow_comparisons
     - name: generation_events
+      database_ref: application
+      schema: omninode_internal
       migration: "0027_generation_events_tenant_rls.sql"
       access: write
-      database: omnidash_analytics
       role: generation_events
     - name: delegation_judge_verdict_events
+      # OMN-15423: intentionally unresolved. The topology resolver rejects this
+      # non-existent schema until product semantics establish a real domain.
+      database_ref: application
+      schema: unresolved
       migration: "0016_delegation_judge_verdict_events.sql"
       access: write
-      database: omnidash_analytics
       role: judge_verdict_events
     # OMN-13235: per-tenant ceiling budget state (cap + consumption), event-sourced
     # from delegation source events for budgeted tiers.
     - name: delegation_budget_state
+      database_ref: application
+      schema: tenant
       migration: "0019_delegation_budget_state.sql"
       access: write
-      database: omnidash_analytics
       role: budget_state
 
 event_bus:

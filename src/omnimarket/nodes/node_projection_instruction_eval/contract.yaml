@@ -45,9 +45,10 @@ terminal_event: onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1
 db_io:
   db_tables:
     - name: instruction_eval_aggregate_snapshots
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_instruction_eval_aggregate_snapshots.sql"
       access: write
-      database: omnidash_analytics
       role: instruction_eval_aggregate
 
 event_bus:

@@ -54,9 +54,10 @@ externally_consumed_topics:
 db_io:
   db_tables:
     - name: event_chain
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_event_chain.sql"
       access: write
-      database: omnidash_analytics
       role: event_chain
 
 projection_api:

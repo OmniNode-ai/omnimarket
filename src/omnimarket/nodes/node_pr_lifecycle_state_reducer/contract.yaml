@@ -157,9 +157,10 @@ externally_consumed_topics:
 db_io:
   db_tables:
     - name: pr_lifecycle_ledger_entries
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_pr_lifecycle_ledger_entries.sql"
       access: write
-      database: omnidash_analytics
       role: pr_lifecycle_ledger_entries
 
 projection:

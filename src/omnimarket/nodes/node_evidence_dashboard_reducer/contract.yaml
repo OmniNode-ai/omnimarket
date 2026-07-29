@@ -45,6 +45,27 @@ descriptor:
 
 terminal_event: onex.evt.omnimarket.evidence-dashboard-reduced.v1
 
+db_io:
+  db_tables:
+    - name: evidence_dashboard_projection
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_evidence_dashboard_projection_tables.sql"
+      access: write
+      role: dashboard
+    - name: evidence_correlation_trace_projection
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_evidence_dashboard_projection_tables.sql"
+      access: write
+      role: correlation_trace
+    - name: evidence_readiness_aggregate_projection
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_evidence_dashboard_projection_tables.sql"
+      access: write
+      role: readiness_aggregate
+
 event_bus:
   subscribe_topics:
     - onex.evt.omnimarket.evidence-dashboard-normalized.v1

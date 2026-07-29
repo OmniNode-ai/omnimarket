@@ -122,9 +122,10 @@ def test_golden_chain_receipt_gate_contract_binds_snapshot_and_migration() -> No
     assert contract["db_io"]["db_tables"] == [
         {
             "name": "receipt_gate_rows",
+            "database_ref": "application",
+            "schema": "omninode_internal",
             "migration": "0000_create_receipt_gate_projection_table.sql",
             "access": "write",
-            "database": "omnidash_analytics",
             "role": "receipt_gate_projection",
         }
     ]
