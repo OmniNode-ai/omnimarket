@@ -96,6 +96,13 @@ class EnumPushValidationOutcome(StrEnum):
     PUSH_FAILED = "push_failed"
     REFUSED = "refused"
     VALIDATED = "validated"
+    # OMN-14979: the bundle could not be honestly materialized (deadline past,
+    # oversize, checksum mismatch, or an unusable bundle). A DOMAIN outcome on
+    # the COMPLETED topic, same reasoning as suite_failed: these are
+    # deterministic, caller-attributable facts about the request, not
+    # infrastructure faults. S3/network unreachability RAISES instead and is
+    # routed to the failure terminal topic.
+    BUNDLE_UNAVAILABLE = "bundle_unavailable"
 
 
 class EnumSuiteVerdict(StrEnum):
@@ -111,6 +118,11 @@ _ABORT_OUTCOMES = frozenset(
         EnumPushValidationOutcome.ALREADY_PUSHED,
         EnumPushValidationOutcome.STALE_HEAD,
         EnumPushValidationOutcome.REFUSED,
+        # OMN-14979: a bundle that never materialized aborts before the suite
+        # and before any push, so it carries the same invariants as the other
+        # aborts (suite_verdict=not_run, push_exit=None) — enforced, not
+        # merely intended.
+        EnumPushValidationOutcome.BUNDLE_UNAVAILABLE,
     }
 )
 

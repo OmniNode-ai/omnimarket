@@ -59,7 +59,54 @@
 #
 # Related Tickets:
 #   - OMN-14920: push-suite EFFECT contract + receipt model (gateway P2 tenant #1)
-#   - OMN-14976: Contract v2 — mode + source_identity + Receipt v2 (this revision)
+#   - OMN-14976: Contract v2 — mode + source_identity + Receipt v2
+#   - OMN-14979: bundle transfer leg (this revision)
+#
+# BUNDLE TRANSFER LEG (OMN-14979) — contract_version DELIBERATELY NOT BUMPED,
+#   still 1.1.0. This is the judgement call in this revision, so it is
+#   recorded rather than left implicit:
+#     * contract_version is documented above as tracking the FULL two-repo
+#       agreement, and the gateway pins the matching contract_id in
+#       omninode_infra docker/onex-api/workflow-contracts.yaml. Bumping here
+#       alone would produce exactly the one-repo-half skew the v2 note says
+#       "breaks once" — and that file is concurrently owned by the lane
+#       fencing push-validation out of the deployed catalog, so a lockstep
+#       bump cannot land in the same change.
+#     * The WIRE AGREEMENT IS UNCHANGED by this revision. The gateway's
+#       caller-facing schema is additionalProperties:false over exactly
+#       {repo, branch, expected_head_sha, requester}, so the gateway cannot
+#       produce a bundle-bearing request at all. The `tree` and
+#       `commit+patch` members have ZERO producers today — no caller, no
+#       fixture, no gateway path — so tightening them changes no live seam,
+#       and the byte-pinned fixture (source_identity=commit) is untouched.
+#     * THE BUMP IS OWED at the moment the gateway advertises the bundle
+#       field, which is the same change that first makes tree/commit+patch
+#       reachable. Both repos bump together there.
+#
+#   What this revision adds:
+#     * request.source_identity.bundle (ModelBundleRef) is REQUIRED on the
+#       `tree` and `commit+patch` members. This is a BREAKING change to those
+#       two members and is why the MINOR bumps. It breaks no live caller: the
+#       gateway does not advertise source_identity at all yet (that leg is
+#       still unbuilt), and the byte-pinned request fixture carries
+#       source_identity=commit, which is untouched. An OPTIONAL bundle would
+#       have been a check that does not exist — a tree identity cannot be
+#       materialized without one.
+#     * ModelBundleRef fields: bucket / key / sha256 / size_bytes /
+#       expires_at. NO presigned URL crosses the bus — a presigned URL is a
+#       bearer credential and would persist in the Kafka log, the projection
+#       and every DLQ copy. The worker mints its own GET from bucket+key
+#       using its scoped node-role grant.
+#     * receipt outcome `bundle_unavailable` for the four honest failure
+#       modes (url_expired / oversize / checksum_mismatch / unusable_bundle).
+#       It is an ABORT outcome: suite_verdict=not_run, push_exit=null,
+#       enforced by the receipt model's own invariants.
+#     * Tenant isolation is an APPLICATION control, not an IAM control: the
+#       worker runs under a shared k3s node instance profile, so IAM cannot
+#       express per-tenant scoping. The bundle key embeds the tenant
+#       principal and both the request model and the handler require it to
+#       match. The supporting IAM negative control is the deliberate absence
+#       of s3:ListBucket, so the worker cannot enumerate other tenants' keys.
 name: "node_push_validation_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
@@ -146,6 +193,23 @@ side_effects:
     - branch
     - expected_head_sha
   duplicate_handling: idempotent
+  reads_bundle_transfer:
+    # OMN-14979 bundle transfer leg. Declared as contract facts so the cap and
+    # the timeout are reviewable, not buried constants (readiness row B4).
+    #
+    # max_bundle_bytes MUST equal MAX_BUNDLE_BYTES in
+    # models/model_push_validation_request.py; a cross-boundary test asserts
+    # the two agree so the contract cannot drift from the enforced value.
+    max_bundle_bytes: 268435456
+    download_timeout_ms: 900000
+    # Hard ACCESS bound is the per-request expires_at deadline the worker
+    # enforces before any network call. The bucket lifecycle rule (<=24h) is
+    # only a durability backstop: S3 evaluates expiration on a daily
+    # asynchronous schedule, so lifecycle alone leaves an object readable for
+    # materially longer than a day.
+    object_store: s3
+    key_format: "bundles/<tenant_principal_id>/<correlation_id>/<sha256>.bundle"
+    materialized_ref_format: "refs/onex/bundle/<correlation_id>"
 
 descriptor:
   node_archetype: effect

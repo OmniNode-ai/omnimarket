@@ -25,19 +25,34 @@ read at call time.
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import socket
 import subprocess
+from datetime import UTC, datetime
 from pathlib import Path
 
+from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_request import (
+    MAX_BUNDLE_BYTES,
+    ModelBundleRef,
+)
 from omnimarket.nodes.node_push_validation_effect.protocols.protocol_push_validation_client import (
+    EnumBundleFailureMode,
     ModelBranchObservation,
+    ModelBundleMaterialization,
     ModelHookInstallation,
     ModelPushResult,
     ModelSuiteRun,
 )
 
 _WORKROOT_ENV = "ONEX_PUSH_VALIDATION_WORKROOT"
+# The ONE bucket this worker is allowed to dereference. Fail-fast when unset
+# (no silent default): a worker that does not know its transfer bucket must
+# not guess one. A request naming any other bucket is refused, so a forged
+# payload cannot redirect the worker at an arbitrary bucket its node role
+# happens to be able to read.
+_BUNDLE_BUCKET_ENV = "ONEX_PUSH_VALIDATION_BUNDLE_BUCKET"
+_BUNDLE_DOWNLOAD_TIMEOUT_SECONDS = 900.0
 _GIT_TIMEOUT_SECONDS = 300.0
 # Suite runs are multi-minute-to-hours CPU-saturating jobs (contract
 # timeout_ms 14400000 = 4h).
@@ -137,13 +152,225 @@ class GitPushValidationSubprocess:
         digest = hashlib.sha256(hook_path.read_bytes()).hexdigest()
         return ModelHookInstallation(installed=True, hook_id_readback=digest)
 
+    def materialize_bundle(
+        self,
+        repo: str,
+        branch: str,
+        bundle: ModelBundleRef,
+        correlation_id: str,
+    ) -> ModelBundleMaterialization:
+        """Dereference + unpack one transferred bundle (OMN-14979).
+
+        Order is load-bearing. The three cheap, deterministic refusals happen
+        BEFORE any byte is downloaded, so an expired, misdirected or oversize
+        request costs the shared worker nothing.
+        """
+
+        def failed(
+            mode: EnumBundleFailureMode,
+            detail: str,
+            *,
+            observed_sha256: str = "",
+            observed_size_bytes: int = 0,
+        ) -> ModelBundleMaterialization:
+            return ModelBundleMaterialization(
+                materialized=False,
+                failure_mode=mode,
+                observed_sha256=observed_sha256,
+                observed_size_bytes=observed_size_bytes,
+                detail=detail,
+            )
+
+        # (1) Deadline FIRST — fail-closed, before any network call. This is
+        # the hard access bound; the bucket lifecycle rule is only a
+        # durability backstop (S3 expires on a daily async schedule).
+        deadline = datetime.fromisoformat(bundle.expires_at.replace("Z", "+00:00"))
+        if datetime.now(UTC) >= deadline:
+            return failed(
+                EnumBundleFailureMode.URL_EXPIRED,
+                f"bundle deadline {bundle.expires_at} already passed",
+            )
+
+        # (2) Bucket pin — a request must not redirect the worker at some
+        # other bucket its node role can read. Fail-fast when unconfigured.
+        allowed_bucket = os.environ[_BUNDLE_BUCKET_ENV]
+        if bundle.bucket != allowed_bucket:
+            return failed(
+                EnumBundleFailureMode.UNUSABLE_BUNDLE,
+                f"bundle.bucket {bundle.bucket!r} is not this worker's "
+                f"configured transfer bucket",
+            )
+
+        # (3) Declared size against the cap, before the download.
+        if bundle.size_bytes > MAX_BUNDLE_BYTES:
+            return failed(
+                EnumBundleFailureMode.OVERSIZE,
+                f"declared size {bundle.size_bytes} exceeds cap {MAX_BUNDLE_BYTES}",
+            )
+
+        # (4) HEAD first so the REAL size is bounded before any body is read —
+        # a lying size_bytes cannot make the worker download an oversize
+        # object.
+        head = self._aws_s3api(
+            ["head-object", "--bucket", bundle.bucket, "--key", bundle.key]
+        )
+        if head.returncode != 0:
+            stderr = head.stderr.strip()
+            if "404" in stderr or "Not Found" in stderr or "NoSuchKey" in stderr:
+                return failed(
+                    EnumBundleFailureMode.UNUSABLE_BUNDLE,
+                    "bundle object not present (already lifecycle-expired, "
+                    "or never uploaded)",
+                )
+            # AccessDenied / credential / transport faults are INFRASTRUCTURE
+            # problems, not facts about the request — route to the failure
+            # terminal topic rather than fabricating a domain receipt.
+            raise PushValidationInfraError(f"s3api head-object failed: {stderr[-500:]}")
+
+        try:
+            actual_size = int(json.loads(head.stdout)["ContentLength"])
+        except (ValueError, KeyError, TypeError) as exc:
+            raise PushValidationInfraError(
+                f"s3api head-object returned unparseable metadata: {exc}"
+            ) from exc
+
+        if actual_size > MAX_BUNDLE_BYTES:
+            return failed(
+                EnumBundleFailureMode.OVERSIZE,
+                f"object is {actual_size} bytes, exceeding cap {MAX_BUNDLE_BYTES}",
+                observed_size_bytes=actual_size,
+            )
+        if actual_size != bundle.size_bytes:
+            return failed(
+                EnumBundleFailureMode.CHECKSUM_MISMATCH,
+                f"declared size {bundle.size_bytes} != actual {actual_size}",
+                observed_size_bytes=actual_size,
+            )
+
+        repo_dir = self._repo_dir(repo)
+        bundle_dir = self._workroot() / "_bundles"
+        bundle_dir.mkdir(parents=True, exist_ok=True)
+        bundle_path = bundle_dir / f"{bundle.sha256}.bundle"
+
+        try:
+            get = self._aws_s3api(
+                [
+                    "get-object",
+                    "--bucket",
+                    bundle.bucket,
+                    "--key",
+                    bundle.key,
+                    str(bundle_path),
+                ],
+                timeout=_BUNDLE_DOWNLOAD_TIMEOUT_SECONDS,
+            )
+            if get.returncode != 0:
+                raise PushValidationInfraError(
+                    f"s3api get-object failed: {get.stderr.strip()[-500:]}"
+                )
+
+            observed_size = bundle_path.stat().st_size
+            digest = hashlib.sha256()
+            with bundle_path.open("rb") as handle:
+                for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                    digest.update(chunk)
+            observed_sha256 = digest.hexdigest()
+
+            # (5) Content addressing: the bytes received must be the bytes
+            # named. A swapped or truncated object cannot be validated.
+            if observed_sha256 != bundle.sha256:
+                return failed(
+                    EnumBundleFailureMode.CHECKSUM_MISMATCH,
+                    "sha256 of downloaded bytes does not match the declared digest",
+                    observed_sha256=observed_sha256,
+                    observed_size_bytes=observed_size,
+                )
+
+            # (6) git must agree the archive is a usable bundle before we
+            # fetch from it.
+            verify = _run(["git", "bundle", "verify", str(bundle_path)], cwd=repo_dir)
+            if verify.returncode != 0:
+                return failed(
+                    EnumBundleFailureMode.UNUSABLE_BUNDLE,
+                    "git bundle verify rejected the archive: "
+                    + (verify.stderr.strip()[-300:] or "no detail"),
+                    observed_sha256=observed_sha256,
+                    observed_size_bytes=observed_size,
+                )
+
+            # (7) Unpack into a REQUEST-SCOPED ref. Seam: the bundle MUST
+            # carry exactly refs/heads/<branch>, and it lands at
+            # refs/onex/bundle/<correlation_id> so two concurrent requests on
+            # the same branch cannot overwrite each other's state. The
+            # refspec names one source and one destination on purpose — a
+            # wildcard would produce a ref NAMESPACE, which is not a
+            # checkout-able commit.
+            materialized_ref = f"refs/onex/bundle/{correlation_id}"
+            fetch = _run(
+                [
+                    "git",
+                    "fetch",
+                    "--no-tags",
+                    str(bundle_path),
+                    f"+refs/heads/{branch}:{materialized_ref}",
+                ],
+                cwd=repo_dir,
+            )
+            if fetch.returncode != 0:
+                return failed(
+                    EnumBundleFailureMode.UNUSABLE_BUNDLE,
+                    "git fetch from bundle failed: "
+                    + (fetch.stderr.strip()[-300:] or "no detail"),
+                    observed_sha256=observed_sha256,
+                    observed_size_bytes=observed_size,
+                )
+
+            return ModelBundleMaterialization(
+                materialized=True,
+                materialized_ref=materialized_ref,
+                observed_sha256=observed_sha256,
+                observed_size_bytes=observed_size,
+            )
+        finally:
+            # The archive is single-use; the unpacked objects live in the
+            # repo. Never leave bundle bytes in the workroot.
+            bundle_path.unlink(missing_ok=True)
+
+    def _aws_s3api(
+        self, args: list[str], *, timeout: float = _GIT_TIMEOUT_SECONDS
+    ) -> subprocess.CompletedProcess[str]:
+        """Run one `aws s3api` call from the workroot.
+
+        Subprocess-backed like every other side effect in this module, which
+        keeps the worker free of a boto3 runtime dependency. The worker
+        authenticates with its own scoped GetObject grant
+        (omninode-push-validation-bundle-reader-dev) via the node instance
+        profile — no presigned URL is ever taken from the request payload, so
+        no bearer credential transits the bus.
+        """
+        try:
+            return _run(["aws", "s3api", *args], cwd=self._workroot(), timeout=timeout)
+        except FileNotFoundError as exc:
+            # Toolchain absent is an infrastructure fault (module error seam).
+            raise PushValidationInfraError(
+                "the `aws` CLI is not present on this worker — the "
+                "bundle-transfer leg cannot dereference S3 without it"
+            ) from exc
+
     def run_suite(
-        self, repo: str, branch: str, expected_head_sha: str
+        self,
+        repo: str,
+        branch: str,
+        expected_head_sha: str,
+        source_ref: str | None = None,
     ) -> ModelSuiteRun:
         repo_dir = self._repo_dir(repo)
-        # Validate the exact requested SHA — detached checkout of the
-        # fail-closed expected head, never "whatever the branch is now".
-        _run_or_raise(["git", "checkout", "--detach", expected_head_sha], cwd=repo_dir)
+        # Validate the exact requested state — detached checkout, never
+        # "whatever the branch is now". With a bundle (OMN-14979) the state
+        # under test is the materialized ref, which is NOT on origin; without
+        # one it is the fail-closed expected head, exactly as before.
+        checkout_target = source_ref if source_ref else expected_head_sha
+        _run_or_raise(["git", "checkout", "--detach", checkout_target], cwd=repo_dir)
         result = _run(
             ["uv", "run", "pytest", "tests/", "-v"],
             cwd=repo_dir,

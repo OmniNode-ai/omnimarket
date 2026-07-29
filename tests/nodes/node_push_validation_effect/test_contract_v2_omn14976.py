@@ -37,6 +37,7 @@ from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_r
 from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_request import (
     EnumPushValidationMode,
     EnumSourceIdentityType,
+    ModelBundleRef,
     ModelPushValidationRequest,
     ModelSourceIdentityCommit,
     ModelSourceIdentityCommitPatch,
@@ -44,6 +45,7 @@ from omnimarket.nodes.node_push_validation_effect.models.model_push_validation_r
 )
 from omnimarket.nodes.node_push_validation_effect.protocols.protocol_push_validation_client import (
     ModelBranchObservation,
+    ModelBundleMaterialization,
     ModelHookInstallation,
     ModelPushResult,
     ModelSuiteRun,
@@ -72,11 +74,45 @@ def make_request(**overrides: Any) -> ModelPushValidationRequest:
     return ModelPushValidationRequest(**kwargs)
 
 
+# Bundle transfer leg (OMN-14979): `tree` and `commit+patch` identities now
+# carry a REQUIRED bundle ref. The key is structurally bound to the tenant
+# principal, the correlation id, and the content digest, so these helpers
+# derive it from the same constants the request uses rather than hardcoding a
+# second copy that could silently drift.
+# Synthetic bucket name. Deliberately NOT the real account-bearing
+# bucket: the account id is a leaked-literal finding, and nothing in
+# these tests depends on the real name -- the worker pins whatever
+# ONEX_PUSH_VALIDATION_BUNDLE_BUCKET says, which the fixture sets.
+BUNDLE_BUCKET = "omninode-push-validation-bundles-test"
+BUNDLE_SHA256 = "c" * 64
+
+
+def make_bundle(
+    *,
+    sha256: str = BUNDLE_SHA256,
+    tenant_principal_id: str | None = None,
+    correlation_id: str | None = None,
+    bucket: str = BUNDLE_BUCKET,
+    size_bytes: int = 4096,
+    expires_at: str = "2099-01-01T00:00:00Z",
+) -> dict[str, object]:
+    principal = tenant_principal_id or PRINCIPAL
+    correlation = correlation_id or CORRELATION
+    return {
+        "bucket": bucket,
+        "key": f"bundles/{principal}/{correlation}/{sha256}.bundle",
+        "sha256": sha256,
+        "size_bytes": size_bytes,
+        "expires_at": expires_at,
+    }
+
+
 class StubPushValidationClient:
     """Same shape as the OMN-14920 acceptance suite's stub; records calls."""
 
     def __init__(self, *, push: ModelPushResult | None = None) -> None:
         self.calls: list[str] = []
+        self.suite_source_refs: list[str | None] = []
         self._observation = ModelBranchObservation(
             observed_head_sha=SHA,
             remote_head_sha=OTHER_SHA,
@@ -97,9 +133,29 @@ class StubPushValidationClient:
         self.calls.append("install_hooks")
         return self._hooks
 
+    def materialize_bundle(
+        self,
+        repo: str,
+        branch: str,
+        bundle: ModelBundleRef,
+        correlation_id: str,
+    ) -> ModelBundleMaterialization:
+        self.calls.append("materialize_bundle")
+        return ModelBundleMaterialization(
+            materialized=True,
+            materialized_ref=f"refs/onex/bundle/{correlation_id}",
+            observed_sha256=bundle.sha256,
+            observed_size_bytes=bundle.size_bytes,
+        )
+
     def run_suite(
-        self, repo: str, branch: str, expected_head_sha: str
+        self,
+        repo: str,
+        branch: str,
+        expected_head_sha: str,
+        source_ref: str | None = None,
     ) -> ModelSuiteRun:
+        self.suite_source_refs.append(source_ref)
         self.calls.append("run_suite")
         return ModelSuiteRun(
             passed=True, log_digest=hashlib.sha256(GREEN_LOG.encode()).hexdigest()
@@ -161,6 +217,7 @@ class TestSourceIdentityInvariants:
                     "identity_type": "tree",
                     "expected_head_sha": SHA,
                     "tree_hash": "a" * 64,
+                    "bundle": make_bundle(),
                 },
             )
 
@@ -171,6 +228,7 @@ class TestSourceIdentityInvariants:
                 "identity_type": "tree",
                 "expected_head_sha": SHA,
                 "tree_hash": "a" * 64,
+                "bundle": make_bundle(),
             },
         )
         assert isinstance(request.source_identity, ModelSourceIdentityTree)
@@ -183,6 +241,7 @@ class TestSourceIdentityInvariants:
                     "identity_type": "commit+patch",
                     "expected_head_sha": SHA,
                     "patch_hash": "b" * 64,
+                    "bundle": make_bundle(),
                 },
             )
 
@@ -193,6 +252,7 @@ class TestSourceIdentityInvariants:
                 "identity_type": "commit+patch",
                 "expected_head_sha": SHA,
                 "patch_hash": "b" * 64,
+                "bundle": make_bundle(),
             },
         )
         assert isinstance(request.source_identity, ModelSourceIdentityCommitPatch)
@@ -206,6 +266,7 @@ class TestSourceIdentityInvariants:
                 "identity_type": "tree",
                 "expected_head_sha": SHA,
                 "tree_hash": "a" * 64,
+                "bundle": make_bundle(),
             },
         )
         tree_b = make_request(
@@ -214,6 +275,7 @@ class TestSourceIdentityInvariants:
                 "identity_type": "tree",
                 "expected_head_sha": SHA,
                 "tree_hash": "b" * 64,
+                "bundle": make_bundle(),
             },
         )
         assert tree_a.source_identity != tree_b.source_identity
