@@ -47,9 +47,6 @@ from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_requ
     ModelOccCompanionRequest,
     ModelOccContractState,
 )
-from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
-    downstream_receipt_public_check_value,
-)
 
 
 def _probe(stdout: str = '{"number":321,"state":"OPEN"}') -> ModelObservedProbe:
@@ -325,11 +322,7 @@ class TestDownstreamCheckOverride:
     (backward compatible with every request built before this field existed).
     """
 
-    def test_default_falls_back_to_the_admissible_pr_files_check(self) -> None:
-        # OMN-15247 R21: the fallback is the product-PR-pinned ``gh api .../files``
-        # assertion. The former ``gh pr view ... --json number,state,headRefName``
-        # is NOT_EXECUTED under the OMN-15309 predicate (bare ``gh``), which is
-        # what made every minted companion born-red.
+    def test_default_falls_back_to_generic_pr_state_check(self) -> None:
         plan = compute_companion_plan(_request())
         downstream = next(
             f
@@ -337,11 +330,9 @@ class TestDownstreamCheckOverride:
             if f.kind == EnumCompanionFileKind.DOWNSTREAM_RECEIPT
         )
         parsed = yaml.safe_load(downstream.content)
-        assert parsed["check_value"] == downstream_receipt_public_check_value(
-            pr_number=321, repo="OmniNode-ai/omnimarket"
+        assert parsed["check_value"] == (
+            "gh pr view 321 --repo OmniNode-ai/omnimarket --json number,state,headRefName"
         )
-        # RED control: the pre-R21 fallback is gone.
-        assert "gh pr view" not in parsed["check_value"]
 
     def test_supplied_check_value_is_used_verbatim(self) -> None:
         honest_check = (
@@ -483,14 +474,11 @@ class TestOmn14550SelfBindPrNumber:
 
     def test_self_bind_check_value_targets_occ_pr_not_a_commit_sha(self) -> None:
         # Fix scope #2: the self-bind check_value asserts the durable OCC PR
-        # identity, never a commit-SHA substring that may not appear in the
-        # receipt or the branch's real history. OMN-15247 R21: the identity is
-        # now asserted via ``gh api .../pulls/<OCC_PR>/files`` rather than
-        # ``gh pr view <OCC_PR>`` — same subject, admissible spelling.
+        # identity (``gh pr view <OCC_PR>``), never a commit-SHA substring that
+        # may not appear in the receipt or the branch's real history.
         parsed = yaml.safe_load(self._self_bind_receipt_text())
-        assert f"/pulls/{self._OCC_PR}/files" in parsed["check_value"]
+        assert f"gh pr view {self._OCC_PR}" in parsed["check_value"]
         assert str(self._PRODUCT_PR) not in parsed["check_value"]
-        assert "gh pr view" not in parsed["check_value"]
 
     def test_self_bind_binds_occ_pr_through_core_validator(self) -> None:
         # Drive the ACTUAL binding seam core's occ-preflight uses. The OCC PR

@@ -19,12 +19,9 @@ import pytest
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     build_idempotency_key,
     ci_check_evidence_id,
-    ci_receipt_public_check_value,
     classify_trivial_infra_fastpath,
     compute_contract_sha256,
     extract_evidence_item_id,
-    hosted_safe_binding_check_value,
-    hosted_safe_diff_scope_check_value,
     rebind_contract_entry_sha256_in_text,
     rebind_contract_sha256_in_text,
     render_ci_check_receipt,
@@ -117,26 +114,25 @@ class TestContractSubstanceFloor:
             evidence_id="dod-OmniNode-ai-omnimarket-pr-1721",
         )
 
-    def test_declares_two_dod_evidence_items(self) -> None:
+    def test_declares_binding_diff_scope_and_validator_items(self) -> None:
+        # OMN-15247 R21b: three items, not two. The third is the minted
+        # admissibility-validator -- the only one of the three that is admissible
+        # under the OMN-15309 predicate, and therefore the one that keeps a
+        # freshly minted companion from being born BLOCKED.
         rendered = self._render()
-        assert rendered.count("- id: ") == 2
+        assert rendered.count("- id: ") == 3
+        assert "dod-occ-evidence-admissibility-validator" in rendered
+        assert "uv run pytest tests/test_evidence_admissibility.py -q" in rendered
 
-    def test_binding_item_is_the_admissible_probe(self) -> None:
-        # OMN-14425 ADDS a claim; it must not remove or alter the binding item the
-        # Evidence-Source autobind stamp path depends on. OMN-14741 F-02: the
-        # check_value renders in canonical ${PR_NUMBER}/${REPO} placeholder form
-        # (lint-clean) rather than an interpolated integer. OMN-15247 R21: it is
-        # the `gh api .../files | grep -q .` assertion, because the former
-        # `gh pr view --json number,state` existence probe is NOT_EXECUTED under
-        # the OMN-15309 predicate and was born-red on OCC#5406/#5415/#5418.
+    def test_existence_probe_item_is_preserved_verbatim(self) -> None:
+        # OMN-14425 ADDS a claim; it must not remove or alter the binding probe
+        # the Evidence-Source autobind stamp path depends on. OMN-14741 F-02: the
+        # check_value now renders in canonical ${PR_NUMBER}/${REPO} placeholder
+        # form (constant-length, lint-clean) rather than an interpolated integer.
         rendered = self._render()
-        assert hosted_safe_binding_check_value() in rendered
+        assert "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state" in rendered
         # The former hardcoded-integer form is gone (it fails lint-contract-check-values).
         assert "gh pr view 1721" not in rendered
-        # RED control for the R21 ratchet: the pre-fix binding probe is absent.
-        assert (
-            "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state" not in rendered
-        )
 
     def test_second_item_check_value_is_not_an_existence_probe(self) -> None:
         # OMN-14741 F-06: the second item is a GraphQL product-diff-scope assertion
@@ -144,7 +140,7 @@ class TestContractSubstanceFloor:
         # NOT a source-CI-green probe. It clears the OMN-14409 substance floor
         # (diff-assert family) and is not an existence probe.
         rendered = self._render()
-        ci_check_value = hosted_safe_diff_scope_check_value()
+        ci_check_value = "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
         assert ci_check_value in rendered
         assert not _is_existence_probe_like_omn_14409(ci_check_value)
         # Regression: the former `gh pr checks <source>` CI-green gate is gone, and
@@ -275,8 +271,10 @@ class TestSelfBindDodEvidenceItemRender:
         assert "OCC companion PR #42" in rendered
         # OMN-14741 F-02: placeholder-var check_value (lint-clean), not the OCC PR
         # integer that failed lint-contract-check-values on the self-bind command.
-        assert hosted_safe_binding_check_value() in rendered
-        assert "gh pr view" not in rendered
+        assert (
+            'check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} '
+            '--json number,state"' in rendered
+        )
         assert "gh pr view 42" not in rendered
         assert _NAMED_PLACEHOLDER_RE.findall(rendered) == []
 
@@ -294,10 +292,8 @@ class TestCiCheckReceiptRender:
             run_timestamp="2026-07-10T00:00:00Z",
             commit_sha="abc1234",
             branch="auto/omninode-ai-omnimarket-pr-123-occ-autobind",
-            probe_command=(
-                "gh api repos/OmniNode-ai/omnimarket/pulls/123/files --paginate"
-            ),
-            probe_stdout='[{"filename":"src/x.py","status":"modified"}]',
+            probe_command="gh pr view 123 --repo OmniNode-ai/omnimarket --json files",
+            probe_stdout='{"files":[{"path":"src/x.py"}]}',
             exit_code=0,
         )
 
@@ -312,8 +308,8 @@ class TestCiCheckReceiptRender:
         # assertion (`gh pr view --json files`), not the REST-fragile `gh pr diff`
         # and not the former source-CI-green `gh pr checks` probe.
         assert (
-            ci_receipt_public_check_value(pr_number=123, repo="OmniNode-ai/omnimarket")
-            in rendered
+            'check_value: "gh pr view 123 --repo OmniNode-ai/omnimarket '
+            '--json files"' in rendered
         )
         assert "gh pr checks" not in rendered
         assert "gh pr diff" not in rendered

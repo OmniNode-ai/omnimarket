@@ -103,78 +103,82 @@ _CONTENT_BOUND_RE = re.compile(
 # Tails that would make ANY check non-falsifiable by swallowing its exit code.
 _INERT_TAIL_RE = re.compile(r"\|\|\s*(?:true|exit\s+0)|2>\s*/dev/null\s*$")
 
-# --- Allowlisted generated forms -- ADMISSIBLE-ONLY RATCHET (OMN-15247 R21) --
+# --- Allowlisted generated forms (OMN-15247 R21b) ----------------------------
 #
-# This tuple IS the mechanism, not a comment: it is the complete vocabulary this
-# repo's producer is permitted to emit, and this gate runs blocking in
-# ``occ-emitter-golden-gate.yml`` plus pre-commit. Emitting anything else fails
-# the gate.
+# This tuple is the complete vocabulary this repo's producer is permitted to
+# emit. The gate runs blocking in ``occ-emitter-golden-gate.yml`` plus
+# pre-commit, so emitting anything else fails.
 #
-# The four forms that used to sit here were REMOVED, not amended, and the
-# removal is the ratchet. Every one of them was inadmissible under the OMN-15309
-# predicate that OCC's ``Contract Compliance Check`` now enforces, which is why
-# three consecutive machine-minted companions (OCC#5406 / #5415 / #5418) were
-# born BLOCKED at 0-of-3 admissible and needed hand repair:
+# WHAT R21b CHANGED, and why the previous revision of this list was worse than
+# the problem it fixed. R21 narrowed this allowlist to a single new family --
 #
-#   REMOVED  gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state
-#   REMOVED  gh pr view ${PR_NUMBER} --repo ${REPO} --json files
-#            -> NOT_EXECUTED. A bare ``gh`` in command position is not an
-#               admissible probe; only the compound ``gh api`` token is.
-#   REMOVED  gh pr diff ${PR_NUMBER} --repo ${REPO} --name-only | grep -qiE '...'
-#            -> admissible for the OCC runner (via ``grep``) but NOT-FALSIFIABLE
-#               for deploy-gate, whose ALLOW set is live probes only and which is
-#               fail-closed for every ticket outside its frozen grandfather
-#               snapshot -- i.e. for every newly minted companion.
-#   REMOVED  grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/.../command.yaml
-#            -> INSIDE_OWN_DIFF, matched unconditionally by two independent DENY
-#               patterns. The companion greps a receipt it authors in the same
-#               PR: the check passes because the producer typed the text.
+#     gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate --jq '.[].sha'
+#       | grep -qE '^[0-9a-f]{40}$'          (and .status / .filename siblings)
 #
-# Re-adding any of them regresses the producer to born-red and this gate goes
-# RED first. Keeping them "accepted but deprecated" was rejected deliberately --
-# an allowlist that still admits the defect is not a ratchet.
+# -- and REMOVED every prior form, on the grounds that the priors were
+# inadmissible under the OMN-15309 predicate. The priors were indeed
+# inadmissible. The replacement was VACUOUS: measured, it exits 0 against
+# omnimarket#1, omnimarket#100, OCC#5418 and OCC#5436 alike, because every PR on
+# GitHub that changes a file has 40-hex blob SHAs and GitHub file statuses. And
+# because the OCC runner pre-substitutes ``${REPO}``/``${PR_NUMBER}`` with the
+# repo/PR whose CI is executing, on the OCC companion's own Contract Compliance
+# run those tokens resolve to the COMPANION -- so the check read the companion's
+# own diff on the exact surface it was minted to satisfy.
 #
-# Every allowlisted form is ANCHORED (``^...$`` inside the grep pattern), and an
-# UNANCHORED variant is rejected. That is not pedantry: on a 404 -- which is what
-# a token WITHOUT SCOPE on the repo produces -- ``gh api`` writes its error body
-# to STDOUT, ``--jq '.[].x'`` iterates that object's values, and an unanchored
-# ``| grep -q .`` returns 0. The check would then report PASS precisely when it
-# could not observe the repo at all. Measured live against ``/pulls/99999999``
-# while building OMN-15247 R21.
+# A ratchet whose only permitted vocabulary is a PR-existence probe does not
+# ratchet toward proof, it ratchets the machine ONTO the vacuous shape while
+# humans keep supplying the real evidence by hand. So R21b inverts it: the
+# vacuous family is now a NAMED REJECTION (``_VACUOUS_PR_FILES_RE`` below), the
+# pre-R21 provenance forms are restored as ACCEPTED-BUT-INERT, and the load-
+# bearing addition is :data:`_ADMISSIBILITY_VALIDATOR_RE` -- an EXECUTED,
+# FALSIFIABLE check against a surface the companion does not author, which
+# ``require_admissibility_validator`` now asserts is present on every generated
+# contract.
+#
+# Accepting an inert form is deliberate and is NOT the same as accepting a
+# vacuous one. An inert value (``gh pr view ...``) is reported INERT/WARN by the
+# OCC runner: it is visibly not proof, and the contract's admissibility comes
+# from the validator item that explicitly SUPERSEDES it. A vacuous value reports
+# PASS while proving nothing -- that is laundering, and it is what this list now
+# rejects by name.
 _ALLOWLISTED_RE = (
-    # Binding assertion: the PR's file list carries real 40-hex blob SHAs.
-    # ADMISSIBLE (probes {gh-api, grep}); FALSIFIABLE for deploy-gate (gh-api is
-    # a live probe); tier L1 via the substance floor's ``| grep`` family.
+    # Binding provenance (pre-R21, restored). NOT_EXECUTED under the predicate;
+    # reported INERT/WARN by the OCC runner, superseded by the validator item.
+    re.compile(r"^gh pr view \$\{PR_NUMBER\} --repo \$\{REPO\} --json number,state$"),
+    # Diff-scope provenance (pre-R21, restored). Same standing.
+    re.compile(r"^gh pr view \$\{PR_NUMBER\} --repo \$\{REPO\} --json files$"),
+    # Deploy-scope item (F-05 / OMN-14742), pre-R21 form restored. Carries the
+    # literal ``deploy`` keyword the deploy-gate legacy substring rule greps for.
     re.compile(
-        r"^gh api repos/\$\{REPO\}/pulls/\$\{PR_NUMBER\}/files --paginate "
-        r"--jq '\.\[\]\.sha' \| grep -qE '\^\[0-9a-f\]\{40\}\$'$"
-    ),
-    # Diff-scope assertion: the PR's file list carries real GitHub statuses.
-    re.compile(
-        r"^gh api repos/\$\{REPO\}/pulls/\$\{PR_NUMBER\}/files --paginate "
-        r"--jq '\.\[\]\.status' \| grep -qE "
-        r"'\^\(added\|modified\|removed\|renamed\|changed\|copied\)\$'$"
-    ),
-    # Deploy-scope assertion (F-05 / OMN-14742), same admissible family, still
-    # carrying the literal ``deploy`` keyword deploy-gate's legacy rule greps.
-    # ``select(.status)`` is the fail-closed guard here: on a 404 body jq errors
-    # instead of emitting the message strings.
-    re.compile(
-        r"^gh api repos/\$\{REPO\}/pulls/\$\{PR_NUMBER\}/files --paginate "
-        r"--jq '\.\[\] \| select\(\.status\) \| \.filename' "
-        r"\| grep -qiE '[^']*deploy[^']*'$"
+        r"^gh pr diff \$\{PR_NUMBER\} --repo \$\{REPO\} --name-only \| "
+        r"grep -qiE '[^']*deploy[^']*'$"
     ),
 )
 
-# --- Named anti-regression rules (OMN-15247 R21) -----------------------------
+# The minted admissible check -- the byte-identical shape Codex's accepted
+# hand-repairs appended to OCC#5406 / #5415 / #5418, now produced by the machine.
+# Admissible SUBSTANTIVELY: ``uv`` is an executed hermetic command, it runs real
+# behaviour, it goes RED when that behaviour breaks, and the file it names is one
+# the companion does not author.
+_ADMISSIBILITY_VALIDATOR_RE = re.compile(
+    r"^uv run pytest tests/test_evidence_admissibility\.py -q$"
+)
+
+# --- Named anti-regression rules (OMN-15247 R21 / R21b) ----------------------
 #
-# The allowlist above is exact-match, so these are strictly redundant for a
-# conforming producer. They exist so the FAILURE MESSAGE names the OMN-15309
-# rule that was violated instead of the generic "matches no known form", which
-# is the difference between a gate an author can act on and one they route
-# around.
+# The allowlist is exact-match, so these are strictly redundant for a conforming
+# producer. They exist so the FAILURE MESSAGE names the property that was
+# violated instead of the generic "matches no known form" -- the difference
+# between a gate an author can act on and one they route around.
 _SELF_REFERENTIAL_RE = re.compile(r"dod_receipts|\$\{?CONTRACT_REPO_DIR\b", re.I)
-_BARE_GH_PR_RE = re.compile(r"(^|\||&&|;)\s*gh\s+pr\s+")
+
+# R21b, the regression this round exists to prevent from recurring: a
+# ``/pulls/<n>/files`` read, in EITHER placeholder or literal form, asserting only
+# that the list is non-empty / well-formed. Green for every PR in existence, and
+# self-referential on the OCC runner where the tokens resolve to the companion.
+_VACUOUS_PR_FILES_RE = re.compile(
+    r"gh api repos/\S+/pulls/(?:\$\{PR_NUMBER\}|\d+)/files\b"
+)
 
 
 def _iter_check_values(contract: dict[str, object]) -> list[tuple[str, str]]:
@@ -216,9 +220,9 @@ def _iter_check_values(contract: dict[str, object]) -> list[tuple[str, str]]:
 def classify_check(check_value: str) -> tuple[str, str | None]:
     """Return ``(classification, violation_message)``.
 
-    ``classification`` is one of ``content_bound`` / ``allowlisted`` /
-    ``unknown``. A violation message is returned for anything that is neither a
-    well-formed content-bound check nor an allowlisted legacy form.
+    ``classification`` is one of ``content_bound`` / ``admissibility_validator``
+    / ``allowlisted`` / ``unknown``. A violation message is returned for anything
+    that is none of those.
     """
     value = check_value.strip()
     if not value:
@@ -230,23 +234,29 @@ def classify_check(check_value: str) -> tuple[str, str | None]:
             "trailing 2>/dev/null) and can therefore never go RED"
         )
 
-    # OMN-15247 R21 -- named diagnoses for the two shapes that made three
-    # consecutive companions born-red. Checked BEFORE the allowlist so the
-    # message names the violated property, not just "unrecognised form".
+    # Named diagnoses, checked BEFORE the allowlist so the message names the
+    # property that was violated rather than "unrecognised form".
     if _SELF_REFERENTIAL_RE.search(value):
         return "unknown", (
             "check_value reads back the receipt/contract tree this same "
             "companion PR authors (dod_receipts / $CONTRACT_REPO_DIR) -- "
-            "INSIDE_OWN_DIFF under the OMN-15309 predicate, so it can never "
-            "produce a PASS. Assert the PR's own file list via "
-            "`gh api repos/${REPO}/pulls/${PR_NUMBER}/files ... | grep` instead"
+            "INSIDE_OWN_DIFF under the OMN-15309 predicate, so it passes only "
+            "because the producer typed the text it greps. Derive a "
+            "content-bound pin against the PRODUCT repo, or declare the "
+            "provenance form and let the admissibility-validator item supersede "
+            "it"
         )
-    if _BARE_GH_PR_RE.search(value):
+    if _VACUOUS_PR_FILES_RE.search(value):
         return "unknown", (
-            "check_value invokes bare `gh pr ...`, which the OMN-15309 "
-            "predicate classifies NOT_EXECUTED (only the compound `gh api` "
-            "token is an admissible probe; `gh pr view` reports PR metadata "
-            "and is trivially true for any live PR). Use `gh api`"
+            "check_value reads `.../pulls/<n>/files` and asserts only that the "
+            "list is non-empty or well-formed. MEASURED: that exits 0 for every "
+            "PR on GitHub that changes at least one file, so it carries zero "
+            "information about the change under test -- a PR-existence probe, "
+            "which OMN-15247 names as a REJECTION class. It is also "
+            "self-referential on the surface it runs on: the OCC compliance "
+            "runner pre-substitutes ${REPO}/${PR_NUMBER} with the OCC COMPANION's "
+            "own repo/number, so it reads the companion's own diff. Clearing the "
+            "OMN-15309 predicate is a floor, not the goal"
         )
 
     match = _CONTENT_BOUND_RE.match(value)
@@ -265,6 +275,9 @@ def classify_check(check_value: str) -> tuple[str, str | None]:
             "RED-derivable grammar (one pinned ?ref=<hex>, terminal "
             "grep -c/-q with a non-empty needle)"
         )
+
+    if _ADMISSIBILITY_VALIDATOR_RE.match(value):
+        return "admissibility_validator", None
 
     for pattern in _ALLOWLISTED_RE:
         if pattern.match(value):
@@ -304,6 +317,7 @@ def inspect_contract(
     violations: list[dict[str, str]] = []
     content_bound: list[tuple[str, str]] = []
     checks = _iter_check_values(data)
+    has_validator = False
     for item_id, value in checks:
         classification, reason = classify_check(value)
         if reason is not None:
@@ -317,6 +331,35 @@ def inspect_contract(
             )
         elif classification == "content_bound":
             content_bound.append((item_id, value.strip()))
+        elif classification == "admissibility_validator":
+            has_validator = True
+
+    # OMN-15247 R21b -- the load-bearing assertion of this gate, and the one that
+    # would have caught the original defect. Three consecutive companions
+    # (OCC#5406 / #5415 / #5418) were born BLOCKED because OCC's
+    # ``_has_effective_check`` found NOT ONE admissible check on them, and each
+    # needed the same hand repair. A generated contract must therefore carry the
+    # minted admissibility-validator item, which is the only generated form that
+    # is admissible SUBSTANTIVELY (executed behaviour, falsifiable, against a file
+    # the companion does not author) rather than by a spelling that dodges the
+    # predicate's rules. Scoped to contracts that declare generated checks at all,
+    # so a hand-authored contract is not dragged into the producer's ratchet.
+    if checks and not has_validator:
+        violations.append(
+            {
+                "path": str(path),
+                "item": "<contract>",
+                "check_value": "",
+                "reason": (
+                    "generated contract declares no admissibility-validator item "
+                    "(check_value 'uv run pytest tests/test_evidence_admissibility"
+                    ".py -q'). Without it every generated check here is inert or "
+                    "provenance-only, OCC's _has_effective_check finds nothing "
+                    "admissible, and the companion is born BLOCKED -- the exact "
+                    "three-for-three failure OMN-15247 was filed for"
+                ),
+            }
+        )
     return violations, content_bound, len(checks)
 
 

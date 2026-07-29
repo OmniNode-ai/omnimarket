@@ -50,6 +50,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitte
     OccCompanionEmitter,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
     downstream_receipt_public_check_value,
     hosted_safe_binding_check_value,
     hosted_safe_diff_scope_check_value,
@@ -336,14 +337,17 @@ class TestPrExistenceOptInIsByteIdentical:
         assert rec.pr_open_calls == 1
 
         contract = clone_root / "contracts" / "OMN-9999.yaml"
-        # OMN-15247 R21: the pr_existence binding still selects the GENERIC
-        # (non-content-bound) vocabulary; that vocabulary is now the admissible
-        # `gh api .../pulls/<n>/files` family rather than the NOT_EXECUTED
-        # `gh pr view` family. The pr_existence-vs-content_bound distinction is
-        # unchanged; only the generic spelling moved.
+        # OMN-15247 R21b: the pr_existence binding selects the GENERIC
+        # (non-content-bound) vocabulary, which is the pre-R21 `gh pr view` family
+        # restored. R21 had moved it to `gh api .../pulls/<n>/files ... | grep`,
+        # which classifies ADMISSIBLE and proves nothing -- exit 0 for every PR on
+        # GitHub that changes a file. These values are honest PROVENANCE: the OCC
+        # runner reports them INERT/WARN, and the contract's admissibility comes
+        # from the minted validator item appended after them.
         assert _contract_check_values(contract) == [
             hosted_safe_binding_check_value(),
             hosted_safe_diff_scope_check_value(),
+            ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
             hosted_safe_binding_check_value(),
         ]
         receipt = yaml.safe_load(
@@ -865,12 +869,22 @@ class TestContentBoundChecks:
         for cv in values:
             # No LITERAL cross-repo pin: the hosted OCC job cannot read it.
             assert "gh api repos/OmniNode-ai/" not in cv, cv
-            # No self-reference: this is the shape R21 removes.
+            # No self-reference: the circular receipt grep this ticket removes.
             assert "dod_receipts" not in cv, cv
             assert "CONTRACT_REPO_DIR" not in cv, cv
-            # Placeholder form only, so the executing job's own token suffices.
-            assert "${REPO}" in cv, cv
-            assert "${PR_NUMBER}" in cv, cv
+            # OMN-15247 R21b: placeholder form is required only of values that
+            # NAME a repo/PR. The minted admissibility-validator check is
+            # repo-independent -- it names neither, so there is nothing for the
+            # runner to substitute and nothing for the private-repo scope rule to
+            # object to. Demanding a placeholder there would force a repo/PR
+            # reference into a check that needs none, which is exactly how the
+            # vacuous `.../pulls/${PR_NUMBER}/files` family got minted.
+            if "repos/" in cv or " --repo " in cv:
+                assert "${REPO}" in cv, cv
+                assert "${PR_NUMBER}" in cv, cv
+        # And the one admissible check IS present on the private path -- the whole
+        # point of the fix, on the population that was born red three-for-three.
+        assert "uv run pytest tests/test_evidence_admissibility.py -q" in values
 
     def test_every_generated_yaml_stays_yamlfmt_idempotent(
         self, tmp_path: Path

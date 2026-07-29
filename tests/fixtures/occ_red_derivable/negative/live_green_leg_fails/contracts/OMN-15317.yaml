@@ -9,7 +9,7 @@ interfaces_touched: []
 evidence_requirements:
   - kind: "ci"
     description: "PR #1922 product diff scope present"
-    command: "gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate"
+    command: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
 emergency_bypass:
   enabled: false
   justification: ""
@@ -27,5 +27,10 @@ dod_evidence:
     source: "generated"
     checks:
       - check_type: "command"
-        check_value: |-
-          gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate --jq '.[].status' | grep -qE '^(added|modified|removed|renamed|changed|copied)$'
+        check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+  - id: "dod-occ-evidence-admissibility-validator"
+    description: "Hosted OCC evidence admissibility validator (OMN-15247)."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "uv run pytest tests/test_evidence_admissibility.py -q"

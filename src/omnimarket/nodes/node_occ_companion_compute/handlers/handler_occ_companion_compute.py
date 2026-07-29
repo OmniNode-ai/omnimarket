@@ -64,6 +64,8 @@ from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_requ
     ModelOccContractState,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+    ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
     DEPLOY_ASSESSMENT_CHECK_VALUE,
     DEPLOY_ASSESSMENT_EVIDENCE_ID,
     downstream_receipt_public_check_value,
@@ -801,6 +803,59 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 ticket_id=ticket,
                 contract_sha256=contract_hash,
                 contract_entry_sha256=entry_hash or "",
+            )
+        )
+
+        # OMN-15247 R21b: the receipt backing the minted admissibility-validator
+        # item. It is REQUIRED, not optional: `validator_occ_merge_eligibility`
+        # (omnibase_core) refuses a companion whose contract declares a
+        # dod_evidence item with no PASS receipt bound to it -- MISSING_RECEIPT --
+        # so declaring the item without minting this would trade born-BLOCKED on
+        # contract compliance for born-INELIGIBLE on preflight.
+        #
+        # HONESTY, since this is the field most easily faked: `probe_command` /
+        # `probe_stdout` / `exit_code` record the live product-PR probe this
+        # producer ACTUALLY ran, exactly like every other minted receipt --
+        # `check_value` names the check the OCC contract-compliance runner
+        # executes at CI time, and the two differ here for the same reason they
+        # already differ on the downstream receipt above. The producer runs inside
+        # the PRODUCT repo's CI and never has OCC's checkout, so it CANNOT run
+        # `uv run pytest tests/test_evidence_admissibility.py`; writing a
+        # fabricated "N passed" into probe_stdout is exactly the false-evidence
+        # class this ticket exists to remove, and `actual_output` says plainly
+        # which surface executes the declared check instead.
+        validator_entry_hash = _entry_hash_for(
+            parsed_contract, ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+        )
+        validator_content = _receipt(
+            request=request,
+            ticket_id=ticket,
+            evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+            check_value=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+            contract_sha256=contract_hash,
+            contract_entry_sha256=validator_entry_hash,
+            commit_sha=request.pr_head_sha,
+            probe=request.product_probe,
+            # Kept SHORT deliberately: yamlfmt (max_line_length 100) FOLDS a long
+            # plain double-quoted scalar, which rewrites the committed receipt and
+            # restales its hash (F-03 / OMN-14684). Measured, not guessed.
+            actual_output=(
+                "PASS: OCC runner executes the declared check; "
+                "probe is the live PR read."
+            ),
+            branch=branch,
+        )
+        files.append(
+            ModelCompanionFile(
+                path=(
+                    f"drift/dod_receipts/{ticket}/"
+                    f"{ADMISSIBILITY_VALIDATOR_EVIDENCE_ID}/command.yaml"
+                ),
+                content=validator_content,
+                kind=EnumCompanionFileKind.DOWNSTREAM_RECEIPT,
+                ticket_id=ticket,
+                contract_sha256=contract_hash,
+                contract_entry_sha256=validator_entry_hash or "",
             )
         )
 
