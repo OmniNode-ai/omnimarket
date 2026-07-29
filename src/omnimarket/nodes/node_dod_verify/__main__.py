@@ -112,6 +112,11 @@ def _build_receipt(
             "verified": state.verified_count,
             "failed": state.failed_count,
             "skipped": state.skipped_count,
+            # OMN-15390: retired by a later append-only supersedes marker; not
+            # executed, and excluded from ``total`` (the verdict-bearing
+            # denominator), but named here so the receipt shows the repair
+            # rather than hiding it.
+            "superseded": state.superseded_count,
             "details": [
                 {
                     "id": check.evidence_id,

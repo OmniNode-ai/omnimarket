@@ -16,7 +16,9 @@ supersession entry. These tests prove the collector now:
   verdict;
 * hard-fails (does not silently no-op) a dangling supersession marker whose
   target id does not exist in the contract;
-* hard-fails a self-referential or cyclic supersession chain;
+* hard-fails a self-referential marker (and, since OMN-15390 added OCC's
+  append-only ordering rule, a FORWARD marker — which makes a cycle
+  unrepresentable rather than merely detected);
 * resolves a multi-hop chain so only the un-superseded head executes.
 
 FIX 2 — the auto-appended ``::pr-live-state`` check derived a WRONG
@@ -225,30 +227,48 @@ class TestMalformedSupersessionChainsAreHardRed:
         assert results[0].status == EnumEvidenceCheckStatus.FAILED
         assert "MALFORMED_SUPERSESSION" in (results[0].message or "")
 
-    def test_two_item_cycle_hard_fails_both(self, tmp_path: Path) -> None:
+    def test_attempted_two_item_cycle_terminates_under_the_ordering_rule(
+        self, tmp_path: Path
+    ) -> None:
+        """A cycle is unrepresentable once the append-only ordering rule holds.
+
+        OMN-15390 replaced the position-blind whole-contract resolution this
+        case was originally written against (which needed an explicit graph
+        walk to detect a loop) with OCC's ``if supersedes in seen`` rule, so
+        every accepted edge points strictly backwards in declaration order and
+        the relation is acyclic by construction. The mutually-referential
+        contract below therefore resolves deterministically in one pass rather
+        than being detected as a cycle: ``dod-a``'s marker points FORWARD and
+        retires nothing (hard RED on ``dod-a``, matching what the OCC gate
+        computes — no supersession); ``dod-b``'s marker points backwards and
+        retires ``dod-a`` normally.
+        """
         results = _collect(
             tmp_path,
             "OMN-99005",
             [
                 {
                     "id": "dod-a",
-                    "description": "supersedes b",
+                    "description": "supersedes b — forward, retires nothing",
                     "evidence_artifact": "supersedes_dod_evidence:dod-b",
                     "checks": [{"check_type": "command", "check_value": "true"}],
                 },
                 {
                     "id": "dod-b",
-                    "description": "supersedes a — cycle",
+                    "description": "supersedes a — backwards, valid",
                     "evidence_artifact": "supersedes_dod_evidence:dod-a",
                     "checks": [{"check_type": "command", "check_value": "true"}],
                 },
             ],
         )
         by_id = {r.evidence_id: r for r in results}
+        # dod-a carries a broken marker, so it is RED on its own account —
+        # a malformed marker is reported ahead of any supersession of the
+        # same id, so a typo can never masquerade as a quiet skip.
         assert by_id["dod-a"].status == EnumEvidenceCheckStatus.FAILED
-        assert by_id["dod-b"].status == EnumEvidenceCheckStatus.FAILED
-        assert "MALFORMED_SUPERSESSION" in (by_id["dod-a"].message or "")
-        assert "MALFORMED_SUPERSESSION" in (by_id["dod-b"].message or "")
+        assert "FORWARD_SUPERSESSION" in (by_id["dod-a"].message or "")
+        # dod-b's own marker is well-formed, so dod-b executes.
+        assert by_id["dod-b"].status == EnumEvidenceCheckStatus.VERIFIED
 
 
 @pytest.mark.unit

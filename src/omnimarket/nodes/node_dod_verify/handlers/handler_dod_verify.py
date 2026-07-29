@@ -114,8 +114,26 @@ class HandlerDodVerify:
             1 for r in checks if r.status == EnumEvidenceCheckStatus.SUPERSEDED
         )
 
+        # OMN-15390: ``total_checks`` is the VERDICT-BEARING denominator, so a
+        # fully-repaired contract reads N/N rather than N/(N+superseded). A
+        # superseded entry was not executed and cannot pass, so leaving it in
+        # the denominator makes a correctly-repaired contract permanently
+        # report a shortfall (OMN-15192 reads 12/12, not 12/14) — the exact
+        # signal an operator uses to decide whether a ticket is closeable.
+        # The superseded entries stay in ``checks`` (and in ``superseded_count``)
+        # so the receipt still shows the repair rather than hiding it.
         non_superseded_total = len(checks) - superseded
         if failed > 0:
+            overall = EnumDodVerifyStatus.FAILED
+        elif superseded > 0 and verified == 0:
+            # OMN-15390 anti-laundering, and the reason this is FAILED rather
+            # than SKIPPED: supersession is allowed to remove a FALSE red, never
+            # to manufacture a green. Without this, appending ONE marker item
+            # that declares no passing check of its own (``checks: []``, or a
+            # check that skips) retires a genuinely-failing entry, drops
+            # ``failed`` to 0, and lands as a PASS receipt on the only
+            # sanctioned Done-flip path — a strictly worse outcome than the FAIL
+            # it replaced. A repair must carry its own proof.
             overall = EnumDodVerifyStatus.FAILED
         elif non_superseded_total == 0 or skipped == non_superseded_total:
             # Either nothing but superseded entries remain, or every
@@ -130,7 +148,7 @@ class HandlerDodVerify:
             status=overall,
             dry_run=command.dry_run,
             checks=checks,
-            total_checks=len(checks),
+            total_checks=non_superseded_total,
             verified_count=verified,
             failed_count=failed,
             skipped_count=skipped,
