@@ -124,6 +124,17 @@ outputs:
 
 terminal_event: onex.evt.omnimarket.node-generation-completed.v1
 
+# The dashboard and other external clients dispatch this node through the
+# runtime-skill edge. Declaring that address here makes the command topic a
+# first-class producer/consumer seam instead of an unowned external string.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.node-generation-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.node-generation-completed.v1
+    failure: onex.evt.omnimarket.node-generation-failed.v1
+  default_timeout_ms: 120000
+  max_timeout_ms: 300000
+
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.node-generation-requested.v1

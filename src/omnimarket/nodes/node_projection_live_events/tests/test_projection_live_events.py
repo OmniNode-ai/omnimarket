@@ -42,6 +42,12 @@ _INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"
 _STATE_CHANGE_TOPIC = "onex.evt.platform.node-state-change.v1"
 _DELEGATION_DONE_TOPIC = "onex.evt.omnibase-infra.delegation-completed.v1"
 _DELEGATION_FAIL_TOPIC = "onex.evt.omnibase-infra.delegation-failed.v1"
+_DELEGATE_COMMAND_TOPIC = "onex.cmd.omnimarket.delegate-skill.v1"
+_DELEGATE_DONE_TOPIC = "onex.evt.omnimarket.delegate-skill-completed.v1"
+_DELEGATE_FAIL_TOPIC = "onex.evt.omnimarket.delegate-skill-failed.v1"
+_GENERATION_COMMAND_TOPIC = "onex.cmd.omnimarket.node-generation-requested.v1"
+_GENERATION_DONE_TOPIC = "onex.evt.omnimarket.node-generation-completed.v1"
+_GENERATION_FAIL_TOPIC = "onex.evt.omnimarket.node-generation-failed.v1"
 
 
 def _make_handler() -> tuple[HandlerProjectionLiveEvents, InmemoryDatabaseAdapter]:
@@ -215,6 +221,19 @@ class TestModelLiveEventFromRaw:
         assert event.type == "ERROR"
         assert event.source == "omnibase-infra"
         assert "Delegation failed" in event.summary
+
+    def test_from_command_keeps_task_class_and_correlation_visible(self) -> None:
+        raw = {
+            "event_id": str(uuid4()),
+            "task_type": "code_review",
+            "correlation_id": "corr-command-1",
+        }
+        event = ModelLiveEvent.from_raw(raw, _DELEGATE_COMMAND_TOPIC)
+
+        assert event.type == "COMMAND"
+        assert event.source == "omnimarket"
+        assert event.summary == "code_review"
+        assert event.correlation_id == "corr-command-1"
 
     def test_from_raw_generates_event_id_when_absent(self) -> None:
         raw: dict[str, Any] = {"message": "no id present", "topic": _LOG_TOPIC}
@@ -467,6 +486,12 @@ class TestContractSchema:
         assert _HEARTBEAT_TOPIC in topics
         assert _DELEGATION_DONE_TOPIC in topics
         assert _DELEGATION_FAIL_TOPIC in topics
+        assert _DELEGATE_COMMAND_TOPIC in topics
+        assert _DELEGATE_DONE_TOPIC in topics
+        assert _DELEGATE_FAIL_TOPIC in topics
+        assert _GENERATION_COMMAND_TOPIC in topics
+        assert _GENERATION_DONE_TOPIC in topics
+        assert _GENERATION_FAIL_TOPIC in topics
 
     def test_contract_declares_snapshot_publish_topic(self) -> None:
         raw = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))

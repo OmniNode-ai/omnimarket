@@ -1,12 +1,8 @@
 """HandlerProjectionLiveEvents — project platform bus events into live_events table.
 
-Consumes events from:
-  - onex.evt.platform.log-entry.v1
-  - onex.evt.platform.node-heartbeat.v1
-  - onex.evt.platform.node-introspection.v1
-  - onex.evt.platform.node-state-change.v1
-  - onex.evt.omnibase-infra.delegation-completed.v1
-  - onex.evt.omnibase-infra.delegation-failed.v1
+Consumes the operator-relevant platform, delegation, and node-generation
+topics declared by contract.yaml. The contract is the topic authority; this
+handler normalises every declared envelope into one queryable row shape.
 
 UPSERTs into live_events table keyed on event_id.
 Projection-API serves /projection/onex.snapshot.projection.live-events.v1.
@@ -54,6 +50,8 @@ def _classify_topic(topic: str) -> tuple[str, str]:
     topic_lower = topic.lower()
     if "failed" in topic_lower or "error" in topic_lower:
         return "ERROR", service
+    if ".cmd." in topic_lower:
+        return "COMMAND", service
     if "delegation-completed" in topic_lower or "delegation" in topic_lower:
         return "ROUTING", service
     if "state-change" in topic_lower or "transformation" in topic_lower:
@@ -72,7 +70,16 @@ def _resolve_event_id(raw: dict[str, Any]) -> str:
 
 def _resolve_summary(raw: dict[str, Any], topic: str) -> str:
     """Return a human-readable summary line from the raw payload."""
-    for key in ("summary", "message", "description", "reason", "detail"):
+    for key in (
+        "summary",
+        "message",
+        "description",
+        "reason",
+        "detail",
+        "task_description",
+        "task_type",
+        "status",
+    ):
         candidate = raw.get(key)
         if isinstance(candidate, str) and candidate.strip():
             return candidate.strip()[:512]
@@ -112,7 +119,7 @@ class ModelLiveEvent(BaseModel):
     )
     type: str = Field(
         default="ACTION",
-        description="Event class: ROUTING, ACTION, TRANSFORMATION, ERROR.",
+        description="Event class: COMMAND, ROUTING, ACTION, TRANSFORMATION, ERROR.",
     )
     timestamp: str = Field(
         default_factory=lambda: datetime.now(tz=UTC).isoformat(),
