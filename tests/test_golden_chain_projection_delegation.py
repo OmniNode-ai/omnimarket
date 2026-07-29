@@ -152,6 +152,8 @@ class TestDelegationProjection:
             "src/omnimarket/nodes/node_projection_registration/migrations/"
             "0003_reconcile_heartbeat_observability.sql"
         ).read_text()
+        assert "to_regclass('public.node_service_registry') IS NOT NULL" in heartbeat
+        assert "heartbeat reconciliation is a no-op" in heartbeat
         assert "ADD COLUMN IF NOT EXISTS last_heartbeat_at" in heartbeat
         assert "ADD COLUMN IF NOT EXISTS uptime_seconds" in heartbeat
 
