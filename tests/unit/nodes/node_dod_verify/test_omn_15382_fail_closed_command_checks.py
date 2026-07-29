@@ -30,6 +30,7 @@ rule (which would break legitimate quiet checks like ``grep -q``):
 
 from __future__ import annotations
 
+import stat
 from pathlib import Path
 
 import pytest
@@ -135,6 +136,89 @@ class TestShapeGuardRejectsProse:
         """Leading VAR=VAL tokens are stripped before inspecting the first
         real token — prose after an assignment is still caught."""
         result = _run_single_check(tmp_path, "FOO=bar Recorded product receipt: x")
+        assert result.status == EnumEvidenceCheckStatus.FAILED
+        assert "INVALID_CHECK_VALUE_NOT_A_COMMAND" in (result.message or "")
+
+
+@pytest.mark.unit
+class TestShapeGuardIsCwdAware:
+    def test_relative_script_with_declared_cwd_is_not_false_red(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Verifier-flagged regression: the shape guard used to run BEFORE
+        ``cwd:`` was resolved and judged the first token via a bare
+        ``shutil.which()`` — which only ever inspects this process's actual
+        cwd/PATH, never a check's declared ``cwd:``. A legitimate, pre-existing
+        supported shape (OMN-10078 relative-script-plus-cwd) — e.g.
+        ``check_value: "./verify.sh"`` with ``cwd: "${OMNI_HOME}/sub"`` where
+        ``verify.sh`` genuinely exists and is executable at that cwd — was
+        false-RED with INVALID_CHECK_VALUE_NOT_A_COMMAND even though the
+        script is real. The guard must resolve relative path-like first
+        tokens against the check's OWN declared cwd, not the process cwd.
+        """
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        sub = tmp_path / "sub"
+        sub.mkdir()
+        script = sub / "verify.sh"
+        script.write_text("#!/bin/sh\necho verified\n", encoding="utf-8")
+        script.chmod(script.stat().st_mode | stat.S_IEXEC)
+
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "relative script + cwd",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "check_value": "./verify.sh",
+                            "cwd": "${OMNI_HOME}/sub",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-15382",
+            contract_path=str(tmp_path / "OMN-15382.yaml"),
+        )
+        result = results[0]
+        assert result.status == EnumEvidenceCheckStatus.VERIFIED, result.message
+        assert "INVALID_CHECK_VALUE_NOT_A_COMMAND" not in (result.message or "")
+
+    def test_relative_script_that_does_not_exist_at_cwd_is_still_rejected(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-regression: a relative first token that genuinely does not
+        resolve at the declared cwd is still caught by the shape guard."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        sub = tmp_path / "sub"
+        sub.mkdir()
+
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "missing relative script + cwd",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "check_value": "./does-not-exist.sh",
+                            "cwd": "${OMNI_HOME}/sub",
+                        }
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-15382",
+            contract_path=str(tmp_path / "OMN-15382.yaml"),
+        )
+        result = results[0]
         assert result.status == EnumEvidenceCheckStatus.FAILED
         assert "INVALID_CHECK_VALUE_NOT_A_COMMAND" in (result.message or "")
 

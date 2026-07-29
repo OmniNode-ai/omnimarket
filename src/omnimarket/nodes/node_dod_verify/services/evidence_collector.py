@@ -194,15 +194,24 @@ _SHELL_KEYWORD_ALLOWLIST = frozenset(
 )
 
 
-def _invalid_check_value_reason(cmd_str: str) -> str | None:
+def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str | None:
     """Return a reason string when ``cmd_str`` looks like prose, not a command.
 
     Strips leading ``VAR=VAL`` assignment tokens, then inspects the first
     remaining token: if it ends with ``:`` (e.g. a stray ``"Recorded:"``
-    label) or cannot be resolved via ``shutil.which`` and is not a known
-    shell keyword, this is prose that must never be shelled out. Returns
-    ``None`` when the shape looks like a real command — this is a pure shape
-    check; it never executes anything and never judges by output content.
+    label) or cannot be resolved and is not a known shell keyword, this is
+    prose that must never be shelled out. Returns ``None`` when the shape
+    looks like a real command — this is a pure shape check; it never
+    executes anything and never judges by output content.
+
+    ``cwd`` is the check's OMN-10078-resolved working directory (or
+    ``None`` to inherit the caller's cwd). A first token containing a path
+    separator (e.g. ``"./verify.sh"``, ``"scripts/run.sh"``) is a
+    relative-script invocation, not a PATH lookup: ``shutil.which`` never
+    resolves those against a caller-supplied ``cwd`` (it only ever inspects
+    this process's actual working directory), so it is checked directly
+    against ``cwd`` (or the process cwd when ``cwd`` is ``None``) instead of
+    going through ``shutil.which``.
     """
     tokens = cmd_str.strip().split()
     if not tokens:
@@ -217,6 +226,15 @@ def _invalid_check_value_reason(cmd_str: str) -> str | None:
         return f"first token {first!r} looks like prose, not a command (ends with ':')"
     if first in _SHELL_KEYWORD_ALLOWLIST:
         return None
+    if os.sep in first or (os.altsep and os.altsep in first):
+        base = Path(cwd) if cwd else Path.cwd()
+        candidate = base / first if not os.path.isabs(first) else Path(first)
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return None
+        return (
+            f"first token {first!r} is not a resolvable executable relative "
+            f"to cwd {str(base)!r} — this looks like prose, not a command"
+        )
     if shutil.which(first) is not None:
         return None
     return (
@@ -1384,15 +1402,11 @@ class EvidenceCollector:
                     "merged-PR-bound command check."
                 )
 
-        # OMN-15382: reject prose masquerading as a command BEFORE ever
-        # shelling out (see module-level comment above
-        # _invalid_check_value_reason for the two bug mechanisms this closes).
-        invalid_reason = _invalid_check_value_reason(cmd_str)
-        if invalid_reason is not None:
-            return False, f"INVALID_CHECK_VALUE_NOT_A_COMMAND: {invalid_reason}"
-
         # OMN-10078: resolve optional cwd via template-substitution +
-        # containment-check pipeline. None => inherit caller cwd.
+        # containment-check pipeline. None => inherit caller cwd. This MUST
+        # run before the shape guard below (OMN-15382 verifier finding):
+        # a relative script path (e.g. "./verify.sh") is only resolvable
+        # against the check's declared cwd, not this process's cwd.
         run_cwd: str | None = None
         cwd_template = check.get("cwd")
         if cwd_template is not None:
@@ -1405,6 +1419,17 @@ class EvidenceCollector:
         else:
             # OMN-10476: auto-inject OCC cwd when no explicit cwd is declared
             run_cwd = self._infer_occ_cwd(contract_path)
+
+        # OMN-15382: reject prose masquerading as a command BEFORE ever
+        # shelling out (see module-level comment above
+        # _invalid_check_value_reason for the two bug mechanisms this closes).
+        # Runs AFTER cwd resolution and is cwd-aware so a legitimate
+        # relative-script + cwd: check (e.g. "./verify.sh" with
+        # cwd: "${OMNI_HOME}/.../subdir") resolves against the check's
+        # declared cwd instead of this process's actual cwd/PATH.
+        invalid_reason = _invalid_check_value_reason(cmd_str, cwd=run_cwd)
+        if invalid_reason is not None:
+            return False, f"INVALID_CHECK_VALUE_NOT_A_COMMAND: {invalid_reason}"
 
         # OMN-13857: deterministically satisfy the ``$CONTRACT_REPO_DIR`` token
         # used by receipt-backed check commands, so the verdict does not depend

@@ -72,7 +72,15 @@ def _exact_ticket_token_candidates(
     """
     if not isinstance(items, list):
         return []
-    pattern = re.compile(rf"(?<![A-Za-z0-9]){re.escape(ticket_id)}(?!\d)")
+    # CodeRabbit (PR #1949): branch names are conventionally lowercased
+    # (``jonah/omn-13996-x``) while ``ticket_id`` arrives uppercase, so a
+    # case-sensitive pattern only ever matches the ``title`` arm in
+    # practice — the ``headRefName`` signal was effectively dead. Match
+    # case-insensitively; the token-boundary lookaround still prevents a
+    # shorter ticket id matching inside a longer one.
+    pattern = re.compile(
+        rf"(?<![A-Za-z0-9]){re.escape(ticket_id)}(?!\d)", re.IGNORECASE
+    )
     matches: list[dict[str, object]] = []
     for item in items:
         if not isinstance(item, dict):
@@ -280,31 +288,30 @@ class HandlerDodEvidenceGithubEffect:
                 error_code="REPO_LOOKUP_FAILED",
             )
         candidates = _exact_ticket_token_candidates(data, ticket_id)
-        if len(candidates) != 1:
-            code = (
-                "REPO_LOOKUP_AMBIGUOUS" if len(candidates) > 1 else "REPO_LOOKUP_FAILED"
-            )
+        # CodeRabbit (PR #1949): this lookup only needs a unique *repository*,
+        # not a unique PR — a ticket with two merged PRs in the same repo
+        # (common: a follow-up fix PR) is not repo-ambiguous. Collapse to the
+        # distinct ``nameWithOwner`` set before judging cardinality.
+        repos = sorted(
+            {
+                str(head.get("nameWithOwner") or "")
+                for candidate in candidates
+                if isinstance(head := candidate.get("headRepository"), dict)
+                and head.get("nameWithOwner")
+            }
+        )
+        if len(repos) != 1:
+            code = "REPO_LOOKUP_AMBIGUOUS" if len(repos) > 1 else "REPO_LOOKUP_FAILED"
             return ModelDodEvidenceGithubLookupResultEvent(
                 correlation_id=command.correlation_id,
                 operation=command.operation,
                 text_value="",
                 error_code=code,
             )
-        head_repository = candidates[0].get("headRepository")
-        repo = ""
-        if isinstance(head_repository, dict):
-            repo = str(head_repository.get("nameWithOwner") or "")
-        if not repo:
-            return ModelDodEvidenceGithubLookupResultEvent(
-                correlation_id=command.correlation_id,
-                operation=command.operation,
-                text_value="",
-                error_code="REPO_LOOKUP_FAILED",
-            )
         return ModelDodEvidenceGithubLookupResultEvent(
             correlation_id=command.correlation_id,
             operation=command.operation,
-            text_value=repo,
+            text_value=repos[0],
         )
 
     # ------------------------------------------------------------------

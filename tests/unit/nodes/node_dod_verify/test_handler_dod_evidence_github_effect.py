@@ -289,6 +289,55 @@ class TestLookupOperations:
         assert output.events[0].text_value == ""
         assert output.events[0].error_code == "REPO_LOOKUP_AMBIGUOUS"
 
+    def test_lookup_repo_for_ticket_two_prs_same_repo_is_not_ambiguous(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CodeRabbit (PR #1949): two merged PRs for one ticket in the SAME
+        repo (e.g. a follow-up fix) is zero repo ambiguity — cardinality
+        must be judged on the distinct repo set, not the PR-candidate
+        count."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _fake_completed(
+                '[{"number":1,"title":"fix(OMN-13996): a","headRefName":"x",'
+                '"headRepository":{"nameWithOwner":"OmniNode-ai/omnimarket"}},'
+                '{"number":2,"title":"fix(OMN-13996): b","headRefName":"y",'
+                '"headRepository":{"nameWithOwner":"OmniNode-ai/omnimarket"}}]'
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_REPO_FOR_TICKET,
+            ticket_id="OMN-13996",
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        assert output.events[0].text_value == "OmniNode-ai/omnimarket"
+        assert output.events[0].error_code is None
+
+    def test_lookup_pr_for_ticket_matches_lowercased_branch_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CodeRabbit (PR #1949): branch names are conventionally lowercased
+        (``jonah/omn-13996-x``) while ``ticket_id`` arrives uppercase — the
+        ``headRefName`` match arm must be case-insensitive or it never fires
+        in practice."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _fake_completed(
+                '[{"number":2216,"title":"a totally unrelated title",'
+                '"headRefName":"jonah/omn-13996-fix-thing"}]'
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.LOOKUP_PR_FOR_TICKET,
+            ticket_id="OMN-13996",
+            repo=_REPO,
+        )
+        output = HandlerDodEvidenceGithubEffect().handle(command)
+        assert output.events[0].text_value == "2216"
+        assert output.events[0].error_code is None
+
 
 # ---------------------------------------------------------------------------
 # FETCH_PR_CHECKS_GREEN — regression guard for the OMN-14390 ``--required``
