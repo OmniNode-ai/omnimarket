@@ -83,10 +83,21 @@ BRANCH = "auto/occ-parity"
 PUBLIC_REPO = "OmniNode-ai/omnimarket"
 PRIVATE_REPO = "OmniNode-ai/omninode_infra"  # a real private OmniNode repo
 
-# The F-06 GraphQL diff-scope check both producers must declare (verbatim).
-F06_JSON_FILES = "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+# The F-06 GraphQL diff-scope check both producers must declare, literally
+# pinned to the shared PR fact set (OMN-15407: the placeholder-var form is a
+# Rule B violation on any item whose id embeds a PR number, which both the
+# downstream and CI/diff-scope items' ids always do).
+F06_JSON_FILES = f"gh pr view {PR} --repo {PUBLIC_REPO} --json files"
 # The public binding check both producers declare in the contract.
-BINDING_JSON_STATE = "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
+BINDING_JSON_STATE = f"gh pr view {PR} --repo {PUBLIC_REPO} --json number,state"
+
+
+def _binding_json_state(repo: str) -> str:
+    return f"gh pr view {PR} --repo {repo} --json number,state"
+
+
+def _diff_scope_json_files(repo: str) -> str:
+    return f"gh pr view {PR} --repo {repo} --json files"
 
 # RED-control regexes. Proven load-bearing below (they DO match the pre-fix forms).
 REST_DIFF_RE = re.compile(r"\bgh pr diff\b.*--name-only")
@@ -276,23 +287,33 @@ class TestF16PrivateRepoParity:
             f"gh pr view {PR} --repo {PRIVATE_REPO} --json number,state,headRefName"
         )
 
-    def test_private_contract_never_names_the_private_repo(self) -> None:
-        """F-16's REQUIREMENT, restated after its implementation was retired.
+    def test_private_contract_literally_pins_its_own_pr_on_both_producers(
+        self,
+    ) -> None:
+        """F-16's OLD placeholder-only requirement is superseded by Rule B (OMN-15407).
 
-        The invariant was never "emit a receipt-local grep" -- it was "do not make
-        the hosted OCC runner dereference a repo its token cannot read".
-        Placeholder form satisfies that directly: the runner pre-substitutes
-        ``${REPO}`` / ``${PR_NUMBER}`` with the repo/PR whose CI is executing, so
-        the private slug never appears in an executed command. The retired
-        carve-out satisfied it instead by emitting a check the OMN-15309 predicate
-        refuses UNCONDITIONALLY as INSIDE_OWN_DIFF -- which is why all three
-        companions for this repo (OCC#5406 / #5415 / #5418) were born BLOCKED.
+        F-16's original invariant ("do not make the hosted OCC runner
+        dereference a repo its token cannot read") was satisfied by placeholder
+        form, which the runner pre-substitutes with the repo/PR whose CI is
+        executing. OMN-15382/OMN-15407 (Rule B, live on onex_change_control dev
+        since 06d4294e) now REQUIRES a literal pin on any item whose id embeds a
+        PR number -- private repo or not -- because the id already commits the
+        private repo's name and PR number verbatim regardless of check_value
+        form, and ``gh pr view`` is classified NOT_EXECUTED/inadmissible under
+        the OMN-15309 predicate REGARDLESS of literal vs. placeholder spelling,
+        so a 403/404 from the hosted token's lack of scope is demoted to WARN
+        exactly like a placeholder-form PASS was. The retired receipt-local
+        grep carve-out (a DIFFERENT shape) is still forbidden below.
         """
         for cv in [
             *_emitter_contract_checks(PRIVATE_REPO, private=True),
             *_compute_contract_checks(PRIVATE_REPO, private=True),
         ]:
-            assert PRIVATE_REPO not in cv, f"private repo named in a hosted check: {cv}"
+            if cv == ADMISSIBILITY_VALIDATOR_CHECK_VALUE:
+                continue
+            assert PRIVATE_REPO in cv, f"private-repo check must pin its own repo: {cv}"
+            assert str(PR) in cv, f"private-repo check must pin its own PR: {cv}"
+            assert "${PR_NUMBER}" not in cv and "${REPO}" not in cv, cv
 
     def test_private_contract_never_regresses_to_the_circular_receipt_grep(
         self,
@@ -320,15 +341,25 @@ class TestF16PrivateRepoParity:
             PRIVATE_REPO, private=True
         )
 
-    def test_private_and_public_declare_the_same_vocabulary(self) -> None:
-        # With the carve-out retired there is ONE declared vocabulary. Asserting
-        # equality (rather than deleting the private case) keeps a re-divergence
-        # visible here rather than only on a live born-red companion.
-        assert set(_emitter_contract_checks(PRIVATE_REPO, private=True)) == set(
-            _emitter_contract_checks(PUBLIC_REPO, private=False)
+    def test_private_and_public_declare_the_same_structural_vocabulary(self) -> None:
+        # OMN-15407: the private and public paths no longer declare BYTE-IDENTICAL
+        # check_values -- each now literally pins its OWN repo (Rule B), so the
+        # repo name is necessarily part of the string. What must still hold is
+        # structural parity: normalizing the repo back out yields the same
+        # vocabulary on both paths, so a re-divergence in SHAPE (not just repo
+        # name) is still caught here.
+        def _normalized(repo: str, checks: list[str]) -> set[str]:
+            return {cv.replace(repo, "<REPO>") for cv in checks}
+
+        assert _normalized(
+            PRIVATE_REPO, _emitter_contract_checks(PRIVATE_REPO, private=True)
+        ) == _normalized(
+            PUBLIC_REPO, _emitter_contract_checks(PUBLIC_REPO, private=False)
         )
-        assert set(_compute_contract_checks(PRIVATE_REPO, private=True)) == set(
-            _compute_contract_checks(PUBLIC_REPO, private=False)
+        assert _normalized(
+            PRIVATE_REPO, _compute_contract_checks(PRIVATE_REPO, private=True)
+        ) == _normalized(
+            PUBLIC_REPO, _compute_contract_checks(PUBLIC_REPO, private=False)
         )
 
     def test_private_receipt_preserves_live_probe_provenance(self) -> None:

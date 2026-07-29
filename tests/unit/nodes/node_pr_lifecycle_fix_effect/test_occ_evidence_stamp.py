@@ -126,21 +126,25 @@ class TestContractSubstanceFloor:
 
     def test_existence_probe_item_is_preserved_verbatim(self) -> None:
         # OMN-14425 ADDS a claim; it must not remove or alter the binding probe
-        # the Evidence-Source autobind stamp path depends on. OMN-14741 F-02: the
-        # check_value now renders in canonical ${PR_NUMBER}/${REPO} placeholder
-        # form (constant-length, lint-clean) rather than an interpolated integer.
+        # the Evidence-Source autobind stamp path depends on. OMN-15407: the
+        # check_value now renders LITERALLY pinned to the product PR/repo — this
+        # item's id (dod-OmniNode-ai-omnimarket-pr-1721) embeds the PR number, so
+        # the OLD ${PR_NUMBER}/${REPO} placeholder form is a Rule B violation
+        # (OMN-15382, live on onex_change_control dev since 06d4294e).
         rendered = self._render()
-        assert "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state" in rendered
-        # The former hardcoded-integer form is gone (it fails lint-contract-check-values).
-        assert "gh pr view 1721" not in rendered
+        assert (
+            "gh pr view 1721 --repo OmniNode-ai/omnimarket --json number,state"
+            in rendered
+        )
 
     def test_second_item_check_value_is_not_an_existence_probe(self) -> None:
         # OMN-14741 F-06: the second item is a GraphQL product-diff-scope assertion
         # (`gh pr view ... --json files`), NOT the REST-fragile `gh pr diff` and
         # NOT a source-CI-green probe. It clears the OMN-14409 substance floor
-        # (diff-assert family) and is not an existence probe.
+        # (diff-assert family) and is not an existence probe. OMN-15407: literally
+        # pinned, same reasoning as the downstream item above.
         rendered = self._render()
-        ci_check_value = "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+        ci_check_value = "gh pr view 1721 --repo OmniNode-ai/omnimarket --json files"
         assert ci_check_value in rendered
         assert not _is_existence_probe_like_omn_14409(ci_check_value)
         # Regression: the former `gh pr checks <source>` CI-green gate is gone, and
