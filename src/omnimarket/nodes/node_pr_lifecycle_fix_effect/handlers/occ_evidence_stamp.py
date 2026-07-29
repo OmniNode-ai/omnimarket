@@ -126,16 +126,163 @@ _CONTRACT_HEAD_TEMPLATE = textwrap.dedent("""\
     dod_evidence:
     """)
 
-# Public-repo hosted check_values. Placeholder form (``${PR_NUMBER}`` / ``${REPO}``)
-# for CONTRACT items so they clear ``lint-contract-check-values`` (OMN-14741 F-02)
-# and stay constant-length under yamlfmt. ``check_value`` is now a substituted
-# VALUE (single-brace ``${PR_NUMBER}`` — NOT re-scanned by ``.format``) so the
-# private-repo hosted-safe form (OMN-14766 F-16) can be swapped in per repo without
-# a second template. The default reproduces the OMN-14741 shape byte-for-byte.
+# ---------------------------------------------------------------------------
+# Generated check_value vocabulary (OMN-15247 R21b)
+# ---------------------------------------------------------------------------
+#
+# THE DEFECT, measured three-for-three on OCC#5406 / #5415 / #5418: every
+# machine-minted companion was born BLOCKED because not one of its generated
+# ``check_value``s could be admitted by the OMN-15309 predicate
+# (``onex_change_control.validation.evidence_admissibility``), which the OCC
+# ``Contract Compliance Check`` enforces:
+#
+#   * ``gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state`` and
+#     ``... --json files``  ->  NOT_EXECUTED. ``gh`` in command position is not
+#     an admissible probe; only the COMPOUND token ``gh api`` is.
+#   * ``grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/...``
+#     (the OMN-14766 F-16 private-repo form)  ->  INSIDE_OWN_DIFF. It reads back
+#     the receipt this same companion PR authors.
+#
+# WHY THE OBVIOUS FIX IS WRONG -- this is the whole content of R21b. The first
+# attempt at this ticket replaced both refused forms with a differently-spelled
+# probe of the SAME PR-existence class:
+#
+#     gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate --jq '.[].sha'
+#       | grep -qE '^[0-9a-f]{40}$'
+#
+# It classifies ADMISSIBLE and it is worthless. MEASURED, not argued: that command
+# exits 0 against omnimarket#1, omnimarket#100, OCC#5418 and OCC#5436 alike --
+# every pull request on GitHub that changes at least one file has 40-hex blob
+# SHAs, so the assertion carries ZERO information about the change under test. It
+# escapes the predicate STRUCTURALLY rather than substantively: rule 3 is gated on
+# ``probes == {"gh-api"}`` so appending ``| grep`` makes it un-fireable, and rule 4
+# is gated on ``probes <= TEXT_READING_COMMANDS``, which ``gh-api`` is not in.
+# Clearing the predicate is a floor, never the goal -- OMN-15247 names
+# "PR-existence probes" as a REJECTION class, and re-spelling one keeps it one.
+#
+# THE STRUCTURAL FACT that decides this vocabulary: ``${REPO}`` / ``${PR_NUMBER}``
+# are pre-substituted by the runner
+# (``contract_compliance_check._substitute_tokens``) with the repo/PR *whose CI is
+# executing*. On the OCC companion's OWN Contract Compliance run -- the acceptance
+# surface -- OCC ``ci.yml`` passes ``--repo ${{ github.repository }}``, so both
+# tokens resolve to the COMPANION. A placeholder-form check therefore CANNOT
+# observe the product PR; it reads the companion's own diff. Placeholder form is
+# an honest provenance record and is useless as product evidence, and no
+# re-spelling of it changes that.
+#
+# THE VOCABULARY, therefore, is three-layered:
+#
+#   1. PRODUCT-OBSERVING evidence is a LITERAL cross-repo pin -- the content-bound
+#      shape (``gh api repos/<owner>/<repo>/contents/<path>?ref=<head_sha>``,
+#      base64-decoded, grepped for a symbol PROVEN RED at the merge base). That is
+#      the ONLY generated form whose exit status depends on the product change. It
+#      is the shipped default (``OMNI_OCC_CHECK_BINDING=content_bound``), derived
+#      live by ``_derive_content_bound_check`` / ``select_asserted_check``.
+#
+#   2. When the literal pin is NOT derivable, the two values below are what the
+#      companion declares. They are PROVENANCE, not proof, and they are the
+#      pre-R21 forms restored VERBATIM: the OCC runner reports them INERT/WARN,
+#      which is the truthful label for them. They are deliberately NOT dressed up
+#      to slip past the predicate. The live probe that DID observe the product --
+#      run by the producer inside the product repo's own CI, which has scope --
+#      is preserved verbatim in the receipt's ``probe_command`` / ``probe_stdout``
+#      / ``exit_code`` as captured provenance.
+#
+#   3. Admissibility on that fallback path comes from
+#      :data:`ADMISSIBILITY_VALIDATOR_CHECK_VALUE` below: an EXECUTED, FALSIFIABLE
+#      check against a surface the companion does not author, which EXPLICITLY
+#      SUPERSEDES the un-rederivable generated item rather than silently standing
+#      in for it.
+#
+# THE TOKEN BOUNDARY, stated rather than worked around: OCC CI's ``github.token``
+# has no scope on a PRIVATE sibling repo (the item-13 gap recorded on OCC#5406),
+# so ``handler_occ_state_effect`` suppresses the content-bound pin when
+# ``product_repo_private``. All three born-red companions were for
+# ``omninode_infra``, the org's only private repo -- so for exactly that
+# population layers (2)+(3) are the entire declared surface and NO generated check
+# observes the product. That is a real, disclosed limit of the hosted runner, not
+# something a cleverer ``check_value`` can fix; closing it needs a token that can
+# read the private repo, which is out of this ticket's scope.
 _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE = (
     "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state"
 )
 _CI_ITEM_PUBLIC_CHECK_VALUE = "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+
+#: OCC self-bind provenance value. ``${REPO}``/``${PR_NUMBER}`` resolve to the OCC
+#: companion PR on its own Contract Compliance run, which is exactly the surface
+#: this item names -- so here the self-reference IS the point, and the item is
+#: honestly a binding record rather than a product proof.
+_SELF_BIND_ITEM_CHECK_VALUE = _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE
+
+# --- The minted admissible check (OMN-15247 R21b) ----------------------------
+#
+# Codex hand-repaired OCC#5406, OCC#5415 and OCC#5418 with a BYTE-IDENTICAL
+# appended item. Those accepted repairs define the target shape, so the producer
+# now mints it by construction instead of waiting for a human:
+#
+#     uv run pytest tests/test_evidence_admissibility.py -q
+#
+# Admissible under the OMN-15309 predicate for the reason that matters rather
+# than by a loophole: ``uv`` is in ``EXECUTED_HERMETIC_COMMANDS``, it runs real
+# behaviour inside the OCC checkout, it goes RED when that behaviour breaks, and
+# ``tests/test_evidence_admissibility.py`` is a file the companion does NOT
+# author -- so OUTSIDE-ITS-OWN-DIFF is satisfied substantively, not structurally.
+#
+# HONEST SCOPE, recorded here because a PR body is not what a future reader has
+# open: this check does NOT prove anything about the product change. It proves the
+# hosted admissibility validator is intact. Its job is to stop a companion being
+# born BLOCKED by ``_has_effective_check`` WHILE the un-rederivable product item
+# is marked SUPERSEDED -- visibly demoted -- instead of being laundered into a
+# PASS by a probe that is green for every PR on GitHub. Where the product IS
+# observable, layer (1) is the evidence and this item is purely additive.
+#
+# NO RECEIPT IS MINTED for this item, on purpose. The producer runs inside the
+# PRODUCT repo's CI and never executes OCC's test suite, so any ``probe_stdout``
+# it wrote would be FABRICATED -- precisely what the OCC Receipt Honesty Gate
+# exists to catch. The OCC contract-compliance runner executes this check_value
+# at CI time, and that run is the durable evidence.
+ADMISSIBILITY_VALIDATOR_EVIDENCE_ID = "dod-occ-evidence-admissibility-validator"
+ADMISSIBILITY_VALIDATOR_CHECK_VALUE = (
+    "uv run pytest tests/test_evidence_admissibility.py -q"
+)
+
+# 2-space list indent so each block continues the enclosing ``dod_evidence:``
+# sequence; NOT textwrap.dedent'd (every line is indented).
+_ADMISSIBILITY_VALIDATOR_ITEM_HEAD_TEMPLATE = (
+    '  - id: "{evidence_id}"\n'
+    '    description: "Hosted OCC evidence admissibility validator (OMN-15247)."\n'
+    '    source: "generated"\n'
+    "    checks:\n"
+    '      - check_type: "command"\n'
+)
+
+# The SUPERSEDING variant. ``evidence_artifact: supersedes_dod_evidence:<id>``
+# is read by ``contract_compliance_check._superseded_dod_ids``, which requires
+# the superseding item to appear AFTER the item it supersedes -- hence this block
+# is always appended below the downstream item, never above it.
+_ADMISSIBILITY_VALIDATOR_ITEM_SUPERSEDING_HEAD_TEMPLATE = (
+    '  - id: "{evidence_id}"\n'
+    '    description: "Hosted OCC evidence admissibility validator (OMN-15247)."\n'
+    '    source: "generated"\n'
+    '    evidence_artifact: "supersedes_dod_evidence:{superseded_evidence_id}"\n'
+    "    checks:\n"
+    '      - check_type: "command"\n'
+)
+
+
+def is_product_observing_check_value(check_value: str | None) -> bool:
+    """True when a binding ``check_value`` actually observes the product change.
+
+    The content-bound shape (``gh api repos/<o>/<r>/contents/<path>?ref=<sha>``)
+    is the ONLY generated form whose exit status depends on the product diff, and
+    the ``?ref=`` pin is what makes it so -- it reads file CONTENT at one immutable
+    commit, which is RED at the merge base and GREEN at the head. Keyed on that
+    same marker ``scripts/ci/check_generated_checks_red_derivable.py`` keys on, so
+    the producer and its ratchet cannot disagree about what "product-observing"
+    means. Everything else the producer can emit is provenance.
+    """
+    return "?ref=" in (check_value or "")
+
 
 # Downstream (Evidence-Source binding) dod_evidence item — an existence probe
 # (tier L0). 2-space list indent so it continues the head template's
@@ -242,13 +389,21 @@ _DOWNSTREAM_RECEIPT_TAIL_TEMPLATE = textwrap.dedent("""\
 # documented no-op when the field is absent, so omitting it silently ships a
 # receipt bound to a declared entry with no per-entry hash (the OMN-14425 x
 # OMN-14418 seam: each PR was green alone, and the merged pair was not).
-_CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
+#
+# OMN-15247 R21 foldproof: split into HEAD/MID/TAIL around ``check_value`` and
+# ``probe_command`` for the same MEASURED reason the downstream receipt was split
+# — the admissible diff-scope value renders past yamlfmt's column-100 budget even
+# at this indent-0 line, and a fold rewrites the committed receipt (proven live by
+# ``TestF03YamlfmtClean`` against the real yamlfmt binary).
+_CI_CHECK_RECEIPT_HEAD_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
     check_type: "command"
-    check_value: "{check_value}"
+    """)
+
+_CI_CHECK_RECEIPT_MID_TEMPLATE = textwrap.dedent("""\
     contract_sha256: "sha256:PENDING"
     contract_entry_sha256: "sha256:PENDING"
     status: PASS
@@ -256,7 +411,9 @@ _CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
     commit_sha: "{commit_sha}"
     runner: "{runner}"
     verifier: "{verifier}"
-    probe_command: "{probe_command}"
+    """)
+
+_CI_CHECK_RECEIPT_TAIL_TEMPLATE = textwrap.dedent("""\
     probe_stdout: |
       {probe_stdout}
     actual_output: "PASS: product-diff-scope for {ticket_id} from {repo}#{pr_number}."
@@ -280,13 +437,21 @@ _CI_CHECK_RECEIPT_TEMPLATE = textwrap.dedent("""\
 # whole-file contract_sha256. Before OMN-14650 the id was never declared, so the
 # field was deliberately omitted; that omission is exactly why every auto/*
 # companion failed eligibility with pr_ticket_mismatch.
-_SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
+#
+# OMN-15247 R21: the inlined ``gh pr view <occ_pr> --repo <occ_repo>
+# --json number,state`` check_value is replaced by the admissible OCC-PR-pinned
+# ``gh api .../pulls/<occ_pr>/files`` assertion, and both ``check_value`` and
+# ``probe_command`` render through :func:`render_check_value_field` so neither
+# folds under yamlfmt at this indent-0 line.
+_SELF_BIND_RECEIPT_HEAD_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
     check_type: "command"
-    check_value: "gh pr view {occ_pr_number} --repo {occ_repo} --json number,state"
+    """)
+
+_SELF_BIND_RECEIPT_MID_TEMPLATE = textwrap.dedent("""\
     contract_sha256: "sha256:PENDING"
     contract_entry_sha256: "sha256:PENDING"
     status: PASS
@@ -294,7 +459,9 @@ _SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
     commit_sha: "{occ_commit_sha}"
     runner: "{runner}"
     verifier: "{verifier}"
-    probe_command: "{probe_command}"
+    """)
+
+_SELF_BIND_RECEIPT_TAIL_TEMPLATE = textwrap.dedent("""\
     probe_stdout: |
       {probe_stdout}
     actual_output: "PASS: OCC self-bind for {ticket_id} (OCC#{occ_pr_number})."
@@ -313,17 +480,19 @@ _SELF_BIND_RECEIPT_TEMPLATE = textwrap.dedent("""\
 # dedent) so the 2-space list item aligns byte-for-byte with the base item blocks
 # (_DOWNSTREAM_DOD_ITEM_HEAD_TEMPLATE / _CI_DOD_ITEM_HEAD_TEMPLATE) and can be
 # structurally inserted at the end of the dod_evidence list by the effect writer
-# (OMN-14741 F-04), robust to a non-dod_evidence-terminal contract. Its
-# check_value is a fixed short literal with no override — never at risk of the
-# yamlfmt fold, so it stays inlined rather than routed through
-# render_check_value_field.
+# (OMN-14741 F-04), robust to a non-dod_evidence-terminal contract.
+#
+# OMN-15247 R21: ``check_value`` is a substituted VALUE (single-brace
+# ``${PR_NUMBER}`` / ``${REPO}`` are NOT re-scanned by ``.format``) carrying the
+# admissible ``_SELF_BIND_ITEM_CHECK_VALUE``. The previous inlined
+# ``gh pr view ... --json number,state`` was the NOT_EXECUTED third of the
+# three-for-three born-red shape.
 _SELF_BIND_DOD_EVIDENCE_ITEM_TEMPLATE = (
     '  - id: "{evidence_id}"\n'
     '    description: "OCC companion PR #{occ_pr_number} — self-bind for {ticket_id} (OMN-14650)."\n'
     '    source: "generated"\n'
     "    checks:\n"
     '      - check_type: "command"\n'
-    '        check_value: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json number,state"\n'
 )
 
 # RSD compute-oracle templates (OMN-14285). These include the per-entry hash
@@ -364,7 +533,17 @@ _SELF_BIND_DOD_EVIDENCE_ITEM_TEMPLATE = (
 # hosted-safe :func:`receipt_local_check_value` form per repo without a second
 # template, exactly like the emitter's :func:`render_companion_contract`. The
 # public defaults reproduce the accepted shape byte-for-byte.
-_COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
+#
+# OMN-15247 R21 foldproof: the two ``check_value:`` lines are NO LONGER inlined
+# here. Both admissible values render past yamlfmt's column-100 fold budget at
+# this indent-8 line (MEASURED: 111 and 156 columns, spaces beyond 100), and a
+# fold rewrites the committed contract, restaling ``contract_sha256`` /
+# ``contract_entry_sha256`` (F-03 / OMN-14684). The template therefore stops at
+# ``check_type`` and each value is appended by :func:`render_check_value_field`,
+# which picks the byte-identical quoted form for anything that fits and a
+# fold-proof literal block scalar (``|-``) for anything that does not — the same
+# renderer the born-path emitter templates already use.
+_COMPUTE_CONTRACT_HEAD_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
@@ -388,10 +567,9 @@ _COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
         source: "generated"
         checks:
           - check_type: "command"
-            check_value: "{binding_check_value}"
-          - check_type: "command"
-            check_value: "{diff_scope_check_value}"
     """)
+
+_COMPUTE_CONTRACT_SECOND_CHECK_TEMPLATE = '      - check_type: "command"\n'
 
 # Self-bind dod_evidence entry appended to the compute-oracle contract on pass 2
 # (OMN-14622). Once the OCC companion PR exists, the contract must DECLARE a
@@ -409,20 +587,21 @@ _COMPUTE_CONTRACT_TEMPLATE = textwrap.dedent("""\
 # indent, so this block matches that exactly and continues the same sequence.
 #
 # OMN-14679: the check_value is rendered in the canonical placeholder-var form
-# (``${{PR_NUMBER}}`` / ``${{REPO}}``), never the live OCC PR integer, so the
+# (``${PR_NUMBER}`` / ``${REPO}``), never the live OCC PR integer, so the
 # self-bind item clears ``lint-contract-check-values`` (OMN-9350 / OMN-14673)
-# like the downstream item. It stays a binding existence probe (tier L0) — the
-# substance floor is already satisfied by the downstream item's diff-scope check
-# — so it is legitimate for OCC-PR binding without counting toward the floor.
-_COMPUTE_SELF_BIND_ENTRY_TEMPLATE = (
+# like the downstream item.
+#
+# OMN-15247 R21: it is no longer a bare existence probe (tier L0 /
+# NOT_EXECUTED). ``_SELF_BIND_ITEM_CHECK_VALUE`` asserts the bound PR has a
+# non-empty file list via ``gh api``, which is admissible under the OMN-15309
+# predicate and derives L1 via the substance floor's ``| grep`` family.
+_COMPUTE_SELF_BIND_ENTRY_HEAD_TEMPLATE = (
     '  - id: "{self_bind_evidence_id}"\n'
     '    description: "Binds {ticket_id} to OCC companion PR'
     ' #{occ_pr_number} (self-bind)."\n'
     '    source: "generated"\n'
     "    checks:\n"
     '      - check_type: "command"\n'
-    '        check_value: "gh pr view ${{PR_NUMBER}} --repo'
-    ' ${{REPO}} --json number,state"\n'
 )
 
 # Deploy-assessment dod_evidence item (F-05, OMN-14742). Appended to the
@@ -447,6 +626,26 @@ _COMPUTE_SELF_BIND_ENTRY_TEMPLATE = (
 # (onex_change_control, ``max_line_length: 100``) does NOT wrap a long
 # double-quoted ``check_value`` scalar (verified), so the >100-char line stays a
 # formatter fixpoint and does not restale ``contract_sha256`` (F-03 / OMN-14684).
+#
+# OMN-15247 R21b — this value is the PRE-R21 form, RESTORED. An intermediate
+# revision of this ticket rewrote it to
+# ``gh api repos/${REPO}/pulls/${PR_NUMBER}/files ... | grep -qiE '...|deploy'``
+# on the theory that ``gh api`` is in deploy-gate's LIVE_PROBE_COMMANDS while
+# ``{gh, grep}`` is not. That reasoning about deploy-gate is correct and the
+# resulting value was still WRONG, for a reason measured on the surface it
+# actually runs on: ``${REPO}`` / ``${PR_NUMBER}`` are pre-substituted by the OCC
+# runner with the OCC COMPANION's own repo/number (see the vocabulary note at the
+# top of this module), so in OCC CI that value greps the COMPANION's filenames --
+# ``contracts/OMN-*.yaml`` plus ``drift/dod_receipts/...`` -- for runtime paths.
+# EXECUTED against OCC#5418's real file list it exits 1: born RED. And on any
+# companion that DOES emit this item the producer also writes
+# ``drift/dod_receipts/<ticket>/dod-deploy-assessment/command.yaml``, whose path
+# contains the substring ``deploy``, so it would instead pass BECAUSE the producer
+# created a directory named after the item. Born-red or circular, no third
+# outcome. Restoring the ``gh pr diff`` form returns the item to its known
+# pre-ticket state; the deploy-gate falsifiability gap it was trying to close is
+# real, pre-existing, and out of scope here rather than papered over with a value
+# that is wrong on the runner it executes on.
 DEPLOY_ASSESSMENT_EVIDENCE_ID = "dod-deploy-assessment"
 DEPLOY_ASSESSMENT_CHECK_VALUE = (
     "gh pr diff ${PR_NUMBER} --repo ${REPO} --name-only | "
@@ -465,14 +664,13 @@ DEPLOY_ASSESSMENT_CHECK_VALUE = (
 # and restale ``contract_sha256`` (F-03 / OMN-14684). A long ``check_value`` is
 # NOT folded (it carries ``|`` / ``$`` / ``'`` yamlfmt leaves literal — verified),
 # so only the prose description must stay within the wrap width.
-_COMPUTE_DEPLOY_ASSESSMENT_ENTRY_TEMPLATE = (
+_COMPUTE_DEPLOY_ASSESSMENT_ENTRY_HEAD_TEMPLATE = (
     '  - id: "{evidence_id}"\n'
     '    description: "Deploy-scope DoD so PR #{pr_number} clears the'
     ' deploy-gate (F-05)."\n'
     '    source: "generated"\n'
     "    checks:\n"
     '      - check_type: "command"\n'
-    '        check_value: "{check_value}"\n'
 )
 
 
@@ -488,11 +686,49 @@ def render_deploy_assessment_dod_evidence_item(*, repo: str, pr_number: int) -> 
     accepted for call-site symmetry with the other item renderers but is not
     interpolated into this (deliberately short) description.
     """
-    return _COMPUTE_DEPLOY_ASSESSMENT_ENTRY_TEMPLATE.format(
+    return _COMPUTE_DEPLOY_ASSESSMENT_ENTRY_HEAD_TEMPLATE.format(
         evidence_id=DEPLOY_ASSESSMENT_EVIDENCE_ID,
         repo=repo,
         pr_number=pr_number,
-        check_value=DEPLOY_ASSESSMENT_CHECK_VALUE,
+    ) + render_check_value_field("check_value", DEPLOY_ASSESSMENT_CHECK_VALUE)
+
+
+def render_admissibility_validator_dod_evidence_item(
+    *, superseded_evidence_id: str | None = None
+) -> str:
+    """Render the hosted admissibility-validator dod_evidence item (OMN-15247).
+
+    This is the item that stops a machine-minted companion being born BLOCKED,
+    and it is minted on EVERY companion. It is the byte-identical shape Codex
+    hand-appended to all three born-red companions (OCC#5406 / #5415 / #5418) --
+    the accepted repairs define the target, so the producer now emits it rather
+    than a human.
+
+    ``superseded_evidence_id`` is the honesty half and is NOT optional in spirit.
+    Pass the downstream binding item's id whenever that item's ``check_value``
+    is provenance rather than a product observation (see
+    :func:`is_product_observing_check_value`): the rendered
+    ``evidence_artifact: "supersedes_dod_evidence:<id>"`` makes the OCC runner
+    report that item SUPERSEDED instead of silently carrying it as though it
+    proved something. Pass ``None`` only when the downstream item IS the
+    content-bound literal pin, in which case this item is purely additive and
+    supersedes nothing.
+
+    Pure function of its inputs; carries no unsubstituted named placeholder and
+    no ``${...}`` shell placeholder at all -- the value is repo-independent, so
+    it needs neither.
+    """
+    if superseded_evidence_id:
+        head = _ADMISSIBILITY_VALIDATOR_ITEM_SUPERSEDING_HEAD_TEMPLATE.format(
+            evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+            superseded_evidence_id=superseded_evidence_id,
+        )
+    else:
+        head = _ADMISSIBILITY_VALIDATOR_ITEM_HEAD_TEMPLATE.format(
+            evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+        )
+    return head + render_check_value_field(
+        "check_value", ADMISSIBILITY_VALIDATOR_CHECK_VALUE
     )
 
 
@@ -565,43 +801,77 @@ def ci_check_evidence_id(evidence_id: str) -> str:
     return f"{evidence_id}-ci"
 
 
-def receipt_local_check_value(*, ticket_id: str, evidence_id: str) -> str:
-    """Hosted-safe receipt-local ``check_value`` for a private-repo companion.
+def hosted_safe_binding_check_value() -> str:
+    """The binding ``check_value`` a minted contract declares as PROVENANCE.
 
-    OMN-14766 F-16. A private product repo's PR cannot be re-probed by the hosted
-    OCC contract-compliance runner: its workflow ``GITHUB_TOKEN`` has no scope on
-    the private repo, so a ``gh pr view --repo <private>`` ``check_value`` fails
-    hosted while passing on the ``.201`` emitter that has scope (the OCC#4307 /
-    OCC#4318 split). Instead, assert that the committed receipt attests
-    ``status: PASS``. The live ``gh pr view`` probe is preserved verbatim inside
-    the receipt (``probe_command`` / ``probe_stdout`` / ``exit_code``) as captured
-    provenance — CI verifies the receipt's attestation rather than re-running the
-    private-repo probe (the same receipt-preservation pattern OMN-14051 steers
-    authors toward for non-hermetic checks).
+    Named ``hosted_safe`` because it is safe to *run* on the hosted OCC runner,
+    NOT because it proves anything there -- the OMN-15309 predicate refuses it as
+    NOT_EXECUTED and the runner reports it INERT/WARN, which is the honest label
+    for it. See the vocabulary note at the top of this module: product proof comes
+    from the content-bound literal pin, and admissibility on this fallback path
+    comes from :func:`render_admissibility_validator_dod_evidence_item`, which
+    EXPLICITLY SUPERSEDES the item this value backs rather than letting it stand
+    in as though it proved something.
 
-    The receipt path is resolved through ``$CONTRACT_REPO_DIR`` (exported by the
-    compliance runner's ``_build_command_env`` to the OCC checkout root) so it
-    binds regardless of the runner's ``cwd`` (the *product* workspace). It derives
-    proof tier L1 via the OMN-14409 substance floor's ``grep`` static-assert family
-    and carries no ``gh pr`` command, so it clears ``lint-contract-check-values``
-    with no ``${PR_NUMBER}`` placeholder. OCC receipt paths never contain spaces,
-    so ``$CONTRACT_REPO_DIR`` is left unquoted — the value stays a single YAML
-    double-quoted scalar with no nested double-quotes, which yamlfmt leaves as a
-    fixpoint.
+    It is the replacement for ``receipt_local_check_value``, which was
+    DELETED rather than deprecated because leaving it importable leaves the
+    defect loaded: it rendered
+    ``grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/...``, which
+    the OMN-15309 predicate refuses UNCONDITIONALLY (two independent DENY
+    patterns) as INSIDE_OWN_DIFF — the companion greps a receipt it authors in
+    the same PR. It was the reason two of the three checks on every machine-minted
+    companion (OCC#5406 / #5415 / #5418) were born inadmissible.
+
+    Its stated purpose — "a private product repo cannot be re-probed by the
+    hosted OCC runner" — is satisfied without any self-reference by the
+    placeholder form: the runner pre-substitutes ``${REPO}``/``${PR_NUMBER}``
+    with the repo/PR whose CI is executing, so the hosted OCC job probes the OCC
+    companion PR (readable) and the product job probes the product PR (readable
+    with its own token). The private repo is never dereferenced by a token that
+    lacks scope on it. The live cross-repo probe stays recorded verbatim in the
+    receipt's ``probe_command`` / ``probe_stdout`` / ``exit_code``. Trading a
+    circular check for an inert one is a real improvement even though neither
+    proves the product: an inert check is VISIBLY inert, whereas the circular one
+    PASSED, for the wrong reason.
     """
-    return (
-        "grep -q '^status: PASS$' "
-        f"$CONTRACT_REPO_DIR/drift/dod_receipts/{ticket_id}/{evidence_id}/command.yaml"
-    )
+    return _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE
+
+
+def hosted_safe_diff_scope_check_value() -> str:
+    """The diff-scope ``check_value`` a minted contract declares as PROVENANCE.
+
+    Same standing as :func:`hosted_safe_binding_check_value` — runnable, inert,
+    honestly labelled.
+    """
+    return _CI_ITEM_PUBLIC_CHECK_VALUE
 
 
 def downstream_receipt_public_check_value(*, pr_number: int, repo: str) -> str:
-    """Public-repo downstream (binding) receipt ``check_value`` (OMN-14741 F-06)."""
+    """Downstream (binding) receipt ``check_value`` — literal, product-PR-pinned.
+
+    A RECEIPT's ``check_value`` records what the producer actually ran at mint
+    time; the compliance runner executes the CONTRACT's declared value, not this
+    one. It is therefore pinned literally to the product repo/PR (real
+    provenance) while the contract carries the placeholder form.
+
+    OMN-15247 R21b: an intermediate revision moved this to
+    ``gh api .../pulls/<n>/files --jq '.[].sha' | grep -qE '^[0-9a-f]{40}$'`` on
+    the grounds that the recorded probe would then be "admissible if ever
+    replayed". Replaying it would prove nothing -- MEASURED, that command exits 0
+    for every PR on GitHub that changes at least one file -- so recording it as
+    provenance substitutes an admissible-LOOKING string for the probe the
+    producer actually ran. A receipt's one job is to record what happened, so
+    this is the pre-R21 literal form, restored.
+    """
     return f"gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
 
 
 def ci_receipt_public_check_value(*, pr_number: int, repo: str) -> str:
-    """Public-repo product-diff-scope receipt ``check_value`` (OMN-14741 F-06)."""
+    """Product-diff-scope receipt ``check_value`` — literal, product-PR-pinned.
+
+    Pre-R21 form restored for the reason given in
+    :func:`downstream_receipt_public_check_value`.
+    """
     return f"gh pr view {pr_number} --repo {repo} --json files"
 
 
@@ -695,6 +965,17 @@ def render_companion_contract(
             repo=repo,
             pr_number=pr_number,
             check_value=ci_check_value,
+        )
+        # OMN-15247 R21b: ALWAYS minted, and minted LAST of the base items so the
+        # supersession marker resolves (``_superseded_dod_ids`` only honours a
+        # marker that appears after the item it names). This is what makes a
+        # companion born GREEN instead of born BLOCKED at 0-of-N admissible.
+        + render_admissibility_validator_dod_evidence_item(
+            superseded_evidence_id=(
+                None
+                if is_product_observing_check_value(downstream_check_value)
+                else evidence_id
+            )
         )
     )
 
@@ -796,22 +1077,31 @@ def render_ci_check_receipt(
     :func:`receipt_local_check_value` (OMN-14766 F-16). The live probe stays in
     ``probe_command`` / ``probe_stdout`` / ``exit_code`` regardless.
     """
-    return _CI_CHECK_RECEIPT_TEMPLATE.format(
-        ticket_id=ticket_id,
-        evidence_id=evidence_id,
-        pr_number=pr_number,
-        repo=repo,
-        run_timestamp=run_timestamp,
-        commit_sha=commit_sha,
-        branch=branch,
-        probe_command=probe_command,
-        probe_stdout=probe_stdout,
-        exit_code=exit_code,
-        runner=runner,
-        verifier=verifier,
-        check_value=(
-            check_value or ci_receipt_public_check_value(pr_number=pr_number, repo=repo)
-        ),
+    return (
+        _CI_CHECK_RECEIPT_HEAD_TEMPLATE.format(
+            ticket_id=ticket_id, evidence_id=evidence_id
+        )
+        + render_check_value_field(
+            "check_value",
+            check_value
+            or ci_receipt_public_check_value(pr_number=pr_number, repo=repo),
+            indent=0,
+        )
+        + _CI_CHECK_RECEIPT_MID_TEMPLATE.format(
+            run_timestamp=run_timestamp,
+            commit_sha=commit_sha,
+            runner=runner,
+            verifier=verifier,
+        )
+        + render_check_value_field("probe_command", probe_command, indent=0)
+        + _CI_CHECK_RECEIPT_TAIL_TEMPLATE.format(
+            ticket_id=ticket_id,
+            repo=repo,
+            pr_number=pr_number,
+            probe_stdout=probe_stdout,
+            exit_code=exit_code,
+            branch=branch,
+        )
     )
 
 
@@ -831,19 +1121,31 @@ def render_self_bind_receipt(
     verifier: str = DEFAULT_VERIFIER,
 ) -> str:
     """Render the OCC self-binding receipt YAML (proves the companion PR itself)."""
-    return _SELF_BIND_RECEIPT_TEMPLATE.format(
-        ticket_id=ticket_id,
-        evidence_id=evidence_id,
-        occ_pr_number=occ_pr_number,
-        occ_repo=occ_repo,
-        run_timestamp=run_timestamp,
-        occ_commit_sha=occ_commit_sha,
-        branch=branch,
-        probe_command=probe_command,
-        probe_stdout=probe_stdout,
-        exit_code=exit_code,
-        runner=runner,
-        verifier=verifier,
+    return (
+        _SELF_BIND_RECEIPT_HEAD_TEMPLATE.format(
+            ticket_id=ticket_id, evidence_id=evidence_id
+        )
+        + render_check_value_field(
+            "check_value",
+            downstream_receipt_public_check_value(
+                pr_number=occ_pr_number, repo=occ_repo
+            ),
+            indent=0,
+        )
+        + _SELF_BIND_RECEIPT_MID_TEMPLATE.format(
+            run_timestamp=run_timestamp,
+            occ_commit_sha=occ_commit_sha,
+            runner=runner,
+            verifier=verifier,
+        )
+        + render_check_value_field("probe_command", probe_command, indent=0)
+        + _SELF_BIND_RECEIPT_TAIL_TEMPLATE.format(
+            ticket_id=ticket_id,
+            occ_pr_number=occ_pr_number,
+            probe_stdout=probe_stdout,
+            exit_code=exit_code,
+            branch=branch,
+        )
     )
 
 
@@ -867,7 +1169,7 @@ def render_self_bind_dod_evidence_item(
         occ_pr_number=occ_pr_number,
         occ_repo=occ_repo,
         ticket_id=ticket_id,
-    )
+    ) + render_check_value_field("check_value", _SELF_BIND_ITEM_CHECK_VALUE)
 
 
 def render_compute_companion_contract(
@@ -916,23 +1218,40 @@ def render_compute_companion_contract(
     the self-bind entry. Pure function of its inputs.
     """
     parts = [
-        _COMPUTE_CONTRACT_TEMPLATE.format(
+        _COMPUTE_CONTRACT_HEAD_TEMPLATE.format(
             ticket_id=ticket_id,
             repo=repo,
             pr_number=pr_number,
             evidence_id=evidence_id,
-            binding_check_value=(
-                binding_check_value or _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE
-            ),
-            diff_scope_check_value=(
-                diff_scope_check_value or _CI_ITEM_PUBLIC_CHECK_VALUE
-            ),
-        )
+        ),
+        render_check_value_field(
+            "check_value", binding_check_value or _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE
+        ),
+        _COMPUTE_CONTRACT_SECOND_CHECK_TEMPLATE,
+        render_check_value_field(
+            "check_value", diff_scope_check_value or _CI_ITEM_PUBLIC_CHECK_VALUE
+        ),
     ]
     if emit_deploy_assessment:
         parts.append(
             render_deploy_assessment_dod_evidence_item(repo=repo, pr_number=pr_number)
         )
+    # OMN-15247 R21b: ALWAYS minted, and ordered BEFORE any self-bind entry for
+    # the same reason the deploy item is -- the merged path renders this function
+    # twice (with and without ``self_bind_evidence_id``) and subtracts the suffix
+    # to isolate the self-bind entry. An unconditional item appended AFTER
+    # self-bind would appear in both renders and destroy that suffix property.
+    # Ordering it here also satisfies ``_superseded_dod_ids``, which only honours
+    # a supersession marker that appears after the item it names.
+    parts.append(
+        render_admissibility_validator_dod_evidence_item(
+            superseded_evidence_id=(
+                None
+                if is_product_observing_check_value(binding_check_value)
+                else evidence_id
+            )
+        )
+    )
     if self_bind_evidence_id is not None:
         if occ_pr_number is None or occ_repo is None:
             raise ValueError(
@@ -940,12 +1259,13 @@ def render_compute_companion_contract(
                 "the self-bind dod_evidence entry"
             )
         parts.append(
-            _COMPUTE_SELF_BIND_ENTRY_TEMPLATE.format(
+            _COMPUTE_SELF_BIND_ENTRY_HEAD_TEMPLATE.format(
                 self_bind_evidence_id=self_bind_evidence_id,
                 ticket_id=ticket_id,
                 occ_pr_number=occ_pr_number,
                 occ_repo=occ_repo,
             )
+            + render_check_value_field("check_value", _SELF_BIND_ITEM_CHECK_VALUE)
         )
     return "".join(parts)
 
@@ -1256,6 +1576,8 @@ def find_deploy_sensitive_paths(changed_files: tuple[str, ...]) -> tuple[str, ..
 
 
 __all__ = [
+    "ADMISSIBILITY_VALIDATOR_CHECK_VALUE",
+    "ADMISSIBILITY_VALIDATOR_EVIDENCE_ID",
     "CONTRACT_ENTRY_SHA_LINE_RE",
     "CONTRACT_SHA_LINE_RE",
     "DEFAULT_RUNNER",
@@ -1271,8 +1593,10 @@ __all__ = [
     "compute_contract_sha256",
     "extract_evidence_item_id",
     "find_deploy_sensitive_paths",
+    "is_product_observing_check_value",
     "rebind_contract_entry_sha256_in_text",
     "rebind_contract_sha256_in_text",
+    "render_admissibility_validator_dod_evidence_item",
     "render_ci_check_receipt",
     "render_ci_dod_evidence_item",
     "render_companion_contract",

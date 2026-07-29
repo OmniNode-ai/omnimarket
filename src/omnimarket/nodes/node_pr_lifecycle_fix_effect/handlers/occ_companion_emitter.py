@@ -84,13 +84,14 @@ from omnimarket.github_app_auth import resolve_app_installation_token_from_contr
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+    ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
     SHA_RE,
     ci_check_evidence_id,
     compute_contract_sha256,
     extract_evidence_item_id,
     rebind_contract_entry_sha256_in_text,
     rebind_contract_sha256_in_text,
-    receipt_local_check_value,
     render_ci_check_receipt,
     render_ci_dod_evidence_item,
     render_companion_contract,
@@ -493,6 +494,14 @@ class OccCompanionEmitter:
         run_timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ")
 
         # Genuine product-PR probe, observed once and shared across tickets.
+        #
+        # OMN-15247 R21b: restored to the pre-R21 form. R21 moved this probe to
+        # ``gh api .../pulls/<n>/files --jq '.[].sha'`` so the recorded probe would
+        # match the declared check_value. That check_value is reverted (it was a
+        # PR-existence probe: exit 0 for every PR on GitHub that changes a file),
+        # so the probe returns with it. Where a content-bound check IS derivable
+        # this variable is overwritten below with that check -- which is a genuine
+        # product observation, RED-proven at the merge base.
         downstream_probe_command = (
             f"gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
         )
@@ -522,6 +531,11 @@ class OccCompanionEmitter:
         # (`probe_command == check_value` on the public path). `gh pr view --json
         # files` is pipe-free JSON, so _observe_pr_probe can shlex.split + json.loads
         # it directly.
+        # OMN-15247 R21b: restored to the F-06 GraphQL form. R21 moved it to
+        # `gh api .../pulls/<n>/files --jq '.[].status'` so the recorded probe
+        # matched the (then-vacuous) declared check_value; with that check_value
+        # reverted, keeping the probe on `gh api` would break the F-06 invariant
+        # that the emitter's own probe matches the check_value it declares.
         ci_probe_command = f"gh pr view {pr_number} --repo {repo} --json files"
         ci_stdout, ci_exit = self._observe_pr_probe(
             probe_command=ci_probe_command,
@@ -612,19 +626,21 @@ class OccCompanionEmitter:
             )
 
         def _hosted_safe_check_values(ticket: str) -> tuple[str | None, str | None]:
-            # Precedence: private-repo hosted-safe form (OMN-14766 F-16) wins,
-            # since a hosted content read cannot run there at all. Otherwise a
-            # content_bound-enabled producer overrides the DOWNSTREAM check with
-            # the RED-proven content read; the CI/diff-scope check is untouched.
+            # OMN-15247 R21: the OMN-14766 F-16 private-repo branch is GONE. It
+            # returned the receipt-local grep for BOTH checks, which the
+            # OMN-15309 predicate refuses unconditionally as INSIDE_OWN_DIFF —
+            # the producer-side cause of the three-for-three born-red companions
+            # (OCC#5406 / #5415 / #5418). ``None`` now means "use the defaults",
+            # and the defaults are the admissible placeholder-form probes, which
+            # resolve to the executing job's OWN repo/PR and therefore need no
+            # cross-repo token scope for a private product repo.
+            #
+            # ``is_private`` still (correctly) suppresses the LITERAL content-bound
+            # pin below, because THAT value dereferences the private product repo
+            # by name and cannot be read by the hosted OCC job's github.token —
+            # the item-13 gap recorded on OCC#5406.
             if is_private:
-                return (
-                    receipt_local_check_value(
-                        ticket_id=ticket, evidence_id=evidence_id
-                    ),
-                    receipt_local_check_value(
-                        ticket_id=ticket, evidence_id=ci_evidence_id
-                    ),
-                )
+                return None, None
             if (
                 self._check_binding is EnumCheckBinding.CONTENT_BOUND
                 and content_bound_check is not None
@@ -753,6 +769,54 @@ class OccCompanionEmitter:
                         ),
                         encoding="utf-8",
                     )
+                    # OMN-15247 R21b: receipt backing the minted
+                    # admissibility-validator item. REQUIRED --
+                    # validator_occ_merge_eligibility refuses a companion whose
+                    # contract declares a dod_evidence item with no PASS receipt
+                    # (MISSING_RECEIPT), so declaring the item without this would
+                    # trade born-BLOCKED for born-INELIGIBLE.
+                    #
+                    # probe_command / probe_stdout / exit_code record the live
+                    # product-PR probe this emitter ACTUALLY ran, exactly as the
+                    # downstream receipt above does; check_value names the check
+                    # the OCC contract-compliance runner executes at CI time. The
+                    # emitter has the PRODUCT repo's checkout, never OCC's, so it
+                    # cannot run `uv run pytest tests/test_evidence_admissibility
+                    # .py` -- and fabricating an "N passed" probe_stdout is the
+                    # false-evidence class this ticket removes.
+                    validator_dir = (
+                        clone_dir
+                        / "drift"
+                        / "dod_receipts"
+                        / ticket
+                        / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+                    )
+                    validator_dir.mkdir(parents=True, exist_ok=True)
+                    (validator_dir / "command.yaml").write_text(
+                        render_downstream_receipt(
+                            ticket_id=ticket,
+                            evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                            pr_number=pr_number,
+                            repo=repo,
+                            run_timestamp=run_timestamp,
+                            commit_sha=receipt_commit_sha,
+                            branch=branch,
+                            probe_command=downstream_probe_command,
+                            probe_stdout=downstream_stdout,
+                            exit_code=downstream_exit,
+                            # SHORT deliberately -- yamlfmt folds a long plain
+                            # scalar at column 100 and restales the hash
+                            # (F-03 / OMN-14684).
+                            actual_output=(
+                                "PASS: OCC runner executes the declared check; "
+                                "probe is the live PR read."
+                            ),
+                            runner=self._runner,
+                            verifier=self._verifier,
+                            check_value=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+                        ),
+                        encoding="utf-8",
+                    )
                     # OMN-14741 F-01: rebind ONLY this PR's own receipts, never rglob
                     # every receipt under <ticket>/. The whole-file contract_sha256 of
                     # a PRIOR merged receipt for the same ticket goes stale when the
@@ -761,7 +825,14 @@ class OccCompanionEmitter:
                     # a NON-append-only mutation of an already-merged receipt (the
                     # OCC#4293/4295/4296 class). Scope the rebind to this PR's rows.
                     self._rebind_receipts(
-                        clone_dir, ticket, contract_path, {evidence_id, ci_evidence_id}
+                        clone_dir,
+                        ticket,
+                        contract_path,
+                        {
+                            evidence_id,
+                            ci_evidence_id,
+                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                        },
                     )
 
                 self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
@@ -787,7 +858,14 @@ class OccCompanionEmitter:
                 self._assert_append_only(
                     clone_dir,
                     base_sha,
-                    self._allowed_paths(tickets, {evidence_id, ci_evidence_id}),
+                    self._allowed_paths(
+                        tickets,
+                        {
+                            evidence_id,
+                            ci_evidence_id,
+                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                        },
+                    ),
                 )
                 # Force-push: the auto/* bot branch is fully REGENERATED each run
                 # (fresh clone off the default + freshly-timestamped receipts), so a
@@ -815,8 +893,8 @@ class OccCompanionEmitter:
                 occ_state = occ_pr_data.get("state") or "open"
                 occ_head_sha = self._head_sha(str(clone_dir))
                 occ_probe_command = (
-                    f"gh pr view {occ_pr_number} --repo {self._occ_repo} "
-                    "--json number,state"
+                    f"gh api repos/{self._occ_repo}/pulls/{occ_pr_number}/files "
+                    "--paginate --jq '.[].sha'"
                 )
                 occ_stdout, occ_exit = self._observe_pr_probe(
                     probe_command=occ_probe_command,
@@ -874,7 +952,17 @@ class OccCompanionEmitter:
                         clone_dir,
                         ticket,
                         contract_paths[ticket],
-                        {evidence_id, ci_evidence_id, self_bind_evidence_id},
+                        {
+                            evidence_id,
+                            ci_evidence_id,
+                            self_bind_evidence_id,
+                            # OMN-15247 R21b: pass 2 re-renders the contract with
+                            # the self-bind entry appended, so its whole-file
+                            # digest changes and EVERY pass-1 receipt must be
+                            # rebound -- the validator's included, or it ships a
+                            # stale contract_sha256 and fails the receipt gate.
+                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                        },
                     )
 
                 self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
@@ -896,7 +984,13 @@ class OccCompanionEmitter:
                     clone_dir,
                     base_sha,
                     self._allowed_paths(
-                        tickets, {evidence_id, ci_evidence_id, self_bind_evidence_id}
+                        tickets,
+                        {
+                            evidence_id,
+                            ci_evidence_id,
+                            self_bind_evidence_id,
+                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                        },
                     ),
                 )
                 # Force-push (see rationale above): deterministic all-adds regeneration.

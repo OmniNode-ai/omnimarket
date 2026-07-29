@@ -65,8 +65,8 @@ from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_requ
     ModelOccCompanionRequest,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
     ci_check_evidence_id,
-    receipt_local_check_value,
     render_ci_check_receipt,
     render_companion_contract,
     render_downstream_receipt,
@@ -139,17 +139,16 @@ def _compute_downstream_receipt(repo: str, *, private: bool) -> dict[str, object
 
 # --- Emitter-side drivers (the pure occ_evidence_stamp render family) ----------
 def _emitter_contract_checks(repo: str, *, private: bool) -> list[str]:
+    # OMN-15247 R21b: `private` no longer changes the DECLARED vocabulary. The
+    # OMN-14783 F-16 carve-out swapped both values to a receipt-local grep, which
+    # the OMN-15309 predicate refuses unconditionally as INSIDE_OWN_DIFF -- the
+    # reason every companion for the org's one private repo was born BLOCKED. The
+    # parameter is retained so both paths stay under test and a re-divergence is
+    # visible here.
+    _ = private
     ev = _evidence_id(repo)
-    if private:
-        downstream_cv: str | None = receipt_local_check_value(
-            ticket_id=TICKET, evidence_id=ev
-        )
-        ci_cv: str | None = receipt_local_check_value(
-            ticket_id=TICKET, evidence_id=ci_check_evidence_id(ev)
-        )
-    else:
-        downstream_cv = None
-        ci_cv = None
+    downstream_cv: str | None = None
+    ci_cv: str | None = None
     contract = render_companion_contract(
         ticket_id=TICKET,
         repo=repo,
@@ -163,10 +162,9 @@ def _emitter_contract_checks(repo: str, *, private: bool) -> list[str]:
 
 
 def _emitter_downstream_receipt(repo: str, *, private: bool) -> dict[str, object]:
+    _ = private
     ev = _evidence_id(repo)
-    check_value = (
-        receipt_local_check_value(ticket_id=TICKET, evidence_id=ev) if private else None
-    )
+    check_value = None
     text = render_downstream_receipt(
         ticket_id=TICKET,
         evidence_id=ev,
@@ -184,14 +182,9 @@ def _emitter_downstream_receipt(repo: str, *, private: bool) -> dict[str, object
 
 
 def _emitter_ci_receipt(repo: str, *, private: bool) -> dict[str, object]:
+    _ = private
     ev = _evidence_id(repo)
-    check_value = (
-        receipt_local_check_value(
-            ticket_id=TICKET, evidence_id=ci_check_evidence_id(ev)
-        )
-        if private
-        else None
-    )
+    check_value = None
     text = render_ci_check_receipt(
         ticket_id=TICKET,
         evidence_id=ci_check_evidence_id(ev),
@@ -241,7 +234,15 @@ class TestF06DiffScopeParity:
         # different number of dod_evidence items.
         emitter = set(_emitter_contract_checks(PUBLIC_REPO, private=False))
         compute = set(_compute_contract_checks(PUBLIC_REPO, private=False))
-        assert emitter == compute == {BINDING_JSON_STATE, F06_JSON_FILES}
+        assert (
+            emitter
+            == compute
+            == {
+                BINDING_JSON_STATE,
+                F06_JSON_FILES,
+                ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+            }
+        )
 
     def test_public_downstream_receipt_binding_check_is_byte_equal(self) -> None:
         # The net-new downstream (binding) receipt check_value is byte-identical
@@ -275,36 +276,60 @@ class TestF16PrivateRepoParity:
             f"gh pr view {PR} --repo {PRIVATE_REPO} --json number,state,headRefName"
         )
 
-    def test_private_no_hosted_probe_in_either_producer(self) -> None:
-        # The load-bearing F-16 invariant: for a PRIVATE product repo NO declared
-        # check_value (contract item or receipt) re-runs a hosted gh pr/gh api
-        # command the hosted OCC runner has no token scope for — asserted over
-        # BOTH producers' full declared surface.
-        emitter = [
-            *_emitter_contract_checks(PRIVATE_REPO, private=True),
-            str(_emitter_downstream_receipt(PRIVATE_REPO, private=True)["check_value"]),
-            str(_emitter_ci_receipt(PRIVATE_REPO, private=True)["check_value"]),
-        ]
-        compute = [
-            *_compute_contract_checks(PRIVATE_REPO, private=True),
-            str(_compute_downstream_receipt(PRIVATE_REPO, private=True)["check_value"]),
-        ]
-        for cv in [*emitter, *compute]:
-            assert not HOSTED_RE.search(cv), f"hosted private probe leaked: {cv}"
+    def test_private_contract_never_names_the_private_repo(self) -> None:
+        """F-16's REQUIREMENT, restated after its implementation was retired.
 
-    def test_private_binding_check_is_byte_equal_across_producers(self) -> None:
-        # The receipt-local binding check is byte-identical across producers: both
-        # assert the SAME committed receipt attests PASS.
-        expected = receipt_local_check_value(
-            ticket_id=TICKET, evidence_id=_evidence_id(PRIVATE_REPO)
+        The invariant was never "emit a receipt-local grep" -- it was "do not make
+        the hosted OCC runner dereference a repo its token cannot read".
+        Placeholder form satisfies that directly: the runner pre-substitutes
+        ``${REPO}`` / ``${PR_NUMBER}`` with the repo/PR whose CI is executing, so
+        the private slug never appears in an executed command. The retired
+        carve-out satisfied it instead by emitting a check the OMN-15309 predicate
+        refuses UNCONDITIONALLY as INSIDE_OWN_DIFF -- which is why all three
+        companions for this repo (OCC#5406 / #5415 / #5418) were born BLOCKED.
+        """
+        for cv in [
+            *_emitter_contract_checks(PRIVATE_REPO, private=True),
+            *_compute_contract_checks(PRIVATE_REPO, private=True),
+        ]:
+            assert PRIVATE_REPO not in cv, f"private repo named in a hosted check: {cv}"
+
+    def test_private_contract_never_regresses_to_the_circular_receipt_grep(
+        self,
+    ) -> None:
+        """RED control for the retired carve-out itself."""
+        for cv in [
+            *_emitter_contract_checks(PRIVATE_REPO, private=True),
+            *_compute_contract_checks(PRIVATE_REPO, private=True),
+        ]:
+            assert "dod_receipts" not in cv, cv
+            assert "CONTRACT_REPO_DIR" not in cv, cv
+
+    def test_both_producers_mint_the_validator_for_a_private_repo(self) -> None:
+        """The born-red fix, asserted on the population that WAS born red.
+
+        On the private path no generated check can observe the product -- OCC CI's
+        token has no scope there -- so this item is the only admissible check the
+        contract carries. Without it OCC's ``_has_effective_check`` finds nothing
+        and the companion is born BLOCKED, three-for-three.
+        """
+        assert ADMISSIBILITY_VALIDATOR_CHECK_VALUE in _emitter_contract_checks(
+            PRIVATE_REPO, private=True
         )
-        emitter = _emitter_contract_checks(PRIVATE_REPO, private=True)
-        compute = _compute_contract_checks(PRIVATE_REPO, private=True)
-        assert expected in emitter, emitter
-        assert expected in compute, compute
-        # And the compute's private downstream receipt check_value matches it too.
-        recv = _compute_downstream_receipt(PRIVATE_REPO, private=True)
-        assert recv["check_value"] == expected
+        assert ADMISSIBILITY_VALIDATOR_CHECK_VALUE in _compute_contract_checks(
+            PRIVATE_REPO, private=True
+        )
+
+    def test_private_and_public_declare_the_same_vocabulary(self) -> None:
+        # With the carve-out retired there is ONE declared vocabulary. Asserting
+        # equality (rather than deleting the private case) keeps a re-divergence
+        # visible here rather than only on a live born-red companion.
+        assert set(_emitter_contract_checks(PRIVATE_REPO, private=True)) == set(
+            _emitter_contract_checks(PUBLIC_REPO, private=False)
+        )
+        assert set(_compute_contract_checks(PRIVATE_REPO, private=True)) == set(
+            _compute_contract_checks(PUBLIC_REPO, private=False)
+        )
 
     def test_private_receipt_preserves_live_probe_provenance(self) -> None:
         # F-16 does not erase provenance: the live gh pr view observation stays in

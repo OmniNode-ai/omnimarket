@@ -287,6 +287,15 @@ def files_outside_cited_namespace(
 
 # --- F-05 deploy-scope ---------------------------------------------------------
 _RUNTIME_TOUCHING_RE = re.compile(r"(^|/)(nodes/|migrations/)|\.py$", re.IGNORECASE)
+# OMN-15247 R21b: back to `gh pr diff`. R21 moved this to
+# `gh api .../pulls/<n>/files` because deploy-gate's falsifiability classifier
+# (LIVE-probe vocabulary only) rejects `gh pr diff ... | grep`. That is true and
+# the replacement was still wrong: the OCC runner pre-substitutes
+# ${REPO}/${PR_NUMBER} with the OCC COMPANION's own repo/number, so in OCC CI the
+# value grepped the COMPANION's filenames for runtime paths -- exit 1 against
+# OCC#5418's real file list (born RED), or exit 0 only because the producer had
+# just created a receipt directory literally named `dod-deploy-assessment`
+# (circular). The deploy-gate gap is real, pre-existing and tracked separately.
 _DIFF_SCOPE_RE = re.compile(r"\bgh pr diff\b")
 
 

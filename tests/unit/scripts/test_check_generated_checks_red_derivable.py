@@ -23,6 +23,10 @@ import pytest
 import yaml
 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+    DEPLOY_ASSESSMENT_CHECK_VALUE,
+    hosted_safe_binding_check_value,
+    hosted_safe_diff_scope_check_value,
     render_companion_contract,
     render_downstream_receipt,
 )
@@ -56,6 +60,12 @@ _CONTENT_BOUND = build_content_read_check(
     head_sha="b" * 40,
 )
 
+# The admissible vocabulary, imported from the producer's ONE authoring home so
+# this suite can never assert a shape the producer does not emit.
+_ADMISSIBLE_BINDING = hosted_safe_binding_check_value()
+_ADMISSIBLE_DIFF_SCOPE = hosted_safe_diff_scope_check_value()
+_ADMISSIBLE_DEPLOY_SCOPE = DEPLOY_ASSESSMENT_CHECK_VALUE
+
 
 @pytest.mark.unit
 class TestClassifyCheck:
@@ -67,17 +77,89 @@ class TestClassifyCheck:
     @pytest.mark.parametrize(
         "value",
         [
-            "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state",
-            "gh pr view ${PR_NUMBER} --repo ${REPO} --json files",
-            "gh pr diff ${PR_NUMBER} --repo ${REPO} --name-only | grep -qiE 'nodes/'",
-            "grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/"
-            "OMN-9999/dod-x/command.yaml",
+            _ADMISSIBLE_BINDING,
+            _ADMISSIBLE_DIFF_SCOPE,
+            _ADMISSIBLE_DEPLOY_SCOPE,
         ],
     )
     def test_the_shipped_default_forms_are_allowlisted(self, value: str) -> None:
         classification, reason = _GATE.classify_check(value)
         assert classification == "allowlisted"
         assert reason is None
+
+    def test_the_minted_admissibility_validator_is_recognised(self) -> None:
+        classification, reason = _GATE.classify_check(
+            ADMISSIBILITY_VALIDATOR_CHECK_VALUE
+        )
+        assert classification == "admissibility_validator"
+        assert reason is None
+
+    @pytest.mark.parametrize(
+        ("value", "fragment"),
+        [
+            # The circular receipt grep -- the OMN-14766 F-16 private-repo form.
+            (
+                "grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/"
+                "OMN-9999/dod-x/command.yaml",
+                "INSIDE_OWN_DIFF",
+            ),
+            # OMN-15247 R21b: the VACUOUS family an intermediate revision of this
+            # ticket minted and this gate briefly allowlisted as its ONLY
+            # permitted vocabulary. Every one of these exits 0 against any PR on
+            # GitHub that changes a file, and resolves to the OCC companion's own
+            # diff on the surface it runs on. Both spellings are rejected --
+            # placeholder AND literal -- because the literal form was what the
+            # RECEIPT recorded as provenance.
+            (
+                "gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate "
+                "--jq '.[].sha' | grep -qE '^[0-9a-f]{40}$'",
+                "PR-existence probe",
+            ),
+            (
+                "gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate "
+                "--jq '.[].status' | grep -qE "
+                "'^(added|modified|removed|renamed|changed|copied)$'",
+                "PR-existence probe",
+            ),
+            (
+                "gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate "
+                "--jq '.[] | select(.status) | .filename' | grep -qiE 'deploy'",
+                "PR-existence probe",
+            ),
+            (
+                "gh api repos/OmniNode-ai/omnimarket/pulls/1947/files --paginate "
+                "--jq '.[].sha' | grep -qE '^[0-9a-f]{40}$'",
+                "PR-existence probe",
+            ),
+        ],
+    )
+    def test_the_inadmissible_and_vacuous_forms_are_rejected_by_name(
+        self, value: str, fragment: str
+    ) -> None:
+        classification, reason = _GATE.classify_check(value)
+        assert classification == "unknown"
+        assert reason is not None
+        assert fragment in reason, reason
+
+    def test_the_vacuous_family_is_rejected_for_being_vacuous_not_unrecognised(
+        self,
+    ) -> None:
+        """The diagnosis must name the property, or the gate teaches the wrong fix.
+
+        R21's gate rejected ``gh pr view`` with a message that told the author to
+        use ``gh api repos/.../pulls/<n>/files`` instead -- i.e. it actively
+        prescribed the vacuous shape. This asserts the message now explains WHY
+        the shape is refused (it proves nothing) rather than merely that it is
+        unrecognised, so an author cannot satisfy it by re-spelling.
+        """
+        _classification, reason = _GATE.classify_check(
+            "gh api repos/${REPO}/pulls/${PR_NUMBER}/files --paginate "
+            "--jq '.[].sha' | grep -qE '^[0-9a-f]{40}$'"
+        )
+        assert reason is not None
+        assert "matches no known generated-check form" not in reason
+        assert "zero information about the change under test" in reason
+        assert "companion's own diff" in reason
 
     @pytest.mark.parametrize(
         ("value", "fragment"),
@@ -159,9 +241,12 @@ class TestCheckContract:
             '        check_value: "gh pr view 1 --repo o/r --json number || true"\n'
         )
         violations = _GATE.check_contract(contract)
-        assert len(violations) == 1
-        assert violations[0]["item"] == "dod-smuggled"
-        assert "swallows its exit code" in violations[0]["reason"]
+        by_item = {v["item"]: v["reason"] for v in violations}
+        assert "swallows its exit code" in by_item["dod-smuggled"]
+        # R21b: a generated contract with no admissibility-validator item is a
+        # SECOND, independent violation -- it is the born-BLOCKED condition
+        # itself, so it is reported even when a per-check violation is present.
+        assert "admissibility-validator" in by_item["<contract>"]
 
     def test_main_exits_nonzero_on_a_violation(self, tmp_path: Path) -> None:
         contract = tmp_path / "OMN-9999.yaml"

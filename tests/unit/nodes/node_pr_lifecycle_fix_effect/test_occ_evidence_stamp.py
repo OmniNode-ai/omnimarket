@@ -114,9 +114,15 @@ class TestContractSubstanceFloor:
             evidence_id="dod-OmniNode-ai-omnimarket-pr-1721",
         )
 
-    def test_declares_two_dod_evidence_items(self) -> None:
+    def test_declares_binding_diff_scope_and_validator_items(self) -> None:
+        # OMN-15247 R21b: three items, not two. The third is the minted
+        # admissibility-validator -- the only one of the three that is admissible
+        # under the OMN-15309 predicate, and therefore the one that keeps a
+        # freshly minted companion from being born BLOCKED.
         rendered = self._render()
-        assert rendered.count("- id: ") == 2
+        assert rendered.count("- id: ") == 3
+        assert "dod-occ-evidence-admissibility-validator" in rendered
+        assert "uv run pytest tests/test_evidence_admissibility.py -q" in rendered
 
     def test_existence_probe_item_is_preserved_verbatim(self) -> None:
         # OMN-14425 ADDS a claim; it must not remove or alter the binding probe

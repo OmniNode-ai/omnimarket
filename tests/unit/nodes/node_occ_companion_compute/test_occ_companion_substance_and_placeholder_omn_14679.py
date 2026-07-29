@@ -180,8 +180,8 @@ class TestMintedContractClearsPlaceholderLint:
 
     def test_pass2_every_check_value_is_placeholder_normalized(self) -> None:
         checks = _minted_contract_checks(**_PASS2)
-        # downstream (view + diff) + self-bind (view) = 3 checks, all normalized.
-        assert len(checks) == 3
+        # downstream (view + diff) + validator + self-bind (view) = 4 checks.
+        assert len(checks) == 4
         for cv in checks:
             assert _lint_legacy_gh_pr(cv) is None, (
                 f"lint-contract-check-values rejects: {cv}"
