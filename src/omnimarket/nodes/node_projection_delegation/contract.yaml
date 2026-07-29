@@ -31,6 +31,13 @@ handler_routing:
       handler_module: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation
       event_model: omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation.ModelProjectionTaskDelegatedEvent
 
+descriptor:
+  node_archetype: reducer
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles: [effects]
+
 terminal_event: onex.evt.omnimarket.projection-delegation-applied.v1
 
 # Golden path: delegation chain (terminal event -> delegation_events table)

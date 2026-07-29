@@ -7,6 +7,9 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from omnibase_infra.runtime.auto_wiring.profile_ownership import (
+    runtime_profile_owns_contract,
+)
 
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     HandlerProjectionDelegation,
@@ -117,6 +120,9 @@ class TestDelegationProjection:
             == "omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation"
         )
         assert contract["handler"]["class"] == "HandlerProjectionDelegation"
+        assert contract["descriptor"]["runtime_profiles"] == ["effects"]
+        assert runtime_profile_owns_contract(contract, "effects") is True
+        assert runtime_profile_owns_contract(contract, "main") is False
         topics = contract["event_bus"]["subscribe_topics"]
         # OMN-13629: the legacy compat task-delegated.v1 secondary path was dropped;
         # the canonical delegation pair is the live source.
@@ -126,6 +132,28 @@ class TestDelegationProjection:
         assert "onex.evt.omnimarket.delegate-skill-failed.v1" in topics
         assert "onex.evt.omnibase-infra.delegation-completed.v1" in topics
         assert "onex.evt.omnibase-infra.delegation-failed.v1" in topics
+
+    def test_observability_reconciliation_migrations_are_forward_only(self) -> None:
+        migration_dir = Path(
+            "src/omnimarket/nodes/node_projection_delegation/migrations"
+        )
+        dashboard_views = (
+            migration_dir / "0028_reconcile_delegation_observability_views.sql"
+        ).read_text()
+        for view in (
+            "projection_delegation_summary",
+            "projection_delegation_model_routing",
+            "projection_delegation_quality_gate",
+            "projection_delegation_token_usage",
+        ):
+            assert f"CREATE OR REPLACE VIEW {view}" in dashboard_views
+
+        heartbeat = Path(
+            "src/omnimarket/nodes/node_projection_registration/migrations/"
+            "0003_reconcile_heartbeat_observability.sql"
+        ).read_text()
+        assert "ADD COLUMN IF NOT EXISTS last_heartbeat_at" in heartbeat
+        assert "ADD COLUMN IF NOT EXISTS uptime_seconds" in heartbeat
 
     def test_delegate_skill_metrics_migration_declares_dashboard_columns(self) -> None:
         migration = Path(
