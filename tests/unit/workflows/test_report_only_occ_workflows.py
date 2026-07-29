@@ -125,16 +125,81 @@ def test_author_workflow_defaults_to_dry_run_and_never_uses_pr_input() -> None:
     assert '--arg mode "$MODE"' in payload_step
 
 
+def _author_step(name_fragment: str) -> dict[str, Any]:
+    steps = _load(_AUTHOR)["jobs"]["occ-companion-author"]["steps"]
+    matches = [s for s in steps if name_fragment in str(s.get("name", ""))]
+    assert len(matches) == 1, (
+        f"expected exactly one step whose name contains {name_fragment!r}, "
+        f"found {[s.get('name') for s in matches]}"
+    )
+    return cast("dict[str, Any]", matches[0])
+
+
 @pytest.mark.unit
 def test_author_workflow_uses_occ_write_token_only_for_mutate() -> None:
-    text = _AUTHOR.read_text(encoding="utf-8")
-    assert "Validate mutate write token" in text
-    assert "OCC_AUTOAUTHOR_TOKEN: ${{ secrets.OCC_AUTOAUTHOR_TOKEN }}" in text
-    assert 'if [ "$MODE" = "mutate" ]; then' in text
+    """The Toggle-1 write credential is minted per-run, scoped to one repo, fail-LOUD.
+
+    OMN-15350: the OMN-14904 ``secrets.OCC_AUTOAUTHOR_TOKEN`` PAT was never
+    provisioned (live readback 2026-07-29: absent from both the org and the
+    omnimarket repo secret sets), so this mutate path was credential-dead on
+    arrival. The credential is now the least-privilege OnexBot-OCC-Writer
+    GitHub App (org secrets ``ONEXBOT_OCC_APP_ID``/``ONEXBOT_OCC_PRIVATE_KEY``),
+    minted via the same canonical ``actions/create-github-app-token`` pattern
+    ``call-occ-attestation-observe.yml`` (OMN-14955) and ``pr-arch-review.yml``
+    use, and scoped down to ``OmniNode-ai/onex_change_control`` only.
+    """
+    mutate_only = "${{ vars.OMNI_OCC_AUTOAUTHOR_MODE == 'mutate' }}"
+
+    validate = _author_step("Validate OCC cross-repo write credential")
+    assert validate["if"] == mutate_only
+    assert validate["env"]["ONEXBOT_OCC_APP_ID"] == "${{ secrets.ONEXBOT_OCC_APP_ID }}"
     assert (
-        'export GITHUB_TOKEN="${OCC_AUTOAUTHOR_TOKEN:?mutate requires OCC_AUTOAUTHOR_TOKEN}"'
-        in text
+        validate["env"]["ONEXBOT_OCC_PRIVATE_KEY"]
+        == "${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}"
     )
+    # Absent secrets must FAIL the job, not silently degrade to dry_run.
+    assert (
+        'if [ -z "${ONEXBOT_OCC_APP_ID:-}" ] || [ -z "${ONEXBOT_OCC_PRIVATE_KEY:-}" ]; then'
+        in validate["run"]
+    )
+    assert "::error::" in validate["run"]
+    assert "exit 1" in validate["run"]
+
+    mint = _author_step("Mint OCC write token")
+    assert mint["id"] == "occ-app-token"
+    assert mint["if"] == mutate_only
+    assert str(mint["uses"]).startswith("actions/create-github-app-token@")
+    assert mint["with"]["app-id"] == "${{ secrets.ONEXBOT_OCC_APP_ID }}"
+    assert mint["with"]["private-key"] == "${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}"
+    # Scoped-down installation token: one org, ONE repository. Without these
+    # `with:` keys the token would cover every repo the App is installed on.
+    assert mint["with"]["owner"] == "OmniNode-ai"
+    assert mint["with"]["repositories"] == "onex_change_control"
+
+    run = _author_step("Run node_occ_companion_effect")
+    assert run["env"]["OCC_WRITE_TOKEN"] == "${{ steps.occ-app-token.outputs.token }}"
+    assert 'if [ "$MODE" = "mutate" ]; then' in run["run"]
+    assert (
+        'export GITHUB_TOKEN="${OCC_WRITE_TOKEN:?mode=mutate requires the minted OnexBot-OCC-Writer token}"'
+        in run["run"]
+    )
+
+
+@pytest.mark.unit
+def test_author_workflow_does_not_reference_the_unprovisioned_pat() -> None:
+    """OMN-15350: ``secrets.OCC_AUTOAUTHOR_TOKEN`` was never provisioned.
+
+    The author workflow must not read it as a credential again (a historical
+    mention in a comment is fine). This is the companion half of
+    ``test_observation_store_does_not_reference_the_unprovisioned_pat``.
+    """
+    assert "secrets.OCC_AUTOAUTHOR_TOKEN" not in _AUTHOR.read_text(encoding="utf-8")
+
+
+@pytest.mark.unit
+def test_author_workflow_rejects_the_org_wide_pat() -> None:
+    """Rolling plan §2 A3: the org-wide CROSS_REPO_PAT is explicitly not used."""
+    assert "secrets.CROSS_REPO_PAT" not in _AUTHOR.read_text(encoding="utf-8")
 
 
 @pytest.mark.unit
