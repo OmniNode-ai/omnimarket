@@ -420,6 +420,16 @@ def _get_changed_nodes(git_ref: str) -> tuple[list[Path], set[str], set[str]]:
             and parts[1] == "omnimarket"
             and parts[2] == "nodes"
             and parts[3].startswith("node_")
+            # OMN-15376: a node's vendored DDL is not the node. Files under
+            # <node>/migrations/*.sql cannot add, remove or rename a declared
+            # FSM state or a declared output topic -- those come only from
+            # contract.yaml -- so a migration-only edit must not un-grandfather
+            # that node's pre-existing baselined state-coverage debt. Same
+            # scoping principle as the OMN-14009 contract_touched carve-out
+            # below: strictness follows the artifact that can actually move the
+            # declared state shape. A 46-file shape-drift reconciliation across
+            # the node migration corpus otherwise turns 16 unrelated nodes red.
+            and not (len(parts) >= 5 and parts[4] == "migrations")
         ):
             directly_modified.add(parts[3])
             if len(parts) == 5 and parts[4] == "contract.yaml":

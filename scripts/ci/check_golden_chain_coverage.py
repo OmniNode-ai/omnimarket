@@ -77,6 +77,16 @@ def _node_names_from_changed_files(changed_files: list[str]) -> set[str]:
             and parts[1] == "omnimarket"
             and parts[2] == "nodes"
             and parts[3].startswith("node_")
+            # OMN-15376: a vendored DDL file under <node>/migrations/ is not a
+            # live-path change. This gate is a PRESENCE check -- "does a
+            # golden-chain test exist for the node you touched" -- and whether
+            # such a test exists cannot be altered by editing SQL. The
+            # OMN-15376 shape-drift reconciliation touches migrations/*.sql
+            # under 46 node directories and nothing else, and its accompanying
+            # execution proof asserts the FRESH-create schema is byte-identical
+            # before and after, so no golden chain can have moved. Scoping
+            # matches scripts/validate_state_coverage.py's migrations carve-out.
+            and not (len(parts) >= 5 and parts[4] == "migrations")
         ):
             node_names.add(parts[3])
     return node_names
