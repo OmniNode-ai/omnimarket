@@ -321,15 +321,38 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
 # ``evidence_artifact`` whose value is the literal prefix
 # ``"supersedes_dod_evidence:"`` followed by the superseded item's ``id``.
 #
-# This runner is deliberately STRICTER than the OCC-side scripts on two
-# points neither of them enforces (they simply no-op on these shapes,
-# because they are advisory lint/compliance surfaces, not the gate that
-# decides a ticket's DoD verdict):
-#   * a marker whose target id does not exist anywhere in the contract
-#     (a typo, or the target item was removed) is a hard RED on the
-#     superseding entry — "dangling supersession";
-#   * a self-reference or supersession CYCLE is a hard RED on every item in
-#     the cycle — "malformed supersession".
+# OMN-15390: the ORDERING rule is part of that parity, not an optional
+# refinement. ``_superseded_dod_ids`` supersedes a target only when the
+# target id is already in ``seen`` — i.e. ONLY a LATER item may retire an
+# EARLIER one, which is what makes the idiom append-only. This runner
+# reproduces that rule exactly (see ``_resolve_supersessions``), so the set
+# of superseded ids the two consumers compute is identical for every input;
+# ``tests/fixtures/dod_supersession/parity_corpus.yaml`` is the shared
+# artifact that asserts it case-for-case against OCC's own function.
+# Resolving against the whole-contract id set instead (position-blind) would
+# let a FORWARD marker retire the newest, most-correct entry in the runner
+# while the OCC gate still executed it — a runner-more-permissive-than-gate
+# divergence on the only sanctioned Done-flip path.
+#
+# This runner is deliberately STRICTER than the OCC-side scripts on the
+# shapes where a marker resolves to NOTHING. Those scripts simply no-op
+# there (they are advisory lint/compliance surfaces); here supersession
+# DELETES a FAILED verdict, so a marker that silently did nothing would
+# leave an author believing a contract was repaired when it was not. Each of
+# these is a hard RED on the entry CARRYING the marker — never on the target,
+# and never a silent skip:
+#   * "dangling" — the target id exists nowhere in the contract (typo, or the
+#     target item was removed);
+#   * "forward" — the target exists but is declared LATER, which supersedes
+#     nothing under the ordering rule above;
+#   * "self-reference" — an item naming its own id.
+# The superseded SET is unaffected by these diagnostics, so parity with OCC
+# holds: in every such case both consumers agree that nothing was superseded.
+#
+# Because every accepted edge points strictly backwards in declaration order,
+# the relation is acyclic by construction and resolution is a single forward
+# pass — there is no graph to walk and no cycle to detect.
+#
 # A superseded item's checks are not executed and no ``::pr-live-state``
 # check is appended for it (see ``_collect_impl``).
 # ---------------------------------------------------------------------------
@@ -337,14 +360,35 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
 _SUPERSEDES_DOD_EVIDENCE_PREFIX = "supersedes_dod_evidence:"
 
 
+def _supersedes_marker(value: object) -> str | None:
+    """Return the superseded id an ``evidence_artifact`` names, else ``None``.
+
+    Line-for-line mirror of
+    ``contract_compliance_check._supersedes_marker`` (and the identical copy
+    in ``lint_contract_check_values``): a non-string, a string without the
+    exact prefix, or an empty/whitespace-only payload is NOT a marker. Kept
+    as its own function so the parity differential in
+    ``tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py``
+    can compare it against OCC's directly. Pure — no I/O.
+    """
+    if not isinstance(value, str):
+        return None
+    if not value.startswith(_SUPERSEDES_DOD_EVIDENCE_PREFIX):
+        return None
+    superseded = value[len(_SUPERSEDES_DOD_EVIDENCE_PREFIX) :].strip()
+    return superseded or None
+
+
 @dataclass(frozen=True)
 class _SupersessionResolution:
     """Result of resolving a contract's ``supersedes_dod_evidence`` markers.
 
-    ``superseded`` maps a superseded item's id -> the id of the item that
-    supersedes it (for the audit message). ``malformed`` maps an item's id ->
-    a fail-closed reason string for a dangling target, self-reference, or
-    cycle involving that item. An id present in both is reported as
+    ``superseded`` maps a superseded item's id -> the id of the LATER item
+    that supersedes it (for the audit message); this mapping is exactly the
+    set ``contract_compliance_check._superseded_dod_ids`` computes.
+    ``malformed`` maps an item's id -> a fail-closed reason string for a
+    marker on THAT item that resolved to nothing (dangling target, forward
+    reference, or self-reference). An id present in both is reported as
     malformed (checked first) — a broken marker is surfaced loudly rather
     than silently treated as a clean supersession.
     """
@@ -768,102 +812,76 @@ class EvidenceCollector:
         """Resolve ``evidence_artifact: "supersedes_dod_evidence:<id>"`` markers.
 
         Pure function — no I/O. See the module-level comment above
-        :class:`_SupersessionResolution` for the marker syntax, the
-        append-only ("target must exist") semantics this mirrors from
-        onex_change_control's lint/compliance scripts, and the two
-        fail-closed hardenings (dangling target, cycle/self-reference) this
-        runner adds beyond those advisory scripts.
+        :class:`_SupersessionResolution` for the marker syntax and the
+        append-only ORDERING rule this mirrors field-for-field from
+        onex_change_control's lint/compliance scripts, plus the fail-closed
+        diagnostics (dangling / forward / self target) this runner adds
+        beyond those advisory scripts without changing the superseded set.
+
+        Single forward pass in declaration order, mirroring
+        ``_superseded_dod_ids``'s ``seen``/``if supersedes in seen`` loop.
+        Every accepted edge points strictly backwards, so the relation is
+        acyclic by construction and this terminates in O(len(dod_items)).
         """
-        id_set: set[str] = set()
+        # Pre-pass: every id in the contract, used ONLY to tell a forward
+        # reference (target exists, declared later) apart from a dangling one
+        # (target exists nowhere). Neither is a supersession.
+        all_ids: set[str] = set()
         for item in dod_items:
             if not isinstance(item, dict):
                 continue
             item_id = item.get("id")
             if isinstance(item_id, str) and item_id:
-                id_set.add(item_id)
+                all_ids.add(item_id)
 
-        # superseder_id -> target_id, one edge per item carrying a valid
-        # marker prefix (an item declares at most one evidence_artifact).
-        edges: dict[str, str] = {}
+        seen: set[str] = set()
+        superseded: dict[str, str] = {}
+        malformed: dict[str, str] = {}
+
         for item in dod_items:
             if not isinstance(item, dict):
                 continue
             item_id = item.get("id")
             if not isinstance(item_id, str) or not item_id:
                 continue
-            artifact = item.get("evidence_artifact")
-            if not isinstance(artifact, str) or not artifact.startswith(
-                _SUPERSEDES_DOD_EVIDENCE_PREFIX
-            ):
+
+            target = _supersedes_marker(item.get("evidence_artifact"))
+            if target is None:
+                seen.add(item_id)
                 continue
-            target = artifact[len(_SUPERSEDES_DOD_EVIDENCE_PREFIX) :].strip()
-            if target:
-                edges[item_id] = target
 
-        malformed: dict[str, str] = {}
-
-        # Self-reference: an item cannot supersede itself.
-        for superseder, target in list(edges.items()):
-            if superseder == target:
-                malformed[superseder] = (
+            if target == item_id:
+                malformed[item_id] = (
                     "MALFORMED_SUPERSESSION: item "
-                    f"{superseder!r} declares evidence_artifact "
+                    f"{item_id!r} declares evidence_artifact "
                     f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}', which "
-                    "supersedes itself. Fix the marker before this item can "
-                    "execute."
+                    "supersedes itself and therefore retires nothing. Fix the "
+                    "marker before this item can execute."
                 )
-                del edges[superseder]
-
-        # Dangling: the target id must exist somewhere in this contract.
-        for superseder, target in list(edges.items()):
-            if target not in id_set:
-                malformed[superseder] = (
+            elif target in seen:
+                # The OCC rule verbatim: a LATER item retires an EARLIER one.
+                superseded[target] = item_id
+            elif target in all_ids:
+                malformed[item_id] = (
+                    "FORWARD_SUPERSESSION: item "
+                    f"{item_id!r} declares evidence_artifact "
+                    f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}' but "
+                    f"{target!r} is declared LATER in this contract. "
+                    "Supersession is append-only — only a later item may "
+                    "retire an earlier one — so this marker retires nothing. "
+                    "Move the repair below the entry it replaces."
+                )
+            else:
+                malformed[item_id] = (
                     "DANGLING_SUPERSESSION: item "
-                    f"{superseder!r} declares evidence_artifact "
+                    f"{item_id!r} declares evidence_artifact "
                     f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}' but no "
                     f"dod_evidence item with id {target!r} exists in this "
                     "contract. Fix the marker (typo, or the target item was "
                     "removed) before this item can execute."
                 )
-                del edges[superseder]
 
-        # Cycle detection over the remaining valid edges. Out-degree is <= 1
-        # per node (an item carries at most one marker), so this is a
-        # functional graph: walk each unvisited node forward until it
-        # terminates (reaches a node with no further edge), revisits a node
-        # already on the CURRENT walk (a cycle — every node from the first
-        # repeat onward is malformed), or reaches a node a PRIOR walk already
-        # resolved (safe to stop; that subgraph is already accounted for).
-        visited: set[str] = set()
-        for start in list(edges):
-            if start in visited or start in malformed:
-                continue
-            path: list[str] = []
-            path_index: dict[str, int] = {}
-            node = start
-            while node in edges:
-                if node in path_index:
-                    cycle_nodes = path[path_index[node] :]
-                    reason = (
-                        "MALFORMED_SUPERSESSION: supersession cycle detected: "
-                        + " -> ".join([*cycle_nodes, node])
-                        + ". Fix the evidence_artifact markers before these "
-                        "items can execute."
-                    )
-                    for cycle_node in cycle_nodes:
-                        malformed[cycle_node] = reason
-                        edges.pop(cycle_node, None)
-                    break
-                path_index[node] = len(path)
-                path.append(node)
-                node = edges[node]
-            visited.update(path)
-
-        superseded: dict[str, str] = {}
-        for superseder, target in edges.items():
-            if superseder in malformed:
-                continue
-            superseded[target] = superseder
+            seen.add(item_id)
 
         return _SupersessionResolution(superseded=superseded, malformed=malformed)
 

@@ -1,0 +1,150 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-15390 — SHARED supersession parity corpus.
+#
+# Two tools consume ``dod_evidence[]`` and both must read the append-only
+# contract-repair idiom (``evidence_artifact: "supersedes_dod_evidence:<id>"``)
+# IDENTICALLY:
+#
+#   1. onex_change_control/src/onex_change_control/scripts/contract_compliance_check.py
+#      (``_superseded_dod_ids`` / ``_supersedes_marker``)
+#   2. omnimarket node_dod_verify EvidenceCollector (``EvidenceCollector._resolve_supersessions``)
+#
+# Before OMN-15390 only (1) honoured it, so an append-only repair could silence
+# the OCC gate but never turn ``dod_verify`` green — proven 2026-07-29T16:45Z by
+# an OMN-14968 re-run that returned FAIL 16/22 where every ``-rebind``/``-strict``
+# superseding check PASSED while its superseded original still ran and failed.
+#
+# This file is the single parity artifact (net-negative-surface: ONE corpus, not
+# two hand-maintained test suites). ``expected_superseded`` is the set both
+# implementations must agree on. ``expected_errors`` is the additional
+# fail-closed hardening the RUNNER applies on top — supersession there removes a
+# FAILED verdict, so a marker that resolves to nothing must be an error rather
+# than a silent no-op. The OCC gate treats those same cases as "no supersession
+# happened", which is the strictly-weaker, verdict-compatible reading: in every
+# case flagged below, the id in ``expected_superseded`` is the SAME for both.
+
+cases:
+  - name: no_markers
+    why: Baseline — a contract with no supersession markers supersedes nothing.
+    dod_evidence:
+      - id: dod-a
+      - id: dod-b
+    expected_superseded: []
+    expected_errors: []
+
+  - name: single_backward_supersession
+    why: >-
+      The canonical repair: a later appended item retires the defective earlier
+      entry it replaces.
+    dod_evidence:
+      - id: dod-a
+      - id: dod-b
+        evidence_artifact: "supersedes_dod_evidence:dod-a"
+    expected_superseded: [dod-a]
+    expected_errors: []
+
+  - name: chained_supersession
+    why: >-
+      A repair can itself be repaired. Every edge strictly decreases the index,
+      so the chain terminates deterministically at the last item; both the
+      original and the intermediate repair are retired.
+    dod_evidence:
+      - id: dod-a
+      - id: dod-b
+        evidence_artifact: "supersedes_dod_evidence:dod-a"
+      - id: dod-c
+        evidence_artifact: "supersedes_dod_evidence:dod-b"
+    expected_superseded: [dod-a, dod-b]
+    expected_errors: []
+
+  - name: forward_reference_is_not_a_supersession
+    why: >-
+      Ordering rule — only a LATER item may retire an EARLIER one. A forward
+      reference retires nothing in either consumer; the runner additionally
+      rejects it so the author is told the marker did nothing.
+    dod_evidence:
+      - id: dod-a
+        evidence_artifact: "supersedes_dod_evidence:dod-b"
+      - id: dod-b
+    expected_superseded: []
+    expected_errors: [dod-a]
+
+  - name: self_reference_is_rejected
+    why: Degenerate cycle — an item cannot retire itself.
+    dod_evidence:
+      - id: dod-a
+        evidence_artifact: "supersedes_dod_evidence:dod-a"
+    expected_superseded: []
+    expected_errors: [dod-a]
+
+  - name: two_item_cycle_terminates
+    why: >-
+      An attempted cycle cannot be represented under the backward-only rule: the
+      forward leg is rejected and the backward leg resolves normally. Resolution
+      terminates — it never loops.
+    dod_evidence:
+      - id: dod-a
+        evidence_artifact: "supersedes_dod_evidence:dod-b"
+      - id: dod-b
+        evidence_artifact: "supersedes_dod_evidence:dod-a"
+    expected_superseded: [dod-a]
+    expected_errors: [dod-a]
+
+  - name: dangling_reference_is_rejected
+    why: >-
+      A marker naming an id that exists nowhere retires nothing. Silently
+      ignoring it would leave the defective entry executing while its author
+      believed it repaired.
+    dod_evidence:
+      - id: dod-a
+      - id: dod-b
+        evidence_artifact: "supersedes_dod_evidence:dod-typo"
+    expected_superseded: []
+    expected_errors: [dod-b]
+
+  - name: empty_marker_payload_is_not_a_marker
+    why: >-
+      ``supersedes_dod_evidence:`` with no id (or whitespace only) is not a
+      marker at all — matches ``_supersedes_marker`` returning None.
+    dod_evidence:
+      - id: dod-a
+      - id: dod-b
+        evidence_artifact: "supersedes_dod_evidence:   "
+    expected_superseded: []
+    expected_errors: []
+
+  - name: unrelated_evidence_artifact_is_ignored
+    why: >-
+      ``evidence_artifact`` is a general field; only the exact prefix is a
+      supersession marker.
+    dod_evidence:
+      - id: dod-a
+      - id: dod-b
+        evidence_artifact: "https://github.com/OmniNode-ai/omnimarket/pull/1949"
+    expected_superseded: []
+    expected_errors: []
+
+  - name: non_string_evidence_artifact_is_ignored
+    why: A non-string ``evidence_artifact`` is not a marker and must not crash.
+    dod_evidence:
+      - id: dod-a
+      - id: dod-b
+        evidence_artifact: 42
+    expected_superseded: []
+    expected_errors: []
+
+  - name: one_item_supersedes_one_other_only
+    why: >-
+      Each marker names exactly one id — two independent repairs retire exactly
+      their own two originals and nothing else.
+    dod_evidence:
+      - id: dod-a
+      - id: dod-b
+      - id: dod-c
+        evidence_artifact: "supersedes_dod_evidence:dod-a"
+      - id: dod-d
+        evidence_artifact: "supersedes_dod_evidence:dod-b"
+    expected_superseded: [dod-a, dod-b]
+    expected_errors: []
