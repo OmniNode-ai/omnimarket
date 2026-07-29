@@ -61,7 +61,11 @@ SHA = "0123456789abcdef0123456789abcdef01234567"
 PRINCIPAL_A = "t-000000000000400080000000000000aa"
 PRINCIPAL_B = "t-000000000000400080000000000000bb"
 CORRELATION = "00000000-0000-4000-8000-000000000002"
-BUCKET = "omninode-push-validation-bundles-dev-272493677981-us-east-1"
+# Synthetic bucket name. Deliberately NOT the real account-bearing
+# bucket: the account id is a leaked-literal finding, and nothing in
+# these tests depends on the real name -- the worker pins whatever
+# ONEX_PUSH_VALIDATION_BUNDLE_BUCKET says, which the fixture sets.
+BUCKET = "omninode-push-validation-bundles-test"
 REPO = "OmniNode-ai/omnibase_core"
 BRANCH = "jonah/omn-14979-sample"
 FAR_FUTURE = "2099-01-01T00:00:00Z"

@@ -79,7 +79,11 @@ def make_request(**overrides: Any) -> ModelPushValidationRequest:
 # principal, the correlation id, and the content digest, so these helpers
 # derive it from the same constants the request uses rather than hardcoding a
 # second copy that could silently drift.
-BUNDLE_BUCKET = "omninode-push-validation-bundles-dev-272493677981-us-east-1"
+# Synthetic bucket name. Deliberately NOT the real account-bearing
+# bucket: the account id is a leaked-literal finding, and nothing in
+# these tests depends on the real name -- the worker pins whatever
+# ONEX_PUSH_VALIDATION_BUNDLE_BUCKET says, which the fixture sets.
+BUNDLE_BUCKET = "omninode-push-validation-bundles-test"
 BUNDLE_SHA256 = "c" * 64
 
 
