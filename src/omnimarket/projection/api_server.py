@@ -61,6 +61,7 @@ _EVIDENCE_STAGES_TOPIC = "onex.snapshot.projection.evidence_pipeline.stages.v1" 
 _EVIDENCE_TRACE_TOPIC = "onex.snapshot.projection.evidence_pipeline.correlations.v1"  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
 _EVIDENCE_READINESS_TOPIC = "onex.snapshot.projection.evidence_pipeline.readiness.v1"  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
 _EVIDENCE_EVENTS_TOPIC = "onex.snapshot.projection.evidence_pipeline.live_events.v1"  # onex-topic-allow: projection-snapshot topic for evidence-pipeline API, no existing registry const (OMN-13944)
+_SYSTEM_EVENTS_TOPIC = "onex.snapshot.projection.live-events.v1"  # onex-topic-allow: contract-declared unified operator event stream (OMN-14974)
 # The /v1/evidence-pipeline/* endpoints serve only the OCC/deployment evidence
 # pipeline projection — they are NOT a per-correlation surface for delegation
 # runs. A delegation correlation_id legitimately has zero rows here and must be
@@ -594,6 +595,38 @@ async def health(
             "status": "ok" if postgres_status == "ok" else "degraded",
             "postgres": postgres_status,
         }
+    )
+
+
+@app.get("/ready")
+async def readiness(
+    pool: asyncpg.Pool = Depends(get_pool),  # noqa: B008
+    topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
+) -> JSONResponse:
+    """Fail closed unless the database and unified event projection are usable."""
+    postgres_status = "ok"
+    try:
+        async with pool.acquire() as conn:
+            await conn.fetch("SELECT 1")
+    except Exception:
+        postgres_status = "unreachable"
+
+    system_events = topic_map.get(_SYSTEM_EVENTS_TOPIC)
+    system_events_status = (
+        system_events.status.value if system_events is not None else "missing"
+    )
+    ready = (
+        postgres_status == "ok"
+        and system_events is not None
+        and system_events.status == ProjectionStatus.OK
+    )
+    return JSONResponse(
+        {
+            "status": "ready" if ready else "not_ready",
+            "postgres": postgres_status,
+            "system_events_projection": system_events_status,
+        },
+        status_code=200 if ready else 503,
     )
 
 

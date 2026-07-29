@@ -6,7 +6,7 @@ Covers:
 - Freshness computation (fresh / stale / degraded / unknown)
 - correlation_id filter parameter is forwarded
 - 503 when backing table is unreachable
-- /health returns 200 with connectivity status
+- /health remains a liveness endpoint and /ready fails closed
 - /projections returns full metadata per topic
 """
 
@@ -25,7 +25,7 @@ from fastapi.testclient import TestClient
 from pydantic import SecretStr
 
 from omnimarket.config.settings import Settings
-from omnimarket.projection.models import ProjectionTableConfig
+from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from scripts.projection_api_server import (
     PROJECTION_DATABASE_BINDING_OVERLAY_ENV,
     ModelProjectionDatabaseBinding,
@@ -119,6 +119,16 @@ _PROJECTION_TOPIC_MAP: dict[str, ProjectionTableConfig] = {
         source_contract="projection_registration",
     ),
 }
+
+_SYSTEM_EVENTS_TOPIC = "onex.snapshot.projection.live-events.v1"
+_SYSTEM_EVENTS_CONFIG = ProjectionTableConfig(
+    topic=_SYSTEM_EVENTS_TOPIC,
+    table="live_events",
+    columns=("event_id", "correlation_id", "topic", "type", "summary"),
+    order_by="created_at DESC",
+    freshness_column="created_at",
+    source_contract="node_projection_live_events",
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -817,6 +827,49 @@ class TestHealthRoute:
         body = resp.json()
         assert body["postgres"] == "unreachable"
         assert body["status"] == "degraded"
+
+    def test_ready_requires_postgres_and_the_system_event_projection(self) -> None:
+        pool = _make_pool([])
+        topic_map = {
+            **_PROJECTION_TOPIC_MAP,
+            _SYSTEM_EVENTS_TOPIC: _SYSTEM_EVENTS_CONFIG,
+        }
+        with _with_pool(pool, topic_map) as client:
+            resp = client.get("/ready")
+        assert resp.status_code == 200
+        assert resp.json() == {
+            "status": "ready",
+            "postgres": "ok",
+            "system_events_projection": "ok",
+        }
+
+    @pytest.mark.parametrize(
+        ("pool", "topic_map", "projection_status"),
+        [
+            (_make_broken_pool(), {_SYSTEM_EVENTS_TOPIC: _SYSTEM_EVENTS_CONFIG}, "ok"),
+            (_make_pool([]), {}, "missing"),
+            (
+                _make_pool([]),
+                {
+                    _SYSTEM_EVENTS_TOPIC: _SYSTEM_EVENTS_CONFIG.model_copy(
+                        update={"status": ProjectionStatus.DEGRADED}
+                    )
+                },
+                "degraded",
+            ),
+        ],
+    )
+    def test_ready_fails_closed(
+        self,
+        pool: MagicMock,
+        topic_map: dict[str, ProjectionTableConfig],
+        projection_status: str,
+    ) -> None:
+        with _with_pool(pool, topic_map) as client:
+            resp = client.get("/ready")
+        assert resp.status_code == 503
+        assert resp.json()["status"] == "not_ready"
+        assert resp.json()["system_events_projection"] == projection_status
 
 
 class TestProjectionsListRoute:
