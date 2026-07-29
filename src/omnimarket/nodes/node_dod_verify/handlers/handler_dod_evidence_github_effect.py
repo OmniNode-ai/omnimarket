@@ -66,8 +66,9 @@ def _exact_ticket_token_candidates(
     <ticket_id>``'s fuzzy full-text ranking and blindly took ``.[0]`` — a
     similarly-worded PR for a DIFFERENT ticket could rank first and get bound
     silently. Here every candidate's ``title``/``headRefName`` must contain
-    the ticket id as a whole token (not a digit-adjacent substring, so
-    ``OMN-1538`` does not match ``OMN-15382``) before it is trusted at all.
+    the ticket id as a whole token (not a digit-adjacent substring, so a
+    shorter ticket id sharing the same leading digits does not match a
+    longer one) before it is trusted at all.
     """
     if not isinstance(items, list):
         return []
