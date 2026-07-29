@@ -32,18 +32,18 @@ surface**, through the REAL ``occ_git_transport`` acquire/release functions
 create-if-absent contract and the ``<owner>-<repo>-pr-<n>-<head>`` key shape —
 are treated as FROZEN SEAMS and are asserted, not modified.
 
-Seam contract asserted here (field by field):
+Seam contract asserted here, field by field — for each field, the effect leg's
+source then the emitter leg's source:
 
-===================  ==========================================  ==========================================
-Lease seam field     ``HandlerOccCompanionEffect``               ``OccCompanionEmitter``
-===================  ==========================================  ==========================================
-``repo_slug``        ``request.repo``                            ``repo_slug``
-``pr_number``        ``request.pr_number``                       ``pr_number``
-``head_sha``         product head from the RSD-2 state read      product head from ``GET /pulls/{n}``
-``occ_repo``         ``request.occ_repo``                        ``self._occ_repo``
-``lease_ttl_seconds````_LEASE_TTL_SECONDS`` (900)                ``_DEFAULT_LEASE_TTL_SECONDS`` (900)
-``producer_id``      ``node_occ_companion_effect@<host>``        ``<runner>@<host>`` — INTENTIONALLY differs
-===================  ==========================================  ==========================================
+* ``repo_slug``: ``request.repo`` / ``repo_slug``
+* ``pr_number``: ``request.pr_number`` / ``pr_number``
+* ``head_sha``: product head from the RSD-2 state read / product head from
+  ``GET /pulls/{n}``
+* ``occ_repo``: ``request.occ_repo`` / ``self._occ_repo``
+* ``lease_ttl_seconds``: ``_LEASE_TTL_SECONDS`` (900) /
+  ``_DEFAULT_LEASE_TTL_SECONDS`` (900)
+* ``producer_id``: ``node_occ_companion_effect@<host>`` / ``<runner>@<host>``
+  — INTENTIONALLY differs
 
 Every field except ``producer_id`` must agree, because ``_lease_key`` is
 ``(repo_slug, pr_number, head_sha)`` and the stale-steal decision is
