@@ -630,15 +630,24 @@ class OccCompanionEmitter:
             # returned the receipt-local grep for BOTH checks, which the
             # OMN-15309 predicate refuses unconditionally as INSIDE_OWN_DIFF —
             # the producer-side cause of the three-for-three born-red companions
-            # (OCC#5406 / #5415 / #5418). ``None`` now means "use the defaults",
-            # and the defaults are the admissible placeholder-form probes, which
-            # resolve to the executing job's OWN repo/PR and therefore need no
-            # cross-repo token scope for a private product repo.
+            # (OCC#5406 / #5415 / #5418). ``None`` now means "use the defaults".
             #
-            # ``is_private`` still (correctly) suppresses the LITERAL content-bound
-            # pin below, because THAT value dereferences the private product repo
-            # by name and cannot be read by the hosted OCC job's github.token —
-            # the item-13 gap recorded on OCC#5406.
+            # OMN-15407: the defaults are now the LITERAL PR-pinned form
+            # (occ_evidence_stamp.downstream_dod_evidence_check_value /
+            # ci_dod_evidence_check_value), not the placeholder-var form — the
+            # placeholder form is a Rule B violation on both items regardless of
+            # repo privacy, since their ids always embed the PR number. This DOES
+            # mean a private-repo companion's binding/diff-scope items now name
+            # the private repo in a ``gh pr view --repo <private>`` command the
+            # hosted OCC token cannot read; that is deliberate, not an oversight
+            # left over from the F-16 removal above -- the OMN-15309 predicate
+            # classifies ``gh pr view`` as inadmissible regardless of literal vs.
+            # placeholder form, so ``_demote()`` downgrades it to WARN whatever it
+            # returns (PASS or a 403/404 BLOCK), the same as the placeholder form
+            # always did. Only the LITERAL content-bound pin below (a `gh api
+            # .../contents/...` read, not `gh pr view`) genuinely needs
+            # ``is_private`` to suppress it, because that value backs a PASS/BLOCK
+            # verdict the predicate treats as admissible.
             if is_private:
                 return None, None
             if (

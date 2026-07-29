@@ -51,11 +51,12 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitte
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+    ci_dod_evidence_check_value,
+    downstream_dod_evidence_check_value,
     downstream_receipt_public_check_value,
-    hosted_safe_binding_check_value,
-    hosted_safe_diff_scope_check_value,
     render_companion_contract,
     render_downstream_receipt,
+    self_bind_check_value,
 )
 from omnimarket.occ_content_probe import (
     build_content_read_check,
@@ -260,6 +261,20 @@ def _contract_check_values(contract_path: Path) -> list[str]:
     ]
 
 
+def _contract_check_values_by_item(contract_path: Path) -> list[tuple[str, str]]:
+    """Same as :func:`_contract_check_values` but pairs each value with its
+    owning item id (OMN-15382: the self-bind item is a deliberate,
+    id-scoped exception to the placeholder-only rule).
+    """
+    data = yaml.safe_load(contract_path.read_text())
+    return [
+        (str(item.get("id", "")), check["check_value"])
+        for item in (data.get("dod_evidence") or [])
+        for check in (item.get("checks") or [])
+        if isinstance(check.get("check_value"), str)
+    ]
+
+
 # A SHORT repo slug + path kept for fixture continuity across the OMN-15247
 # lineage. Pre-foldproof-fix, this was the ONLY combination narrow enough for a
 # double-quoted rendering to clear yamlfmt's column-100 fold (``o/r`` + ``x.py``
@@ -344,11 +359,23 @@ class TestPrExistenceOptInIsByteIdentical:
         # GitHub that changes a file. These values are honest PROVENANCE: the OCC
         # runner reports them INERT/WARN, and the contract's admissibility comes
         # from the minted validator item appended after them.
+        # OMN-15382/OMN-15407: BOTH the downstream binding item and the
+        # self-bind item's check_values are now the literal, PR-pinned form,
+        # not the ``hosted_safe_*`` placeholder — every item here has an id
+        # that embeds a PR number (dod-...-pr-321, dod-...-pr-321-ci,
+        # occ-self-bind-pr-55), so Rule B requires a literal pin on all three;
+        # see downstream_dod_evidence_check_value's / self_bind_check_value's
+        # docstrings for the rationale. Only the admissibility-validator item
+        # (no PR number in its id) is unaffected.
         assert _contract_check_values(contract) == [
-            hosted_safe_binding_check_value(),
-            hosted_safe_diff_scope_check_value(),
+            downstream_dod_evidence_check_value(
+                pr_number=321, repo="OmniNode-ai/omnimarket"
+            ),
+            ci_dod_evidence_check_value(pr_number=321, repo="OmniNode-ai/omnimarket"),
             ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
-            hosted_safe_binding_check_value(),
+            self_bind_check_value(
+                occ_pr_number=55, occ_repo="OmniNode-ai/onex_change_control"
+            ),
         ]
         receipt = yaml.safe_load(
             (
@@ -479,10 +506,11 @@ class TestShippedDefaultIsContentBound:
         )
         assert not legacy_action.startswith("skip:")
         assert legacy_rec.pr_open_calls == 1
-        assert (
-            _contract_check_values(legacy_root / "contracts" / "OMN-9999.yaml")[0]
-            == hosted_safe_binding_check_value()
-        )
+        # OMN-15407: literal, not the hosted_safe_* placeholder — see the Rule B
+        # note above TestPrExistenceOptInIsByteIdentical's equivalent assertion.
+        assert _contract_check_values(legacy_root / "contracts" / "OMN-9999.yaml")[
+            0
+        ] == downstream_dod_evidence_check_value(pr_number=321, repo=_STABLE_REPO)
 
         current = OccCompanionEmitter()
         action, clone_root, rec = _run_emit(
@@ -800,7 +828,10 @@ class TestContentBoundChecks:
             OccCompanionEmitter(check_binding=EnumCheckBinding.PR_EXISTENCE), tmp_path
         )
         values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
-        assert values[0] == hosted_safe_binding_check_value()
+        # OMN-15407: literal, not the hosted_safe_* placeholder (Rule B).
+        assert values[0] == downstream_dod_evidence_check_value(
+            pr_number=321, repo=_STABLE_REPO
+        )
         assert rec.pr_open_calls == 1
 
     def test_no_candidate_at_all_fails_closed_without_falling_back(
@@ -847,15 +878,21 @@ class TestContentBoundChecks:
     def test_private_product_repo_never_pins_the_private_repo_or_its_own_receipts(
         self, tmp_path: Path
     ) -> None:
-        """OMN-15247 R21 replaces the old F-16 assertion, which asserted the defect.
+        """OMN-15247 R21 replaced the old F-16 assertion; OMN-15407 updates it again.
 
-        The old test required the private-repo path to emit
+        The old (pre-R21) test required the private-repo path to emit
         ``grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/...`` --
         a form the OMN-15309 predicate refuses UNCONDITIONALLY as
         INSIDE_OWN_DIFF, and the direct cause of the born-red companions on
-        OCC#5406 / #5415 / #5418. The invariant it was standing in for (the
-        hosted OCC runner must never need scope on the private repo) is now met
-        by the placeholder form, which is asserted here instead.
+        OCC#5406 / #5415 / #5418. That circular-grep prohibition still holds
+        and is asserted below. What changed at OMN-15407: the placeholder form
+        R21 introduced to satisfy "never dereference the private repo" is now
+        ITSELF a Rule B violation (OMN-15382, live on onex_change_control dev
+        since 06d4294e) for the downstream/CI items, whose ids embed the PR
+        number -- a literal pin is safe here because the private repo's name
+        is already committed verbatim in the item's own id, and ``gh pr view``
+        is demoted to WARN by the OMN-15309 predicate regardless of literal vs.
+        placeholder spelling (a private-repo 403/404 cannot newly BLOCK).
         """
         emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
         action, clone_root, _rec = _stable_emit(
@@ -864,24 +901,28 @@ class TestContentBoundChecks:
             pr_data=_default_pr_data(base={"sha": "0" * 40, "repo": {"private": True}}),
         )
         assert not action.startswith("skip:")
-        values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
+        pairs = _contract_check_values_by_item(
+            clone_root / "contracts" / "OMN-9999.yaml"
+        )
+        values = [cv for _item_id, cv in pairs]
         assert values, "a private-repo companion must still declare checks"
-        for cv in values:
-            # No LITERAL cross-repo pin: the hosted OCC job cannot read it.
-            assert "gh api repos/OmniNode-ai/" not in cv, cv
+        for item_id, cv in pairs:
             # No self-reference: the circular receipt grep this ticket removes.
             assert "dod_receipts" not in cv, cv
             assert "CONTRACT_REPO_DIR" not in cv, cv
-            # OMN-15247 R21b: placeholder form is required only of values that
-            # NAME a repo/PR. The minted admissibility-validator check is
-            # repo-independent -- it names neither, so there is nothing for the
-            # runner to substitute and nothing for the private-repo scope rule to
-            # object to. Demanding a placeholder there would force a repo/PR
-            # reference into a check that needs none, which is exactly how the
-            # vacuous `.../pulls/${PR_NUMBER}/files` family got minted.
+            # OMN-15247 R21b: a literal/placeholder pin is required only of
+            # values that NAME a repo/PR. The minted admissibility-validator
+            # check is repo-independent -- it names neither, so there is
+            # nothing to pin.
             if "repos/" in cv or " --repo " in cv:
-                assert "${REPO}" in cv, cv
-                assert "${PR_NUMBER}" in cv, cv
+                assert "${REPO}" not in cv, cv
+                assert "${PR_NUMBER}" not in cv, cv
+                if item_id.startswith("occ-self-bind-pr-"):
+                    # Pins OCC's OWN (public onex_change_control) PR, never
+                    # the private product repo this test is about.
+                    continue
+                assert _STABLE_REPO in cv, cv
+                assert "321" in cv, cv
         # And the one admissible check IS present on the private path -- the whole
         # point of the fix, on the population that was born red three-for-three.
         assert "uv run pytest tests/test_evidence_admissibility.py -q" in values
@@ -959,8 +1000,12 @@ class TestContentBoundRenderingSeam:
         contract.write_text(self._contract_text())
         values = _contract_check_values(contract)
         assert values[0] == _CONTENT_BOUND_CHECK
-        # The OMN-14409 diff-scope item is untouched — removing it is not in scope.
-        assert values[1] == hosted_safe_diff_scope_check_value()
+        # The OMN-14409 diff-scope item is untouched by the content-bound
+        # override — removing it is not in scope. OMN-15407: it now renders
+        # literally pinned (Rule B), not the hosted_safe_* placeholder.
+        assert values[1] == ci_dod_evidence_check_value(
+            pr_number=321, repo="OmniNode-ai/omnimarket"
+        )
 
     def test_the_content_bound_check_value_survives_real_yamlfmt_byte_identical(
         self, tmp_path: Path

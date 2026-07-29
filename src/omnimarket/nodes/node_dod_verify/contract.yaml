@@ -68,13 +68,16 @@ outputs:
     description: "Overall verification status (verified, failed, skipped)"
   total_checks:
     type: int
-    description: "Total evidence checks run"
+    description: "Verdict-bearing evidence checks run (excludes superseded)"
   verified_count:
     type: int
     description: "Checks that passed"
   failed_count:
     type: int
     description: "Checks that failed"
+  superseded_count:
+    type: int
+    description: "Items retired by a later supersedes_dod_evidence marker"
 
 terminal_event: onex.evt.omnimarket.dod-verify-completed.v1
 

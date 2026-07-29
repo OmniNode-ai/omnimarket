@@ -144,11 +144,29 @@ _INERT_TAIL_RE = re.compile(r"\|\|\s*(?:true|exit\s+0)|2>\s*/dev/null\s*$")
 _ALLOWLISTED_RE = (
     # Binding provenance (pre-R21, restored). NOT_EXECUTED under the predicate;
     # reported INERT/WARN by the OCC runner, superseded by the validator item.
+    # RETAINED for the (no longer minted-by-default) hosted_safe_* callers and
+    # this suite's own direct tests of them -- see OMN-15407 note below.
     re.compile(r"^gh pr view \$\{PR_NUMBER\} --repo \$\{REPO\} --json number,state$"),
     # Diff-scope provenance (pre-R21, restored). Same standing.
     re.compile(r"^gh pr view \$\{PR_NUMBER\} --repo \$\{REPO\} --json files$"),
+    # OMN-15407: the literal, PR-pinned siblings of the two placeholder forms
+    # above -- occ_evidence_stamp.downstream_dod_evidence_check_value /
+    # ci_dod_evidence_check_value. These are now the DEFAULT the producer mints
+    # (the placeholder-var form is a Rule B violation on any item whose id
+    # embeds a PR number, which both the downstream and CI items' ids always
+    # do -- lint_contract_check_values._pr_binding_violation, live on
+    # onex_change_control dev since 06d4294e). Same standing as the placeholder
+    # forms: NOT_EXECUTED/INERT under the OMN-15309 predicate regardless of
+    # literal vs. placeholder spelling (``gh pr view`` is inadmissible either
+    # way), superseded by the validator item when not product-observing.
+    re.compile(
+        r"^gh pr view \d+ --repo [A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+ --json number,state$"
+    ),
+    re.compile(r"^gh pr view \d+ --repo [A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+ --json files$"),
     # Deploy-scope item (F-05 / OMN-14742), pre-R21 form restored. Carries the
     # literal ``deploy`` keyword the deploy-gate legacy substring rule greps for.
+    # Its id (``dod-deploy-assessment``) never embeds a PR number, so it stays
+    # placeholder-only and is out of Rule B's scope.
     re.compile(
         r"^gh pr diff \$\{PR_NUMBER\} --repo \$\{REPO\} --name-only \| "
         r"grep -qiE '[^']*deploy[^']*'$"

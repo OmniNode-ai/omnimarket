@@ -910,8 +910,10 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         ):
             # OMN-15247 R21: literal OCC-PR-pinned ``gh api`` form, replacing the
             # bare ``gh pr view`` the predicate refuses as NOT_EXECUTED. This is
-            # the RECEIPT's recorded probe; the contract's self-bind item carries
-            # the placeholder form (``_SELF_BIND_ITEM_CHECK_VALUE``).
+            # the RECEIPT's recorded probe; the contract's self-bind item also
+            # carries a literal form as of OMN-15382
+            # (``self_bind_check_value`` — no longer the bare
+            # ``${PR_NUMBER}``/``${REPO}`` placeholder).
             occ_check = downstream_receipt_public_check_value(
                 pr_number=request.occ_pr_number, repo=request.occ_repo
             )

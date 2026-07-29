@@ -13,8 +13,12 @@ reintroduces the broken shape fails this gate before a companion can ship:
   * F-01 append-only — a prior MERGED receipt for the same ticket is never mutated
     by a later PR's emit (scoped rebind), and the append-only guard fails closed on
     any out-of-set change.
-  * F-02 placeholder — every contract check_value renders in ${PR_NUMBER}/${REPO}
-    form; no hardcoded integer PR number survives (clears lint-contract-check-values).
+  * F-02 placeholder — every contract check_value that names a repo/PR either
+    literally pins the SAME PR its own item id embeds (OMN-15382 Rule B; the
+    downstream/CI/self-bind items) or renders in ${PR_NUMBER}/${REPO} form when
+    its id names no PR at all (the deploy-assessment/admissibility-validator
+    items) — never a hardcoded integer for a DIFFERENT PR than the one the id
+    names (clears lint-contract-check-values).
   * F-03 yamlfmt — every generated YAML file is yamlfmt-idempotent (clears the
     hosted yamlfmt Pre-commit).
   * F-04 pre-existing contract — a contract missing THIS PR's base rows gets them
@@ -86,6 +90,10 @@ def _pin_legacy_check_binding(monkeypatch: pytest.MonkeyPatch) -> None:
 # omnimarket dependency; the RED->GREEN proof against the REAL gate is run against
 # the emitted contract and cited in the PR body.
 _HARDCODED_PR_NUMBER_RE = re.compile(r"gh pr (?:checks|view|diff)\s+\d+\s")
+# Mirrors onex_change_control's lint_contract_check_values._ITEM_ID_PR_RE
+# (OMN-15382 Rule B) so this suite's classification of "which items must be
+# literally pinned" can never drift from the real consumer's.
+_ITEM_ID_PR_RE = re.compile(r"pr-(\d+)")
 
 # Mirror of onex_change_control/.yamlfmt (google/yamlfmt v0.21.0 config). Inlined
 # so the gate is deterministic without a sibling-repo checkout; kept in sync with
@@ -217,6 +225,23 @@ def _contract_check_values(contract_path: Path) -> list[str]:
     return values
 
 
+def _contract_check_values_by_item(contract_path: Path) -> list[tuple[str, str]]:
+    """Same as :func:`_contract_check_values` but pairs each value with its
+    owning item id, so a test can carve out a deliberate, id-scoped
+    exception (the OMN-15382 self-bind literal pin) rather than exempting
+    by string shape.
+    """
+    data = yaml.safe_load(contract_path.read_text())
+    pairs: list[tuple[str, str]] = []
+    for item in data.get("dod_evidence") or []:
+        item_id = str(item.get("id", ""))
+        for check in item.get("checks") or []:
+            cv = check.get("check_value")
+            if isinstance(cv, str):
+                pairs.append((item_id, cv))
+    return pairs
+
+
 # ---------------------------------------------------------------------------
 # F-02 — placeholder-clean contract check_values (lint-contract-check-values)
 # ---------------------------------------------------------------------------
@@ -230,9 +255,45 @@ class TestF02PlaceholderCleanContract:
         emitter = OccCompanionEmitter()
         _action, clone_root, _ = _run_emit(emitter, tmp_path)
 
-        values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
-        assert values, "contract must declare at least one check_value"
-        for cv in values:
+        pairs = _contract_check_values_by_item(
+            clone_root / "contracts" / "OMN-9999.yaml"
+        )
+        assert pairs, "contract must declare at least one check_value"
+        for item_id, cv in pairs:
+            # OMN-15382 Rule B (landed onex_change_control@06d4294e,
+            # .onex_ratchets/omn_15382_rule_b_baseline.yaml): ANY dod_evidence
+            # item whose id embeds a PR number (self-bind, downstream, CI — see
+            # _ITEM_ID_PR_RE below, mirroring the OCC lint's own
+            # ``pr-(\d+)`` matcher) must literally pin THAT SAME number in every
+            # gh pr view/checks/diff check_value it declares (OMN-15407 extends
+            # OMN-15382's self-bind-only fix to the downstream + CI items --
+            # see downstream_dod_evidence_check_value's / self_bind_check_value's
+            # docstrings, occ_evidence_stamp.py). The placeholder form is a NEW
+            # Rule B violation on every freshly-minted companion for those items.
+            # A standalone hardcoded PR number with a literal --repo is the
+            # sanctioned cross-PR-reference shape under the SAME lint's Rule A
+            # (OMN-14431), so these items stay lint-clean under both rules
+            # simultaneously.
+            id_pr_match = _ITEM_ID_PR_RE.search(item_id)
+            if id_pr_match:
+                assert _HARDCODED_PR_NUMBER_RE.search(cv), (
+                    f"item {item_id!r} embeds a PR number but its check_value "
+                    f"never literally pins it (OMN-15382/OMN-15407 Rule B), "
+                    f"got: {cv!r}"
+                )
+                assert id_pr_match.group(1) in cv, (
+                    f"item {item_id!r} embeds PR #{id_pr_match.group(1)} but "
+                    f"its check_value pins a DIFFERENT number: {cv!r}"
+                )
+                assert "${PR_NUMBER}" not in cv, (
+                    f"item {item_id!r} must not carry the runner placeholder "
+                    f"alongside the literal pin: {cv!r}"
+                )
+                assert "${REPO}" not in cv, (
+                    f"item {item_id!r} must not carry the runner placeholder "
+                    f"alongside the literal pin: {cv!r}"
+                )
+                continue
             assert not _HARDCODED_PR_NUMBER_RE.search(cv), (
                 f"contract check_value carries a hardcoded integer PR number and "
                 f"would fail lint-contract-check-values: {cv!r}"
@@ -657,22 +718,31 @@ def _dod_item_check_values(contract_path: Path, item_id: str) -> list[str]:
 
 @pytest.mark.unit
 class TestF16PrivateRepoHostedSafe:
-    """A private product repo cannot be re-probed by the hosted OCC runner.
+    """A private product repo's OCC companion must stay lint-clean AND inert.
 
     OMN-15247 R21/R21b SUPERSEDE F-16's original remedy. F-16 emitted a
     receipt-local ``grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/
     ...`` check for the private path, which the OMN-15309 predicate refuses
     UNCONDITIONALLY as INSIDE_OWN_DIFF -- and that carve-out is precisely why all
     three companions for the org's one private repo (OCC#5406 / #5415 / #5418)
-    were born BLOCKED at 0-of-3 admissible.
+    were born BLOCKED at 0-of-3 admissible. That prohibition (never regress to
+    the circular receipt grep) still stands and is still asserted below.
 
-    What is asserted now is F-16's actual REQUIREMENT rather than its retired
-    implementation: a minted private-repo contract must never make the hosted OCC
-    runner dereference the private repo by name. Placeholder form satisfies that
-    -- the runner pre-substitutes ``${REPO}``/``${PR_NUMBER}`` with the repo/PR
-    whose CI is executing, so the private slug never appears. The value is inert
-    rather than circular, and the contract's admissibility comes from the minted
-    validator item that explicitly supersedes it."""
+    OMN-15407 supersedes the OLD placeholder-only requirement for the
+    downstream/CI items specifically. Their ids (``dod-<repo>-pr-<n>[-ci]``)
+    embed the PR number, so OMN-15382 Rule B (live on onex_change_control dev
+    since 06d4294e) now REQUIRES a literal pin there, private repo or not --
+    the same fix OMN-15382 already applied to the self-bind item. Two facts
+    make this safe for a private repo: (1) the private repo's name and PR
+    number are ALREADY committed verbatim in the item's own ``id`` regardless
+    of check_value form, so a literal check_value discloses nothing new; (2)
+    ``gh pr view`` is classified NOT_EXECUTED/inadmissible under the OMN-15309
+    predicate REGARDLESS of literal vs. placeholder spelling, so
+    ``contract_compliance_check._demote`` downgrades any BLOCK it produces
+    (e.g. a 404 from the hosted token's lack of scope on the private repo) to
+    WARN exactly as it already did for a placeholder-form PASS -- the literal
+    form cannot newly BLOCK a private-repo companion. The contract's
+    admissibility still comes from the minted validator item."""
 
     _EID = "dod-OmniNode-ai-omnimarket-pr-321"
     _CI_EID = "dod-OmniNode-ai-omnimarket-pr-321-ci"
@@ -693,7 +763,7 @@ class TestF16PrivateRepoHostedSafe:
             "$CONTRACT_REPO_DIR/drift/dod_receipts/" in cv
         )
 
-    def test_private_repo_items_never_name_the_private_repo_or_own_receipts(
+    def test_private_repo_items_never_regress_to_the_circular_receipt_grep(
         self, tmp_path: Path
     ) -> None:
         emitter = OccCompanionEmitter()
@@ -703,21 +773,27 @@ class TestF16PrivateRepoHostedSafe:
         contract = clone_root / self._CONTRACT
         for item_id in (self._EID, self._CI_EID):
             for cv in _dod_item_check_values(contract, item_id):
-                assert self._PRIVATE_SLUG not in cv, (
-                    f"F-16: private-repo item {item_id} makes the hosted OCC "
-                    f"runner dereference the private repo by name: {cv!r}"
-                )
                 assert not self._is_receipt_local(cv), (
                     f"OMN-15247: private-repo item {item_id} regressed to the "
                     f"circular receipt grep the predicate refuses as "
                     f"INSIDE_OWN_DIFF: {cv!r}"
                 )
-                placeholder_msg = (
-                    f"private-repo item {item_id} must stay in placeholder form "
-                    f"so the runner substitutes its own repo/PR: {cv!r}"
+                # OMN-15407: the downstream/CI items' ids embed the PR number,
+                # so Rule B (OMN-15382) requires a literal pin here now -- see
+                # this class's docstring for why that is safe for a private
+                # repo (the id already names it; ``gh pr view`` is demoted to
+                # WARN regardless of exit code).
+                literal_msg = (
+                    f"private-repo item {item_id} must literally pin its own "
+                    f"PR number and repo (OMN-15382/OMN-15407 Rule B): {cv!r}"
                 )
-                assert "${REPO}" in cv, placeholder_msg
-                assert "${PR_NUMBER}" in cv, placeholder_msg
+                # The fixture's product repo (marked private via
+                # base.repo.private, not by renaming it to _PRIVATE_SLUG --
+                # see _private_pr_data()) is still OmniNode-ai/omnimarket.
+                assert "OmniNode-ai/omnimarket" in cv, literal_msg
+                assert "321" in cv, literal_msg
+                assert "${REPO}" not in cv, literal_msg
+                assert "${PR_NUMBER}" not in cv, literal_msg
 
     def test_private_repo_contract_carries_the_minted_validator_item(
         self, tmp_path: Path

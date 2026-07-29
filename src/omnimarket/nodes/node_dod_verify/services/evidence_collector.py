@@ -25,6 +25,7 @@ import shutil
 import subprocess
 import tempfile
 import time
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
@@ -45,7 +46,6 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
-    extract_receipt_merge_commits,
 )
 
 logger = logging.getLogger(__name__)
@@ -136,6 +136,61 @@ _PR_OPEN_STATE_PREDICATE_RE = re.compile(r"""(\.state\s*==\s*)(["'])OPEN\2""")
 _EVIDENCE_ID_BINDING_RE = re.compile(
     rf"^dod-(?P<owner>{re.escape(_DEFAULT_GITHUB_ORG)})-(?P<repo>[A-Za-z0-9_]+)-pr-(?P<num>\d+)(?:-.*)?$"
 )
+
+# OMN-15382 (F2): ``::pr-live-state`` binding derivation for the auto-appended
+# live-PR-state check (see ``_resolve_pr_bindings`` / ``_live_pr_checks_for_item``
+# below). Discovery case: a fully valid, literally-pinned item
+# (``dod-omn-14968-pr-2536-rebind-15382``, check_value ``gh pr view 2536 --repo
+# OmniNode-ai/omnibase_infra ...``) had its live-state check derive
+# ``(OmniNode-ai/omnibase_infra, 5458)`` instead of ``(OmniNode-ai/omnibase_infra,
+# 2536)`` — the receipt's ``pr_number`` field records the TICKET-CARRIER PR (the
+# PR under which the receipt was authored/committed), which is NOT necessarily
+# the PR any given ``check_value``/``probe_command`` field pins; the old
+# repo-extraction regex ignored ``pr_number`` entirely, so it paired whichever
+# ``--repo`` it found first with whatever ``pr_number`` the receipt schema
+# happened to carry — a cross-field mix with no guarantee the two describe the
+# same PR.
+#
+# ``_hardcoded_pr_bindings_in_value`` extracts a (repo, number) pair only when
+# BOTH come from the SAME clause of the SAME string (never a repo from one
+# ``gh pr`` invocation paired with a number from a different one, and never a
+# repo from one field paired with a number from another).
+_HARDCODED_PR_NUM_RE = re.compile(r"gh pr (?:view|checks|diff)\s+(\d+)\b")
+_REPO_FLAG_RE = re.compile(r"--repo(?:=|\s+)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)")
+_GH_PR_URL_RE = re.compile(r"https://github\.com/([^\s\"')]+/[^\s\"')]+)/pull/(\d+)")
+# Split a check_value into clauses at shell control operators so a --repo
+# belonging to a DIFFERENT gh pr invocation in the same string never pairs
+# with this clause's hardcoded number.
+_SHELL_CLAUSE_SPLIT_RE = re.compile(r"&&|\|\||;|\|")
+
+
+def _hardcoded_pr_bindings_in_value(value: str) -> list[tuple[str, int]]:
+    """Return every same-clause literal ``(repo, pr_number)`` pin in ``value``.
+
+    Pure function — no I/O. See the module comment above
+    ``_HARDCODED_PR_NUM_RE`` for why this must be same-clause, same-string.
+    """
+    bindings: list[tuple[str, int]] = []
+    for clause in _SHELL_CLAUSE_SPLIT_RE.split(value):
+        num_match = _HARDCODED_PR_NUM_RE.search(clause)
+        repo_match = _REPO_FLAG_RE.search(clause)
+        if num_match and repo_match:
+            bindings.append((repo_match.group(1), int(num_match.group(1))))
+    return bindings
+
+
+def _field_confirms_pair(value: str, repo: str, pr_number: int) -> bool:
+    """Whether ``value`` names BOTH ``repo`` and ``pr_number`` together.
+
+    Used to validate a receipt-derived (repo, pr_number) candidate: the repo
+    and the number must be corroborated by the SAME field text, not merely
+    present somewhere in the receipt (see ``_resolve_pr_bindings``). Pure
+    function — no I/O.
+    """
+    if repo not in value:
+        return False
+    return re.search(rf"\b{re.escape(str(pr_number))}\b", value) is not None
+
 
 # OMN-15382: command-check fail-closed hardening.
 #
@@ -243,6 +298,105 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
     )
 
 
+# ---------------------------------------------------------------------------
+# OMN-15382 (runner-supersession follow-up): contract-entry supersession.
+#
+# The runner previously had ZERO handling of the ``evidence_artifact:
+# "supersedes_dod_evidence:<id>"`` marker (the only supersession code,
+# ``durable_evidence_gate.apply_supersessions``, reads a DIFFERENT surface —
+# receipt files, not contract entries). A dod_verify run therefore executed
+# every original item even when a later append-only entry in the SAME
+# contract declared it superseded, and an original whose check_value had
+# been intentionally retired (e.g. the ``occ-self-bind-pr-<n>`` /
+# ``dod-...`` rebind idiom this ticket's own base commit produced) reported
+# a hard FAIL instead of being recognized as superseded.
+#
+# Marker syntax and append-only ("target must already exist") semantics
+# mirror onex_change_control's authoring-time lint (Rule B companion) and
+# CI compliance runner field-for-field — see
+# ``onex_change_control/scripts/lint_contract_check_values.py::_superseded_dod_ids``
+# and
+# ``onex_change_control/src/onex_change_control/scripts/contract_compliance_check.py::_superseded_dod_ids``/``_supersedes_marker``:
+# both key off an item-level (not check-level) string field
+# ``evidence_artifact`` whose value is the literal prefix
+# ``"supersedes_dod_evidence:"`` followed by the superseded item's ``id``.
+#
+# OMN-15390: the ORDERING rule is part of that parity, not an optional
+# refinement. ``_superseded_dod_ids`` supersedes a target only when the
+# target id is already in ``seen`` — i.e. ONLY a LATER item may retire an
+# EARLIER one, which is what makes the idiom append-only. This runner
+# reproduces that rule exactly (see ``_resolve_supersessions``), so the set
+# of superseded ids the two consumers compute is identical for every input;
+# ``tests/fixtures/dod_supersession/parity_corpus.yaml`` is the shared
+# artifact that asserts it case-for-case against OCC's own function.
+# Resolving against the whole-contract id set instead (position-blind) would
+# let a FORWARD marker retire the newest, most-correct entry in the runner
+# while the OCC gate still executed it — a runner-more-permissive-than-gate
+# divergence on the only sanctioned Done-flip path.
+#
+# This runner is deliberately STRICTER than the OCC-side scripts on the
+# shapes where a marker resolves to NOTHING. Those scripts simply no-op
+# there (they are advisory lint/compliance surfaces); here supersession
+# DELETES a FAILED verdict, so a marker that silently did nothing would
+# leave an author believing a contract was repaired when it was not. Each of
+# these is a hard RED on the entry CARRYING the marker — never on the target,
+# and never a silent skip:
+#   * "dangling" — the target id exists nowhere in the contract (typo, or the
+#     target item was removed);
+#   * "forward" — the target exists but is declared LATER, which supersedes
+#     nothing under the ordering rule above;
+#   * "self-reference" — an item naming its own id.
+# The superseded SET is unaffected by these diagnostics, so parity with OCC
+# holds: in every such case both consumers agree that nothing was superseded.
+#
+# Because every accepted edge points strictly backwards in declaration order,
+# the relation is acyclic by construction and resolution is a single forward
+# pass — there is no graph to walk and no cycle to detect.
+#
+# A superseded item's checks are not executed and no ``::pr-live-state``
+# check is appended for it (see ``_collect_impl``).
+# ---------------------------------------------------------------------------
+
+_SUPERSEDES_DOD_EVIDENCE_PREFIX = "supersedes_dod_evidence:"
+
+
+def _supersedes_marker(value: object) -> str | None:
+    """Return the superseded id an ``evidence_artifact`` names, else ``None``.
+
+    Line-for-line mirror of
+    ``contract_compliance_check._supersedes_marker`` (and the identical copy
+    in ``lint_contract_check_values``): a non-string, a string without the
+    exact prefix, or an empty/whitespace-only payload is NOT a marker. Kept
+    as its own function so the parity differential in
+    ``tests/unit/nodes/node_dod_verify/test_omn_15390_contract_entry_supersession.py``
+    can compare it against OCC's directly. Pure — no I/O.
+    """
+    if not isinstance(value, str):
+        return None
+    if not value.startswith(_SUPERSEDES_DOD_EVIDENCE_PREFIX):
+        return None
+    superseded = value[len(_SUPERSEDES_DOD_EVIDENCE_PREFIX) :].strip()
+    return superseded or None
+
+
+@dataclass(frozen=True)
+class _SupersessionResolution:
+    """Result of resolving a contract's ``supersedes_dod_evidence`` markers.
+
+    ``superseded`` maps a superseded item's id -> the id of the LATER item
+    that supersedes it (for the audit message); this mapping is exactly the
+    set ``contract_compliance_check._superseded_dod_ids`` computes.
+    ``malformed`` maps an item's id -> a fail-closed reason string for a
+    marker on THAT item that resolved to nothing (dangling target, forward
+    reference, or self-reference). An id present in both is reported as
+    malformed (checked first) — a broken marker is surfaced loudly rather
+    than silently treated as a clean supersession.
+    """
+
+    superseded: dict[str, str] = field(default_factory=dict)
+    malformed: dict[str, str] = field(default_factory=dict)
+
+
 class EvidenceCollector:
     """Loads a ticket contract and runs dod_evidence checks.
 
@@ -277,6 +431,14 @@ class EvidenceCollector:
         # instead of a generic "cannot resolve" message.
         self._last_pr_lookup_error: str | None = None
         self._last_repo_lookup_error: str | None = None
+        # OMN-15382 (F2): set by ``_resolve_pr_bindings`` when it found NO
+        # trustworthy binding but SOME evidence the item is PR-related (a PASS
+        # receipt recording a pr_number that could not be consistently paired
+        # with a repo — see the fail-closed rewrite's module comment above
+        # that method). Read by ``_live_pr_checks_for_item`` to surface a
+        # visible SKIPPED note instead of silently omitting the live-state
+        # check. Reset per item (mirrors ``_current_evidence_item_id``).
+        self._last_binding_note: str | None = None
 
     @staticmethod
     def _github_lookup_result(
@@ -581,8 +743,59 @@ class EvidenceCollector:
                 )
             ]
 
+        supersession = self._resolve_supersessions(dod_items)
+
         results: list[ModelEvidenceCheckResult] = []
         for item in dod_items:
+            item_id = item.get("id") if isinstance(item, dict) else None
+            item_id_str = item_id if isinstance(item_id, str) and item_id else None
+            description = (
+                str(item.get("description", item_id_str or "unknown"))
+                if isinstance(item, dict)
+                else "unknown"
+            )
+
+            # OMN-15382: a malformed marker (dangling target, self-reference,
+            # or cycle) hard-fails the ITEM CARRYING the marker — it is
+            # neither executed nor treated as a clean supersession. Checked
+            # before the superseded lookup so a broken marker never masquerades
+            # as a quiet SUPERSEDED skip.
+            malformed_reason = (
+                supersession.malformed.get(item_id_str) if item_id_str else None
+            )
+            if malformed_reason is not None:
+                results.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id=item_id_str or "unknown",
+                        description=description,
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=malformed_reason,
+                    )
+                )
+                continue
+
+            # OMN-15382: an item a LATER item in this contract explicitly
+            # supersedes is not executed and gets no ::pr-live-state check —
+            # its checks are preserved for audit but the superseding item's
+            # checks carry the verdict.
+            superseded_by = (
+                supersession.superseded.get(item_id_str) if item_id_str else None
+            )
+            if superseded_by is not None:
+                results.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id=item_id_str or "unknown",
+                        description=description,
+                        status=EnumEvidenceCheckStatus.SUPERSEDED,
+                        message=(
+                            f"SUPERSEDED by {superseded_by!r} (evidence_artifact: "
+                            f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{item_id_str}'); "
+                            "not re-executed — preserved for audit."
+                        ),
+                    )
+                )
+                continue
+
             result = self._check_evidence_item(item, ticket_id, path)
             results.append(result)
             # OMN-14207: verify the LIVE PR state for any PR-bound item. Emitted
@@ -593,6 +806,84 @@ class EvidenceCollector:
                 results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
 
         return results
+
+    @staticmethod
+    def _resolve_supersessions(dod_items: list[Any]) -> _SupersessionResolution:
+        """Resolve ``evidence_artifact: "supersedes_dod_evidence:<id>"`` markers.
+
+        Pure function — no I/O. See the module-level comment above
+        :class:`_SupersessionResolution` for the marker syntax and the
+        append-only ORDERING rule this mirrors field-for-field from
+        onex_change_control's lint/compliance scripts, plus the fail-closed
+        diagnostics (dangling / forward / self target) this runner adds
+        beyond those advisory scripts without changing the superseded set.
+
+        Single forward pass in declaration order, mirroring
+        ``_superseded_dod_ids``'s ``seen``/``if supersedes in seen`` loop.
+        Every accepted edge points strictly backwards, so the relation is
+        acyclic by construction and this terminates in O(len(dod_items)).
+        """
+        # Pre-pass: every id in the contract, used ONLY to tell a forward
+        # reference (target exists, declared later) apart from a dangling one
+        # (target exists nowhere). Neither is a supersession.
+        all_ids: set[str] = set()
+        for item in dod_items:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get("id")
+            if isinstance(item_id, str) and item_id:
+                all_ids.add(item_id)
+
+        seen: set[str] = set()
+        superseded: dict[str, str] = {}
+        malformed: dict[str, str] = {}
+
+        for item in dod_items:
+            if not isinstance(item, dict):
+                continue
+            item_id = item.get("id")
+            if not isinstance(item_id, str) or not item_id:
+                continue
+
+            target = _supersedes_marker(item.get("evidence_artifact"))
+            if target is None:
+                seen.add(item_id)
+                continue
+
+            if target == item_id:
+                malformed[item_id] = (
+                    "MALFORMED_SUPERSESSION: item "
+                    f"{item_id!r} declares evidence_artifact "
+                    f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}', which "
+                    "supersedes itself and therefore retires nothing. Fix the "
+                    "marker before this item can execute."
+                )
+            elif target in seen:
+                # The OCC rule verbatim: a LATER item retires an EARLIER one.
+                superseded[target] = item_id
+            elif target in all_ids:
+                malformed[item_id] = (
+                    "FORWARD_SUPERSESSION: item "
+                    f"{item_id!r} declares evidence_artifact "
+                    f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}' but "
+                    f"{target!r} is declared LATER in this contract. "
+                    "Supersession is append-only — only a later item may "
+                    "retire an earlier one — so this marker retires nothing. "
+                    "Move the repair below the entry it replaces."
+                )
+            else:
+                malformed[item_id] = (
+                    "DANGLING_SUPERSESSION: item "
+                    f"{item_id!r} declares evidence_artifact "
+                    f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{target}' but no "
+                    f"dod_evidence item with id {target!r} exists in this "
+                    "contract. Fix the marker (typo, or the target item was "
+                    "removed) before this item can execute."
+                )
+
+            seen.add(item_id)
+
+        return _SupersessionResolution(superseded=superseded, malformed=malformed)
 
     def _find_contract(self, ticket_id: str) -> Path | None:
         """Search standard locations for a ticket contract."""
@@ -1062,24 +1353,39 @@ class EvidenceCollector:
     ) -> list[tuple[str, int]]:
         """Resolve every ``(owner/repo, pr_number)`` this evidence item binds to.
 
-        Two authoritative sources, in precedence order:
+        OMN-15382 (F2) fail-closed rewrite, in precedence order:
 
         1. An explicit ``pr`` mapping on the item (``{repo, number}``) or explicit
            ``repo`` + ``pr_number`` scalar fields — lets a contract declare the
            binding directly (future-proof).
-        2. The durable receipt(s) for the item under
-           ``<occ_root>/drift/dod_receipts/<ticket>/<item_id>/*.yaml``: the receipt
-           records ``pr_number`` and the probed ``--repo owner/repo`` (the SAME
-           fields the DurableEvidenceGate binds against). This is what catches a
-           contract (e.g. OMN-13996) that never declared the binding explicitly.
+        2. A hardcoded, same-clause literal ``gh pr view/checks/diff <N> ...
+           --repo <owner>/<repo>`` pin within the item's OWN ``checks[]``
+           (:func:`_hardcoded_pr_bindings_in_value`) — the repo and number come
+           from the exact same string, so they can never be mixed.
+        3. The item's ``id``, when it follows the autobind naming convention
+           (:meth:`_repo_and_pr_from_evidence_id`) — same guarantee, a single
+           anchored regex over one string.
+        4. The durable receipt(s) for the item under
+           ``<occ_root>/drift/dod_receipts/<ticket>/<item_id>/*.yaml`` — but
+           ONLY a citation whose repo and ``pr_number`` are corroborated by the
+           SAME receipt field (:func:`_field_confirms_pair`). A receipt's
+           ``pr_number`` records the TICKET/CARRIER PR the receipt was authored
+           under, which is not necessarily the PR any given
+           ``check_value``/``probe_command`` pins — trusting a repo extracted
+           from one field paired unconditionally with ``pr_number`` produced a
+           mismatched pair (discovery case: ``dod-omn-14968-pr-2536-rebind-15382``
+           derived ``(OmniNode-ai/omnibase_infra, 5458)`` — the carrier PR
+           number paired with the pinned PR's repo — instead of the item's
+           actual ``(OmniNode-ai/omnibase_infra, 2536)`` pin). A PASS receipt
+           that names a ``pr_number`` but cannot be consistently paired sets
+           ``self._last_binding_note`` (read by
+           :meth:`_live_pr_checks_for_item`) instead of silently contributing
+           nothing or trusting the mismatched pair.
 
         Returns a de-duplicated list; empty when the item does not bind to any PR
-        (a non-PR evidence item is therefore unaffected by the live check). The
-        evidence-item ``id`` slug is deliberately NOT parsed for a repo — those
-        slugs are frequently descriptive labels (``product``, ``sea``,
-        ``release-*``), not repo names, so guessing a repo from them would be a
-        false-positive machine.
+        (a non-PR evidence item is therefore unaffected by the live check).
         """
+        self._last_binding_note = None
         bindings: list[tuple[str, int]] = []
         seen: set[tuple[str, int]] = set()
 
@@ -1111,17 +1417,87 @@ class EvidenceCollector:
             )
         _add(item.get("repo"), item.get("pr_number"))
 
-        # 2. Receipt-derived bindings (only when nothing explicit was declared).
+        # 2. Hardcoded, same-clause literal pin in the item's OWN checks.
+        if not bindings:
+            checks = item.get("checks")
+            if isinstance(checks, list):
+                for check in checks:
+                    if not isinstance(check, dict):
+                        continue
+                    value = check.get("check_value") or check.get("command")
+                    if not isinstance(value, str) or not value.strip():
+                        continue
+                    for repo_val, number_val in _hardcoded_pr_bindings_in_value(value):
+                        _add(repo_val, number_val)
+
+        # 3. id-convention parse.
+        if not bindings:
+            item_id_raw = item.get("id")
+            item_id_for_parse = item_id_raw if isinstance(item_id_raw, str) else None
+            id_repo, id_pr = self._repo_and_pr_from_evidence_id(item_id_for_parse)
+            if id_repo and id_pr:
+                _add(id_repo, id_pr)
+
+        # 4. Receipt-derived bindings, hardened against cross-field mixing.
         if not bindings:
             item_id = item.get("id")
             if isinstance(item_id, str) and item_id:
                 receipts = apply_supersessions(
                     self._load_item_receipts(item_id, ticket_id, contract_path)
                 )
-                for citation in extract_receipt_merge_commits(receipts):
-                    _add(citation.repo, citation.pr_number)
+                untrusted = False
+                for receipt in receipts:
+                    if not isinstance(receipt, dict):
+                        continue
+                    if receipt.get("status") != "PASS":
+                        continue
+                    pr_number = receipt.get("pr_number")
+                    if not isinstance(pr_number, int) or isinstance(pr_number, bool):
+                        continue
+                    confirmed_repo = self._consistent_receipt_repo(receipt, pr_number)
+                    if confirmed_repo is not None:
+                        _add(confirmed_repo, pr_number)
+                    else:
+                        untrusted = True
+                if not bindings and untrusted:
+                    self._last_binding_note = (
+                        f"NO_CONSISTENT_PR_BINDING: item {item_id!r} has a PASS "
+                        "receipt recording pr_number, but no receipt field "
+                        "consistently pairs that number with a repo (the "
+                        "receipt's pr_number tracks the carrier PR, which may "
+                        "differ from the PR any check_value/probe_command "
+                        "actually pins) — no live-state binding derived. Pin "
+                        "the item's own check_value with a literal 'gh pr "
+                        "view <N> --repo <owner>/<repo>' or repair the "
+                        "receipt so pr_number and the probed repo agree."
+                    )
 
         return bindings
+
+    @staticmethod
+    def _consistent_receipt_repo(receipt: dict[str, Any], pr_number: int) -> str | None:
+        """Return a repo for ``pr_number`` only when a receipt field names both.
+
+        Checks ``probe_stdout``, ``probe_command``, ``check_value`` in that
+        order for either a ``--repo <owner>/<repo>`` flag or a
+        ``https://github.com/<owner>/<repo>/pull/<n>`` URL, and requires the
+        SAME field to also confirm ``pr_number`` (:func:`_field_confirms_pair`
+        for the flag form; the URL's own ``<n>`` for the URL form). Pure
+        function — no I/O.
+        """
+        for field_name in ("probe_stdout", "probe_command", "check_value"):
+            value = receipt.get(field_name)
+            if not isinstance(value, str) or not value.strip():
+                continue
+            repo_match = _REPO_FLAG_RE.search(value)
+            if repo_match is not None and _field_confirms_pair(
+                value, repo_match.group(1), pr_number
+            ):
+                return repo_match.group(1)
+            for url_repo, url_num in _GH_PR_URL_RE.findall(value):
+                if int(url_num) == pr_number:
+                    return str(url_repo)
+        return None
 
     def _load_item_receipts(
         self,
@@ -1162,17 +1538,29 @@ class EvidenceCollector:
         """Emit the live PR-state check result(s) for a PR-bound evidence item.
 
         Returns ``[]`` for a non-PR item (leaving its declared-check result the
-        sole authority). Otherwise one result per bound PR: VERIFIED when the PR
-        is MERGED and all checks are green; FAILED otherwise, INCLUDING when the
-        live state cannot be resolved (fail-closed — a Done-flip must not proceed
-        on unverifiable PR state).
+        sole authority) — UNLESS :meth:`_resolve_pr_bindings` found evidence the
+        item IS PR-related (a PASS receipt naming a ``pr_number``) but could not
+        safely derive which PR/repo it pins (OMN-15382 F2c); that case emits one
+        SKIPPED, visibly-noted result instead of silently omitting the check.
+        Otherwise one result per bound PR: VERIFIED when the PR is MERGED and
+        all checks are green; FAILED otherwise, INCLUDING when the live state
+        cannot be resolved (fail-closed — a Done-flip must not proceed on
+        unverifiable PR state).
         """
         bindings = self._resolve_pr_bindings(item, ticket_id, contract_path)
-        if not bindings:
-            return []
-
         item_id = str(item.get("id", "unknown"))
         description = str(item.get("description", item_id))
+        if not bindings:
+            if self._last_binding_note is not None:
+                return [
+                    ModelEvidenceCheckResult(
+                        evidence_id=f"{item_id}::pr-live-state",
+                        description=f"Live PR state for {description}",
+                        status=EnumEvidenceCheckStatus.SKIPPED,
+                        message=self._last_binding_note,
+                    )
+                ]
+            return []
 
         if not self._live_pr_check_enabled():
             logger.warning(

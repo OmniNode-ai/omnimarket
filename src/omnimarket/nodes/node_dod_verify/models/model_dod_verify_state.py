@@ -23,6 +23,13 @@ class EnumEvidenceCheckStatus(StrEnum):
     VERIFIED = "verified"
     FAILED = "failed"
     SKIPPED = "skipped"
+    # OMN-15382 (runner-supersession follow-up): a dod_evidence item that a
+    # LATER item in the same contract explicitly supersedes via
+    # ``evidence_artifact: "supersedes_dod_evidence:<this-id>"``. Distinct
+    # from VERIFIED/FAILED/SKIPPED — it is neither executed nor counted as a
+    # failure; the superseding item's own checks carry the verdict. See
+    # ``EvidenceCollector._resolve_supersessions``.
+    SUPERSEDED = "superseded"
 
 
 class ModelEvidenceCheckResult(BaseModel):
@@ -50,6 +57,7 @@ class ModelDodVerifyState(BaseModel):
     verified_count: int = Field(default=0, ge=0)
     failed_count: int = Field(default=0, ge=0)
     skipped_count: int = Field(default=0, ge=0)
+    superseded_count: int = Field(default=0, ge=0)
     error_message: str | None = Field(default=None)
 
 

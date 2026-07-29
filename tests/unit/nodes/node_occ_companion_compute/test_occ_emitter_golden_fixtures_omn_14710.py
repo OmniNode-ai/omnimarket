@@ -157,6 +157,24 @@ def _contract_check_values(plan: ModelOccCompanionPlan) -> list[str]:
     return [ck["check_value"] for item in data["dod_evidence"] for ck in item["checks"]]
 
 
+def _contract_check_values_by_item(
+    plan: ModelOccCompanionPlan,
+) -> list[tuple[str, str]]:
+    """Same as :func:`_contract_check_values` but pairs each value with its
+    owning item id (OMN-15382: the self-bind item is a deliberate,
+    id-scoped exception to the placeholder-only rule).
+    """
+    contract = next(
+        f for f in plan.companion_files if f.kind == EnumCompanionFileKind.CONTRACT
+    )
+    data = yaml.safe_load(contract.content)
+    return [
+        (str(item.get("id", "")), ck["check_value"])
+        for item in data["dod_evidence"]
+        for ck in item["checks"]
+    ]
+
+
 # ---------------------------------------------------------------------------
 # occ#4284 captured negative fixture — parse the git diff into {path: content}
 # for the NEW files it adds.
@@ -199,17 +217,47 @@ _BRACE_REPO_RE = re.compile(r"\{repo\}")
 
 
 def lint_check_value(value: str) -> str | None:
-    """Return a rejection reason for a non-placeholder gh-pr check_value, else None."""
+    """Return a rejection reason for a non-conforming gh-pr check_value, else None.
+
+    OMN-14431 / OMN-15382 kept in sync (this WAS a verbatim F-02 copy at
+    OMN-9350/14673; the real lint script has since grown two exceptions the
+    fixed placeholder-only rule below did not have, so this local mirror is
+    updated to match rather than silently drifting):
+
+    * Rule A (OMN-14431) sanctions a STANDALONE hardcoded PR number with a
+      literal ``--repo`` -- the genuine cross-PR-reference shape -- as long as
+      no ``${PR_NUMBER}`` co-occurs in the same value (mixing the two is
+      ambiguous: the token pre-substitution wins, silently discarding the
+      literal).
+    * Rule B (OMN-15382, live on onex_change_control dev since 06d4294e) makes
+      that literal form REQUIRED, not merely sanctioned, whenever the item's
+      own id embeds the SAME PR number -- see
+      ``downstream_dod_evidence_check_value`` / ``ci_dod_evidence_check_value``
+      / ``self_bind_check_value`` in occ_evidence_stamp.py. This checker only
+      sees the bare check_value string, so it applies Rule A's shape test
+      (hardcoded + literal --repo + no ${PR_NUMBER}) without re-deriving Rule
+      B's id-embedding precondition; callers that need Rule B's stronger
+      "matches THIS item's own PR number" check do that themselves (see the
+      pr-binding assertions in test_occ_companion_emitter_friction_omn_14741.py).
+    """
     stripped = value.strip()
     if not stripped.startswith(_GH_PR_PREFIX):
         return None
-    if _HARDCODED_PR_NUMBER_RE.search(stripped):
-        return "hardcoded integer PR number"
     if _BRACE_PR_RE.search(stripped):
         return "wrong-format {pr} placeholder"
     if _BRACE_REPO_RE.search(stripped):
         return "wrong-format {repo} placeholder"
-    if "${PR_NUMBER}" not in stripped:
+
+    has_hardcoded_pr = bool(_HARDCODED_PR_NUMBER_RE.search(stripped))
+    has_pr_token = "${PR_NUMBER}" in stripped
+
+    if has_hardcoded_pr and has_pr_token:
+        return "hardcoded integer PR number mixed with ${PR_NUMBER}"
+    if has_hardcoded_pr:
+        if "--repo" not in stripped or "${REPO}" in stripped:
+            return "hardcoded cross-PR reference requires a literal --repo"
+        return None
+    if not has_pr_token:
         return "missing ${PR_NUMBER} placeholder"
     if "${REPO}" not in stripped and "--repo" not in stripped:
         return "missing --repo argument"
@@ -445,22 +493,55 @@ class TestF02PlaceholderLint:
             assert lint_check_value(cv) is None, f"lint rejects minted check: {cv}"
 
     def test_pass2_contract_checks_are_placeholder_normalized(self) -> None:
-        for cv in _contract_check_values(compute_companion_plan(_request(**_PASS2))):
+        pairs = _contract_check_values_by_item(
+            compute_companion_plan(_request(**_PASS2))
+        )
+        for item_id, cv in pairs:
+            if item_id.startswith("occ-self-bind-pr-"):
+                # OMN-15382 (F1x follow-up): deliberate exception — see the
+                # matching branch in test_occ_companion_substance_and_placeholder_omn_14679.py
+                # for the full rationale (Rule B requires a literal pin here).
+                assert _HARDCODED_PR_NUMBER_RE.search(cv), cv
+                assert "${PR_NUMBER}" not in cv, cv
+                assert "${REPO}" not in cv, cv
+                continue
             assert lint_check_value(cv) is None, f"lint rejects minted check: {cv}"
 
-    def test_negative_occ_4284_contract_has_hardcoded_pr_ints(self) -> None:
-        # RED control from the REAL captured failed companion (occ#4284): its
-        # contracts/OMN-14695.yaml check_values hardcode live PR integers.
+    def test_occ_4284_hardcoded_pr_ints_are_now_sanctioned_by_rule_a_and_b(
+        self,
+    ) -> None:
+        """occ#4284's shape flipped from defect to REQUIRED (OMN-14431/OMN-15382).
+
+        At OMN-9350/14673 (when this fixture was captured) ANY hardcoded
+        integer PR number was a placeholder-lint violation, so this test
+        originally asserted the checker REJECTED occ#4284's
+        contracts/OMN-14695.yaml. OMN-14431 (Rule A) later sanctioned a
+        standalone hardcoded PR number with a literal ``--repo`` as the
+        genuine cross-PR-reference shape, and OMN-15382/OMN-15407 (Rule B)
+        made that literal form REQUIRED whenever an item's id embeds the same
+        PR number. Both of occ#4284's checks are EXACTLY that shape --
+        ``dod-OmniNode-ai-omnimarket-pr-1788`` pins literal 1788, and
+        ``occ-self-bind-pr-4284`` pins literal 4284 -- so under current rules
+        this fixture is no longer a RED control for hardcoding; it is a
+        pre-existing example of the now-correct shape. Asserted here so a
+        revert of Rule A/B is caught (this would go RED again).
+        """
         added = _occ_4284_added_files()
         contract_yaml = added["contracts/OMN-14695.yaml"]
         data = yaml.safe_load(contract_yaml)
-        checks = [
-            ck["check_value"] for it in data["dod_evidence"] for ck in it["checks"]
+        pairs = [
+            (it["id"], ck["check_value"])
+            for it in data["dod_evidence"]
+            for ck in it["checks"]
         ]
-        reasons = [lint_check_value(cv) for cv in checks]
-        assert "hardcoded integer PR number" in reasons, (
-            f"expected occ#4284 to trip the placeholder lint; got {reasons}"
-        )
+        for item_id, cv in pairs:
+            reason = lint_check_value(cv)
+            assert reason is None, f"{item_id}: lint rejects {cv!r}: {reason}"
+            digits = "".join(ch for ch in item_id if ch.isdigit())
+            assert digits, f"{item_id}: no digits in id"
+            assert digits in cv, (
+                f"{item_id}: literal pin does not match its own id: {cv!r}"
+            )
 
 
 # ---------------------------------------------------------------------------
