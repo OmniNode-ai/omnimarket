@@ -484,7 +484,9 @@ class TestHandlerProjectionLiveEventsHandle:
         assert second["event_id"] == str(envelope_id)
         rows = db.query(TABLE)
         assert len(rows) == 1
-        assert "_envelope_id" not in json.loads(rows[0]["payload"])
+        payload_json = rows[0]["payload"]
+        assert isinstance(payload_json, str)
+        assert "_envelope_id" not in json.loads(payload_json)
 
     def test_handle_classifies_routing_decision_as_routing(self) -> None:
         handler = HandlerProjectionLiveEvents()
