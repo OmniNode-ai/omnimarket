@@ -190,10 +190,31 @@ _PASS2 = {
 }
 
 
+_ITEM_ID_PR_RE = re.compile(r"-pr-(\d+)")
+
+
 @pytest.mark.unit
 class TestMintedContractClearsPlaceholderLint:
     def test_pass1_every_check_value_is_placeholder_normalized(self) -> None:
-        for cv in _minted_contract_checks():
+        pairs = _minted_contract_checks_by_item()
+        assert pairs
+        for item_id, cv in pairs:
+            id_pr_match = _ITEM_ID_PR_RE.search(item_id)
+            if id_pr_match:
+                # OMN-15382/OMN-15407 (F1x follow-up): ANY item whose id embeds
+                # a PR number -- downstream, CI, self-bind -- now REQUIRES a
+                # literal pin under the live lint's Rule B
+                # (.onex_ratchets/omn_15382_rule_b_baseline.yaml,
+                # onex_change_control@06d4294e). This local ``_lint_legacy_gh_pr``
+                # mirror predates Rule A/B and unconditionally rejects any
+                # hardcoded PR number, so it is intentionally not applied to
+                # these items; a standalone hardcoded PR + literal --repo is
+                # lint-clean under the LIVE gate's Rule A (OMN-14431).
+                assert id_pr_match.group(1) in cv, (
+                    f"item {item_id!r} embeds PR #{id_pr_match.group(1)} but "
+                    f"check_value pins a different number: {cv!r}"
+                )
+                continue
             assert _lint_legacy_gh_pr(cv) is None, (
                 f"lint-contract-check-values rejects: {cv}"
             )
@@ -203,20 +224,15 @@ class TestMintedContractClearsPlaceholderLint:
         # downstream (view + diff) + validator + self-bind (view) = 4 checks.
         assert len(pairs) == 4
         for item_id, cv in pairs:
-            if item_id.startswith("occ-self-bind-pr-"):
-                # OMN-15382 (F1x follow-up): the self-bind item is the ONE
-                # deliberate exception — its id embeds a PR number, so the
-                # live lint's Rule B (.onex_ratchets/omn_15382_rule_b_baseline.yaml,
-                # onex_change_control@06d4294e) now REQUIRES a literal pin
-                # there, not the placeholder. This local ``_lint_legacy_gh_pr``
-                # mirror predates Rule A/B and unconditionally rejects any
-                # hardcoded PR number, so it is intentionally not applied to
-                # this item; a real standalone hardcoded PR + literal --repo
-                # is lint-clean under the LIVE gate's Rule A (OMN-14431).
-                assert (
-                    cv
-                    == "gh pr view 4284 --repo OmniNode-ai/onex_change_control --json number,state"
-                ), cv
+            id_pr_match = _ITEM_ID_PR_RE.search(item_id)
+            if id_pr_match:
+                # OMN-15382/OMN-15407 (F1x follow-up): see the pass1 note above
+                # -- every PR-number-embedding item now requires a literal pin,
+                # not just the self-bind item.
+                assert id_pr_match.group(1) in cv, (
+                    f"item {item_id!r} embeds PR #{id_pr_match.group(1)} but "
+                    f"check_value pins a different number: {cv!r}"
+                )
                 continue
             assert _lint_legacy_gh_pr(cv) is None, (
                 f"lint-contract-check-values rejects: {cv}"
