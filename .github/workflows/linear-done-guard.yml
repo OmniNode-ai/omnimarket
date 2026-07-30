@@ -1,0 +1,119 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# linear-done-guard.yml — scheduled drift assertion over Linear git automations
+# (OMN-15373).
+#
+# WHAT IT ASSERTS
+#   No Linear GitAutomationState, on any team, resolves to a `completed`-type
+#   workflow state. Such an automation writes `Done` on PR merge with no closing
+#   keyword required (branch-name linkage or a bare body mention is enough), no
+#   dod_verify receipt, and no evidence gate of any kind.
+#
+# WHY IT IS SCHEDULED RATHER THAN PRE-MERGE
+#   The thing being asserted is Linear workspace configuration, not repository
+#   content — no PR can change it and no PR event can detect it drifting back. A
+#   single API call or one UI click silently re-arms it. The 2026-07-29 fix
+#   (merge -> In Review) was applied by hand and, until this job existed, had no
+#   surface that would notice its reversal. Per feedback_a_rule_is_not_a_
+#   mechanism, the setting is not the mechanism; this assertion is.
+#
+#   The in-repo half of the same defect IS pre-merge: see
+#   tests/test_omn_15373_no_ungated_linear_done_policy.py, which runs in the
+#   normal pytest suite and rejects any committed recipe that mints a Done.
+#
+# FAILURE IS THE ALERT
+#   A red run here means the board's Done signal is currently forgeable. The job
+#   fails closed on every uncertainty — drift, an unreadable target state, an
+#   empty result set, a probe error, or a missing credential — because a guard
+#   that could not run is not a guard that passed.
+#
+# ARMING (one-time operator step)
+#   `LINEAR_API_KEY` is NOT currently provisioned as an omnimarket repo secret
+#   or an OmniNode-ai org secret (verified 2026-07-30 via `gh secret list`).
+#   Until it is, this job fails with exit 2 and the message below. That is
+#   deliberate: an unarmed guard reporting green would be the exact false
+#   assurance OMN-15373 is about.
+
+name: Linear Done Guard
+
+on:
+  schedule:
+    # Every 6h. Drift is a config flip, not a gradual process, so the useful
+    # property is bounded time-to-detection rather than high frequency.
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+# Deliberately NOT wired to `pull_request`. What this job asserts is live Linear
+# workspace configuration, which no PR can change and no PR is accountable for —
+# a PR touching an unrelated node would fail because, say, the Contractors team
+# is drifted. That is the over-broad-matcher anti-pattern, and a gate that fails
+# for reasons outside the author's control is a gate that gets bypassed.
+# The repo-content half of this defect IS pre-merge, in the pytest suite:
+# tests/test_omn_15373_no_ungated_linear_done_policy.py.
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linear-done-guard-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  assert-no-completed-target:
+    name: No git automation may mint Done
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Fail loudly when the guard is unarmed
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${LINEAR_API_KEY:-}" ]; then
+            echo "::error title=Linear Done Guard is unarmed::LINEAR_API_KEY is not provisioned."
+            echo ""
+            echo "The guard cannot read Linear's git-automation settings, so it can"
+            echo "make NO assertion about whether a PR merge can currently mint a"
+            echo "Done. An unarmed guard is not a passing guard - failing closed."
+            echo ""
+            echo "To arm: provision LINEAR_API_KEY (a Linear API key with read"
+            echo "access to team settings) as an OmniNode-ai org secret, or as an"
+            echo "omnimarket repo secret. Read-only scope is sufficient: this job"
+            echo "never mutates a Linear setting."
+            exit 2
+          fi
+
+      # ONE probe: the readable summary goes to the log and the machine-readable
+      # report to an artifact from the same read. Probing twice would produce a
+      # log and an artifact describing two different moments.
+      - name: Assert no completed-type git automation target
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        run: |
+          uv run python -m omnimarket.nodes.node_linear_triage.guard_cli \
+            --exceptions config/linear_git_automation_exceptions.yaml \
+            --report-json linear-done-guard-report.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linear-done-guard-report
+          path: linear-done-guard-report.json
+          if-no-files-found: ignore

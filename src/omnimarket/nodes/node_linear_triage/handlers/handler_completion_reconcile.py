@@ -31,6 +31,23 @@ from omnimarket.nodes.node_linear_triage.services.completion_reconcile import (
 
 _log = logging.getLogger(__name__)
 
+_AUTOMATION_REVERT_COMMENT_TEMPLATE = (
+    "Reverted to {prior_state} by the completion reconciler (OMN-15373).\n\n"
+    "This ticket was flipped to Done by a **git automation reacting to a PR "
+    "merge**{pr_clause}, with no `dod_verify` receipt and no other non-circular "
+    "durable evidence. No closing keyword is required for that automation to "
+    "fire — branch-name linkage or a bare body mention is sufficient — so the "
+    "flip carries no proof that this ticket's own acceptance criteria were "
+    "met.\n\n"
+    "The merged PR is **not** admissible as the evidence here: the merge is what "
+    "triggered the flip, so citing it restates the trigger rather than proving "
+    "the outcome. Per the CLAUDE.md deterministic-truth doctrine a merge is "
+    "`code-only`/`receipt-bound` at best; `Done` requires `dod_verify` with "
+    "durable evidence.\n\n"
+    "Reverted so the Definition of Done can be evidenced before this ticket is "
+    "closed again. Reconciler verdict: {reason}"
+)
+
 _REVERT_COMMENT_TEMPLATE = (
     "Reverted to {prior_state} by the completion reconciler (OMN-14915).\n\n"
     "This ticket was flipped to Done with **no durable evidence** (no merged "
@@ -107,12 +124,29 @@ class HandlerCompletionReconcile:
             client.save_issue(issue_id=r.linear_id, state=r.prior_state_name)
             client.save_comment(
                 issue_id=r.linear_id,
-                body=_REVERT_COMMENT_TEMPLATE.format(
-                    prior_state=r.prior_state_name, reason=r.reason
-                ),
+                body=_revert_comment(r),
             )
             reverted_ids.append(r.ticket_id)
         return _build_report(results, applied=apply_changes, reverted_ids=reverted_ids)
+
+
+def _revert_comment(result: ModelCompletionVerdictResult) -> str:
+    """Pick the revert explanation that names the actual mechanism.
+
+    A ticket reverted because a merge automation minted its Done needs to be
+    told that the merged PR is not admissible evidence — the generic cascade
+    comment would name the wrong mechanism and invite the wrong fix.
+    """
+    if result.automation_fingerprint:
+        pr_clause = f" ({result.driving_pr})" if result.driving_pr else ""
+        return _AUTOMATION_REVERT_COMMENT_TEMPLATE.format(
+            prior_state=result.prior_state_name,
+            pr_clause=pr_clause,
+            reason=result.reason,
+        )
+    return _REVERT_COMMENT_TEMPLATE.format(
+        prior_state=result.prior_state_name, reason=result.reason
+    )
 
 
 def _build_report(
