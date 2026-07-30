@@ -149,6 +149,43 @@ def test_strict_gate_failure_fails() -> None:
     assert code == EXIT_FAILURE
 
 
+def test_occ_companion_merged_gate_is_strict_and_fails_closed() -> None:
+    """OMN-15427: the companion-merged gate must BLOCK, not merely report.
+
+    omnimarket#1953 carried a CLOSED-unmerged OCC companion citation and no
+    omnimarket surface caught it. Detection without enforcement is the failure
+    mode being closed, so this pins the enforcement wiring itself: the gate is
+    a STRICT gate (a red/skipped/cancelled conclusion fails the required
+    ``CI Summary`` context) and its absence is PENDING, never a vacuous green.
+    """
+
+    gate = "OCC Companion Merged Gate (OMN-15214)"
+    assert gate in STRICT_GATE_JOBS
+    assert gate not in SKIPPABLE_GATE_JOBS
+
+    # Red → FAILURE, and the gate is named in the report.
+    jobs = [
+        _job(gate, conclusion="failure") if j["name"] == gate else j
+        for j in _healthy_jobs()
+    ]
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+    assert gate in report
+
+    # Skipped → FAILURE (the job is unconditional in ci.yml; a skip is anomalous).
+    jobs = [
+        _job(gate, conclusion="skipped") if j["name"] == gate else j
+        for j in _healthy_jobs()
+    ]
+    code, _ = evaluate(jobs)
+    assert code == EXIT_FAILURE
+
+    # Absent entirely → PENDING (completeness anchor), never SUCCESS.
+    jobs = [j for j in _healthy_jobs() if j["name"] != gate]
+    code, _ = evaluate(jobs)
+    assert code == EXIT_PENDING
+
+
 def test_skippable_gate_skipped_is_success() -> None:
     """A SKIPPABLE gate may legitimately skip (docs-only PR) and still pass."""
 

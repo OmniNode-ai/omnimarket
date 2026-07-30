@@ -1896,6 +1896,63 @@ jobs:
         if: always()
         run: uv run python -m omnimarket.validators.contract_topic_graph --report || true
 
+  # ============================================================================
+  # OCC COMPANION MERGED GATE (OMN-15214 canary -> OMN-15221 omniclaude ->
+  # OMN-15427 omnimarket)
+  #
+  # omnimarket was the last CI repo without this gate, and the gap was observed
+  # live: omnimarket#1953's body cited `Evidence-Source: OCC#5487`, a companion
+  # CLOSED WITHOUT MERGING (superseded by the merged OCC#5497). The canonical
+  # arbiter returns FAIL for that body -- but omnimarket CI never ran it, so the
+  # PR looked green with a dead evidence citation and nothing noticed.
+  #
+  # This job polls the PR's LIVE body (not the event payload -- occ-autobind
+  # PATCHes Evidence-Source in after the trigger fires) and greens ONLY when
+  # EVERY cited OCC companion is MERGED, or every cited OCC commit SHA is an
+  # ancestor of onex_change_control dev/main. A companion CLOSED without merging
+  # fails immediately (that IS the incident state); an OPEN companion polls and
+  # converts to FAIL at the deadline (fail-closed).
+  #
+  # Enforcement, not detection: registered in STRICT_GATE_JOBS in
+  # scripts/ci/ci_summary_gate.py, so the REQUIRED `CI Summary` context cannot
+  # go green unless this job is present + completed + success (absent/skipped/
+  # cancelled all block). Deliberately NOT a new top-level required context: a
+  # context that does not report on every PR shape wedges merges indefinitely
+  # under branch protection (see CLAUDE.md, deploy-gate section); the umbrella's
+  # check-run always instantiates, so it has no such failure mode.
+  #
+  # Unconditional (no needs/if) so CI Summary always WAITS for it; internal
+  # event scoping no-ops on push/workflow_dispatch (mirrors occ-preflight).
+  # GitHub-hosted + pure gh-API polling against a PUBLIC repo
+  # (onex_change_control): zero self-hosted/LAN dependency and no cross-repo
+  # secret -- the default GITHUB_TOKEN reads public repos. The poll window
+  # absorbs autobind mint + companion auto-merge latency instead of converting
+  # them into instant reds.
+  # ============================================================================
+  occ-companion-merged:
+    name: OCC Companion Merged Gate (OMN-15214)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      MERGE_GROUP_HEAD_REF: ${{ github.event.merge_group.head_ref }}
+      # Poll window (seconds) -- bounded well under ci-summary's 90m deadline so
+      # this gate reaches a terminal state first; PENDING converts to FAIL.
+      DEADLINE_SECONDS: "1500"
+      POLL_INTERVAL_SECONDS: "30"
+    steps:
+      - name: Checkout (gate script)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - name: Require every cited OCC companion to be merged before product merge
+        run: python3 scripts/ci/check_occ_companion_merged.py
+
   ci-summary:
     name: CI Summary
     # OMN-14127 fan-out: REQUIRED branch-protection context, implemented as a
