@@ -28,6 +28,8 @@ Pinned verdict table:
 from __future__ import annotations
 
 import re
+import shutil
+import subprocess
 from collections.abc import Callable
 from typing import Any
 
@@ -40,6 +42,7 @@ from scripts.ci.check_occ_companion_merged import (
     EXIT_PENDING,
     Verdict,
     aggregate,
+    canonical_first_citation,
     evaluate_once,
     main,
     parse_evidence_sources,
@@ -140,15 +143,32 @@ class TestEvidenceSourceParsing:
         )
         assert parse_evidence_sources(body) == []
 
-    def test_citation_set_matches_the_canonical_grep(self) -> None:
-        """Parity oracle: this parser and the canonical shell extractor must
-        agree line-for-line on which lines are citations.
+    def test_column0_regex_regression_pin_hand_transcribed_from_canonical(
+        self,
+    ) -> None:
+        """Regression pin on THIS module's own column-0 regex. NOT a cross-surface
+        oracle — see :class:`TestCanonicalBindingParity` for the real one.
 
-        The canonical definition lives in the ``Resolve Evidence-Source`` steps
-        of ``occ-preflight.yml`` / ``receipt-gate.yml``. Reproducing its regex
-        here and asserting set-equality is what keeps the two from drifting
-        apart silently — the OMN-14208 failure mode is two individually-green
-        surfaces that disagree at the seam.
+        Honesty note (OMN-15475 AC4). A prior revision of this test was titled
+        ``test_citation_set_matches_the_canonical_grep`` and documented as a
+        "parity oracle" that keeps this parser and the canonical shell extractor
+        "from drifting apart silently". It does no such thing:
+
+        1. It compares :data:`EVIDENCE_SOURCE_RE` against a HARDCODED Python
+           literal of the same character class, so the two match identical line
+           sets by construction.
+        2. It never reads ``occ-preflight.yml`` / ``receipt-gate.yml`` — those
+           live in ``omnibase_core`` and omnimarket's callers pin ``@main``
+           (unpinned), so canonical can change with this test still green.
+        3. It was already blind to a LIVE divergence: canonical
+           ``[[:space:]]`` ⊋ Python ``[ \\t]``.
+
+        What it actually is, and all it claims: a pin against accidental
+        widening of our own regex (bullets, bold, indentation, blockquotes,
+        inline mentions), hand-transcribed from
+        ``omnibase_core/.github/workflows/occ-preflight.yml`` at
+        ``fd2d2942`` (``grep -iE '^Evidence-Source:[[:space:]]+\\S' | head -1``),
+        read 2026-07-30.
         """
 
         canonical = re.compile(
@@ -177,23 +197,217 @@ class TestEvidenceSourceParsing:
         body = "the body carried `Evidence-Source: OCC#5487`, which was dead"
         assert parse_evidence_sources(body) == []
 
-    def test_fenced_block_is_not_a_citation(self) -> None:
+    def test_fenced_citation_below_the_real_stamp_stays_documentation(self) -> None:
+        # The arbiter binds head -1 = the real column-0 stamp, so the fenced
+        # example below it is bound by nobody and stays excluded. This is the
+        # documentation case fence-stripping exists to serve, and it survives
+        # the OMN-15475 fix intact.
         body = (
-            "Proof:\n\n```\nEvidence-Source: OCC#5487\n```\n\n"
-            "Evidence-Source: OCC#5497\n"
+            "Evidence-Source: OCC#5497\n\nProof of the dead one:\n\n"
+            "```\nEvidence-Source: OCC#5487\n```\n"
         )
         assert parse_evidence_sources(body) == ["OCC#5497"]
 
-    def test_tilde_fence_is_also_excluded(self) -> None:
-        body = "~~~\nEvidence-Source: OCC#5487\n~~~\n"
-        assert parse_evidence_sources(body) == []
+    def test_indented_fenced_example_is_invisible_to_both_surfaces(self) -> None:
+        # The documented safe idiom: indent the example by one space. Neither
+        # the canonical grep (anchored ^Evidence-Source: at column 0) nor this
+        # module's regex sees it, fence or no fence.
+        body = (
+            "Proof:\n\n```\n Evidence-Source: OCC#5487\n```\n\n"
+            "Evidence-Source: OCC#5497\n"
+        )
+        assert canonical_first_citation(body) == "OCC#5497"
+        assert parse_evidence_sources(body) == ["OCC#5497"]
 
-    def test_unclosed_fence_swallows_the_rest_and_fails_closed_upstream(self) -> None:
-        # An unterminated fence hides everything after it. That yields ZERO
-        # citations, which evaluate_once turns into PENDING → FAIL at the
-        # deadline — never a green.
+    def test_tilde_fence_only_body_still_yields_the_canonical_binding(self) -> None:
+        # Previously asserted []. The arbiter binds this line (it greps the raw
+        # body), so dropping it hid the ONLY thing occ-preflight would pin.
+        body = "~~~\nEvidence-Source: OCC#5487\n~~~\n"
+        assert canonical_first_citation(body) == "OCC#5487"
+        assert parse_evidence_sources(body) == ["OCC#5487"]
+
+    def test_unclosed_fence_no_longer_swallows_the_canonical_binding(self) -> None:
+        # An unterminated fence hides everything after it from the REPORTING
+        # set. Previously that yielded ZERO citations; the arbiter still bound
+        # OCC#5497, so the gate was evaluating a different world than the
+        # surface it arbitrates for.
         body = "```\nEvidence-Source: OCC#5497\n"
-        assert parse_evidence_sources(body) == []
+        assert parse_evidence_sources(body) == ["OCC#5497"]
+
+
+# --------------------------------------------------------------------------- #
+# OMN-15475: parse like the arbiter binds
+# --------------------------------------------------------------------------- #
+
+# The literal body shape from OMN-15475: a fenced CLOSED-unmerged citation
+# sitting ABOVE the real MERGED stamp. occ-preflight/receipt-gate grep the raw
+# body and take head -1, so they bind OCC#5487 (dead) and pin its branch head.
+FENCED_DEAD_ABOVE_LIVE_BODY = (
+    "Example of a dead citation:\n"
+    "\n"
+    "```\n"
+    "Evidence-Source: OCC#5487\n"
+    "```\n"
+    "\n"
+    "Evidence-Source: OCC#5548\n"
+)
+
+# The whitespace-class variant: POSIX [[:space:]] includes \v \f \r; Python's
+# [ \t] does not. A form feed between the trailer and the value is a citation to
+# the arbiter and was not one here. It is also a line break to
+# ``str.splitlines()`` but NOT to ``grep``, which splits on \n only.
+FORM_FEED_DEAD_ABOVE_LIVE_BODY = (
+    "Evidence-Source:\x0cOCC#5487\n\nEvidence-Source: OCC#5548\n"
+)
+
+
+def _canonical_shell_binding(body: str) -> str | None:
+    """Run the REAL canonical pipeline from ``occ-preflight.yml`` via POSIX tools.
+
+    This is the cross-implementation oracle: actual ``grep``/``head``/``sed``,
+    not a Python transcription of them. The pipeline is byte-identical to the
+    ``Resolve Evidence-Source`` step of ``omnibase_core``'s ``occ-preflight.yml``
+    and ``receipt-gate.yml``.
+    """
+
+    script = (
+        "grep -iE '^Evidence-Source:[[:space:]]+\\S' | head -1 | "
+        "sed -E 's/^Evidence-Source:[[:space:]]*//; s/^[[:space:]]+//; "
+        "s/[[:space:]]+$//'"
+    )
+    proc = subprocess.run(  # fixed argv, trusted shell snippet, test-only
+        ["bash", "-c", script],
+        input=body,
+        capture_output=True,
+        text=True,
+        check=False,
+        timeout=30,
+    )
+    out = proc.stdout.strip("\n")
+    return out or None
+
+
+class TestCanonicalBindingParity:
+    """OMN-15475. The gate must evaluate the citation the arbiter actually binds.
+
+    RED-before/GREEN-after against the committed gate: every assertion in
+    :meth:`test_fenced_dead_citation_above_a_live_stamp_is_evaluated`,
+    :meth:`test_form_feed_citation_is_evaluated` and
+    :meth:`test_gate_fails_on_the_fenced_dead_citation` fails on
+    ``origin/dev``'s revision, which returned ``['OCC#5548']`` for both bodies
+    and greened.
+    """
+
+    def test_fenced_dead_citation_above_a_live_stamp_is_evaluated(self) -> None:
+        assert canonical_first_citation(FENCED_DEAD_ABOVE_LIVE_BODY) == "OCC#5487", (
+            "the arbiter binds the fenced dead ref — the gate must see it too"
+        )
+        assert parse_evidence_sources(FENCED_DEAD_ABOVE_LIVE_BODY) == [
+            "OCC#5487",
+            "OCC#5548",
+        ]
+
+    def test_form_feed_citation_is_evaluated(self) -> None:
+        assert canonical_first_citation(FORM_FEED_DEAD_ABOVE_LIVE_BODY) == "OCC#5487"
+        assert parse_evidence_sources(FORM_FEED_DEAD_ABOVE_LIVE_BODY) == [
+            "OCC#5487",
+            "OCC#5548",
+        ]
+
+    def test_gate_fails_on_the_fenced_dead_citation(self) -> None:
+        """End-to-end: the exact OMN-15427 incident class, through the gate."""
+
+        fetcher = FakeFetcher(
+            prs={
+                (PRODUCT_REPO, "1953"): _product_pr(FENCED_DEAD_ABOVE_LIVE_BODY),
+                (OCC_REPO, "5487"): _occ("CLOSED"),
+                (OCC_REPO, "5548"): _occ("MERGED", "f0440822380a"),
+            }
+        )
+        verdict = _evaluate(fetcher)
+        assert verdict.code == EXIT_FAIL, verdict.reason
+        assert "OCC#5487" in verdict.reason
+
+    def test_gate_fails_on_the_form_feed_dead_citation(self) -> None:
+        fetcher = FakeFetcher(
+            prs={
+                (PRODUCT_REPO, "1953"): _product_pr(FORM_FEED_DEAD_ABOVE_LIVE_BODY),
+                (OCC_REPO, "5487"): _occ("CLOSED"),
+                (OCC_REPO, "5548"): _occ("MERGED", "f0440822380a"),
+            }
+        )
+        verdict = _evaluate(fetcher)
+        assert verdict.code == EXIT_FAIL, verdict.reason
+        assert "OCC#5487" in verdict.reason
+
+    def test_all_merged_fenced_and_live_still_passes(self) -> None:
+        """Control: the fix must not turn every documenting body red."""
+
+        fetcher = FakeFetcher(
+            prs={
+                (PRODUCT_REPO, "1953"): _product_pr(FENCED_DEAD_ABOVE_LIVE_BODY),
+                (OCC_REPO, "5487"): _occ("MERGED", "aaaaaaaaaaaa"),
+                (OCC_REPO, "5548"): _occ("MERGED", "f0440822380a"),
+            }
+        )
+        assert _evaluate(fetcher).code == EXIT_PASS
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            pytest.param("", id="empty"),
+            pytest.param("no citation anywhere", id="no-citation"),
+            pytest.param(FENCED_DEAD_ABOVE_LIVE_BODY, id="fenced-dead-above-live"),
+            pytest.param(FORM_FEED_DEAD_ABOVE_LIVE_BODY, id="form-feed"),
+            pytest.param("Evidence-Source:\vOCC#1\n", id="vertical-tab"),
+            pytest.param("Evidence-Source:\tOCC#5506\n", id="tab"),
+            pytest.param("Evidence-Source:   OCC#5506   \n", id="padded"),
+            pytest.param("Evidence-Source: OCC#5506\r\nmore\r\n", id="crlf"),
+            pytest.param("- Evidence-Source: OCC#1\n", id="bullet"),
+            pytest.param("**Evidence-Source**: OCC#2\n", id="bold"),
+            pytest.param("  Evidence-Source: OCC#3\n", id="indented"),
+            pytest.param("> Evidence-Source: OCC#4\n", id="blockquote"),
+            pytest.param("see `Evidence-Source: OCC#5` inline\n", id="inline"),
+            pytest.param("Evidence-Source:\n", id="trailer-with-no-value"),
+            pytest.param("Evidence-Source:\nOCC#5487\n", id="value-on-next-line"),
+            pytest.param(
+                "evidence-source: OCC#5487\nEvidence-Source: OCC#5548\n",
+                id="lowercase-first",
+            ),
+            pytest.param("~~~\nEvidence-Source: OCC#5487\n~~~\n", id="tilde-fence"),
+            pytest.param("```\nEvidence-Source: OCC#5497\n", id="unclosed-fence"),
+        ],
+    )
+    def test_canonical_binder_matches_the_real_shell_pipeline(self, body: str) -> None:
+        """Cross-implementation oracle: our Python binder vs actual POSIX tools.
+
+        Unlike the hand-transcribed regression pin above, this executes the
+        canonical pipeline itself, so a divergence in whitespace class, line
+        splitting, ``head -1`` selection or ``sed`` trimming is caught rather
+        than reproduced. ``bash``/``grep``/``sed`` are present on every hosted
+        runner this repo uses (ubuntu-latest) and on the local dev hosts; a
+        missing one is an environment defect, so this test errors rather than
+        skipping — a skip here would be a vacuous green.
+        """
+
+        assert shutil.which("bash") is not None, "bash absent — cannot run the oracle"
+        assert canonical_first_citation(body) == _canonical_shell_binding(body)
+
+    def test_canonical_sed_is_case_sensitive_while_its_grep_is_not(self) -> None:
+        """Quirk found BY the oracle, pinned so it is recorded rather than lost.
+
+        ``grep -iE`` SELECTS a lowercase ``evidence-source:`` line; the
+        following ``sed -E 's/^Evidence-Source:...//'`` is case-SENSITIVE and
+        does not strip it, so the arbiter's resolved value is the whole line and
+        it hard-fails the PR ("not a valid OCC#<number> or hex SHA"). No dead
+        ref can hide in this shape — the arbiter pins nothing — so this gate
+        re-strips the trailer and evaluates the companion that was meant.
+        """
+
+        body = "evidence-source: OCC#5487\nEvidence-Source: OCC#5548\n"
+        assert _canonical_shell_binding(body) == "evidence-source: OCC#5487"
+        assert canonical_first_citation(body) == "evidence-source: OCC#5487"
+        assert parse_evidence_sources(body) == ["OCC#5487", "OCC#5548"]
 
 
 class TestPrNumberResolution:

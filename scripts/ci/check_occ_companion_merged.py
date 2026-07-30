@@ -36,6 +36,21 @@ evadable: append a fresh merged citation above a dead one and the gate greens on
 evidence that no longer exists. This port evaluates **all** citations and
 aggregates fail-closed (any FAIL ⇒ FAIL; else any PENDING ⇒ PENDING).
 
+Parse like the arbiter binds (OMN-15475)
+----------------------------------------
+"All citations" is only safe if it is a SUPERSET of what the canonical arbiter
+binds. It was not: this gate stripped fenced blocks before building the entire
+citation set, so a fenced dead example sitting **above** a real stamp was erased
+from its view while ``occ-preflight.yml``/``receipt-gate.yml`` — which grep the
+**raw** body and take ``head -1`` — bound that dead ref and pinned its branch
+head. The two surfaces disagreed field-by-field on what "the citation" is, in
+silence (the OMN-14208 seam class), and since occ-preflight deliberately
+*accepts* a non-MERGED companion by falling back to ``headRefOid``, this gate is
+the sole detector for the dead-citation class. The evaluated set is now the
+UNION of the fence-filtered set and :func:`canonical_first_citation` — a faithful
+reproduction of the arbiter's pipeline, POSIX space class and ``\n``-only line
+splitting included.
+
 Deliberately NOT a new required status check: this job is registered in
 :data:`scripts.ci.ci_summary_gate.STRICT_GATE_JOBS` (present + completed +
 conclusion ``success``; a skip/cancel/absence fails closed) and enforced through
@@ -124,24 +139,86 @@ EVIDENCE_SOURCE_RE = re.compile(
     re.IGNORECASE | re.MULTILINE,
 )
 
-# Fenced code blocks (``` or ~~~) are documentation, not citations. A PR body
-# that *explains* this gate — including this port's own RED/GREEN proof —
-# necessarily quotes dead citations; treating a quoted example as a live
-# citation would make the gate unusable and would red PRs for describing it.
-# This is not a bypass: moving a REAL citation inside a fence removes it from
-# the citation set entirely, which yields PENDING → FAIL at the deadline, not
-# a green.
+# Fenced code blocks (``` or ~~~) are excluded from the *reported* citation set.
+# A PR body that *explains* this gate — including this port's own RED/GREEN
+# proof — necessarily quotes dead citations, and reporting every quoted example
+# as a live citation would red PRs for describing the mechanism.
 #
-# DOCUMENTED DIVERGENCE from the canonical grep (the one that remains, and it is
-# intentional): occ-preflight/receipt-gate do NOT strip fences — they grep the
-# raw body and take ``head -1``, so for them a fenced example at column 0 can
-# become THE citation. This gate cannot copy that behaviour, because it checks
-# EVERY citation rather than only the first, so a body that quotes a dead
-# example would be permanently red. The divergence is fail-closed in aggregate:
-# a body whose only stamp is fenced yields zero citations here (PENDING → FAIL
-# at the deadline) and is independently rejected by occ-preflight if the fenced
-# value is not durable.
+# Fence-stripping is a REPORTING filter only. It is NOT allowed to remove the
+# citation the canonical arbiter actually binds — see
+# :func:`canonical_first_citation` and OMN-15475. The prior revision of this
+# port stripped fences before building the ENTIRE citation set, and argued the
+# divergence was "fail-closed in aggregate". That argument covered exactly one
+# shape (a body whose ONLY stamp is fenced ⇒ zero citations ⇒ PENDING ⇒ FAIL at
+# the deadline) and was false for the shape that matters:
+#
+#     Example of a dead citation:
+#
+#     <fence>
+#     Evidence-Source: OCC#5487      <- CLOSED unmerged, column 0, inside a fence
+#     <fence>
+#
+#     Evidence-Source: OCC#5548      <- MERGED
+#
+# occ-preflight/receipt-gate grep the RAW body and take ``head -1``, so they
+# bind the dead ``OCC#5487`` and pin its branch head (occ-preflight deliberately
+# falls back to ``headRefOid`` for a non-MERGED companion — it ACCEPTS a dead
+# one). The gate, seeing only ``OCC#5548``, greened. That is the omnimarket#1953
+# originating incident recurring straight through the gate ported to prevent it,
+# and this gate is the sole detector for the class.
+#
+# Safe idiom for documenting a dead citation in a PR body: indent the example by
+# one space. An indented ``Evidence-Source:`` line is invisible to BOTH surfaces
+# (the canonical grep anchors ``^Evidence-Source:`` at column 0, as does
+# :data:`EVIDENCE_SOURCE_RE`), so it is neither bound nor evaluated — with or
+# without a fence around it.
 _FENCE_RE = re.compile(r"^[ \t]*(?:```|~~~)")
+
+# Faithful reproduction of the canonical binder that occ-preflight.yml and
+# receipt-gate.yml actually run against the RAW body:
+#
+#     printf '%s' "$pr_body" \
+#       | grep -iE '^Evidence-Source:[[:space:]]+\S' \
+#       | head -1 \
+#       | sed -E 's/^Evidence-Source:[[:space:]]*//; s/^[[:space:]]+//; s/[[:space:]]+$//'
+#
+# Three fidelity details that :data:`EVIDENCE_SOURCE_RE` gets wrong, two of which
+# produced live wrong-binding shapes (OMN-15475):
+#
+# 1. POSIX ``[[:space:]]`` inside a grep line is ``[ \t\v\f\r]`` — a STRICT
+#    SUPERSET of Python's ``[ \t]``. ``Evidence-Source:\x0cOCC#5487`` is a
+#    citation to the arbiter and was not one here.
+# 2. ``grep`` splits lines on ``\n`` ONLY. Python's ``str.splitlines()`` also
+#    splits on ``\v``, ``\f``, ``\x1c``-``\x1e``, ``\x85`` and the Unicode
+#    line/paragraph separators — so ``splitlines()`` manufactures line breaks
+#    the arbiter never sees. This module therefore splits on ``"\n"`` for the
+#    canonical binder.
+# 3. The pipeline's ``grep -i`` is case-INSENSITIVE but its ``sed -E`` is NOT,
+#    so a lowercase ``evidence-source: OCC#1`` line is SELECTED and then left
+#    un-stripped, yielding the literal value ``evidence-source: OCC#1`` — which
+#    occ-preflight then hard-rejects as "not a valid OCC#<number> or hex SHA".
+#    :func:`canonical_first_citation` reproduces that byte-for-byte (the parity
+#    oracle asserts it against real ``grep``/``sed``);
+#    :func:`_normalize_canonical_value` then re-strips the trailer
+#    case-insensitively so this gate evaluates the companion the author meant
+#    rather than emitting a malformed-value FAIL for a shape the arbiter already
+#    fails on its own. No dead ref can hide in this shape: the arbiter pins
+#    nothing here, it refuses the PR outright.
+_POSIX_SPACE_CHARS = " \t\v\f\r"
+# Line SELECTION mirrors `grep -iE` — case-insensitive.
+_CANONICAL_SELECT_RE = re.compile(
+    r"^Evidence-Source:[ \t\v\f\r]+\S",
+    re.IGNORECASE,
+)
+# Value EXTRACTION mirrors `sed -E 's/^Evidence-Source:[[:space:]]*//'` — case
+# SENSITIVE, deliberately. Do not add re.IGNORECASE here: that would make the
+# binder disagree with the arbiter, which is the whole defect being fixed.
+_CANONICAL_SED_RE = re.compile(r"^Evidence-Source:[ \t\v\f\r]*")
+# Our own post-hoc normalization of the residue above (see fidelity note 3).
+_RESIDUAL_TRAILER_RE = re.compile(
+    r"^Evidence-Source:[ \t\v\f\r]*",
+    re.IGNORECASE,
+)
 OCC_PR_REF_RE = re.compile(r"^OCC#(\d+)$", re.IGNORECASE)
 HEX_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
 MERGE_GROUP_PR_RE = re.compile(r"/pr-(\d+)-")
@@ -227,24 +304,64 @@ def strip_fenced_blocks(body: str) -> str:
     return "\n".join(out)
 
 
-def parse_evidence_sources(body: str) -> list[str]:
-    """EVERY ``Evidence-Source:`` value in the PR body, de-duplicated in order.
+def canonical_first_citation(body: str) -> str | None:
+    """The citation ``occ-preflight.yml``/``receipt-gate.yml`` ACTUALLY bind.
 
-    A first-match-only parse is evadable: appending a fresh merged citation
-    above a dead one would green the gate on destroyed evidence. Every citation
-    the body makes is load-bearing, so every citation is checked. Fenced code
-    blocks are excluded (see :data:`_FENCE_RE`).
+    Reproduces their ``grep -iE '^Evidence-Source:[[:space:]]+\\S' | head -1``
+    + ``sed`` pipeline against the RAW body: no fence-stripping, POSIX space
+    class, ``\\n``-only line splitting. Returns ``None`` when the arbiter would
+    resolve nothing (it then fails the PR for a missing stamp).
+
+    This is the seam anchor for OMN-15475: whatever this returns is the ref the
+    arbiter pins, so it MUST be inside the evaluated citation set regardless of
+    fences or whitespace class.
+    """
+
+    for line in (body or "").split("\n"):
+        if _CANONICAL_SELECT_RE.match(line):
+            return _CANONICAL_SED_RE.sub("", line, count=1).strip(_POSIX_SPACE_CHARS)
+    return None
+
+
+def _normalize_canonical_value(value: str) -> str:
+    """Undo the arbiter's case-sensitive-``sed`` residue (see fidelity note 3)."""
+
+    return _RESIDUAL_TRAILER_RE.sub("", value).strip(_POSIX_SPACE_CHARS)
+
+
+def parse_evidence_sources(body: str) -> list[str]:
+    """Every citation this gate evaluates, de-duplicated, canonical binding first.
+
+    The set is the UNION of:
+
+    * :func:`canonical_first_citation` — the ONE value occ-preflight/receipt-gate
+      bind from the raw body. Never droppable: dropping it is what let a fenced
+      dead example above a real stamp green this gate while the arbiter pinned
+      the dead ref (OMN-15475).
+    * every column-0 ``Evidence-Source:`` line OUTSIDE a fenced block — because
+      a first-match-only parse is evadable: appending a fresh merged citation
+      above a dead one would green the gate on destroyed evidence.
+
+    Fences still filter the second set (documentation stays documentation); they
+    can no longer filter the first.
     """
 
     seen: set[str] = set()
     values: list[str] = []
-    for match in EVIDENCE_SOURCE_RE.finditer(strip_fenced_blocks(body)):
-        value = match.group(1).strip()
+
+    def _add(value: str) -> None:
         key = value.lower()
         if key in seen:
-            continue
+            return
         seen.add(key)
         values.append(value)
+
+    canonical = canonical_first_citation(body)
+    if canonical is not None:
+        _add(_normalize_canonical_value(canonical))
+
+    for match in EVIDENCE_SOURCE_RE.finditer(strip_fenced_blocks(body)):
+        _add(match.group(1).strip())
     return values
 
 
