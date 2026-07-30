@@ -1,0 +1,147 @@
+# ============================================================================
+# Merge Hold Gate — the ONE authored surface, called by every adopting repo
+# (OMN-15484, fan-out of OMN-15483)
+# ============================================================================
+#
+# OMN-15483 landed the hold gate in omnimarket only. Every incident in that
+# ticket's own table happened somewhere else: onex_change_control (OCC#5588,
+# #5586, #5530/#5531, #5584) and omnibase_infra (#2560). The mechanism did not
+# cover the repos where the bug occurs.
+#
+# The obvious fan-out — copy hold_marker.py + check_pr_hold_marker.py into each
+# repo — is explicitly rejected by OMN-15484 AC1, because it rebuilds at fleet
+# scale the exact bug round 1 found INSIDE omnimarket: two divergent
+# `_DO_NOT_MERGE_RE` definitions, neither a superset of the other, so the same
+# PR was suppressed by one consumer and authored by the other. Nine copies plus
+# a sync test is that bug with more copies and more places to forget.
+#
+# So this is a reusable workflow: one authored surface, N callers. An adopting
+# repo adds ~10 lines of `uses:` and declares NO vocabulary, NO regex and NO
+# gate logic of its own. The vocabulary is read at run time out of omnimarket's
+# src/omnimarket/merge_control/hold_marker.py — the same module the omnimarket
+# node path calls — so there is nothing to drift.
+#
+# WHAT THIS JOB PROVES, in every calling repo, on every run
+# ---------------------------------------------------------
+# A green hold check proves only that the job ran and that THIS PR is not held.
+# It does not prove the gate can say no, and every interesting failure mode is
+# silent under that observation. So the job renders four verdicts, in order:
+#
+#   1. AC1 — the CALLING repo declares no second hold vocabulary.
+#   2. AC5 — the check's own context name is not itself a hold token (the first
+#      draft of the omnimarket gate was named "Verification Hold Gate", and
+#      `verification hold` is in the vocabulary it enforces: a PR titled after
+#      the gate would have been held by the gate it was installing).
+#   3. AC3 — a held title really does produce exit 1 HERE, and a clean title
+#      really does produce exit 0. Both directions: exit-1-always is as broken
+#      as exit-0-always.
+#   4. The real verdict for the caller's PR.
+#
+# UNCONDITIONAL BY DESIGN (AC4). The calling job must carry no `needs:` and no
+# `if:`. On omnimarket a56e3819 a failing `occ-preflight` cascade-skipped Tests,
+# typecheck, Contract Compliance and the whole E2E lane; a hold gate an
+# unrelated upstream can skip is not a gate. This job is hosted-runner,
+# stdlib-only, no `uv sync`, and reaches a verdict in seconds, so it has no
+# reason to depend on anything.
+#
+# REGISTRATION IS THE MECHANISM, NOT EXISTENCE. Adding this job without adding
+# it to the caller's `CI Summary` strict set is worse than not adding it —
+# proven by execution against the real evaluator on omnimarket#1973:
+#
+#   hold job result | with strict registration | without registration
+#   --------------- | ------------------------ | --------------------
+#   failure         | CI Summary FAILURE       | CI Summary FAILURE
+#   skipped         | CI Summary FAILURE       | CI Summary SUCCESS  <- bypass
+#   cancelled       | CI Summary FAILURE       | CI Summary FAILURE
+#   absent          | CI Summary PENDING       | CI Summary SUCCESS  <- bypass
+#
+# An unregistered job looks like enforcement and enforces nothing. Each caller
+# registers it in whatever shape its own `CI Summary` producer uses (a name in
+# `STRICT_GATE_JOBS` for the poller repos; a `needs:` entry plus an explicit
+# success-only check for the needs-based aggregators) and ships a test that
+# drives that producer.
+# ============================================================================
+name: Merge Hold Gate (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      vocabulary_ref:
+        description: >-
+          omnimarket ref to resolve the canonical hold vocabulary from. Defaults
+          to `dev`, which is deliberate for a VOCABULARY: adding a hold token
+          must take effect fleet-wide immediately, and a per-caller pin would
+          mean nine repos enforcing nine different vintages of the same rule —
+          the divergence this fan-out exists to prevent. Same posture as
+          omniclaude's deploy-gate-reusable, which checks itself out at `main`.
+        required: false
+        type: string
+        default: dev
+      scan_roots:
+        description: >-
+          Space-separated directories in the CALLING repo to scan for a second
+          hold vocabulary (AC1). Missing directories are skipped, so the default
+          is safe for repos with no `src/`.
+        required: false
+        type: string
+        default: src scripts
+      context_name:
+        description: >-
+          The check-run context this call produces, as the caller expects to
+          register it (e.g. `merge-hold-gate / evaluate`). Validated against the
+          canonical vocabulary for AC5, and asserted equal to the caller's real
+          job wiring by the caller's own wiring test — the two halves together
+          are what stop the registered name and the produced name drifting.
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  evaluate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      # Everything the gate reads, injected as ENV rather than interpolated into
+      # a script body. `github.event.pull_request.title` is attacker-controlled
+      # on a fork PR; as an env value it is data, never shell.
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels) }}
+      HOLD_GATE_CONTEXT_NAME: ${{ inputs.context_name }}
+      CALLER_SCAN_ROOTS: ${{ inputs.scan_roots }}
+    steps:
+      - name: Checkout the calling repository
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          path: caller
+          persist-credentials: false
+
+      - name: Checkout the canonical hold vocabulary (omnimarket)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          repository: OmniNode-ai/omnimarket
+          ref: ${{ inputs.vocabulary_ref }}
+          path: vocabulary
+          persist-credentials: false
+
+      - name: AC1 - this repository declares no second hold vocabulary
+        working-directory: vocabulary
+        run: |
+          python3 -m scripts.ci.check_single_hold_vocabulary \
+            --tree "${GITHUB_WORKSPACE}/caller" \
+            --roots "${CALLER_SCAN_ROOTS}"
+
+      - name: AC5 + AC3 - the gate is not self-holding, and it demonstrably fires
+        working-directory: vocabulary
+        run: python3 -m scripts.ci.check_hold_gate_selftest
+
+      - name: Refuse a PR that is held against landing
+        working-directory: vocabulary
+        run: python3 scripts/ci/check_pr_hold_marker.py
