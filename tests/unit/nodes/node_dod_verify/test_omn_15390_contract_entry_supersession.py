@@ -1062,9 +1062,29 @@ def test_occ_gate_agrees_with_the_runner_on_the_shared_corpus() -> None:
             "still holds the invariant here."
         )
 
-    inserted = str(src_root) not in sys.path
-    if inserted:
-        sys.path.insert(0, str(src_root))
+    # Prepending ``src_root`` to ``sys.path`` is NOT sufficient on its own, and
+    # this is the trap that made the first CI run of this test red rather than
+    # green. omnimarket DEPENDS on onex-change-control (`pyproject.toml` pins it
+    # to a git rev), and that INSTALLED distribution ships
+    # `onex_change_control/scripts/` WITHOUT `contract_compliance_check.py` and
+    # has no `validation.evidence_admissibility` at all. Once any earlier test
+    # in the session has imported `onex_change_control`, the parent package is
+    # bound to site-packages and every submodule lookup follows ITS `__path__`,
+    # which `sys.path` order cannot override — so the differential either
+    # resolved the wrong tree or failed outright, depending on test ordering.
+    #
+    # Purge the cached OCC package tree, import the whole thing from the
+    # CHECKOUT, then restore site-packages' modules so nothing else in the
+    # session sees a swapped dependency.
+    occ_prefix = "onex_change_control"
+    saved_modules = {
+        name: mod
+        for name, mod in sys.modules.items()
+        if name == occ_prefix or name.startswith(f"{occ_prefix}.")
+    }
+    for name in saved_modules:
+        del sys.modules[name]
+    sys.path.insert(0, str(src_root))
     try:
         module = importlib.import_module(
             "onex_change_control.scripts.contract_compliance_check"
@@ -1080,8 +1100,21 @@ def test_occ_gate_agrees_with_the_runner_on_the_shared_corpus() -> None:
             "checkout exists — fix the checkout or the dependency."
         )
     finally:
-        if inserted and str(src_root) in sys.path:
+        if str(src_root) in sys.path:
             sys.path.remove(str(src_root))
+        for name in [
+            name
+            for name in sys.modules
+            if name == occ_prefix or name.startswith(f"{occ_prefix}.")
+        ]:
+            del sys.modules[name]
+        sys.modules.update(saved_modules)
+
+    assert Path(module.__file__ or "").is_relative_to(src_root), (
+        f"resolved {module.__file__!r}, which is not inside the checkout at "
+        f"{src_root} — the differential would be comparing against the "
+        "installed onex-change-control distribution, not the live gate"
+    )
 
     occ_superseded_ids = module._superseded_dod_ids
 
