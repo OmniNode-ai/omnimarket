@@ -2535,12 +2535,29 @@ class HandlerPrLifecycleOrchestrator:
         prs_merged = 0
         prs_failed = 0
         for pr in capped:
+            # OMN-15483 seam: the merge handler matches the hold marker against
+            # these two surfaces. They are carried from the inventory read here
+            # and never re-derived downstream.
+            merge_record = pr_lookup.get((pr.repo, pr.pr_number))
             merge_command = ModelPrMergeCommand(
                 correlation_id=correlation_id,
                 pr_number=pr.pr_number,
                 repo=pr.repo,
                 triage_verdict=pr.category.value,
                 use_merge_queue=True,
+                # A missing inventory record leaves the title unobserved, which
+                # the handler treats as INDETERMINATE and refuses. That is not a
+                # new stall: the arm-gate above already WITHHOLDs a PR with no
+                # record (``is_draft is not False``), so no PR reaches this line
+                # without one.
+                pr_title=merge_record.title if merge_record is not None else None,
+                # PrRecord carries no label names today — the inventory node's
+                # output model has no labels field — so the label surface is
+                # reported as genuinely UNOBSERVED (None) rather than falsely as
+                # "observed and empty" (()). The title surface still enforces.
+                # Residual: thread labels inventory -> PrRecord so a
+                # ``verification-hold`` LABEL binds on this path too.
+                pr_labels=None,
                 dry_run=dry_run,
                 requested_at=datetime.now(tz=UTC),
             )

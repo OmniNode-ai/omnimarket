@@ -82,6 +82,7 @@ from omnimarket.github_api import (
 )
 from omnimarket.github_app_auth import resolve_app_installation_token_from_contract
 from omnimarket.inference.secret_store_resolver import resolve_api_key
+from omnimarket.merge_control.hold_marker import HOLD_MARKER_RE
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
@@ -156,14 +157,14 @@ _DEFAULT_VERIFIER = "occ-evidence-source-autobind"
 _DEFAULT_LEASE_TTL_SECONDS = 900
 
 # OMN-14741 F-17: emission is suppressed for a product PR that is closed, a draft,
-# or explicitly marked do-not-merge. A do-not-merge marker is any of these tokens
-# in the PR TITLE (case-insensitive) or a matching label name. The compact regex
-# tolerates the common spellings (``DO NOT MERGE`` / ``DO-NOT-MERGE`` /
-# ``DONOTMERGE``) plus ``[WIP]`` / ``WORK IN PROGRESS``.
-_DO_NOT_MERGE_RE = re.compile(
-    r"\bDO[\s_-]?NOT[\s_-]?MERGE\b|\bWORK[\s_-]?IN[\s_-]?PROGRESS\b|\[\s*WIP\s*\]",
-    re.IGNORECASE,
-)
+# or explicitly marked do-not-merge — matched in the PR TITLE (case-insensitive)
+# or a label name.
+#
+# OMN-15483: the vocabulary moved to ``omnimarket.merge_control.hold_marker``
+# (imported above as ``HOLD_MARKER_RE``) and is now the SINGLE definition in the
+# tree. It previously existed here AND, divergently, in
+# ``node_occ_companion_compute``; the shared definition is the union of both, so
+# every token this site suppressed on before still suppresses.
 
 
 # OMN-14893: the OCC machine path defaults to the shared operator PAT
@@ -1128,13 +1129,13 @@ class OccCompanionEmitter:
         if bool(pr_data.get("draft")):
             return "PR_DRAFT"
         title = pr_data.get("title")
-        if isinstance(title, str) and _DO_NOT_MERGE_RE.search(title):
+        if isinstance(title, str) and HOLD_MARKER_RE.search(title):
             return "PR_DO_NOT_MERGE"
         labels = pr_data.get("labels")
         if isinstance(labels, list):
             for label in labels:
                 name = label.get("name") if isinstance(label, dict) else None
-                if isinstance(name, str) and _DO_NOT_MERGE_RE.search(name):
+                if isinstance(name, str) and HOLD_MARKER_RE.search(name):
                     return "PR_DO_NOT_MERGE"
         return None
 

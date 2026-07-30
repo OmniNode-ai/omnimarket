@@ -50,6 +50,7 @@ from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
 
+from omnimarket.merge_control.hold_marker import HOLD_MARKER_RE
 from omnimarket.nodes.node_occ_companion_compute.models.enum_companion_file_kind import (
     EnumCompanionFileKind,
 )
@@ -106,11 +107,15 @@ _BlockScalarDumper.add_representer(str, _represent_str_block)
 # `[WS4 PARITY PROBE - DO NOT MERGE]` PR, producing queue noise + a failing
 # obsolete companion. The pure COMPUTE suppresses at authoring time (returns a
 # no-op plan) instead of relying on a downstream probe.
+#
+# OMN-15483: the marker vocabulary moved to
+# ``omnimarket.merge_control.hold_marker`` (imported below as
+# ``HOLD_MARKER_RE``). It used to be declared here AND, with a DIFFERENT token
+# set, in ``occ_companion_emitter.py`` — neither a superset of the other, so the
+# same PR could be suppressed by one consumer and authored by the other. The
+# shared definition is the union, so every token this site suppressed on before
+# still suppresses.
 _SUPPRESS_PR_STATES = frozenset({"closed", "merged"})
-_DO_NOT_MERGE_RE = re.compile(
-    r"do[\s\-_]?not[\s\-_]?merge|\bDNM\b|\bWIP\b|\[\s*draft",
-    re.IGNORECASE,
-)
 
 # Observed-fact lines projected OUT of the reproducibility fingerprint (§4.4).
 # ``created_at`` is the supersession-record sibling of ``run_timestamp`` (both are
@@ -528,7 +533,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             no_op_reason="product PR is a draft; suppressing companion (F-17)",
         )
     dnm_label = next(
-        (lbl for lbl in request.pr_labels if _DO_NOT_MERGE_RE.search(lbl)), None
+        (lbl for lbl in request.pr_labels if HOLD_MARKER_RE.search(lbl)), None
     )
     if dnm_label is not None:
         return _plan(
@@ -538,7 +543,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 "suppressing companion (F-17)"
             ),
         )
-    if _DO_NOT_MERGE_RE.search(request.pr_title) or _DO_NOT_MERGE_RE.search(
+    if HOLD_MARKER_RE.search(request.pr_title) or HOLD_MARKER_RE.search(
         request.pr_body
     ):
         return _plan(

@@ -10,8 +10,15 @@ API via a protocol-injected adapter. Respects per-repo merge queue policy:
 Protocol-injected ProtocolGitHubMergeAdapter allows mock substitution in
 tests with zero infrastructure.
 
+A PR that carries a hold marker (OMN-15483) is INELIGIBLE to land regardless of
+how green its required checks are. The marker vocabulary is the one that already
+shipped for companion authoring (OMN-14741 F-17), hoisted to
+``omnimarket.merge_control.hold_marker`` so exactly one definition exists.
+
 Related:
     - OMN-8084: Create pr_lifecycle_merge_effect Node
+    - OMN-15483: honor the do-not-merge / verification-hold vocabulary here, so
+      the sweep cannot land a PR inside an open adversarial-verification window
 """
 
 from __future__ import annotations
@@ -21,6 +28,7 @@ from datetime import UTC, datetime
 from typing import Literal, Protocol, runtime_checkable
 from uuid import UUID
 
+from omnimarket.merge_control.hold_marker import evaluate_merge_hold
 from omnimarket.nodes.node_pr_lifecycle_merge_effect.models.model_merge_command import (
     ModelPrMergeCommand,
 )
@@ -161,6 +169,46 @@ class HandlerPrLifecycleMerge:
                 completed_at=datetime.now(tz=UTC),
             )
 
+        # OMN-15483: the hold gate. A PR explicitly marked do-not-merge /
+        # verification-hold does not land, no matter how green it is, and an
+        # UNREADABLE hold state refuses too (never decays to "clear"). This runs
+        # before the dry-run branch on purpose: a dry run must report the hold it
+        # would have honored, not a merge it would never have performed.
+        hold = evaluate_merge_hold(
+            title=command.pr_title,
+            labels=command.pr_labels,
+        )
+        if not hold.is_merge_eligible:
+            logger.warning(
+                "PR lifecycle merge REFUSED (hold): pr=%s repo=%s status=%s "
+                "token=%r source=%s unobserved=%s correlation_id=%s",
+                command.pr_number,
+                command.repo,
+                hold.status.value,
+                hold.matched_token,
+                hold.matched_source,
+                ",".join(hold.unobserved_sources) or "-",
+                command.correlation_id,
+            )
+            return ModelPrMergeResult(
+                correlation_id=command.correlation_id,
+                pr_number=command.pr_number,
+                repo=command.repo,
+                merged=False,
+                # Names the matched token so a sweep receipt shows WHY this PR
+                # was skipped, not merely that it was (criterion 5).
+                merge_action=f"skipped: merge hold ({hold.status.value}) — {hold.reason}",
+                # Deliberately NOT an error: a hold is a correct, expected
+                # no-op, and the orchestrator counts `error` as prs_failed. A
+                # held PR must not inflate the failure count.
+                error=None,
+                hold_status=hold.status.value,
+                hold_matched_token=hold.matched_token,
+                hold_matched_source=hold.matched_source,
+                hold_unobserved_sources=hold.unobserved_sources,
+                completed_at=datetime.now(tz=UTC),
+            )
+
         merge_action: str
         error: str | None = None
         merged = False
@@ -176,6 +224,8 @@ class HandlerPrLifecycleMerge:
                 merged=merged,
                 merge_action=merge_action,
                 error=error,
+                hold_status=hold.status.value,
+                hold_unobserved_sources=hold.unobserved_sources,
                 completed_at=datetime.now(tz=UTC),
             )
 
@@ -197,6 +247,8 @@ class HandlerPrLifecycleMerge:
                 merged=False,
                 merge_action="failed: missing GitHub merge adapter",
                 error=error,
+                hold_status=hold.status.value,
+                hold_unobserved_sources=hold.unobserved_sources,
                 completed_at=datetime.now(tz=UTC),
             )
 
@@ -250,6 +302,8 @@ class HandlerPrLifecycleMerge:
             merged=merged,
             merge_action=merge_action,
             error=error,
+            hold_status=hold.status.value,
+            hold_unobserved_sources=hold.unobserved_sources,
             completed_at=datetime.now(tz=UTC),
         )
 

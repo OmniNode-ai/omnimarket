@@ -11,6 +11,14 @@ package" boundary (see ``omnimarket/CLAUDE.md``) intact.
 
 from __future__ import annotations
 
+from omnimarket.merge_control.hold_marker import (
+    DO_NOT_MERGE_RE,
+    HOLD_MARKER_RE,
+    EnumMergeHoldStatus,
+    MergeHoldDecision,
+    evaluate_merge_hold,
+    match_hold_token,
+)
 from omnimarket.merge_control.outage_circuit_breaker import (
     EnumOutageBreakerState,
     OutageCircuitBreaker,
@@ -26,13 +34,19 @@ from omnimarket.merge_control.reason_code_classifier import (
 )
 
 __all__: list[str] = [
+    "DO_NOT_MERGE_RE",
+    "HOLD_MARKER_RE",
     "EnumMergeCheckReasonCode",
+    "EnumMergeHoldStatus",
     "EnumOutageBreakerState",
     "MergeCheckFacts",
+    "MergeHoldDecision",
     "OutageCircuitBreaker",
     "classify",
     "classify_dict",
     "classify_job",
     "dominant_reason_code",
+    "evaluate_merge_hold",
     "facts_from_job",
+    "match_hold_token",
 ]
