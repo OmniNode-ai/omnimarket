@@ -78,6 +78,15 @@ secrets:
   ONEXBOT_OCC_PRIVATE_KEY:
     description: "onexbot-occ-writer GitHub App private key PEM (app-auth mode only)."
     required: false
+  # OMN-15441: the product-repo-scoped credential for the ONE write this node
+  # makes outside onex_change_control (PATCH the product PR body with
+  # Evidence-Source). GITHUB_TOKEN above is scoped to onex_change_control in
+  # the CI mutate path and 403s on that call. Optional: when absent the handler
+  # falls back to GITHUB_TOKEN, which is correct for the single-cross-repo-PAT
+  # bus-runtime path.
+  OMNI_OCC_PRODUCT_TOKEN:
+    description: "Product-repo-scoped GitHub token with pull_requests:write, used only for the product PR-body Evidence-Source stamp. Falls back to GITHUB_TOKEN when unset."
+    required: false
 
 side_effects:
   reads:

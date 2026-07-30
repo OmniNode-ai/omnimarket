@@ -54,7 +54,37 @@
 #     identity uses the EXISTING OnexBot + OnexBot-OCC-Writer Apps. OCC companion
 #     authoring is the OnexBot-OCC-Writer lane. Never create a new bot account.
 #
-# Ticket: OMN-14393 (RSD-5), credential re-point OMN-15350. Design doc:
+# TWO CREDENTIALS, NOT ONE (OMN-15441) — the node makes writes into TWO repos:
+#   1. onex_change_control (lease, clone, push, PR create, label)  -> OCC token
+#   2. THIS product repo, exactly one call: PATCH the PR body with
+#      `Evidence-Source: OCC#<n>`                                  -> product token
+#   The OMN-15350 OCC mint is scoped `repositories: onex_change_control`, so it
+#   can NEVER satisfy (2). Reusing it there 403'd live on omnimarket#1958 (run
+#   30496115784): OCC#5516 was created fine, then `_patch_product_body` died on
+#   "Resource not accessible by integration". Scope and target are disjoint by
+#   design, so this is deterministic, not flaky.
+#
+#   The fix is credential SEPARATION, deliberately NOT broadening the OCC-Writer
+#   App onto product repos — least privilege on the OCC writer is the entire
+#   point of OMN-15350/OMN-14955, and widening it would hand every product repo
+#   to the credential that can push change-control evidence.
+#
+#   (2) mints from the general **OnexBot** App (ONEXBOT_APP_ID /
+#   ONEXBOT_APP_PRIVATE_KEY), scoped to THIS repo only. That App is already
+#   installed here — pr-arch-review.yml mints it every run ("creating token for
+#   the current repository (\"omnimarket\")") — so this adds no new credential
+#   surface and no new account, per the standing ruling.
+#
+#   Why not the ambient `secrets.GITHUB_TOKEN`, which is already product-scoped:
+#   a body edit authored by GITHUB_TOKEN does NOT emit `pull_request: edited`
+#   (GitHub's recursion guard). call-occ-preflight.yml lists `edited` in its
+#   trigger types precisely so the stamp re-evaluates eligibility, so the
+#   ambient token would land the bytes and silently fail to unjam the PR. An
+#   App-installation token does emit the event. Do NOT "simplify" this to
+#   secrets.GITHUB_TOKEN.
+#
+# Ticket: OMN-14393 (RSD-5), credential re-point OMN-15350, product-body
+#   credential split OMN-15441. Design doc:
 #   docs/plans/2026-07-14-rsd3-occ-producer-and-retirement.md §3-§4.
 
 name: OCC Companion Author (mutate-capable, DEFAULT dry_run)
@@ -149,6 +179,23 @@ jobs:
             exit 1
           fi
 
+      - name: Validate product-repo write credential (OMN-15441)
+        # Same fail-LOUD shape as the OCC credential check above, for the second
+        # credential this job needs: the product-body stamp targets THIS repo,
+        # which the onex_change_control-scoped OCC token can never reach.
+        # Missing secrets must be an actionable error, never a silent
+        # degradation that authors OCC#<n> and then 403s on the stamp.
+        if: ${{ vars.OMNI_OCC_AUTOAUTHOR_MODE == 'mutate' }}
+        env:
+          ONEXBOT_APP_ID: ${{ secrets.ONEXBOT_APP_ID }}
+          ONEXBOT_APP_PRIVATE_KEY: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ONEXBOT_APP_ID:-}" ] || [ -z "${ONEXBOT_APP_PRIVATE_KEY:-}" ]; then
+            echo "::error::OMNI_OCC_AUTOAUTHOR_MODE=mutate requires org secrets ONEXBOT_APP_ID + ONEXBOT_APP_PRIVATE_KEY (the general OnexBot GitHub App, pull-requests:write on this product repo) to stamp Evidence-Source onto the product PR body. The OnexBot-OCC-Writer App is scoped to onex_change_control ONLY and cannot do this write (OMN-15441). Do NOT broaden the OCC-Writer scope, and do NOT substitute secrets.GITHUB_TOKEN (its edits do not re-trigger the pull_request:edited gates). See OMN-15441 / OMN-15350."
+            exit 1
+          fi
+
       - name: Mint OCC write token (OnexBot-OCC-Writer App, mutate only)
         # Canonical App-token mint pattern (same as call-occ-attestation-observe.yml
         # and pr-arch-review.yml), scoped down to the single target repo: the
@@ -163,11 +210,26 @@ jobs:
           owner: OmniNode-ai
           repositories: onex_change_control
 
+      - name: Mint product-repo write token (OnexBot App, mutate only)
+        # OMN-15441: the SECOND credential. Scoped to THIS repo only, ~1h TTL,
+        # used for exactly one call — PATCH this PR's body with the
+        # Evidence-Source block. Deliberately a different App from the OCC mint
+        # above so the OCC-Writer stays least-privilege on onex_change_control.
+        id: product-app-token
+        if: ${{ vars.OMNI_OCC_AUTOAUTHOR_MODE == 'mutate' }}
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
       - name: Run node_occ_companion_effect (mode-gated)
         id: author
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           OCC_WRITE_TOKEN: ${{ steps.occ-app-token.outputs.token }}
+          PRODUCT_WRITE_TOKEN: ${{ steps.product-app-token.outputs.token }}
         run: |
           set -euo pipefail
           MODE="$(jq -r '.mode' occ_companion_author_payload.json)"
@@ -176,6 +238,11 @@ jobs:
             # GITHUB_TOKEN; point that at the minted, onex_change_control-scoped
             # OnexBot-OCC-Writer installation token.
             export GITHUB_TOKEN="${OCC_WRITE_TOKEN:?mode=mutate requires the minted OnexBot-OCC-Writer token}"
+            # OMN-15441: and hand the handler the SEPARATE product-repo-scoped
+            # credential for the one write GITHUB_TOKEN above cannot make.
+            # Unset/empty would silently fall back to the OCC token and 403, so
+            # this is `:?` (fail loud), matching the OCC token's treatment.
+            export OMNI_OCC_PRODUCT_TOKEN="${PRODUCT_WRITE_TOKEN:?mode=mutate requires the minted OnexBot product-repo token}"
           fi
           uv run onex node node_occ_companion_effect \
             --input occ_companion_author_payload.json \

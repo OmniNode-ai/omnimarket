@@ -125,7 +125,10 @@ def test_marker_label_is_best_effort(monkeypatch: pytest.MonkeyPatch) -> None:
         calls.append(path)
         raise GitHubApiError("boom")
 
-    monkeypatch.setattr(effect_mod, "rest_json", _raise)
+    # OMN-15441: patches `rest_json_array`, the helper the handler now calls.
+    # The labels endpoint returns a label ARRAY, which `rest_json`'s dict-only
+    # contract rejected on every live call.
+    monkeypatch.setattr(effect_mod, "rest_json_array", _raise)
     handler = HandlerOccCompanionEffect()
     # Must not raise despite the API error.
     handler._apply_machine_minted_label("OmniNode-ai", "onex_change_control", 4284, "t")
@@ -139,13 +142,17 @@ def test_marker_label_posts_the_machine_minted_label(
 ) -> None:
     captured: dict[str, object] = {}
 
-    def _capture(method: str, path: str, **k: object) -> dict[str, object]:
+    def _capture(method: str, path: str, **k: object) -> list[dict[str, object]]:
         captured["method"] = method
         captured["path"] = path
         captured["body"] = k.get("body")
-        return {}
+        # OMN-15441: return the REAL response shape (an array of label objects).
+        # This stub previously returned `{}` through `rest_json`, which is why
+        # this test stayed green for weeks while the live call failed on every
+        # run — the surrogate return value hid the shape contract entirely.
+        return [{"id": 1, "name": OCC_MACHINE_MINTED_LABEL}]
 
-    monkeypatch.setattr(effect_mod, "rest_json", _capture)
+    monkeypatch.setattr(effect_mod, "rest_json_array", _capture)
     HandlerOccCompanionEffect()._apply_machine_minted_label(
         "OmniNode-ai", "onex_change_control", 4284, "t"
     )

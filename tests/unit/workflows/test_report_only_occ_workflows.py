@@ -186,6 +186,78 @@ def test_author_workflow_uses_occ_write_token_only_for_mutate() -> None:
 
 
 @pytest.mark.unit
+def test_author_workflow_mints_a_separate_product_repo_token() -> None:
+    """OMN-15441: the product-body stamp gets its OWN product-scoped credential.
+
+    The node writes into TWO repos: onex_change_control (lease/clone/push/PR)
+    and — for exactly one call — the product repo's PR body. The OCC mint above
+    is scoped ``repositories: onex_change_control``, so reusing it for the
+    product PATCH is a guaranteed 403 (live: omnimarket#1958, run
+    30496115784). This pins credential SEPARATION rather than broadening the
+    least-privilege OCC-Writer App onto product repos.
+    """
+    mutate_only = "${{ vars.OMNI_OCC_AUTOAUTHOR_MODE == 'mutate' }}"
+
+    validate = _author_step("Validate product-repo write credential")
+    assert validate["if"] == mutate_only
+    assert validate["env"]["ONEXBOT_APP_ID"] == "${{ secrets.ONEXBOT_APP_ID }}"
+    assert (
+        validate["env"]["ONEXBOT_APP_PRIVATE_KEY"]
+        == "${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}"
+    )
+    assert (
+        'if [ -z "${ONEXBOT_APP_ID:-}" ] || [ -z "${ONEXBOT_APP_PRIVATE_KEY:-}" ]; then'
+        in validate["run"]
+    )
+    assert "::error::" in validate["run"]
+    assert "exit 1" in validate["run"]
+
+    mint = _author_step("Mint product-repo write token")
+    assert mint["id"] == "product-app-token"
+    assert mint["if"] == mutate_only
+    assert str(mint["uses"]).startswith("actions/create-github-app-token@")
+    # The GENERAL OnexBot App, NOT the OCC-Writer App — a different identity on
+    # purpose. Asserting inequality is the load-bearing half: it fails if a
+    # later edit "simplifies" both mints onto one App.
+    assert mint["with"]["app-id"] == "${{ secrets.ONEXBOT_APP_ID }}"
+    assert mint["with"]["private-key"] == "${{ secrets.ONEXBOT_APP_PRIVATE_KEY }}"
+    assert mint["with"]["app-id"] != "${{ secrets.ONEXBOT_OCC_APP_ID }}"
+    # Scoped to THIS repo only — never org-wide, never onex_change_control.
+    assert mint["with"]["owner"] == "${{ github.repository_owner }}"
+    assert mint["with"]["repositories"] == "${{ github.event.repository.name }}"
+    assert mint["with"]["repositories"] != "onex_change_control"
+
+    run = _author_step("Run node_occ_companion_effect")
+    assert (
+        run["env"]["PRODUCT_WRITE_TOKEN"]
+        == "${{ steps.product-app-token.outputs.token }}"
+    )
+    # Fail-loud (`:?`), never a silent fallback to the OCC token that 403s.
+    assert (
+        'export OMNI_OCC_PRODUCT_TOKEN="${PRODUCT_WRITE_TOKEN:?mode=mutate requires the minted OnexBot product-repo token}"'
+        in run["run"]
+    )
+
+
+@pytest.mark.unit
+def test_author_workflow_does_not_stamp_product_body_with_ambient_token() -> None:
+    """OMN-15441: ``secrets.GITHUB_TOKEN`` must not become the stamp credential.
+
+    It is product-scoped and *would* be authorized, which makes it the tempting
+    "simplification" — but a body edit authored by GITHUB_TOKEN does not emit
+    ``pull_request: edited`` (GitHub's recursion guard), and
+    ``call-occ-preflight.yml`` lists ``edited`` in its trigger types so the
+    stamp re-evaluates eligibility. Using the ambient token would land the
+    bytes and silently fail to unjam the PR — a false-GREEN worse than the 403.
+    """
+    run = _author_step("Run node_occ_companion_effect")
+    assert "OMNI_OCC_PRODUCT_TOKEN" in run["run"]
+    # The product credential is threaded from the App mint, not the ambient token.
+    assert 'OMNI_OCC_PRODUCT_TOKEN="${{ secrets.GITHUB_TOKEN }}"' not in run["run"]
+    assert run["env"].get("OMNI_OCC_PRODUCT_TOKEN") != "${{ secrets.GITHUB_TOKEN }}"
+
+
+@pytest.mark.unit
 def test_author_workflow_does_not_reference_the_unprovisioned_pat() -> None:
     """OMN-15350: ``secrets.OCC_AUTOAUTHOR_TOKEN`` was never provisioned.
 
