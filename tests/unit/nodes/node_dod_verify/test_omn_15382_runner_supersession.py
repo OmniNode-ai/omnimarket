@@ -235,10 +235,17 @@ class TestMalformedSupersessionChainsAreHardRed:
         OMN-15390 replaced the position-blind whole-contract resolution this
         case was originally written against (which needed an explicit graph
         walk to detect a loop) with OCC's ``if supersedes in seen`` rule, so
-        every accepted edge points strictly backwards in declaration order and
-        the relation is acyclic by construction. The mutually-referential
-        contract below therefore resolves deterministically in one pass rather
-        than being detected as a cycle: ``dod-a``'s marker points FORWARD and
+        every accepted edge points strictly backwards in declaration order.
+        Across the DISTINCT ids used here that also makes the relation acyclic
+        — but only because the ids are distinct. ``superseded`` is keyed by id,
+        so a contract with a DUPLICATE id still admits an id-level self-loop
+        and ``_terminal_superseder``'s visited-set guard is what terminates the
+        walk there; see
+        ``test_the_visited_set_guard_is_required_not_defensive`` in
+        ``test_omn_15390_contract_entry_supersession.py``. The
+        mutually-referential contract below therefore resolves
+        deterministically in one pass rather than being detected as a cycle:
+        ``dod-a``'s marker points FORWARD and
         retires nothing (hard RED on ``dod-a``, matching what the OCC gate
         computes — no supersession); ``dod-b``'s marker points backwards and
         retires ``dod-a`` normally.

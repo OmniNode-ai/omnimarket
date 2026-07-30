@@ -102,11 +102,42 @@ suite's own shape was hiding the defect:
   pattern), and
   :func:`test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite`
   keeps the step there.
+
+Third adversarial-review round (2026-07-29, after omnimarket#1959 merged into
+``dev`` at ``b0558db7``). One finding, and it is the same failure mode as R2 —
+a claim in the source that the suite did not check:
+
+* **R1's reorder made two comments false, and neither was updated.**
+  ``_terminal_superseder``'s docstring said the walk "is acyclic by
+  construction and terminates; the visited-set guard is a defensive backstop,
+  not a live path", and the module-level comment in ``evidence_collector.py``
+  said "the relation is acyclic by construction … there is no cycle to
+  detect". Both stopped being true the moment ``target in seen`` was tested
+  ahead of ``target == item_id_str``: a self-referential marker on a duplicate
+  id is now an ACCEPTED edge, and because ``superseded`` is keyed by ID while
+  the backwards-ordering property holds by INDEX, that edge is an id-level
+  SELF-LOOP (``superseded['dod-0'] == 1`` with ``id_at[1] == 'dod-0'``).
+  Measured over this module's own domains, the guard fires on **176 of 296
+  edges (59.5%)** of :func:`_duplicate_id_contracts` versus **0 of 75** on the
+  unique-id :func:`_small_contracts` — dead only on the domain the claim was
+  written against. Removing the guard does not degrade gracefully: the walk
+  never terminates, and since ``_collect_impl`` phase 2 calls it, ``collect()``
+  itself hangs (verified — the end-to-end self-loop case did not return in 5
+  minutes with the guard deleted). Shipped BEHAVIOUR was already correct and
+  fail-safe; the defect was a false load-bearing claim mislabelling live code
+  as dead. :class:`TestTheVisitedSetGuardIsRequiredNotDefensive` pins it, and
+  is deliberately declared AHEAD of the expensive domain-wide test so guard
+  removal surfaces as a fast bounded-subprocess failure instead of wedging the
+  whole suite.
 """
 
 from __future__ import annotations
 
 import itertools
+import json
+import subprocess
+import sys
+import textwrap
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -870,6 +901,259 @@ def test_a_broken_marker_on_an_id_less_item_is_not_a_silent_skip(
     assert state.status == EnumDodVerifyStatus.FAILED
     carrier = next(c for c in state.checks if c.evidence_id == "dod_evidence[1]")
     assert "DANGLING_SUPERSESSION" in carrier.message
+
+
+# ---------------------------------------------------------------------------
+# The visited-set guard in ``_terminal_superseder`` is LOAD-BEARING.
+#
+# R1 reordered ``_resolve_supersessions`` so ``target in seen`` is tested before
+# ``target == item_id_str``, which is what the OCC gate does (it has no
+# self-reference branch at all). A necessary consequence: when an EARLIER item
+# already declared the carrier's own id, the carrier's self-referential marker
+# is an ACCEPTED edge — and because ``superseded`` is keyed by ID while the
+# backwards-ordering property holds by INDEX, that edge is an id-level
+# SELF-LOOP. The relation the pre-R1 comments called "acyclic by construction"
+# is not acyclic, and the guard those comments called "a defensive backstop,
+# not a live path" is the only thing that terminates the walk.
+#
+# Those comments were left unchanged by the PR that made them false. These
+# tests exist so the claim cannot silently rot again in either direction.
+# ---------------------------------------------------------------------------
+
+
+def _unguarded_terminal_superseder(
+    target_id: str,
+    superseded: dict[str, int],
+    id_at: dict[int, str | None],
+    budget: int = 10_000,
+) -> int | None:
+    """``_terminal_superseder`` with the visited-set guard REMOVED.
+
+    Returns the terminal index, or ``None`` if it failed to terminate within
+    ``budget`` steps. Step-bounded so this test documents the hang instead of
+    reproducing it.
+    """
+    index = superseded[target_id]
+    for _ in range(budget):
+        carrier_id = id_at.get(index)
+        if carrier_id is None or carrier_id not in superseded:
+            return index
+        index = superseded[carrier_id]
+    return None
+
+
+def _run_bounded(source: str, timeout: int = 20) -> subprocess.CompletedProcess[str]:
+    """Execute ``source`` in a fresh interpreter under a hard timeout.
+
+    Every assertion that drives ``_terminal_superseder`` over a SELF-LOOPING
+    contract goes through here. If the visited-set guard is ever deleted, an
+    in-process call hangs forever — and because ``_collect_impl`` phase 2 calls
+    the walk, that is not confined to the helper: the whole ``collect()`` path
+    hangs, so an in-process test would wedge the ENTIRE suite (and the CI job)
+    rather than failing one case. Verified by executing exactly that: with the
+    guard removed, this module's end-to-end self-loop case did not return in
+    5 minutes. The subprocess converts the hang into a normal test failure.
+    """
+    return subprocess.run(
+        [sys.executable, "-c", textwrap.dedent(source)],
+        capture_output=True,
+        text=True,
+        timeout=timeout,
+        check=False,
+    )
+
+
+_GUARD_REMOVED_HINT = (
+    "This hangs only if ``_terminal_superseder``'s visited-set guard was "
+    "removed. It is REQUIRED, not defensive: duplicate ids admit an id-level "
+    "self-loop and the guard is the only thing that terminates the walk."
+)
+
+
+def _guard_fire_census(
+    contracts: list[list[dict[str, Any]]],
+) -> tuple[int, int, int]:
+    """(edges walked, walks whose visited-set guard fired, id-level self-loops)."""
+    edges = fires = self_loops = 0
+    for contract in contracts:
+        resolution = EvidenceCollector._resolve_supersessions(contract)
+        superseded = resolution.superseded
+        id_at: dict[int, str | None] = {
+            index: (
+                item.get("id")
+                if isinstance(item.get("id"), str) and item.get("id")
+                else None
+            )
+            for index, item in enumerate(contract)
+        }
+        for target_id in superseded:
+            edges += 1
+            # The guard fired iff the unguarded walk cannot terminate.
+            if _unguarded_terminal_superseder(target_id, superseded, id_at) is None:
+                fires += 1
+            if id_at.get(superseded[target_id]) == target_id:
+                self_loops += 1
+    return edges, fires, self_loops
+
+
+@pytest.mark.unit
+class TestTheVisitedSetGuardIsRequiredNotDefensive:
+    """Pins the guard as live, load-bearing code — the opposite of what the
+    ``_terminal_superseder`` docstring asserted before this change."""
+
+    def test_a_duplicate_id_admits_an_id_level_self_loop(self) -> None:
+        """The precondition: resolution really does record ``n -> n``.
+
+        Not hypothetical, and not a malformed-marker case — ``malformed`` is
+        empty, because this is exactly what the gate accepts.
+        """
+        contract = [
+            _item("dod-0", check_value="true"),
+            _item("dod-0", check_value="true", supersedes="dod-0"),
+        ]
+        resolution = EvidenceCollector._resolve_supersessions(contract)
+        assert resolution.superseded == {"dod-0": 1}
+        assert resolution.malformed == {}, (
+            "a self-referential marker on a duplicate id must NOT be malformed "
+            "— the gate has no self-reference branch, so hard-REDing it here "
+            "is the runner-stricter-than-gate bug class R1 removed"
+        )
+        # id_at[1] == 'dod-0' and superseded['dod-0'] == 1: the walk maps 1->1.
+        assert contract[resolution.superseded["dod-0"]]["id"] == "dod-0"
+
+    def test_the_walk_does_not_terminate_without_the_guard(self) -> None:
+        """Why the guard cannot be deleted: the same input loops forever."""
+        assert (
+            _unguarded_terminal_superseder(
+                "dod-0", {"dod-0": 1}, {0: "dod-0", 1: "dod-0"}
+            )
+            is None
+        ), "expected the unguarded walk to spin on the id-level self-loop"
+
+    def test_the_real_walk_terminates_on_the_self_loop(self) -> None:
+        """The shipped function terminates, in a SUBPROCESS with a timeout.
+
+        Deliberately not called in-process — see :func:`_run_bounded`.
+        """
+        try:
+            completed = _run_bounded(
+                """
+                from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
+                    EvidenceCollector,
+                )
+
+                print(
+                    EvidenceCollector._terminal_superseder(
+                        "dod-0", {"dod-0": 1}, {0: "dod-0", 1: "dod-0"}
+                    )
+                )
+                """
+            )
+        except subprocess.TimeoutExpired:  # pragma: no cover - only if guard removed
+            pytest.fail(
+                f"_terminal_superseder did not terminate. {_GUARD_REMOVED_HINT}"
+            )
+        assert completed.returncode == 0, completed.stderr
+        # Returns the revisited index; the caller then finds nothing in
+        # ``executed`` for it, so the edge does not fire (fail-safe).
+        assert completed.stdout.strip() == "1"
+
+    def test_the_guard_is_dead_on_unique_ids_and_live_on_duplicates(self) -> None:
+        """The measurement that makes "not a live path" a checkable claim.
+
+        The old docstring was true of the domain the code was tested against
+        and false of the domain R1 added. Pinning both numbers means neither
+        the claim nor the domain can drift without this failing.
+        """
+        unique_edges, unique_fires, unique_loops = _guard_fire_census(
+            _small_contracts()
+        )
+        assert (unique_edges, unique_fires, unique_loops) == (75, 0, 0), (
+            "unique-id domain should never exercise the guard; got "
+            f"{unique_edges} edges / {unique_fires} fires / {unique_loops} loops"
+        )
+
+        dup_edges, dup_fires, dup_loops = _guard_fire_census(_duplicate_id_contracts())
+        assert (dup_edges, dup_fires, dup_loops) == (296, 176, 152), (
+            "duplicate-id domain guard census drifted; got "
+            f"{dup_edges} edges / {dup_fires} fires / {dup_loops} loops"
+        )
+        assert dup_fires / dup_edges > 0.5, (
+            "the guard fires on a MAJORITY of duplicate-id edges — it is live "
+            "code, not a backstop"
+        )
+
+    def test_a_self_looping_contract_still_produces_a_fail_safe_receipt(
+        self, tmp_path: Path
+    ) -> None:
+        """End-to-end: the self-loop degrades to "nobody is retired", not a hang.
+
+        The carrier is itself a supersession target, so phase 1 never executes
+        it, ``executed.get(carrier)`` is ``None``,
+        ``_supersession_is_in_effect`` is False and the edge does not fire.
+        Both entries execute and carry their own verdicts.
+
+        Driven through the real collector + handler + ``_build_receipt``, but
+        in a bounded subprocess: ``_collect_impl`` phase 2 calls the walk, so
+        this is the case that hangs the suite if the guard goes away.
+        """
+        ticket_id, contract_path = _write_contract(
+            tmp_path,
+            [
+                _item("dod-0", check_value="false"),
+                _item("dod-0", check_value="true", supersedes="dod-0"),
+            ],
+        )
+        try:
+            completed = _run_bounded(
+                f"""
+                import json
+                from pathlib import Path
+
+                from omnimarket.nodes.node_dod_verify.__main__ import _build_receipt
+                from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
+                    HandlerDodVerify,
+                )
+                from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command import (
+                    ModelDodVerifyStartCommand,
+                )
+                from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
+                    EvidenceCollector,
+                )
+
+                contract_path = {str(contract_path)!r}
+                results = EvidenceCollector().collect(
+                    {ticket_id!r}, contract_path=contract_path
+                )
+                state = HandlerDodVerify()._handle_typed(
+                    ModelDodVerifyStartCommand(
+                        ticket_id={ticket_id!r}, contract_path=contract_path
+                    ),
+                    evidence_results=results,
+                )
+                print(
+                    json.dumps(
+                        {{
+                            "superseded_count": state.superseded_count,
+                            "status": state.status.value,
+                            "receipt": _build_receipt(
+                                state, None, Path({str(tmp_path)!r})
+                            )["status"],
+                        }}
+                    )
+                )
+                """
+            )
+        except subprocess.TimeoutExpired:  # pragma: no cover - only if guard removed
+            pytest.fail(f"collect() did not terminate. {_GUARD_REMOVED_HINT}")
+        assert completed.returncode == 0, completed.stderr
+        outcome = json.loads(completed.stdout.strip().splitlines()[-1])
+        assert outcome["superseded_count"] == 0, (
+            "a self-looping edge must retire nothing — otherwise a duplicate "
+            "id becomes a laundering primitive"
+        )
+        assert outcome["status"] == EnumDodVerifyStatus.FAILED.value
+        assert outcome["receipt"] == "FAIL"
 
 
 @pytest.mark.unit

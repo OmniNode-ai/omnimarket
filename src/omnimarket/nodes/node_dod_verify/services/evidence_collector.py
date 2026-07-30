@@ -401,11 +401,23 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
 # The superseded SET is unaffected by these diagnostics, so set-parity with
 # OCC holds: in every such case both consumers agree nothing was superseded.
 #
-# Because every accepted edge points strictly backwards in declaration order,
-# the relation is acyclic by construction and resolution is a single forward
-# pass — there is no cycle to detect. Chains (A retired by B, B retired by C)
-# are legal and terminate at C, which is the item that actually proves
-# something; see ``_terminal_superseder``.
+# Resolution itself is a single forward pass, so IT always terminates. The
+# relation it produces, however, is NOT acyclic — do not rely on that. Edges
+# point backwards by INDEX, but ``superseded`` is keyed by ID, and ids are not
+# unique in a contract. When an EARLIER item already declared the carrier's own
+# id, ``target in seen`` is true for the carrier's own id and the recorded edge
+# is an ID-LEVEL SELF-LOOP: ``superseded['dod-0'] == 1`` while
+# ``id_at[1] == 'dod-0'``. Chains (A retired by B, B retired by C) are legal and
+# terminate at C, which is the item that actually proves something — but the
+# chain WALK (``_terminal_superseder``) is what has to cope with the self-loop,
+# and it does so with a visited-set guard that is load-bearing, not decorative.
+# See ``_terminal_superseder``; measurements are in its docstring.
+#
+# This is a consequence of matching the gate exactly (OMN-15390 R1):
+# ``_superseded_dod_ids`` has no self-reference branch, so a self-referential
+# marker on a duplicate id IS an accepted edge there too. Diverging here to keep
+# the relation acyclic would re-create the runner-stricter-than-gate bug class
+# this ticket exists to kill.
 #
 # WELL-FORMED IS NOT SUFFICIENT (OMN-15390 anti-laundering). Resolution says
 # which edges are legal; it does NOT say which ones fire. An edge retires its
@@ -1052,10 +1064,34 @@ class EvidenceCollector:
         With ``A`` superseded by ``B`` and ``B`` in turn superseded by ``C``,
         the OCC gate retires both ``A`` and ``B`` and ``C`` is what actually
         proves anything — so ``C``'s verdict, not ``B``'s, decides whether
-        ``A``'s edge takes effect. Every accepted edge points strictly
-        backwards in declaration order (see ``_resolve_supersessions``), so the
-        walk is acyclic by construction and terminates; the visited-set guard
-        is a defensive backstop, not a live path.
+        ``A``'s edge takes effect.
+
+        THE ``visited`` GUARD IS LOAD-BEARING — it is the only thing that
+        terminates this walk, not a defensive backstop. Do not remove it.
+
+        Edges point strictly backwards by INDEX, but ``superseded`` is keyed by
+        ID and ids are not unique in a contract, so the walked relation is NOT
+        acyclic. A duplicate id admits an id-level SELF-LOOP: for
+        ``[{id: dod-0}, {id: dod-0, evidence_artifact:
+        'supersedes_dod_evidence:dod-0'}]`` resolution records
+        ``superseded['dod-0'] == 1`` while ``id_at[1] == 'dod-0'``, so
+        ``index -> superseded[id_at[index]]`` maps 1 to 1 forever. Delete the
+        guard and this function hangs on that input (verified: an unguarded
+        walk did not terminate in 10_000 steps).
+
+        Measured over the parity domain in
+        ``test_omn_15390_contract_entry_supersession.py``: the guard fires on
+        **176 of 296 edges (59.5%)** of ``_duplicate_id_contracts()`` and on
+        **0 of 75** edges of the unique-id ``_small_contracts()`` — i.e. it is
+        dead only on the domain the pre-OMN-15390-R1 code was tested against.
+        ``test_the_visited_set_guard_is_required_not_defensive`` pins this.
+
+        Returning the revisited index is the fail-safe answer: the caller
+        (``_collect_impl`` phase 2) looks that index up in ``executed``, a
+        self-looping carrier is itself a supersession target so it was never
+        executed, ``_supersession_is_in_effect(None)`` is False, and the edge
+        does not fire — both entries execute normally and carry their own
+        verdicts.
         """
         index = superseded[target_id]
         visited = {index}
@@ -1105,9 +1141,13 @@ class EvidenceCollector:
         beyond those advisory scripts without changing the superseded set.
 
         Single forward pass in declaration order, mirroring
-        ``_superseded_dod_ids``'s ``seen``/``if supersedes in seen`` loop.
-        Every accepted edge points strictly backwards, so the relation is
-        acyclic by construction and this terminates in O(len(dod_items)).
+        ``_superseded_dod_ids``'s ``seen``/``if supersedes in seen`` loop, so
+        THIS function terminates in O(len(dod_items)) unconditionally.
+
+        The relation it RETURNS is not acyclic, though: edges point backwards
+        by index while ``superseded`` is keyed by id, so a duplicate id admits
+        an id-level self-loop. Any consumer that WALKS the relation needs a
+        cycle guard — see ``_terminal_superseder``.
         """
         # Pre-pass: every id in the contract, used ONLY to tell a forward
         # reference (target exists, declared later) apart from a dangling one
