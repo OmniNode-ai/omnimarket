@@ -1279,7 +1279,9 @@ class HandlerDelegationWorkflow:
                 terminal_failure_reason=terminal_failure_reason,
                 routing_tiers_hash=self._routing_tiers_hash(),
                 escalation_config_hash=None,
-                attempts_count=workflow.escalation_count + 1,
+                # OMN-15464: count every attempt, including same-tier retries
+                # that never bump ``escalation_count``.
+                attempts_count=self._truthful_attempts_count(workflow, completed=False),
                 model_name=workflow.routing_decision.selected_model,
                 session_id=None,
                 tenant_id=_resolve_tenant_id(workflow),
@@ -1846,18 +1848,95 @@ class HandlerDelegationWorkflow:
         *,
         pre_filter_rejected: bool,
     ) -> str:
-        prefix = (
-            "pre_filter_rejected" if pre_filter_rejected else "score_below_required_bar"
-        )
+        """Compose a rejection reason whose LABEL matches the actual cause.
+
+        OMN-15464. ``handle_gate_result`` rejects on THREE independent causes::
+
+            quality_accepted = (
+                not pre_filter_rejected            # (1) deterministic floor
+                and result.passed                  # (2) acceptance criteria
+                and (judge_unavailable_floor or not score_below_required_bar)
+            )                                      # (3) numeric bar
+
+        This function previously emitted a BINARY label — ``pre_filter_rejected``
+        or, for everything else, ``score_below_required_bar``. Cause (2) has no
+        relationship to the numeric bar, so a response that CLEARED the bar but
+        failed a criterion was reported as sub-bar. Observed live on the Hybrid
+        Gateway canary (correlation ``8371bb34-3aa4-48d6-bdce-dffae3eb4b7f``,
+        read back from the tenant-prefixed dev MSK ``delegation-failed`` topic)::
+
+            score_below_required_bar: actual_score=0.867 required_bar=0.800
+            authority_source=task_class:reasoning
+            score_source=quality_gate_graded_score;
+            failures=TASK_MISMATCH: failed step_by_step_explanation
+
+        0.867 is ABOVE 0.800 — the label contradicted its own printed numbers,
+        and the real cause (``step_by_step_explanation``) was demoted to a
+        free-text suffix. A dashboard reading the label would report "model
+        scored too low" for a response that out-scored the bar.
+
+        The label is now three-way and the score-vs-bar comparison is carried as
+        its own explicit ``score_vs_bar=`` token, so a consumer never has to
+        infer the comparison from the label. Note that the ``failures=`` suffix
+        is free text that can legitimately contain the word "below" (e.g.
+        ``WEAK_OUTPUT: response length 42 below minimum 100``), so downstream
+        checks must read the LABEL or the ``score_vs_bar=`` token — never a bare
+        substring search for "below" over the whole string.
+
+        Precedence matches the acceptance expression: a deterministic-floor
+        rejection is reported first because it short-circuits the other two.
+        """
+        score_below_bar = result.quality_score < required_bar_authority.required_bar
+        if pre_filter_rejected:
+            prefix = "pre_filter_rejected"
+        elif score_below_bar:
+            prefix = "score_below_required_bar"
+        else:
+            # Score cleared the bar; the gate rejected on an acceptance
+            # criterion (``result.passed is False``). This is the branch whose
+            # absence produced the 0.867-vs-0.800 lie.
+            prefix = "acceptance_criteria_failed"
         detail = (
             f"{prefix}: actual_score={result.quality_score:.3f} "
             f"required_bar={required_bar_authority.required_bar:.3f} "
+            f"score_vs_bar={'below_bar' if score_below_bar else 'at_or_above_bar'} "
             f"authority_source={required_bar_authority.authority_source} "
             f"score_source={required_bar_authority.score_source}"
         )
         if result.failure_reasons:
             return f"{detail}; failures={'; '.join(result.failure_reasons)}"
         return detail
+
+    @staticmethod
+    def _truthful_attempts_count(
+        workflow: DelegationWorkflowState, *, completed: bool
+    ) -> int:
+        """Return the number of inference attempts this workflow actually made.
+
+        OMN-15464. ``attempts_count`` was derived as ``escalation_count + 1``,
+        but ``escalation_count`` counts TIER escalations only: OMN-14234
+        same-tier retries (``_maybe_retry_local``) and OMN-14402 same-tier
+        backend fallbacks deliberately do NOT increment it. Every such retry was
+        therefore invisible in the terminal.
+
+        Observed live on correlation ``8371bb34-3aa4-48d6-bdce-dffae3eb4b7f``:
+        the terminal reported ``attempts_count=2`` while carrying an
+        ``escalation_history`` of FOUR rejected attempts (3x ``local`` +
+        1x ``cheap_cloud``) in the same payload — the event contradicted itself.
+
+        ``escalation_history`` is the ground truth: ``_record_escalation_attempt``
+        appends exactly one entry per REJECTED attempt. On a failure terminal the
+        final (terminal) attempt is already recorded, so the history length IS
+        the attempt count. On an accepted terminal the winning attempt is not in
+        the history, so it is added.
+
+        The ``escalation_count + 1`` floor is retained so a workflow that
+        escalated without recording history (e.g. the ``required_bar_missing``
+        path, which terminates before any attempt is appended) can never report
+        fewer attempts than it provably made, nor zero.
+        """
+        recorded = len(workflow.escalation_history) + (1 if completed else 0)
+        return max(recorded, workflow.escalation_count + 1)
 
     def _record_escalation_attempt(
         self,
@@ -2283,7 +2362,9 @@ class HandlerDelegationWorkflow:
             terminal_failure_reason=terminal_failure_reason,
             routing_tiers_hash=self._routing_tiers_hash(),
             escalation_config_hash=None,
-            attempts_count=workflow.escalation_count + 1,
+            # OMN-15464: count every attempt, including same-tier retries that
+            # never bump ``escalation_count``.
+            attempts_count=self._truthful_attempts_count(workflow, completed=completed),
             model_name=workflow.routing_decision.selected_model,
             session_id=None,
             tenant_id=_resolve_tenant_id(workflow),
