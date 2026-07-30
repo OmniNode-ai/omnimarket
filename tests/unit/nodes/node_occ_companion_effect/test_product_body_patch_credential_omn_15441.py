@@ -22,13 +22,16 @@ from __future__ import annotations
 from unittest.mock import patch
 
 import pytest
+from pydantic import SecretStr
 
 from omnimarket.github_api import GitHubApiError
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request import (
     ModelObservedProbe,
     ModelOccCompanionRequest,
 )
 from omnimarket.nodes.node_occ_companion_effect.handlers.handler_occ_companion_effect import (
+    _CONTRACT_PATH,
     HandlerOccCompanionEffect,
     _resolve_product_token,
 )
@@ -216,6 +219,70 @@ class TestResolveProductToken:
         """
         monkeypatch.setenv("OMNI_OCC_PRODUCT_TOKEN", "   ")
         assert _resolve_product_token(_OCC_TOKEN) == (_OCC_TOKEN, False)
+
+
+@pytest.mark.unit
+class TestProductTokenSeamIsContractEnforced:
+    """The ``secrets:`` declaration must be load-bearing, not decorative.
+
+    An earlier revision of this fix read ``os.environ[...]`` directly while the
+    contract declared ``OMNI_OCC_PRODUCT_TOKEN`` under ``secrets:``. That is the
+    ``feedback_no_invisible_env_config_in_contract_overlays`` class: the
+    declaration looked like a seam but nothing read it, so renaming the contract
+    key would have silently changed nothing, and a credential held in the secret
+    store rather than process env would have been invisible.
+    """
+
+    def test_contract_declares_the_product_token_secret(self) -> None:
+        """The ref must resolve from the contract, or the handler fails loudly."""
+        assert (
+            contract_secret_ref(_CONTRACT_PATH, "OMNI_OCC_PRODUCT_TOKEN")
+            == "OMNI_OCC_PRODUCT_TOKEN"
+        )
+
+    def test_product_token_is_resolved_through_the_contract_ref(
+        self, monkeypatch
+    ) -> None:
+        """Resolution goes through the contract-declared ref, not a bare env read."""
+        monkeypatch.delenv("OMNI_OCC_PRODUCT_TOKEN", raising=False)
+        seen: dict[str, object] = {}
+
+        def _fake_resolve(ref, *, required=True, env_var_fallback=None, store=None):
+            seen["ref"] = ref
+            seen["required"] = required
+            seen["env_var_fallback"] = env_var_fallback
+            return SecretStr(_PRODUCT_TOKEN)
+
+        with patch(f"{_MOD}.resolve_api_key", side_effect=_fake_resolve):
+            assert _resolve_product_token(_OCC_TOKEN) == (_PRODUCT_TOKEN, True)
+
+        # The ref comes from the contract, and the fallback is deliberate
+        # (required=False) rather than an accidental swallow.
+        assert seen["ref"] == contract_secret_ref(
+            _CONTRACT_PATH, "OMNI_OCC_PRODUCT_TOKEN"
+        )
+        assert seen["required"] is False
+        assert seen["env_var_fallback"] == "OMNI_OCC_PRODUCT_TOKEN"
+
+    def test_a_store_held_token_resolves_with_no_env_var_set(self, monkeypatch) -> None:
+        """RED under the old raw-``os.environ`` read.
+
+        The ``.201`` effects lane provisions credentials through the secret
+        store, not process env. With the env var absent, the old implementation
+        returned the OCC token — the credential that 403s — while reporting
+        ``dedicated=False``, i.e. a silent downgrade to the broken path.
+        """
+        monkeypatch.delenv("OMNI_OCC_PRODUCT_TOKEN", raising=False)
+
+        class _StoreOnlySecretStore:
+            async def get_secret(self, ref: str) -> str | None:
+                return _PRODUCT_TOKEN if ref == "OMNI_OCC_PRODUCT_TOKEN" else None
+
+        with patch(
+            "omnimarket.inference.secret_store_resolver._default_secret_store",
+            return_value=_StoreOnlySecretStore(),
+        ):
+            assert _resolve_product_token(_OCC_TOKEN) == (_PRODUCT_TOKEN, True)
 
 
 @pytest.mark.unit

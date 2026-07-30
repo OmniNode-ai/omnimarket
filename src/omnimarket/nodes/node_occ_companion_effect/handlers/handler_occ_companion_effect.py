@@ -137,17 +137,38 @@ _PRODUCT_TOKEN_ENV_VAR = "OMNI_OCC_PRODUCT_TOKEN"
 def _resolve_product_token(occ_token: str) -> tuple[str, bool]:
     """Resolve the credential for the product-repo PR-body patch (OMN-15441).
 
+    Resolved through the SAME seam as :func:`_resolve_github_token` below: the
+    contract-declared secret ref (``contract_secret_ref``) fed to the secret
+    store (``resolve_api_key``) with that ref name as the literal env-var
+    fallback (OMN-13943), so a CI job exporting the env var and a deployed lane
+    holding the value in the store both resolve.
+
+    An earlier revision of this fix read ``os.environ`` directly. That made the
+    ``secrets:`` declaration decorative — renaming the contract key would have
+    changed nothing, and a product credential held in the secret store rather
+    than process env (the ``.201`` effects lane provisions credentials through
+    the store) was invisible here and silently fell back to the OCC token that
+    403s. Declared-but-unread config is the
+    ``feedback_no_invisible_env_config_in_contract_overlays`` class; the seam is
+    now enforced by ``test_product_token_is_resolved_through_the_contract_ref``.
+
+    ``required=False`` keeps the fallback deliberate rather than accidental: an
+    absent product credential is the legitimate single-cross-repo-PAT
+    bus-runtime path, not an error.
+
     Args:
         occ_token: The onex_change_control write credential, used as the
             fallback when no dedicated product credential is supplied.
 
     Returns:
-        ``(token, dedicated)`` — ``dedicated`` is True when
-        ``OMNI_OCC_PRODUCT_TOKEN`` supplied a distinct product-scoped
-        credential, False when this fell back to ``occ_token``. The flag is
-        what lets a 403 report *which* credential was refused.
+        ``(token, dedicated)`` — ``dedicated`` is True when the contract-declared
+        product credential resolved to a distinct product-scoped token, False
+        when this fell back to ``occ_token``. The flag is what lets a 403 report
+        *which* credential was refused.
     """
-    product_token = os.environ.get(_PRODUCT_TOKEN_ENV_VAR, "").strip()
+    ref = contract_secret_ref(_CONTRACT_PATH, _PRODUCT_TOKEN_ENV_VAR)
+    secret = resolve_api_key(ref, required=False, env_var_fallback=ref)
+    product_token = (secret.get_secret_value() if secret is not None else "").strip()
     if product_token:
         return product_token, True
     return occ_token, False
@@ -649,10 +670,22 @@ class HandlerOccCompanionEffect:
         OMN-15441: uses ``rest_json_array`` — the labels endpoint responds with
         the issue's full label ARRAY, so ``rest_json``'s dict-only contract
         rejected every (otherwise successful) call with "unexpected JSON
-        response type". Because the failure is swallowed by design, the label
-        was silently never applied and ``minted_by_node`` lost its only marker.
-        This is a response-SHAPE defect, not a permission one — it is unrelated
-        to the product-body 403, despite surfacing in the same run.
+        response type".
+
+        Blast radius, stated precisely: **the label still landed.** ``rest_json``
+        raises only AFTER ``urlopen`` returns, so the POST had already committed
+        server-side and GitHub had already applied the label; only the decode of
+        the response failed. Live corroboration — OCC#5516 carries
+        ``occ:machine-minted``, applied by ``onexbot-occ-writer[bot]`` at
+        2026-07-29T22:26:20Z, in the very run whose log says "could not apply".
+        Peers OCC#5526/#5528/#5530 likewise. So the defect was a spurious
+        swallowed WARNING that falsely reported a missing provenance marker —
+        misleading operators and any log-scraping audit, but ``minted_by_node``
+        never actually lost its marker. Ordering is pinned by
+        ``test_the_shape_error_is_raised_after_the_post_has_committed``.
+
+        This is a response-SHAPE defect, not a permission one — unrelated to the
+        product-body 403 despite surfacing in the same run.
         """
         try:
             rest_json_array(

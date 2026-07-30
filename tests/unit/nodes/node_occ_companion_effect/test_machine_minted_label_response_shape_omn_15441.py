@@ -7,10 +7,20 @@ label ARRAY. Routing it through ``rest_json`` — whose contract is dict-only �
 made every otherwise-successful call raise
 ``unexpected JSON response type for /repos/.../labels``.
 
-The blast radius came from the swallow: ``_apply_machine_minted_label`` is
-non-fatal by design, so the label was silently never applied and
-``minted_by_node`` lost its only marker while the job reported success. Live:
-run 30496115784 logged exactly that warning against OCC#5516.
+The blast radius is narrower than the raise suggests, and the distinction is
+load-bearing: **the label still landed.** ``rest_json`` calls ``urlopen`` and
+only raises afterwards, on ``isinstance(parsed, dict)`` — by then the POST has
+committed server-side and GitHub has applied the label. Live corroboration: run
+30496115784 logged "could not apply ... unexpected JSON response type" against
+OCC#5516, yet OCC#5516 carries ``occ:machine-minted``, applied by
+``onexbot-occ-writer[bot]`` at 2026-07-29T22:26:20Z (issue-events API); peers
+OCC#5526/#5528/#5530 the same.
+
+So the real defect is a spurious swallowed WARNING that falsely reports a lost
+provenance marker — it misleads operators and any log-scraping audit, but
+``minted_by_node`` never actually lost its marker.
+``test_the_shape_error_is_raised_after_the_post_has_committed`` pins that
+ordering so the claim cannot silently invert again.
 
 This is a response-SHAPE defect, NOT a permission one — it is unrelated to the
 product-body 403 in the same run, which is why it gets its own test module.
@@ -144,6 +154,46 @@ class TestLabelPostDecodesArrayResponse:
             )
 
         assert "could not apply" in caplog.text
+
+    def test_the_shape_error_is_raised_after_the_post_has_committed(self) -> None:
+        """The pre-fix defect lost the response DECODE, never the label itself.
+
+        Pins the corrected impact claim. ``rest_json`` raises on the array only
+        after ``urlopen`` has returned, so the mutation is already committed
+        server-side when the error surfaces — which is why OCC#5516 carries
+        ``occ:machine-minted`` (applied by ``onexbot-occ-writer[bot]`` at
+        2026-07-29T22:26:20Z) despite its own run logging "could not apply".
+
+        This test exists because an earlier revision of this fix asserted the
+        label "was never once applied", which live evidence disproves. If the
+        helper is ever reordered to validate the response shape BEFORE issuing
+        the request, this fails — and at that point the stronger claim would
+        become true and the docstrings above would need to change with it.
+        """
+        from omnimarket.github_api import rest_json
+
+        requests_issued: list[str] = []
+
+        def _fake_urlopen(req, timeout=None):  # type: ignore[no-untyped-def]
+            requests_issued.append(f"{req.get_method()} {req.full_url}")
+            return _FakeResponse(_LABELS_ARRAY_RESPONSE)
+
+        with (
+            patch("urllib.request.urlopen", side_effect=_fake_urlopen),
+            pytest.raises(GitHubApiError, match="unexpected JSON response type"),
+        ):
+            rest_json(
+                "POST",
+                "/repos/OmniNode-ai/onex_change_control/issues/5516/labels",
+                token="tok",
+                body={"labels": [OCC_MACHINE_MINTED_LABEL]},
+            )
+
+        # The request WAS sent before the decode raised: the label landed.
+        assert requests_issued == [
+            "POST https://api.github.com/repos/OmniNode-ai/onex_change_control"
+            "/issues/5516/labels"
+        ]
 
     def test_rest_json_still_rejects_an_array_response(self) -> None:
         """The dict-only contract on ``rest_json`` is unchanged, not loosened.
