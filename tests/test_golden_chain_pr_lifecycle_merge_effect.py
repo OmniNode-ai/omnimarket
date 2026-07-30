@@ -112,6 +112,11 @@ def _make_command(
     ticket_id: str | None = "OMN-8084",
     dry_run: bool = False,
     correlation_id: UUID | None = None,
+    # OMN-15483: every real PR has a title, and the merge handler now matches
+    # the hold marker against it. The fixture default is an ordinary unheld
+    # title so these pre-existing cases assert exactly what they always did.
+    pr_title: str | None = "feat(OMN-8084): create pr lifecycle merge effect",
+    pr_labels: tuple[str, ...] | None = (),
 ) -> ModelPrMergeCommand:
     return ModelPrMergeCommand(
         correlation_id=correlation_id or uuid4(),
@@ -120,6 +125,8 @@ def _make_command(
         triage_verdict=triage_verdict,
         use_merge_queue=use_merge_queue,
         ticket_id=ticket_id,
+        pr_title=pr_title,
+        pr_labels=pr_labels,
         dry_run=dry_run,
         requested_at=datetime.now(tz=UTC),
     )
