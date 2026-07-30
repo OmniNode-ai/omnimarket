@@ -1,11 +1,11 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Unit tests for the producer-side market-contract -> ModelHandlerContract adapter.
+"""Unit tests for the producer-side market-contract registration adapter.
 
-OMN-12463: the adapter must transform market node ``contract.yaml`` shapes into a
-payload that validates as ``omnibase_core``'s ``ModelHandlerContract`` and that
-the runtime descriptor parser (``omnibase_infra`` ``ContractYamlParser.parse``)
-can materialize into a handler descriptor pointing at the omnimarket handler.
+OMN-12463/OMN-15418: the adapter must transform market node ``contract.yaml``
+shapes into a canonical handler shell plus typed runtime extensions that the
+``omnibase_infra`` ``ContractYamlParser`` can materialize without losing the
+database ownership or routing declarations.
 """
 
 from __future__ import annotations
@@ -32,6 +32,7 @@ _COMPUTE_CONTRACT: dict[str, Any] = {
     "node_type": "compute",
     "contract_version": {"major": 1, "minor": 0, "patch": 0},
     "description": "Detect AI-generated quality anti-patterns across repos.",
+    "terminal_event": "onex.evt.omnimarket.aislop-sweep-completed.v1",
     "handler": {
         "module": "omnimarket.nodes.node_aislop_sweep.handlers.handler_aislop_sweep",
         "class": "NodeAislopSweep",
@@ -55,6 +56,33 @@ _COMPUTE_CONTRACT: dict[str, Any] = {
             }
         ],
     },
+    "db_io": {
+        "db_tables": [
+            {
+                "name": "aislop_sweep_findings",
+                "database_ref": "application",
+                "schema": "omninode_internal",
+                "migration": "0001_create_aislop_sweep_findings.sql",
+                "access": "write",
+                "role": "findings",
+            }
+        ]
+    },
+    "event_bus": {
+        "version": {"major": 1, "minor": 0, "patch": 0},
+        "subscribe_topics": ["onex.cmd.omnimarket.aislop-sweep.v1"],
+        "publish_topics": ["onex.evt.omnimarket.aislop-sweep-completed.v1"],
+        "dlq_topics": ["onex.dlq.omnimarket.aislop-sweep.v1"],
+        "consumer_group": "omnimarket.aislop-sweep.consume.v1",
+        "plugin_managed": False,
+        "consumer_purpose": "quality-sweep",
+        "tenant_scoped_ingress": False,
+        "publish_topic_metadata": {
+            "onex.evt.omnimarket.aislop-sweep-completed.v1": {
+                "description": "Legacy authoring metadata stays producer-local."
+            }
+        },
+    },
     "descriptor": {
         "node_archetype": "compute",
         "purity": "pure",
@@ -62,6 +90,20 @@ _COMPUTE_CONTRACT: dict[str, Any] = {
         "timeout_ms": 120000,
     },
 }
+
+_RUNTIME_EXTENSION_KEYS = {"db_io", "event_bus", "handler_routing"}
+
+
+def _validate_canonical_handler_fields(payload: dict[str, Any]) -> ModelHandlerContract:
+    """Validate the canonical handler fields separately from runtime extensions."""
+    return ModelHandlerContract.model_validate(
+        {
+            key: value
+            for key, value in payload.items()
+            if key not in _RUNTIME_EXTENSION_KEYS
+        }
+    )
+
 
 # Orchestrator archetype: no top-level handler block; handler + input model live
 # in handler_routing (mapping-shaped event_model); non-canonical purity value.
@@ -103,7 +145,7 @@ _ORCHESTRATOR_CONTRACT: dict[str, Any] = {
 def test_compute_contract_maps_to_valid_handler_contract() -> None:
     payload = to_handler_contract_payload(_COMPUTE_CONTRACT, "node_aislop_sweep")
 
-    contract = ModelHandlerContract.model_validate(payload)
+    contract = _validate_canonical_handler_fields(payload)
 
     assert contract.handler_id == "node.aislop_sweep"
     assert contract.name == "aislop_sweep"
@@ -128,12 +170,30 @@ def test_compute_contract_maps_to_valid_handler_contract() -> None:
 
 
 @pytest.mark.unit
+def test_runtime_extensions_survive_adapter_without_legacy_event_bus_metadata() -> None:
+    payload = to_handler_contract_payload(_COMPUTE_CONTRACT, "node_aislop_sweep")
+
+    assert payload["db_io"] == _COMPUTE_CONTRACT["db_io"]
+    assert payload["handler_routing"] == _COMPUTE_CONTRACT["handler_routing"]
+    assert payload["event_bus"] == {
+        "subscribe_topics": ["onex.cmd.omnimarket.aislop-sweep.v1"],
+        "publish_topics": ["onex.evt.omnimarket.aislop-sweep-completed.v1"],
+        "dlq_topics": ["onex.dlq.omnimarket.aislop-sweep.v1"],
+        "consumer_group": "omnimarket.aislop-sweep.consume.v1",
+        "plugin_managed": False,
+        "consumer_purpose": "quality-sweep",
+        "tenant_scoped_ingress": False,
+        "terminal_event": "onex.evt.omnimarket.aislop-sweep-completed.v1",
+    }
+
+
+@pytest.mark.unit
 def test_orchestrator_contract_maps_and_normalizes_purity() -> None:
     payload = to_handler_contract_payload(
         _ORCHESTRATOR_CONTRACT, "node_ab_compare_orchestrator"
     )
 
-    contract = ModelHandlerContract.model_validate(payload)
+    contract = _validate_canonical_handler_fields(payload)
 
     assert contract.handler_id == "node.ab_compare_orchestrator"
     assert contract.descriptor.node_archetype.value == "orchestrator"
@@ -158,7 +218,7 @@ def test_generic_node_type_normalizes_to_archetype() -> None:
     contract_data = {k: v for k, v in contract_data.items() if k != "descriptor"}
 
     payload = to_handler_contract_payload(contract_data, "node_aislop_sweep")
-    contract = ModelHandlerContract.model_validate(payload)
+    contract = _validate_canonical_handler_fields(payload)
 
     assert contract.descriptor.node_archetype.value == "compute"
     # No declared purity + compute archetype -> defaults to pure.
@@ -226,6 +286,25 @@ def test_unmappable_archetype_fails_fast() -> None:
 
 
 @pytest.mark.unit
+def test_legacy_database_key_in_db_io_fails_fast() -> None:
+    contract_data = dict(_COMPUTE_CONTRACT)
+    contract_data["db_io"] = {
+        "db_tables": [
+            {
+                "name": "aislop_sweep_findings",
+                "database": "omnidash_analytics",
+                "migration": "0001_create_aislop_sweep_findings.sql",
+                "access": "write",
+                "role": "findings",
+            }
+        ]
+    }
+
+    with pytest.raises(MarketContractAdapterError, match="database"):
+        to_handler_contract_payload(contract_data, "node_aislop_sweep")
+
+
+@pytest.mark.unit
 def test_round_trip_through_contract_yaml_parser() -> None:
     """The adapted payload materializes into a handler descriptor end-to-end.
 
@@ -249,3 +328,9 @@ def test_round_trip_through_contract_yaml_parser() -> None:
         "omnimarket.nodes.node_aislop_sweep.handlers."
         "handler_aislop_sweep.AislopSweepRequest"
     )
+    assert descriptor.contract_config["db_io"] == _COMPUTE_CONTRACT["db_io"]
+    assert (
+        descriptor.contract_config["handler_routing"]
+        == (_COMPUTE_CONTRACT["handler_routing"])
+    )
+    assert descriptor.contract_config["event_bus"] == payload["event_bus"]

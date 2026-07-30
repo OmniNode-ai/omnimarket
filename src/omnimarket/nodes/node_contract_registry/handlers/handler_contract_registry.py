@@ -131,12 +131,12 @@ class ContractRegistryHandler:
                 mcp_tags=(),
             )
 
-        # Step 6: adapt market contract to ModelHandlerContract shape (OMN-12463)
-        # The runtime descriptor parser validates the published contract_yaml
-        # against omnibase_core's ModelHandlerContract, which market contracts do
-        # not satisfy at top level. Transform here (producer side) so the runtime
-        # can hot-load market nodes without infra-side market knowledge. Fail-fast:
-        # a contract we cannot map is rejected rather than published malformed.
+        # Step 6: adapt the market contract to the runtime registration shape.
+        # The runtime descriptor parser validates the canonical handler shell
+        # against ModelHandlerContract and validates db_io/routing/event-bus
+        # extensions independently. Transform here (producer side) so the runtime
+        # can hot-load market nodes without infra-side market derivation rules.
+        # Fail-fast: an unmappable contract is rejected instead of published.
         try:
             handler_contract_payload = to_handler_contract_payload(
                 parsed, request.node_name

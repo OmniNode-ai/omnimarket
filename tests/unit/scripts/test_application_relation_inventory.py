@@ -33,6 +33,46 @@ def test_checked_in_inventory_is_source_derived_and_current() -> None:
     assert generator.main(["--check"]) == 0
 
 
+def test_node_db_table_census_requires_exact_typed_locations() -> None:
+    generator = _load_generator()
+
+    declarations, _ = generator._load_contracts()
+
+    assert declarations
+    for rows in declarations.values():
+        for declaration in rows:
+            assert "database" not in declaration
+            assert declaration["database_ref"]
+            assert declaration["schema"]
+
+
+def test_node_db_table_census_rejects_seeded_legacy_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    generator = _load_generator()
+    nodes_root = tmp_path / "nodes"
+    contract_dir = nodes_root / "node_legacy_projection"
+    contract_dir.mkdir(parents=True)
+    (contract_dir / "contract.yaml").write_text(
+        """\
+name: node_legacy_projection
+db_io:
+  db_tables:
+    - name: legacy_projection
+      database: omnidash_analytics
+      migration: 0001_create_legacy_projection.sql
+      access: write
+      role: projection
+""",
+        encoding="utf-8",
+    )
+
+    monkeypatch.setattr(generator, "NODES_ROOT", nodes_root)
+
+    with pytest.raises(ValueError, match="database"):
+        generator._load_contracts()
+
+
 def test_named_semantic_ambiguities_remain_fail_closed() -> None:
     payload = _load_generator().build_inventory()
     blocked = {item["name"] for item in payload["blocked_relations"]}

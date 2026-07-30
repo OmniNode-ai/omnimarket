@@ -584,10 +584,15 @@ omnimarket = "omnimarket.nodes"
 # occ-preflight.yml, validator_receipt_gate.py, no_faked_boundary handler,
 # MixinNodeDispatch tests, dev->main promotion merges) with zero omnimarket
 # surface impact; 3f2998b3 itself is a pure-addition commit (+1922/-0, new
-# files only). REMOVE WHEN RELEASED: once core publishes a version containing
-# this commit, delete this override (the range pin above already covers it)
-# and `uv lock`.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "3f2998b3337e4050b4758e0dd2a0fe1061ce0d98" }  # raw-override-ok: OMN-15163
+# files only).
+#
+# OMN-15418: re-pinned from 3f2998b3 to the exact OMN-15417 PR #1529 head.
+# 1f4549d7 is a strict descendant of 3f2998b3 and makes database_ref + schema
+# mandatory while rejecting the retired physical `database` key. The registry
+# producer validates and preserves this exact subcontract before publication.
+# REMOVE WHEN RELEASED: once core publishes a version containing this commit,
+# delete this override (the range pin above already covers it) and `uv lock`.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "1f4549d71d4d39560ac5a162ac1d39e54d86e688" }  # raw-override-ok: OMN-15418
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
 # OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to 77144f83 -- current
