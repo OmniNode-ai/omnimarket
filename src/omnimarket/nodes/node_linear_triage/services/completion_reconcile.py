@@ -34,8 +34,10 @@ That population needs a rule the cascade path does not: the **circular-evidence
 rule**. A merged PR is normally admissible durable evidence, but for a Done the
 *merge itself caused*, citing that merge proves nothing — it restates the
 trigger. So for the merge-automation fingerprint the merge-derived kinds are
-stripped before evaluation, leaving only proof produced by a step separate from
-the merge (a ``dod_verify`` OCC receipt, or a verified runtime readback).
+dropped from the candidate set, leaving only proof produced by a step separate
+from the merge (a ``dod_verify`` OCC receipt, or a verified runtime readback).
+Those survivors are then evaluated as a FALLBACK — a ticket holding both a
+merged PR and a real receipt keeps its Done (OMN-15373 hazard H1).
 
 Pure logic — no I/O. The live probe that assembles ``ModelCompletionFacts`` from
 Linear/gh and the scheduled apply live in the effect layer (OMN-14915 remainder).
@@ -50,6 +52,8 @@ from omnimarket.nodes.node_linear_triage.models.model_completion_reconcile impor
 )
 from omnimarket.nodes.node_linear_triage.services.close_evidence_gate import (
     EnumCloseEvidenceKind,
+    ModelCloseDecision,
+    ModelCloseEvidence,
     evaluate_close_evidence,
 )
 
@@ -82,6 +86,30 @@ _AUTOMATION_INADMISSIBLE_KINDS: frozenset[EnumCloseEvidenceKind] = frozenset(
 )
 
 
+def _evaluate_any(
+    candidates: tuple[ModelCloseEvidence, ...],
+) -> ModelCloseDecision:
+    """ALLOW if ANY candidate is durable evidence; otherwise the refusal reason.
+
+    Every candidate is evaluated through the one shared definition of durable
+    evidence (``evaluate_close_evidence``) — this adds no second evidence
+    checker, it only stops a single unusable fact from masking a usable one.
+
+    Fail-closed: an empty candidate set returns the canonical no-evidence
+    refusal, exactly as passing ``None`` did before.
+    """
+    decisions = [evaluate_close_evidence(e) for e in candidates]
+    for decision in decisions:
+        if decision.allowed:
+            return decision
+    if decisions:
+        # Nothing allowed: surface the first refusal so the reason names the
+        # actual defect (e.g. a declared kind with a blank detail) instead of
+        # claiming no evidence was supplied at all.
+        return decisions[0]
+    return evaluate_close_evidence(None)
+
+
 def evaluate_completion(facts: ModelCompletionFacts) -> ModelCompletionVerdictResult:
     """Return the fail-closed reconciliation verdict for one completed ticket.
 
@@ -100,7 +128,7 @@ def evaluate_completion(facts: ModelCompletionFacts) -> ModelCompletionVerdictRe
     Pure function — no I/O.
     """
     # Fail-closed evidence read: an unreadable probe is treated as no evidence.
-    effective_evidence = facts.evidence if facts.evidence_probe_ok else None
+    effective_evidence = facts.evidence if facts.evidence_probe_ok else ()
 
     cascade_fingerprint = (
         facts.same_second_sibling_cluster or facts.parent_completed_same_second
@@ -109,16 +137,25 @@ def evaluate_completion(facts: ModelCompletionFacts) -> ModelCompletionVerdictRe
 
     # OMN-15373: for a Done written by a git automation reacting to a merge, the
     # merge itself is inadmissible as that Done's evidence — it is the trigger,
-    # not the proof. Strip the circular kinds BEFORE evaluating, so a merged-PR
-    # citation cannot rescue a flip the merge caused.
-    if (
-        automation_fingerprint
-        and effective_evidence is not None
-        and effective_evidence.kind in _AUTOMATION_INADMISSIBLE_KINDS
-    ):
-        effective_evidence = None
+    # not the proof. Drop the circular kinds from the candidate set, keeping every
+    # NON-circular kind still standing.
+    #
+    # Hazard H1: this used to strip-then-fail over a single evidence slot, so a
+    # ticket holding BOTH a valid dod_verify receipt AND a merged implementing PR
+    # was demoted whenever the assembler happened to supply the merged-PR kind —
+    # the receipt had nowhere to live. Evidence is now a collection and the
+    # non-circular kinds are evaluated as a FALLBACK, so proven work survives
+    # regardless of assembler ordering.
+    if automation_fingerprint:
+        admissible = tuple(
+            e
+            for e in effective_evidence
+            if e.kind not in _AUTOMATION_INADMISSIBLE_KINDS
+        )
+    else:
+        admissible = tuple(effective_evidence)
 
-    decision = evaluate_close_evidence(effective_evidence)
+    decision = _evaluate_any(admissible)
 
     if decision.allowed:
         verdict = EnumCompletionVerdict.KEEP

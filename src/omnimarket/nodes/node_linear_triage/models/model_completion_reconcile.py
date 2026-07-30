@@ -55,30 +55,51 @@ class EnumCompletionVerdict(StrEnum):
 class ModelCompletionFacts(BaseModel):
     """Facts about one already-completed ticket, assembled by the live probe.
 
-    The reconciler decision is pure over these facts. ``evidence`` is the durable
-    close evidence the probe could resolve (a merged implementing PR, an
-    all-children-done roll-up, a tracked OCC receipt, ...) or ``None`` when it
+    The reconciler decision is pure over these facts. ``evidence`` is **every**
+    durable close evidence the probe could resolve (a merged implementing PR, an
+    all-children-done roll-up, a tracked OCC receipt, ...), empty when it
     resolved none. ``evidence_probe_ok`` is ``False`` when the probe itself was
     indeterminate/unreadable — the decision then treats evidence as ABSENT
     (fail-closed), never upgrading it to ALLOW.
+
+    Why ``evidence`` is a COLLECTION and ``prior_state_name`` has no default
+    (OMN-15373 hazard H1)
+    ---------------------------------------------------------------------------
+    Both were single-valued/defaulted, and together they made the reconciler
+    demote legitimately-Done tickets:
+
+    * A ticket can hold BOTH a valid ``dod_verify`` receipt AND a merged
+      implementing PR. With a single ``evidence`` slot, an assembler that
+      resolved the merged PR *first* silently discarded the receipt, and the
+      circular-evidence rule then stripped the only fact present, producing
+      ``REVERT_REQUIRED`` on proven work. ``OMN-15351`` is exactly this shape and
+      is live ``Done`` on receipt ``dod_verify run_id 002ae20d`` (9/9 verified).
+      A collection lets the non-circular kinds be evaluated as a fallback
+      instead of the decision hinging on assembler ordering.
+    * ``prior_state_name`` defaulting to ``"Backlog"`` meant a probe that simply
+      omitted the field demoted an earned ``Done`` all the way to ``Backlog``
+      rather than to the state it actually came from. The field is now REQUIRED:
+      a probe that cannot resolve the prior state must say so explicitly rather
+      than have a wrong answer chosen for it.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     # Human identifier, e.g. "OMN-14900" — used for logging and the revert comment.
     ticket_id: str
+    # State to revert to on REVERT_REQUIRED (from the pre-Done IssueHistory row).
+    # REQUIRED — no default. See the H1 note above.
+    prior_state_name: str
     # Linear internal UUID — required by the revert mutation (save_issue(issue_id=...)).
     linear_id: str = ""
-    # State to revert to on REVERT_REQUIRED (from the pre-Done IssueHistory row).
-    prior_state_name: str = "Backlog"
     # Whether startedAt was non-null (the ticket was actually worked).
     started: bool = False
     # >=2 siblings completed in the same second under a shared parent (cascade fingerprint).
     same_second_sibling_cluster: bool = False
     # A completed parent transitioned in the same 1s window (cascade fingerprint).
     parent_completed_same_second: bool = False
-    # Durable close evidence the probe resolved, or None.
-    evidence: ModelCloseEvidence | None = None
+    # EVERY durable close evidence the probe resolved; empty when it resolved none.
+    evidence: tuple[ModelCloseEvidence, ...] = ()
     # False => probe indeterminate/unreadable; decision fails closed (treats as no evidence).
     evidence_probe_ok: bool = True
 
@@ -118,11 +139,14 @@ class ModelCompletionVerdictResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     ticket_id: str
-    linear_id: str = ""
     verdict: EnumCompletionVerdict
     reason: str
     evidence_allowed: bool
-    prior_state_name: str = "Backlog"
+    # REQUIRED — no default, for the same reason as on ModelCompletionFacts: a
+    # missing prior state must never silently resolve to "Backlog" and demote an
+    # earned Done below where it came from (OMN-15373 hazard H1).
+    prior_state_name: str
+    linear_id: str = ""
     cascade_fingerprint: bool = False
     # True when the Done was written by a git automation reacting to a PR merge
     # (OMN-15373). Drives the automation-specific revert comment.

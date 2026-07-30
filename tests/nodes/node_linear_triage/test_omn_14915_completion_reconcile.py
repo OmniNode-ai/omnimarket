@@ -52,9 +52,10 @@ def test_keeps_completion_with_each_durable_evidence_kind(
     even if it also bears the cascade fingerprint, because it is truly done."""
     facts = ModelCompletionFacts(
         ticket_id="OMN-9001",
+        prior_state_name="In Review",
         started=True,
         same_second_sibling_cluster=True,  # fingerprint present but evidence wins
-        evidence=ModelCloseEvidence(kind=kind, detail="PR #900 merged 2026-07-01"),
+        evidence=(ModelCloseEvidence(kind=kind, detail="PR #900 merged 2026-07-01"),),
     )
     result = evaluate_completion(facts)
     assert result.verdict is EnumCompletionVerdict.KEEP
@@ -75,7 +76,7 @@ def test_reverts_evidence_less_same_second_sibling_cluster() -> None:
         started=False,
         same_second_sibling_cluster=True,
         parent_completed_same_second=True,
-        evidence=None,
+        evidence=(),
     )
     result = evaluate_completion(facts)
     assert result.verdict is EnumCompletionVerdict.REVERT_REQUIRED
@@ -89,9 +90,10 @@ def test_reverts_evidence_less_parent_completed_same_second() -> None:
     """A grandchild (OMN-14902) closed because its parent completed in the batch."""
     facts = ModelCompletionFacts(
         ticket_id="OMN-14902",
+        prior_state_name="Backlog",
         same_second_sibling_cluster=False,
         parent_completed_same_second=True,
-        evidence=None,
+        evidence=(),
     )
     result = evaluate_completion(facts)
     assert result.verdict is EnumCompletionVerdict.REVERT_REQUIRED
@@ -102,9 +104,12 @@ def test_empty_detail_evidence_is_not_durable_and_reverts_under_cascade() -> Non
     completion is treated as evidence-less (fail-closed)."""
     facts = ModelCompletionFacts(
         ticket_id="OMN-14901",
+        prior_state_name="Backlog",
         same_second_sibling_cluster=True,
-        evidence=ModelCloseEvidence(
-            kind=EnumCloseEvidenceKind.MERGED_IMPLEMENTING_PR, detail="   "
+        evidence=(
+            ModelCloseEvidence(
+                kind=EnumCloseEvidenceKind.MERGED_IMPLEMENTING_PR, detail="   "
+            ),
         ),
     )
     result = evaluate_completion(facts)
@@ -123,10 +128,11 @@ def test_flags_evidence_less_without_cascade_fingerprint() -> None:
     closed (an evidence-less completion is never silently kept)."""
     facts = ModelCompletionFacts(
         ticket_id="OMN-8000",
+        prior_state_name="In Progress",
         started=True,
         same_second_sibling_cluster=False,
         parent_completed_same_second=False,
-        evidence=None,
+        evidence=(),
     )
     result = evaluate_completion(facts)
     assert result.verdict is EnumCompletionVerdict.FLAG_FOR_REVIEW
@@ -145,10 +151,13 @@ def test_unreadable_probe_is_treated_as_no_evidence() -> None:
     object attached — an optional check that silently skips == no check."""
     facts = ModelCompletionFacts(
         ticket_id="OMN-14903",
+        prior_state_name="Backlog",
         same_second_sibling_cluster=True,
-        evidence=ModelCloseEvidence(
-            kind=EnumCloseEvidenceKind.MERGED_IMPLEMENTING_PR,
-            detail="PR #999 merged (but probe could not confirm)",
+        evidence=(
+            ModelCloseEvidence(
+                kind=EnumCloseEvidenceKind.MERGED_IMPLEMENTING_PR,
+                detail="PR #999 merged (but probe could not confirm)",
+            ),
         ),
         evidence_probe_ok=False,
     )
@@ -168,18 +177,22 @@ def test_incident_cluster_reverts_and_evidenced_control_keeps() -> None:
     incident = [
         ModelCompletionFacts(
             ticket_id=tid,
+            prior_state_name="Backlog",
             same_second_sibling_cluster=True,
             parent_completed_same_second=True,
-            evidence=None,
+            evidence=(),
         )
         for tid in ("OMN-14900", "OMN-14901", "OMN-14902", "OMN-14903")
     ]
     control = ModelCompletionFacts(
         ticket_id="OMN-14888",
+        prior_state_name="In Review",
         started=True,
-        evidence=ModelCloseEvidence(
-            kind=EnumCloseEvidenceKind.MERGED_IMPLEMENTING_PR,
-            detail="PR #1850 merged 2026-07-21",
+        evidence=(
+            ModelCloseEvidence(
+                kind=EnumCloseEvidenceKind.MERGED_IMPLEMENTING_PR,
+                detail="PR #1850 merged 2026-07-21",
+            ),
         ),
     )
     results = reconcile_batch([*incident, control])
@@ -238,6 +251,7 @@ def test_apply_reverts_mutates_only_revert_required() -> None:
             verdict=EnumCompletionVerdict.KEEP,
             reason="durable evidence present",
             evidence_allowed=True,
+            prior_state_name="In Review",
         ),
         ModelCompletionVerdictResult(
             ticket_id="OMN-8000",
@@ -245,6 +259,7 @@ def test_apply_reverts_mutates_only_revert_required() -> None:
             verdict=EnumCompletionVerdict.FLAG_FOR_REVIEW,
             reason="no evidence, no fingerprint",
             evidence_allowed=False,
+            prior_state_name="In Progress",
         ),
     ]
     report = handler.apply_reverts(client=client, results=results, apply_changes=True)
@@ -286,15 +301,19 @@ def test_handle_dict_path_returns_report_dict() -> None:
         "completions": [
             {
                 "ticket_id": "OMN-14900",
+                "prior_state_name": "Backlog",
                 "same_second_sibling_cluster": True,
                 "parent_completed_same_second": True,
             },
             {
                 "ticket_id": "OMN-14888",
-                "evidence": {
-                    "kind": "merged_implementing_pr",
-                    "detail": "PR #1850 merged",
-                },
+                "prior_state_name": "In Review",
+                "evidence": [
+                    {
+                        "kind": "merged_implementing_pr",
+                        "detail": "PR #1850 merged",
+                    }
+                ],
             },
         ]
     }
@@ -312,8 +331,9 @@ def test_handle_typed_path_returns_report_model() -> None:
         completions=[
             ModelCompletionFacts(
                 ticket_id="OMN-14901",
+                prior_state_name="Backlog",
                 same_second_sibling_cluster=True,
-                evidence=None,
+                evidence=(),
             )
         ]
     )
