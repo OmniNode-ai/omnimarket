@@ -908,7 +908,45 @@ def render_admissibility_validator_dod_evidence_item(
     )
 
 
-_COMPUTE_RECEIPT_TEMPLATE = textwrap.dedent("""\
+# OMN-15407 F-03 follow-up: SPLIT around ``probe_command`` and ``actual_output``
+# so each is rendered by :func:`render_check_value_field` at indent 0 instead of
+# being inlined as a plain double-quoted scalar. This is the treatment the
+# BORN-path receipt templates already received under OMN-15247 R21
+# (``_DOWNSTREAM_RECEIPT_*`` / ``_CI_CHECK_RECEIPT_*``); the compute-oracle
+# receipt was simply never given it, so it kept the fold exposure those splits
+# removed.
+#
+# MEASURED, on the first companion this ticket's own product PR minted (OCC#5554
+# for omnimarket#1965), against the real yamlfmt v0.21.0 with the real
+# onex_change_control ``.yamlfmt``: the deploy-assessment receipt's
+# ``actual_output`` line
+#
+#     actual_output: "PASS: deploy-scope present for OMN-15407 from
+#       OmniNode-ai/omnimarket#1965 — 2 runtime/deploy-sensitive path(s), e.g.
+#       src/omnimarket/nodes/.../handler_occ_companion_compute.py."
+#
+# is 226 columns of PROSE, so it carries spaces well past column 100 and yamlfmt
+# FOLDS it -- which rewrites the committed receipt and restales its hash (F-03 /
+# OMN-14684). That is the entire cause of the `yamlfmt` red on OCC#5554: the
+# generated ``check_value`` on the same PR is 157 columns and yamlfmt leaves it
+# ALONE, exactly as :func:`is_yamlfmt_stable_check` predicts (its last space sits
+# at column 91).
+#
+# Why it had never fired before, stated so it is not mistaken for a regression:
+# the field interpolates ``sorted(deploy_hits)[0]`` -- an arbitrary-length
+# repository path -- and it is only emitted at all when the product PR touches
+# deploy-sensitive paths. It is a PRE-EXISTING latent defect whose trigger is a
+# long first path, and the PR that finally supplied one was this ticket's own
+# (``.../node_occ_companion_compute/handlers/handler_occ_companion_compute.py``).
+# Shortening the prose would only move the threshold, because the unbounded input
+# is a path; measuring the rendered line and switching to a literal block removes
+# the class.
+#
+# Byte impact is ZERO for every value that already fitted: the renderer returns
+# the byte-identical quoted form whenever the line is a yamlfmt fixpoint, and
+# only switches to ``|-`` for one that would fold. So no existing receipt shape
+# moves, and no hash that was stable becomes unstable.
+_COMPUTE_RECEIPT_HEAD_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
@@ -923,22 +961,15 @@ _COMPUTE_RECEIPT_TEMPLATE = textwrap.dedent("""\
     commit_sha: "{commit_sha}"
     runner: "{runner}"
     verifier: "{verifier}"
-    probe_command: "{probe_command}"
-    probe_stdout: |
-      {probe_stdout}
-    actual_output: "{actual_output}"
-    exit_code: {exit_code}
-    pr_number: {pr_number}
-    branch: "{branch}"
     """)
 
-# Same shape, but with NO contract_entry_sha256 line — for a compute receipt
+# Same head, but with NO contract_entry_sha256 line — for a compute receipt
 # whose evidence_item_id is not a DECLARED dod_evidence item (an OCC self-bind
 # receipt). Emitting a per-entry hash for such a receipt would fail core's
 # ``check_receipt_contract_binding`` with ``ContractEntryNotFoundError`` — the
 # receipt keeps only the whole-file ``contract_sha256`` the dual-accept gate
 # expects (mirrors ``_SELF_BIND_RECEIPT_TEMPLATE``). OMN-14406.
-_COMPUTE_RECEIPT_TEMPLATE_NO_ENTRY = textwrap.dedent("""\
+_COMPUTE_RECEIPT_HEAD_TEMPLATE_NO_ENTRY = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
@@ -952,10 +983,16 @@ _COMPUTE_RECEIPT_TEMPLATE_NO_ENTRY = textwrap.dedent("""\
     commit_sha: "{commit_sha}"
     runner: "{runner}"
     verifier: "{verifier}"
-    probe_command: "{probe_command}"
+    """)
+
+# Between the two fold-proof-rendered fields. ``probe_stdout`` is already a
+# block scalar and is unaffected.
+_COMPUTE_RECEIPT_MID_TEMPLATE = textwrap.dedent("""\
     probe_stdout: |
       {probe_stdout}
-    actual_output: "{actual_output}"
+    """)
+
+_COMPUTE_RECEIPT_TAIL_TEMPLATE = textwrap.dedent("""\
     exit_code: {exit_code}
     pr_number: {pr_number}
     branch: "{branch}"
@@ -1507,8 +1544,14 @@ def render_compute_receipt(
     recomputes; OMN-14406), or ``None`` for a receipt whose ``evidence_item_id``
     is not a declared ``dod_evidence`` item (a self-bind receipt), which then
     carries only the whole-file binding.
+
+    OMN-15407: ``probe_command`` and ``actual_output`` are rendered by
+    :func:`render_check_value_field` at indent 0 rather than inlined as plain
+    double-quoted scalars — see the note above the split templates for the
+    measured yamlfmt fold on a long ``actual_output``. Byte-identical output for
+    every value that already fitted the wrap width.
     """
-    fields = {
+    head_fields = {
         "ticket_id": ticket_id,
         "evidence_id": evidence_id,
         "check_value": check_value,
@@ -1517,17 +1560,23 @@ def render_compute_receipt(
         "commit_sha": commit_sha,
         "runner": runner,
         "verifier": verifier,
-        "probe_command": probe_command,
-        "probe_stdout": probe_stdout,
-        "actual_output": actual_output,
-        "exit_code": exit_code,
-        "pr_number": pr_number,
-        "branch": branch,
     }
     if contract_entry_sha256 is None:
-        return _COMPUTE_RECEIPT_TEMPLATE_NO_ENTRY.format(**fields)
-    return _COMPUTE_RECEIPT_TEMPLATE.format(
-        contract_entry_sha256=contract_entry_sha256, **fields
+        head = _COMPUTE_RECEIPT_HEAD_TEMPLATE_NO_ENTRY.format(**head_fields)
+    else:
+        head = _COMPUTE_RECEIPT_HEAD_TEMPLATE.format(
+            contract_entry_sha256=contract_entry_sha256, **head_fields
+        )
+    return (
+        head
+        + render_check_value_field("probe_command", probe_command, indent=0)
+        + _COMPUTE_RECEIPT_MID_TEMPLATE.format(probe_stdout=probe_stdout)
+        + render_check_value_field("actual_output", actual_output, indent=0)
+        + _COMPUTE_RECEIPT_TAIL_TEMPLATE.format(
+            exit_code=exit_code,
+            pr_number=pr_number,
+            branch=branch,
+        )
     )
 
 
