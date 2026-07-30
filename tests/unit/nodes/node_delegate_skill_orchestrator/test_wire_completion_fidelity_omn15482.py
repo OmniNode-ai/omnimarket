@@ -419,7 +419,7 @@ def test_outbound_payload_omits_response_format_when_unset(
 
 
 # ---------------------------------------------------------------------------
-# The deployed bus path fails loud rather than silently dropping
+# The deployed bus path carries completion shaping on the canonical wire
 # ---------------------------------------------------------------------------
 
 
@@ -432,40 +432,50 @@ def test_outbound_payload_omits_response_format_when_unset(
         ("response_format", {"type": "json_object"}),
     ],
 )
-async def test_runtime_bus_port_refuses_completion_shaping_it_cannot_thread(
+async def test_runtime_bus_port_publishes_completion_shaping_without_dropping(
     field: str, value: Any
 ) -> None:
-    """``RuntimeDelegationDispatchPort`` publishes ``ModelDelegationRequest``,
-    which carries none of these three fields. Accepting and dropping them there
-    would be the SAME defect this ticket closes, one hop further out -- so it
-    raises instead. Same boundary as ``backend_id``/``response_contract``."""
+    """The managed-cloud path must publish every non-None fidelity field."""
+    from omnibase_core.models.delegation.wire import ModelDelegationRequest
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+
     from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
         RuntimeDelegationDispatchPort,
     )
 
-    class _UnusedBus:
-        async def publish(self, *args: Any, **kwargs: Any) -> None:  # pragma: no cover
-            raise AssertionError("must fail before publishing")
+    class _CapturingBus:
+        def __init__(self) -> None:
+            self.published: list[bytes] = []
 
-        async def subscribe(self, *args: Any, **kwargs: Any) -> Any:  # pragma: no cover
-            raise AssertionError("must fail before subscribing")
+        async def publish(
+            self, _topic: str, _key: bytes | None, value: bytes, _headers: object
+        ) -> None:
+            self.published.append(value)
 
-    port = RuntimeDelegationDispatchPort(event_bus=_UnusedBus())
+    bus = _CapturingBus()
+    port = RuntimeDelegationDispatchPort(event_bus=bus)
 
-    with pytest.raises(NotImplementedError, match=field):
-        await port.dispatch(
-            prompt=_STEEL_USER_PROMPT,
-            task_type="agent_delegation",
-            correlation_id=uuid4(),
-            max_tokens=512,
-            source_file_path=None,
-            source_session_id=None,
-            wait=True,
-            quality_contract_mode="extend_task_class",
-            acceptance_criteria=(),
-            tenant_id=None,
-            **{field: value},
-        )
+    await port.dispatch(
+        prompt=_STEEL_USER_PROMPT,
+        task_type="agent_delegation",
+        correlation_id=uuid4(),
+        max_tokens=512,
+        source_file_path=None,
+        source_session_id=None,
+        wait=False,
+        quality_contract_mode="extend_task_class",
+        acceptance_criteria=(),
+        tenant_id=None,
+        **{field: value},
+    )
+
+    assert len(bus.published) == 1
+    request = (
+        ModelEventEnvelope[ModelDelegationRequest]
+        .model_validate_json(bus.published[0])
+        .payload
+    )
+    assert getattr(request, field) == value
 
 
 # ---------------------------------------------------------------------------

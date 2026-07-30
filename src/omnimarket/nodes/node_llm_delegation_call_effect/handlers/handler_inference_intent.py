@@ -50,7 +50,7 @@ _INFERENCE_RESPONSE_TOPIC_SUFFIX = (
     "inference-response.v1"  # onex-topic-allow: suffix used only for contract lookup
 )
 _RESERVED_PROVIDER_REQUEST_KEYS = frozenset(
-    {"model", "messages", "max_tokens", "temperature"}
+    {"model", "messages", "max_tokens", "temperature", "response_format"}
 )
 _MAX_PROVIDER_ERROR_BODY_CHARS = 1000
 # OMN-13215: every delegation tier (including the ceiling) executes through the
@@ -328,6 +328,8 @@ class HandlerInferenceIntent:
             "max_tokens": intent.max_tokens,
             "temperature": intent.temperature,
         }
+        if intent.response_format is not None:
+            payload["response_format"] = intent.response_format
         payload = _merge_provider_request_options(
             payload,
             provider_request_options,

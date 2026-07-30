@@ -460,6 +460,7 @@ def _build_model_inference_intent(
     api_key_ref: str | None,
     extra_headers: dict[str, str] | None,
     provider_request_options: dict[str, Any],
+    response_format: dict[str, object] | None,
     tenant_id: str | None,
 ) -> ModelInferenceIntent:
     # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
@@ -475,6 +476,7 @@ def _build_model_inference_intent(
         "correlation_id": correlation_id,
         "api_key_ref": api_key_ref,
         "extra_headers": extra_headers,
+        "response_format": response_format,
     }
     model_fields = getattr(ModelInferenceIntent, "model_fields", {})
     if provider_request_options and "provider_request_options" in model_fields:
@@ -558,6 +560,7 @@ def _evaluate_compliance(
                     dod_heuristic=workflow.routing_decision.dod_heuristic,
                     quality_contract_mode=workflow.request.quality_contract_mode,
                     acceptance_criteria=workflow.request.acceptance_criteria,
+                    response_contract=workflow.request.response_contract,
                 )
             )
         ]
@@ -567,9 +570,18 @@ def _evaluate_compliance(
     advance(workflow, EnumDelegationState.ROUTED)
     workflow.compliance_attempts += 1
     workflow.inference_intent_in_flight = True
-    temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+    temperature = (
+        workflow.request.temperature
+        if workflow.request.temperature is not None
+        else _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+    )
+    request_system_prompt = (
+        workflow.request.system_prompt
+        if workflow.request.system_prompt is not None
+        else workflow.routing_decision.system_prompt
+    )
     system_prompt, prompt, provider_request_options = apply_inference_protocol(
-        system_prompt=workflow.routing_decision.system_prompt,
+        system_prompt=request_system_prompt,
         prompt=_prompt_with_context_pack(workflow.request, result.repair_prompt),
         model=workflow.routing_decision.selected_model,
         task_type=workflow.request.task_type,
@@ -593,6 +605,7 @@ def _evaluate_compliance(
             api_key_ref=workflow.routing_decision.api_key_ref,
             extra_headers=workflow.routing_decision.extra_headers,
             provider_request_options=provider_request_options,
+            response_format=workflow.request.response_format,
             # OMN-14280: stamp the workflow tenant onto the repair-attempt intent
             # (same precedence as slice-1 terminal attribution via _resolve_tenant_id).
             tenant_id=_resolve_tenant_id(workflow),
@@ -1041,9 +1054,18 @@ class HandlerDelegationWorkflow:
         workflow.inference_intent_in_flight = True
 
         assert workflow.request is not None
-        temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+        temperature = (
+            workflow.request.temperature
+            if workflow.request.temperature is not None
+            else _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+        )
+        request_system_prompt = (
+            workflow.request.system_prompt
+            if workflow.request.system_prompt is not None
+            else decision.system_prompt
+        )
         system_prompt, prompt, provider_request_options = apply_inference_protocol(
-            system_prompt=decision.system_prompt,
+            system_prompt=request_system_prompt,
             prompt=_prompt_with_context_pack(workflow.request, workflow.request.prompt),
             model=decision.selected_model,
             task_type=workflow.request.task_type,
@@ -1070,6 +1092,7 @@ class HandlerDelegationWorkflow:
                 api_key_ref=decision.api_key_ref,
                 extra_headers=decision.extra_headers,
                 provider_request_options=provider_request_options,
+                response_format=workflow.request.response_format,
                 # OMN-14280: stamp the workflow tenant onto the initial/escalation
                 # inference intent (slice-1 precedence via _resolve_tenant_id).
                 tenant_id=_resolve_tenant_id(workflow),
@@ -1317,6 +1340,7 @@ class HandlerDelegationWorkflow:
                         dod_heuristic=workflow.routing_decision.dod_heuristic,
                         quality_contract_mode=workflow.request.quality_contract_mode,
                         acceptance_criteria=workflow.request.acceptance_criteria,
+                        response_contract=workflow.request.response_contract,
                     )
                 )
             ]

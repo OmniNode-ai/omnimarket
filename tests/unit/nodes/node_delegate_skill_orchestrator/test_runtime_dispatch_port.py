@@ -198,6 +198,14 @@ async def test_runtime_dispatch_port_uses_contract_derived_transport_config() ->
     envelope = json.loads(value)
     assert envelope["event_type"] == "test.delegation-request"
     assert envelope["source_tool"] == "test-delegate-port"
+    for optional_field in (
+        "backend_id",
+        "response_contract",
+        "system_prompt",
+        "temperature",
+        "response_format",
+    ):
+        assert optional_field not in envelope["payload"]
     assert bus.subscriptions == [
         ("test.evt.delegation-completed", f"test-delegate-port-{correlation_id.hex}"),
         ("test.evt.delegation-failed", f"test-delegate-port-{correlation_id.hex}"),
@@ -252,6 +260,11 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
             quality_contract_mode="replace_task_class",
             acceptance_criteria=("exactly_two_sentences",),
             tenant_id=None,
+            backend_id="cloud-gemini-pro",
+            response_contract={"type": "object", "required": ["answer"]},
+            system_prompt="Return one JSON object.",
+            temperature=0.2,
+            response_format={"type": "json_object"},
         )
     finally:
         await bus.close()
@@ -269,6 +282,11 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
     assert request.max_tokens == 512
     assert request.quality_contract_mode == "replace_task_class"
     assert request.acceptance_criteria == ("exactly_two_sentences",)
+    assert request.backend_id == "cloud-gemini-pro"
+    assert request.response_contract == {"type": "object", "required": ["answer"]}
+    assert request.system_prompt == "Return one JSON object."
+    assert request.temperature == 0.2
+    assert request.response_format == {"type": "json_object"}
     assert request.emitted_at
 
 
@@ -338,70 +356,63 @@ async def test_runtime_dispatch_port_threads_verified_tenant_id_onto_published_r
 
 
 @pytest.mark.unit
-async def test_runtime_dispatch_port_rejects_backend_id_pin_loudly() -> None:
-    """OMN-15180: the deployed bus path publishes ``ModelDelegationRequest``
-    (omnibase_core), which carries no ``backend_id`` field, and the downstream
-    ``HandlerDelegationWorkflow`` has no backend-pin input today. A non-None
-    pin must fail LOUDLY here rather than being silently accepted and dropped
-    -- the exact "pin drops at a hop" defect class this ticket exists to
-    close. Never publishes to the bus when it raises.
-    """
+async def test_runtime_dispatch_port_publishes_backend_id_pin() -> None:
     bus = _CapturingEventBus()
     port = RuntimeDelegationDispatchPort(
         event_bus=bus,
         config=_runtime_dispatch_config(),
     )
 
-    with pytest.raises(NotImplementedError, match="backend_id pin"):
-        await port.dispatch(
-            prompt="Write tests",
-            task_type="code_generation",
-            correlation_id=uuid4(),
-            max_tokens=512,
-            source_file_path=None,
-            source_session_id=None,
-            wait=False,
-            quality_contract_mode="replace_task_class",
-            acceptance_criteria=(),
-            tenant_id=None,
-            backend_id="local-coder-mlx",
-        )
+    await port.dispatch(
+        prompt="Write tests",
+        task_type="code_generation",
+        correlation_id=uuid4(),
+        max_tokens=512,
+        source_file_path=None,
+        source_session_id=None,
+        wait=False,
+        quality_contract_mode="replace_task_class",
+        acceptance_criteria=(),
+        tenant_id=None,
+        backend_id="local-coder-mlx",
+    )
 
-    assert bus.published == []
+    request = (
+        ModelEventEnvelope[ModelDelegationRequest]
+        .model_validate_json(bus.published[0][1])
+        .payload
+    )
+    assert request.backend_id == "local-coder-mlx"
 
 
 @pytest.mark.unit
-async def test_runtime_dispatch_port_rejects_response_contract_loudly() -> None:
-    """OMN-15193: the deployed bus path publishes ``ModelDelegationRequest``
-    (omnibase_core), which carries no ``response_contract`` field, and the
-    downstream ``HandlerDelegationWorkflow`` / ``HandlerQualityGateIntent`` have
-    no declared-schema input today. A non-None contract must fail LOUDLY here
-    rather than being silently accepted and dropped -- the exact per-hop-drop
-    defect class this ticket exists to close. Never publishes to the bus when
-    it raises.
-    """
+async def test_runtime_dispatch_port_publishes_response_contract() -> None:
     bus = _CapturingEventBus()
     port = RuntimeDelegationDispatchPort(
         event_bus=bus,
         config=_runtime_dispatch_config(),
     )
 
-    with pytest.raises(NotImplementedError, match="response_contract"):
-        await port.dispatch(
-            prompt="Decide the next tactical action",
-            task_type="agent_delegation",
-            correlation_id=uuid4(),
-            max_tokens=512,
-            source_file_path=None,
-            source_session_id=None,
-            wait=False,
-            quality_contract_mode="extend_task_class",
-            acceptance_criteria=(),
-            tenant_id=None,
-            response_contract={"type": "object"},
-        )
+    await port.dispatch(
+        prompt="Decide the next tactical action",
+        task_type="agent_delegation",
+        correlation_id=uuid4(),
+        max_tokens=512,
+        source_file_path=None,
+        source_session_id=None,
+        wait=False,
+        quality_contract_mode="extend_task_class",
+        acceptance_criteria=(),
+        tenant_id=None,
+        response_contract={"type": "object"},
+    )
 
-    assert bus.published == []
+    request = (
+        ModelEventEnvelope[ModelDelegationRequest]
+        .model_validate_json(bus.published[0][1])
+        .payload
+    )
+    assert request.response_contract == {"type": "object"}
 
 
 @pytest.mark.unit
