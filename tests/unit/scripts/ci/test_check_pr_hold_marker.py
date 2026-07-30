@@ -629,6 +629,17 @@ class TestSingleSourceUrlAuthority:
         assert code == EXIT_CLEAR, report
         assert seen == ["https://ghe.example.com/api/v3/repos/o/r/pulls/1973"]
 
+    def test_quoted_authority_value_allows_inline_comment(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        authority = tmp_path / "service_endpoints.yaml"
+        authority.write_text(
+            'github:\n  rest_url: "https://api.github.com" # prod\n',
+            encoding="utf-8",
+        )
+
+        assert resolve_github_rest_url(authority) == "https://api.github.com"
+
     @pytest.mark.parametrize(
         ("body", "expected_fragment"),
         [

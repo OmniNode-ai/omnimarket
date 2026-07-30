@@ -228,7 +228,10 @@ def resolve_github_rest_url(
         name, separator, value = raw_line.strip().partition(":")
         if not separator or name.strip() != URL_AUTHORITY_KEY:
             continue
-        url = value.strip().strip("\"'")
+        value = value.strip()
+        if "#" in value:
+            value = value.split("#", 1)[0].strip()
+        url = value.strip("\"'")
         if not url.startswith("https://") or len(url) <= len("https://"):
             raise UrlAuthorityUnavailableError(
                 f"{authority_path}: {URL_AUTHORITY_SECTION}.{URL_AUTHORITY_KEY} "
