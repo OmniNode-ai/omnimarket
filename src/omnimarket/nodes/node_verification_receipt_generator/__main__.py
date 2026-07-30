@@ -5,7 +5,7 @@
 Generates an evidence receipt for a task-completed claim and outputs it as JSON.
 
 Usage:
-    python -m omnimarket.nodes.node_verification_receipt_generator --task-id OMN-9403 --claim "all tests pass" --repo omnimarket --pr-number 370
+    python -m omnimarket.nodes.node_verification_receipt_generator --task-id OMN-9403 --claim "all tests pass" --repo OmniNode-ai/omnimarket --pr-number 370
     python -m omnimarket.nodes.node_verification_receipt_generator --task-id OMN-9403 --claim "all tests pass" --dry-run
 """
 
@@ -46,8 +46,8 @@ def main() -> None:
     parser.add_argument(
         "--repo",
         type=str,
-        default="",
-        help="GitHub repo slug for CI verification",
+        default=None,
+        help="Canonical GitHub repository identity (OWNER/REPO) for CI verification",
     )
     parser.add_argument(
         "--pr-number",

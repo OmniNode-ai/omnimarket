@@ -1,8 +1,8 @@
 ---
 name: verification_receipt_generator
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 0, patch: 1}
 node_type: compute
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 1}
 
 description: >
   Generates evidence receipts for task-completed claims. Verifies CI checks
@@ -42,7 +42,10 @@ inputs:
     required: true
   repo:
     type: str
-    description: "GitHub repo slug for PR verification"
+    description: >
+      Canonical GitHub repository identity in exact OWNER/REPO form for PR
+      verification (for example, OmniNode-ai/omnimarket). Bare names and
+      duplicated owner prefixes are invalid.
     required: false
   pr_number:
     type: int

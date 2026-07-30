@@ -40,6 +40,8 @@ from omnimarket.events.verification import (
 )
 from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
     HandlerVerificationReceiptGenerator,
+    ModelGithubCheckRow,
+    ModelGithubChecksQueryResult,
 )
 
 _CONTRACT_PATH = (
@@ -53,9 +55,13 @@ _HANDLER_MODULE = (
 )
 
 _GREEN_ROWS: list[dict[str, Any]] = [
-    {"name": "build", "state": "completed", "conclusion": "success"},
-    {"name": "tests", "state": "completed", "conclusion": "success"},
+    {"name": "build", "state": "SUCCESS", "bucket": "pass"},
+    {"name": "tests", "state": "SUCCESS", "bucket": "pass"},
 ]
+_GREEN_QUERY = ModelGithubChecksQueryResult(
+    checks=tuple(ModelGithubCheckRow.model_validate(row) for row in _GREEN_ROWS),
+    exit_code=0,
+)
 
 
 @pytest.mark.unit
@@ -97,7 +103,7 @@ async def test_real_ci_verify_from_running_loop_returns_typed_receipt(
     request = ModelVerificationReceiptRequest(
         task_id="OMN-13843",
         claim="CI is green",
-        repo="omnimarket",
+        repo="OmniNode-ai/omnimarket",
         pr_number=1471,
         verify_ci=True,
         verify_tests=False,
@@ -106,7 +112,7 @@ async def test_real_ci_verify_from_running_loop_returns_typed_receipt(
 
     with patch(
         f"{_HANDLER_MODULE}.GhClient.get_pr_checks",
-        return_value=_GREEN_ROWS,
+        return_value=_GREEN_QUERY,
     ):
         try:
             # handle() is SYNC; calling it from inside this running loop is the
@@ -151,7 +157,7 @@ def test_runtime_local_capture_log_has_no_sync_only_error(
     initial_payload = ModelVerificationReceiptRequest(
         task_id="OMN-13843",
         claim="CI is green",
-        repo="omnimarket",
+        repo="OmniNode-ai/omnimarket",
         pr_number=1471,
         verify_ci=True,
         verify_tests=False,
@@ -162,7 +168,7 @@ def test_runtime_local_capture_log_has_no_sync_only_error(
 
     with patch(
         f"{_HANDLER_MODULE}.GhClient.get_pr_checks",
-        return_value=_GREEN_ROWS,
+        return_value=_GREEN_QUERY,
     ):
         runtime = RuntimeLocal(
             workflow_path=_CONTRACT_PATH,

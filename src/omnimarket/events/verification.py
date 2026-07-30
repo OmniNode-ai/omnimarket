@@ -11,9 +11,19 @@ omnimarket.events.* rather than a single node's private models package.
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Annotated
 
 from omnibase_core.models.task.model_mechanical_check import ModelMechanicalCheck
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+
+GithubRepositorySlug = Annotated[
+    str,
+    StringConstraints(
+        min_length=3,
+        pattern=r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$",
+    ),
+]
+"""Canonical GitHub repository identity in exact ``OWNER/REPO`` form."""
 
 
 class ModelVerificationReceiptRequest(BaseModel):
@@ -25,9 +35,12 @@ class ModelVerificationReceiptRequest(BaseModel):
     claim: str = Field(
         description="What the task claims to have done (e.g. 'all tests pass').",
     )
-    repo: str = Field(
-        default="",
-        description="GitHub repo slug for PR verification.",
+    repo: GithubRepositorySlug | None = Field(
+        default=None,
+        description=(
+            "Canonical GitHub repository identity in exact OWNER/REPO form; "
+            "required when verify_ci is true."
+        ),
     )
     pr_number: int | None = Field(
         default=None,
@@ -82,7 +95,9 @@ class ModelCheckEvidence(BaseModel):
     summary: str = Field(default="", description="Human-readable summary.")
     details: dict[str, str] = Field(
         default_factory=dict,
-        description="Structured check details (e.g. check name -> conclusion).",
+        description=(
+            "Structured check details (for example, check name -> bucket:state)."
+        ),
     )
     file_results: list[ModelFileTestResult] = Field(
         default_factory=list,
@@ -110,6 +125,7 @@ class ModelVerificationReceipt(BaseModel):
 
 
 __all__ = [
+    "GithubRepositorySlug",
     "ModelCheckEvidence",
     "ModelFileTestResult",
     "ModelVerificationReceipt",

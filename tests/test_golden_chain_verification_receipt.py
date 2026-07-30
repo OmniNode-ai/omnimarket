@@ -18,6 +18,8 @@ from omnimarket.events.verification import (
 from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
     GhClientProtocol,
     HandlerVerificationReceiptGenerator,
+    ModelGithubCheckRow,
+    ModelGithubChecksQueryResult,
     PytestRunnerProtocol,
 )
 
@@ -34,7 +36,7 @@ def _make_request(**overrides: object) -> ModelVerificationReceiptRequest:
     defaults = {
         "task_id": "OMN-9403",
         "claim": "all tests pass",
-        "repo": "omnimarket",
+        "repo": "OmniNode-ai/omnimarket",
         "pr_number": 368,
         "worktree_path": "/tmp/worktree",
         "dry_run": False,
@@ -47,7 +49,12 @@ def _stub_gh(
     checks: list[dict[str, Any]] | None = None,
 ) -> GhClientProtocol:
     client = MagicMock(spec=GhClientProtocol)
-    client.get_pr_checks.return_value = checks or []
+    client.get_pr_checks.return_value = ModelGithubChecksQueryResult(
+        checks=tuple(
+            ModelGithubCheckRow.model_validate(check) for check in (checks or [])
+        ),
+        exit_code=0,
+    )
     return client  # type: ignore[return-value]
 
 
@@ -74,8 +81,8 @@ class TestVerificationReceiptGoldenChain:
 
     def test_ci_all_pass(self) -> None:
         checks = [
-            {"name": "lint", "state": "completed", "conclusion": "success"},
-            {"name": "test", "state": "completed", "conclusion": "success"},
+            {"name": "lint", "state": "SUCCESS", "bucket": "pass"},
+            {"name": "test", "state": "SUCCESS", "bucket": "pass"},
         ]
         handler = HandlerVerificationReceiptGenerator(
             gh_client=_stub_gh(checks),
@@ -93,8 +100,8 @@ class TestVerificationReceiptGoldenChain:
 
     def test_ci_has_failing_check(self) -> None:
         checks = [
-            {"name": "lint", "state": "completed", "conclusion": "success"},
-            {"name": "test", "state": "completed", "conclusion": "failure"},
+            {"name": "lint", "state": "SUCCESS", "bucket": "pass"},
+            {"name": "test", "state": "FAILURE", "bucket": "fail"},
         ]
         handler = HandlerVerificationReceiptGenerator(
             gh_client=_stub_gh(checks),
@@ -137,7 +144,7 @@ class TestVerificationReceiptGoldenChain:
         assert "exit_code=1" in result.checks[0].summary
 
     def test_both_dimensions_pass(self) -> None:
-        checks = [{"name": "test", "state": "completed", "conclusion": "success"}]
+        checks = [{"name": "test", "state": "SUCCESS", "bucket": "pass"}]
         handler = HandlerVerificationReceiptGenerator(
             gh_client=_stub_gh(checks),
             pytest_runner=_stub_pytest(exit_code=0),
@@ -150,7 +157,7 @@ class TestVerificationReceiptGoldenChain:
         assert all(c.passed for c in result.checks)
 
     def test_ci_passes_pytest_fails(self) -> None:
-        checks = [{"name": "test", "state": "completed", "conclusion": "success"}]
+        checks = [{"name": "test", "state": "SUCCESS", "bucket": "pass"}]
         handler = HandlerVerificationReceiptGenerator(
             gh_client=_stub_gh(checks),
             pytest_runner=_stub_pytest(exit_code=1, summary="1 failed"),
