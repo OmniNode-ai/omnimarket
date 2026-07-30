@@ -158,6 +158,21 @@ _EVIDENCE_ID_BINDING_RE = re.compile(
 _HARDCODED_PR_NUM_RE = re.compile(r"gh pr (?:view|checks|diff)\s+(\d+)\b")
 _REPO_FLAG_RE = re.compile(r"--repo(?:=|\s+)([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)")
 _GH_PR_URL_RE = re.compile(r"https://github\.com/([^\s\"')]+/[^\s\"')]+)/pull/(\d+)")
+# OMN-15465: the two URL forms that carry repo AND number adjacent inside a
+# SINGLE token — the ``gh api`` REST path (``repos/<owner>/<repo>/pulls/<N>``)
+# and the github.com web URL (``.../<owner>/<repo>/pull/<N>``). These are a
+# STRICTLY STRONGER same-clause guarantee than the ``--repo`` flag form, whose
+# two halves are merely co-located in one clause: here they are one contiguous
+# path, so they cannot be mixed even in principle. Before this, an item like
+# ``occ-self-bind-pr-5495`` — whose own check_value reads ``gh api repos/
+# OmniNode-ai/onex_change_control/pulls/5495/files ...`` — pinned its PR
+# perfectly and still fell through tier 2 to the receipt-carrier tier, because
+# the extractor only understood ``gh pr view|checks|diff``.
+_PR_PATH_URL_RE = re.compile(
+    r"(?:https://github\.com/|repos/)"
+    r"([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)"
+    r"/pulls?/(\d+)\b"
+)
 # Split a check_value into clauses at shell control operators so a --repo
 # belonging to a DIFFERENT gh pr invocation in the same string never pairs
 # with this clause's hardcoded number.
@@ -166,6 +181,14 @@ _SHELL_CLAUSE_SPLIT_RE = re.compile(r"&&|\|\||;|\|")
 
 def _hardcoded_pr_bindings_in_value(value: str) -> list[tuple[str, int]]:
     """Return every same-clause literal ``(repo, pr_number)`` pin in ``value``.
+
+    Recognises two shapes, both same-clause by construction:
+
+    * ``gh pr view|checks|diff <N> ... --repo <owner>/<repo>`` — number and
+      repo flag co-located within one shell clause;
+    * ``repos/<owner>/<repo>/pulls/<N>`` or
+      ``https://github.com/<owner>/<repo>/pull/<N>`` — number and repo in one
+      contiguous URL path (OMN-15465).
 
     Pure function — no I/O. See the module comment above
     ``_HARDCODED_PR_NUM_RE`` for why this must be same-clause, same-string.
@@ -176,7 +199,23 @@ def _hardcoded_pr_bindings_in_value(value: str) -> list[tuple[str, int]]:
         repo_match = _REPO_FLAG_RE.search(clause)
         if num_match and repo_match:
             bindings.append((repo_match.group(1), int(num_match.group(1))))
+        for url_repo, url_num in _PR_PATH_URL_RE.findall(clause):
+            bindings.append((str(url_repo), int(url_num)))
     return bindings
+
+
+# OMN-15465: PR numbers an evidence item's OWN ``id`` literally pins, e.g.
+# ``occ-self-bind-pr-4711`` -> {4711}, ``dod-omn-14968-pr-2536-rebind-15382``
+# -> {2536}. Ids that name no PR (``dod-deploy-assessment``) yield the empty
+# set and therefore constrain nothing.
+_ID_PINNED_PR_RE = re.compile(r"-pr-(\d+)(?:\b|-)")
+
+
+def _pr_numbers_pinned_by_item_id(item_id: object) -> frozenset[int]:
+    """Return every PR number the item id itself asserts. Pure — no I/O."""
+    if not isinstance(item_id, str) or not item_id:
+        return frozenset()
+    return frozenset(int(n) for n in _ID_PINNED_PR_RE.findall(item_id))
 
 
 def _field_confirms_pair(value: str, repo: str, pr_number: int) -> bool:
@@ -1737,6 +1776,18 @@ class EvidenceCollector:
            :meth:`_live_pr_checks_for_item`) instead of silently contributing
            nothing or trusting the mismatched pair.
 
+           OMN-15465 adds a second refusal at this tier: a receipt pair that IS
+           internally consistent but whose number CONTRADICTS a PR the item's
+           own ``id`` literally pins (:func:`_pr_numbers_pinned_by_item_id`) is
+           refused too. Internal consistency only proves the receipt describes
+           *some* PR coherently — not that it describes *this item's* PR.
+
+        Tiers 1-3 are deliberately NOT subject to the id-contradiction guard:
+        an explicit ``pr`` field is an author declaration, the item's own
+        ``check_value`` is the command that actually runs, and tier 3 reads the
+        id itself. Only the receipt tier speaks about the item from outside it,
+        so only the receipt tier can be wrong about which PR the item is.
+
         Returns a de-duplicated list; empty when the item does not bind to any PR
         (a non-PR evidence item is therefore unaffected by the live check).
         """
@@ -1801,6 +1852,22 @@ class EvidenceCollector:
                     self._load_item_receipts(item_id, ticket_id, contract_path)
                 )
                 untrusted = False
+                # OMN-15465: PR numbers the item's own id asserts. A
+                # receipt-derived pair can be internally consistent (repo and
+                # number corroborated by the SAME field) and STILL describe a
+                # different PR than the item does — the OMN-14623
+                # "2nd consumer" merged-path supersede re-binds a prior entry
+                # to an unrelated product PR, so the surviving receipt for
+                # ``occ-self-bind-pr-4711`` reads ``pr_number: 2424`` +
+                # ``gh pr view 2424 --repo OmniNode-ai/omnibase_infra``. The
+                # F2 consistency check passes it; the resulting live-state
+                # check then reports omnibase_infra#2424 under an item whose
+                # id and description both say OCC #4711, and renders VERIFIED
+                # whenever that carrier PR is merged and green. Census over
+                # OCC origin/dev @5a19a5e1b: 55 non-superseded items affected
+                # (plus 43 masked behind a contract-entry supersession).
+                id_pinned = _pr_numbers_pinned_by_item_id(item_id)
+                contradicted: list[int] = []
                 for receipt in receipts:
                     if not isinstance(receipt, dict):
                         continue
@@ -1810,11 +1877,31 @@ class EvidenceCollector:
                     if not isinstance(pr_number, int) or isinstance(pr_number, bool):
                         continue
                     confirmed_repo = self._consistent_receipt_repo(receipt, pr_number)
-                    if confirmed_repo is not None:
-                        _add(confirmed_repo, pr_number)
-                    else:
+                    if confirmed_repo is None:
                         untrusted = True
-                if not bindings and untrusted:
+                        continue
+                    if id_pinned and pr_number not in id_pinned:
+                        # Refuse, never downgrade to "probe the carrier
+                        # anyway": absent is honest, mis-bound is not.
+                        contradicted.append(pr_number)
+                        continue
+                    _add(confirmed_repo, pr_number)
+                if not bindings and contradicted:
+                    self._last_binding_note = (
+                        f"NO_CONSISTENT_PR_BINDING: item {item_id!r} pins PR "
+                        f"{sorted(id_pinned)} in its own id, but its surviving "
+                        f"PASS receipt(s) bind it to PR {sorted(contradicted)} "
+                        "— a different PR entirely (the OMN-14623 2nd-consumer "
+                        "supersede re-binds a prior entry to the current "
+                        "product PR). No live-state binding derived, because "
+                        "probing the carrier PR here would report VERIFIED "
+                        "about a PR this item never referenced. Give the item "
+                        "its own literal pin ('gh pr view <N> --repo "
+                        "<owner>/<repo>' or 'repos/<owner>/<repo>/pulls/<N>'), "
+                        "or give the 2nd consumer its own evidence item "
+                        "instead of re-binding this one."
+                    )
+                elif not bindings and untrusted:
                     self._last_binding_note = (
                         f"NO_CONSISTENT_PR_BINDING: item {item_id!r} has a PASS "
                         "receipt recording pr_number, but no receipt field "
