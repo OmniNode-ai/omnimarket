@@ -450,7 +450,6 @@ accepted:
 - ORPHANED_PRODUCER::node_audit_trail_compactor::onex.evt.omnimarket.audit-trail-compacted.v1
 - ORPHANED_PRODUCER::node_auto_merge_effect::onex.evt.omnimarket.pr-merged.v1
 - ORPHANED_PRODUCER::node_budget_policy_compute::onex.evt.omnimarket.budget-policy-completed.v1
-- ORPHANED_PRODUCER::node_build_loop_write_effect::onex.evt.omnibase-infra.build-loop-appended.v1
 - ORPHANED_PRODUCER::node_bus_audit_compute::onex.evt.omnimarket.bus-audit-completed.v1
 - ORPHANED_PRODUCER::node_candidate_pool_compute::onex.evt.omnimarket.candidate-pool-completed.v1
 - ORPHANED_PRODUCER::node_chain_orchestrator::onex.evt.omnibase-infra.chain-learn-complete.v1
@@ -494,7 +493,6 @@ accepted:
 - ORPHANED_PRODUCER::node_dispatch_watchdog_orchestrator::onex.evt.omnimarket.watchdog-stall-detected.v1
 - ORPHANED_PRODUCER::node_dispatch_watchdog_orchestrator::onex.evt.omnimarket.watchdog-task-escalated.v1
 - ORPHANED_PRODUCER::node_dispatch_worker::onex.evt.omnimarket.dispatch-worker-compiled.v1
-- ORPHANED_PRODUCER::node_dlq_replay_effect::onex.dlq.omnibase-infra.quarantine.v1
 - ORPHANED_PRODUCER::node_env_parity_collect_effect::onex.evt.omnimarket.env-parity-collect-completed.v1
 - ORPHANED_PRODUCER::node_env_parity_compute::onex.evt.omnimarket.env-parity-compute-completed.v1
 - ORPHANED_PRODUCER::node_env_sync_alert_effect::onex.evt.omnimarket.env-sync-alert-completed.v1

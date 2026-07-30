@@ -584,43 +584,25 @@ omnimarket = "omnimarket.nodes"
 # occ-preflight.yml, validator_receipt_gate.py, no_faked_boundary handler,
 # MixinNodeDispatch tests, dev->main promotion merges) with zero omnimarket
 # surface impact; 3f2998b3 itself is a pure-addition commit (+1922/-0, new
-# files only). REMOVE WHEN RELEASED: once core publishes a version containing
-# this commit, delete this override (the range pin above already covers it)
-# and `uv lock`.
+# files only).
 #
-# OMN-15544 (step 3): re-pinned from the OMN-15392 feature-branch head 5a907b71
-# to its durable squash-merged commit 4d7c5fba on core dev (core#1531, merged
-# 2026-07-30T23:40:05Z). The two commits have the IDENTICAL tree
-# aa688b495d91194b2acd4f535a67d03159b89298 -- `git diff 5a907b71 4d7c5fba` is
-# empty -- so this changes REACHABILITY ONLY: EnumDodEvidenceExecutionScope and
-# every other symbol are preserved byte-for-byte. GitHub deleted the feature
-# branch when #1531 merged, which left 5a907b71 reachable from no remote branch
-# and turns the required `uv.lock Pin Reachability` job red for every PR in this
-# repo (OMN-14447 class recurrence).
-#
-# The prose guard that stood here -- "This branch MUST remain draft and MUST NOT
-# merge with a feature-branch pin" -- is DELETED rather than reworded. It was
-# never a mechanism: omnimarket#1960 merged straight through it on
-# 2026-07-30T20:03:53Z, which is how this pin reached dev. Leaving it would be
-# false assurance. The mechanism is the pin-reachability gate; hardening its
-# predicate from any-branch to protected-branch is OMN-15538 / omnibase_infra#2583.
-#
+# OMN-15423 rebase: re-pinned to protected core dev ac174387, which includes
+# the durable squash merges for OMN-15417 typed application database contracts
+# (#1529, 3d51b047) and OMN-15392 DoD evidence execution scope (#1531,
+# 4d7c5fba). This avoids the deleted feature-head pin while preserving both
+# required contract surfaces.
 # REMOVE WHEN RELEASED: once core publishes a version containing this commit,
 # delete this override (the range pin above already covers it) and `uv lock`.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "4d7c5fba361b5abbe85b96397e1398b91e279878" }  # raw-override-ok: OMN-15544
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "ac1743877cebac73556be2e5a6d8dc4a3e05da98" }  # raw-override-ok: OMN-15423
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
-# OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to 77144f83 -- current
-# omnibase_infra dev, a descendant of the merged #2402/#2419 squashes that package
-# src/omnibase_infra/contracts/canary/model_replay_projection_seam.json as
-# wheel data. This omnimarket-side half imports that seam JSON and asserts
-# ModelReplayProjection / ModelReplayCursor / ModelDeliveryPosition
-# .model_fields against it field-by-field. The newer pin also includes
-# post-#2402 graph repairs required by omnimarket's contract-topic graph gate.
-# REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing #2402
-# plus the graph repairs, delete this override (the range pin above already
-# covers it) and `uv lock`.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "77144f83a9f720fb4a97f1e35c48b588b748a892" }
+# OMN-15418: re-pinned from 77144f83 to the exact companion infra head.
+# 9e9e62c3 retains the OMN-14779 replay seam and graph repairs, then adds strict
+# registry consumption for typed db_io, canonical handler_routing/event_bus,
+# checked-in database-topology composition, and fail-closed domain selection.
+# REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing this
+# commit, delete this override (the range pin above already covers it) and `uv lock`.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "9e9e62c3177f568b7e5110f653ee4be6dcda965c" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 

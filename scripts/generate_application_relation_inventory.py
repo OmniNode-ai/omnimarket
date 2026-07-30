@@ -26,6 +26,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from omnibase_core.models.contracts.subcontracts.model_db_table_declaration import (
+    ModelDbTableDeclaration,
+)
+from pydantic import ValidationError
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 NODES_ROOT = REPO_ROOT / "src" / "omnimarket" / "nodes"
@@ -268,19 +272,40 @@ def _load_contracts() -> tuple[
     declarations: dict[str, list[dict[str, Any]]] = defaultdict(list)
     contracts: dict[str, dict[str, Any]] = {}
     required = {"name", "database_ref", "schema", "migration", "access", "role"}
+
+    def validate_declaration(path: Path, declaration: Any) -> dict[str, Any]:
+        display_path = (
+            path.relative_to(REPO_ROOT) if path.is_relative_to(REPO_ROOT) else path
+        )
+        if not isinstance(declaration, dict):
+            raise ValueError(
+                f"{display_path} db_io.db_tables entries must be "
+                f"mappings, got {type(declaration).__name__}"
+            )
+        actual = set(declaration)
+        if actual != required:
+            raise ValueError(
+                f"{display_path} {declaration.get('name')!r} "
+                f"must use exactly {sorted(required)} and must not use the retired "
+                f"database key; got {sorted(actual)}"
+            )
+        try:
+            typed = ModelDbTableDeclaration.model_validate(declaration)
+        except ValidationError as exc:
+            raise ValueError(
+                f"{display_path} {declaration.get('name')!r} has "
+                f"an invalid typed database_ref/schema location: {exc}"
+            ) from exc
+        return typed.model_dump(mode="python")
+
     for path in sorted(NODES_ROOT.glob("*/contract.yaml")):
         payload = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
         node = path.parent.name
         contracts[node] = payload
-        for declaration in (payload.get("db_io") or {}).get("db_tables") or []:
-            if declaration.get("database_ref") != "application":
+        for raw_declaration in (payload.get("db_io") or {}).get("db_tables") or []:
+            declaration = validate_declaration(path, raw_declaration)
+            if declaration["database_ref"] != "application":
                 continue
-            actual = set(declaration)
-            if actual != required:
-                raise ValueError(
-                    f"{path.relative_to(REPO_ROOT)} {declaration.get('name')!r} "
-                    f"must use exactly {sorted(required)}; got {sorted(actual)}"
-                )
             item = dict(declaration)
             item["node"] = node
             item["contract"] = str(path.relative_to(REPO_ROOT))
@@ -289,15 +314,9 @@ def _load_contracts() -> tuple[
     service_payload = yaml.safe_load(SERVICE_MANIFEST.read_text(encoding="utf-8")) or {}
     if service_payload.get("owner_declaration") != SERVICE_OWNER:
         raise ValueError(f"{SERVICE_MANIFEST} must declare owner {SERVICE_OWNER!r}")
-    for declaration in (service_payload.get("db_io") or {}).get("db_tables") or []:
-        actual = set(declaration)
-        if actual != required:
-            raise ValueError(
-                f"{SERVICE_MANIFEST.relative_to(REPO_ROOT)} "
-                f"{declaration.get('name')!r} must use exactly {sorted(required)}; "
-                f"got {sorted(actual)}"
-            )
-        if declaration.get("database_ref") != "application":
+    for raw_declaration in (service_payload.get("db_io") or {}).get("db_tables") or []:
+        declaration = validate_declaration(SERVICE_MANIFEST, raw_declaration)
+        if declaration["database_ref"] != "application":
             continue
         item = dict(declaration)
         item["node"] = SERVICE_OWNER
