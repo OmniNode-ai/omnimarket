@@ -235,6 +235,7 @@ def rest_json_array(
     path: str,
     *,
     token: str,
+    body: dict[str, object] | None = None,
 ) -> list[dict[str, Any]]:
     """Execute a GitHub REST API call returning a JSON array of objects.
 
@@ -243,17 +244,27 @@ def rest_json_array(
     JSON array rather than an object — ``rest_json`` rejects those with
     ``GitHubApiError`` by design (dict-only contract).
 
+    ``body`` (OMN-15441) exists because array-returning endpoints are not all
+    reads: ``POST /repos/{o}/{r}/issues/{n}/labels`` takes a request body and
+    responds with the issue's full label ARRAY. Routing it through
+    :func:`rest_json` tripped the dict-only contract on every call.
+
     Args:
         method: HTTP method (GET, POST, PATCH, …).
         path: API path starting with ``/`` (appended to https://api.github.com).
         token: Resolved GitHub bearer token.
+        body: Optional JSON request body.
 
     Raises:
         GitHubApiError: On HTTP, network, or JSON decode failures.
     """
+    data = json.dumps(body).encode("utf-8") if body is not None else None
     headers = _base_headers(token)
+    if data is not None:
+        headers["Content-Type"] = "application/json"
     req = urllib.request.Request(
         f"{_GITHUB_REST}{path}",
+        data=data,
         headers=headers,
         method=method,
     )

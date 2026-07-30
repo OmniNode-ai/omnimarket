@@ -114,6 +114,44 @@ _ALLOWED_ROOT_PREFIXES = ("contracts/", "drift/")
 # ``if`` (see ``github_app_auth`` module docstring).
 _GITHUB_AUTH_MODE_ENV_VAR = "OMNI_OCC_GITHUB_AUTH_MODE"
 
+# OMN-15441: the credential used for the ONE write this EFFECT makes into the
+# PRODUCT repo (`_patch_product_body` -> PATCH /repos/{product}/pulls/{n}).
+#
+# Every other write here targets onex_change_control (lease, clone, push, PR
+# create, label), so the OMN-15350 mint deliberately scopes the OCC credential
+# to `repositories: onex_change_control` — a scope that can NEVER write to
+# omnimarket. Reusing that one token for the product-body patch is therefore a
+# guaranteed 403 "Resource not accessible by integration", not a transient
+# permission hiccup: the mint scope and this call's target are disjoint BY
+# DESIGN. Live failure: omnimarket#1958, run 30496115784 (companion OCC#5516
+# was created fine; only the product-body stamp 403'd).
+#
+# The fix is credential SEPARATION, not scope broadening: the OCC-Writer App
+# stays least-privilege on onex_change_control, and the product-body patch runs
+# on a separate product-repo-scoped credential supplied here. Unset/empty falls
+# back to the OCC credential, which preserves the single-PAT bus-runtime path
+# (the .201 effects runtime authenticates both halves with one cross-repo PAT).
+_PRODUCT_TOKEN_ENV_VAR = "OMNI_OCC_PRODUCT_TOKEN"
+
+
+def _resolve_product_token(occ_token: str) -> tuple[str, bool]:
+    """Resolve the credential for the product-repo PR-body patch (OMN-15441).
+
+    Args:
+        occ_token: The onex_change_control write credential, used as the
+            fallback when no dedicated product credential is supplied.
+
+    Returns:
+        ``(token, dedicated)`` — ``dedicated`` is True when
+        ``OMNI_OCC_PRODUCT_TOKEN`` supplied a distinct product-scoped
+        credential, False when this fell back to ``occ_token``. The flag is
+        what lets a 403 report *which* credential was refused.
+    """
+    product_token = os.environ.get(_PRODUCT_TOKEN_ENV_VAR, "").strip()
+    if product_token:
+        return product_token, True
+    return occ_token, False
+
 
 def _resolve_github_token() -> str:
     """Resolve the GitHub credential this write-EFFECT authenticates with.
@@ -349,14 +387,19 @@ class HandlerOccCompanionEffect:
                 self._push(clone_dir, branch, token, request.occ_repo, force=False)
 
             # Stamp the product PR body with the Evidence-Source block.
+            # OMN-15441: this is the ONLY write into the product repo, so it
+            # authenticates with the product-scoped credential, NOT the
+            # onex_change_control-scoped OCC token used everywhere above.
             product_owner, product_name = split_repo(request.repo)
+            product_token, product_token_dedicated = _resolve_product_token(token)
             stamped = self._patch_product_body(
                 product_owner,
                 product_name,
                 request.pr_number,
                 plan2.product_body_stamped,
                 companion_request.pr_body,
-                token,
+                product_token,
+                product_token_dedicated=product_token_dedicated,
             )
 
             return self._result(
@@ -602,9 +645,17 @@ class HandlerOccCompanionEffect:
         The distinguishable marker (OMN-14393) that lets the report-only window
         decide ``minted_by_node``. Non-fatal by contract: any failure is logged
         and swallowed so a label API hiccup can never abort a successful author.
+
+        OMN-15441: uses ``rest_json_array`` — the labels endpoint responds with
+        the issue's full label ARRAY, so ``rest_json``'s dict-only contract
+        rejected every (otherwise successful) call with "unexpected JSON
+        response type". Because the failure is swallowed by design, the label
+        was silently never applied and ``minted_by_node`` lost its only marker.
+        This is a response-SHAPE defect, not a permission one — it is unrelated
+        to the product-body 403, despite surfacing in the same run.
         """
         try:
-            rest_json(
+            rest_json_array(
                 "POST",
                 f"/repos/{occ_owner}/{occ_name}/issues/{occ_pr_number}/labels",
                 token=token,
@@ -693,15 +744,49 @@ class HandlerOccCompanionEffect:
         new_body: str,
         current_body: str,
         token: str,
+        *,
+        product_token_dedicated: bool = False,
     ) -> bool:
+        """Stamp ``Evidence-Source`` onto the PRODUCT PR body (OMN-15441).
+
+        ``token`` must carry ``pull_requests: write`` on the *product* repo.
+        That is a different scope from every other call in this handler, which
+        target onex_change_control — see ``_resolve_product_token``.
+        """
         if not new_body or new_body == current_body:
             return False
-        rest_json(
-            "PATCH",
-            f"/repos/{product_owner}/{product_name}/pulls/{pr_number}",
-            token=token,
-            body={"body": new_body},
-        )
+        try:
+            rest_json(
+                "PATCH",
+                f"/repos/{product_owner}/{product_name}/pulls/{pr_number}",
+                token=token,
+                body={"body": new_body},
+            )
+        except GitHubApiError as exc:
+            if exc.status_code != 403:
+                raise
+            # Make the scope mismatch self-diagnosing. The bare GitHub text
+            # ("Resource not accessible by integration") cost a whole triage
+            # pass on OMN-15441; name the credential actually used and the
+            # grant it is missing.
+            source = (
+                f"the dedicated {_PRODUCT_TOKEN_ENV_VAR} credential"
+                if product_token_dedicated
+                else (
+                    f"the onex_change_control-scoped OCC credential "
+                    f"(no {_PRODUCT_TOKEN_ENV_VAR} was supplied, so the OCC "
+                    f"token was reused — that scope can never write to "
+                    f"{product_owner}/{product_name})"
+                )
+            )
+            raise GitHubApiError(
+                f"403 patching {product_owner}/{product_name}#{pr_number} body "
+                f"using {source}. The product-body stamp needs "
+                f"'pull_requests: write' on {product_owner}/{product_name}; "
+                f"supply a product-repo-scoped credential via "
+                f"{_PRODUCT_TOKEN_ENV_VAR}. Underlying error: {exc}",
+                status_code=403,
+            ) from exc
         return True
 
 
