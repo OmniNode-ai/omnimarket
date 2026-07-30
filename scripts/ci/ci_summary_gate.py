@@ -150,6 +150,14 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     "Topic Enum Drift Check",  # topic-enum-drift — needs occ-preflight, no if: (strict per OMN-14590)
     "contract-topic-graph",  # unconditional (OMN-14582/14640), no needs/if: — strict
     "Merge Reason-Code Gate",  # merge-reason-code-gate — no needs/if: (strict per OMN-14765)
+    # OMN-15427 (port of the OMN-15214 canary / OMN-15221 omniclaude port):
+    # every OCC evidence citation in the PR body must be MERGED/durable before
+    # this product PR may merge. Unconditional in ci.yml (no needs/if:), so a
+    # skipped/cancelled conclusion is anomalous and fails closed here — the
+    # strict slot IS the enforcement (detection alone is rule-5 noncompliance).
+    # omnimarket#1953 cited a CLOSED-unmerged companion (OCC#5487) and no
+    # omnimarket CI surface caught it; this row is what makes that RED.
+    "OCC Companion Merged Gate (OMN-15214)",
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.
