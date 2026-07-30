@@ -27,12 +27,14 @@ Pinned verdict table:
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from typing import Any
 
 import pytest
 
 from scripts.ci.check_occ_companion_merged import (
+    EVIDENCE_SOURCE_RE,
     EXIT_FAIL,
     EXIT_PASS,
     EXIT_PENDING,
@@ -123,9 +125,52 @@ class TestEvidenceSourceParsing:
         assert parse_evidence_sources("no evidence here") == []
         assert parse_evidence_sources("") == []
 
-    def test_bulleted_and_bold_citations_are_matched(self) -> None:
-        body = "- Evidence-Source: OCC#1\n**Evidence-Source**: OCC#2\n"
-        assert parse_evidence_sources(body) == ["OCC#1", "OCC#2"]
+    def test_bulleted_and_bold_forms_are_not_citations(self) -> None:
+        # Seam match with occ-preflight/receipt-gate, which extract with
+        # `grep -iE '^Evidence-Source:[[:space:]]+\S'` — column 0, no bullet and
+        # no bold tolerance. A bulleted/bolded line is prose here for the same
+        # reason it is prose there; treating it as a live citation made this the
+        # only repo on the fleet whose citation set disagreed with the gate that
+        # actually requires the stamp.
+        body = (
+            "- Evidence-Source: OCC#1\n"
+            "**Evidence-Source**: OCC#2\n"
+            "  Evidence-Source: OCC#3\n"
+            "- **Evidence-Source**: OCC#5487 (superseded)\n"
+        )
+        assert parse_evidence_sources(body) == []
+
+    def test_citation_set_matches_the_canonical_grep(self) -> None:
+        """Parity oracle: this parser and the canonical shell extractor must
+        agree line-for-line on which lines are citations.
+
+        The canonical definition lives in the ``Resolve Evidence-Source`` steps
+        of ``occ-preflight.yml`` / ``receipt-gate.yml``. Reproducing its regex
+        here and asserting set-equality is what keeps the two from drifting
+        apart silently — the OMN-14208 failure mode is two individually-green
+        surfaces that disagree at the seam.
+        """
+
+        canonical = re.compile(
+            r"^Evidence-Source:[ \t]+\S", re.IGNORECASE | re.MULTILINE
+        )
+        body = (
+            "Evidence-Ticket: OMN-15427\n"
+            "- Evidence-Source: OCC#1\n"
+            "**Evidence-Source**: OCC#2\n"
+            "  Evidence-Source: OCC#3\n"
+            "> Evidence-Source: OCC#4\n"
+            "see `Evidence-Source: OCC#5` inline\n"
+            "Evidence-Source: OCC#5497\n"
+            "evidence-source:\tOCC#5506\n"
+        )
+        canonical_lines = {line for line in body.splitlines() if canonical.match(line)}
+        parsed_lines = {
+            line for line in body.splitlines() if EVIDENCE_SOURCE_RE.match(line)
+        }
+        assert parsed_lines == canonical_lines
+        # And the values this gate will actually evaluate.
+        assert parse_evidence_sources(body) == ["OCC#5497", "OCC#5506"]
 
     def test_inline_mention_is_not_a_citation(self) -> None:
         # A prose reference is documentation, not a trailer.

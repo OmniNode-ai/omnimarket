@@ -97,13 +97,30 @@ DEPENDENCY_BOT_AUTHORS: frozenset[str] = frozenset(
 # Events on which the gate enforces (mirrors occ-preflight's event scope).
 ENFORCED_EVENTS: frozenset[str] = frozenset({"pull_request", "merge_group"})
 
-# A citation is a body line whose FIRST content is the ``Evidence-Source:``
-# trailer — optionally list-bulleted or bold-wrapped, which is how omnimarket
-# bodies hand-write them alongside occ-autobind's plain trailer. Inline
-# occurrences (``see `Evidence-Source: OCC#1` above``) are NOT citations: the
-# marker is not the leading content of the line.
+# A citation is a body line that STARTS, at column 0, with the
+# ``Evidence-Source:`` trailer. This is a deliberate byte-for-byte seam match
+# with the two surfaces that already define "citation" for this fleet — the
+# ``Resolve Evidence-Source`` steps of ``occ-preflight.yml`` and
+# ``receipt-gate.yml``, both of which extract with:
+#
+#     grep -iE '^Evidence-Source:[[:space:]]+\S'
+#
+# Do NOT widen this to tolerate list bullets (``- Evidence-Source: ...``) or
+# bold wrappers (``**Evidence-Source**: ...``). An earlier revision of this port
+# did, and that made omnimarket the only repo on the fleet whose citation set
+# disagreed with occ-preflight's: a body that merely *documents* a dead
+# companion in a bullet (``- **Evidence-Source**: OCC#5487 (superseded)``)
+# became a live citation here and red the required ``CI Summary`` umbrella for
+# the full 1500s poll, while occ-preflight did not treat that line as a stamp at
+# all and would still fail the PR for having no stamp. The widening also closed
+# no evasion vector: a bullet-only stamp can never be a PR's real evidence claim
+# because occ-preflight rejects the PR outright for missing a canonical stamp.
+# Seam rule: one definition of "citation", owned by the canonical grep above.
+#
+# Inline occurrences (``see `Evidence-Source: OCC#1` above``) are likewise NOT
+# citations — the marker is not the leading content of the line.
 EVIDENCE_SOURCE_RE = re.compile(
-    r"^[ \t]*(?:[-*+][ \t]+)?(?:\*\*)?Evidence-Source(?:\*\*)?:[ \t]+(\S.*)$",
+    r"^Evidence-Source:[ \t]+(\S.*)$",
     re.IGNORECASE | re.MULTILINE,
 )
 
@@ -114,6 +131,16 @@ EVIDENCE_SOURCE_RE = re.compile(
 # This is not a bypass: moving a REAL citation inside a fence removes it from
 # the citation set entirely, which yields PENDING → FAIL at the deadline, not
 # a green.
+#
+# DOCUMENTED DIVERGENCE from the canonical grep (the one that remains, and it is
+# intentional): occ-preflight/receipt-gate do NOT strip fences — they grep the
+# raw body and take ``head -1``, so for them a fenced example at column 0 can
+# become THE citation. This gate cannot copy that behaviour, because it checks
+# EVERY citation rather than only the first, so a body that quotes a dead
+# example would be permanently red. The divergence is fail-closed in aggregate:
+# a body whose only stamp is fenced yields zero citations here (PENDING → FAIL
+# at the deadline) and is independently rejected by occ-preflight if the fenced
+# value is not durable.
 _FENCE_RE = re.compile(r"^[ \t]*(?:```|~~~)")
 OCC_PR_REF_RE = re.compile(r"^OCC#(\d+)$", re.IGNORECASE)
 HEX_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
