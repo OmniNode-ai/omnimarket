@@ -213,9 +213,30 @@ class TestModelLiveEventFromRaw:
         event = ModelLiveEvent.from_raw(raw, _DELEGATION_DONE_TOPIC)
 
         assert event.topic == _DELEGATION_DONE_TOPIC
-        assert event.type == "ROUTING"
+        assert event.type == "DELEGATION"
         assert event.source == "omnibase-infra"
         assert event.correlation_id == "corr-abc"
+
+    def test_from_inference_response_is_inference_not_payload_type(self) -> None:
+        raw = {
+            "event_id": str(uuid4()),
+            "event_type": "routing",
+            "correlation_id": "corr-inference-1",
+        }
+
+        event = ModelLiveEvent.from_raw(raw, _INFERENCE_RESPONSE_TOPIC)
+
+        assert event.type == "INFERENCE"
+
+    def test_from_quality_gate_result_is_evaluation(self) -> None:
+        raw = {
+            "event_id": str(uuid4()),
+            "correlation_id": "corr-evaluation-1",
+        }
+
+        event = ModelLiveEvent.from_raw(raw, _QUALITY_GATE_RESULT_TOPIC)
+
+        assert event.type == "EVALUATION"
 
     def test_from_delegation_failed(self) -> None:
         raw = _make_delegation_event(failed=True)
@@ -461,7 +482,7 @@ class TestHandlerProjectionLiveEventsHandle:
 
         assert result["rows_upserted"] == 1
         rows = db.query(TABLE)
-        assert rows[0]["type"] == "ROUTING"
+        assert rows[0]["type"] == "DELEGATION"
         assert rows[0]["source"] == "omnibase-infra"
         assert rows[0]["correlation_id"] == "corr-xyz"
 

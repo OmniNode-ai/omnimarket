@@ -1,8 +1,8 @@
 ---
 name: projection_live_events
-contract_version: {major: 1, minor: 2, patch: 0}
+contract_version: {major: 1, minor: 2, patch: 1}
 node_type: reducer
-node_version: {major: 1, minor: 2, patch: 0}
+node_version: {major: 1, minor: 2, patch: 1}
 input_model: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events.ModelLiveEvent
 description: >
   Projects operator-relevant platform and workflow bus events into the live_events table.
