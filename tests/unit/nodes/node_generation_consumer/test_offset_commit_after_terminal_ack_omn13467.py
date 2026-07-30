@@ -1,25 +1,27 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""OMN-13467: offset commit is AFTER terminal broker-ack (restart-path proof).
+"""OMN-13467 semantics after the OMN-15469 single-producer correction.
 
-DoD assertions:
-  1. _emit_benchmark is awaited — handle() does not return until the terminal
-     event publish has completed (or its awaitable has been scheduled).
-  2. Crash-between-publish-and-commit restart path: when handle() completes a
-     first run (terminal published, replay state written) and the input is
-     re-delivered (simulating a missed offset commit), the handler returns the
-     stored benchmark WITHOUT re-emitting. A fresh subscriber that consumed the
-     terminal on the first run still sees it; no event loss occurs.
-  3. Async publisher is awaited: when an async publisher is injected, _await_publish
-     suspends until the coroutine completes before handle() returns.
-  4. Sync publisher backwards-compat: a sync publisher (legacy test pattern) still
-     works transparently — _await_publish calls it and ignores the None return.
+OMN-13467 originally made ``HandlerGenerationConsumer`` await a self-published
+terminal before returning. Canonical definition-B wiring now publishes every
+typed handler return through its result applier, so that old self-publish became
+a second producer. The durable order is owned by wiring: handler returns a
+``ModelGenerationBenchmark`` -> result applier awaits terminal publication ->
+the consume callback returns. This module keeps the useful restart and async
+publisher coverage while pinning the corrected ownership boundary:
+
+  1. Handler-owned ancillary events still await async publisher completion.
+  2. Sync ancillary publishers remain supported.
+  3. Fresh and replay paths return a benchmark and emit zero terminal topics.
+  4. Replay skips repeated deploy/registration/tool-reuse side effects while
+     returning the stored benchmark for wiring to publish.
+  5. A publisher that would fail on a terminal topic is unreachable from the
+     handler; terminal failure handling belongs to runtime wiring.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 from typing import Any
 
 import pytest
@@ -94,14 +96,14 @@ def _isolate_onex_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Any) -> None:
 
 
 # ---------------------------------------------------------------------------
-# 1. Async publisher is awaited before handle() returns (OMN-13467 DoD)
+# 1. Async ancillary publisher is awaited before handle() returns
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_async_publisher_is_awaited_before_handle_returns() -> None:
-    """OMN-13467: handle() must await the terminal publish before returning.
+async def test_async_publisher_is_awaited_for_ancillary_events() -> None:
+    """Handler-owned publishes complete before handle returns its benchmark.
 
     We inject an async publisher that sets a flag ONLY after its coroutine
     body runs. If handle() returned before awaiting the coroutine, the flag
@@ -119,22 +121,21 @@ async def test_async_publisher_is_awaited_before_handle_returns() -> None:
         event_publisher=_async_publisher,
     )
 
-    await handler.handle(
+    result = await handler.handle(
         ModelNodeGenerationRequest(
             task_description="Build a stub node",
             correlation_id="omn-13467-async-ack",
         )
     )
 
-    # At least the terminal (generation-completed / generation-failed) must be
-    # among the acked topics; the async publish completed before handle() returned.
-    terminal_acked = any(
-        "generation-completed" in t or "generation-failed" in t for t in acked
-    )
-    assert terminal_acked, (
-        f"Terminal event was not broker-ACKed before handle() returned. "
-        f"Acked topics: {acked}"
-    )
+    assert result.contract_passed is True
+    assert any("tool-reuse-match-requested" in topic for topic in acked)
+    assert any("node-deploy" in topic for topic in acked)
+    assert any("node-registration" in topic for topic in acked)
+    assert not any(
+        "generation-completed" in topic or "generation-failed" in topic
+        for topic in acked
+    ), "definition-B wiring, not the handler publisher, owns the terminal"
 
 
 # ---------------------------------------------------------------------------
@@ -145,7 +146,7 @@ async def test_async_publisher_is_awaited_before_handle_returns() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_sync_publisher_still_works() -> None:
-    """Sync publishers (test pattern) are called transparently by _await_publish."""
+    """Sync ancillary publishers are called transparently by _await_publish."""
     published: list[tuple[str, bytes]] = []
 
     def _sync_publisher(topic: str, payload: bytes) -> None:
@@ -165,7 +166,12 @@ async def test_sync_publisher_still_works() -> None:
 
     assert result.contract_passed is True
     topics = [t for t, _ in published]
-    assert any("generation-completed" in t for t in topics)
+    assert any("node-deploy" in topic for topic in topics)
+    assert any("node-registration" in topic for topic in topics)
+    assert not any(
+        "generation-completed" in topic or "generation-failed" in topic
+        for topic in topics
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -201,44 +207,42 @@ async def test_await_publish_is_noop_for_sync_publisher() -> None:
 
 
 # ---------------------------------------------------------------------------
-# 4. Restart-path: no terminal-event loss when offset commit was missed
+# 4. Restart path: return replay benchmark without repeating side effects
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_restart_path_no_terminal_loss_on_redelivery(
+async def test_restart_path_returns_benchmark_without_repeating_side_effects(
     tmp_path: Any,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """OMN-13467 DoD: crash-between-publish-and-commit causes no event loss.
+    """Redelivery returns stored output for wiring without repeating side effects.
 
     Scenario:
-      Run 1: handle() runs normally — terminal event published and acked,
-             replay marker written. Simulate a crash BEFORE offset commit by
-             NOT committing (we simply don't call commit in this test).
+      Run 1: handle() runs normally, publishes ancillary deploy/registration,
+             writes replay state, and returns the terminal benchmark to wiring.
       Run 2: input re-delivered (same correlation_id). The handler must:
              a. Detect the replay marker from Run 1.
-             b. Return stored benchmark WITHOUT re-emitting (idempotent).
-             c. A fresh subscriber still sees the terminal from Run 1.
+             b. Return the stored benchmark for wiring to publish.
+             c. Emit no handler-owned ancillary events again.
 
-    The terminal event published in Run 1 is durably on the bus; a fresh
-    subscriber sees it regardless of whether Run 2 re-emits. Because the
-    handler does NOT re-emit on re-delivery (replay guard), the fresh
-    subscriber sees exactly one copy — no duplication, no loss.
+    Terminal acknowledgement and input-offset ordering are outside this handler
+    at the definition-B result-applier boundary. This test deliberately records
+    only the publisher injected into the handler, where terminal traffic must be
+    absent on both runs.
     """
     state_dir = tmp_path / "onex_state"
     monkeypatch.setenv("ONEX_STATE_DIR", str(state_dir))
 
-    # Shared bus — represents what a fresh subscriber would see.
-    bus: list[tuple[str, bytes]] = []
+    published: list[tuple[str, bytes]] = []
     ack_order: list[str] = []
 
     async def _publisher(topic: str, payload: bytes) -> None:
-        """Async publisher: records ack order + appends to bus."""
+        """Async handler-owned publisher: records completed side effects."""
         await asyncio.sleep(0)
         ack_order.append(topic)
-        bus.append((topic, payload))
+        published.append((topic, payload))
 
     # --- Run 1: normal execution ---
     handler_run1 = HandlerGenerationConsumer(
@@ -255,13 +259,12 @@ async def test_restart_path_no_terminal_loss_on_redelivery(
     )
     assert result1.contract_passed is True
 
-    # Confirm terminal was published and acked before handle() returned.
-    terminal_topics_run1 = [
-        t for t in ack_order if "generation-completed" in t or "generation-failed" in t
-    ]
-    assert terminal_topics_run1, (
-        "Run 1: terminal event was not acked before handle() returned"
+    assert not any(
+        "generation-completed" in topic or "generation-failed" in topic
+        for topic in ack_order
     )
+    assert any("node-deploy" in topic for topic in ack_order)
+    assert any("node-registration" in topic for topic in ack_order)
     # Verify replay marker was written.
     replay_files = list(state_dir.rglob("*.json"))
     assert replay_files, "Replay marker must be written after successful run"
@@ -286,62 +289,22 @@ async def test_restart_path_no_terminal_loss_on_redelivery(
     assert result2.correlation_id == result1.correlation_id
     assert result2.contract_passed == result1.contract_passed
 
-    # Run 2 must NOT have re-emitted the terminal event — replay guard.
-    new_terminal_emits = [
-        t
-        for t in ack_order[len(ack_order_before_run2) :]
-        if "generation-completed" in t or "generation-failed" in t
-    ]
-    assert new_terminal_emits == [], (
-        "Run 2 must NOT re-emit the terminal event (replay guard). "
-        f"New terminal emits: {new_terminal_emits}"
+    assert ack_order == ack_order_before_run2, (
+        "replay must not repeat tool-reuse/deploy/registration publications"
     )
-
-    # The bus still has the terminal from Run 1 — a fresh subscriber sees it.
-    terminal_on_bus = [
-        (t, p)
-        for t, p in bus
-        if "generation-completed" in t or "generation-failed" in t
-    ]
-    assert len(terminal_on_bus) >= 1, (
-        "A fresh subscriber must see the terminal event from Run 1. "
-        "Bus state: " + str([t for t, _ in bus])
-    )
-
-    # Exactly ONE terminal on the bus (no duplication from re-delivery).
-    assert len(terminal_on_bus) == 1, (
-        f"Exactly one terminal event expected; got {len(terminal_on_bus)}. "
-        f"Duplicate terminals would violate at-most-once for consumers."
-    )
-
-    # Verify the terminal payload is parseable and correct.
-    _terminal_topic, terminal_payload = terminal_on_bus[0]
-    data = json.loads(terminal_payload)
-    assert data["correlation_id"] == correlation_id
-    assert data["contract_passed"] is True
+    assert len(published) == len(ack_order_before_run2)
+    assert result2 == result1
 
 
 # ---------------------------------------------------------------------------
-# 5. Exception in async publisher propagates (no silent loss)
+# 5. Terminal-named publisher failures are unreachable from the handler
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_terminal_publish_failure_propagates_and_blocks_offset_commit() -> None:
-    """OMN-13467: a failing TERMINAL publish must propagate out of handle().
-
-    The wiring layer (at-least-once consumer) commits the input Kafka offset only
-    after handle() returns WITHOUT raising. If the broker does not ACK the
-    terminal event (node-generation-completed/failed), handle() MUST raise so the
-    offset is NOT committed — the input is then re-delivered and the terminal is
-    re-emitted. Swallowing the publish error here would advance the offset past an
-    unpublished terminal: the exact at-most-once gap this ticket closes.
-
-    This test pins the failure mode: if someone re-wraps the terminal emit in a
-    try/except that logs-and-continues, handle() would stop raising and this test
-    goes red — catching the regression.
-    """
+async def test_terminal_named_publisher_failure_is_unreachable() -> None:
+    """A terminal-only failure cannot fire through the ancillary publisher."""
     published: list[str] = []
 
     async def _failing_publisher(topic: str, payload: bytes) -> None:
@@ -356,32 +319,23 @@ async def test_terminal_publish_failure_propagates_and_blocks_offset_commit() ->
         event_publisher=_failing_publisher,
     )
 
-    # The terminal publish raises → handle() must propagate it (no swallow) so the
-    # wiring layer never commits the offset.
-    with pytest.raises(RuntimeError, match="broker ack timeout"):
-        await handler.handle(
-            ModelNodeGenerationRequest(
-                task_description="Build a stub node",
-                correlation_id="omn-13467-publish-fail",
-            )
+    result = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id="omn-13467-publish-fail",
         )
+    )
 
-    # The handler did attempt to publish the terminal event before raising.
-    assert any(
+    assert result.contract_passed is True
+    assert not any(
         "generation-completed" in t or "generation-failed" in t for t in published
-    ), "Handler must attempt the terminal publish before propagating the broker error"
+    ), "terminal publication belongs exclusively to definition-B wiring"
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_terminal_publish_failure_does_not_write_replay_marker() -> None:
-    """OMN-13467: when the terminal publish fails, the replay marker must NOT be
-    written. handle() raises before _record_replay_benchmark, so a re-delivery of
-    the input re-runs generation and re-emits the terminal — no terminal loss.
-
-    Uses the autouse _isolate_onex_state fixture's ONEX_STATE_DIR so the replay
-    path is computed from the same root the handler writes to.
-    """
+async def test_handler_writes_replay_state_before_wiring_terminal_boundary() -> None:
+    """Stored output lets a redelivery hand the same benchmark back to wiring."""
     correlation_id = "omn-13467-no-replay-on-fail"
     replay_path = _replay_state_path(correlation_id)
     assert replay_path is not None, "state root must be isolated by the autouse fixture"
@@ -396,16 +350,19 @@ async def test_terminal_publish_failure_does_not_write_replay_marker() -> None:
         event_publisher=_failing_publisher,
     )
 
-    with pytest.raises(RuntimeError, match="broker ack timeout"):
-        await handler.handle(
-            ModelNodeGenerationRequest(
-                task_description="Build a stub node",
-                correlation_id=correlation_id,
-            )
+    first = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id=correlation_id,
         )
-
-    # No replay marker written → re-delivery re-runs and re-emits the terminal.
-    assert not replay_path.exists(), (
-        "Replay marker must NOT be written when the terminal publish failed "
-        f"({replay_path}); otherwise re-delivery would skip re-emission"
     )
+
+    assert replay_path.exists()
+
+    replayed = await handler.handle(
+        ModelNodeGenerationRequest(
+            task_description="Build a stub node",
+            correlation_id=correlation_id,
+        )
+    )
+    assert replayed == first

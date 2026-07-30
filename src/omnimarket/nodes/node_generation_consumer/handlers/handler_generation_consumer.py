@@ -8,14 +8,15 @@ Flow per invocation:
   3. Extract contract_yaml + handler_source from fenced code blocks
   4. Validate: schema (required contract fields) + syntax (ast.parse) + security (no hardcoded paths/topics)
   5. Retry on failure (up to max_attempts)
-  6. Emit completed/failed benchmark event
+  6. Return the benchmark to definition-B runtime wiring for terminal publication
   7. On success:
      a. Emit deploy event (onex.cmd.omnimarket.node-deploy.v1) with contract + handler source
         → HandlerGeneratedExecutor receives this, writes to sandbox, registers for execution
      b. Emit registration event so ServiceMCPToolSync picks up the new MCP tool
 
 All LLM I/O is delegated to the injected effect_handler; this class never imports httpx.
-Topics are read from contract.yaml; never hardcoded.
+Ancillary publish topics are read from contract.yaml; never hardcoded. The runtime
+wiring owns publication of the returned terminal benchmark (OMN-15469).
 """
 
 from __future__ import annotations
@@ -158,11 +159,11 @@ _DEFAULT_SYSTEM_PROMPT = (
 # no longer a hardcoded source constant. _calculate_cost resolves the priced
 # entry for (provider, model_id) and prices the measured tokens through it.
 
-# OMN-13467: EventPublisher accepts both sync and async callables so the
-# runtime can supply an awaitable publisher (async publish → broker-ack) while
-# tests keep their existing sync captures. The handler awaits the return value
-# when it is a coroutine, ensuring the terminal event is broker-ACKED before
-# handle() returns (and therefore before the wiring layer commits the offset).
+# EventPublisher accepts both sync and async callables so the runtime can supply
+# an awaitable ancillary-event publisher (async publish -> broker ack) while tests
+# keep their existing sync captures. The returned benchmark is intentionally not
+# sent through this seam: definition-B wiring owns its terminal publication
+# (OMN-15469).
 EventPublisher = Callable[[str, bytes], Any]
 # OMN-13356: the injectable bus consumer used to await the tool-reuse matcher's
 # verdict. (topic, correlation_id, timeout_seconds) -> deserialized payload dict
@@ -209,12 +210,11 @@ def _noop_consumer(
 async def _await_publish(publisher: EventPublisher, topic: str, payload: bytes) -> None:
     """Invoke publisher and await the result if it is a coroutine.
 
-    OMN-13467: The runtime injects an async publisher so that the terminal event
-    is durably broker-ACKed before handle() returns. Tests may inject sync
-    publishers that return None — those are accepted transparently. Awaiting
-    the coroutine here ensures that handle() does NOT return (and therefore the
-    wiring layer does NOT commit the input Kafka offset) until the terminal
-    publish has a broker acknowledgement.
+    The runtime injects an async publisher for handler-owned ancillary events
+    such as tool-reuse requests, deploy commands, registration events, and
+    escalation proofs. Tests may inject sync publishers that return None; those
+    are accepted transparently. Terminal publication does not use this helper:
+    the definition-B result applier publishes the benchmark returned by handle().
     """
     result = publisher(topic, payload)
     if inspect.isawaitable(result):
@@ -784,8 +784,10 @@ class HandlerGenerationConsumer:
         async def handle(request: ModelLlmInferenceRequest) -> ModelLlmInferenceResponse
     When None, a HandlerLlmOpenaiCompatible with default transport is created lazily.
 
-    The event_publisher is a thin sync callable (topic, bytes) -> None injected by
-    the runtime's Kafka adapter. Falls back to a no-op for tests and dry runs.
+    The event_publisher is a thin sync-or-async callable injected by the runtime's
+    Kafka adapter for handler-owned ancillary events. It falls back to a no-op for
+    tests and dry runs. Definition-B wiring publishes the returned benchmark on
+    the contract terminal topic; this handler never self-publishes it (OMN-15469).
 
     Routing authority (OMN-12779 + OMN-12801 — no env-var endpoint indirection):
         1. contract.yaml model_routing.provider — e.g. "local"
@@ -822,12 +824,6 @@ class HandlerGenerationConsumer:
             "publish_topics", []
         )
 
-        self._topic_completed = next(
-            (t for t in publish_topics if "generation-completed" in t), ""
-        )
-        self._topic_failed = next(
-            (t for t in publish_topics if "generation-failed" in t), ""
-        )
         self._topic_registered = next(
             (t for t in publish_topics if "node-registration" in t), ""
         )
@@ -1255,7 +1251,8 @@ class HandlerGenerationConsumer:
         if replayed is not None:
             logger.info(
                 "[generation-consumer] replay correlation_id=%s; "
-                "returning stored benchmark without emitting deploy/registration",
+                "returning stored benchmark without repeating deploy/registration; "
+                "definition-B wiring owns terminal publication",
                 command.correlation_id,
             )
             return replayed
@@ -1268,13 +1265,10 @@ class HandlerGenerationConsumer:
         # through to fresh generation.
         reuse_benchmark = await self._try_tool_reuse_short_circuit(command)
         if reuse_benchmark is not None:
-            # Emit the benchmark so the reuse is observable on the bus / projection
-            # (contract_passed=True, reused_tool_id set, zero attempts/cost) — but
-            # do NOT deploy/register: the reused tool already exists. Record the
-            # replay marker so a re-delivery of the same command is idempotent.
-            # OMN-13467: await so the terminal event is broker-ACKed before
-            # handle() returns and the wiring layer commits the offset.
-            await self._emit_benchmark(reuse_benchmark)
+            # Do NOT deploy/register: the reused tool already exists. Record the
+            # replay marker, then return the benchmark so definition-B wiring
+            # publishes the one terminal event. A redelivery returns the stored
+            # benchmark to that same wiring owner without repeating side effects.
             self._record_replay_benchmark(reuse_benchmark)
             return reuse_benchmark
 
@@ -1549,16 +1543,6 @@ class HandlerGenerationConsumer:
             resolved_endpoint=self._resolved_endpoint,
         )
 
-        # OMN-13467: await _emit_benchmark so the terminal event is durably
-        # broker-ACKed before handle() returns. The wiring layer commits the
-        # input Kafka offset only after handle() returns, so the ordering is:
-        #
-        #   publish terminal → await broker-ack → handle() returns → commit offset
-        #
-        # A crash between publish and commit causes input re-delivery; the replay
-        # guard below makes re-processing idempotent. There is no at-most-once
-        # window: the terminal event is never silently lost.
-        await self._emit_benchmark(benchmark)
         # OMN-13166: deploy/register a generated node ONLY when it is both shaped
         # correctly AND behaviorally correct. A contract-valid but semantically
         # wrong handler (the gate-zero false-green) must NOT reach the runtime —
@@ -1582,6 +1566,13 @@ class HandlerGenerationConsumer:
                 await self._emit_registration(benchmark)
 
         self._record_replay_benchmark(benchmark)
+        # OMN-15469: ``benchmark`` is the canonical definition-B terminal handoff.
+        # Runtime wiring normalizes this returned BaseModel and its result applier
+        # publishes it after all handler-owned deploy/registration side effects
+        # above finish. Keeping terminal publication at that ONE boundary prevents
+        # the handler + wiring pair from producing duplicate raw terminal events.
+        # On redelivery, the replay path returns the stored benchmark for the same
+        # wiring owner to publish without repeating those ancillary side effects.
         return benchmark
 
     # ------------------------------------------------------------------ #
@@ -1777,48 +1768,8 @@ class HandlerGenerationConsumer:
                 exc,
             )
 
-    async def _emit_benchmark(self, benchmark: ModelGenerationBenchmark) -> None:
-        """Publish the terminal event and AWAIT broker acknowledgement.
-
-        OMN-13467: this method is async so that handle() does not return until
-        the terminal event (node-generation-completed or node-generation-failed)
-        is durably broker-ACKed. The wiring layer commits the input Kafka offset
-        only after handle() returns, so the sequence is now:
-
-            publish terminal → await broker-ack → handle() returns → commit offset
-
-        A crash between publish and commit results in a re-delivery of the input
-        event; the replay guard (_load_replay_benchmark / _record_replay_benchmark)
-        makes re-processing idempotent. There is no longer an at-most-once window.
-        """
-        topic = (
-            self._topic_completed if benchmark.contract_passed else self._topic_failed
-        )
-        if not topic:
-            logger.warning(
-                "[generation-consumer] no topic for benchmark emit (contract_passed=%s)",
-                benchmark.contract_passed,
-            )
-            return
-        # OMN-13467: the terminal-event publish failure MUST propagate. This emit
-        # is the durable terminal record (node-generation-completed/failed). The
-        # wiring layer commits the input Kafka offset only after handle() returns
-        # WITHOUT raising; an at-least-once consumer re-delivers the input on a
-        # raised handler exception. So if the broker does not ACK the terminal
-        # publish we must NOT swallow the error — letting it propagate aborts the
-        # commit and triggers re-delivery (the replay guard makes re-processing
-        # idempotent and re-emits the terminal). Swallowing here would advance the
-        # offset past an unpublished terminal — the at-most-once gap this ticket
-        # closes. Do NOT add a try/except that absorbs the publish exception.
-        payload = json.dumps(benchmark.model_dump()).encode()
-        await _await_publish(self._event_publisher, topic, payload)
-
     async def _emit_deploy(self, benchmark: ModelGenerationBenchmark) -> bool:
-        """Publish the deploy command and await broker acknowledgement.
-
-        OMN-13467: async so crashes between terminal publish and offset commit
-        do not silently advance the offset past an undeployed node.
-        """
+        """Publish the handler-owned deploy command and await acknowledgement."""
         if not self._topic_deploy:
             logger.debug("[generation-consumer] no deploy topic configured; skipping")
             return False
@@ -1851,11 +1802,7 @@ class HandlerGenerationConsumer:
             return False
 
     async def _emit_registration(self, benchmark: ModelGenerationBenchmark) -> None:
-        """Publish the registration event and await broker acknowledgement.
-
-        OMN-13467: async for the same at-most-once elimination reason as
-        _emit_benchmark and _emit_deploy.
-        """
+        """Publish the handler-owned registration event and await acknowledgement."""
         if not self._topic_registered:
             logger.debug(
                 "[generation-consumer] no registration topic configured; skipping"

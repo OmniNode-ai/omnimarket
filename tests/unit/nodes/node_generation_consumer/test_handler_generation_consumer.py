@@ -360,7 +360,8 @@ async def test_emits_registration_on_success() -> None:
     )
 
     topics = [t for t, _ in published]
-    assert any("generation-completed" in t for t in topics)
+    assert not any("generation-completed" in t for t in topics)
+    assert not any("generation-failed" in t for t in topics)
     assert any("node-registration" in t for t in topics)
 
 
@@ -382,34 +383,36 @@ async def test_no_registration_on_failure() -> None:
     )
 
     topics = [t for t, _ in published]
-    assert any("generation-failed" in t for t in topics)
+    assert not any("generation-completed" in t for t in topics)
+    assert not any("generation-failed" in t for t in topics)
     assert not any("node-registration" in t for t in topics)
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_emits_completed_topic_on_success() -> None:
+async def test_returns_completed_benchmark_for_wiring_without_self_publish() -> None:
     published: list[tuple[str, bytes]] = []
     handler = _make_handler([_VALID_LLM_RESPONSE], published=published)
 
-    await handler.handle(
+    result = await handler.handle(
         ModelNodeGenerationRequest(
             task_description="Build a stub node",
             correlation_id="corr-topic-1",
         )
     )
 
-    assert any("generation-completed" in t for t, _ in published)
+    assert result.contract_passed is True
+    assert not any("generation-completed" in t for t, _ in published)
     assert not any("generation-failed" in t for t, _ in published)
 
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_emits_failed_topic_on_failure() -> None:
+async def test_returns_failed_benchmark_for_wiring_without_self_publish() -> None:
     published: list[tuple[str, bytes]] = []
     handler = _make_handler([_INVALID_LLM_RESPONSE], published=published)
 
-    await handler.handle(
+    result = await handler.handle(
         ModelNodeGenerationRequest(
             task_description="Build a stub node",
             correlation_id="corr-topic-2",
@@ -417,7 +420,8 @@ async def test_emits_failed_topic_on_failure() -> None:
         )
     )
 
-    assert any("generation-failed" in t for t, _ in published)
+    assert result.contract_passed is False
+    assert not any("generation-failed" in t for t, _ in published)
     assert not any("generation-completed" in t for t, _ in published)
 
 
@@ -1433,7 +1437,8 @@ async def test_provider_error_remains_typed_failure_not_blank_success(
 
     assert result.contract_passed is False
     topics = [t for t, _ in published]
-    assert any("generation-failed" in t for t in topics)
+    assert not any("generation-failed" in t for t in topics)
+    assert not any("generation-completed" in t for t in topics)
     assert not any("node-deploy" in t for t in topics)
     assert not any("node-registration" in t for t in topics)
 

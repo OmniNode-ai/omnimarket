@@ -4,9 +4,9 @@
 
 FIFTH defect on ``node_context_roi_runner`` (sibling OMN-13003/13005/13010/13012).
 
-Root cause: ``node_generation_consumer`` routes a benchmark whose final contract
-validation failed (``contract_passed=False``) to
-``onex.evt.omnimarket.node-generation-failed.v1`` (``_emit_benchmark``), while the
+Root cause: ``node_generation_consumer`` returns a benchmark whose final contract
+validation failed (``contract_passed=False``), and definition-B terminal wiring
+routes that result to ``onex.evt.omnimarket.node-generation-failed.v1``, while the
 runner's contract declares only the COMPLETED topic as
 ``generation_pipeline.terminal_event_topic`` and ``_run_trial`` opens exactly one
 terminal session on it. A failed terminal — emitted with full telemetry
@@ -23,7 +23,7 @@ two-phase session per terminal topic BEFORE publishing (subscribe-before-publish
 OMN-13012) and races the correlated waits across both topics within the single
 per-arm timeout. ``_extract_row`` already distinguishes outcomes from the payload
 (``contract_passed=False`` -> ``failure_stage=VALIDATION`` with the real
-``attempt_count``); the emitter is untouched.
+``attempt_count``); terminal-producer ownership is outside this runner.
 
 These tests drive the public entry points the runtime uses (``handle`` /
 ``handle_async``) with per-topic fakes — no private-method shortcuts.
@@ -62,9 +62,9 @@ _GENERATION_CONSUMER_CONTRACT_PATH = (
     _CONTRACT_PATH.parent.parent / "node_generation_consumer" / "contract.yaml"
 )
 
-# Terminal payload as node_generation_consumer emits it on the FAILED topic:
-# real telemetry, contract_passed=False (see _emit_benchmark — same
-# ModelGenerationBenchmark serialization on both topics).
+# Terminal payload as definition-B wiring publishes the generation consumer's
+# returned benchmark on the FAILED topic: real telemetry, contract_passed=False
+# (the same ModelGenerationBenchmark serialization is used on both topics).
 _FAILED_EVENT: dict[str, Any] = {
     "attempt_count": 2,
     "contract_passed": False,
