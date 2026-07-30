@@ -76,6 +76,32 @@ RED-before / GREEN-after (recorded, both directions):
   ``test_runner_matches_the_gate_algorithm_over_every_small_contract``,
   ``test_a_marker_on_an_id_less_item_is_honoured_exactly_like_the_gate`` and
   ``test_a_broken_marker_on_an_id_less_item_is_not_a_silent_skip`` RED.
+
+Second adversarial-review round (2026-07-29, after omnimarket#1957 merged into
+``dev`` at ``ddb7228d``). Three residuals, all of which were places where the
+suite's own shape was hiding the defect:
+
+* **R1 — the self-reference test ran BEFORE the ordering test.** The gate has
+  no self-reference branch at all; it asks only ``if supersedes in seen``, and
+  ``seen.add`` runs after. A self-reference is inert only *because* of that
+  ordering — so when an EARLIER item declares the same id, ``seen`` DOES hold
+  it and the gate retires that earlier entry, while the runner hard-REDded the
+  carrier. Runner-STRICTER-than-gate, on 144 of the 544 contracts in
+  :func:`_duplicate_id_contracts`, which the domain did not contain because
+  every previous generator emitted unique ids. Now 0 of 544, asserted against
+  both the transcribed oracle and the real OCC function.
+* **R2 — the domain-wide invariant test truncated at ``[:20]``**, one contract
+  short of the ``id: 7`` / ``id: None`` carriers. Those did not merely fail;
+  they raised ``ValidationError`` out of ``collect()`` and produced NO RECEIPT
+  AT ALL. The truncation is what kept the suite green. The full domain now
+  runs, and every unrepresentable shape fails CLOSED with a receipt
+  (:class:`TestAContractTheReceiptCannotRepresentFailsClosed`).
+* **R3 — the real-OCC differential skipped in hosted CI**, so the only
+  cross-repo parity proof in the repo never executed on a PR. ``ci.yml``'s
+  ``test`` job now checks OCC out (public repo, default token, existing
+  pattern), and
+  :func:`test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite`
+  keeps the step there.
 """
 
 from __future__ import annotations
@@ -111,6 +137,19 @@ _CORPUS_PATH = (
     / "dod_supersession"
     / "parity_corpus.yaml"
 )
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+
+_IN_WORKSPACE_OCC = _REPO_ROOT / "onex_change_control"
+"""Where ``ci.yml``'s ``test`` job checks onex_change_control out (OMN-15390 R3).
+
+A repo-root-relative path rather than an env var on purpose: exporting
+``ONEX_CC_REPO_PATH`` across the test job would re-point
+``EvidenceCollector._resolve_contract_repo_dir`` for every other test in the
+suite, which is exactly the hermeticity trap three OMN-15382 tests already hit.
+"""
+
+_CI_WORKFLOW = _REPO_ROOT / ".github" / "workflows" / "ci.yml"
 
 _MARKER_PREFIX = "supersedes_dod_evidence:"
 
@@ -653,6 +692,44 @@ def _non_canonical_id_contracts() -> list[list[dict[str, Any]]]:
     return contracts
 
 
+def _duplicate_id_contracts() -> list[list[dict[str, Any]]]:
+    """Contracts where two items share an ``id`` — the R1 divergence axis.
+
+    ``_superseded_dod_ids`` has NO self-reference branch: it only asks
+    ``if supersedes in seen``, and ``seen.add`` happens after that question.
+    That is the ONLY reason a self-referential marker is normally inert — the
+    carrier's own id is not in ``seen`` yet. Give an EARLIER item the same id
+    and ``seen`` does contain it, so the gate retires that earlier entry while
+    a runner that tests self-reference first hard-REDs the carrier instead.
+
+    Every id assignment of length 2..3 over a two-symbol alphabet that repeats
+    at least one symbol (all-distinct assignments are already covered by
+    :func:`_small_contracts`), crossed with the full marker space.
+    """
+    ids = ["dod-0", "dod-1"]
+    marker_choices: list[str | None] = [None, "dod-0", "dod-1", "dod-absent"]
+    contracts: list[list[dict[str, Any]]] = []
+    for length in (2, 3):
+        for assignment in itertools.product(ids, repeat=length):
+            if len(set(assignment)) == length:
+                continue
+            for markers in itertools.product(marker_choices, repeat=length):
+                contracts.append(
+                    [
+                        _item(item_id, check_value="true", supersedes=marker)
+                        for item_id, marker in zip(assignment, markers, strict=True)
+                    ]
+                )
+    return contracts
+
+
+def _parity_domain() -> list[list[dict[str, Any]]]:
+    """The full exhaustive domain every parity assertion runs over."""
+    return (
+        _small_contracts() + _non_canonical_id_contracts() + _duplicate_id_contracts()
+    )
+
+
 @pytest.mark.unit
 def test_runner_matches_the_gate_algorithm_over_every_small_contract() -> None:
     """Set-equality with the gate, proven exhaustively over a bounded domain.
@@ -663,8 +740,9 @@ def test_runner_matches_the_gate_algorithm_over_every_small_contract() -> None:
     including every forward, backward, self and mutually-referential shape —
     must produce the SAME superseded set in the runner as in the gate
     algorithm. The domain also includes carriers whose OWN ``id`` is missing,
-    empty, non-string or null, which is the axis on which the runner most
-    recently diverged. Runs unconditionally: no OCC checkout required.
+    empty, non-string or null, and contracts where two items SHARE an ``id`` —
+    the two axes on which the runner has actually diverged. Runs
+    unconditionally: no OCC checkout required.
     """
     contracts = _small_contracts()
     assert len(contracts) == 5 + 25 + 125
@@ -672,10 +750,18 @@ def test_runner_matches_the_gate_algorithm_over_every_small_contract() -> None:
     non_canonical = _non_canonical_id_contracts()
     assert len(non_canonical) == len(_NON_CANONICAL_IDS) * 5 * 2
 
-    for contract in contracts + non_canonical:
+    duplicate = _duplicate_id_contracts()
+    assert len(duplicate) == 2 * 4**2 + 8 * 4**3
+
+    domain = _parity_domain()
+    assert len(domain) == len(contracts) + len(non_canonical) + len(duplicate)
+
+    for contract in domain:
         superseded, _ = _resolve(contract)
         assert superseded == _gate_algorithm_superseded_ids(contract), (
-            f"runner/gate divergence on {[i.get('evidence_artifact') for i in contract]}"
+            "runner/gate divergence on "
+            f"ids={[i.get('id', '<no id>') for i in contract]} "
+            f"markers={[i.get('evidence_artifact') for i in contract]}"
         )
 
 
@@ -698,6 +784,35 @@ def test_the_exhaustive_domain_actually_contains_the_divergence_it_claims() -> N
     for contract in discriminating:
         carrier = contract[-1]
         assert not isinstance(carrier.get("id"), str) or not carrier.get("id")
+
+
+@pytest.mark.unit
+def test_the_domain_contains_the_self_reference_on_a_duplicate_id_divergence() -> None:
+    """Same guard for the R1 axis: a marker the gate honours BECAUSE of a dup.
+
+    The self-reference/duplicate-id interaction is invisible to any domain with
+    unique ids — and the previous domain had unique ids by construction, so the
+    "exhaustive" differential could not contain the class at all. This pins that
+    the domain still holds a contract in which an item's marker names the item's
+    OWN id and the gate nonetheless supersedes, which only happens when an
+    earlier item already put that id in ``seen``.
+    """
+    discriminating = [
+        contract
+        for contract in _duplicate_id_contracts()
+        if any(
+            _supersedes_marker(item.get("evidence_artifact")) == item.get("id")
+            for item in contract
+        )
+        and _gate_algorithm_superseded_ids(contract)
+    ]
+    assert discriminating, (
+        "domain no longer contains a self-referential marker that the gate "
+        "honours via a duplicate id — the R1 divergence cannot be detected"
+    )
+    for contract in discriminating:
+        ids = [item.get("id") for item in contract]
+        assert len(ids) != len(set(ids))
 
 
 @pytest.mark.unit
@@ -766,33 +881,162 @@ def test_a_superseded_entry_always_implies_a_verified_carrier_across_the_domain(
     ``HandlerDodVerify._handle_typed`` keeps a ``superseded > 0 and
     verified == 0`` branch for the caller-supplied-results path. Via the
     collector it must be dead code, because an edge only fires when its
-    carrier VERIFIED. Asserted over the whole executable domain rather than by
-    reading the code.
+    carrier VERIFIED. Asserted over the WHOLE non-canonical + duplicate-id
+    domain — every contract is executed end-to-end through the real collector,
+    handler and ``_build_receipt``.
+
+    This test previously truncated the domain at ``[:20]``, which stopped
+    exactly one contract short of the ``id: 7`` and ``id: None`` carriers.
+    Those aborted ``collect()`` with an unhandled ``ValidationError`` and
+    emitted NO receipt at all, so the truncation was not a cost saving — it was
+    the only reason the suite looked green. The docstring claimed "the whole
+    executable domain" while covering half of it.
+
+    Cost, stated rather than hidden: 584 contracts executed end-to-end with
+    real ``subprocess`` checks is roughly a minute of wall clock, and that is
+    the single most expensive test in this module. It is worth it — this is the
+    only place the duplicate-id shapes are driven through the two-phase
+    executor, including the ones where an item is its own supersession target
+    and ``_terminal_superseder`` has to terminate on its visited-set guard. If
+    it ever needs to shrink, shrink it by making the checks cheaper, never by
+    slicing the domain.
     """
-    for contract in _non_canonical_id_contracts()[:20]:
+    for contract in _non_canonical_id_contracts() + _duplicate_id_contracts():
         state = _verify(tmp_path, contract)
         if state.superseded_count > 0:
             assert state.verified_count > 0, (
                 "superseded entry with no verified carrier: "
                 f"{[i.get('evidence_artifact') for i in contract]}"
             )
+        # Whatever the shape, a receipt is always produced — the run never
+        # aborts (OMN-15390 residual R2).
+        assert _build_receipt(state, None, tmp_path)["status"] in {"PASS", "FAIL"}
+
+
+@pytest.mark.unit
+class TestAContractTheReceiptCannotRepresentFailsClosed:
+    """OMN-15390 residual R2 — no dod_evidence shape may abort ``collect()``.
+
+    ``ModelEvidenceCheckResult.evidence_id`` and ``.description`` are typed
+    ``str``. A contract carrying ``id: 7`` / ``id: null``, a ``dod_evidence``
+    element that is not a mapping, a non-string ``description``, or a
+    ``checks`` element that is not a mapping raised ``ValidationError`` /
+    ``AttributeError`` straight out of ``collect()``: the process died and NO
+    receipt was written. On the only sanctioned Done-flip path, "no receipt"
+    is strictly worse than a FAIL receipt — nothing downstream can distinguish
+    it from work that was never attempted. Every shape now fails CLOSED with a
+    receipted verdict naming the offending position.
+    """
+
+    @pytest.mark.parametrize("bad_id", [7, None, ["dod-a"], {"id": "dod-a"}, True])
+    def test_a_non_string_id_is_a_receipted_failure_not_an_abort(
+        self, tmp_path: Path, bad_id: Any
+    ) -> None:
+        state = _verify(tmp_path, [_item(bad_id, check_value="true")])
+
+        assert _by_id(state)["dod_evidence[0]"] == EnumEvidenceCheckStatus.FAILED
+        assert state.status == EnumDodVerifyStatus.FAILED
+        entry = next(c for c in state.checks if c.evidence_id == "dod_evidence[0]")
+        assert "MALFORMED_EVIDENCE_ID" in (entry.message or "")
+        assert _build_receipt(state, None, tmp_path)["status"] == "FAIL"
+
+    def test_a_non_mapping_evidence_entry_is_a_receipted_failure(
+        self, tmp_path: Path
+    ) -> None:
+        state = _verify(tmp_path, ["not a mapping"])  # type: ignore[list-item]
+
+        assert _by_id(state)["dod_evidence[0]"] == EnumEvidenceCheckStatus.FAILED
+        entry = next(c for c in state.checks if c.evidence_id == "dod_evidence[0]")
+        assert "MALFORMED_EVIDENCE_ITEM" in (entry.message or "")
+        assert _build_receipt(state, None, tmp_path)["status"] == "FAIL"
+
+    def test_a_bad_id_cannot_launder_its_siblings_into_a_pass(
+        self, tmp_path: Path
+    ) -> None:
+        """The rejected entry must drag the RECEIPT down, not be skipped."""
+        state = _verify(
+            tmp_path,
+            [
+                _item("dod-good", check_value="true"),
+                _item(7, check_value="true"),
+            ],
+        )
+
+        assert _by_id(state)["dod-good"] == EnumEvidenceCheckStatus.VERIFIED
+        assert _by_id(state)["dod_evidence[1]"] == EnumEvidenceCheckStatus.FAILED
+        assert _build_receipt(state, None, tmp_path)["status"] == "FAIL"
+
+    def test_a_bad_id_on_a_superseder_retires_nothing(self, tmp_path: Path) -> None:
+        """Rejection composes with the anti-laundering rule.
+
+        The gate's superseded SET still contains ``dod-a`` (parity is asserted
+        over the exhaustive domain), but the carrier never proved anything, so
+        the edge does not fire and ``dod-a`` executes and fails on its own.
+        """
+        state = _verify(
+            tmp_path,
+            [
+                _item("dod-a", check_value="false"),
+                _item(7, check_value="true", supersedes="dod-a"),
+            ],
+        )
+
+        assert _by_id(state)["dod-a"] == EnumEvidenceCheckStatus.FAILED
+        assert state.superseded_count == 0
+        assert _build_receipt(state, None, tmp_path)["status"] == "FAIL"
+
+    @pytest.mark.parametrize(
+        ("field", "value"),
+        [("description", {"k": "v"}), ("checks", ["true"])],
+    )
+    def test_an_unforeseen_item_defect_still_produces_a_receipt(
+        self, tmp_path: Path, field: str, value: Any
+    ) -> None:
+        """The fail-closed boundary in ``_execute_item``, not the known-shape list.
+
+        These two shapes are NOT rejected up front — they reach execution and
+        blow up inside it. They must still land as a receipted FAILED entry.
+        """
+        item = _item("dod-a", check_value="true")
+        item[field] = value
+
+        state = _verify(tmp_path, [item])
+
+        assert _by_id(state)["dod-a"] == EnumEvidenceCheckStatus.FAILED
+        assert state.status == EnumDodVerifyStatus.FAILED
+        assert _build_receipt(state, None, tmp_path)["status"] == "FAIL"
 
 
 @pytest.mark.unit
 def test_occ_gate_agrees_with_the_runner_on_the_shared_corpus() -> None:
     """Live cross-repo differential against the OCC gate's REAL implementation.
 
-    Imports ``contract_compliance_check._superseded_dod_ids`` from the workspace
-    OCC checkout and runs it over the same corpus. Hosted CI has no such
-    checkout, so this SKIPS LOUDLY there rather than passing vacuously — the
-    exhaustive test above is what holds the invariant in CI, and this is what
-    pins its transcribed oracle to the real function locally and on ``.200``.
+    Imports ``contract_compliance_check._superseded_dod_ids`` from an OCC
+    checkout and runs it over the same corpus.
+
+    OMN-15390 residual R3: hosted CI USED to have no OCC checkout, so this
+    skipped there and the only cross-repo differential in the repo never ran on
+    a PR. It now runs in CI too — ``ci.yml``'s ``test`` job checks
+    ``OmniNode-ai/onex_change_control`` (a PUBLIC repo, so the default
+    ``github.token`` suffices; no new secret or permission) out into
+    :data:`_IN_WORKSPACE_OCC`, exactly as the ``contract-compliance`` and
+    ``onex-schema-compat`` jobs already do. That wiring is itself pinned by
+    :func:`test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite`, so
+    deleting the step turns THIS file red rather than quietly restoring the
+    skip. The skip survives only for environments with no checkout at all
+    (e.g. the coverage-sweep job); a checkout that is present but unusable
+    FAILS rather than skipping.
     """
     import importlib
     import os
     import sys
 
     roots = [
+        # In-workspace checkout — what ci.yml provides. First, and deliberately
+        # not an env var: exporting ONEX_CC_REPO_PATH for the whole test job
+        # would re-point `_resolve_contract_repo_dir` for every other test in
+        # the suite (the OMN-15382 hermeticity trap).
+        str(_IN_WORKSPACE_OCC),
         os.environ.get("ONEX_CC_REPO_PATH", "").strip(),
         str(Path(os.environ.get("OMNI_HOME", "")) / "onex_change_control"),
     ]
@@ -811,27 +1055,66 @@ def test_occ_gate_agrees_with_the_runner_on_the_shared_corpus() -> None:
             break
     if src_root is None:
         pytest.skip(
-            "OCC checkout not present (set ONEX_CC_REPO_PATH or OMNI_HOME) — "
+            "OCC checkout not present (expected at "
+            f"{_IN_WORKSPACE_OCC}, or set ONEX_CC_REPO_PATH / OMNI_HOME) — "
             "cross-repo parity differential not run; "
             "test_runner_matches_the_gate_algorithm_over_every_small_contract "
             "still holds the invariant here."
         )
 
-    inserted = str(src_root) not in sys.path
-    if inserted:
-        sys.path.insert(0, str(src_root))
+    # Prepending ``src_root`` to ``sys.path`` is NOT sufficient on its own, and
+    # this is the trap that made the first CI run of this test red rather than
+    # green. omnimarket DEPENDS on onex-change-control (`pyproject.toml` pins it
+    # to a git rev), and that INSTALLED distribution ships
+    # `onex_change_control/scripts/` WITHOUT `contract_compliance_check.py` and
+    # has no `validation.evidence_admissibility` at all. Once any earlier test
+    # in the session has imported `onex_change_control`, the parent package is
+    # bound to site-packages and every submodule lookup follows ITS `__path__`,
+    # which `sys.path` order cannot override — so the differential either
+    # resolved the wrong tree or failed outright, depending on test ordering.
+    #
+    # Purge the cached OCC package tree, import the whole thing from the
+    # CHECKOUT, then restore site-packages' modules so nothing else in the
+    # session sees a swapped dependency.
+    occ_prefix = "onex_change_control"
+    saved_modules = {
+        name: mod
+        for name, mod in sys.modules.items()
+        if name == occ_prefix or name.startswith(f"{occ_prefix}.")
+    }
+    for name in saved_modules:
+        del sys.modules[name]
+    sys.path.insert(0, str(src_root))
     try:
         module = importlib.import_module(
             "onex_change_control.scripts.contract_compliance_check"
         )
     except ImportError as exc:  # pragma: no cover - environment dependent
-        pytest.skip(
-            "OCC checkout present but not importable in this environment "
-            f"({exc}) — cross-repo parity differential not run."
+        # NOT a skip. A checkout that exists but cannot be imported is a broken
+        # differential, and skipping on it is how a wired gate silently becomes
+        # advisory again.
+        pytest.fail(
+            f"OCC checkout at {src_root} is present but "
+            f"contract_compliance_check is not importable ({exc}). The "
+            "cross-repo parity differential cannot be silently skipped once a "
+            "checkout exists — fix the checkout or the dependency."
         )
     finally:
-        if inserted and str(src_root) in sys.path:
+        if str(src_root) in sys.path:
             sys.path.remove(str(src_root))
+        for name in [
+            name
+            for name in sys.modules
+            if name == occ_prefix or name.startswith(f"{occ_prefix}.")
+        ]:
+            del sys.modules[name]
+        sys.modules.update(saved_modules)
+
+    assert Path(module.__file__ or "").is_relative_to(src_root), (
+        f"resolved {module.__file__!r}, which is not inside the checkout at "
+        f"{src_root} — the differential would be comparing against the "
+        "installed onex-change-control distribution, not the live gate"
+    )
 
     occ_superseded_ids = module._superseded_dod_ids
 
@@ -845,9 +1128,10 @@ def test_occ_gate_agrees_with_the_runner_on_the_shared_corpus() -> None:
 
     # Pin the transcribed oracle to the real function over the whole
     # exhaustive domain, not just the corpus — including the non-canonical
-    # carrier-id shapes, which is where the runner last diverged from the
-    # REAL function while the transcribed oracle agreed with both.
-    for contract in _small_contracts() + _non_canonical_id_contracts():
+    # carrier-id shapes and the duplicate-id shapes, the two axes on which the
+    # runner has diverged from the REAL function while the transcribed oracle
+    # agreed with both.
+    for contract in _parity_domain():
         assert occ_superseded_ids(contract) == _gate_algorithm_superseded_ids(contract)
         superseded, _ = _resolve(contract)
         assert superseded == occ_superseded_ids(contract), (
@@ -855,3 +1139,35 @@ def test_occ_gate_agrees_with_the_runner_on_the_shared_corpus() -> None:
             f"{[i.get('id', '<no id>') for i in contract]} / "
             f"{[i.get('evidence_artifact') for i in contract]}"
         )
+
+
+@pytest.mark.unit
+def test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite() -> None:
+    """Static wiring pin for R3 — the differential above must RUN in hosted CI.
+
+    A cross-repo differential that skips on every PR is documentation, not a
+    gate. The mechanism is a checkout step in ``ci.yml``'s ``test`` job; this
+    is the check that keeps it there. Static and offline: it reads the workflow
+    file, it does not call GitHub.
+    """
+    workflow = yaml.safe_load(_CI_WORKFLOW.read_text(encoding="utf-8"))
+    steps = workflow["jobs"]["test"]["steps"]
+
+    checkouts = [
+        step
+        for step in steps
+        if str(step.get("uses", "")).startswith("actions/checkout")
+        and (step.get("with") or {}).get("repository")
+        == "OmniNode-ai/onex_change_control"
+    ]
+    assert checkouts, (
+        "ci.yml's `test` job no longer checks out onex_change_control — "
+        "test_occ_gate_agrees_with_the_runner_on_the_shared_corpus would go "
+        "back to skipping on every PR, leaving the OCC parity claim unproven "
+        "in CI."
+    )
+    path = (checkouts[0].get("with") or {}).get("path")
+    assert path == _IN_WORKSPACE_OCC.name, (
+        f"OCC checkout path is {path!r} but the parity test looks for "
+        f"{_IN_WORKSPACE_OCC.name!r} at the workspace root"
+    )

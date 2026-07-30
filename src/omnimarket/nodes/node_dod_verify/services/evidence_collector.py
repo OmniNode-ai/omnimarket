@@ -832,14 +832,44 @@ class EvidenceCollector:
             for index, item in enumerate(dod_items)
         }
 
+        # OMN-15390 (residual R2): an entry the receipt cannot REPRESENT must
+        # fail closed with a verdict, never abort the run. ``evidence_id`` is
+        # typed ``str`` on ``ModelEvidenceCheckResult``, so a contract carrying
+        # ``id: 7`` or ``id: null`` (or a ``dod_evidence`` element that is not a
+        # mapping at all) raised an unhandled ``pydantic.ValidationError`` /
+        # ``AttributeError`` straight out of ``collect()``: the process died and
+        # NO receipt was written at all, on the only sanctioned Done-flip path.
+        # No receipt is strictly worse than a FAIL receipt — nothing downstream
+        # can even see that the contract was rejected. Rejected rather than
+        # coerced to a positional label: the ``id`` is what binds an entry to
+        # its evidence, so silently renaming a schema-invalid entry would let a
+        # malformed contract keep producing PASS receipts.
+        unrepresentable: dict[int, str] = {}
+        for index, item in enumerate(dod_items):
+            if not isinstance(item, dict):
+                unrepresentable[index] = (
+                    f"MALFORMED_EVIDENCE_ITEM: dod_evidence[{index}] is "
+                    f"{type(item).__name__}, not a mapping. Every dod_evidence "
+                    "entry must be a mapping with an 'id' and 'checks'. The "
+                    "entry was not executed and cannot pass."
+                )
+                continue
+            if "id" in item and not isinstance(item["id"], str):
+                unrepresentable[index] = (
+                    f"MALFORMED_EVIDENCE_ID: dod_evidence[{index}] declares "
+                    f"id={item['id']!r} ({type(item['id']).__name__}), but a "
+                    "dod_evidence id must be a string. The entry was not "
+                    "executed and cannot pass. Fix the contract."
+                )
+
         # Phase 1 — execute everything that is neither malformed nor a target.
         executed: dict[int, list[ModelEvidenceCheckResult]] = {}
         for index, item in enumerate(dod_items):
-            if index in supersession.malformed:
+            if index in supersession.malformed or index in unrepresentable:
                 continue
             if (id_at[index] or None) in target_ids:
                 continue
-            executed[index] = self._execute_item(item, ticket_id, path)
+            executed[index] = self._execute_item(item, ticket_id, path, index)
 
         # Phase 2 — an edge takes effect only if the item that ultimately
         # carries the verdict proved something in its own right.
@@ -861,6 +891,28 @@ class EvidenceCollector:
                 if isinstance(item, dict)
                 else "unknown"
             )
+
+            # OMN-15390 (residual R2): an entry whose id the receipt cannot
+            # represent is reported against its POSITION and never executed.
+            # Checked ahead of the marker diagnostics because it is the more
+            # fundamental defect; a marker fault on the same entry is appended
+            # so neither is lost.
+            unrepresentable_reason = unrepresentable.get(index)
+            if unrepresentable_reason is not None:
+                also = supersession.malformed.get(index)
+                results.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id=f"dod_evidence[{index}]",
+                        description=description,
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=(
+                            f"{unrepresentable_reason} {also}"
+                            if also is not None
+                            else unrepresentable_reason
+                        ),
+                    )
+                )
+                continue
 
             # OMN-15382: a malformed marker (dangling, forward, or
             # self-referential target) hard-fails the ITEM CARRYING the marker
@@ -910,7 +962,7 @@ class EvidenceCollector:
                 # execute it now so its own verdict stands, and say loudly why
                 # the marker did not retire it (OMN-15390 remediation — the
                 # anti-laundering rule). Never a silent pass.
-                group = self._execute_item(item, ticket_id, path)
+                group = self._execute_item(item, ticket_id, path, index)
                 if group:
                     carrier = self._terminal_superseder(
                         item_id_str or "", supersession.superseded, id_at
@@ -937,6 +989,7 @@ class EvidenceCollector:
         item: Any,
         ticket_id: str,
         path: Path | None,
+        index: int,
     ) -> list[ModelEvidenceCheckResult]:
         """Execute one dod_evidence item and return its full result group.
 
@@ -945,11 +998,43 @@ class EvidenceCollector:
         emit it ALONGSIDE the item's declared checks, so a static
         ``status: PASS`` receipt can no longer mask an unmerged or CI-red
         product PR. Group element 0 is always the item's own result.
+
+        OMN-15390 (residual R2): the whole group is executed inside a
+        fail-CLOSED boundary. ``_collect_impl`` rejects the two malformed
+        shapes we know about up front, but an unforeseen one must not be able
+        to abort ``collect()`` either — an exception escaping here means the
+        run dies with NO receipt at all, which reads downstream as "the
+        verification never happened" rather than "the verification refused".
+        Anything unexpected is therefore converted into a receipted FAILED
+        entry naming the item's position. ``BaseException`` (KeyboardInterrupt,
+        SystemExit) is deliberately NOT caught.
         """
-        results = [self._check_evidence_item(item, ticket_id, path)]
-        if isinstance(item, dict):
-            results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
-        return results
+        try:
+            results = [self._check_evidence_item(item, ticket_id, path)]
+            if isinstance(item, dict):
+                results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
+            return results
+        except Exception as exc:
+            item_id = item.get("id") if isinstance(item, dict) else None
+            label = item_id if isinstance(item_id, str) and item_id else None
+            logger.exception(
+                "dod_evidence[%d] of %s raised while executing; failing closed",
+                index,
+                ticket_id,
+            )
+            return [
+                ModelEvidenceCheckResult(
+                    evidence_id=label or f"dod_evidence[{index}]",
+                    description=label or f"dod_evidence[{index}]",
+                    status=EnumEvidenceCheckStatus.FAILED,
+                    message=(
+                        f"EVIDENCE_ITEM_ERROR: executing dod_evidence[{index}] "
+                        f"raised {type(exc).__name__}: {exc}. The entry cannot "
+                        "pass. This is a fail-closed conversion — the run still "
+                        "produces a receipt instead of aborting without one."
+                    ),
+                )
+            ]
 
     @staticmethod
     def _carrier_label(index: int, id_at: dict[int, str | None]) -> str:
@@ -1057,7 +1142,28 @@ class EvidenceCollector:
             target = _supersedes_marker(item.get("evidence_artifact"))
 
             if target is not None:
-                if target == item_id_str:
+                if target in seen:
+                    # The OCC rule verbatim: a LATER item retires an EARLIER
+                    # one. Recorded by INDEX, not id, so an id-less carrier is
+                    # still an identifiable superseder for the effectiveness
+                    # check in ``_collect_impl``.
+                    #
+                    # OMN-15390 (residual R1): this test runs FIRST, ahead of
+                    # the self-reference test below, because that is the order
+                    # ``_superseded_dod_ids`` evaluates in — it has no
+                    # self-reference branch at all, only ``if supersedes in
+                    # seen``. A self-reference is normally inert BECAUSE
+                    # ``seen.add`` happens after the marker check, so the
+                    # carrier's own id is not yet in ``seen``. But when an
+                    # EARLIER item already declared the same id (a duplicate-id
+                    # contract), ``seen`` DOES contain it and the gate retires
+                    # that earlier entry. Testing self-reference first made the
+                    # runner hard-RED a carrier the gate treats as a valid
+                    # superseder — runner-STRICTER-than-gate on the Done-flip
+                    # path, this ticket's original bug class, on 144 of the 544
+                    # contracts in the duplicate-id domain.
+                    superseded[target] = index
+                elif target == item_id_str:
                     malformed[index] = (
                         "MALFORMED_SUPERSESSION: item "
                         f"{label!r} declares evidence_artifact "
@@ -1065,12 +1171,6 @@ class EvidenceCollector:
                         "supersedes itself and therefore retires nothing. Fix "
                         "the marker before this item can execute."
                     )
-                elif target in seen:
-                    # The OCC rule verbatim: a LATER item retires an EARLIER
-                    # one. Recorded by INDEX, not id, so an id-less carrier is
-                    # still an identifiable superseder for the effectiveness
-                    # check in ``_collect_impl``.
-                    superseded[target] = index
                 elif target in all_ids:
                     malformed[index] = (
                         "FORWARD_SUPERSESSION: item "

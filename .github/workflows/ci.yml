@@ -576,6 +576,29 @@ jobs:
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnibase_compat.git ../omnibase_compat
       - name: Clone omnimemory
         run: git clone --depth=1 https://github.com/OmniNode-ai/omnimemory.git ../omnimemory
+      # OMN-15390 (residual R3): the ONLY cross-repo differential in this repo
+      # — node_dod_verify's supersession parity against onex_change_control's
+      # REAL `contract_compliance_check._superseded_dod_ids` — used to SKIP on
+      # every hosted run because no OCC checkout existed here, so the parity
+      # claim was proven locally and asserted, never executed, on a PR. OCC is
+      # PUBLIC, so the default `github.token` reads it: no new secret, no new
+      # permission, and the same `actions/checkout` pattern the
+      # `contract-compliance` and `onex-schema-compat` jobs already use.
+      # `sparse-checkout: src` skips the contracts/ + drift/ bulk (~25 MB) and
+      # takes only the package the differential imports. Kept OFF
+      # ONEX_CC_REPO_PATH deliberately: exporting that would re-point
+      # EvidenceCollector's contract resolution for every other test in the
+      # job. The test finds this path relative to the repo root, and
+      # `test_ci_wires_an_occ_checkout_into_the_job_that_runs_this_suite` fails
+      # if this step is removed or its path changed.
+      - name: Checkout onex_change_control (OCC parity differential)
+        uses: actions/checkout@v4
+        with:
+          repository: OmniNode-ai/onex_change_control
+          ref: dev
+          path: onex_change_control
+          sparse-checkout: src
+          persist-credentials: false
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
