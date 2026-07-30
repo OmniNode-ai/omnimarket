@@ -60,7 +60,6 @@ from __future__ import annotations
 import ast
 import json
 import pathlib
-import re
 import urllib.error
 from types import TracebackType
 from typing import Any
@@ -547,35 +546,27 @@ class TestSingleSourceUrlAuthority:
         """Structural falsifier, sibling of the no-``re.compile`` one.
 
         An annotated literal would pass every behavioural test in this file
-        while silently pinning a host that the authority no longer declares.
-        Docstrings and comments are exempt: the validator scores connection
-        targets, and so does this.
+        while silently pinning a host the authority no longer declares.
+
+        This runs the **real** `URL Authority Gate` scanner rather than a local
+        approximation of it, for the same reason the gate loads the real hold
+        vocabulary: a re-implementation drifts. A first cut of this test
+        exempted whole docstrings, went green, and the CI gate still failed on a
+        URL inside a docstring *body* — the local copy was more lenient than the
+        thing it claimed to predict. Importing `scan_source` removes that gap by
+        construction.
         """
-        tree = ast.parse(_GATE_SCRIPT.read_text(encoding="utf-8"))
-        docstrings = {
-            id(node.body[0].value)
-            for node in ast.walk(tree)
-            if isinstance(
-                node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
-            )
-            and node.body
-            and isinstance(node.body[0], ast.Expr)
-            and isinstance(node.body[0].value, ast.Constant)
-            and isinstance(node.body[0].value.value, str)
-        }
-        host_bearing_url = re.compile(r"https?://[a-z0-9-]+(?:\.[a-z0-9-]+)+", re.I)
-        offenders = [
-            node.value
-            for node in ast.walk(tree)
-            if isinstance(node, ast.Constant)
-            and isinstance(node.value, str)
-            and id(node) not in docstrings
-            and host_bearing_url.search(node.value)
-        ]
-        assert offenders == [], (
+        from omnibase_core.validation.validator_url_authority import scan_source
+
+        path = "scripts/ci/check_pr_hold_marker.py"
+        violations = scan_source(
+            "omnimarket", path, _GATE_SCRIPT.read_text(encoding="utf-8")
+        )
+        assert violations == [], (
             "the CI hold gate must not declare its own endpoint — it resolves "
             "github.rest_url from configs/service_endpoints.yaml "
-            f"(offending literals: {offenders})"
+            f"(URL Authority Gate violations: "
+            f"{[(v.rule, v.line, v.snippet) for v in violations]})"
         )
 
     def test_default_authority_path_is_the_shipped_authority_file(self) -> None:
@@ -667,6 +658,77 @@ class TestSingleSourceUrlAuthority:
     def test_missing_authority_raises(self, tmp_path: pathlib.Path) -> None:
         with pytest.raises(UrlAuthorityUnavailableError):
             resolve_github_rest_url(tmp_path / "absent.yaml")
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [
+            pytest.param(
+                '  rest_url: "https://api.github.com" # prod',
+                "https://api.github.com",
+                id="quoted-then-comment",
+            ),
+            pytest.param(
+                "  rest_url: https://api.github.com # prod",
+                "https://api.github.com",
+                id="bare-then-comment",
+            ),
+            pytest.param(
+                "  rest_url: 'https://api.github.com'   ",
+                "https://api.github.com",
+                id="single-quoted-trailing-space",
+            ),
+            pytest.param(
+                '  rest_url: "https://api.github.com/x#frag"',
+                "https://api.github.com/x#frag",
+                id="hash-inside-quotes-is-not-a-comment",
+            ),
+            pytest.param(
+                "  rest_url: https://api.github.com/x#frag",
+                "https://api.github.com/x#frag",
+                id="hash-without-preceding-space-is-not-a-comment",
+            ),
+        ],
+    )
+    def test_trailing_comments_are_stripped_not_absorbed(
+        self, tmp_path: pathlib.Path, line: str, expected: str
+    ) -> None:
+        """A trailing comment must not end up inside the host.
+
+        `value.strip().strip("\\"'")` alone leaves `https://api.github.com" # prod`,
+        which still passes an `https://` prefix check — a corrupted value returned
+        instead of the promised error. Caught in review on this PR; fixed with a
+        quote-aware reader and pinned here in both directions.
+        """
+        authority = tmp_path / "service_endpoints.yaml"
+        authority.write_text(f"github:\n{line}\n", encoding="utf-8")
+
+        assert resolve_github_rest_url(authority) == expected
+
+    @pytest.mark.parametrize(
+        ("line", "fragment"),
+        [
+            pytest.param(
+                '  rest_url: "https://api.github.com',
+                "unterminated",
+                id="unterminated-quote",
+            ),
+            pytest.param(
+                '  rest_url: "https://api.github.com" garbage',
+                "trailing content",
+                id="trailing-junk-is-not-ignored",
+            ),
+        ],
+    )
+    def test_malformed_scalars_raise_rather_than_degrade(
+        self, tmp_path: pathlib.Path, line: str, fragment: str
+    ) -> None:
+        """Refuse, per the docstring's promise — never return a partial value."""
+        authority = tmp_path / "service_endpoints.yaml"
+        authority.write_text(f"github:\n{line}\n", encoding="utf-8")
+
+        with pytest.raises(UrlAuthorityUnavailableError) as excinfo:
+            resolve_github_rest_url(authority)
+        assert fragment in str(excinfo.value)
 
     def test_unresolvable_authority_fails_the_gate_closed(
         self, tmp_path: pathlib.Path

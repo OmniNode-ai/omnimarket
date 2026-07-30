@@ -176,6 +176,61 @@ class UrlAuthorityUnavailableError(RuntimeError):
     """
 
 
+def _scalar_value(raw_value: str, authority_path: Path) -> str:
+    """Extract one YAML scalar, honouring quoting and trailing comments.
+
+    Narrow by design — it handles exactly the shapes the authority file uses and
+    REFUSES anything else, because a lenient parse here would return a corrupted
+    host instead of raising. ``value.strip().strip("\\"'")`` alone is not enough:
+    a quoted URL followed by an inline ``#`` comment survives both the quote
+    strip and the scheme-prefix check, and yields a value with a stray quote and
+    the comment text still glued to the host. Caught in review on this PR and
+    pinned by ``test_trailing_comments_are_stripped_not_absorbed``.
+
+    Rules applied:
+
+    - A quoted scalar ends at its matching closing quote. A ``#`` *inside* the
+      quotes is part of the value (e.g. a URL fragment), not a comment.
+    - After the closing quote only whitespace, or whitespace then a ``#``
+      comment, may follow. Trailing junk is an error, not something to ignore.
+    - An unquoted scalar ends at the first whitespace-preceded ``#``, matching
+      YAML's comment rule (``a#b`` is a single token, ``a #b`` is not).
+
+    Args:
+        raw_value: Everything after the ``key:`` separator, unstripped.
+        authority_path: Only used to build a locating error message.
+
+    Returns:
+        The scalar value with quotes and any trailing comment removed.
+
+    Raises:
+        UrlAuthorityUnavailableError: On an unterminated quote or trailing junk.
+    """
+    value = raw_value.strip()
+    if value[:1] in {'"', "'"}:
+        quote = value[0]
+        closing = value.find(quote, 1)
+        if closing == -1:
+            raise UrlAuthorityUnavailableError(
+                f"{authority_path}: {URL_AUTHORITY_SECTION}.{URL_AUTHORITY_KEY} "
+                f"has an unterminated {quote} quote ({raw_value.strip()!r})"
+            )
+        remainder = value[closing + 1 :].strip()
+        if remainder and not remainder.startswith("#"):
+            raise UrlAuthorityUnavailableError(
+                f"{authority_path}: {URL_AUTHORITY_SECTION}.{URL_AUTHORITY_KEY} "
+                f"has unexpected trailing content after the quoted value "
+                f"({remainder!r})"
+            )
+        return value[1:closing]
+
+    # Unquoted: a comment must be preceded by whitespace to start one.
+    for index in range(1, len(value)):
+        if value[index] == "#" and value[index - 1].isspace():
+            return value[:index].strip()
+    return value
+
+
 def resolve_github_rest_url(
     authority_path: Path = URL_AUTHORITY_FILE,
 ) -> str:
@@ -189,9 +244,10 @@ def resolve_github_rest_url(
     "One URL authority" section of the module docstring.
 
     The reader is deliberately narrow: a top-level ``github:`` block, one
-    indented ``rest_url:`` scalar. Anything else — missing file, missing
-    section, missing key, empty value, a value that is not an absolute URL — is
-    an error, never a default.
+    indented ``rest_url:`` scalar, dequoted by :func:`_scalar_value` (which also
+    strips a trailing comment and refuses trailing junk). Anything else —
+    missing file, missing section, missing key, empty value, an unterminated
+    quote, a value that is not an absolute URL — is an error, never a default.
 
     Args:
         authority_path: Path to ``configs/service_endpoints.yaml``.
@@ -228,10 +284,7 @@ def resolve_github_rest_url(
         name, separator, value = raw_line.strip().partition(":")
         if not separator or name.strip() != URL_AUTHORITY_KEY:
             continue
-        value = value.strip()
-        if "#" in value:
-            value = value.split("#", 1)[0].strip()
-        url = value.strip("\"'")
+        url = _scalar_value(value, authority_path)
         if not url.startswith("https://") or len(url) <= len("https://"):
             raise UrlAuthorityUnavailableError(
                 f"{authority_path}: {URL_AUTHORITY_SECTION}.{URL_AUTHORITY_KEY} "
