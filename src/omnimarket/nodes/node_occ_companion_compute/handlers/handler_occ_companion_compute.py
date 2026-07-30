@@ -66,8 +66,8 @@ from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_requ
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
-    DEPLOY_ASSESSMENT_CHECK_VALUE,
     DEPLOY_ASSESSMENT_EVIDENCE_ID,
+    deploy_assessment_check_value,
     downstream_receipt_public_check_value,
     find_deploy_sensitive_paths,
     render_compute_companion_contract,
@@ -875,7 +875,13 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 request=request,
                 ticket_id=ticket,
                 evidence_id=DEPLOY_ASSESSMENT_EVIDENCE_ID,
-                check_value=DEPLOY_ASSESSMENT_CHECK_VALUE,
+                # OMN-15407: the receipt records the SAME literal, PR-pinned,
+                # SIGPIPE-safe command the contract declares — one authoring
+                # home (occ_evidence_stamp.deploy_assessment_check_value), so
+                # the declared check and the recorded probe cannot drift.
+                check_value=deploy_assessment_check_value(
+                    pr_number=pr_number, repo=repo
+                ),
                 contract_sha256=contract_hash,
                 contract_entry_sha256=deploy_entry_hash,
                 commit_sha=request.pr_head_sha,

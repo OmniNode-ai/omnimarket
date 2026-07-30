@@ -228,10 +228,15 @@ def is_yamlfmt_stable_check(
         rendered line falls at or before that column, the line is a fixpoint at
         any total length.
 
-    That is why ``DEPLOY_ASSESSMENT_CHECK_VALUE`` (127 chars, line 150, last
-    space at column 84) IS a fixpoint while a content-bound read of identical
-    length (spaces at columns 101+, because the pinned URL is one long token
-    that pushes ``--jq`` past the limit) is NOT. A fold rewrites the file, which
+    That is why the pre-OMN-15407 deploy-assessment value (127 chars, last space
+    at column 84) IS a fixpoint while a content-bound read of identical length
+    (spaces at columns 101+, because the pinned URL is one long token that pushes
+    ``--jq`` past the limit) is NOT. Its OMN-15407 successor
+    (``occ_evidence_stamp.deploy_assessment_check_value``) is longer — a literal
+    repo slug is wider than ``${REPO}`` — so whether it is a fixpoint now depends
+    on the repo slug and PR width, and :func:`render_check_value_field` decides
+    per value rather than the shape being known-stable by inspection. A fold
+    rewrites the file, which
     restales ``contract_sha256`` (F-03 / OMN-14684) and fails the hosted yamlfmt
     pre-commit.
 

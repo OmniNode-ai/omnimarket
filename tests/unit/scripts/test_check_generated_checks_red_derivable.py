@@ -24,7 +24,7 @@ import yaml
 
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
-    DEPLOY_ASSESSMENT_CHECK_VALUE,
+    deploy_assessment_check_value,
     hosted_safe_binding_check_value,
     hosted_safe_diff_scope_check_value,
     render_companion_contract,
@@ -64,7 +64,9 @@ _CONTENT_BOUND = build_content_read_check(
 # this suite can never assert a shape the producer does not emit.
 _ADMISSIBLE_BINDING = hosted_safe_binding_check_value()
 _ADMISSIBLE_DIFF_SCOPE = hosted_safe_diff_scope_check_value()
-_ADMISSIBLE_DEPLOY_SCOPE = DEPLOY_ASSESSMENT_CHECK_VALUE
+_ADMISSIBLE_DEPLOY_SCOPE = deploy_assessment_check_value(
+    pr_number=321, repo="OmniNode-ai/omnimarket"
+)
 
 
 @pytest.mark.unit

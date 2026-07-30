@@ -102,6 +102,8 @@ jobs:
             tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_golden_fixtures_omn_14710.py \
             tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_compute_f06_f16_parity_omn_14783.py \
             tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247.py \
+            tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py \
+            tests/unit/nodes/node_occ_companion_compute/test_occ_companion_deploy_assessment_omn_14742.py \
             tests/unit/test_occ_contention_omn_15247.py \
             tests/unit/scripts/test_check_generated_checks_red_derivable.py \
             -q -p no:randomly

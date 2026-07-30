@@ -25,7 +25,6 @@ Proof structure (feedback_prove_red_against_exists_but_wrong):
 
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -51,9 +50,12 @@ from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_requ
     ModelOccCompanionRequest,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
-    DEPLOY_ASSESSMENT_CHECK_VALUE,
     DEPLOY_ASSESSMENT_EVIDENCE_ID,
+    deploy_assessment_check_value,
     find_deploy_sensitive_paths,
+)
+from tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_emitter_literal_pins_omn_15407 import (
+    _load_occ_module,
 )
 
 # --- verbatim from omniclaude/.github/actions/deploy-gate/validate_pr_deploy_required.py
@@ -78,29 +80,21 @@ def _has_deploy_evidence(contract_path: Path) -> bool:
     return False
 
 
-# --- verbatim from onex_change_control/scripts/lint_contract_check_values.py --------
-_GH_PR_PREFIX = ("gh pr checks", "gh pr view", "gh pr diff")
-_HARDCODED_PR_NUMBER_RE = re.compile(r"gh pr (?:checks|view|diff)\s+\d+\s")
-_BRACE_PR_RE = re.compile(r"\{pr\}")
-_BRACE_REPO_RE = re.compile(r"\{repo\}")
-
-
-def _lint_legacy_gh_pr(value: str) -> str | None:
-    stripped = value.strip()
-    if not stripped.startswith(_GH_PR_PREFIX):
-        return None
-    if _HARDCODED_PR_NUMBER_RE.search(stripped):
-        return "hardcoded integer PR number"
-    if _BRACE_PR_RE.search(stripped):
-        return "wrong-format {pr} placeholder"
-    if _BRACE_REPO_RE.search(stripped):
-        return "wrong-format {repo} placeholder"
-    if "${PR_NUMBER}" not in stripped:
-        return "missing ${PR_NUMBER} placeholder"
-    if "${REPO}" not in stripped and "--repo" not in stripped:
-        return "missing --repo argument"
-    return None
-
+# OMN-15407: the hand-vendored ``_lint_legacy_gh_pr`` mirror that used to live
+# here is DELETED, not corrected. It had silently drifted from the real
+# onex_change_control linter and became actively wrong: it rejected ANY hardcoded
+# integer PR number, while the real ``_check_legacy_gh_pr`` has accepted a
+# standalone hardcoded PR number carrying a literal ``--repo`` since OMN-14431 --
+# the sanctioned cross-PR form that ``self_bind_check_value`` (OMN-15382) and now
+# ``deploy_assessment_check_value`` (OMN-15407) both emit. A copy that can drift
+# from the gate it claims to model is the two-independent-unit-suites
+# anti-pattern CLAUDE.md OMN-14208 names, and it would have blocked this fix
+# while the real linter accepted it. The deploy item is now linted by the REAL
+# script in
+# ``tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py``
+# (``TestConsumerGateParityOnTheDeployBearingContract``), which loads it from the
+# sibling checkout the golden-gate workflow clones. ``_load_occ_module`` is
+# imported from there rather than re-vendored, so there is exactly one loader.
 
 _TICKET = "OMN-14742"
 _REPO = "OmniNode-ai/omnibase_infra"
@@ -283,8 +277,14 @@ class TestDeployAssessmentEmission:
 @pytest.mark.unit
 class TestDeployItemGateCompliance:
     def test_deploy_check_value_is_single_source(self) -> None:
-        """The contract-declared deploy check equals the constant the receipt uses,
-        so the declared check and the receipt check can never drift."""
+        """The contract-declared deploy check equals the value the receipt uses,
+        so the declared check and the receipt check can never drift.
+
+        OMN-15407: the single source is now the parameterized
+        ``deploy_assessment_check_value(pr_number=..., repo=...)`` rather than a
+        module constant — the value carries the literal product PR + repo, so it
+        cannot be a constant.
+        """
         contract = _contract(compute_companion_plan(_request()))
         deploy_item = next(
             i
@@ -292,16 +292,49 @@ class TestDeployItemGateCompliance:
             if i["id"] == DEPLOY_ASSESSMENT_EVIDENCE_ID
         )
         assert len(deploy_item["checks"]) == 1
-        assert deploy_item["checks"][0]["check_value"] == DEPLOY_ASSESSMENT_CHECK_VALUE
+        assert deploy_item["checks"][0]["check_value"] == deploy_assessment_check_value(
+            pr_number=_PR, repo=_REPO
+        )
 
-    def test_deploy_check_value_clears_placeholder_lint(self) -> None:
-        assert _lint_legacy_gh_pr(DEPLOY_ASSESSMENT_CHECK_VALUE) is None
+    def test_deploy_check_value_clears_the_real_check_value_lint(
+        self, tmp_path: Path
+    ) -> None:
+        """Drive the ACTUAL onex_change_control linter, not a vendored copy.
+
+        OMN-15407: replaces an assertion against a hand-mirrored
+        ``_lint_legacy_gh_pr`` that had drifted from the real script (see the
+        note where that mirror was deleted). ``lint_contract`` takes a file, so
+        the value is linted in situ on a rendered contract — which also exercises
+        Rules A/B/C/D over it, not just the one legacy rule the mirror modelled.
+        """
+        module = _load_occ_module(
+            "scripts/lint_contract_check_values.py", "occ_lint_check_values_14742"
+        )
+        if module is None:
+            pytest.skip("onex_change_control checkout not available")
+        path = tmp_path / f"{_TICKET}.yaml"
+        path.write_text(_contract(compute_companion_plan(_request())), encoding="utf-8")
+        violations = module.lint_contract(path)
+        assert violations == [], violations
 
     def test_deploy_check_value_is_substantive_static_assert(self) -> None:
         # `| grep` static-assert derives L1 under the substance floor (OMN-14409);
         # not an existence probe (no bare `gh pr view --json <metadata>`).
-        assert " | grep " in DEPLOY_ASSESSMENT_CHECK_VALUE
-        assert "deploy" in DEPLOY_ASSESSMENT_CHECK_VALUE.lower()
+        value = deploy_assessment_check_value(pr_number=_PR, repo=_REPO)
+        assert " | grep " in value
+        assert "deploy" in value.lower()
+
+    def test_deploy_check_value_pins_the_product_pr_literally(self) -> None:
+        """OMN-15407: the pinned PR/repo are the EMISSION-TIME product values.
+
+        A bare ``${PR_NUMBER}``/``${REPO}`` here is unresolvable in
+        ``dod_verify`` (no ambient PR context) and resolves to the OCC COMPANION
+        on the OCC runner — never to the product PR this item is about.
+        """
+        value = deploy_assessment_check_value(pr_number=_PR, repo=_REPO)
+        assert f"gh pr diff {_PR} --repo {_REPO} " in value
+        assert "${PR_NUMBER}" not in value
+        assert "${REPO}" not in value
 
     def test_deploy_description_line_stays_within_yamlfmt_wrap_width(self) -> None:
         """The deploy item's description line must stay <=100 chars so
