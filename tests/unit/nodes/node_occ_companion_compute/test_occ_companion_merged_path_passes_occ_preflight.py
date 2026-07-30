@@ -79,6 +79,27 @@ def _merged_contract() -> str:
     )
 
 
+def _merged_declared_entry_ids(merged: str) -> tuple[str, ...]:
+    """Every dod_evidence id declared in the merged contract.
+
+    OMN-15485: this fixture used to hardcode ``(_FIRST_ENTRY,)``, which is NOT
+    what the read-EFFECT produces. ``handler_occ_state_effect._occ_contract_state``
+    parses the merged contract and returns EVERY declared item id, and
+    ``render_compute_companion_contract`` ALWAYS declares the R21b admissibility
+    item (OMN-15247) alongside the downstream item — so the faithful state here
+    has two ids, not one.
+
+    That gap is what let these tests pass over the append-only violation: with
+    the admissibility item declared but absent from ``existing_entry_ids`` it got
+    no supersede, and the plan's ONLY binding for it was the in-place rewrite of
+    the merged ``command.yaml`` (OCC#5599). Deriving the ids from the contract
+    makes the fixture match the real seam, so the item is carried by a
+    supersession the way production carries it.
+    """
+    parsed = yaml.safe_load(merged)
+    return tuple(item["id"] for item in parsed["dod_evidence"])
+
+
 def _merged_pass2_plan() -> ModelOccCompanionPlan:
     merged = _merged_contract()
     request = ModelOccCompanionRequest(
@@ -105,7 +126,7 @@ def _merged_pass2_plan() -> ModelOccCompanionPlan:
                 ticket_id=_TICKET,
                 exists=True,
                 merged=True,
-                existing_entry_ids=(_FIRST_ENTRY,),
+                existing_entry_ids=_merged_declared_entry_ids(merged),
                 whole_file_sha256=compute_contract_sha256(merged),
                 raw_contract_text=merged,
             ),

@@ -30,6 +30,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import re
+from collections.abc import Sequence
 from typing import Literal
 
 import yaml
@@ -123,6 +124,14 @@ _SUPPRESS_PR_STATES = frozenset({"closed", "merged"})
 # re-probe with a fresh timestamp would drift the merged-path supersede fingerprint
 # and the RSD-5 oracle would reject a byte-faithful companion (OMN-14623).
 _OBSERVED_KEYS = ("run_timestamp", "probe_command", "exit_code", "created_at")
+
+# OMN-15485 append-only invariant. Both values mirror the enforcing gate
+# (``omnibase_core.validation.validator_occ_append_only``): the receipt tree it
+# scopes its ``git diff --name-status`` to, and the ONLY filename shape it names
+# as a legal correction ("Corrections must be net-new '.supersede.<NNNN>.yaml'
+# add-only files"). ``<NNNN>`` is the product PR number, so it is digits.
+_RECEIPT_DIR_PREFIX = "drift/dod_receipts"
+_SUPERSEDE_FILENAME_RE = re.compile(r"\.supersede\.\d+\.yaml$")
 
 # Trivial-infra fast-path (OMN-13776) — pure size-AND-path scoping. Inlined here
 # (the canonical COMPUTE home); RSD-2 retires the adapter copies into this node.
@@ -450,6 +459,95 @@ def _supersede_file(
     # the gate parses — a silent malformed supersede is exactly the OMN-14623 bug.
     ModelReceiptSupersession.model_validate(yaml.safe_load(content))
     return content
+
+
+class AppendOnlyEmissionError(ValueError):
+    """The producer would rewrite an already-merged OCC artifact (OMN-15485).
+
+    Subclasses :class:`ValueError` so it is caught by every existing handler of
+    the loud-failure contract :func:`compute_companion_plan` already documents.
+    """
+
+
+def assert_append_only_emissions(
+    files: Sequence[ModelCompanionFile], request: ModelOccCompanionRequest
+) -> None:
+    """Refuse a plan that would mutate an already-merged receipt or contract entry.
+
+    THE MECHANISM (OMN-15485 item 2). Guarding one emission site is a point fix;
+    this is the invariant that makes the whole CLASS unreachable from any present
+    or future emission site in :func:`compute_companion_plan`, per
+    ``feedback_a_rule_is_not_a_mechanism``.
+
+    Semantics are matched field-for-field to the enforcing gate --
+    ``omnibase_core.validation.validator_occ_append_only.evaluate_append_only``,
+    the ``OCC Append-Only Gate`` required check -- rather than invented here, so
+    the producer cannot be "clean" while the gate is red:
+
+    * **Receipts.** The gate flags any ``M``/``D``/``R``/``C`` git status under
+      ``drift/dod_receipts/<TICKET>/`` and says corrections must be net-new
+      ``.supersede.<NNNN>.yaml`` adds. A companion file is written verbatim over
+      the OCC checkout, so an emission whose path lands inside a merged entry's
+      receipt directory IS that ``M`` unless it is a supersede add. Enforced per
+      merged entry directory, not just the exact ``command.yaml``, so a future
+      emitter using a different ``check_type`` filename cannot slip through.
+    * **Contracts.** The gate flags a merged ``dod_evidence`` entry that is
+      removed or edited (per-entry hash change) and allows appends. The merged
+      path is append-only BY CONSTRUCTION today (``merged_text +
+      self_bind_entry_text``); asserting the emitted contract still has the
+      merged bytes as a prefix keeps that true under refactor.
+
+    Purity is preserved: the frozen set is derived from
+    ``ModelOccContractState`` -- which the read-EFFECT already populates from the
+    merged contract at ``ref=dev`` -- so this needs no new I/O and no new seam.
+
+    Raises:
+        AppendOnlyEmissionError: on the first violation, naming the path, the
+            reason, and the supersede file that is the correct expression.
+    """
+    for state in request.occ_contract_states:
+        if not (state.exists and state.merged):
+            # Fresh / exists-but-open: nothing is frozen. Every emission on this
+            # path is an add relative to the merge base, which the gate allows.
+            continue
+
+        frozen_dirs = {
+            f"{_RECEIPT_DIR_PREFIX}/{state.ticket_id}/{entry}": entry
+            for entry in state.existing_entry_ids
+        }
+        for companion in files:
+            directory, _, filename = companion.path.rpartition("/")
+            entry_id = frozen_dirs.get(directory)
+            if entry_id is None:
+                continue
+            if _SUPERSEDE_FILENAME_RE.search(filename):
+                continue
+            raise AppendOnlyEmissionError(
+                f"refusing to author {companion.path!r}: {entry_id!r} is a "
+                f"dod_evidence item already declared in {state.ticket_id}'s "
+                "MERGED contract, so that receipt is immutable and this emission "
+                "would be an in-place rewrite the required OCC Append-Only Gate "
+                "rejects as 'receipt_file_mutated' (OMN-15485). Express the "
+                "change as the net-new "
+                f"'{_RECEIPT_DIR_PREFIX}/{state.ticket_id}/{entry_id}/"
+                f"command.supersede.{request.pr_number}.yaml' supersession "
+                "record instead."
+            )
+
+        if not state.raw_contract_text:
+            continue
+        contract_path = f"contracts/{state.ticket_id}.yaml"
+        for companion in files:
+            if companion.path != contract_path:
+                continue
+            if not companion.content.startswith(state.raw_contract_text):
+                raise AppendOnlyEmissionError(
+                    f"refusing to author {contract_path!r}: the merged contract "
+                    "bytes are not a prefix of the emitted contract, so this "
+                    "edits or removes an already-merged dod_evidence entry "
+                    "instead of appending to it (OMN-15485). The merged path may "
+                    "only APPEND entries."
+                )
 
 
 def _stamp_product_body(
@@ -818,6 +916,25 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         # so declaring the item without minting this would trade born-BLOCKED on
         # contract compliance for born-INELIGIBLE on preflight.
         #
+        # OMN-15485: FRESH/ALL-ADDS PATH ONLY, exactly like the deploy-assessment
+        # sibling below. This block used to sit at method-body indentation AFTER
+        # the merged/fresh if-else, so it ran on BOTH paths -- and on the merged
+        # path its target
+        # `drift/dod_receipts/<ticket>/dod-occ-evidence-admissibility-validator/
+        # command.yaml` is an ALREADY-MERGED, immutable receipt, so the emission
+        # was an in-place rewrite. The `OCC Append-Only Gate` (a required check)
+        # rejects that as `receipt_file_mutated`, so the companion was born
+        # hard-red and the product PR it backs could not land (live: OCC#5599 for
+        # omnimarket#1973, bot commit ca5e61cb2). On the merged path this item is
+        # already carried by the net-new
+        # `command.supersede.<pr_number>.yaml` the `existing_entry_ids` loop above
+        # emits -- which re-binds it to THIS product PR carrying the same
+        # pr_number / branch / commit_sha / probe, so suppressing the in-place
+        # write loses no information. The producer proved this itself: in the
+        # SAME pass it wrote the correct supersede for this item AND the illegal
+        # in-place edit, while the other three prior entries got a supersede and
+        # nothing else.
+        #
         # HONESTY, since this is the field most easily faked: `probe_command` /
         # `probe_stdout` / `exit_code` record the live product-PR probe this
         # producer ACTUALLY ran, exactly like every other minted receipt --
@@ -829,40 +946,42 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         # fabricated "N passed" into probe_stdout is exactly the false-evidence
         # class this ticket exists to remove, and `actual_output` says plainly
         # which surface executes the declared check instead.
-        validator_entry_hash = _entry_hash_for(
-            parsed_contract, ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
-        )
-        validator_content = _receipt(
-            request=request,
-            ticket_id=ticket,
-            evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
-            check_value=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
-            contract_sha256=contract_hash,
-            contract_entry_sha256=validator_entry_hash,
-            commit_sha=request.pr_head_sha,
-            probe=request.product_probe,
-            # Kept SHORT deliberately: yamlfmt (max_line_length 100) FOLDS a long
-            # plain double-quoted scalar, which rewrites the committed receipt and
-            # restales its hash (F-03 / OMN-14684). Measured, not guessed.
-            actual_output=(
-                "PASS: OCC runner executes the declared check; "
-                "probe is the live PR read."
-            ),
-            branch=branch,
-        )
-        files.append(
-            ModelCompanionFile(
-                path=(
-                    f"drift/dod_receipts/{ticket}/"
-                    f"{ADMISSIBILITY_VALIDATOR_EVIDENCE_ID}/command.yaml"
-                ),
-                content=validator_content,
-                kind=EnumCompanionFileKind.DOWNSTREAM_RECEIPT,
-                ticket_id=ticket,
-                contract_sha256=contract_hash,
-                contract_entry_sha256=validator_entry_hash or "",
+        if not (state.exists and state.merged):
+            validator_entry_hash = _entry_hash_for(
+                parsed_contract, ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
             )
-        )
+            validator_content = _receipt(
+                request=request,
+                ticket_id=ticket,
+                evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                check_value=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+                contract_sha256=contract_hash,
+                contract_entry_sha256=validator_entry_hash,
+                commit_sha=request.pr_head_sha,
+                probe=request.product_probe,
+                # Kept SHORT deliberately: yamlfmt (max_line_length 100) FOLDS a
+                # long plain double-quoted scalar, which rewrites the committed
+                # receipt and restales its hash (F-03 / OMN-14684). Measured, not
+                # guessed.
+                actual_output=(
+                    "PASS: OCC runner executes the declared check; "
+                    "probe is the live PR read."
+                ),
+                branch=branch,
+            )
+            files.append(
+                ModelCompanionFile(
+                    path=(
+                        f"drift/dod_receipts/{ticket}/"
+                        f"{ADMISSIBILITY_VALIDATOR_EVIDENCE_ID}/command.yaml"
+                    ),
+                    content=validator_content,
+                    kind=EnumCompanionFileKind.DOWNSTREAM_RECEIPT,
+                    ticket_id=ticket,
+                    contract_sha256=contract_hash,
+                    contract_entry_sha256=validator_entry_hash or "",
+                )
+            )
 
         # F-05 (OMN-14742): the deploy-assessment receipt backing the
         # dod-deploy-assessment item declared on the (fresh-path) contract, bound
@@ -970,6 +1089,11 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 )
             )
 
+    # OMN-15485 MECHANISM: last gate before the plan escapes the pure core. Every
+    # emission site above is covered, including any added later — an in-place
+    # rewrite of a merged receipt can no longer leave this function.
+    assert_append_only_emissions(files, request)
+
     companion_files = tuple(files)
     product_body = ""
     evidence_source_occ_pr: int | None = None
@@ -1020,7 +1144,9 @@ class HandlerOccCompanionCompute:
 
 
 __all__ = [
+    "AppendOnlyEmissionError",
     "HandlerOccCompanionCompute",
+    "assert_append_only_emissions",
     "classify_trivial_infra_fastpath",
     "compute_companion_plan",
     "deterministic_fingerprint",
