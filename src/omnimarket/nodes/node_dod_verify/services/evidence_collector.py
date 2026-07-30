@@ -30,7 +30,11 @@ from pathlib import Path
 from typing import Any, cast
 
 import yaml
+from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
+    EnumDodEvidenceExecutionScope,
+)
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
+from omnibase_core.models.ticket.model_contract_dod_item import ModelContractDodItem
 
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDodEvidenceGithubEffect,
@@ -64,6 +68,20 @@ _DEFAULT_CONTRACT_ROOTS: list[str] = [
 # ``OCC_GOVERNANCE_REF`` for tests / operators. Mirrors
 # ``DurableEvidenceGate.DEFAULT_OCC_GOVERNANCE_REF``.
 _DEFAULT_OCC_GOVERNANCE_REF = "origin/dev"
+
+# OMN-15443: ModelContractDodItem is the authoritative owner of item-level DoD
+# contract fields.  The local Done-gate consumer additionally supports explicit
+# PR bindings used by its live-state verifier; those fields are local execution
+# metadata, not a second evidence-audience schema.  Deriving the base field set
+# and default from the core model prevents this consumer from drifting when the
+# canonical contract evolves.
+_CANONICAL_DOD_ITEM_FIELDS = frozenset(ModelContractDodItem.model_fields)
+_LOCAL_DOD_ITEM_EXTENSION_FIELDS = frozenset({"pr", "repo", "pr_number"})
+_LOCAL_DOD_ITEM_FIELDS = _CANONICAL_DOD_ITEM_FIELDS | _LOCAL_DOD_ITEM_EXTENSION_FIELDS
+_DEFAULT_EXECUTION_SCOPE = cast(
+    EnumDodEvidenceExecutionScope,
+    ModelContractDodItem.model_fields["execution_scope"].default,
+)
 
 # Wall-clock ceiling for the OCC git worktree/fetch subprocesses. A shared OCC
 # clone can hit lock contention under concurrent collect() calls, or a fetch can
@@ -864,6 +882,13 @@ class EvidenceCollector:
                 )
             ]
 
+        # OMN-15443: validate the complete contract's execution audience before
+        # resolving supersessions or running ANY declared/local-GitHub effect.
+        # A later malformed item must not allow an earlier valid sibling to run.
+        audience_failures = self._validate_evidence_audiences(dod_items)
+        if audience_failures:
+            return audience_failures
+
         supersession = self._resolve_supersessions(dod_items)
 
         # OMN-15390 (remediation): resolving the markers only says which EDGES
@@ -1034,6 +1059,86 @@ class EvidenceCollector:
             results.extend(group)
 
         return results
+
+    @staticmethod
+    def _validate_evidence_audiences(
+        dod_items: list[Any],
+    ) -> list[ModelEvidenceCheckResult]:
+        """Validate every item-level execution audience before any effect.
+
+        The authoritative core model owns the item field set and default; the
+        authoritative enum owns the accepted audience values.  This boundary is
+        deliberately scoped to item-level structure and ``execution_scope`` so
+        the local collector's established check aliases and explicit PR-binding
+        extensions remain backward compatible.  Unknown item fields still fail
+        loud, which prevents a misspelled ``execution_scope`` key from silently
+        taking the canonical default.
+        """
+        failures: list[ModelEvidenceCheckResult] = []
+        allowed_values = ", ".join(
+            scope.value for scope in EnumDodEvidenceExecutionScope
+        )
+
+        for index, item in enumerate(dod_items):
+            fallback_id = f"dod_evidence[{index}]"
+            if not isinstance(item, dict):
+                failures.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id=fallback_id,
+                        description="Invalid DoD evidence item",
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=(
+                            "INVALID_DOD_EVIDENCE_ITEM: item must be a mapping; "
+                            "refusing to execute any evidence check from an "
+                            "audience-ambiguous contract."
+                        ),
+                    )
+                )
+                continue
+
+            raw_id = item.get("id")
+            evidence_id = raw_id if isinstance(raw_id, str) and raw_id else fallback_id
+            description = str(item.get("description", evidence_id))
+
+            unknown_fields = [key for key in item if key not in _LOCAL_DOD_ITEM_FIELDS]
+            if unknown_fields:
+                rendered = ", ".join(
+                    f"{key!r}={item[key]!r}"
+                    for key in sorted(unknown_fields, key=lambda value: repr(value))
+                )
+                failures.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=description,
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=(
+                            "INVALID_DOD_EVIDENCE_ITEM: strict canonical field "
+                            f"set rejected unknown field(s): {rendered}; refusing "
+                            "to execute any evidence check from this contract."
+                        ),
+                    )
+                )
+                continue
+
+            raw_scope = item.get("execution_scope", _DEFAULT_EXECUTION_SCOPE)
+            try:
+                EnumDodEvidenceExecutionScope(raw_scope)
+            except (TypeError, ValueError):
+                failures.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=description,
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=(
+                            "UNKNOWN_EXECUTION_SCOPE: item "
+                            f"{evidence_id!r} declares execution_scope={raw_scope!r}; "
+                            f"allowed values: {allowed_values}. Refusing to execute "
+                            "with an ambiguous evidence audience."
+                        ),
+                    )
+                )
+
+        return failures
 
     def _execute_item(
         self,

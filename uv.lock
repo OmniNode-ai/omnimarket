@@ -5,7 +5,7 @@ requires-python = "==3.12.*"
 [manifest]
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.6" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=3f2998b3337e4050b4758e0dd2a0fe1061ce0d98" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=5a907b71c5cf321ed6407cd0509ec406afc81ff5" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=77144f83a9f720fb4a97f1e35c48b588b748a892" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
 ]
@@ -1614,7 +1614,7 @@ wheels = [
 [[package]]
 name = "omnibase-core"
 version = "0.46.8"
-source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=3f2998b3337e4050b4758e0dd2a0fe1061ce0d98#3f2998b3337e4050b4758e0dd2a0fe1061ce0d98" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=5a907b71c5cf321ed6407cd0509ec406afc81ff5#5a907b71c5cf321ed6407cd0509ec406afc81ff5" }
 dependencies = [
     { name = "blake3" },
     { name = "click" },
@@ -1771,7 +1771,7 @@ requires-dist = [
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-compat", specifier = "==0.5.6" },
-    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=3f2998b3337e4050b4758e0dd2a0fe1061ce0d98" },
+    { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=5a907b71c5cf321ed6407cd0509ec406afc81ff5" },
     { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=77144f83a9f720fb4a97f1e35c48b588b748a892" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" },

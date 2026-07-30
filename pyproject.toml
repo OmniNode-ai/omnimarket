@@ -587,7 +587,15 @@ omnimarket = "omnimarket.nodes"
 # files only). REMOVE WHEN RELEASED: once core publishes a version containing
 # this commit, delete this override (the range pin above already covers it)
 # and `uv lock`.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "3f2998b3337e4050b4758e0dd2a0fe1061ce0d98" }  # raw-override-ok: OMN-15163
+#
+# OMN-15443 (stacked draft only): re-pinned from 3f2998b3 to the immutable
+# OMN-15392 core source 5a907b71, which adds the canonical
+# EnumDodEvidenceExecutionScope field to ModelContractDodItem. This branch MUST
+# remain draft and MUST NOT merge with a feature-branch pin. Once OMN-15392
+# lands, replace this rev with its durable merged dev SHA before making the PR
+# ready. 5a907b71 descends from 3f2998b3, so the existing Market requirements
+# remain present while the stacked pair is tested.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "5a907b71c5cf321ed6407cd0509ec406afc81ff5" }  # raw-override-ok: OMN-15443
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
 # OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to 77144f83 -- current
