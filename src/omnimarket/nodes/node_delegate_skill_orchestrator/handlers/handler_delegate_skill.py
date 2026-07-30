@@ -62,6 +62,18 @@ class ProtocolDelegationDispatchPort(Protocol):
     for that request. ``RuntimeDelegationDispatchPort`` declares the same
     parameter to satisfy this Protocol but does not yet thread it downstream —
     see that port's docstring for the explicit fail-loud boundary.
+
+    OMN-15482: ``system_prompt`` (``str | None``), ``temperature``
+    (``float | None``) and ``response_format`` (``dict[str, object] | None``)
+    are the three completion-shaping parameters that close the measured
+    fidelity gap against a direct OpenAI-compatible chat-completions call.
+    ``None`` on each preserves the exact pre-existing behavior: the task-type
+    default system prompt, the effect-layer default temperature, and no
+    ``response_format`` key on the outbound payload respectively.
+    ``LocalDelegationDispatchPort`` threads all three through to the outbound
+    chat-completions payload. ``RuntimeDelegationDispatchPort`` declares them to
+    satisfy this Protocol but fails loud on a non-None value — the same boundary
+    as ``backend_id``/``response_contract`` above.
     """
 
     async def dispatch(
@@ -79,6 +91,9 @@ class ProtocolDelegationDispatchPort(Protocol):
         tenant_id: str | None,
         backend_id: str | None = None,
         response_contract: dict[str, object] | None = None,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        response_format: dict[str, object] | None = None,
     ) -> dict[str, object]: ...
 
 
@@ -345,6 +360,13 @@ class HandlerDelegateSkill:
                 # dead on arrival -- this is the seam pinned by
                 # test_handler_propagates_response_contract_to_dispatch_port.
                 response_contract=request.response_contract,
+                # OMN-15482: thread the three completion-shaping parameters to
+                # the dispatch port. Each one stopping here is precisely the
+                # silent-drop defect this ticket closes -- pinned by
+                # test_handler_propagates_completion_shaping_to_dispatch_port.
+                system_prompt=request.system_prompt,
+                temperature=request.temperature,
+                response_format=request.response_format,
             )
         except Exception as exc:
             return ModelDelegateSkillResponse(

@@ -157,7 +157,22 @@ from omnimarket.routing.roi_overlay import (
 logger = logging.getLogger(__name__)
 
 _RESERVED_PROVIDER_REQUEST_KEYS = frozenset(
-    {"model", "messages", "max_tokens", "temperature"}
+    # OMN-15482: ``response_format`` joins the reserved set. It is now a
+    # first-class caller-supplied wire parameter threaded from
+    # ``ModelDelegateSkillRequest.response_format``; letting an inference
+    # profile also write it through ``provider_request_options`` would create a
+    # second, silently-winning path to the same key. No shipped profile sets it
+    # today, so this is a fail-loud ratchet, not a behavior change.
+    {"model", "messages", "max_tokens", "temperature", "response_format"}
+)
+
+# OMN-15482: the effect model's OWN declared temperature default, read off the
+# model rather than restated as a literal here. ``LocalDelegationDispatchPort``
+# previously omitted ``temperature`` entirely and inherited this value; a
+# caller that supplies no temperature must keep getting exactly it, and a change
+# to the model's default must move both together rather than silently diverging.
+_DEFAULT_CALL_TEMPERATURE: float = float(
+    cast(float, ModelLlmDelegationCallRequest.model_fields["temperature"].default)
 )
 
 # Task-type system prompts carried forward from the deprecated DirectCurl port so
@@ -450,6 +465,9 @@ class LocalDelegationDispatchPort:
         tenant_id: str | None,
         backend_id: str | None = None,
         response_contract: dict[str, object] | None = None,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        response_format: dict[str, object] | None = None,
     ) -> dict[str, object]:
         # OMN-15156: an optional caller-supplied backend PIN. ``None`` (the
         # default) preserves the exact pre-existing cheapest-first task_type +
@@ -533,6 +551,14 @@ class LocalDelegationDispatchPort:
                 quality_contract_mode=quality_contract_mode,
                 acceptance_criteria=acceptance_criteria,
                 response_contract=response_contract,
+                # OMN-15482: the caller's completion-shaping parameters apply to
+                # EVERY attempt, including escalation hops -- a temperature or a
+                # system role that silently reverted to the default after the
+                # first retry would be the same fidelity defect, just harder to
+                # observe.
+                system_prompt=system_prompt,
+                temperature=temperature,
+                response_format=response_format,
             )
 
             # A hard transport/timeout failure: classify retryable vs terminal and,
@@ -1063,6 +1089,9 @@ class LocalDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         response_contract: dict[str, object] | None = None,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        response_format: dict[str, object] | None = None,
     ) -> _AttemptOutcome:
         """Run one resolve->effect->gate attempt for ``backend``.
 
@@ -1070,6 +1099,12 @@ class LocalDelegationDispatchPort:
         canonical TIMEOUT/transport failure marker the caller projects. This is
         exactly the single-shot behavior the port had before OMN-13849; the
         escalation loop calls it once per tier.
+
+        OMN-15482: ``system_prompt`` / ``temperature`` / ``response_format`` are
+        the caller's completion-shaping parameters. ``None`` on each reproduces
+        the pre-existing behavior exactly -- the task-type default system
+        prompt, ``ModelLlmDelegationCallRequest``'s own default temperature, and
+        no ``response_format`` key on the outbound payload.
         """
         # 2. RESOLVE the effective output-token budget from the routing contract.
         #    Unset request -> backend ceiling; explicit request -> capped at it.
@@ -1083,15 +1118,29 @@ class LocalDelegationDispatchPort:
         timeout_seconds = resolve_timeout_seconds(backend_timeout_ms=backend.timeout_ms)
 
         # Inference-protocol shaping (e.g. /no_think prefix, chat_template_kwargs).
-        system_prompt = _TASK_TYPE_SYSTEM_PROMPTS.get(
-            task_type, _TASK_TYPE_SYSTEM_PROMPTS["research"]
+        #
+        # OMN-15482: a caller-supplied ``system_prompt`` REPLACES the task-type
+        # default rather than being appended to the user prompt. This is what
+        # makes the system/user role split survive the delegation path: the
+        # effect handler emits ``system_prompt`` as a distinct ``role: system``
+        # chat message, so a client that previously sent two roles over direct
+        # HTTP still sends two roles here. ``None`` keeps the pre-existing
+        # task-type default verbatim. Inference-protocol shaping still applies
+        # on top either way -- a caller's system prompt is a system prompt, not
+        # an escape from backend-specific directives such as ``/no_think``.
+        resolved_system_prompt = (
+            system_prompt
+            if system_prompt is not None
+            else _TASK_TYPE_SYSTEM_PROMPTS.get(
+                task_type, _TASK_TYPE_SYSTEM_PROMPTS["research"]
+            )
         )
         (
             outbound_system_prompt,
             outbound_prompt,
             provider_request_options,
         ) = apply_inference_protocol(
-            system_prompt=system_prompt,
+            system_prompt=resolved_system_prompt,
             prompt=prompt,
             model=backend.model_id,
             task_type=task_type,
@@ -1139,6 +1188,18 @@ class LocalDelegationDispatchPort:
             # secret_ref convention mapping misses (e.g. GEMINI_API_KEY /
             # OPEN_ROUTER_API_KEY drift against the LLM_*_API_KEY convention).
             api_key_env=backend.api_key_env,
+            # OMN-15482: the caller's response-format directive, forwarded as a
+            # real wire parameter on the outbound chat-completions payload.
+            # ``None`` omits the key entirely (pre-existing behavior).
+            response_format=response_format,
+            # OMN-15482: the caller's sampling temperature, falling back to the
+            # effect model's OWN declared default (read off the model, not
+            # re-typed here, so the two can never drift apart). This
+            # byte-preserves the pre-existing outbound payload for every caller
+            # that does not set a temperature.
+            temperature=(
+                temperature if temperature is not None else _DEFAULT_CALL_TEMPERATURE
+            ),
         )
         # OMN-13597: the effect handler is a synchronous blocking call (health
         # probe + curl/httpx LLM POST). Awaiting it inline blocks the asyncio
