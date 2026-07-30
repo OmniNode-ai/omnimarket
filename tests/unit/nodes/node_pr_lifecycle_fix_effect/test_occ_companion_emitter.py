@@ -32,6 +32,15 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitte
 
 _MOD = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter"
 
+# OMN-15441: the REAL response shape of POST /repos/{o}/{r}/issues/{n}/labels —
+# the issue's full label ARRAY. These surrogates previously returned ``{}``
+# through a patched ``rest_json``, which hid the dict-only contract violation
+# and kept the suite green against a call that raised on every live run.
+_LABELS_ARRAY_RESPONSE: list[dict[str, object]] = [
+    {"id": 1, "name": "occ:machine-minted"},
+    {"id": 2, "name": "evidence"},
+]
+
 
 # ---------------------------------------------------------------------------
 # OMN-15317 — this suite asserts the LEGACY (pr_existence) companion bytes
@@ -113,17 +122,21 @@ class TestOpenOrSyncOccPr:
         def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
             if "/search/issues" in path:
                 return {"items": [{"number": 4242}]}
-            # OMN-14893: the sync path also (idempotently) verifies the
-            # occ:machine-minted provenance marker (label POST is the only
-            # other call permitted here).
-            if method == "POST" and path.endswith("/issues/4242/labels"):
-                label_calls.append(path)
-                assert body == {"labels": ["occ:machine-minted"]}
-                return {}
             raise AssertionError(f"unexpected POST/GET during sync: {method} {path}")
+
+        # OMN-14893: the sync path also (idempotently) verifies the
+        # occ:machine-minted provenance marker. OMN-15441: that POST returns a
+        # label ARRAY, so it routes through ``rest_json_array`` and this
+        # surrogate returns the real shape.
+        def fake_rest_array(method: str, path: str, *, body=None, token=None) -> list:
+            label_calls.append(path)
+            assert method == "POST"
+            assert body == {"labels": ["occ:machine-minted"]}
+            return _LABELS_ARRAY_RESPONSE
 
         with (
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}.rest_json_array", side_effect=fake_rest_array),
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
         ):
             result = emitter._open_or_sync_occ_pr(
@@ -147,14 +160,17 @@ class TestOpenOrSyncOccPr:
                 return {"items": []}
             if method == "GET":  # default-branch resolution
                 return {"default_branch": "dev"}
-            if path.endswith("/issues/77/labels"):
-                label_calls.append((path, body or {}))
-                return {}
             posted.update(body or {})
             return {"number": 77}
 
+        # OMN-15441: label POST decodes an ARRAY, via ``rest_json_array``.
+        def fake_rest_array(method: str, path: str, *, body=None, token=None) -> list:
+            label_calls.append((path, body or {}))
+            return _LABELS_ARRAY_RESPONSE
+
         with (
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}.rest_json_array", side_effect=fake_rest_array),
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
         ):
             result = emitter._open_or_sync_occ_pr(
@@ -183,12 +199,15 @@ class TestOpenOrSyncOccPr:
         def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
             if "/search/issues" in path:
                 return {"items": [{"number": 4242}]}
-            if path.endswith("/labels"):
-                raise GitHubApiError("label API down", status_code=500)
             raise AssertionError(f"unexpected call: {method} {path}")
+
+        def fake_rest_array(method: str, path: str, *, body=None, token=None) -> list:
+            assert path.endswith("/labels")
+            raise GitHubApiError("label API down", status_code=500)
 
         with (
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}.rest_json_array", side_effect=fake_rest_array),
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
         ):
             result = emitter._open_or_sync_occ_pr(

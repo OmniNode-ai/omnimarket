@@ -176,6 +176,10 @@ _DO_NOT_MERGE_RE = re.compile(
 # code path (see ``github_app_auth`` module docstring).
 _GITHUB_AUTH_MODE_ENV_VAR = "OMNI_OCC_GITHUB_AUTH_MODE"
 
+# OMN-15441: the product-repo-scoped credential for the one write this producer
+# makes outside onex_change_control (the Evidence-Source PR-body stamp).
+_PRODUCT_TOKEN_ENV_VAR = "OMNI_OCC_PRODUCT_TOKEN"
+
 
 def _resolve_github_token() -> str:
     """Resolve the GitHub credential the OCC machine path authenticates with.
@@ -216,6 +220,41 @@ def _resolve_github_token() -> str:
             "ensure GITHUB_TOKEN is set in the secret store."
         )
     return secret.get_secret_value()
+
+
+def _resolve_product_token(occ_token: str) -> tuple[str, bool]:
+    """Resolve the credential for the product-repo PR-body patch (OMN-15441).
+
+    The peer of ``HandlerOccCompanionEffect._resolve_product_token``, same
+    contract-ref seam and same optional-fallback semantics.
+
+    Why this producer needs it too, even though it works today: this emitter
+    authenticates every call — including the ONE write that leaves
+    ``onex_change_control``, the product PR-body PATCH in
+    :meth:`_patch_evidence_source` — with :func:`_resolve_github_token`. Under
+    the default ``pat`` mode that is a cross-repo operator PAT, so the patch is
+    authorized and the 403 does not fire. Under ``OMNI_OCC_GITHUB_AUTH_MODE=app``
+    — the planned OMN-14893 cutover — it becomes an ``onexbot-occ-writer``
+    installation token whose installation is ``repository_selection: selected``
+    over ``onex_change_control`` only (live readback of
+    ``/orgs/OmniNode-ai/installations``, installation 148180820), which
+    reproduces the exact OMN-15441 403 on the LIVE producer. Closing it now
+    means the cutover is not gated on rediscovering this defect in production.
+
+    ``required=False``: an absent product credential means the
+    single-cross-repo-PAT path, which is the correct behavior for the ``.201``
+    bus runtime.
+
+    Returns:
+        ``(token, dedicated)`` — ``dedicated`` is True when a distinct
+        product-scoped credential resolved, False on fallback to ``occ_token``.
+    """
+    ref = contract_secret_ref(_CONTRACT_PATH, _PRODUCT_TOKEN_ENV_VAR)
+    secret = resolve_api_key(ref, required=False, env_var_fallback=ref)
+    product_token = (secret.get_secret_value() if secret is not None else "").strip()
+    if product_token:
+        return product_token, True
+    return occ_token, False
 
 
 class OccCompanionEmitter:
@@ -1875,12 +1914,25 @@ class OccCompanionEmitter:
         signal that caused a real misattribution, per the OMN-14893
         investigation). Mirrors ``HandlerOccCompanionEffect``'s
         ``_apply_machine_minted_label`` byte-for-byte (net-negative-surface:
-        same label constant, same best-effort contract). Non-fatal: any
-        failure is logged and swallowed so a label API hiccup can never abort
-        a successful author.
+        same label constant, same best-effort contract, same ``rest_json_array``
+        helper). Non-fatal: any failure is logged and swallowed so a label API
+        hiccup can never abort a successful author.
+
+        OMN-15441: routed through ``rest_json_array``, not ``rest_json``. The
+        labels endpoint responds with the issue's full label ARRAY, which
+        ``rest_json``'s dict-only contract rejects with "unexpected JSON
+        response type" after the POST has already committed — spurious swallowed
+        WARNING noise falsely reporting a lost provenance marker (the label
+        itself always landed; see the effect handler's docstring for the live
+        OCC#5516 corroboration). Fixed in BOTH producers in the same change:
+        this emitter is the LIVE producer per
+        ``reference_two_occ_producers_canonical_not_wired``, so fixing only the
+        effect handler would have left the observed defect in the path that
+        actually runs, while the byte-for-byte parity claim above silently went
+        stale.
         """
         try:
-            rest_json(
+            rest_json_array(
                 "POST",
                 f"/repos/{owner}/{repo_name}/issues/{occ_pr_number}/labels",
                 token=token,
@@ -1950,20 +2002,53 @@ class OccCompanionEmitter:
 
         ``gh pr edit`` and GraphQL silently no-op on Projects-classic repos
         (friction #7); REST PATCH of the body is the reliable path.
+
+        OMN-15441: this is the ONLY write this producer makes outside
+        ``onex_change_control``, so it resolves the product-repo-scoped
+        credential rather than reusing the OCC one. See
+        :func:`_resolve_product_token` for why the default ``pat`` mode masks
+        the defect today and why ``app`` mode would reproduce the 403 here.
         """
         new_body = render_product_pr_body_with_occ_source(
             existing_body, occ_pr_number=occ_pr_number, tickets=tickets
         )
         if new_body == existing_body:
             return  # already canonical — no-op
-        token = _resolve_github_token()
+        occ_token = _resolve_github_token()
+        token, dedicated = _resolve_product_token(occ_token)
         owner, repo_name = split_repo(repo)
-        rest_json(
-            "PATCH",
-            f"/repos/{owner}/{repo_name}/pulls/{pr_number}",
-            token=token,
-            body={"body": new_body},
-        )
+        try:
+            rest_json(
+                "PATCH",
+                f"/repos/{owner}/{repo_name}/pulls/{pr_number}",
+                token=token,
+                body={"body": new_body},
+            )
+        except GitHubApiError as exc:
+            if exc.status_code != 403:
+                raise
+            # Self-diagnosing scope mismatch, mirroring the effect handler:
+            # GitHub's bare "Resource not accessible by integration" cost a
+            # full triage pass on OMN-15441.
+            source = (
+                f"the dedicated {_PRODUCT_TOKEN_ENV_VAR} credential"
+                if dedicated
+                else (
+                    f"the OCC credential (no {_PRODUCT_TOKEN_ENV_VAR} was "
+                    f"supplied, so the OCC token was reused — under "
+                    f"{_GITHUB_AUTH_MODE_ENV_VAR}=app that is scoped to "
+                    f"onex_change_control and can never write to "
+                    f"{owner}/{repo_name})"
+                )
+            )
+            raise GitHubApiError(
+                f"403 patching {owner}/{repo_name}#{pr_number} body using "
+                f"{source}. The Evidence-Source stamp needs "
+                f"'pull_requests: write' on {owner}/{repo_name}; supply a "
+                f"product-repo-scoped credential via {_PRODUCT_TOKEN_ENV_VAR}. "
+                f"Underlying error: {exc}",
+                status_code=403,
+            ) from exc
 
 
 __all__ = ["OccCompanionEmitter"]
