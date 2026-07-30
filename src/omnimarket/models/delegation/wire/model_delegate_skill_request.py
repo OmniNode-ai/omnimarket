@@ -26,6 +26,14 @@ from omnimarket.events.delegation import (
     validate_acceptance_criteria,
 )
 
+# OMN-15482: the closed set of ``response_format`` directives this delegation
+# path genuinely threads end-to-end (onto the outbound chat-completions
+# payload). Deliberately narrow: OpenAI's ``json_schema`` structured-output
+# mode is NOT accepted, because the local dispatch path does not translate it
+# and a silently-ignored directive is the exact fidelity defect this ticket
+# closes. Schema-level response constraints belong on ``response_contract``.
+_SUPPORTED_RESPONSE_FORMAT_TYPES: frozenset[str] = frozenset({"json_object"})
+
 
 class ModelDelegateSkillRequest(BaseModel):
     """Typed delegation request from a registered adapter source."""
@@ -161,6 +169,49 @@ class ModelDelegateSkillRequest(BaseModel):
             "declared default schema (if any), then to the legacy heuristics."
         ),
     )
+    # OMN-15482: the three completion-shaping parameters below close the
+    # measured fidelity gap between this delegation wire model and a direct
+    # OpenAI-compatible chat-completions call. Before this ticket a consumer
+    # that had a system prompt, a temperature, or a JSON-mode requirement could
+    # not express any of them here, so a client migrating from a direct HTTP
+    # provider binding onto the delegation path silently changed behaviour --
+    # temperature was dropped, the system/user role split collapsed into one
+    # concatenated ``prompt`` string, and JSON mode degraded into an appended
+    # prompt sentence. Every field defaults to ``None``, and ``None`` preserves
+    # the exact pre-existing behaviour on every path, so no existing caller
+    # changes shape.
+    system_prompt: str | None = Field(
+        default=None,
+        min_length=1,
+        description=(
+            "Optional caller-supplied system message, sent as a distinct "
+            "``role: system`` chat message alongside ``prompt`` (``role: "
+            "user``). None resolves the task-type default system prompt the "
+            "routing layer already applies -- the pre-existing behaviour."
+        ),
+    )
+    temperature: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=2.0,
+        description=(
+            "Optional sampling temperature forwarded verbatim to the provider. "
+            "None resolves the effect-layer default, preserving pre-existing "
+            "behaviour for every caller that does not set it."
+        ),
+    )
+    response_format: dict[str, object] | None = Field(
+        default=None,
+        description=(
+            "Optional OpenAI-shaped response-format directive, forwarded "
+            "verbatim as a wire parameter on the outbound chat-completions "
+            "payload. Only ``{'type': 'json_object'}`` is supported; anything "
+            "else is rejected rather than silently dropped. None omits the "
+            "parameter entirely (pre-existing behaviour). Distinct from "
+            "``response_contract``, which drives ONEX-side structural "
+            "validation of the response and is never sent to the provider."
+        ),
+    )
 
     @field_validator("acceptance_criteria")
     @classmethod
@@ -168,6 +219,36 @@ class ModelDelegateSkillRequest(BaseModel):
         cls, criteria: tuple[str, ...]
     ) -> tuple[str, ...]:
         return validate_acceptance_criteria(criteria)
+
+    @field_validator("response_format")
+    @classmethod
+    def _validate_supported_response_format(
+        cls, response_format: dict[str, object] | None
+    ) -> dict[str, object] | None:
+        """Reject any response-format directive this path does not really thread.
+
+        Fail-loud, not permissive: accepting an unsupported directive (e.g.
+        OpenAI's ``json_schema`` structured-output mode) and forwarding it to a
+        provider that ignores it would reintroduce exactly the silent-fidelity
+        class OMN-15482 exists to close -- the caller would believe it had
+        constrained the response when it had not. ``response_contract`` is the
+        ONEX-native surface for schema-level response constraints.
+        """
+        if response_format is None:
+            return None
+        if set(response_format) != {"type"}:
+            raise ValueError(
+                "response_format must contain exactly the key 'type'; got "
+                f"{sorted(response_format)!r}"
+            )
+        if response_format["type"] not in _SUPPORTED_RESPONSE_FORMAT_TYPES:
+            raise ValueError(
+                "unsupported response_format type "
+                f"{response_format['type']!r}; supported: "
+                f"{sorted(_SUPPORTED_RESPONSE_FORMAT_TYPES)!r}. Use "
+                "response_contract for schema-level response validation."
+            )
+        return response_format
 
 
 __all__: list[str] = [

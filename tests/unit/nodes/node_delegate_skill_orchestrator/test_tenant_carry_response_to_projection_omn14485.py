@@ -76,6 +76,15 @@ class _StubDispatchPort:
         tenant_id: str | None,
         backend_id: str | None = None,
         response_contract: dict[str, object] | None = None,
+        # OMN-15482: completion-shaping parameters added to
+        # ``ProtocolDelegationDispatchPort``. Accepted and ignored here -- this
+        # stub proves tenant carry, not completion shaping -- but they must be
+        # DECLARED, because the handler now always passes them and a stub that
+        # rejects an unexpected keyword surfaces as a plausible-looking
+        # ``status="failed"`` response rather than a loud TypeError.
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        response_format: dict[str, object] | None = None,
     ) -> dict[str, object]:
         return {
             "status": "completed",

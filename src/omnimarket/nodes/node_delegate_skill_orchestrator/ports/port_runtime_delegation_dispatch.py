@@ -93,7 +93,39 @@ class RuntimeDelegationDispatchPort:
         tenant_id: str | None,
         backend_id: str | None = None,
         response_contract: dict[str, object] | None = None,
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        response_format: dict[str, object] | None = None,
     ) -> dict[str, object]:
+        # OMN-15482: same fail-loud boundary as ``backend_id`` /
+        # ``response_contract`` below. ``ModelDelegationRequest``
+        # (omnibase_core), which this port publishes, carries no
+        # ``system_prompt`` / ``temperature`` / ``response_format`` field, and
+        # the bus-path consumer (``HandlerDelegationWorkflow``) has no
+        # completion-shaping input today. Accepting any of the three here and
+        # dropping it on the way to the provider would be exactly the silent
+        # fidelity-loss class OMN-15482 exists to close -- the caller would
+        # believe it had set a temperature or a system role that never reached
+        # the model. Threading them across the bus boundary is a cross-repo
+        # omnibase_core change, out of this ticket's scope, which is the
+        # bus-less ``LocalDelegationDispatchPort`` path steel's
+        # ``LlmBusDelegationClient`` actually exercises.
+        _unsupported_on_bus_path = {
+            "system_prompt": system_prompt,
+            "temperature": temperature,
+            "response_format": response_format,
+        }
+        for _name, _value in _unsupported_on_bus_path.items():
+            if _value is not None:
+                raise NotImplementedError(
+                    f"{_name} is not yet supported on the deployed bus dispatch "
+                    "path (RuntimeDelegationDispatchPort) -- only the bus-less "
+                    "LocalDelegationDispatchPort honors it today (OMN-15482). "
+                    f"Threading {_name} across the bus boundary requires a "
+                    "matching field on omnibase_core's ModelDelegationRequest "
+                    "plus HandlerDelegationWorkflow support, which is out of "
+                    "scope here."
+                )
         # OMN-15180: the deployed bus path publishes ``ModelDelegationRequest``
         # (omnibase_core), which carries no ``backend_id`` field, and the
         # downstream consumer (``HandlerDelegationWorkflow`` in

@@ -374,6 +374,15 @@ class HandlerLlmDelegationCall:
         }
         if request.provider_request_options:
             payload.update(request.provider_request_options)
+        # OMN-15482: the caller's response-format directive is applied AFTER the
+        # inference-protocol options so a consumer requirement can never be
+        # silently overwritten by backend shaping. The two cannot actually
+        # collide today -- ``LocalDelegationDispatchPort`` reserves the
+        # ``response_format`` key against ``provider_request_options`` -- so
+        # this ordering is a belt-and-braces statement of precedence, not a
+        # live conflict resolution.
+        if request.response_format is not None:
+            payload["response_format"] = request.response_format
 
         try:
             # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge

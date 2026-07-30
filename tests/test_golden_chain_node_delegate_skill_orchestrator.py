@@ -59,6 +59,12 @@ class _StubDispatchPort:
         tenant_id: str | None,
         backend_id: str | None = None,
         response_contract: dict[str, object] | None = None,
+        # OMN-15482: completion-shaping parameters added to
+        # ``ProtocolDelegationDispatchPort``. Recorded rather than merely
+        # accepted so this golden chain keeps proving what the handler forwards.
+        system_prompt: str | None = None,
+        temperature: float | None = None,
+        response_format: dict[str, object] | None = None,
     ) -> dict[str, object]:
         self.calls.append(
             {
@@ -67,6 +73,9 @@ class _StubDispatchPort:
                 "correlation_id": correlation_id,
                 "backend_id": backend_id,
                 "response_contract": response_contract,
+                "system_prompt": system_prompt,
+                "temperature": temperature,
+                "response_format": response_format,
             }
         )
         return self._result

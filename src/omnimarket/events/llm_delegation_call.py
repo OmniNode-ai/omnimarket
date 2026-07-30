@@ -85,6 +85,22 @@ class ModelLlmDelegationCallRequest(BaseModel):
     extra_headers: dict[str, str] = Field(default_factory=dict)
     provider_request_options: dict[str, Any] = Field(default_factory=dict)
 
+    response_format: dict[str, Any] | None = Field(default=None)
+    """OMN-15482: caller-declared response-format directive (e.g.
+    ``{"type": "json_object"}``), forwarded verbatim as a wire parameter on the
+    outbound chat-completions payload.
+
+    Distinct from ``provider_request_options``, which carries backend-specific
+    inference-protocol shaping resolved by the routing layer: this field carries
+    the CONSUMER's own requirement, threaded from
+    ``ModelDelegateSkillRequest.response_format``. Keeping them separate is what
+    lets the routing layer reserve the ``response_format`` key against profile
+    overrides instead of two producers racing for it.
+
+    ``None`` (the default) omits the key from the payload entirely, byte-
+    preserving the pre-existing outbound request for every caller that does not
+    set one."""
+
     secret_ref: str | None = Field(default=None)
     """Logical secret reference (e.g. ``llm.glm.api_key``) for the backend's API key.
 

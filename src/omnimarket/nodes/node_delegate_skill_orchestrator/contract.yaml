@@ -181,6 +181,32 @@ inputs:
       structure (OMN-15193). When set, the delegation quality gate validates
       the response structurally against this schema instead of the
       task-class keyword heuristics. None preserves current behavior.
+  system_prompt:
+    type: str
+    required: false
+    description: >
+      Optional caller-supplied system message (OMN-15482), sent as a distinct
+      role:system chat message alongside the user prompt. Omit to resolve the
+      task-type default system prompt, which is the pre-existing behavior.
+  temperature:
+    type: float
+    required: false
+    minimum: 0.0
+    maximum: 2.0
+    description: >
+      Optional sampling temperature (OMN-15482) forwarded verbatim to the
+      provider. Omit to resolve the effect-layer default, preserving
+      pre-existing behavior.
+  response_format:
+    type: object
+    required: false
+    description: >
+      Optional OpenAI-shaped response-format directive (OMN-15482) forwarded
+      verbatim as a wire parameter on the outbound chat-completions payload.
+      Only {"type": "json_object"} is supported; anything else is rejected
+      rather than silently dropped. Omit to send no response_format at all.
+      Distinct from response_contract, which drives ONEX-side structural
+      validation and is never sent to the provider.
 
 runtime_dispatch:
   command_topic: onex.cmd.omnimarket.delegate-skill.v1
