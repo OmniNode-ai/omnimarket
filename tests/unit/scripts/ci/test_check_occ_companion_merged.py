@@ -69,7 +69,7 @@ class FakeFetcher:
         return self._compare.get((base, head_sha))
 
 
-def _product_pr(body: str, author: str = "jonahgabriel") -> dict[str, object]:
+def _product_pr(body: str, author: str = "product-pr-author") -> dict[str, object]:
     return {"body": body, "author": {"login": author}}
 
 
