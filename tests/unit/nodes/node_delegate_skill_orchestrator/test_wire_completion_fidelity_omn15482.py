@@ -549,3 +549,96 @@ def test_contract_declares_the_three_completion_shaping_inputs() -> None:
     assert inputs["temperature"]["minimum"] == 0.0
     assert inputs["temperature"]["maximum"] == 2.0
     assert inputs["response_format"]["required"] is False
+
+
+@pytest.mark.unit
+def test_steel_payload_validates_against_the_wire_model() -> None:
+    """Cross-repo seam check (OMN-14208), and the reason the subprocess hop is
+    safe to leave uncovered.
+
+    This is the EXACT payload ``steel_onslaught.llm.client_delegation.
+    LlmBusDelegationClient.complete()`` writes to its ``--input`` file, key for
+    key. If steel adds, renames, or retypes a payload key, this fails here --
+    on the consuming side -- rather than at runtime inside the CLI.
+
+    **This test lives in THIS module, not the live-backend one, and that
+    placement is load-bearing.** It shipped in
+    ``test_live_completion_fidelity_omn15482.py``, whose module-level
+    ``pytestmark = pytest.mark.skipif(OMN_ALLOW_LIVE_LADDER != "1")`` applies to
+    every test in that file. A per-test ``@pytest.mark.unit`` does NOT cancel a
+    module-level ``skipif``, so this pin -- the one both halves of OMN-15482
+    cite as the mitigation for the uncovered subprocess hop -- was SKIPPED in
+    CI and pinned nothing. Verified skipped on the merge commit ``fb99acf2``
+    before this move. Do not relocate it back into a live-gated module.
+    """
+    steel_payload: dict[str, Any] = {
+        "prompt": "Enemy contact at grid 4,7. What do you do?",
+        "system_prompt": "You are a mech pilot.",
+        "temperature": 0.7,
+        "task_type": "agent_delegation",
+        "source": "external-client",
+        "correlation_id": "11111111-2222-3333-4444-555555555555",
+        "backend_id": "local-coder-mlx",
+        "response_contract": {
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "minLength": 1},
+                "action_params": {"type": "object"},
+                "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+                "rationale": {"type": "string", "minLength": 1},
+            },
+            "required": ["action", "action_params", "confidence", "rationale"],
+            "additionalProperties": False,
+        },
+        "response_format": {"type": "json_object"},
+        "max_tokens": 4096,
+    }
+
+    request = ModelDelegateSkillRequest.model_validate(steel_payload)
+
+    assert request.system_prompt == "You are a mech pilot."
+    assert request.temperature == 0.7
+    assert request.response_format == {"type": "json_object"}
+    assert request.backend_id == "local-coder-mlx"
+
+
+@pytest.mark.unit
+def test_no_unit_marked_test_hides_behind_a_module_level_skipif() -> None:
+    """Mechanism, not a rule: the defect this module's seam pin was moved out of
+    is detectable, so it cannot silently recur in a sibling module.
+
+    ``@pytest.mark.unit`` on a test inside a module whose ``pytestmark`` carries
+    a ``skipif`` is always a mistake -- the marker reads as "runs in CI" while
+    the module-level condition skips it. Scanned statically (no import, no
+    collection) across this node's test package.
+    """
+    import ast
+
+    offenders: list[str] = []
+    for path in sorted(Path(__file__).resolve().parent.glob("test_*.py")):
+        tree = ast.parse(path.read_text())
+
+        module_skips = any(
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(t, ast.Name) and t.id == "pytestmark" for t in node.targets
+            )
+            and "skipif" in ast.dump(node.value)
+            for node in tree.body
+        )
+        if not module_skips:
+            continue
+
+        for node in tree.body:
+            if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
+                continue
+            if any(
+                "unit" in ast.dump(dec) and "mark" in ast.dump(dec)
+                for dec in node.decorator_list
+            ):
+                offenders.append(f"{path.name}::{node.name}")
+
+    assert offenders == [], (
+        "these tests are marked `unit` but sit under a module-level skipif, so "
+        f"they do not run in CI: {offenders}"
+    )

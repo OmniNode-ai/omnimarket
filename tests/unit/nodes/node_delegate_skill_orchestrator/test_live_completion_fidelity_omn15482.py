@@ -34,10 +34,13 @@ node node_delegate_skill_orchestrator --input <payload.json>`` SUBPROCESS hop
 that steel's ``LlmBusDelegationClient`` uses to reach this chain. That hop is a
 JSON file handed to the CLI; its fidelity is proven on the steel side by
 ``tests/llm/test_client_delegation_fidelity_omn15482.py`` (the payload steel
-writes) plus ``test_steel_payload_validates_against_the_wire_model`` below (the
-same payload shape accepted by this model). Running the real subprocess would
-require installing this branch's omnimarket into the shared omnibase_infra
-venv, which would affect every other lane on this machine.
+writes) plus ``test_steel_payload_validates_against_the_wire_model`` (the same
+payload shape accepted by this model), which lives in the sibling module
+``test_wire_completion_fidelity_omn15482.py`` and NOT here -- every test in this
+file is skipped unless ``OMN_ALLOW_LIVE_LADDER=1``, so a CI-critical pin placed
+here would silently never run. Running the real subprocess would require
+installing this branch's omnimarket into the shared omnibase_infra venv, which
+would affect every other lane on this machine.
 
 Enable with::
 
@@ -312,43 +315,9 @@ async def test_json_mode_is_a_wire_parameter_and_the_backend_honours_it(
     assert isinstance(parsed, dict)
 
 
-@pytest.mark.unit
-def test_steel_payload_validates_against_the_wire_model() -> None:
-    """Cross-repo seam check (OMN-14208), and the reason the subprocess hop is
-    safe to leave uncovered above.
-
-    This is the EXACT payload ``steel_onslaught.llm.client_delegation.
-    LlmBusDelegationClient.complete()`` writes to its ``--input`` file, key for
-    key. If steel adds, renames, or retypes a payload key, this fails here --
-    on the consuming side -- rather than at runtime inside the CLI. Marked
-    ``unit`` deliberately: it needs no live backend and must run in CI.
-    """
-    steel_payload: dict[str, Any] = {
-        "prompt": "Enemy contact at grid 4,7. What do you do?",
-        "system_prompt": "You are a mech pilot.",
-        "temperature": 0.7,
-        "task_type": "agent_delegation",
-        "source": "external-client",
-        "correlation_id": "11111111-2222-3333-4444-555555555555",
-        "backend_id": "local-coder-mlx",
-        "response_contract": {
-            "type": "object",
-            "properties": {
-                "action": {"type": "string", "minLength": 1},
-                "action_params": {"type": "object"},
-                "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
-                "rationale": {"type": "string", "minLength": 1},
-            },
-            "required": ["action", "action_params", "confidence", "rationale"],
-            "additionalProperties": False,
-        },
-        "response_format": {"type": "json_object"},
-        "max_tokens": 4096,
-    }
-
-    request = ModelDelegateSkillRequest.model_validate(steel_payload)
-
-    assert request.system_prompt == "You are a mech pilot."
-    assert request.temperature == 0.7
-    assert request.response_format == {"type": "json_object"}
-    assert request.backend_id == "local-coder-mlx"
+# ``test_steel_payload_validates_against_the_wire_model`` USED to live here.
+# It was moved to ``test_wire_completion_fidelity_omn15482.py`` because the
+# module-level ``pytestmark`` skipif above applies to every test in this file --
+# including one carrying ``@pytest.mark.unit``, which does NOT cancel it -- so
+# the cross-repo seam pin was skipped in CI and pinned nothing. Do not add
+# CI-critical, backend-independent tests to this module.
