@@ -2005,6 +2005,41 @@ jobs:
       - name: Refuse a PR that is held against landing
         run: python3 scripts/ci/check_pr_hold_marker.py
 
+  # ============================================================================
+  # OMN-15484 -- omnimarket is the FIRST CALLER of the shared fan-out surface.
+  # ============================================================================
+  # `merge-hold-gate-reusable.yml` is the one authored surface that
+  # onex_change_control and omnibase_infra call to get this gate without
+  # vendoring a second vocabulary (AC1). A reusable workflow that the repo
+  # defining it does not itself call is an unproven surface: the adopting repos
+  # would be the first to execute it, in a PR whose author cannot iterate on it.
+  # So omnimarket calls it too, locally (`uses: ./...`), which resolves at the
+  # PR head and therefore exercises the exact code under review.
+  #
+  # This runs ALONGSIDE `pr-hold-check` above, deliberately, and only for this
+  # transition. `pr-hold-check` is the live-proven implementation registered in
+  # STRICT_GATE_JOBS and is omnimarket's actual enforcement; this job is the
+  # fan-out surface proving itself against an independent control. Collapsing
+  # the two -- deleting `pr-hold-check` and registering this context instead --
+  # is a follow-up, kept out of this PR so that a defect in the new path cannot
+  # take omnimarket's working coverage down with it.
+  #
+  # NOT registered in STRICT_GATE_JOBS while it is a proof job. It is still not
+  # toothless here: omnimarket's CI Summary poller runs a default-deny sweep
+  # over every present+completed job, so a FAILURE in this job already fails the
+  # required context. What strict registration would add is `skipped` -> FAILURE
+  # and `absent` -> PENDING, and those belong with the collapse.
+  merge-hold-gate:
+    permissions:
+      contents: read
+      pull-requests: read
+    uses: ./.github/workflows/merge-hold-gate-reusable.yml
+    with:
+      # The PR's own code, not `dev`: this call exists to prove the surface the
+      # PR is adding. Adopting repos pin `dev` instead -- see the input's docs.
+      vocabulary_ref: ${{ github.sha }}
+      context_name: merge-hold-gate / evaluate
+
   ci-summary:
     name: CI Summary
     # OMN-14127 fan-out: REQUIRED branch-protection context, implemented as a
