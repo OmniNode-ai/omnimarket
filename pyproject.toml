@@ -595,17 +595,13 @@ omnimarket = "omnimarket.nodes"
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "1f4549d71d4d39560ac5a162ac1d39e54d86e688" }  # raw-override-ok: OMN-15418
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
-# OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to 77144f83 -- current
-# omnibase_infra dev, a descendant of the merged #2402/#2419 squashes that package
-# src/omnibase_infra/contracts/canary/model_replay_projection_seam.json as
-# wheel data. This omnimarket-side half imports that seam JSON and asserts
-# ModelReplayProjection / ModelReplayCursor / ModelDeliveryPosition
-# .model_fields against it field-by-field. The newer pin also includes
-# post-#2402 graph repairs required by omnimarket's contract-topic graph gate.
-# REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing #2402
-# plus the graph repairs, delete this override (the range pin above already
-# covers it) and `uv lock`.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "77144f83a9f720fb4a97f1e35c48b588b748a892" }
+# OMN-15418: re-pinned from 77144f83 to the exact companion infra head.
+# 9e9e62c3 retains the OMN-14779 replay seam and graph repairs, then adds strict
+# registry consumption for typed db_io, canonical handler_routing/event_bus,
+# checked-in database-topology composition, and fail-closed domain selection.
+# REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing this
+# commit, delete this override (the range pin above already covers it) and `uv lock`.
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "9e9e62c3177f568b7e5110f653ee4be6dcda965c" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
