@@ -44,13 +44,35 @@ canonical module is stdlib-only, so a bare ``python3`` on a fresh checkout runs
 it in about a second. That matters — this job must be able to render a verdict
 even when the heavy CI lane is not running (see "unconditional" below).
 
+One URL authority — the same rule as the vocabulary
+---------------------------------------------------
+omnimarket declares exactly one authority for every external base URL:
+``src/omnimarket/configs/service_endpoints.yaml`` (OMN-12806). Its own header
+says no module may hardcode those strings, and ``github_api.py`` plus every node
+handler that talks to GitHub reads ``github.rest_url`` from it through the typed
+accessor ``omnimarket.config.service_endpoints.GITHUB_REST_URL``. The
+``URL Authority Gate`` enforces that repo-wide.
+
+This gate reads the same authority *file* rather than importing that accessor,
+because the accessor is PyYAML-backed and this job runs a bare ``python3`` with
+no ``uv sync`` (see the vocabulary section above for why that property is
+load-bearing) — and PyYAML is not in the hosted runner image's system Python.
+So :func:`resolve_github_rest_url` reads the one authority with a strict scalar
+reader over the exact ``github: rest_url:`` path. The *value* still lives in
+exactly one place in the repo; only the parse is separate, and
+``test_gate_resolves_the_same_url_as_the_typed_accessor`` asserts the two
+readers return an identical string, so any divergence is RED. If the authority
+cannot be read, the gate FAILS rather than falling back to a literal — the same
+fail-closed posture as a missing vocabulary.
+
 Which surfaces are read, and in what order
 ------------------------------------------
-1. **Live PR state** (``GITHUB_API_URL/repos/{repo}/pulls/{number}``), used when
-   the fetch succeeds. Preferred because it is *current*: setting or clearing a
-   hold and re-running this job takes effect immediately, which is what makes
-   acceptance criterion 4 ("clearing the hold releases the PR") true on the CI
-   path as well as the node path.
+1. **Live PR state** (``{github.rest_url}/repos/{repo}/pulls/{number}``), used
+   when the fetch succeeds. Preferred because it is *current*: setting or
+   clearing a hold and re-running this job takes effect immediately, which is
+   what makes acceptance criterion 4 ("clearing the hold releases the PR") true
+   on the CI path as well as the node path. The base URL is not a literal and
+   not an env read — see "One URL authority" below.
 2. **The event payload** (``PR_TITLE`` / ``PR_LABELS_JSON``, injected from the
    ``github`` context by the workflow), used when the live fetch is unavailable
    or fails. No token, no network, no API dependency for the gate to function.
@@ -119,6 +141,14 @@ CANONICAL_HOLD_MODULE = (
     REPO_ROOT / "src" / "omnimarket" / "merge_control" / "hold_marker.py"
 )
 
+# THE external-endpoint authority (OMN-12806). Same rule as the vocabulary: this
+# gate reads the shipped authority, it does not carry a URL of its own.
+URL_AUTHORITY_FILE = (
+    REPO_ROOT / "src" / "omnimarket" / "configs" / "service_endpoints.yaml"
+)
+URL_AUTHORITY_SECTION = "github"
+URL_AUTHORITY_KEY = "rest_url"
+
 EXIT_CLEAR = 0
 EXIT_HELD = 1
 
@@ -135,6 +165,82 @@ class CanonicalVocabularyUnavailableError(RuntimeError):
     "clear". Deleting or breaking ``merge_control/hold_marker.py`` turns this
     gate RED rather than making it vacuously green.
     """
+
+
+class UrlAuthorityUnavailableError(RuntimeError):
+    """The external-endpoint authority could not supply the GitHub REST base URL.
+
+    Fail-closed for the same reason as the vocabulary error: the alternative is
+    a hardcoded literal, which is precisely the drift the ``URL Authority Gate``
+    exists to prevent. The gate refuses rather than inventing a host.
+    """
+
+
+def resolve_github_rest_url(
+    authority_path: Path = URL_AUTHORITY_FILE,
+) -> str:
+    """Resolve the GitHub REST base URL from the repo's endpoint authority.
+
+    Reads ``github.rest_url`` out of ``configs/service_endpoints.yaml`` — the
+    single authority every other GitHub caller in this repo resolves through
+    (``omnimarket.config.service_endpoints.GITHUB_REST_URL``). A strict scalar
+    reader is used instead of that typed accessor because the accessor imports
+    PyYAML and this gate must render a verdict from a bare ``python3``; see the
+    "One URL authority" section of the module docstring.
+
+    The reader is deliberately narrow: a top-level ``github:`` block, one
+    indented ``rest_url:`` scalar. Anything else — missing file, missing
+    section, missing key, empty value, a value that is not an absolute URL — is
+    an error, never a default.
+
+    Args:
+        authority_path: Path to ``configs/service_endpoints.yaml``.
+
+    Returns:
+        The GitHub REST base URL exactly as the authority declares it.
+
+    Raises:
+        UrlAuthorityUnavailableError: If the authority cannot supply the value.
+    """
+    if not authority_path.is_file():
+        raise UrlAuthorityUnavailableError(
+            f"endpoint authority not found at {authority_path} — the gate "
+            "refuses rather than hardcoding a GitHub host"
+        )
+    try:
+        text = authority_path.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise UrlAuthorityUnavailableError(
+            f"endpoint authority at {authority_path} is unreadable: {exc}"
+        ) from exc
+
+    in_section = False
+    for raw_line in text.splitlines():
+        if not raw_line.strip() or raw_line.lstrip().startswith("#"):
+            continue
+        if not raw_line[:1].isspace():
+            # A top-level key: we are inside the target block only while this
+            # is the one we want.
+            in_section = raw_line.split(":", 1)[0].strip() == URL_AUTHORITY_SECTION
+            continue
+        if not in_section:
+            continue
+        name, separator, value = raw_line.strip().partition(":")
+        if not separator or name.strip() != URL_AUTHORITY_KEY:
+            continue
+        url = value.strip().strip("\"'")
+        if not url.startswith("https://") or len(url) <= len("https://"):
+            raise UrlAuthorityUnavailableError(
+                f"{authority_path}: {URL_AUTHORITY_SECTION}.{URL_AUTHORITY_KEY} "
+                f"is not an absolute https URL ({url!r})"
+            )
+        return url
+
+    raise UrlAuthorityUnavailableError(
+        f"{authority_path} declares no "
+        f"{URL_AUTHORITY_SECTION}.{URL_AUTHORITY_KEY} — the gate refuses rather "
+        "than hardcoding a GitHub host"
+    )
 
 
 def load_canonical_hold_module(
@@ -263,7 +369,8 @@ def fetch_live_pr(
     """Fetch current PR state from the GitHub API.
 
     Args:
-        api_url: API root (``GITHUB_API_URL``), e.g. ``https://api.github.com``.
+        api_url: API root, resolved from the endpoint authority by
+            :func:`resolve_github_rest_url`.
         repo: ``owner/name``.
         pr_number: The PR number as a string.
         token: A token with ``pull-requests: read``.
@@ -299,6 +406,7 @@ def resolve_pr_facts(
     env: Mapping[str, str],
     *,
     opener: Callable[[urllib.request.Request], Any] | None = None,
+    authority_path: Path = URL_AUTHORITY_FILE,
 ) -> PrFacts:
     """Resolve the PR title and labels, preferring live state over the payload.
 
@@ -310,9 +418,16 @@ def resolve_pr_facts(
     Args:
         env: The process environment (injected for testability).
         opener: Injection seam for the HTTP call.
+        authority_path: Path to the endpoint authority (injected for tests).
 
     Returns:
         The observed facts and their source.
+
+    Raises:
+        UrlAuthorityUnavailableError: When a live fetch is warranted but the
+            endpoint authority cannot supply the base URL. Not degraded to the
+            payload on purpose: a broken authority is a repo-integrity fault,
+            and the alternative to raising is a hardcoded host.
     """
     payload_title = env.get("PR_TITLE") or None
     payload_labels = parse_labels_json(env.get("PR_LABELS_JSON"))
@@ -320,13 +435,12 @@ def resolve_pr_facts(
     token = env.get("GH_TOKEN") or env.get("GITHUB_TOKEN") or ""
     repo = env.get("GH_REPO") or env.get("GITHUB_REPOSITORY") or ""
     pr_number = env.get("PR_NUMBER") or ""
-    api_url = env.get("GITHUB_API_URL") or "https://api.github.com"
 
     live_error: str | None = None
     if token and repo and pr_number:
         try:
             live = fetch_live_pr(
-                api_url=api_url,
+                api_url=resolve_github_rest_url(authority_path),
                 repo=repo,
                 pr_number=pr_number,
                 token=token,
@@ -376,6 +490,7 @@ def evaluate_pr(
     *,
     module_path: Path = CANONICAL_HOLD_MODULE,
     opener: Callable[[urllib.request.Request], Any] | None = None,
+    authority_path: Path = URL_AUTHORITY_FILE,
 ) -> tuple[int, str]:
     """Render the gate verdict for the current event.
 
@@ -383,6 +498,7 @@ def evaluate_pr(
         env: The process environment.
         module_path: Path to the canonical vocabulary (injected for tests).
         opener: Injection seam for the HTTP call.
+        authority_path: Path to the endpoint authority (injected for tests).
 
     Returns:
         ``(exit_code, human_readable_report)``.
@@ -401,7 +517,10 @@ def evaluate_pr(
     except CanonicalVocabularyUnavailableError as exc:
         return EXIT_HELD, f"FAIL (fail-closed): {exc}"
 
-    facts = resolve_pr_facts(env, opener=opener)
+    try:
+        facts = resolve_pr_facts(env, opener=opener, authority_path=authority_path)
+    except UrlAuthorityUnavailableError as exc:
+        return EXIT_HELD, f"FAIL (fail-closed): {exc}"
     decision = canonical.evaluate_merge_hold(title=facts.title, labels=facts.labels)
     status = canonical.EnumMergeHoldStatus
 

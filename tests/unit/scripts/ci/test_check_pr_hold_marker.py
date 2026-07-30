@@ -38,6 +38,13 @@ What each class proves
     takes effect on re-run and clearing one releases the PR (criterion 4).
     A live-fetch failure degrades to the payload rather than to a hard error.
 
+``TestSingleSourceUrlAuthority``
+    The same single-source rule applied to the GitHub base URL. The gate carries
+    no URL of its own; it resolves ``github.rest_url`` out of the one endpoint
+    authority every other GitHub caller in this repo reads, and the proof is by
+    MUTATION (repoint the authority → the request follows) plus an equality
+    assertion against the typed accessor, not by inspection.
+
 ``TestCiWiring``
     The job actually exists in ci.yml, is unconditional, and invokes this
     script. A gate that no workflow step executes is advisory (CLAUDE.md rule 5)
@@ -53,6 +60,7 @@ from __future__ import annotations
 import ast
 import json
 import pathlib
+import re
 import urllib.error
 from types import TracebackType
 from typing import Any
@@ -64,10 +72,13 @@ from scripts.ci.check_pr_hold_marker import (
     CANONICAL_HOLD_MODULE,
     EXIT_CLEAR,
     EXIT_HELD,
+    URL_AUTHORITY_FILE,
     CanonicalVocabularyUnavailableError,
+    UrlAuthorityUnavailableError,
     evaluate_pr,
     load_canonical_hold_module,
     parse_labels_json,
+    resolve_github_rest_url,
 )
 
 pytestmark = pytest.mark.unit
@@ -127,6 +138,30 @@ def _live_opener(*, title: str | None, labels: list[str] | None):
 
 def _failing_opener(_request: Any) -> _FakeResponse:
     raise urllib.error.URLError("network is unreachable")
+
+
+def _recording_opener(sink: list[str]):
+    """An opener that records the full request URL and returns a clean PR."""
+
+    def _open(request: Any) -> _FakeResponse:
+        sink.append(request.full_url)
+        return _FakeResponse({"title": _LIVE_PR_1972_TITLE, "labels": []})
+
+    return _open
+
+
+def _write_authority(path: pathlib.Path, rest_url: str) -> pathlib.Path:
+    """Write a minimal endpoint-authority file with the given ``github.rest_url``."""
+    path.write_text(
+        "# a comment line the reader must skip\n"
+        "linear:\n"
+        '  graphql_url: "https://decoy.invalid/graphql"\n'
+        "github:\n"
+        f'  rest_url: "{rest_url}"\n'
+        '  graphql_url: "https://decoy.invalid/graphql"\n',
+        encoding="utf-8",
+    )
+    return path
 
 
 def _pr_env(**overrides: str) -> dict[str, str]:
@@ -491,6 +526,171 @@ class TestLabelParsing:
 
     def test_label_objects_and_bare_strings_both_parse(self) -> None:
         assert parse_labels_json('[{"name": "a"}, "b"]') == ("a", "b")
+
+
+# ---------------------------------------------------------------------------
+# One URL authority — the same single-source rule, applied to the base URL
+# ---------------------------------------------------------------------------
+
+
+class TestSingleSourceUrlAuthority:
+    """The gate resolves the GitHub base URL; it does not carry one.
+
+    ``configs/service_endpoints.yaml`` is the repo's single declared authority
+    for external base URLs (OMN-12806) and the ``URL Authority Gate`` enforces
+    it. A CI script that hardcodes ``https://api.github.com`` — annotated or not
+    — is a second copy of a value that already has exactly one home, which is
+    the same divergence this ticket removed from the hold vocabulary.
+    """
+
+    def test_gate_script_declares_no_url_of_its_own(self) -> None:
+        """Structural falsifier, sibling of the no-``re.compile`` one.
+
+        An annotated literal would pass every behavioural test in this file
+        while silently pinning a host that the authority no longer declares.
+        Docstrings and comments are exempt: the validator scores connection
+        targets, and so does this.
+        """
+        tree = ast.parse(_GATE_SCRIPT.read_text(encoding="utf-8"))
+        docstrings = {
+            id(node.body[0].value)
+            for node in ast.walk(tree)
+            if isinstance(
+                node, ast.Module | ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef
+            )
+            and node.body
+            and isinstance(node.body[0], ast.Expr)
+            and isinstance(node.body[0].value, ast.Constant)
+            and isinstance(node.body[0].value.value, str)
+        }
+        host_bearing_url = re.compile(r"https?://[a-z0-9-]+(?:\.[a-z0-9-]+)+", re.I)
+        offenders = [
+            node.value
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstrings
+            and host_bearing_url.search(node.value)
+        ]
+        assert offenders == [], (
+            "the CI hold gate must not declare its own endpoint — it resolves "
+            "github.rest_url from configs/service_endpoints.yaml "
+            f"(offending literals: {offenders})"
+        )
+
+    def test_default_authority_path_is_the_shipped_authority_file(self) -> None:
+        assert URL_AUTHORITY_FILE.is_file()
+        assert URL_AUTHORITY_FILE == (
+            _REPO_ROOT / "src" / "omnimarket" / "configs" / "service_endpoints.yaml"
+        )
+
+    def test_gate_resolves_the_same_url_as_the_typed_accessor(self) -> None:
+        """The stdlib reader and the PyYAML accessor must agree, exactly.
+
+        The gate cannot import the accessor (PyYAML is absent from the hosted
+        runner's system Python and this job runs a bare ``python3`` on purpose),
+        so the parse is separate while the *value* stays single-homed. This
+        assertion is what makes that claim falsifiable: change the authority's
+        shape and this goes RED rather than the gate silently drifting.
+        """
+        from omnimarket.config.service_endpoints import GITHUB_REST_URL
+
+        assert resolve_github_rest_url() == GITHUB_REST_URL
+
+    def test_live_fetch_targets_the_resolved_authority_url(self) -> None:
+        """The resolved value is what the request actually goes to."""
+        seen: list[str] = []
+        env = _pr_env(GH_TOKEN="t", GH_REPO="o/r", PR_NUMBER="1973")
+
+        code, report = evaluate_pr(env, opener=_recording_opener(seen))
+
+        assert code == EXIT_CLEAR, report
+        assert seen == [f"{resolve_github_rest_url()}/repos/o/r/pulls/1973"]
+
+    def test_repointing_the_authority_repoints_the_gate(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """MUTATION PROOF: the URL genuinely comes from the authority.
+
+        Direction matters the same way it does for the vocabulary — an
+        assertion that the gate "uses the authority" would also pass if it were
+        hardcoding the identical string.
+        """
+        authority = _write_authority(
+            tmp_path / "service_endpoints.yaml", "https://ghe.example.com/api/v3"
+        )
+        seen: list[str] = []
+        env = _pr_env(GH_TOKEN="t", GH_REPO="o/r", PR_NUMBER="1973")
+
+        code, report = evaluate_pr(
+            env, opener=_recording_opener(seen), authority_path=authority
+        )
+
+        assert code == EXIT_CLEAR, report
+        assert seen == ["https://ghe.example.com/api/v3/repos/o/r/pulls/1973"]
+
+    @pytest.mark.parametrize(
+        ("body", "expected_fragment"),
+        [
+            pytest.param("linear:\n  graphql_url: x\n", "declares no", id="no-section"),
+            pytest.param("github:\n  graphql_url: x\n", "declares no", id="no-key"),
+            pytest.param('github:\n  rest_url: ""\n', "not an absolute", id="empty"),
+            pytest.param(
+                "github:\n  rest_url: api.github.example\n",
+                "not an absolute",
+                id="not-absolute",
+            ),
+        ],
+    )
+    def test_a_broken_authority_raises_rather_than_defaulting(
+        self, tmp_path: pathlib.Path, body: str, expected_fragment: str
+    ) -> None:
+        """No silent default. The whole point is that there is no fallback host."""
+        authority = tmp_path / "service_endpoints.yaml"
+        authority.write_text(body, encoding="utf-8")
+
+        with pytest.raises(UrlAuthorityUnavailableError) as excinfo:
+            resolve_github_rest_url(authority)
+        assert expected_fragment in str(excinfo.value)
+
+    def test_missing_authority_raises(self, tmp_path: pathlib.Path) -> None:
+        with pytest.raises(UrlAuthorityUnavailableError):
+            resolve_github_rest_url(tmp_path / "absent.yaml")
+
+    def test_unresolvable_authority_fails_the_gate_closed(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """Fail-closed, exactly like an unloadable vocabulary.
+
+        A gate that cannot resolve its own read surface must refuse, not fall
+        back to a literal and not score the PR clear.
+        """
+        env = _pr_env(GH_TOKEN="t", GH_REPO="o/r", PR_NUMBER="1973")
+
+        code, report = evaluate_pr(
+            env,
+            opener=_recording_opener([]),
+            authority_path=tmp_path / "absent.yaml",
+        )
+
+        assert code == EXIT_HELD, report
+        assert "fail-closed" in report
+        assert "endpoint authority" in report
+
+    def test_no_authority_read_when_no_live_fetch_is_warranted(
+        self, tmp_path: pathlib.Path
+    ) -> None:
+        """The payload-only path must not need the authority at all.
+
+        Without credentials there is no request to address, so a broken
+        authority must not turn an otherwise-answerable PR red.
+        """
+        code, report = evaluate_pr(
+            _pr_env(PR_TITLE=_HELD_TITLE), authority_path=tmp_path / "absent.yaml"
+        )
+
+        assert code == EXIT_HELD, report
+        assert "HELD against landing" in report
 
 
 # ---------------------------------------------------------------------------
