@@ -51,9 +51,12 @@ instead of by placeholder.
 
 from __future__ import annotations
 
+import difflib
 import importlib.util
 import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 from types import ModuleType
@@ -71,6 +74,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     deploy_assessment_check_value,
     render_companion_contract,
     render_compute_companion_contract,
+    render_compute_receipt,
     render_deploy_assessment_dod_evidence_item,
 )
 
@@ -460,6 +464,129 @@ class TestConsumerGateParityOnTheDeployBearingContract:
             "check_generated_checks_red_derivable rejects a shape the producer "
             "emits: " + repr(unknown)
         )
+
+
+# ---------------------------------------------------------------------------
+# 5. The compute receipt survives the REAL yamlfmt (F-03 / OMN-14684)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestComputeReceiptIsYamlfmtIdempotent:
+    """The `yamlfmt` red on OCC#5554, reproduced at its source.
+
+    OCC#5554 is the companion the autobind producer minted for this ticket's own
+    product PR. Its `Pre-commit` job failed on `yamlfmt` — "files were modified
+    by this hook" — and the modified file was the deploy-assessment RECEIPT, on
+    its `actual_output` line, NOT on the `check_value` this ticket rewrote (that
+    line is 157 columns and yamlfmt leaves it alone, its last space sitting at
+    column 91).
+
+    Cause: the compute receipt template inlined `actual_output` as a plain
+    double-quoted scalar while interpolating `sorted(deploy_hits)[0]`, an
+    arbitrary-length repository path. Pre-existing and latent — it needs a long
+    first deploy-sensitive path to fire, and the PR that finally supplied one was
+    this ticket's own. The born-path receipts already routed this field through
+    `render_check_value_field` under OMN-15247 R21; the compute receipt never did.
+
+    A fold rewrites the committed receipt and restales its hash, so this is
+    driven against the real binary with the real config rather than modelled.
+    """
+
+    _LONG_PATH = (
+        "src/omnimarket/nodes/node_occ_companion_compute/handlers/"
+        "handler_occ_companion_compute.py"
+    )
+
+    def _receipt(self, actual_output: str) -> str:
+        return render_compute_receipt(
+            ticket_id=_TICKET,
+            evidence_id=DEPLOY_ASSESSMENT_EVIDENCE_ID,
+            check_value=deploy_assessment_check_value(pr_number=_PR, repo=_REPO),
+            contract_sha256="a" * 64,
+            contract_entry_sha256="sha256:" + "b" * 64,
+            run_timestamp="2026-07-30T00:00:00Z",
+            commit_sha="c" * 40,
+            runner="node_pr_lifecycle_fix_effect",
+            verifier="occ-evidence-source-autobind",
+            probe_command=f"gh pr view {_PR}",
+            probe_stdout=f'{{"number":{_PR},"state":"OPEN"}}',
+            actual_output=actual_output,
+            exit_code=0,
+            pr_number=_PR,
+            branch="jonah/example",
+        )
+
+    @property
+    def _observed_actual_output(self) -> str:
+        """The exact string the compute handler builds for a deploy receipt."""
+        return (
+            f"PASS: deploy-scope present for {_TICKET} from {_REPO}#{_PR}"
+            f" — 2 runtime/deploy-sensitive path(s), e.g. {self._LONG_PATH}."
+        )
+
+    def test_the_observed_actual_output_really_is_fold_length(self) -> None:
+        """Non-vacuity: prove the input is one that WOULD fold if inlined.
+
+        Without this, a renderer change that quietly shortened the field would
+        make the yamlfmt test below pass for the wrong reason.
+        """
+        inlined = f'actual_output: "{self._observed_actual_output}"'
+        assert len(inlined) > 100
+        spaces_past_wrap = [
+            col for col, ch in enumerate(inlined) if ch == " " and col > 100
+        ]
+        assert spaces_past_wrap, inlined
+
+    def test_the_deploy_receipt_is_a_yamlfmt_fixpoint(self, tmp_path: Path) -> None:
+        yamlfmt = shutil.which("yamlfmt")
+        if yamlfmt is None:
+            pytest.skip("yamlfmt binary not available (installed in the CI gate)")
+        conf = _occ_yamlfmt_config()
+        if conf is None:
+            pytest.skip("onex_change_control .yamlfmt not available")
+        target = tmp_path / "command.yaml"
+        target.write_text(self._receipt(self._observed_actual_output), encoding="utf-8")
+        before = target.read_text(encoding="utf-8")
+        subprocess.run(
+            [yamlfmt, "-conf", str(conf), str(target)],
+            capture_output=True,
+            check=False,
+        )
+        after = target.read_text(encoding="utf-8")
+        assert after == before, (
+            "real yamlfmt rewrote the compute deploy receipt — a fold restales "
+            "contract_sha256 / contract_entry_sha256 (F-03 / OMN-14684) and is "
+            "the `yamlfmt` red observed on OCC#5554:\n"
+            + "".join(
+                difflib.unified_diff(before.splitlines(True), after.splitlines(True))
+            )
+        )
+
+    def test_a_short_actual_output_keeps_the_byte_identical_quoted_form(self) -> None:
+        """No blast radius: values that already fitted must not change shape.
+
+        `render_check_value_field` only switches to a literal block for a value
+        that would fold, so every pre-existing receipt renders byte-identically.
+        """
+        assert 'actual_output: "PASS: short."' in self._receipt("PASS: short.")
+
+    def test_the_folding_value_switches_to_a_literal_block(self) -> None:
+        assert "actual_output: |-" in self._receipt(self._observed_actual_output)
+
+    def test_the_receipt_still_parses_and_round_trips_the_value(self) -> None:
+        """A literal block must carry the SAME string, with no trailing newline."""
+        parsed = yaml.safe_load(self._receipt(self._observed_actual_output))
+        assert parsed["actual_output"] == self._observed_actual_output
+        assert parsed["check_value"] == deploy_assessment_check_value(
+            pr_number=_PR, repo=_REPO
+        )
+
+
+def _occ_yamlfmt_config() -> Path | None:
+    root = Path(os.environ.get("OCC_REPO_DIR", "../onex_change_control")).resolve()
+    conf = root / ".yamlfmt"
+    return conf if conf.is_file() else None
 
 
 def _load_repo_gate() -> Any:
