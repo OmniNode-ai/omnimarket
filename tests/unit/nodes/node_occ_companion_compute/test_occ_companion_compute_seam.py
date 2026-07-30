@@ -202,9 +202,28 @@ class TestT2ReproducibilityOracle:
 class TestT3TwoAudiences:
     def _merged_state(self) -> ModelOccContractState:
         # A contract already merged for a first consumer, with one entry.
+        #
+        # OMN-15459: the entry declares its own ``checks`` block. It previously
+        # did not, which no real OCC contract matches -- ``dod_evidence`` items
+        # are authored with a ``check_value`` (that is what
+        # ``lint-contract-check-values`` and the OMN-14505 evidence predicate
+        # operate on), and the merged contracts this producer itself renders
+        # always carry one. The producer now derives each supersession's
+        # ``replacement.check_value`` from the superseded item's OWN declared
+        # check rather than reusing one shared per-PR probe, so a check-less
+        # entry is refused loudly instead of being blanket-rebound. That refusal
+        # is pinned by
+        # ``test_occ_supersession_item_bound_check_omn_15459.py::
+        # test_item_without_a_declared_check_is_refused``; this fixture is made
+        # realistic so T3 keeps testing what it is about (net-new supersede,
+        # both hashes, no merged-receipt mutation).
         contract_text = (
             '---\nschema_version: "1.0.0"\nticket_id: "OMN-9999"\n'
             "dod_evidence:\n  - id: dod-omninode-ai-omnimarket-pr-100\n"
+            "    checks:\n"
+            '      - check_type: "command"\n'
+            '        check_value: "gh api repos/OmniNode-ai/omnimarket/pulls/100/files'
+            " --jq '[.[].filename]|length'\"\n"
         )
         return ModelOccContractState(
             ticket_id="OMN-9999",

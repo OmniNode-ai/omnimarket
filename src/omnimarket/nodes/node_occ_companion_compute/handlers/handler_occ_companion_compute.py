@@ -550,6 +550,105 @@ def assert_append_only_emissions(
                 )
 
 
+class SupersessionCheckBindingError(ValueError):
+    """A supersession would carry a check that is not the superseded item's own.
+
+    OMN-15459 AC(d), producer-side refusal. Subclasses :class:`ValueError` for the
+    same reason :class:`AppendOnlyEmissionError` does — the loud-failure contract
+    :func:`compute_companion_plan` already documents.
+    """
+
+
+def declared_check_value_for(parsed_contract: object, evidence_id: str) -> str | None:
+    """Return the ``check_value`` the CONTRACT declares for one dod_evidence item.
+
+    This is the authority for what a supersession of that item must attest. The
+    receipt schema carries exactly one ``check_type``/``check_value`` pair, so an
+    item declaring several checks (the downstream item declares two: the binding
+    probe and the diff-scope assertion) resolves to its first ``command`` check —
+    deterministic, and admissible under the OMN-15459 S2 family-binding rule,
+    whose anchors are derived from ALL of the item's declared checks.
+
+    Whitespace is collapsed exactly as the enforcing gate normalises it
+    (``check_receipt_hardening._normalize_check``), which also guarantees the
+    value is single-line and therefore safe inside the receipt template's
+    ``check_value: |-`` block scalar.
+
+    Returns ``None`` when the item is absent or declares no non-empty
+    ``check_value`` — the caller must refuse rather than substitute a stand-in.
+    """
+    if not isinstance(parsed_contract, dict):
+        return None
+    items = parsed_contract.get("dod_evidence")
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if not isinstance(item, dict) or item.get("id") != evidence_id:
+            continue
+        checks = item.get("checks")
+        if not isinstance(checks, list):
+            return None
+        fallback: str | None = None
+        for check in checks:
+            if not isinstance(check, dict):
+                continue
+            value = check.get("check_value")
+            if not isinstance(value, str) or not value.strip():
+                continue
+            normalized = " ".join(value.split())
+            if check.get("check_type") == "command":
+                return normalized
+            if fallback is None:
+                fallback = normalized
+        return fallback
+    return None
+
+
+def assert_supersession_checks_are_item_bound(
+    checks_by_entry: dict[str, str], *, ticket_id: str, pr_number: int
+) -> None:
+    """Refuse a cohort of supersessions that share one check across distinct items.
+
+    THE MECHANISM for OMN-15459 AC(d), the sibling of
+    :func:`assert_append_only_emissions`. Passing each entry's own declared check
+    is the fix; this is the invariant that keeps it true under refactor, per
+    ``feedback_a_rule_is_not_a_mechanism``.
+
+    The cohort is ``(ticket directory, .supersede.<pr_number>. suffix)`` — the
+    exact unit the OMN-15459 S1 distinctness rule groups by in
+    ``onex_change_control/scripts/validation/check_receipt_hardening.py``, so the
+    producer cannot be "clean" while that gate is red. One probe cannot be the
+    authoritative proof of N distinct bars: that is the wrong-item rebind live in
+    OCC#5534 (8 items, one ``grep -c 'def _build_specs'``) and OCC#5528 (6).
+
+    Raises:
+        SupersessionCheckBindingError: naming every colliding evidence id.
+    """
+    by_value: dict[str, list[str]] = {}
+    for entry, value in checks_by_entry.items():
+        by_value.setdefault(value, []).append(entry)
+    collisions = {
+        value: sorted(entries)
+        for value, entries in by_value.items()
+        if len(entries) > 1
+    }
+    if not collisions:
+        return
+    detail = "; ".join(
+        f"{entries} all rebind to {value!r}" for value, entries in collisions.items()
+    )
+    raise SupersessionCheckBindingError(
+        f"refusing to author {ticket_id}'s supersession cohort for PR "
+        f"#{pr_number}: {detail}. A replacement's check_value must discriminate "
+        "the item it supersedes — a byte-identical check across distinct "
+        "dod_evidence items is the OMN-15459 wrong-item rebind (live: OCC#5534, "
+        "8 items on one grep; OCC#5528, 6), which the required "
+        "supersession-binding gate rejects as S1. A producer that can only "
+        "synthesize one probe per PR must supersede ONE item, not blanket the "
+        "directory."
+    )
+
+
 def _stamp_product_body(
     existing_body: str, *, occ_pr_number: int, tickets: tuple[str, ...]
 ) -> str:
@@ -811,6 +910,10 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 )
                 contract_hash = whole
 
+            # OMN-15459 AC(d): the check each supersession attests, keyed by the
+            # item it supersedes — collected so the cohort-wide distinctness
+            # invariant is asserted once, after the loop.
+            supersede_checks: dict[str, str] = {}
             for prior_entry in state.existing_entry_ids:
                 # A prior entry is by construction a declared dod_evidence item, so
                 # its per-entry hash always resolves; a None here means malformed
@@ -823,11 +926,30 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                         f"dod_evidence item in {ticket}'s merged contract; cannot "
                         "mint a dual-hash supersession (OMN-14623)."
                     )
+                # OMN-15459: bind the replacement to THIS item's OWN declared
+                # check, not the shared ``downstream_check``. Passing the one
+                # per-PR probe here is what minted OCC#5534's 8 byte-identical
+                # rebinds — a wrong-item rebind that reads as a well-formed
+                # falsifiable probe because it IS one, just of something else.
+                # The supersession still re-binds the item to this product PR
+                # (pr_number / commit_sha / branch / probe provenance on the
+                # replacement); only the attested BAR reverts to the item's own.
+                prior_check = declared_check_value_for(parsed_contract, prior_entry)
+                if prior_check is None:
+                    raise SupersessionCheckBindingError(
+                        f"refusing to supersede {prior_entry!r} in {ticket}: its "
+                        "merged contract entry declares no non-empty check_value, "
+                        "so no item-bound replacement check can be derived. "
+                        "Substituting this PR's generic probe would be the "
+                        "OMN-15459 wrong-item rebind; declare the item's own check "
+                        "in the contract instead."
+                    )
+                supersede_checks[prior_entry] = prior_check
                 content = _supersede_file(
                     request=request,
                     ticket_id=ticket,
                     prior_entry=prior_entry,
-                    check_value=downstream_check,
+                    check_value=prior_check,
                     contract_sha256=contract_hash,
                     contract_entry_sha256=entry_hash,
                     branch=branch,
@@ -845,6 +967,9 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                         contract_entry_sha256=entry_hash,
                     )
                 )
+            assert_supersession_checks_are_item_bound(
+                supersede_checks, ticket_id=ticket, pr_number=pr_number
+            )
         else:
             # Fresh (absent, or exists-but-open → full regeneration all-adds).
             # On pass 2 the contract ALSO declares the self-bind item (OMN-14622)
