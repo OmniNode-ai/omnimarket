@@ -1088,7 +1088,7 @@ class EvidenceCollector:
                         description="Invalid DoD evidence item",
                         status=EnumEvidenceCheckStatus.FAILED,
                         message=(
-                            "INVALID_DOD_EVIDENCE_ITEM: item must be a mapping; "
+                            "MALFORMED_EVIDENCE_ITEM: item must be a mapping; "
                             "refusing to execute any evidence check from an "
                             "audience-ambiguous contract."
                         ),
