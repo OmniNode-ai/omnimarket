@@ -186,6 +186,48 @@ def test_occ_companion_merged_gate_is_strict_and_fails_closed() -> None:
     assert code == EXIT_PENDING
 
 
+def test_merge_hold_gate_is_strict_and_fails_closed() -> None:
+    """OMN-15483: the hold gate must BLOCK, and must not be skippable.
+
+    This registration is the entire mechanism for the controller half of the
+    ticket. The merge NODE honoring the hold marker binds one consumer; the
+    foreground Codex controller that performed every merge in OMN-15483's
+    incident table contains no omnimarket code and cannot be bound by any
+    amount of it. Enforcement therefore lives at the surface every consumer
+    already respects — required status checks — and THIS strict slot is what
+    makes it required. If the gate were merely present in ci.yml but not
+    registered here, a held PR would still go required-green and every
+    consumer would still land it: detection without enforcement.
+    """
+
+    gate = "Merge Hold Gate (OMN-15483)"
+    assert gate in STRICT_GATE_JOBS
+    assert gate not in SKIPPABLE_GATE_JOBS
+
+    # Held PR (gate red) → FAILURE, and the gate is named in the report.
+    jobs = [
+        _job(gate, conclusion="failure") if j["name"] == gate else j
+        for j in _healthy_jobs()
+    ]
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+    assert gate in report
+
+    # Skipped → FAILURE. The job is unconditional in ci.yml (no needs/if), so a
+    # skip is anomalous — and "skip the hold gate" is the obvious bypass.
+    jobs = [
+        _job(gate, conclusion="skipped") if j["name"] == gate else j
+        for j in _healthy_jobs()
+    ]
+    code, _ = evaluate(jobs)
+    assert code == EXIT_FAILURE
+
+    # Absent entirely → PENDING (completeness anchor), never SUCCESS.
+    jobs = [j for j in _healthy_jobs() if j["name"] != gate]
+    code, _ = evaluate(jobs)
+    assert code == EXIT_PENDING
+
+
 def test_skippable_gate_skipped_is_success() -> None:
     """A SKIPPABLE gate may legitimately skip (docs-only PR) and still pass."""
 
