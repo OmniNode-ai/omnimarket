@@ -786,6 +786,14 @@ class DelegationWorkflowState:
     # swap is not a tier escalation.
     same_tier_failed_backend_refs: tuple[str, ...] = ()
     same_tier_failed_backend_tier: str | None = None
+    # OMN-15503: workflow-wide transport-failure memory. The same backend_ref can
+    # appear under more than one tier label (the committed cheap_cloud and claude
+    # slots both reference cloud-gemini-pro), so the per-tier sibling set above is
+    # insufficient for cross-tier routing. Every retryable inference failure adds
+    # its concrete ref here; all later routing intents and next-tier eligibility
+    # probes exclude the accumulated set. A renamed/reordered tier can therefore
+    # never turn one exhausted quota/failure domain into apparent new capacity.
+    transport_failed_backend_refs: tuple[str, ...] = ()
     # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolved ONCE in
     # handle_delegation_request and carried onto every TerminalEmissionInputs
     # for this correlation_id (mirrors the context_pack_hash acceptance-pin
@@ -892,6 +900,7 @@ class HandlerDelegationWorkflow:
         error_retryable: bool,
         non_retryable_reason: str,
         task_type: str | None,
+        excluded_backend_refs: frozenset[str] = frozenset(),
     ) -> ModelEscalationDecisionResult:
         """Delegate the escalate-or-terminate verdict to the COMPUTE (OMN-13476).
 
@@ -924,6 +933,7 @@ class HandlerDelegationWorkflow:
                 workflow.current_tier_name,
                 excluded_tiers,
                 task_type=task_type,
+                excluded_backend_refs=excluded_backend_refs,
             )
             if next_tier is None:
                 no_higher_tier_reason = (
@@ -931,6 +941,7 @@ class HandlerDelegationWorkflow:
                         workflow.current_tier_name,
                         excluded_tiers,
                         task_type=task_type,
+                        excluded_backend_refs=excluded_backend_refs,
                     )
                     if task_type is not None
                     else NO_HIGHER_TIER_REASON_TOKEN
@@ -1216,6 +1227,7 @@ class HandlerDelegationWorkflow:
                 error_retryable=error_retryable,
                 non_retryable_reason="non_retryable_inference_response",
                 task_type=error_task_type,
+                excluded_backend_refs=frozenset(workflow.transport_failed_backend_refs),
             )
             terminal_failure_reason = decision.terminal_failure_reason
             next_tier = decision.next_tier_name
@@ -1260,6 +1272,9 @@ class HandlerDelegationWorkflow:
                     ModelRoutingIntent(
                         payload=workflow.request,
                         min_tier_name=next_tier,
+                        excluded_backend_refs=tuple(
+                            sorted(workflow.transport_failed_backend_refs)
+                        ),
                     ),
                     escalation_event,
                 ]
@@ -1578,6 +1593,7 @@ class HandlerDelegationWorkflow:
             error_retryable=True,
             non_retryable_reason="non_retryable_quality_result",
             task_type=workflow.request.task_type,
+            excluded_backend_refs=frozenset(workflow.transport_failed_backend_refs),
         )
         terminal_failure_reason = decision.terminal_failure_reason
         next_tier = decision.next_tier_name
@@ -1626,6 +1642,9 @@ class HandlerDelegationWorkflow:
                 ModelRoutingIntent(
                     payload=workflow.request,
                     min_tier_name=next_tier,
+                    excluded_backend_refs=tuple(
+                        sorted(workflow.transport_failed_backend_refs)
+                    ),
                 ),
                 escalation_event,
             ]
@@ -1677,7 +1696,7 @@ class HandlerDelegationWorkflow:
         Fail-closed and bounded: ``sibling_backend_available_in_tier`` runs the
         SAME deterministic selection ``delta()`` applies (routing_tiers.yaml
         declaration order, fast-path pass before the general use_for pass) over
-        the backends NOT YET in ``same_tier_failed_backend_refs`` — so this can
+        the backends NOT YET in ``transport_failed_backend_refs`` — so this can
         retry at most once per eligible backend the tier declares for the task,
         never indefinitely. Returns ``None`` (no retry) as soon as no untried
         sibling exists, so the caller falls through to the ORIGINAL cross-tier
@@ -1708,9 +1727,19 @@ class HandlerDelegationWorkflow:
             return None
         task_type = workflow.request.task_type
 
-        # Per-tier exclusion set: reset when the workflow lands on a different
-        # tier (a real escalation moved it), so each tier's fallback budget is
-        # independent — mirrors the local_retry_tier/local_retry_count reset.
+        # Record the failed concrete backend for the whole workflow before looking
+        # for either a same-tier sibling or a higher tier. Tier names are policy
+        # slots, not failure domains: a backend ref repeated by a later slot must
+        # remain excluded even after intervening tiers (OMN-15503).
+        if failed_backend_ref not in workflow.transport_failed_backend_refs:
+            workflow.transport_failed_backend_refs = (
+                *workflow.transport_failed_backend_refs,
+                failed_backend_ref,
+            )
+
+        # The audit-facing same-tier subset still resets when a real escalation
+        # moves the workflow, while transport_failed_backend_refs above remains
+        # cumulative and authoritative for routing exclusions.
         if workflow.same_tier_failed_backend_tier != tier:
             workflow.same_tier_failed_backend_tier = tier
             workflow.same_tier_failed_backend_refs = ()
@@ -1723,7 +1752,7 @@ class HandlerDelegationWorkflow:
                 failed_backend_ref,
             )
 
-        excluded = frozenset(workflow.same_tier_failed_backend_refs)
+        excluded = frozenset(workflow.transport_failed_backend_refs)
         sibling = sibling_backend_available_in_tier(tier, task_type, excluded)
         if sibling is None:
             return None
@@ -1735,9 +1764,9 @@ class HandlerDelegationWorkflow:
             completion_tokens=completion_tokens,
         )
 
-        # Re-route to the SAME tier, excluding every backend already tried this
-        # tier. handle_routing_decision resumes the inference dispatch on
-        # whatever decision comes back (the sibling delta() just proved routable).
+        # Re-route to the SAME tier, excluding every transport-failed backend in
+        # the workflow. handle_routing_decision resumes inference on whatever
+        # decision comes back (the sibling delta() just proved routable).
         workflow.inference_content = None
         workflow.inference_model_used = None
         workflow.inference_intent_in_flight = False

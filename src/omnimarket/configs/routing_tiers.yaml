@@ -76,6 +76,10 @@ tiers:
           - planning
           - review
           - document
+          # OMN-15503: agent_delegation's closed ladder starts at local. The
+          # retired cli_agents tier was replaced by local/cheap_cloud/claude in
+          # OMN-13215 without moving this task capability onto those tiers.
+          - agent_delegation
         fast_path_threshold_tokens: 24576
       - id: Qwen3.6-35B-A3B
         backend_id: local-heavy-reasoning
@@ -160,6 +164,12 @@ tiers:
           - research
           - test
           - refactor
+          # OMN-15503: these classes declare cheap_cloud as a closed-set
+          # fallback, so the tier must explicitly serve them rather than remain
+          # a decorative/unreachable policy rung.
+          - planning
+          - review
+          - agent_delegation
         fast_path_threshold_tokens: 8192
       - id: gemini-flash
         backend_id: cloud-gemini-flash
@@ -282,7 +292,9 @@ tiers:
         use_for:
           - escalation
           - complex_reasoning
-          - agent_orchestration
+          # OMN-15503: task_type is agent_delegation; agent_orchestration is the
+          # required-capability label, not a routable task taxonomy value.
+          - agent_delegation
           - code_generation
           - reasoning
           - planning

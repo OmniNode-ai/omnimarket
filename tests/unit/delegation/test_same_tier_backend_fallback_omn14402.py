@@ -418,6 +418,11 @@ class TestSiblingFallbackFsmMechanics:
         assert routing[0].min_tier_name == "cheap_cloud", (
             "every local sibling failed -- NOW it must escalate off the tier"
         )
+        assert routing[0].excluded_backend_refs == (
+            "local-ds-v4-flash",
+            "local-heavy-reasoning",
+            "local-reasoner",
+        ), "a cross-tier re-route must not forget transport-failed backends"
         assert len(_escalation_events(events)) == 1, (
             "the real cross-tier escalation must still emit its typed event"
         )
@@ -427,6 +432,64 @@ class TestSiblingFallbackFsmMechanics:
         local_attempts = [a for a in wf.escalation_history if a.tier_name == "local"]
         assert len(local_attempts) == 3, (
             "all 3 failed local attempts must be recorded, not just the last"
+        )
+
+    def test_cross_tier_exclusions_accumulate_for_the_whole_workflow(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A backend failed on tier N stays excluded after a distinct tier N+1.
+
+        This guards the production shape where cheap_cloud and the claude ceiling
+        can name the same backend with cheap_frontier between them.  Per-tier-only
+        memory would retry exhausted provider quota under a different tier label.
+        """
+        observed_exclusions: list[frozenset[str]] = []
+
+        def _next_tier(
+            current: str,
+            _excluded_tiers: frozenset[str],
+            *,
+            excluded_backend_refs: frozenset[str] = frozenset(),
+            **_kwargs: Any,
+        ) -> str | None:
+            observed_exclusions.append(excluded_backend_refs)
+            return _LADDER_NEXT.get(current)
+
+        monkeypatch.setattr(hw, "next_eligible_tier", _next_tier)
+        monkeypatch.setattr(
+            hw,
+            "sibling_backend_available_in_tier",
+            lambda _tier, _task_type, _excluded: None,
+        )
+
+        handler = HandlerDelegationWorkflow(workflows={})
+        cid = uuid4()
+        handler.handle_delegation_request(_make_request(cid))
+        handler.handle_routing_decision(
+            _make_routing_decision(cid, "shared-provider", tier_name="local")
+        )
+
+        first_events = handler.handle_inference_response(_error_response(cid))
+        first_intent = _routing_intents(first_events)[0]
+        assert first_intent.excluded_backend_refs == ("shared-provider",)
+
+        handler.handle_routing_decision(
+            _make_routing_decision(cid, "distinct-provider", tier_name="cheap_cloud")
+        )
+        second_events = handler.handle_inference_response(_error_response(cid))
+        second_intent = _routing_intents(second_events)[0]
+
+        assert second_intent.excluded_backend_refs == (
+            "distinct-provider",
+            "shared-provider",
+        )
+        assert observed_exclusions == [
+            frozenset({"shared-provider"}),
+            frozenset({"distinct-provider", "shared-provider"}),
+        ]
+        assert handler.workflows[cid].transport_failed_backend_refs == (
+            "shared-provider",
+            "distinct-provider",
         )
 
     def test_deterministic_ordering_stable_across_runs(
