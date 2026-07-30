@@ -60,6 +60,7 @@ from __future__ import annotations
 import ast
 import json
 import pathlib
+import re
 import urllib.error
 from types import TracebackType
 from typing import Any
@@ -97,6 +98,30 @@ _LIVE_PR_1972_TITLE = (
 
 _HELD_TITLE = "[WS4 PARITY PROBE - DO NOT MERGE] gateway probe"
 _HELD_LABEL = "verification-hold"
+
+# A scheme followed by at least one character that can begin a host. The
+# trailing class deliberately excludes ``/`` so ``file:///tmp/x`` (no authority)
+# and the bare scheme probe ``"https://"`` the gate uses for validation are not
+# matches, while ``https://api.github.com`` is.
+_HOST_BEARING_URL_RE = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^\s/\"']")
+
+
+def _host_bearing_string_literals(source: str) -> list[tuple[int, str]]:
+    """Every string constant in ``source`` that embeds a ``scheme://host``.
+
+    This reads **only** ``ast`` nodes. Comments are not in the AST, so every
+    ``# url-authority-ok:`` suppression annotation is structurally invisible to
+    it — the falsifier cannot be annotated away, by construction rather than by
+    a rule someone has to remember. Docstrings are ``ast.Constant`` nodes like
+    any other string, so a URL in a docstring *body* is caught too.
+    """
+    found: list[tuple[int, str]] = []
+    for node in ast.walk(ast.parse(source)):
+        if not isinstance(node, ast.Constant) or not isinstance(node.value, str):
+            continue
+        for match in _HOST_BEARING_URL_RE.finditer(node.value):
+            found.append((node.lineno, node.value[match.start() : match.start() + 60]))
+    return found
 
 
 class _FakeResponse:
@@ -568,6 +593,99 @@ class TestSingleSourceUrlAuthority:
             f"(URL Authority Gate violations: "
             f"{[(v.rule, v.line, v.snippet) for v in violations]})"
         )
+
+    def test_gate_script_carries_no_host_literal_even_annotated(self) -> None:
+        """Strict falsifier: zero host-bearing literals, annotation or not.
+
+        This runs **alongside** ``test_gate_script_declares_no_url_of_its_own``
+        rather than instead of it, because the two assert different properties
+        and each is weak exactly where the other is strong:
+
+        * the delegating one proves this file passes the gate the repo actually
+          enforces, and cannot drift more lenient than that gate;
+        * this one proves the file contains no host literal *at all*, which the
+          delegating one cannot, because ``scan_source`` honours
+          ``# url-authority-ok:`` by design.
+
+        Keeping only the delegating one made the shipped falsifier weaker than
+        the merged claim about it — an annotated ``https://api.github.com``
+        passed the whole suite while re-pinning a host the authority may no
+        longer declare. That is the second copy this gate exists to forbid; an
+        annotation is a reason, not a resolution.
+        """
+        hits = _host_bearing_string_literals(_GATE_SCRIPT.read_text(encoding="utf-8"))
+        assert hits == [], (
+            "the CI hold gate must carry no host-bearing URL literal — it "
+            "resolves github.rest_url from configs/service_endpoints.yaml. A "
+            "'# url-authority-ok:' annotation does not exempt it here: "
+            f"{hits}"
+        )
+
+    def test_the_strict_falsifier_fires_on_an_annotated_literal(self) -> None:
+        """MUTATION PROOF: the annotation does not save the offender.
+
+        The vector is the exact regression this test exists to catch — the
+        literal the round-3 fix removed, put back with the suppression comment
+        the gate's scanner honours. A falsifier that never goes red on its own
+        subject matter is decorative, so the red is asserted, not assumed.
+        """
+        offender = (
+            '_GITHUB_API_BASE = "https://api.github.com"'
+            "  # url-authority-ok: reintroduced by a future edit\n"
+        )
+        hits = _host_bearing_string_literals(offender)
+
+        assert [line for line, _ in hits] == [1]
+        assert hits[0][1].startswith("https://api.github.com")
+
+    def test_the_strict_falsifier_sees_into_docstring_bodies(self) -> None:
+        """The vector that defeated the round-3 local copy.
+
+        That first cut exempted whole docstrings, went green, and the real CI
+        gate still failed on a URL inside a docstring *body*. Docstrings are
+        ordinary ``ast.Constant`` nodes here, so there is no exemption to get
+        wrong.
+        """
+        module = '"""Module doc.\n\nTalks to https://api.github.com directly.\n"""\n'
+        hits = _host_bearing_string_literals(module)
+
+        assert len(hits) == 1
+        assert hits[0][1].startswith("https://api.github.com")
+
+    @pytest.mark.parametrize(
+        "benign",
+        [
+            'PREFIX = "https://"',  # the gate's own scheme validation probe
+            'PATH = "repos/{owner}/{repo}/pulls/{number}"',
+            'KEY = "github.rest_url"',
+            'FILE = "configs/service_endpoints.yaml"',
+            'LOCAL = "file:///tmp/authority.yaml"',  # scheme, but no authority
+        ],
+    )
+    def test_the_strict_falsifier_ignores_scheme_only_and_pathlike_strings(
+        self, benign: str
+    ) -> None:
+        """Negative vector: it must not be a false-positive generator.
+
+        A structural check that fires on ``"https://"`` — which the gate uses at
+        line 288 to validate the resolved value — would be deleted by the next
+        author rather than obeyed, and the property would be lost for real.
+        """
+        assert _host_bearing_string_literals(benign) == []
+
+    def test_both_url_falsifiers_are_present(self) -> None:
+        """The pair is the mechanism; either alone is a known-weak check.
+
+        Asserted rather than left to review convention: deleting the delegating
+        test re-opens the drift gap round 3b closed, and deleting the strict one
+        re-opens the annotation gap this ticket closed. Both deletions are
+        silent under every other test in this file.
+        """
+        for name in (
+            "test_gate_script_declares_no_url_of_its_own",
+            "test_gate_script_carries_no_host_literal_even_annotated",
+        ):
+            assert callable(getattr(TestSingleSourceUrlAuthority, name, None)), name
 
     def test_default_authority_path_is_the_shipped_authority_file(self) -> None:
         assert URL_AUTHORITY_FILE.is_file()
