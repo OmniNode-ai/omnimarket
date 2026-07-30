@@ -1,0 +1,29 @@
+---
+# Accepted exceptions for the Linear git-automation drift guard (OMN-15373).
+#
+# The guard asserts that NO Linear GitAutomationState on ANY team resolves to a
+# `completed`-type workflow state. Such an automation writes `Done` on PR merge
+# with no closing keyword, no dod_verify receipt, and no evidence gate — the
+# defect that produced 16 false-Dones in one 4.5h window on 2026-07-29.
+#
+# An entry here suppresses the FAIL for one specific automation id, and ONLY
+# until its absolute `expires_at`. There is no permanent suppression and no
+# wildcard: `automation_id`, `team_key`, `owner`, `reason` and `expires_at` are
+# all required, and a lapsed entry stops suppressing (the guard re-fails).
+#
+# Deliberately EMPTY on the day this guard shipped. As of the 2026-07-30 live
+# readback the Contractors (CON) and JonahPrivate (JON) teams both still carry
+# `merge -> Done (completed)` on every branch of every repo, so this guard is
+# RED on arrival. That is intentional and is the point: OMN-15373 records those
+# two teams as out of scope pending an owner decision (Contractors is Daniyal's
+# lane), and the correct resolution is to retarget them — not to pre-register a
+# suppression on someone else's behalf.
+#
+# Schema (list of mappings):
+#   - automation_id: "<Linear GitAutomationState uuid>"
+#     team_key: "CON"
+#     owner: "<person accountable for the decision>"
+#     reason: "<why a completed-type target is acceptable here>"
+#     expires_at: 2026-08-30T00:00:00Z   # absolute, UTC
+
+exceptions: []

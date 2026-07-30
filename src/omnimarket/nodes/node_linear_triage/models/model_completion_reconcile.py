@@ -25,6 +25,13 @@ from omnimarket.nodes.node_linear_triage.services.close_evidence_gate import (
     ModelCloseEvidence,
 )
 
+# How long after a PR merge a Done transition is still attributable to the git
+# automation that reacted to that merge. The 16 recorded OMN-15373 flips landed
+# 2.0-3.1s post-merge; the window is set generously wide because widening it is
+# safe — it only changes which evidence kinds are admissible for the completion,
+# and a completion carrying a real dod_verify receipt is KEPT either way.
+MERGE_AUTOMATION_WINDOW_S = 60.0
+
 
 class EnumCompletionVerdict(StrEnum):
     """The reconciler verdict for a single already-completed ticket.
@@ -75,6 +82,35 @@ class ModelCompletionFacts(BaseModel):
     # False => probe indeterminate/unreadable; decision fails closed (treats as no evidence).
     evidence_probe_ok: bool = True
 
+    # --- git-automation fingerprint (OMN-15373) --------------------------------
+    # The Done transition was authored by a git automation (Linear's
+    # GitAutomationState, or a CI workflow calling issueUpdate) rather than by a
+    # human or the dod_verify path.
+    automation_authored: bool = False
+    # Seconds between the driving PR's merge and this Done transition, or None
+    # when the probe resolved no linked merge. The 16 recorded OMN-15373 flips
+    # all landed 2.0-3.1s post-merge.
+    merge_to_done_latency_s: float | None = None
+    # The PR whose merge drove the flip, for the revert comment (e.g.
+    # "OmniNode-ai/omnimarket#1939"). Informational.
+    driving_pr: str = ""
+
+    @property
+    def merge_automation_fingerprint(self) -> bool:
+        """True when this Done was written by a git automation reacting to a merge.
+
+        Requires BOTH an automation actor AND a merge close enough in time to be
+        that merge's direct consequence. Latency alone is not enough (a human
+        could legitimately flip a ticket seconds after a merge) and an automation
+        actor alone is not enough (some automations are evidence-bearing).
+        """
+        latency = self.merge_to_done_latency_s
+        return (
+            self.automation_authored
+            and latency is not None
+            and 0.0 <= latency <= MERGE_AUTOMATION_WINDOW_S
+        )
+
 
 class ModelCompletionVerdictResult(BaseModel):
     """The reconciler verdict for one completed ticket."""
@@ -88,6 +124,10 @@ class ModelCompletionVerdictResult(BaseModel):
     evidence_allowed: bool
     prior_state_name: str = "Backlog"
     cascade_fingerprint: bool = False
+    # True when the Done was written by a git automation reacting to a PR merge
+    # (OMN-15373). Drives the automation-specific revert comment.
+    automation_fingerprint: bool = False
+    driving_pr: str = ""
 
 
 class ModelCompletionReconcileReport(BaseModel):
@@ -120,6 +160,7 @@ class ModelCompletionReconcileStartCommand(BaseModel):
 
 
 __all__ = [
+    "MERGE_AUTOMATION_WINDOW_S",
     "EnumCompletionVerdict",
     "ModelCompletionFacts",
     "ModelCompletionReconcileReport",
