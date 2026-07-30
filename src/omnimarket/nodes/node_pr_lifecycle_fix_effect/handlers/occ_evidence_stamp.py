@@ -719,11 +719,108 @@ _COMPUTE_SELF_BIND_ENTRY_HEAD_TEMPLATE = (
 # pre-ticket state; the deploy-gate falsifiability gap it was trying to close is
 # real, pre-existing, and out of scope here rather than papered over with a value
 # that is wrong on the runner it executes on.
+#
+# OMN-15407 — TWO CHANGES, both forced by live failures, both on this one value.
+#
+# (1) LITERAL PIN, replacing ``${PR_NUMBER}`` / ``${REPO}``. This item is the
+#     ONE generated item Rule B never governed: ``_pr_binding_violation`` is
+#     keyed on the item id embedding ``pr-<N>``, and ``dod-deploy-assessment``
+#     embeds nothing -- so OMN-15382's sweep of the downstream / CI / self-bind
+#     items left this one placeholder-only. The placeholder is not merely
+#     un-linted here, it is BROKEN on a second evaluation surface: ``dod_verify``
+#     has no ambient PR context, so ``_resolve_command_placeholders`` cannot
+#     resolve ``${PR_NUMBER}`` and the check fails CLOSED with
+#     ``Cannot resolve PR number for <ticket>`` (PR_LOOKUP_FAILED). MEASURED:
+#     three independent reproductions on the OMN-15430 closeout, each the sole
+#     red in an otherwise clean table, upstream of the shell -- the command never
+#     executed at all. The producer knows ``repo`` and ``pr_number`` at emission
+#     time (both are already parameters of the renderer and of the receipt
+#     writer), so the literal costs nothing and cannot drift: it is derived from
+#     the same values the enclosing companion is built from.
+#
+#     This ALSO fixes the value on the OCC runner, where the placeholder form was
+#     wrong for the reason the R21b note below records -- ``${REPO}``/
+#     ``${PR_NUMBER}`` resolve to the COMPANION, so the check greps the
+#     companion's own filenames. The literal names the product PR on every
+#     surface. Cost, disclosed: on a PRIVATE product repo the hosted OCC token
+#     gets 404 and this check BLOCKS. That is strictly better than the two
+#     pre-fix outcomes the R21b note measured (born-red, or circular-pass because
+#     the producer created a directory named ``dod-deploy-assessment``) -- it
+#     fails loudly instead of passing for the wrong reason.
+#
+# (2) ``grep -c`` REPLACES ``grep -q`` (OMN-15411). These must land together.
+#     While the binding was broken the check never ran, so its terminal
+#     ``| grep -q`` was inert. Fixing (1) makes it live -- and ``grep -q`` exits
+#     at the FIRST match and closes stdin, so a still-writing ``gh`` dies with
+#     SIGPIPE (141); under the ``bash -o pipefail`` runner OMN-15382 introduced,
+#     the pipeline reports that 141 as a FALSE RED on genuinely-passing evidence
+#     (first live hit: contracts/OMN-15170.yaml). ``grep -c`` must read to EOF to
+#     count, so the upstream never sees EPIPE, and it still exits 1 when the
+#     count is 0 -- falsifiable, not softened.
+#
+#     ``grep -c`` is also fail-closed on BOTH runners, which ``grep -q`` was not
+#     uniformly: under pipefail a failing ``gh`` fails the pipeline; under the
+#     OCC runner's bare ``sh -c`` (no pipefail) a failing ``gh`` emits nothing,
+#     the count is 0, and ``grep -c`` exits 1. Note this is the PRESENCE
+#     assertion, not the OMN-15391 Rule D ``grep -c ... | grep -qx 0`` absence
+#     shape -- that one is fail-OPEN and remains prohibited.
+#
+# The ``gh pr diff`` transport is deliberately UNCHANGED. R21b restored it on
+# purpose (see the note below) and this ticket changes one axis at a time;
+# swapping it for the GraphQL ``gh pr view --json files`` form is a separate
+# decision with its own consumer-gate consequences.
 DEPLOY_ASSESSMENT_EVIDENCE_ID = "dod-deploy-assessment"
-DEPLOY_ASSESSMENT_CHECK_VALUE = (
-    "gh pr diff ${PR_NUMBER} --repo ${REPO} --name-only | "
-    "grep -qiE 'nodes/|handlers/|runtime/|services/|docker|monitor_logs|deploy'"
+
+#: The deploy-scope grep alternation. Split out from the command so the item
+#: renderer and the receipt writer cannot disagree about it, and so the
+#: ``deploy`` keyword the product deploy-gate greps for has exactly one home.
+_DEPLOY_ASSESSMENT_PATH_PATTERN = (
+    "nodes/|handlers/|runtime/|services/|docker|monitor_logs|deploy"
 )
+
+
+def deploy_assessment_check_value(*, pr_number: int, repo: str) -> str:
+    """Return the literal, SIGPIPE-safe deploy-scope ``check_value``.
+
+    See the two-part note above this function for why both the literal pin and
+    the ``grep -c`` counting form are required, and why they must land together.
+
+    Consumer properties preserved by construction (all three are load-bearing):
+
+    * the literal ``deploy`` keyword, which the product repo's required
+      ``deploy-gate`` greps for in the cited ticket's OCC contract (F-05,
+      OMN-14742) -- without it a runtime-touching product PR is blocked after
+      Evidence-Source binds;
+    * a ``| grep`` stage, which clears the OMN-14409 substance floor so the
+      contract is not all-L0. Recorded precisely because the older comments here
+      overstated it: MEASURED against the live floor, this value derives **L2**,
+      not the L1 the static-assert family would give. The cause is an accidental
+      match, not a real runtime probe -- the floor anchors its runtime verbs to
+      command position with ``(?:^|[|;&]\\s*|...)`` and the literal ``docker``
+      inside the grep alternation is preceded by a ``|``, so a pattern token
+      reads as a command. Pre-existing (the placeholder form matched identically)
+      and out of scope here; the property relied on is only that the floor is
+      cleared, which the paired test asserts via the floor's own ``satisfies``;
+    * no ``drift/dod_receipts`` self-reference, which the OMN-15309
+      admissibility predicate refuses unconditionally as INSIDE_OWN_DIFF.
+
+    Lint standing: the value opens with ``gh pr diff <N>`` carrying a literal
+    ``--repo`` and no ``${PR_NUMBER}`` anywhere, which is the SANCTIONED
+    standalone cross-PR form under ``lint_contract_check_values``' Rule A
+    (``_check_legacy_gh_pr`` / OMN-14431) -- executable exactly as written, with
+    no runner-side substitution required.
+
+    Pure function of its inputs. Line-fold safety is NOT this function's
+    concern: :func:`render_check_value_field` measures the rendered line and
+    picks the quoted form or a fold-proof literal block scalar, so a longer
+    repo slug or PR number cannot restale ``contract_sha256``.
+    """
+    return (
+        f"gh pr diff {pr_number} --repo {repo} --name-only | "
+        f"grep -ciE '{_DEPLOY_ASSESSMENT_PATH_PATTERN}'"
+    )
+
+
 # NOT textwrap.dedent'd (every line is indented). ``{check_value}`` is a
 # substituted VALUE, so the literal ``${PR_NUMBER}`` / ``${REPO}`` it carries are
 # NOT re-scanned by ``.format`` — the constant keeps single-brace shell
@@ -753,17 +850,23 @@ def render_deploy_assessment_dod_evidence_item(*, repo: str, pr_number: int) -> 
     Appended to the compute-oracle companion contract when the product PR touches
     runtime/deploy-sensitive paths, so the product PR's required ``deploy-gate``
     finds a deploy-keyword dod_evidence item in the cited ticket's OCC contract
-    and is not blocked after Evidence-Source binds. Pure function of its inputs;
-    carries no unsubstituted named placeholder (``${PR_NUMBER}`` / ``${REPO}``
-    are intentional literal shell placeholders, not format fields). ``repo`` is
-    accepted for call-site symmetry with the other item renderers but is not
-    interpolated into this (deliberately short) description.
+    and is not blocked after Evidence-Source binds. Pure function of its inputs.
+
+    OMN-15407: the ``check_value`` is now the LITERAL, PR-pinned, SIGPIPE-safe
+    form (:func:`deploy_assessment_check_value`) rather than a bare
+    ``${PR_NUMBER}`` / ``${REPO}`` shell placeholder. ``repo`` is no longer
+    "accepted for call-site symmetry" — it is interpolated into the command, so
+    both parameters are load-bearing. It is still deliberately absent from the
+    (short) ``description``, which must stay inside yamlfmt's wrap width.
     """
     return _COMPUTE_DEPLOY_ASSESSMENT_ENTRY_HEAD_TEMPLATE.format(
         evidence_id=DEPLOY_ASSESSMENT_EVIDENCE_ID,
         repo=repo,
         pr_number=pr_number,
-    ) + render_check_value_field("check_value", DEPLOY_ASSESSMENT_CHECK_VALUE)
+    ) + render_check_value_field(
+        "check_value",
+        deploy_assessment_check_value(pr_number=pr_number, repo=repo),
+    )
 
 
 def render_admissibility_validator_dod_evidence_item(
@@ -1689,7 +1792,6 @@ __all__ = [
     "CONTRACT_SHA_LINE_RE",
     "DEFAULT_RUNNER",
     "DEFAULT_VERIFIER",
-    "DEPLOY_ASSESSMENT_CHECK_VALUE",
     "DEPLOY_ASSESSMENT_EVIDENCE_ID",
     "EVIDENCE_ITEM_ID_LINE_RE",
     "SHA_RE",
@@ -1699,6 +1801,7 @@ __all__ = [
     "ci_dod_evidence_check_value",
     "classify_trivial_infra_fastpath",
     "compute_contract_sha256",
+    "deploy_assessment_check_value",
     "downstream_dod_evidence_check_value",
     "extract_evidence_item_id",
     "find_deploy_sensitive_paths",

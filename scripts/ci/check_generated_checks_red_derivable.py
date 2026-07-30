@@ -163,13 +163,24 @@ _ALLOWLISTED_RE = (
         r"^gh pr view \d+ --repo [A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+ --json number,state$"
     ),
     re.compile(r"^gh pr view \d+ --repo [A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+ --json files$"),
-    # Deploy-scope item (F-05 / OMN-14742), pre-R21 form restored. Carries the
-    # literal ``deploy`` keyword the deploy-gate legacy substring rule greps for.
-    # Its id (``dod-deploy-assessment``) never embeds a PR number, so it stays
-    # placeholder-only and is out of Rule B's scope.
+    # Deploy-scope item (F-05 / OMN-14742). Carries the literal ``deploy``
+    # keyword the deploy-gate legacy substring rule greps for.
+    #
+    # OMN-15407: LITERAL PR + repo, and ``grep -c`` rather than ``grep -q``. The
+    # prior entry accepted the placeholder form on the reasoning that
+    # ``dod-deploy-assessment``'s id embeds no PR number so Rule B does not
+    # reach it. Rule B's scope was never the boundary of the defect: a bare
+    # ``${PR_NUMBER}`` is unresolvable in ``dod_verify``, which has no ambient
+    # PR context, and the check failed CLOSED there with PR_LOOKUP_FAILED
+    # (three independent reproductions on the OMN-15430 closeout) without ever
+    # reaching a shell. ``grep -c`` is the paired OMN-15411 fix: ``grep -q``
+    # closes stdin at the first match, so once the binding was fixed and the
+    # command actually ran, a still-writing ``gh`` would die with SIGPIPE and
+    # report a FALSE RED under the pipefail runner. ``grep -c`` reads to EOF and
+    # still exits 1 on a zero count, so falsifiability is unchanged.
     re.compile(
-        r"^gh pr diff \$\{PR_NUMBER\} --repo \$\{REPO\} --name-only \| "
-        r"grep -qiE '[^']*deploy[^']*'$"
+        r"^gh pr diff \d+ --repo [A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+ --name-only \| "
+        r"grep -ciE '[^']*deploy[^']*'$"
     ),
 )
 

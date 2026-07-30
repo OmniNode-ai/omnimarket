@@ -1109,9 +1109,22 @@ class TestYamlfmtStabilityPredicateMatchesTheRealFormatter:
         [
             # Today's public existence probe — short, stable.
             "gh pr view ${PR_NUMBER} --repo ${REPO} --json number,state",
-            # DEPLOY_ASSESSMENT_CHECK_VALUE: 127 chars but last space at col 84.
+            # The pre-OMN-15407 deploy value: 127 chars but last space at col 84,
+            # so a fixpoint. RETAINED as a predicate probe (the producer no longer
+            # emits it) because it is the shortest realistic value that is long
+            # AND stable — dropping it would leave that combination untested.
             "gh pr diff ${PR_NUMBER} --repo ${REPO} --name-only | "
             "grep -qiE 'nodes/|handlers/|runtime/|services/|docker|monitor_logs|deploy'",
+            # OMN-15407: the literal, PR-pinned deploy value the producer emits
+            # now. Longer than the placeholder form (a real repo slug is wider
+            # than ${REPO}), so it exercises the predicate near its 100-col
+            # boundary — where the quoted/block-scalar decision actually flips.
+            "gh pr diff 1963 --repo OmniNode-ai/omnimarket --name-only | "
+            "grep -ciE 'nodes/|handlers/|runtime/|services/|docker|monitor_logs|deploy'",
+            # Same value with the longest real OmniNode repo slug, which pushes
+            # the last space past column 100 and must select the literal block.
+            "gh pr diff 99999 --repo OmniNode-ai/onex_change_control --name-only | "
+            "grep -ciE 'nodes/|handlers/|runtime/|services/|docker|monitor_logs|deploy'",
             # Private-repo receipt-local form: 118 chars, no space past col 100.
             "grep -q '^status: PASS$' $CONTRACT_REPO_DIR/drift/dod_receipts/"
             "OMN-9999/dod-OmniNode-ai-omnimarket-pr-321/command.yaml",
