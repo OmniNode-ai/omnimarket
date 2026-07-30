@@ -36,7 +36,6 @@ from omnibase_core.models.delegation.wire import ModelInferenceResponseData
 
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
-    _MAX_INFERENCE_ESCALATION_ATTEMPTS,
     HandlerDelegationWorkflow,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
@@ -48,6 +47,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_resul
 )
 from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
     ModelTaskDelegatedEvent,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    resolve_task_class_max_escalations,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
@@ -215,7 +217,9 @@ class TestServedUsageUpstreamOmn13408:
         # CURRENT (metered cheap_cloud) tier rather than re-routing upward. This
         # mirrors the live escalated-and-failed CID badf851a, which reached the
         # terminal delegation-failed.v1 after escalation_count=2.
-        handler.workflows[cid].escalation_count = _MAX_INFERENCE_ESCALATION_ATTEMPTS
+        max_escalations = resolve_task_class_max_escalations("test")
+        assert max_escalations == 2
+        handler.workflows[cid].escalation_count = max_escalations
 
         # The inference EFFECT produced the truncated-but-usage-bearing response.
         response = _make_intent_response_via_effect(cid)

@@ -24,6 +24,9 @@ from pathlib import Path
 from uuid import UUID, uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTerminalFailureCause,
+)
 
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
     ModelLlmDelegationEscalationTriggeredEvent,
@@ -62,8 +65,14 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent i
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
 )
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    resolve_task_class_max_escalations,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
+)
+from omnimarket.routing.model_escalation_decision_result import (
+    ModelEscalationDecisionResult,
 )
 
 # ---------------------------------------------------------------------------
@@ -872,6 +881,186 @@ class TestInferenceErrorEscalation:
         assert result.failure_reason == error_message
         assert result.terminal_failure_reason == "non_retryable_inference_response"
 
+    def test_final_rate_limit_names_provider_quota_exhaustion(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """A final 429 gets a typed cause only once escalation cannot continue."""
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+
+        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_routing_decision(
+            _make_routing_decision_with_tier(cid, tier_name="claude")
+        )
+        monkeypatch.setattr(
+            handler,
+            "_maybe_retry_sibling_backend",
+            lambda *_args, **_kwargs: None,
+        )
+
+        events = handler.handle_inference_response(
+            _make_error_inference_response(
+                cid,
+                error_message="429 RESOURCE_EXHAUSTED: provider quota exhausted",
+            )
+        )
+
+        assert len(events) == 1
+        terminal = events[0]
+        assert isinstance(terminal, ModelDelegationFailed)
+        assert terminal.terminal_failure_cause is (
+            EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+        )
+        assert terminal.failure_reason.startswith("429 RESOURCE_EXHAUSTED")
+
+    def test_final_non_rate_limit_failure_has_no_quota_cause(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+
+        handler.handle_delegation_request(_make_request(correlation_id=cid))
+        handler.handle_routing_decision(
+            _make_routing_decision_with_tier(cid, tier_name="claude")
+        )
+        monkeypatch.setattr(
+            handler,
+            "_maybe_retry_sibling_backend",
+            lambda *_args, **_kwargs: None,
+        )
+
+        events = handler.handle_inference_response(
+            _make_error_inference_response(
+                cid,
+                error_message="503 provider unavailable",
+            )
+        )
+
+        terminal = next(
+            event for event in events if isinstance(event, ModelDelegationFailed)
+        )
+        assert terminal.terminal_failure_cause is None
+
+    def test_inference_escalation_budget_comes_from_task_contract(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Refactor declares three escalations; the workflow must not substitute two."""
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        observed_budgets: list[int] = []
+
+        handler.handle_delegation_request(
+            _make_request(correlation_id=cid, task_type="refactor")
+        )
+        handler.handle_routing_decision(
+            _make_routing_decision_with_tier(
+                cid,
+                tier_name="cheap_cloud",
+                task_type="refactor",
+            )
+        )
+        monkeypatch.setattr(
+            handler,
+            "_maybe_retry_sibling_backend",
+            lambda *_args, **_kwargs: None,
+        )
+
+        def _capture_decision(
+            workflow: DelegationWorkflowState,
+            *,
+            max_escalation_attempts: int,
+            excluded_tiers: frozenset[str],
+            error_retryable: bool,
+            non_retryable_reason: str,
+            task_type: str | None,
+        ) -> ModelEscalationDecisionResult:
+            del (
+                workflow,
+                excluded_tiers,
+                error_retryable,
+                non_retryable_reason,
+                task_type,
+            )
+            observed_budgets.append(max_escalation_attempts)
+            return ModelEscalationDecisionResult(
+                can_escalate=False,
+                terminal_failure_reason="fixture_terminal",
+            )
+
+        monkeypatch.setattr(handler, "_decide_escalation", _capture_decision)
+
+        handler.handle_inference_response(
+            _make_error_inference_response(cid, "429 Too Many Requests")
+        )
+
+        assert observed_budgets == [3]
+
+    def test_quality_escalation_budget_comes_from_task_contract(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """The quality and inference branches share the same contract authority."""
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        observed_budgets: list[int] = []
+
+        handler.handle_delegation_request(
+            _make_request(correlation_id=cid, task_type="refactor")
+        )
+        handler.handle_routing_decision(
+            _make_routing_decision_with_tier(
+                cid,
+                tier_name="cheap_cloud",
+                task_type="refactor",
+            )
+        )
+        handler.handle_inference_response(
+            _make_inference_response(correlation_id=cid, content="weak draft")
+        )
+        monkeypatch.setattr(
+            handler,
+            "_maybe_retry_local",
+            lambda *_args, **_kwargs: None,
+        )
+
+        def _capture_decision(
+            workflow: DelegationWorkflowState,
+            *,
+            max_escalation_attempts: int,
+            excluded_tiers: frozenset[str],
+            error_retryable: bool,
+            non_retryable_reason: str,
+            task_type: str | None,
+        ) -> ModelEscalationDecisionResult:
+            del (
+                workflow,
+                excluded_tiers,
+                error_retryable,
+                non_retryable_reason,
+                task_type,
+            )
+            observed_budgets.append(max_escalation_attempts)
+            return ModelEscalationDecisionResult(
+                can_escalate=False,
+                terminal_failure_reason="fixture_terminal",
+            )
+
+        monkeypatch.setattr(handler, "_decide_escalation", _capture_decision)
+
+        handler.handle_gate_result(
+            _make_gate_result(
+                cid,
+                passed=False,
+                quality_score=0.5,
+                failure_reasons=("TASK_MISMATCH: weak draft",),
+            )
+        )
+
+        assert observed_budgets == [3]
+
     def test_length_truncation_escalates_to_longer_context_tier(self) -> None:
         """OMN-13140 GATE 1: finish_reason=length is a TRUNCATION (output budget
         hit), not a refusal. A longer-context successor can complete it, so the
@@ -1020,7 +1209,7 @@ class TestInferenceErrorEscalation:
         monkeypatch: pytest.MonkeyPatch,
         tmp_path: Path,
     ) -> None:
-        """After _MAX_INFERENCE_ESCALATION_ATTEMPTS escalations, emit terminal FAILED.
+        """After the task contract's escalation budget, emit terminal FAILED.
 
         OMN-13140: the `test` task class declares the closed tier_order
         [local, cheap_cloud, claude]. To exercise the max-escalation ceiling
@@ -1040,9 +1229,6 @@ class TestInferenceErrorEscalation:
         in the real routing_tiers.yaml (cloud-gemini-pro), which is not overridden
         here.
         """
-        from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
-            _MAX_INFERENCE_ESCALATION_ATTEMPTS,
-        )
         from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
             handler_delegation_routing as routing,
         )
@@ -1091,13 +1277,15 @@ class TestInferenceErrorEscalation:
 
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
+        max_escalations = resolve_task_class_max_escalations("test")
+        assert max_escalations == 2
 
         handler.handle_delegation_request(_make_request(correlation_id=cid))
 
         # Exhaust max attempts via successive infra errors. `test` tier_order is
         # [local, cheap_cloud, claude]: local -> cheap_cloud -> claude.
         tiers_in_order = ("local", "cheap_cloud")
-        for i in range(_MAX_INFERENCE_ESCALATION_ATTEMPTS):
+        for i in range(max_escalations):
             handler.handle_routing_decision(
                 _make_routing_decision_with_tier(cid, tier_name=tiers_in_order[i])
             )
@@ -1105,7 +1293,7 @@ class TestInferenceErrorEscalation:
                 _make_error_inference_response(cid, f"502 Bad Gateway attempt {i + 1}")
             )
             # All but the last should escalate
-            if i < _MAX_INFERENCE_ESCALATION_ATTEMPTS - 1:
+            if i < max_escalations - 1:
                 assert isinstance(result[0], ModelRoutingIntent), (
                     f"Expected escalation on attempt {i + 1}"
                 )

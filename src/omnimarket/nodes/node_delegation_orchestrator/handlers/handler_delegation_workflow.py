@@ -47,7 +47,11 @@ from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
 from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
 )
-from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTerminalFailureCause,
+    EnumQualityScoreComparison,
+    ModelPremiumCounterfactual,
+)
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.primitives.model_semver import ModelSemVer
 from pydantic import BaseModel
@@ -112,6 +116,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     describe_no_higher_tier_available,
     is_free_tier,
     next_eligible_tier,
+    resolve_task_class_max_escalations,
     sibling_backend_available_in_tier,
     tier_max_retries,
 )
@@ -130,10 +135,6 @@ from omnimarket.routing.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
 )
 
-# Max tier escalation attempts for infra errors (auth, timeout, connection refused).
-# Kept separate from handle_gate_result's max_escalation_attempts so callers can
-# tune them independently.
-_MAX_INFERENCE_ESCALATION_ATTEMPTS: int = 2
 # OMN-13215: the shelled ``cli_agents`` tier was removed. Every tier — including
 # the ceiling (claude) — now executes through the canonical HTTP inference path, so
 # no tier is excluded from inference-error escalation.
@@ -417,6 +418,18 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     return EnumDelegationFailureClass.UNKNOWN
 
 
+def _require_task_class_max_escalations(task_type: str) -> int:
+    """Return the task contract's escalation ceiling or fail closed."""
+    max_escalations = resolve_task_class_max_escalations(task_type)
+    if max_escalations is None:
+        msg = (
+            "task class must declare escalation_policy.max_escalations: "
+            f"task_type={task_type!r}"
+        )
+        raise ValueError(msg)
+    return max_escalations
+
+
 def _inference_timeout_seconds(workflow: DelegationWorkflowState) -> float:
     """Return the selected backend timeout in seconds, within wire-model bounds."""
     if workflow.routing_decision is None:
@@ -679,6 +692,13 @@ class TerminalEmissionInputs:
     # instead of the shared 'omninode' column default. The durable per-tenant
     # identity design is OMN-14107.
     tenant_id: str | None = None
+    # OMN-15464: structured quality evidence carried directly from the gate
+    # result/bar authority. These stay empty for pre-gate inference failures and
+    # remote-agent lifecycle terminals, where no quality bar was evaluated.
+    required_quality_bar: float | None = None
+    score_vs_required_bar: EnumQualityScoreComparison | None = None
+    failed_acceptance_criteria: tuple[str, ...] = ()
+    terminal_failure_cause: EnumDelegationTerminalFailureCause | None = None
 
 
 @dataclass(frozen=True)
@@ -1163,6 +1183,7 @@ class HandlerDelegationWorkflow:
             # time.time_ns()) — see the field docstring above.
             elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
             model_used = response.model_used or workflow.routing_decision.selected_model
+            failure_class = _inference_error_failure_class(response.error_message)
 
             # Record this tier's failed attempt in escalation history before
             # deciding whether to escalate or terminate. OMN-13535: the inference
@@ -1222,7 +1243,9 @@ class HandlerDelegationWorkflow:
             )
             decision = self._decide_escalation(
                 workflow,
-                max_escalation_attempts=_MAX_INFERENCE_ESCALATION_ATTEMPTS,
+                max_escalation_attempts=_require_task_class_max_escalations(
+                    workflow.request.task_type
+                ),
                 excluded_tiers=_INFERENCE_ERROR_EXCLUDED_TIERS,
                 error_retryable=error_retryable,
                 non_retryable_reason="non_retryable_inference_response",
@@ -1240,9 +1263,7 @@ class HandlerDelegationWorkflow:
                 # from the error (timeout/rate-limit/unavailable), never blanket.
                 escalation_event = self._build_escalation_event(
                     workflow,
-                    failure_class=_inference_error_failure_class(
-                        response.error_message
-                    ),
+                    failure_class=failure_class,
                     escalation_reason=response.error_message,
                     model_id=model_used,
                 )
@@ -1315,6 +1336,11 @@ class HandlerDelegationWorkflow:
                     for attempt in workflow.escalation_history
                 ),
                 terminal_failure_reason=terminal_failure_reason,
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+                    if failure_class is EnumDelegationFailureClass.RATE_LIMITED
+                    else None
+                ),
                 routing_tiers_hash=self._routing_tiers_hash(),
                 escalation_config_hash=None,
                 # OMN-15464: count every attempt, including same-tier retries
@@ -1393,7 +1419,7 @@ class HandlerDelegationWorkflow:
         self,
         result: ModelQualityGateResult,
         *,
-        max_escalation_attempts: int = 2,
+        max_escalation_attempts: int | None = None,
         # OMN-13215: the shelled ``cli_agents`` tier was removed; no tier is
         # excluded from quality-gate escalation now that every tier (including the
         # ceiling) runs over the canonical HTTP inference path.
@@ -1588,7 +1614,11 @@ class HandlerDelegationWorkflow:
         # describe_no_higher_tier_available call).
         decision = self._decide_escalation(
             workflow,
-            max_escalation_attempts=max_escalation_attempts,
+            max_escalation_attempts=(
+                max_escalation_attempts
+                if max_escalation_attempts is not None
+                else _require_task_class_max_escalations(workflow.request.task_type)
+            ),
             excluded_tiers=excluded_tiers,
             error_retryable=True,
             non_retryable_reason="non_retryable_quality_result",
@@ -2271,6 +2301,9 @@ class HandlerDelegationWorkflow:
             content=inputs.content,
             quality_passed=inputs.quality_passed,
             quality_score=inputs.quality_score,
+            required_quality_bar=inputs.required_quality_bar,
+            score_vs_required_bar=inputs.score_vs_required_bar,
+            failed_acceptance_criteria=inputs.failed_acceptance_criteria,
             latency_ms=inputs.latency_ms,
             prompt_tokens=served_input_tokens,
             completion_tokens=served_output_tokens,
@@ -2282,6 +2315,7 @@ class HandlerDelegationWorkflow:
             escalation_count=inputs.escalation_count,
             escalation_history=inputs.escalation_history,
             terminal_failure_reason=inputs.terminal_failure_reason,
+            terminal_failure_cause=inputs.terminal_failure_cause,
             routing_tiers_hash=inputs.routing_tiers_hash,
             escalation_config_hash=inputs.escalation_config_hash,
             attempts_count=inputs.attempts_count,
@@ -2390,6 +2424,15 @@ class HandlerDelegationWorkflow:
             if required_bar_authority is not None
             else ["required_bar_missing"]
         )
+        score_vs_required_bar = (
+            (
+                EnumQualityScoreComparison.BELOW_BAR
+                if result.quality_score < required_bar_authority.required_bar
+                else EnumQualityScoreComparison.AT_OR_ABOVE_BAR
+            )
+            if required_bar_authority is not None
+            else None
+        )
 
         return TerminalEmissionInputs(
             completed=completed,
@@ -2400,6 +2443,17 @@ class HandlerDelegationWorkflow:
             content=workflow.inference_content or "",
             quality_passed=completed,
             quality_score=result.quality_score,
+            required_quality_bar=(
+                required_bar_authority.required_bar
+                if required_bar_authority is not None
+                else None
+            ),
+            score_vs_required_bar=score_vs_required_bar,
+            # The gate result is the authority for criterion failures. Do not
+            # reconstruct these by parsing the human-readable failure_reason.
+            failed_acceptance_criteria=(
+                tuple(result.failure_reasons) if not result.passed else ()
+            ),
             latency_ms=elapsed_ms,
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,
