@@ -27,6 +27,8 @@ Pinned verdict table:
 
 from __future__ import annotations
 
+import functools
+import os
 import re
 import shutil
 import subprocess
@@ -36,12 +38,15 @@ from typing import Any
 import pytest
 
 from scripts.ci.check_occ_companion_merged import (
+    _ANY_LOCALE_SPACE_RE_FRAG,
     EVIDENCE_SOURCE_RE,
     EXIT_FAIL,
     EXIT_PASS,
     EXIT_PENDING,
     Verdict,
+    _normalize_canonical_value,
     aggregate,
+    canonical_binding_candidates,
     canonical_first_citation,
     evaluate_once,
     main,
@@ -260,14 +265,69 @@ FORM_FEED_DEAD_ABOVE_LIVE_BODY = (
     "Evidence-Source:\x0cOCC#5487\n\nEvidence-Source: OCC#5548\n"
 )
 
+# The LOCALE variant, and the residual that survived the first cut of the
+# OMN-15475 fix. ``[[:space:]]`` is not a fixed class: under the hosted runner's
+# default ``C.UTF-8`` (GNU grep 3.11 on ubuntu-24.04) it also covers U+2003 EM
+# SPACE, so the arbiter binds the DEAD OCC#5487 here while a binder pinned to
+# ``[ \t\v\f\r]`` sees only the live OCC#5548 and greens. Identical to the shape
+# above; different codepoint.
+EM_SPACE_DEAD_ABOVE_LIVE_BODY = (
+    "Evidence-Source:\u2003OCC#5487\n\nEvidence-Source: OCC#5548\n"
+)
 
-def _canonical_shell_binding(body: str) -> str | None:
+# Locales the oracle drives. Each one's ``[[:space:]]`` is MEASURED off the
+# platform's own grep rather than assumed; an uninstalled locale degrades to C,
+# which is still a real (if duplicated) oracle run, so nothing is ever skipped.
+ORACLE_LOCALES = ("C", "C.UTF-8", "en_US.UTF-8")
+
+# Everything Python calls whitespace lives below U+3001; probing the whole range
+# (rather than a hand-picked list) is what makes the derived class a measurement
+# instead of another transcription. ``\n`` is excluded — it is the line
+# separator, not an in-line space.
+_PROBE_CODEPOINTS = tuple(cp for cp in range(0x01, 0x3001) if cp != 0x0A)
+
+
+@functools.cache
+def _platform_space_chars(locale: str) -> str:
+    """The characters THIS platform's ``grep`` accepts for ``[[:space:]]``.
+
+    Executes real ``grep`` over one probe line per codepoint. The class is
+    locale- AND libc-dependent — 5 chars under ``LC_ALL=C``, 20 under glibc
+    ``C.UTF-8``, and wider again under BSD ``en_US.UTF-8`` (which adds U+0085 /
+    U+00A0 / U+202F) — so the gate cannot hardcode it and neither can this test.
+    """
+
+    probe = "\n".join(f"E{cp}:{chr(cp)}X" for cp in _PROBE_CODEPOINTS) + "\n"
+    proc = subprocess.run(  # fixed argv, no shell, test-only
+        ["grep", "-E", "^E[0-9]+:[[:space:]]+X"],
+        input=probe.encode("utf-8"),
+        capture_output=True,
+        env={**os.environ, "LC_ALL": locale},
+        check=False,
+        timeout=60,
+    )
+    found: list[str] = []
+    for line in proc.stdout.decode("utf-8", "replace").split("\n"):
+        match = re.match(r"^E(\d+):", line)
+        if match:
+            found.append(chr(int(match.group(1))))
+    return "".join(found)
+
+
+def _canonical_shell_binding(body: str, *, locale: str = "C") -> str | None:
     """Run the REAL canonical pipeline from ``occ-preflight.yml`` via POSIX tools.
 
     This is the cross-implementation oracle: actual ``grep``/``head``/``sed``,
     not a Python transcription of them. The pipeline is byte-identical to the
     ``Resolve Evidence-Source`` step of ``omnibase_core``'s ``occ-preflight.yml``
     and ``receipt-gate.yml``.
+
+    Bytes in, bytes out, deliberately. An earlier revision passed ``text=True``,
+    which universal-newline-translates ``\\r`` to ``\\n`` in captured stdout —
+    for the CR shapes that is a corruption of the very whitespace class under
+    test, and it manufactured a spurious mismatch. The direction was fail-loud
+    rather than a bypass, but an oracle that mangles its own subject cannot be
+    trusted to certify the class.
     """
 
     script = (
@@ -277,14 +337,88 @@ def _canonical_shell_binding(body: str) -> str | None:
     )
     proc = subprocess.run(  # fixed argv, trusted shell snippet, test-only
         ["bash", "-c", script],
-        input=body,
+        input=body.encode("utf-8"),
         capture_output=True,
-        text=True,
+        env={**os.environ, "LC_ALL": locale},
         check=False,
         timeout=30,
     )
-    out = proc.stdout.strip("\n")
+    out = proc.stdout.decode("utf-8").strip("\n")
     return out or None
+
+
+# Bodies the oracle is driven over. Every whitespace class member the platform
+# might disagree about gets a shape, ASCII and non-ASCII alike.
+ORACLE_BODIES = [
+    pytest.param("", id="empty"),
+    pytest.param("no citation anywhere", id="no-citation"),
+    pytest.param(FENCED_DEAD_ABOVE_LIVE_BODY, id="fenced-dead-above-live"),
+    pytest.param(FORM_FEED_DEAD_ABOVE_LIVE_BODY, id="form-feed"),
+    pytest.param(EM_SPACE_DEAD_ABOVE_LIVE_BODY, id="em-space-dead-above-live"),
+    pytest.param("Evidence-Source:\vOCC#1\n", id="vertical-tab"),
+    pytest.param("Evidence-Source:\tOCC#5506\n", id="tab"),
+    pytest.param("Evidence-Source:   OCC#5506   \n", id="padded"),
+    pytest.param("Evidence-Source: OCC#5506\r\nmore\r\n", id="crlf"),
+    pytest.param("Evidence-Source: OCC#5506\rEvidence-Source: OCC#1\n", id="bare-cr"),
+    pytest.param("- Evidence-Source: OCC#1\n", id="bullet"),
+    pytest.param("**Evidence-Source**: OCC#2\n", id="bold"),
+    pytest.param("  Evidence-Source: OCC#3\n", id="indented"),
+    pytest.param("> Evidence-Source: OCC#4\n", id="blockquote"),
+    pytest.param("see `Evidence-Source: OCC#5` inline\n", id="inline"),
+    pytest.param("Evidence-Source:\n", id="trailer-with-no-value"),
+    pytest.param("Evidence-Source:\nOCC#5487\n", id="value-on-next-line"),
+    pytest.param(
+        "evidence-source: OCC#5487\nEvidence-Source: OCC#5548\n",
+        id="lowercase-first",
+    ),
+    pytest.param("~~~\nEvidence-Source: OCC#5487\n~~~\n", id="tilde-fence"),
+    pytest.param("```\nEvidence-Source: OCC#5497\n", id="unclosed-fence"),
+    # One shape per non-ASCII codepoint measured in a real grep space class on
+    # at least one of the two hosts this fleet runs on. NONE of these were in
+    # the first cut's 18 bodies, which is exactly why that cut shipped with the
+    # hole still open. Written as escapes, never as literal invisible glyphs.
+    pytest.param(
+        "Evidence-Source:\u1680OCC#5487\n\nEvidence-Source: OCC#5548\n",
+        id="u1680-ogham",
+    ),
+    pytest.param(
+        "Evidence-Source:\u2000OCC#5487\n\nEvidence-Source: OCC#5548\n",
+        id="u2000-en-quad",
+    ),
+    pytest.param(
+        "Evidence-Source:\u2003OCC#5487\n\nEvidence-Source: OCC#5548\n",
+        id="u2003-em-space",
+    ),
+    pytest.param(
+        "Evidence-Source:\u2028OCC#5487\n\nEvidence-Source: OCC#5548\n",
+        id="u2028-line-sep",
+    ),
+    pytest.param(
+        "Evidence-Source:\u2029OCC#5487\n\nEvidence-Source: OCC#5548\n",
+        id="u2029-para-sep",
+    ),
+    pytest.param(
+        "Evidence-Source:\u205fOCC#5487\n\nEvidence-Source: OCC#5548\n",
+        id="u205f-medium-math",
+    ),
+    pytest.param(
+        "Evidence-Source:\u3000OCC#5487\n\nEvidence-Source: OCC#5548\n",
+        id="u3000-ideographic",
+    ),
+    pytest.param(
+        "Evidence-Source:\u0085OCC#5487\n\nEvidence-Source: OCC#5548\n",
+        id="u0085-nel",
+    ),
+    pytest.param(
+        "Evidence-Source:\u00a0OCC#5487\n\nEvidence-Source: OCC#5548\n",
+        id="u00a0-nbsp",
+    ),
+    pytest.param(
+        "Evidence-Source:\u202fOCC#5487\n\nEvidence-Source: OCC#5548\n",
+        id="u202f-narrow-nbsp",
+    ),
+    pytest.param("Evidence-Source:\u2003 OCC#5506 \u2003\n", id="exotic-padding"),
+]
 
 
 class TestCanonicalBindingParity:
@@ -352,46 +486,179 @@ class TestCanonicalBindingParity:
         )
         assert _evaluate(fetcher).code == EXIT_PASS
 
-    @pytest.mark.parametrize(
-        "body",
-        [
-            pytest.param("", id="empty"),
-            pytest.param("no citation anywhere", id="no-citation"),
-            pytest.param(FENCED_DEAD_ABOVE_LIVE_BODY, id="fenced-dead-above-live"),
-            pytest.param(FORM_FEED_DEAD_ABOVE_LIVE_BODY, id="form-feed"),
-            pytest.param("Evidence-Source:\vOCC#1\n", id="vertical-tab"),
-            pytest.param("Evidence-Source:\tOCC#5506\n", id="tab"),
-            pytest.param("Evidence-Source:   OCC#5506   \n", id="padded"),
-            pytest.param("Evidence-Source: OCC#5506\r\nmore\r\n", id="crlf"),
-            pytest.param("- Evidence-Source: OCC#1\n", id="bullet"),
-            pytest.param("**Evidence-Source**: OCC#2\n", id="bold"),
-            pytest.param("  Evidence-Source: OCC#3\n", id="indented"),
-            pytest.param("> Evidence-Source: OCC#4\n", id="blockquote"),
-            pytest.param("see `Evidence-Source: OCC#5` inline\n", id="inline"),
-            pytest.param("Evidence-Source:\n", id="trailer-with-no-value"),
-            pytest.param("Evidence-Source:\nOCC#5487\n", id="value-on-next-line"),
-            pytest.param(
-                "evidence-source: OCC#5487\nEvidence-Source: OCC#5548\n",
-                id="lowercase-first",
-            ),
-            pytest.param("~~~\nEvidence-Source: OCC#5487\n~~~\n", id="tilde-fence"),
-            pytest.param("```\nEvidence-Source: OCC#5497\n", id="unclosed-fence"),
-        ],
-    )
-    def test_canonical_binder_matches_the_real_shell_pipeline(self, body: str) -> None:
-        """Cross-implementation oracle: our Python binder vs actual POSIX tools.
+    def test_em_space_dead_citation_above_a_live_stamp_is_evaluated(self) -> None:
+        """The residual the first cut of this fix left open (OMN-15475 round 2).
+
+        ``[[:space:]]`` is not ``[ \\t\\v\\f\\r]``; that is only its ``LC_ALL=C``
+        value. On the hosted runner (``C.UTF-8``, GNU grep 3.11, ubuntu-24.04)
+        the class covers U+2003, so the arbiter binds the DEAD ``OCC#5487`` in
+        this body. A binder pinned to the C class returned ``['OCC#5548']`` and
+        the gate greened — the OMN-15475 defect surviving the OMN-15475 fix.
+        """
+
+        assert canonical_binding_candidates(EM_SPACE_DEAD_ABOVE_LIVE_BODY) == [
+            "OCC#5487",
+            "OCC#5548",
+        ]
+        assert parse_evidence_sources(EM_SPACE_DEAD_ABOVE_LIVE_BODY) == [
+            "OCC#5487",
+            "OCC#5548",
+        ]
+
+    def test_gate_fails_on_the_em_space_dead_citation(self) -> None:
+        """End-to-end, and locale-independent: the exploit cannot green the gate."""
+
+        fetcher = FakeFetcher(
+            prs={
+                (PRODUCT_REPO, "1953"): _product_pr(EM_SPACE_DEAD_ABOVE_LIVE_BODY),
+                (OCC_REPO, "5487"): _occ("CLOSED"),
+                (OCC_REPO, "5548"): _occ("MERGED", "f0440822380a"),
+            }
+        )
+        verdict = _evaluate(fetcher)
+        assert verdict.code == EXIT_FAIL, verdict.reason
+        assert "OCC#5487" in verdict.reason
+
+    def test_ordinary_body_yields_exactly_one_candidate(self) -> None:
+        """Fail-closed enumeration must not inflate the everyday path.
+
+        A plain stamp is both the first candidate AND the guaranteed stop, so
+        exactly one value is produced and no extra companion is demanded.
+        """
+
+        assert canonical_binding_candidates("Evidence-Source: OCC#5497\n") == [
+            "OCC#5497"
+        ]
+        assert canonical_binding_candidates(
+            "Evidence-Source: OCC#5497\nEvidence-Source: OCC#5487\n"
+        ) == ["OCC#5497"]
+
+    @pytest.mark.parametrize("locale", ORACLE_LOCALES)
+    @pytest.mark.parametrize("body", ORACLE_BODIES)
+    def test_arbiter_binding_is_always_inside_the_evaluated_set(
+        self, body: str, locale: str
+    ) -> None:
+        """THE load-bearing invariant, and the one the first cut did not have.
+
+        Whatever the arbiter binds — under any locale, on any libc — must be in
+        the set this gate evaluates. Otherwise the gate can green on a body whose
+        pinned citation is dead, which is the entire OMN-15475 defect.
+
+        This holds without the gate knowing the arbiter's locale, because
+        :func:`canonical_binding_candidates` enumerates every possible binding
+        instead of reproducing one. Verified against REAL ``grep``/``head``/``sed``
+        under each locale, not a transcription of them.
+        """
+
+        assert shutil.which("bash") is not None, "bash absent — cannot run the oracle"
+        binding = _canonical_shell_binding(body, locale=locale)
+        if binding is None:
+            # The arbiter resolves nothing and fails the PR for a missing stamp;
+            # there is no binding for this gate to be wrong about.
+            return
+        candidates = [
+            _normalize_canonical_value(value)
+            for value in canonical_binding_candidates(body)
+        ]
+        assert _normalize_canonical_value(binding) in candidates, (
+            f"LC_ALL={locale}: arbiter binds {binding!r} but the gate evaluates "
+            f"{candidates!r} — a dead pinned ref would green this gate"
+        )
+
+    @pytest.mark.parametrize("locale", ORACLE_LOCALES)
+    @pytest.mark.parametrize("body", ORACLE_BODIES)
+    def test_canonical_binder_matches_the_real_shell_pipeline(
+        self, body: str, locale: str
+    ) -> None:
+        """Exact-reproduction oracle, per locale, with the class MEASURED.
 
         Unlike the hand-transcribed regression pin above, this executes the
         canonical pipeline itself, so a divergence in whitespace class, line
         splitting, ``head -1`` selection or ``sed`` trimming is caught rather
-        than reproduced. ``bash``/``grep``/``sed`` are present on every hosted
-        runner this repo uses (ubuntu-latest) and on the local dev hosts; a
-        missing one is an environment defect, so this test errors rather than
-        skipping — a skip here would be a vacuous green.
+        than reproduced. The space class fed to the Python binder is derived by
+        running the platform's own ``grep`` (see :func:`_platform_space_chars`) —
+        hardcoding it is what produced the round-2 defect.
+
+        ``bash``/``grep``/``sed`` are present on every hosted runner this repo
+        uses and on the local dev hosts; a missing one is an environment defect,
+        so this errors rather than skipping — a skip here would be a vacuous
+        green.
         """
 
         assert shutil.which("bash") is not None, "bash absent — cannot run the oracle"
-        assert canonical_first_citation(body) == _canonical_shell_binding(body)
+        space = _platform_space_chars(locale)
+        assert canonical_first_citation(body, space_chars=space) == (
+            _canonical_shell_binding(body, locale=locale)
+        )
+
+    @pytest.mark.parametrize("locale", ORACLE_LOCALES)
+    def test_measured_space_class_is_covered_by_the_widest_class(
+        self, locale: str
+    ) -> None:
+        """The containment the fail-closed enumeration rests on.
+
+        :func:`canonical_binding_candidates` treats "not an ASCII printable" as a
+        superset of every real ``[[:space:]]``, resting on POSIX's requirement
+        that the ``space`` and ``graph`` classes are disjoint and that the
+        portable character set's classification is fixed. If a platform ever
+        violated that, the enumeration would stop being a superset and the
+        wrong-binding hole would silently reopen.
+
+        This assertion is not decorative — it is what caught the fact that
+        Python's ``\\s`` is NOT such a superset: BSD grep under ``en_US.UTF-8``
+        classifies U+200B ZERO WIDTH SPACE as ``[[:space:]]`` and Python does
+        not, so a ``\\s``-based widest class would have left a live bypass on
+        this very host.
+        """
+
+        space = _platform_space_chars(locale)
+        assert space, f"LC_ALL={locale}: grep matched no space characters at all"
+        uncovered = [
+            hex(ord(char))
+            for char in space
+            if re.match(_ANY_LOCALE_SPACE_RE_FRAG, char) is None and char != "\n"
+        ]
+        assert uncovered == [], (
+            f"LC_ALL={locale}: real [[:space:]] contains {uncovered}, which is "
+            "an ASCII printable — POSIX says space and graph are disjoint, so "
+            "the candidate enumeration is no longer a superset of the "
+            "arbiter's selection"
+        )
+
+    @pytest.mark.parametrize("locale", ORACLE_LOCALES)
+    def test_python_unicode_space_is_not_by_itself_a_safe_widest_class(
+        self, locale: str
+    ) -> None:
+        """Records WHY the widest class is a POSIX complement, not an enumeration.
+
+        Vacuity guard on the choice above: if this ever stops finding a
+        divergence on every host, the enumerated class was fine after all and
+        this test says so out loud rather than leaving a silent over-design.
+        On macOS/BSD ``en_US.UTF-8`` the divergence is U+200B.
+        """
+
+        space = _platform_space_chars(locale)
+        missed = [hex(ord(c)) for c in space if re.match(r"[^\S\n]", c) is None]
+        # Not asserted non-empty: glibc's class IS inside Python's. The point is
+        # that at least one host/locale in this matrix escapes it, and the
+        # module must be correct on all of them.
+        assert all(re.match(_ANY_LOCALE_SPACE_RE_FRAG, c) for c in space), missed
+
+    def test_c_locale_class_is_the_narrowest_and_utf8_is_wider(self) -> None:
+        """Records the measurement the module's fidelity note 2 cites.
+
+        Not a tautology: it asserts the ORDERING the whole design rests on (the C
+        class is contained in every other class, so a C-class match is a
+        guaranteed match everywhere) directly against the platform's grep.
+        """
+
+        c_class = set(_platform_space_chars("C"))
+        assert c_class == set(" \t\v\f\r"), sorted(hex(ord(c)) for c in c_class)
+        for locale in ORACLE_LOCALES:
+            assert c_class <= set(_platform_space_chars(locale)), (
+                f"LC_ALL={locale} class does not contain the C class — the "
+                "guaranteed-stop regex would no longer be guaranteed"
+            )
 
     def test_canonical_sed_is_case_sensitive_while_its_grep_is_not(self) -> None:
         """Quirk found BY the oracle, pinned so it is recorded rather than lost.

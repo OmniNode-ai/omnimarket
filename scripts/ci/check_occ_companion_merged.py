@@ -47,9 +47,21 @@ head. The two surfaces disagreed field-by-field on what "the citation" is, in
 silence (the OMN-14208 seam class), and since occ-preflight deliberately
 *accepts* a non-MERGED companion by falling back to ``headRefOid``, this gate is
 the sole detector for the dead-citation class. The evaluated set is now the
-UNION of the fence-filtered set and :func:`canonical_first_citation` — a faithful
-reproduction of the arbiter's pipeline, POSIX space class and ``\n``-only line
-splitting included.
+UNION of the fence-filtered set and :func:`canonical_binding_candidates` — every
+citation the arbiter's pipeline could bind, ``\\n``-only line splitting and
+LOCALE-VARYING ``[[:space:]]`` included.
+
+The locale part is not hypothetical. A first cut of this fix pinned
+``[[:space:]]`` to ``[ \\t\\v\\f\\r]``, which is only its ``LC_ALL=C`` value;
+the hosted runner defaults to ``C.UTF-8``, where GNU grep's class also covers
+U+1680, U+2000-2006, U+2008-200A, U+2028, U+2029, U+205F and U+3000 (BSD grep's
+is wider still). A stamp separated by one of those — written here as
+``Evidence-Source:<U+2003>OCC#<dead>`` because the character is invisible —
+sitting above a live stamp bound the DEAD ref on the runner while that binder
+saw only the live one and greened: the same defect class, one codepoint over.
+Because the arbiter runs in another job in another repo its locale is
+unobservable here, so the gate enumerates every possible binding and fails
+closed on disagreement rather than guessing which class is in force.
 
 Deliberately NOT a new required status check: this job is registered in
 :data:`scripts.ci.ci_summary_gate.STRICT_GATE_JOBS` (present + completed +
@@ -182,18 +194,47 @@ _FENCE_RE = re.compile(r"^[ \t]*(?:```|~~~)")
 #       | head -1 \
 #       | sed -E 's/^Evidence-Source:[[:space:]]*//; s/^[[:space:]]+//; s/[[:space:]]+$//'
 #
-# Three fidelity details that :data:`EVIDENCE_SOURCE_RE` gets wrong, two of which
-# produced live wrong-binding shapes (OMN-15475):
+# Four fidelity details that :data:`EVIDENCE_SOURCE_RE` gets wrong, three of
+# which produced live wrong-binding shapes (OMN-15475):
 #
-# 1. POSIX ``[[:space:]]`` inside a grep line is ``[ \t\v\f\r]`` — a STRICT
-#    SUPERSET of Python's ``[ \t]``. ``Evidence-Source:\x0cOCC#5487`` is a
-#    citation to the arbiter and was not one here.
-# 2. ``grep`` splits lines on ``\n`` ONLY. Python's ``str.splitlines()`` also
+# 1. POSIX ``[[:space:]]`` inside a grep line is a STRICT SUPERSET of Python's
+#    ``[ \t]``. ``Evidence-Source:\x0cOCC#5487`` is a citation to the arbiter
+#    and was not one here.
+# 2. ``[[:space:]]`` IS LOCALE-DEPENDENT, and there is no single character class
+#    that is "the POSIX space class". A prior revision of this module asserted
+#    the class was ``[ \t\v\f\r]`` full stop; that is true only under ``LC_ALL=C``
+#    and is FALSE on the deployment target, where it reopened the very defect
+#    this module closes. Measured, not assumed (see
+#    :data:`_MEASURED_SPACE_CLASSES` for the raw readback):
+#
+#      ubuntu-24.04 / GNU grep 3.11 (the hosted runner these jobs run on)
+#        LC_ALL=C           -> {\t \v \f \r SPACE}                     (5)
+#        LC_ALL=C.UTF-8     -> + U+1680 U+2000-2006 U+2008-200A
+#                              U+2028 U+2029 U+205F U+3000            (20)
+#        LC_ALL=en_US.UTF-8 -> identical to C.UTF-8                    (20)
+#      macOS 15 / BSD grep (the .200 gate host)
+#        LC_ALL=en_US.UTF-8 -> the above PLUS U+0085 U+00A0 U+202F
+#
+#    ``C.UTF-8`` is the hosted runner's default, so the 20-character class — not
+#    the 5-character one — is what actually arbitrates in CI. Concretely:
+#    ``Evidence-Source:\u2003OCC#5487`` above ``Evidence-Source: OCC#5548`` binds
+#    the DEAD ``OCC#5487`` on the runner while a ``[ \t\v\f\r]``-only binder sees
+#    only the live one and greens — the OMN-15475 shape verbatim, in a different
+#    codepoint.
+#
+#    The fix is not to pick a wider constant: the class differs per platform AND
+#    per locale, and the gate cannot observe the arbiter's locale (the arbiter is
+#    a different job in a different repo). This module therefore does not guess.
+#    :func:`canonical_binding_candidates` returns EVERY value the arbiter could
+#    bind under ANY locale and all of them are evaluated, so the two surfaces
+#    fail closed whenever they could disagree. That is bounded and small: the
+#    scan stops at the first line that binds under EVERY locale.
+# 3. ``grep`` splits lines on ``\n`` ONLY. Python's ``str.splitlines()`` also
 #    splits on ``\v``, ``\f``, ``\x1c``-``\x1e``, ``\x85`` and the Unicode
 #    line/paragraph separators — so ``splitlines()`` manufactures line breaks
 #    the arbiter never sees. This module therefore splits on ``"\n"`` for the
 #    canonical binder.
-# 3. The pipeline's ``grep -i`` is case-INSENSITIVE but its ``sed -E`` is NOT,
+# 4. The pipeline's ``grep -i`` is case-INSENSITIVE but its ``sed -E`` is NOT,
 #    so a lowercase ``evidence-source: OCC#1`` line is SELECTED and then left
 #    un-stripped, yielding the literal value ``evidence-source: OCC#1`` — which
 #    occ-preflight then hard-rejects as "not a valid OCC#<number> or hex SHA".
@@ -204,20 +245,89 @@ _FENCE_RE = re.compile(r"^[ \t]*(?:```|~~~)")
 #    rather than emitting a malformed-value FAIL for a shape the arbiter already
 #    fails on its own. No dead ref can hide in this shape: the arbiter pins
 #    nothing here, it refuses the PR outright.
-_POSIX_SPACE_CHARS = " \t\v\f\r"
-# Line SELECTION mirrors `grep -iE` — case-insensitive.
-_CANONICAL_SELECT_RE = re.compile(
-    r"^Evidence-Source:[ \t\v\f\r]+\S",
+
+# ``LC_ALL=C``'s ``[[:space:]]`` minus ``\n``. This is the NARROWEST the class
+# can be: every locale's class is a superset of it, so a line selected with only
+# these separators is selected by the arbiter no matter where it runs.
+_C_LOCALE_SPACE_CHARS = " \t\v\f\r"
+
+# The WIDEST the class can be, derived from POSIX rather than enumerated.
+#
+# The obvious candidate — Python's Unicode-aware ``\s`` minus ``\n`` — is NOT a
+# superset, and the parity oracle proved it: BSD ``grep`` under ``en_US.UTF-8``
+# on the .200 gate host classifies U+200B ZERO WIDTH SPACE as ``[[:space:]]``
+# while Python's ``\s`` does not. Enumerating "all the space characters" is the
+# same mistake as pinning ``[ \t\v\f\r]``, one layer out: the enumeration is a
+# guess about someone else's libc.
+#
+# So invert it. POSIX (Base Definitions, LC_CTYPE) requires the ``space`` and
+# ``graph`` classes to be DISJOINT, and fixes the classification of the portable
+# character set, so every ASCII printable U+0021-U+007E is ``graph`` — and
+# therefore NOT ``space`` — in every conforming locale on every libc. The
+# complement of that, minus ``\n``, is a superset of every possible
+# ``[[:space:]]`` by construction, with nothing left to keep in sync.
+#
+# It is deliberately loose: it also admits e.g. accented letters as "possibly a
+# separator". That costs nothing real. The only effect is that a body with a
+# column-0 stamp separated by such a character gets its citation evaluated when
+# the arbiter would have bound nothing — and a body the arbiter binds nothing in
+# is one the arbiter REJECTS outright for a missing stamp, so no merge path
+# opens either way. Loose in the fail-closed direction is the whole design.
+_ANY_LOCALE_SPACE_RE_FRAG = r"[^\x21-\x7e\n]"
+# The mirror of the above: guaranteed NOT space in any locale (POSIX ``graph``).
+_GUARANTEED_NON_SPACE_RE_FRAG = r"[\x21-\x7e]"
+
+# Raw readback backing fidelity note 2, kept in-module so the claim is auditable
+# without re-running the probe. Regenerate with:
+#   for loc in C C.UTF-8 en_US.UTF-8; do
+#     printf 'E:\u2003X\n' | LC_ALL=$loc grep -cE '^E:[[:space:]]+X'
+#   done
+_MEASURED_SPACE_CLASSES: dict[str, str] = {
+    "ubuntu-24.04/GNU grep 3.11 LC_ALL=C": " \t\v\f\r",
+    "ubuntu-24.04/GNU grep 3.11 LC_ALL=C.UTF-8": (
+        " \t\v\f\r\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
+        "\u2008\u2009\u200a\u2028\u2029\u205f\u3000"
+    ),
+    # NOTE U+200B: BSD calls it space, Python's `\s` does not. It is the reason
+    # the widest class is a POSIX complement and not an enumeration.
+    "macOS-15/BSD grep LC_ALL=en_US.UTF-8": (
+        " \t\v\f\r\u0085\u00a0\u1680\u2003\u200b\u202f\u205f\u2028\u3000"
+    ),
+}
+
+# A line the arbiter binds under SOME locale: widest separator class, narrowest
+# "non-space" requirement (``\S`` is locale-dependent too, and is weakest under
+# ``LC_ALL=C``). Deliberately the most inclusive of the two regexes.
+_CANDIDATE_SELECT_RE = re.compile(
+    rf"^Evidence-Source:{_ANY_LOCALE_SPACE_RE_FRAG}+[^ \t\v\f\r\n]",
     re.IGNORECASE,
 )
+# A line the arbiter binds under EVERY locale: narrowest separator class,
+# widest "non-space" requirement. Scanning stops at the first such line — the
+# arbiter cannot look past it, so nothing below it is a possible binding.
+_GUARANTEED_SELECT_RE = re.compile(
+    rf"^Evidence-Source:[ \t\v\f\r]+"
+    rf"(?:{_ANY_LOCALE_SPACE_RE_FRAG})*{_GUARANTEED_NON_SPACE_RE_FRAG}",
+    re.IGNORECASE,
+)
+
+
 # Value EXTRACTION mirrors `sed -E 's/^Evidence-Source:[[:space:]]*//'` — case
 # SENSITIVE, deliberately. Do not add re.IGNORECASE here: that would make the
 # binder disagree with the arbiter, which is the whole defect being fixed.
-_CANONICAL_SED_RE = re.compile(r"^Evidence-Source:[ \t\v\f\r]*")
-# Our own post-hoc normalization of the residue above (see fidelity note 3).
+# Parameterized by separator class so the parity oracle can drive it with the
+# class it just measured off the platform's own grep.
+def _canonical_sed_re(space_chars: str) -> re.Pattern[str]:
+    return re.compile(rf"^Evidence-Source:[{re.escape(space_chars)}]*")
+
+
+# Our own post-hoc normalization of the residue above (see fidelity note 4).
 _RESIDUAL_TRAILER_RE = re.compile(
-    r"^Evidence-Source:[ \t\v\f\r]*",
+    rf"^Evidence-Source:(?:{_ANY_LOCALE_SPACE_RE_FRAG})*",
     re.IGNORECASE,
+)
+_ANY_LOCALE_STRIP_RE = re.compile(
+    rf"^(?:{_ANY_LOCALE_SPACE_RE_FRAG})+|(?:{_ANY_LOCALE_SPACE_RE_FRAG})+$"
 )
 OCC_PR_REF_RE = re.compile(r"^OCC#(\d+)$", re.IGNORECASE)
 HEX_SHA_RE = re.compile(r"^[0-9a-f]{7,40}$")
@@ -304,29 +414,96 @@ def strip_fenced_blocks(body: str) -> str:
     return "\n".join(out)
 
 
-def canonical_first_citation(body: str) -> str | None:
-    """The citation ``occ-preflight.yml``/``receipt-gate.yml`` ACTUALLY bind.
+def canonical_first_citation(
+    body: str, *, space_chars: str = _C_LOCALE_SPACE_CHARS
+) -> str | None:
+    """The citation ``occ-preflight.yml``/``receipt-gate.yml`` bind UNDER ONE LOCALE.
 
     Reproduces their ``grep -iE '^Evidence-Source:[[:space:]]+\\S' | head -1``
-    + ``sed`` pipeline against the RAW body: no fence-stripping, POSIX space
-    class, ``\\n``-only line splitting. Returns ``None`` when the arbiter would
-    resolve nothing (it then fails the PR for a missing stamp).
+    + ``sed`` pipeline against the RAW body: no fence-stripping, ``\\n``-only
+    line splitting, and ``[[:space:]]`` instantiated as ``space_chars``. Returns
+    ``None`` when the arbiter would resolve nothing (it then fails the PR for a
+    missing stamp).
 
-    This is the seam anchor for OMN-15475: whatever this returns is the ref the
-    arbiter pins, so it MUST be inside the evaluated citation set regardless of
-    fences or whitespace class.
+    ``space_chars`` defaults to the ``LC_ALL=C`` class. It is a PARAMETER, not a
+    constant, because ``[[:space:]]`` is locale- and libc-dependent (see fidelity
+    note 2). The parity oracle drives this with a class it measures off the
+    platform's own ``grep`` at test time, per locale.
+
+    This function is the exact-reproduction surface. The FAIL-CLOSED surface the
+    gate actually evaluates is :func:`canonical_binding_candidates`, which does
+    not need to know the arbiter's locale.
     """
 
+    sed_re = _canonical_sed_re(space_chars)
+    select_re = re.compile(
+        rf"^Evidence-Source:[{re.escape(space_chars)}]+[^{re.escape(space_chars)}\n]",
+        re.IGNORECASE,
+    )
     for line in (body or "").split("\n"):
-        if _CANONICAL_SELECT_RE.match(line):
-            return _CANONICAL_SED_RE.sub("", line, count=1).strip(_POSIX_SPACE_CHARS)
+        if select_re.match(line):
+            return sed_re.sub("", line, count=1).strip(space_chars)
     return None
 
 
 def _normalize_canonical_value(value: str) -> str:
-    """Undo the arbiter's case-sensitive-``sed`` residue (see fidelity note 3)."""
+    """Trailer + surrounding-whitespace strip, widest class, case-insensitive.
 
-    return _RESIDUAL_TRAILER_RE.sub("", value).strip(_POSIX_SPACE_CHARS)
+    Two jobs at once: undo the arbiter's case-sensitive-``sed`` residue (fidelity
+    note 4), and trim with a class wide enough to cover any locale's ``sed``
+    (fidelity note 2). Both directions only ever remove whitespace, so this can
+    turn an arbiter-malformed value into a real ref to look up — never the
+    reverse. See :func:`canonical_binding_candidates` for why that is safe.
+    """
+
+    return _ANY_LOCALE_STRIP_RE.sub("", _RESIDUAL_TRAILER_RE.sub("", value))
+
+
+def canonical_binding_candidates(body: str) -> list[str]:
+    """EVERY value the arbiter could bind, over every locale it might run under.
+
+    The seam anchor for OMN-15475. The arbiter runs in a different job in a
+    different repo, so this gate cannot observe its ``LC_ALL``/libc — and the
+    binding genuinely differs between them (fidelity note 2). Guessing a class
+    is what reopened the defect: a ``[ \\t\\v\\f\\r]``-only binder is correct
+    under ``LC_ALL=C`` and WRONG on the ``C.UTF-8`` hosted runner, where
+    ``Evidence-Source:\\u2003OCC#<dead>`` above a live stamp binds the dead ref.
+
+    So this enumerates instead of guessing, exactly and finitely:
+
+    * a line can be the arbiter's binding under SOME locale only if it matches
+      :data:`_CANDIDATE_SELECT_RE` (widest separators, narrowest terminator —
+      a proven superset of every locale's selection);
+    * the arbiter takes ``head -1``, so it cannot look past the first line that
+      matches :data:`_GUARANTEED_SELECT_RE` (narrowest separators, widest
+      terminator — selected under EVERY locale). Scanning stops there.
+
+    The result is therefore every candidate up to and including the guaranteed
+    stop. All of them are evaluated and aggregated fail-closed, so when the two
+    surfaces could disagree the gate FAILS rather than greening on whichever
+    binding happens to be dead — AC1's "or fail closed when the two disagree".
+
+    On a normal body (``Evidence-Source: OCC#1`` with an ordinary space) the
+    first candidate IS the guaranteed stop, so this returns exactly one value
+    and nothing about the everyday path changes.
+
+    Values are stripped with the WIDEST class. Over-stripping cannot hide a dead
+    ref: it can only turn a value the arbiter would call malformed into a
+    well-formed ref that is then looked up for real. A malformed binding already
+    fails the PR at the arbiter, so no merge path opens either way — and the
+    wider strip is what lets this gate report "companion OCC#N is CLOSED"
+    instead of a useless "malformed value" for the same body.
+    """
+
+    values: list[str] = []
+    for line in (body or "").split("\n"):
+        is_candidate = _CANDIDATE_SELECT_RE.match(line) is not None
+        is_guaranteed = _GUARANTEED_SELECT_RE.match(line) is not None
+        if is_candidate:
+            values.append(_normalize_canonical_value(line))
+        if is_guaranteed:
+            break
+    return values
 
 
 def parse_evidence_sources(body: str) -> list[str]:
@@ -334,10 +511,12 @@ def parse_evidence_sources(body: str) -> list[str]:
 
     The set is the UNION of:
 
-    * :func:`canonical_first_citation` — the ONE value occ-preflight/receipt-gate
-      bind from the raw body. Never droppable: dropping it is what let a fenced
-      dead example above a real stamp green this gate while the arbiter pinned
-      the dead ref (OMN-15475).
+    * :func:`canonical_binding_candidates` — every value occ-preflight /
+      receipt-gate could bind from the raw body, across every locale they might
+      run under. Never droppable: dropping it is what let a fenced dead example
+      above a real stamp green this gate while the arbiter pinned the dead ref,
+      and narrowing it to one hardcoded whitespace class is what left the same
+      hole open in a different codepoint (OMN-15475).
     * every column-0 ``Evidence-Source:`` line OUTSIDE a fenced block — because
       a first-match-only parse is evadable: appending a fresh merged citation
       above a dead one would green the gate on destroyed evidence.
@@ -356,9 +535,8 @@ def parse_evidence_sources(body: str) -> list[str]:
         seen.add(key)
         values.append(value)
 
-    canonical = canonical_first_citation(body)
-    if canonical is not None:
-        _add(_normalize_canonical_value(canonical))
+    for candidate in canonical_binding_candidates(body):
+        _add(candidate)
 
     for match in EVIDENCE_SOURCE_RE.finditer(strip_fenced_blocks(body)):
         _add(match.group(1).strip())
