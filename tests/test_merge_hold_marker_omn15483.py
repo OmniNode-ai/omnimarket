@@ -67,8 +67,17 @@ from omnimarket.nodes.node_pr_lifecycle_orchestrator.protocols.protocol_sub_hand
     TriageRecord,
 )
 
-_SRC_ROOT = pathlib.Path(__file__).resolve().parents[1] / "src" / "omnimarket"
+_REPO_ROOT = pathlib.Path(__file__).resolve().parents[1]
+_SRC_ROOT = _REPO_ROOT / "src" / "omnimarket"
 _CANONICAL_MODULE = _SRC_ROOT / "merge_control" / "hold_marker.py"
+
+# Roots the criterion-1 "one vocabulary" scan walks. ``scripts/`` was added in
+# the OMN-15483 remediation round: that round put a hold matcher on the CI
+# surface (``scripts/ci/check_pr_hold_marker.py``), and a src-only scan would
+# not have noticed a second regex smuggled in there. The gate script loads the
+# canonical module by path instead of declaring a pattern, and this scan is what
+# keeps that true.
+_VOCABULARY_SCAN_ROOTS = (_SRC_ROOT, _REPO_ROOT / "scripts")
 
 # A title carrying the marker, and one that does not. The unheld title is the
 # regression control: its verdict must be identical before and after this change.
@@ -155,36 +164,45 @@ class TestSingleHoldVocabulary:
         Falsifier for criterion 1. Re-declaring ``_DO_NOT_MERGE_RE`` in a node —
         which is exactly the state this ticket found, with two divergent copies
         — fails here.
+
+        The scan covers ``scripts/`` as well as ``src/`` because the CI hold
+        gate lives there. A gate that vendored its own pattern would satisfy
+        every behavioural test in this file while silently reintroducing the
+        two-divergent-vocabularies bug on a THIRD surface, this time one that
+        gates merges for every consumer. Path-scope is the whole point.
         """
         offenders: list[str] = []
-        for path in _SRC_ROOT.rglob("*.py"):
-            if path == _CANONICAL_MODULE:
-                continue
-            tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Assign):
+        for root in _VOCABULARY_SCAN_ROOTS:
+            for path in root.rglob("*.py"):
+                if path == _CANONICAL_MODULE:
                     continue
-                call = node.value
-                if not isinstance(call, ast.Call):
-                    continue
-                func = call.func
-                is_re_compile = (
-                    isinstance(func, ast.Attribute)
-                    and func.attr == "compile"
-                    and isinstance(func.value, ast.Name)
-                    and func.value.id == "re"
-                )
-                if not is_re_compile:
-                    continue
-                for target in node.targets:
-                    if not isinstance(target, ast.Name):
+                tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+                for node in ast.walk(tree):
+                    if not isinstance(node, ast.Assign):
                         continue
-                    normalized = target.id.lstrip("_").upper()
-                    if any(
-                        marker in normalized
-                        for marker in ("DO_NOT_MERGE", "HOLD_MARKER", "DNM", "WIP")
-                    ):
-                        offenders.append(f"{path.relative_to(_SRC_ROOT)}:{target.id}")
+                    call = node.value
+                    if not isinstance(call, ast.Call):
+                        continue
+                    func = call.func
+                    is_re_compile = (
+                        isinstance(func, ast.Attribute)
+                        and func.attr == "compile"
+                        and isinstance(func.value, ast.Name)
+                        and func.value.id == "re"
+                    )
+                    if not is_re_compile:
+                        continue
+                    for target in node.targets:
+                        if not isinstance(target, ast.Name):
+                            continue
+                        normalized = target.id.lstrip("_").upper()
+                        if any(
+                            marker in normalized
+                            for marker in ("DO_NOT_MERGE", "HOLD_MARKER", "DNM", "WIP")
+                        ):
+                            offenders.append(
+                                f"{path.relative_to(_REPO_ROOT)}:{target.id}"
+                            )
 
         assert offenders == [], (
             "a second hold vocabulary is declared outside the canonical module "

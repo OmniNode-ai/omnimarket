@@ -1953,6 +1953,58 @@ jobs:
       - name: Require every cited OCC companion to be merged before product merge
         run: python3 scripts/ci/check_occ_companion_merged.py
 
+  # ============================================================================
+  # VERIFICATION HOLD GATE (OMN-15483)
+  #
+  # The consumer-independent half of the merge-hold mechanism. The ONEX merge
+  # node learned to honor the hold marker in the first round, which bound one
+  # consumer -- but NOT the foreground Codex merge controller that performed
+  # every merge in OMN-15483's incident table, and not `gh pr merge`, repo
+  # auto-merge, or any future consumer. Chasing consumers does not converge.
+  #
+  # This job moves enforcement to the choke point every consumer already
+  # respects: required status checks. A held PR fails here; this job is in the
+  # fail-closed STRICT set of the required "CI Summary" context
+  # (scripts/ci/ci_summary_gate.py), so a held PR can never be required-green.
+  #
+  # UNCONDITIONAL BY DESIGN -- no `needs:`, no `if:`. On a56e3819 the
+  # `occ-preflight` dependency failed and cascade-skipped Tests, typecheck,
+  # Contract Compliance and the whole E2E lane; a hold gate that an unrelated
+  # upstream failure can skip is not a gate. Hosted runner, stdlib-only script,
+  # no `uv sync`, seconds to a verdict, zero self-hosted/LAN dependency.
+  #
+  # ONE VOCABULARY: the script declares no regex. It loads
+  # src/omnimarket/merge_control/hold_marker.py by path and calls the canonical
+  # evaluate_merge_hold() -- same matcher and same fail-closed tri-state as the
+  # node path, so OMN-15483 criterion 1 still has exactly one definition to
+  # falsify against. DO NOT inline a pattern here.
+  # ============================================================================
+  pr-hold-check:
+    name: Merge Hold Gate (OMN-15483)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    env:
+      # Live refresh (preferred: current, so clearing a hold + re-running
+      # releases the PR without a new push -- criterion 4 on the CI path).
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      GITHUB_EVENT_NAME: ${{ github.event_name }}
+      # Event-payload fallback, straight off the `github` context -- no API
+      # dependency for the gate to function at all.
+      PR_TITLE: ${{ github.event.pull_request.title }}
+      PR_LABELS_JSON: ${{ toJSON(github.event.pull_request.labels) }}
+    steps:
+      - name: Checkout (gate script + canonical vocabulary)
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - name: Refuse a PR that is held against landing
+        run: python3 scripts/ci/check_pr_hold_marker.py
+
   ci-summary:
     name: CI Summary
     # OMN-14127 fan-out: REQUIRED branch-protection context, implemented as a

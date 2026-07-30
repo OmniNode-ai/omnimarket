@@ -158,6 +158,18 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # omnimarket#1953 cited a CLOSED-unmerged companion (OCC#5487) and no
     # omnimarket CI surface caught it; this row is what makes that RED.
     "OCC Companion Merged Gate (OMN-15214)",
+    # OMN-15483: the consumer-independent merge-hold enforcement point. The
+    # merge NODE honoring the hold marker binds one consumer; the foreground
+    # Codex controller that performed every merge in OMN-15483's incident
+    # table contains no omnimarket code and stays unbound by any amount of it.
+    # Registering the hold gate HERE is what binds every consumer at once: a
+    # held PR fails this job, this job is strict, "CI Summary" is required, so
+    # a held PR can never be required-green for the Codex controller,
+    # `gh pr merge`, auto-merge, or the node path alike. Unconditional in
+    # ci.yml (no needs/if:), so skipped/cancelled is anomalous and fails closed
+    # here — detection without enforcement is rule-5 noncompliance, and the
+    # strict slot IS the enforcement.
+    "Merge Hold Gate (OMN-15483)",
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.
