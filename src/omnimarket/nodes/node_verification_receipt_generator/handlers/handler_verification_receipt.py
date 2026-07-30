@@ -3,7 +3,7 @@
 """HandlerVerificationReceiptGenerator — generates evidence receipts for task claims.
 
 Runs three verification dimensions:
-1. CI checks: shells out to `gh pr checks` and collects conclusions.
+1. CI checks: shells out to `gh pr checks` and classifies current-schema buckets.
 2. Pytest: runs `uv run pytest` in the worktree and captures exit code.
 3. Mechanical checks: executes ``ModelMechanicalCheck`` DoD checks
    (command_exit_0 / file_exists / grep_present / grep_absent) in the worktree.
@@ -29,13 +29,16 @@ import os
 import shlex
 import subprocess
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from omnibase_core.enums.enum_check_type import EnumCheckType
 from omnibase_core.models.task.model_mechanical_check import ModelMechanicalCheck
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
 from omnimarket.events.verification import (
+    GithubRepositorySlug,
     ModelCheckEvidence,
     ModelFileTestResult,
     ModelVerificationReceipt,
@@ -52,11 +55,92 @@ _PYTEST_TIMEOUT = 300
 _MECHANICAL_CHECK_TIMEOUT = 300
 
 
+class EnumGithubCheckBucket(StrEnum):
+    """Documented ``gh pr checks --json bucket`` classifications."""
+
+    PASS = "pass"
+    FAIL = "fail"
+    PENDING = "pending"
+    SKIPPING = "skipping"
+    CANCEL = "cancel"
+
+
+class EnumGithubCheckState(StrEnum):
+    """States classified by the current GitHub CLI ``aggregateChecks`` source."""
+
+    SUCCESS = "SUCCESS"
+    SKIPPED = "SKIPPED"
+    NEUTRAL = "NEUTRAL"
+    ERROR = "ERROR"
+    FAILURE = "FAILURE"
+    TIMED_OUT = "TIMED_OUT"
+    ACTION_REQUIRED = "ACTION_REQUIRED"
+    CANCELLED = "CANCELLED"
+    EXPECTED = "EXPECTED"
+    REQUESTED = "REQUESTED"
+    WAITING = "WAITING"
+    QUEUED = "QUEUED"
+    PENDING = "PENDING"
+    IN_PROGRESS = "IN_PROGRESS"
+    STALE = "STALE"
+
+
+_EXPECTED_BUCKET_BY_STATE: dict[EnumGithubCheckState, EnumGithubCheckBucket] = {
+    EnumGithubCheckState.SUCCESS: EnumGithubCheckBucket.PASS,
+    EnumGithubCheckState.SKIPPED: EnumGithubCheckBucket.SKIPPING,
+    EnumGithubCheckState.NEUTRAL: EnumGithubCheckBucket.SKIPPING,
+    EnumGithubCheckState.ERROR: EnumGithubCheckBucket.FAIL,
+    EnumGithubCheckState.FAILURE: EnumGithubCheckBucket.FAIL,
+    EnumGithubCheckState.TIMED_OUT: EnumGithubCheckBucket.FAIL,
+    EnumGithubCheckState.ACTION_REQUIRED: EnumGithubCheckBucket.FAIL,
+    EnumGithubCheckState.CANCELLED: EnumGithubCheckBucket.CANCEL,
+    EnumGithubCheckState.EXPECTED: EnumGithubCheckBucket.PENDING,
+    EnumGithubCheckState.REQUESTED: EnumGithubCheckBucket.PENDING,
+    EnumGithubCheckState.WAITING: EnumGithubCheckBucket.PENDING,
+    EnumGithubCheckState.QUEUED: EnumGithubCheckBucket.PENDING,
+    EnumGithubCheckState.PENDING: EnumGithubCheckBucket.PENDING,
+    EnumGithubCheckState.IN_PROGRESS: EnumGithubCheckBucket.PENDING,
+    EnumGithubCheckState.STALE: EnumGithubCheckBucket.PENDING,
+}
+
+
+class ModelGithubCheckRow(BaseModel):
+    """One strictly validated row from the current ``gh pr checks`` schema."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    name: str = Field(min_length=1)
+    state: EnumGithubCheckState
+    bucket: EnumGithubCheckBucket
+
+    @model_validator(mode="after")
+    def _bucket_must_match_state(self) -> ModelGithubCheckRow:
+        expected = _EXPECTED_BUCKET_BY_STATE[self.state]
+        if self.bucket is not expected:
+            raise ValueError(
+                f"bucket {self.bucket.value!r} contradicts state "
+                f"{self.state.value!r}; expected {expected.value!r}"
+            )
+        return self
+
+
+class ModelGithubChecksQueryResult(BaseModel):
+    """Typed result of the GitHub CLI adapter, including query failures."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    checks: tuple[ModelGithubCheckRow, ...] = ()
+    exit_code: int
+    query_error: str | None = None
+
+
 @runtime_checkable
 class GhClientProtocol(Protocol):
     """Protocol for CI checks verification — injectable for testing."""
 
-    def get_pr_checks(self, repo: str, pr_number: int) -> list[dict[str, Any]]: ...
+    def get_pr_checks(
+        self, repo: GithubRepositorySlug, pr_number: int
+    ) -> ModelGithubChecksQueryResult: ...
 
 
 @runtime_checkable
@@ -97,17 +181,19 @@ class GhClient:
             )
         self._token = token
 
-    def get_pr_checks(self, repo: str, pr_number: int) -> list[dict[str, Any]]:
-        """Fetch CI check conclusions for a PR."""
+    def get_pr_checks(
+        self, repo: GithubRepositorySlug, pr_number: int
+    ) -> ModelGithubChecksQueryResult:
+        """Fetch and validate current-schema CI check rows for a PR."""
         cmd = [
             "gh",
             "pr",
             "checks",
             str(pr_number),
             "--repo",
-            f"OmniNode-ai/{repo}",
+            repo,
             "--json",
-            "name,state,conclusion",
+            "name,state,bucket",
         ]
         try:
             env = os.environ.copy()
@@ -119,21 +205,71 @@ class GhClient:
                 timeout=_GH_CHECKS_TIMEOUT,
                 env=env,
             )
+        except subprocess.TimeoutExpired:
+            error = f"gh pr checks timed out after {_GH_CHECKS_TIMEOUT}s"
+            _log.warning("%s for %s#%d", error, repo, pr_number)
+            return ModelGithubChecksQueryResult(exit_code=1, query_error=error)
+        except OSError as exc:
+            error = f"gh pr checks invocation failed: {exc}"
+            _log.warning("%s for %s#%d", error, repo, pr_number)
+            return ModelGithubChecksQueryResult(exit_code=1, query_error=error)
+
+        if result.returncode not in (0, 1, 8):
+            error = self._command_error(result.returncode, result.stderr)
+            _log.warning("%s for %s#%d", error, repo, pr_number)
+            return ModelGithubChecksQueryResult(
+                exit_code=result.returncode,
+                query_error=error,
+            )
+
+        raw = (result.stdout or "").strip()
+        if not raw:
             if result.returncode != 0:
-                _log.warning(
-                    "gh pr checks failed for %s#%d: %s",
-                    repo,
-                    pr_number,
-                    result.stderr.strip(),
+                error = self._command_error(result.returncode, result.stderr)
+                _log.warning("%s for %s#%d", error, repo, pr_number)
+                return ModelGithubChecksQueryResult(
+                    exit_code=result.returncode,
+                    query_error=error,
                 )
-                return []
-            parsed = json.loads(result.stdout or "[]")
-            if not isinstance(parsed, list):
-                return []
-            return [item for item in parsed if isinstance(item, dict)]
-        except (subprocess.TimeoutExpired, json.JSONDecodeError, OSError) as exc:
-            _log.warning("gh pr checks error for %s#%d: %s", repo, pr_number, exc)
-            return []
+            return ModelGithubChecksQueryResult(exit_code=0)
+
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            error = f"malformed gh pr checks JSON: {exc.msg}"
+            _log.warning("%s for %s#%d", error, repo, pr_number)
+            return ModelGithubChecksQueryResult(
+                exit_code=result.returncode,
+                query_error=error,
+            )
+        if not isinstance(parsed, list):
+            error = "malformed gh pr checks JSON: expected a list"
+            _log.warning("%s for %s#%d", error, repo, pr_number)
+            return ModelGithubChecksQueryResult(
+                exit_code=result.returncode,
+                query_error=error,
+            )
+
+        try:
+            checks = tuple(ModelGithubCheckRow.model_validate(item) for item in parsed)
+        except ValidationError as exc:
+            first_error = exc.errors(include_url=False)[0]["msg"]
+            error = f"invalid gh pr checks row: {first_error}"
+            _log.warning("%s for %s#%d", error, repo, pr_number)
+            return ModelGithubChecksQueryResult(
+                exit_code=result.returncode,
+                query_error=error,
+            )
+
+        return ModelGithubChecksQueryResult(
+            checks=checks,
+            exit_code=result.returncode,
+        )
+
+    @staticmethod
+    def _command_error(returncode: int, stderr: str) -> str:
+        detail = stderr.strip() or "no stderr"
+        return f"gh pr checks exit {returncode}: {detail}"
 
 
 class PytestRunner:
@@ -451,12 +587,22 @@ class HandlerVerificationReceiptGenerator:
             },
         )
 
-    def _verify_ci(self, repo: str, pr_number: int) -> ModelCheckEvidence:
+    def _verify_ci(
+        self, repo: GithubRepositorySlug, pr_number: int
+    ) -> ModelCheckEvidence:
         """Verify CI checks via gh."""
         client = self._get_gh_client()
-        checks_data = client.get_pr_checks(repo, pr_number)
+        query = client.get_pr_checks(repo, pr_number)
 
-        if not checks_data:
+        if query.query_error is not None:
+            return ModelCheckEvidence(
+                dimension="ci_checks",
+                passed=False,
+                summary=query.query_error,
+                details={"query_error": query.query_error},
+            )
+
+        if not query.checks:
             return ModelCheckEvidence(
                 dimension="ci_checks",
                 passed=False,
@@ -464,36 +610,52 @@ class HandlerVerificationReceiptGenerator:
             )
 
         details: dict[str, str] = {}
-        failing: list[str] = []
-        for check in checks_data:
-            name = str(check.get("name", "unknown"))
-            conclusion = str(check.get("conclusion", "")).lower()
-            state = str(check.get("state", "")).lower()
-            details[name] = conclusion or state
-            if state == "completed" and conclusion not in (
-                "success",
-                "neutral",
-                "skipped",
-                "",
+        nonpassing: list[str] = []
+        for check in query.checks:
+            detail_key = self._unique_check_name(check.name, details)
+            details[detail_key] = f"{check.bucket.value}:{check.state.value}"
+            if check.bucket not in (
+                EnumGithubCheckBucket.PASS,
+                EnumGithubCheckBucket.SKIPPING,
             ):
-                failing.append(name)
-            elif state in ("pending", "in_progress", "queued"):
-                failing.append(f"{name} (pending)")
+                nonpassing.append(f"{check.name} ({check.bucket.value})")
 
-        if failing:
+        if nonpassing:
             return ModelCheckEvidence(
                 dimension="ci_checks",
                 passed=False,
-                summary=f"Failing/pending checks: {', '.join(failing)}",
+                summary=f"Failing/pending checks: {', '.join(nonpassing)}",
                 details=details,
+            )
+
+        if query.exit_code != 0:
+            error = (
+                f"gh pr checks exit {query.exit_code} contradicted its "
+                "all-pass/all-skipping buckets"
+            )
+            return ModelCheckEvidence(
+                dimension="ci_checks",
+                passed=False,
+                summary=error,
+                details={**details, "query_error": error},
             )
 
         return ModelCheckEvidence(
             dimension="ci_checks",
             passed=True,
-            summary=f"All {len(checks_data)} CI checks passed.",
+            summary=f"All {len(query.checks)} CI checks passed.",
             details=details,
         )
+
+    @staticmethod
+    def _unique_check_name(name: str, details: dict[str, str]) -> str:
+        """Preserve repeated hosted check rows in the receipt detail mapping."""
+        if name not in details:
+            return name
+        occurrence = 2
+        while f"{name} [{occurrence}]" in details:
+            occurrence += 1
+        return f"{name} [{occurrence}]"
 
 
 def _parse_pytest_per_file(stdout: str) -> list[ModelFileTestResult]:
@@ -548,9 +710,14 @@ def _parse_pytest_per_file(stdout: str) -> list[ModelFileTestResult]:
 
 
 __all__: list[str] = [
+    "EnumGithubCheckBucket",
+    "EnumGithubCheckState",
+    "GhClient",
     "GhClientProtocol",
     "HandlerVerificationReceiptGenerator",
     "MechanicalCheckRunner",
     "MechanicalCheckRunnerProtocol",
+    "ModelGithubCheckRow",
+    "ModelGithubChecksQueryResult",
     "PytestRunnerProtocol",
 ]

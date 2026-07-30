@@ -36,6 +36,8 @@ from omnimarket.events.verification import (
 )
 from omnimarket.nodes.node_verification_receipt_generator.handlers.handler_verification_receipt import (
     HandlerVerificationReceiptGenerator,
+    ModelGithubCheckRow,
+    ModelGithubChecksQueryResult,
 )
 
 _VERIFIER_IDENTITY = "node_verification_receipt_generator"
@@ -47,8 +49,11 @@ class _MockGhClient:
     def __init__(self, rows: list[dict[str, Any]]) -> None:
         self._rows = rows
 
-    def get_pr_checks(self, repo: str, pr_number: int) -> list[dict[str, Any]]:
-        return self._rows
+    def get_pr_checks(self, repo: str, pr_number: int) -> ModelGithubChecksQueryResult:
+        return ModelGithubChecksQueryResult(
+            checks=tuple(ModelGithubCheckRow.model_validate(row) for row in self._rows),
+            exit_code=0,
+        )
 
 
 class _MockPytestRunner:
@@ -85,12 +90,12 @@ class _MockMechanicalRunner:
 
 
 _GREEN_ROWS = [
-    {"name": "build", "state": "completed", "conclusion": "success"},
-    {"name": "tests", "state": "completed", "conclusion": "success"},
+    {"name": "build", "state": "SUCCESS", "bucket": "pass"},
+    {"name": "tests", "state": "SUCCESS", "bucket": "pass"},
 ]
 _RED_ROWS = [
-    {"name": "build", "state": "completed", "conclusion": "success"},
-    {"name": "deploy-gate", "state": "completed", "conclusion": "failure"},
+    {"name": "build", "state": "SUCCESS", "bucket": "pass"},
+    {"name": "deploy-gate", "state": "FAILURE", "bucket": "fail"},
 ]
 
 
@@ -109,7 +114,7 @@ def _request(**overrides: Any) -> ModelVerificationReceiptRequest:
 def test_receipt_ci_all_green_passes() -> None:
     handler = HandlerVerificationReceiptGenerator(gh_client=_MockGhClient(_GREEN_ROWS))
     receipt = handler.handle(
-        _request(verify_ci=True, repo="omnimarket", pr_number=1471)
+        _request(verify_ci=True, repo="OmniNode-ai/omnimarket", pr_number=1471)
     )
     assert receipt.overall_pass is True
     assert receipt.verifier == _VERIFIER_IDENTITY
@@ -122,7 +127,7 @@ def test_receipt_ci_all_green_passes() -> None:
 def test_receipt_ci_red_rejected() -> None:
     handler = HandlerVerificationReceiptGenerator(gh_client=_MockGhClient(_RED_ROWS))
     receipt = handler.handle(
-        _request(verify_ci=True, repo="omnimarket", pr_number=1471)
+        _request(verify_ci=True, repo="OmniNode-ai/omnimarket", pr_number=1471)
     )
     assert receipt.overall_pass is False
     ci = next(c for c in receipt.checks if c.dimension == "ci_checks")
