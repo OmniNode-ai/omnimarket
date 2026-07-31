@@ -50,6 +50,15 @@ jobs:
       - name: Checkout omnimarket
         uses: actions/checkout@v7
 
+      # OMN-13953: this job runs on the persistent self-hosted workspace for
+      # trusted events (see runs-on above). The runner job-started hook resets
+      # only _work/<repo>/<repo>, NOT its parent, so the ../ sibling clones below
+      # survive into the next job on the same runner and make `git clone` fail
+      # with exit 128 ("destination path already exists"). Clean first so the
+      # clone step is idempotent on a reused workspace.
+      - name: Clean stale dependency clones
+        run: rm -rf ../omnibase_core ../omnibase_compat
+
       # OMN-13735: the validator landed on omnibase_core dev in #1360.
       - name: Clone omnibase_core (for new validator)
         run: git clone --depth=1 --branch dev https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
