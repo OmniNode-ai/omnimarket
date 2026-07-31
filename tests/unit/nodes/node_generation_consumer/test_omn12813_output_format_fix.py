@@ -31,6 +31,7 @@ from omnimarket.inference.protocol_config import (
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
     _DEFAULT_SYSTEM_PROMPT,
     HandlerGenerationConsumer,
+    _GenerationCallOutcome,
     _validate_generation,
 )
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
@@ -440,9 +441,12 @@ async def test_handler_applies_inference_protocol_to_system_prompt() -> None:
         self: Any,
         task_description: str,
         attempt: int,
+        *,
+        route: Any,
         previous_errors: list[str] | None = None,
         context_pack: str = "",
-    ) -> tuple[str, int, int, EnumUsageSource]:
+    ) -> _GenerationCallOutcome:
+        del route
         # Replicate exactly what the real _call_llm does before the LLM call,
         # then capture the post-apply_inference_protocol prompts.
         user_content = f"Task: {task_description}"
@@ -467,7 +471,12 @@ async def test_handler_applies_inference_protocol_to_system_prompt() -> None:
         )
         system_prompts_seen.append(sys_p)
         user_prompts_seen.append(usr_p)
-        return _VALID_LLM_RESPONSE, 10, 20, EnumUsageSource.MEASURED
+        return _GenerationCallOutcome(
+            raw_output=_VALID_LLM_RESPONSE,
+            input_tokens=10,
+            output_tokens=20,
+            usage_source=EnumUsageSource.MEASURED,
+        )
 
     HandlerGenerationConsumer._call_llm = _patched_call_llm  # type: ignore[method-assign]
     try:

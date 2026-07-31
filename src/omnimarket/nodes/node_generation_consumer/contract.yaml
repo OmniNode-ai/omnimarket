@@ -122,6 +122,14 @@ outputs:
   context_pack_hash:
     type: str
     description: "Echoed context_pack_hash from the command for scorer correlation"
+  failure_class:
+    type: str
+    description: "Optional typed final-attempt routing failure; endpoint_unavailable when routing cannot produce a callable endpoint"
+    required: false
+  failure_reason:
+    type: str
+    description: "Original final-attempt inference, routing, or validation failure; empty on success"
+    required: false
 
 # OMN-15469: HandlerGenerationConsumer returns ModelGenerationBenchmark; the
 # definition-B result applier is the ONE terminal producer. The handler must not
@@ -182,10 +190,10 @@ event_bus:
 published_events:
   - event_type: GenerationCompleted
     topic: onex.evt.omnimarket.node-generation-completed.v1
-    description: "Contract-valid generation benchmark returned to definition-B wiring."
+    description: "Business-success generation benchmark returned to definition-B wiring."
   - event_type: GenerationFailed
     topic: onex.evt.omnimarket.node-generation-failed.v1
-    description: "Contract-invalid generation benchmark returned to definition-B wiring."
+    description: "Business-failure benchmark; contract shape may still be valid when a checked semantic or corpus gate failed."
 
 model_routing:
   # OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are

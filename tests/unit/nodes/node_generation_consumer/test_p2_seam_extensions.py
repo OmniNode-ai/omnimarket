@@ -27,6 +27,7 @@ from omnimarket.enums.enum_proof_class import EnumProofClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 from omnimarket.nodes.node_generation_consumer.handlers.handler_generation_consumer import (
     HandlerGenerationConsumer,
+    _GenerationCallOutcome,
 )
 from omnimarket.nodes.node_generation_consumer.models.model_attempt_reduction import (
     EnumFailureStage,
@@ -243,15 +244,23 @@ async def test_handler_prepends_context_pack_to_prompt() -> None:
         self: Any,
         task_description: str,
         attempt: int,
+        *,
+        route: Any,
         previous_errors: list[str] | None = None,
         context_pack: str = "",
-    ) -> tuple[str, int, int, EnumUsageSource]:
+    ) -> _GenerationCallOutcome:
+        del route
         # Build expected user_content the same way the handler does.
         user_content = f"Task: {task_description}"
         if context_pack:
             user_content = f"Context:\n{context_pack}\n\n{user_content}"
         prompt_seen.append(user_content)
-        return _VALID_LLM_RESPONSE, 10, 20, EnumUsageSource.MEASURED
+        return _GenerationCallOutcome(
+            raw_output=_VALID_LLM_RESPONSE,
+            input_tokens=10,
+            output_tokens=20,
+            usage_source=EnumUsageSource.MEASURED,
+        )
 
     HandlerGenerationConsumer._call_llm = _patched_call_llm  # type: ignore[method-assign]
     try:
@@ -283,14 +292,22 @@ async def test_handler_no_context_pack_omits_context_prefix() -> None:
         self: Any,
         task_description: str,
         attempt: int,
+        *,
+        route: Any,
         previous_errors: list[str] | None = None,
         context_pack: str = "",
-    ) -> tuple[str, int, int, EnumUsageSource]:
+    ) -> _GenerationCallOutcome:
+        del route
         user_content = f"Task: {task_description}"
         if context_pack:
             user_content = f"Context:\n{context_pack}\n\n{user_content}"
         prompt_seen.append(user_content)
-        return _VALID_LLM_RESPONSE, 10, 20, EnumUsageSource.MEASURED
+        return _GenerationCallOutcome(
+            raw_output=_VALID_LLM_RESPONSE,
+            input_tokens=10,
+            output_tokens=20,
+            usage_source=EnumUsageSource.MEASURED,
+        )
 
     HandlerGenerationConsumer._call_llm = _patched_call_llm  # type: ignore[method-assign]
     try:
