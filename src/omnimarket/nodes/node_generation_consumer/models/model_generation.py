@@ -10,7 +10,9 @@ so existing producers and consumers are unaffected.  The emitter
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal, Self
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_usage_source import EnumUsageSource
 
@@ -20,9 +22,13 @@ __all__ = [
     "ModelCorpusFixture",
     "ModelGenerationAttempt",
     "ModelGenerationBenchmark",
+    "ModelGenerationCompleted",
+    "ModelGenerationFailed",
     "ModelNodeDeploy",
     "ModelNodeGenerationRequest",
     "ModelValidatorCorpus",
+    "generation_benchmark_succeeded",
+    "generation_terminal_from_benchmark",
 ]
 
 
@@ -448,6 +454,74 @@ class ModelGenerationBenchmark(BaseModel):
             "called."
         ),
     )
+
+
+def generation_benchmark_succeeded(benchmark: ModelGenerationBenchmark) -> bool:
+    """Resolve the run verdict from its typed contract and gate evidence."""
+    semantic_failed = benchmark.semantic_checked and not benchmark.semantic_passed
+    corpus_failed = benchmark.corpus_checked and not benchmark.corpus_passed
+    return benchmark.contract_passed and not semantic_failed and not corpus_failed
+
+
+class ModelGenerationCompleted(ModelGenerationBenchmark):
+    """Business-success terminal routed to node-generation-completed.
+
+    Contract validity is necessary but not sufficient: any checked semantic or
+    corpus failure makes the overall generation run a failed terminal while the
+    payload still preserves ``contract_passed=true`` as honest shape evidence.
+    """
+
+    contract_passed: Literal[True] = Field(
+        default=True,
+        description="Final output passed contract validation",
+    )
+
+    @model_validator(mode="after")
+    def validate_completed_generation(self) -> Self:
+        """Keep the completed class/topic consistent with the composite verdict."""
+        if not generation_benchmark_succeeded(self):
+            msg = (
+                "completed generation requires contract_passed with no checked "
+                "semantic/corpus failure"
+            )
+            raise ValueError(msg)
+        return self
+
+
+class ModelGenerationFailed(ModelGenerationBenchmark):
+    """Business-failure terminal routed to node-generation-failed.
+
+    A failed terminal may carry ``contract_passed=true`` when a checked semantic
+    or corpus gate rejected the otherwise well-shaped generated artifact.
+    """
+
+    @model_validator(mode="after")
+    def validate_failed_generation(self) -> Self:
+        """Keep the failed class/topic consistent with the composite verdict."""
+        if generation_benchmark_succeeded(self):
+            msg = (
+                "failed generation requires contract_passed=false or a checked "
+                "semantic/corpus failure"
+            )
+            raise ValueError(msg)
+        return self
+
+
+def generation_terminal_from_benchmark(
+    benchmark: ModelGenerationBenchmark,
+) -> ModelGenerationCompleted | ModelGenerationFailed:
+    """Return the typed terminal variant for a canonical benchmark.
+
+    This pure boundary conversion leaves the persisted base benchmark unchanged.
+    Both variants serialize to the same flat payload consumed by projections;
+    only their Python class identity selects the contract-owned terminal topic.
+    """
+    terminal_type = (
+        ModelGenerationCompleted
+        if generation_benchmark_succeeded(benchmark)
+        else ModelGenerationFailed
+    )
+    return terminal_type.model_validate(benchmark.model_dump(mode="python"))
 
 
 class ModelNodeDeploy(BaseModel):
