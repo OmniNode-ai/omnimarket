@@ -11,13 +11,19 @@ directory`` -- before any real check executes.
 
 Live instances this guard is derived from (both on omnimarket@dev):
 
-* ``validator-fsm-handler-drift.yml`` -- 39 consecutive ``push`` failures from
-  2026-07-29T02:42Z (run 30417551946) through 2026-07-31T02:22Z (run
-  30598791019). ``pull_request`` runs were unaffected because the runner
-  selector sends them to ephemeral ``ubuntu-latest``, which is why the red was
-  invisible on PRs and only ever showed up on the post-merge trunk signal.
-* ``delegation-regression-nightly.yml`` -- 8 consecutive ``schedule`` failures
-  (run 30526140685 and predecessors).
+* ``validator-fsm-handler-drift.yml`` -- 39 consecutive non-green ``push`` runs
+  (38 ``failure`` + 1 ``cancelled``) from 2026-07-29T02:42Z (run 30417551946)
+  through 2026-07-31T02:22Z (run 30598791019). ``pull_request`` runs were
+  unaffected because the runner selector sends them to ephemeral
+  ``ubuntu-latest``, which is why the red was invisible on PRs and only ever
+  showed up on the post-merge trunk signal. Now fixed: the first post-merge
+  ``push`` run (30606643966, merge commit 0f459034) is green.
+* ``delegation-regression-nightly.yml`` -- 21 of its 37 ``schedule`` runs died
+  at this class, most recently a 5-run streak 2026-07-26..2026-07-30 (run
+  30526140685 and predecessors). That workflow has never had a green run, but
+  the other 15 failures are a *different*, still-open blocker at a later step
+  (missing ``STABILITY_TEST_POSTGRES_PASSWORD``, tracked in OMN-14256), so
+  clearing this class does not by itself turn that nightly green.
 
 ``plugin-compat-gate.yml`` already carried the fix (a ``rm -rf`` cleanup step
 added in de84a5f3) and stayed green throughout; this test generalizes that
