@@ -8,7 +8,8 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Generates ONEX compute nodes from natural language descriptions.
-  Validates contract + syntax + security, retries on failure, emits benchmark metrics.
+  Validates contract + syntax + security, retries on failure, and returns benchmark
+  metrics for definition-B runtime wiring to publish as the terminal event.
   On success, emits a registration event so ServiceMCPToolSync picks up the new tool.
 
 handler_routing:
@@ -122,6 +123,9 @@ outputs:
     type: str
     description: "Echoed context_pack_hash from the command for scorer correlation"
 
+# OMN-15469: HandlerGenerationConsumer returns ModelGenerationBenchmark; the
+# definition-B result applier is the ONE terminal producer. The handler must not
+# self-publish this topic in addition to returning the same benchmark.
 terminal_event: onex.evt.omnimarket.node-generation-completed.v1
 
 # The dashboard and other external clients dispatch this node through the
