@@ -22,7 +22,7 @@ handler_routing:
     - handler:
         name: HandlerProjectionTraces
         module: omnimarket.nodes.node_projection_traces.handlers.handler_projection_traces
-      event_model: ModelTraceProjectionEvent
+      event_model: omnimarket.nodes.node_projection_traces.models.model_trace_event.ModelTraceProjectionEvent
 
 idempotency:
   enabled: true

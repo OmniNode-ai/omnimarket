@@ -30,7 +30,7 @@ handler_routing:
         name: InstructionEvalProjectionRunner
         module: omnimarket.nodes.node_projection_instruction_eval.handlers.handler_instruction_eval
       handler_module: omnimarket.nodes.node_projection_instruction_eval.handlers.handler_instruction_eval
-      event_model: ModelInstructionEvalProjectionEvent
+      event_model: omnimarket.nodes.node_projection_instruction_eval.models.model_instruction_eval_event.ModelInstructionEvalProjectionEvent
 
 idempotency:
   enabled: true

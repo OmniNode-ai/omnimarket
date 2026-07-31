@@ -22,7 +22,7 @@ handler_routing:
     - handler:
         name: HandlerProjectionCostSummary
         module: omnimarket.nodes.node_projection_cost_summary.handlers.handler_projection_cost_summary
-      event_model: ModelCostSummaryProjectionEvent
+      event_model: omnimarket.nodes.node_projection_cost_summary.models.model_cost_summary_event.ModelCostSummaryProjectionEvent
 
 idempotency:
   enabled: true

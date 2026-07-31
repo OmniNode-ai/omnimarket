@@ -39,8 +39,13 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import pytest
+from omnibase_core.enums.enum_database_schema_domain import EnumDatabaseSchemaDomain
+from omnibase_core.models.contracts.subcontracts.model_db_table_declaration import (
+    ModelDbTableDeclaration,
+)
 
 from omnimarket.events.topics import RENDERER_CAPABILITY_DECLARED_TOPIC_V1
 from omnimarket.nodes.node_renderer_capability_projection.handlers.handler_renderer_capability_projection import (
@@ -50,6 +55,57 @@ from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 OMNIDASH_ANALYTICS_DB_URL_ENV = "OMNIDASH_ANALYTICS_DB_URL"
 SNAPSHOT_TOPIC = "onex.evt.omnimarket.renderer-capability-projection-snapshot.v1"
+
+
+def _projection_target(handler_wiring: Any) -> object:
+    table = ModelDbTableDeclaration(
+        name=TABLE,
+        database_ref="application",
+        schema="omninode_internal",
+        migration="0001_create_renderer_capability_projection.sql",
+        access="write",
+        role="projection",
+    )
+    table_target_kwargs: dict[str, object] = {
+        "table": table,
+        "database_ref": "application",
+        "physical_database": "omnidash_analytics",
+        "schema": "omninode_internal",
+        "domain": EnumDatabaseSchemaDomain.TENANT,
+    }
+    if hasattr(handler_wiring, "ProjectionDatabaseBindingTarget"):
+        binding = handler_wiring.ProjectionDatabaseBindingTarget(
+            binding_ref="omnidash_analytics_projection",
+            database_ref="application",
+            physical_database="omnidash_analytics",
+            principal="omnidash_analytics_projection",
+            dsn_env=OMNIDASH_ANALYTICS_DB_URL_ENV,
+        )
+        table_target_kwargs["read_binding"] = None
+        table_target_kwargs["write_binding"] = binding
+    table_target = handler_wiring.ProjectionTableTarget(**table_target_kwargs)
+
+    target_kwargs: dict[str, object] = {
+        "tables": (table,),
+        "table_targets": (table_target,),
+        "physical_database": "omnidash_analytics",
+    }
+    if "db_url_env" in handler_wiring.ProjectionDatabaseTarget.__annotations__:
+        target_kwargs["db_url_env"] = OMNIDASH_ANALYTICS_DB_URL_ENV
+    return handler_wiring.ProjectionDatabaseTarget(**target_kwargs)
+
+
+def _patch_projection_adapter(
+    handler_wiring: Any,
+    monkeypatch: pytest.MonkeyPatch,
+    db: InmemoryDatabaseAdapter,
+) -> None:
+    builder_name = (
+        "_build_projection_db_adapter"
+        if hasattr(handler_wiring, "_build_projection_db_adapter")
+        else "_build_sync_db_adapter"
+    )
+    monkeypatch.setattr(handler_wiring, builder_name, lambda *_args, **_kwargs: db)
 
 
 def _runtime_command_wire_bytes(
@@ -125,20 +181,11 @@ class TestRendererCapabilityLiveDispatchMaterializes:
         # OMNIDASH_ANALYTICS_DB_URL. Patch the builder to hand back the in-memory
         # adapter and set the env so the callback does not no-op on a missing DSN.
         monkeypatch.setenv(OMNIDASH_ANALYTICS_DB_URL_ENV, "postgresql://test/db")
-        monkeypatch.setattr(handler_wiring, "_build_sync_db_adapter", lambda _dsn: db)
+        _patch_projection_adapter(handler_wiring, monkeypatch, db)
 
         callback = handler_wiring._make_projection_dispatch_callback(
             HandlerRendererCapabilityProjection(),
-            db_tables=[
-                {
-                    "name": TABLE,
-                    "database_ref": "application",
-                    "schema": "omninode_internal",
-                    "migration": "0001_create_renderer_capability_projection.sql",
-                    "access": "write",
-                    "role": "projection",
-                }
-            ],
+            target=_projection_target(handler_wiring),
             subscribe_topics=(RENDERER_CAPABILITY_DECLARED_TOPIC_V1,),
         )
 
@@ -177,20 +224,11 @@ class TestRendererCapabilityLiveDispatchMaterializes:
 
         db = InmemoryDatabaseAdapter()
         monkeypatch.setenv(OMNIDASH_ANALYTICS_DB_URL_ENV, "postgresql://test/db")
-        monkeypatch.setattr(handler_wiring, "_build_sync_db_adapter", lambda _dsn: db)
+        _patch_projection_adapter(handler_wiring, monkeypatch, db)
 
         callback = handler_wiring._make_projection_dispatch_callback(
             HandlerRendererCapabilityProjection(),
-            db_tables=[
-                {
-                    "name": TABLE,
-                    "database_ref": "application",
-                    "schema": "omninode_internal",
-                    "migration": "0001_create_renderer_capability_projection.sql",
-                    "access": "write",
-                    "role": "projection",
-                }
-            ],
+            target=_projection_target(handler_wiring),
             subscribe_topics=(RENDERER_CAPABILITY_DECLARED_TOPIC_V1,),
         )
 

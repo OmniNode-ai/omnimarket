@@ -29,7 +29,7 @@ handler_routing:
         name: CostByRepoProjectionRunner
         module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_cost_by_repo
       handler_module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_cost_by_repo
-      event_model: ModelCostByRepoProjectionEvent
+      event_model: omnimarket.nodes.node_projection_cost_by_repo.models.model_cost_by_repo_event.ModelCostByRepoProjectionEvent
 
 idempotency:
   enabled: true

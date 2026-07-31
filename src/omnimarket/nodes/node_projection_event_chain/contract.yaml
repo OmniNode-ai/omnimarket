@@ -24,7 +24,7 @@ handler_routing:
     - handler:
         name: HandlerProjectionEventChain
         module: omnimarket.nodes.node_projection_event_chain.handlers.handler_projection_event_chain
-      event_model: ModelEventChainProjectionEvent
+      event_model: omnimarket.nodes.node_projection_event_chain.models.model_event_chain_event.ModelEventChainProjectionEvent
 
 idempotency:
   enabled: true

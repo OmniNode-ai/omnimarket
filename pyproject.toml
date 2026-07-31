@@ -596,13 +596,13 @@ omnimarket = "omnimarket.nodes"
 omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "ac1743877cebac73556be2e5a6d8dc4a3e05da98" }  # raw-override-ok: OMN-15423
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
-# OMN-15418: re-pinned from 77144f83 to the exact companion infra head.
-# 9e9e62c3 retains the OMN-14779 replay seam and graph repairs, then adds strict
-# registry consumption for typed db_io, canonical handler_routing/event_bus,
-# checked-in database-topology composition, and fail-closed domain selection.
+# OMN-15423 rebase: re-pinned from 77144f83 to protected infra dev b6bd79c3,
+# which contains the OMN-15418 companion squash plus later domain-enforcement,
+# migration-fixture, and test-isolation fixes required by the current Market
+# gates. The old exact companion head 9e9e62c3 is reachable from this dev tip.
 # REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing this
 # commit, delete this override (the range pin above already covers it) and `uv lock`.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "9e9e62c3177f568b7e5110f653ee4be6dcda965c" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "b6bd79c34169b62b664d58f4419a72b3d31bc07c" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 

@@ -6,7 +6,7 @@ requires-python = "==3.12.*"
 overrides = [
     { name = "omnibase-compat", specifier = "==0.5.6" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=ac1743877cebac73556be2e5a6d8dc4a3e05da98" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=9e9e62c3177f568b7e5110f653ee4be6dcda965c" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=b6bd79c34169b62b664d58f4419a72b3d31bc07c" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
 ]
 
@@ -1634,7 +1634,7 @@ dependencies = [
 [[package]]
 name = "omnibase-infra"
 version = "0.38.4"
-source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=9e9e62c3177f568b7e5110f653ee4be6dcda965c#9e9e62c3177f568b7e5110f653ee4be6dcda965c" }
+source = { git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=b6bd79c34169b62b664d58f4419a72b3d31bc07c#b6bd79c34169b62b664d58f4419a72b3d31bc07c" }
 dependencies = [
     { name = "a2a-sdk" },
     { name = "aiofiles" },
@@ -1772,7 +1772,7 @@ requires-dist = [
     { name = "jsonschema", specifier = ">=4.18.0" },
     { name = "omnibase-compat", specifier = "==0.5.6" },
     { name = "omnibase-core", git = "https://github.com/OmniNode-ai/omnibase_core.git?rev=ac1743877cebac73556be2e5a6d8dc4a3e05da98" },
-    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=9e9e62c3177f568b7e5110f653ee4be6dcda965c" },
+    { name = "omnibase-infra", git = "https://github.com/OmniNode-ai/omnibase_infra.git?rev=b6bd79c34169b62b664d58f4419a72b3d31bc07c" },
     { name = "omnibase-spi", specifier = ">=0.23.0,<0.24.0" },
     { name = "omninode-memory", git = "https://github.com/OmniNode-ai/omnimemory.git?rev=887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" },
     { name = "onex-change-control", git = "https://github.com/OmniNode-ai/onex_change_control.git?rev=dd2620d18001495b8d0f493b421b38399e9aab4b" },

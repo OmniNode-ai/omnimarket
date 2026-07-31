@@ -34,7 +34,7 @@ handler_routing:
         name: SkillExecutionsProjectionRunner
         module: omnimarket.nodes.node_projection_skill_executions.handlers.handler_skill_executions
       handler_module: omnimarket.nodes.node_projection_skill_executions.handlers.handler_skill_executions
-      event_model: ModelSkillExecutionProjectionEvent
+      event_model: omnimarket.nodes.node_projection_skill_executions.models.model_skill_executions_event.ModelSkillExecutionProjectionEvent
 
 idempotency:
   enabled: true
