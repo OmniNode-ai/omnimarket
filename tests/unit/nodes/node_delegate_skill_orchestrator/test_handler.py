@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import inspect
 from inspect import Parameter
+from typing import Literal, cast
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
@@ -13,10 +14,17 @@ import pytest
 from omnibase_core.enums.enum_handler_resolution_outcome import (
     EnumHandlerResolutionOutcome,
 )
+from omnibase_core.models.delegation.wire import (
+    ModelDelegationCompleted,
+    ModelDelegationFailed,
+)
 from omnibase_core.models.resolver.model_handler_resolver_context import (
     ModelHandlerResolverContext,
 )
 from omnibase_core.services.service_handler_resolver import ServiceHandlerResolver
+from omnibase_infra.runtime.service_delegation_dispatch_port import (
+    _normalize_result_payload,
+)
 
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
@@ -51,6 +59,55 @@ def mock_dispatch_port() -> AsyncMock:
 @pytest.fixture
 def event_bus() -> object:
     return object()
+
+
+def _normalized_canonical_terminal(
+    *,
+    status: Literal["completed", "failed", "timeout"] = "completed",
+    quality_passed: bool = True,
+    cumulative_attempt_cost: float = 0.003,
+    final_attempt_cost: float = 0.001,
+    prompt_tokens: int = 1_000,
+    completion_tokens: int = 500,
+    cumulative_input_tokens: int = 1_000,
+    cumulative_output_tokens: int = 500,
+    nested: bool = False,
+) -> dict[str, object]:
+    """Drive the canonical Core terminal through Infra's production normalizer."""
+    terminal_type = (
+        ModelDelegationCompleted if status == "completed" else ModelDelegationFailed
+    )
+    terminal = terminal_type(
+        correlation_id=uuid4(),
+        task_type="test",
+        model_used="gemini-2.5-flash",
+        endpoint_url="https://generativelanguage.googleapis.com/v1beta/openai",
+        content="metered answer" if quality_passed else "unaccepted output",
+        quality_passed=quality_passed,
+        quality_score=1.0 if quality_passed else 0.0,
+        latency_ms=50,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        total_tokens=prompt_tokens + completion_tokens,
+        fallback_to_claude=False,
+        cumulative_attempt_cost=cumulative_attempt_cost,
+        cumulative_input_tokens=cumulative_input_tokens,
+        cumulative_output_tokens=cumulative_output_tokens,
+        final_attempt_cost=final_attempt_cost,
+        cost_tier_name="cheap_cloud",
+        failure_reason="quality gate rejected output" if not quality_passed else "",
+    )
+    payload: object = terminal.model_dump(mode="json")
+    if nested:
+        payload = {"payload": payload}
+    return cast(
+        dict[str, object],
+        _normalize_result_payload(
+            status=status,
+            payload=payload,
+            error_message=None,
+        ),
+    )
 
 
 @pytest.mark.unit
@@ -435,6 +492,203 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
 
 
 @pytest.mark.unit
+async def test_handler_subtracts_measured_actual_cost_from_fallback_savings() -> None:
+    """The runtime-port path must not report counterfactual-minus-zero savings."""
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "metered cloud result",
+        "model_used": "gemini-2.5-flash",
+        "quality_passed": True,
+        "prompt_tokens": 1_000,
+        "completion_tokens": 500,
+        "cost_usd": 0.003,
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+
+    response = await handler.handle(request)
+    counterfactual = estimate_baseline_cost_usd(
+        prompt_tokens=1_000,
+        completion_tokens=500,
+    )
+
+    assert response.metrics.cost_usd == pytest.approx(0.003)
+    assert response.metrics.cost_savings_usd == pytest.approx(
+        round(max(counterfactual - 0.003, 0.0), 6)
+    )
+    assert response.metrics.cost_savings_usd != pytest.approx(round(counterfactual, 6))
+
+
+@pytest.mark.unit
+async def test_handler_never_reports_negative_fallback_savings() -> None:
+    """A measured actual above the counterfactual floors truthful savings at zero."""
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "expensive result",
+        "model_used": "gemini-2.5-flash",
+        "quality_passed": True,
+        "prompt_tokens": 1,
+        "completion_tokens": 1,
+        "cost_usd": 1.0,
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+
+    response = await handler.handle(request)
+
+    assert response.metrics.cost_usd == pytest.approx(1.0)
+    assert response.metrics.cost_savings_usd == pytest.approx(0.0)
+
+
+@pytest.mark.unit
+async def test_handler_maps_cumulative_cost_through_infra_normalizer() -> None:
+    """Canonical cumulative spend must survive the real runtime-normalizer seam."""
+    normalized = _normalized_canonical_terminal(nested=True)
+    assert normalized["cost_usd"] == pytest.approx(0.003)
+
+    port = AsyncMock()
+    port.dispatch.return_value = normalized
+    response = await HandlerDelegateSkill(dispatch_port=port).handle(
+        ModelDelegateSkillRequest(
+            prompt="Test",
+            task_type="test",
+            source="claude-code",
+        )
+    )
+    counterfactual = estimate_baseline_cost_usd(
+        prompt_tokens=1_000,
+        completion_tokens=500,
+    )
+
+    assert response.metrics.cost_usd == pytest.approx(0.003)
+    assert response.metrics.cost_savings_usd == pytest.approx(
+        round(max(counterfactual - 0.003, 0.0), 6)
+    )
+
+
+@pytest.mark.unit
+async def test_handler_uses_cumulative_counterfactual_tokens() -> None:
+    """Response savings must match the canonical projection's cumulative basis."""
+    normalized = _normalized_canonical_terminal(
+        cumulative_attempt_cost=0.003,
+        final_attempt_cost=0.001,
+        prompt_tokens=1_000,
+        completion_tokens=500,
+        cumulative_input_tokens=2_000,
+        cumulative_output_tokens=1_000,
+    )
+
+    port = AsyncMock()
+    port.dispatch.return_value = normalized
+    response = await HandlerDelegateSkill(dispatch_port=port).handle(
+        ModelDelegateSkillRequest(
+            prompt="Test",
+            task_type="test",
+            source="claude-code",
+        )
+    )
+
+    assert response.metrics.cost_usd == pytest.approx(0.003)
+    assert response.metrics.cost_savings_usd == pytest.approx(0.102)
+    assert response.metrics.frontier_costs_usd[DEFAULT_BASELINE_MODEL] == (
+        pytest.approx(0.105)
+    )
+    counterfactual = response.metrics.premium_counterfactual
+    assert counterfactual is not None
+    assert counterfactual.tokens_in == 2_000
+    assert counterfactual.tokens_out == 1_000
+    assert float(counterfactual.counterfactual_cost_usd) == pytest.approx(0.105)
+
+
+@pytest.mark.unit
+async def test_handler_preserves_current_infra_max_attempt_cost_invariant() -> None:
+    """Market must not downgrade the cost already normalized by Infra #2581."""
+    normalized = _normalized_canonical_terminal(
+        cumulative_attempt_cost=0.001,
+        final_attempt_cost=0.003,
+    )
+    # Exact output invariant of pinned Infra #2581's production normalizer:
+    # canonical attempt fields remain present and cost_usd is their maximum.
+    assert normalized["cost_usd"] == pytest.approx(0.003)
+
+    port = AsyncMock()
+    port.dispatch.return_value = normalized
+    response = await HandlerDelegateSkill(dispatch_port=port).handle(
+        ModelDelegateSkillRequest(
+            prompt="Test",
+            task_type="test",
+            source="claude-code",
+        )
+    )
+
+    assert response.metrics.cost_usd == pytest.approx(0.003)
+    assert response.metrics.cost_savings_usd == pytest.approx(0.0495)
+
+
+@pytest.mark.unit
+async def test_handler_falls_back_to_final_cost_through_infra_normalizer() -> None:
+    """Older canonical terminals can carry final cost while cumulative is zero."""
+    normalized = _normalized_canonical_terminal(
+        cumulative_attempt_cost=0.0,
+    )
+
+    port = AsyncMock()
+    port.dispatch.return_value = normalized
+    response = await HandlerDelegateSkill(dispatch_port=port).handle(
+        ModelDelegateSkillRequest(
+            prompt="Test",
+            task_type="test",
+            source="claude-code",
+        )
+    )
+
+    assert response.metrics.cost_usd == pytest.approx(0.001)
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("status", "quality_passed"),
+    [
+        ("failed", False),
+        ("timeout", False),
+    ],
+)
+async def test_handler_preserves_failed_cost_but_never_reports_failure_savings(
+    status: Literal["completed", "failed", "timeout"],
+    quality_passed: bool,
+) -> None:
+    """Failure truth wins over both fallback and producer-reported savings."""
+    normalized = _normalized_canonical_terminal(
+        status=status,
+        quality_passed=quality_passed,
+    )
+    normalized["cost_savings_usd"] = 99.0
+
+    port = AsyncMock()
+    port.dispatch.return_value = normalized
+    response = await HandlerDelegateSkill(dispatch_port=port).handle(
+        ModelDelegateSkillRequest(
+            prompt="Test",
+            task_type="test",
+            source="claude-code",
+        )
+    )
+
+    assert response.metrics.cost_usd == pytest.approx(0.003)
+    assert response.metrics.cost_savings_usd == pytest.approx(0.0)
+
+
+@pytest.mark.unit
 async def test_handler_maps_scored_failed_delegation_terminal() -> None:
     port = AsyncMock()
     port.dispatch.return_value = {
@@ -448,6 +702,8 @@ async def test_handler_maps_scored_failed_delegation_terminal() -> None:
         "total_tokens": 85,
         "tokens_to_compliance": 85,
         "compliance_attempts": 1,
+        "cumulative_attempt_cost": 0.0008,
+        "final_attempt_cost": 0.0008,
         "failure_reason": "TASK_MISMATCH",
     }
     handler = HandlerDelegateSkill(object(), dispatch_port=port)
@@ -465,9 +721,8 @@ async def test_handler_maps_scored_failed_delegation_terminal() -> None:
     assert response.metrics.total_tokens == 85
     assert response.metrics.tokens_to_compliance == 85
     assert response.metrics.compliance_attempts == 1
-    assert response.metrics.cost_savings_usd == round(
-        estimate_baseline_cost_usd(prompt_tokens=68, completion_tokens=17), 6
-    )
+    assert response.metrics.cost_usd == pytest.approx(0.0008)
+    assert response.metrics.cost_savings_usd == pytest.approx(0.0)
 
 
 @pytest.mark.unit

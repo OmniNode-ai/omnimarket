@@ -131,25 +131,66 @@ def _as_str_list(value: object) -> list[str]:
     return []
 
 
-def _estimate_claude_cost_savings(result: dict[str, object]) -> float:
-    prompt_tokens = _as_int(result.get("input_tokens", result.get("prompt_tokens", 0)))
-    completion_tokens = _as_int(
-        result.get("output_tokens", result.get("completion_tokens", 0))
+def _measured_cost_usd(result: dict[str, object]) -> float:
+    """Resolve total metered spend from canonical and compatibility shapes.
+
+    Match the Infra runtime normalizer's canonical invariant exactly: when either
+    attempt-cost field is present and non-negative, actual spend is the maximum of
+    ``cumulative_attempt_cost`` and ``final_attempt_cost``.  This prevents a
+    malformed/defaulted cumulative value from understating the final attempt and
+    prevents a stale compatibility ``cost_usd`` from overriding canonical truth.
+    Local/legacy ports that carry neither canonical field still use ``cost_usd``.
+    """
+    canonical_costs: list[float] = []
+    for key in ("cumulative_attempt_cost", "final_attempt_cost"):
+        value = result.get(key)
+        if (
+            isinstance(value, int | float)
+            and not isinstance(value, bool)
+            and value >= 0.0
+        ):
+            canonical_costs.append(float(value))
+    if canonical_costs:
+        return max(canonical_costs)
+    return max(_as_float(result.get("cost_usd")), 0.0)
+
+
+def _counterfactual_token_counts(result: dict[str, object]) -> tuple[int, int]:
+    """Resolve the canonical cumulative token basis with compatibility fallbacks."""
+
+    def _resolve(
+        cumulative_key: str,
+        normalized_key: str,
+        legacy_key: str,
+    ) -> int:
+        cumulative = result.get(cumulative_key)
+        if not isinstance(cumulative, bool):
+            parsed_cumulative = _as_int(cumulative, default=-1)
+            if parsed_cumulative >= 0:
+                return parsed_cumulative
+        return _as_int(result.get(normalized_key, result.get(legacy_key, 0)))
+
+    return (
+        _resolve("cumulative_input_tokens", "input_tokens", "prompt_tokens"),
+        _resolve("cumulative_output_tokens", "output_tokens", "completion_tokens"),
     )
-    return round(
-        estimate_baseline_cost_usd(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-        ),
-        6,
+
+
+def _estimate_claude_cost_savings(
+    result: dict[str, object],
+    *,
+    actual_cost_usd: float,
+) -> float:
+    prompt_tokens, completion_tokens = _counterfactual_token_counts(result)
+    counterfactual_cost_usd = estimate_baseline_cost_usd(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
     )
+    return round(max(counterfactual_cost_usd - actual_cost_usd, 0.0), 6)
 
 
 def _frontier_cost_estimates(result: dict[str, object]) -> dict[str, float]:
-    prompt_tokens = _as_int(result.get("input_tokens", result.get("prompt_tokens", 0)))
-    completion_tokens = _as_int(
-        result.get("output_tokens", result.get("completion_tokens", 0))
-    )
+    prompt_tokens, completion_tokens = _counterfactual_token_counts(result)
     return estimate_frontier_costs_usd(
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
@@ -201,10 +242,7 @@ def _premium_counterfactual(
     result: dict[str, object],
 ) -> ModelPremiumCounterfactual | None:
     """Build the pinned premium counterfactual from measured tokens (OMN-13355)."""
-    prompt_tokens = _as_int(result.get("input_tokens", result.get("prompt_tokens", 0)))
-    completion_tokens = _as_int(
-        result.get("output_tokens", result.get("completion_tokens", 0))
-    )
+    prompt_tokens, completion_tokens = _counterfactual_token_counts(result)
     premium_model = str(
         result.get("model_cloud_baseline")
         or result.get("baseline_model")
@@ -238,6 +276,24 @@ def _response_from_result(
     quality_failures = _as_str_list(
         result.get("quality_gates_failed", result.get("failure_reason", ""))
     )
+    quality_gate_passed = bool(
+        result.get("quality_gate_passed", result.get("quality_passed", False))
+    )
+    actual_cost_usd = _measured_cost_usd(result)
+    cost_savings_usd = (
+        max(
+            _as_float(
+                result.get("cost_savings_usd"),
+                default=_estimate_claude_cost_savings(
+                    result,
+                    actual_cost_usd=actual_cost_usd,
+                ),
+            ),
+            0.0,
+        )
+        if status_value == "completed" and quality_gate_passed
+        else 0.0
+    )
     return ModelDelegateSkillResponse(
         status=status_value,
         correlation_id=request.correlation_id,
@@ -258,9 +314,7 @@ def _response_from_result(
         ),
         prompt_text=request.prompt,
         response=str(result.get("content", "")),
-        quality_gate_passed=bool(
-            result.get("quality_gate_passed", result.get("quality_passed", False))
-        ),
+        quality_gate_passed=quality_gate_passed,
         quality_score=_as_float(result.get("quality_score")),
         quality_gates_failed=quality_failures,
         error_message=error_message,
@@ -274,11 +328,8 @@ def _response_from_result(
             total_tokens=_as_int(result.get("total_tokens")),
             tokens_to_compliance=_as_int(result.get("tokens_to_compliance")),
             compliance_attempts=_as_int(result.get("compliance_attempts")),
-            cost_usd=_as_float(result.get("cost_usd")),
-            cost_savings_usd=_as_float(
-                result.get("cost_savings_usd"),
-                default=_estimate_claude_cost_savings(result),
-            ),
+            cost_usd=actual_cost_usd,
+            cost_savings_usd=cost_savings_usd,
             frontier_costs_usd=_frontier_cost_estimates(result),
             premium_counterfactual=_premium_counterfactual(result),
             latency_ms=_as_int(
