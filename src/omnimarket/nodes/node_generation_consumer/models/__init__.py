@@ -11,9 +11,12 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelCorpusFixture,
     ModelGenerationAttempt,
     ModelGenerationBenchmark,
+    ModelGenerationCompleted,
+    ModelGenerationFailed,
     ModelNodeDeploy,
     ModelNodeGenerationRequest,
     ModelValidatorCorpus,
+    generation_terminal_from_benchmark,
 )
 
 __all__ = [
@@ -23,7 +26,10 @@ __all__ = [
     "ModelCorpusFixture",
     "ModelGenerationAttempt",
     "ModelGenerationBenchmark",
+    "ModelGenerationCompleted",
+    "ModelGenerationFailed",
     "ModelNodeDeploy",
     "ModelNodeGenerationRequest",
     "ModelValidatorCorpus",
+    "generation_terminal_from_benchmark",
 ]

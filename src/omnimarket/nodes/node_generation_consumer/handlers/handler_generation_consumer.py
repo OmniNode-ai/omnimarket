@@ -78,7 +78,10 @@ from omnimarket.nodes.node_generation_consumer.corpus_acceptance import (
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelGenerationAttempt,
     ModelGenerationBenchmark,
+    ModelGenerationCompleted,
+    ModelGenerationFailed,
     ModelNodeGenerationRequest,
+    generation_terminal_from_benchmark,
 )
 from omnimarket.nodes.node_generation_consumer.semantic_validation import (
     ModelSemanticResult,
@@ -1246,7 +1249,7 @@ class HandlerGenerationConsumer:
 
     async def handle(
         self, command: ModelNodeGenerationRequest
-    ) -> ModelGenerationBenchmark:
+    ) -> ModelGenerationCompleted | ModelGenerationFailed:
         replayed = self._load_replay_benchmark(command.correlation_id)
         if replayed is not None:
             logger.info(
@@ -1255,7 +1258,7 @@ class HandlerGenerationConsumer:
                 "definition-B wiring owns terminal publication",
                 command.correlation_id,
             )
-            return replayed
+            return generation_terminal_from_benchmark(replayed)
 
         # OMN-13356: tool-reuse pre-check (bus-native). Before doing ANY LLM work,
         # ask the tool-reuse matcher whether an already-generated tool serves this
@@ -1270,7 +1273,7 @@ class HandlerGenerationConsumer:
             # publishes the one terminal event. A redelivery returns the stored
             # benchmark to that same wiring owner without repeating side effects.
             self._record_replay_benchmark(reuse_benchmark)
-            return reuse_benchmark
+            return generation_terminal_from_benchmark(reuse_benchmark)
 
         self._ensure_effect()
 
@@ -1569,11 +1572,12 @@ class HandlerGenerationConsumer:
         # OMN-15469: ``benchmark`` is the canonical definition-B terminal handoff.
         # Runtime wiring normalizes this returned BaseModel and its result applier
         # publishes it after all handler-owned deploy/registration side effects
-        # above finish. Keeping terminal publication at that ONE boundary prevents
-        # the handler + wiring pair from producing duplicate raw terminal events.
-        # On redelivery, the replay path returns the stored benchmark for the same
-        # wiring owner to publish without repeating those ancillary side effects.
-        return benchmark
+        # above finish. Keeping publication at that ONE boundary prevents the
+        # handler + wiring pair from double-publishing within one dispatch. An
+        # at-least-once redelivery still republishes the same deterministic
+        # envelope id; physical HWM exactly-once requires the OMN-15518
+        # outbox/Kafka-EOS boundary. Replay avoids repeating ancillary side effects.
+        return generation_terminal_from_benchmark(benchmark)
 
     # ------------------------------------------------------------------ #
     # OMN-13356: tool-reuse short-circuit (bus-native)

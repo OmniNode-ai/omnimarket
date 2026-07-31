@@ -176,6 +176,17 @@ event_bus:
     # above). A MATCHED verdict short-circuits generation; NO_MATCH proceeds.
     - onex.cmd.omnimarket.tool-reuse-match-requested.v1
 
+# OMN-15469: definition-B result routing is class-based. The two terminal
+# variants have the same flat benchmark payload but distinct class identities,
+# so a false verdict can never fall through to the scalar completed topic.
+published_events:
+  - event_type: GenerationCompleted
+    topic: onex.evt.omnimarket.node-generation-completed.v1
+    description: "Contract-valid generation benchmark returned to definition-B wiring."
+  - event_type: GenerationFailed
+    topic: onex.evt.omnimarket.node-generation-failed.v1
+    description: "Contract-invalid generation benchmark returned to definition-B wiring."
+
 model_routing:
   # OMN-12779 + OMN-12801: provider, served_model_id, and endpoint_ref are
   # declared here. The endpoint URL + api_key reference are NOT declared via an
