@@ -588,14 +588,26 @@ omnimarket = "omnimarket.nodes"
 # this commit, delete this override (the range pin above already covers it)
 # and `uv lock`.
 #
-# OMN-15443 (stacked draft only): re-pinned from 3f2998b3 to the immutable
-# OMN-15392 core source 5a907b71, which adds the canonical
-# EnumDodEvidenceExecutionScope field to ModelContractDodItem. This branch MUST
-# remain draft and MUST NOT merge with a feature-branch pin. Once OMN-15392
-# lands, replace this rev with its durable merged dev SHA before making the PR
-# ready. 5a907b71 descends from 3f2998b3, so the existing Market requirements
-# remain present while the stacked pair is tested.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "5a907b71c5cf321ed6407cd0509ec406afc81ff5" }  # raw-override-ok: OMN-15443
+# OMN-15544 (step 3): re-pinned from the OMN-15392 feature-branch head 5a907b71
+# to its durable squash-merged commit 4d7c5fba on core dev (core#1531, merged
+# 2026-07-30T23:40:05Z). The two commits have the IDENTICAL tree
+# aa688b495d91194b2acd4f535a67d03159b89298 -- `git diff 5a907b71 4d7c5fba` is
+# empty -- so this changes REACHABILITY ONLY: EnumDodEvidenceExecutionScope and
+# every other symbol are preserved byte-for-byte. GitHub deleted the feature
+# branch when #1531 merged, which left 5a907b71 reachable from no remote branch
+# and turns the required `uv.lock Pin Reachability` job red for every PR in this
+# repo (OMN-14447 class recurrence).
+#
+# The prose guard that stood here -- "This branch MUST remain draft and MUST NOT
+# merge with a feature-branch pin" -- is DELETED rather than reworded. It was
+# never a mechanism: omnimarket#1960 merged straight through it on
+# 2026-07-30T20:03:53Z, which is how this pin reached dev. Leaving it would be
+# false assurance. The mechanism is the pin-reachability gate; hardening its
+# predicate from any-branch to protected-branch is OMN-15538 / omnibase_infra#2583.
+#
+# REMOVE WHEN RELEASED: once core publishes a version containing this commit,
+# delete this override (the range pin above already covers it) and `uv lock`.
+omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "4d7c5fba361b5abbe85b96397e1398b91e279878" }  # raw-override-ok: OMN-15544
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
 # OMN-14779 (PR 2/2): re-pinned from 7e52d5b0 to 77144f83 -- current
