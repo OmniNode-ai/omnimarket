@@ -41,19 +41,32 @@ def _classify_topic(topic: str) -> tuple[str, str]:
 
     Topics follow ``onex.evt.<service>.<action>.v<N>`` — all subscribe_topics
     for this node are declared in contract.yaml; no literal topic strings are
-    needed here.  Classification is derived from segment patterns only.
+    needed here. Classification is derived from the action segment. Ordered
+    lifecycle checks keep inference, evaluation, delegation, and routing truth
+    distinct instead of collapsing the whole delegation chain into ROUTING.
     """
     parts = topic.split(".")
     # Extract service segment: onex.evt.<service>.*
     service = parts[2] if len(parts) > 2 else "platform"
 
     topic_lower = topic.lower()
+    action = parts[-2].lower() if len(parts) > 1 else ""
     if "failed" in topic_lower or "error" in topic_lower:
         return "ERROR", service
     if ".cmd." in topic_lower:
         return "COMMAND", service
-    if "routing-decision" in topic_lower or "delegation" in topic_lower:
+    if action == "routing-decision":
         return "ROUTING", service
+    if action == "inference-response":
+        return "INFERENCE", service
+    if action in {"quality-gate-result", "delegation-judge-verdict"}:
+        return "EVALUATION", service
+    if (
+        "delegation" in action
+        or action.startswith("delegate-skill-")
+        or action == "task-delegated"
+    ):
+        return "DELEGATION", service
     if "state-change" in topic_lower or "transformation" in topic_lower:
         return "TRANSFORMATION", service
     return "ACTION", service
@@ -119,7 +132,10 @@ class ModelLiveEvent(BaseModel):
     )
     type: str = Field(
         default="ACTION",
-        description="Event class: COMMAND, ROUTING, ACTION, TRANSFORMATION, ERROR.",
+        description=(
+            "Topic-derived event class: COMMAND, ROUTING, INFERENCE, EVALUATION, "
+            "DELEGATION, ACTION, TRANSFORMATION, or ERROR."
+        ),
     )
     timestamp: str = Field(
         default_factory=lambda: datetime.now(tz=UTC).isoformat(),
@@ -162,7 +178,10 @@ class ModelLiveEvent(BaseModel):
             event_id=str(envelope_id)
             if envelope_id is not None
             else _resolve_event_id(raw),
-            type=raw.get("type") or raw.get("event_type") or topic_type,
+            # The contract-declared source topic owns lifecycle classification.
+            # Payload fields named type/event_type are domain data and must not
+            # relabel an inference response as routing (or any other class).
+            type=topic_type,
             timestamp=_resolve_timestamp(raw),
             source=raw.get("source")
             or raw.get("service_name")

@@ -36,6 +36,11 @@ from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 # ---------------------------------------------------------------------------
 
 _CONTRACT_PATH = Path(__file__).parent.parent / "contract.yaml"
+_MIGRATION_PATH = (
+    Path(__file__).parent.parent
+    / "migrations"
+    / "0001_reclassify_event_lifecycle_types.sql"
+)
 _LOG_TOPIC = "onex.evt.platform.log-entry.v1"
 _HEARTBEAT_TOPIC = "onex.evt.platform.node-heartbeat.v1"
 _INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"
@@ -213,9 +218,30 @@ class TestModelLiveEventFromRaw:
         event = ModelLiveEvent.from_raw(raw, _DELEGATION_DONE_TOPIC)
 
         assert event.topic == _DELEGATION_DONE_TOPIC
-        assert event.type == "ROUTING"
+        assert event.type == "DELEGATION"
         assert event.source == "omnibase-infra"
         assert event.correlation_id == "corr-abc"
+
+    def test_from_inference_response_is_inference_not_payload_type(self) -> None:
+        raw = {
+            "event_id": str(uuid4()),
+            "event_type": "routing",
+            "correlation_id": "corr-inference-1",
+        }
+
+        event = ModelLiveEvent.from_raw(raw, _INFERENCE_RESPONSE_TOPIC)
+
+        assert event.type == "INFERENCE"
+
+    def test_from_quality_gate_result_is_evaluation(self) -> None:
+        raw = {
+            "event_id": str(uuid4()),
+            "correlation_id": "corr-evaluation-1",
+        }
+
+        event = ModelLiveEvent.from_raw(raw, _QUALITY_GATE_RESULT_TOPIC)
+
+        assert event.type == "EVALUATION"
 
     def test_from_delegation_failed(self) -> None:
         raw = _make_delegation_event(failed=True)
@@ -259,6 +285,38 @@ class TestModelLiveEventFromRaw:
         assert event.type == "ACTION"
         # source is derived from the topic's service segment (onex.evt.<service>.*)
         assert event.source == "omnimarket"
+
+
+# ---------------------------------------------------------------------------
+# 2b. Durable lifecycle reclassification migration
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_lifecycle_backfill_uses_topic_owned_ordered_taxonomy() -> None:
+    """Existing rows receive the same topic-owned classes as new events."""
+    sql = _MIGRATION_PATH.read_text()
+    executable_sql = "\n".join(
+        line for line in sql.splitlines() if not line.lstrip().startswith("--")
+    )
+
+    for event_type in (
+        "ERROR",
+        "COMMAND",
+        "ROUTING",
+        "INFERENCE",
+        "EVALUATION",
+        "DELEGATION",
+        "TRANSFORMATION",
+        "ACTION",
+    ):
+        assert f"THEN '{event_type}'" in sql or f"ELSE '{event_type}'" in sql
+
+    assert sql.index("THEN 'ERROR'") < sql.index("THEN 'ROUTING'")
+    assert sql.index("THEN 'ROUTING'") < sql.index("THEN 'INFERENCE'")
+    assert sql.index("THEN 'INFERENCE'") < sql.index("THEN 'DELEGATION'")
+    assert "event.type IS DISTINCT FROM classified.canonical_type" in sql
+    assert "payload" not in executable_sql.lower()
 
 
 # ---------------------------------------------------------------------------
@@ -461,7 +519,7 @@ class TestHandlerProjectionLiveEventsHandle:
 
         assert result["rows_upserted"] == 1
         rows = db.query(TABLE)
-        assert rows[0]["type"] == "ROUTING"
+        assert rows[0]["type"] == "DELEGATION"
         assert rows[0]["source"] == "omnibase-infra"
         assert rows[0]["correlation_id"] == "corr-xyz"
 
