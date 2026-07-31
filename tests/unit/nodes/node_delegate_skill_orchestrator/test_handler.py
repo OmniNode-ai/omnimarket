@@ -435,6 +435,65 @@ async def test_handler_maps_internal_delegation_result_fields() -> None:
 
 
 @pytest.mark.unit
+async def test_handler_subtracts_measured_actual_cost_from_fallback_savings() -> None:
+    """The runtime-port path must not report counterfactual-minus-zero savings."""
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "metered cloud result",
+        "model_used": "gemini-2.5-flash",
+        "quality_passed": True,
+        "prompt_tokens": 1_000,
+        "completion_tokens": 500,
+        "cost_usd": 0.003,
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+
+    response = await handler.handle(request)
+    counterfactual = estimate_baseline_cost_usd(
+        prompt_tokens=1_000,
+        completion_tokens=500,
+    )
+
+    assert response.metrics.cost_usd == pytest.approx(0.003)
+    assert response.metrics.cost_savings_usd == pytest.approx(
+        round(max(counterfactual - 0.003, 0.0), 6)
+    )
+    assert response.metrics.cost_savings_usd != pytest.approx(round(counterfactual, 6))
+
+
+@pytest.mark.unit
+async def test_handler_never_reports_negative_fallback_savings() -> None:
+    """A measured actual above the counterfactual floors truthful savings at zero."""
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "expensive result",
+        "model_used": "gemini-2.5-flash",
+        "quality_passed": True,
+        "prompt_tokens": 1,
+        "completion_tokens": 1,
+        "cost_usd": 1.0,
+    }
+    handler = HandlerDelegateSkill(object(), dispatch_port=port)
+    request = ModelDelegateSkillRequest(
+        prompt="Test",
+        task_type="test",
+        source="claude-code",
+    )
+
+    response = await handler.handle(request)
+
+    assert response.metrics.cost_usd == pytest.approx(1.0)
+    assert response.metrics.cost_savings_usd == pytest.approx(0.0)
+
+
+@pytest.mark.unit
 async def test_handler_maps_scored_failed_delegation_terminal() -> None:
     port = AsyncMock()
     port.dispatch.return_value = {

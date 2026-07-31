@@ -136,13 +136,12 @@ def _estimate_claude_cost_savings(result: dict[str, object]) -> float:
     completion_tokens = _as_int(
         result.get("output_tokens", result.get("completion_tokens", 0))
     )
-    return round(
-        estimate_baseline_cost_usd(
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-        ),
-        6,
+    counterfactual_cost_usd = estimate_baseline_cost_usd(
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
     )
+    actual_cost_usd = max(_as_float(result.get("cost_usd")), 0.0)
+    return round(max(counterfactual_cost_usd - actual_cost_usd, 0.0), 6)
 
 
 def _frontier_cost_estimates(result: dict[str, object]) -> dict[str, float]:
