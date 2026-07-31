@@ -9,7 +9,7 @@ UPSERTs into node_service_registry table.
 Target table schema:
   id UUID PRIMARY KEY DEFAULT gen_random_uuid()
   service_name TEXT UNIQUE NOT NULL
-  service_url TEXT NOT NULL
+  service_url TEXT NOT NULL DEFAULT ''
   service_type TEXT (api, database, cache, queue)
   health_status TEXT DEFAULT 'unknown' (healthy, degraded, unhealthy, stale)
   last_health_check TIMESTAMPTZ
@@ -54,6 +54,15 @@ from omnimarket.projection.protocol_database import DatabaseAdapter
 TABLE = "node_service_registry"
 CONFLICT_KEY = "service_name"
 STALE_THRESHOLD: timedelta = timedelta(minutes=5)
+
+# OMN-15472: service_url is NOT NULL. Only project_introspection ever named the
+# column; the heartbeat and state-change paths carried it solely through an
+# already-existing row, so against an EMPTY registry the INSERT omitted the
+# column outright. Where the live column has drifted off the shipped
+# `DEFAULT ''` (onex-dev), that omission is a NotNullViolation on EVERY event —
+# and it is self-locking, because heartbeats are the only high-frequency input
+# and they are precisely the path that cannot create the first row.
+DEFAULT_SERVICE_URL = ""
 
 
 def _strip_transport_keys(data: dict[str, object]) -> dict[str, object]:
@@ -128,6 +137,18 @@ def _recover_domain_payload_from_raw_wrapper(
         )
     nested_payload = decoded.get("payload")
     return nested_payload if isinstance(nested_payload, dict) else decoded
+
+
+def _preserve_service_url(existing: object) -> str:
+    """Resolve the ``service_url`` to write, never dropping the column (OMN-15472).
+
+    An existing row's value is carried through verbatim — including ``""`` — so a
+    liveness write never clobbers a URL that ``project_introspection`` registered.
+    Anything else (no row yet, or a NULL column) resolves to
+    :data:`DEFAULT_SERVICE_URL`, which is what the shipped migration's
+    ``DEFAULT ''`` would have supplied had the column not drifted.
+    """
+    return existing if isinstance(existing, str) else DEFAULT_SERVICE_URL
 
 
 def _require_service_name(
@@ -299,7 +320,19 @@ class HandlerProjectionRegistration:
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
     @staticmethod
+    def _find_row_by_service_name(
+        db: DatabaseAdapter,
+        service_name: str,
+    ) -> dict[str, object] | None:
+        """Find the registry row this write's UPSERT conflict key would hit."""
+        for row in db.query(TABLE):
+            if str(row.get("service_name")) == service_name:
+                return row
+        return None
+
+    @classmethod
     def _find_registry_row(
+        cls,
         db: DatabaseAdapter,
         node_id: str,
     ) -> dict[str, object] | None:
@@ -315,10 +348,7 @@ class HandlerProjectionRegistration:
             if isinstance(metadata, dict) and str(metadata.get("node_id")) == node_id:
                 return row
         # A prior heartbeat may have created a row keyed directly by node_id.
-        for row in db.query(TABLE):
-            if str(row.get("service_name")) == node_id:
-                return row
-        return None
+        return cls._find_row_by_service_name(db, node_id)
 
     def project_heartbeat(
         self,
@@ -359,6 +389,10 @@ class HandlerProjectionRegistration:
         row: dict[str, object] = {
             **base,
             "service_name": service_name,
+            # OMN-15472: named EXPLICITLY, not left to **base. When no row exists
+            # yet, base is empty, so relying on the splat omitted the NOT NULL
+            # column from the INSERT and every heartbeat DLQ'd.
+            "service_url": _preserve_service_url(base.get("service_url")),
             # The canonical heartbeat has no health_status field; the arrival of
             # the heartbeat IS the health signal (mark_stale demotes silence).
             "health_status": "healthy",
@@ -378,11 +412,24 @@ class HandlerProjectionRegistration:
         event: ModelNodeStateChangeEvent,
         db: DatabaseAdapter,
     ) -> ModelProjectionResult:
-        """Update health status and active state from a node state-change event."""
+        """Update health status and active state from a node state-change event.
+
+        OMN-15472: node-state-change is a declared subscribe topic and this path
+        does no existing-row read, so a state change arriving against an empty
+        registry INSERTs — with the same omitted NOT NULL service_url the
+        heartbeat path had. It is reachable-on-create, so it is fixed rather than
+        waived. The existing row is read only to carry a registered URL through;
+        every other column keeps its targeted-update semantics (an unnamed column
+        is untouched by the UPSERT).
+        """
         now = datetime.now(tz=UTC).isoformat()
         health_status = event.resolved_health_status
+        service_name = event.resolved_service_name
+        existing = self._find_row_by_service_name(db, service_name)
+        base: dict[str, object] = dict(existing) if existing else {}
         row: dict[str, object] = {
-            "service_name": event.resolved_service_name,
+            "service_name": service_name,
+            "service_url": _preserve_service_url(base.get("service_url")),
             "health_status": health_status,
             "is_active": event.resolved_new_state.lower() == "active",
             "updated_at": now,
@@ -434,6 +481,7 @@ class HandlerProjectionRegistration:
 # omnimarket-namespaced alias, so the duplicate-model prevention gate sees exactly
 # one shape per wire contract.
 __all__: list[str] = [
+    "DEFAULT_SERVICE_URL",
     "STALE_THRESHOLD",
     "HandlerProjectionRegistration",
     "ModelNodeStateChangeEvent",
