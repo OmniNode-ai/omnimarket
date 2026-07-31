@@ -484,14 +484,15 @@ def test_contract_keeps_terminal_topics_for_definition_b_wiring() -> None:
             "event_type": "GenerationCompleted",
             "topic": "onex.evt.omnimarket.node-generation-completed.v1",
             "description": (
-                "Contract-valid generation benchmark returned to definition-B wiring."
+                "Business-success generation benchmark returned to definition-B wiring."
             ),
         },
         {
             "event_type": "GenerationFailed",
             "topic": "onex.evt.omnimarket.node-generation-failed.v1",
             "description": (
-                "Contract-invalid generation benchmark returned to definition-B wiring."
+                "Business-failure benchmark; contract shape may still be valid "
+                "when a checked semantic or corpus gate failed."
             ),
         },
     ]

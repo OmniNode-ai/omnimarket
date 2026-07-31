@@ -38,6 +38,7 @@ from urllib.parse import urlsplit
 from uuid import uuid4
 
 import yaml
+from omnibase_core.enums.enum_routing_error_class import RoutingErrorClass
 from omnibase_core.models.delegation.wire import ModelDelegationRequest
 from omnibase_core.validation.validator_contract_linter import (
     validate_model_class_existence,
@@ -339,6 +340,20 @@ class ModelResolvedEndpoint(BaseModel):
     # quality gate scores 0.0. Bounded >= 1; never silently defaulted in
     # handler code (the wire DTO already validates the contract value).
     max_tokens: int = Field(..., ge=1)
+
+
+class _GenerationCallOutcome(BaseModel):
+    """Immutable, attempt-scoped inference evidence (OMN-15502)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    raw_output: str = ""
+    input_tokens: int = Field(default=0, ge=0)
+    output_tokens: int = Field(default=0, ge=0)
+    usage_source: EnumUsageSource = EnumUsageSource.UNKNOWN
+    resolved_endpoint: str = ""
+    failure_class: RoutingErrorClass | None = None
+    failure_reason: str = ""
 
 
 def resolve_generation_endpoint(
@@ -901,21 +916,6 @@ class HandlerGenerationConsumer:
             )
         )
 
-        # OMN-12775: the COMPLETE endpoint URL the routing authority resolves for
-        # this run. Captured at request time in _call_llm (verbatim, never
-        # constructed) so the terminal benchmark — and therefore the
-        # generation_events projection row — records the real resolved endpoint
-        # as evidence. Empty until the first endpoint resolution.
-        self._resolved_endpoint: str = ""
-
-        # OMN-13359: the model/endpoint the run is currently routing to. The
-        # STARTING route is the contract-declared tier (resolved lazily in
-        # handle()); each quality-gate failure advances it to the next tier via
-        # the routing authority so the next attempt rides the ladder. Initialised
-        # to None and built once per run so per-run escalation state never leaks
-        # across requests on a reused handler instance.
-        self._active_route: ModelActiveRoute | None = None
-
     def _starting_route(self) -> ModelActiveRoute:
         """Build the contract-declared STARTING route (OMN-13359).
 
@@ -1029,6 +1029,7 @@ class HandlerGenerationConsumer:
     def _escalate_route(
         self,
         *,
+        current: ModelActiveRoute,
         task_description: str,
         failed_attempt_number: int,
     ) -> ModelActiveRoute | None:
@@ -1047,10 +1048,6 @@ class HandlerGenerationConsumer:
         the current route (the run continues on the same model rather than
         crashing), preserving the resilience of the pre-OMN-13359 behavior.
         """
-        current = self._active_route
-        if current is None:
-            return None
-
         # Shared authority surface with the escalation PROOF event: the route the
         # next attempt rides is the exact decision the proof records.
         try:
@@ -1104,10 +1101,12 @@ class HandlerGenerationConsumer:
         self,
         task_description: str,
         attempt: int,
+        *,
+        route: ModelActiveRoute,
         previous_errors: list[str] | None = None,
         context_pack: str = "",
-    ) -> tuple[str, int, int, EnumUsageSource]:
-        """Call LLM; return (raw_output, input_tokens, output_tokens, usage_source).
+    ) -> _GenerationCallOutcome:
+        """Call the LLM and return immutable attempt-scoped evidence.
 
         When a test fake was injected at construction time, we skip building
         a ModelLlmInferenceRequest (which validates base_url is non-empty) and
@@ -1132,13 +1131,6 @@ class HandlerGenerationConsumer:
         if context_pack:
             user_content = f"Context:\n{context_pack}\n\n{user_content}"
 
-        # OMN-13359: route to the run's CURRENT active route (the contract tier
-        # on attempt #1, an authority-escalated tier afterward). Never re-read the
-        # static contract fields here — that is what kept generation pinned to the
-        # local model regardless of the ladder.
-        route = self._active_route
-        assert route is not None, "_active_route must be set before _call_llm"
-
         # OMN-12813: Apply inference protocol directives for the model.
         # task_type="node_generation" activates the model-specific profiles in
         # inference_protocols.v1.yaml: Qwen gets /no_think, its exemplar, and
@@ -1153,7 +1145,13 @@ class HandlerGenerationConsumer:
 
         if self._injected_effect:
             assert self._effect is not None
-            response = await self._effect.handle(None)
+            try:
+                response = await self._effect.handle(None)
+            except Exception as exc:
+                return _GenerationCallOutcome(
+                    failure_reason=f"LLM inference failed: {exc}",
+                )
+            endpoint_url = ""
         else:
             from omnibase_infra.enums import EnumLlmOperationType
             from omnibase_infra.nodes.node_llm_inference_effect.models.model_llm_inference_request import (
@@ -1166,86 +1164,118 @@ class HandlerGenerationConsumer:
             # STARTING route (contract-declared, authority_resolved=False) is
             # resolved per-model via resolve_generation_endpoint exactly as
             # before (OMN-12801), so first-attempt behavior is unchanged.
-            if route.authority_resolved:
-                endpoint_url = route.endpoint_url
-                api_key_ref = route.api_key_ref
-                wire_model = route.served_model_id
-                assert route.max_tokens is not None
-                max_tokens = route.max_tokens
-            else:
-                # OMN-12801: resolve the COMPLETE endpoint URL + api_key reference
-                # per-model from the routing authority (bifrost delegation overlay
-                # keyed by endpoint_ref). No shared LLM_CODER_URL env. Fail-closed
-                # if any of the four fields cannot be resolved.
-                resolved = resolve_generation_endpoint(
-                    endpoint_ref=route.endpoint_ref,
-                    provider=route.provider,
-                    served_model_id=route.served_model_id,
+            try:
+                if route.authority_resolved:
+                    endpoint_url = route.endpoint_url
+                    api_key_ref = route.api_key_ref
+                    wire_model = route.served_model_id
+                    if route.max_tokens is None:
+                        raise ValueError(
+                            "authority-resolved route is missing max_tokens"
+                        )
+                    max_tokens = route.max_tokens
+                else:
+                    # OMN-12801: resolve the COMPLETE endpoint URL + api_key
+                    # reference per model from the routing authority. No shared
+                    # LLM_CODER_URL env and no fallback endpoint.
+                    resolved = resolve_generation_endpoint(
+                        endpoint_ref=route.endpoint_ref,
+                        provider=route.provider,
+                        served_model_id=route.served_model_id,
+                    )
+                    endpoint_url = resolved.endpoint_url
+                    api_key_ref = resolved.api_key_ref
+                    wire_model = resolved.served_model_id
+                    max_tokens = resolved.max_tokens
+                # Validate the complete URL while still inside the typed routing
+                # boundary. A malformed/absent authority value is endpoint
+                # unavailability, not an empty provider response.
+                base_url = _endpoint_label(endpoint_url)
+            except Exception as exc:
+                endpoint_handle = route.endpoint_ref or route.tier_name
+                return _GenerationCallOutcome(
+                    failure_class=RoutingErrorClass.ENDPOINT_UNAVAILABLE,
+                    failure_reason=(
+                        "endpoint resolution failed for "
+                        f"endpoint_ref={endpoint_handle!r}; resolved_endpoint='': "
+                        f"{exc}"
+                    ),
                 )
-                endpoint_url = resolved.endpoint_url
-                api_key_ref = resolved.api_key_ref
-                wire_model = resolved.served_model_id
-                max_tokens = resolved.max_tokens
-            # OMN-12775: record the COMPLETE resolved endpoint verbatim for the
-            # evidence packet — the routing authority's value, never constructed.
-            self._resolved_endpoint = endpoint_url
+
             # OMN-12824: the routing decision carries only the api_key_ref
             # (the secret NAME), never the value. Resolve the secret VALUE at
             # the call boundary through the canonical secret store. Fail-closed:
             # a declared ref with no secret-store value raises.
-            resolved_secret = await resolve_api_key_async(api_key_ref)
-            api_key = (
-                resolved_secret.get_secret_value()
-                if resolved_secret is not None
-                else None
-            )
-            assert self._effect is not None
+            try:
+                resolved_secret = await resolve_api_key_async(api_key_ref)
+                api_key = (
+                    resolved_secret.get_secret_value()
+                    if resolved_secret is not None
+                    else None
+                )
+                assert self._effect is not None
 
-            # OMN-12815: the routing authority resolves the COMPLETE endpoint URL
-            # (the full chat path, e.g. http://host:8000/v1/chat/completions or
-            # https://.../v1beta/openai/chat/completions). It is posted VERBATIM —
-            # no construction, no path append, no split. base_url is only the
-            # routing/observability label (scheme://host), never the POST URL.
-            # OMN-12813: system_prompt carries the inference-protocol-applied prompt
-            # (one-shot exemplar + /no_think for Qwen), not the bare default.
-            base_url = _endpoint_label(endpoint_url)
-            request = ModelLlmInferenceRequest(
-                base_url=base_url,
-                endpoint_url=endpoint_url,
-                operation_type=EnumLlmOperationType.CHAT_COMPLETION,
-                model=wire_model,
-                messages=(
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_content},
+                # OMN-12815: endpoint_url is the complete authority-owned POST
+                # URL. base_url is only its routing/observability label.
+                request = ModelLlmInferenceRequest(
+                    base_url=base_url,
+                    endpoint_url=endpoint_url,
+                    operation_type=EnumLlmOperationType.CHAT_COMPLETION,
+                    model=wire_model,
+                    messages=(
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_content},
+                    ),
+                    api_key=api_key,
+                    max_tokens=max_tokens,
+                    extra_body=request_options,
+                    timeout_seconds=120.0,
+                )
+                response = await self._effect.handle(request)
+            except Exception as exc:
+                endpoint_handle = route.endpoint_ref or route.tier_name
+                return _GenerationCallOutcome(
+                    resolved_endpoint=endpoint_url,
+                    failure_reason=(
+                        "LLM inference failed for "
+                        f"endpoint_ref={endpoint_handle!r} at "
+                        f"resolved_endpoint={endpoint_url!r}: {exc}"
+                    ),
+                )
+
+        try:
+            raw = response.generated_text or ""
+            input_tokens = response.usage.tokens_input if response.usage else 0
+            output_tokens = response.usage.tokens_output if response.usage else 0
+            # OMN-12996: propagate provider-reported usage provenance; absent
+            # usage remains UNKNOWN and may honestly accompany a valid artifact.
+            usage_source = _map_response_usage_source(response.usage)
+        except Exception as exc:
+            return _GenerationCallOutcome(
+                resolved_endpoint=endpoint_url,
+                failure_reason=f"invalid LLM inference response: {exc}",
+            )
+
+        if not raw.strip():
+            endpoint_handle = route.endpoint_ref or route.tier_name
+            return _GenerationCallOutcome(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                usage_source=usage_source,
+                resolved_endpoint=endpoint_url,
+                failure_reason=(
+                    "LLM inference returned empty generated_text for "
+                    f"endpoint_ref={endpoint_handle!r}"
                 ),
-                api_key=api_key,
-                # OMN-13342: post the contract-declared per-backend output
-                # ceiling on the wire. Without it the infra effect omits
-                # max_tokens (handler_llm_openai_compatible.py:535-536) and
-                # z.ai glm-4.5 truncates at its small server-side default
-                # (finish_reason=length, quality-gate score 0.0). The value is
-                # resolved from the bifrost backend (cloud-glm: 65536), never a
-                # hardcoded literal. OMN-13359: on an escalated route this is the
-                # authority's per-tier ceiling, carried verbatim on the route.
-                max_tokens=max_tokens,
-                # Provider-specific request options are resolved for the ACTIVE
-                # model on every attempt. This preserves Qwen's
-                # chat_template_kwargs while preventing that local-only field
-                # from leaking into an authority-escalated Gemini request.
-                extra_body=request_options,
-                timeout_seconds=120.0,
             )
-            response = await self._effect.handle(request)
 
-        raw = response.generated_text or ""
-        input_tokens = response.usage.tokens_input if response.usage else 0
-        output_tokens = response.usage.tokens_output if response.usage else 0
-        # OMN-12996: propagate the provider-reported usage provenance the infra
-        # inference effect already computed (response.usage.usage_source). The
-        # exp0/generation path previously dropped it and the benchmark hardcoded
-        # ESTIMATED, hollowing the ab-compare.v1 / llm_call_metrics cost columns.
-        usage_source = _map_response_usage_source(response.usage)
-        return raw, input_tokens, output_tokens, usage_source
+        return _GenerationCallOutcome(
+            raw_output=raw,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            usage_source=usage_source,
+            resolved_endpoint=endpoint_url,
+        )
 
     async def handle(
         self, command: ModelNodeGenerationRequest
@@ -1282,7 +1312,7 @@ class HandlerGenerationConsumer:
         # routing authority) on each quality-gate failure, so the NEXT attempt
         # actually calls the escalated model. Reset per run so escalation state
         # from a prior request never leaks on a reused handler instance.
-        self._active_route = self._starting_route()
+        active_route = self._starting_route()
 
         # OMN-14018: an optional per-run backend pin (from the context-ROI battery)
         # overrides the contract-declared starting tier so the run posts to a chosen
@@ -1294,7 +1324,7 @@ class HandlerGenerationConsumer:
                 task_description=command.task_description,
             )
             if forced_route is not None:
-                self._active_route = forced_route
+                active_route = forced_route
 
         attempts: list[ModelGenerationAttempt] = []
         e2e_start = time.time()
@@ -1310,6 +1340,9 @@ class HandlerGenerationConsumer:
         final_corpus_errors: list[str] = []
         final_contract_yaml = ""
         final_handler_source = ""
+        final_resolved_endpoint = ""
+        final_failure_class: RoutingErrorClass | None = None
+        final_failure_reason = ""
 
         # OMN-13166: derive behavioral fixtures once per run from the task. Empty
         # when no known transformation invariant is recognised — the semantic
@@ -1321,8 +1354,7 @@ class HandlerGenerationConsumer:
             # OMN-13359: capture the route this attempt rides BEFORE the call so
             # the per-attempt record reflects the tier/model the ladder selected
             # for this attempt (the contract tier on #1, an escalated tier after).
-            assert self._active_route is not None
-            attempt_route = self._active_route
+            attempt_route = active_route
             attempt_provider = attempt_route.provider
             attempt_model_id = attempt_route.served_model_id
             # endpoint_class is the bifrost endpoint_ref on the contract route and
@@ -1334,43 +1366,51 @@ class HandlerGenerationConsumer:
                 else attempt_route.tier_name
             )
             try:
-                (
-                    raw_output,
-                    input_tokens,
-                    output_tokens,
-                    attempt_usage_source,
-                ) = await self._call_llm(
+                call_outcome = await self._call_llm(
                     command.task_description,
                     attempt_num,
+                    route=attempt_route,
                     previous_errors=previous_errors,
                     context_pack=command.context_pack,
                 )
             except Exception as exc:
+                # Preserve the established resilient loop for unexpected bugs
+                # outside the explicitly typed inference boundaries. The
+                # original cause remains durable instead of becoming parser noise.
+                call_outcome = _GenerationCallOutcome(
+                    failure_reason=f"unexpected generation call failure: {exc}",
+                )
+
+            if call_outcome.failure_reason:
                 logger.warning(
                     "[generation-consumer] LLM call failed on attempt %d: %s",
                     attempt_num,
-                    exc,
+                    call_outcome.failure_reason,
                 )
-                raw_output = ""
-                input_tokens = 0
-                output_tokens = 0
-                # A failed call produced no provider usage block — provenance is
-                # UNKNOWN, never silently ESTIMATED.
-                attempt_usage_source = EnumUsageSource.UNKNOWN
 
             latency_ms = int((time.time() - start) * 1000)
-            contract_yaml, handler_source = _extract_blocks(raw_output)
-            # OMN-13293 (G1): a validator-generation run (carrying a corpus) is
-            # EXPECTED to embed path-pattern literals because it detects them, so
-            # the hardcoded-path literal pre-filter is suppressed for it. The
-            # corpus-acceptance gate (run in the hardened sandbox) is the real
-            # correctness authority for that case.
-            is_validator_generation = command.validator_corpus is not None
-            validation = _validate_generation(
-                contract_yaml,
-                handler_source,
-                is_validator_generation=is_validator_generation,
-            )
+            if call_outcome.failure_reason:
+                # An unavailable endpoint/provider produced no artifact. Do not
+                # replace that direct cause with synthetic missing-fence/schema
+                # errors from parsing an empty string.
+                contract_yaml = ""
+                handler_source = ""
+                validation: dict[str, Any] = {
+                    "valid": False,
+                    "errors": [call_outcome.failure_reason],
+                    "checks_passed": [],
+                }
+            else:
+                contract_yaml, handler_source = _extract_blocks(call_outcome.raw_output)
+                # OMN-13293 (G1): a validator-generation run (carrying a corpus)
+                # may embed path-pattern literals because it detects them. The
+                # hardened corpus gate is the acceptance authority for that case.
+                is_validator_generation = command.validator_corpus is not None
+                validation = _validate_generation(
+                    contract_yaml,
+                    handler_source,
+                    is_validator_generation=is_validator_generation,
+                )
 
             # OMN-13166: run the behavioral check only when the artifact is shaped
             # correctly (a syntax-broken handler cannot be executed). When the
@@ -1402,6 +1442,7 @@ class HandlerGenerationConsumer:
             attempt_success = (
                 validation["valid"] and not semantic_failed and not corpus_failed
             )
+            combined_errors = validation["errors"] + semantic.errors + corpus.errors
 
             attempts.append(
                 ModelGenerationAttempt(
@@ -1409,18 +1450,30 @@ class HandlerGenerationConsumer:
                     provider=attempt_provider,
                     model_id=attempt_model_id,
                     endpoint_class=attempt_endpoint_class,
-                    token_usage_input=input_tokens,
-                    token_usage_output=output_tokens,
+                    token_usage_input=call_outcome.input_tokens,
+                    token_usage_output=call_outcome.output_tokens,
                     latency_inference_ms=latency_ms,
                     contract_passed=validation["valid"],
                     semantic_checked=semantic.checked,
                     semantic_passed=semantic.passed,
-                    validation_errors=(
-                        validation["errors"] + semantic.errors + corpus.errors
-                    ),
-                    usage_source=attempt_usage_source,
+                    validation_errors=combined_errors,
+                    usage_source=call_outcome.usage_source,
+                    failure_class=call_outcome.failure_class,
+                    failure_reason=call_outcome.failure_reason,
                 )
             )
+
+            # Final-run routing evidence always comes from this attempt's local
+            # immutable outcome, never handler instance state from an earlier run.
+            final_resolved_endpoint = call_outcome.resolved_endpoint
+            if attempt_success:
+                final_failure_class = None
+                final_failure_reason = ""
+            else:
+                final_failure_class = call_outcome.failure_class
+                final_failure_reason = call_outcome.failure_reason or "; ".join(
+                    combined_errors
+                )
 
             # OMN-13166: remember the most recent contract-valid artifact even
             # when it failed the behavioral check, so the terminal benchmark and
@@ -1450,7 +1503,6 @@ class HandlerGenerationConsumer:
             # not only that the shape was wrong. A contract-valid but
             # corpus-rejected scanner now triggers a retry/escalation instead of
             # being accepted as a false-green gate.
-            combined_errors = validation["errors"] + semantic.errors + corpus.errors
             previous_errors = combined_errors
 
             # OMN-12829 (C1): a failed attempt (contract OR semantic) WITH attempts
@@ -1475,11 +1527,12 @@ class HandlerGenerationConsumer:
                 # resolve), the route is unchanged and the run retries the same
                 # tier (resilient, never crashes).
                 escalated_route = self._escalate_route(
+                    current=active_route,
                     task_description=command.task_description,
                     failed_attempt_number=attempt_num,
                 )
                 if escalated_route is not None:
-                    self._active_route = escalated_route
+                    active_route = escalated_route
 
         total_latency_ms = int((time.time() - e2e_start) * 1000)
         total_input = sum(a.token_usage_input for a in attempts)
@@ -1543,7 +1596,9 @@ class HandlerGenerationConsumer:
             # model_routing source and the verbatim resolved endpoint, so the
             # generation_events projection row carries the evidence.
             routing_source=self._routing_source,
-            resolved_endpoint=self._resolved_endpoint,
+            resolved_endpoint=final_resolved_endpoint,
+            failure_class=final_failure_class,
+            failure_reason=final_failure_reason,
         )
 
         # OMN-13166: deploy/register a generated node ONLY when it is both shaped

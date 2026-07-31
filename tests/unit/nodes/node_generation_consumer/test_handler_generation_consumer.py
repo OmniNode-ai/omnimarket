@@ -1252,7 +1252,7 @@ async def test_gemini_generation_uses_only_gemini_protocol_options(
     )
     handler._effect = capturing
     handler._injected_effect = False
-    handler._active_route = ModelActiveRoute(
+    active_route = ModelActiveRoute(
         tier_name="cheap_cloud",
         provider="cloud",
         served_model_id="gemini-2.5-flash",
@@ -1264,6 +1264,7 @@ async def test_gemini_generation_uses_only_gemini_protocol_options(
     await handler._call_llm(
         task_description="Build a stub node",
         attempt=2,
+        route=active_route,
         previous_errors=["local route unavailable"],
     )
 

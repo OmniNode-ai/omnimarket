@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Literal, Self
 
+from omnibase_core.enums.enum_routing_error_class import RoutingErrorClass
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_usage_source import EnumUsageSource
@@ -183,6 +184,20 @@ class ModelGenerationAttempt(BaseModel):
     semantic_checked: bool = False
     semantic_passed: bool = False
     validation_errors: list[str] = Field(default_factory=list)
+    failure_class: RoutingErrorClass | None = Field(
+        default=None,
+        description=(
+            "Typed routing failure for this attempt. None when the attempt "
+            "reached inference or failed outside the routing boundary."
+        ),
+    )
+    failure_reason: str = Field(
+        default="",
+        description=(
+            "Original inference/routing failure for this attempt. Empty when "
+            "the LLM call returned an artifact for validation."
+        ),
+    )
     usage_source: EnumUsageSource = Field(
         default=EnumUsageSource.UNKNOWN,
         description=(
@@ -438,6 +453,20 @@ class ModelGenerationBenchmark(BaseModel):
             "generation never reached endpoint resolution."
         ),
     )
+    failure_class: RoutingErrorClass | None = Field(
+        default=None,
+        description=(
+            "Typed final-attempt routing failure. ENDPOINT_UNAVAILABLE means "
+            "the contract/routing authority could not produce a callable endpoint."
+        ),
+    )
+    failure_reason: str = Field(
+        default="",
+        description=(
+            "Original final-attempt failure cause. Empty on successful runs; "
+            "never replaced by parser errors synthesized from an absent artifact."
+        ),
+    )
 
     # --- OMN-13356: tool-reuse short-circuit proof ---
     # When the tool-reuse matcher returned a MATCHED verdict before generation,
@@ -460,7 +489,15 @@ def generation_benchmark_succeeded(benchmark: ModelGenerationBenchmark) -> bool:
     """Resolve the run verdict from its typed contract and gate evidence."""
     semantic_failed = benchmark.semantic_checked and not benchmark.semantic_passed
     corpus_failed = benchmark.corpus_checked and not benchmark.corpus_passed
-    return benchmark.contract_passed and not semantic_failed and not corpus_failed
+    terminal_failure = benchmark.failure_class is not None or bool(
+        benchmark.failure_reason
+    )
+    return (
+        benchmark.contract_passed
+        and not semantic_failed
+        and not corpus_failed
+        and not terminal_failure
+    )
 
 
 class ModelGenerationCompleted(ModelGenerationBenchmark):
