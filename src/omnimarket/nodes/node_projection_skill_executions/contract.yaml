@@ -51,7 +51,7 @@ db_io:
   db_tables:
     - name: skill_execution_snapshots
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "0001_create_skill_execution_snapshots.sql"
       access: write
       role: skill_executions_aggregate

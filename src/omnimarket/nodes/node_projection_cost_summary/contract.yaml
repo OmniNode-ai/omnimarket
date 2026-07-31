@@ -35,7 +35,7 @@ db_io:
   db_tables:
     - name: llm_cost_aggregates
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "0001_create_llm_cost_aggregates.sql"
       access: write
       role: cost_summary

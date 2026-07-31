@@ -47,7 +47,7 @@ db_io:
   db_tables:
     - name: context_roi_scores
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "001_create_context_roi_scores.sql"
       access: write
       role: scores

@@ -42,6 +42,7 @@ RETAINED_LIVE_CENSUS_SOURCE = (
 )
 
 DOMAIN_BY_SCHEMA = {
+    "public": "PUBLIC",
     "tenant": "TENANT",
     "omninode_internal": "OMNINODE_INTERNAL",
     "platform_catalog": "PLATFORM_CATALOG",
@@ -633,6 +634,12 @@ def build_inventory() -> dict[str, Any]:
         else:
             schema = _target_schema(owner, dependencies, table_schemas, declarations)
         blocked_reasons = []
+        if owner is None and kind != "extension":
+            blocked_reasons.append(
+                f"multiple migration owners: {relation_owners}"
+                if relation_owners
+                else "no authoritative CREATE migration found"
+            )
         if schema not in DOMAIN_BY_SCHEMA:
             blocked_reasons.append(
                 f"schema {schema!r} does not resolve through deployment topology"
@@ -652,7 +659,11 @@ def build_inventory() -> dict[str, Any]:
             "writers": [],
             "migration_root": "src/omnimarket/nodes",
             "migration_stream": (
-                "omnimarket_node_migrations" if kind == "extension" else f"node:{owner}"
+                "omnimarket_node_migrations"
+                if kind == "extension"
+                else f"node:{owner}"
+                if owner
+                else None
             ),
             "authoritative_sources": sorted(relation_sources),
             "contract_sources": [],
@@ -701,7 +712,7 @@ def build_inventory() -> dict[str, Any]:
                     "authoritative_sources": list(table["authoritative_sources"]),
                     "contract_sources": list(table["contract_sources"]),
                     "dependencies": [name],
-                    "dependent_objects": [name],
+                    "dependent_objects": [f"table:{name}"],
                     "keys": [],
                     "foreign_keys": [],
                     "constraints": [],

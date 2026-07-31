@@ -46,7 +46,7 @@ db_io:
   db_tables:
     - name: pattern_learning_artifacts
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "0000_create_pattern_learning_artifacts.sql"
       access: write
       role: artifacts

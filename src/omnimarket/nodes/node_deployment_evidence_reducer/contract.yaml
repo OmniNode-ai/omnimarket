@@ -49,13 +49,13 @@ db_io:
   db_tables:
     - name: deployment_evidence_projection
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "0001_create_deployment_evidence_projection_tables.sql"
       access: write
       role: deployment_evidence
     - name: deployment_readiness_projection
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "0001_create_deployment_evidence_projection_tables.sql"
       access: write
       role: deployment_readiness

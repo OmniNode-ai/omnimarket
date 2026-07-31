@@ -112,6 +112,12 @@ db_io:
       migration: "001_create_nightly_loop_tables.sql"
       access: write
       role: iterations
+    - name: nightly_loop_configs
+      database_ref: application
+      schema: omninode_internal
+      migration: "001_create_nightly_loop_tables.sql"
+      access: read
+      role: config
 
 golden_path:
   - "Load config from nightly_loop_configs table (or use defaults)"

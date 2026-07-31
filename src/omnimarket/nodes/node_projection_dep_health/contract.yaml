@@ -34,7 +34,7 @@ db_io:
   db_tables:
     - name: dep_health_findings
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "001_create_dep_health_findings.sql"
       access: write
       role: findings

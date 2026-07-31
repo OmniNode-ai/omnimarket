@@ -139,7 +139,7 @@ def test_retained_live_census_gap_fails_closed() -> None:
     )
     assert census["observed_base_tables"] == 86
     assert census["source_created_tables"] == 54
-    assert census["source_declared_tables"] == 55
+    assert census["source_declared_tables"] == 56
     assert census["minimum_unreconciled_live_base_tables"] == 32
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"

@@ -343,11 +343,11 @@ def _row_checksum(row: dict[str, object]) -> str:
 
 
 class TestProjectionSavingsContractConfig:
-    """OMN-12761: Assert that the savings contract routes db_io to omnidash_analytics.
+    """OMN-12761: Assert the savings contract uses typed application db_io.
 
-    Root cause: contract.yaml had database: omnibase_infra while the
-    savings_estimates table (with updated_at) lives in omnidash_analytics.
-    Every sibling projection uses omnidash_analytics; this test gates regression.
+    savings_estimates must declare database_ref: application and schema: tenant
+    so projection wiring resolves through the typed database contract instead
+    of legacy physical-database routing strings.
     """
 
     def test_db_io_location_is_tenant_application_schema(self) -> None:

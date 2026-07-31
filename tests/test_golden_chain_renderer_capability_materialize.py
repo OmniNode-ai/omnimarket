@@ -71,7 +71,7 @@ def _projection_target(handler_wiring: Any) -> object:
         "database_ref": "application",
         "physical_database": "omnidash_analytics",
         "schema": "omninode_internal",
-        "domain": EnumDatabaseSchemaDomain.TENANT,
+        "domain": EnumDatabaseSchemaDomain.OMNINODE_INTERNAL,
     }
     if hasattr(handler_wiring, "ProjectionDatabaseBindingTarget"):
         binding = handler_wiring.ProjectionDatabaseBindingTarget(

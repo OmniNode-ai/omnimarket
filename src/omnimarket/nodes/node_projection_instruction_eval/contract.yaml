@@ -46,7 +46,7 @@ db_io:
   db_tables:
     - name: instruction_eval_aggregate_snapshots
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "0001_create_instruction_eval_aggregate_snapshots.sql"
       access: write
       role: instruction_eval_aggregate

@@ -36,7 +36,7 @@ db_io:
   db_tables:
     - name: capability_scores
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "0001_create_capability_scores.sql"
       access: write
       role: capability_scores
