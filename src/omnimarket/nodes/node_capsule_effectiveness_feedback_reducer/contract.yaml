@@ -35,9 +35,10 @@ terminal_event: onex.evt.omnimarket.capsule-effectiveness-hypothesis.v1
 db_io:
   db_tables:
     - name: capsule_store
+      database_ref: application
+      schema: omninode_internal
       migration: "078_create_capsule_store.sql"
       access: write
-      database: omnidash_analytics
       role: capsules
 
 event_bus:

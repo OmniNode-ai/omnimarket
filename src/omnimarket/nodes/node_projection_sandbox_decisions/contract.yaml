@@ -50,9 +50,10 @@ dod_evidence:
 db_io:
   db_tables:
     - name: sandbox_decisions
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_sandbox_decisions.sql"
       access: write
-      database: omnidash_analytics
       role: decisions
 
 event_bus:

@@ -8,10 +8,11 @@ and nest their I/O models; they do not carry the top-level ``handler_id`` /
 descriptor parser (``omnibase_infra`` ``ContractYamlParser.parse``) validates
 against ``omnibase_core``'s ``ModelHandlerContract``.
 
-This module transforms a parsed market contract mapping into a payload that
-validates as ``ModelHandlerContract`` so the runtime can hot-load market nodes
-from their contract without editing the 290 source contracts and without
-pushing market knowledge into ``omnibase_infra`` (OMN-12463, Approach A).
+This module transforms a parsed market contract mapping into a canonical
+``ModelHandlerContract`` shell plus the typed runtime extensions that the
+runtime parser validates independently. This lets the runtime hot-load market
+nodes from their contract without editing the source contracts or pushing
+market-specific derivation rules into ``omnibase_infra`` (OMN-12463, Approach A).
 
 Derivation is deterministic and fail-fast: when a required field cannot be
 derived from the contract, the adapter raises ``MarketContractAdapterError``
@@ -20,7 +21,13 @@ rather than emitting a malformed payload.
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any
+
+from omnibase_core.models.contracts.subcontracts.model_db_ownership_subcontract import (
+    ModelDbOwnershipSubcontract,
+)
+from pydantic import ValidationError
 
 # Canonical handler return type. Every ONEX handler's ``execute`` returns a
 # ``ModelHandlerOutput``; it is the correct deterministic value for the
@@ -61,6 +68,21 @@ _PURITY_NORMALIZATION: dict[str, str] = {
     "nondeterministic": "side_effecting",
     "orchestrating": "side_effecting",
 }
+
+# The dynamic runtime owns the typed interpretation of these fields. The
+# registry producer carries only the canonical runtime-relevant event-bus
+# extension surface; authoring metadata and the retired subscribe/publish
+# mapping shapes stay in the source contract.
+_CANONICAL_EVENT_BUS_FIELDS: tuple[str, ...] = (
+    "subscribe_topics",
+    "publish_topics",
+    "dlq_topics",
+    "consumer_group",
+    "plugin_managed",
+    "consumer_purpose",
+    "tenant_scoped_ingress",
+    "terminal_event",
+)
 
 
 class MarketContractAdapterError(ValueError):
@@ -270,21 +292,81 @@ def _derive_descriptor(contract: dict[str, Any], node_name: str) -> dict[str, An
     return behavior
 
 
+def _runtime_extensions(contract: dict[str, Any], node_name: str) -> dict[str, Any]:
+    """Validate and copy runtime extensions into the published payload.
+
+    ``db_io`` is validated against the exact core ownership subcontract before
+    publication. Routing remains in its source-declared shape because the
+    runtime's materialization adapter owns conversion to its wiring model.
+    Event-bus authoring metadata is intentionally not placed on the runtime
+    registration wire; only fields consumed by runtime wiring are retained.
+    """
+    extensions: dict[str, Any] = {}
+
+    db_io = contract.get("db_io")
+    if db_io is not None:
+        try:
+            ModelDbOwnershipSubcontract.model_validate(db_io)
+        except ValidationError as exc:
+            raise MarketContractAdapterError(
+                f"market contract '{node_name}' field 'db_io' is not the exact "
+                f"typed database ownership subcontract: {exc}"
+            ) from exc
+        extensions["db_io"] = deepcopy(db_io)
+
+    handler_routing = contract.get("handler_routing")
+    if handler_routing is not None:
+        if not isinstance(handler_routing, dict):
+            raise MarketContractAdapterError(
+                f"market contract '{node_name}' field 'handler_routing' must be "
+                f"a mapping, got {type(handler_routing).__name__}"
+            )
+        extensions["handler_routing"] = deepcopy(handler_routing)
+
+    event_bus = contract.get("event_bus")
+    root_terminal_event = contract.get("terminal_event")
+    if event_bus is not None or root_terminal_event is not None:
+        if event_bus is None:
+            event_bus = {}
+        if not isinstance(event_bus, dict):
+            raise MarketContractAdapterError(
+                f"market contract '{node_name}' field 'event_bus' must be a "
+                f"mapping, got {type(event_bus).__name__}"
+            )
+        canonical_event_bus = {
+            field: deepcopy(event_bus[field])
+            for field in _CANONICAL_EVENT_BUS_FIELDS
+            if field in event_bus
+        }
+        if (
+            "terminal_event" not in canonical_event_bus
+            and root_terminal_event is not None
+        ):
+            canonical_event_bus["terminal_event"] = _require_str(
+                root_terminal_event, "terminal_event", node_name
+            )
+        if canonical_event_bus:
+            extensions["event_bus"] = canonical_event_bus
+
+    return extensions
+
+
 def to_handler_contract_payload(
     contract: dict[str, Any], node_name: str
 ) -> dict[str, Any]:
-    """Transform a parsed market contract into a ModelHandlerContract payload.
+    """Transform a parsed market contract into a runtime registration payload.
 
-    The returned mapping validates as ``omnibase_core``'s ``ModelHandlerContract``
-    and carries the derived ``handler_class`` under ``metadata.handler_class``
-    (the location the runtime descriptor parser reads).
+    The returned mapping carries a canonical ``ModelHandlerContract`` shell,
+    the derived ``handler_class`` under ``metadata.handler_class`` (the location
+    the runtime descriptor parser reads), and independently typed ``db_io``,
+    ``handler_routing``, and ``event_bus`` runtime extensions.
 
     Args:
         contract: Parsed market node ``contract.yaml`` mapping.
         node_name: Node identifier, used for handler_id derivation and errors.
 
     Returns:
-        A ModelHandlerContract-shaped payload dict.
+        A runtime registration payload dict.
 
     Raises:
         MarketContractAdapterError: If a required field cannot be derived.
@@ -330,6 +412,7 @@ def to_handler_contract_payload(
         "output_model": _derive_output_model(contract, node_name),
         "handler_class": handler_class,
         "metadata": metadata,
+        **_runtime_extensions(contract, node_name),
     }
 
     description = contract.get("description")

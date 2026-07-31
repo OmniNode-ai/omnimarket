@@ -66,9 +66,10 @@ runtime_dispatch:
 db_io:
   db_tables:
     - name: merge_state_transitions
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_merge_state_transitions.sql"
       access: write
-      database: omnidash_analytics
       role: merge_state_transitions
 
 event_bus:

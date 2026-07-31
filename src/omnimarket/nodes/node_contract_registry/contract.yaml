@@ -38,6 +38,15 @@ output_model:
   module: omnimarket.nodes.node_contract_registry.models
   description: Registration validation result with status and reason.
 
+db_io:
+  db_tables:
+    - name: contract_registry
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_contract_registry.sql"
+      access: write
+      role: contract_registry
+
 event_bus:
   version:
     major: 1

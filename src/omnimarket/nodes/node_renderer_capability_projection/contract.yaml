@@ -111,9 +111,10 @@ projection_api:
 db_io:
   db_tables:
     - name: renderer_capability_projection
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_renderer_capability_projection.sql"
       access: write
-      database: omnidash_analytics
       role: projection
 
 descriptor:

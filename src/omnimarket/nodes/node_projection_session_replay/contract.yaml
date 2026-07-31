@@ -80,9 +80,10 @@ event_bus:
 db_io:
   db_tables:
     - name: session_replay_snapshots
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_session_replay_snapshots.sql"
       access: write
-      database: omnidash_analytics
       role: snapshots
 
 projection_api:

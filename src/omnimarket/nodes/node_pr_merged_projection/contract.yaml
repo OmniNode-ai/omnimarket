@@ -62,9 +62,10 @@ runtime_dispatch:
 db_io:
   db_tables:
     - name: pr_merged_events
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_pr_merged_events.sql"
       access: write
-      database: omnidash_analytics
       role: pr_merged_events
 
 event_bus:

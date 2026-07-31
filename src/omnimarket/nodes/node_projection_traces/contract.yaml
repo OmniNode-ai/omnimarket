@@ -22,7 +22,7 @@ handler_routing:
     - handler:
         name: HandlerProjectionTraces
         module: omnimarket.nodes.node_projection_traces.handlers.handler_projection_traces
-      event_model: ModelTraceProjectionEvent
+      event_model: omnimarket.nodes.node_projection_traces.models.model_trace_event.ModelTraceProjectionEvent
 
 idempotency:
   enabled: true
@@ -48,9 +48,10 @@ event_bus:
 db_io:
   db_tables:
     - name: traces
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_traces.sql"
       access: write
-      database: omnidash_analytics
       role: traces
 
 projection_api:

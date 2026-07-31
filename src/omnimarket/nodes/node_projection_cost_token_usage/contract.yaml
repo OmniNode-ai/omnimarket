@@ -20,7 +20,7 @@ handler_routing:
     - handler:
         name: HandlerProjectionCostTokenUsage
         module: omnimarket.nodes.node_projection_cost_token_usage.handlers.handler_projection_cost_token_usage
-      event_model: ModelCostTokenUsageProjectionEvent
+      event_model: omnimarket.nodes.node_projection_cost_token_usage.models.model_cost_token_usage_event.ModelCostTokenUsageProjectionEvent
 
 idempotency:
   enabled: true

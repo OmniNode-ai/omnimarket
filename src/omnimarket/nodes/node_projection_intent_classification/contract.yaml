@@ -41,9 +41,10 @@ terminal_event: onex.evt.omnimarket.projection-intent-classification-applied.v1
 db_io:
   db_tables:
     - name: intent_classification_events
+      database_ref: application
+      schema: omninode_internal
       migration: "0000_create_intent_classification_events.sql"
       access: write
-      database: omnidash_analytics
       role: events
 
 event_bus:

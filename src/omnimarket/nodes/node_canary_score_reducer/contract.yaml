@@ -32,6 +32,15 @@ descriptor:
   idempotent: true
   timeout_ms: 30000
 
+db_io:
+  db_tables:
+    - name: capability_scores
+      database_ref: application
+      schema: public
+      migration: "0001_create_capability_scores.sql"
+      access: write
+      role: capability_scores
+
 event_bus:
   subscribe_topics:
     - onex.evt.omnimarket.adr-canary-completed.v1

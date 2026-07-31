@@ -29,7 +29,7 @@ handler_routing:
         name: CostByRepoProjectionRunner
         module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_cost_by_repo
       handler_module: omnimarket.nodes.node_projection_cost_by_repo.handlers.handler_cost_by_repo
-      event_model: ModelCostByRepoProjectionEvent
+      event_model: omnimarket.nodes.node_projection_cost_by_repo.models.model_cost_by_repo_event.ModelCostByRepoProjectionEvent
 
 idempotency:
   enabled: true
@@ -44,9 +44,10 @@ terminal_event: onex.evt.omnimarket.cost-by-repo-snapshot.v1
 db_io:
   db_tables:
     - name: cost_by_repo_snapshots
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_cost_by_repo_snapshots.sql"
       access: write
-      database: omnidash_analytics
       role: cost_by_repo_aggregate
 
 event_bus:

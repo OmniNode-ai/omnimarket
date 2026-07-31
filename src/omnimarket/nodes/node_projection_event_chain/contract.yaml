@@ -24,7 +24,7 @@ handler_routing:
     - handler:
         name: HandlerProjectionEventChain
         module: omnimarket.nodes.node_projection_event_chain.handlers.handler_projection_event_chain
-      event_model: ModelEventChainProjectionEvent
+      event_model: omnimarket.nodes.node_projection_event_chain.models.model_event_chain_event.ModelEventChainProjectionEvent
 
 idempotency:
   enabled: true
@@ -54,9 +54,10 @@ externally_consumed_topics:
 db_io:
   db_tables:
     - name: event_chain
+      database_ref: application
+      schema: omninode_internal
       migration: "0001_create_event_chain.sql"
       access: write
-      database: omnidash_analytics
       role: event_chain
 
 projection_api:

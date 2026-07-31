@@ -54,9 +54,14 @@ dod_evidence:
 db_io:
   db_tables:
     - name: agent_routing_decisions
+      database_ref: application
+      schema: public
       migration: "0021_create_agent_routing_decisions.sql"
       access: write
-      # OMN-13150 (FIX-1): canonical DB home is omnidash_analytics — the projection
+      # OMN-13150 (FIX-1): canonical DB home is the application projection
+      # database, with the unqualified migration/handler SQL and projection API
+      # all resolving the physical public.agent_routing_decisions relation.
+      # The projection
       # DB where EVERY sibling projection table lives (session_outcomes,
       # llm_call_metrics, llm_routing_decisions, node_service_registry,
       # savings_estimates, pattern_learning_artifacts, ...). The prior OMN-13127
@@ -74,7 +79,6 @@ db_io:
       # 2026-06-14-post-closeout/). DDL is owned by this node's per-node migration
       # (0021_create_agent_routing_decisions.sql), vendored into omnibase_infra
       # forward/nodes/ and applied to $NODE_PGDB (omnidash_analytics).
-      database: omnidash_analytics
       role: routing_decisions
 
 event_bus:

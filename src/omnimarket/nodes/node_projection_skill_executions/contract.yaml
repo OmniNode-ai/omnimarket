@@ -34,7 +34,7 @@ handler_routing:
         name: SkillExecutionsProjectionRunner
         module: omnimarket.nodes.node_projection_skill_executions.handlers.handler_skill_executions
       handler_module: omnimarket.nodes.node_projection_skill_executions.handlers.handler_skill_executions
-      event_model: ModelSkillExecutionProjectionEvent
+      event_model: omnimarket.nodes.node_projection_skill_executions.models.model_skill_executions_event.ModelSkillExecutionProjectionEvent
 
 idempotency:
   enabled: true
@@ -50,9 +50,10 @@ terminal_event: onex.evt.omnimarket.skill-executions-snapshot.v1
 db_io:
   db_tables:
     - name: skill_execution_snapshots
+      database_ref: application
+      schema: public
       migration: "0001_create_skill_execution_snapshots.sql"
       access: write
-      database: omnidash_analytics
       role: skill_executions_aggregate
 
 event_bus:

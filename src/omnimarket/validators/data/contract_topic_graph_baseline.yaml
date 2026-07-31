@@ -85,7 +85,6 @@ accepted:
 - ORPHANED_CONSUMER::node_auto_merge_effect::onex.cmd.omnimarket.auto-merge-requested.v1
 - ORPHANED_CONSUMER::node_baselines_batch_compute::onex.cmd.omnibase-infra.baselines-batch-compute.v1
 - ORPHANED_CONSUMER::node_budget_policy_compute::onex.cmd.omnimarket.budget-policy-requested.v1
-- ORPHANED_CONSUMER::node_build_loop_write_effect::onex.cmd.omnibase-infra.build-loop-append.v1
 - ORPHANED_CONSUMER::node_bus_audit_compute::onex.cmd.omnimarket.bus-audit-start.v1
 - ORPHANED_CONSUMER::node_candidate_pool_compute::onex.cmd.omnimarket.candidate-pool-requested.v1
 - ORPHANED_CONSUMER::node_chain_diff::onex.cmd.omnimarket.chain-diff-requested.v1
@@ -136,9 +135,6 @@ accepted:
 - ORPHANED_CONSUMER::node_design_to_plan::onex.cmd.omnimarket.design-to-plan-start.v1
 - ORPHANED_CONSUMER::node_dispatch_watchdog_orchestrator::onex.cmd.omnimarket.watchdog-check.v1
 - ORPHANED_CONSUMER::node_dispatch_worker::onex.cmd.omnimarket.dispatch-worker-compile.v1
-- ORPHANED_CONSUMER::node_dlq_replay_effect::onex.dlq.omnibase-infra.commands.v1
-- ORPHANED_CONSUMER::node_dlq_replay_effect::onex.dlq.omnibase-infra.events.v1
-- ORPHANED_CONSUMER::node_dlq_replay_effect::onex.dlq.omnibase-infra.intents.v1
 - ORPHANED_CONSUMER::node_entropy_experiment_orchestrator::onex.cmd.omnimarket.entropy-experiment-requested.v1
 - ORPHANED_CONSUMER::node_env_parity_collect_effect::onex.cmd.omnimarket.env-parity-collect-start.v1
 - ORPHANED_CONSUMER::node_env_parity_compute::onex.cmd.omnimarket.env-parity-compute-start.v1
@@ -450,7 +446,6 @@ accepted:
 - ORPHANED_PRODUCER::node_audit_trail_compactor::onex.evt.omnimarket.audit-trail-compacted.v1
 - ORPHANED_PRODUCER::node_auto_merge_effect::onex.evt.omnimarket.pr-merged.v1
 - ORPHANED_PRODUCER::node_budget_policy_compute::onex.evt.omnimarket.budget-policy-completed.v1
-- ORPHANED_PRODUCER::node_build_loop_write_effect::onex.evt.omnibase-infra.build-loop-appended.v1
 - ORPHANED_PRODUCER::node_bus_audit_compute::onex.evt.omnimarket.bus-audit-completed.v1
 - ORPHANED_PRODUCER::node_candidate_pool_compute::onex.evt.omnimarket.candidate-pool-completed.v1
 - ORPHANED_PRODUCER::node_chain_orchestrator::onex.evt.omnibase-infra.chain-learn-complete.v1
@@ -494,7 +489,6 @@ accepted:
 - ORPHANED_PRODUCER::node_dispatch_watchdog_orchestrator::onex.evt.omnimarket.watchdog-stall-detected.v1
 - ORPHANED_PRODUCER::node_dispatch_watchdog_orchestrator::onex.evt.omnimarket.watchdog-task-escalated.v1
 - ORPHANED_PRODUCER::node_dispatch_worker::onex.evt.omnimarket.dispatch-worker-compiled.v1
-- ORPHANED_PRODUCER::node_dlq_replay_effect::onex.dlq.omnibase-infra.quarantine.v1
 - ORPHANED_PRODUCER::node_env_parity_collect_effect::onex.evt.omnimarket.env-parity-collect-completed.v1
 - ORPHANED_PRODUCER::node_env_parity_compute::onex.evt.omnimarket.env-parity-compute-completed.v1
 - ORPHANED_PRODUCER::node_env_sync_alert_effect::onex.evt.omnimarket.env-sync-alert-completed.v1
@@ -755,3 +749,22 @@ external_producers:
   # renamed topic is still a raw hook-emitted publish with no contract.yaml,
   # so it needs the same census exemption as the two topics above.
   onex.evt.omniclaude.context-injected.v1: "published by omniclaude src/omniclaude/lib/manifest_injection_event_publisher.py (raw hook code, no contract.yaml); renamed from the non-existent hook-context-injected.v1 — OMN-14986"
+  # OMN-15423 rebase: omnibase_infra node_ledger_projection_compute is an
+  # audit consumer for runtime/DLQ/OCC/steel topics whose producers are outside
+  # the checked contract corpus or are runtime infrastructure sinks rather than
+  # node contracts. These are producer facts, not accepted graph defects.
+  onex.cmd.omnibase-infra.build-loop-append.v1: "runtime build-loop append command producer / in-process orchestration surface audited by omnibase_infra node_ledger_projection_compute — OMN-15006"
+  onex.dlq.omnibase-infra.commands.v1: "published by omnibase_infra runtime DLQ infrastructure for command failures, not a node contract — OMN-15006"
+  onex.dlq.omnibase-infra.events.v1: "published by omnibase_infra runtime DLQ infrastructure for event failures, not a node contract — OMN-15006"
+  onex.dlq.omnibase-infra.intents.v1: "published by omnibase_infra runtime DLQ infrastructure for intent failures, not a node contract — OMN-15006"
+  onex.dlq.omnibase-infra.omnibase-infra.v1: "published by omnibase_infra runtime DLQ infrastructure for infra-domain failures, not a node contract — OMN-15006"
+  onex.dlq.omnibase-infra.platform.v1: "published by omnibase_infra runtime DLQ infrastructure for platform failures, not a node contract — OMN-15006"
+  onex.dlq.omnibase-infra.router.v1: "published by omnibase_infra runtime DLQ infrastructure for router failures, not a node contract — OMN-15006"
+  onex.dlq.omnibase-infra.rsd.v1: "published by omnibase_infra runtime DLQ infrastructure for RSD failures, not a node contract — OMN-15006"
+  onex.dlq.omnibase-infra.skill.v1: "published by omnibase_infra runtime DLQ infrastructure for skill failures, not a node contract — OMN-15006"
+  onex.evt.occ.nightly-promotion.v1: "published by onex_change_control/OCC governance automation outside the checked node-contract corpus — OMN-15006"
+  onex.evt.omnimarket.runtime-deployment-proof.v1: "published by deploy/runtime proof automation outside the checked node-contract corpus — OMN-15006"
+  onex.evt.onex-change-control.contract-drift-detected.v1: "published by onex_change_control/OCC governance automation outside the checked node-contract corpus — OMN-15006"
+  onex.evt.onex-change-control.cosmetic-compliance-scored.v1: "published by onex_change_control/OCC governance automation outside the checked node-contract corpus — OMN-15006"
+  onex.evt.onex-change-control.governance-check-completed.v1: "published by onex_change_control/OCC governance automation outside the checked node-contract corpus — OMN-15006"
+  onex.evt.steel-onslaught.match-terminal.v1: "published by private steel_onslaught Kafka forwarder outside the OmniNode contract corpus — OMN-15168"

@@ -91,9 +91,10 @@ def test_exposed_projection_without_cold_ddl_proof_fails_validation(
         db_io:
           db_tables:
             - name: missing_cold_projection
+              database_ref: application
+              schema: omninode_internal
               migration: "0001_create_projection.sql"
               access: write
-              database: omnidash_analytics
               role: projection_read_model
         projection_api:
           expose: true

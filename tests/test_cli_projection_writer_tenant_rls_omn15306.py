@@ -32,6 +32,7 @@ Run: uv run pytest tests/test_cli_projection_writer_tenant_rls_omn15306.py -v
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import tempfile
@@ -113,6 +114,13 @@ if not _INITDB or not _PG_CTL:  # pragma: no cover - environment dependent
     )
 
 
+def _pg_subprocess_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["LANG"] = "en_US.UTF-8"
+    env["LC_ALL"] = "C"
+    return env
+
+
 @pytest.fixture(scope="module")
 def pg_socket_dir() -> Iterator[str]:
     """Ephemeral, unix-socket-only cluster: no shared state, no port to collide."""
@@ -135,6 +143,7 @@ def pg_socket_dir() -> Iterator[str]:
         ],
         check=True,
         capture_output=True,
+        env=_pg_subprocess_env(),
     )
     subprocess.run(
         [
@@ -150,6 +159,7 @@ def pg_socket_dir() -> Iterator[str]:
         ],
         check=True,
         capture_output=True,
+        env=_pg_subprocess_env(),
     )
     try:
         yield str(sock_dir)
@@ -158,6 +168,7 @@ def pg_socket_dir() -> Iterator[str]:
             [str(_PG_CTL), "-D", str(data_dir), "-m", "immediate", "-w", "stop"],
             check=False,
             capture_output=True,
+            env=_pg_subprocess_env(),
         )
         shutil.rmtree(root, ignore_errors=True)
 

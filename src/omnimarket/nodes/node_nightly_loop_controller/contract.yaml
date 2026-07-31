@@ -98,6 +98,27 @@ env_dependencies:
 
 terminal_event: onex.evt.omnimarket.nightly-loop-completed.v1
 
+db_io:
+  db_tables:
+    - name: nightly_loop_decisions
+      database_ref: application
+      schema: omninode_internal
+      migration: "001_create_nightly_loop_tables.sql"
+      access: write
+      role: decisions
+    - name: nightly_loop_iterations
+      database_ref: application
+      schema: omninode_internal
+      migration: "001_create_nightly_loop_tables.sql"
+      access: write
+      role: iterations
+    - name: nightly_loop_configs
+      database_ref: application
+      schema: omninode_internal
+      migration: "001_create_nightly_loop_tables.sql"
+      access: read
+      role: config
+
 golden_path:
   - "Load config from nightly_loop_configs table (or use defaults)"
   - "For each iteration: check priorities, evaluate gaps, make decisions"

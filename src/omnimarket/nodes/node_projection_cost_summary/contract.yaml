@@ -22,7 +22,7 @@ handler_routing:
     - handler:
         name: HandlerProjectionCostSummary
         module: omnimarket.nodes.node_projection_cost_summary.handlers.handler_projection_cost_summary
-      event_model: ModelCostSummaryProjectionEvent
+      event_model: omnimarket.nodes.node_projection_cost_summary.models.model_cost_summary_event.ModelCostSummaryProjectionEvent
 
 idempotency:
   enabled: true
@@ -30,6 +30,15 @@ idempotency:
   hash_fields:
     - window
     - snapshot_timestamp_minute
+
+db_io:
+  db_tables:
+    - name: llm_cost_aggregates
+      database_ref: application
+      schema: public
+      migration: "0001_create_llm_cost_aggregates.sql"
+      access: write
+      role: cost_summary
 
 event_bus:
   consumer_group: local.omnibase_infra.node_projection_cost_summary.consume.v1

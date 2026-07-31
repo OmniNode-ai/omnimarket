@@ -30,7 +30,7 @@ handler_routing:
         name: InstructionEvalProjectionRunner
         module: omnimarket.nodes.node_projection_instruction_eval.handlers.handler_instruction_eval
       handler_module: omnimarket.nodes.node_projection_instruction_eval.handlers.handler_instruction_eval
-      event_model: ModelInstructionEvalProjectionEvent
+      event_model: omnimarket.nodes.node_projection_instruction_eval.models.model_instruction_eval_event.ModelInstructionEvalProjectionEvent
 
 idempotency:
   enabled: true
@@ -45,9 +45,10 @@ terminal_event: onex.evt.omnimarket.instruction-eval-aggregate-snapshot.v1
 db_io:
   db_tables:
     - name: instruction_eval_aggregate_snapshots
+      database_ref: application
+      schema: public
       migration: "0001_create_instruction_eval_aggregate_snapshots.sql"
       access: write
-      database: omnidash_analytics
       role: instruction_eval_aggregate
 
 event_bus:

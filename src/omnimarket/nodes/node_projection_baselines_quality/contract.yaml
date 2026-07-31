@@ -42,9 +42,10 @@ terminal_event: onex.evt.omnimarket.projection-baselines-quality-applied.v1
 db_io:
   db_tables:
     - name: baselines_quality_snapshots
+      database_ref: application
+      schema: omninode_internal
       migration: "002_realign_quality_snapshots_to_producer_schema.sql"
       access: write
-      database: omnidash_analytics
       role: quality_snapshots
 
 event_bus:
