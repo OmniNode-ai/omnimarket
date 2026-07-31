@@ -67,6 +67,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      # OMN-13953: unconditionally self-hosted (persistent workspace) — the
+      # sibling clones below outlive the job, so clean before cloning or every
+      # run after the first on a given runner fails with exit 128.
+      - name: Clean stale dependency clones
+        run: rm -rf ../omnibase_core ../omnibase_compat ../omnimemory
+
       - name: Clone sibling repos (workspace deps)
         run: |
           git clone --depth=1 https://github.com/OmniNode-ai/omnibase_core.git ../omnibase_core
