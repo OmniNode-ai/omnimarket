@@ -1536,6 +1536,7 @@ class HandlerDelegationWorkflow:
                 failure_reason="",
                 terminal_failure_reason=None,
                 required_bar_authority=required_bar_authority,
+                required_bar_applied=not judge_unavailable_floor,
             )
 
             self._advance(workflow, EnumDelegationState.COMPLETED)
@@ -2403,6 +2404,7 @@ class HandlerDelegationWorkflow:
         failure_reason: str,
         terminal_failure_reason: str | None,
         required_bar_authority: RequiredBarAuthority | None,
+        required_bar_applied: bool = True,
     ) -> TerminalEmissionInputs:
         """Resolve a quality-gate terminal outcome into the single-source inputs.
 
@@ -2431,6 +2433,15 @@ class HandlerDelegationWorkflow:
         history_dicts = tuple(
             attempt.model_dump(mode="json") for attempt in workflow.escalation_history
         )
+        # OMN-15539: a judge-unavailable deterministic-floor completion does not
+        # apply the combined score bar. The judge contribution required to make
+        # that bar reachable was absent, so carrying the combined bar together
+        # with BELOW_BAR + quality_passed would assert contradictory terminal
+        # truth. Preserve the accepted deterministic-floor verdict and omit the
+        # unapplied numeric bar/comparison as one typed pair.
+        structured_bar_authority = (
+            required_bar_authority if required_bar_applied else None
+        )
         quality_gates_checked = (
             format_quality_bar_labels(
                 required_bar=required_bar_authority.required_bar,
@@ -2447,10 +2458,10 @@ class HandlerDelegationWorkflow:
         score_vs_required_bar = (
             (
                 EnumQualityScoreComparison.BELOW_BAR
-                if result.quality_score < required_bar_authority.required_bar
+                if result.quality_score < structured_bar_authority.required_bar
                 else EnumQualityScoreComparison.AT_OR_ABOVE_BAR
             )
-            if required_bar_authority is not None
+            if structured_bar_authority is not None
             else None
         )
 
@@ -2464,8 +2475,8 @@ class HandlerDelegationWorkflow:
             quality_passed=completed,
             quality_score=result.quality_score,
             required_quality_bar=(
-                required_bar_authority.required_bar
-                if required_bar_authority is not None
+                structured_bar_authority.required_bar
+                if structured_bar_authority is not None
                 else None
             ),
             score_vs_required_bar=score_vs_required_bar,
