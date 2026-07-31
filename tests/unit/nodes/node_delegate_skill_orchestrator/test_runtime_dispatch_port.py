@@ -8,6 +8,10 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTerminalFailureCause,
+    EnumQualityScoreComparison,
+)
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
@@ -495,15 +499,30 @@ async def test_runtime_dispatch_port_ignores_early_empty_pattern_b_terminal() ->
                 endpoint_url="https://qwen.local",
                 content="scored failure content",
                 quality_passed=False,
-                quality_score=0.0,
+                quality_score=0.9,
+                required_quality_bar=0.85,
+                score_vs_required_bar=(EnumQualityScoreComparison.AT_OR_ABOVE_BAR),
+                failed_acceptance_criteria=("TASK_MISMATCH",),
                 latency_ms=84,
                 prompt_tokens=68,
                 completion_tokens=17,
                 total_tokens=85,
                 fallback_to_claude=False,
-                failure_reason="TASK_MISMATCH",
+                failure_reason="provider quota exhausted after quality rejection",
                 tokens_to_compliance=85,
-                compliance_attempts=1,
+                compliance_attempts=3,
+                escalation_history=(
+                    {
+                        "tier_name": "cheap_cloud",
+                        "model_used": "Qwen3-Coder-30B",
+                        "quality_score": 0.9,
+                        "failure_reasons": ["TASK_MISMATCH"],
+                    },
+                ),
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+                ),
+                attempts_count=3,
             ),
         )
 
@@ -531,9 +550,22 @@ async def test_runtime_dispatch_port_ignores_early_empty_pattern_b_terminal() ->
 
     assert result["status"] == "failed"
     assert result["content"] == "scored failure content"
-    assert result["quality_score"] == 0.0
+    assert result["quality_score"] == 0.9
+    assert result["required_quality_bar"] == 0.85
+    assert result["score_vs_required_bar"] == "at_or_above_bar"
+    assert result["failed_acceptance_criteria"] == ["TASK_MISMATCH"]
+    assert result["terminal_failure_cause"] == "provider_quota_exhausted"
+    assert result["attempts_count"] == 3
+    assert result["escalation_history"] == [
+        {
+            "tier_name": "cheap_cloud",
+            "model_used": "Qwen3-Coder-30B",
+            "quality_score": 0.9,
+            "failure_reasons": ["TASK_MISMATCH"],
+        }
+    ]
     assert result["prompt_tokens"] == 68
     assert result["completion_tokens"] == 17
     assert result["total_tokens"] == 85
     assert result["tokens_to_compliance"] == 85
-    assert result["compliance_attempts"] == 1
+    assert result["compliance_attempts"] == 3

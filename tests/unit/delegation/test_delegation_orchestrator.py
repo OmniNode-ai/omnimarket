@@ -976,6 +976,7 @@ class TestInferenceErrorEscalation:
             error_retryable: bool,
             non_retryable_reason: str,
             task_type: str | None,
+            excluded_backend_refs: frozenset[str] = frozenset(),
         ) -> ModelEscalationDecisionResult:
             del (
                 workflow,
@@ -983,6 +984,7 @@ class TestInferenceErrorEscalation:
                 error_retryable,
                 non_retryable_reason,
                 task_type,
+                excluded_backend_refs,
             )
             observed_budgets.append(max_escalation_attempts)
             return ModelEscalationDecisionResult(
@@ -1034,6 +1036,7 @@ class TestInferenceErrorEscalation:
             error_retryable: bool,
             non_retryable_reason: str,
             task_type: str | None,
+            excluded_backend_refs: frozenset[str] = frozenset(),
         ) -> ModelEscalationDecisionResult:
             del (
                 workflow,
@@ -1041,6 +1044,7 @@ class TestInferenceErrorEscalation:
                 error_retryable,
                 non_retryable_reason,
                 task_type,
+                excluded_backend_refs,
             )
             observed_budgets.append(max_escalation_attempts)
             return ModelEscalationDecisionResult(

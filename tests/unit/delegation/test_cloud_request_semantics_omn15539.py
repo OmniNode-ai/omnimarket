@@ -12,6 +12,7 @@ from uuid import NAMESPACE_DNS, UUID, uuid4, uuid5
 import pytest
 from omnibase_core.models.delegation.wire import (
     ModelBudgetLimits,
+    ModelDelegationCompleted,
     ModelDelegationRequest,
     ModelInferenceIntent,
     ModelInferenceResponseData,
@@ -202,6 +203,23 @@ def test_compliance_repair_preserves_provider_semantics_and_gate_contract() -> N
     assert len(gate_events) == 1
     assert isinstance(gate_events[0], ModelQualityGateIntent)
     assert gate_events[0].payload.response_contract == _RESPONSE_CONTRACT
+
+    terminal_events = handler.handle_gate_result(
+        ModelQualityGateResult(
+            correlation_id=correlation_id,
+            passed=True,
+            quality_score=1.0,
+        )
+    )
+
+    assert len(terminal_events) == 1
+    terminal = terminal_events[0]
+    assert isinstance(terminal, ModelDelegationCompleted)
+    assert terminal.compliance_attempts == 2
+    # One initial inference plus one schema-repair inference really ran. This
+    # total must not collapse to escalation_history + 1 (there was no tier
+    # escalation, so that older formula reported the contradictory value 1).
+    assert terminal.attempts_count == 2
 
 
 @pytest.mark.unit

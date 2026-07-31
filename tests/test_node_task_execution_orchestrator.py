@@ -447,6 +447,8 @@ class TestCodingDelegation:
         import asyncio
         from uuid import uuid4 as _uuid4
 
+        from omnibase_core.models.delegation.wire import EnumQualityScoreComparison
+
         from omnimarket.models.delegation.wire.model_delegate_skill_request import (
             ModelDelegateSkillRequest,
         )
@@ -464,6 +466,9 @@ class TestCodingDelegation:
             response="def parse(): ...",
             quality_gate_passed=True,
             quality_score=0.92,
+            required_quality_bar=0.85,
+            score_vs_required_bar=EnumQualityScoreComparison.AT_OR_ABOVE_BAR,
+            attempts_count=2,
         )
 
         class _StubDelegationExecutor:
@@ -496,6 +501,12 @@ class TestCodingDelegation:
         assert result.delegation_responses[0].model_name == "qwen-coder"
         assert result.delegation_responses[0].quality_gate_passed is True
         assert result.delegation_responses[0].response == "def parse(): ..."
+        assert result.delegation_responses[0].required_quality_bar == 0.85
+        assert (
+            result.delegation_responses[0].score_vs_required_bar
+            is EnumQualityScoreComparison.AT_OR_ABOVE_BAR
+        )
+        assert result.delegation_responses[0].attempts_count == 2
         # task.execute dispatched the requirement as coding work through the route.
         assert len(captured) == 1
         assert captured[0].prompt == "generate a parser for the config file"
@@ -732,6 +743,8 @@ class TestCodingDelegation:
         import asyncio
         from uuid import uuid4 as _uuid4
 
+        from omnibase_core.models.delegation.wire import EnumQualityScoreComparison
+
         from omnimarket.models.delegation.wire.model_delegate_skill_request import (
             ModelDelegateSkillRequest,
         )
@@ -745,6 +758,10 @@ class TestCodingDelegation:
             task_type="code_generation",
             response="ok",
             quality_gate_passed=True,
+            quality_score=0.9,
+            required_quality_bar=0.85,
+            score_vs_required_bar=EnumQualityScoreComparison.AT_OR_ABOVE_BAR,
+            attempts_count=2,
         )
 
         class _StubDelegationExecutor:
@@ -776,7 +793,11 @@ class TestCodingDelegation:
         assert data["status"] == "completed"
         assert data["correlation_id"] == str(correlation_id)
         assert len(data["payload"]["delegation_responses"]) == 1
-        assert data["payload"]["delegation_responses"][0]["status"] == "completed"
+        delegation = data["payload"]["delegation_responses"][0]
+        assert delegation["status"] == "completed"
+        assert delegation["required_quality_bar"] == 0.85
+        assert delegation["score_vs_required_bar"] == "at_or_above_bar"
+        assert delegation["attempts_count"] == 2
 
 
 @pytest.mark.unit

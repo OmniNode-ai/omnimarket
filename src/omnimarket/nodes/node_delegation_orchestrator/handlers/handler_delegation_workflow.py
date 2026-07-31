@@ -2007,11 +2007,19 @@ class HandlerDelegationWorkflow:
         ``escalation_history`` of FOUR rejected attempts (3x ``local`` +
         1x ``cheap_cloud``) in the same payload — the event contradicted itself.
 
-        ``escalation_history`` is the ground truth: ``_record_escalation_attempt``
-        appends exactly one entry per REJECTED attempt. On a failure terminal the
-        final (terminal) attempt is already recorded, so the history length IS
-        the attempt count. On an accepted terminal the winning attempt is not in
-        the history, so it is added.
+        ``escalation_history`` is the ground truth for rejected tier attempts:
+        ``_record_escalation_attempt`` appends exactly one entry per rejection.
+        On a failure terminal the final (terminal) tier attempt is already
+        recorded; on an accepted terminal the winning attempt is added here.
+        It is not, however, the only inference-call authority: schema-compliance
+        repairs issue fresh calls without appending escalation history. The
+        workflow's ``compliance_attempts`` counter therefore participates in the
+        maximum too.
+
+        The COMPAT stack introduces ``inference_attempt_sequence`` as the
+        monotonic emitted-call authority. Read it when present so this semantics
+        layer remains truthful after the stacks are composed, without declaring
+        that compatibility field prematurely in this branch.
 
         The ``escalation_count + 1`` floor is retained so a workflow that
         escalated without recording history (e.g. the ``required_bar_missing``
@@ -2019,7 +2027,19 @@ class HandlerDelegationWorkflow:
         fewer attempts than it provably made, nor zero.
         """
         recorded = len(workflow.escalation_history) + (1 if completed else 0)
-        return max(recorded, workflow.escalation_count + 1)
+        raw_inference_sequence = getattr(workflow, "inference_attempt_sequence", 0)
+        inference_sequence = (
+            raw_inference_sequence
+            if isinstance(raw_inference_sequence, int)
+            and not isinstance(raw_inference_sequence, bool)
+            else 0
+        )
+        return max(
+            recorded,
+            workflow.escalation_count + 1,
+            workflow.compliance_attempts or 1,
+            inference_sequence,
+        )
 
     def _record_escalation_attempt(
         self,

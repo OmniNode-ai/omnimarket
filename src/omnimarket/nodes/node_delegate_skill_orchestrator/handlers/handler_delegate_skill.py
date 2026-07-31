@@ -14,7 +14,11 @@ from __future__ import annotations
 from typing import Literal, Protocol
 from uuid import UUID
 
-from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTerminalFailureCause,
+    EnumQualityScoreComparison,
+    ModelPremiumCounterfactual,
+)
 
 from omnimarket.config import get_settings
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
@@ -123,12 +127,57 @@ def _as_float(value: object, default: float = 0.0) -> float:
     return default
 
 
+def _as_optional_float(value: object) -> float | None:
+    """Parse an optional numeric field without inventing malformed truth."""
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        msg = f"expected optional float, got bool {value!r}"
+        raise ValueError(msg)
+    if isinstance(value, int | float):
+        return float(value)
+    if isinstance(value, str) and value.strip():
+        try:
+            return float(value)
+        except ValueError as exc:
+            msg = f"expected optional float, got {value!r}"
+            raise ValueError(msg) from exc
+    msg = f"expected optional float, got {value!r}"
+    raise ValueError(msg)
+
+
 def _as_str_list(value: object) -> list[str]:
     if isinstance(value, list | tuple):
         return [str(item) for item in value]
     if isinstance(value, str) and value:
         return [value]
     return []
+
+
+def _as_quality_score_comparison(
+    value: object,
+) -> EnumQualityScoreComparison | None:
+    if value is None:
+        return None
+    if isinstance(value, EnumQualityScoreComparison):
+        return value
+    if isinstance(value, str):
+        return EnumQualityScoreComparison(value)
+    msg = f"invalid score_vs_required_bar {value!r}"
+    raise ValueError(msg)
+
+
+def _as_terminal_failure_cause(
+    value: object,
+) -> EnumDelegationTerminalFailureCause | None:
+    if value is None:
+        return None
+    if isinstance(value, EnumDelegationTerminalFailureCause):
+        return value
+    if isinstance(value, str):
+        return EnumDelegationTerminalFailureCause(value)
+    msg = f"invalid terminal_failure_cause {value!r}"
+    raise ValueError(msg)
 
 
 def _measured_cost_usd(result: dict[str, object]) -> float:
@@ -202,18 +251,53 @@ def _attempt_records(
 ) -> list[ModelDelegateSkillAttemptRecord]:
     """Build the typed per-tier attempt ladder (OMN-14063).
 
-    ``result["attempts"]`` is the dispatch port's internal per-attempt list
-    (present on the bus-less local port; absent — defaults to ``[]`` — on ports
-    that don't yet report per-attempt detail). Surfacing it here is what makes a
-    local->cloud escalation visible on the typed response instead of only in the
-    capture-file log.
+    ``result["attempts"]`` is the richer dispatch-port-owned record and always
+    wins when present. Canonical bus terminals currently expose only serialized
+    ``escalation_history``; map that as documented best-effort evidence rather
+    than dropping it. History contains rejected attempts and may lack backend
+    aliases or the accepted terminal attempt, so callers must use the separate
+    ``attempts_count`` as the total-call authority.
     """
     raw_attempts = result.get("attempts")
-    if not isinstance(raw_attempts, list):
-        return []
+    from_escalation_history = not isinstance(raw_attempts, list)
+    if isinstance(raw_attempts, list):
+        attempt_values = raw_attempts
+    else:
+        raw_history = result.get("escalation_history")
+        if not isinstance(raw_history, list | tuple):
+            return []
+        attempt_values = list(raw_history)
+
     records: list[ModelDelegateSkillAttemptRecord] = []
-    for raw in raw_attempts:
+    for raw in attempt_values:
         if not isinstance(raw, dict):
+            continue
+        if from_escalation_history:
+            failure_reasons = _as_str_list(raw.get("failure_reasons"))
+            records.append(
+                ModelDelegateSkillAttemptRecord(
+                    tier=str(raw.get("tier_name") or raw.get("tier") or ""),
+                    backend_id=str(
+                        raw.get("backend_id") or raw.get("routing_decision_id") or ""
+                    ),
+                    model_id=str(raw.get("model_used") or raw.get("model_id") or ""),
+                    # Escalation history records rejected/failed attempts. It does
+                    # not contain the accepted terminal attempt.
+                    quality_gate_passed=False,
+                    quality_score=(
+                        _as_float(raw["quality_score"])
+                        if raw.get("quality_score") is not None
+                        else None
+                    ),
+                    cost_usd=_as_float(raw.get("cost_usd")),
+                    failure_class=(
+                        str(raw["failure_class"])
+                        if raw.get("failure_class") is not None
+                        else None
+                    ),
+                    error_message="; ".join(failure_reasons),
+                )
+            )
             continue
         records.append(
             ModelDelegateSkillAttemptRecord(
@@ -236,6 +320,21 @@ def _attempt_records(
             )
         )
     return records
+
+
+def _response_attempts_count(
+    result: dict[str, object],
+    attempts: list[ModelDelegateSkillAttemptRecord],
+) -> int:
+    """Keep an explicit terminal count authoritative; derive only for legacy ports."""
+    if result.get("attempts_count") is not None:
+        return _as_int(result["attempts_count"], default=1)
+    return max(
+        1,
+        len(attempts),
+        _as_int(result.get("compliance_attempts"), default=1),
+        _as_int(result.get("escalation_count")) + 1,
+    )
 
 
 def _premium_counterfactual(
@@ -294,6 +393,7 @@ def _response_from_result(
         if status_value == "completed" and quality_gate_passed
         else 0.0
     )
+    attempts = _attempt_records(result)
     return ModelDelegateSkillResponse(
         status=status_value,
         correlation_id=request.correlation_id,
@@ -316,6 +416,16 @@ def _response_from_result(
         response=str(result.get("content", "")),
         quality_gate_passed=quality_gate_passed,
         quality_score=_as_float(result.get("quality_score")),
+        required_quality_bar=_as_optional_float(result.get("required_quality_bar")),
+        score_vs_required_bar=_as_quality_score_comparison(
+            result.get("score_vs_required_bar")
+        ),
+        failed_acceptance_criteria=tuple(
+            _as_str_list(result.get("failed_acceptance_criteria"))
+        ),
+        terminal_failure_cause=_as_terminal_failure_cause(
+            result.get("terminal_failure_cause")
+        ),
         quality_gates_failed=quality_failures,
         error_message=error_message,
         metrics=ModelDelegateSkillResponseMetrics(
@@ -337,7 +447,8 @@ def _response_from_result(
             ),
         ),
         escalation_count=_as_int(result.get("escalation_count")),
-        attempts=_attempt_records(result),
+        attempts_count=_response_attempts_count(result, attempts),
+        attempts=attempts,
     )
 
 

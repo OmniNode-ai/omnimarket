@@ -352,3 +352,10 @@ class TestU4TerminalProjectionTelemetrySchema:
         response_fields = set(ModelDelegateSkillResponse.model_fields.keys())
         assert "model_name" in response_fields
         assert "metrics" in response_fields
+        assert {
+            "required_quality_bar",
+            "score_vs_required_bar",
+            "failed_acceptance_criteria",
+            "terminal_failure_cause",
+            "attempts_count",
+        }.issubset(response_fields)

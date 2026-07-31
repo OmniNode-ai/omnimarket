@@ -4,8 +4,8 @@
 name: node_delegate_skill_orchestrator
 contract_name: node_delegate_skill_orchestrator
 node_name: node_delegate_skill_orchestrator
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 node_type: orchestrator
 description: >
   Consumer-facing delegation entry point for Claude Code and Codex adapters.
@@ -78,6 +78,34 @@ outputs:
       delegation_events projection row stamps a real tenant. Resolved at
       request-acceptance from the verified request tenant_id or the ONEX_TENANT_ID
       interim (OMN-14058); absent/None falls back to the 'omninode' column default.
+  required_quality_bar:
+    type: float
+    required: false
+    minimum: 0.0
+    maximum: 1.0
+    description: Authoritative minimum quality score evaluated for this result.
+  score_vs_required_bar:
+    type: str
+    required: false
+    enum: [below_bar, at_or_above_bar]
+    description: Typed relationship between quality_score and required_quality_bar.
+  failed_acceptance_criteria:
+    type: list
+    required: false
+    description: Authoritative quality-gate criteria that rejected the result.
+  terminal_failure_cause:
+    type: str
+    required: false
+    enum: [provider_quota_exhausted]
+    description: Stable machine-readable terminal failure cause when known.
+  attempts_count:
+    type: int
+    required: false
+    default: 1
+    minimum: 1
+    description: >
+      Authoritative total inference calls, including compliance repairs,
+      same-tier retries, and the terminal attempt.
 
 allowed_task_types:
   - test

@@ -770,6 +770,7 @@ async def test_handler_surfaces_escalation_ladder_on_typed_response() -> None:
     response = await handler.handle(request)
 
     assert response.escalation_count == 1
+    assert response.attempts_count == 2
     assert len(response.attempts) == 2
     first, second = response.attempts
     assert first.tier == "local"
@@ -795,6 +796,7 @@ async def test_handler_defaults_escalation_fields_when_dispatch_omits_them() -> 
     )
     response = await handler.handle(request)
     assert response.escalation_count == 0
+    assert response.attempts_count == 1
     assert response.attempts == []
 
 

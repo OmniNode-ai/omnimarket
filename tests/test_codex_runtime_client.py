@@ -15,6 +15,7 @@ from typing import cast
 from uuid import uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import EnumQualityScoreComparison
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
@@ -173,6 +174,10 @@ class _DirectDelegateSkillTransport:
             model_name="test-model",
             response="delegated",
             quality_gate_passed=True,
+            quality_score=0.91,
+            required_quality_bar=0.85,
+            score_vs_required_bar=EnumQualityScoreComparison.AT_OR_ABOVE_BAR,
+            attempts_count=2,
         )
         response_envelope = ModelEventEnvelope[ModelDelegateSkillResponse](
             payload=response,
@@ -1582,6 +1587,9 @@ async def test_delegate_skill_direct_dispatch_publishes_contract_payload() -> No
     assert result.ok is True
     assert result.output_payloads is not None
     assert result.output_payloads[0]["response"] == "delegated"
+    assert result.output_payloads[0]["required_quality_bar"] == 0.85
+    assert result.output_payloads[0]["score_vs_required_bar"] == "at_or_above_bar"
+    assert result.output_payloads[0]["attempts_count"] == 2
     assert len(transport.published) == 1
     topic, key, value = transport.published[0]
     assert topic == "onex.cmd.omnimarket.delegate-skill.v1"
