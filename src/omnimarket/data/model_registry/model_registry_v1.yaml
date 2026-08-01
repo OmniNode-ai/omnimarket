@@ -177,20 +177,28 @@ models:
     model_id: "openrouter-qwen3-coder-480b"
     provider: "openrouter"
     endpoint_env: "OPENROUTER_URL"
-    model_name: "qwen/qwen3-coder:free"
+    model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
     requires_api_key_env: "OPENROUTER_API_KEY"
-    context_window: 262144
+    context_window: 1000000
     pricing_per_1m_input: "0.00"
     pricing_per_1m_output: "0.00"
     cost_basis: "zero_marginal_api_cost"
-    observed_at: "2026-05-30T00:00:00Z"
+    observed_at: "2026-08-01T00:00:00Z"
     source: "openrouter catalog"
     notes: >
-      OpenRouter free tier — Qwen3 Coder 480B. Cheap frontier direct for June 5
-      model-experimentation campaign (OMN-12492). Zero API cost (free tier, provider
-      bears inference cost). Rate-limited, no SLA. Requires OPENROUTER_API_KEY.
-      Falls back to the cheap_cloud direct z.ai GLM-5.2 (cloud-glm) or local when
-      key absent (OMN-13380).
+      OpenRouter free tier — NVIDIA Nemotron 3 Ultra (550B total / 55B active
+      hybrid Mamba-Transformer MoE, 1M context, native tool-calling). Cheap
+      frontier direct (OMN-12492). OMN-15638: repointed from
+      qwen/qwen3-coder:free, which OpenRouter RETIRED to paid-only — that slug
+      now returns a permanent HTTP 404 and is absent from the live catalog. Per
+      operator ruling R9-amended the rung stays FREE rather than adopting the
+      paid qwen/qwen3-coder ($0.30/$1.00 per M), so pricing 0.00/0.00 and
+      zero_marginal_api_cost remain TRUE — verified in-band, the provider's own
+      usage payload returned "cost": 0. Rate-limited (429), no SLA. Requires
+      OPENROUTER_API_KEY. Falls back to the cheap_cloud direct z.ai GLM-5.2
+      (cloud-glm) or local when key absent (OMN-13380). model_id retained as
+      openrouter-qwen3-coder-480b: it is a stable seam key naming the RUNG, and
+      must stay byte-identical to the bifrost backend_id.
 
   llama-3.3-70b-free:
     model_id: "llama-3.3-70b-free"
