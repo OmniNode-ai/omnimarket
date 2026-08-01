@@ -887,6 +887,9 @@ def _occ_root() -> Path | None:
     return None
 
 
+_OCC_ROOT = _occ_root()
+
+
 def _prefix_shlex_judged_token(cmd_str: str) -> str | None:
     """Reproduce the PRE-fix judged token: ``shlex`` + the leading-assignment skip.
 
@@ -939,7 +942,7 @@ def _occ_command_check_values(occ: Path) -> list[tuple[str, str]]:
 @pytest.mark.unit
 class TestAc5CorpusReCensus:
     @pytest.mark.skipif(
-        _occ_root() is None,
+        _OCC_ROOT is None,
         reason="no onex_change_control clone reachable (ONEX_CC_REPO_PATH / OMNI_HOME)",
     )
     def test_tokenizer_damage_class_is_empty(self) -> None:
@@ -951,7 +954,7 @@ class TestAc5CorpusReCensus:
         every such check_value the CURRENT guard must not return an
         INVALID reason naming that fragment.
         """
-        occ = _occ_root()
+        occ = _OCC_ROOT
         assert occ is not None
         values = _occ_command_check_values(occ)
         assert values, f"no command check_values found under {occ}/contracts"
@@ -977,7 +980,7 @@ class TestAc5CorpusReCensus:
         )
 
     @pytest.mark.skipif(
-        _occ_root() is None,
+        _OCC_ROOT is None,
         reason="no onex_change_control clone reachable (ONEX_CC_REPO_PATH / OMNI_HOME)",
     )
     def test_no_corpus_check_value_leads_with_a_prefix_builtin_alone(self) -> None:
@@ -986,7 +989,7 @@ class TestAc5CorpusReCensus:
         Rejecting ``unset FOO``-shaped values is only safe if no real contract
         carries one. Measured here rather than asserted.
         """
-        occ = _occ_root()
+        occ = _OCC_ROOT
         assert occ is not None
         offenders = [
             (contract, value)
