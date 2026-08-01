@@ -30,17 +30,17 @@
 -- OMN-15503 handler change writes them; the in-memory dict adapter used by
 -- unit tests has no schema to violate and would mask the gap.
 
-ALTER TABLE tenant.delegation_events
+ALTER TABLE delegation_events
     ADD COLUMN IF NOT EXISTS terminal_ok BOOLEAN;
 
-ALTER TABLE tenant.delegation_events
+ALTER TABLE delegation_events
     ADD COLUMN IF NOT EXISTS terminal_failure_cause TEXT;
 
-ALTER TABLE tenant.delegation_events
+ALTER TABLE delegation_events
     ADD COLUMN IF NOT EXISTS attempt_history JSONB;
 
 -- Partial index: quota-exhaustion forensics scan only the failed tail, which
 -- is a small minority of rows. A full index would be mostly NULLs.
 CREATE INDEX IF NOT EXISTS idx_delegation_events_terminal_failure_cause
-    ON tenant.delegation_events (terminal_failure_cause)
+    ON delegation_events (terminal_failure_cause)
     WHERE terminal_failure_cause IS NOT NULL;
