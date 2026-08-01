@@ -293,7 +293,13 @@ GRAMMAR_CASES: tuple[tuple[str, str, bool], ...] = (
         True,
     ),
     ("leading-negation", "! test -f /nonexistent/path", True),
-    ("subshell-group", "(test -d /tmp && cd /tmp && ls) && echo done", True),
+    # Restored to the ``cd``-leading form (2d7abf4d had rewritten it to lead
+    # with ``test`` so it would pass on Linux). Leading with ``cd`` is the
+    # whole point: ``shutil.which("cd")`` resolves on macOS and not on Linux,
+    # so this row is what pins the verdict as platform-INDEPENDENT. The
+    # rewritten string is kept alongside it rather than dropped.
+    ("subshell-group", "(cd /tmp && ls) && echo done", True),
+    ("subshell-group-guarded", "(test -d /tmp && cd /tmp && ls) && echo done", True),
     ("backtick-substitution", 'test "`date -u +%Y`" = "2026"', True),
     ("leading-command-substitution", "$(printf ls) /tmp", True),
     ("bracket-test-builtin", "[ -d /tmp ] && echo ok", True),
@@ -396,6 +402,52 @@ class TestAc4GrammarSuite:
         reason = _invalid_check_value_reason("./missing.sh", cwd=str(tmp_path))
         assert reason is not None
         assert "not a resolvable executable relative to cwd" in reason
+
+
+@pytest.mark.unit
+class TestVerdictIsPlatformIndependentForBuiltins:
+    """The guard resolves the first word with ``shutil.which``, so anything
+    whose acceptance depends on a binary existing on PATH gives a DIFFERENT
+    verdict per platform. macOS ships ``/usr/bin/cd``; Linux does not — so
+    ``(cd /tmp && ls)`` passed on a developer Mac and hard-REDed on a Linux
+    CI runner. 18 checks in the OCC corpus lead with ``cd``.
+
+    These tests pin the builtin verdicts with ``shutil.which`` forced to
+    return ``None``, i.e. they hold on the least-equipped host."""
+
+    @pytest.fixture
+    def no_path_lookup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "omnimarket.nodes.node_dod_verify.services.evidence_collector.shutil.which",
+            lambda _cmd: None,
+        )
+
+    @pytest.mark.parametrize(
+        "check_value",
+        [
+            "(cd /tmp && ls) && echo done",
+            "cd /tmp && ls",
+            "export FOO=bar && echo hi",
+            "set -e; echo hi",
+            "eval 'echo hi'",
+            "source ./env.sh",
+            "read -r x < /dev/null",
+            "trap 'echo bye' EXIT",
+            "unset FOO",
+            "exec echo hi",
+        ],
+    )
+    def test_builtin_led_commands_accepted_without_path_lookup(
+        self, no_path_lookup: None, check_value: str
+    ) -> None:
+        assert _invalid_check_value_reason(check_value, cwd=None) is None, check_value
+
+    @pytest.mark.parametrize("prose", PROSE_SAMPLES)
+    def test_prose_still_rejected_without_path_lookup(
+        self, no_path_lookup: None, prose: str
+    ) -> None:
+        """The builtin allowlist must not become a prose-laundering surface."""
+        assert _invalid_check_value_reason(prose, cwd=None) is not None
 
 
 # --------------------------------------------------------------------------

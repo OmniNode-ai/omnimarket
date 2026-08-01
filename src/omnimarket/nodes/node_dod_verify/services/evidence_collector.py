@@ -319,6 +319,45 @@ _SHELL_KEYWORD_ALLOWLIST = frozenset(
         "[",
         "[[",
         ":",
+        # Shell BUILTINS (OMN-15597). Without these the guard's verdict is
+        # PLATFORM-DEPENDENT: macOS ships /usr/bin/cd so ``shutil.which("cd")``
+        # resolves there, while Linux has no such binary — so ``(cd x && ls)``
+        # passed the guard on a developer Mac and hard-REDed on a Linux CI
+        # runner. 18 checks in the OCC corpus lead with ``cd`` alone. Listed
+        # here are builtins that no POSIX system is required to ship as an
+        # executable; ones that DO exist as binaries everywhere (``test``,
+        # ``echo``, ``printf``, ``pwd``, ``true``, ``false``, ``kill``) are
+        # deliberately omitted — ``shutil.which`` already resolves them, and
+        # a shorter allowlist is a smaller prose-laundering surface.
+        ".",
+        "alias",
+        "builtin",
+        "cd",
+        "command",
+        "declare",
+        "eval",
+        "exec",
+        "exit",
+        "export",
+        "hash",
+        "jobs",
+        "let",
+        "local",
+        "popd",
+        "pushd",
+        "read",
+        "readonly",
+        "return",
+        "set",
+        "shift",
+        "source",
+        "trap",
+        "type",
+        "ulimit",
+        "umask",
+        "unalias",
+        "unset",
+        "wait",
     }
 )
 
