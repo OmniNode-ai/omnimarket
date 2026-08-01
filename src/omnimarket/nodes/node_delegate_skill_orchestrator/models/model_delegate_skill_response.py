@@ -6,12 +6,22 @@ from __future__ import annotations
 
 from omnimarket.models.delegation.wire.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
+    ModelDelegateSkillCompleted,
+    ModelDelegateSkillFailed,
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
+    delegate_skill_succeeded,
+    delegate_skill_terminal_from_response,
+    resolve_terminal_failure_cause,
 )
 
 __all__ = [
     "ModelDelegateSkillAttemptRecord",
+    "ModelDelegateSkillCompleted",
+    "ModelDelegateSkillFailed",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
+    "delegate_skill_succeeded",
+    "delegate_skill_terminal_from_response",
+    "resolve_terminal_failure_cause",
 ]

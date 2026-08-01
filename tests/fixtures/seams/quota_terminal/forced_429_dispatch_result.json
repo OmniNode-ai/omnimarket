@@ -1,0 +1,76 @@
+{
+  "ticket": "OMN-15469",
+  "scenario": "forced_429_provider_quota_exhaustion",
+  "side": "producer",
+  "description": [
+    "PRODUCER-side counterpart of the consumer fixture",
+    "tests/fixtures/seams/quota_terminal/forced_429_terminal.json (OMN-15503,",
+    "omnimarket#1995). Same frozen forced-429 command, same correlation id, same",
+    "attempt ladder — this file is the DISPATCH-PORT RESULT that the delegate-skill",
+    "orchestrator receives, i.e. the input side of the seam whose output side is",
+    "the terminal event the consumer fixture replays.",
+    "The recorded defect: the port reports status=completed / quality_gate_passed",
+    "= true while every attempt in the ladder was refused with HTTP 429",
+    "RESOURCE_EXHAUSTED, and the handler forwarded that verdict verbatim onto the",
+    "contract's SUCCESS terminal.",
+    "Frozen capture: no provider is contacted and no runtime lane is touched when",
+    "this replays."
+  ],
+  "correlation_id": "c4f2a1de-0000-4d15-9503-000000000429",
+  "session_id": "5b1d6e2c-1111-4a44-8f01-0000000000aa",
+  "tenant_id": "omninode",
+  "task_type": "refactor",
+  "prompt_text": "Refactor the attempt-ladder reducer for readability.",
+  "dispatch_result": {
+    "status": "completed",
+    "quality_gate_passed": true,
+    "quality_score": 1.0,
+    "content": "",
+    "error_message": "",
+    "delegated_to": "google",
+    "model_name": "gemini-2.5-pro",
+    "escalation_count": 2,
+    "input_tokens": 0,
+    "output_tokens": 0,
+    "total_tokens": 0,
+    "latency_ms": 2301,
+    "attempts": [
+      {
+        "tier": "cloud-free",
+        "backend_id": "google-gemini",
+        "model_id": "gemini-2.5-flash",
+        "quality_gate_passed": false,
+        "cost_usd": 0.0,
+        "failure_class": "provider_quota_exhausted",
+        "error_message": "HTTP 429 RESOURCE_EXHAUSTED: quota exceeded for generativelanguage.googleapis.com"
+      },
+      {
+        "tier": "cloud-free-escalated-1",
+        "backend_id": "google-gemini",
+        "model_id": "gemini-2.5-pro",
+        "quality_gate_passed": false,
+        "cost_usd": 0.0,
+        "failure_class": "provider_quota_exhausted",
+        "error_message": "HTTP 429 RESOURCE_EXHAUSTED: quota exceeded for generativelanguage.googleapis.com"
+      },
+      {
+        "tier": "cloud-free-escalated-2",
+        "backend_id": "google-gemini",
+        "model_id": "gemini-2.5-pro",
+        "quality_gate_passed": false,
+        "cost_usd": 0.0,
+        "failure_class": "provider_quota_exhausted",
+        "error_message": "HTTP 429 RESOURCE_EXHAUSTED: quota exceeded for generativelanguage.googleapis.com"
+      }
+    ]
+  },
+  "expected_terminal": {
+    "durable_terminal_events": 1,
+    "terminal_model_class": "ModelDelegateSkillFailed",
+    "terminal_topic": "onex.evt.omnimarket.delegate-skill-failed.v1",
+    "status": "failed",
+    "quality_gate_passed": false,
+    "terminal_failure_cause": "provider_quota_exhausted",
+    "attempt_history_min_length": 3
+  }
+}
