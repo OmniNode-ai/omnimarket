@@ -64,6 +64,7 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
 from omnimarket.inference.delegation_config_provenance import (
     resolve_optional_path_config,
     resolve_path_config,
+    resolve_required_path_config,
 )
 from omnimarket.inference.secret_store_resolver import api_key_ref_available
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
@@ -326,6 +327,12 @@ def _select_model_for_task(
     return None
 
 
+# OMN-15628: this is the single canonical routing_tiers.yaml location (the
+# diverged omnibase_infra copy was deleted; this repo's packaged copy is the
+# only source of truth). ``_get_config()`` no longer defaults to it silently —
+# a caller/deployment must bind DELEGATION_ROUTING_TIERS_PATH explicitly (rule
+# 8, no invisible env config). Kept as a constant for callers (tests, deploy
+# tooling) that need the canonical packaged path to construct that binding.
 _DEFAULT_CONFIG_PATH = (
     Path(__file__).parent.parent.parent.parent / "configs" / "routing_tiers.yaml"
 )
@@ -344,10 +351,20 @@ _config: ModelDelegationConfig | None = None
 def _get_config() -> ModelDelegationConfig:
     global _config
     if _config is None:
-        config_path, _ = resolve_path_config(
-            "DELEGATION_ROUTING_TIERS_PATH",
-            _DEFAULT_CONFIG_PATH,
-        )
+        # OMN-15628: no packaged-default fallback — DELEGATION_ROUTING_TIERS_PATH
+        # must be bound explicitly (contract overlay / deployment env). A silent
+        # default here previously let a misconfigured deployment boot on an
+        # unpinned tiers file with no attributable cause (rule 8).
+        try:
+            config_path, _ = resolve_required_path_config(
+                "DELEGATION_ROUTING_TIERS_PATH"
+            )
+        except ValueError as exc:
+            context = ModelInfraErrorContext.with_correlation(
+                transport_type=EnumInfraTransportType.FILESYSTEM,
+                operation="get_delegation_routing_config",
+            )
+            raise ProtocolConfigurationError(str(exc), context=context) from exc
         yaml_text = config_path.read_text()
         _config = parse_delegation_config_yaml(yaml_text)
     return _config
@@ -422,6 +439,24 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     # cloud escalation impossible to diagnose. We now emit structured evidence
     # and re-raise as a configuration error so the failure is attributable.
     try:
+        # OMN-15628: no packaged-default fallback when NEITHER binding is set.
+        # The previous body silently reached the loader's own packaged-default
+        # contract (null local endpoint_url values), so a deployment missing
+        # both env bindings booted successfully with a permanently unroutable
+        # local tier and no attributable cause. Refuse instead, naming both
+        # keys. Either binding alone is sufficient (the loader's own default
+        # still legitimately supplies the other half — e.g. a contract
+        # override with no overlay is a valid standalone-install shape).
+        if contract_override is None and overlay_override is None:
+            msg = (
+                "Neither BIFROST_CONTRACT_PATH nor BIFROST_OVERLAY_PATH is "
+                "bound; the routing reducer refuses to fall back to the "
+                "packaged default bifrost contract (CLAUDE.md rule 8 — no "
+                "silent config fallback, OMN-15628). Set BIFROST_CONTRACT_PATH "
+                "(rendered contract path) or BIFROST_OVERLAY_PATH (endpoint "
+                "overlay path) explicitly."
+            )
+            raise ValueError(msg)
         if contract_override is not None and overlay_override is None:
             overlay_override = Path("__omnimarket_no_bifrost_overlay__.yaml")
         config = load_bifrost_delegation_config(

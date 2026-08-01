@@ -118,7 +118,13 @@ def _clear_lru_caches_and_use_real_routing_tiers(
     contract_path.write_text(_BIFROST_LOCAL_TIER_RESOLVABLE)
     monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
     monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
-    monkeypatch.delenv("DELEGATION_ROUTING_TIERS_PATH", raising=False)
+    # OMN-15628: DELEGATION_ROUTING_TIERS_PATH no longer defaults silently —
+    # bind it explicitly to the REAL committed routing_tiers.yaml (the file
+    # this test exercises), preserving this fixture's original intent.
+    monkeypatch.setenv(
+        "DELEGATION_ROUTING_TIERS_PATH",
+        str(h._DEFAULT_CONFIG_PATH),
+    )
     monkeypatch.delenv("TASK_CLASS_CONTRACT_PATH", raising=False)
 
     h._config = None
