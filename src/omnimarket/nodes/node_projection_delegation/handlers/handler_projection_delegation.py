@@ -52,6 +52,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state i
     ModelDelegationBudgetStateEvent,
     materialize_budget_state,
 )
+from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
+    reduce_delegation_attempts,
+)
 from omnimarket.pricing import recompute_actual_cost_and_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.tenant_isolation import require_tenant_id
@@ -501,6 +504,30 @@ class HandlerProjectionDelegation:
             "projection_version": row_model.projection_version,
             "reducer_version": row_model.reducer_version,
         }
+        # OMN-15503: reduce the typed attempt ladder to an authoritative outer
+        # outcome. The ladder — not the declared status — decides: a terminal
+        # that says status="completed" while every inner attempt was refused
+        # with HTTP 429 projects as ok=false with a typed
+        # PROVIDER_QUOTA_EXHAUSTED cause. The ladder itself is persisted so
+        # "refused after N escalations" is provable from the durable row.
+        reduction = reduce_delegation_attempts(
+            declared_status=event.status,
+            declared_quality_gate_passed=event.quality_gate_passed,
+            error_message=event.error_message,
+            attempts=event.attempts,
+        )
+        row["terminal_ok"] = reduction.terminal_ok
+        row["terminal_failure_cause"] = (
+            reduction.terminal_failure_cause.value
+            if reduction.terminal_failure_cause is not None
+            else None
+        )
+        row["attempt_history"] = [
+            attempt.model_dump(mode="json") for attempt in reduction.attempt_history
+        ]
+        if not reduction.terminal_ok:
+            # A ladder-proven failure must not project as a passing delegation.
+            row["quality_gate_passed"] = False
         # OMN-14898: same fail-closed guard as project() -- no-op unless
         # ENFORCE_TENANT_ISOLATION is set.
         require_tenant_id(row_model.tenant_id, table=TABLE)
@@ -1107,6 +1134,42 @@ def _preserve_existing_evidence(
         and _as_int(existing.get("compliance_attempts")) > 1
     ):
         row["compliance_attempts"] = existing["compliance_attempts"]
+    _preserve_terminal_failure(existing, row)
+
+
+def _preserve_terminal_failure(
+    existing: dict[str, object],
+    row: dict[str, object],
+) -> None:
+    """Make a typed terminal failure sticky across later terminals (OMN-15503).
+
+    Exactly one durable terminal exists per accepted command (the
+    correlation_id UPSERT key), so a command that emits several terminal
+    events resolves by last-write-wins. That is the defect: in the
+    2026-07-29 forced-429 capture the LAST terminal on the wire was an outer
+    ``delegate-skill-completed`` claiming success, and it overwrote the two
+    honest quota-refusal terminals that preceded it.
+
+    A typed failure cause is therefore monotone: once recorded for a
+    correlation it is not erased by a later terminal that carries no cause of
+    its own, and the attempt ladder that proved it is retained. A later
+    terminal carrying its OWN typed cause still wins — this preserves
+    evidence, it does not freeze the row.
+    """
+    existing_cause = existing.get("terminal_failure_cause")
+    if _is_blank(existing_cause):
+        return
+    if not _is_blank(row.get("terminal_failure_cause")):
+        return
+    row["terminal_failure_cause"] = existing_cause
+    row["terminal_ok"] = False
+    row["quality_gate_passed"] = False
+    incoming_history = row.get("attempt_history")
+    existing_history = existing.get("attempt_history")
+    if isinstance(existing_history, list) and len(existing_history) > len(
+        incoming_history if isinstance(incoming_history, list) else []
+    ):
+        row["attempt_history"] = existing_history
 
 
 def _is_blank(value: object) -> bool:

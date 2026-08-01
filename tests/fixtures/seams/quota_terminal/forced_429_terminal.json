@@ -1,0 +1,156 @@
+{
+  "ticket": "OMN-15503",
+  "scenario": "forced_429_provider_quota_exhaustion",
+  "delegation_class": "refactor",
+  "description": [
+    "Deterministic forced-429 capture for ONE accepted delegation command.",
+    "Reproduces the two live defects recorded in the 2026-07-29 deep dive matrix",
+    "row `refactor | FAIL | Google Gemini HTTP 429 after two escalation attempts`:",
+    "(1) THREE terminal events are emitted for a single accepted command, and",
+    "(2) the LAST of them is an outer `delegate-skill-completed` declaring",
+    "    status=completed / quality_gate_passed=true even though every inner",
+    "    attempt in the ladder was refused with HTTP 429 RESOURCE_EXHAUSTED.",
+    "This is a frozen fixture, not a live opportunistic run (OMN-15503 AC3):",
+    "no provider is contacted and no runtime lane is touched when it replays."
+  ],
+  "correlation_id": "c4f2a1de-0000-4d15-9503-000000000429",
+  "session_id": "5b1d6e2c-1111-4a44-8f01-0000000000aa",
+  "tenant_id": "omninode",
+  "expected_projection": {
+    "durable_terminal_rows": 1,
+    "terminal_failure_cause": "provider_quota_exhausted",
+    "terminal_ok": false,
+    "attempt_history_min_length": 3
+  },
+  "terminal_events": [
+    {
+      "_event_type": "onex.evt.omnimarket.delegate-skill-failed.v1",
+      "status": "failed",
+      "correlation_id": "c4f2a1de-0000-4d15-9503-000000000429",
+      "session_id": "5b1d6e2c-1111-4a44-8f01-0000000000aa",
+      "tenant_id": "omninode",
+      "task_type": "refactor",
+      "provider": "google",
+      "model_name": "gemini-2.5-flash",
+      "prompt_text": "Refactor the attempt-ladder reducer for readability.",
+      "response": "",
+      "quality_gate_passed": false,
+      "quality_score": 0.0,
+      "error_message": "Google Gemini HTTP 429: RESOURCE_EXHAUSTED (free-tier quota exceeded)",
+      "escalation_count": 0,
+      "emitted_at": "2026-07-29T18:04:11+00:00",
+      "metrics": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "latency_ms": 812
+      },
+      "attempts": [
+        {
+          "tier": "cloud-free",
+          "backend_id": "google-gemini",
+          "model_id": "gemini-2.5-flash",
+          "quality_gate_passed": false,
+          "cost_usd": 0.0,
+          "failure_class": "provider_quota_exhausted",
+          "error_message": "HTTP 429 RESOURCE_EXHAUSTED: quota exceeded for generativelanguage.googleapis.com"
+        }
+      ]
+    },
+    {
+      "_event_type": "onex.evt.omnimarket.delegate-skill-failed.v1",
+      "status": "failed",
+      "correlation_id": "c4f2a1de-0000-4d15-9503-000000000429",
+      "session_id": "5b1d6e2c-1111-4a44-8f01-0000000000aa",
+      "tenant_id": "omninode",
+      "task_type": "refactor",
+      "provider": "google",
+      "model_name": "gemini-2.5-pro",
+      "prompt_text": "Refactor the attempt-ladder reducer for readability.",
+      "response": "",
+      "quality_gate_passed": false,
+      "quality_score": 0.0,
+      "error_message": "Google Gemini HTTP 429: RESOURCE_EXHAUSTED (free-tier quota exceeded)",
+      "escalation_count": 1,
+      "emitted_at": "2026-07-29T18:04:19+00:00",
+      "metrics": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "latency_ms": 1544
+      },
+      "attempts": [
+        {
+          "tier": "cloud-free",
+          "backend_id": "google-gemini",
+          "model_id": "gemini-2.5-flash",
+          "quality_gate_passed": false,
+          "cost_usd": 0.0,
+          "failure_class": "provider_quota_exhausted",
+          "error_message": "HTTP 429 RESOURCE_EXHAUSTED: quota exceeded for generativelanguage.googleapis.com"
+        },
+        {
+          "tier": "cloud-free-escalated-1",
+          "backend_id": "google-gemini",
+          "model_id": "gemini-2.5-pro",
+          "quality_gate_passed": false,
+          "cost_usd": 0.0,
+          "failure_class": "provider_quota_exhausted",
+          "error_message": "HTTP 429 RESOURCE_EXHAUSTED: quota exceeded for generativelanguage.googleapis.com"
+        }
+      ]
+    },
+    {
+      "_event_type": "onex.evt.omnimarket.delegate-skill-completed.v1",
+      "status": "completed",
+      "correlation_id": "c4f2a1de-0000-4d15-9503-000000000429",
+      "session_id": "5b1d6e2c-1111-4a44-8f01-0000000000aa",
+      "tenant_id": "omninode",
+      "task_type": "refactor",
+      "provider": "google",
+      "model_name": "gemini-2.5-pro",
+      "prompt_text": "Refactor the attempt-ladder reducer for readability.",
+      "response": "",
+      "quality_gate_passed": true,
+      "quality_score": 1.0,
+      "error_message": "",
+      "escalation_count": 2,
+      "emitted_at": "2026-07-29T18:04:27+00:00",
+      "metrics": {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "latency_ms": 2301
+      },
+      "attempts": [
+        {
+          "tier": "cloud-free",
+          "backend_id": "google-gemini",
+          "model_id": "gemini-2.5-flash",
+          "quality_gate_passed": false,
+          "cost_usd": 0.0,
+          "failure_class": "provider_quota_exhausted",
+          "error_message": "HTTP 429 RESOURCE_EXHAUSTED: quota exceeded for generativelanguage.googleapis.com"
+        },
+        {
+          "tier": "cloud-free-escalated-1",
+          "backend_id": "google-gemini",
+          "model_id": "gemini-2.5-pro",
+          "quality_gate_passed": false,
+          "cost_usd": 0.0,
+          "failure_class": "provider_quota_exhausted",
+          "error_message": "HTTP 429 RESOURCE_EXHAUSTED: quota exceeded for generativelanguage.googleapis.com"
+        },
+        {
+          "tier": "cloud-free-escalated-2",
+          "backend_id": "google-gemini",
+          "model_id": "gemini-2.5-pro",
+          "quality_gate_passed": false,
+          "cost_usd": 0.0,
+          "failure_class": "provider_quota_exhausted",
+          "error_message": "HTTP 429 RESOURCE_EXHAUSTED: quota exceeded for generativelanguage.googleapis.com"
+        }
+      ]
+    }
+  ]
+}

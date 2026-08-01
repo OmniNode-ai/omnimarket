@@ -2018,7 +2018,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_delegation"
+        "node_projection_delegation",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation/migrations/0007_delegation_events.sql"
@@ -2028,6 +2029,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
       ],
       "current_schema": [
@@ -2057,6 +2059,7 @@
         "idx_delegation_events_score_vs_bar",
         "idx_delegation_events_task_type",
         "idx_delegation_events_tenant_id",
+        "idx_delegation_events_terminal_failure_cause",
         "idx_delegation_events_timestamp",
         "idx_delegation_events_tokens_total"
       ],
@@ -2085,11 +2088,13 @@
         "node_projection_routing_decision",
         "node_projection_savings",
         "node_projection_session_outcome",
-        "node_session_orchestrator"
+        "node_session_orchestrator",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "tenant",
       "writers": [
-        "node_projection_delegation"
+        "node_projection_delegation",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {

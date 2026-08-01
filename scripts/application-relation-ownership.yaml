@@ -20,6 +20,12 @@ db_io:
       migration: run-projection-migrations.py
       access: read_write
       role: projection_migration_ledger
+    - name: delegation_events
+      database_ref: application
+      schema: tenant
+      migration: src/omnimarket/nodes/node_projection_delegation/migrations/0029_delegation_terminal_failure_cause.sql
+      access: read_write
+      role: tenant_projection_table
 
 relation_evidence:
   - name: omnimarket_schema_migrations
@@ -42,3 +48,24 @@ relation_evidence:
     classification_evidence: >-
       checksum ledger for the repository-owned projection migration stream;
       operational state with no customer-owned rows
+  - name: delegation_events
+    kind: table
+    database_ref: application
+    schema: tenant
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    readers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    writers:
+      - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0029_delegation_terminal_failure_cause.sql
+    tenant_identity_column: tenant_id
+    canonical_policy_name: tenant_isolation
+    deduplication_key_columns: [correlation_id]
+    authorization_dependency_columns: [tenant_id]
+    write_eligibility_dependency_columns: [tenant_id]
+    classification_evidence: >-
+      node_projection_delegation tenant projection table; OMN-15503 appends
+      typed terminal outcome columns without changing tenant authority.
