@@ -125,6 +125,7 @@ from tests.unit.nodes.node_dod_verify.omn_15597_occ_census_pinned import (
     NO_EVIDENCE_BUILTIN_CANDIDATES,
     OCC_CENSUS_DAMAGE_CLASS_CONTRACT_COUNT,
     OCC_CENSUS_SHA,
+    OCC_CENSUS_TOTAL_COMMAND_CHECK_VALUES,
     TOKENIZER_DAMAGE_CLASS,
     TOKENIZER_DAMAGE_PATH_COMMANDS,
 )
@@ -1189,6 +1190,50 @@ class TestCensusOracleIsNotVacuous:
         assert is_no_evidence_builtin_only_reason(reason), reason
 
 
+# The 33 contracts OMN-15597's blast-radius section enumerates by name.
+# TICKET PROSE, transcribed by hand — deliberately NOT in the generated corpus
+# module, so the containment check below compares two independently sourced
+# sets instead of a snapshot against itself.
+_TICKET_ENUMERATED_CONTRACTS: frozenset[str] = frozenset(
+    f"OMN-{number}.yaml"
+    for number in (
+        14436,
+        14454,
+        14466,
+        14467,
+        14470,
+        14471,
+        14473,
+        14486,
+        14504,
+        14509,
+        14516,
+        14548,
+        14714,
+        14980,
+        15192,
+        15239,
+        15283,
+        15299,
+        15301,
+        15328,
+        15365,
+        15366,
+        15370,
+        15375,
+        15376,
+        15383,
+        15391,
+        15484,
+        15488,
+        15490,
+        15493,
+        15529,
+        15535,
+    )
+)
+
+
 @pytest.mark.unit
 class TestAc5PinnedCorpusReCensus:
     """AC5, satisfied hermetically at a pinned OCC SHA.
@@ -1197,18 +1242,23 @@ class TestAc5PinnedCorpusReCensus:
     0 checks in the tokenizer-damage class (from 59)". The predecessor read
     a live working clone, which (a) does not exist on a hosted runner — both
     census tests SKIPPED there, so AC5 gated nothing — and (b) pinned no SHA,
-    while the corpus moves daily (the identical census returns 63 at OCC
-    ``1e6b75f8``, one day later). Option (a) from the lane brief — fetching
-    the tree in CI — was rejected: a required check that depends on the
-    network is not deterministic, and "fail closed when unreachable" turns
-    every GitHub API blip into a red merge gate.
+    while the corpus moves fast (the identical census returns 63 at OCC
+    ``1e6b75f8``, 76 minutes later the same day). Option (a) from the lane
+    brief — fetching the tree in CI — was rejected: a required check that
+    depends on the network is not deterministic, and "fail closed when
+    unreachable" turns every GitHub API blip into a red merge gate.
 
     So the corpus itself is committed (``omn_15597_occ_census_pinned.py``),
     and class membership is RE-DERIVED here rather than trusted: the vendored
-    pre-fix guard must reject all 59, the current guard must accept all 59,
-    and a real ``bash`` must parse all 59. ``shutil.which`` is stubbed to the
+    pre-fix guard must reject all 63, the current guard must accept all 63,
+    and a real ``bash`` must parse all 63. ``shutil.which`` is stubbed to the
     recorded command set, so the verdict is a property of the tokenizer and
     not of what happens to be installed on the runner.
+
+    On "from 59" versus 63: the ticket's 59 was read with a DIFFERENT oracle
+    at census time and is superseded, not reproduced. The census module's
+    docstring carries the full provenance — do not reconcile the two numbers
+    by quietly editing one of them.
     """
 
     @pytest.fixture
@@ -1228,16 +1278,59 @@ class TestAc5PinnedCorpusReCensus:
             ),
         )
 
-    def test_pinned_corpus_is_the_census_the_ticket_names(self) -> None:
-        """59 checks / 33 contracts at OCC 9089ffa9 — the ticket's numbers.
+    def test_pinned_corpus_is_the_ticket_census_point_under_the_committed_oracle(
+        self,
+    ) -> None:
+        """63 / 35 at OCC ``d7b16271`` — the ticket's SHA, this repo's oracle.
 
-        Fails on a truncated or re-pinned snapshot, so the AC5 number cannot
-        drift away from the ticket without someone editing this assertion.
+        Two claims, deliberately kept apart. Lane G2 fused them and shipped a
+        green assertion that encoded a false provenance claim (found by the
+        #1998 adversarial verifier, confirmed by lane G3 — Linear comment
+        ``921b6c7b`` on OMN-15597):
+
+        * the SHA **is** this ticket's census point — corroborated here by the
+          ticket's own stated scan total, and by
+          ``test_pinned_corpus_covers_every_contract_the_ticket_enumerates``;
+        * the counts are **not** the ticket's literal 59 / 33. Those were read
+          with a different oracle (the ticket's unbalanced-``$(`` rule, which
+          yields 56 / 32 at this SHA). 63 / 35 is what the oracle committed in
+          this repo yields. The ticket's numbers are superseded, not
+          reproduced, and this class is a strict superset of that 59.
+
+        Fails on a truncated or re-pinned snapshot, so the AC5 numbers cannot
+        drift without someone editing this assertion.
         """
-        assert OCC_CENSUS_SHA == "9089ffa9338b23fcb2ba0c28780eeea5224663b0"
-        assert len(TOKENIZER_DAMAGE_CLASS) == 59
+        assert OCC_CENSUS_SHA == "d7b162710514caa8e094938bb6d534a9fef04da9"
+        assert OCC_CENSUS_TOTAL_COMMAND_CHECK_VALUES == 32593
+        assert len(TOKENIZER_DAMAGE_CLASS) == 63
         contracts = {key.split("#")[0] for key in TOKENIZER_DAMAGE_CLASS}
-        assert len(contracts) == 33 == OCC_CENSUS_DAMAGE_CLASS_CONTRACT_COUNT
+        assert len(contracts) == 35 == OCC_CENSUS_DAMAGE_CLASS_CONTRACT_COUNT
+
+    def test_pinned_corpus_covers_every_contract_the_ticket_enumerates(self) -> None:
+        """The provenance claim, made falsifiable instead of asserted.
+
+        A cardinality match is not provenance: G2's 59 / 33 at ``9089ffa9``
+        equalled the ticket's numbers over a DIFFERENT contract set, and that
+        corpus structurally could not contain ``OMN-15488`` — the live
+        motivating case (12th steel instance, OMN-15596) that AC5 exists to
+        protect, and whose contract does not exist at that SHA at all. A
+        coincidence cannot satisfy containment of 33 named contracts.
+        """
+        assert len(_TICKET_ENUMERATED_CONTRACTS) == 33, (
+            "the transcribed list must be the ticket's 33 names; a duplicated "
+            "number would silently weaken this check"
+        )
+        contracts = {key.split("#")[0] for key in TOKENIZER_DAMAGE_CLASS}
+        missing = sorted(_TICKET_ENUMERATED_CONTRACTS - contracts)
+        assert not missing, (
+            f"{len(missing)} contracts the ticket enumerates are absent from "
+            f"the pinned census at OCC {OCC_CENSUS_SHA[:8]}: {missing}"
+        )
+        assert {
+            "OMN-15488.yaml#0",
+            "OMN-15488.yaml#1",
+            "OMN-15488.yaml#2",
+        } <= set(TOKENIZER_DAMAGE_CLASS)
 
     def test_recorded_path_commands_are_command_names_not_fragments(self) -> None:
         """The stub is only sound if it resolves real command names."""
@@ -1268,7 +1361,7 @@ class TestAc5PinnedCorpusReCensus:
     def test_the_whole_pinned_class_is_now_accepted(
         self, pinned_path_lookup: None, tmp_path: Path
     ) -> None:
-        """AC5: 0 checks remain in the tokenizer-damage class (from 59)."""
+        """AC5: 0 checks remain in the tokenizer-damage class (from 63 here)."""
         still_red = [
             (key, reason)
             for key, value in TOKENIZER_DAMAGE_CLASS.items()
