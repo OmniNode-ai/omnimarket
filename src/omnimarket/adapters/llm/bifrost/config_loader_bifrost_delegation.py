@@ -55,9 +55,31 @@ def load_bifrost_delegation_config(
         A validated ``ModelBifrostDelegationConfig`` instance.
 
     Raises:
+        ValueError: If neither ``config_path`` nor ``overlay_path`` is provided
+            (OMN-15628 — no packaged-default fallback when the caller resolved
+            neither a contract nor an overlay override; CLAUDE.md rule 8), or if
+            the YAML cannot be parsed or fails schema validation.
         FileNotFoundError: If the config file does not exist.
-        ValueError: If the YAML cannot be parsed or fails schema validation.
     """
+    # OMN-15628: this is the single canonical locus for the "neither bound"
+    # refusal — every caller (the routing reducer, the generation consumer)
+    # funnels through this loader, so the check lives here once instead of
+    # being duplicated (and drifting) at each call site. A caller that has
+    # resolved EITHER a contract override OR an overlay override still gets
+    # the loader's own packaged default for the other half (a contract-only
+    # or overlay-only install remains a valid standalone shape); only the
+    # "resolved neither" case is a silent-fallback defect.
+    if config_path is None and overlay_path is None:
+        msg = (
+            "Bifrost delegation config: neither a contract path nor an "
+            "overlay path was resolved; refusing to fall back to the "
+            "packaged default contract (CLAUDE.md rule 8 — no silent config "
+            "fallback, OMN-15628). The caller must resolve "
+            "BIFROST_CONTRACT_PATH or BIFROST_OVERLAY_PATH explicitly before "
+            "calling this loader."
+        )
+        raise ValueError(msg)
+
     resolved = config_path or _DEFAULT_CONFIG_PATH
     overlay = overlay_path or _DEFAULT_OVERLAY_PATH
 

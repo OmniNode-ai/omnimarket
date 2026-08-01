@@ -106,22 +106,32 @@ class TestRendererReducerSeamMatched:
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         source_path = _render_source(tmp_path)
-        target_path = tmp_path / "rendered" / "bifrost_delegation.yaml"
+        shared_path = tmp_path / "rendered" / "bifrost_delegation.yaml"
 
-        # Producer: the REAL omnibase_infra renderer writes a contract.
+        # Producer: the REAL omnibase_infra renderer resolves ITS OWN target
+        # path from BIFROST_CONTRACT_PATH — target_path=None so
+        # _resolve_target_path actually reads the env var, the same way the
+        # entrypoint invokes it in production. (OMN-15628 remediation: an
+        # earlier version of this test passed target_path explicitly, which
+        # bypassed the renderer's own env resolution entirely and could not
+        # detect a producer-side regression in the shared key — only the
+        # consumer side was actually driving the seam.)
         rendered_path = render_bifrost_delegation_contract(
             source_path=source_path,
-            target_path=target_path,
-            environ={_SEAM_ENDPOINT_ENV: _SEAM_ENDPOINT_URL},
+            target_path=None,
+            environ={
+                _SEAM_ENDPOINT_ENV: _SEAM_ENDPOINT_URL,
+                "BIFROST_CONTRACT_PATH": str(shared_path),
+            },
             verify_endpoints=False,
             force_reseed=True,
         )
-        assert rendered_path == target_path
-        assert target_path.exists()
+        assert rendered_path == shared_path
+        assert shared_path.exists()
 
         # Consumer: the REAL reducer loader, pointed at the SAME path via the
         # SAME env var the k8s manifest binds (BIFROST_CONTRACT_PATH).
-        monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(target_path))
+        monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(shared_path))
         monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
         routing._load_bifrost_endpoints.cache_clear()
 
@@ -133,7 +143,7 @@ class TestRendererReducerSeamMatched:
         # Content-match proof: what the renderer wrote is what the reducer
         # resolved from — path identity AND content identity, not two
         # independently-constructed copies that happen to agree by accident.
-        written = yaml.safe_load(target_path.read_text())
+        written = yaml.safe_load(shared_path.read_text())
         written_backend = next(
             b for b in written["backends"] if b["backend_id"] == "local-coder"
         )
@@ -153,16 +163,25 @@ class TestRendererReducerSeamMismatched:
         source_path = _render_source(tmp_path)
         renderer_target = tmp_path / "renderer_writes_here" / "bifrost_delegation.yaml"
 
+        # Producer: resolves ITS OWN target from its own BIFROST_CONTRACT_PATH
+        # binding (target_path=None — see the matched-seam test above for why
+        # this must drive the real env resolution on both sides).
         render_bifrost_delegation_contract(
             source_path=source_path,
-            target_path=renderer_target,
-            environ={_SEAM_ENDPOINT_ENV: _SEAM_ENDPOINT_URL},
+            target_path=None,
+            environ={
+                _SEAM_ENDPOINT_ENV: _SEAM_ENDPOINT_URL,
+                "BIFROST_CONTRACT_PATH": str(renderer_target),
+            },
             verify_endpoints=False,
             force_reseed=True,
         )
         assert renderer_target.exists()
 
-        # Reducer bound to a DIFFERENT path than the renderer wrote to.
+        # Consumer bound to a DIFFERENT path than the renderer wrote to — the
+        # real onex-dev pre-fix defect shape (the producer pod's
+        # BIFROST_CONTRACT_PATH differs from / is unset relative to the
+        # consumer pod's).
         reducer_path = tmp_path / "reducer_reads_here" / "bifrost_delegation.yaml"
         monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(reducer_path))
         monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
@@ -173,3 +192,15 @@ class TestRendererReducerSeamMismatched:
         # endpoint set.
         with pytest.raises(ProtocolConfigurationError):
             routing._load_bifrost_endpoints()
+
+
+# Note (OMN-15628 remediation): the renderer's OWN "BIFROST_CONTRACT_PATH
+# unbound -> refuse" behavior (the write-side twin of the read-side fix
+# proven above) is deliberately NOT re-tested here. omnimarket consumes
+# omnibase_infra via a pinned git rev (see pyproject.toml), not this sibling
+# worktree's live source, so a test in THIS repo cannot observe an in-flight
+# omnibase_infra-side fix until the pin is bumped post-merge — asserting it
+# here would be a false RED against the currently-pinned rev, not a real
+# regression signal. That behavior is proven directly in omnibase_infra's own
+# suite: tests/unit/runtime/test_render_bifrost_delegation_contract.py::
+# test_unbound_contract_path_refuses_naming_the_key.

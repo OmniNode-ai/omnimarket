@@ -242,3 +242,79 @@ def test_routing_loader_uses_overlay_path(
         assert "future-backend" not in endpoints
     finally:
         routing._load_bifrost_endpoints.cache_clear()
+
+
+class TestLoadBifrostDelegationConfigNeitherPathBound:
+    """OMN-15628 remediation: direct coverage at the NAMED locus.
+
+    The ticket names ``config_loader_bifrost_delegation.py``
+    (``_DEFAULT_CONFIG_PATH``) as the defect's locus; the original PR added the
+    refusal at a caller instead, leaving this function's own
+    ``config_path or _DEFAULT_CONFIG_PATH`` fallback untouched. These tests
+    exercise ``load_bifrost_delegation_config`` directly (no caller in the
+    way) so a regression that only patches a caller — without fixing this
+    function — still fails here.
+    """
+
+    def test_both_none_refuses_naming_both_keys(self) -> None:
+        with pytest.raises(ValueError, match="BIFROST_CONTRACT_PATH") as exc_info:
+            load_bifrost_delegation_config(config_path=None, overlay_path=None)
+
+        message = str(exc_info.value)
+        assert "BIFROST_CONTRACT_PATH" in message
+        assert "BIFROST_OVERLAY_PATH" in message
+
+    def test_config_path_alone_still_uses_packaged_overlay_default(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """Either binding alone remains sufficient — refusal is only on the
+        absence of BOTH, matching the reducer/consumer call sites' contract.
+
+        Isolates the loader's overlay DEFAULT (``~/.omninode/delegation/
+        bifrost_overrides.yaml``) to a guaranteed-nonexistent tmp path so this
+        assertion is deterministic across machines that may have a real local
+        overlay file (e.g. a developer's own dev-machine overrides) — this
+        test proves "config_path alone does not refuse", not the content of
+        whatever overlay happens to exist on the host running the suite.
+        """
+        import omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation as loader_module
+
+        monkeypatch.setattr(
+            loader_module, "_DEFAULT_OVERLAY_PATH", tmp_path / "no-overlay-here.yaml"
+        )
+        config_path = tmp_path / "bifrost_delegation.yaml"
+        config_path.write_text(_DEFAULT_CONTRACT)
+
+        config = load_bifrost_delegation_config(
+            config_path=config_path, overlay_path=None
+        )
+
+        assert {b.backend_id for b in config.backends} == {
+            "local-qwen-coder-30b",
+            "future-backend",
+        }
+
+    def test_overlay_path_alone_uses_packaged_config_default(
+        self, tmp_path: Path
+    ) -> None:
+        overlay_path = tmp_path / "bifrost_overrides.yaml"
+        # "local-coder" is declared in the REAL packaged
+        # src/omnimarket/configs/bifrost_delegation.yaml with a null
+        # endpoint_url — the overlay merges by backend_id identity, filling
+        # in only endpoint_url and preserving the packaged entry's other
+        # required fields (model_name, tier, timeout_ms, capabilities).
+        overlay_path.write_text(
+            "backends:\n"
+            "  - backend_id: local-coder\n"
+            '    endpoint_url: "https://overlay-only.test:8000"\n'
+        )
+
+        config = load_bifrost_delegation_config(
+            config_path=None, overlay_path=overlay_path
+        )
+
+        # Resolved from the PACKAGED default config, deep-merged with the
+        # explicit overlay — proves the config-path half still legitimately
+        # defaults when only the overlay is bound.
+        merged = next(b for b in config.backends if b.backend_id == "local-coder")
+        assert merged.endpoint_url == "https://overlay-only.test:8000"

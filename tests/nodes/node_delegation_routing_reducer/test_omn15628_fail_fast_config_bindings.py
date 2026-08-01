@@ -144,6 +144,24 @@ class TestDelegationRoutingTiersPathRefusal:
 
         assert "DELEGATION_ROUTING_TIERS_PATH" in str(exc_info.value)
 
+    def test_bound_but_nonexistent_path_raises_attributable_error(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path
+    ) -> None:
+        """OMN-15628 remediation: a BOUND-but-WRONG path (typo, stale hardcoded
+        image path surviving a python version bump) must surface the same
+        attributable ProtocolConfigurationError as an unbound key — not a bare
+        FileNotFoundError/OSError that gives no indication the fault is
+        DELEGATION_ROUTING_TIERS_PATH specifically."""
+        missing_path = tmp_path / "does-not-exist" / "routing_tiers.yaml"
+        monkeypatch.setenv("DELEGATION_ROUTING_TIERS_PATH", str(missing_path))
+
+        with pytest.raises(ProtocolConfigurationError) as exc_info:
+            routing._get_config()
+
+        message = str(exc_info.value)
+        assert "DELEGATION_ROUTING_TIERS_PATH" in message
+        assert str(missing_path) in message
+
     def test_bound_path_is_used_verbatim(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path
     ) -> None:
