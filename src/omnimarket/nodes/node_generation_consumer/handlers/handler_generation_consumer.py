@@ -377,8 +377,12 @@ def resolve_generation_endpoint(
 
     The bifrost contract path / overlay path may be redirected for tests and
     staging via ``BIFROST_CONTRACT_PATH`` / ``BIFROST_OVERLAY_PATH`` (contract
-    *config* paths, not endpoint values). When unset, the canonical repo
-    contract plus the deploy overlay at ``~/.omninode/delegation`` are used.
+    *config* paths, not endpoint values). When EITHER is bound, the loader's
+    own packaged default legitimately supplies the other half (a contract-only
+    or overlay-only install is a valid standalone shape). When NEITHER is
+    bound, resolution refuses instead of silently falling back to the
+    packaged repo contract plus the ``~/.omninode/delegation`` deploy overlay
+    (OMN-15628 — CLAUDE.md rule 8, no silent config fallback).
 
     Args:
         endpoint_ref: Bifrost backend id declared by the contract (e.g. "local-coder").
@@ -390,10 +394,11 @@ def resolve_generation_endpoint(
 
     Raises:
         ValueError: If provider/served_model_id is blank, the backend is unknown,
-            or the backend has no endpoint_url. The secret VALUE is resolved
-            fail-closed at the effect boundary via the secret store (OMN-12824),
-            not here; routability no longer depends on the host environment
-            carrying the secret value (OMN-12828).
+            the backend has no endpoint_url, or (OMN-15628) neither
+            BIFROST_CONTRACT_PATH nor BIFROST_OVERLAY_PATH is bound. The secret
+            VALUE is resolved fail-closed at the effect boundary via the secret
+            store (OMN-12824), not here; routability no longer depends on the
+            host environment carrying the secret value (OMN-12828).
     """
     if not provider:
         raise ValueError(
@@ -464,6 +469,14 @@ def _resolve_bifrost_backend(endpoint_ref: str) -> _ResolvedBackend | None:
     environment carrying the secret value (no host-``.env`` runtime dependency).
     The reference name is carried through on ``api_key_ref`` so the effect
     boundary can resolve and fail closed when the secret is absent.
+
+    OMN-15628: raises ``ValueError`` (via ``load_bifrost_delegation_config``,
+    the single canonical loader locus) when NEITHER ``BIFROST_CONTRACT_PATH``
+    nor ``BIFROST_OVERLAY_PATH`` is bound, naming both keys — the identical
+    fail-fast refusal ``node_delegation_routing_reducer._load_bifrost_endpoints``
+    enforces for the same two keys. This call site previously silently reached
+    the loader's own packaged null-endpoint default, booting an unroutable
+    local generation path with no attributable cause.
     """
     # Resolve the bifrost contract/overlay paths through the delegation-path
     # provenance surface (OMN-12967) so this consumer's cold-runtime resolution

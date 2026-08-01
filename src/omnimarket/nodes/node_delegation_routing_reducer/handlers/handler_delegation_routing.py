@@ -394,7 +394,25 @@ def _get_config() -> ModelDelegationConfig:
                 operation="get_delegation_routing_config",
             )
             raise ProtocolConfigurationError(str(exc), context=context) from exc
-        yaml_text = config_path.read_text()
+        try:
+            yaml_text = config_path.read_text()
+        except OSError as exc:
+            # OMN-15628: a *bound but wrong* path (typo'd env value, stale
+            # hardcoded image path) must surface the same attributable
+            # ProtocolConfigurationError as an unbound one — a bare OSError
+            # here would be indistinguishable from any other filesystem
+            # failure and defeat the point of naming the key above.
+            context = ModelInfraErrorContext.with_correlation(
+                transport_type=EnumInfraTransportType.FILESYSTEM,
+                operation="get_delegation_routing_config",
+            )
+            msg = (
+                f"DELEGATION_ROUTING_TIERS_PATH is bound to {config_path} but "
+                f"the file could not be read ({type(exc).__name__}: {exc}). "
+                "Verify the bound path exists and is readable in this "
+                "deployment/image."
+            )
+            raise ProtocolConfigurationError(msg, context=context) from exc
         _config = parse_delegation_config_yaml(yaml_text)
     return _config
 
@@ -469,23 +487,18 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     # and re-raise as a configuration error so the failure is attributable.
     try:
         # OMN-15628: no packaged-default fallback when NEITHER binding is set.
-        # The previous body silently reached the loader's own packaged-default
-        # contract (null local endpoint_url values), so a deployment missing
-        # both env bindings booted successfully with a permanently unroutable
-        # local tier and no attributable cause. Refuse instead, naming both
-        # keys. Either binding alone is sufficient (the loader's own default
-        # still legitimately supplies the other half — e.g. a contract
-        # override with no overlay is a valid standalone-install shape).
-        if contract_override is None and overlay_override is None:
-            msg = (
-                "Neither BIFROST_CONTRACT_PATH nor BIFROST_OVERLAY_PATH is "
-                "bound; the routing reducer refuses to fall back to the "
-                "packaged default bifrost contract (CLAUDE.md rule 8 — no "
-                "silent config fallback, OMN-15628). Set BIFROST_CONTRACT_PATH "
-                "(rendered contract path) or BIFROST_OVERLAY_PATH (endpoint "
-                "overlay path) explicitly."
-            )
-            raise ValueError(msg)
+        # ``load_bifrost_delegation_config`` (the single canonical loader
+        # locus, shared with the generation consumer's ``_resolve_bifrost_backend``)
+        # now refuses when it resolves neither a contract path nor an overlay
+        # path — this call site no longer duplicates that check. Either
+        # binding alone remains sufficient (the loader's own default still
+        # legitimately supplies the other half — e.g. a contract override
+        # with no overlay is a valid standalone-install shape); when a
+        # contract override IS bound but no overlay override is, point the
+        # overlay at a deliberately nonexistent sentinel path rather than the
+        # loader's own ``~/.omninode/...`` default — a deployed pod's
+        # explicit contract binding should never pick up an incidental local
+        # dev-machine overlay file.
         if contract_override is not None and overlay_override is None:
             overlay_override = Path("__omnimarket_no_bifrost_overlay__.yaml")
         config = load_bifrost_delegation_config(

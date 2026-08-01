@@ -272,6 +272,31 @@ def test_fail_closed_when_served_model_id_blank(
 
 
 @pytest.mark.unit
+def test_fail_closed_when_neither_bifrost_binding_is_set(
+    monkeypatch: Any,
+) -> None:
+    """OMN-15628 remediation (second call site): ``_resolve_bifrost_backend``
+    must refuse — not silently reach the loader's packaged null-endpoint
+    default — when NEITHER ``BIFROST_CONTRACT_PATH`` nor
+    ``BIFROST_OVERLAY_PATH`` is bound. This is the identical AC(a) refusal the
+    routing reducer's ``_load_bifrost_endpoints`` already enforces; the
+    original PR fixed only that call site and left this one (the generation
+    consumer's endpoint resolution) on the pre-fix silent-success shape.
+    RED-before/GREEN-after against the shipped ``resolve_generation_endpoint``
+    entrypoint, not a hand-built stand-in.
+    """
+    monkeypatch.delenv("BIFROST_CONTRACT_PATH", raising=False)
+    monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+
+    with pytest.raises(ValueError, match=r"BIFROST_CONTRACT_PATH"):
+        resolve_generation_endpoint(
+            endpoint_ref="local-coder",
+            provider="local",
+            served_model_id="Qwen3.6-35B-A3B",
+        )
+
+
+@pytest.mark.unit
 def test_routable_when_gemini_api_key_absent_from_host_env(
     monkeypatch: Any, tmp_path: Path
 ) -> None:
