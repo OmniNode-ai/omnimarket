@@ -2057,6 +2057,7 @@
         "idx_delegation_events_score_vs_bar",
         "idx_delegation_events_task_type",
         "idx_delegation_events_tenant_id",
+        "idx_delegation_events_terminal_failure_cause",
         "idx_delegation_events_timestamp",
         "idx_delegation_events_tokens_total"
       ],

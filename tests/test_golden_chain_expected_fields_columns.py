@@ -87,6 +87,11 @@ PROJECTION_TABLE_COLUMNS: dict[str, set[str]] = {
         "required_bar",
         "actual_score",
         "score_source",
+        # OMN-15503: typed terminal outcome reduced from the attempt ladder
+        # (0029_delegation_terminal_failure_cause.sql).
+        "terminal_ok",
+        "terminal_failure_cause",
+        "attempt_history",
     },
     "agent_routing_decisions": {
         "id",
