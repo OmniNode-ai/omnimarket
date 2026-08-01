@@ -37,6 +37,7 @@ Related:
     - OMN-10657: Endpoint resolution from bifrost contract, not env vars
     - OMN-10717: Default contract + endpoint overlay merge semantics
     - OMN-10942: Task routing policy from contract with model defaults
+    - OMN-15539: Exact caller-pinned backend selection on the initial route
 """
 
 from __future__ import annotations
@@ -159,7 +160,7 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "You are an expert reasoning assistant. Analyze the problem deeply, "
         "consider edge cases, and provide a comprehensive solution."
     ),
-    "agent_orchestration": (
+    "agent_delegation": (
         "You are an orchestration assistant. Coordinate the required sub-tasks "
         "and ensure each is completed correctly before proceeding."
     ),
@@ -813,15 +814,18 @@ def _tier_can_route_task(
     task_type: str,
     bifrost_backends: dict[str, BifrostBackendRef],
     contract: dict[str, object] | None,
+    excluded_backend_refs: frozenset[str] = frozenset(),
 ) -> bool:
     """Return whether ``tier`` can actually route ``task_type``.
 
     A tier is routable when it is permitted by the task-class contract AND
     declares at least one model that serves ``task_type`` with a resolvable
-    backend endpoint. This mirrors the eligibility logic in ``delta`` so that
-    escalation cannot advance to a tier the reducer would then crash on
-    (OMN-12939: deployed frontier_api endpoints were empty, so escalating to the
-    claude tier raised ProtocolConfigurationError and stranded the FSM).
+    backend endpoint. ``excluded_backend_refs`` removes backends already failed
+    anywhere earlier in the workflow, so a differently named tier cannot be
+    mistaken for independent capacity when it repeats the same provider route.
+    This mirrors the eligibility logic in ``delta`` so escalation cannot advance
+    to a tier the reducer would then crash on (OMN-12939) or deterministically
+    re-select an exhausted backend (OMN-15503).
     """
     entry = _task_class_entry(contract, task_type)
     if not _tier_allowed_by_contract(tier, entry):
@@ -836,6 +840,7 @@ def _tier_can_route_task(
         0,
         bifrost_backends,
         contract_model_ref=contract_model_ref,
+        exclude_backend_refs=excluded_backend_refs,
     )
     return selected is not None
 
@@ -846,6 +851,7 @@ def next_eligible_tier(
     *,
     task_type: str | None = None,
     roi_overlay: ModelRoutingRoiOverlay | None = None,
+    excluded_backend_refs: frozenset[str] = frozenset(),
 ) -> str | None:
     """Return the next tier name after current_tier_name, skipping excluded_tiers.
 
@@ -865,6 +871,12 @@ def next_eligible_tier(
     dead-ends the ladder, a fail-safe second pass ignores ROI suppression so a
     proven-but-only-option tier is still reachable. ``None`` overlay preserves the
     exact pre-OMN-14001 escalation order.
+
+    ``excluded_backend_refs`` is workflow-wide transport-failure memory.  It is
+    applied while probing every successor tier, not only while selecting a sibling
+    in the current tier.  This matters when two tier labels reference the same
+    concrete backend: the later label is not a fresh quota/failure domain and must
+    be skipped after that backend fails once (OMN-15503).
 
     This is the single parsing path for tier escalation order. The orchestrator
     imports and calls this directly -- no independent YAML parsing.
@@ -889,7 +901,11 @@ def next_eligible_tier(
             if not found_current or tier.name in skip:
                 continue
             if task_type is not None and not _tier_can_route_task(
-                tier, task_type, bifrost_backends, contract
+                tier,
+                task_type,
+                bifrost_backends,
+                contract,
+                excluded_backend_refs,
             ):
                 continue
             return tier.name
@@ -971,6 +987,7 @@ def _tier_skip_reason(
     excluded_tiers: frozenset[str],
     bifrost_backends: dict[str, BifrostBackendRef],
     contract: dict[str, object] | None,
+    excluded_backend_refs: frozenset[str] = frozenset(),
 ) -> str:
     """Return the specific reason ``tier`` is not usable for ``task_type``.
 
@@ -986,6 +1003,19 @@ def _tier_skip_reason(
         if policy == _CLOUD_BLOCKED_POLICY and tier.name not in _LOCAL_TIERS:
             return "cloud_routing_blocked"
         return "above_pricing_ceiling"
+    if excluded_backend_refs and _tier_can_route_task(
+        tier,
+        task_type,
+        bifrost_backends,
+        contract,
+    ):
+        exhausted = sorted(
+            model.backend_ref
+            for model in tier.models
+            if model.backend_ref in excluded_backend_refs
+        )
+        if exhausted:
+            return f"failed_backends_excluded={exhausted}"
     return "no_routable_backend_for_task"
 
 
@@ -994,6 +1024,7 @@ def describe_no_higher_tier_available(
     excluded_tiers: frozenset[str],
     *,
     task_type: str,
+    excluded_backend_refs: frozenset[str] = frozenset(),
 ) -> str:
     """Return a precise terminal reason when no higher tier can serve a task.
 
@@ -1041,7 +1072,7 @@ def describe_no_higher_tier_available(
 
     skipped = [
         f"{tier.name}("
-        f"{_tier_skip_reason(tier, task_type, excluded_tiers, bifrost_backends, contract)})"
+        f"{_tier_skip_reason(tier, task_type, excluded_tiers, bifrost_backends, contract, excluded_backend_refs)})"
         for tier in after_current
     ]
     return (
@@ -1300,8 +1331,18 @@ def delta(
     The orchestrator decides WHICH of those two outcomes to treat as a "retry"
     vs a "real escalation" via ``sibling_backend_available_in_tier`` BEFORE
     calling this — see ``handler_delegation_workflow._maybe_retry_sibling_backend``.
-    Backend refs are unique across tiers, so applying the same exclusion set
-    tier-wide is a no-op for tiers that never declared the excluded backend.
+    Backend refs are not assumed unique across tiers. Applying the exclusion set
+    tier-wide is what prevents a later tier label from re-selecting the same
+    exhausted provider route (OMN-15503); it remains a no-op for tiers that do not
+    declare an excluded backend.
+
+    When the request carries a non-None ``backend_id`` (OMN-15539), the initial
+    route selects that exact configured ``backend_ref`` before task capability,
+    tier-order, contract-policy, or ROI preference.  A pin that cannot be
+    resolved fails loudly instead of silently falling back to another backend.
+    The pin applies only when ``min_tier_name`` is None: retry/escalation calls
+    resume the normal contract-driven ladder so the immutable request cannot
+    keep returning to a backend that already failed.
 
     Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
 
@@ -1327,7 +1368,22 @@ def delta(
 
     contract = _get_task_class_contract()
     entry = _task_class_entry(contract, task_type)
-    tiers = _tier_order_from_contract(config, entry)
+    raw_backend_id = getattr(request, "backend_id", None)
+    requested_backend_ref = (
+        raw_backend_id
+        if min_tier_name is None and isinstance(raw_backend_id, str)
+        else None
+    )
+    # An explicit backend pin is stronger than task-class tier policy on the
+    # initial attempt.  Search the routing config's declaration order so a
+    # backend outside this task's closed tier_order remains directly reachable.
+    # Escalation deliberately ignores the immutable request pin and restores the
+    # closed, contract-declared order below (OMN-15539).
+    tiers = (
+        config.tiers
+        if requested_backend_ref is not None
+        else _tier_order_from_contract(config, entry)
+    )
     dod_deterministic, dod_heuristic = _definition_of_done_checks(entry)
 
     # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
@@ -1349,17 +1405,38 @@ def delta(
             if tier.name in roi_skip:
                 continue
 
-            if not _tier_allowed_by_contract(tier, entry):
+            if requested_backend_ref is None and not _tier_allowed_by_contract(
+                tier, entry
+            ):
                 continue
 
-            selected = _select_model_for_task(
-                tier.models,
-                task_type,
-                estimated_tokens,
-                bifrost_backends,
-                contract_model_ref=contract_model_ref,
-                exclude_backend_refs=excluded_backend_refs,
-            )
+            if requested_backend_ref is not None:
+                # Caller pin precedence is exact and intentionally bypasses
+                # ``use_for`` / task model overrides.  Endpoint, secret, context,
+                # and prior-failure constraints still fail closed because they
+                # determine whether the requested backend can actually execute.
+                selected = next(
+                    (
+                        model
+                        for model in tier.models
+                        if model.backend_ref == requested_backend_ref
+                        and model.backend_ref not in excluded_backend_refs
+                        and estimated_tokens <= model.max_context_tokens
+                        and (pinned_backend := bifrost_backends.get(model.backend_ref))
+                        is not None
+                        and _backend_secret_available(pinned_backend)
+                    ),
+                    None,
+                )
+            else:
+                selected = _select_model_for_task(
+                    tier.models,
+                    task_type,
+                    estimated_tokens,
+                    bifrost_backends,
+                    contract_model_ref=contract_model_ref,
+                    exclude_backend_refs=excluded_backend_refs,
+                )
             if selected is None:
                 continue
 
@@ -1384,14 +1461,23 @@ def delta(
                 f"{selected.id} via tier '{tier.name}' "
                 f"(max_context={selected.max_context_tokens})."
             )
+            if requested_backend_ref is not None:
+                rationale += (
+                    " Caller-pinned: "
+                    f"backend_ref='{requested_backend_ref}' selected exactly."
+                )
             if (
                 selected.fast_path_threshold_tokens
                 and estimated_tokens <= selected.fast_path_threshold_tokens
             ):
                 rationale += f" Fast-path: tokens within {selected.fast_path_threshold_tokens} threshold."
-            if contract_model_ref is not None and selected.id == contract_model_ref:
+            if (
+                requested_backend_ref is None
+                and contract_model_ref is not None
+                and selected.id == contract_model_ref
+            ):
                 rationale += f" Contract-override: model='{contract_model_ref}'."
-            if entry is not None:
+            if requested_backend_ref is None and entry is not None:
                 policy_val = entry.get("cloud_routing_policy")
                 policy_str = policy_val if isinstance(policy_val, str) else "allowed"
                 rationale += (
@@ -1439,7 +1525,13 @@ def delta(
             )
         return None
 
-    suppressed = _roi_suppressed_tiers(roi_overlay)
+    # A caller's exact initial pin outranks learned ROI preference. Escalation
+    # ignores the pin above and therefore continues to honor ROI as before.
+    suppressed = (
+        frozenset[str]()
+        if requested_backend_ref is not None
+        else _roi_suppressed_tiers(roi_overlay)
+    )
     decision = _route(suppressed)
     if decision is None and suppressed:
         # Fail-safe: ROI suppression would leave no routable tier — honour the
@@ -1453,11 +1545,19 @@ def delta(
         transport_type=EnumInfraTransportType.RUNTIME,
         operation="delegation_routing",
     )
-    msg = (
-        f"No tier has a configured endpoint for task_type='{task_type}'. "
-        f"Populate endpoint_url fields in bifrost_overrides.yaml, "
-        f"or set BIFROST_OVERLAY_PATH to an overlay with endpoint_url fields."
-    )
+    if requested_backend_ref is not None:
+        msg = (
+            f"Caller-pinned backend_id='{requested_backend_ref}' is not routable. "
+            "It must be declared as a routing_tiers.yaml backend_id with a "
+            "resolvable bifrost endpoint/secret, sufficient context capacity, "
+            "and must not already be excluded by transport-failure memory."
+        )
+    else:
+        msg = (
+            f"No tier has a configured endpoint for task_type='{task_type}'. "
+            f"Populate endpoint_url fields in bifrost_overrides.yaml, "
+            f"or set BIFROST_OVERLAY_PATH to an overlay with endpoint_url fields."
+        )
     raise ProtocolConfigurationError(msg, context=context)
 
 

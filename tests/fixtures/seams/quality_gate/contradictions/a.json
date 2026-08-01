@@ -1,0 +1,12 @@
+{
+  "case_id": "a",
+  "title": "gate passed while the score is below the required bar",
+  "why_contradictory": "A result cannot simultaneously claim the quality gate accepted it and report a score the same payload declares BELOW_BAR. Core rejects this as 'quality_passed result cannot be below required_quality_bar'.",
+  "seam": {
+    "quality_gate_passed": true,
+    "quality_score": 0.5,
+    "required_quality_bar": 0.8,
+    "score_vs_required_bar": "below_bar",
+    "failed_acceptance_criteria": []
+  }
+}

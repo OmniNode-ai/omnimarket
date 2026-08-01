@@ -111,14 +111,12 @@ class HandlerQualityGateIntent:
         self._judge = judge if judge is not None else HandlerJudgeAdequacy()
 
     def handle(self, intent: ModelQualityGateIntent) -> ModelQualityGateResult:
-        # OMN-15196: the bus intent carries no caller-declared response_contract
-        # (ModelQualityGateInput has no such field yet), but a migrated task
-        # class's DEFAULT contract needs no wire-model change to resolve --
-        # it is keyed purely on the already-present task_type field. See
-        # ``resolve_task_class_response_contract`` for the same default the
-        # local dispatch port applies.
-        response_contract = resolve_task_class_response_contract(
-            intent.payload.task_type
+        # OMN-15539: caller-declared structural requirements are authoritative;
+        # resolve the task-class contract only when the request did not supply one.
+        response_contract = (
+            intent.payload.response_contract
+            if intent.payload.response_contract is not None
+            else resolve_task_class_response_contract(intent.payload.task_type)
         )
         result = quality_gate_delta(intent.payload, response_contract=response_contract)
         logger.info(
@@ -145,13 +143,14 @@ class HandlerQualityGateIntent:
         judge_score: float | None = None
         judge_verdict_value: EnumDelegationJudgeVerdict | None = None
 
-        # OMN-15196: see ``handle`` above -- resolves the task-class DEFAULT
-        # response contract (no wire-model change needed, keyed on task_type
-        # alone). A declared default skips the judge EFFECT below (mirroring
-        # LocalDelegationDispatchPort): the declared schema is the acceptance
-        # authority, so scoring against task-class judge criteria would be
-        # wasted work and cannot influence the verdict.
-        response_contract = resolve_task_class_response_contract(gate_input.task_type)
+        # OMN-15539: an explicit request contract wins over the task-class
+        # default. Either declared schema is the acceptance authority and skips
+        # the judge effect below.
+        response_contract = (
+            gate_input.response_contract
+            if gate_input.response_contract is not None
+            else resolve_task_class_response_contract(gate_input.task_type)
+        )
 
         if (
             response_contract is None

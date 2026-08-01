@@ -47,7 +47,11 @@ from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
 from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
 )
-from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTerminalFailureCause,
+    EnumQualityScoreComparison,
+    ModelPremiumCounterfactual,
+)
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.primitives.model_semver import ModelSemVer
 from pydantic import BaseModel
@@ -112,6 +116,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     describe_no_higher_tier_available,
     is_free_tier,
     next_eligible_tier,
+    resolve_task_class_max_escalations,
     sibling_backend_available_in_tier,
     tier_max_retries,
 )
@@ -130,10 +135,6 @@ from omnimarket.routing.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
 )
 
-# Max tier escalation attempts for infra errors (auth, timeout, connection refused).
-# Kept separate from handle_gate_result's max_escalation_attempts so callers can
-# tune them independently.
-_MAX_INFERENCE_ESCALATION_ATTEMPTS: int = 2
 # OMN-13215: the shelled ``cli_agents`` tier was removed. Every tier — including
 # the ceiling (claude) — now executes through the canonical HTTP inference path, so
 # no tier is excluded from inference-error escalation.
@@ -417,6 +418,18 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     return EnumDelegationFailureClass.UNKNOWN
 
 
+def _require_task_class_max_escalations(task_type: str) -> int:
+    """Return the task contract's escalation ceiling or fail closed."""
+    max_escalations = resolve_task_class_max_escalations(task_type)
+    if max_escalations is None:
+        msg = (
+            "task class must declare escalation_policy.max_escalations: "
+            f"task_type={task_type!r}"
+        )
+        raise ValueError(msg)
+    return max_escalations
+
+
 def _inference_timeout_seconds(workflow: DelegationWorkflowState) -> float:
     """Return the selected backend timeout in seconds, within wire-model bounds."""
     if workflow.routing_decision is None:
@@ -460,6 +473,7 @@ def _build_model_inference_intent(
     api_key_ref: str | None,
     extra_headers: dict[str, str] | None,
     provider_request_options: dict[str, Any],
+    response_format: dict[str, object] | None,
     tenant_id: str | None,
 ) -> ModelInferenceIntent:
     # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
@@ -475,6 +489,7 @@ def _build_model_inference_intent(
         "correlation_id": correlation_id,
         "api_key_ref": api_key_ref,
         "extra_headers": extra_headers,
+        "response_format": response_format,
     }
     model_fields = getattr(ModelInferenceIntent, "model_fields", {})
     if provider_request_options and "provider_request_options" in model_fields:
@@ -558,6 +573,7 @@ def _evaluate_compliance(
                     dod_heuristic=workflow.routing_decision.dod_heuristic,
                     quality_contract_mode=workflow.request.quality_contract_mode,
                     acceptance_criteria=workflow.request.acceptance_criteria,
+                    response_contract=workflow.request.response_contract,
                 )
             )
         ]
@@ -567,9 +583,18 @@ def _evaluate_compliance(
     advance(workflow, EnumDelegationState.ROUTED)
     workflow.compliance_attempts += 1
     workflow.inference_intent_in_flight = True
-    temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+    temperature = (
+        workflow.request.temperature
+        if workflow.request.temperature is not None
+        else _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+    )
+    request_system_prompt = (
+        workflow.request.system_prompt
+        if workflow.request.system_prompt is not None
+        else workflow.routing_decision.system_prompt
+    )
     system_prompt, prompt, provider_request_options = apply_inference_protocol(
-        system_prompt=workflow.routing_decision.system_prompt,
+        system_prompt=request_system_prompt,
         prompt=_prompt_with_context_pack(workflow.request, result.repair_prompt),
         model=workflow.routing_decision.selected_model,
         task_type=workflow.request.task_type,
@@ -593,6 +618,7 @@ def _evaluate_compliance(
             api_key_ref=workflow.routing_decision.api_key_ref,
             extra_headers=workflow.routing_decision.extra_headers,
             provider_request_options=provider_request_options,
+            response_format=workflow.request.response_format,
             # OMN-14280: stamp the workflow tenant onto the repair-attempt intent
             # (same precedence as slice-1 terminal attribution via _resolve_tenant_id).
             tenant_id=_resolve_tenant_id(workflow),
@@ -666,6 +692,13 @@ class TerminalEmissionInputs:
     # instead of the shared 'omninode' column default. The durable per-tenant
     # identity design is OMN-14107.
     tenant_id: str | None = None
+    # OMN-15464: structured quality evidence carried directly from the gate
+    # result/bar authority. These stay empty for pre-gate inference failures and
+    # remote-agent lifecycle terminals, where no quality bar was evaluated.
+    required_quality_bar: float | None = None
+    score_vs_required_bar: EnumQualityScoreComparison | None = None
+    failed_acceptance_criteria: tuple[str, ...] = ()
+    terminal_failure_cause: EnumDelegationTerminalFailureCause | None = None
 
 
 @dataclass(frozen=True)
@@ -773,6 +806,14 @@ class DelegationWorkflowState:
     # swap is not a tier escalation.
     same_tier_failed_backend_refs: tuple[str, ...] = ()
     same_tier_failed_backend_tier: str | None = None
+    # OMN-15503: workflow-wide transport-failure memory. The same backend_ref can
+    # appear under more than one tier label (the committed cheap_cloud and claude
+    # slots both reference cloud-gemini-pro), so the per-tier sibling set above is
+    # insufficient for cross-tier routing. Every retryable inference failure adds
+    # its concrete ref here; all later routing intents and next-tier eligibility
+    # probes exclude the accumulated set. A renamed/reordered tier can therefore
+    # never turn one exhausted quota/failure domain into apparent new capacity.
+    transport_failed_backend_refs: tuple[str, ...] = ()
     # OMN-14058 (OPERATOR-ACCEPTED INTERIM): resolved ONCE in
     # handle_delegation_request and carried onto every TerminalEmissionInputs
     # for this correlation_id (mirrors the context_pack_hash acceptance-pin
@@ -879,6 +920,7 @@ class HandlerDelegationWorkflow:
         error_retryable: bool,
         non_retryable_reason: str,
         task_type: str | None,
+        excluded_backend_refs: frozenset[str] = frozenset(),
     ) -> ModelEscalationDecisionResult:
         """Delegate the escalate-or-terminate verdict to the COMPUTE (OMN-13476).
 
@@ -911,6 +953,7 @@ class HandlerDelegationWorkflow:
                 workflow.current_tier_name,
                 excluded_tiers,
                 task_type=task_type,
+                excluded_backend_refs=excluded_backend_refs,
             )
             if next_tier is None:
                 no_higher_tier_reason = (
@@ -918,6 +961,7 @@ class HandlerDelegationWorkflow:
                         workflow.current_tier_name,
                         excluded_tiers,
                         task_type=task_type,
+                        excluded_backend_refs=excluded_backend_refs,
                     )
                     if task_type is not None
                     else NO_HIGHER_TIER_REASON_TOKEN
@@ -1041,9 +1085,18 @@ class HandlerDelegationWorkflow:
         workflow.inference_intent_in_flight = True
 
         assert workflow.request is not None
-        temperature = _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+        temperature = (
+            workflow.request.temperature
+            if workflow.request.temperature is not None
+            else _TASK_TEMPERATURE.get(workflow.request.task_type, 0.3)
+        )
+        request_system_prompt = (
+            workflow.request.system_prompt
+            if workflow.request.system_prompt is not None
+            else decision.system_prompt
+        )
         system_prompt, prompt, provider_request_options = apply_inference_protocol(
-            system_prompt=decision.system_prompt,
+            system_prompt=request_system_prompt,
             prompt=_prompt_with_context_pack(workflow.request, workflow.request.prompt),
             model=decision.selected_model,
             task_type=workflow.request.task_type,
@@ -1070,6 +1123,7 @@ class HandlerDelegationWorkflow:
                 api_key_ref=decision.api_key_ref,
                 extra_headers=decision.extra_headers,
                 provider_request_options=provider_request_options,
+                response_format=workflow.request.response_format,
                 # OMN-14280: stamp the workflow tenant onto the initial/escalation
                 # inference intent (slice-1 precedence via _resolve_tenant_id).
                 tenant_id=_resolve_tenant_id(workflow),
@@ -1129,6 +1183,7 @@ class HandlerDelegationWorkflow:
             # time.time_ns()) — see the field docstring above.
             elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
             model_used = response.model_used or workflow.routing_decision.selected_model
+            failure_class = _inference_error_failure_class(response.error_message)
 
             # Record this tier's failed attempt in escalation history before
             # deciding whether to escalate or terminate. OMN-13535: the inference
@@ -1188,11 +1243,14 @@ class HandlerDelegationWorkflow:
             )
             decision = self._decide_escalation(
                 workflow,
-                max_escalation_attempts=_MAX_INFERENCE_ESCALATION_ATTEMPTS,
+                max_escalation_attempts=_require_task_class_max_escalations(
+                    workflow.request.task_type
+                ),
                 excluded_tiers=_INFERENCE_ERROR_EXCLUDED_TIERS,
                 error_retryable=error_retryable,
                 non_retryable_reason="non_retryable_inference_response",
                 task_type=error_task_type,
+                excluded_backend_refs=frozenset(workflow.transport_failed_backend_refs),
             )
             terminal_failure_reason = decision.terminal_failure_reason
             next_tier = decision.next_tier_name
@@ -1205,9 +1263,7 @@ class HandlerDelegationWorkflow:
                 # from the error (timeout/rate-limit/unavailable), never blanket.
                 escalation_event = self._build_escalation_event(
                     workflow,
-                    failure_class=_inference_error_failure_class(
-                        response.error_message
-                    ),
+                    failure_class=failure_class,
                     escalation_reason=response.error_message,
                     model_id=model_used,
                 )
@@ -1237,6 +1293,9 @@ class HandlerDelegationWorkflow:
                     ModelRoutingIntent(
                         payload=workflow.request,
                         min_tier_name=next_tier,
+                        excluded_backend_refs=tuple(
+                            sorted(workflow.transport_failed_backend_refs)
+                        ),
                     ),
                     escalation_event,
                 ]
@@ -1277,6 +1336,11 @@ class HandlerDelegationWorkflow:
                     for attempt in workflow.escalation_history
                 ),
                 terminal_failure_reason=terminal_failure_reason,
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+                    if failure_class is EnumDelegationFailureClass.RATE_LIMITED
+                    else None
+                ),
                 routing_tiers_hash=self._routing_tiers_hash(),
                 escalation_config_hash=None,
                 # OMN-15464: count every attempt, including same-tier retries
@@ -1317,6 +1381,7 @@ class HandlerDelegationWorkflow:
                         dod_heuristic=workflow.routing_decision.dod_heuristic,
                         quality_contract_mode=workflow.request.quality_contract_mode,
                         acceptance_criteria=workflow.request.acceptance_criteria,
+                        response_contract=workflow.request.response_contract,
                     )
                 )
             ]
@@ -1354,7 +1419,7 @@ class HandlerDelegationWorkflow:
         self,
         result: ModelQualityGateResult,
         *,
-        max_escalation_attempts: int = 2,
+        max_escalation_attempts: int | None = None,
         # OMN-13215: the shelled ``cli_agents`` tier was removed; no tier is
         # excluded from quality-gate escalation now that every tier (including the
         # ceiling) runs over the canonical HTTP inference path.
@@ -1471,6 +1536,7 @@ class HandlerDelegationWorkflow:
                 failure_reason="",
                 terminal_failure_reason=None,
                 required_bar_authority=required_bar_authority,
+                required_bar_applied=not judge_unavailable_floor,
             )
 
             self._advance(workflow, EnumDelegationState.COMPLETED)
@@ -1549,11 +1615,16 @@ class HandlerDelegationWorkflow:
         # describe_no_higher_tier_available call).
         decision = self._decide_escalation(
             workflow,
-            max_escalation_attempts=max_escalation_attempts,
+            max_escalation_attempts=(
+                max_escalation_attempts
+                if max_escalation_attempts is not None
+                else _require_task_class_max_escalations(workflow.request.task_type)
+            ),
             excluded_tiers=excluded_tiers,
             error_retryable=True,
             non_retryable_reason="non_retryable_quality_result",
             task_type=workflow.request.task_type,
+            excluded_backend_refs=frozenset(workflow.transport_failed_backend_refs),
         )
         terminal_failure_reason = decision.terminal_failure_reason
         next_tier = decision.next_tier_name
@@ -1602,6 +1673,9 @@ class HandlerDelegationWorkflow:
                 ModelRoutingIntent(
                     payload=workflow.request,
                     min_tier_name=next_tier,
+                    excluded_backend_refs=tuple(
+                        sorted(workflow.transport_failed_backend_refs)
+                    ),
                 ),
                 escalation_event,
             ]
@@ -1653,7 +1727,7 @@ class HandlerDelegationWorkflow:
         Fail-closed and bounded: ``sibling_backend_available_in_tier`` runs the
         SAME deterministic selection ``delta()`` applies (routing_tiers.yaml
         declaration order, fast-path pass before the general use_for pass) over
-        the backends NOT YET in ``same_tier_failed_backend_refs`` — so this can
+        the backends NOT YET in ``transport_failed_backend_refs`` — so this can
         retry at most once per eligible backend the tier declares for the task,
         never indefinitely. Returns ``None`` (no retry) as soon as no untried
         sibling exists, so the caller falls through to the ORIGINAL cross-tier
@@ -1684,9 +1758,19 @@ class HandlerDelegationWorkflow:
             return None
         task_type = workflow.request.task_type
 
-        # Per-tier exclusion set: reset when the workflow lands on a different
-        # tier (a real escalation moved it), so each tier's fallback budget is
-        # independent — mirrors the local_retry_tier/local_retry_count reset.
+        # Record the failed concrete backend for the whole workflow before looking
+        # for either a same-tier sibling or a higher tier. Tier names are policy
+        # slots, not failure domains: a backend ref repeated by a later slot must
+        # remain excluded even after intervening tiers (OMN-15503).
+        if failed_backend_ref not in workflow.transport_failed_backend_refs:
+            workflow.transport_failed_backend_refs = (
+                *workflow.transport_failed_backend_refs,
+                failed_backend_ref,
+            )
+
+        # The audit-facing same-tier subset still resets when a real escalation
+        # moves the workflow, while transport_failed_backend_refs above remains
+        # cumulative and authoritative for routing exclusions.
         if workflow.same_tier_failed_backend_tier != tier:
             workflow.same_tier_failed_backend_tier = tier
             workflow.same_tier_failed_backend_refs = ()
@@ -1699,7 +1783,7 @@ class HandlerDelegationWorkflow:
                 failed_backend_ref,
             )
 
-        excluded = frozenset(workflow.same_tier_failed_backend_refs)
+        excluded = frozenset(workflow.transport_failed_backend_refs)
         sibling = sibling_backend_available_in_tier(tier, task_type, excluded)
         if sibling is None:
             return None
@@ -1711,9 +1795,9 @@ class HandlerDelegationWorkflow:
             completion_tokens=completion_tokens,
         )
 
-        # Re-route to the SAME tier, excluding every backend already tried this
-        # tier. handle_routing_decision resumes the inference dispatch on
-        # whatever decision comes back (the sibling delta() just proved routable).
+        # Re-route to the SAME tier, excluding every transport-failed backend in
+        # the workflow. handle_routing_decision resumes inference on whatever
+        # decision comes back (the sibling delta() just proved routable).
         workflow.inference_content = None
         workflow.inference_model_used = None
         workflow.inference_intent_in_flight = False
@@ -1924,11 +2008,19 @@ class HandlerDelegationWorkflow:
         ``escalation_history`` of FOUR rejected attempts (3x ``local`` +
         1x ``cheap_cloud``) in the same payload — the event contradicted itself.
 
-        ``escalation_history`` is the ground truth: ``_record_escalation_attempt``
-        appends exactly one entry per REJECTED attempt. On a failure terminal the
-        final (terminal) attempt is already recorded, so the history length IS
-        the attempt count. On an accepted terminal the winning attempt is not in
-        the history, so it is added.
+        ``escalation_history`` is the ground truth for rejected tier attempts:
+        ``_record_escalation_attempt`` appends exactly one entry per rejection.
+        On a failure terminal the final (terminal) tier attempt is already
+        recorded; on an accepted terminal the winning attempt is added here.
+        It is not, however, the only inference-call authority: schema-compliance
+        repairs issue fresh calls without appending escalation history. The
+        workflow's ``compliance_attempts`` counter therefore participates in the
+        maximum too.
+
+        The COMPAT stack introduces ``inference_attempt_sequence`` as the
+        monotonic emitted-call authority. Read it when present so this semantics
+        layer remains truthful after the stacks are composed, without declaring
+        that compatibility field prematurely in this branch.
 
         The ``escalation_count + 1`` floor is retained so a workflow that
         escalated without recording history (e.g. the ``required_bar_missing``
@@ -1936,7 +2028,19 @@ class HandlerDelegationWorkflow:
         fewer attempts than it provably made, nor zero.
         """
         recorded = len(workflow.escalation_history) + (1 if completed else 0)
-        return max(recorded, workflow.escalation_count + 1)
+        raw_inference_sequence = getattr(workflow, "inference_attempt_sequence", 0)
+        inference_sequence = (
+            raw_inference_sequence
+            if isinstance(raw_inference_sequence, int)
+            and not isinstance(raw_inference_sequence, bool)
+            else 0
+        )
+        return max(
+            recorded,
+            workflow.escalation_count + 1,
+            workflow.compliance_attempts or 1,
+            inference_sequence,
+        )
 
     def _record_escalation_attempt(
         self,
@@ -2218,6 +2322,9 @@ class HandlerDelegationWorkflow:
             content=inputs.content,
             quality_passed=inputs.quality_passed,
             quality_score=inputs.quality_score,
+            required_quality_bar=inputs.required_quality_bar,
+            score_vs_required_bar=inputs.score_vs_required_bar,
+            failed_acceptance_criteria=inputs.failed_acceptance_criteria,
             latency_ms=inputs.latency_ms,
             prompt_tokens=served_input_tokens,
             completion_tokens=served_output_tokens,
@@ -2229,6 +2336,7 @@ class HandlerDelegationWorkflow:
             escalation_count=inputs.escalation_count,
             escalation_history=inputs.escalation_history,
             terminal_failure_reason=inputs.terminal_failure_reason,
+            terminal_failure_cause=inputs.terminal_failure_cause,
             routing_tiers_hash=inputs.routing_tiers_hash,
             escalation_config_hash=inputs.escalation_config_hash,
             attempts_count=inputs.attempts_count,
@@ -2296,6 +2404,7 @@ class HandlerDelegationWorkflow:
         failure_reason: str,
         terminal_failure_reason: str | None,
         required_bar_authority: RequiredBarAuthority | None,
+        required_bar_applied: bool = True,
     ) -> TerminalEmissionInputs:
         """Resolve a quality-gate terminal outcome into the single-source inputs.
 
@@ -2324,6 +2433,15 @@ class HandlerDelegationWorkflow:
         history_dicts = tuple(
             attempt.model_dump(mode="json") for attempt in workflow.escalation_history
         )
+        # OMN-15539: a judge-unavailable deterministic-floor completion does not
+        # apply the combined score bar. The judge contribution required to make
+        # that bar reachable was absent, so carrying the combined bar together
+        # with BELOW_BAR + quality_passed would assert contradictory terminal
+        # truth. Preserve the accepted deterministic-floor verdict and omit the
+        # unapplied numeric bar/comparison as one typed pair.
+        structured_bar_authority = (
+            required_bar_authority if required_bar_applied else None
+        )
         quality_gates_checked = (
             format_quality_bar_labels(
                 required_bar=required_bar_authority.required_bar,
@@ -2337,6 +2455,15 @@ class HandlerDelegationWorkflow:
             if required_bar_authority is not None
             else ["required_bar_missing"]
         )
+        score_vs_required_bar = (
+            (
+                EnumQualityScoreComparison.BELOW_BAR
+                if result.quality_score < structured_bar_authority.required_bar
+                else EnumQualityScoreComparison.AT_OR_ABOVE_BAR
+            )
+            if structured_bar_authority is not None
+            else None
+        )
 
         return TerminalEmissionInputs(
             completed=completed,
@@ -2347,6 +2474,17 @@ class HandlerDelegationWorkflow:
             content=workflow.inference_content or "",
             quality_passed=completed,
             quality_score=result.quality_score,
+            required_quality_bar=(
+                structured_bar_authority.required_bar
+                if structured_bar_authority is not None
+                else None
+            ),
+            score_vs_required_bar=score_vs_required_bar,
+            # The gate result is the authority for criterion failures. Do not
+            # reconstruct these by parsing the human-readable failure_reason.
+            failed_acceptance_criteria=(
+                tuple(result.failure_reasons) if not result.passed else ()
+            ),
             latency_ms=elapsed_ms,
             prompt_tokens=workflow.inference_prompt_tokens,
             completion_tokens=workflow.inference_completion_tokens,

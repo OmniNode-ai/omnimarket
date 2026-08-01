@@ -255,5 +255,17 @@ class TestJudgeUnavailableFloorRealDispatchPath:
         # OMN-13959: the orchestrator falls back to the deterministic floor and
         # COMPLETES on the local tier instead of escalating during the judge outage.
         assert TOPIC_ID_DELEGATION_COMPLETED in _terminal_topics(terminal_events)
+        terminal = next(
+            event
+            for event in terminal_events
+            if isinstance(event, ModelDelegationCompleted)
+        )
+        # The combined 0.85 bar was not applied while its judge band was
+        # unavailable. Omitting the pair is the typed, honest representation of
+        # deterministic-floor authority; carrying BELOW_BAR with a passed verdict
+        # would contradict the terminal truth contract.
+        assert terminal.required_quality_bar is None
+        assert terminal.score_vs_required_bar is None
+        assert terminal.failed_acceptance_criteria == ()
         wf = workflow.workflows[request.correlation_id]
         assert wf.state == EnumDelegationState.COMPLETED

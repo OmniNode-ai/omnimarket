@@ -38,7 +38,8 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 from unittest.mock import MagicMock, patch
@@ -1151,6 +1152,53 @@ class TestYamlfmtStabilityPredicateMatchesTheRealFormatter:
 # ---------------------------------------------------------------------------
 
 
+def _occ_module_names() -> list[str]:
+    return [
+        name
+        for name in sys.modules
+        if name == "onex_change_control" or name.startswith("onex_change_control.")
+    ]
+
+
+@contextmanager
+def _sibling_occ_package(src: Path) -> Iterator[None]:
+    """Make ``<sibling>/src`` authoritative for ``onex_change_control``, then undo it.
+
+    OMN-15539. Inserting ``<sibling>/src`` on ``sys.path`` does nothing once
+    ``onex_change_control`` is already in ``sys.modules``: the package's
+    ``__path__`` is fixed at first import, so every later submodule resolves
+    against whatever won that race. In a full-suite run an earlier test imports
+    the INSTALLED ``onex-change-control`` wheel (0.5.1 in ``.venv``), whose
+    ``validation/`` package ships only ``patterns`` and ``dogfood_regression`` --
+    so the sibling gate script's module-scope
+    ``from onex_change_control.validation.evidence_admissibility import ...``
+    raises ``ModuleNotFoundError``. The file passes alone and fails in the suite;
+    that ordering dependence is the defect, not a flake. The same shadowing is
+    also a vacuous-green risk: a wheel that happened to satisfy every import
+    would let this "REAL consumer gate" assertion pass against the wheel instead
+    of the sibling source it claims to drive.
+
+    The eviction MUST be scoped. Leaving the wheel's modules deleted re-imports
+    them later as fresh class objects, and ``isinstance`` against a class taken
+    from the pre-eviction import then returns False -- that silently turned
+    ``handler_overnight._execute_dispatch_items`` into a no-op and broke seven
+    unrelated ``node_overnight`` tests. Restoring the exact prior mapping keeps
+    the blast radius inside this loader.
+    """
+    saved = {name: sys.modules[name] for name in _occ_module_names()}
+    for name, module in saved.items():
+        origin = getattr(module, "__file__", None)
+        if origin is None or not Path(origin).resolve().is_relative_to(src):
+            del sys.modules[name]
+    try:
+        yield
+    finally:
+        for name in _occ_module_names():
+            if name not in saved:
+                del sys.modules[name]
+        sys.modules.update(saved)
+
+
 def _load_occ_module(relpath: str, name: str) -> ModuleType | None:
     """Import an onex_change_control gate script from a sibling checkout, or None.
 
@@ -1163,8 +1211,9 @@ def _load_occ_module(relpath: str, name: str) -> ModuleType | None:
     target = root / relpath
     if not target.is_file():
         return None
-    if str(root / "src") not in sys.path:
-        sys.path.insert(0, str(root / "src"))
+    src = root / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
     spec = importlib.util.spec_from_file_location(name, target)
     if spec is None or spec.loader is None:
         return None
@@ -1173,7 +1222,8 @@ def _load_occ_module(relpath: str, name: str) -> ModuleType | None:
     # ``sys.modules[cls.__module__]``, which is None for an unregistered module
     # and raises AttributeError mid-import.
     sys.modules[name] = module
-    spec.loader.exec_module(module)
+    with _sibling_occ_package(src):
+        spec.loader.exec_module(module)
     return module
 
 

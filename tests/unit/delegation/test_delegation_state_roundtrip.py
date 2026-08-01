@@ -162,6 +162,10 @@ def _build_fully_populated_state() -> DelegationWorkflowState:
         cumulative_attempt_cost_usd=0.0042,
         cumulative_attempt_prompt_tokens=120,
         cumulative_attempt_completion_tokens=340,
+        transport_failed_backend_refs=(
+            "cloud-gemini-pro",
+            "openrouter-qwen3-coder-480b",
+        ),
         tenant_id="acme-corp",
     )
 

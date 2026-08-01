@@ -1,0 +1,12 @@
+{
+  "case_id": "b",
+  "title": "gate failed at or above the required bar with no failed criterion",
+  "why_contradictory": "If the score cleared the bar and the gate still rejected, some acceptance criterion must name why. An empty failed_acceptance_criteria makes the rejection unattributable — the exact OMN-15464 mislabelling class. Core rejects this as 'quality-failed result at or above required_quality_bar must carry failed_acceptance_criteria'.",
+  "seam": {
+    "quality_gate_passed": false,
+    "quality_score": 0.867,
+    "required_quality_bar": 0.8,
+    "score_vs_required_bar": "at_or_above_bar",
+    "failed_acceptance_criteria": []
+  }
+}

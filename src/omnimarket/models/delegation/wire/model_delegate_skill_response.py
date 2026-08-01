@@ -4,11 +4,15 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID
 
-from omnibase_core.models.delegation.wire import ModelPremiumCounterfactual
-from pydantic import BaseModel, ConfigDict, Field
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTerminalFailureCause,
+    EnumQualityScoreComparison,
+    ModelPremiumCounterfactual,
+)
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ModelDelegateSkillAttemptRecord(BaseModel):
@@ -99,6 +103,28 @@ class ModelDelegateSkillResponse(BaseModel):
     response: str = Field(default="")
     quality_gate_passed: bool = Field(default=False)
     quality_score: float = Field(default=0.0, ge=0.0, le=1.0)
+    required_quality_bar: float | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        ge=0.0,
+        le=1.0,
+        description="Authoritative minimum quality score applied to this result.",
+    )
+    score_vs_required_bar: EnumQualityScoreComparison | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Typed comparison between quality_score and its required bar.",
+    )
+    failed_acceptance_criteria: tuple[str, ...] = Field(
+        default=(),
+        exclude_if=lambda value: not value,
+        description="Authoritative quality-gate criteria that rejected this result.",
+    )
+    terminal_failure_cause: EnumDelegationTerminalFailureCause | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description="Stable machine-readable terminal failure cause, when known.",
+    )
     quality_gates_failed: list[str] = Field(default_factory=list)
     metrics: ModelDelegateSkillResponseMetrics = Field(
         default_factory=ModelDelegateSkillResponseMetrics,
@@ -110,12 +136,87 @@ class ModelDelegateSkillResponse(BaseModel):
         description="Number of up-tier escalations before the terminal attempt "
         "(OMN-14063). 0 means the first-resolved tier answered directly.",
     )
+    attempts_count: int = Field(
+        default=1,
+        ge=1,
+        description="Authoritative total inference calls including compliance "
+        "repairs, same-tier retries, and the terminal attempt.",
+    )
     attempts: list[ModelDelegateSkillAttemptRecord] = Field(
         default_factory=list,
-        description="Per-tier attempt ladder, in order, including the terminal "
-        "attempt (OMN-14063). Empty for dispatch ports that do not yet report "
-        "per-attempt detail (e.g. the Kafka bus path).",
+        description="Best available per-attempt detail in order. Rich local "
+        "attempts include the terminal attempt; escalation_history fallback may "
+        "contain rejected attempts only. attempts_count remains authoritative.",
     )
+
+    @model_validator(mode="after")
+    def validate_structured_terminal_evidence(self) -> Self:
+        """Preserve the canonical Core terminal-evidence invariants.
+
+        This mirrors ``ModelDelegationResult.validate_structured_terminal_evidence``
+        in omnibase_core 0.46.8 clause for clause (OMN-15539 / OMN-15464). The two
+        models are the two ends of one delegation terminal, so any verdict Core
+        refuses to construct must also be un-constructable here — otherwise a
+        producer that bypasses the Core model (the bus-less local dispatch port, a
+        direct response construction, a future adapter) publishes a contradiction
+        that the canonical wire DTO would have blocked. The agreement is pinned by
+        ``tests/unit/delegation/test_seam_quality_gate_semantics_omn15539.py``,
+        which drives BOTH models from one fixture; keep the two validators in
+        step or that seam test fails.
+        """
+        if any(not item.strip() for item in self.failed_acceptance_criteria):
+            msg = "failed_acceptance_criteria entries must not be blank"
+            raise ValueError(msg)
+
+        required_bar = self.required_quality_bar
+        comparison = self.score_vs_required_bar
+        if (required_bar is None) != (comparison is None):
+            msg = (
+                "required_quality_bar and score_vs_required_bar must be "
+                "provided together"
+            )
+            raise ValueError(msg)
+
+        if required_bar is not None and comparison is not None:
+            expected = (
+                EnumQualityScoreComparison.BELOW_BAR
+                if self.quality_score < required_bar
+                else EnumQualityScoreComparison.AT_OR_ABOVE_BAR
+            )
+            if comparison is not expected:
+                msg = (
+                    "score_vs_required_bar must match quality_score and "
+                    "required_quality_bar"
+                )
+                raise ValueError(msg)
+
+            if (
+                comparison is EnumQualityScoreComparison.BELOW_BAR
+                and self.quality_gate_passed
+            ):
+                msg = (
+                    "quality_gate_passed response cannot be below required_quality_bar"
+                )
+                raise ValueError(msg)
+
+            if (
+                comparison is EnumQualityScoreComparison.AT_OR_ABOVE_BAR
+                and not self.quality_gate_passed
+                and not self.failed_acceptance_criteria
+            ):
+                msg = (
+                    "quality-failed response at or above required_quality_bar must "
+                    "carry failed_acceptance_criteria"
+                )
+                raise ValueError(msg)
+
+        if self.quality_gate_passed and self.failed_acceptance_criteria:
+            msg = "quality_gate_passed response cannot carry failed_acceptance_criteria"
+            raise ValueError(msg)
+        if self.quality_gate_passed and self.terminal_failure_cause is not None:
+            msg = "successful delegation cannot carry terminal_failure_cause"
+            raise ValueError(msg)
+        return self
 
 
 __all__ = [

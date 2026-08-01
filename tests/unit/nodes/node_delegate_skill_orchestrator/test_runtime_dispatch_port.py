@@ -8,6 +8,10 @@ from datetime import UTC, datetime
 from uuid import uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import (
+    EnumDelegationTerminalFailureCause,
+    EnumQualityScoreComparison,
+)
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.event_bus.models.model_event_message import ModelEventMessage
@@ -198,6 +202,14 @@ async def test_runtime_dispatch_port_uses_contract_derived_transport_config() ->
     envelope = json.loads(value)
     assert envelope["event_type"] == "test.delegation-request"
     assert envelope["source_tool"] == "test-delegate-port"
+    for optional_field in (
+        "backend_id",
+        "response_contract",
+        "system_prompt",
+        "temperature",
+        "response_format",
+    ):
+        assert optional_field not in envelope["payload"]
     assert bus.subscriptions == [
         ("test.evt.delegation-completed", f"test-delegate-port-{correlation_id.hex}"),
         ("test.evt.delegation-failed", f"test-delegate-port-{correlation_id.hex}"),
@@ -252,6 +264,11 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
             quality_contract_mode="replace_task_class",
             acceptance_criteria=("exactly_two_sentences",),
             tenant_id=None,
+            backend_id="cloud-gemini-pro",
+            response_contract={"type": "object", "required": ["answer"]},
+            system_prompt="Return one JSON object.",
+            temperature=0.2,
+            response_format={"type": "json_object"},
         )
     finally:
         await bus.close()
@@ -269,6 +286,11 @@ async def test_runtime_dispatch_port_round_trips_internal_delegation_result() ->
     assert request.max_tokens == 512
     assert request.quality_contract_mode == "replace_task_class"
     assert request.acceptance_criteria == ("exactly_two_sentences",)
+    assert request.backend_id == "cloud-gemini-pro"
+    assert request.response_contract == {"type": "object", "required": ["answer"]}
+    assert request.system_prompt == "Return one JSON object."
+    assert request.temperature == 0.2
+    assert request.response_format == {"type": "json_object"}
     assert request.emitted_at
 
 
@@ -338,70 +360,63 @@ async def test_runtime_dispatch_port_threads_verified_tenant_id_onto_published_r
 
 
 @pytest.mark.unit
-async def test_runtime_dispatch_port_rejects_backend_id_pin_loudly() -> None:
-    """OMN-15180: the deployed bus path publishes ``ModelDelegationRequest``
-    (omnibase_core), which carries no ``backend_id`` field, and the downstream
-    ``HandlerDelegationWorkflow`` has no backend-pin input today. A non-None
-    pin must fail LOUDLY here rather than being silently accepted and dropped
-    -- the exact "pin drops at a hop" defect class this ticket exists to
-    close. Never publishes to the bus when it raises.
-    """
+async def test_runtime_dispatch_port_publishes_backend_id_pin() -> None:
     bus = _CapturingEventBus()
     port = RuntimeDelegationDispatchPort(
         event_bus=bus,
         config=_runtime_dispatch_config(),
     )
 
-    with pytest.raises(NotImplementedError, match="backend_id pin"):
-        await port.dispatch(
-            prompt="Write tests",
-            task_type="code_generation",
-            correlation_id=uuid4(),
-            max_tokens=512,
-            source_file_path=None,
-            source_session_id=None,
-            wait=False,
-            quality_contract_mode="replace_task_class",
-            acceptance_criteria=(),
-            tenant_id=None,
-            backend_id="local-coder-mlx",
-        )
+    await port.dispatch(
+        prompt="Write tests",
+        task_type="code_generation",
+        correlation_id=uuid4(),
+        max_tokens=512,
+        source_file_path=None,
+        source_session_id=None,
+        wait=False,
+        quality_contract_mode="replace_task_class",
+        acceptance_criteria=(),
+        tenant_id=None,
+        backend_id="local-coder-mlx",
+    )
 
-    assert bus.published == []
+    request = (
+        ModelEventEnvelope[ModelDelegationRequest]
+        .model_validate_json(bus.published[0][1])
+        .payload
+    )
+    assert request.backend_id == "local-coder-mlx"
 
 
 @pytest.mark.unit
-async def test_runtime_dispatch_port_rejects_response_contract_loudly() -> None:
-    """OMN-15193: the deployed bus path publishes ``ModelDelegationRequest``
-    (omnibase_core), which carries no ``response_contract`` field, and the
-    downstream ``HandlerDelegationWorkflow`` / ``HandlerQualityGateIntent`` have
-    no declared-schema input today. A non-None contract must fail LOUDLY here
-    rather than being silently accepted and dropped -- the exact per-hop-drop
-    defect class this ticket exists to close. Never publishes to the bus when
-    it raises.
-    """
+async def test_runtime_dispatch_port_publishes_response_contract() -> None:
     bus = _CapturingEventBus()
     port = RuntimeDelegationDispatchPort(
         event_bus=bus,
         config=_runtime_dispatch_config(),
     )
 
-    with pytest.raises(NotImplementedError, match="response_contract"):
-        await port.dispatch(
-            prompt="Decide the next tactical action",
-            task_type="agent_delegation",
-            correlation_id=uuid4(),
-            max_tokens=512,
-            source_file_path=None,
-            source_session_id=None,
-            wait=False,
-            quality_contract_mode="extend_task_class",
-            acceptance_criteria=(),
-            tenant_id=None,
-            response_contract={"type": "object"},
-        )
+    await port.dispatch(
+        prompt="Decide the next tactical action",
+        task_type="agent_delegation",
+        correlation_id=uuid4(),
+        max_tokens=512,
+        source_file_path=None,
+        source_session_id=None,
+        wait=False,
+        quality_contract_mode="extend_task_class",
+        acceptance_criteria=(),
+        tenant_id=None,
+        response_contract={"type": "object"},
+    )
 
-    assert bus.published == []
+    request = (
+        ModelEventEnvelope[ModelDelegationRequest]
+        .model_validate_json(bus.published[0][1])
+        .payload
+    )
+    assert request.response_contract == {"type": "object"}
 
 
 @pytest.mark.unit
@@ -484,15 +499,30 @@ async def test_runtime_dispatch_port_ignores_early_empty_pattern_b_terminal() ->
                 endpoint_url="https://qwen.local",
                 content="scored failure content",
                 quality_passed=False,
-                quality_score=0.0,
+                quality_score=0.9,
+                required_quality_bar=0.85,
+                score_vs_required_bar=(EnumQualityScoreComparison.AT_OR_ABOVE_BAR),
+                failed_acceptance_criteria=("TASK_MISMATCH",),
                 latency_ms=84,
                 prompt_tokens=68,
                 completion_tokens=17,
                 total_tokens=85,
                 fallback_to_claude=False,
-                failure_reason="TASK_MISMATCH",
+                failure_reason="provider quota exhausted after quality rejection",
                 tokens_to_compliance=85,
-                compliance_attempts=1,
+                compliance_attempts=3,
+                escalation_history=(
+                    {
+                        "tier_name": "cheap_cloud",
+                        "model_used": "Qwen3-Coder-30B",
+                        "quality_score": 0.9,
+                        "failure_reasons": ["TASK_MISMATCH"],
+                    },
+                ),
+                terminal_failure_cause=(
+                    EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+                ),
+                attempts_count=3,
             ),
         )
 
@@ -520,9 +550,22 @@ async def test_runtime_dispatch_port_ignores_early_empty_pattern_b_terminal() ->
 
     assert result["status"] == "failed"
     assert result["content"] == "scored failure content"
-    assert result["quality_score"] == 0.0
+    assert result["quality_score"] == 0.9
+    assert result["required_quality_bar"] == 0.85
+    assert result["score_vs_required_bar"] == "at_or_above_bar"
+    assert result["failed_acceptance_criteria"] == ["TASK_MISMATCH"]
+    assert result["terminal_failure_cause"] == "provider_quota_exhausted"
+    assert result["attempts_count"] == 3
+    assert result["escalation_history"] == [
+        {
+            "tier_name": "cheap_cloud",
+            "model_used": "Qwen3-Coder-30B",
+            "quality_score": 0.9,
+            "failure_reasons": ["TASK_MISMATCH"],
+        }
+    ]
     assert result["prompt_tokens"] == 68
     assert result["completion_tokens"] == 17
     assert result["total_tokens"] == 85
     assert result["tokens_to_compliance"] == 85
-    assert result["compliance_attempts"] == 1
+    assert result["compliance_attempts"] == 3

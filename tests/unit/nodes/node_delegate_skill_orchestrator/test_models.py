@@ -386,6 +386,7 @@ def test_response_defaults() -> None:
     # OMN-14063: no escalation ladder by default — a construction that doesn't
     # pass these fields must not break.
     assert resp.escalation_count == 0
+    assert resp.attempts_count == 1
     assert resp.attempts == []
 
 
@@ -397,6 +398,7 @@ def test_response_carries_escalation_ladder() -> None:
         correlation_id=uuid4(),
         task_type="document",
         escalation_count=1,
+        attempts_count=2,
         attempts=[
             ModelDelegateSkillAttemptRecord(
                 tier="local",
@@ -417,6 +419,7 @@ def test_response_carries_escalation_ladder() -> None:
         ],
     )
     assert resp.escalation_count == 1
+    assert resp.attempts_count == 2
     assert len(resp.attempts) == 2
     assert resp.attempts[0].failure_class == "model_unavailable"
     assert "failed health probe" in resp.attempts[0].error_message

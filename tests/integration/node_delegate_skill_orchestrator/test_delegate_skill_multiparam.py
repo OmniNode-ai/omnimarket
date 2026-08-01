@@ -70,6 +70,10 @@ def _escalated_success() -> dict[str, Any]:
         "delegated_to": "cloud-claude",
         "quality_gate_passed": True,
         "quality_score": 0.96,
+        "required_quality_bar": 0.85,
+        "score_vs_required_bar": "at_or_above_bar",
+        "failed_acceptance_criteria": [],
+        "attempts_count": 3,
         "compliance_attempts": 3,
         "input_tokens": 200,
         "output_tokens": 120,
@@ -118,6 +122,9 @@ CASES = [
             "provider": "cloud-claude",
             "compliance_attempts": 3,
             "quality_gate_passed": True,
+            "required_quality_bar": 0.85,
+            "score_vs_required_bar": "at_or_above_bar",
+            "attempts_count": 3,
         },
         id="escalation-up-tier",
     ),
@@ -230,5 +237,14 @@ async def test_delegate_skill_round_trip(
                 payload["metrics"]["compliance_attempts"]
                 == expected["compliance_attempts"]
             )
+            if "required_quality_bar" in expected:
+                assert (
+                    payload["required_quality_bar"] == expected["required_quality_bar"]
+                )
+                assert (
+                    payload["score_vs_required_bar"]
+                    == expected["score_vs_required_bar"]
+                )
+                assert payload["attempts_count"] == expected["attempts_count"]
     finally:
         await integration_event_bus.close()

@@ -12,17 +12,33 @@ These tests pin the omnimarket-side invariants from OMN-13836:
 1. No ``[tool.uv] override-dependencies`` entry may use a git URL.
 2. The direct ``omnibase-core`` / ``omnibase-spi`` constraints must sit on the
    current resolvable ranges (``core>=0.46.7``, ``spi>=0.23.0``), consistent
-   with OMN-14168 and omnibase_infra @main.
+   with OMN-14168 and omnibase_infra @main. The floors are asserted as
+   MINIMUMS, compared as parsed versions (OMN-15539): raising a floor onto a
+   newer published release is the intended way to retire a git-rev override,
+   and a substring check on the old literal would fail that legitimate move
+   while still passing for a lower, actually-regressed floor like ``>=0.46.70``.
 
 They do NOT assert full cross-repo resolvability: the residual blocker is
 ``omninode-memory==0.15.0`` (hard-pins ``omnibase-spi==0.20.6``), which lives
 in the omnimemory repo and is out of scope for this ticket.
 """
 
+import re
 import tomllib
 from pathlib import Path
 
 _PYPROJECT = Path(__file__).parent.parent / "pyproject.toml"
+
+_LOWER_BOUND = re.compile(r">=\s*(\d+)\.(\d+)\.(\d+)")
+
+
+def _lower_bound(requirement: str) -> tuple[int, int, int]:
+    """Parse the ``>=`` floor of a PEP 508 requirement as a comparable tuple."""
+    match = _LOWER_BOUND.search(requirement)
+    assert match is not None, (
+        f"requirement must declare a >= lower bound, got: {requirement!r}"
+    )
+    return (int(match.group(1)), int(match.group(2)), int(match.group(3)))
 
 
 def _load() -> dict:
@@ -76,9 +92,13 @@ def test_core_and_spi_direct_constraints_on_resolvable_ranges() -> None:
     assert spi is not None, "omnibase-spi missing from project.dependencies"
 
     # OMN-14168 requires core>=0.46.7; OMN-13836 still forbids git URL pins.
-    assert ">=0.46.7" in core, (
-        f"omnibase-core must require >=0.46.7 (OMN-14168). Got: {core!r}"
+    # Compared as parsed versions so a floor RAISE (the sanctioned way to drop a
+    # git-rev override once the feature publishes) passes while a floor DROP
+    # still fails -- OMN-15539 raised core to >=0.46.8 for the delegation wire
+    # contracts and a substring check on ">=0.46.7" rejected it.
+    assert _lower_bound(core) >= (0, 46, 7), (
+        f"omnibase-core must require >=0.46.7 or newer (OMN-14168). Got: {core!r}"
     )
-    assert ">=0.23.0" in spi, (
-        f"omnibase-spi must require >=0.23.0 (OMN-13836). Got: {spi!r}"
+    assert _lower_bound(spi) >= (0, 23, 0), (
+        f"omnibase-spi must require >=0.23.0 or newer (OMN-13836). Got: {spi!r}"
     )

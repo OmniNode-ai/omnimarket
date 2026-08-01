@@ -1,0 +1,12 @@
+{
+  "case_id": "c",
+  "title": "at or above the required bar with a blank failed-criterion element",
+  "why_contradictory": "A blank/whitespace criterion entry satisfies the 'must carry failed_acceptance_criteria' shape check while naming nothing, so it launders an unattributable rejection past a length-only guard. Core rejects this as 'failed_acceptance_criteria entries must not be blank'.",
+  "seam": {
+    "quality_gate_passed": false,
+    "quality_score": 0.867,
+    "required_quality_bar": 0.8,
+    "score_vs_required_bar": "at_or_above_bar",
+    "failed_acceptance_criteria": ["   "]
+  }
+}

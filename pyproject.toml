@@ -34,10 +34,14 @@ dependencies = [
     # OMN-14280 (OMN-14208 slice-2 A-now): the inference-wire tenant_id feature
     # (producer + cross-boundary test) requires the tenant_id field on
     # ModelInferenceIntent / ModelInferenceResponseData, first released in
-    # omnibase-core 0.46.8 (the paired core PR #1415). The lower bound is kept at
-    # 0.46.7 so the resolver/toolchain stays functional until 0.46.8 publishes;
-    # relock onto 0.46.8 (uv lock --upgrade-package omnibase-core) at landing.
-    "omnibase-core>=0.46.7,<0.47.0",
+    # omnibase-core 0.46.8 (the paired core PR #1415).
+    # OMN-15539: 0.46.8 IS published on PyPI, and it is the first release
+    # carrying ModelDelegationRequest.backend_id/response_contract/
+    # system_prompt/temperature/response_format plus
+    # ModelDelegationResult.validate_structured_terminal_evidence. The lower
+    # bound is raised to 0.46.8 so the resolver cannot silently pick a release
+    # that lacks the delegation wire contracts this repo now depends on.
+    "omnibase-core>=0.46.8,<0.47.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -519,81 +523,17 @@ omnimarket = "omnimarket.nodes"
 # their git-source overrides). The version-range overrides below already target
 # the released artifacts: core>=0.46.7,<0.47.0 and
 # compat==0.5.5 (the former rev c0fc716 IS the v0.5.5 tag == PyPI 0.5.5).
-# OMN-14402: TEMPORARY coordinated core->market pin. This PR's same-tier
-# backend fallback needs ModelRoutingIntent.excluded_backend_refs, added on
-# omnibase_core by PR OmniNode-ai/omnibase_core#1432 (not yet published on
-# PyPI -- latest release is 0.46.7). REMOVE WHEN RELEASED: once omnibase-core
-# publishes a version containing this commit, delete this override (the
-# version-range pin above already covers it) and `uv lock`.
-#
-# OMN-14447: the rev MUST be reachable from a remote branch. This previously
-# pinned af567d7c -- the HEAD of the *feature branch*
-# `jonah/omn-14402-routing-intent-excluded-backend-refs`. GitHub deleted that
-# branch when #1432 merged, so the commit became reachable from nothing on the
-# remote: a fresh clone (CI, the .201 build host) cannot fetch it even with a
-# full `+refs/heads/*` refspec, and the OMN-12977 sibling-pin preflight aborts
-# the workspace build for everyone, permanently. A local clone that fetched the
-# branch before deletion keeps the object and hides the breakage, which is why
-# it went unnoticed. Pin the MERGED commit on dev instead -- squash-merges are
-# reachable forever; feature-branch heads are not.
-#
-# OMN-14600: re-pinned from d08bb231 (OMN-14402's merged commit, 0.46.8) to
-# a9f25887 -- the MERGED squash commit of core #1439 on dev (also 0.46.8),
-# which adds ModelDelegationCompleted/ModelDelegationFailed. d08bb231 is a
-# strict ancestor of a9f25887, so this supersedes the 14402 pin and keeps its
-# excluded_backend_refs feature. REMOVE WHEN RELEASED: once core publishes a
-# version containing #1439, delete this override (the range pin covers it).
-#
-# OMN-14779: re-pinned from a9f25887 to aca32f24 -- the omnibase-infra bump in
-# this same PR (see below) pulls in omnibase_infra runtime/auto_wiring code
-# that imports omnibase_core.runtime.runtime_fanout_resolver at module scope
-# (added by core commit ed0a45bf3, OMN-14403). That module does not exist at
-# a9f25887, so importing omnibase_infra with the old core pin raised
-# ModuleNotFoundError. aca32f244 is a direct descendant of ed0a45bf3 (the
-# adjacent OMN-14743 fail-closed fix to the same resolver) and remains a
-# strict descendant of a9f25887, so no prior feature is lost. REMOVE WHEN
-# RELEASED: once core publishes a version containing this commit, delete this
-# override (the range pin above already covers it) and `uv lock`.
-#
-# OMN-15126: re-pinned from aca32f24 to 15096be7 -- the merged squash commit
-# of core #1507 on dev (per that PR's own body: "bump omnimarket's
-# omnibase-core git-rev override... to this PR's merged dev SHA"), which adds
-# EnumLivenessState / ModelLivenessRegistryEntry / ModelLivenessReceipt +
-# supporting refs (design docs/design/2026-07-20-demand-aware-liveness-...).
-# 15096be7 is a direct descendant of aca32f24 (34 commits ahead on core dev,
-# verified via `git merge-base --is-ancestor`), so no prior feature is lost.
-# This is a MERGED commit on dev, never a feature-branch head (memory
-# reference_never_pin_a_feature_branch_head), so it is reachable forever.
-# REMOVE WHEN RELEASED: once core publishes a version containing this
-# commit, delete this override (the range pin above already covers it) and
-# `uv lock`.
-#
-# OMN-15163: re-pinned from 15096be7 to 3f2998b3 -- the merged squash commit
-# of core #1510 on dev (feat(OMN-15161): port per-role dispatch report
-# contract as fleet wire type), which adds
-# omnibase_core.models.dispatch.report (ModelDispatchReportImplementer/
-# Lander/Registry/Scout/Verifier, ROLE_TO_MODEL) plus
-# validator_dispatch_report_anchors / check_dispatch_report_content_anchors.
-# 3f2998b3 is a direct descendant of 15096be7 -- verified
-# `git merge-base --is-ancestor 15096be7 3f2998b3` on core -- and is itself
-# the current core dev tip (no later dev squash exists as of this pin), so no
-# prior feature is lost. This is a MERGED commit on dev, never a
-# feature-branch head (memory reference_never_pin_a_feature_branch_head), so
-# it is reachable forever. The 15 commits in the 15096be7..3f2998b3 range are
-# all core-internal CI/validator/test/promotion churn (required-checks.yaml,
-# occ-preflight.yml, validator_receipt_gate.py, no_faked_boundary handler,
-# MixinNodeDispatch tests, dev->main promotion merges) with zero omnimarket
-# surface impact; 3f2998b3 itself is a pure-addition commit (+1922/-0, new
-# files only).
-#
-# OMN-15423 rebase: re-pinned to protected core dev ac174387, which includes
-# the durable squash merges for OMN-15417 typed application database contracts
-# (#1529, 3d51b047) and OMN-15392 DoD evidence execution scope (#1531,
-# 4d7c5fba). This avoids the deleted feature-head pin while preserving both
-# required contract surfaces.
-# REMOVE WHEN RELEASED: once core publishes a version containing this commit,
-# delete this override (the range pin above already covers it) and `uv lock`.
-omnibase-core = { git = "https://github.com/OmniNode-ai/omnibase_core.git", rev = "ac1743877cebac73556be2e5a6d8dc4a3e05da98" }  # raw-override-ok: OMN-15423
+# OMN-15539: the omnibase-core git-rev override is DELETED. Every field this
+# lane depends on (ModelDelegationRequest.backend_id / response_contract /
+# system_prompt / temperature / response_format, and the
+# ModelDelegationResult.validate_structured_terminal_evidence invariants) ships
+# in the PUBLISHED omnibase-core 0.46.8 wheel on PyPI, verified by downloading
+# the wheel and reading the modules. The version-range pin above
+# (omnibase-core>=0.46.7,<0.47.0) plus the uv.lock entry now resolve core from
+# PyPI. The prior override pinned rev 5a907b71, a commit that is NOT an ancestor
+# of omnibase_core dev -- an orphaned feature-branch head of exactly the class
+# forbidden by memory reference_never_pin_a_feature_branch_head. Do not
+# reintroduce a git rev here: land the core change, publish, then bump the range.
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
 # OMN-15423 rebase: re-pinned from 77144f83 to protected infra dev b6bd79c3,
@@ -621,9 +561,9 @@ onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_contro
 # current resolvable ranges (core>=0.46.7, spi>=0.23.0) — same override
 # function, no foreign URLs.
 override-dependencies = [
-    # OMN-14280: the tenant_id inference-wire feature needs core 0.46.8; lower
-    # bound kept at 0.46.7 so the resolver stays functional until it publishes.
-    "omnibase-core>=0.46.7,<0.47.0",
+    # OMN-14280 / OMN-15539: the tenant_id inference-wire feature and the
+    # delegation wire contracts both need core 0.46.8, now published on PyPI.
+    "omnibase-core>=0.46.8,<0.47.0",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
     "omnibase-compat==0.5.6",

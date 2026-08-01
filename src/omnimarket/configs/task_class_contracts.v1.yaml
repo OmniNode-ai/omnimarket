@@ -74,6 +74,11 @@ task_model_overrides:
   complex_reasoning: "Qwen3.6-35B-A3B"
   planning: "Qwen3.6-35B-A3B"
   review: "Qwen3.6-35B-A3B"
+  # OMN-15503: agent_delegation moved off the removed cli_agents tier onto the
+  # local-first HTTP ladder, but the generic Qwen default id selected local-coder
+  # before the agent-capable local-reasoner. Pin the intended declared capability;
+  # cloud tiers fall through to their explicit agent_delegation use_for entries.
+  agent_delegation: "Qwen3.6-27B-MTP-IQ4_XS.gguf"
   # OMN-13541: code_review is its own task class (distinct from the generic
   # `review`); the local Qwen coder serves it, with cheap_cloud fallback.
   code_review: "Qwen3.6-35B-A3B"

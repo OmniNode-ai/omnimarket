@@ -1008,11 +1008,11 @@ class TestEscalationTerminatesWhenFrontierUnconfigured:
         result = result_events[0]
         assert isinstance(result, ModelDelegationResult)
         assert result.quality_passed is False
-        # OMN-13167: precise reason naming the exhausted `document` policy plus
-        # the unusable higher tiers, prefixed with the stable token.
-        assert result.terminal_failure_reason is not None
-        assert result.terminal_failure_reason.startswith("no_higher_tier_available")
-        assert "task_class='document'" in result.terminal_failure_reason
+        # OMN-15503: the task-class contract is now the escalation-budget
+        # authority. ``document`` declares max_escalations=1, so after the one
+        # local -> cheap_cloud hop, budget exhaustion wins the escalation
+        # decision's declared precedence before a higher-tier lookup.
+        assert result.terminal_failure_reason == "max_escalation_attempts_reached"
 
 
 # ---------------------------------------------------------------------------

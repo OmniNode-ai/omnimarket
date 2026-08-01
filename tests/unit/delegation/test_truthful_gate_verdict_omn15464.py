@@ -34,6 +34,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 import pytest
+from omnibase_core.models.delegation.wire import EnumQualityScoreComparison
 
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     DelegationWorkflowState,
@@ -45,12 +46,22 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_escal
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_result import (
+    ModelDelegationCompleted,
+    ModelDelegationFailed,
+)
+from omnimarket.nodes.node_delegation_orchestrator.models.model_inference_response_data import (
+    ModelInferenceResponseData,
+)
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthority,
     resolve_required_bar_authority,
 )
 from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_gate_result import (
     ModelQualityGateResult,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
+    ModelRoutingDecision,
 )
 
 # The exact values read off the live terminal.
@@ -252,6 +263,105 @@ class TestReasoningTaskClassBarIsTheObservedOne:
         authority = resolve_required_bar_authority(task_type="reasoning")
         assert authority.required_bar == pytest.approx(OBSERVED_BAR)
         assert authority.required_bar < OBSERVED_SCORE
+
+
+def _handler_ready_for_gate(correlation_id: UUID) -> HandlerDelegationWorkflow:
+    """Drive the public workflow to the quality-gate boundary."""
+    handler = HandlerDelegationWorkflow()
+    handler.handle_delegation_request(
+        ModelDelegationRequest(
+            prompt="Return exactly: HYBRID_GATEWAY_CANARY",
+            task_type="reasoning",  # type: ignore[arg-type]
+            correlation_id=correlation_id,
+            emitted_at=datetime.now(UTC),
+        )
+    )
+    handler.handle_routing_decision(
+        ModelRoutingDecision(
+            correlation_id=correlation_id,
+            task_type="reasoning",
+            selected_model="gemini-2.5-flash",
+            selected_backend_id=uuid4(),
+            selected_backend_ref="cloud-gemini-pro",
+            endpoint_url="https://generativelanguage.googleapis.com",
+            cost_tier="low",
+            tier_name="claude",
+            max_context_tokens=1_000_000,
+            max_tokens=8192,
+            system_prompt="Reason carefully.",
+            rationale="Terminal quality evidence regression fixture.",
+        )
+    )
+    gate_intents = handler.handle_inference_response(
+        ModelInferenceResponseData(
+            correlation_id=correlation_id,
+            content="HYBRID_GATEWAY_CANARY",
+            model_used="gemini-2.5-flash",
+            prompt_tokens=10,
+            completion_tokens=5,
+            total_tokens=15,
+        )
+    )
+    assert len(gate_intents) == 1
+    return handler
+
+
+@pytest.mark.unit
+class TestStructuredTerminalQualityEvidence:
+    """The terminal carries typed gate truth without parsing failure_reason."""
+
+    def test_exact_live_criterion_failure_is_structured_on_failed_terminal(
+        self,
+    ) -> None:
+        correlation_id = uuid4()
+        handler = _handler_ready_for_gate(correlation_id)
+        gate_result = _gate_result(
+            correlation_id=correlation_id,
+            quality_score=OBSERVED_SCORE,
+            passed=False,
+            failure_reasons=(OBSERVED_CRITERION_FAILURE,),
+        )
+
+        events = handler.handle_gate_result(
+            gate_result,
+            max_escalation_attempts=0,
+        )
+
+        assert len(events) == 1
+        terminal = events[0]
+        assert isinstance(terminal, ModelDelegationFailed)
+        assert terminal.quality_score == pytest.approx(OBSERVED_SCORE)
+        assert terminal.required_quality_bar == pytest.approx(OBSERVED_BAR)
+        assert (
+            terminal.score_vs_required_bar is EnumQualityScoreComparison.AT_OR_ABOVE_BAR
+        )
+        assert terminal.failed_acceptance_criteria == (OBSERVED_CRITERION_FAILURE,)
+        # Preserve the current human-readable compatibility surface.
+        assert terminal.failure_reason.startswith("acceptance_criteria_failed:")
+
+    def test_completed_terminal_carries_comparison_and_no_failed_criteria(
+        self,
+    ) -> None:
+        correlation_id = uuid4()
+        handler = _handler_ready_for_gate(correlation_id)
+
+        events = handler.handle_gate_result(
+            _gate_result(
+                correlation_id=correlation_id,
+                quality_score=OBSERVED_SCORE,
+                passed=True,
+                failure_reasons=(),
+            )
+        )
+
+        assert len(events) == 1
+        terminal = events[0]
+        assert isinstance(terminal, ModelDelegationCompleted)
+        assert terminal.required_quality_bar == pytest.approx(OBSERVED_BAR)
+        assert (
+            terminal.score_vs_required_bar is EnumQualityScoreComparison.AT_OR_ABOVE_BAR
+        )
+        assert terminal.failed_acceptance_criteria == ()
 
 
 def _workflow(
