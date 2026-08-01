@@ -57,10 +57,19 @@ tiers:
         # contract keeps test/research on local-reasoner (Qwen3.6-27B-MTP); see
         # test_contract_routing_policy. code_review/refactor stay: they are
         # code-writing tasks and the reasoner does not declare them.
+        #
+        # OMN-15630: validator_generation added — its DoD (compiles_without_errors,
+        # final_artifact_only, passes_existing_tests) is an exact match for
+        # code_generation's, and required_capabilities is {code_completion}, a
+        # subset of code_generation's. Before this the class had NO local server
+        # (task_class_contracts.v1.yaml declares it with no task_model_overrides
+        # entry, so unpinned selection returned None on every local-tier model —
+        # a routing-completeness gap, not a deliberate cloud-only class).
         use_for:
           - code_generation
           - code_review
           - refactor
+          - validator_generation
         # OMN-13599: AI-PC local-coder is the preferred local code backend when
         # its Tailscale hostname overlay is present. Without a threshold, the
         # fast-path selector can prefer later local models that also declare
@@ -80,6 +89,14 @@ tiers:
           # retired cli_agents tier was replaced by local/cheap_cloud/claude in
           # OMN-13215 without moving this task capability onto those tiers.
           - agent_delegation
+          # OMN-15630: documentation and summarization added. Both are
+          # natural_language_generation prose classes with no dedicated local
+          # server before this — documentation is `document`'s docstring-flavored
+          # sibling (same required_capabilities, same 0.002/20000ms pricing/
+          # latency profile) and summarization is the same prose family; both
+          # mirror `document`'s existing placement on this backend.
+          - documentation
+          - summarization
         fast_path_threshold_tokens: 24576
       - id: Qwen3.6-35B-A3B
         backend_id: local-heavy-reasoning
@@ -170,6 +187,11 @@ tiers:
           - planning
           - review
           - agent_delegation
+          # OMN-15630: validator_generation added — mirrors code_generation/
+          # test/refactor above (same DoD family); the class declared
+          # cheap_cloud in its closed tier_order but no cheap_cloud model
+          # served it, another decorative/unreachable rung of the class above.
+          - validator_generation
         fast_path_threshold_tokens: 8192
       - id: gemini-flash
         backend_id: cloud-gemini-flash
@@ -181,6 +203,10 @@ tiers:
           - summarization
           - simple_tasks
           - document
+          # OMN-15630: documentation is document's docstring-flavored sibling
+          # (same required_capabilities/pricing/latency profile); mirrors
+          # document's existing placement on this backend.
+          - documentation
       # OMN-12971: Vertex-served Gemini (ADC / $500-credit path), ADDITIVE next to
       # gemini-flash (AI Studio key path). Both routes stay selectable; the Vertex
       # entry uses backend_id cloud-vertex-gemini, whose secret_ref is
@@ -193,6 +219,9 @@ tiers:
         use_for:
           - summarization
           - simple_tasks
+          # OMN-15630: mirrors gemini-flash above (same secondary route for
+          # documentation's cheap_cloud rung).
+          - documentation
           - document
     eval_before_accept: true
     eval_model: qwen3.6-35b
@@ -301,5 +330,16 @@ tiers:
           - test
           - document
           - research
+          # OMN-15630: refactor and validator_generation added. Both classes
+          # declare `claude` as their tier_order ceiling but this backend did
+          # not serve either — the ceiling rung was unreachable (refactor's
+          # explicit task_model_overrides pin to this exact model id already
+          # resolved here regardless of use_for, and validator_generation's
+          # implicit default_task_model_ref pin does not match this tier's id,
+          # so both silently terminated no_routable_backend_for_task instead
+          # of reaching a capability that already declares code_generation/
+          # test for the identical DoD family).
+          - refactor
+          - validator_generation
     eval_before_accept: false
     max_retries: 2
