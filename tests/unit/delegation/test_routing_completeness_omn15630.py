@@ -168,7 +168,12 @@ def test_task_class_contract_declares_exactly_fifteen_classes() -> None:
     contract = _yaml_mapping(_TASK_CONTRACT_PATH)
     task_classes = contract.get("task_classes")
     assert isinstance(task_classes, dict)
-    assert len(task_classes) == 15
+    # Floor, not a ceiling (remediation of OMN-15630 round 1): a legitimate
+    # 16th+ class must fail on coverage via
+    # test_every_declared_class_is_served_at_every_declared_tier_unpinned,
+    # not on this population count. A `==` lock invited bumping the literal
+    # instead of serving the new class.
+    assert len(task_classes) >= 15
     assert set(_RED_BEFORE_UNSERVED_RUNGS).issubset(task_classes)
 
 

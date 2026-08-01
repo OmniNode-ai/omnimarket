@@ -263,7 +263,7 @@ jobs:
       # task_model_overrides pins, OMN-10942/OMN-13140, are unaffected).
       # SYNC with pre-commit hook 'routing-completeness-gate'.
       - name: Routing-completeness invariant gate (OMN-15630)
-        run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q -m unit
+        run: uv run pytest tests/unit/delegation/test_routing_completeness_omn15630.py -q
       # OMN-13530: every operation_match (or absent-strategy) handler_routing
       # entry must declare a non-empty 'operation' field. A missing operation
       # makes the contract fail closed at RuntimeLocal startup ('handlers[i].
