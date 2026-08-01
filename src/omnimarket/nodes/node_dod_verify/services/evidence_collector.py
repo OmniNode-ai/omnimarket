@@ -295,9 +295,68 @@ _SHELL_CONTROL_OPERATORS = frozenset({"&&", "||", ";", ";;", "|", "&"})
 # keeps the prose judgement alive one token deeper.
 _SHELL_LEADING_MODIFIERS = frozenset({"!", "("})
 
+# Shell builtins that CONSUME arbitrary bare words and still exit 0, so a
+# prose check_value leading with one is a VACUOUS GREEN if the guard accepts
+# it on sight (OMN-15597 R2). Measured, not assumed — under both
+# ``bash 3.2.57`` (macOS) and ``bash 5.3.3``, with stdin at ``/dev/null``:
+#
+#     set up the runtime and verified manually   -> 0
+#     export the evidence to the ticket          -> 0
+#     declare victory                            -> 0
+#     unset the flag manually                    -> 0
+#     readonly evidence recorded                 -> 0
+#     let the record show 3                      -> 0   (last operand != 0)
+#     read the receipt                           -> 0   (whenever stdin has a line)
+#
+# These were in _SHELL_KEYWORD_ALLOWLIST, which returns None on sight BEFORE
+# any prose judgement, and ``_run_command_check`` then judges by exit code —
+# so each of the seven strings above flipped from a hard
+# INVALID_CHECK_VALUE_NOT_A_COMMAND to ``status=verified`` on the DoD
+# evidence runner, re-opening the exact class the guard exists to close
+# (OMN-15382).
+#
+# They are handled as PREFIXES instead of as commands, which is what they
+# actually are: none of the seven produces evidence of its own — they set
+# variables, shell options, or read stdin — so a check_value whose only
+# command is one of them proves nothing either way. The scan consumes the
+# builtin and its operands up to the next control operator and keeps
+# judging, exactly like the leading ``VAR=VAL`` assignment it is a longhand
+# for. ``export FOO=bar && gh api ...`` therefore still resolves to ``gh``;
+# ``export the evidence to the ticket`` runs out of tokens and is rejected.
+#
+# The rest of the builtin list below stays terminal-accepting because it was
+# measured NOT to swallow prose (``cd`` -> "too many arguments" 1,
+# ``eval``/``exec``/``command`` -> 127, ``type``/``hash``/``jobs``/``trap``/
+# ``builtin``/``.``/``source``/``popd``/``pushd``/``unalias``/``shift``/
+# ``umask``/``ulimit`` -> 1, ``local``/``return`` -> "can only be used in a
+# function" 1, ``time`` -> 127, structural keywords -> syntax error 2).
+# Residual, deliberately NOT closed here: a BARE ``wait`` / ``jobs`` /
+# ``alias`` / ``hash`` / ``exit`` with no operands exits 0, but a one-word
+# check_value is not prose and is no weaker than the already-resolvable
+# ``true`` — that is the vacuous-but-command-shaped class, not this one.
+_NO_EVIDENCE_BUILTIN_PREFIXES = frozenset(
+    {
+        "declare",
+        "export",
+        "let",
+        "read",
+        "readonly",
+        "set",
+        "unset",
+    }
+)
+
 # Shell keywords/builtins that are legitimate as the first token of a real
 # command but that ``shutil.which()`` cannot resolve (they are not
 # standalone executables on PATH).
+#
+# ADMISSION RULE (OMN-15597 R2) — a name belongs here only if NO prose-shaped
+# invocation of it exits 0. The allowlist short-circuits the prose judgement,
+# so any name that violates the rule is a false-GREEN path on the DoD
+# evidence runner. ``tests/unit/nodes/node_dod_verify/
+# test_omn_15597_command_substitution_shape_guard.py::TestAllowlistAdmissionRule``
+# enforces it against a REAL shell over this exact frozenset, so a future
+# addition that swallows prose fails CI rather than shipping.
 _SHELL_KEYWORD_ALLOWLIST = frozenset(
     {
         "if",
@@ -318,7 +377,12 @@ _SHELL_KEYWORD_ALLOWLIST = frozenset(
         "{",
         "[",
         "[[",
-        ":",
+        # ``:`` is deliberately ABSENT: ``: the evidence was recorded`` exits
+        # 0 under both bashes, so it violates the admission rule above. It was
+        # unreachable here anyway — the ``first.endswith(":")`` prose branch
+        # in _invalid_check_value_reason fires first — and listing an
+        # unreachable prose-swallower only invites a reordering to make it
+        # live. See TestColonIsRejectedByTheProseBranch.
         # Shell BUILTINS (OMN-15597). Without these the guard's verdict is
         # PLATFORM-DEPENDENT: macOS ships /usr/bin/cd so ``shutil.which("cd")``
         # resolves there, while Linux has no such binary — so ``(cd x && ls)``
@@ -334,21 +398,15 @@ _SHELL_KEYWORD_ALLOWLIST = frozenset(
         "builtin",
         "cd",
         "command",
-        "declare",
         "eval",
         "exec",
         "exit",
-        "export",
         "hash",
         "jobs",
-        "let",
         "local",
         "popd",
         "pushd",
-        "read",
-        "readonly",
         "return",
-        "set",
         "shift",
         "source",
         "trap",
@@ -356,7 +414,6 @@ _SHELL_KEYWORD_ALLOWLIST = frozenset(
         "ulimit",
         "umask",
         "unalias",
-        "unset",
         "wait",
     }
 )
@@ -390,7 +447,11 @@ _SHELL_KEYWORD_ALLOWLIST = frozenset(
 # ``bash -n`` was considered and rejected as the oracle: it exits 0 on
 # ``Recorded product receipt: see PR 123`` too, so parse-validity cannot
 # discriminate prose — which is this guard's entire purpose.
-_SHELL_WORD_SEPARATORS = " \t\r\n"
+# ``\n`` is intentionally absent: an unquoted newline is a command SEPARATOR,
+# not blank space, and ``_split_shell_words`` emits it as a ``;`` token
+# (OMN-15597 R2). Treating it as mere whitespace here would silently join two
+# commands into one token run.
+_SHELL_WORD_SEPARATORS = " \t\r"
 
 # bash metacharacters that terminate a word even without surrounding
 # whitespace. Longest-match-first so ``&&`` is not lexed as two ``&``.
@@ -570,6 +631,23 @@ def _split_shell_words(s: str) -> list[str]:
 
     while i < n:
         c = s[i]
+        if c == "\n":
+            # An UNQUOTED newline is a command SEPARATOR in shell, not
+            # whitespace (OMN-15597 R2, CodeRabbit). Emitting it as ``;``
+            # matters because the caller skips a
+            # ``_NO_EVIDENCE_BUILTIN_PREFIXES`` builtin's operands only up to
+            # the next control operator: without this,
+            # ``export FOO=bar\ngh api ...`` would have ``gh api ...``
+            # consumed as operands of ``export`` and be rejected as having no
+            # resolvable executable — a NEW false RED of exactly the class
+            # this ticket closes. A newline INSIDE quotes or a ``$(...)`` is
+            # untouched: those regions are consumed by their own scanners
+            # before reaching here, and a backslash-newline continuation is
+            # handled below and is NOT a separator.
+            flush()
+            words.append(";")
+            i += 1
+            continue
         if c in _SHELL_WORD_SEPARATORS:
             flush()
             i += 1
@@ -648,12 +726,24 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
     Strips leading ``VAR=VAL`` assignment tokens, leading shell control
     operators (``&&``, ``||``, ``;``, ``;;``, ``|``, ``&`` — punctuation
     that can legitimately separate an assignment from the command this
-    guard judges) and a leading ``!`` negation, then inspects the first
-    remaining token: if it ends with ``:`` (e.g. a stray ``"Recorded:"``
-    label) or cannot be resolved and is not a known shell keyword, this is
-    prose that must never be shelled out. Returns ``None`` when the shape
-    looks like a real command — this is a pure shape check; it never
-    executes anything and never judges by output content.
+    guard judges), a leading ``!`` negation, and any
+    ``_NO_EVIDENCE_BUILTIN_PREFIXES`` builtin together with its operands
+    (``set``/``export``/``declare``/``unset``/``readonly``/``let``/``read``
+    — longhand assignments that produce no evidence and that a shell runs to
+    exit 0 over arbitrary prose words, OMN-15597 R2). It then inspects the
+    first remaining token: if it ends with ``:`` (e.g. a stray
+    ``"Recorded:"`` label) or cannot be resolved and is not a known shell
+    keyword, this is prose that must never be shelled out. Returns ``None``
+    when the shape looks like a real command — this is a pure shape check;
+    it never executes anything and never judges by output content.
+
+    A check_value whose ONLY command is one of those prefix builtins
+    (``unset FOO``, ``read -r a b <<< "$(gh api ...)"``) is therefore
+    rejected — correct, not a regression: such a value proves nothing, and
+    accepting it is indistinguishable from accepting ``unset the flag
+    manually``. The reason names that builtin explicitly rather than
+    blaming "leading VAR=VAL assignments/shell operators", which for those
+    two inputs is a construct that is not present (OMN-15597 R3).
 
     A first token that *is* or *contains* a command substitution
     (``$(...)`` / ```...```) is accepted: what it expands to is unknowable
@@ -690,16 +780,50 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
     if not tokens:
         return "empty command"
     idx = 0
-    while idx < len(tokens) and (
-        _VAR_ASSIGNMENT_RE.match(tokens[idx])
-        or tokens[idx] in _SHELL_CONTROL_OPERATORS
-        or tokens[idx] in _SHELL_LEADING_MODIFIERS
-    ):
-        idx += 1
+    consumed_builtin: str | None = None
+    while idx < len(tokens):
+        token = tokens[idx]
+        if (
+            _VAR_ASSIGNMENT_RE.match(token)
+            or token in _SHELL_CONTROL_OPERATORS
+            or token in _SHELL_LEADING_MODIFIERS
+        ):
+            idx += 1
+            continue
+        if token in _NO_EVIDENCE_BUILTIN_PREFIXES:
+            # Longhand for a leading VAR=VAL assignment: consume the builtin
+            # AND its operands, then keep judging whatever follows the next
+            # control operator (OMN-15597 R2). Accepting it on sight is what
+            # let ``set up the runtime and verified manually`` reach the
+            # shell and exit 0.
+            consumed_builtin = token
+            idx += 1
+            while idx < len(tokens) and tokens[idx] not in _SHELL_CONTROL_OPERATORS:
+                idx += 1
+            continue
+        break
     if idx >= len(tokens):
+        # Name the construct that actually ran the tokens out (OMN-15597 R3).
+        # These two cases are reached by DIFFERENT inputs and a single message
+        # misdescribes one of them: ``read -r a b <<< "$(gh api ...)"`` has no
+        # assignment and no operator, so blaming "leading VAR=VAL
+        # assignments/shell operators" names a construct that is not present —
+        # the same misidentification failure this ticket exists to close, just
+        # on the rejection path instead of the acceptance path.
+        if consumed_builtin is not None:
+            return (
+                f"the only command is the no-evidence shell builtin "
+                f"{consumed_builtin!r} and its operands — its operands, "
+                "including any redirection/herestring/process-substitution "
+                "operands, are consumed with it, and no ';'/'&&'/'||'"
+                "-separated command follows. Such a value proves nothing, and "
+                f"its shape is indistinguishable from prose leading with "
+                f"{consumed_builtin!r}"
+            )
         return (
             "command has no resolvable executable token after leading "
-            "VAR=VAL assignments/shell operators"
+            "VAR=VAL assignments, shell control operators and '!'/'(' "
+            "modifiers"
         )
     first = tokens[idx]
     if "$(" in first or "`" in first:
