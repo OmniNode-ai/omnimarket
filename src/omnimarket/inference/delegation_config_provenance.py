@@ -123,6 +123,50 @@ def resolve_path_config(
     return resolved, provenance
 
 
+def resolve_required_path_config(
+    config_key: str,
+) -> tuple[Path, ModelDelegationConfigProvenance]:
+    """Resolve a delegation-path config *path* with NO packaged-default fallback.
+
+    Same authority semantics as :func:`resolve_path_config`, but for reads where
+    a packaged/bootstrap default would silently mask a missing binding on a
+    surface that must be contract-declared (CLAUDE.md rule 8 — no invisible env
+    config; OMN-15628). Raises instead of substituting a default when the
+    override is absent or blank, and names the missing key in the message so
+    the caller's boot-time failure is immediately attributable.
+
+    Args:
+        config_key: The env-var key the contract overlay must bind to this path.
+
+    Returns:
+        A tuple of the resolved :class:`Path` and the
+        :class:`ModelDelegationConfigProvenance` record. The provenance is
+        emitted to the logger at INFO before return.
+
+    Raises:
+        ValueError: If ``config_key`` is unset or blank in the environment.
+    """
+    raw_override = _read_override(config_key)
+    if not raw_override:
+        msg = (
+            f"{config_key} is not bound. This delegation-path config key has no "
+            "packaged-default fallback (CLAUDE.md rule 8 — no silent config "
+            f"fallback, OMN-15628): set {config_key} explicitly via the contract "
+            "overlay/deployment env binding for this surface."
+        )
+        raise ValueError(msg)
+
+    resolved = Path(raw_override)
+    provenance = ModelDelegationConfigProvenance(
+        config_key=config_key,
+        source=EnumDelegationConfigSource.CONTRACT_OVERLAY_ENV,
+        resolved_path=resolved,
+        override_present=True,
+    )
+    logger.info(provenance.log_line())
+    return resolved, provenance
+
+
 # Sentinel resolved-path recorded when a loader supplies its own packaged default
 # (the override is absent and this surface does not compute the default path).
 LOADER_PACKAGED_DEFAULT = Path("<loader-packaged-default>")
@@ -203,4 +247,5 @@ __all__: list[str] = [
     "ModelDelegationConfigProvenance",
     "resolve_optional_path_config",
     "resolve_path_config",
+    "resolve_required_path_config",
 ]
