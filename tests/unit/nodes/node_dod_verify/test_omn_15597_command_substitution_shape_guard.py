@@ -38,10 +38,27 @@ Test groups map 1:1 onto the ticket's acceptance criteria:
   AC3 — prose still hard-REDs, including under a leading ``!``, and
         ``bash -n`` exit 0 is proven insufficient on its own.
   AC4 — parameterised grammar suite over the constructs the ticket lists.
+  AC5 — corpus re-census, committed here so a third party can re-run it from
+        repo state instead of from a script quoted in a PR body.
+
+R2 (2026-08-01). The first fix made the guard's verdict platform-independent
+by allowlisting 29 shell builtins, and the allowlist returns None on sight —
+BEFORE the prose judgement — so seven of those names became a prose-laundering
+surface: ``set``/``export``/``declare``/``unset``/``readonly``/``let``/``read``
+each run a prose check_value to exit 0 in a real shell, which
+``_run_command_check`` then reports as ``status=verified``. The guarding test
+shipped alongside it parameterised over PROSE_SAMPLES, none of which begins
+with any of the 29 words, so it asserted nothing about the change it named.
+Both are fixed here: the seven are handled as no-evidence PREFIXES (skipped
+with their operands, like a leading ``VAR=VAL``), and
+``TestAllowlistAdmissionRule`` now iterates the ACTUAL frozenset against a
+real shell so a future addition that swallows prose fails CI.
 """
 
 from __future__ import annotations
 
+import os
+import shlex
 import shutil
 import stat
 import subprocess
@@ -54,6 +71,10 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
 )
 from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
+    _NO_EVIDENCE_BUILTIN_PREFIXES,
+    _SHELL_CONTROL_OPERATORS,
+    _SHELL_KEYWORD_ALLOWLIST,
+    _VAR_ASSIGNMENT_RE,
     EvidenceCollector,
     _invalid_check_value_reason,
     _split_shell_words,
@@ -117,6 +138,30 @@ PROSE_SAMPLES = (
     "Verified by inspection of the merged diff",
 )
 
+# OMN-15597 R2. Prose that leads with a name the round-1 allowlist admitted on
+# sight. Every one of these is run to exit 0 by a real ``bash -o pipefail -c``
+# (measured under 3.2.57 and 5.3.3, stdin at /dev/null except ``read``, which
+# needs only a line on stdin), so while the name was allowlisted the guard
+# returned None, ``_run_command_check`` judged by exit code, and the item
+# reported ``status=verified`` — a vacuous GREEN on the DoD evidence runner.
+#
+# PROSE_SAMPLES above contains none of these words, which is exactly why
+# parameterising the "allowlist is not a prose-laundering surface" test over
+# PROSE_SAMPLES alone asserted nothing about the allowlist.
+BUILTIN_LED_PROSE_SAMPLES: tuple[tuple[str, str], ...] = (
+    ("set", "set up the runtime and verified manually"),
+    ("export", "export the evidence to the ticket"),
+    ("declare", "declare victory"),
+    ("unset", "unset the flag manually"),
+    ("readonly", "readonly evidence recorded"),
+    # Not in the reported five; found by measuring the whole allowlist rather
+    # than the reported subset. ``let`` returns 0 whenever the LAST operand is
+    # a non-zero arithmetic value, and ``read`` returns 0 whenever stdin has a
+    # line to consume — neither is under the check author's control.
+    ("let", "let the record show 3"),
+    ("read", "read the receipt"),
+)
+
 _BASH = shutil.which("bash")
 requires_bash = pytest.mark.skipif(_BASH is None, reason="bash not available")
 
@@ -132,6 +177,28 @@ def _bash_parses(cmd_str: str) -> bool:
         ).returncode
         == 0
     )
+
+
+def _bash_exit_status(cmd_str: str, *, stdin_text: str | None = None) -> int:
+    """Run ``cmd_str`` the way ``_run_command_check`` does and return its status.
+
+    This is the oracle the guard is measured against: a check_value that a
+    real shell runs to exit 0 is a GREEN on the evidence runner, so anything
+    prose-shaped that reaches here is a vacuous GREEN.
+    """
+    assert _BASH is not None
+    completed = subprocess.run(
+        [_BASH, "-o", "pipefail", "-c", cmd_str],
+        capture_output=True,
+        text=True,
+        timeout=15,
+        **(
+            {"input": stdin_text}
+            if stdin_text is not None
+            else {"stdin": subprocess.DEVNULL}
+        ),
+    )
+    return completed.returncode
 
 
 def _run_single_check(
@@ -427,13 +494,17 @@ class TestVerdictIsPlatformIndependentForBuiltins:
         [
             "(cd /tmp && ls) && echo done",
             "cd /tmp && ls",
-            "export FOO=bar && echo hi",
-            "set -e; echo hi",
+            # The ``_NO_EVIDENCE_BUILTIN_PREFIXES`` names are skipped WITH
+            # their operands (OMN-15597 R2), so the judged command is the one
+            # after the control operator — here a builtin, so the row still
+            # holds with PATH lookup disabled.
+            "export FOO=bar && cd /tmp",
+            "set -e; cd /tmp",
+            "unset FOO && cd /tmp",
+            "read -r x < /dev/null; cd /tmp",
             "eval 'echo hi'",
             "source ./env.sh",
-            "read -r x < /dev/null",
             "trap 'echo bye' EXIT",
-            "unset FOO",
             "exec echo hi",
         ],
     )
@@ -442,12 +513,306 @@ class TestVerdictIsPlatformIndependentForBuiltins:
     ) -> None:
         assert _invalid_check_value_reason(check_value, cwd=None) is None, check_value
 
+    @pytest.mark.parametrize(
+        "check_value",
+        ["unset FOO", "read -r x < /dev/null", "set -euo pipefail", "export FOO=bar"],
+    )
+    def test_prefix_builtin_alone_is_rejected_as_proving_nothing(
+        self, no_path_lookup: None, check_value: str
+    ) -> None:
+        """A check_value whose ONLY command is a no-evidence prefix builtin is
+        rejected, and the reason says so rather than misnaming a token.
+
+        This IS a narrowing relative to round 1, and a deliberate one: the
+        guard cannot distinguish ``unset FOO`` from ``unset the flag
+        manually`` by shape, and neither proves anything. Corpus exposure is
+        0 — see TestAc5CorpusReCensus, which re-derives the whole OCC
+        command corpus and asserts no such value exists.
+        """
+        reason = _invalid_check_value_reason(check_value, cwd=None)
+        assert reason is not None, check_value
+        assert "no resolvable executable token" in reason
+
     @pytest.mark.parametrize("prose", PROSE_SAMPLES)
     def test_prose_still_rejected_without_path_lookup(
         self, no_path_lookup: None, prose: str
     ) -> None:
         """The builtin allowlist must not become a prose-laundering surface."""
         assert _invalid_check_value_reason(prose, cwd=None) is not None
+
+    @pytest.mark.parametrize(
+        ("builtin", "prose"),
+        BUILTIN_LED_PROSE_SAMPLES,
+        ids=[name for name, _ in BUILTIN_LED_PROSE_SAMPLES],
+    )
+    def test_allowlisted_builtin_led_prose_rejected_without_path_lookup(
+        self, no_path_lookup: None, builtin: str, prose: str
+    ) -> None:
+        """The row the previous revision was missing.
+
+        ``test_prose_still_rejected_without_path_lookup`` above parameterises
+        over PROSE_SAMPLES, none of which begins with an allowlisted word — so
+        it passes identically with and without the allowlist and asserts
+        nothing about it. These strings DO begin with one.
+        """
+        assert _invalid_check_value_reason(prose, cwd=None) is not None, prose
+
+
+# --------------------------------------------------------------------------
+# AC3 (R2) — the allowlist is not a prose-laundering surface. Driven through
+# the REAL EvidenceCollector.collect(), not the guard function alone, because
+# the defect this closes is only visible end to end: the guard returned None
+# and _run_command_check then judged the item by the shell's exit code.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAc3BuiltinLedProseIsNotLaunderedThroughTheAllowlist:
+    @pytest.mark.parametrize(
+        ("builtin", "prose"),
+        BUILTIN_LED_PROSE_SAMPLES,
+        ids=[name for name, _ in BUILTIN_LED_PROSE_SAMPLES],
+    )
+    def test_guard_rejects_builtin_led_prose(self, builtin: str, prose: str) -> None:
+        reason = _invalid_check_value_reason(prose, cwd=None)
+        assert reason is not None, (
+            f"{prose!r} was ACCEPTED: {builtin!r} is admitted on sight, so the "
+            "prose reaches the shell and its exit code becomes the verdict"
+        )
+
+    @pytest.mark.parametrize(
+        ("builtin", "prose"),
+        BUILTIN_LED_PROSE_SAMPLES,
+        ids=[name for name, _ in BUILTIN_LED_PROSE_SAMPLES],
+    )
+    def test_end_to_end_builtin_led_prose_is_a_failed_check(
+        self, tmp_path: Path, builtin: str, prose: str
+    ) -> None:
+        """RED-before/GREEN-after through the artifact that runs.
+
+        Against the parent commit this returned
+        ``EnumEvidenceCheckStatus.VERIFIED`` with message ``OK (Nms)`` for all
+        seven strings.
+        """
+        result = _run_single_check(tmp_path, prose)
+        assert result.status == EnumEvidenceCheckStatus.FAILED, (
+            f"{prose!r} reported {result.status} — vacuous GREEN on the DoD "
+            "evidence runner"
+        )
+        assert "INVALID_CHECK_VALUE_NOT_A_COMMAND" in (result.message or "")
+
+    @requires_bash
+    @pytest.mark.parametrize(
+        ("builtin", "prose"),
+        BUILTIN_LED_PROSE_SAMPLES,
+        ids=[name for name, _ in BUILTIN_LED_PROSE_SAMPLES],
+    )
+    def test_these_really_would_have_been_vacuous_greens(
+        self, builtin: str, prose: str
+    ) -> None:
+        """Proves the RED above is against exists-but-wrong, not exists-but-harmless.
+
+        Each string exits 0 under the same shell invocation
+        ``_run_command_check`` uses, so accepting it is not a cosmetic
+        laxity — it is a PASS verdict on prose.
+        """
+        stdin_text = "a line of stdin\n" if builtin == "read" else None
+        assert _bash_exit_status(prose, stdin_text=stdin_text) == 0, prose
+
+
+@pytest.mark.unit
+class TestAllowlistAdmissionRule:
+    """The generalising mechanism, not a hand-listed set of strings.
+
+    ``_SHELL_KEYWORD_ALLOWLIST`` short-circuits the prose judgement, so its
+    admission rule is: *no prose-shaped invocation of an admitted name may
+    exit 0*. This iterates the ACTUAL frozenset against a REAL shell, so a
+    future addition that violates the rule fails here instead of shipping a
+    false-GREEN path — which is what happened in round 1, where the guarding
+    test only ever saw strings that could not reach the allowlist.
+    """
+
+    PROSE_TAILS = (
+        "the evidence was recorded manually by the operator",
+        "up the runtime and verified manually",
+        "victory",
+        "evidence recorded",
+        "the record show 3",
+    )
+
+    @requires_bash
+    @pytest.mark.parametrize("name", sorted(_SHELL_KEYWORD_ALLOWLIST))
+    def test_no_allowlisted_name_launders_prose(self, name: str) -> None:
+        for tail in self.PROSE_TAILS:
+            prose = f"{name} {tail}"
+            if _invalid_check_value_reason(prose, cwd=None) is not None:
+                continue  # guard rejected it — nothing reaches the shell
+            assert _bash_exit_status(prose) != 0, (
+                f"{prose!r} is ACCEPTED by the guard AND exits 0 in a real "
+                f"shell: {name!r} must not be in _SHELL_KEYWORD_ALLOWLIST "
+                "(move it to _NO_EVIDENCE_BUILTIN_PREFIXES or drop it)"
+            )
+
+    def test_the_two_sets_are_disjoint(self) -> None:
+        """A prefix builtin must not also be terminal-accepting."""
+        assert not (_SHELL_KEYWORD_ALLOWLIST & _NO_EVIDENCE_BUILTIN_PREFIXES)
+
+    def test_every_reported_swallower_is_out_of_the_allowlist(self) -> None:
+        for name, _prose in BUILTIN_LED_PROSE_SAMPLES:
+            assert name not in _SHELL_KEYWORD_ALLOWLIST, name
+            assert name in _NO_EVIDENCE_BUILTIN_PREFIXES, name
+
+
+@pytest.mark.unit
+class TestColonIsRejectedByTheProseBranch:
+    """``:`` was removed from the allowlist; prove that is behaviour-preserving.
+
+    ``: the evidence was recorded`` exits 0 in a real shell, so ``:`` violated
+    the admission rule. It was unreachable — ``first.endswith(":")`` fires
+    first — but an unreachable prose-swallower only invites a reordering that
+    makes it live.
+    """
+
+    @pytest.mark.parametrize(
+        "check_value",
+        [": the evidence was recorded manually", ": && echo hi", ":"],
+    )
+    def test_colon_led_values_are_still_rejected(self, check_value: str) -> None:
+        reason = _invalid_check_value_reason(check_value, cwd=None)
+        assert reason is not None, check_value
+        assert "ends with ':'" in reason
+
+    @requires_bash
+    def test_colon_led_prose_would_otherwise_be_a_vacuous_green(self) -> None:
+        assert _bash_exit_status(": the evidence was recorded manually") == 0
+
+
+# --------------------------------------------------------------------------
+# AC5 — corpus re-census, committed rather than quoted from an ephemeral
+# script. Skips when no OCC clone is reachable; when one is, it re-derives
+# the whole tokenizer-damage class from the corpus itself.
+# --------------------------------------------------------------------------
+
+
+def _occ_root() -> Path | None:
+    """Same resolution order as ``EvidenceCollector._resolve_occ_root``."""
+    explicit = os.environ.get("ONEX_CC_REPO_PATH", "").strip()
+    if explicit and Path(explicit).is_dir():
+        return Path(explicit)
+    omni_home = os.environ.get("OMNI_HOME", "").strip()
+    if omni_home and (Path(omni_home) / "onex_change_control").is_dir():
+        return Path(omni_home) / "onex_change_control"
+    return None
+
+
+def _prefix_shlex_judged_token(cmd_str: str) -> str | None:
+    """Reproduce the PRE-fix judged token: ``shlex`` + the leading-assignment skip.
+
+    This is the damage oracle, and it is deliberately NOT expressed in terms
+    of the current guard: post-fix the current tokenizer never emits a
+    fragment, so asking it "is this still damaged?" would be a narrowed
+    oracle that reaches 0 by construction (the ticket names that as AC5's
+    falsifier). Instead the OLD tokenizer selects the class and the CURRENT
+    guard is then asked to clear it.
+    """
+    try:
+        tokens = shlex.split(cmd_str, posix=True)
+    except ValueError:
+        return None
+    idx = 0
+    while idx < len(tokens) and (
+        _VAR_ASSIGNMENT_RE.match(tokens[idx])
+        or tokens[idx] in _SHELL_CONTROL_OPERATORS
+        or tokens[idx] in {"!", "("}
+    ):
+        idx += 1
+    return tokens[idx] if idx < len(tokens) else None
+
+
+def _occ_command_check_values(occ: Path) -> list[tuple[str, str]]:
+    values: list[tuple[str, str]] = []
+    for path in sorted((occ / "contracts").glob("OMN-*.yaml")):
+        try:
+            doc = yaml.safe_load(path.read_text(encoding="utf-8"))
+        # A malformed contract is not this test's subject; skip it rather than
+        # let an unrelated YAML defect mask the census result.
+        except Exception:
+            continue
+        if not isinstance(doc, dict):
+            continue
+        for item in doc.get("dod_evidence") or []:
+            if not isinstance(item, dict):
+                continue
+            for check in item.get("checks") or []:
+                if not isinstance(check, dict):
+                    continue
+                if check.get("check_type") != "command":
+                    continue
+                value = check.get("check_value")
+                if isinstance(value, str) and value.strip():
+                    values.append((path.name, value))
+    return values
+
+
+@pytest.mark.unit
+class TestAc5CorpusReCensus:
+    @pytest.mark.skipif(
+        _occ_root() is None,
+        reason="no onex_change_control clone reachable (ONEX_CC_REPO_PATH / OMNI_HOME)",
+    )
+    def test_tokenizer_damage_class_is_empty(self) -> None:
+        """0 checks in the tokenizer-damage class, re-derived from the corpus.
+
+        Damage oracle, per the ticket: the PRE-fix ``shlex`` tokenizer judged
+        a token containing an unbalanced ``$(`` (i.e. a fragment of a command
+        substitution, not something an author wrote as a command name). For
+        every such check_value the CURRENT guard must not return an
+        INVALID reason naming that fragment.
+        """
+        occ = _occ_root()
+        assert occ is not None
+        values = _occ_command_check_values(occ)
+        assert values, f"no command check_values found under {occ}/contracts"
+
+        damaged: list[tuple[str, str, str]] = []
+        still_red: list[tuple[str, str, str | None]] = []
+        for contract, value in values:
+            judged = _prefix_shlex_judged_token(value)
+            if judged is None:
+                continue
+            if judged.count("$(") == judged.count(")"):
+                continue
+            damaged.append((contract, value, judged))
+            reason = _invalid_check_value_reason(value, cwd=None)
+            if reason is not None and judged in reason:
+                still_red.append((contract, value, reason))
+
+        assert not still_red, (
+            f"{len(still_red)} of {len(damaged)} tokenizer-damaged check_values "
+            f"are still rejected by a fragment-naming reason "
+            f"(corpus {occ}, {len(values)} command check_values): "
+            f"{still_red[:3]}"
+        )
+
+    @pytest.mark.skipif(
+        _occ_root() is None,
+        reason="no onex_change_control clone reachable (ONEX_CC_REPO_PATH / OMNI_HOME)",
+    )
+    def test_no_corpus_check_value_leads_with_a_prefix_builtin_alone(self) -> None:
+        """The R2 narrowing has zero corpus exposure.
+
+        Rejecting ``unset FOO``-shaped values is only safe if no real contract
+        carries one. Measured here rather than asserted.
+        """
+        occ = _occ_root()
+        assert occ is not None
+        offenders = [
+            (contract, value)
+            for contract, value in _occ_command_check_values(occ)
+            if (reason := _invalid_check_value_reason(value, cwd=None)) is not None
+            and "no resolvable executable token" in reason
+        ]
+        assert not offenders, offenders[:5]
 
 
 # --------------------------------------------------------------------------
