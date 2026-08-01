@@ -346,6 +346,31 @@ _NO_EVIDENCE_BUILTIN_PREFIXES = frozenset(
     }
 )
 
+# The stable marker inside the "the only command is a no-evidence prefix
+# builtin" rejection, and the predicate that recognises it (OMN-15597 G2).
+#
+# SINGLE-SOURCED ON PURPOSE. R2 introduced that rejection by REUSING the older
+# "no resolvable executable token ..." message; R3 then gave it its own
+# wording. One of the two consumers was updated with R3 and the other — the
+# AC5 corpus census, which selected offenders by the substring
+# ``"no resolvable executable token"`` — silently stopped matching its own
+# class and censused nothing. A census that cannot see the class it censuses
+# reports 0 for the wrong reason. Callers that need to recognise this
+# rejection MUST use ``is_no_evidence_builtin_only_reason`` rather than
+# re-typing a substring, so the next wording change cannot re-vacuate them.
+_NO_EVIDENCE_BUILTIN_REASON_MARKER = "no-evidence shell builtin"
+
+
+def is_no_evidence_builtin_only_reason(reason: str | None) -> bool:
+    """True when ``reason`` is the prefix-builtin-only rejection.
+
+    ``reason`` is a return value of :func:`_invalid_check_value_reason`.
+    ``None`` (accepted) and every other rejection class — prose, a trailing
+    ``':'``, an unresolvable first token, an unparseable value — are False.
+    """
+    return reason is not None and _NO_EVIDENCE_BUILTIN_REASON_MARKER in reason
+
+
 # Shell keywords/builtins that are legitimate as the first token of a real
 # command but that ``shutil.which()`` cannot resolve (they are not
 # standalone executables on PATH).
@@ -812,7 +837,7 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
         # on the rejection path instead of the acceptance path.
         if consumed_builtin is not None:
             return (
-                f"the only command is the no-evidence shell builtin "
+                f"the only command is the {_NO_EVIDENCE_BUILTIN_REASON_MARKER} "
                 f"{consumed_builtin!r} and its operands — its operands, "
                 "including any redirection/herestring/process-substitution "
                 "operands, are consumed with it, and no ';'/'&&'/'||'"

@@ -66,15 +66,43 @@ this ticket closes, moved to the rejection path.
 now names the prefix builtin that consumed the tokens, and the absence of
 the constructs it must NOT blame is re-derived from the tokens rather than
 asserted by hand. Behaviour (accept/reject) is unchanged by R3.
+
+G2 (2026-08-01). Two evidence-quality residuals of R3, both of which left an
+assertion that could not fail:
+
+1. The AC5 census selected offenders with the substring ``"no resolvable
+   executable token"`` — the message R2 reused. R3 gave the prefix-builtin
+   rejection its OWN wording ("the only command is the no-evidence shell
+   builtin ...") and updated one of the two consumers. The census kept the
+   old substring, so it stopped matching the class it censuses and reported
+   0 for the wrong reason: a synthetic corpus of ``unset FOO`` /
+   ``read -r x < /dev/null`` passed it. The class predicate now lives in the
+   runner (``is_no_evidence_builtin_only_reason``) and both consumers import
+   it, so a third wording change cannot re-vacuate either;
+   ``TestCensusOracleIsNotVacuous`` drives the census helper with a corpus
+   that DOES contain the class and fails if it is not seen.
+2. Both AC5 census tests were ``skipif(_occ_root() is None)`` — they SKIPPED
+   on every hosted runner (no OCC clone) and pinned no SHA, so AC5 had zero
+   standing force, and the live corpus had already moved off the SHA the 59
+   was measured at. AC5 is now satisfied by a COMMITTED corpus snapshot at
+   ``onex_change_control@9089ffa9`` (``omn_15597_occ_census_pinned.py``):
+   the 59 check_values across 33 contracts, re-derived in-test as the class
+   (the vendored PRE-FIX guard rejects every one; the current guard accepts
+   every one) with ``shutil.which`` stubbed to the recorded command set so
+   the verdict does not depend on what is installed on the runner. The
+   live-clone census is retained as an explicitly host-only DRIFT
+   DIAGNOSTIC and is no longer what AC5 rests on.
 """
 
 from __future__ import annotations
 
 import os
+import re
 import shlex
 import shutil
 import stat
 import subprocess
+from collections.abc import Iterable
 from pathlib import Path
 
 import pytest
@@ -91,6 +119,14 @@ from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
     _invalid_check_value_reason,
     _split_shell_words,
+    is_no_evidence_builtin_only_reason,
+)
+from tests.unit.nodes.node_dod_verify.omn_15597_occ_census_pinned import (
+    NO_EVIDENCE_BUILTIN_CANDIDATES,
+    OCC_CENSUS_DAMAGE_CLASS_CONTRACT_COUNT,
+    OCC_CENSUS_SHA,
+    TOKENIZER_DAMAGE_CLASS,
+    TOKENIZER_DAMAGE_PATH_COMMANDS,
 )
 
 # --------------------------------------------------------------------------
@@ -559,12 +595,15 @@ class TestVerdictIsPlatformIndependentForBuiltins:
         This IS a narrowing relative to round 1, and a deliberate one: the
         guard cannot distinguish ``unset FOO`` from ``unset the flag
         manually`` by shape, and neither proves anything. Corpus exposure is
-        0 — see TestAc5CorpusReCensus, which re-derives the whole OCC
-        command corpus and asserts no such value exists.
+        0 — see TestAc5PinnedCorpusReCensus, which re-runs the census over a
+        committed snapshot of the OCC command corpus at a pinned SHA.
         """
         reason = _invalid_check_value_reason(check_value, cwd=None)
         assert reason is not None, check_value
         assert repr(builtin) in reason, reason
+        # Same class predicate the census selects on, so this row and the
+        # census cannot drift apart again (OMN-15597 G2).
+        assert is_no_evidence_builtin_only_reason(reason), reason
 
     @pytest.mark.parametrize("prose", PROSE_SAMPLES)
     def test_prose_still_rejected_without_path_lookup(
@@ -622,6 +661,7 @@ class TestAc2RejectionReasonNamesTheConstructThatIsPresent:
         reason = _invalid_check_value_reason(check_value, cwd=None)
         assert reason is not None, check_value
         assert repr(builtin) in reason, reason
+        assert is_no_evidence_builtin_only_reason(reason), reason
 
     @pytest.mark.parametrize("check_value", _OPERATOR_FREE_SAMPLES)
     def test_reason_does_not_blame_a_construct_that_is_absent(
@@ -870,10 +910,130 @@ class TestColonIsRejectedByTheProseBranch:
 
 
 # --------------------------------------------------------------------------
-# AC5 — corpus re-census, committed rather than quoted from an ephemeral
-# script. Skips when no OCC clone is reachable; when one is, it re-derives
-# the whole tokenizer-damage class from the corpus itself.
+# AC5 — corpus re-census.
+#
+# The census oracle and its two corpora live here. AC5's own falsifier is
+# "the census is replaced with a narrower oracle to reach 0", so the class is
+# selected by the PRE-FIX guard (vendored below, verbatim) and only then
+# handed to the CURRENT guard to clear. Asking the fixed tokenizer whether it
+# still produces fragments would reach 0 by construction.
 # --------------------------------------------------------------------------
+
+# ``_SHELL_KEYWORD_ALLOWLIST`` as it stood in ``omnimarket@a637e4a6^`` — the
+# commit immediately before OMN-15597's first fix. Frozen here, NOT imported:
+# the live allowlist has since changed (R1 added builtins, R2 moved ``!``,
+# ``(`` and ``:`` out), and the census class must be selected by the guard
+# that actually produced the 59, not by today's.
+_PRE_FIX_KEYWORD_ALLOWLIST = frozenset(
+    {
+        "if",
+        "then",
+        "else",
+        "elif",
+        "fi",
+        "for",
+        "while",
+        "until",
+        "do",
+        "done",
+        "case",
+        "esac",
+        "function",
+        "select",
+        "time",
+        "{",
+        "(",
+        "[[",
+        "!",
+        ":",
+    }
+)
+
+
+def _pre_fix_invalid_check_value_reason(
+    cmd_str: str, *, cwd: str | None = None
+) -> str | None:
+    """The PRE-FIX guard, vendored verbatim from ``omnimarket@a637e4a6^``.
+
+    This is the census SELECTOR — the definition of "was hard-RED before the
+    fix". It lives in the test tree, never in ``src``: nothing the runner
+    executes may depend on the broken tokenizer. ``shlex.split`` here is the
+    defect itself, not an oversight.
+    """
+    stripped = cmd_str.strip()
+    if not stripped:
+        return "empty command"
+    try:
+        tokens = shlex.split(stripped, posix=True)
+    except ValueError as exc:
+        return (
+            f"command could not be parsed as shell syntax ({exc}) — this "
+            "looks like prose, not a command"
+        )
+    if not tokens:
+        return "empty command"
+    idx = 0
+    while idx < len(tokens) and (
+        _VAR_ASSIGNMENT_RE.match(tokens[idx]) or tokens[idx] in _SHELL_CONTROL_OPERATORS
+    ):
+        idx += 1
+    if idx >= len(tokens):
+        return (
+            "command has no resolvable executable token after leading "
+            "VAR=VAL assignments/shell operators"
+        )
+    first = tokens[idx]
+    if first.endswith(":"):
+        return f"first token {first!r} looks like prose, not a command (ends with ':')"
+    if first in _PRE_FIX_KEYWORD_ALLOWLIST:
+        return None
+    if os.sep in first or (os.altsep and os.altsep in first):
+        base = Path(cwd) if cwd else Path.cwd()
+        candidate = base / first if not os.path.isabs(first) else Path(first)
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return None
+        return (
+            f"first token {first!r} is not a resolvable executable relative "
+            f"to cwd {str(base)!r} — this looks like prose, not a command"
+        )
+    if shutil.which(first) is not None:
+        return None
+    return (
+        f"first token {first!r} is not a resolvable executable or a "
+        "recognized shell keyword — this looks like prose, not a command"
+    )
+
+
+def _prefix_builtin_only_offenders(
+    values: Iterable[tuple[str, str]],
+) -> list[tuple[str, str, str]]:
+    """Corpus entries the guard rejects because their ONLY command is a
+    no-evidence prefix builtin.
+
+    The class predicate is IMPORTED from the runner
+    (``is_no_evidence_builtin_only_reason``) instead of being re-typed as a
+    substring here. Re-typing it is precisely what went blind in R3: the
+    census kept matching ``"no resolvable executable token"`` after that
+    rejection got its own wording, so it censused an empty class and
+    reported 0. ``TestCensusOracleIsNotVacuous`` drives this function with a
+    corpus that DOES contain the class, so the same failure now fails CI.
+    """
+    offenders: list[tuple[str, str, str]] = []
+    for contract, value in values:
+        reason = _invalid_check_value_reason(value, cwd=None)
+        if is_no_evidence_builtin_only_reason(reason):
+            assert reason is not None  # narrowed by the predicate
+            offenders.append((contract, value, reason))
+    return offenders
+
+
+# Guard-INDEPENDENT selection rule for the committed prefix-builtin corpus:
+# the raw string mentions one of the seven names as a word. Derived from the
+# live frozenset so adding an eighth name makes the snapshot's superset claim
+# fail rather than silently under-cover.
+_BUILTIN_WORD_RE = re.compile(
+    r"(?<![\w./-])(" + "|".join(sorted(_NO_EVIDENCE_BUILTIN_PREFIXES)) + r")(?![\w./-])"
+)
 
 
 def _occ_root() -> Path | None:
@@ -888,6 +1048,25 @@ def _occ_root() -> Path | None:
 
 
 _OCC_ROOT = _occ_root()
+
+
+def _occ_head_sha(occ: Path) -> str:
+    """HEAD of the live clone, so a diagnostic failure names its corpus.
+
+    The pinned census (``OCC_CENSUS_SHA``) is the AC5 corpus; this reports
+    whatever the workstation clone happens to be, which is the whole point of
+    a drift diagnostic.
+    """
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(occ), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=15,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return "unknown"
+    return completed.stdout.strip() or "unknown"
 
 
 def _prefix_shlex_judged_token(cmd_str: str) -> str | None:
@@ -940,19 +1119,224 @@ def _occ_command_check_values(occ: Path) -> list[tuple[str, str]]:
 
 
 @pytest.mark.unit
-class TestAc5CorpusReCensus:
+class TestCensusOracleIsNotVacuous:
+    """The census must be able to SEE the class it censuses.
+
+    This is the guard on the guard. R3 reworded the prefix-builtin rejection
+    and the census kept selecting on the old substring, so it reported
+    "0 offenders" over a corpus in which it could not have found one. These
+    tests fail against that oracle: a synthetic corpus built from the exact
+    values the runner rejects as prefix-builtin-only must come back as
+    offenders, and nothing else may.
+    """
+
+    SYNTHETIC_OFFENDER_CORPUS: tuple[tuple[str, str], ...] = tuple(
+        (f"SYNTHETIC-offender-{index}.yaml", value)
+        for index, (_builtin, value) in enumerate(PREFIX_BUILTIN_ONLY_SAMPLES)
+    )
+
+    SYNTHETIC_CLEAN_CORPUS: tuple[tuple[str, str], ...] = (
+        ("SYNTHETIC-clean-cmd.yaml", OMN_15535_PRE_AMENDMENT),
+        ("SYNTHETIC-clean-prefixed.yaml", "export FOO=bar && gh api repos/o/r"),
+        *(
+            (f"SYNTHETIC-clean-prose-{index}.yaml", prose)
+            for index, prose in enumerate(PROSE_SAMPLES)
+        ),
+    )
+
+    def test_a_corpus_that_contains_the_class_is_seen(self) -> None:
+        """RED against the pre-G2 oracle: it returns [] for all of these."""
+        offenders = _prefix_builtin_only_offenders(self.SYNTHETIC_OFFENDER_CORPUS)
+        assert len(offenders) == len(self.SYNTHETIC_OFFENDER_CORPUS), (
+            "the census cannot see its own class — it would report 0 offenders "
+            "over a corpus that is entirely offenders: "
+            f"saw {[o[0] for o in offenders]}"
+        )
+
+    def test_commands_and_prose_are_not_offenders(self) -> None:
+        """The oracle is class-specific, not "anything the guard rejects".
+
+        Every PROSE_SAMPLES entry IS rejected, and none of them belongs to
+        this class — an oracle that matched any rejection would return them
+        and the census would be permanently red for the wrong reason.
+        """
+        assert _prefix_builtin_only_offenders(self.SYNTHETIC_CLEAN_CORPUS) == []
+        assert all(
+            _invalid_check_value_reason(prose, cwd=None) is not None
+            for prose in PROSE_SAMPLES
+        ), "prose sample no longer exercises the point"
+
+    @pytest.mark.parametrize(
+        ("builtin", "check_value"),
+        PREFIX_BUILTIN_ONLY_SAMPLES,
+        ids=[value for _, value in PREFIX_BUILTIN_ONLY_SAMPLES],
+    )
+    def test_the_pre_g2_substring_oracle_is_blind_to_this_class(
+        self, builtin: str, check_value: str
+    ) -> None:
+        """Pins the defect itself, so it cannot be reintroduced silently.
+
+        The census used to select on ``"no resolvable executable token"``.
+        R3 gave this rejection its own wording; these values carry neither
+        an assignment nor a control operator, so that phrase must NOT appear
+        in their reason — which is exactly why the old oracle matched
+        nothing. If a future edit merges the two messages again, this fails
+        and the merge is visible instead of silently re-vacuating the census.
+        """
+        reason = _invalid_check_value_reason(check_value, cwd=None)
+        assert reason is not None
+        assert "no resolvable executable token" not in reason, reason
+        assert is_no_evidence_builtin_only_reason(reason), reason
+
+
+@pytest.mark.unit
+class TestAc5PinnedCorpusReCensus:
+    """AC5, satisfied hermetically at a pinned OCC SHA.
+
+    AC5 reads "re-running the census script against the SAME OCC SHA yields
+    0 checks in the tokenizer-damage class (from 59)". The predecessor read
+    a live working clone, which (a) does not exist on a hosted runner — both
+    census tests SKIPPED there, so AC5 gated nothing — and (b) pinned no SHA,
+    while the corpus moves daily (the identical census returns 63 at OCC
+    ``1e6b75f8``, one day later). Option (a) from the lane brief — fetching
+    the tree in CI — was rejected: a required check that depends on the
+    network is not deterministic, and "fail closed when unreachable" turns
+    every GitHub API blip into a red merge gate.
+
+    So the corpus itself is committed (``omn_15597_occ_census_pinned.py``),
+    and class membership is RE-DERIVED here rather than trusted: the vendored
+    pre-fix guard must reject all 59, the current guard must accept all 59,
+    and a real ``bash`` must parse all 59. ``shutil.which`` is stubbed to the
+    recorded command set, so the verdict is a property of the tokenizer and
+    not of what happens to be installed on the runner.
+    """
+
+    @pytest.fixture
+    def pinned_path_lookup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Resolve exactly the commands the pinned corpus invokes, nothing else.
+
+        Not a weakening: the fragments the pre-fix tokenizer judged
+        (``'" + (.mergeCommit.oid // none)\\')"'``, ``api``, ``is:pr``,
+        ``-d)``, ``/``) are not in that set, so a tokenizer regression is
+        still rejected and still fails this class.
+        """
+        monkeypatch.setattr(
+            shutil,
+            "which",
+            lambda cmd: (
+                f"/usr/bin/{cmd}" if cmd in TOKENIZER_DAMAGE_PATH_COMMANDS else None
+            ),
+        )
+
+    def test_pinned_corpus_is_the_census_the_ticket_names(self) -> None:
+        """59 checks / 33 contracts at OCC 9089ffa9 — the ticket's numbers.
+
+        Fails on a truncated or re-pinned snapshot, so the AC5 number cannot
+        drift away from the ticket without someone editing this assertion.
+        """
+        assert OCC_CENSUS_SHA == "9089ffa9338b23fcb2ba0c28780eeea5224663b0"
+        assert len(TOKENIZER_DAMAGE_CLASS) == 59
+        contracts = {key.split("#")[0] for key in TOKENIZER_DAMAGE_CLASS}
+        assert len(contracts) == 33 == OCC_CENSUS_DAMAGE_CLASS_CONTRACT_COUNT
+
+    def test_recorded_path_commands_are_command_names_not_fragments(self) -> None:
+        """The stub is only sound if it resolves real command names."""
+        assert TOKENIZER_DAMAGE_PATH_COMMANDS
+        for name in TOKENIZER_DAMAGE_PATH_COMMANDS:
+            assert name, TOKENIZER_DAMAGE_PATH_COMMANDS
+            assert not name.startswith("-"), name
+            assert not any(ch in name for ch in " \"'$()`/"), name
+
+    def test_every_pinned_value_was_hard_red_before_the_fix(
+        self, pinned_path_lookup: None, tmp_path: Path
+    ) -> None:
+        """The RED half of AC5, pinned in the repo instead of in a PR body.
+
+        ``cwd`` is an empty tmp_path so the pre-fix guard's relative-script
+        branch is deterministic rather than a function of the checkout.
+        """
+        accepted = [
+            key
+            for key, value in TOKENIZER_DAMAGE_CLASS.items()
+            if _pre_fix_invalid_check_value_reason(value, cwd=str(tmp_path)) is None
+        ]
+        assert not accepted, (
+            f"{len(accepted)} pinned values were NOT rejected by the pre-fix "
+            f"guard, so the snapshot is not the census class: {accepted[:5]}"
+        )
+
+    def test_the_whole_pinned_class_is_now_accepted(
+        self, pinned_path_lookup: None, tmp_path: Path
+    ) -> None:
+        """AC5: 0 checks remain in the tokenizer-damage class (from 59)."""
+        still_red = [
+            (key, reason)
+            for key, value in TOKENIZER_DAMAGE_CLASS.items()
+            if (reason := _invalid_check_value_reason(value, cwd=str(tmp_path)))
+            is not None
+        ]
+        assert not still_red, (
+            f"{len(still_red)} of {len(TOKENIZER_DAMAGE_CLASS)} censused "
+            f"check_values are still hard-RED at OCC {OCC_CENSUS_SHA[:8]}: "
+            f"{still_red[:3]}"
+        )
+
+    @requires_bash
+    def test_every_pinned_value_is_something_a_real_shell_parses(self) -> None:
+        """The AC2 oracle over the pinned class: rejecting them WAS a false RED."""
+        unparseable = [
+            key
+            for key, value in TOKENIZER_DAMAGE_CLASS.items()
+            if not _bash_parses(value)
+        ]
+        assert not unparseable, unparseable[:5]
+
+    def test_no_pinned_corpus_value_is_prefix_builtin_only(self) -> None:
+        """The R2/R3 narrowing has zero exposure on the pinned corpus.
+
+        Rejecting ``unset FOO``-shaped values is only safe if no real
+        contract carries one. Measured over every check_value at the pinned
+        SHA that mentions one of the seven names — the selection is a regex
+        over the raw string, so it does not depend on the guard it audits.
+        """
+        assert NO_EVIDENCE_BUILTIN_CANDIDATES, "candidate snapshot is empty"
+        offenders = _prefix_builtin_only_offenders(
+            NO_EVIDENCE_BUILTIN_CANDIDATES.items()
+        )
+        assert not offenders, offenders[:5]
+
+    def test_candidate_snapshot_matches_its_guard_independent_selection_rule(
+        self,
+    ) -> None:
+        """Re-derives the snapshot's superset claim from the live frozenset."""
+        for key, value in NO_EVIDENCE_BUILTIN_CANDIDATES.items():
+            assert _BUILTIN_WORD_RE.search(value), (key, value)
+
+
+@pytest.mark.unit
+class TestOccLiveCorpusDriftDiagnostic:
+    """HOST-ONLY DIAGNOSTIC — deliberately NOT what AC5 rests on.
+
+    Skips wherever no ``onex_change_control`` clone is reachable, which is
+    every hosted runner, so it can prove nothing on its own — that is the
+    defect ``TestAc5PinnedCorpusReCensus`` above exists to close. Its value
+    is drift detection on a workstation: it re-runs the same census against
+    whatever the local clone currently is, catching a NEW damaged
+    check_value authored after the pin.
+    """
+
     @pytest.mark.skipif(
         _OCC_ROOT is None,
-        reason="no onex_change_control clone reachable (ONEX_CC_REPO_PATH / OMNI_HOME)",
+        reason="host-only drift diagnostic: no onex_change_control clone reachable "
+        "(ONEX_CC_REPO_PATH / OMNI_HOME). AC5 is proven by "
+        "TestAc5PinnedCorpusReCensus, which never skips.",
     )
-    def test_tokenizer_damage_class_is_empty(self) -> None:
-        """0 checks in the tokenizer-damage class, re-derived from the corpus.
-
-        Damage oracle, per the ticket: the PRE-fix ``shlex`` tokenizer judged
-        a token containing an unbalanced ``$(`` (i.e. a fragment of a command
-        substitution, not something an author wrote as a command name). For
-        every such check_value the CURRENT guard must not return an
-        INVALID reason naming that fragment.
+    def test_live_corpus_has_no_surviving_tokenizer_damage(self) -> None:
+        """Damage oracle: the PRE-fix ``shlex`` tokenizer judged a token
+        containing an unbalanced ``$(`` — a fragment of a command
+        substitution, not something an author wrote as a command name. For
+        every such check_value the CURRENT guard must not return an INVALID
+        reason naming that fragment.
         """
         occ = _OCC_ROOT
         assert occ is not None
@@ -975,29 +1359,28 @@ class TestAc5CorpusReCensus:
         assert not still_red, (
             f"{len(still_red)} of {len(damaged)} tokenizer-damaged check_values "
             f"are still rejected by a fragment-naming reason "
-            f"(corpus {occ}, {len(values)} command check_values): "
-            f"{still_red[:3]}"
+            f"(live corpus {occ} @ {_occ_head_sha(occ)}, "
+            f"{len(values)} command check_values): {still_red[:3]}"
         )
 
     @pytest.mark.skipif(
         _OCC_ROOT is None,
-        reason="no onex_change_control clone reachable (ONEX_CC_REPO_PATH / OMNI_HOME)",
+        reason="host-only drift diagnostic: no onex_change_control clone reachable "
+        "(ONEX_CC_REPO_PATH / OMNI_HOME). AC5 is proven by "
+        "TestAc5PinnedCorpusReCensus, which never skips.",
     )
-    def test_no_corpus_check_value_leads_with_a_prefix_builtin_alone(self) -> None:
-        """The R2 narrowing has zero corpus exposure.
+    def test_live_corpus_has_no_prefix_builtin_only_check_value(self) -> None:
+        """Same class as the pinned test, against the moving corpus.
 
-        Rejecting ``unset FOO``-shaped values is only safe if no real contract
-        carries one. Measured here rather than asserted.
+        Uses the shared, runner-owned predicate — the substring this test
+        used to carry stopped matching the class in R3 and censused nothing.
         """
         occ = _OCC_ROOT
         assert occ is not None
-        offenders = [
-            (contract, value)
-            for contract, value in _occ_command_check_values(occ)
-            if (reason := _invalid_check_value_reason(value, cwd=None)) is not None
-            and "no resolvable executable token" in reason
-        ]
-        assert not offenders, offenders[:5]
+        offenders = _prefix_builtin_only_offenders(_occ_command_check_values(occ))
+        assert not offenders, (
+            f"live corpus {occ} @ {_occ_head_sha(occ)}: {offenders[:5]}"
+        )
 
 
 # --------------------------------------------------------------------------
