@@ -280,12 +280,20 @@ _VAR_ASSIGNMENT_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 # Shell control operators that can legitimately separate an assignment (or a
 # preceding pipeline stage) from the command this guard actually judges —
 # e.g. ``body="$(...)" && printf '%s' "$body" | grep -qF '<marker>'`` (the
-# OMN-15170 sigpipe-safe shape, OMN-15430): the first shlex token is the
-# whole ``body=$(...)`` assignment, the next is ``&&``, and only the token
-# after that is a real command name. These are skipped the same way a
-# leading ``VAR=VAL`` assignment is skipped — they are punctuation, not
-# prose and not a command.
+# OMN-15170 sigpipe-safe shape, OMN-15430): the first word is the whole
+# ``body=$(...)`` assignment, the next is ``&&``, and only the token after
+# that is a real command name. These are skipped the same way a leading
+# ``VAR=VAL`` assignment is skipped — they are punctuation, not prose and
+# not a command.
 _SHELL_CONTROL_OPERATORS = frozenset({"&&", "||", ";", ";;", "|", "&"})
+
+# Leading modifiers that prefix a real command without being one themselves.
+# ``!`` negates the *following* pipeline and ``(`` opens a subshell, so in
+# both cases the command to judge is the token AFTER them. Both used to sit
+# in _SHELL_KEYWORD_ALLOWLIST, which accepted the whole check_value on sight
+# and therefore let ``! Recorded receipt: ...`` through; skipping instead
+# keeps the prose judgement alive one token deeper.
+_SHELL_LEADING_MODIFIERS = frozenset({"!", "("})
 
 # Shell keywords/builtins that are legitimate as the first token of a real
 # command but that ``shutil.which()`` cannot resolve (they are not
@@ -308,40 +316,318 @@ _SHELL_KEYWORD_ALLOWLIST = frozenset(
         "select",
         "time",
         "{",
-        "(",
+        "[",
         "[[",
-        "!",
         ":",
     }
 )
+
+# ---------------------------------------------------------------------------
+# OMN-15597: command-substitution-aware word scanning.
+#
+# The guard used to tokenize with ``shlex.split(cmd_str, posix=True)``.
+# ``shlex`` is a WORD SPLITTER, not a shell parser: it has no notion of
+# command substitution, so the double quotes *inside* a ``$(...)`` are read
+# as the outer string's quotes. On
+#
+#     state="$(gh pr view 239 ... --jq '.state + " " + (.oid // "none")')" \
+#       && test "$state" = "MERGED <sha>"
+#
+# the jq program's ``" "`` closes the outer ``"`` early, shlex splits INSIDE
+# the substitution, and the guard judges the jq fragment
+# ``" + (.oid // none)')"`` as the command name — a hard
+# INVALID_CHECK_VALUE_NOT_A_COMMAND on a string bash runs to exit 0
+# (OMN-15430 residual #2; 59 checks across 33 OCC contracts, census at
+# onex_change_control@1e6b75f8).
+#
+# ``_split_shell_words`` below is the smallest thing that yields the SHELL's
+# own first command word: a single left-to-right scan that tracks quoting
+# with a real nesting discipline. A ``$(...)`` (or backtick) region is
+# copied into the current word VERBATIM and its interior never touches the
+# outer quote state — which is precisely the property shlex lacks. It is not
+# a general shell parser and does not try to be: it produces words and
+# control operators, which is all the shape guard consumes.
+#
+# ``bash -n`` was considered and rejected as the oracle: it exits 0 on
+# ``Recorded product receipt: see PR 123`` too, so parse-validity cannot
+# discriminate prose — which is this guard's entire purpose.
+_SHELL_WORD_SEPARATORS = " \t\r\n"
+
+# bash metacharacters that terminate a word even without surrounding
+# whitespace. Longest-match-first so ``&&`` is not lexed as two ``&``.
+# ``(`` and ``)`` are here because ``(`` is a grouping operator, not part of
+# the following word: without them ``([ "$x" = "OPEN" ] || ...)`` yields a
+# first token of ``([`` — a fragment no author ever wrote as a command
+# (contracts/OMN-9278.yaml dod-001, the last survivor of the OMN-15597
+# corpus census).
+_SHELL_OPERATOR_SEQUENCES: tuple[str, ...] = (
+    "&&",
+    "||",
+    ";;",
+    ";",
+    "|",
+    "&",
+    "(",
+    ")",
+)
+
+# Escapes decoded inside ``$'...'`` (ANSI-C quoting). Only the forms that can
+# plausibly appear in a check_value; anything else keeps its literal
+# character, which is harmless for a shape judgement.
+_ANSI_C_ESCAPES = {
+    "n": "\n",
+    "t": "\t",
+    "r": "\r",
+    "a": "\a",
+    "b": "\b",
+    "f": "\f",
+    "v": "\v",
+    "e": "\x1b",
+    "0": "\0",
+    "\\": "\\",
+    "'": "'",
+    '"': '"',
+}
+
+
+def _scan_command_substitution(s: str, start: int) -> int:
+    """Return the index of the ``)`` closing the ``$(`` / ``(`` at ``start``.
+
+    ``s[start]`` must be the opening ``(``. Nested ``$( ... )``, nested plain
+    ``( ... )``, and quoted regions inside the substitution are all tracked,
+    so a ``)`` that merely sits inside a quoted string (``--jq '(.a // ")")'``)
+    does not close it. Raises ``ValueError`` if the substitution is never
+    closed — fail-closed, exactly as bash refuses the string.
+    """
+    depth = 0
+    i = start
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c == "\\":
+            i += 2
+            continue
+        if c == "'":
+            close = s.find("'", i + 1)
+            if close == -1:
+                raise ValueError("unterminated single quote inside $( ... )")
+            i = close + 1
+            continue
+        if c == '"':
+            i = _scan_double_quoted(s, i)[0]
+            continue
+        if c == "`":
+            i = _scan_backquoted(s, i)[0]
+            continue
+        if c == "(":
+            depth += 1
+        elif c == ")":
+            depth -= 1
+            if depth == 0:
+                return i
+        i += 1
+    raise ValueError("unterminated command substitution '$('")
+
+
+def _scan_backquoted(s: str, start: int) -> tuple[int, str]:
+    """Scan a legacy ```...``` substitution. Returns (index after it, raw text)."""
+    i = start + 1
+    n = len(s)
+    while i < n:
+        if s[i] == "\\":
+            i += 2
+            continue
+        if s[i] == "`":
+            return i + 1, s[start : i + 1]
+        i += 1
+    raise ValueError("unterminated backquote substitution '`'")
+
+
+def _scan_double_quoted(s: str, start: int) -> tuple[int, str]:
+    """Scan a ``"..."`` region. Returns (index after the closing quote, content).
+
+    This is the load-bearing half of the OMN-15597 fix: a ``$(`` encountered
+    inside the double quotes is consumed as a whole substitution and copied
+    verbatim, so quotes belonging to the substitution's own interior can
+    never close this string.
+    """
+    out: list[str] = []
+    i = start + 1
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c == '"':
+            return i + 1, "".join(out)
+        if c == "\\" and i + 1 < n:
+            nxt = s[i + 1]
+            if nxt == "\n":  # line continuation
+                i += 2
+                continue
+            if nxt in '$`"\\':  # the only escapes bash honors in "..."
+                out.append(nxt)
+                i += 2
+                continue
+            out.append(c)
+            i += 1
+            continue
+        if c == "$" and i + 1 < n and s[i + 1] == "(":
+            close = _scan_command_substitution(s, i + 1)
+            out.append(s[i : close + 1])
+            i = close + 1
+            continue
+        if c == "`":
+            i, raw = _scan_backquoted(s, i)
+            out.append(raw)
+            continue
+        out.append(c)
+        i += 1
+    raise ValueError("unterminated double quote '\"'")
+
+
+def _scan_ansi_c_quoted(s: str, start: int) -> tuple[int, str]:
+    """Scan a ``$'...'`` ANSI-C quoted region. Returns (index after it, value)."""
+    out: list[str] = []
+    i = start + 2
+    n = len(s)
+    while i < n:
+        c = s[i]
+        if c == "'":
+            return i + 1, "".join(out)
+        if c == "\\" and i + 1 < n:
+            out.append(_ANSI_C_ESCAPES.get(s[i + 1], s[i + 1]))
+            i += 2
+            continue
+        out.append(c)
+        i += 1
+    raise ValueError('unterminated ANSI-C quote "$\'"')
+
+
+def _split_shell_words(s: str) -> list[str]:
+    """Split ``s`` into shell words and control operators.
+
+    Quote-removing like ``shlex.split(..., posix=True)``, but correct about
+    command substitution: the text of a ``$(...)`` or ```...``` is kept
+    verbatim in the word that contains it and never alters the surrounding
+    quote state. Control operators (``&&``, ``||``, ``;``, ``;;``, ``|``,
+    ``&``) are emitted as their own tokens so the caller can skip them.
+
+    Raises ``ValueError`` on a string the shell itself could not parse
+    (unbalanced quote, unterminated substitution) — and only on those: a
+    rejection bash would not make is a false RED, which is the defect class
+    this function exists to close.
+    """
+    words: list[str] = []
+    buf: list[str] = []
+    started = False  # distinguishes an empty word ('' / "") from no word
+    i = 0
+    n = len(s)
+
+    def flush() -> None:
+        nonlocal started
+        if started:
+            words.append("".join(buf))
+            buf.clear()
+            started = False
+
+    while i < n:
+        c = s[i]
+        if c in _SHELL_WORD_SEPARATORS:
+            flush()
+            i += 1
+            continue
+        if c == "\\":
+            if i + 1 >= n:
+                # Line continuation with nothing after it. bash accepts this
+                # (``bash -n -c 'echo hi \'`` exits 0), so refusing it here
+                # would be a new false RED of exactly the class this ticket
+                # closes.
+                break
+            if s[i + 1] == "\n":  # line continuation
+                i += 2
+                continue
+            buf.append(s[i + 1])
+            started = True
+            i += 2
+            continue
+        if c == "'":
+            close = s.find("'", i + 1)
+            if close == -1:
+                raise ValueError('unterminated single quote "\'"')
+            buf.append(s[i + 1 : close])
+            started = True
+            i = close + 1
+            continue
+        if c == '"':
+            i, content = _scan_double_quoted(s, i)
+            buf.append(content)
+            started = True
+            continue
+        if c == "$" and i + 1 < n and s[i + 1] == "'":
+            i, content = _scan_ansi_c_quoted(s, i)
+            buf.append(content)
+            started = True
+            continue
+        if c == "$" and i + 1 < n and s[i + 1] == "(":
+            close = _scan_command_substitution(s, i + 1)
+            buf.append(s[i : close + 1])
+            started = True
+            i = close + 1
+            continue
+        if c == "`":
+            i, raw = _scan_backquoted(s, i)
+            buf.append(raw)
+            started = True
+            continue
+        operator = next(
+            (op for op in _SHELL_OPERATOR_SEQUENCES if s.startswith(op, i)), None
+        )
+        if operator is not None:
+            flush()
+            words.append(operator)
+            i += len(operator)
+            continue
+        buf.append(c)
+        started = True
+        i += 1
+
+    flush()
+    return words
 
 
 def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str | None:
     """Return a reason string when ``cmd_str`` looks like prose, not a command.
 
-    Tokenizes with ``shlex.split(cmd_str, posix=True)`` — a quote-respecting
-    parse, not a naive whitespace split — so a quoted command substitution
-    such as ``body="$(gh api ... | base64 -d)" && printf '%s' "$body" |
-    grep -qF '<marker>'`` (the OMN-15170 sigpipe-safe shape, OMN-15430) is
-    never split apart *inside* the quotes. A naive ``str.split()`` broke
-    into that substitution and inspected an inner word (``api``) as if it
-    were the command's first token, producing a false
-    ``INVALID_CHECK_VALUE_NOT_A_COMMAND`` on a check that runs correctly.
+    Tokenizes with ``_split_shell_words`` (OMN-15597) — a
+    command-substitution-aware scan that yields the SHELL's own first
+    command word. Its predecessor, ``shlex.split(cmd_str, posix=True)``, is
+    a word splitter with no notion of ``$(...)``: on
+    ``state="$(gh pr view N --jq '.state + " " + (.oid // "none")')" && test
+    ...`` the jq program's inner ``"`` closed the outer quote early and a jq
+    fragment was judged as the command name — a false
+    ``INVALID_CHECK_VALUE_NOT_A_COMMAND`` on a string bash runs to exit 0.
 
-    Strips leading ``VAR=VAL`` assignment tokens and leading shell control
+    Strips leading ``VAR=VAL`` assignment tokens, leading shell control
     operators (``&&``, ``||``, ``;``, ``;;``, ``|``, ``&`` — punctuation
     that can legitimately separate an assignment from the command this
-    guard judges), then inspects the first remaining token: if it ends with
-    ``:`` (e.g. a stray ``"Recorded:"`` label) or cannot be resolved and is
-    not a known shell keyword, this is prose that must never be shelled
-    out. Returns ``None`` when the shape looks like a real command — this
-    is a pure shape check; it never executes anything and never judges by
-    output content.
+    guard judges) and a leading ``!`` negation, then inspects the first
+    remaining token: if it ends with ``:`` (e.g. a stray ``"Recorded:"``
+    label) or cannot be resolved and is not a known shell keyword, this is
+    prose that must never be shelled out. Returns ``None`` when the shape
+    looks like a real command — this is a pure shape check; it never
+    executes anything and never judges by output content.
 
-    If ``cmd_str`` cannot be tokenized at all (e.g. an unbalanced quote),
-    ``shlex.split`` raises ``ValueError`` — that is treated as fail-closed
-    INVALID: a check_value bash itself cannot parse is genuinely invalid,
-    never silently passed through.
+    A first token that *is* or *contains* a command substitution
+    (``$(...)`` / ```...```) is accepted: what it expands to is unknowable
+    statically, but a substitution is command-shaped by construction and no
+    prose sample carries one. Bare ``$VAR`` expansion in command position is
+    deliberately NOT covered here — that is OMN-15267's separate class.
+
+    If ``cmd_str`` cannot be tokenized at all (unbalanced quote,
+    unterminated substitution), ``_split_shell_words`` raises
+    ``ValueError`` — treated as fail-closed INVALID: a check_value
+    bash itself cannot parse is genuinely invalid, never silently passed
+    through. Note the converse does NOT hold, which is why ``bash -n`` is
+    not used as the oracle: prose parses clean under ``bash -n``.
 
     ``cwd`` is the check's OMN-10078-resolved working directory (or
     ``None`` to inherit the caller's cwd). A first token containing a path
@@ -356,7 +642,7 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
     if not stripped:
         return "empty command"
     try:
-        tokens = shlex.split(stripped, posix=True)
+        tokens = _split_shell_words(stripped)
     except ValueError as exc:
         return (
             f"command could not be parsed as shell syntax ({exc}) — this "
@@ -366,7 +652,9 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
         return "empty command"
     idx = 0
     while idx < len(tokens) and (
-        _VAR_ASSIGNMENT_RE.match(tokens[idx]) or tokens[idx] in _SHELL_CONTROL_OPERATORS
+        _VAR_ASSIGNMENT_RE.match(tokens[idx])
+        or tokens[idx] in _SHELL_CONTROL_OPERATORS
+        or tokens[idx] in _SHELL_LEADING_MODIFIERS
     ):
         idx += 1
     if idx >= len(tokens):
@@ -375,6 +663,8 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
             "VAR=VAL assignments/shell operators"
         )
     first = tokens[idx]
+    if "$(" in first or "`" in first:
+        return None
     if first.endswith(":"):
         return f"first token {first!r} looks like prose, not a command (ends with ':')"
     if first in _SHELL_KEYWORD_ALLOWLIST:
