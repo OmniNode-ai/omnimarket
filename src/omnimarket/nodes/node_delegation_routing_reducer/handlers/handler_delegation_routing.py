@@ -237,7 +237,7 @@ def _select_model_for_task(
     contract_model_ref: str | None = None,
     exclude_backend_refs: frozenset[str] = frozenset(),
     *,
-    contract_model_ref_is_explicit_override: bool = True,
+    contract_model_ref_is_explicit_override: bool = False,
 ) -> ModelTierModel | None:
     """Select the best model from a tier for the given task and token count.
 
@@ -280,11 +280,15 @@ def _select_model_for_task(
     backend happened to share the default pin's model id by file order (a
     real incident: `documentation`/`validator_generation`/`summarization`
     silently bound the code-only `local-coder` backend — OMN-15630, recurrence
-    of OMN-14104 in kind). Defaults to ``True`` (unchanged behavior) so every
-    existing caller that does not pass this explicitly keeps the pre-OMN-15630
-    semantics; production call sites (`_tier_can_route_task`,
-    `backend_id_for_tier`, `sibling_backend_available_in_tier`, `delta`) pass
-    the real value via `_is_explicit_task_model_override`.
+    of OMN-14104 in kind). Defaults to ``False`` (fail-safe: assume implicit
+    unless proven explicit) so a caller added later that omits this kwarg
+    does NOT silently reinstate the id-match escape hatch — the forgotten-
+    override case falls through to the general use_for scan instead of
+    binding an off-capability model (memory `feedback_a_rule_is_not_a_mechanism`
+    / "a forgotten override must default SAFE", OMN-15630 remediation round
+    1). Production call sites (`_tier_can_route_task`, `backend_id_for_tier`,
+    `sibling_backend_available_in_tier`, `delta`) all pass the real value via
+    `_is_explicit_task_model_override` and are unaffected by the default.
     """
     # Contract-declared model takes priority — find it by model ID in this tier.
     #
