@@ -35,6 +35,13 @@ _DEFAULT_CONFIG_PATH = (
 _DEFAULT_OVERLAY_PATH = (
     Path.home() / ".omninode" / "delegation" / "bifrost_overrides.yaml"
 )
+# OMN-15628 remediation: a deliberately nonexistent sentinel used in place of
+# ``_DEFAULT_OVERLAY_PATH`` when a caller resolved an EXPLICIT contract
+# override but no explicit overlay override (see the "config_path bound,
+# overlay_path unbound" branch below). Never created on disk; its only
+# purpose is to make ``overlay.exists()`` deterministically False so no
+# overlay merge is attempted.
+_NO_OVERLAY_SENTINEL = Path("__omnimarket_no_bifrost_overlay__.yaml")
 
 _IDENTITY_KEYS = ("backend_id", "rule_id")
 
@@ -49,7 +56,12 @@ def load_bifrost_delegation_config(
         config_path: Path to the YAML config file. Defaults to the
             canonical ``src/omnimarket/configs/bifrost_delegation.yaml``.
         overlay_path: Optional endpoint overlay YAML path. Defaults to
-            ``~/.omninode/delegation/bifrost_overrides.yaml`` when present.
+            ``~/.omninode/delegation/bifrost_overrides.yaml`` when present —
+            but ONLY when neither an explicit ``config_path`` nor an explicit
+            ``overlay_path`` was resolved by the caller is out of scope here
+            (that combination refuses below). When the caller resolved an
+            explicit ``config_path`` but no ``overlay_path``, this default is
+            deliberately NOT used (see the seam-divergence note below).
 
     Returns:
         A validated ``ModelBifrostDelegationConfig`` instance.
@@ -81,7 +93,27 @@ def load_bifrost_delegation_config(
         raise ValueError(msg)
 
     resolved = config_path or _DEFAULT_CONFIG_PATH
-    overlay = overlay_path or _DEFAULT_OVERLAY_PATH
+
+    # OMN-15628 remediation (seam-divergence finding): when the caller
+    # resolved an EXPLICIT contract override but did NOT resolve an explicit
+    # overlay override, do NOT fall back to the packaged default overlay path
+    # (``~/.omninode/delegation/bifrost_overrides.yaml``). An explicit
+    # contract binding — e.g. a deployed pod's ``BIFROST_CONTRACT_PATH`` — must
+    # never have its endpoints silently redirected by an incidental local
+    # dev-machine overlay file that happens to exist on whichever host process
+    # is running. This is the single canonical locus for that rule so every
+    # caller (the routing reducer's ``_load_bifrost_endpoints``, the
+    # generation consumer's ``_resolve_bifrost_backend``) inherits identical
+    # behavior. Previously this exclusion was duplicated only at the routing
+    # reducer's call site (a local sentinel substitution) while the
+    # generation consumer passed ``overlay_path=None`` straight through — the
+    # two callers resolved DIFFERENT overlays given the SAME env bindings.
+    # Moving the rule here closes that divergence for every current and
+    # future caller instead of requiring each one to reimplement it.
+    if config_path is not None and overlay_path is None:
+        overlay = _NO_OVERLAY_SENTINEL
+    else:
+        overlay = overlay_path or _DEFAULT_OVERLAY_PATH
 
     if not resolved.exists():
         msg = f"Bifrost delegation config not found at {resolved}"
