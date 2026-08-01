@@ -447,7 +447,11 @@ _SHELL_KEYWORD_ALLOWLIST = frozenset(
 # ``bash -n`` was considered and rejected as the oracle: it exits 0 on
 # ``Recorded product receipt: see PR 123`` too, so parse-validity cannot
 # discriminate prose — which is this guard's entire purpose.
-_SHELL_WORD_SEPARATORS = " \t\r\n"
+# ``\n`` is intentionally absent: an unquoted newline is a command SEPARATOR,
+# not blank space, and ``_split_shell_words`` emits it as a ``;`` token
+# (OMN-15597 R2). Treating it as mere whitespace here would silently join two
+# commands into one token run.
+_SHELL_WORD_SEPARATORS = " \t\r"
 
 # bash metacharacters that terminate a word even without surrounding
 # whitespace. Longest-match-first so ``&&`` is not lexed as two ``&``.
@@ -627,6 +631,23 @@ def _split_shell_words(s: str) -> list[str]:
 
     while i < n:
         c = s[i]
+        if c == "\n":
+            # An UNQUOTED newline is a command SEPARATOR in shell, not
+            # whitespace (OMN-15597 R2, CodeRabbit). Emitting it as ``;``
+            # matters because the caller skips a
+            # ``_NO_EVIDENCE_BUILTIN_PREFIXES`` builtin's operands only up to
+            # the next control operator: without this,
+            # ``export FOO=bar\ngh api ...`` would have ``gh api ...``
+            # consumed as operands of ``export`` and be rejected as having no
+            # resolvable executable — a NEW false RED of exactly the class
+            # this ticket closes. A newline INSIDE quotes or a ``$(...)`` is
+            # untouched: those regions are consumed by their own scanners
+            # before reaching here, and a backslash-newline continuation is
+            # handled below and is NOT a separator.
+            flush()
+            words.append(";")
+            i += 1
+            continue
         if c in _SHELL_WORD_SEPARATORS:
             flush()
             i += 1

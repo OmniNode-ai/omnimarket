@@ -664,6 +664,91 @@ class TestAllowlistAdmissionRule:
 
 
 @pytest.mark.unit
+class TestUnquotedNewlineIsACommandSeparator:
+    """An unquoted newline separates commands; it is not blank space.
+
+    Found by CodeRabbit on this PR. The prefix-builtin scan consumes operands
+    up to the next CONTROL OPERATOR, so if a newline is lexed as whitespace,
+    ``export FOO=bar\\ngh api ...`` has ``gh api ...`` swallowed as operands of
+    ``export`` and is rejected for having no resolvable executable — a NEW
+    false RED of exactly the class this ticket closes. ``_split_shell_words``
+    emits an unquoted newline as ``;``.
+    """
+
+    @pytest.mark.parametrize(
+        "check_value",
+        [
+            "export FOO=bar\ngh api repos/o/r --jq .name",
+            "set -euo pipefail\ngh api repos/o/r --jq .name",
+            "unset FOO\ngh api repos/o/r --jq .name",
+            "read -r x < /dev/null\ngh api repos/o/r --jq .name",
+            "declare -i n=1\ngh api repos/o/r --jq .name",
+            # No prefix builtin involved — a plain multi-line script body.
+            "cd /tmp\nls\ngh api repos/o/r",
+        ],
+    )
+    def test_multiline_command_after_a_prefix_builtin_is_accepted(
+        self, check_value: str
+    ) -> None:
+        assert _invalid_check_value_reason(check_value, cwd=None) is None, check_value
+
+    @requires_bash
+    @pytest.mark.parametrize(
+        "check_value",
+        [
+            "export FOO=bar\ngh api repos/o/r --jq .name",
+            "cd /tmp\nls\ngh api repos/o/r",
+        ],
+    )
+    def test_those_multiline_forms_really_parse_in_a_real_shell(
+        self, check_value: str
+    ) -> None:
+        assert _bash_parses(check_value)
+
+    def test_newline_is_emitted_as_a_control_operator(self) -> None:
+        assert _split_shell_words("export FOO=bar\ngh api") == [
+            "export",
+            "FOO=bar",
+            ";",
+            "gh",
+            "api",
+        ]
+
+    def test_backslash_newline_is_still_a_continuation_not_a_separator(self) -> None:
+        """The continuation must NOT become a separator — it joins one command."""
+        assert _split_shell_words("gh pr view 1 \\\n  --json state") == [
+            "gh",
+            "pr",
+            "view",
+            "1",
+            "--json",
+            "state",
+        ]
+
+    @pytest.mark.parametrize(
+        "check_value",
+        [
+            'printf "a\nb" | grep -q a',
+            'x="$(printf \'a\nb\')" && test -n "$x"',
+        ],
+    )
+    def test_newlines_inside_quotes_and_substitutions_are_not_separators(
+        self, check_value: str
+    ) -> None:
+        assert _invalid_check_value_reason(check_value, cwd=None) is None, check_value
+
+    def test_multiline_prose_is_still_rejected(self) -> None:
+        """The separator fix must not become a new laundering path."""
+        assert (
+            _invalid_check_value_reason(
+                "export the evidence to the ticket\nverified manually by the operator",
+                cwd=None,
+            )
+            is not None
+        )
+
+
+@pytest.mark.unit
 class TestColonIsRejectedByTheProseBranch:
     """``:`` was removed from the allowlist; prove that is behaviour-preserving.
 
