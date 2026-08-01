@@ -293,7 +293,7 @@ GRAMMAR_CASES: tuple[tuple[str, str, bool], ...] = (
         True,
     ),
     ("leading-negation", "! test -f /nonexistent/path", True),
-    ("subshell-group", "(cd /tmp && ls) && echo done", True),
+    ("subshell-group", "(test -d /tmp && cd /tmp && ls) && echo done", True),
     ("backtick-substitution", 'test "`date -u +%Y`" = "2026"', True),
     ("leading-command-substitution", "$(printf ls) /tmp", True),
     ("bracket-test-builtin", "[ -d /tmp ] && echo ok", True),
