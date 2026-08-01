@@ -151,7 +151,23 @@ class ModelDelegateSkillResponse(BaseModel):
 
     @model_validator(mode="after")
     def validate_structured_terminal_evidence(self) -> Self:
-        """Preserve the canonical Core terminal-evidence invariants."""
+        """Preserve the canonical Core terminal-evidence invariants.
+
+        This mirrors ``ModelDelegationResult.validate_structured_terminal_evidence``
+        in omnibase_core 0.46.8 clause for clause (OMN-15539 / OMN-15464). The two
+        models are the two ends of one delegation terminal, so any verdict Core
+        refuses to construct must also be un-constructable here — otherwise a
+        producer that bypasses the Core model (the bus-less local dispatch port, a
+        direct response construction, a future adapter) publishes a contradiction
+        that the canonical wire DTO would have blocked. The agreement is pinned by
+        ``tests/unit/delegation/test_seam_quality_gate_semantics_omn15539.py``,
+        which drives BOTH models from one fixture; keep the two validators in
+        step or that seam test fails.
+        """
+        if any(not item.strip() for item in self.failed_acceptance_criteria):
+            msg = "failed_acceptance_criteria entries must not be blank"
+            raise ValueError(msg)
+
         required_bar = self.required_quality_bar
         comparison = self.score_vs_required_bar
         if (required_bar is None) != (comparison is None):
@@ -171,6 +187,26 @@ class ModelDelegateSkillResponse(BaseModel):
                 msg = (
                     "score_vs_required_bar must match quality_score and "
                     "required_quality_bar"
+                )
+                raise ValueError(msg)
+
+            if (
+                comparison is EnumQualityScoreComparison.BELOW_BAR
+                and self.quality_gate_passed
+            ):
+                msg = (
+                    "quality_gate_passed response cannot be below required_quality_bar"
+                )
+                raise ValueError(msg)
+
+            if (
+                comparison is EnumQualityScoreComparison.AT_OR_ABOVE_BAR
+                and not self.quality_gate_passed
+                and not self.failed_acceptance_criteria
+            ):
+                msg = (
+                    "quality-failed response at or above required_quality_bar must "
+                    "carry failed_acceptance_criteria"
                 )
                 raise ValueError(msg)
 
