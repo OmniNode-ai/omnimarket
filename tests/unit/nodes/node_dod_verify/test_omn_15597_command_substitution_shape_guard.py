@@ -53,6 +53,19 @@ Both are fixed here: the seven are handled as no-evidence PREFIXES (skipped
 with their operands, like a leading ``VAR=VAL``), and
 ``TestAllowlistAdmissionRule`` now iterates the ACTUAL frozenset against a
 real shell so a future addition that swallows prose fails CI.
+
+R3 (2026-08-01). The prefix-builtin rejection introduced by R2 reused the
+pre-existing "no resolvable executable token after leading VAR=VAL
+assignments/shell operators" message, which misdescribes its own new inputs:
+``read -r a b <<< "$(gh api ...)"`` contains no assignment and no control
+operator, yet the reason blamed both. AC2's second clause requires a
+rejection of something a real shell runs to name the unsupported construct
+EXPLICITLY, so naming an absent one is the same misidentification failure
+this ticket closes, moved to the rejection path.
+``TestAc2RejectionReasonNamesTheConstructThatIsPresent`` pins it: the reason
+now names the prefix builtin that consumed the tokens, and the absence of
+the constructs it must NOT blame is re-derived from the tokens rather than
+asserted by hand. Behaviour (accept/reject) is unchanged by R3.
 """
 
 from __future__ import annotations
@@ -160,6 +173,24 @@ BUILTIN_LED_PROSE_SAMPLES: tuple[tuple[str, str], ...] = (
     # line to consume — neither is under the check author's control.
     ("let", "let the record show 3"),
     ("read", "read the receipt"),
+)
+
+# OMN-15597 R3. check_values whose ONLY command is a no-evidence prefix
+# builtin. The guard rejects these deliberately (they prove nothing and are
+# shape-indistinguishable from the prose row above), but the REJECTION REASON
+# has to name the construct that is actually present. The last two rows are
+# the ones R2 got wrong: they contain no ``VAR=VAL`` assignment and no shell
+# control operator, yet the R2 message blamed exactly those — misidentifying
+# the offending construct on the rejection path is the same failure class
+# this ticket exists to close on the acceptance path (AC2, second clause).
+PREFIX_BUILTIN_ONLY_SAMPLES: tuple[tuple[str, str], ...] = (
+    ("set", "set -euo pipefail"),
+    ("export", "export FOO=bar"),
+    ("unset", "unset FOO"),
+    # No assignment, no operator — a herestring feeding a command
+    # substitution. ``bash -n`` rc=0 and ``bash -o pipefail -c`` rc=0.
+    ("read", 'read -r a b <<< "$(gh api repos/o/r --jq .name)"'),
+    ("read", "read -r x < /dev/null"),
 )
 
 _BASH = shutil.which("bash")
@@ -514,14 +545,16 @@ class TestVerdictIsPlatformIndependentForBuiltins:
         assert _invalid_check_value_reason(check_value, cwd=None) is None, check_value
 
     @pytest.mark.parametrize(
-        "check_value",
-        ["unset FOO", "read -r x < /dev/null", "set -euo pipefail", "export FOO=bar"],
+        ("builtin", "check_value"),
+        PREFIX_BUILTIN_ONLY_SAMPLES,
+        ids=[value for _, value in PREFIX_BUILTIN_ONLY_SAMPLES],
     )
     def test_prefix_builtin_alone_is_rejected_as_proving_nothing(
-        self, no_path_lookup: None, check_value: str
+        self, no_path_lookup: None, builtin: str, check_value: str
     ) -> None:
         """A check_value whose ONLY command is a no-evidence prefix builtin is
-        rejected, and the reason says so rather than misnaming a token.
+        rejected, and the reason NAMES THAT BUILTIN rather than misnaming a
+        construct that is not present.
 
         This IS a narrowing relative to round 1, and a deliberate one: the
         guard cannot distinguish ``unset FOO`` from ``unset the flag
@@ -531,7 +564,7 @@ class TestVerdictIsPlatformIndependentForBuiltins:
         """
         reason = _invalid_check_value_reason(check_value, cwd=None)
         assert reason is not None, check_value
-        assert "no resolvable executable token" in reason
+        assert repr(builtin) in reason, reason
 
     @pytest.mark.parametrize("prose", PROSE_SAMPLES)
     def test_prose_still_rejected_without_path_lookup(
@@ -556,6 +589,70 @@ class TestVerdictIsPlatformIndependentForBuiltins:
         nothing about it. These strings DO begin with one.
         """
         assert _invalid_check_value_reason(prose, cwd=None) is not None, prose
+
+
+# --------------------------------------------------------------------------
+# AC2, second clause (R3) — when the guard rejects something a real shell
+# parses and runs, the reason must name the unsupported grammar construct
+# EXPLICITLY. R2 rejected ``read -r a b <<< "$(gh api ...)"`` with "no
+# resolvable executable token after leading VAR=VAL assignments/shell
+# operators" — a string that contains neither an assignment nor a control
+# operator. Blaming a construct that is not present is the same
+# misidentification defect as judging a jq fragment to be the command name;
+# it just lands on the rejection path instead of the acceptance path.
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAc2RejectionReasonNamesTheConstructThatIsPresent:
+    _OPERATOR_FREE_SAMPLES: tuple[str, ...] = (
+        'read -r a b <<< "$(gh api repos/o/r --jq .name)"',
+        "read -r x < /dev/null",
+        "unset FOO",
+    )
+
+    @pytest.mark.parametrize(
+        ("builtin", "check_value"),
+        PREFIX_BUILTIN_ONLY_SAMPLES,
+        ids=[value for _, value in PREFIX_BUILTIN_ONLY_SAMPLES],
+    )
+    def test_reason_names_the_prefix_builtin_that_consumed_the_tokens(
+        self, builtin: str, check_value: str
+    ) -> None:
+        reason = _invalid_check_value_reason(check_value, cwd=None)
+        assert reason is not None, check_value
+        assert repr(builtin) in reason, reason
+
+    @pytest.mark.parametrize("check_value", _OPERATOR_FREE_SAMPLES)
+    def test_reason_does_not_blame_a_construct_that_is_absent(
+        self, check_value: str
+    ) -> None:
+        """The absence is re-derived from the tokens, not asserted by hand."""
+        tokens = _split_shell_words(check_value)
+        assert not any(_VAR_ASSIGNMENT_RE.match(t) for t in tokens), tokens
+        assert not any(t in _SHELL_CONTROL_OPERATORS for t in tokens), tokens
+
+        reason = _invalid_check_value_reason(check_value, cwd=None)
+        assert reason is not None, check_value
+        assert "VAR=VAL" not in reason, reason
+        assert "shell control operators" not in reason, reason
+
+    @requires_bash
+    @pytest.mark.parametrize("check_value", _OPERATOR_FREE_SAMPLES)
+    def test_those_rejections_really_are_things_a_real_shell_parses(
+        self, check_value: str
+    ) -> None:
+        """AC2's precondition: the rejection only needs an explicit reason
+        because a real shell DOES parse these. Parse-only (``bash -n``) — the
+        herestring row would otherwise reach the network."""
+        assert _bash_parses(check_value), check_value
+
+    def test_assignment_only_value_still_gets_the_generic_reason(self) -> None:
+        """The generic message is not dead code: it is the accurate one when
+        the tokens really were consumed by assignments/operators."""
+        reason = _invalid_check_value_reason("FOO=bar &&", cwd=None)
+        assert reason is not None
+        assert "VAR=VAL" in reason, reason
 
 
 # --------------------------------------------------------------------------

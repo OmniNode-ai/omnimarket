@@ -738,10 +738,12 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
     it never executes anything and never judges by output content.
 
     A check_value whose ONLY command is one of those prefix builtins
-    (``unset FOO``, ``read -r x < /dev/null``) is therefore rejected with
-    "no resolvable executable token after leading VAR=VAL assignments" —
-    correct, not a regression: such a value proves nothing, and accepting it
-    is indistinguishable from accepting ``unset the flag manually``.
+    (``unset FOO``, ``read -r a b <<< "$(gh api ...)"``) is therefore
+    rejected — correct, not a regression: such a value proves nothing, and
+    accepting it is indistinguishable from accepting ``unset the flag
+    manually``. The reason names that builtin explicitly rather than
+    blaming "leading VAR=VAL assignments/shell operators", which for those
+    two inputs is a construct that is not present (OMN-15597 R3).
 
     A first token that *is* or *contains* a command substitution
     (``$(...)`` / ```...```) is accepted: what it expands to is unknowable
@@ -778,6 +780,7 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
     if not tokens:
         return "empty command"
     idx = 0
+    consumed_builtin: str | None = None
     while idx < len(tokens):
         token = tokens[idx]
         if (
@@ -793,15 +796,34 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
             # control operator (OMN-15597 R2). Accepting it on sight is what
             # let ``set up the runtime and verified manually`` reach the
             # shell and exit 0.
+            consumed_builtin = token
             idx += 1
             while idx < len(tokens) and tokens[idx] not in _SHELL_CONTROL_OPERATORS:
                 idx += 1
             continue
         break
     if idx >= len(tokens):
+        # Name the construct that actually ran the tokens out (OMN-15597 R3).
+        # These two cases are reached by DIFFERENT inputs and a single message
+        # misdescribes one of them: ``read -r a b <<< "$(gh api ...)"`` has no
+        # assignment and no operator, so blaming "leading VAR=VAL
+        # assignments/shell operators" names a construct that is not present —
+        # the same misidentification failure this ticket exists to close, just
+        # on the rejection path instead of the acceptance path.
+        if consumed_builtin is not None:
+            return (
+                f"the only command is the no-evidence shell builtin "
+                f"{consumed_builtin!r} and its operands — its operands, "
+                "including any redirection/herestring/process-substitution "
+                "operands, are consumed with it, and no ';'/'&&'/'||'"
+                "-separated command follows. Such a value proves nothing, and "
+                f"its shape is indistinguishable from prose leading with "
+                f"{consumed_builtin!r}"
+            )
         return (
             "command has no resolvable executable token after leading "
-            "VAR=VAL assignments/shell operators"
+            "VAR=VAL assignments, shell control operators and '!'/'(' "
+            "modifiers"
         )
     first = tokens[idx]
     if "$(" in first or "`" in first:
