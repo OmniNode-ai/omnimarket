@@ -158,12 +158,18 @@ def _unserved_rungs_by_class(
 
 
 @pytest.mark.unit
-def test_task_class_contract_declares_exactly_fifteen_classes() -> None:
-    """Locks the RED-before class population (OMN-15630 AC2).
+def test_task_class_contract_declares_at_least_fifteen_classes() -> None:
+    """Locks the RED-before class population as a FLOOR, not a ceiling
+    (OMN-15630 AC2; remediation round 1 renamed this from the prior
+    ``..._declares_exactly_fifteen_classes`` once the assertion itself
+    loosened from ``== 15`` to ``>= 15`` — the old name asserted something
+    the body no longer checked).
 
     The config's declared population — not OMN-15503's stale 13-class
     ``allowed_task_types`` subset, which OMN-15623 C5 recorded as never having
-    been the config population.
+    been the config population. A legitimate 16th+ declared class is caught
+    by ``test_every_declared_class_is_served_at_every_declared_tier_unpinned``
+    below (coverage), not by this population count.
     """
     contract = _yaml_mapping(_TASK_CONTRACT_PATH)
     task_classes = contract.get("task_classes")
@@ -510,10 +516,16 @@ class TestImplicitDefaultPinCannotOverrideCapability:
             f"the task type; got {selected.backend_ref!r}"
         )
 
-    def test_default_kwarg_preserves_pre_omn15630_behavior(self) -> None:
-        """A caller that does not pass contract_model_ref_is_explicit_override
-        at all gets the pre-OMN-15630 semantics (defaults True) — backward
-        compatible for any caller this ticket did not touch."""
+    def test_omitted_kwarg_defaults_safe_not_the_silent_bind(self) -> None:
+        """OMN-15630 remediation round 1: a caller that forgets to pass
+        ``contract_model_ref_is_explicit_override`` must NOT silently
+        reinstate the wrong-capability id-match escape hatch. The kwarg
+        defaults to ``False`` (assume implicit unless proven explicit), so an
+        omitted-kwarg call falls through to the real capability scan and
+        resolves ``local-ds-v4-flash`` — same result as the explicit
+        ``contract_model_ref_is_explicit_override=False`` case above, not the
+        stale ``local-coder`` off-capability bind a ``True`` default would
+        produce."""
         selected = routing._select_model_for_task(
             self._models(),
             "documentation",
@@ -523,7 +535,11 @@ class TestImplicitDefaultPinCannotOverrideCapability:
         )
 
         assert selected is not None
-        assert selected.backend_ref == "local-coder"
+        assert selected.backend_ref == "local-ds-v4-flash", (
+            "an omitted contract_model_ref_is_explicit_override kwarg must "
+            "default to the safe (implicit) path, never the id_matches[0] "
+            f"escape hatch; got {selected.backend_ref!r}"
+        )
 
 
 @pytest.mark.unit
