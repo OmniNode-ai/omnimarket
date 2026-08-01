@@ -236,6 +236,8 @@ def _select_model_for_task(
     bifrost_backends: dict[str, BifrostBackendRef],
     contract_model_ref: str | None = None,
     exclude_backend_refs: frozenset[str] = frozenset(),
+    *,
+    contract_model_ref_is_explicit_override: bool = True,
 ) -> ModelTierModel | None:
     """Select the best model from a tier for the given task and token count.
 
@@ -246,9 +248,12 @@ def _select_model_for_task(
     identifies more than one model in this tier (an id shared across distinct
     backends — see OMN-14396 below), the candidate that also declares
     task_type in use_for wins; otherwise the first id match is used regardless
-    of use_for, preserving the override as an explicit pin to a specific model
-    (OMN-10942). Falls back to tier-order selection when the contract-declared
-    model is unavailable in this tier.
+    of use_for — but ONLY when the pin is an EXPLICIT task_model_overrides
+    entry (OMN-10942), never an IMPLICIT default_task_model_ref fallback
+    (OMN-15630, see contract_model_ref_is_explicit_override below). Falls
+    back to tier-order selection when the contract-declared model is
+    unavailable in this tier, or when the pin is implicit and no id match
+    declares the task type.
 
     Prefers fast-path models when prompt fits within their threshold.
     Falls back to any model that declares the task type in use_for.
@@ -262,6 +267,24 @@ def _select_model_for_task(
     model (e.g. OMN-10942/OMN-13140's cloud override), which is a different
     concern than a same-tier RETRY after a transport failure, where a candidate
     that does not even declare the task type is never a valid substitute.
+
+    ``contract_model_ref_is_explicit_override`` (OMN-15630) draws the same
+    distinction for the SOURCE of the pin. ``task_model_overrides`` is an
+    author-declared, per-task-type override — an intentional pin to a specific
+    model, permitted to override that model's own capability declaration
+    (OMN-10942/OMN-13140). ``default_task_model_ref`` is a class-wide fallback
+    that applies whenever NO override is declared — nobody has actually
+    decided that model should serve this specific task type. Before this fix
+    the id-match escape hatch could not tell the two apart, so a task class
+    with no override and no use_for entry anywhere silently bound to whichever
+    backend happened to share the default pin's model id by file order (a
+    real incident: `documentation`/`validator_generation`/`summarization`
+    silently bound the code-only `local-coder` backend — OMN-15630, recurrence
+    of OMN-14104 in kind). Defaults to ``True`` (unchanged behavior) so every
+    existing caller that does not pass this explicitly keeps the pre-OMN-15630
+    semantics; production call sites (`_tier_can_route_task`,
+    `backend_id_for_tier`, `sibling_backend_available_in_tier`, `delta`) pass
+    the real value via `_is_explicit_task_model_override`.
     """
     # Contract-declared model takes priority — find it by model ID in this tier.
     #
@@ -278,10 +301,12 @@ def _select_model_for_task(
     # WHOLE tier to cheap_cloud/claude without ever trying the tier's other
     # backend that does declare the task. Collect every id match and prefer
     # the one that also declares task_type in use_for; only when NONE of the
-    # id matches declare task_type do we fall back to the first id match
-    # (unchanged behavior for the common case of a single, unambiguous
-    # override — e.g. pinning a task type to a cloud model that intentionally
-    # sits outside its own use_for list, OMN-10942/OMN-13140).
+    # id matches declare task_type do we fall back to the first id match — and
+    # only when that pin is an EXPLICIT override (OMN-15630): an implicit
+    # default pin falls through to the general use_for scan below instead,
+    # so a task class with no use_for entry anywhere in this tier is never
+    # silently bound to an off-capability backend just because it shares the
+    # default model's id.
     if contract_model_ref is not None:
         id_matches = [
             model
@@ -295,7 +320,11 @@ def _select_model_for_task(
         for model in id_matches:
             if task_type in model.use_for:
                 return model
-        if id_matches and not exclude_backend_refs:
+        if (
+            id_matches
+            and not exclude_backend_refs
+            and contract_model_ref_is_explicit_override
+        ):
             return id_matches[0]
 
     for model in tier_models:
@@ -621,6 +650,34 @@ def _get_contract_model_ref(
     return None
 
 
+def _is_explicit_task_model_override(
+    task_type: str,
+    contract: dict[str, object] | None,
+) -> bool:
+    """Return whether ``task_type`` has an EXPLICIT ``task_model_overrides`` entry.
+
+    Distinguishes an author-declared per-task-type override (OMN-10942/
+    OMN-13140 — an intentional pin, permitted to select an off-``use_for``
+    model) from the IMPLICIT ``default_task_model_ref`` fallback that applies
+    when no override is declared for ``task_type``. Only the explicit case may
+    use ``_select_model_for_task``'s "id-matches-but-ignores-use_for" escape
+    hatch (OMN-15630): an implicit default pin must never silently bind a
+    model that does not declare the task type just because it shares the
+    default model's id.
+
+    Mirrors the same ``task_model_overrides`` read ``_get_contract_model_ref``
+    performs, but reports whether the match came from that override map
+    specifically rather than returning the resolved model id.
+    """
+    if not isinstance(contract, dict):
+        return False
+    overrides = contract.get("task_model_overrides")
+    if not isinstance(overrides, dict):
+        return False
+    override = overrides.get(task_type)
+    return isinstance(override, str) and bool(override)
+
+
 def _task_class_entry(
     contract: dict[str, object] | None, task_type: str
 ) -> dict[str, object] | None:
@@ -876,6 +933,9 @@ def _tier_can_route_task(
         bifrost_backends,
         contract_model_ref=contract_model_ref,
         exclude_backend_refs=excluded_backend_refs,
+        contract_model_ref_is_explicit_override=_is_explicit_task_model_override(
+            task_type, contract
+        ),
     )
     return selected is not None
 
@@ -1178,6 +1238,9 @@ def backend_id_for_tier(tier_name: str, task_type: str) -> str | None:
         0,
         bifrost_backends,
         contract_model_ref=contract_model_ref,
+        contract_model_ref_is_explicit_override=_is_explicit_task_model_override(
+            task_type, contract
+        ),
     )
     if selected is None:
         return None
@@ -1235,6 +1298,9 @@ def sibling_backend_available_in_tier(
         bifrost_backends,
         contract_model_ref=contract_model_ref,
         exclude_backend_refs=exclude_backend_refs,
+        contract_model_ref_is_explicit_override=_is_explicit_task_model_override(
+            task_type, contract
+        ),
     )
     if selected is None:
         return None
@@ -1423,6 +1489,12 @@ def delta(
 
     # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
+    # OMN-15630: whether that ref came from an explicit task_model_overrides
+    # entry (may override use_for, OMN-10942/OMN-13140) or the implicit
+    # default_task_model_ref fallback (may not — see _select_model_for_task).
+    contract_model_ref_is_explicit_override = _is_explicit_task_model_override(
+        task_type, contract
+    )
 
     def _route(roi_skip: frozenset[str]) -> ModelRoutingDecision | None:
         # Escalation support (OMN-12254): skip tiers before min_tier_name.
@@ -1471,6 +1543,9 @@ def delta(
                     bifrost_backends,
                     contract_model_ref=contract_model_ref,
                     exclude_backend_refs=excluded_backend_refs,
+                    contract_model_ref_is_explicit_override=(
+                        contract_model_ref_is_explicit_override
+                    ),
                 )
             if selected is None:
                 continue
@@ -1604,6 +1679,7 @@ __all__: list[str] = [
     # reducer's private models package (cross-node model reach-in guard).
     "ModelRoutingDecision",
     "_get_contract_model_ref",
+    "_is_explicit_task_model_override",
     "backend_id_for_tier",
     "delta",
     "describe_no_higher_tier_available",

@@ -56,6 +56,22 @@ def _bifrost_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         "    tier: local\n"
         "    timeout_ms: 30000\n"
         "    capabilities: [document]\n"
+        # OMN-15630: local-heavy-reasoning is the routing_tiers.yaml model that
+        # actually declares "document" in use_for (local-coder does not — it
+        # is the CODE backend). Before OMN-15630, `document`'s unpinned
+        # selection here silently resolved to local-coder anyway via the
+        # id-matches-but-ignores-use_for fallback firing on an IMPLICIT
+        # default_task_model_ref pin (no task_model_overrides entry for
+        # "document") — the same silent wrong-capability bind class OMN-15630
+        # closes. That fallback no longer fires for implicit pins, so this
+        # fixture must declare the backend that genuinely serves "document"
+        # for delta() to resolve at all.
+        "  - backend_id: local-heavy-reasoning\n"
+        '    endpoint_url: "http://test-document:8002"\n'
+        '    model_name: "test-model-placeholder"\n'
+        "    tier: local\n"
+        "    timeout_ms: 30000\n"
+        "    capabilities: [document]\n"
         "routing_rules:\n"
         '  - rule_id: "33333333-3333-4333-8333-333333333333"\n'
         "    priority: 10\n"
