@@ -58,6 +58,8 @@ import re
 import shutil
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from types import ModuleType
 from typing import Any
@@ -332,6 +334,44 @@ class TestGeneratedChecksAreSigpipeSafe:
 # ---------------------------------------------------------------------------
 
 
+def _occ_module_names() -> list[str]:
+    return [
+        name
+        for name in sys.modules
+        if name == "onex_change_control" or name.startswith("onex_change_control.")
+    ]
+
+
+@contextmanager
+def _sibling_occ_package(src: Path) -> Iterator[None]:
+    """Make ``<sibling>/src`` authoritative for ``onex_change_control``, then undo it.
+
+    OMN-15539; same defect and same reasoning as the OMN-15247 suite's copy.
+    ``sys.path`` insertion is a no-op once the package name is bound in
+    ``sys.modules``, so in a full-suite run this file loaded the INSTALLED
+    ``onex-change-control`` wheel (0.5.1) instead of the sibling checkout and
+    died on ``onex_change_control.validation.evidence_admissibility``, which the
+    wheel does not ship. Passing in isolation and failing in the suite is the
+    signature of that ordering dependency, not a flake.
+
+    The eviction is scoped and reversed on exit: leaving the wheel's modules
+    deleted re-imports them later as fresh class objects, which breaks
+    ``isinstance`` for any consumer that captured the pre-eviction class.
+    """
+    saved = {name: sys.modules[name] for name in _occ_module_names()}
+    for name, module in saved.items():
+        origin = getattr(module, "__file__", None)
+        if origin is None or not Path(origin).resolve().is_relative_to(src):
+            del sys.modules[name]
+    try:
+        yield
+    finally:
+        for name in _occ_module_names():
+            if name not in saved:
+                del sys.modules[name]
+        sys.modules.update(saved)
+
+
 def _load_occ_module(relpath: str, name: str) -> ModuleType | None:
     """Import an onex_change_control gate script from a sibling checkout.
 
@@ -343,14 +383,16 @@ def _load_occ_module(relpath: str, name: str) -> ModuleType | None:
     target = root / relpath
     if not target.is_file():
         return None
-    if str(root / "src") not in sys.path:
-        sys.path.insert(0, str(root / "src"))
+    src = root / "src"
+    if str(src) not in sys.path:
+        sys.path.insert(0, str(src))
     spec = importlib.util.spec_from_file_location(name, target)
     if spec is None or spec.loader is None:
         return None
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
-    spec.loader.exec_module(module)
+    with _sibling_occ_package(src):
+        spec.loader.exec_module(module)
     return module
 
 
