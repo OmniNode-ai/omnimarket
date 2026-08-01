@@ -26,8 +26,12 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_response import (
     ModelDelegateSkillAttemptRecord,
+    ModelDelegateSkillCompleted,
+    ModelDelegateSkillFailed,
     ModelDelegateSkillResponse,
     ModelDelegateSkillResponseMetrics,
+    delegate_skill_terminal_from_response,
+    resolve_terminal_failure_cause,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.port_runtime_delegation_dispatch import (
     ProtocolDelegationEventBus,
@@ -378,6 +382,20 @@ def _response_from_result(
     quality_gate_passed = bool(
         result.get("quality_gate_passed", result.get("quality_passed", False))
     )
+    attempts = _attempt_records(result)
+    # OMN-15469: classify the terminal failure cause from the ladder BEFORE the
+    # response is built, so the composite verdict (delegate_skill_succeeded) can
+    # see it. A quota refusal that reaches here unclassified is the exact case
+    # that used to terminalize as a success.
+    terminal_failure_cause = resolve_terminal_failure_cause(
+        attempts, error_message=error_message
+    )
+    explicit_terminal_failure_cause = _as_terminal_failure_cause(
+        result.get("terminal_failure_cause")
+    )
+    terminal_failure_cause = explicit_terminal_failure_cause or terminal_failure_cause
+    if terminal_failure_cause is not None:
+        quality_gate_passed = False
     actual_cost_usd = _measured_cost_usd(result)
     cost_savings_usd = (
         max(
@@ -393,7 +411,6 @@ def _response_from_result(
         if status_value == "completed" and quality_gate_passed
         else 0.0
     )
-    attempts = _attempt_records(result)
     return ModelDelegateSkillResponse(
         status=status_value,
         correlation_id=request.correlation_id,
@@ -423,9 +440,7 @@ def _response_from_result(
         failed_acceptance_criteria=tuple(
             _as_str_list(result.get("failed_acceptance_criteria"))
         ),
-        terminal_failure_cause=_as_terminal_failure_cause(
-            result.get("terminal_failure_cause")
-        ),
+        terminal_failure_cause=terminal_failure_cause,
         quality_gates_failed=quality_failures,
         error_message=error_message,
         metrics=ModelDelegateSkillResponseMetrics(
@@ -479,11 +494,22 @@ class HandlerDelegateSkill:
 
     async def handle(
         self, request: ModelDelegateSkillRequest
-    ) -> ModelDelegateSkillResponse:
-        """Dispatch the request and return a typed response.
+    ) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed:
+        """Dispatch the request and return the typed TERMINAL variant.
 
         On any dispatch exception, returns ``status="failed"`` with the error text
         rather than propagating — failed delegations must remain observable.
+
+        OMN-15469: the return value is the contract's ONE terminal for this
+        command (this handler self-publishes nothing; the definition-B wiring
+        owns publication). Which of the contract's two declared terminal events
+        it becomes is selected by the returned CLASS —
+        ``ModelDelegateSkillCompleted`` vs ``ModelDelegateSkillFailed``, both
+        declared in the contract. A bare ``ModelDelegateSkillResponse`` matches
+        neither declaration, and the wiring then falls back to the contract's
+        SUCCESS terminal, which is how a command whose every attempt was
+        refused with HTTP 429 terminalized as completed and reported
+        ``ok=true`` to the caller.
         """
         # OMN-14485: resolve the tenant identity ONCE at request-acceptance and
         # carry it onto the response (and thus the auto-published terminal event
@@ -531,7 +557,7 @@ class HandlerDelegateSkill:
                 response_format=request.response_format,
             )
         except Exception as exc:
-            return ModelDelegateSkillResponse(
+            return ModelDelegateSkillFailed(
                 status="failed",
                 correlation_id=request.correlation_id,
                 task_type=request.task_type,
@@ -539,6 +565,15 @@ class HandlerDelegateSkill:
                 # stamp the resolved tenant so per-tenant failure visibility holds.
                 tenant_id=resolved_tenant_id,
                 error_message=str(exc),
+                # OMN-15469: a dispatch exception is a failure terminal, so it
+                # must carry the FAILED class identity. Returning the base
+                # response here routed hard dispatch failures onto the SUCCESS
+                # terminal by map-miss fallback.
+                terminal_failure_cause=resolve_terminal_failure_cause(
+                    (), error_message=str(exc)
+                ),
             )
 
-        return _response_from_result(request, result, tenant_id=resolved_tenant_id)
+        return delegate_skill_terminal_from_response(
+            _response_from_result(request, result, tenant_id=resolved_tenant_id)
+        )

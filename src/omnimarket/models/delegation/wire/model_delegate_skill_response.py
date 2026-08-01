@@ -4,6 +4,8 @@
 
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from typing import Literal, Self
 from uuid import UUID
 
@@ -219,8 +221,202 @@ class ModelDelegateSkillResponse(BaseModel):
         return self
 
 
+# HTTP 429 / RESOURCE_EXHAUSTED as providers phrase it. Matched only as a
+# FALLBACK, after the typed ``failure_class`` on the attempt ladder: the string
+# match exists because the bus dispatch port reports the provider's raw error
+# text without classifying it, and a quota refusal that reaches the terminal
+# unclassified is exactly the case this ticket exists to stop mislabelling.
+_QUOTA_ERROR_PATTERN = re.compile(
+    r"\b429\b|resource_exhausted|quota exceeded|quota_exceeded|rate limit exceeded",
+    re.IGNORECASE,
+)
+
+
+def resolve_terminal_failure_cause(
+    attempts: Sequence[ModelDelegateSkillAttemptRecord],
+    *,
+    error_message: str = "",
+) -> EnumDelegationTerminalFailureCause | None:
+    """Classify a delegation's terminal failure cause from its attempt ladder.
+
+    Typed evidence first: an attempt whose ``failure_class`` already equals a
+    known enum value is authoritative. Only when no attempt is classified does
+    this fall back to matching the provider's raw error text, so a port that
+    learns to classify its own failures immediately takes precedence over the
+    regex without any change here.
+
+    Returns ``None`` when nothing in the ladder or the outer error names a
+    cause the enum can express — an unclassified failure stays unclassified
+    rather than being coerced into the nearest member.
+    """
+    known = {member.value for member in EnumDelegationTerminalFailureCause}
+    for attempt in attempts:
+        raw = (attempt.failure_class or "").strip().lower()
+        if raw in known:
+            return EnumDelegationTerminalFailureCause(raw)
+    texts = [attempt.error_message for attempt in attempts]
+    texts.append(error_message)
+    if any(text and _QUOTA_ERROR_PATTERN.search(text) for text in texts):
+        return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    return None
+
+
+def _authoritative_attempt_ladder_verdict(
+    response: ModelDelegateSkillResponse,
+) -> bool | None:
+    """Return an attempt-ladder success verdict only when the ladder is complete."""
+    if not response.attempts:
+        return None
+    if response.attempts_count > len(response.attempts):
+        return None
+    return any(attempt.quality_gate_passed for attempt in response.attempts)
+
+
+def _evidence_indicates_success(response: ModelDelegateSkillResponse) -> bool:
+    """Status-independent success evidence for validating failed terminals."""
+    if response.terminal_failure_cause is not None:
+        return False
+    attempt_verdict = _authoritative_attempt_ladder_verdict(response)
+    if attempt_verdict is not None:
+        return attempt_verdict
+    return response.quality_gate_passed
+
+
+def delegate_skill_succeeded(response: ModelDelegateSkillResponse) -> bool:
+    """Resolve the COMPOSITE verdict for a delegation from its own evidence.
+
+    The dispatch port's ``status`` is one input, not the answer. Live on
+    2026-07-29 a command whose every ladder attempt was refused with HTTP 429
+    still reported ``status="completed"`` / ``quality_gate_passed=true``; the
+    honest verdict was already present on the same payload, in the attempt
+    ladder, and nothing consulted it.
+
+    A delegation succeeded only when ALL of these hold:
+
+    * the port reported ``completed`` (a ``failed``/``timeout`` port verdict is
+      never upgraded here — this function can only ever make a verdict worse);
+    * no typed terminal failure cause was classified;
+    * the attempt ladder, WHEN AUTHORITATIVE, contains at least one passing
+      attempt. An empty ladder is not evidence of failure, and neither is an
+      incomplete escalation-history fallback whose ``attempts_count`` says the
+      accepted terminal attempt is not present.
+
+    Deliberately NOT a clause: a bare ``quality_gate_passed=False`` with no
+    ladder and no typed cause. Several dispatch ports simply do not report that
+    field, so treating its absence as a failure would reclassify honest runs
+    that have nothing to do with this defect. Quality-gate semantics on the
+    terminal are OMN-15464's seam, not this one.
+    """
+    if response.status != "completed":
+        return False
+    if response.terminal_failure_cause is not None:
+        return False
+    attempt_verdict = _authoritative_attempt_ladder_verdict(response)
+    if attempt_verdict is False:
+        return False
+    return True
+
+
+class ModelDelegateSkillCompleted(ModelDelegateSkillResponse):
+    """Business-success terminal routed to ``delegate-skill-completed.v1``.
+
+    Class identity — not a payload field — selects the contract's terminal
+    topic: the runtime resolves ``published_events`` by the class name with the
+    ``Model`` prefix removed (``DispatchResultApplier._resolve_mapped_output_topic``).
+    A response that misses that map falls back to the contract's SUCCESS
+    terminal, which is how a 429'd command came to publish
+    ``delegate-skill-completed``.
+    """
+
+    status: Literal["completed"] = Field(default="completed")
+
+    @model_validator(mode="after")
+    def validate_completed_delegation(self) -> Self:
+        """Keep the completed class/topic consistent with the composite verdict."""
+        if not delegate_skill_succeeded(self):
+            msg = (
+                "completed delegation requires no typed terminal failure cause "
+                "and at least one passing attempt when an attempt ladder is "
+                "reported"
+            )
+            raise ValueError(msg)
+        return self
+
+
+class ModelDelegateSkillFailed(ModelDelegateSkillResponse):
+    """Business-failure terminal routed to ``delegate-skill-failed.v1``.
+
+    Carries the same flat payload as the completed variant — only the class
+    identity differs, so downstream projections are unchanged.
+    """
+
+    status: Literal["failed", "timeout"] = Field(default="failed")
+
+    @model_validator(mode="after")
+    def validate_failed_delegation(self) -> Self:
+        """Keep the failed class/topic consistent with the composite verdict."""
+        if _evidence_indicates_success(self):
+            msg = (
+                "failed delegation requires a non-completed status, a typed "
+                "terminal failure cause, or an attempt ladder with no passing "
+                "attempt"
+            )
+            raise ValueError(msg)
+        return self
+
+
+def delegate_skill_terminal_from_response(
+    response: ModelDelegateSkillResponse,
+) -> ModelDelegateSkillCompleted | ModelDelegateSkillFailed:
+    """Return the typed terminal variant for a delegation response.
+
+    Pure boundary conversion. Both variants serialize to the same flat payload
+    the delegation projection already consumes; only the Python class identity
+    selects the contract-owned terminal topic.
+
+    When the composite verdict is negative but the port reported ``completed``,
+    the status is CORRECTED to ``failed`` rather than carried onto the wire —
+    the projection derives ``terminal_ok`` from ``status``, so leaving the
+    port's claim intact would move the lie one hop downstream instead of
+    ending it. The correction is recorded in ``error_message`` when the port
+    left that empty, so the durable row explains itself.
+    """
+    if delegate_skill_succeeded(response):
+        return ModelDelegateSkillCompleted.model_validate(
+            response.model_dump(mode="python")
+        )
+    data = response.model_dump(mode="python")
+    if data.get("status") == "completed":
+        data["status"] = "failed"
+        data["quality_gate_passed"] = False
+        if (
+            data.get("required_quality_bar") is not None
+            and data.get("score_vs_required_bar") is not None
+            and not data.get("failed_acceptance_criteria")
+        ):
+            data["failed_acceptance_criteria"] = (
+                "composite delegate-skill terminal verdict failed",
+            )
+        if not data.get("error_message"):
+            cause = response.terminal_failure_cause
+            data["error_message"] = (
+                f"delegation terminalized as failed: {cause.value}"
+                if cause is not None
+                else (
+                    "delegation terminalized as failed: no attempt in the "
+                    "escalation ladder passed the quality gate"
+                )
+            )
+    return ModelDelegateSkillFailed.model_validate(data)
+
+
 __all__ = [
     "ModelDelegateSkillAttemptRecord",
+    "ModelDelegateSkillCompleted",
+    "ModelDelegateSkillFailed",
     "ModelDelegateSkillResponse",
     "ModelDelegateSkillResponseMetrics",
+    "delegate_skill_succeeded",
+    "delegate_skill_terminal_from_response",
+    "resolve_terminal_failure_cause",
 ]
