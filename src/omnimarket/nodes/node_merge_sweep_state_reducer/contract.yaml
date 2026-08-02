@@ -33,7 +33,6 @@ descriptor:
   timeout_ms: 5000
 
 event_bus:
-  consumer_group: omnimarket.merge_sweep_state_reducer.consume.v1
   subscribe_topics:
     - onex.evt.omnimarket.pr-polish-outcome.v1
   publish_topics:

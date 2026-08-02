@@ -41,7 +41,6 @@ db_io:
       role: estimates
 
 event_bus:
-  consumer_group: local.omnibase_infra.node_projection_savings.consume.v1
   subscribe_topics:
     - onex.evt.omnibase-infra.savings-estimated.v1
     - onex.evt.omnimarket.delegate-skill-completed.v1

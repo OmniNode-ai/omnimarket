@@ -43,7 +43,6 @@ model_routing:
       primary: "conflict_resolver_primary"
 
 event_bus:
-  consumer_group: omnimarket.conflict_hunk_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.pr-conflict-hunk.v1
   publish_topics:

@@ -69,7 +69,6 @@ runtime_dispatch:
     failure: onex.evt.omnimarket.deep-dive-report-failed.v1
 
 event_bus:
-  consumer_group: omnimarket.deep_dive_report_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.deep-dive-report.v1
   publish_topics:

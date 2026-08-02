@@ -51,7 +51,6 @@ execution:
 event_bus:
   subscribe:
     topic: "onex.cmd.omnimarket.dispatch_engine.v1"
-    consumer_group: "omnimarket.skill.dispatch_engine"
   publish:
     success_topic: "onex.evt.omnimarket.dispatch_engine-completed.v1"
     failure_topic: "onex.evt.omnimarket.dispatch_engine-failed.v1"

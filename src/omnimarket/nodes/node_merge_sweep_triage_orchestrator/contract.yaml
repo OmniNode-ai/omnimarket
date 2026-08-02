@@ -47,7 +47,6 @@ descriptor:
 terminal_event: onex.evt.omnimarket.merge-sweep-state-reduced.v1
 
 event_bus:
-  consumer_group: omnimarket.merge_sweep_triage_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.merge-sweep-triage.v1
   publish_topics:

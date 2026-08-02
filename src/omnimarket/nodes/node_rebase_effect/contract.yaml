@@ -31,7 +31,6 @@ descriptor:
     - effects
 
 event_bus:
-  consumer_group: omnimarket.rebase_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.pr-rebase.v1
   publish_topics:

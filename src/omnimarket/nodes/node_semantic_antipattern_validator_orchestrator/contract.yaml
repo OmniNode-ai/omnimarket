@@ -45,7 +45,6 @@ config:
 terminal_event: onex.evt.omnimarket.antipattern-validated.v1
 
 event_bus:
-  consumer_group: omnimarket.semantic_antipattern_validator_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.antipattern-validate.v1
   publish_topics:

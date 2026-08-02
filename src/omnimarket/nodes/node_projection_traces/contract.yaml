@@ -31,7 +31,6 @@ idempotency:
     - correlation_id
 
 event_bus:
-  consumer_group: local.omnibase_infra.node_projection_traces.consume.v1
   subscribe_topics:
     - onex.evt.platform.log-entry.v1
   publish_topics:

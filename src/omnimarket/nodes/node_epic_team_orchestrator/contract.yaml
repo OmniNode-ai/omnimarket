@@ -47,7 +47,6 @@ descriptor:
 terminal_event: onex.evt.omnimarket.epic-team-completed.v1
 
 event_bus:
-  consumer_group: omnimarket.epic_team_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.epic-team-start.v1
   publish_topics:

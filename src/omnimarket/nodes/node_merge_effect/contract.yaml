@@ -71,7 +71,6 @@ outputs:
 terminal_event: onex.evt.omnimarket.merge-complete.v1
 
 event_bus:
-  consumer_group: omnimarket.merge_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.pr-merge.v1
   publish_topics:

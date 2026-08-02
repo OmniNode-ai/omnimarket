@@ -50,7 +50,6 @@ secrets:
     required: true
 
 event_bus:
-  consumer_group: omnimarket.merge_sweep_auto_merge_arm_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.pr-auto-merge-arm.v1
   publish_topics:

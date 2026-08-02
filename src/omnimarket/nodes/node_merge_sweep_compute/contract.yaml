@@ -36,7 +36,6 @@ secrets:
 terminal_event: onex.evt.omnimarket.merge-sweep-completed.v1
 
 event_bus:
-  consumer_group: omnimarket.merge_sweep.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.merge-sweep-start.v1
   publish_topics:

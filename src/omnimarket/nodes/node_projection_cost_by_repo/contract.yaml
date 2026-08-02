@@ -51,7 +51,6 @@ db_io:
       role: cost_by_repo_aggregate
 
 event_bus:
-  consumer_group: local.omnibase_infra.node_projection_cost_by_repo.consume.v1
   subscribe_topics:
     - onex.evt.omnibase-infra.delegation-completed.v1
   publish_topics:

@@ -44,7 +44,6 @@ descriptor:
 terminal_event: onex.evt.omnimarket.adversarial-pipeline-completed.v1
 
 event_bus:
-  consumer_group: omnimarket.adversarial_pipeline_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.adversarial-pipeline-start.v1
   publish_topics:

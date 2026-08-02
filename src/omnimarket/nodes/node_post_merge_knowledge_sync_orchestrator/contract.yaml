@@ -45,7 +45,6 @@ event_bus:
     minor: 0
     patch: 0
 
-  consumer_group: omnimarket.post_merge_knowledge_sync_orchestrator.consume.v1
 
   subscribe_topics:
     - "onex.cmd.omnimarket.post-merge-sync-requested.v1"

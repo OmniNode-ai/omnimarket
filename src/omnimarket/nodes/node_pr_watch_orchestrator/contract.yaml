@@ -61,7 +61,6 @@ pr_watch:
     pending: [pending, unknown]
 
 event_bus:
-  consumer_group: omnimarket.pr_watch_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.pr-watch-start.v1
   publish_topics:

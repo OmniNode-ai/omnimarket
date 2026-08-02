@@ -45,7 +45,6 @@ descriptor:
 terminal_event: onex.evt.omnimarket.ticketing-epic-org-completed.v1
 
 event_bus:
-  consumer_group: omnimarket.ticketing_epic_org_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.ticketing-epic-org-start.v1
   publish_topics:

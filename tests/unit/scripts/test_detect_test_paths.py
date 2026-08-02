@@ -425,3 +425,66 @@ def test_real_existing_root_test_file_also_escalates_not_malformed_path() -> Non
     assert sel.is_full_suite is True
     assert sel.full_suite_reason == EnumFullSuiteReason.CHANGED_TEST_UNNARROWABLE
     assert not any(p.endswith(".py/") for p in sel.selected_paths)
+
+
+def test_contract_change_still_selects_the_repo_wide_gate_dir() -> None:
+    """OMN-15639: narrowing must never drop tests/gates/.
+
+    The consumer-group declaration gate walks every ``src/**/contract.yaml``.
+    Without the ``always_selected_paths`` union, changing one node's
+    ``contract.yaml`` resolves to module ``nodes`` and selects only
+    ``tests/nodes/`` -- the gate would not run, so a re-added
+    ``event_bus.consumer_group`` would merge green on the everyday dev path.
+    This is the RED that wiring closes.
+    """
+    sel = compute_selection(
+        changed_files=[
+            "src/omnimarket/nodes/node_dispatch_worker/contract.yaml",
+        ],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    assert sel.is_full_suite is False, (
+        "fixture drifted -- this test must exercise the NARROWED path, "
+        "otherwise it passes vacuously via full-suite escalation"
+    )
+    assert "tests/gates/" in sel.selected_paths, (
+        "tests/gates/ was narrowed away by a contract-only change; the "
+        "repo-wide consumer-group gate is bypassable on dev PRs. "
+        f"selected={sel.selected_paths}"
+    )
+
+
+def test_always_selected_paths_are_not_dropped_when_missing_on_disk() -> None:
+    """A missing gate dir must reach pytest and fail loudly, not vanish.
+
+    ``_resolve()`` filters mapped paths against the on-disk tree. If
+    ``always_selected_paths`` went through that filter, deleting
+    ``tests/gates/`` would silently remove the gate from every narrowed run
+    instead of erroring -- the exact vacuous-green shape the gate exists to
+    prevent.
+    """
+    from scripts.ci.test_selection_loader import load_adjacency_map
+
+    config = load_adjacency_map(ADJACENCY_PATH)
+    assert config.always_selected_paths, (
+        "always_selected_paths is empty -- the repo-wide gate union is inert"
+    )
+    for path in config.always_selected_paths:
+        assert path.startswith("tests/"), f"{path} is not under tests/"
+        assert path.endswith("/"), f"{path} must be written as a directory"
+
+
+def test_always_selected_paths_not_unioned_into_full_tests_root() -> None:
+    """``tests/`` already contains the gate dir -- do not append a redundant arg."""
+    sel = compute_selection(
+        changed_files=["src/omnimarket/not_a_known_module/thing.py"],
+        adjacency_path=ADJACENCY_PATH,
+        ref_name="jonah/feature",
+        event_name="pull_request",
+        feature_flag_enabled=True,
+    )
+    if sel.is_full_suite is False and sel.selected_paths == ["tests/"]:
+        assert "tests/gates/" not in sel.selected_paths

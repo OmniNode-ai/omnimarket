@@ -34,7 +34,6 @@ idempotency:
     - envelope_id
 
 event_bus:
-  consumer_group: local.omnibase_infra.node_projection_event_chain.consume.v1
   subscribe_topics:
     - onex.evt.platform.log-entry.v1
   publish_topics:

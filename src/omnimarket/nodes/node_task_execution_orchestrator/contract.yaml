@@ -139,7 +139,6 @@ outputs:
 terminal_event: onex.evt.omnimarket.task-execute-completed.v1
 
 event_bus:
-  consumer_group: omnimarket.task-execution.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.task-execute-start.v1
   publish_topics:

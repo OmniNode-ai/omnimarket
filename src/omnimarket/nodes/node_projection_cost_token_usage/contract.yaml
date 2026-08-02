@@ -30,7 +30,6 @@ idempotency:
     - snapshot_timestamp_minute
 
 event_bus:
-  consumer_group: local.omnibase_infra.node_projection_cost_token_usage.consume.v1
   subscribe_topics:
     - onex.evt.omniintelligence.llm-call-completed.v1
   publish_topics:

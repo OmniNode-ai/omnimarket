@@ -57,7 +57,6 @@ db_io:
       role: skill_executions_aggregate
 
 event_bus:
-  consumer_group: local.omnibase_infra.node_projection_skill_executions.consume.v1
   subscribe_topics:
     - onex.evt.omniclaude.skill-started.v1
     - onex.evt.omniclaude.skill-completed.v1

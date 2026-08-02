@@ -40,7 +40,6 @@ descriptor:
     - effects
 
 event_bus:
-  consumer_group: omnimarket.friction_triage_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.friction-triage-start.v1
   publish_topics:

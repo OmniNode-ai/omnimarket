@@ -48,7 +48,6 @@ descriptor:
 terminal_event: onex.evt.omnimarket.multi-agent-workflow-completed.v1
 
 event_bus:
-  consumer_group: omnimarket.multi_agent_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.multi-agent-start.v1
   publish_topics:
