@@ -71,6 +71,104 @@
 -- Idempotent: ADD COLUMN / CREATE INDEX are IF NOT EXISTS, ENABLE/FORCE are
 -- idempotent, the policy is DROP + CREATE, GRANTs are idempotent.
 
+-- Legacy upgrade guard: this tenant/RLS migration may be the first
+-- capability_scores migration a legacy application DB applies. Keep the base
+-- table shape convergent here instead of assuming the preceding node-owned
+-- create migration has already run in every historical ledger shape.
+CREATE TABLE IF NOT EXISTS public.capability_scores (
+    id                      BIGSERIAL        PRIMARY KEY,
+    model_key               TEXT             NOT NULL,
+    task_type               TEXT             NOT NULL,
+    success_count           INT              NOT NULL DEFAULT 0,
+    failure_count           INT              NOT NULL DEFAULT 0,
+    total_count             INT              NOT NULL DEFAULT 0,
+    success_rate            DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    avg_latency_ms          INT              NOT NULL DEFAULT 0,
+    avg_tokens_per_sec      DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    total_cost              DOUBLE PRECISION NOT NULL DEFAULT 0.0,
+    graduated               BOOLEAN          NOT NULL DEFAULT FALSE,
+    last_updated            TIMESTAMPTZ      NOT NULL DEFAULT NOW(),
+    UNIQUE (model_key, task_type)
+);
+
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS id BIGSERIAL;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS model_key TEXT;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS task_type TEXT;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS success_count INT DEFAULT 0;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS failure_count INT DEFAULT 0;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS total_count INT DEFAULT 0;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS success_rate DOUBLE PRECISION DEFAULT 0.0;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS avg_latency_ms INT DEFAULT 0;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS avg_tokens_per_sec DOUBLE PRECISION DEFAULT 0.0;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS total_cost DOUBLE PRECISION DEFAULT 0.0;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS graduated BOOLEAN DEFAULT FALSE;
+ALTER TABLE public.capability_scores ADD COLUMN IF NOT EXISTS last_updated TIMESTAMPTZ DEFAULT NOW();
+
+DO $$
+DECLARE
+    v_col TEXT;
+    v_nulls BIGINT;
+    v_pk_columns TEXT[];
+BEGIN
+    FOREACH v_col IN ARRAY ARRAY[
+        'id', 'model_key', 'task_type', 'success_count', 'failure_count',
+        'total_count', 'success_rate', 'avg_latency_ms',
+        'avg_tokens_per_sec', 'total_cost', 'graduated', 'last_updated'
+    ]
+    LOOP
+        EXECUTE format(
+            'SELECT count(*) FROM %s WHERE %I IS NULL',
+            'public.capability_scores'::regclass,
+            v_col
+        ) INTO v_nulls;
+        IF v_nulls = 0 THEN
+            EXECUTE format(
+                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL',
+                'public.capability_scores'::regclass,
+                v_col
+            );
+        ELSE
+            RAISE EXCEPTION
+                'OMN-15655: cannot converge public.capability_scores.% to NOT NULL -- % pre-existing row(s) hold NULL; operator data mapping required.',
+                v_col, v_nulls;
+        END IF;
+    END LOOP;
+
+    SELECT array_agg(a.attname::text ORDER BY k.ordinality) INTO v_pk_columns
+    FROM pg_constraint c
+    CROSS JOIN LATERAL unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality)
+    JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+    WHERE c.conrelid = 'public.capability_scores'::regclass
+      AND c.contype = 'p';
+
+    IF v_pk_columns IS NULL THEN
+        ALTER TABLE public.capability_scores
+            ADD CONSTRAINT capability_scores_pkey PRIMARY KEY (id);
+    ELSIF v_pk_columns <> ARRAY['id']::text[] THEN
+        RAISE EXCEPTION
+            'OMN-15655: public.capability_scores primary key covers %, expected {id}; operator schema ruling required.',
+            v_pk_columns;
+    END IF;
+END$$;
+
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint c
+        WHERE c.conrelid = 'public.capability_scores'::regclass
+          AND c.contype IN ('p', 'u')
+          AND (
+              SELECT array_agg(a.attname::text ORDER BY k.ordinality)
+              FROM unnest(c.conkey) WITH ORDINALITY AS k(attnum, ordinality)
+              JOIN pg_attribute a ON a.attrelid = c.conrelid AND a.attnum = k.attnum
+          ) = ARRAY['model_key', 'task_type']::text[]
+    ) THEN
+        ALTER TABLE public.capability_scores
+            ADD CONSTRAINT capability_scores_model_key_task_type_key
+            UNIQUE (model_key, task_type);
+    END IF;
+END$$;
+
 ALTER TABLE public.capability_scores
     ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'omninode';
 

@@ -39,13 +39,22 @@ DECLARE
   v_moved   BIGINT := 0;
   v_blocked BIGINT := 0;
   v_row     RECORD;
+  v_state_relation REGCLASS;
 BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM information_schema.tables
-    WHERE table_name = 'delegation_budget_state'
-  ) THEN
+  v_state_relation := to_regclass('delegation_budget_state');
+  IF v_state_relation IS NULL THEN
     RAISE NOTICE 'delegation_budget_state absent; nothing to re-key';
     RETURN;
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_class
+    WHERE oid = v_state_relation
+      AND relkind IN ('r', 'p')
+  ) THEN
+    RAISE EXCEPTION
+      'OMN-15655: delegation_budget_state resolves to %, not a table-like relation',
+      v_state_relation;
   END IF;
 
   WITH moved AS (
