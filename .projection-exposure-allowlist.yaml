@@ -74,3 +74,26 @@ omissions:
       reads it yet. The durable per-tenant identity design (org/tenant model,
       auth-derived resolution, RLS-aware readers) is OMN-14107 — surface this
       column in an exposure when that lands.
+  - node: node_projection_context_roi
+    table: context_roi_scores
+    column: tenant_id
+    reason: >-
+      OMN-15655 / house-tenant ruling 2026-08-02: context_roi_scores is TENANT
+      data, so the column exists to carry the owning tenant (the house tenant
+      by column DEFAULT until customer ingress exists). It is the RLS isolation
+      key, not dashboard data — the omnidash ExperimentsPage reader gets its
+      scoping from the app.tenant_id GUC and the tenant_isolation policy, so
+      returning the raw key would add nothing it is allowed to act on. Same
+      treatment as delegation_events / generation_events / savings_estimates.
+      Surface it when the durable per-tenant identity design (OMN-14107 /
+      OMN-15356) needs a rendered tenant column.
+  - node: node_projection_routing_decision
+    table: agent_routing_decisions
+    column: tenant_id
+    reason: >-
+      OMN-15655 / house-tenant ruling 2026-08-02: a routing decision is made
+      for a specific workload, so agent_routing_decisions is TENANT data and
+      the column carries the owning tenant (the house tenant by column DEFAULT
+      until customer ingress exists). It is the RLS isolation key, not
+      dashboard data — same treatment and same follow-up condition as the
+      context_roi_scores entry above.

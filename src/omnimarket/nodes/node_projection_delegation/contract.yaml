@@ -70,10 +70,19 @@ db_io:
       access: write
       role: generation_events
     - name: delegation_judge_verdict_events
-      # OMN-15423: intentionally unresolved. The topology resolver rejects this
-      # non-existent schema until product semantics establish a real domain.
+      # OMN-15423 planted `schema: unresolved` here deliberately, pending the
+      # product decision on who owns a judge verdict. OPERATOR RULING
+      # 2026-08-02 settled it: judge verdicts are workload-attributable, so
+      # they are TENANT data, and platform-own verdicts are the house tenant's
+      # rows. This relation already carries a tenant_id column (migration 0025)
+      # and a tenant_isolation RLS policy (0026), so the declaration now simply
+      # matches what the table has enforced since OMN-14894 tranche 2.
+      #
+      # This is the ONLY boot-fatal member of the OMN-15655 residual set that
+      # this repo owns: the node declares `runtime_profiles: ["effects"]`, so
+      # `unresolved` hard-failed strict-mode auto-wiring on the effects pod.
       database_ref: application
-      schema: unresolved
+      schema: tenant
       migration: "0016_delegation_judge_verdict_events.sql"
       access: write
       role: judge_verdict_events

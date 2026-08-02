@@ -35,7 +35,10 @@ db_io:
   db_tables:
     - name: llm_cost_aggregates
       database_ref: application
-      schema: public
+      # OMN-15655 / operator ruling 2026-08-02 (house tenant): workload-
+      # attributable rows live in the tenant domain; platform-own workloads
+      # are the house tenant's rows. ADR-0027 classification, not a rename.
+      schema: tenant
       migration: "0001_create_llm_cost_aggregates.sql"
       access: write
       role: cost_summary

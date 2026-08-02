@@ -1,15 +1,6 @@
 {
   "blocked_relations": [
     {
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_delegation/migrations/0016_delegation_judge_verdict_events.sql"
-      ],
-      "current_database": "omnidash_analytics",
-      "kind": "table",
-      "name": "delegation_judge_verdict_events",
-      "reason": "schema 'unresolved' does not resolve through deployment topology"
-    },
-    {
       "authoritative_sources": [],
       "current_database": "omnidash_analytics",
       "kind": "table",
@@ -41,47 +32,11 @@
       "reason": "no authoritative CREATE TABLE migration found"
     },
     {
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_context_roi/migrations/001_create_context_roi_scores.sql"
-      ],
-      "current_database": "omnidash_analytics",
-      "kind": "function",
-      "name": "refresh_context_roi_scores_updated_at",
-      "reason": "schema 'unresolved' does not resolve through deployment topology"
-    },
-    {
       "authoritative_sources": [],
       "current_database": "omnidash_analytics",
       "kind": "table",
       "name": "schema_migrations",
       "reason": "retained live evidence identifies the omnidash filename ledger, but no authoritative repository DDL or owner declaration was found"
-    },
-    {
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_instruction_eval/migrations/0001_create_instruction_eval_aggregate_snapshots.sql"
-      ],
-      "current_database": "omnidash_analytics",
-      "kind": "function",
-      "name": "update_instruction_eval_aggregate_snapshots_updated_at",
-      "reason": "schema 'unresolved' does not resolve through deployment topology"
-    },
-    {
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_cost_summary/migrations/0001_create_llm_cost_aggregates.sql"
-      ],
-      "current_database": "omnidash_analytics",
-      "kind": "function",
-      "name": "update_llm_cost_aggregates_updated_at",
-      "reason": "schema 'unresolved' does not resolve through deployment topology"
-    },
-    {
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_skill_executions/migrations/0001_create_skill_execution_snapshots.sql"
-      ],
-      "current_database": "omnidash_analytics",
-      "kind": "function",
-      "name": "update_skill_execution_snapshots_updated_at",
-      "reason": "schema 'unresolved' does not resolve through deployment topology"
     }
   ],
   "completion_status": "blocked_pending_live_catalog_and_activity_evidence",
@@ -272,11 +227,9 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_context_roi/migrations/001_create_context_roi_scores.sql"
       ],
-      "blocked_reasons": [
-        "schema 'unresolved' does not resolve through deployment topology"
-      ],
+      "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [],
       "current_schema": [
@@ -284,7 +237,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": null,
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -300,7 +253,7 @@
       "partitioning": [],
       "producer": "node_projection_context_roi",
       "readers": [],
-      "target_schema": "unresolved",
+      "target_schema": "tenant",
       "writers": []
     },
     {
@@ -526,11 +479,9 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_instruction_eval/migrations/0001_create_instruction_eval_aggregate_snapshots.sql"
       ],
-      "blocked_reasons": [
-        "schema 'unresolved' does not resolve through deployment topology"
-      ],
+      "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [],
       "current_schema": [
@@ -538,7 +489,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": null,
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -554,7 +505,7 @@
       "partitioning": [],
       "producer": "node_projection_instruction_eval",
       "readers": [],
-      "target_schema": "unresolved",
+      "target_schema": "tenant",
       "writers": []
     },
     {
@@ -564,11 +515,9 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_cost_summary/migrations/0001_create_llm_cost_aggregates.sql"
       ],
-      "blocked_reasons": [
-        "schema 'unresolved' does not resolve through deployment topology"
-      ],
+      "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [],
       "current_schema": [
@@ -576,7 +525,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": null,
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -592,7 +541,7 @@
       "partitioning": [],
       "producer": "node_projection_cost_summary",
       "readers": [],
-      "target_schema": "unresolved",
+      "target_schema": "tenant",
       "writers": []
     },
     {
@@ -602,11 +551,9 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_skill_executions/migrations/0001_create_skill_execution_snapshots.sql"
       ],
-      "blocked_reasons": [
-        "schema 'unresolved' does not resolve through deployment topology"
-      ],
+      "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [],
       "current_schema": [
@@ -614,7 +561,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": null,
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -630,7 +577,7 @@
       "partitioning": [],
       "producer": "node_projection_skill_executions",
       "readers": [],
-      "target_schema": "unresolved",
+      "target_schema": "tenant",
       "writers": []
     },
     {
@@ -827,7 +774,7 @@
       "dependent_objects": [
         "table:capability_scores"
       ],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -843,7 +790,7 @@
       "partitioning": [],
       "producer": "node_canary_score_reducer",
       "readers": [],
-      "target_schema": "public",
+      "target_schema": "tenant",
       "writers": [
         "node_canary_score_reducer"
       ]
@@ -915,7 +862,7 @@
       "dependent_objects": [
         "table:dep_health_findings"
       ],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -931,7 +878,7 @@
       "partitioning": [],
       "producer": "node_projection_dep_health",
       "readers": [],
-      "target_schema": "public",
+      "target_schema": "tenant",
       "writers": [
         "node_projection_dep_health"
       ]
@@ -1307,14 +1254,15 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
       "grants": [],
       "indexes": [
-        "idx_agent_routing_decisions_created_at"
+        "idx_agent_routing_decisions_created_at",
+        "idx_agent_routing_decisions_tenant_id"
       ],
       "internal_tenant_column_transform": null,
       "keys": [
@@ -1333,7 +1281,7 @@
         "node_retention_cleanup",
         "node_session_orchestrator"
       ],
-      "target_schema": "public",
+      "target_schema": "tenant",
       "writers": [
         "node_projection_routing_decision"
       ]
@@ -1711,7 +1659,7 @@
       "dependent_objects": [
         "sequence:capability_scores_id_seq"
       ],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -1719,7 +1667,8 @@
       "grants": [],
       "indexes": [
         "idx_capability_scores_graduated",
-        "idx_capability_scores_model"
+        "idx_capability_scores_model",
+        "idx_capability_scores_tenant_id"
       ],
       "internal_tenant_column_transform": null,
       "keys": [
@@ -1736,7 +1685,7 @@
       "readers": [
         "node_routing_policy_engine"
       ],
-      "target_schema": "public",
+      "target_schema": "tenant",
       "writers": [
         "node_canary_score_reducer"
       ]
@@ -1821,13 +1770,16 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
+        "idx_context_roi_scores_tenant_id",
         "ix_context_roi_scores_run",
         "ix_context_roi_scores_segment_model",
         "ux_context_roi_scores_identity"
@@ -1850,7 +1802,7 @@
         "node_delegation_routing_reducer",
         "node_generation_consumer"
       ],
-      "target_schema": "public",
+      "target_schema": "tenant",
       "writers": [
         "node_projection_context_roi"
       ]
@@ -2104,11 +2056,9 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation/migrations/0016_delegation_judge_verdict_events.sql"
       ],
-      "blocked_reasons": [
-        "schema 'unresolved' does not resolve through deployment topology"
-      ],
+      "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
         "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
@@ -2118,7 +2068,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": null,
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -2144,7 +2094,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation",
       "readers": [],
-      "target_schema": "unresolved",
+      "target_schema": "tenant",
       "writers": [
         "node_projection_delegation"
       ]
@@ -2219,17 +2169,20 @@
       "dependent_objects": [
         "sequence:dep_health_findings_id_seq"
       ],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
         "idx_dep_health_findings_captured_at",
         "idx_dep_health_findings_repo",
         "idx_dep_health_findings_run_id",
-        "idx_dep_health_findings_severity"
+        "idx_dep_health_findings_severity",
+        "idx_dep_health_findings_tenant_id"
       ],
       "internal_tenant_column_transform": null,
       "keys": [
@@ -2244,7 +2197,7 @@
       "partitioning": [],
       "producer": "node_projection_dep_health",
       "readers": [],
-      "target_schema": "public",
+      "target_schema": "tenant",
       "writers": [
         "node_projection_dep_health"
       ]
@@ -2754,15 +2707,18 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
         "idx_instruction_eval_aggregate_snapshots_model",
         "idx_instruction_eval_aggregate_snapshots_task",
+        "idx_instruction_eval_aggregate_snapshots_tenant_id",
         "idx_instruction_eval_aggregate_snapshots_updated_at"
       ],
       "internal_tenant_column_transform": null,
@@ -2778,7 +2734,7 @@
       "partitioning": [],
       "producer": "node_projection_instruction_eval",
       "readers": [],
-      "target_schema": "public",
+      "target_schema": "tenant",
       "writers": [
         "node_projection_instruction_eval"
       ]
@@ -2984,7 +2940,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -2992,6 +2948,7 @@
       "grants": [],
       "indexes": [
         "idx_llm_cost_aggregates_aggregation_key",
+        "idx_llm_cost_aggregates_tenant_id",
         "idx_llm_cost_aggregates_updated_at",
         "idx_llm_cost_aggregates_window"
       ],
@@ -3018,7 +2975,7 @@
         "node_projection_savings",
         "node_projection_session_outcome"
       ],
-      "target_schema": "public",
+      "target_schema": "tenant",
       "writers": [
         "node_projection_cost_summary"
       ]
@@ -3661,7 +3618,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -3673,7 +3630,8 @@
         "idx_patlearn_lifecycle_state",
         "idx_patlearn_pattern_name",
         "idx_patlearn_state_changed_at",
-        "idx_patlearn_updated_at"
+        "idx_patlearn_updated_at",
+        "idx_pattern_learning_artifacts_tenant_id"
       ],
       "internal_tenant_column_transform": null,
       "keys": [
@@ -3691,7 +3649,7 @@
         "node_data_flow_sweep",
         "node_session_orchestrator"
       ],
-      "target_schema": "public",
+      "target_schema": "tenant",
       "writers": [
         "node_projection_pattern_learning"
       ]
@@ -4215,15 +4173,18 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
         "idx_skill_execution_snapshots_skill_name",
         "idx_skill_execution_snapshots_started_count",
+        "idx_skill_execution_snapshots_tenant_id",
         "idx_skill_execution_snapshots_updated_at",
         "idx_skill_execution_snapshots_window"
       ],
@@ -4240,7 +4201,7 @@
       "partitioning": [],
       "producer": "node_projection_skill_executions",
       "readers": [],
-      "target_schema": "public",
+      "target_schema": "tenant",
       "writers": [
         "node_projection_skill_executions"
       ]

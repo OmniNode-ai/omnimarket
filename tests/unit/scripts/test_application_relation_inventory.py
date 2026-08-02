@@ -74,23 +74,34 @@ db_io:
 
 
 def test_named_semantic_ambiguities_remain_fail_closed() -> None:
+    """The still-ambiguous relations stay blocked; the RULED one does not.
+
+    ``delegation_judge_verdict_events`` used to be asserted here as blocked
+    with ``target_schema == "unresolved"``. It was removed from this set by the
+    OPERATOR RULING of 2026-08-02 (house tenant), which answered the exact
+    product question OMN-15423 left open -- "customer ownership of judge
+    verdicts is unresolved" -- with "this is all per tenant", OmniNode included
+    as a first-class house tenant. An operator classification is the ONLY
+    sanctioned way a relation leaves the fail-closed set; the other three are
+    untouched and still fail closed because nothing has ruled on them.
+    """
     payload = _load_generator().build_inventory()
     blocked = {item["name"] for item in payload["blocked_relations"]}
     assert {
-        "delegation_judge_verdict_events",
         "delegation_workflow_state",
         "event_bus_events",
         "schema_migrations",
     } <= blocked
+    assert "delegation_judge_verdict_events" not in blocked
 
     judge = next(
         row
         for row in payload["relations"]
         if row["name"] == "delegation_judge_verdict_events"
     )
-    assert judge["target_schema"] == "unresolved"
-    assert judge["domain"] is None
-    assert judge["classification_status"] == "blocked"
+    assert judge["target_schema"] == "tenant"
+    assert judge["domain"] == "TENANT"
+    assert judge["classification_status"] == "classified"
 
 
 def test_migration_owner_is_distinct_from_additional_accessors() -> None:

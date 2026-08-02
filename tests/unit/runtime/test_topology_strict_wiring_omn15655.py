@@ -110,60 +110,25 @@ _PROFILES: Final[tuple[str, ...]] = tuple(sorted(SUPPORTED_TOPOLOGY_PROFILES))
 _TRACKED_UNRESOLVED_DECLARATIONS: Final[frozenset[tuple[str, str, str, str]]] = (
     frozenset(
         {
-            # OMN-15423 left these nine relations unclassified: the inventory
-            # projected `domain: PUBLIC` straight off the contract's own stale
-            # `schema: public`, and its own completion_status is
-            # "blocked_pending_live_catalog_and_activity_evidence". Classifying
-            # them internal-vs-tenant is a product-semantics decision (several
-            # are cost/ROI relations adjacent to the already-TENANT
-            # `savings_estimates`), and ADR-0027 requires ambiguous relations to
-            # fail closed rather than be guessed. None of them declares a
-            # `descriptor.runtime_profiles`, so none is owned by a deployed
-            # runtime and none is boot-fatal today.
-            ("node_canary_score_reducer", "capability_scores", "application", "public"),
-            (
-                "node_projection_context_roi",
-                "context_roi_scores",
-                "application",
-                "public",
-            ),
-            (
-                "node_projection_cost_summary",
-                "llm_cost_aggregates",
-                "application",
-                "public",
-            ),
-            (
-                "node_projection_dep_health",
-                "dep_health_findings",
-                "application",
-                "public",
-            ),
-            (
-                "node_projection_instruction_eval",
-                "instruction_eval_aggregate_snapshots",
-                "application",
-                "public",
-            ),
-            (
-                "node_projection_pattern_learning",
-                "pattern_learning_artifacts",
-                "application",
-                "public",
-            ),
-            (
-                "node_projection_routing_decision",
-                "agent_routing_decisions",
-                "application",
-                "public",
-            ),
-            (
-                "node_projection_skill_executions",
-                "skill_execution_snapshots",
-                "application",
-                "public",
-            ),
-            # OMN-15655 residual: `omniintelligence` is a genuinely separate,
+            # RETIRED 2026-08-02 -- the nine relations that used to sit here
+            # (eight `application`.`public` placeholders plus
+            # node_projection_delegation's `unresolved` landmine) are gone from
+            # this ratchet because the operator CLASSIFIED them, which is the
+            # only sanctioned way an entry leaves: "this is all per tenant."
+            # All nine now declare `schema: tenant` and resolve on every
+            # profile. See OMN-15655 / OMN-15423 and the house-tenant ruling.
+            #
+            # CORRECTION to the retired comment, which was FALSE for two of the
+            # ten entries: it claimed "None of them declares a
+            # `descriptor.runtime_profiles`, so ... none is boot-fatal today."
+            # `node_projection_delegation` (delegation_judge_verdict_events) and
+            # `node_dispatch_outcome_bridge_effect` (dispatch_eval_results) BOTH
+            # declare `runtime_profiles: [effects]`, so both were strict-mode
+            # boot-fatal on the deployed effects pod, on the onex-dev green
+            # path. The claim held only for the eight PUBLIC placeholders.
+            #
+            # OMN-15668 / OMN-15655 residual: `omniintelligence` is a genuinely
+            # separate,
             # service-owned database (`OMNIINTELLIGENCE_DB_URL`, migration owned
             # by the omniintelligence repo). ADR-0027 keeps independently
             # service-owned databases separate, so the repair is to DECLARE the
@@ -174,16 +139,6 @@ _TRACKED_UNRESOLVED_DECLARATIONS: Final[frozenset[tuple[str, str, str, str]]] = 
                 "dispatch_eval_results",
                 "omniintelligence",
                 "public",
-            ),
-            # Deliberate landmine planted by OMN-15423: the contract carries an
-            # inline comment stating the schema is "intentionally unresolved"
-            # until product semantics establish a real domain. Customer
-            # ownership of judge verdicts is unresolved.
-            (
-                "node_projection_delegation",
-                "delegation_judge_verdict_events",
-                "application",
-                "unresolved",
             ),
         }
     )
