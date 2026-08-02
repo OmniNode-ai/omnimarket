@@ -113,9 +113,11 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
+    ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
     describe_no_higher_tier_available,
     is_free_tier,
     next_eligible_tier,
+    resolve_routing_tiers_path,
     resolve_task_class_max_escalations,
     sibling_backend_available_in_tier,
     tier_max_retries,
@@ -2135,15 +2137,37 @@ class HandlerDelegationWorkflow:
 
     @staticmethod
     def _routing_tiers_hash() -> str | None:
-        """SHA-256 of routing_tiers.yaml for replay determinism."""
-        config_path = (
-            Path(__file__).parent.parent.parent.parent.parent
-            / "configs"
-            / "routing_tiers.yaml"
-        )
-        if not config_path.exists():
+        """SHA-256 of routing_tiers.yaml for replay determinism.
+
+        OMN-15628 (round 3). This previously re-derived the config path with its
+        own ``Path(__file__).parent`` walk — ``.parent`` **x5**, which from
+        ``.../nodes/node_delegation_orchestrator/handlers/`` lands on ``src`` and
+        yields ``src/configs/routing_tiers.yaml``: a path that does not exist in
+        this repo (the one packaged tiers file is ``src/omnimarket/configs/``).
+        It also never read the ``DELEGATION_ROUTING_TIERS_PATH`` env pin that the
+        routing authority treats as binding. Both defects made this return
+        ``None`` unconditionally, nulling the replay-provenance field on every
+        terminal ``ModelDelegationResult``.
+
+        The path is now resolved through the routing authority's own
+        :func:`resolve_routing_tiers_path` (env pin first) with an explicit
+        fallback to the routing authority's own
+        :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH` constant — no ``.parent``
+        arithmetic is re-derived here, so the two surfaces cannot drift again.
+
+        Unlike ``_get_config()``, an unbound key is NOT fatal here: this is a
+        provenance record on a result that has already been produced, so it
+        degrades to hashing the packaged file rather than aborting the workflow.
+        The fail-fast rule-8 refusal stays owned by the config loader.
+        """
+        try:
+            config_path = resolve_routing_tiers_path()
+        except ValueError:
+            config_path = ROUTING_TIERS_PACKAGED_DEFAULT_PATH
+        try:
+            content = config_path.read_bytes()
+        except OSError:
             return None
-        content = config_path.read_bytes()
         return hashlib.sha256(content).hexdigest()
 
     @staticmethod

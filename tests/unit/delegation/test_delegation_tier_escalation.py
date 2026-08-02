@@ -16,6 +16,8 @@ Covers:
 
 from __future__ import annotations
 
+import hashlib
+import os
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -483,9 +485,19 @@ class TestTerminalEventEscalationMetadata:
         # Escalation metadata should be present
         assert result.escalation_count == 0  # No successful escalation happened
         assert result.attempts_count == 1
+        # OMN-15628: this assertion was previously
+        #   `assert (result.routing_tiers_hash is not None
+        #            or result.routing_tiers_hash is None)`
+        # which is a tautology — unfailable by construction — and is exactly why
+        # `_routing_tiers_hash()` returning None unconditionally went unnoticed.
+        # The terminal result must carry the sha256 of the routing_tiers.yaml
+        # bytes the routing authority actually resolved.
+        pinned_tiers = Path(os.environ["DELEGATION_ROUTING_TIERS_PATH"])
+        assert result.routing_tiers_hash is not None
         assert (
-            result.routing_tiers_hash is not None or result.routing_tiers_hash is None
-        )  # May or may not exist depending on config file
+            result.routing_tiers_hash
+            == hashlib.sha256(pinned_tiers.read_bytes()).hexdigest()
+        )
         # OMN-13167: precise terminal reason keyed by the stable token prefix.
         assert result.terminal_failure_reason is not None
         assert result.terminal_failure_reason.startswith("no_higher_tier_available")

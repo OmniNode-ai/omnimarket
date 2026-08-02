@@ -184,7 +184,7 @@ class TestTierConfigFromContractOverlay:
             handler_delegation_routing as routing_module,
         )
 
-        config_path = routing_module._DEFAULT_CONFIG_PATH
+        config_path = routing_module.ROUTING_TIERS_PACKAGED_DEFAULT_PATH
         assert config_path.name == "routing_tiers.yaml"
         assert config_path.exists(), (
             "The canonical tier config must be a contract overlay file, "

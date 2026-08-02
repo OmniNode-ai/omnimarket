@@ -123,7 +123,7 @@ def _clear_lru_caches_and_use_real_routing_tiers(
     # this test exercises), preserving this fixture's original intent.
     monkeypatch.setenv(
         "DELEGATION_ROUTING_TIERS_PATH",
-        str(h._DEFAULT_CONFIG_PATH),
+        str(h.ROUTING_TIERS_PACKAGED_DEFAULT_PATH),
     )
     monkeypatch.delenv("TASK_CLASS_CONTRACT_PATH", raising=False)
 

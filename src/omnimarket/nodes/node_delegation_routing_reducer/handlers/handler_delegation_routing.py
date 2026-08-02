@@ -366,7 +366,14 @@ def _select_model_for_task(
 # a caller/deployment must bind DELEGATION_ROUTING_TIERS_PATH explicitly (rule
 # 8, no invisible env config). Kept as a constant for callers (tests, deploy
 # tooling) that need the canonical packaged path to construct that binding.
-_DEFAULT_CONFIG_PATH = (
+#
+# ``.parent`` x4 from
+# ``src/omnimarket/nodes/node_delegation_routing_reducer/handlers/handler_delegation_routing.py``
+# lands on ``src/omnimarket`` → ``src/omnimarket/configs/routing_tiers.yaml``.
+# Public (not ``_``-prefixed) because the delegation orchestrator's replay
+# provenance hash must reuse THIS constant rather than re-deriving its own
+# ``.parent`` walk — the re-derivation is what OMN-15628 round 3 fixed.
+ROUTING_TIERS_PACKAGED_DEFAULT_PATH = (
     Path(__file__).parent.parent.parent.parent / "configs" / "routing_tiers.yaml"
 )
 
@@ -381,6 +388,31 @@ _DEFAULT_TASK_CLASS_CONTRACT_PATH = (
 _config: ModelDelegationConfig | None = None
 
 
+def resolve_routing_tiers_path() -> Path:
+    """Resolve the ``routing_tiers.yaml`` path the routing authority reads.
+
+    OMN-15628. The SINGLE canonical derivation of this path — every surface that
+    needs to know which tiers file is in force (the config loader below, the
+    delegation orchestrator's replay-provenance ``routing_tiers_hash``) calls
+    THIS function instead of walking ``Path(__file__).parent`` itself. The
+    orchestrator's private re-derivation was off by one ``.parent`` and pointed
+    at a nonexistent ``src/configs/routing_tiers.yaml``, silently nulling the
+    provenance hash; one derivation per shape is the fix.
+
+    Returns:
+        The env-pinned :class:`Path` from ``DELEGATION_ROUTING_TIERS_PATH``.
+
+    Raises:
+        ValueError: If ``DELEGATION_ROUTING_TIERS_PATH`` is unset or blank.
+            There is deliberately no packaged-default fallback here (rule 8 —
+            no invisible env config); callers that cannot fail (provenance
+            recording) fall back to
+            :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH` explicitly.
+    """
+    config_path, _ = resolve_required_path_config("DELEGATION_ROUTING_TIERS_PATH")
+    return config_path
+
+
 def _get_config() -> ModelDelegationConfig:
     global _config
     if _config is None:
@@ -389,9 +421,7 @@ def _get_config() -> ModelDelegationConfig:
         # default here previously let a misconfigured deployment boot on an
         # unpinned tiers file with no attributable cause (rule 8).
         try:
-            config_path, _ = resolve_required_path_config(
-                "DELEGATION_ROUTING_TIERS_PATH"
-            )
+            config_path = resolve_routing_tiers_path()
         except ValueError as exc:
             context = ModelInfraErrorContext.with_correlation(
                 transport_type=EnumInfraTransportType.FILESYSTEM,
