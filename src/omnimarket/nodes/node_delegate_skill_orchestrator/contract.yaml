@@ -121,6 +121,8 @@ allowed_task_types:
   - summarization
   - agent_delegation
   - escalation
+  - documentation
+  - validator_generation
 
 inputs:
   prompt:

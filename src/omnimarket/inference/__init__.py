@@ -33,9 +33,16 @@ from omnimarket.inference.protocol_config import (
     apply_inference_protocol_directives,
     load_inference_protocol_config,
 )
+from omnimarket.inference.task_class_authority import (
+    EnumGatewayExposure,
+    ModelTaskClassAuthority,
+    ModelTaskClassAuthorityEntry,
+    load_task_class_authority,
+)
 
 __all__: list[str] = [
     "AdapterInferenceBridge",
+    "EnumGatewayExposure",
     "EnumModelAvailability",
     "EnumOpenRouterTier",
     "ModelInferenceAdapter",
@@ -44,9 +51,12 @@ __all__: list[str] = [
     "ModelInferenceProtocolConfig",
     "ModelInferenceProtocolProfile",
     "ModelOpenRouterModelConfig",
+    "ModelTaskClassAuthority",
+    "ModelTaskClassAuthorityEntry",
     "apply_inference_protocol",
     "apply_inference_protocol_directives",
     "get_openrouter_models",
     "load_inference_bridge_config_from_env",
     "load_inference_protocol_config",
+    "load_task_class_authority",
 ]

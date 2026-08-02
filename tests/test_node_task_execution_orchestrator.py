@@ -25,6 +25,9 @@ from omnibase_core.enums.enum_check_type import EnumCheckType
 from omnibase_core.models.dispatch.model_dispatch_bus_command import (
     ModelDispatchBusCommand,
 )
+from omnibase_core.models.dispatch.model_dispatch_bus_terminal_result import (
+    ModelDispatchBusTerminalResult,
+)
 from omnibase_core.models.task.model_mechanical_check import ModelMechanicalCheck
 from omnibase_core.models.task.model_task_contract import ModelTaskContract
 
@@ -40,8 +43,24 @@ from omnimarket.nodes.node_task_execution_orchestrator.models.model_task_executi
 
 TOPIC_TASK_EXECUTE_START = "onex.cmd.omnimarket.task-execute-start.v1"
 TOPIC_TASK_EXECUTE_RESPONSE = "onex.evt.omnimarket.task-execute-completed.v1"
+TOPIC_TASK_EXECUTE_FAILED = "onex.evt.omnimarket.task-execute-failed.v1"
 
 _FIXED_GENERATED_AT = datetime(2026, 6, 4, 12, 0, 0, tzinfo=UTC)
+
+
+class _RecordingTaskExecutionPublisher:
+    """Capture the exact Pattern-B terminal publish without a transport mock."""
+
+    def __init__(self) -> None:
+        self.messages: list[tuple[str, bytes | None, bytes]] = []
+
+    async def publish(
+        self,
+        topic: str,
+        key: bytes | None,
+        value: bytes,
+    ) -> None:
+        self.messages.append((topic, key, value))
 
 
 def _sample_contract() -> ModelTaskContract:
@@ -166,6 +185,38 @@ class TestUnsupportedRequests:
                 ),
                 generated_at=_FIXED_GENERATED_AT,
             )
+
+    def test_pattern_b_failure_publishes_typed_terminal_bytes(self) -> None:
+        import asyncio
+
+        correlation_id = uuid4()
+        publisher = _RecordingTaskExecutionPublisher()
+        handler = HandlerTaskExecutionOrchestrator(event_bus=publisher)
+        command = ModelDispatchBusCommand(
+            command_name="task.execute",
+            requester="pytest",
+            payload={},
+            correlation_id=correlation_id,
+            response_topic=TOPIC_TASK_EXECUTE_FAILED,
+            created_at=_FIXED_GENERATED_AT,
+        )
+
+        returned = asyncio.run(
+            handler.process(command.model_dump_json().encode("utf-8"))
+        )
+
+        assert len(publisher.messages) == 1
+        topic, key, published = publisher.messages[0]
+        assert topic == TOPIC_TASK_EXECUTE_FAILED
+        assert key == str(correlation_id).encode("utf-8")
+        terminal = ModelDispatchBusTerminalResult.model_validate_json(published)
+        assert terminal.status == "failed"
+        assert terminal.correlation_id == correlation_id
+        assert terminal.payload is None
+        assert terminal.error_message == (
+            "exactly one of prompt or task_contract must be supplied."
+        )
+        assert returned == published
 
 
 @pytest.mark.unit

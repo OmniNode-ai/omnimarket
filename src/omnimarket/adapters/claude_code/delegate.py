@@ -43,6 +43,8 @@ _ALLOWED_TASK_TYPES = (
     "summarization",
     "agent_delegation",
     "escalation",
+    "documentation",
+    "validator_generation",
 )
 _ALLOWED_SOURCES = ("claude-code", "codex")
 
