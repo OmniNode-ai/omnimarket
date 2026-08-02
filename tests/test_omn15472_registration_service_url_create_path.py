@@ -247,6 +247,99 @@ class TestStateChangeCreatePath:
         assert row["is_active"] is False
 
 
+class TestStateChangeSeededNoClobber:
+    """OMN-15598 AC3/AC4: the missing OMN-15472 seeded-row no-clobber coverage.
+
+    ``test_state_change_does_not_clobber_existing_service_url`` above only
+    seeds ``service_name``/``service_url``/``health_status``/``is_active`` and
+    runs against ``InmemoryDatabaseAdapter``. Before OMN-15598 that adapter's
+    ``upsert`` did a full-row REPLACE on conflict, so that test could not have
+    caught a dropped column it never seeded in the first place -- it proved
+    only that the handler carries ``service_url`` forward explicitly (real,
+    but a different property than "an unnamed column survives the UPSERT").
+    These two tests close that gap: one drives the real constraint-enforcing
+    SqliteDatabaseAdapter (the store whose targeted-column UPDATE semantics
+    the handler's docstring claims), the other is the ticket's exact
+    reproduction against InmemoryDatabaseAdapter, now GREEN post-fix.
+    """
+
+    def test_state_change_preserves_seeded_columns_on_drifted_sqlite_table(
+        self, tmp_path: Path
+    ) -> None:
+        """AC3: seeded pre-existing row through the REAL SqliteDatabaseAdapter.
+
+        Uses the SAME drifted-DDL fixture (``_drifted_registry_db``) the
+        create-path RED above uses -- that fixture is EMPTY by design (see its
+        docstring: seeding first would make the create-path defect
+        disappear). This is a separate seeded upsert on top of it, not an
+        edit to the empty-table fixture or the create-path test.
+        """
+        db = _drifted_registry_db(tmp_path)
+        db.upsert(
+            TABLE,
+            "service_name",
+            {
+                "service_name": "registered-svc",
+                "service_url": "http://registered-svc:9000",
+                "service_type": "effect",
+                "uptime_seconds": 4321,
+                "metadata": '{"node_id": "seed-node"}',
+                "health_status": "healthy",
+            },
+        )
+
+        HANDLER.project_state_change(
+            ModelNodeStateChangeEvent(service_name="registered-svc", new_state="idle"),
+            db,
+        )
+
+        row = _written_row(db)
+        assert row["service_url"] == "http://registered-svc:9000"
+        assert row["service_type"] == "effect"
+        assert row["uptime_seconds"] == 4321
+        assert row["metadata"] == '{"node_id": "seed-node"}'
+        assert row["health_status"] == "idle"
+
+    def test_state_change_does_not_clobber_seeded_service_type_metadata_uptime(
+        self,
+    ) -> None:
+        """AC4: the ticket's exact reproduction, now GREEN.
+
+        Pre-OMN-15598, seeding a row with service_type/metadata/uptime_seconds
+        then calling ``project_state_change``'s exact 6-key row
+        (service_name/service_url/health_status/is_active/updated_at/
+        projected_at) wiped all three via InmemoryDatabaseAdapter's full-row
+        REPLACE, even though the handler docstring claims targeted-update
+        semantics. This is the reproduction from the ticket description,
+        asserted GREEN.
+        """
+        db = InmemoryDatabaseAdapter()
+        db.tables[TABLE] = [
+            {
+                "service_name": "registered-svc",
+                "service_url": "http://registered-svc:9000",
+                "service_type": "effect",
+                "metadata": {"node_id": "seed-node"},
+                "uptime_seconds": 4321,
+                "health_status": "RUNNING",
+                "is_active": True,
+            }
+        ]
+
+        HANDLER.project_state_change(
+            ModelNodeStateChangeEvent(service_name="registered-svc", new_state="idle"),
+            db,
+        )
+
+        row = _written_row(db)
+        assert row["service_url"] == "http://registered-svc:9000"
+        assert row["service_type"] == "effect"
+        assert row["metadata"] == {"node_id": "seed-node"}
+        assert row["uptime_seconds"] == 4321
+        assert row["health_status"] == "idle"
+        assert row["is_active"] is False
+
+
 class TestDriftedShapeFixture:
     """AC6: prove the RED harness is fail-closed and name the schema parity."""
 

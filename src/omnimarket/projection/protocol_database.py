@@ -43,6 +43,19 @@ class InmemoryDatabaseAdapter:
     """In-memory database adapter for testing.
 
     Stores rows in a dict of lists keyed by table name.
+
+    OMN-15598: ``upsert`` performs a TARGETED-COLUMN merge on conflict-key match
+    (``{**existing, **row}``), matching :class:`SqliteDatabaseAdapter.upsert`
+    (``sqlite_database.py:126-128``, ``ON CONFLICT ... DO UPDATE SET`` naming
+    only the incoming columns) and ``PostgresSyncProjectionAdapter.upsert``
+    (``postgres_sync_database.py``, same ``ON CONFLICT`` shape) byte-for-byte.
+    A column present on the stored row but absent from the incoming ``row``
+    dict is left untouched, exactly as it would be on the real stores. Before
+    this fix the adapter did a full-row REPLACE (``rows[i] = row``), silently
+    dropping any pre-existing column the caller didn't name -- the opposite of
+    what every real store does for the same call, which made every no-clobber
+    test written against this double vacuous (see
+    ``tests/test_omn15598_inmemory_upsert_parity.py``).
     """
 
     def __init__(self) -> None:
@@ -71,7 +84,11 @@ class InmemoryDatabaseAdapter:
             if all(
                 key in existing and existing[key] == row[key] for key in conflict_keys
             ):
-                rows[i] = row
+                # Targeted-column merge, NOT a full-row replace (OMN-15598): a
+                # column present on `existing` but absent from `row` keeps its
+                # stored value, matching the real adapters' ON CONFLICT DO
+                # UPDATE SET semantics (which name only the incoming columns).
+                rows[i] = {**existing, **row}
                 self.upsert_count += 1
                 return True
 
