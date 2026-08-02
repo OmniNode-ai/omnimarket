@@ -46,16 +46,24 @@ descriptor:
 terminal_event: onex.evt.omnimarket.deployment-evidence-reduced.v1
 
 db_io:
+  # ADR-0027 assigns "registry, orchestration, evidence, telemetry, baseline,
+  # and operational relations" to the platform-internal domain, and the typed
+  # topology declares exactly three schemas for `application`
+  # (omninode_internal, platform_catalog, tenant). `public` is disallowed by
+  # design — unclassified relations fail closed — so strict-mode auto-wiring
+  # refused these two declarations and killed the runtime-worker boot. The
+  # sibling node_evidence_dashboard_reducer already declares its evidence
+  # relations as application.omninode_internal.
   db_tables:
     - name: deployment_evidence_projection
       database_ref: application
-      schema: public
+      schema: omninode_internal
       migration: "0001_create_deployment_evidence_projection_tables.sql"
       access: write
       role: deployment_evidence
     - name: deployment_readiness_projection
       database_ref: application
-      schema: public
+      schema: omninode_internal
       migration: "0001_create_deployment_evidence_projection_tables.sql"
       access: write
       role: deployment_readiness

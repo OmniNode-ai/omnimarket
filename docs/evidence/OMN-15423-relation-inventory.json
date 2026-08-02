@@ -2268,7 +2268,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "OMNINODE_INTERNAL",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -2279,7 +2279,12 @@
         "idx_deployment_evidence_projection_ticket",
         "idx_deployment_evidence_projection_updated_at"
       ],
-      "internal_tenant_column_transform": null,
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
       "keys": [
         "PRIMARY KEY (deployment_id)"
       ],
@@ -2291,7 +2296,7 @@
       "partitioning": [],
       "producer": "node_deployment_evidence_reducer",
       "readers": [],
-      "target_schema": "public",
+      "target_schema": "omninode_internal",
       "writers": [
         "node_deployment_evidence_reducer"
       ]
@@ -2315,7 +2320,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "OMNINODE_INTERNAL",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -2325,7 +2330,12 @@
         "idx_deployment_readiness_projection_readiness",
         "idx_deployment_readiness_projection_updated_at"
       ],
-      "internal_tenant_column_transform": null,
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
       "keys": [
         "PRIMARY KEY (deployment_id)"
       ],
@@ -2337,7 +2347,7 @@
       "partitioning": [],
       "producer": "node_deployment_evidence_reducer",
       "readers": [],
-      "target_schema": "public",
+      "target_schema": "omninode_internal",
       "writers": [
         "node_deployment_evidence_reducer"
       ]
