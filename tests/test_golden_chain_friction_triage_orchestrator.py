@@ -67,7 +67,9 @@ def test_contract_declares_event_bus_surfaces() -> None:
         }
     ]
     eb = raw["event_bus"]
-    assert eb["consumer_group"] == "omnimarket.friction_triage_orchestrator.consume.v1"
+    assert "consumer_group" not in eb, (
+        "OMN-15639: event_bus.consumer_group is seam-deleted. The group name is derived from node identity via compute_consumer_group_id(), never declared."
+    )
     assert "onex.cmd.omnimarket.friction-triage-start.v1" in eb["subscribe_topics"]
     assert "onex.evt.omnimarket.friction-triage-completed.v1" in eb["publish_topics"]
     assert "onex.dlq.omnimarket.friction-triage.v1" in eb["dlq_topics"]

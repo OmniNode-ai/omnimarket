@@ -99,7 +99,9 @@ def test_event_bus_subscribes_canonical_log_source() -> None:
         "must subscribe to the canonical platform log-entry bus source"
     )
     assert event_bus["publish_topics"], "must publish a chain-applied snapshot event"
-    assert event_bus["consumer_group"]
+    assert "consumer_group" not in event_bus, (
+        "OMN-15639: event_bus.consumer_group is seam-deleted. The group name is derived from node identity via compute_consumer_group_id(), never declared."
+    )
 
 
 def test_contract_declares_db_io_write_so_runtime_wires_materialization() -> None:

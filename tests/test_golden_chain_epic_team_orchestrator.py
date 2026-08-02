@@ -85,7 +85,9 @@ def test_epic_team_orchestrator_contract_event_bus() -> None:
     raw = _contract()
     eb = raw["event_bus"]
 
-    assert eb["consumer_group"] == "omnimarket.epic_team_orchestrator.consume.v1"
+    assert "consumer_group" not in eb, (
+        "OMN-15639: event_bus.consumer_group is seam-deleted. The group name is derived from node identity via compute_consumer_group_id(), never declared."
+    )
     assert "onex.cmd.omnimarket.epic-team-start.v1" in eb["subscribe_topics"]
     assert "onex.evt.omnimarket.epic-team-completed.v1" in eb["publish_topics"]
     assert "onex.evt.omnimarket.epic-team-wave-dispatched.v1" in eb["publish_topics"]
