@@ -113,11 +113,9 @@ from omnimarket.nodes.node_delegation_quality_gate_reducer.models.model_quality_
 )
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     NO_HIGHER_TIER_REASON_TOKEN,
-    ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
     describe_no_higher_tier_available,
     is_free_tier,
     next_eligible_tier,
-    resolve_routing_tiers_path,
     resolve_task_class_max_escalations,
     sibling_backend_available_in_tier,
     tier_max_retries,
@@ -135,6 +133,10 @@ from omnimarket.routing.model_escalation_decision_request import (
 )
 from omnimarket.routing.model_escalation_decision_result import (
     ModelEscalationDecisionResult,
+)
+from omnimarket.routing.routing_tiers_path import (
+    ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
+    resolve_routing_tiers_path,
 )
 
 # OMN-13215: the shelled ``cli_agents`` tier was removed. Every tier — including
