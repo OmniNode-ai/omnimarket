@@ -2151,11 +2151,13 @@ class HandlerDelegationWorkflow:
         ``None`` unconditionally, nulling the replay-provenance field on every
         terminal ``ModelDelegationResult``.
 
-        The path is now resolved through the routing authority's own
+        The path is now resolved through the shared, non-node
+        :mod:`omnimarket.routing.routing_tiers_path` —
         :func:`resolve_routing_tiers_path` (env pin first) with an explicit
-        fallback to the routing authority's own
-        :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH` constant — no ``.parent``
-        arithmetic is re-derived here, so the two surfaces cannot drift again.
+        fallback to :data:`ROUTING_TIERS_PACKAGED_DEFAULT_PATH`. That module is
+        the single derivation this surface and the routing authority both read,
+        so no ``.parent`` arithmetic is re-derived here and the two cannot
+        drift again.
 
         Unlike ``_get_config()``, an unbound key is NOT fatal here: this is a
         provenance record on a result that has already been produced, so it

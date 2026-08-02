@@ -33,7 +33,7 @@ import pytest
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     HandlerDelegationWorkflow,
 )
-from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+from omnimarket.routing.routing_tiers_path import (
     ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
     resolve_routing_tiers_path,
 )
@@ -105,9 +105,11 @@ class TestRoutingTiersHashResolvesRealBytes:
 
         Provenance recording must not abort a result that has already been
         produced, so — unlike the config loader's rule-8 refusal — this surface
-        falls back. The fallback target is the routing authority's own
-        ``ROUTING_TIERS_PACKAGED_DEFAULT_PATH`` constant, which is what makes the
-        ``.parent``-arithmetic drift this ticket fixed impossible to reintroduce.
+        falls back. The fallback target is the shared
+        ``omnimarket.routing.routing_tiers_path.ROUTING_TIERS_PACKAGED_DEFAULT_PATH``
+        constant — the same one the routing authority reads — which is what makes
+        the ``.parent``-arithmetic drift this ticket fixed impossible to
+        reintroduce.
         """
         monkeypatch.delenv("DELEGATION_ROUTING_TIERS_PATH", raising=False)
 

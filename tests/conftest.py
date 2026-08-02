@@ -166,7 +166,7 @@ def _ensure_delegation_routing_tiers_path(monkeypatch: pytest.MonkeyPatch) -> No
     setup and therefore wins.
     """
     if not os.environ.get("DELEGATION_ROUTING_TIERS_PATH"):
-        from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+        from omnimarket.routing.routing_tiers_path import (
             ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
         )
 

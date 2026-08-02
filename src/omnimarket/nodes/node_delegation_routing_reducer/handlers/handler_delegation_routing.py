@@ -83,10 +83,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model im
     ModelTierModel,
 )
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
-from omnimarket.routing.routing_tiers_path import (
-    ROUTING_TIERS_PACKAGED_DEFAULT_PATH,  # noqa: F401 - compatibility re-export
-    resolve_routing_tiers_path,
-)
+from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 
 _logger = logging.getLogger(__name__)
 
@@ -362,6 +359,14 @@ def _select_model_for_task(
 
     return None
 
+
+# OMN-15628: the canonical routing_tiers.yaml location and its env-pinned
+# resolver live in the SHARED, non-node module
+# ``omnimarket.routing.routing_tiers_path`` (imported above), not here. Both
+# this routing authority and the delegation orchestrator's replay-provenance
+# hash read that one derivation, so neither node imports the other's handler
+# package and the two cannot drift apart again — an orchestrator copy that
+# walked one ``.parent`` too far is the defect round 3 fixed.
 
 _DEFAULT_TASK_CLASS_CONTRACT_PATH = (
     Path(__file__).parent.parent.parent.parent
