@@ -330,11 +330,37 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX Build Loop"
-  # OpenRouter cheap-frontier-direct — Qwen3 Coder 480B (free tier, OMN-12492)
+  # OpenRouter cheap-frontier-direct — free frontier-class model (OMN-12492;
+  # slug repointed OMN-15638).
+  #
+  # OMN-15638: backend_id is a STABLE SEAM KEY, deliberately NOT renamed with the
+  # slug. routing_tiers.yaml, generated_llm_routing_constants.py, the model
+  # registry, and ~20 tests bind this literal; it names the RUNG (cheap frontier
+  # direct), not the vendor model. Renaming it is a separate, wider change.
   - backend_id: openrouter-qwen3-coder-480b
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
-    model_name: "qwen/qwen3-coder:free"
+    # OMN-15638: was "qwen/qwen3-coder:free". OpenRouter RETIRED that slug to
+    # paid-only; it returns a permanent HTTP 404 — verbatim body: "This model is
+    # unavailable for free. The paid version is available now - use this slug
+    # instead: qwen/qwen3-coder" — and it is absent from GET /api/v1/models
+    # entirely. Not a credential defect (key resolves, len 73).
+    #
+    # Repointed to the strongest FREE model live in the catalog on 2026-08-01,
+    # per operator ruling R9-amended: stay free, do NOT adopt the paid slug.
+    # NVIDIA Nemotron 3 Ultra — 550B total / 55B active hybrid Mamba-Transformer
+    # MoE, self-described open frontier-reasoning + orchestration model, 1M
+    # context, native tool-calling. Closest capability analog to the retired
+    # 480B coder and the largest free model OpenRouter serves.
+    #
+    # COST: genuinely free — the provider's own usage accounting returned
+    # "cost": 0 on the liveness probe, so routing_tiers.yaml's
+    # cost_per_1k_tokens: 0.0 / cost_type: free_local stay TRUE (no silent-paid
+    # regression of OMN-14224/14225). CAVEAT: free tier is rate-limited (429)
+    # and carries NO SLA — the retired slug was itself 429-throttled for a week
+    # in July (see tests/unit/delegation/graded_ladder/recorded_rung_outputs.json).
+    # Zero cost is paid for in availability, not dollars.
+    model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
     secret_ref: llm.openrouter.api_key
     # OMN-13943: canonical ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with
     # underscore); this was OPENROUTER_API_KEY (no underscore, never resolves
@@ -343,10 +369,16 @@ backends:
     # rename is load-bearing, not just documentation.
     api_key_env: OPEN_ROUTER_API_KEY
     tier: cheap_frontier
-    # OMN-13170: 64k-output coder backend — align the timeout to the budget
+    # OMN-13170: 64k-output frontier backend — align the timeout to the budget
     # (300000 ms); 120s was short for full 64k generations.
     timeout_ms: 300000
-    # OMN-13161: Qwen3 Coder 480B serves a 256k context window; 64k output budget.
+    # OMN-13161 / OMN-15638: 64k output budget, unchanged across the repoint —
+    # Nemotron 3 Ultra's live top_provider.max_completion_tokens is exactly
+    # 65536, so this ceiling is still the provider's, not an arbitrary cap. Its
+    # context window is 1,000,000 tokens (up from the retired slug's 262,144);
+    # routing_tiers.yaml still declares max_context_tokens: 262144, which is now
+    # a conservative UNDERSTATEMENT, not a false claim. Deliberately left
+    # untouched to stay off OMN-15630's live use_for edits in that same block.
     max_tokens: 65536
     capabilities:
       - code_generation

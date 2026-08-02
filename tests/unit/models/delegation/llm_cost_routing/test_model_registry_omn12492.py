@@ -130,8 +130,28 @@ class TestOmn12492OpenRouterCheapFrontier:
         model = registry.get_model("openrouter-qwen3-coder-480b")
         assert model.provider == "openrouter"
         assert model.endpoint_env == "OPENROUTER_URL"
-        assert model.model_name == "qwen/qwen3-coder:free"
+        # OMN-15638: repointed from the RETIRED qwen/qwen3-coder:free (permanent
+        # HTTP 404, absent from the live OpenRouter catalog) to the strongest
+        # FREE model live in the catalog. The model_id stays
+        # openrouter-qwen3-coder-480b — it is a stable seam key naming the rung.
+        assert model.model_name == "nvidia/nemotron-3-ultra-550b-a55b:free"
         assert model.requires_api_key_env == "OPENROUTER_API_KEY"
+
+    def test_openrouter_cheap_frontier_slug_is_free_tier(self, registry) -> None:  # type: ignore[no-untyped-def]
+        """The cheap_frontier slug must stay a ``:free`` variant.
+
+        OMN-15638 / ruling R9-amended: this rung exists to be a capable model at
+        ZERO marginal cost. Silently repointing it at a metered slug while
+        pricing stays 0.00/0.00 is the never-silent-paid regression OMN-14224 /
+        OMN-14225 closed. Repointing to a paid slug is allowed only together
+        with truthful pricing here and in routing_tiers.yaml — which reddens
+        this test first, on purpose.
+        """
+        model = registry.get_model("openrouter-qwen3-coder-480b")
+        assert model.model_name.endswith(":free"), (
+            f"cheap_frontier slug {model.model_name!r} is not a free variant, "
+            "but the registry still declares 0.00/0.00 zero_marginal_api_cost"
+        )
 
     def test_openrouter_qwen3_coder_480b_zero_cost(self, registry) -> None:  # type: ignore[no-untyped-def]
         """Free tier model — zero marginal API cost."""
@@ -141,8 +161,10 @@ class TestOmn12492OpenRouterCheapFrontier:
         assert model.cost_basis == EnumCostBasis.ZERO_MARGINAL_API_COST
 
     def test_openrouter_qwen3_coder_480b_context_window(self, registry) -> None:  # type: ignore[no-untyped-def]
+        # OMN-15638: 1M, the live context_length of the repointed free model
+        # (was 262144 under the retired qwen/qwen3-coder:free).
         model = registry.get_model("openrouter-qwen3-coder-480b")
-        assert model.context_window == 262144
+        assert model.context_window == 1000000
 
 
 @pytest.mark.unit
