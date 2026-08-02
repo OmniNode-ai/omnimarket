@@ -264,7 +264,7 @@ class TestLoadBifrostDelegationConfigNeitherPathBound:
         assert "BIFROST_CONTRACT_PATH" in message
         assert "BIFROST_OVERLAY_PATH" in message
 
-    def test_config_path_alone_still_uses_packaged_overlay_default(
+    def test_config_path_alone_does_not_refuse(
         self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
     ) -> None:
         """Either binding alone remains sufficient — refusal is only on the
@@ -293,6 +293,50 @@ class TestLoadBifrostDelegationConfigNeitherPathBound:
             "local-qwen-coder-30b",
             "future-backend",
         }
+
+    def test_config_path_alone_does_not_merge_default_overlay(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ) -> None:
+        """OMN-15628 remediation (seam-divergence finding): an explicit
+        ``config_path`` with NO explicit ``overlay_path`` must NOT pick up the
+        packaged default overlay (``~/.omninode/delegation/bifrost_overrides.
+        yaml``), even when a real file exists there.
+
+        Before this remediation, ``handler_delegation_routing._load_bifrost_
+        endpoints()`` special-cased this combination with a local sentinel
+        overlay path so a deployed pod's explicit contract binding could never
+        pick up an incidental local dev-machine overlay file — but
+        ``handler_generation_consumer._resolve_bifrost_backend()`` passed
+        ``overlay_path=None`` straight through and DID pick up whatever
+        happened to be at the default overlay location. Two callers of this
+        same loader resolved DIFFERENT endpoints for the same backend_id given
+        identical env. This test proves the rule now lives in the loader
+        itself (the single locus) by planting a REAL, distinguishing overlay
+        file at the (monkeypatched) default path and proving its content is
+        NOT merged when only ``config_path`` is explicit.
+        """
+        import omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation as loader_module
+
+        stray_default_overlay = tmp_path / "incidental-dev-machine-overlay.yaml"
+        stray_default_overlay.write_text(
+            "backends:\n"
+            "  - backend_id: local-qwen-coder-30b\n"
+            '    endpoint_url: "https://INCIDENTAL-DEV-MACHINE-OVERLAY.test:9999"\n'
+        )
+        monkeypatch.setattr(
+            loader_module, "_DEFAULT_OVERLAY_PATH", stray_default_overlay
+        )
+        config_path = tmp_path / "bifrost_delegation.yaml"
+        config_path.write_text(_DEFAULT_CONTRACT)
+
+        config = load_bifrost_delegation_config(
+            config_path=config_path, overlay_path=None
+        )
+
+        by_id = {backend.backend_id: backend for backend in config.backends}
+        # The packaged/explicit config's own (empty) endpoint_url must survive
+        # untouched — the stray default-overlay file must never be read.
+        assert by_id["local-qwen-coder-30b"].endpoint_url == ""
 
     def test_overlay_path_alone_uses_packaged_config_default(
         self, tmp_path: Path

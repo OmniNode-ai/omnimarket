@@ -490,21 +490,18 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     # cloud escalation impossible to diagnose. We now emit structured evidence
     # and re-raise as a configuration error so the failure is attributable.
     try:
-        # OMN-15628: no packaged-default fallback when NEITHER binding is set.
-        # ``load_bifrost_delegation_config`` (the single canonical loader
-        # locus, shared with the generation consumer's ``_resolve_bifrost_backend``)
-        # now refuses when it resolves neither a contract path nor an overlay
-        # path — this call site no longer duplicates that check. Either
-        # binding alone remains sufficient (the loader's own default still
-        # legitimately supplies the other half — e.g. a contract override
-        # with no overlay is a valid standalone-install shape); when a
-        # contract override IS bound but no overlay override is, point the
-        # overlay at a deliberately nonexistent sentinel path rather than the
-        # loader's own ``~/.omninode/...`` default — a deployed pod's
-        # explicit contract binding should never pick up an incidental local
-        # dev-machine overlay file.
-        if contract_override is not None and overlay_override is None:
-            overlay_override = Path("__omnimarket_no_bifrost_overlay__.yaml")
+        # OMN-15628: no packaged-default fallback when NEITHER binding is set,
+        # AND (remediation round) no incidental dev-machine default-overlay
+        # pickup when a contract override IS bound but no overlay override
+        # is. ``load_bifrost_delegation_config`` (the single canonical loader
+        # locus, shared with the generation consumer's
+        # ``_resolve_bifrost_backend``) now enforces BOTH rules directly —
+        # this call site passes the two resolved overrides straight through
+        # with no per-caller special-casing, so it cannot drift from the
+        # generation consumer's call site again (the seam-divergence finding:
+        # this call site previously substituted a local sentinel overlay path
+        # that the generation consumer's call site did not, so the two
+        # callers resolved DIFFERENT overlays given identical env bindings).
         config = load_bifrost_delegation_config(
             config_path=contract_override,
             overlay_path=overlay_override,
