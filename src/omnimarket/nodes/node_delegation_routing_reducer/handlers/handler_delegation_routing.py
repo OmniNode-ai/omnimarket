@@ -64,7 +64,6 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
 from omnimarket.inference.delegation_config_provenance import (
     resolve_optional_path_config,
     resolve_path_config,
-    resolve_required_path_config,
 )
 from omnimarket.inference.secret_store_resolver import api_key_ref_available
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
@@ -84,6 +83,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model im
     ModelTierModel,
 )
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
+from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 
 _logger = logging.getLogger(__name__)
 
@@ -360,15 +360,13 @@ def _select_model_for_task(
     return None
 
 
-# OMN-15628: this is the single canonical routing_tiers.yaml location (the
-# diverged omnibase_infra copy was deleted; this repo's packaged copy is the
-# only source of truth). ``_get_config()`` no longer defaults to it silently —
-# a caller/deployment must bind DELEGATION_ROUTING_TIERS_PATH explicitly (rule
-# 8, no invisible env config). Kept as a constant for callers (tests, deploy
-# tooling) that need the canonical packaged path to construct that binding.
-_DEFAULT_CONFIG_PATH = (
-    Path(__file__).parent.parent.parent.parent / "configs" / "routing_tiers.yaml"
-)
+# OMN-15628: the canonical routing_tiers.yaml location and its env-pinned
+# resolver live in the SHARED, non-node module
+# ``omnimarket.routing.routing_tiers_path`` (imported above), not here. Both
+# this routing authority and the delegation orchestrator's replay-provenance
+# hash read that one derivation, so neither node imports the other's handler
+# package and the two cannot drift apart again — an orchestrator copy that
+# walked one ``.parent`` too far is the defect round 3 fixed.
 
 _DEFAULT_TASK_CLASS_CONTRACT_PATH = (
     Path(__file__).parent.parent.parent.parent
@@ -389,9 +387,7 @@ def _get_config() -> ModelDelegationConfig:
         # default here previously let a misconfigured deployment boot on an
         # unpinned tiers file with no attributable cause (rule 8).
         try:
-            config_path, _ = resolve_required_path_config(
-                "DELEGATION_ROUTING_TIERS_PATH"
-            )
+            config_path = resolve_routing_tiers_path()
         except ValueError as exc:
             context = ModelInfraErrorContext.with_correlation(
                 transport_type=EnumInfraTransportType.FILESYSTEM,

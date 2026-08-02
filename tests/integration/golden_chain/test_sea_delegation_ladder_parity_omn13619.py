@@ -180,11 +180,9 @@ class TestTierConfigFromContractOverlay:
     """
 
     def test_routing_tiers_yaml_is_the_tier_config_authority(self) -> None:
-        from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
-            handler_delegation_routing as routing_module,
-        )
+        from omnimarket.routing import routing_tiers_path
 
-        config_path = routing_module._DEFAULT_CONFIG_PATH
+        config_path = routing_tiers_path.ROUTING_TIERS_PACKAGED_DEFAULT_PATH
         assert config_path.name == "routing_tiers.yaml"
         assert config_path.exists(), (
             "The canonical tier config must be a contract overlay file, "
