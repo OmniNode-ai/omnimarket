@@ -72,7 +72,9 @@ def test_event_bus_wires_log_source_and_snapshot_publish() -> None:
     assert any("trace" in topic for topic in event_bus["publish_topics"]), (
         "must publish a trace snapshot event topic"
     )
-    assert event_bus["consumer_group"]
+    assert "consumer_group" not in event_bus, (
+        "OMN-15639: event_bus.consumer_group is seam-deleted. The group name is derived from node identity via compute_consumer_group_id(), never declared."
+    )
 
 
 def test_node_is_discoverable_as_entry_point() -> None:

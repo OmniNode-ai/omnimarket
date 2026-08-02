@@ -67,7 +67,6 @@ descriptor:
 terminal_event: onex.evt.omnimarket.pr-review-bot-completed.v1
 
 event_bus:
-  consumer_group: omnimarket.pr_review_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.pr-review-bot-start.v1
   publish_topics:

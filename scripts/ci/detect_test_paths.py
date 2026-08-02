@@ -167,6 +167,14 @@ def compute_selection(
     selected = _resolve(changed_files, config, repo_root=root)
     if not selected:
         selected = ["tests/"]
+    # OMN-15639: repo-wide gates are unioned in after narrowing. They assert
+    # invariants over files the adjacency map cannot attribute to a single
+    # module (all of src/**/contract.yaml, for instance), so a narrowed run
+    # that omits them would let the invariant be reintroduced on the everyday
+    # dev path. Not filtered against the on-disk tree -- see the field
+    # docstring on ModelAdjacencyMap.always_selected_paths.
+    if not any(path == TEST_PREFIX for path in selected):
+        selected = sorted(set(selected) | set(config.always_selected_paths))
     split_count = _split_count_for(selected)
 
     return ModelTestSelection(

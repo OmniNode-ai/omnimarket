@@ -103,9 +103,8 @@ def test_contract_declares_event_bus_surfaces() -> None:
         }
     ]
     eb = raw["event_bus"]
-    assert (
-        eb["consumer_group"]
-        == "omnimarket.adversarial_pipeline_orchestrator.consume.v1"
+    assert "consumer_group" not in eb, (
+        "OMN-15639: event_bus.consumer_group is seam-deleted. The group name is derived from node identity via compute_consumer_group_id(), never declared."
     )
     assert "onex.cmd.omnimarket.adversarial-pipeline-start.v1" in eb["subscribe_topics"]
     assert (

@@ -48,7 +48,6 @@ db_io:
       role: roi_snapshots
 
 event_bus:
-  consumer_group: local.omnimarket.node_projection_baselines_roi.consume.v1
   subscribe_topics:
     - onex.evt.omnibase-infra.baselines-computed.v1
   publish_topics:

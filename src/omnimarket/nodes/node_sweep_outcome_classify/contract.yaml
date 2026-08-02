@@ -35,7 +35,6 @@ descriptor:
   timeout_ms: 1000
 
 event_bus:
-  consumer_group: omnimarket.sweep_outcome_classify.consume.v1
   subscribe_topics:
     - onex.evt.omnimarket.pr-auto-merge-armed.v1
     - onex.evt.omnimarket.pr-rebase-completed.v1

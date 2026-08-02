@@ -57,7 +57,6 @@ execution:
 event_bus:
   subscribe:
     topic: "onex.cmd.omnimarket.overseer_verify.v1"
-    consumer_group: "omnimarket.skill.overseer_verify"
   publish:
     success_topic: "onex.evt.omnimarket.overseer_verify-completed.v1"
     failure_topic: "onex.evt.omnimarket.overseer_verify-failed.v1"

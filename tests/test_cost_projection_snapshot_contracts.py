@@ -50,7 +50,7 @@ CASES = [
         "handler_class",
         "subscribe_topics",
         "publish_topic",
-        "consumer_group",
+        "_consumer_group",
         "model_name",
     ),
     CASES,
@@ -61,7 +61,7 @@ def test_cost_projection_contract_declares_snapshot_topics(
     handler_class: str,
     subscribe_topics: list[str],
     publish_topic: str,
-    consumer_group: str,
+    _consumer_group: str,
     model_name: str,
 ) -> None:
     contract_path = ROOT / node_name / "contract.yaml"
@@ -73,7 +73,9 @@ def test_cost_projection_contract_declares_snapshot_topics(
     assert contract["handler"]["class"] == handler_class
     assert contract["event_bus"]["subscribe_topics"] == subscribe_topics
     assert contract["event_bus"]["publish_topics"] == [publish_topic]
-    assert contract["event_bus"]["consumer_group"] == consumer_group
+    assert "consumer_group" not in contract["event_bus"], (
+        "OMN-15639: event_bus.consumer_group is seam-deleted. The group name is derived from node identity via compute_consumer_group_id(), never declared."
+    )
     assert contract["handler_routing"]["routing_strategy"] == "payload_type_match"
     assert contract["idempotency"] == {
         "enabled": True,

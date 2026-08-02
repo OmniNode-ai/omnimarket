@@ -238,9 +238,8 @@ class TestSavingsProjection:
             "onex.evt.omnimarket.delegate-skill-failed.v1"
             in contract["event_bus"]["subscribe_topics"]
         )
-        assert (
-            contract["event_bus"]["consumer_group"]
-            == "local.omnibase_infra.node_projection_savings.consume.v1"
+        assert "consumer_group" not in contract["event_bus"], (
+            "OMN-15639: event_bus.consumer_group is seam-deleted. The group name is derived from node identity via compute_consumer_group_id(), never declared."
         )
 
     def test_migration_declares_handler_schema(self) -> None:

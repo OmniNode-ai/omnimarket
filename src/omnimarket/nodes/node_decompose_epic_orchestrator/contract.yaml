@@ -40,7 +40,6 @@ descriptor:
 terminal_event: onex.evt.omnimarket.epic-decomposed.v1
 
 event_bus:
-  consumer_group: omnimarket.decompose_epic_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.decompose-epic.v1
   publish_topics:

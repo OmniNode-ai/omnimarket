@@ -265,9 +265,8 @@ class TestContextRoiContractWiring:
         # The failed terminal must also be consumed so failed runs are projected
         # instead of wedging the N-arm battery with zero usable rows (OMN-13645).
         assert RUNNER_FAILED_TERMINAL_TOPIC in contract["event_bus"]["subscribe_topics"]
-        assert (
-            contract["event_bus"]["consumer_group"]
-            == "local.omnimarket.node_projection_context_roi.consume.v1"
+        assert "consumer_group" not in contract["event_bus"], (
+            "OMN-15639: event_bus.consumer_group is seam-deleted. The group name is derived from node identity via compute_consumer_group_id(), never declared."
         )
         # OMN-14535: closes a pre-existing state-coverage-gate baseline gap
         # (this node's declared terminal_event output was never asserted by

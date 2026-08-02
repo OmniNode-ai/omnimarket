@@ -65,7 +65,6 @@ runtime_dispatch:
     failure: onex.evt.omnimarket.github-review-op-failed.v1
 
 event_bus:
-  consumer_group: omnimarket.github_review_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.github-review-op.v1
   publish_topics:

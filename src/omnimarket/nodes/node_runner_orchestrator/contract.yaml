@@ -50,7 +50,6 @@ descriptor:
 terminal_event: onex.evt.omnimarket.runner-action-completed.v1
 
 event_bus:
-  consumer_group: omnimarket.runner_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.runner-action-start.v1
   publish_topics:

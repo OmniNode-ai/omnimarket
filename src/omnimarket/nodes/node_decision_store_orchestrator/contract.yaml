@@ -41,7 +41,6 @@ descriptor:
     - effects
 
 event_bus:
-  consumer_group: omnimarket.decision_store_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.decision-store-start.v1
   publish_topics:

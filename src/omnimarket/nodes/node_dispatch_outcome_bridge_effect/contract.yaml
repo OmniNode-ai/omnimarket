@@ -60,7 +60,6 @@ env_dependencies:
     description: "Fallback for constructing OMNIINTELLIGENCE_DB_URL manually."
 
 event_bus:
-  consumer_group: local.omnimarket.node_dispatch_outcome_bridge_effect.consume.v1
   subscribe_topics:
     - onex.evt.omniclaude.dispatch_worker-completed.v1
   publish_topics:

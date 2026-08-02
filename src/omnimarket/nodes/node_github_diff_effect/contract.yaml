@@ -64,7 +64,6 @@ runtime_dispatch:
     failure: onex.evt.omnimarket.github-diff-resolve-failed.v1
 
 event_bus:
-  consumer_group: omnimarket.github_diff_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.github-diff-resolve.v1
   publish_topics:

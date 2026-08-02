@@ -60,7 +60,6 @@ descriptor:
 terminal_event: onex.evt.omnimarket.watchdog-check-completed.v1
 
 event_bus:
-  consumer_group: omnimarket.dispatch_watchdog_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.watchdog-check.v1
   publish_topics:

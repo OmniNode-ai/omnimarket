@@ -45,7 +45,6 @@ secrets:
     required: true
 
 event_bus:
-  consumer_group: omnimarket.ci_rerun_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.pr-ci-rerun.v1
   publish_topics:

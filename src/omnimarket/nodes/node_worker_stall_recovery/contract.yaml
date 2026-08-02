@@ -85,7 +85,6 @@ outputs:
 terminal_event: onex.evt.omnimarket.worker-stall-recovery-complete.v1
 
 event_bus:
-  consumer_group: omnimarket.worker_stall_recovery.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.worker-stall-recovery.v1
   publish_topics:

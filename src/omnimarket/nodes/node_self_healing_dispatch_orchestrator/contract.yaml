@@ -47,7 +47,6 @@ descriptor:
 terminal_event: onex.evt.omnimarket.self-healing-dispatch-completed.v1
 
 event_bus:
-  consumer_group: omnimarket.self_healing_dispatch_orchestrator.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.self-healing-dispatch-start.v1
   publish_topics:

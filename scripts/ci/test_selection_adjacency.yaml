@@ -26,6 +26,15 @@ shared_modules:
 thresholds:
   modules_changed_for_full_suite: 6
 
+# OMN-15639: repo-wide gate directories, unioned into EVERY narrowed
+# selection. These assert invariants over files the adjacency map above
+# cannot attribute to one module — tests/gates/ walks all
+# src/**/contract.yaml, so a change to one node's contract narrows to
+# tests/nodes/ and would skip the gate entirely, leaving the invariant
+# reintroducible on the everyday dev path.
+always_selected_paths:
+  - tests/gates/
+
 # Test infrastructure — any change forces the full suite.
 test_infrastructure_paths:
   - tests/conftest.py

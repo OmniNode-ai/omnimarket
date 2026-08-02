@@ -124,7 +124,9 @@ def test_contract_declares_event_bus_surfaces() -> None:
         }
     ]
     eb = raw["event_bus"]
-    assert eb["consumer_group"] == "omnimarket.tech_debt_sweep_orchestrator.consume.v1"
+    assert "consumer_group" not in eb, (
+        "OMN-15639: event_bus.consumer_group is seam-deleted. The group name is derived from node identity via compute_consumer_group_id(), never declared."
+    )
     assert "onex.cmd.omnimarket.tech-debt-sweep-start.v1" in eb["subscribe_topics"]
     assert "onex.evt.omnimarket.tech-debt-sweep-completed.v1" in eb["publish_topics"]
     assert "onex.dlq.omnimarket.tech-debt-sweep.v1" in eb["dlq_topics"]

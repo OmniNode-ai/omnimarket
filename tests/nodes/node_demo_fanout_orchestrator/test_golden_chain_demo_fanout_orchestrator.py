@@ -4,6 +4,16 @@
 
 Verifies contract YAML is valid, handler imports cleanly, and models are
 well-formed. Dry-run execution uses deterministic provider fixtures.
+
+Relocated under OMN-15639 from
+``src/omnimarket/nodes/node_demo_fanout_orchestrator/tests/test_golden_chain.py``.
+That path is NOT collected by CI (OMN-14338) and does not satisfy the
+golden-chain coverage gate, so these assertions had never actually run --
+the node read as covered while being uncovered. The OMN-15639 contract strip
+touched this node, the gate fired on the changed live path, and moving the
+file to a collected location is the fix. The ``node_dir`` fixture is resolved
+from the installed package rather than ``__file__`` arithmetic, which broke
+with the move.
 """
 
 from __future__ import annotations
@@ -16,7 +26,14 @@ import pytest
 
 @pytest.fixture
 def node_dir() -> Path:
-    return Path(__file__).resolve().parent.parent
+    """Resolve the real src node directory, independent of this file's location."""
+    import omnimarket.nodes.node_demo_fanout_orchestrator as node_package
+
+    package_file = node_package.__file__
+    assert package_file is not None, (
+        "node_demo_fanout_orchestrator has no __file__; cannot locate contract.yaml"
+    )
+    return Path(package_file).resolve().parent
 
 
 @pytest.fixture

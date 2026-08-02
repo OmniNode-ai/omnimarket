@@ -49,7 +49,6 @@ db_io:
       role: quality_snapshots
 
 event_bus:
-  consumer_group: local.omnimarket.node_projection_baselines_quality.consume.v1
   subscribe_topics:
     - onex.evt.omnibase-infra.baselines-computed.v1
   publish_topics:

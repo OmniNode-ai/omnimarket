@@ -79,7 +79,6 @@ runtime_dispatch:
     failure: onex.evt.omnimarket.slack-publish-failed.v1
 
 event_bus:
-  consumer_group: omnimarket.slack_publish_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.slack-publish.v1
   publish_topics:

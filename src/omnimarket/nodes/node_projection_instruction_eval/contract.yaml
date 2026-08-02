@@ -52,7 +52,6 @@ db_io:
       role: instruction_eval_aggregate
 
 event_bus:
-  consumer_group: local.omnibase_infra.node_projection_instruction_eval.consume.v1
   subscribe_topics:
     - onex.evt.omnimarket.instruction-eval-result.v1
   publish_topics:

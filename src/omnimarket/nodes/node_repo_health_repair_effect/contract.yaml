@@ -69,7 +69,6 @@ integrations:
     graphql_url: "https://api.linear.app/graphql"
 
 event_bus:
-  consumer_group: omnimarket.repo_health_repair_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.repo-health-repair-start.v1
   publish_topics:

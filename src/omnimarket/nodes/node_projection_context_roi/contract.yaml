@@ -53,7 +53,6 @@ db_io:
       role: scores
 
 event_bus:
-  consumer_group: local.omnimarket.node_projection_context_roi.consume.v1
   # Both runner terminals carry the same ModelContextRoiRunResult payload. The
   # runner publishes a fully-failed run (every cell failed / no cells) on the
   # FAILED terminal and an at-least-one-usable-row run on the COMPLETED terminal

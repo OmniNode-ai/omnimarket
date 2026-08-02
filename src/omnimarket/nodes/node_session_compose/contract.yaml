@@ -44,7 +44,6 @@ execution:
 event_bus:
   subscribe:
     topic: "onex.cmd.omnimarket.session-compose.v1"
-    consumer_group: "omnimarket.session.compose"
   publish:
     success_topic: "onex.evt.omnimarket.session-compose-completed.v1"
     failure_topic: "onex.evt.omnimarket.session-compose-failed.v1"

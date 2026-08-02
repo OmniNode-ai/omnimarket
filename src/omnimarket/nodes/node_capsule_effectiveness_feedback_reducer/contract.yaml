@@ -42,7 +42,6 @@ db_io:
       role: capsules
 
 event_bus:
-  consumer_group: local.omnimarket.node_capsule_effectiveness_feedback_reducer.consume.v1
   subscribe_topics:
     - onex.evt.omnimarket.context-roi-runtime-row-scored.v1
   publish_topics:

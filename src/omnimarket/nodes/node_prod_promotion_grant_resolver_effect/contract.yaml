@@ -83,7 +83,6 @@ runtime_dispatch:
 terminal_event: onex.evt.omnimarket.prod-promotion-grant-resolved.v1
 
 event_bus:
-  consumer_group: omnimarket.prod_promotion_grant_resolver_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.prod-promotion-grant-resolve.v1
   publish_topics:

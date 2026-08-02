@@ -70,7 +70,6 @@ runtime_dispatch:
 terminal_event: onex.evt.omnimarket.prod-health-resolved.v1
 
 event_bus:
-  consumer_group: omnimarket.prod_health_fact_resolver_effect.consume.v1
   subscribe_topics:
     - onex.cmd.omnimarket.prod-health-resolve.v1
   publish_topics:

@@ -28,6 +28,30 @@ class ModelAdjacencyMap(BaseModel):
     thresholds: ModelThresholds
     test_infrastructure_paths: list[str]
     adjacency: dict[str, ModelAdjacencyEntry]
+    always_selected_paths: list[str] = Field(default_factory=list)
+    """Test directories appended to EVERY narrowed selection.
+
+    OMN-15639: a repo-wide gate (``tests/gates/``) asserts an invariant over
+    files the adjacency map cannot attribute to one module -- e.g. the
+    consumer-group declaration strip walks all 384 ``src/**/contract.yaml``.
+    Under narrowing, changing one node's ``contract.yaml`` resolves to module
+    ``nodes`` and selects only ``tests/nodes/``, so the repo-wide gate never
+    runs and the invariant it protects is silently reintroducible on the
+    everyday dev path. Entries here are unioned in after narrowing and are
+    deliberately NOT filtered against the on-disk tree: a missing directory
+    must surface as a loud pytest collection error, never as a silent drop
+    that turns the gate vacuous.
+    """
+
+    @model_validator(mode="after")
+    def validate_always_selected_paths(self) -> ModelAdjacencyMap:
+        for path in self.always_selected_paths:
+            if not path.startswith("tests/") or not path.endswith("/"):
+                raise ValueError(
+                    f"always_selected_paths entry '{path}' must be a directory "
+                    "under tests/ written with a trailing slash"
+                )
+        return self
 
     @model_validator(mode="after")
     def validate_shared_modules_in_adjacency(self) -> ModelAdjacencyMap:
