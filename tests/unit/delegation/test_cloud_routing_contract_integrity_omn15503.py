@@ -124,9 +124,9 @@ def test_delegate_contract_owns_exactly_fifteen_declared_task_classes() -> None:
 
 
 @pytest.mark.unit
-def test_prompt_subset_uses_generic_fallback_only_for_new_internal_classes() -> None:
+def test_every_delegate_task_has_a_declared_system_prompt() -> None:
     missing = sorted(set(_allowed_task_types()) - routing._SYSTEM_PROMPTS.keys())
-    assert missing == ["documentation", "validator_generation"]
+    assert missing == []
 
 
 @pytest.mark.unit
