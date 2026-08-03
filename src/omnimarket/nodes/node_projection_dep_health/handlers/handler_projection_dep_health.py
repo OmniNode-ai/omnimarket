@@ -20,6 +20,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from omnimarket.events.dep_health import ModelDepHealthSweepCompletedEvent
 from omnimarket.projection.handler_shim import split_projection_input
 from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.tenant_isolation import house_tenant_write_stamp
 
 TABLE = "dep_health_findings"
 CONFLICT_KEY = "run_id,finding_type,file_path,symbol"
@@ -78,6 +79,13 @@ class HandlerProjectionDepHealth:
                 "rule_version": finding.rule_version,
                 "captured_at": captured_at,
             }
+            # OMN-15655 house-tenant ruling: this relation is TENANT data.
+            # Stamp a lane-configured tenant; otherwise omit the key so the
+            # column DEFAULT supplies the house tenant (never write NULL --
+            # that is the OMN-14058 writer-erasure shape). The omit path calls
+            # require_tenant_id(), so this refuses instead of defaulting the
+            # moment ENFORCE_TENANT_ISOLATION flips.
+            row.update(house_tenant_write_stamp(table=TABLE))
             ok = db.upsert(TABLE, CONFLICT_KEY, row)
             if ok:
                 count += 1

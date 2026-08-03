@@ -24,11 +24,20 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.pricing import resolve_tier_cost
 from omnimarket.projection.protocol_database import DatabaseAdapter
-from omnimarket.projection.tenant_isolation import require_tenant_id
+from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG, require_tenant_id
 
 TABLE = "delegation_budget_state"
 CONFLICT_KEY = "tenant_id,cost_tier_name,budget_period"
-DEFAULT_TENANT = "default"
+
+# OMN-15655 / house-tenant ruling 2026-08-02. This was the string ``"default"``,
+# which is a THIRD tenant identity nobody else in the tree uses: every other
+# writer on this surface resolves to ``"omninode"`` and every landed column
+# DEFAULT is ``'omninode'``. ``delegation_budget_state.tenant_id`` is
+# ``TEXT NOT NULL`` with NO column default (migration 0019), so the handler's
+# constant is the only thing that decides where an unattributed budget row
+# lands -- and it was landing them under a tenant that exists in no registry,
+# no policy and no other table. There is exactly one house tenant; use it.
+DEFAULT_TENANT = HOUSE_TENANT_SLUG
 
 
 class ModelDelegationBudgetStateEvent(BaseModel):

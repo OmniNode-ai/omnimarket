@@ -73,6 +73,7 @@ class _FakeUpsertDB:
             success,
             failed,
             partial,
+            tenant_id,
         ) = params
         key = (skill_name, repo_id, window, minute)
         row = self.rows.get(key)
@@ -87,8 +88,10 @@ class _FakeUpsertDB:
                 "success_count": success,
                 "failed_count": failed,
                 "partial_count": partial,
+                "tenant_id": tenant_id,
             }
         else:
+            assert row["tenant_id"] == tenant_id
             row["started_count"] += started
             row["completed_count"] += completed
             row["success_count"] += success
@@ -138,6 +141,7 @@ class TestSkillExecutionsGoldenChain:
         assert row["started_count"] == 1
         assert row["completed_count"] == 1
         assert row["success_count"] == 1
+        assert row["tenant_id"] == "omninode"
         # Full receipt coverage: every started skill produced a completed receipt.
         assert db.receipt_coverage(key) == 1.0
 

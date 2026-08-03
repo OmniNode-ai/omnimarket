@@ -232,6 +232,8 @@ def test_runner_upserts_snapshot_row_from_started_event() -> None:
 
     sql = str(captured[0][0])
     assert f"INSERT INTO {TABLE}" in sql
+    assert "tenant_id" in sql
+    assert captured[0][-1] == "omninode"
     assert "ON CONFLICT" in sql
     # Accumulation on conflict is additive per counter.
     assert "started_count = skill_execution_snapshots.started_count" in sql

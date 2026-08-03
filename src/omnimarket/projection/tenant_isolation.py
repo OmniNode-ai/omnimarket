@@ -40,6 +40,8 @@ guard rejects real single-tenant traffic for no isolation benefit.
 
 from __future__ import annotations
 
+from uuid import UUID
+
 from omnimarket.config.settings import get_settings
 
 
@@ -59,10 +61,49 @@ class TenantRequiredError(ValueError):
 # cross-repo contract, not a local choice.
 TENANT_GUC = "app.tenant_id"
 
-# The DEFAULT on every landed tenant_id column (0019/0022, savings 080). When an
-# event resolves no tenant the row takes this value, so the GUC must match it or
-# the policy's WITH CHECK rejects a write it would otherwise accept.
-INTERIM_DEFAULT_TENANT = "omninode"
+# ---------------------------------------------------------------------------
+# The house tenant (OPERATOR RULING 2026-08-02).
+#
+# OmniNode is a first-class TENANT, not an absence of one. Every
+# workload-attributable row belongs to some tenant; rows produced by the
+# platform's own workloads belong to the house tenant. Only
+# attribution-meaningless infrastructure state (migration bookkeeping, service
+# registry, orchestration state, deployment evidence) stays in
+# ``omninode_internal``.
+#
+# ONE identity, TWO representations, deliberately -- do not add a third:
+#
+#   HOUSE_TENANT_SLUG  the wire/column form in use TODAY. Every landed
+#                      ``tenant_id`` column on this surface is ``TEXT`` and
+#                      every landed DEFAULT is this exact string (delegation
+#                      0022/0025, savings 080, registration 0002,
+#                      inference-response 0002, omnidash 0001_tenant_rls).
+#                      Introducing a UUID column alongside them would fork the
+#                      identity inside one database, so this stays TEXT until
+#                      OMN-15356 converts the whole set in one pass.
+#
+#   HOUSE_TENANT_UUID  the canonical immutable identifier ADR-0027 requires and
+#                      the value OMN-15356's conversion resolves the slug to.
+#                      Pinned here so the conversion has a fixed, reviewable
+#                      target instead of minting one at migration time.
+#
+# The UUID is a UUIDv5 -- derived, not random, so it is reproducible from first
+# principles and independently checkable:
+#
+#     uuid.uuid5(uuid.NAMESPACE_DNS, "house-tenant.omninode.ai")
+#     -> 820272f9-4aaf-5add-a2df-0af942852ab2
+#
+# ``tests/unit/projection/test_house_tenant_identity.py`` re-derives it, so a
+# hand-edit of the literal fails CI.
+# ---------------------------------------------------------------------------
+HOUSE_TENANT_SLUG = "omninode"
+HOUSE_TENANT_UUID = UUID("820272f9-4aaf-5add-a2df-0af942852ab2")
+
+# Pre-ruling name for HOUSE_TENANT_SLUG, retained because the string is the
+# same value and callers/comments across this repo already reference it. It is
+# no longer accurate as a description: the value is not an "interim default
+# standing in for a missing tenant", it is a real tenant's identifier.
+INTERIM_DEFAULT_TENANT = HOUSE_TENANT_SLUG
 
 
 def resolve_write_tenant(tenant_value: object, *, table: str) -> str:
@@ -86,6 +127,42 @@ def resolve_write_tenant(tenant_value: object, *, table: str) -> str:
         return tenant_value.strip()
     require_tenant_id(None, table=table)
     return INTERIM_DEFAULT_TENANT
+
+
+def house_tenant_write_stamp(*, table: str) -> dict[str, str]:
+    """Return the ``tenant_id`` key a projection write should carry, or ``{}``.
+
+    The one canonical implementation of the writer half of the house-tenant
+    ruling (2026-08-02), so the eight relations classified TENANT by OMN-15655
+    do not each grow their own copy of it.
+
+    Resolution order, and why it is this order:
+
+    1. ``Settings.onex_tenant_id`` when a lane configures one -- stamped
+       explicitly, so the stored row carries the real tenant and the RLS GUC
+       (which must equal what the database actually stored, per OMN-15301) has
+       something true to be set to.
+    2. Otherwise the key is OMITTED and Postgres' ``DEFAULT 'omninode'``
+       supplies the HOUSE TENANT. Omitted, never ``None``: writing the key as
+       NULL would violate ``NOT NULL`` and defeat the default -- the exact
+       OMN-14058 writer-erasure shape.
+
+    Step 2 is the "house-tenant default ONLY until customer ingress exists"
+    half of the ruling. The "then missing attribution fails closed" half is
+    :func:`require_tenant_id`, which this calls on the omit path: it is a no-op
+    today and raises :class:`TenantRequiredError` the moment
+    ``ENFORCE_TENANT_ISOLATION`` flips. The flip is a ratchet with a named
+    condition, not a comment -- see
+    ``tests/unit/projection/test_house_tenant_default_ratchet.py``, which pins
+    the default-allowed state and states what has to become true to flip it.
+
+    Called BEFORE the row is upserted so a refused write produces zero rows.
+    """
+    configured = get_settings().onex_tenant_id.strip()
+    if configured:
+        return {"tenant_id": configured}
+    require_tenant_id(None, table=table)
+    return {}
 
 
 def resolve_read_tenant(tenant_value: object) -> str:
@@ -126,9 +203,12 @@ def require_tenant_id(tenant_id: str | None, *, table: str) -> None:
 
 
 __all__: list[str] = [
+    "HOUSE_TENANT_SLUG",
+    "HOUSE_TENANT_UUID",
     "INTERIM_DEFAULT_TENANT",
     "TENANT_GUC",
     "TenantRequiredError",
+    "house_tenant_write_stamp",
     "require_tenant_id",
     "resolve_read_tenant",
     "resolve_write_tenant",

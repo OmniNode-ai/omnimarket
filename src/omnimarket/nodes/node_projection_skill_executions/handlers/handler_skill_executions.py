@@ -32,6 +32,7 @@ from omnimarket.nodes.node_projection_skill_executions.handlers.row_skill_execut
     build_skill_executions_row,
 )
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
+from omnimarket.projection.tenant_isolation import house_tenant_write_stamp
 
 logger = logging.getLogger(__name__)
 
@@ -90,16 +91,26 @@ class SkillExecutionsProjectionRunner(BaseProjectionRunner):
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
         row = build_skill_executions_row(data, topic)
+
+        # OMN-15655 house-tenant ruling: this relation is TENANT data. Stamp
+        # the same tenant value the database will store so a non-superuser RLS
+        # writer does not rely on an omitted DEFAULT while evaluating
+        # WITH CHECK. The helper still fails closed when
+        # ENFORCE_TENANT_ISOLATION flips and no tenant can be resolved.
+        tenant_stamp = house_tenant_write_stamp(table=TABLE)
+        tenant_id = tenant_stamp.get("tenant_id", "omninode")
         await self.db.execute(
             f"""
             INSERT INTO {TABLE} (
                 skill_name, repo_id, "window", snapshot_timestamp_minute,
                 started_count, completed_count,
-                success_count, failed_count, partial_count
+                success_count, failed_count, partial_count,
+                tenant_id
             ) VALUES (
                 $1, $2, $3, $4,
                 $5, $6,
-                $7, $8, $9
+                $7, $8, $9,
+                $10
             )
             ON CONFLICT ({CONFLICT_KEY}) DO UPDATE SET
                 started_count = {TABLE}.started_count + EXCLUDED.started_count,
@@ -118,6 +129,7 @@ class SkillExecutionsProjectionRunner(BaseProjectionRunner):
             row["success_count"],
             row["failed_count"],
             row["partial_count"],
+            tenant_id,
         )
         return True
 
