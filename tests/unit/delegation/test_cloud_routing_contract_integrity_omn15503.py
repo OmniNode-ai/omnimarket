@@ -124,9 +124,17 @@ def test_delegate_contract_owns_exactly_fifteen_declared_task_classes() -> None:
 
 
 @pytest.mark.unit
-def test_prompt_subset_uses_generic_fallback_only_for_new_internal_classes() -> None:
+def test_every_declared_task_class_has_a_dedicated_system_prompt() -> None:
+    """No allowed task class may silently fall back to the generic prompt.
+
+    OMN-15651: the 13->15 allowed_task_types expansion (omnimarket#2012)
+    admitted `documentation` and `validator_generation` without adding
+    matching `_SYSTEM_PROMPTS` entries, so both silently hit the generic
+    fallback at the model-selection call site. This test restores the
+    universal invariant — every declared class owns a dedicated prompt.
+    """
     missing = sorted(set(_allowed_task_types()) - routing._SYSTEM_PROMPTS.keys())
-    assert missing == ["documentation", "validator_generation"]
+    assert missing == []
 
 
 @pytest.mark.unit
