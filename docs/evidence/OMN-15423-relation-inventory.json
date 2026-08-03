@@ -756,7 +756,8 @@
         "node_canary_score_reducer"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_canary_score_reducer/migrations/0001_create_capability_scores.sql"
+        "src/omnimarket/nodes/node_canary_score_reducer/migrations/0001_create_capability_scores.sql",
+        "src/omnimarket/nodes/node_canary_score_reducer/migrations/0002_capability_scores_tenant_id_and_rls.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "implicit BIGSERIAL sequence for capability_scores",
@@ -1643,7 +1644,8 @@
         "node_canary_score_reducer"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_canary_score_reducer/migrations/0001_create_capability_scores.sql"
+        "src/omnimarket/nodes/node_canary_score_reducer/migrations/0001_create_capability_scores.sql",
+        "src/omnimarket/nodes/node_canary_score_reducer/migrations/0002_capability_scores_tenant_id_and_rls.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
