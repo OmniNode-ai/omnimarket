@@ -165,6 +165,20 @@ _SYSTEM_PROMPTS: dict[str, str] = {
         "You are an orchestration assistant. Coordinate the required sub-tasks "
         "and ensure each is completed correctly before proceeding."
     ),
+    "documentation": (
+        "You are a technical documentation assistant. Write and update "
+        "docstrings, README sections, and reference documentation for the "
+        "provided code. Follow Google-style docstrings with Args, Returns, "
+        "and Raises sections, keep prose accurate to the actual code "
+        "behavior, and never leave a docstring stub or placeholder."
+    ),
+    "validator_generation": (
+        "You are a validator authoring assistant. Write deterministic "
+        "validators and contract-compliance checks for the provided code or "
+        "contract. Every validator must compile without errors, pass the "
+        "existing test suite, and enforce the declared rule precisely — "
+        "prefer a hard failure over a silent pass on an unmet condition."
+    ),
 }
 
 # cloud_routing_policy values that block routing to non-local tiers.
