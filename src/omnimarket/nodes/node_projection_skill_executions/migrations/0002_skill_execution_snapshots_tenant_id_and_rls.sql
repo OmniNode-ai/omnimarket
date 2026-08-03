@@ -79,9 +79,15 @@ CREATE INDEX IF NOT EXISTS idx_skill_execution_snapshots_tenant_id
 
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_dashboard') THEN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_roles
+    WHERE rolname = 'app_dashboard'
+      AND NOT rolsuper
+      AND NOT rolbypassrls
+  ) THEN
     RAISE EXCEPTION
-      'app_dashboard role missing - apply omnibase_infra forward migration '
+      'app_dashboard role missing or RLS-bypassing - apply omnibase_infra forward migration '
       '094_create_app_dashboard_role.sql (OMN-14899) before this RLS '
       'migration. RLS grants without the constrained read role are the '
       'exact bypass this work exists to prevent.';
