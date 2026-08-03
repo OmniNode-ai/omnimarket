@@ -2176,9 +2176,7 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [
-        "SELECT TO app_dashboard"
-      ],
+      "grants": [],
       "indexes": [
         "idx_dep_health_findings_captured_at",
         "idx_dep_health_findings_repo",

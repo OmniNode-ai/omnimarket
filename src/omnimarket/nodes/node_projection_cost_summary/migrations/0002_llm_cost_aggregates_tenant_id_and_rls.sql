@@ -69,27 +69,13 @@
 -- default-tenant fallback, by design.
 --
 -- Idempotent: ADD COLUMN / CREATE INDEX are IF NOT EXISTS, ENABLE/FORCE are
--- idempotent, the policy is DROP + CREATE, GRANTs are idempotent.
+-- idempotent, and the policy is DROP + CREATE.
 
 ALTER TABLE public.llm_cost_aggregates
     ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'omninode';
 
 CREATE INDEX IF NOT EXISTS idx_llm_cost_aggregates_tenant_id
     ON public.llm_cost_aggregates (tenant_id);
-
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_dashboard') THEN
-    RAISE EXCEPTION
-      'app_dashboard role missing - apply omnibase_infra forward migration '
-      '094_create_app_dashboard_role.sql (OMN-14899) before this RLS '
-      'migration. RLS grants without the constrained read role are the '
-      'exact bypass this work exists to prevent.';
-  END IF;
-END;
-$$;
-
-GRANT USAGE ON SCHEMA public TO app_dashboard;
 
 ALTER TABLE public.llm_cost_aggregates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.llm_cost_aggregates FORCE ROW LEVEL SECURITY;

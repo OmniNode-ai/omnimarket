@@ -69,27 +69,13 @@
 -- default-tenant fallback, by design.
 --
 -- Idempotent: ADD COLUMN / CREATE INDEX are IF NOT EXISTS, ENABLE/FORCE are
--- idempotent, the policy is DROP + CREATE, GRANTs are idempotent.
+-- idempotent, and the policy is DROP + CREATE.
 
 ALTER TABLE public.dep_health_findings
     ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'omninode';
 
 CREATE INDEX IF NOT EXISTS idx_dep_health_findings_tenant_id
     ON public.dep_health_findings (tenant_id);
-
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_dashboard') THEN
-    RAISE EXCEPTION
-      'app_dashboard role missing - apply omnibase_infra forward migration '
-      '094_create_app_dashboard_role.sql (OMN-14899) before this RLS '
-      'migration. RLS grants without the constrained read role are the '
-      'exact bypass this work exists to prevent.';
-  END IF;
-END;
-$$;
-
-GRANT USAGE ON SCHEMA public TO app_dashboard;
 
 ALTER TABLE public.dep_health_findings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.dep_health_findings FORCE ROW LEVEL SECURITY;
@@ -99,9 +85,3 @@ CREATE POLICY tenant_isolation ON public.dep_health_findings
   FOR ALL
   USING (tenant_id = current_setting('app.tenant_id', true))
   WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
-
--- Read grant for the live dashboard reader (a live dashboard reader consumes dep-health findings). RLS still filters every
--- row this role can see -- the grant is what makes the RLS-scoped read path
--- reachable at all, not a widening of it. Granted only where a reader is known
--- to exist; the relations with no known reader get no SELECT.
-GRANT SELECT ON public.dep_health_findings TO app_dashboard;

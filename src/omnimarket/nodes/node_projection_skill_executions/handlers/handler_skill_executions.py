@@ -32,7 +32,7 @@ from omnimarket.nodes.node_projection_skill_executions.handlers.row_skill_execut
     build_skill_executions_row,
 )
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
-from omnimarket.projection.tenant_isolation import require_tenant_id
+from omnimarket.projection.tenant_isolation import house_tenant_write_stamp
 
 logger = logging.getLogger(__name__)
 
@@ -92,28 +92,25 @@ class SkillExecutionsProjectionRunner(BaseProjectionRunner):
     ) -> bool:
         row = build_skill_executions_row(data, topic)
 
-        # OMN-15655 house-tenant ruling: this relation is TENANT data. The
-        # INSERT column list below deliberately OMITS tenant_id so Postgres'
-        # column DEFAULT supplies the HOUSE TENANT -- omitted, never NULL (the
-        # OMN-14058 writer-erasure shape). Unlike the adapter-backed writers
-        # this runner cannot stamp a lane-configured tenant safely yet: the
-        # ON CONFLICT target (skill_name, repo_id, "window", snapshot_timestamp_minute) does NOT include tenant_id, so a
-        # second tenant writing the same key would CLOBBER the first tenant's
-        # row rather than coexist with it. Re-keying the uniqueness to include
-        # tenant_id is OMN-15356 / OMN-14894 scope, named here rather than
-        # half-done. Until then this refuses instead of defaulting the moment
-        # ENFORCE_TENANT_ISOLATION flips.
-        require_tenant_id(None, table=TABLE)
+        # OMN-15655 house-tenant ruling: this relation is TENANT data. Stamp
+        # the same tenant value the database will store so a non-superuser RLS
+        # writer does not rely on an omitted DEFAULT while evaluating
+        # WITH CHECK. The helper still fails closed when
+        # ENFORCE_TENANT_ISOLATION flips and no tenant can be resolved.
+        tenant_stamp = house_tenant_write_stamp(table=TABLE)
+        tenant_id = tenant_stamp.get("tenant_id", "omninode")
         await self.db.execute(
             f"""
             INSERT INTO {TABLE} (
                 skill_name, repo_id, "window", snapshot_timestamp_minute,
                 started_count, completed_count,
-                success_count, failed_count, partial_count
+                success_count, failed_count, partial_count,
+                tenant_id
             ) VALUES (
                 $1, $2, $3, $4,
                 $5, $6,
-                $7, $8, $9
+                $7, $8, $9,
+                $10
             )
             ON CONFLICT ({CONFLICT_KEY}) DO UPDATE SET
                 started_count = {TABLE}.started_count + EXCLUDED.started_count,
@@ -132,6 +129,7 @@ class SkillExecutionsProjectionRunner(BaseProjectionRunner):
             row["success_count"],
             row["failed_count"],
             row["partial_count"],
+            tenant_id,
         )
         return True
 
