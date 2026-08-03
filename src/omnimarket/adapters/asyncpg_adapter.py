@@ -8,6 +8,8 @@ from typing import Any
 
 import asyncpg
 
+from omnimarket.projection.tenant_isolation import TENANT_GUC, resolve_read_tenant
+
 logger = logging.getLogger(__name__)
 
 DB_URL_ENV = "OMNIDASH_ANALYTICS_DB_URL"
@@ -51,7 +53,8 @@ class AsyncpgAdapter:
 
     async def execute(self, query: str, *params: Any) -> list[dict[str, Any]]:
         assert self._pool is not None, "call connect() first"
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
+            await self._set_tenant_context(conn)
             rows = await conn.fetch(query, *params)
             return [dict(r) for r in rows]
 
@@ -59,12 +62,14 @@ class AsyncpgAdapter:
         self, query: str, params_list: list[tuple[Any, ...]]
     ) -> None:
         assert self._pool is not None, "call connect() first"
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
+            await self._set_tenant_context(conn)
             await conn.executemany(query, params_list)
 
     async def fetchval(self, query: str, *params: Any) -> Any:
         assert self._pool is not None, "call connect() first"
-        async with self._pool.acquire() as conn:
+        async with self._pool.acquire() as conn, conn.transaction():
+            await self._set_tenant_context(conn)
             return await conn.fetchval(query, *params)
 
     async def execute_in_transaction(
@@ -73,8 +78,25 @@ class AsyncpgAdapter:
         """Execute multiple queries in a single transaction."""
         assert self._pool is not None, "call connect() first"
         async with self._pool.acquire() as conn, conn.transaction():
+            await self._set_tenant_context(conn)
             for query, params in queries:
                 await conn.execute(query, *params)
+
+    @staticmethod
+    async def _set_tenant_context(conn: Any) -> None:
+        """Set the RLS tenant GUC for pooled asyncpg operations.
+
+        Tenant-scoped projection tables compare ``tenant_id`` against
+        ``current_setting('app.tenant_id', true)``. ``SET LOCAL`` semantics only
+        work inside a transaction, so every public query method opens the
+        transaction first, sets the GUC with the parameterized ``set_config``
+        form, and then runs the user SQL on the same connection.
+        """
+        await conn.execute(
+            "SELECT set_config($1, $2, true)",
+            TENANT_GUC,
+            resolve_read_tenant(None),
+        )
 
     async def close(self) -> None:
         if self._pool:
