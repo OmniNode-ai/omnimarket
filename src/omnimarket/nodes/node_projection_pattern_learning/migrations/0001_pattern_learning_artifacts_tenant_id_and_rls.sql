@@ -105,3 +105,10 @@ CREATE POLICY tenant_isolation ON public.pattern_learning_artifacts
   FOR ALL
   USING (tenant_id = current_setting('app.tenant_id', true))
   WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
+
+-- Read grant for the live dashboard reader. RLS still filters every
+-- row this role can see -- the grant is what makes the RLS-scoped read path
+-- reachable at all, not a widening of it. OMN-14894: sibling grant present on
+-- context_roi_scores/instruction_eval_aggregate_snapshots/skill_execution_snapshots
+-- in the same PR; pattern_learning_artifacts omitted it in error.
+GRANT SELECT ON public.pattern_learning_artifacts TO app_dashboard;

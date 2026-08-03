@@ -1260,7 +1260,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
         "idx_agent_routing_decisions_created_at",
         "idx_agent_routing_decisions_tenant_id"
@@ -1666,7 +1668,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
         "idx_capability_scores_graduated",
         "idx_capability_scores_model",
@@ -2176,7 +2180,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
         "idx_dep_health_findings_captured_at",
         "idx_dep_health_findings_repo",
@@ -2945,7 +2951,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
         "idx_llm_cost_aggregates_aggregation_key",
         "idx_llm_cost_aggregates_tenant_id",
@@ -3623,7 +3631,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
       "indexes": [
         "idx_patlearn_composite_score",
         "idx_patlearn_created_at",
