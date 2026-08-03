@@ -71,11 +71,11 @@
 -- Idempotent: ADD COLUMN / CREATE INDEX are IF NOT EXISTS, ENABLE/FORCE are
 -- idempotent, the policy is DROP + CREATE, GRANTs are idempotent.
 
-ALTER TABLE context_roi_scores
+ALTER TABLE public.context_roi_scores
     ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'omninode';
 
 CREATE INDEX IF NOT EXISTS idx_context_roi_scores_tenant_id
-    ON context_roi_scores (tenant_id);
+    ON public.context_roi_scores (tenant_id);
 
 DO $$
 BEGIN
@@ -91,11 +91,11 @@ $$;
 
 GRANT USAGE ON SCHEMA public TO app_dashboard;
 
-ALTER TABLE context_roi_scores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE context_roi_scores FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.context_roi_scores ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.context_roi_scores FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS tenant_isolation ON context_roi_scores;
-CREATE POLICY tenant_isolation ON context_roi_scores
+DROP POLICY IF EXISTS tenant_isolation ON public.context_roi_scores;
+CREATE POLICY tenant_isolation ON public.context_roi_scores
   FOR ALL
   USING (tenant_id = current_setting('app.tenant_id', true))
   WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
@@ -104,4 +104,4 @@ CREATE POLICY tenant_isolation ON context_roi_scores
 -- row this role can see -- the grant is what makes the RLS-scoped read path
 -- reachable at all, not a widening of it. Granted only where a reader is known
 -- to exist; the relations with no known reader get no SELECT.
-GRANT SELECT ON context_roi_scores TO app_dashboard;
+GRANT SELECT ON public.context_roi_scores TO app_dashboard;

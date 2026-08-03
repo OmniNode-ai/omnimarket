@@ -71,11 +71,11 @@
 -- Idempotent: ADD COLUMN / CREATE INDEX are IF NOT EXISTS, ENABLE/FORCE are
 -- idempotent, the policy is DROP + CREATE, GRANTs are idempotent.
 
-ALTER TABLE llm_cost_aggregates
+ALTER TABLE public.llm_cost_aggregates
     ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'omninode';
 
 CREATE INDEX IF NOT EXISTS idx_llm_cost_aggregates_tenant_id
-    ON llm_cost_aggregates (tenant_id);
+    ON public.llm_cost_aggregates (tenant_id);
 
 DO $$
 BEGIN
@@ -91,11 +91,11 @@ $$;
 
 GRANT USAGE ON SCHEMA public TO app_dashboard;
 
-ALTER TABLE llm_cost_aggregates ENABLE ROW LEVEL SECURITY;
-ALTER TABLE llm_cost_aggregates FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.llm_cost_aggregates ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.llm_cost_aggregates FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS tenant_isolation ON llm_cost_aggregates;
-CREATE POLICY tenant_isolation ON llm_cost_aggregates
+DROP POLICY IF EXISTS tenant_isolation ON public.llm_cost_aggregates;
+CREATE POLICY tenant_isolation ON public.llm_cost_aggregates
   FOR ALL
   USING (tenant_id = current_setting('app.tenant_id', true))
   WITH CHECK (tenant_id = current_setting('app.tenant_id', true));

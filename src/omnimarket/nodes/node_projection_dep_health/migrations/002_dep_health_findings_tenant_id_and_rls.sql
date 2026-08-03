@@ -71,11 +71,11 @@
 -- Idempotent: ADD COLUMN / CREATE INDEX are IF NOT EXISTS, ENABLE/FORCE are
 -- idempotent, the policy is DROP + CREATE, GRANTs are idempotent.
 
-ALTER TABLE dep_health_findings
+ALTER TABLE public.dep_health_findings
     ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'omninode';
 
 CREATE INDEX IF NOT EXISTS idx_dep_health_findings_tenant_id
-    ON dep_health_findings (tenant_id);
+    ON public.dep_health_findings (tenant_id);
 
 DO $$
 BEGIN
@@ -91,11 +91,11 @@ $$;
 
 GRANT USAGE ON SCHEMA public TO app_dashboard;
 
-ALTER TABLE dep_health_findings ENABLE ROW LEVEL SECURITY;
-ALTER TABLE dep_health_findings FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.dep_health_findings ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dep_health_findings FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS tenant_isolation ON dep_health_findings;
-CREATE POLICY tenant_isolation ON dep_health_findings
+DROP POLICY IF EXISTS tenant_isolation ON public.dep_health_findings;
+CREATE POLICY tenant_isolation ON public.dep_health_findings
   FOR ALL
   USING (tenant_id = current_setting('app.tenant_id', true))
   WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
@@ -104,4 +104,4 @@ CREATE POLICY tenant_isolation ON dep_health_findings
 -- row this role can see -- the grant is what makes the RLS-scoped read path
 -- reachable at all, not a widening of it. Granted only where a reader is known
 -- to exist; the relations with no known reader get no SELECT.
-GRANT SELECT ON dep_health_findings TO app_dashboard;
+GRANT SELECT ON public.dep_health_findings TO app_dashboard;

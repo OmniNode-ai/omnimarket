@@ -71,11 +71,11 @@
 -- Idempotent: ADD COLUMN / CREATE INDEX are IF NOT EXISTS, ENABLE/FORCE are
 -- idempotent, the policy is DROP + CREATE, GRANTs are idempotent.
 
-ALTER TABLE pattern_learning_artifacts
+ALTER TABLE public.pattern_learning_artifacts
     ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'omninode';
 
 CREATE INDEX IF NOT EXISTS idx_pattern_learning_artifacts_tenant_id
-    ON pattern_learning_artifacts (tenant_id);
+    ON public.pattern_learning_artifacts (tenant_id);
 
 DO $$
 BEGIN
@@ -91,11 +91,11 @@ $$;
 
 GRANT USAGE ON SCHEMA public TO app_dashboard;
 
-ALTER TABLE pattern_learning_artifacts ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pattern_learning_artifacts FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.pattern_learning_artifacts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pattern_learning_artifacts FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS tenant_isolation ON pattern_learning_artifacts;
-CREATE POLICY tenant_isolation ON pattern_learning_artifacts
+DROP POLICY IF EXISTS tenant_isolation ON public.pattern_learning_artifacts;
+CREATE POLICY tenant_isolation ON public.pattern_learning_artifacts
   FOR ALL
   USING (tenant_id = current_setting('app.tenant_id', true))
   WITH CHECK (tenant_id = current_setting('app.tenant_id', true));

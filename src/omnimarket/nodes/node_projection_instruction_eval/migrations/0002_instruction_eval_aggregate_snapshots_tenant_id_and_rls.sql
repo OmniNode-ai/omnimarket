@@ -71,11 +71,11 @@
 -- Idempotent: ADD COLUMN / CREATE INDEX are IF NOT EXISTS, ENABLE/FORCE are
 -- idempotent, the policy is DROP + CREATE, GRANTs are idempotent.
 
-ALTER TABLE instruction_eval_aggregate_snapshots
+ALTER TABLE public.instruction_eval_aggregate_snapshots
     ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT 'omninode';
 
 CREATE INDEX IF NOT EXISTS idx_instruction_eval_aggregate_snapshots_tenant_id
-    ON instruction_eval_aggregate_snapshots (tenant_id);
+    ON public.instruction_eval_aggregate_snapshots (tenant_id);
 
 DO $$
 BEGIN
@@ -91,11 +91,11 @@ $$;
 
 GRANT USAGE ON SCHEMA public TO app_dashboard;
 
-ALTER TABLE instruction_eval_aggregate_snapshots ENABLE ROW LEVEL SECURITY;
-ALTER TABLE instruction_eval_aggregate_snapshots FORCE ROW LEVEL SECURITY;
+ALTER TABLE public.instruction_eval_aggregate_snapshots ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.instruction_eval_aggregate_snapshots FORCE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS tenant_isolation ON instruction_eval_aggregate_snapshots;
-CREATE POLICY tenant_isolation ON instruction_eval_aggregate_snapshots
+DROP POLICY IF EXISTS tenant_isolation ON public.instruction_eval_aggregate_snapshots;
+CREATE POLICY tenant_isolation ON public.instruction_eval_aggregate_snapshots
   FOR ALL
   USING (tenant_id = current_setting('app.tenant_id', true))
   WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
@@ -104,4 +104,4 @@ CREATE POLICY tenant_isolation ON instruction_eval_aggregate_snapshots
 -- row this role can see -- the grant is what makes the RLS-scoped read path
 -- reachable at all, not a widening of it. Granted only where a reader is known
 -- to exist; the relations with no known reader get no SELECT.
-GRANT SELECT ON instruction_eval_aggregate_snapshots TO app_dashboard;
+GRANT SELECT ON public.instruction_eval_aggregate_snapshots TO app_dashboard;
