@@ -65,14 +65,14 @@ def test_every_tenant_isolation_migration_grants_app_dashboard_select() -> None:
     missing: list[str] = []
     for path in _tenant_isolation_migrations():
         text = path.read_text(encoding="utf-8")
-        policy_match = _POLICY_RE.search(text)
-        if not policy_match:
+        policy_matches = list(_POLICY_RE.finditer(text))
+        if not policy_matches:
             continue
-        table = _unquote(policy_match.group("table"))
+        tables = {_unquote(match.group("table")) for match in policy_matches}
         granted_tables = {
             _unquote(match.group("table")) for match in _GRANT_SELECT_RE.finditer(text)
         }
-        if table not in granted_tables:
+        for table in sorted(tables - granted_tables):
             missing.append(f"{path.relative_to(REPO_ROOT)} (table={table!r})")
 
     assert not missing, (
@@ -94,8 +94,7 @@ def test_the_five_omn14894_tables_are_covered_by_the_scan() -> None:
     found_tables: set[str] = set()
     for path in _tenant_isolation_migrations():
         text = path.read_text(encoding="utf-8")
-        policy_match = _POLICY_RE.search(text)
-        if policy_match:
+        for policy_match in _POLICY_RE.finditer(text):
             found_tables.add(_unquote(policy_match.group("table")))
 
     assert expected_tables <= found_tables

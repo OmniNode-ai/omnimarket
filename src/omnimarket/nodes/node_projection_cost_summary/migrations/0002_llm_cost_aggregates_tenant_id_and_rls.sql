@@ -77,6 +77,26 @@ ALTER TABLE public.llm_cost_aggregates
 CREATE INDEX IF NOT EXISTS idx_llm_cost_aggregates_tenant_id
     ON public.llm_cost_aggregates (tenant_id);
 
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_roles
+    WHERE rolname = 'app_dashboard'
+      AND NOT rolsuper
+      AND NOT rolbypassrls
+  ) THEN
+    RAISE EXCEPTION
+      'app_dashboard role missing or RLS-bypassing - apply omnibase_infra forward migration '
+      '094_create_app_dashboard_role.sql (OMN-14899) before this RLS '
+      'migration. RLS grants without the constrained read role are the '
+      'exact bypass this work exists to prevent.';
+  END IF;
+END;
+$$;
+
+GRANT USAGE ON SCHEMA public TO app_dashboard;
+
 ALTER TABLE public.llm_cost_aggregates ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.llm_cost_aggregates FORCE ROW LEVEL SECURITY;
 
