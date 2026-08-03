@@ -29,6 +29,10 @@
 #   prioritizes the declared model over tier-order selection when the model is
 #   available in the tier with a configured bifrost endpoint (OMN-10942).
 #
+# gateway_exposure: closed public/internal admission policy. The Gateway may
+#   project only entries declared public; internal entries remain valid Market
+#   task classes but are not admitted at the public Gateway boundary.
+#
 # response_contract_ref: OPTIONAL dotted "module.path.AttrName" naming a pydantic
 #   model (or a discriminated Union type alias) whose JSON Schema
 #   (resolve_task_class_response_contract, node_delegation_routing_reducer)
@@ -85,6 +89,7 @@ task_model_overrides:
   research: "Qwen3.6-35B-A3B"
 task_classes:
   code_generation:
+    gateway_exposure: public
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -154,6 +159,7 @@ task_classes:
   # output PASS at $0 exactly like code_generation. (A minimal-diff / precision DoD
   # for surgical edits to large files is tracked separately under OMN-14214.)
   refactor:
+    gateway_exposure: public
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -200,6 +206,7 @@ task_classes:
         - cheap_cloud
         - claude
   documentation:
+    gateway_exposure: internal
     required_capabilities:
       - natural_language_generation
     pricing_ceiling_per_1k_tokens: 0.002
@@ -236,6 +243,7 @@ task_classes:
   # `raises:`) and score 0.000 on both tiers (live CID a604cd40). The docstring
   # DoD lives on the `documentation` task class below, which is the correct home.
   document:
+    gateway_exposure: public
     required_capabilities:
       - natural_language_generation
     pricing_ceiling_per_1k_tokens: 0.002
@@ -271,6 +279,7 @@ task_classes:
         - local
         - cheap_cloud
   research:
+    gateway_exposure: public
     required_capabilities:
       - context_window_large
       - reasoning
@@ -325,6 +334,7 @@ task_classes:
         - cheap_cloud
         - claude
   test:
+    gateway_exposure: public
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -364,6 +374,7 @@ task_classes:
         - cheap_cloud
         - claude
   validator_generation:
+    gateway_exposure: internal
     score_source: deterministic_acceptance
     acceptance_authority:
       type: deterministic_acceptance
@@ -395,6 +406,7 @@ task_classes:
         - cheap_cloud
         - claude
   reasoning:
+    gateway_exposure: public
     required_capabilities:
       - reasoning
     pricing_ceiling_per_1k_tokens: 0.002
@@ -435,6 +447,7 @@ task_classes:
         - local
         - cheap_cloud
   complex_reasoning:
+    gateway_exposure: public
     required_capabilities:
       - reasoning
       - context_window_large
@@ -469,6 +482,7 @@ task_classes:
         - local
         - claude
   planning:
+    gateway_exposure: public
     required_capabilities:
       - reasoning
       - natural_language_generation
@@ -504,6 +518,7 @@ task_classes:
         - local
         - cheap_cloud
   review:
+    gateway_exposure: public
     required_capabilities:
       - reasoning
       - code_completion
@@ -541,6 +556,7 @@ task_classes:
   # quality gate's required-bar authority had nothing to resolve. Mirrors `review`
   # but with code-review-specific DoD heuristics and a cloud fallback ladder.
   code_review:
+    gateway_exposure: public
     required_capabilities:
       - reasoning
       - code_completion
@@ -570,6 +586,7 @@ task_classes:
         - local
         - cheap_cloud
   summarization:
+    gateway_exposure: public
     required_capabilities:
       - natural_language_generation
     pricing_ceiling_per_1k_tokens: 0.002
@@ -606,6 +623,7 @@ task_classes:
         - local
         - cheap_cloud
   agent_delegation:
+    gateway_exposure: internal
     required_capabilities:
       - agent_orchestration
     pricing_ceiling_per_1k_tokens: 0.015
@@ -653,6 +671,7 @@ task_classes:
         - cheap_cloud
         - claude
   escalation:
+    gateway_exposure: internal
     required_capabilities:
       - reasoning
       - context_window_large

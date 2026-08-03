@@ -93,6 +93,8 @@ class ModelDelegationRequest(BaseModel):
         "summarization",
         "agent_delegation",
         "escalation",
+        "documentation",
+        "validator_generation",
     ] = Field(
         ...,
         description="Classification of the delegation task.",

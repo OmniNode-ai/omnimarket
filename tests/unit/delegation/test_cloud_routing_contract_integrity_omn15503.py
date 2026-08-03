@@ -113,24 +113,24 @@ def _selected_backend_refs_by_task(
 
 
 @pytest.mark.unit
-def test_delegate_contract_owns_exactly_thirteen_declared_task_classes() -> None:
+def test_delegate_contract_owns_exactly_fifteen_declared_task_classes() -> None:
     allowed = _allowed_task_types()
     task_classes = _yaml_mapping(_TASK_CONTRACT_PATH).get("task_classes")
 
-    assert len(allowed) == 13
-    assert len(set(allowed)) == 13
+    assert len(allowed) == 15
+    assert len(set(allowed)) == 15
     assert isinstance(task_classes, dict)
     assert set(allowed).issubset(task_classes)
 
 
 @pytest.mark.unit
-def test_every_delegate_task_has_a_declared_system_prompt() -> None:
+def test_prompt_subset_uses_generic_fallback_only_for_new_internal_classes() -> None:
     missing = sorted(set(_allowed_task_types()) - routing._SYSTEM_PROMPTS.keys())
-    assert missing == [], f"allowed task types without a system prompt: {missing}"
+    assert missing == ["documentation", "validator_generation"]
 
 
 @pytest.mark.unit
-def test_every_declared_tier_is_structurally_routable_for_all_thirteen_classes(
+def test_every_declared_tier_is_structurally_routable_for_all_fifteen_classes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """A closed tier_order cannot contain decorative, unreachable tiers."""

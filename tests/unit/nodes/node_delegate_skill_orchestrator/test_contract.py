@@ -97,6 +97,8 @@ def test_contract_declares_allowed_task_types() -> None:
         "summarization",
         "agent_delegation",
         "escalation",
+        "documentation",
+        "validator_generation",
     }
 
 
