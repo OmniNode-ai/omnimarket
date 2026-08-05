@@ -85,6 +85,27 @@ _GH_CHECK_GREEN_STATES = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
 # AND its conclusion is one of these.
 _GH_CHECK_RUN_GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 
+# OMN-15413 (AC6 dev-basis rescope, operator ruling R-l, 2026-08-05): the only
+# branches this org ever configures required-status-checks on. A PR whose
+# BASE branch is neither of these (a stacked PR landed on a feature branch)
+# is expected to have ZERO required contexts — GitHub protection is
+# per-branch and feature branches never carry it. Confined to exactly these
+# two names so a genuinely misconfigured/renamed mainline branch still fails
+# closed rather than silently widening the exemption.
+_MAINLINE_BASE_BRANCHES = frozenset({"dev", "main"})
+
+# Substring GitHub's ``gh api`` CLI emits on both 404 shapes this handler can
+# hit while resolving branch protection for a non-mainline base branch:
+# ``Branch not found`` (the branch itself no longer exists — deleted
+# post-merge, the common case for a stacked PR's feature-branch base) and
+# ``Branch not protected`` (the branch still exists but never carried
+# protection, e.g. read immediately after merge, before cleanup). Both are a
+# CONFIRMED, permanent absence of any requirement — never a transient/infra
+# failure (timeout, auth, malformed JSON), whose ``_gh_json`` detail strings
+# take a different shape entirely (``"{argv[:2]} error: {exc}"`` or a
+# non-HTTP stderr line) and therefore never match this marker.
+_CONFIRMED_BRANCH_ABSENCE_MARKER = "404"
+
 
 def _required_check_names_from_classic(data: object) -> set[str]:
     """Extract required check names from classic branch protection.
@@ -627,6 +648,32 @@ class HandlerDodEvidenceGithubEffect:
             | _required_check_names_from_rules(rules_required)
         )
         if not required_names:
+            if (
+                base_branch not in _MAINLINE_BASE_BRANCHES
+                and _CONFIRMED_BRANCH_ABSENCE_MARKER in classic_detail
+            ):
+                # OMN-15413 (R-l): a stacked PR's non-mainline base branch has
+                # no live-resolvable protection — either it never had any
+                # (a plain feature branch) or it no longer exists (deleted
+                # post-merge cleanup). Both are CONFIRMED terminal facts, not
+                # an unresolvable/transient error, so treating this hop as
+                # "not green" would be permanently and unfalsifiably RED for
+                # an already-merged PR. Zero required contexts on a
+                # non-mainline branch is vacuously satisfied; mainline
+                # (dev/main) ancestry is proven by a separate check.
+                return ModelDodEvidenceGithubLookupResultEvent(
+                    correlation_id=command.correlation_id,
+                    operation=command.operation,
+                    checks_green=True,
+                    detail=(
+                        f"base branch {base_branch!r} is non-mainline and its "
+                        f"required-status-checks are confirmed absent "
+                        f"(classic={classic_detail}) rather than unresolvable "
+                        f"— treated as vacuously satisfied for this hop; "
+                        f"mainline (dev/main) ancestry must be proven by a "
+                        f"separate check"
+                    ),
+                )
             return self._checks_not_green(
                 command,
                 f"could not resolve required status checks for {repo}@{base_branch}: "

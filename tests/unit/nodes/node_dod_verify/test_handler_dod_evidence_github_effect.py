@@ -1089,6 +1089,153 @@ class TestFetchPrChecksGreenScoping:
 
 
 # ---------------------------------------------------------------------------
+# OMN-15413 (AC6 dev-basis rescope, operator ruling R-l): a stacked PR whose
+# BASE branch is itself a merged, deleted feature branch (not dev/main) can
+# never resolve required-status-checks again — the branch-protection lookup
+# 404s ("Branch not found") forever, and a plain feature branch never had
+# required contexts configured in the first place ("Branch not protected").
+# Both are CONFIRMED, permanent GitHub-side facts, not a probe/infra error
+# (timeout, auth failure) — treating them identically to an unresolvable
+# error makes this hop of a legitimately-landed, already-merged PR
+# permanently RED and unfalsifiable-by-construction (the exact anti-pattern
+# OMN-15418 was corrected for). Scoped narrowly: ONLY a non-mainline base
+# branch with a confirmed-404 signature gets the vacuous pass; `dev`/`main`
+# stay fail-closed unconditionally, because those branches are expected to
+# exist and be protected — an unresolvable 404 there is a genuine alarm, not
+# a normal post-merge-cleanup artifact.
+# ---------------------------------------------------------------------------
+
+
+def _stacked_pr_view(head: str, base: str) -> str:
+    return json.dumps(
+        {"headRefName": head, "baseRefName": base, "headRefOid": _OCC_SHA}
+    )
+
+
+@pytest.mark.unit
+class TestFetchPrChecksGreenDeletedNonMainlineBase:
+    _STACKED_HEAD = "jonah/omn-15413-unified-migration-ledger"
+    _STACKED_BASE = "jonah/omn-15422-sanitized-legacy-rds-fixture"
+
+    def test_deleted_non_mainline_base_branch_is_vacuously_green(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Reproduces the live OMN-15413 shape: omnibase_infra#2557 merged
+        into a stacked feature branch that was later deleted post-merge.
+        `branches/{base}/protection/required_status_checks` now 404s with
+        "Branch not found" and the rules endpoint resolves with zero rules —
+        neither is a resolution failure, both are confirmed absence of any
+        requirement on a branch that (a) never carried protection and (b) no
+        longer exists to query. This must not fail closed forever."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_stacked_pr_view(self._STACKED_HEAD, self._STACKED_BASE),
+                protection="",
+                protection_rc=1,
+                rules="[]",
+            ),
+        )
+        # Simulate the real `gh api` 404 payload text on stderr, matching the
+        # live-observed error verbatim.
+        real_run = hd_mod.subprocess.run
+
+        def _run_with_stderr(
+            *args: object, **kwargs: object
+        ) -> subprocess.CompletedProcess:
+            result = real_run(*args, **kwargs)
+            argv = [str(a) for a in (list(args[0]) if args else [])]
+            if "protection/required_status_checks" in " ".join(argv):
+                return subprocess.CompletedProcess(
+                    args=result.args,
+                    returncode=result.returncode,
+                    stdout=result.stdout,
+                    stderr="gh: Branch not found (HTTP 404)",
+                )
+            return result
+
+        monkeypatch.setattr(hd_mod.subprocess, "run", _run_with_stderr)
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is True, result.detail
+        detail = (result.detail or "").lower()
+        assert self._STACKED_BASE.lower() in detail
+        assert "non-mainline" in detail
+
+    def test_dev_base_branch_with_same_404_stays_fail_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression control: the identical "Branch not found (HTTP 404)"
+        signature against base=dev must NOT get the vacuous pass — dev is
+        always expected to exist and be protected, so an unresolvable 404
+        there is a genuine alarm."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_occ_pr_view("mine"),
+                protection="",
+                protection_rc=1,
+                rules="[]",
+            ),
+        )
+        real_run = hd_mod.subprocess.run
+
+        def _run_with_stderr(
+            *args: object, **kwargs: object
+        ) -> subprocess.CompletedProcess:
+            result = real_run(*args, **kwargs)
+            argv = [str(a) for a in (list(args[0]) if args else [])]
+            if "protection/required_status_checks" in " ".join(argv):
+                return subprocess.CompletedProcess(
+                    args=result.args,
+                    returncode=result.returncode,
+                    stdout=result.stdout,
+                    stderr="gh: Branch not found (HTTP 404)",
+                )
+            return result
+
+        monkeypatch.setattr(hd_mod.subprocess, "run", _run_with_stderr)
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+
+    def test_non_mainline_base_branch_generic_error_still_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A non-mainline base branch does NOT get a blanket pass on any
+        resolution failure — only a confirmed 404. A generic/opaque error
+        (e.g. transient API failure, no HTTP status in the message) must
+        stay fail-closed exactly as before."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_stacked_pr_view(self._STACKED_HEAD, self._STACKED_BASE),
+                protection="",
+                protection_rc=1,
+                rules="[]",
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+
+
+# ---------------------------------------------------------------------------
 # EvidenceCollector delegation — proves behavior-identical parity: the
 # public wrapper methods on EvidenceCollector keep their exact pre-refactor
 # signatures/return shapes after delegating to the new EFFECT handler.
