@@ -1468,24 +1468,24 @@ class EvidenceCollector:
                 )
                 continue
 
-            # OMN-15382: a malformed marker (dangling, forward, or
-            # self-referential target) hard-fails the ITEM CARRYING the marker
-            # — it is neither executed nor treated as a clean supersession.
-            # Keyed by INDEX (OMN-15390 remediation) so a marker on an item
-            # with a missing/empty/non-string ``id`` is still reported rather
-            # than silently dropped.
-            malformed_reason = supersession.malformed.get(index)
-            if malformed_reason is not None:
-                results.append(
-                    ModelEvidenceCheckResult(
-                        evidence_id=item_id_str or f"dod_evidence[{index}]",
-                        description=description,
-                        status=EnumEvidenceCheckStatus.FAILED,
-                        message=malformed_reason,
-                    )
-                )
-                continue
-
+            # OMN-15708: an item's OWN retirement (is it validly superseded by
+            # a LATER, verified item?) is checked BEFORE its own marker's
+            # validity. A malformed marker on THIS item (dangling/forward/
+            # self-referential — see below) only matters if this item is not
+            # itself retired: an item that some other, well-formed, verified
+            # marker successfully supersedes is SUPERSEDED regardless of
+            # whether ITS OWN outbound marker (if any) was well-formed. Before
+            # this reorder, an item carrying a malformed outbound marker (e.g.
+            # OMN-15374's OCC#6080 comma-joined
+            # ``supersedes_dod_evidence:<a>,<b>,<c>``, which resolves to one
+            # nonexistent target id -> DANGLING_SUPERSESSION) hard-FAILED
+            # unconditionally even when a LATER, separate, single-id marker
+            # (OCC#6084) validly targeted and retired it — no append-only
+            # repair could ever reach the now-unreachable retirement branch
+            # below. The marker parser itself is unchanged: a comma-joined
+            # marker still resolves to a single bogus id and a NON-superseded
+            # carrier still hard-fails via the malformed-reason branch further
+            # down — only the carrying item's OWN retirement path changed.
             carrier_index = (
                 in_effect.get(item_id_str) if item_id_str is not None else None
             )
@@ -1494,6 +1494,16 @@ class EvidenceCollector:
                 # supersedes is not executed and gets no ::pr-live-state check
                 # — its checks are preserved for audit while the superseding
                 # item's checks carry the verdict.
+                #
+                # OMN-15708: a retirement is never a QUIET skip of this item's
+                # OWN marker defect (the property the pre-15708 ordering
+                # protected). If this item's own outbound marker was ALSO
+                # malformed, that fact is folded into the SUPERSEDED message
+                # rather than dropped — the item is still legitimately
+                # retired (its own marker's validity is irrelevant to whether
+                # SOMETHING ELSE validly retires it), but the audit trail
+                # keeps naming the defect instead of erasing it.
+                own_marker_defect = supersession.malformed.get(index)
                 results.append(
                     ModelEvidenceCheckResult(
                         evidence_id=item_id_str,
@@ -1505,7 +1515,37 @@ class EvidenceCollector:
                             f"(evidence_artifact: "
                             f"'{_SUPERSEDES_DOD_EVIDENCE_PREFIX}{item_id_str}'); "
                             "not re-executed — preserved for audit."
+                            + (
+                                f" NOTE: this item's own outbound "
+                                f"evidence_artifact marker was ALSO malformed "
+                                f"({own_marker_defect}) — irrelevant to this "
+                                "retirement (a marker's validity does not "
+                                "affect whether the item carrying it can "
+                                "itself be superseded), recorded so the "
+                                "defect is not silently dropped."
+                                if own_marker_defect is not None
+                                else ""
+                            )
                         ),
+                    )
+                )
+                continue
+
+            # OMN-15382: a malformed marker (dangling, forward, or
+            # self-referential target) hard-fails the ITEM CARRYING the marker
+            # — it is neither executed nor treated as a clean supersession.
+            # Keyed by INDEX (OMN-15390 remediation) so a marker on an item
+            # with a missing/empty/non-string ``id`` is still reported rather
+            # than silently dropped. Reached only when this item is NOT itself
+            # validly superseded (see OMN-15708 comment above).
+            malformed_reason = supersession.malformed.get(index)
+            if malformed_reason is not None:
+                results.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id=item_id_str or f"dod_evidence[{index}]",
+                        description=description,
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=malformed_reason,
                     )
                 )
                 continue

@@ -245,10 +245,24 @@ class TestMalformedSupersessionChainsAreHardRed:
         ``test_omn_15390_contract_entry_supersession.py``. The
         mutually-referential contract below therefore resolves
         deterministically in one pass rather than being detected as a cycle:
-        ``dod-a``'s marker points FORWARD and
-        retires nothing (hard RED on ``dod-a``, matching what the OCC gate
-        computes — no supersession); ``dod-b``'s marker points backwards and
-        retires ``dod-a`` normally.
+        ``dod-a``'s OWN marker points FORWARD and retires nothing; ``dod-b``'s
+        marker points backwards and validly retires ``dod-a``.
+
+        OMN-15708 (superseding this test's original assertion): ``dod-a`` is
+        now SUPERSEDED, not FAILED. Before OMN-15708, an item's own malformed
+        marker was checked BEFORE whether the item was itself the target of a
+        later valid supersession, so ``dod-a`` hard-FAILED unconditionally —
+        which is exactly the OMN-15374 defect class: a live OCC contract
+        (PR #6080's comma-joined ``supersedes_dod_evidence:<a>,<b>,<c>``) had
+        its malformed carrier permanently unretireable by ANY later
+        append-only repair, because the branch that would retire it was
+        unreachable. ``dod-a``'s own marker defect not being a "quiet skip"
+        (this test's original concern) is preserved a different way: the
+        SUPERSEDED message for an item that also carries its own malformed
+        marker names that defect explicitly (see the ``NOTE:`` assertion
+        below) instead of erasing the item's verdict silently — the defect
+        stays visible in the audit trail without blocking a legitimate
+        retirement by an unrelated later item.
         """
         results = _collect(
             tmp_path,
@@ -269,10 +283,12 @@ class TestMalformedSupersessionChainsAreHardRed:
             ],
         )
         by_id = {r.evidence_id: r for r in results}
-        # dod-a carries a broken marker, so it is RED on its own account —
-        # a malformed marker is reported ahead of any supersession of the
-        # same id, so a typo can never masquerade as a quiet skip.
-        assert by_id["dod-a"].status == EnumEvidenceCheckStatus.FAILED
+        # dod-a IS validly superseded by dod-b's well-formed backward marker —
+        # its own marker's (in)validity is irrelevant to whether something
+        # ELSE retires it (OMN-15708). The defect in dod-a's own marker is
+        # still named in the message, not silently dropped.
+        assert by_id["dod-a"].status == EnumEvidenceCheckStatus.SUPERSEDED
+        assert "SUPERSEDED by" in (by_id["dod-a"].message or "")
         assert "FORWARD_SUPERSESSION" in (by_id["dod-a"].message or "")
         # dod-b's own marker is well-formed, so dod-b executes.
         assert by_id["dod-b"].status == EnumEvidenceCheckStatus.VERIFIED
