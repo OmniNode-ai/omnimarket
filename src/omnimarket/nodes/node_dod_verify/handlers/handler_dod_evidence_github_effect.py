@@ -589,7 +589,7 @@ class HandlerDodEvidenceGithubEffect:
                 "--repo",
                 repo,
                 "--json",
-                "headRefName,baseRefName,headRefOid",
+                "headRefName,baseRefName,headRefOid,state,mergedAt",
             ],
             _GH_PR_TIMEOUT_S,
         )
@@ -605,6 +605,8 @@ class HandlerDodEvidenceGithubEffect:
                 command,
                 "gh pr view response missing headRefName/baseRefName/headRefOid",
             )
+        pr_state = str(pr_data.get("state") or "UNKNOWN")
+        is_merged = bool(pr_data.get("mergedAt")) or pr_state.upper() == "MERGED"
 
         classic_required, classic_detail = _gh_json(
             [
@@ -626,13 +628,17 @@ class HandlerDodEvidenceGithubEffect:
             _required_check_names_from_classic(classic_required)
             | _required_check_names_from_rules(rules_required)
         )
-        if not required_names:
-            return self._checks_not_green(
-                command,
-                f"could not resolve required status checks for {repo}@{base_branch}: "
-                f"classic={classic_detail or 'no names'}; "
-                f"rules={rules_detail or 'no names'}",
-            )
+        base_protection_detail = (
+            f"could not resolve required status checks for {repo}@{base_branch}: "
+            f"classic={classic_detail or 'no names'}; "
+            f"rules={rules_detail or 'no names'}"
+        )
+        if not required_names and not is_merged:
+            # Fail-closed, unchanged from pre-OMN-15715 behavior: an OPEN (or
+            # otherwise not-yet-MERGED) PR whose base branch protection is
+            # unresolvable has no merge-time-durable evidence to fall back
+            # on — a Done-flip must not proceed on unverifiable live state.
+            return self._checks_not_green(command, base_protection_detail)
 
         suites, suites_detail = _gh_json_lines(
             [
@@ -674,6 +680,30 @@ class HandlerDodEvidenceGithubEffect:
             return self._checks_not_green(
                 command,
                 f"could not enumerate check-runs for {sha[:12]}: {runs_detail}",
+            )
+
+        if not required_names:
+            # OMN-15715 carve-out: the PR is confirmed MERGED (checked
+            # above — a not-merged PR already returned fail-closed before
+            # this point) but its base branch's live protection could not
+            # be resolved, typically because the base branch — the
+            # standard post-merge state for a stacked-PR chain — was
+            # deleted, so branches/{base}/protection 404s permanently. Do
+            # not fail closed solely on that: the check-run history
+            # recorded against the PR's own SHA-keyed, merge-time-durable
+            # head commit is itself the evidence GitHub's own required
+            # checks would have gated on before the merge was allowed.
+            # Foreign/ambiguous-branch filtering (OMN-15709) still applies
+            # so a sibling PR sharing this head SHA cannot pollute the
+            # rollup.
+            return self._checks_green_from_own_history(
+                command,
+                base_branch=base_branch,
+                head_branch=head_branch,
+                sha=sha,
+                runs=runs,
+                suite_branch=suite_branch,
+                base_protection_detail=base_protection_detail,
             )
 
         missing: list[str] = []
@@ -739,6 +769,70 @@ class HandlerDodEvidenceGithubEffect:
             detail=(
                 f"all {len(required_names)} required context(s) green for "
                 f"{head_branch}@{sha[:12]}"
+            ),
+        )
+
+    def _checks_green_from_own_history(
+        self,
+        command: ModelDodEvidenceGithubLookupCommand,
+        *,
+        base_branch: str,
+        head_branch: str,
+        sha: str,
+        runs: list[dict[str, object]],
+        suite_branch: dict[int, str | None],
+        base_protection_detail: str,
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        """OMN-15715 merged+deleted-base carve-out.
+
+        Narrow: only reached when ``_fetch_pr_checks_green`` already
+        confirmed the PR is MERGED and live branch-protection lookup for its
+        (possibly since-deleted) base branch yielded no required-context
+        names. Rather than fail closed on that, this treats every check-run
+        recorded against the PR's own head SHA — after the same
+        own-branch-or-ambiguous foreign-run filtering OMN-15709 applies to
+        the normal path — as the merge-time-durable evidence set. Zero
+        own-branch history is still a genuinely unresolvable case and stays
+        fail-closed.
+        """
+        own_runs = [
+            run
+            for run in runs
+            if _check_run_is_own_or_ambiguous(run, head_branch, suite_branch)
+        ]
+        if not own_runs:
+            return self._checks_not_green(
+                command,
+                f"{base_protection_detail} (base branch likely deleted "
+                f"post-merge); no own-branch or unattributable check-run "
+                f"history exists on {head_branch}@{sha[:12]} to fall back on",
+            )
+        not_green = sorted(
+            {
+                str(run.get("name") or "unnamed")
+                for run in own_runs
+                if not _is_green_check_run(run)
+            }
+        )
+        if not_green:
+            shown = ", ".join(not_green[:10])
+            more = "" if len(not_green) <= 10 else f" (+{len(not_green) - 10} more)"
+            return self._checks_not_green(
+                command,
+                f"base branch {base_branch} protection unresolvable (likely "
+                f"deleted post-merge) — falling back to {head_branch}@"
+                f"{sha[:12]}'s own check-run history: {len(not_green)} "
+                f"context(s) not green: {shown}{more}",
+            )
+        return ModelDodEvidenceGithubLookupResultEvent(
+            correlation_id=command.correlation_id,
+            operation=command.operation,
+            checks_green=True,
+            detail=(
+                f"MERGED; base branch {base_branch} protection unresolvable "
+                f"(likely deleted post-merge) — {len(own_runs)} own-branch "
+                f"check-run(s) on {head_branch}@{sha[:12]} all green "
+                f"(merge-time-durable fallback, OMN-15715)"
             ),
         )
 

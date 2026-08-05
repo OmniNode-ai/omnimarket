@@ -424,6 +424,27 @@ def _occ_pr_view(branch: str) -> str:
     )
 
 
+def _pr_view(
+    branch: str,
+    *,
+    base: str = "dev",
+    state: str = "OPEN",
+    merged_at: str | None = None,
+) -> str:
+    """Like :func:`_occ_pr_view` but exposes ``state``/``mergedAt`` — needed
+    for OMN-15715's merged+deleted-base carve-out, which activates only when
+    the PR is confirmed MERGED."""
+    return json.dumps(
+        {
+            "headRefName": branch,
+            "baseRefName": base,
+            "headRefOid": _OCC_SHA,
+            "state": state,
+            "mergedAt": merged_at,
+        }
+    )
+
+
 # Sanitized subset of the real 43-suite / 132-check-run rollup GitHub returns
 # for OCC PR #5745 (jonah's own PR, MERGED) / #5749 (codex's sibling PR,
 # CLOSED) sharing head SHA ``ed2f0084`` — live-verified 2026-08-05 (OMN-15709
@@ -1079,6 +1100,175 @@ class TestFetchPrChecksGreenScoping:
             raise subprocess.TimeoutExpired(cmd="gh", timeout=30)
 
         monkeypatch.setattr(hd_mod.subprocess, "run", _boom)
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False
+
+
+# ---------------------------------------------------------------------------
+# FETCH_PR_CHECKS_GREEN (OMN-15715) — merged PR whose base branch was deleted
+# post-merge (the standard stacked-PR cleanup step). Live-verified repro:
+# ``omnibase_infra#2558`` merged into
+# ``jonah/omn-15418-p0-replace-raw-db_io-loading-with-typed-declarations-and``,
+# a branch GitHub now 404s on. Branch-protection lookups against a deleted
+# base return no required-context names; the carve-out must resolve
+# green/not-green from the PR's own (SHA-keyed, merge-time-durable)
+# head-commit check-run history instead of failing closed solely because the
+# base branch protection fetch 404s.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFetchPrChecksGreenMergedDeletedBase:
+    def test_merged_pr_deleted_base_all_green_resolves_green(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A MERGED PR whose base 404s and whose own head-SHA check-run
+        history is all green must resolve checks_green=True — never
+        fail-closed FAILED solely because the base branch is gone."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view(
+                    "jonah/omn-15418-p0-replace-raw-db_io-loading-with-typed-declarations-and",
+                    base="jonah/omn-15418-stack-base",
+                    state="MERGED",
+                    merged_at="2026-07-30T16:06:28Z",
+                ),
+                protection="",
+                protection_rc=1,  # 404: base branch deleted post-merge
+                rules="[]",
+                suites=_lines(
+                    {
+                        "id": 1,
+                        "head_branch": "jonah/omn-15418-p0-replace-raw-db_io-loading-with-typed-declarations-and",
+                    }
+                ),
+                runs=_lines(
+                    {
+                        "name": "ci / build",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    },
+                    {
+                        "name": "deploy-gate / deploy-gate",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    },
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo="OmniNode-ai/omnibase_infra",
+            pr_number=2558,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is True, result.detail
+
+    def test_merged_pr_deleted_base_own_history_red_stays_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The carve-out is not a blanket rescue: a merged PR whose base
+        404s AND whose own head-SHA history has a real failure must still
+        resolve checks_green=False."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view(
+                    "mine",
+                    base="deleted-base",
+                    state="MERGED",
+                    merged_at="2026-07-30T16:06:28Z",
+                ),
+                protection="",
+                protection_rc=1,
+                rules="[]",
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "ci / build",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False
+
+    def test_merged_pr_deleted_base_no_own_history_still_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Zero check-run history at all is a genuinely unresolvable case
+        even under the carve-out — must not silently pass."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view(
+                    "mine",
+                    base="deleted-base",
+                    state="MERGED",
+                    merged_at="2026-07-30T16:06:28Z",
+                ),
+                protection="",
+                protection_rc=1,
+                rules="[]",
+                suites=_lines(),
+                runs=_lines(),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False
+
+    def test_open_pr_deleted_base_still_fails_closed_regression(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression control: an OPEN (not merged) PR whose base 404s must
+        keep failing closed exactly as before — the carve-out is
+        merged-only, never a general relaxation of the base-protection
+        requirement."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view(
+                    "mine", base="deleted-base", state="OPEN", merged_at=None
+                ),
+                protection="",
+                protection_rc=1,
+                rules="[]",
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "ci / build",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+            ),
+        )
         command = ModelDodEvidenceGithubLookupCommand(
             operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
             repo=_REPO,
