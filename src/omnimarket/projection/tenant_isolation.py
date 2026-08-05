@@ -45,6 +45,19 @@ from uuid import UUID
 from omnimarket.config.settings import get_settings
 
 
+class UnmappedTenantIdentityError(ValueError):
+    """Raised when a legacy tenant value has no canonical UUID mapping (OMN-15356).
+
+    The conversion migration for every classified-TENANT relation calls
+    :func:`resolve_tenant_uuid` inside the same transaction as the column
+    type change. This exception aborts that transaction -- Postgres rolls
+    back the whole ``ALTER COLUMN ... TYPE`` on any unmapped row, so a
+    partially-converted column, a silently invented UUID, or a sentinel
+    value can never be the result. "No sentinel survives" (this ticket's own
+    acceptance criterion) is enforced by this being a raise, not a return.
+    """
+
+
 class TenantRequiredError(ValueError):
     """Raised when a projection write is refused for missing ``tenant_id``.
 
@@ -73,19 +86,25 @@ TENANT_GUC = "app.tenant_id"
 #
 # ONE identity, TWO representations, deliberately -- do not add a third:
 #
-#   HOUSE_TENANT_SLUG  the wire/column form in use TODAY. Every landed
-#                      ``tenant_id`` column on this surface is ``TEXT`` and
-#                      every landed DEFAULT is this exact string (delegation
+#   HOUSE_TENANT_SLUG  the wire/column form most relations still carry. Every
+#                      landed DEFAULT was this exact string (delegation
 #                      0022/0025, savings 080, registration 0002,
 #                      inference-response 0002, omnidash 0001_tenant_rls).
-#                      Introducing a UUID column alongside them would fork the
-#                      identity inside one database, so this stays TEXT until
-#                      OMN-15356 converts the whole set in one pass.
+#                      Introducing a UUID column alongside a TEXT one would
+#                      fork the identity inside one database -- OMN-15356
+#                      converts each relation's column in place instead
+#                      (capability_scores migration 0003 is the first landed
+#                      conversion; the remaining classified-TENANT relations
+#                      follow the identical pattern). :func:`resolve_tenant_uuid`
+#                      is the single Python implementation of that mapping;
+#                      ``house_tenant_map_slug_to_uuid`` in each conversion
+#                      migration is its SQL mirror.
 #
 #   HOUSE_TENANT_UUID  the canonical immutable identifier ADR-0027 requires and
-#                      the value OMN-15356's conversion resolves the slug to.
-#                      Pinned here so the conversion has a fixed, reviewable
-#                      target instead of minting one at migration time.
+#                      the value every OMN-15356 conversion resolves the slug
+#                      to. Pinned here so the conversion has a fixed,
+#                      reviewable target instead of minting one at migration
+#                      time.
 #
 # The UUID is a UUIDv5 -- derived, not random, so it is reproducible from first
 # principles and independently checkable:
@@ -104,6 +123,51 @@ HOUSE_TENANT_UUID = UUID("820272f9-4aaf-5add-a2df-0af942852ab2")
 # no longer accurate as a description: the value is not an "interim default
 # standing in for a missing tenant", it is a real tenant's identifier.
 INTERIM_DEFAULT_TENANT = HOUSE_TENANT_SLUG
+
+
+# ---------------------------------------------------------------------------
+# OMN-15356: legacy TEXT tenant identity -> canonical UUID.
+#
+# A closed, explicit mapping table -- NOT a hash/uuid5 re-derivation of
+# whatever string shows up. The only legacy value any landed migration or
+# writer has ever produced is HOUSE_TENANT_SLUG (every DEFAULT, every
+# backfill, every handler constant agrees -- see
+# ``test_house_tenant_identity.py``). Re-deriving a UUID from an arbitrary
+# input string would let any unreviewed value silently mint a new tenant
+# identity with no registry entry and no RLS policy; this table can only ever
+# resolve values this codebase already knows about, and everything else is
+# refused. Extend this dict, never fall through to a computed default, when a
+# second legacy value is discovered.
+# ---------------------------------------------------------------------------
+_LEGACY_TENANT_UUID_MAP: dict[str, UUID] = {
+    HOUSE_TENANT_SLUG: HOUSE_TENANT_UUID,
+}
+
+
+def resolve_tenant_uuid(tenant_value: str | None) -> UUID:
+    """Map a legacy TEXT ``tenant_id`` value to its canonical UUID (OMN-15356).
+
+    Total over the closed set of values this codebase has ever written, and
+    over nothing else: exact, case-sensitive, whitespace-sensitive string
+    match against :data:`_LEGACY_TENANT_UUID_MAP`. Anything not an exact key
+    -- ``None``, blank, mis-cased, padded, or a value belonging to a tenant
+    this repo has no record of -- raises :class:`UnmappedTenantIdentityError`
+    rather than guessing. This is the single implementation the
+    ``ALTER COLUMN ... TYPE UUID USING`` conversion for every classified
+    TENANT relation is derived from (SQL mirror:
+    ``house_tenant_map_slug_to_uuid`` in migration 0003 of
+    ``node_canary_score_reducer``, and every relation that follows it).
+    """
+    if isinstance(tenant_value, str):
+        mapped = _LEGACY_TENANT_UUID_MAP.get(tenant_value)
+        if mapped is not None:
+            return mapped
+    raise UnmappedTenantIdentityError(
+        f"no canonical UUID mapping for tenant value {tenant_value!r} "
+        "(OMN-15356) -- refusing to invent or default one; add an explicit "
+        "entry to _LEGACY_TENANT_UUID_MAP only after confirming this is a "
+        "real, reviewed tenant identity"
+    )
 
 
 def resolve_write_tenant(tenant_value: object, *, table: str) -> str:
@@ -208,8 +272,10 @@ __all__: list[str] = [
     "INTERIM_DEFAULT_TENANT",
     "TENANT_GUC",
     "TenantRequiredError",
+    "UnmappedTenantIdentityError",
     "house_tenant_write_stamp",
     "require_tenant_id",
     "resolve_read_tenant",
+    "resolve_tenant_uuid",
     "resolve_write_tenant",
 ]
