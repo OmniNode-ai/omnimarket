@@ -26,6 +26,27 @@ contract-loading/check-execution I/O and retire
 operation into ``node_dod_verify``'s node-level archetype/purity declaration.
 This handler intentionally does NOT touch ``HandlerDodVerify`` or the
 ``_make_collector`` seam that OMN-14392 (#1719)'s hermetic test depends on.
+
+OMN-15709 (operator ruling R-b, 2026-08-05): ``FETCH_PR_CHECKS_GREEN`` is no
+longer a verbatim ``gh pr checks --required`` carve-out. GitHub's Checks API
+is keyed by commit SHA, not by PR — ``gh pr checks <n>`` resolves the PR's
+head SHA and reports every check-run/check-suite attached to that SHA, so a
+DIFFERENT PR sharing the same head SHA (e.g. a duplicate/superseding PR from
+another branch) can pollute the rollup with foreign failures, permanently
+reddening an already-MERGED, terminal PR's evidence. Empirically (OCC
+#5745/#5749, same head SHA): ``check_suite.pull_requests[]`` is unpopulated
+on 43/43 suites, so it cannot discriminate. The fix instead resolves the PR's
+own ``headRefName`` via ``gh pr view``, enumerates check-suites for the head
+SHA via ``gh api commits/{sha}/check-suites``, and filters check-runs (``gh
+api commits/{sha}/check-runs``) to those whose ``check_suite.head_branch``
+matches — a check-run attached to a suite on a DIFFERENT, resolvable branch
+is provably foreign and excluded from the rollup; a check-run whose suite
+cannot be resolved at all is treated as ambiguous and stays in the rollup
+(fail-closed). Required-context names are read live from
+``branches/{base}/protection/required_status_checks`` rather than trusted to
+``gh pr checks --required``'s own filtering. See
+``docs/tracking/ROLLING_WORK_LEDGER.md`` 2026-08-05 (ruling R-b) for the full
+empirical trace this design is built from.
 """
 
 from __future__ import annotations
@@ -52,9 +73,117 @@ _HANDLER_ID = "node_dod_verify.dod_evidence_github_effect"
 
 # ``gh pr checks --json ... state`` values that are NOT a failure. Anything
 # else (FAILURE, CANCELLED, ERROR, TIMED_OUT, ACTION_REQUIRED, PENDING,
-# QUEUED, IN_PROGRESS, ...) is treated as not-green — carried over verbatim
-# from EvidenceCollector._fetch_pr_checks_green.
+# QUEUED, IN_PROGRESS, ...) is treated as not-green — used by the remaining
+# ``gh pr checks``-shaped lookups (none as of OMN-15709; kept for parity with
+# historical fixtures/tests that still assert against this constant).
 _GH_CHECK_GREEN_STATES = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
+
+# Raw Checks API ``conclusion`` values (lowercase) that are NOT a failure —
+# OMN-15709's ``commits/{sha}/check-runs`` rollup carries ``status`` +
+# ``conclusion`` separately rather than ``gh pr checks``' single normalized
+# ``state`` string; a run only counts as green when ``status == "completed"``
+# AND its conclusion is one of these.
+_GH_CHECK_RUN_GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
+
+
+def _gh_json(argv: list[str], timeout_s: int) -> tuple[object | None, str]:
+    """Run a ``gh`` invocation and parse its stdout as a single JSON value.
+
+    Returns ``(data, detail)``. ``data`` is ``None`` (never a falsy-but-valid
+    JSON value gets confused with failure — callers check ``isinstance``) on
+    timeout/OSError, non-zero exit, or unparseable stdout; ``detail`` carries
+    a short diagnostic in that case, empty string otherwise.
+    """
+    try:
+        result = subprocess.run(
+            argv, capture_output=True, text=True, timeout=timeout_s, check=False
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return None, f"{argv[:2]} error: {exc}"
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        return None, detail[:200] or f"non-zero exit ({result.returncode})"
+    try:
+        return json.loads(result.stdout or "null"), ""
+    except json.JSONDecodeError:
+        detail = (result.stderr or result.stdout or "").strip()
+        return None, detail[:200] or "unparseable JSON"
+
+
+def _gh_json_lines(
+    argv: list[str], timeout_s: int
+) -> tuple[list[dict[str, object]] | None, str]:
+    """Run a ``gh api --paginate --jq '...[]'`` invocation whose stdout is
+    JSON-lines (one JSON object per array element, one page's worth per
+    invocation of the jq filter) rather than a single JSON document.
+
+    Returns ``(items, detail)`` with the same ``None``-on-failure contract as
+    :func:`_gh_json`. Non-dict lines are skipped (defensive only — the ``jq``
+    projection always emits objects for the callers here); an unparseable
+    line fails the whole call closed rather than silently dropping data.
+    """
+    try:
+        result = subprocess.run(
+            argv, capture_output=True, text=True, timeout=timeout_s, check=False
+        )
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        return None, f"{argv[:2]} error: {exc}"
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout or "").strip()
+        return None, detail[:200] or f"non-zero exit ({result.returncode})"
+    items: list[dict[str, object]] = []
+    for line in (result.stdout or "").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            return None, f"unparseable line in paginated output: {line[:200]}"
+        if isinstance(obj, dict):
+            items.append(obj)
+    return items, ""
+
+
+def _is_green_check_run(run: dict[str, object]) -> bool:
+    """A raw Checks-API check-run is green iff it completed with a
+    non-failing conclusion — the two-field (``status``/``conclusion``)
+    equivalent of ``gh pr checks``' single normalized ``state`` string."""
+    status = str(run.get("status") or "").lower()
+    conclusion = str(run.get("conclusion") or "").lower()
+    return status == "completed" and conclusion in _GH_CHECK_RUN_GREEN_CONCLUSIONS
+
+
+def _check_run_is_own_or_ambiguous(
+    run: dict[str, object],
+    pr_head_branch: str,
+    suite_branch: dict[int, str | None],
+) -> bool:
+    """Whether ``run`` counts toward the PR's OWN evidence rollup.
+
+    OMN-15709 (ruling R-b): ``check_suite.pull_requests[]`` is empty on real
+    GitHub responses (43/43 in the OCC #5745/#5749 trace) and cannot
+    discriminate, so branch attribution is done via the check-run's
+    ``check_suite.id`` resolved against a ``commits/{sha}/check-suites``
+    listing's ``head_branch``. A run is:
+
+    * OWN — its suite resolves to a branch and that branch IS the PR's own
+      ``headRefName``. Included.
+    * AMBIGUOUS — its suite is missing from the listing, has no ``id``, or
+      the listing carries a null/empty ``head_branch`` for it. Attribution
+      cannot be proven either way, so this fails closed and is included
+      (never silently excluded — AC2).
+    * PROVABLY FOREIGN — its suite resolves to a DIFFERENT, known branch.
+      Excluded: a different branch's PASS or FAIL must not influence this
+      PR's own evidence.
+    """
+    suite = run.get("check_suite")
+    suite_id = suite.get("id") if isinstance(suite, dict) else None
+    if isinstance(suite_id, int) and suite_id in suite_branch:
+        branch = suite_branch[suite_id]
+        if branch is not None:
+            return branch == pr_head_branch
+    return True  # ambiguous: unresolved suite id or null head_branch
 
 
 def _exact_ticket_token_candidates(
@@ -386,81 +515,175 @@ class HandlerDodEvidenceGithubEffect:
         )
 
     # ------------------------------------------------------------------
-    # FETCH_PR_CHECKS_GREEN — verbatim carve-out of
-    # EvidenceCollector._fetch_pr_checks_green. Scoped to required checks
-    # only via ``gh pr checks --required`` (OMN-14390) — a non-green
-    # *non-required* check (e.g. an informational/advisory job) must never
-    # fail a Done-flip; only branch-protection-required contexts are
-    # load-bearing here.
+    # FETCH_PR_CHECKS_GREEN (OMN-15709 rewrite) — scoped to check-suites
+    # whose ``head_branch`` is provably the PR's OWN branch (or whose branch
+    # attribution is unresolvable, which fails closed), never a foreign
+    # PR/branch sharing the same head SHA. See the module docstring for the
+    # full empirical trace (OCC #5745/#5749). Required-context names are
+    # read live from branch protection rather than trusted to
+    # ``gh pr checks --required``'s own filtering.
     # ------------------------------------------------------------------
     def _fetch_pr_checks_green(
         self, command: ModelDodEvidenceGithubLookupCommand
     ) -> ModelDodEvidenceGithubLookupResultEvent:
         repo = command.repo or ""
         pr_number = command.pr_number or 0
-        try:
-            result = subprocess.run(
-                [
-                    "gh",
-                    "pr",
-                    "checks",
-                    str(pr_number),
-                    "--repo",
-                    repo,
-                    "--required",
-                    "--json",
-                    "name,state",
-                ],
-                capture_output=True,
-                text=True,
-                timeout=_GH_PR_TIMEOUT_S,
-                check=False,
-            )
-        except (subprocess.TimeoutExpired, OSError) as exc:
-            return ModelDodEvidenceGithubLookupResultEvent(
-                correlation_id=command.correlation_id,
-                operation=command.operation,
-                checks_green=False,
-                detail=f"gh pr checks error: {exc}",
-            )
-        try:
-            data = json.loads(result.stdout or "[]")
-        except json.JSONDecodeError:
-            detail = (result.stderr or result.stdout or "").strip()
-            return ModelDodEvidenceGithubLookupResultEvent(
-                correlation_id=command.correlation_id,
-                operation=command.operation,
-                checks_green=False,
-                detail=f"could not read check results: {detail[:200]}",
-            )
-        if not isinstance(data, list) or not data:
-            detail = (result.stderr or "no status checks reported").strip()
-            return ModelDodEvidenceGithubLookupResultEvent(
-                correlation_id=command.correlation_id,
-                operation=command.operation,
-                checks_green=False,
-                detail=f"no status checks reported: {detail[:200]}",
-            )
-        not_green = sorted(
-            str(check.get("name") or "<unnamed>")
-            for check in data
-            if isinstance(check, dict)
-            and str(check.get("state") or "").upper() not in _GH_CHECK_GREEN_STATES
+
+        pr_data, pr_detail = _gh_json(
+            [
+                "gh",
+                "pr",
+                "view",
+                str(pr_number),
+                "--repo",
+                repo,
+                "--json",
+                "headRefName,baseRefName,headRefOid",
+            ],
+            _GH_PR_TIMEOUT_S,
         )
+        if not isinstance(pr_data, dict):
+            return self._checks_not_green(
+                command, f"could not resolve PR head/base branch: {pr_detail}"
+            )
+        head_branch = str(pr_data.get("headRefName") or "")
+        base_branch = str(pr_data.get("baseRefName") or "")
+        sha = str(pr_data.get("headRefOid") or "")
+        if not head_branch or not base_branch or not sha:
+            return self._checks_not_green(
+                command,
+                "gh pr view response missing headRefName/baseRefName/headRefOid",
+            )
+
+        contexts, contexts_detail = _gh_json(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/branches/{base_branch}/protection/required_status_checks",
+                "--jq",
+                ".contexts",
+            ],
+            _GH_PR_TIMEOUT_S,
+        )
+        if not isinstance(contexts, list) or not contexts:
+            return self._checks_not_green(
+                command,
+                f"could not resolve required status checks for {repo}@{base_branch}: "
+                f"{contexts_detail}",
+            )
+        required_names = sorted({str(c) for c in contexts if isinstance(c, str) and c})
+        if not required_names:
+            return self._checks_not_green(
+                command, "no required status check contexts configured"
+            )
+
+        suites, suites_detail = _gh_json_lines(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/commits/{sha}/check-suites",
+                "--paginate",
+                "--jq",
+                ".check_suites[] | {id, head_branch}",
+            ],
+            _GH_PR_TIMEOUT_S,
+        )
+        if suites is None:
+            return self._checks_not_green(
+                command,
+                f"could not enumerate check-suites for {sha[:12]}: {suites_detail}",
+            )
+        suite_branch: dict[int, str | None] = {}
+        for suite in suites:
+            suite_id = suite.get("id")
+            if isinstance(suite_id, int):
+                head = suite.get("head_branch")
+                suite_branch[suite_id] = (
+                    str(head) if isinstance(head, str) and head else None
+                )
+
+        runs, runs_detail = _gh_json_lines(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/commits/{sha}/check-runs",
+                "--paginate",
+                "--jq",
+                ".check_runs[] | {name, status, conclusion, check_suite}",
+            ],
+            _GH_PR_TIMEOUT_S,
+        )
+        if runs is None:
+            return self._checks_not_green(
+                command,
+                f"could not enumerate check-runs for {sha[:12]}: {runs_detail}",
+            )
+
+        missing: list[str] = []
+        not_green: list[str] = []
+        evaluated_any = False
+        for name in required_names:
+            matches = [r for r in runs if str(r.get("name") or "") == name]
+            if not matches:
+                missing.append(name)
+                continue
+            relevant = [
+                run
+                for run in matches
+                if _check_run_is_own_or_ambiguous(run, head_branch, suite_branch)
+            ]
+            if not relevant:
+                # Every instance of this required context is PROVABLY foreign
+                # (it ran on a different, resolvable branch sharing this SHA)
+                # — the PR's own branch never produced it. Not counted either
+                # way; a foreign PASS or FAIL must not influence this PR's
+                # evidence.
+                continue
+            evaluated_any = True
+            if any(not _is_green_check_run(run) for run in relevant):
+                not_green.append(name)
+
+        if missing:
+            shown = ", ".join(missing[:10])
+            more = "" if len(missing) <= 10 else f" (+{len(missing) - 10} more)"
+            return self._checks_not_green(
+                command,
+                f"{len(missing)} required context(s) missing entirely from "
+                f"{sha[:12]}: {shown}{more}",
+            )
         if not_green:
             shown = ", ".join(not_green[:10])
             more = "" if len(not_green) <= 10 else f" (+{len(not_green) - 10} more)"
-            return ModelDodEvidenceGithubLookupResultEvent(
-                correlation_id=command.correlation_id,
-                operation=command.operation,
-                checks_green=False,
-                detail=f"{len(not_green)} check(s) not green: {shown}{more}",
+            return self._checks_not_green(
+                command,
+                f"{len(not_green)} required context(s) not green on "
+                f"{head_branch}: {shown}{more}",
+            )
+        if not evaluated_any:
+            return self._checks_not_green(
+                command,
+                f"no required context had an own-branch or unattributable "
+                f"check-run on {sha[:12]}",
             )
         return ModelDodEvidenceGithubLookupResultEvent(
             correlation_id=command.correlation_id,
             operation=command.operation,
             checks_green=True,
-            detail=f"all {len(data)} status check(s) green",
+            detail=(
+                f"all {len(required_names)} required context(s) green for "
+                f"{head_branch}@{sha[:12]}"
+            ),
+        )
+
+    @staticmethod
+    def _checks_not_green(
+        command: ModelDodEvidenceGithubLookupCommand, detail: str
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        return ModelDodEvidenceGithubLookupResultEvent(
+            correlation_id=command.correlation_id,
+            operation=command.operation,
+            checks_green=False,
+            detail=detail[:400],
         )
 
 
