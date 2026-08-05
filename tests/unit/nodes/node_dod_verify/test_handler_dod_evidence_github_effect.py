@@ -65,16 +65,17 @@ def _routed_gh(
     view_rc: int = 0,
     protection: str = "",
     protection_rc: int = 0,
+    rules: str = "[]",
+    rules_rc: int = 0,
     suites: str = "",
     suites_rc: int = 0,
     runs: str = "",
     runs_rc: int = 0,
 ) -> object:
-    """Route ``gh`` invocations for FETCH_PR_CHECKS_GREEN's 4-call sequence
-    (``pr view`` -> branch-protection required_status_checks -> check-suites
+    """Route ``gh`` invocations for FETCH_PR_CHECKS_GREEN's 5-call sequence
+    (``pr view`` -> classic branch protection -> branch rules -> check-suites
     -> check-runs) to the fixture matching each call's shape, keyed by
-    distinctive substrings in the invocation argv rather than call order —
-    order independence keeps these fixtures robust to internal reordering."""
+    distinctive substrings in the invocation argv rather than call order."""
 
     def _run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
         argv = [str(a) for a in (list(args[0]) if args else [])]
@@ -86,6 +87,10 @@ def _routed_gh(
         if "protection/required_status_checks" in joined:
             return subprocess.CompletedProcess(
                 args=argv, returncode=protection_rc, stdout=protection, stderr=""
+            )
+        if "rules/branches" in joined:
+            return subprocess.CompletedProcess(
+                args=argv, returncode=rules_rc, stdout=rules, stderr=""
             )
         if "check-suites" in joined:
             return subprocess.CompletedProcess(
@@ -615,6 +620,81 @@ class TestFetchPrChecksGreenOccRegression:
 @pytest.mark.unit
 class TestFetchPrChecksGreenScoping:
     _REQUIRED = json.dumps(["build"])
+
+    def test_classic_checks_only_requirement_reports_green(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GitHub's classic branch protection exposes modern required checks
+        under ``checks[].context`` rather than the deprecated ``contexts``
+        list; those names must still be enforced."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_occ_pr_view("mine"),
+                protection=json.dumps(
+                    {"contexts": [], "checks": [{"context": "build"}]}
+                ),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "build",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is True, result.detail
+
+    def test_ruleset_only_requirement_reports_green(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Active branch rulesets can define the required status checks even
+        when classic branch protection carries no context names."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_occ_pr_view("mine"),
+                protection=json.dumps({"contexts": [], "checks": []}),
+                rules=json.dumps(
+                    [
+                        {
+                            "type": "required_status_checks",
+                            "parameters": {
+                                "required_status_checks": [
+                                    {"context": "build", "integration_id": 15368}
+                                ]
+                            },
+                        }
+                    ]
+                ),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "build",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is True, result.detail
 
     def test_own_branch_all_green(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(

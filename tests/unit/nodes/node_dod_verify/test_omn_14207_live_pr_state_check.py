@@ -491,13 +491,15 @@ def _routed_gh(
     view_rc: int = 0,
     protection: str = "",
     protection_rc: int = 0,
+    rules: str = "[]",
+    rules_rc: int = 0,
     suites: str = "",
     suites_rc: int = 0,
     runs: str = "",
     runs_rc: int = 0,
 ) -> object:
-    """OMN-15709: route the 4-call FETCH_PR_CHECKS_GREEN sequence (``gh pr
-    view`` -> branch-protection required_status_checks -> check-suites ->
+    """OMN-15709: route the 5-call FETCH_PR_CHECKS_GREEN sequence (``gh pr
+    view`` -> classic branch protection -> branch rules -> check-suites ->
     check-runs) to the fixture matching each call's shape. See the sibling
     routing helper in ``test_handler_dod_evidence_github_effect.py`` for the
     canonical, more extensively documented version."""
@@ -512,6 +514,10 @@ def _routed_gh(
         if "protection/required_status_checks" in joined:
             return subprocess.CompletedProcess(
                 args=argv, returncode=protection_rc, stdout=protection, stderr=""
+            )
+        if "rules/branches" in joined:
+            return subprocess.CompletedProcess(
+                args=argv, returncode=rules_rc, stdout=rules, stderr=""
             )
         if "check-suites" in joined:
             return subprocess.CompletedProcess(

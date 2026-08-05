@@ -86,6 +86,57 @@ _GH_CHECK_GREEN_STATES = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
 _GH_CHECK_RUN_GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 
 
+def _required_check_names_from_classic(data: object) -> set[str]:
+    """Extract required check names from classic branch protection.
+
+    Older fixtures and GitHub's deprecated field expose a bare/list
+    ``contexts`` shape. Current classic protection also exposes
+    ``checks[].context``.
+    """
+    if isinstance(data, list):
+        return {str(item) for item in data if isinstance(item, str) and item}
+    if not isinstance(data, dict):
+        return set()
+
+    names = {
+        str(item) for item in data.get("contexts", []) if isinstance(item, str) and item
+    }
+    checks = data.get("checks", [])
+    if isinstance(checks, list):
+        names.update(
+            str(item["context"])
+            for item in checks
+            if isinstance(item, dict)
+            and isinstance(item.get("context"), str)
+            and item["context"]
+        )
+    return names
+
+
+def _required_check_names_from_rules(data: object) -> set[str]:
+    """Extract required check names from active branch rulesets."""
+    if not isinstance(data, list):
+        return set()
+    names: set[str] = set()
+    for rule in data:
+        if not isinstance(rule, dict) or rule.get("type") != "required_status_checks":
+            continue
+        parameters = rule.get("parameters")
+        if not isinstance(parameters, dict):
+            continue
+        checks = parameters.get("required_status_checks", [])
+        if not isinstance(checks, list):
+            continue
+        names.update(
+            str(item["context"])
+            for item in checks
+            if isinstance(item, dict)
+            and isinstance(item.get("context"), str)
+            and item["context"]
+        )
+    return names
+
+
 def _gh_json(argv: list[str], timeout_s: int) -> tuple[object | None, str]:
     """Run a ``gh`` invocation and parse its stdout as a single JSON value.
 
@@ -555,26 +606,32 @@ class HandlerDodEvidenceGithubEffect:
                 "gh pr view response missing headRefName/baseRefName/headRefOid",
             )
 
-        contexts, contexts_detail = _gh_json(
+        classic_required, classic_detail = _gh_json(
             [
                 "gh",
                 "api",
                 f"repos/{repo}/branches/{base_branch}/protection/required_status_checks",
-                "--jq",
-                ".contexts",
             ],
             _GH_PR_TIMEOUT_S,
         )
-        if not isinstance(contexts, list) or not contexts:
+        rules_required, rules_detail = _gh_json(
+            [
+                "gh",
+                "api",
+                f"repos/{repo}/rules/branches/{base_branch}",
+            ],
+            _GH_PR_TIMEOUT_S,
+        )
+        required_names = sorted(
+            _required_check_names_from_classic(classic_required)
+            | _required_check_names_from_rules(rules_required)
+        )
+        if not required_names:
             return self._checks_not_green(
                 command,
                 f"could not resolve required status checks for {repo}@{base_branch}: "
-                f"{contexts_detail}",
-            )
-        required_names = sorted({str(c) for c in contexts if isinstance(c, str) and c})
-        if not required_names:
-            return self._checks_not_green(
-                command, "no required status check contexts configured"
+                f"classic={classic_detail or 'no names'}; "
+                f"rules={rules_detail or 'no names'}",
             )
 
         suites, suites_detail = _gh_json_lines(
