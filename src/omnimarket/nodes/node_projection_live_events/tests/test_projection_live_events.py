@@ -31,6 +31,45 @@ from omnimarket.nodes.node_projection_live_events.handlers.handler_projection_li
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
+
+class _WriteOnlyDatabaseAdapter:
+    """Reproduces the production access-declaration refusal (OMN-15705).
+
+    Mirrors ``ProjectionTableOperation._assert_read_declared`` in
+    ``omnibase_infra/runtime/auto_wiring/handler_wiring.py`` byte-for-byte:
+    the contract for ``live_events`` declares ``access: write`` only
+    (``contract.yaml``), so any real Postgres-backed dispatch raises
+    ``PermissionError`` on ``.query()`` against this table. The node's other
+    tests use ``InmemoryDatabaseAdapter``, which does not model this
+    declared-access check at all -- this double closes that gap so the
+    regression is caught locally instead of only live on a real cluster.
+    """
+
+    def __init__(self) -> None:
+        self._inner = InmemoryDatabaseAdapter()
+
+    def upsert(self, table: str, conflict_key: str, row: dict[str, object]) -> bool:
+        return self._inner.upsert(table, conflict_key, row)
+
+    def query(
+        self, table: str, filters: dict[str, object] | None = None
+    ) -> list[dict[str, object]]:
+        raise PermissionError(
+            f"omninode_internal.{table} declares access='write'; read refused"
+        )
+
+    def assert_only_query(
+        self, table: str, filters: dict[str, object] | None = None
+    ) -> list[dict[str, object]]:
+        """Test-only escape hatch: read the underlying store for assertions.
+
+        Bypasses the write-only refusal deliberately -- this is the test
+        harness inspecting stored state, not the handler under test reading
+        it (the handler must never call the real ``query`` above).
+        """
+        return self._inner.query(table, filters)
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -385,7 +424,20 @@ class TestHandlerProjectionLiveEventsProject:
         handler.project(event1, db)
         rows = db.query(TABLE)
         assert len(rows) == 1
-        original_created_at = rows[0]["created_at"]
+        # OMN-15705: project() intentionally omits created_at from its own
+        # upsert row (relying on the real table's SQL DEFAULT NOW() plus
+        # ON-CONFLICT SET-clause omission instead of a read-before-write, so
+        # the write-only declared access in contract.yaml is honoured).
+        # InmemoryDatabaseAdapter has no notion of a column DEFAULT, so it
+        # never populates created_at on its own -- seed it here to simulate
+        # what the real Postgres INSERT would have produced, then assert the
+        # handler's second (update) write leaves it untouched.
+        original_created_at = "2026-01-01T00:00:00+00:00"
+        db.upsert(
+            TABLE,
+            CONFLICT_KEY,
+            {"event_id": event1.event_id, "created_at": original_created_at},
+        )
 
         raw2 = dict(raw)
         raw2["message"] = "updated write"
@@ -436,6 +488,85 @@ class TestHandlerProjectionLiveEventsProject:
         result = handler.project(event, db)
 
         assert result.event_id == event.event_id
+
+
+@pytest.mark.unit
+class TestHandlerProjectionLiveEventsWriteOnlyAccess:
+    """OMN-15705: project() must not read the live_events table.
+
+    The contract (``contract.yaml``) declares ``access: write`` for
+    ``live_events``. On a real Postgres-backed dispatch, any ``.query()``
+    call against a write-only-declared table raises ``PermissionError``
+    (``ProjectionTableOperation._assert_read_declared`` in
+    ``omnibase_infra``) -- live-reproduced flooding the effects pod on the
+    2026-08-04 round-2 onex-dev deploy (86+ occurrences, DLQ'd every event).
+
+    ``_WriteOnlyDatabaseAdapter`` reproduces that refusal locally so this
+    class is a real RED->GREEN proof, not just a live incident description.
+    """
+
+    def test_project_does_not_read_the_table(self) -> None:
+        handler = HandlerProjectionLiveEvents()
+        db = _WriteOnlyDatabaseAdapter()
+        raw = _make_log_event(message="write-only access check")
+        event = ModelLiveEvent.from_raw(raw, _LOG_TOPIC)
+
+        # Must not raise PermissionError: access='write'; read refused.
+        result = handler.project(event, db)
+
+        assert result.rows_upserted == 1
+        assert result.event_id == event.event_id
+
+    def test_project_preserves_created_at_on_dedup_upsert_write_only(self) -> None:
+        """Repeat writes must still preserve created_at with zero reads.
+
+        Proves the fix (omit created_at from the row dict; rely on the
+        table's DEFAULT NOW() plus SET-clause omission on conflict) gives
+        the exact same semantics the removed pre-read was providing --
+        without ever calling .query().
+        """
+        handler = HandlerProjectionLiveEvents()
+        db = _WriteOnlyDatabaseAdapter()
+        raw = _make_log_event(message="first write")
+        event1 = ModelLiveEvent.from_raw(raw, _LOG_TOPIC)
+
+        handler.project(event1, db)
+        rows = db.assert_only_query(TABLE)
+        assert len(rows) == 1
+        # See test_project_preserves_created_at_on_dedup_upsert above: seed
+        # what a real Postgres INSERT's column DEFAULT would have produced,
+        # since InmemoryDatabaseAdapter (which this double wraps) has no
+        # notion of SQL column defaults.
+        original_created_at = "2026-01-01T00:00:00+00:00"
+        db.upsert(
+            TABLE,
+            CONFLICT_KEY,
+            {"event_id": event1.event_id, "created_at": original_created_at},
+        )
+
+        raw2 = dict(raw)
+        raw2["message"] = "updated write"
+        event2 = ModelLiveEvent.from_raw(raw2, _LOG_TOPIC)
+        handler.project(event2, db)
+
+        rows = db.assert_only_query(TABLE)
+        assert len(rows) == 1
+        assert rows[0]["summary"] == "updated write"
+        assert rows[0]["created_at"] == original_created_at
+
+    def test_handle_does_not_read_the_table(self) -> None:
+        handler = HandlerProjectionLiveEvents()
+        db = _WriteOnlyDatabaseAdapter()
+        raw = _make_log_event(message="handle shim write-only check")
+        input_data: dict[str, object] = {
+            "_db": db,
+            "_topic": _LOG_TOPIC,
+            **raw,
+        }
+
+        result = handler.handle(input_data)
+
+        assert result["rows_upserted"] == 1
 
 
 # ---------------------------------------------------------------------------

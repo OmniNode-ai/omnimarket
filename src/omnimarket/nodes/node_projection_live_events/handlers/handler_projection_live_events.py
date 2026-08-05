@@ -243,11 +243,19 @@ class HandlerProjectionLiveEvents:
         event: ModelLiveEvent,
         db: DatabaseAdapter,
     ) -> ModelProjectionResult:
-        """UPSERT a live event row into the live_events table."""
-        existing_rows = db.query(TABLE, {CONFLICT_KEY: event.event_id})
-        existing_created_at = (
-            existing_rows[0].get("created_at") if existing_rows else None
-        )
+        """UPSERT a live event row into the live_events table.
+
+        OMN-15705: the contract declares ``access: write`` (no read) for
+        ``live_events`` -- deliberately, per least-privilege. ``created_at``
+        is intentionally omitted from the row dict rather than read back and
+        re-supplied: the table declares ``created_at TIMESTAMPTZ NOT NULL
+        DEFAULT NOW()`` (``migrations/0000_create_live_events.sql``), and the
+        upsert's ``ON CONFLICT ... DO UPDATE SET`` only touches columns
+        present in the row dict (``DatabaseAdapter`` implementations agree on
+        this no-clobber-merge shape, OMN-15598) -- so a first-seen event_id
+        gets ``NOW()`` from the column default and a repeat event_id leaves
+        the stored ``created_at`` untouched, with zero reads.
+        """
         row: dict[str, object] = {
             "event_id": event.event_id,
             "type": event.type,
@@ -257,7 +265,6 @@ class HandlerProjectionLiveEvents:
             "summary": event.summary,
             "payload": event.payload,
             "correlation_id": event.correlation_id,
-            "created_at": existing_created_at or datetime.now(tz=UTC).isoformat(),
         }
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(
