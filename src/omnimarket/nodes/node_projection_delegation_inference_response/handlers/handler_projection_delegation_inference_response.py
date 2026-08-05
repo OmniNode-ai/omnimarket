@@ -8,7 +8,7 @@ projection_delegation_inference_response_text.
 
 The snapshot exposes:
   - latest_* scalar fields from the most recent event
-  - recent_responses: a FIFO rolling window (max MAX_HISTORY) of recent entries
+  - recent_responses: the newest entry only (see OMN-15707 note below)
 
 Closes the NC-15 coverage gap: omnidash declares
 onex.snapshot.projection.delegation.inference-response-text.v1 via the
@@ -17,18 +17,49 @@ DelegationModelOutputWidget (OMN-12745) but no reducer was emitting to it.
 Ordering authority: Kafka topic/partition/offset (offsets tracked via _topic,
 _partition, _offset keys injected by RuntimeLocal).
 OMN-13088.
+
+OMN-15707: ``project()`` previously called ``db.query()`` before every
+upsert to read back the tenant's existing ``recent_responses`` row so the
+new entry could be prepended and capped at ``MAX_HISTORY`` (a true FIFO
+rolling window). The contract (``contract.yaml``) declares ``access: write``
+only for this table, and the real runtime enforces that per-call
+(``ProjectionTableOperation._assert_read_declared``,
+``omnibase_infra/runtime/auto_wiring/handler_wiring.py:2252-2257``) -- every
+live Postgres-backed dispatch raised ``PermissionError`` and DLQ'd the event
+(correlation ce0bff7a-95e7-4656-8bcc-98a021f125ea, run 30970742725; 100% of
+events for this table failed, so the window was never actually populated
+past the migration's empty-array seed row).
+
+Unlike the sibling fix in node_projection_live_events (OMN-15705,
+omnimarket#2016), the pre-read here cannot be dropped by relying on a SQL
+column DEFAULT plus SET-clause omission: ``recent_responses`` is a *function
+of its own prior value* (prepend + cap), not a value that should simply be
+left untouched on conflict. Neither the sync adapters in this repo
+(``postgres_sync_database.py``, ``sqlite_database.py``) nor the production
+``ProjectionDatabaseOperations._execute_upsert`` in omnibase_infra support a
+computed/expression SET value (both build
+``"{column}" = EXCLUDED."{column}"`` from literal parameters only) -- doing
+this correctly server-side (e.g. a Postgres ``jsonb`` concat-and-trim
+expression against the existing column) would require adding that
+capability across both this repo and omnibase_infra, out of scope for this
+live-firing-DLQ fix.
+
+Disclosed behavior change: ``recent_responses`` now always contains just the
+current event's entry (window size 1) instead of a growing rolling window,
+until a follow-up restores true FIFO history via an infra-side computed
+upsert expression. This is a net improvement over the current live state
+(100% DLQ, window never populated at all) and does not touch the contract
+declaration or ``_assert_read_declared``.
 """
 
 from __future__ import annotations
 
-import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
 
 from omnimarket.nodes.node_projection_delegation_inference_response.models.model_inference_response_projection import (
     DEFAULT_TENANT,
-    MAX_HISTORY,
     ModelInferenceResponseProjectionResult,
     ModelRecentInferenceResponse,
 )
@@ -44,24 +75,13 @@ def _now_utc() -> datetime:
     return datetime.now(UTC)
 
 
-def _parse_recent(raw: object) -> list[dict[str, Any]]:
-    """Deserialize recent_responses from either a JSON string or a Python list."""
-    if isinstance(raw, list):
-        return list(raw)
-    if isinstance(raw, str):
-        parsed = json.loads(raw)
-        if isinstance(parsed, list):
-            return parsed
-    return []
-
-
 class HandlerProjectionDelegationInferenceResponse:
     """Reduce inference-response events into a singleton snapshot row.
 
     Each call to ``handle()`` upserts the singleton row in
     ``projection_delegation_inference_response_text``, updating the
-    ``latest_*`` scalar fields and prepending the new entry to the
-    ``recent_responses`` JSONB window (capped at ``MAX_HISTORY``).
+    ``latest_*`` scalar fields and ``recent_responses`` to a single-entry
+    array holding just this event (see OMN-15707 module docstring note).
     """
 
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
@@ -135,18 +155,10 @@ class HandlerProjectionDelegationInferenceResponse:
             captured_at=now,
         )
 
-        # Fetch this tenant's current row to retrieve existing recent_responses.
-        existing_rows = db.query(TABLE, filters={"singleton_key": tenant_id})
-        recent: list[dict[str, Any]] = []
-        if existing_rows:
-            recent = _parse_recent(existing_rows[0].get("recent_responses", []))
-
-        # Prepend the new entry and cap at MAX_HISTORY.
-        updated_recent: list[dict[str, Any]] = [
-            new_entry.model_dump(mode="json"),
-            *recent,
-        ][:MAX_HISTORY]
-
+        # OMN-15707: no read-back. recent_responses is the current event
+        # only (window size 1) -- see module docstring for why the prior
+        # read-then-prepend-then-cap approach cannot be preserved without a
+        # read against this write-only-declared table.
         row: dict[str, object] = {
             "singleton_key": tenant_id,
             "tenant_id": tenant_id,
@@ -158,7 +170,7 @@ class HandlerProjectionDelegationInferenceResponse:
             "latest_completion_tokens": completion_tokens,
             "latest_latency_ms": latency_ms,
             "source_topic": topic,
-            "recent_responses": updated_recent,
+            "recent_responses": [new_entry.model_dump(mode="json")],
             "captured_at": now.isoformat(),
             "provisioned": True,
         }
