@@ -422,10 +422,30 @@ def _occ_pr_view(branch: str) -> str:
 # Sanitized subset of the real 43-suite / 132-check-run rollup GitHub returns
 # for OCC PR #5745 (jonah's own PR, MERGED) / #5749 (codex's sibling PR,
 # CLOSED) sharing head SHA ``ed2f0084`` — live-verified 2026-08-05 (OMN-15709
-# ruling R-b). ``check_suite.pull_requests[]`` was empty on all 43 real
+# ruling R-b), CORRECTED 2026-08-05 (opus adversarial verify, wave-8 D2): an
+# independent paginated pull of this SHA's 43 check-suites / 132 check-runs,
+# each suite refetched individually via
+# ``gh api repos/.../check-suites/{id}``, showed all 4 required contexts ran
+# on jonah's OWN branch (``jonah/omn-15136-infra769-occ``) and all 4 were
+# ``success`` there — suite ids 83069374087 (CI Summary), 83069370828
+# (required-check-skip-guard / check-skip-vectors), 83069371620
+# (verify / verify), 83069370125 (occ-preflight / eligibility). The prior
+# fixture omitted jonah's own runs for 3 of those 4 contexts, which inverted
+# the case under test (it exercised the foreign-only-exclusion path — D1's
+# fail-open hole — instead of the real own-branch-all-green shape #5745
+# actually has). ``check_suite.pull_requests[]`` was empty on all 43 real
 # suites, so branch attribution here is via ``head_branch``, not that field.
+# Codex's sibling branch (#5749) genuinely does carry its own real failures
+# for ``verify / verify`` and ``occ-preflight / eligibility`` on this same
+# SHA — those foreign suites/runs are retained below as a control: they must
+# stay excluded from #5745's rollup (own-branch success wins) while still
+# reddening #5749's own rollup (own-branch failure, see
+# ``test_5749_stays_red_for_its_own_legitimate_failures``).
 _OCC_SUITES = _lines(
     {"id": 83069374087, "head_branch": _OCC_JONAH_BRANCH},  # own CI Summary
+    {"id": 83069370828, "head_branch": _OCC_JONAH_BRANCH},  # own skip-guard
+    {"id": 83069371620, "head_branch": _OCC_JONAH_BRANCH},  # own verify
+    {"id": 83069370125, "head_branch": _OCC_JONAH_BRANCH},  # own occ-preflight
     {"id": 83132908639, "head_branch": _OCC_CODEX_BRANCH},  # foreign CI Summary
     {"id": 83132908530, "head_branch": _OCC_CODEX_BRANCH},  # foreign skip-guard
     {"id": 83179811101, "head_branch": _OCC_CODEX_BRANCH},  # foreign skip-guard
@@ -445,6 +465,24 @@ _OCC_RUNS = _lines(
         "status": "completed",
         "conclusion": "success",
         "check_suite": {"id": 83069374087},
+    },
+    {
+        "name": "required-check-skip-guard / check-skip-vectors",
+        "status": "completed",
+        "conclusion": "success",
+        "check_suite": {"id": 83069370828},
+    },
+    {
+        "name": "verify / verify",
+        "status": "completed",
+        "conclusion": "success",
+        "check_suite": {"id": 83069371620},
+    },
+    {
+        "name": "occ-preflight / eligibility",
+        "status": "completed",
+        "conclusion": "success",
+        "check_suite": {"id": 83069370125},
     },
     {
         "name": "CI Summary",
@@ -492,16 +530,24 @@ class TestFetchPrChecksGreenOccRegression:
     def test_5745_reports_green_from_its_own_branch_check_runs(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """#5745 is jonah's own, MERGED PR. Its own branch produced only a
-        green ``CI Summary`` check-run; the other 3 required contexts never
-        ran on jonah's branch at all — every instance of them is PROVABLY
-        foreign (codex's branch, #5749), including 2 outright FAILUREs. Pre
-        this fix, ``gh pr checks 5745`` would report all of these (including
-        the foreign FAILUREs) against #5745 and return NOT green — the exact
-        defect OMN-15709 reports. Post-fix: the foreign-only contexts are
-        excluded from #5745's rollup (neither pass nor fail it), and the one
-        context #5745's own branch DID produce is green, so #5745 correctly
-        reports GREEN."""
+        """#5745 is jonah's own, MERGED PR. Its own branch produced a green
+        check-run for all 4 required contexts (live-verified 2026-08-05,
+        wave-8 D2 correction — see the ``_OCC_SUITES``/``_OCC_RUNS`` module
+        comment). Codex's sibling branch (#5749) independently produced its
+        own foreign runs for 3 of those names on the same head SHA, including
+        2 outright FAILUREs for ``verify / verify`` and
+        ``occ-preflight / eligibility``. Pre this fix, ``gh pr checks 5745``
+        would report all of these (including the foreign FAILUREs) against
+        #5745 and return NOT green — the exact defect OMN-15709 reports.
+        Post-fix: the foreign runs are excluded from #5745's rollup by
+        head-branch attribution, and #5745's own 4 required contexts are all
+        green, so #5745 correctly reports GREEN for the true reason (its own
+        branch's evidence), not merely because a foreign-only context was
+        silently dropped from the count (the fail-open shape covered
+        separately by
+        ``TestFetchPrChecksGreenScoping::test_own_branch_all_green`` and its
+        negative-control sibling
+        ``test_required_context_produced_only_by_foreign_branch_fails_closed``)."""
         monkeypatch.setattr(
             hd_mod.subprocess,
             "run",
@@ -670,12 +716,74 @@ class TestFetchPrChecksGreenScoping:
         result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
         assert result.checks_green is False
 
-    def test_foreign_only_context_is_excluded_not_counted(
+    def test_required_context_produced_only_by_foreign_branch_fails_closed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """A required context that NEVER appears on the PR's own branch, but
-        does appear (green) on a resolvable foreign branch, is excluded from
-        the rollup — the OCC #5745 shape for 3 of its 4 required contexts."""
+        does appear on a resolvable foreign branch, must fail closed (RED),
+        never be silently dropped from the rollup — regardless of whether
+        the foreign instance is green or red, and regardless of whether
+        OTHER required contexts did land on the PR's own branch.
+
+        This is the wave-8 adversarial-verify repro (D1, opus): with
+        required=[build, verify] and own-branch build=success only, adding
+        ONE foreign-branch verify=FAILURE run must NOT flip the result to
+        GREEN — a foreign failure attaching to the SHA must never make a PR's
+        evidence LOOSER than it was before that foreign PR/branch existed.
+        Prior to the fix, the handler `continue`d past a foreign-only
+        context without recording it as missing or not-green, so it vanished
+        from both `missing` and `not_green` and the rollup returned
+        checks_green=True with a detail string asserting both contexts were
+        green — false, since `verify` never ran on `mine` at all."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_occ_pr_view("mine"),
+                protection=json.dumps(["build", "verify"]),
+                suites=_lines(
+                    {"id": 1, "head_branch": "mine"},
+                    {"id": 2, "head_branch": "theirs"},
+                ),
+                runs=_lines(
+                    {
+                        "name": "build",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    },
+                    {
+                        "name": "verify",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "check_suite": {"id": 2},
+                    },
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "verify" in (result.detail or "")
+        # The detail string must be truthful: it must not claim "verify" was
+        # ever green for "mine" — it never ran there at all.
+        assert "all 2 required context(s) green" not in (result.detail or "")
+
+    def test_required_context_produced_only_by_foreign_success_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Mirror-image control of the case above: even a GREEN foreign-only
+        run must not satisfy a required context on the PR's own branch — a
+        foreign PASS must never rescue this PR's evidence either. The OCC
+        #5745 shape (3 of 4 required contexts foreign-only) is the wave-8 D2
+        correction: live data showed all 4 actually ran on jonah's own
+        branch too (see the ``_OCC_SUITES``/``_OCC_RUNS`` fixture), so this
+        synthetic case — rather than the OCC fixture — is what now covers
+        the "foreign-only, foreign is green" shape."""
         monkeypatch.setattr(
             hd_mod.subprocess,
             "run",
@@ -696,7 +804,7 @@ class TestFetchPrChecksGreenScoping:
                     {
                         "name": "lint",
                         "status": "completed",
-                        "conclusion": "failure",
+                        "conclusion": "success",
                         "check_suite": {"id": 2},
                     },
                 ),
@@ -708,7 +816,8 @@ class TestFetchPrChecksGreenScoping:
             pr_number=_PR,
         )
         result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
-        assert result.checks_green is True, result.detail
+        assert result.checks_green is False, result.detail
+        assert "lint" in (result.detail or "")
 
     def test_required_context_missing_entirely_fails_closed(
         self, monkeypatch: pytest.MonkeyPatch

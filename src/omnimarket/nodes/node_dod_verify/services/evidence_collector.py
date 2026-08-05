@@ -2727,11 +2727,16 @@ class EvidenceCollector:
         """Return ``(all_green, detail)`` for ``repo#pr_number`` REQUIRED status
         checks via the GitHub effect handler (OMN-14400, RSD-1 of OMN-14398).
 
-        Scoped to required checks only via ``gh pr checks --required`` (OMN-14390)
-        — a non-green *non-required* check (e.g. an informational/advisory job)
-        must never fail a Done-flip; only branch-protection-required contexts are
+        Scoped to required checks only via required-context names read live from
+        branch protection, cross-referenced against check-suites/check-runs for
+        the PR's own head branch (OMN-15709) — a non-green *non-required* check
+        (e.g. an informational/advisory job) must never fail a Done-flip, and a
+        check-run produced only by a foreign PR/branch sharing the same head SHA
+        must never satisfy OR redden this PR's evidence; only branch-protection-
+        required contexts actually produced on the PR's own branch are
         load-bearing here. Fails closed: any non-green required check
-        (FAILURE/CANCELLED/PENDING/...), an empty required-check set, or an
+        (FAILURE/CANCELLED/PENDING/...), a required context missing entirely or
+        produced only by a foreign branch, an empty required-check set, or an
         inability to enumerate checks yields ``False``.
         """
         command = ModelDodEvidenceGithubLookupCommand(

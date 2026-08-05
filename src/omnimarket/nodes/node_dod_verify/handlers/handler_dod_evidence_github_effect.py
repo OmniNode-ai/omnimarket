@@ -620,6 +620,7 @@ class HandlerDodEvidenceGithubEffect:
             )
 
         missing: list[str] = []
+        foreign_only: list[str] = []
         not_green: list[str] = []
         evaluated_any = False
         for name in required_names:
@@ -634,22 +635,31 @@ class HandlerDodEvidenceGithubEffect:
             ]
             if not relevant:
                 # Every instance of this required context is PROVABLY foreign
-                # (it ran on a different, resolvable branch sharing this SHA)
-                # — the PR's own branch never produced it. Not counted either
-                # way; a foreign PASS or FAIL must not influence this PR's
-                # evidence.
+                # (it ran only on a different, resolvable branch sharing this
+                # SHA) — the PR's OWN branch never produced it. That is
+                # functionally MISSING for this PR and fails closed: a
+                # required context must not be satisfied (or reddened) by a
+                # foreign PR/branch's runs. Silently `continue`-ing here
+                # (dropping the context from the rollup entirely) would let a
+                # foreign FAILURE flip an otherwise-correct RED into a false
+                # GREEN by shrinking the set of contexts actually evaluated
+                # — the exact fail-open hole this branch closes.
+                foreign_only.append(name)
                 continue
             evaluated_any = True
             if any(not _is_green_check_run(run) for run in relevant):
                 not_green.append(name)
 
-        if missing:
-            shown = ", ".join(missing[:10])
-            more = "" if len(missing) <= 10 else f" (+{len(missing) - 10} more)"
+        if missing or foreign_only:
+            absent = missing + foreign_only
+            shown = ", ".join(absent[:10])
+            more = "" if len(absent) <= 10 else f" (+{len(absent) - 10} more)"
             return self._checks_not_green(
                 command,
-                f"{len(missing)} required context(s) missing entirely from "
-                f"{sha[:12]}: {shown}{more}",
+                f"{len(absent)} required context(s) absent from "
+                f"{head_branch}@{sha[:12]} (missing entirely or only "
+                f"produced by a foreign branch sharing this SHA): "
+                f"{shown}{more}",
             )
         if not_green:
             shown = ", ".join(not_green[:10])
