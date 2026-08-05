@@ -20,8 +20,12 @@ live Kafka / ``.201``.
 REDUCER DoD covered:
   * folds the single declared event type (inference-response) and asserts the
     materialized projection state (every ``latest_*`` scalar, ``source_topic``,
-    ``provisioned``, and the ``recent_responses`` rolling window);
-  * the rolling window accumulates newest-first and is capped at ``MAX_HISTORY``;
+    ``provisioned``, and the ``recent_responses`` window);
+  * OMN-15707: the window stays at size 1 (holds only the most recently
+    folded event) -- a disclosed behavior change from the prior
+    read-then-prepend-then-cap FIFO rolling history, which required a
+    ``db.query()`` against a write-only-declared table and DLQ'd every live
+    event;
   * idempotency / duplicate handling: the table stays a singleton (exactly one
     row) no matter how many events — including duplicate ``correlation_id`` — are
     folded (``duplicate_key_fields: [singleton_key]``);
@@ -188,14 +192,22 @@ async def test_single_event_materializes_singleton_over_bus(
 
 
 # ---------------------------------------------------------------------------
-# Rolling window — accumulates newest-first, capped at MAX_HISTORY.
+# Rolling window — OMN-15707: stays at window size 1, most recent event only.
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.integration
-async def test_recent_window_capped_newest_first_over_bus(
+async def test_recent_window_stays_size_one_over_bus(
     integration_event_bus: Any,
 ) -> None:
+    """recent_responses never grows past 1 entry (OMN-15707, was MAX_HISTORY).
+
+    The prior read-then-prepend-then-cap rolling window required a
+    ``db.query()`` against a table the contract declares ``access: write``
+    only, which DLQ'd every live event -- see the handler module docstring.
+    Each upsert now writes a window of exactly the current event, a
+    disclosed behavior change from the prior FIFO rolling-history semantics.
+    """
     bus = integration_event_bus
     await bus.start()
     try:
@@ -208,8 +220,8 @@ async def test_recent_window_capped_newest_first_over_bus(
         rows = db.query(TABLE)
         assert len(rows) == 1, "reducer must keep a singleton row"
         recent = _recent(rows[0])
-        assert len(recent) == MAX_HISTORY, "recent_responses must cap at MAX_HISTORY"
-        # Newest-first: the last folded event is at the head of the window.
+        assert len(recent) == 1, "recent_responses must stay at window size 1"
+        # Only the last folded event is retained.
         assert recent[0]["generated_text"] == f"response {MAX_HISTORY + 2}"
         assert rows[0]["latest_generated_text"] == f"response {MAX_HISTORY + 2}"
     finally:
@@ -249,7 +261,8 @@ async def test_duplicate_correlation_keeps_singleton_over_bus(
 
 
 # ---------------------------------------------------------------------------
-# Out-of-order / last-write-wins — the most recent fold owns latest_* fields.
+# Out-of-order / last-write-wins — the most recent fold owns latest_* fields
+# and the (window-size-1, OMN-15707) recent window.
 # ---------------------------------------------------------------------------
 
 
@@ -257,6 +270,13 @@ async def test_duplicate_correlation_keeps_singleton_over_bus(
 async def test_last_write_wins_across_correlations_over_bus(
     integration_event_bus: Any,
 ) -> None:
+    """Last write wins for latest_* fields and the size-1 recent window.
+
+    OMN-15707: recent_responses no longer retains prior events across folds
+    (that required a pre-upsert read against a write-only-declared table,
+    which DLQ'd every live event) -- only the most recently folded event
+    survives in the window.
+    """
     bus = integration_event_bus
     await bus.start()
     try:
@@ -282,9 +302,9 @@ async def test_last_write_wins_across_correlations_over_bus(
         assert row["latest_correlation_id"] == second
         assert row["latest_generated_text"] == "newer"
         assert row["latest_model_name"] == "model-b"
-        # Both events are retained in the newest-first window.
+        # Only the newer event is retained in the size-1 window.
         recent = _recent(row)
-        assert [r["generated_text"] for r in recent] == ["newer", "older"]
+        assert [r["generated_text"] for r in recent] == ["newer"]
     finally:
         await bus.close()
 
