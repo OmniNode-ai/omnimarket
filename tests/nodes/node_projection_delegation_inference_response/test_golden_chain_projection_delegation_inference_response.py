@@ -7,7 +7,10 @@ Tests verify:
 - Per-tenant row upserted with correct latest_* fields (OMN-14894 tranche 2:
   the table was a single global singleton until this tranche; every event
   now keys on tenant_id, defaulting to DEFAULT_TENANT when absent)
-- recent_responses window maintained (max MAX_HISTORY entries)
+- recent_responses holds only the current event, window size 1 (OMN-15707:
+  the prior read-then-prepend-then-cap rolling window required a
+  db.query() against a table the contract declares access='write' only,
+  which DLQ'd every live event -- see the handler module docstring)
 - Idempotency: duplicate event with same correlation_id re-upserts (no duplicate row)
 - provisioned always True after first event
 - source_topic matches the contracted subscribe topic
@@ -100,8 +103,15 @@ def test_handle_upserts_singleton_row() -> None:
 
 
 @pytest.mark.unit
-def test_handle_second_event_updates_singleton_and_grows_recent() -> None:
-    """Second event updates the singleton row; recent_responses accumulates."""
+def test_handle_second_event_updates_singleton_and_replaces_recent() -> None:
+    """Second event updates the singleton row; recent_responses is replaced.
+
+    OMN-15707: recent_responses no longer accumulates across events (that
+    required a pre-upsert read against a write-only-declared table, which
+    DLQ'd every live event). Each upsert now writes a window of exactly the
+    current event -- a disclosed behavior change from the prior FIFO
+    rolling-history semantics, documented in the handler module docstring.
+    """
     db = InmemoryDatabaseAdapter()
     handler = HandlerProjectionDelegationInferenceResponse()
 
@@ -135,12 +145,15 @@ def test_handle_second_event_updates_singleton_and_grows_recent() -> None:
     else:
         assert isinstance(raw_recent, list)
         recent2 = raw_recent
-    assert len(recent2) == 2
+    assert len(recent2) == 1
+    entry = recent2[0]
+    assert isinstance(entry, dict)
+    assert entry["generated_text"] == "response 1"
 
 
 @pytest.mark.unit
-def test_handle_recent_responses_capped_at_max_history() -> None:
-    """recent_responses never grows beyond MAX_HISTORY entries."""
+def test_handle_recent_responses_stays_window_size_one() -> None:
+    """recent_responses never grows past 1 entry (OMN-15707, was MAX_HISTORY)."""
     db = InmemoryDatabaseAdapter()
     handler = HandlerProjectionDelegationInferenceResponse()
 
@@ -171,8 +184,8 @@ def test_handle_recent_responses_capped_at_max_history() -> None:
     else:
         assert isinstance(raw_capped, list)
         capped = raw_capped
-    assert len(capped) == MAX_HISTORY, (
-        f"recent_responses must be capped at {MAX_HISTORY}, got {len(capped)}"
+    assert len(capped) == 1, (
+        f"recent_responses must stay at window size 1, got {len(capped)}"
     )
 
 
