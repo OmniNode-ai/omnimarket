@@ -19,6 +19,7 @@ cannot be resolved (fail-closed). Non-PR items are unaffected.
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from uuid import uuid4
@@ -479,6 +480,70 @@ def _fake_completed(stdout: str, returncode: int = 0, stderr: str = "") -> objec
     return _run
 
 
+def _lines(*objs: dict[str, object]) -> str:
+    """JSON-lines, matching ``gh api --paginate --jq '....[]'`` stdout."""
+    return "\n".join(json.dumps(o) for o in objs)
+
+
+def _routed_gh(
+    *,
+    view: str = "",
+    view_rc: int = 0,
+    protection: str = "",
+    protection_rc: int = 0,
+    rules: str = "[]",
+    rules_rc: int = 0,
+    suites: str = "",
+    suites_rc: int = 0,
+    runs: str = "",
+    runs_rc: int = 0,
+) -> object:
+    """OMN-15709: route the 5-call FETCH_PR_CHECKS_GREEN sequence (``gh pr
+    view`` -> classic branch protection -> branch rules -> check-suites ->
+    check-runs) to the fixture matching each call's shape. See the sibling
+    routing helper in ``test_handler_dod_evidence_github_effect.py`` for the
+    canonical, more extensively documented version."""
+
+    def _run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
+        argv = [str(a) for a in (list(args[0]) if args else [])]
+        joined = " ".join(argv)
+        if "view" in argv:
+            return subprocess.CompletedProcess(
+                args=argv, returncode=view_rc, stdout=view, stderr=""
+            )
+        if "protection/required_status_checks" in joined:
+            return subprocess.CompletedProcess(
+                args=argv, returncode=protection_rc, stdout=protection, stderr=""
+            )
+        if "rules/branches" in joined:
+            return subprocess.CompletedProcess(
+                args=argv, returncode=rules_rc, stdout=rules, stderr=""
+            )
+        if "check-suites" in joined:
+            return subprocess.CompletedProcess(
+                args=argv, returncode=suites_rc, stdout=suites, stderr=""
+            )
+        if "check-runs" in joined:
+            return subprocess.CompletedProcess(
+                args=argv, returncode=runs_rc, stdout=runs, stderr=""
+            )
+        raise AssertionError(
+            f"unrouted gh invocation in FETCH_PR_CHECKS_GREEN test: {argv}"
+        )
+
+    return _run
+
+
+def _pr_view_payload(branch: str = "mine") -> str:
+    return json.dumps(
+        {
+            "headRefName": branch,
+            "baseRefName": "dev",
+            "headRefOid": _SAMPLE_SHA,
+        }
+    )
+
+
 @pytest.mark.unit
 class TestGhOutputParsing:
     def test_merge_state_merged(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -511,24 +576,71 @@ class TestGhOutputParsing:
         assert collector._fetch_pr_merge_state(_REPO, _PR) is None
 
     def test_checks_all_green(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        payload = (
-            '[{"name":"Lint","state":"SUCCESS"},{"name":"Smoke","state":"SKIPPED"}]'
+        # OMN-15709: the old single ``gh pr checks --json name,state`` call
+        # was replaced with a head-branch-scoped rollup (see
+        # test_handler_dod_evidence_github_effect.py for the full design and
+        # the OCC #5745/#5749 regression it fixes) — both required contexts
+        # here are produced on the PR's own branch.
+        monkeypatch.setattr(
+            ec_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_payload(),
+                protection=json.dumps(["Lint", "Smoke"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "Lint",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    },
+                    {
+                        "name": "Smoke",
+                        "status": "completed",
+                        "conclusion": "skipped",
+                        "check_suite": {"id": 1},
+                    },
+                ),
+            ),
         )
-        monkeypatch.setattr(ec_mod.subprocess, "run", _fake_completed(payload))
         collector = EvidenceCollector()
         green, detail = collector._fetch_pr_checks_green(_REPO, _PR)
         assert green is True
-        assert "2 status check(s) green" in detail
+        assert "2 required context(s) green" in detail
 
     def test_checks_failure_not_green(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # gh pr checks exits 0 even with FAILURE rows -> states must be parsed.
-        payload = (
-            '[{"name":"Lint","state":"FAILURE"},'
-            '{"name":"CI Summary","state":"SUCCESS"},'
-            '{"name":"Build","state":"CANCELLED"}]'
-        )
+        # A completed run with a failing/cancelled conclusion on the PR's OWN
+        # branch must fail closed — same invariant as the pre-OMN-15709
+        # ``gh pr checks`` state parsing, now expressed over status+conclusion.
         monkeypatch.setattr(
-            ec_mod.subprocess, "run", _fake_completed(payload, returncode=0)
+            ec_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_payload(),
+                protection=json.dumps(["Lint", "CI Summary", "Build"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "Lint",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "check_suite": {"id": 1},
+                    },
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    },
+                    {
+                        "name": "Build",
+                        "status": "completed",
+                        "conclusion": "cancelled",
+                        "check_suite": {"id": 1},
+                    },
+                ),
+            ),
         )
         collector = EvidenceCollector()
         green, detail = collector._fetch_pr_checks_green(_REPO, _PR)
@@ -538,58 +650,81 @@ class TestGhOutputParsing:
         assert "Build" in detail
 
     def test_checks_empty_not_green(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(ec_mod.subprocess, "run", _fake_completed("[]"))
+        """OMN-15709: the API-surface equivalent of the old 'gh pr checks
+        returned an empty array' fail-closed case — the check-runs
+        enumeration returns zero rows, so every required context is
+        genuinely missing (not merely foreign-only-excluded)."""
+        monkeypatch.setattr(
+            ec_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_payload(),
+                protection=json.dumps(["Lint"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(),
+            ),
+        )
         collector = EvidenceCollector()
         green, detail = collector._fetch_pr_checks_green(_REPO, _PR)
         assert green is False
-        assert "no status checks" in detail.lower()
+        assert "missing entirely" in detail.lower()
 
     def test_fetch_scopes_to_required_checks_only(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """OMN-14390 regression.
+        """OMN-14390 regression, re-expressed for the OMN-15709 rewrite.
 
-        Discovery case: omnibase_infra#2232 (OMN-14134) had all 14
-        branch-protection-required contexts green plus one red *non-required*
-        "TODO Audit" check. The old call (no ``--required``) fetched every
-        check row and failed the whole gate on that non-required row, while
-        mislabeling the result "required checks not green" — a false negative
-        that would have wrongly blocked every Done-flip citing that PR.
-
-        This asserts two things: (1) the ``gh pr checks`` invocation actually
-        passes ``--required`` (so gh itself never returns non-required rows),
-        and (2) given the required-only payload gh would return in that exact
-        scenario (all required green; the red non-required row absent because
-        gh already filtered it out), the collector reports green.
+        Discovery case: omnibase_infra#2232 (OMN-14134) had all
+        branch-protection-required contexts green plus one red
+        *non-required* "TODO Audit" check. The old call (no ``--required``)
+        fetched every check row and failed the whole gate on that
+        non-required row. The old fix trusted ``gh pr checks --required``'s
+        own server-side filtering; the OMN-15709 rewrite achieves the same
+        invariant structurally instead — required-context names are read
+        live from branch protection, and the rollup loop only ever looks up
+        check-runs BY those names, so a red "TODO Audit" run (not a required
+        context) is never even matched, let alone allowed to block.
         """
-        captured_args: list[list[str]] = []
-
-        def _run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
-            call_args = list(args[0]) if args else []
-            captured_args.append(call_args)
-            # Mirrors what `gh pr checks --required --json name,state` returns
-            # for the #2232 scenario: 14 required contexts, all green. The
-            # non-required "TODO Audit" row is absent — gh's own --required
-            # filtering never surfaces it here.
-            return subprocess.CompletedProcess(
-                args=call_args,
-                returncode=0,
-                stdout=(
-                    '[{"name":"CI Summary","state":"SUCCESS"},'
-                    '{"name":"verify / verify","state":"SUCCESS"},'
-                    '{"name":"deploy-gate / deploy-gate","state":"SUCCESS"}]'
+        monkeypatch.setattr(
+            ec_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_payload(),
+                protection=json.dumps(
+                    ["CI Summary", "verify / verify", "deploy-gate / deploy-gate"]
                 ),
-                stderr="",
-            )
-
-        monkeypatch.setattr(ec_mod.subprocess, "run", _run)
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    },
+                    {
+                        "name": "verify / verify",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    },
+                    {
+                        "name": "deploy-gate / deploy-gate",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    },
+                    {
+                        # Non-required, red, same branch — must never block.
+                        "name": "TODO Audit",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "check_suite": {"id": 1},
+                    },
+                ),
+            ),
+        )
         collector = EvidenceCollector()
         green, detail = collector._fetch_pr_checks_green(_REPO, _PR)
 
-        assert captured_args, "gh pr checks was never invoked"
-        assert "--required" in captured_args[0], (
-            "gh pr checks must be invoked with --required so a red "
-            "non-required check (e.g. TODO Audit) can never fail this gate"
-        )
-        assert green is True
-        assert "3 status check(s) green" in detail
+        assert green is True, detail
+        assert "3 required context(s) green" in detail
