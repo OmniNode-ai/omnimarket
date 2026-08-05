@@ -1115,10 +1115,21 @@ class TestFetchPrChecksGreenScoping:
 # ``omnibase_infra#2558`` merged into
 # ``jonah/omn-15418-p0-replace-raw-db_io-loading-with-typed-declarations-and``,
 # a branch GitHub now 404s on. Branch-protection lookups against a deleted
-# base return no required-context names; the carve-out must resolve
-# green/not-green from the PR's own (SHA-keyed, merge-time-durable)
-# head-commit check-run history instead of failing closed solely because the
-# base branch protection fetch 404s.
+# base return no required-context names.
+#
+# Design option (a) (chosen; see handler docstring on
+# ``_checks_green_from_own_history`` for the full argument, including why
+# option (b) — proxy off the repo's CURRENT required-context set — was
+# rejected): once the PR is confirmed MERGED, the merge event itself is the
+# basis for checks_green. Own-branch check-run history is consulted only as
+# EXISTENCE corroboration (some CI activity happened for this commit) — never
+# per-conclusion, because a genuinely red REQUIRED check cannot exist for an
+# already-merged commit. The bug this rewrite fixes (found by adversarial
+# verification against the live repro): the first cut of this carve-out
+# treated every own-branch run as gating regardless of required-ness,
+# reddening on informational contexts such as ``non-dev-base-guard`` and
+# ``occ-companion-effect / Publish occ-companion-effect command`` that were
+# never required on omnibase_infra#2558.
 # ---------------------------------------------------------------------------
 
 
@@ -1173,12 +1184,24 @@ class TestFetchPrChecksGreenMergedDeletedBase:
         result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
         assert result.checks_green is True, result.detail
 
-    def test_merged_pr_deleted_base_own_history_red_stays_red(
+    def test_merged_pr_deleted_base_non_required_red_runs_still_resolves_green(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """The carve-out is not a blanket rescue: a merged PR whose base
-        404s AND whose own head-SHA history has a real failure must still
-        resolve checks_green=False."""
+        """Live-shape repro of omnibase_infra#2558 (OMN-15715 adversarial
+        finding): a merged PR whose base 404s, whose own head-SHA history
+        contains NON-required, non-green check-runs
+        (``non-dev-base-guard`` and ``occ-companion-effect / Publish
+        occ-companion-effect command`` — contexts that were never part of
+        omnibase_infra's required-context set), must still resolve
+        checks_green=True. Under design option (a) the merge event is the
+        basis for green, not unanimity across every own-branch check-run
+        regardless of whether it ever gated the merge.
+
+        This is the RED-then-GREEN fixture: it FAILS against the first cut
+        of ``_checks_green_from_own_history`` (which treated every
+        own-branch run — required or not — as gating, so the two red
+        informational runs below flipped checks_green to False) and PASSES
+        against the existence-only rewrite."""
         monkeypatch.setattr(
             hd_mod.subprocess,
             "run",
@@ -1197,9 +1220,21 @@ class TestFetchPrChecksGreenMergedDeletedBase:
                     {
                         "name": "ci / build",
                         "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    },
+                    {
+                        "name": "non-dev-base-guard",
+                        "status": "completed",
                         "conclusion": "failure",
                         "check_suite": {"id": 1},
-                    }
+                    },
+                    {
+                        "name": "occ-companion-effect / Publish occ-companion-effect command",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "check_suite": {"id": 1},
+                    },
                 ),
             ),
         )
@@ -1209,13 +1244,20 @@ class TestFetchPrChecksGreenMergedDeletedBase:
             pr_number=_PR,
         )
         result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
-        assert result.checks_green is False
+        assert result.checks_green is True, result.detail
 
     def test_merged_pr_deleted_base_no_own_history_still_fails_closed(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Zero check-run history at all is a genuinely unresolvable case
-        even under the carve-out — must not silently pass."""
+        even under the carve-out — must not silently pass. This is the one
+        residual fail-closed path left under design option (a): the merge
+        event is trusted, but only once corroborated by SOME observable CI
+        activity on this commit; total absence of any own-branch or
+        unattributable check-run is treated as unverifiable rather than as
+        an (impossible-to-construct, see
+        ``_checks_green_from_own_history`` docstring) "required check
+        failed" case."""
         monkeypatch.setattr(
             hd_mod.subprocess,
             "run",

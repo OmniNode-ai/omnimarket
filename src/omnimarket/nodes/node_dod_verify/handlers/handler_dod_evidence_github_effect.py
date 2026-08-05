@@ -683,19 +683,25 @@ class HandlerDodEvidenceGithubEffect:
             )
 
         if not required_names:
-            # OMN-15715 carve-out: the PR is confirmed MERGED (checked
-            # above — a not-merged PR already returned fail-closed before
-            # this point) but its base branch's live protection could not
-            # be resolved, typically because the base branch — the
-            # standard post-merge state for a stacked-PR chain — was
-            # deleted, so branches/{base}/protection 404s permanently. Do
-            # not fail closed solely on that: the check-run history
-            # recorded against the PR's own SHA-keyed, merge-time-durable
-            # head commit is itself the evidence GitHub's own required
-            # checks would have gated on before the merge was allowed.
+            # OMN-15715 carve-out (design option (a)): the PR is confirmed
+            # MERGED (checked above — a not-merged PR already returned
+            # fail-closed before this point) but its base branch's live
+            # protection could not be resolved, typically because the base
+            # branch — the standard post-merge state for a stacked-PR
+            # chain — was deleted, so branches/{base}/protection 404s
+            # permanently. Do not fail closed solely on that: the merge
+            # event itself is the evidence that whatever branch protection
+            # governed the base at merge time was satisfied. The own-SHA
+            # check-run history is consulted only as EXISTENCE
+            # corroboration that this commit produced observable CI
+            # activity — not to re-derive which contexts were required or
+            # to gate on individual run conclusions (see
+            # _checks_green_from_own_history docstring for why a
+            # per-conclusion re-check is unsound post-merge and how this
+            # differs from the reverted first cut of this carve-out).
             # Foreign/ambiguous-branch filtering (OMN-15709) still applies
             # so a sibling PR sharing this head SHA cannot pollute the
-            # rollup.
+            # existence check.
             return self._checks_green_from_own_history(
                 command,
                 base_branch=base_branch,
@@ -783,17 +789,49 @@ class HandlerDodEvidenceGithubEffect:
         suite_branch: dict[int, str | None],
         base_protection_detail: str,
     ) -> ModelDodEvidenceGithubLookupResultEvent:
-        """OMN-15715 merged+deleted-base carve-out.
+        """OMN-15715 merged+deleted-base carve-out — design option (a).
 
-        Narrow: only reached when ``_fetch_pr_checks_green`` already
-        confirmed the PR is MERGED and live branch-protection lookup for its
-        (possibly since-deleted) base branch yielded no required-context
-        names. Rather than fail closed on that, this treats every check-run
-        recorded against the PR's own head SHA — after the same
-        own-branch-or-ambiguous foreign-run filtering OMN-15709 applies to
-        the normal path — as the merge-time-durable evidence set. Zero
-        own-branch history is still a genuinely unresolvable case and stays
-        fail-closed.
+        Basis: a PR that reports MERGED necessarily passed whatever branch
+        protection governed its base at merge time — GitHub does not unlock
+        the merge button past a red REQUIRED status check (barring an
+        explicit, separately-auditable admin bypass, which is a distinct
+        event, not a silent one). When that required-context set is
+        unresolvable *now* — typically because the base branch, the
+        standard post-merge cleanup step for a stacked-PR chain, was
+        deleted — the sound basis for ``checks_green`` is the merge event
+        itself, not a re-derivation of which of the PR's OWN check-runs
+        were "required" at merge time. We have no reliable way to
+        reconstruct that historical required-set post-hoc.
+
+        This function's first cut (reverted here, live-verified against
+        OmniNode-ai/omnibase_infra#2558) treated EVERY own-branch check-run
+        as gating regardless of whether it was ever a required context —
+        reddening on purely informational contexts such as
+        ``non-dev-base-guard`` and ``occ-companion-effect / Publish
+        occ-companion-effect command`` that never gated the merge at all.
+        That is the exact bug this rewrite closes: option (b) (evaluate
+        only check-runs whose names match the repo's CURRENT dev/main
+        required-context sets) was considered and rejected — "current" is
+        not "as of merge time" and drifts independently (branch protection
+        is edited continuously per this repo's own CLAUDE.md history), so
+        it would silently swap one wrong required-set for another instead
+        of removing the unfounded assumption that we can reconstruct
+        historical required-ness at all post-hoc.
+
+        Consequently this path does NOT inspect individual run
+        conclusions. A "genuinely red REQUIRED check" cannot exist for an
+        already-merged commit: whatever conclusion GitHub required was
+        necessarily green (or admin-bypassed, a distinct auditable event)
+        before the merge was allowed to land — there is nothing left
+        post-hoc to re-verify by conclusion, so a test asserting "merged +
+        real required-context failure stays red" cannot be constructed
+        under this design; see
+        ``TestFetchPrChecksGreenMergedDeletedBase`` for the replacement
+        coverage. The only residual check kept here is EXISTENCE:
+        own-branch (or unattributable) check-run history entirely absent
+        for this commit still fails closed, as a defensive corroboration
+        that the commit produced *some* observable CI activity rather than
+        silently trusting a possibly-malformed ``gh pr view`` response.
         """
         own_runs = [
             run
@@ -805,34 +843,22 @@ class HandlerDodEvidenceGithubEffect:
                 command,
                 f"{base_protection_detail} (base branch likely deleted "
                 f"post-merge); no own-branch or unattributable check-run "
-                f"history exists on {head_branch}@{sha[:12]} to fall back on",
-            )
-        not_green = sorted(
-            {
-                str(run.get("name") or "unnamed")
-                for run in own_runs
-                if not _is_green_check_run(run)
-            }
-        )
-        if not_green:
-            shown = ", ".join(not_green[:10])
-            more = "" if len(not_green) <= 10 else f" (+{len(not_green) - 10} more)"
-            return self._checks_not_green(
-                command,
-                f"base branch {base_branch} protection unresolvable (likely "
-                f"deleted post-merge) — falling back to {head_branch}@"
-                f"{sha[:12]}'s own check-run history: {len(not_green)} "
-                f"context(s) not green: {shown}{more}",
+                f"history exists on {head_branch}@{sha[:12]} to corroborate "
+                f"the merge — cannot resolve checks_green",
             )
         return ModelDodEvidenceGithubLookupResultEvent(
             correlation_id=command.correlation_id,
             operation=command.operation,
             checks_green=True,
             detail=(
-                f"MERGED; base branch {base_branch} protection unresolvable "
-                f"(likely deleted post-merge) — {len(own_runs)} own-branch "
-                f"check-run(s) on {head_branch}@{sha[:12]} all green "
-                f"(merge-time-durable fallback, OMN-15715)"
+                f"MERGED; required status checks unresolvable for base "
+                f"branch {base_branch} (likely deleted post-merge) — "
+                f"basis: merged through branch protection; required set "
+                f"unresolvable post-merge. {len(own_runs)} own-branch "
+                f"check-run(s) on {head_branch}@{sha[:12]} corroborate CI "
+                f"activity for this commit (OMN-15715 option (a); "
+                f"individual run conclusions not inspected — see "
+                f"_checks_green_from_own_history docstring)"
             ),
         )
 
