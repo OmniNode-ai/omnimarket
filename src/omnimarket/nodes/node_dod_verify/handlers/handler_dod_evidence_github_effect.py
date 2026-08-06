@@ -892,6 +892,19 @@ class HandlerDodEvidenceGithubEffect:
         for this commit still fails closed, as a defensive corroboration
         that the commit produced *some* observable CI activity rather than
         silently trusting a possibly-malformed ``gh pr view`` response.
+
+        OMN-15715 D2 closing fix: the reasoning above justifies the
+        ``checks_green=True`` VERDICT, but the emitted ``detail`` text must
+        NOT claim "merged through branch protection" as a fact about this
+        specific base branch — once the base is deleted, whether it was
+        ever protected at merge time is unrecoverable from live state, and
+        asserting it anyway is exactly the fabricated-basis pattern this
+        fix closes (see the D2 branch above, which fails closed on a
+        POSITIVELY-CONFIRMED-unprotected base for the same reason). The
+        detail states only what is independently knowable: GitHub recorded
+        the merge, and own-branch check-run history corroborates CI
+        activity for the commit. It does not assert what governed the
+        merge.
         """
         own_runs = [
             run
@@ -911,12 +924,12 @@ class HandlerDodEvidenceGithubEffect:
             operation=command.operation,
             checks_green=True,
             detail=(
-                f"MERGED; required status checks unresolvable for base "
-                f"branch {base_branch} (likely deleted post-merge) — "
-                f"basis: merged through branch protection; required set "
-                f"unresolvable post-merge. {len(own_runs)} own-branch "
-                f"check-run(s) on {head_branch}@{sha[:12]} corroborate CI "
-                f"activity for this commit (OMN-15715 option (a); "
+                f"base branch {base_branch} confirmed deleted post-merge "
+                f"(gh: Branch not found, HTTP 404); merge-time protection "
+                f"state is unrecoverable and is NOT asserted; basis: GitHub "
+                f"recorded the merge, plus {len(own_runs)} own-branch "
+                f"check-run(s) on {head_branch}@{sha[:12]} corroborating CI "
+                f"activity for this commit (OMN-15715 D2 closing fix; "
                 f"individual run conclusions not inspected — see "
                 f"_checks_green_from_own_history docstring)"
             ),

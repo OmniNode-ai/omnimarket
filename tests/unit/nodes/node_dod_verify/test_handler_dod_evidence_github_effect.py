@@ -1455,11 +1455,16 @@ class TestFetchPrChecksGreenBaseConfirmationGating:
     def test_merged_pr_confirmed_deleted_base_still_resolves_green(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Positive control: the carve-out still fires — and still says
-        "merged through branch protection" — for the genuine case, a
-        POSITIVELY-CONFIRMED-absent base ("Branch not found"), corroborated
-        by own-branch check-run history. Distinguishes this suite's fixed
-        gating from a blanket "never say the phrase" regression."""
+        """Positive control: the carve-out still fires — checks_green=True —
+        for the genuine case, a POSITIVELY-CONFIRMED-absent base ("Branch
+        not found"), corroborated by own-branch check-run history. OMN-15715
+        D2 closing fix: the detail text must NOT claim "merged through
+        branch protection" (that fact is unrecoverable once the base is
+        deleted — asserting it anyway is a fabricated basis, the exact
+        gaming vector D2 closes for the unprotected-base case). It must
+        instead state only what is knowable: the confirmed-deleted-base
+        fact, that merge-time protection is NOT asserted, and the
+        own-branch check-run corroboration count."""
         monkeypatch.setattr(
             hd_mod.subprocess,
             "run",
@@ -1492,7 +1497,31 @@ class TestFetchPrChecksGreenBaseConfirmationGating:
         )
         result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
         assert result.checks_green is True, result.detail
-        assert "merged through branch protection" in (result.detail or "")
+        detail = result.detail or ""
+        assert "merged through branch protection" not in detail
+        assert "confirmed deleted post-merge" in detail
+        assert "protection state is unrecoverable and is NOT asserted" in detail
+        assert "1 own-branch check-run(s)" in detail
+
+    def test_deleted_base_old_protection_phrasing_would_fail_new_assertion(
+        self,
+    ) -> None:
+        """RED control proving the assertion above has teeth: a detail
+        string using the RETIRED "merged through branch protection" wording
+        (the pre-D2-closing-fix phrasing) must fail the new
+        not-in-detail assertion used by the positive control above. This
+        pins the negative assertion to the exact retired phrase rather than
+        to some unrelated substring."""
+        old_style_detail = (
+            "MERGED; required status checks unresolvable for base branch "
+            "deleted-base (likely deleted post-merge) — basis: merged "
+            "through branch protection; required set unresolvable "
+            "post-merge. 1 own-branch check-run(s) on mine@abc123def456 "
+            "corroborate CI activity for this commit (OMN-15715 option "
+            "(a); individual run conclusions not inspected — see "
+            "_checks_green_from_own_history docstring)"
+        )
+        assert "merged through branch protection" in old_style_detail
 
 
 # ---------------------------------------------------------------------------
