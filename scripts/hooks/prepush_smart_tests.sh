@@ -301,6 +301,16 @@ RC=0
 # CI-with-services concern). The local escalation must match what CI actually
 # enforces, or it diverges into failing on tests CI never runs here (OMN-14746).
 #
+# OMN-15719: `--ignore=tests/integration` is PATH-based and only covers tests
+# physically located under that directory. An `@pytest.mark.integration` test
+# living elsewhere (e.g. tests/nodes/test_repository_code_entity_postgres.py)
+# is not excluded by the ignore flag and needs a live Postgres this local run
+# never provisions (unlike CI's `test`/`integration-guard` jobs, which run a
+# postgres:16-alpine service container). `-m "not integration"` closes that
+# gap by marker, matching the ignore flag's actual intent: no test that needs
+# a real provisioned service runs in this local, service-less invocation.
+LOCAL_MARKER_FILTER="not kafka and not integration"
+
 # SINGLE SOURCE OF TRUTH for "what the heavy run is" (OMN-15408): the
 # fail-closed escalation runs exactly this target, and `selection_is_whole_suite`
 # measures the impacted-subset selection against this same value. Changing the
@@ -309,9 +319,9 @@ FULL_SUITE_TARGET="tests/"
 
 if [ "$IS_FULL" = "True" ] || [ "$IS_FULL" = "true" ]; then
   guard_full_suite_host
-  log "running FULL suite (fail-closed escalation): uv run pytest ${FULL_SUITE_TARGET} --ignore=tests/integration -m 'not kafka' ${PREPUSH_PYTEST_ARGS:-}"
+  log "running FULL suite (fail-closed escalation): uv run pytest ${FULL_SUITE_TARGET} --ignore=tests/integration -m '${LOCAL_MARKER_FILTER}' ${PREPUSH_PYTEST_ARGS:-}"
   # shellcheck disable=SC2086
-  uv run pytest "${FULL_SUITE_TARGET}" --ignore=tests/integration -m "not kafka" --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
+  uv run pytest "${FULL_SUITE_TARGET}" --ignore=tests/integration -m "${LOCAL_MARKER_FILTER}" --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
 elif [ "${#PATHS[@]}" -gt 0 ]; then
   # OMN-15408: guard on the SELECTED WORK, not the is_full_suite flag. A
   # selection that covers the whole full-suite target is the heavy run under
@@ -319,16 +329,16 @@ elif [ "${#PATHS[@]}" -gt 0 ]; then
   if selection_is_whole_suite "$FULL_SUITE_TARGET" "${PATHS[@]}"; then
     guard_full_suite_host "whole-suite-equivalent impacted selection (is_full_suite=${IS_FULL}, selected paths [ ${PATHS_STR}] cover the entire '${FULL_SUITE_TARGET}' escalation target)"
   fi
-  log "running impacted subset: uv run pytest ${PATHS_STR}--ignore=tests/integration -m 'not kafka' ${PREPUSH_PYTEST_ARGS:-}"
+  log "running impacted subset: uv run pytest ${PATHS_STR}--ignore=tests/integration -m '${LOCAL_MARKER_FILTER}' ${PREPUSH_PYTEST_ARGS:-}"
   # shellcheck disable=SC2086
-  uv run pytest "${PATHS[@]}" --ignore=tests/integration -m "not kafka" --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
+  uv run pytest "${PATHS[@]}" --ignore=tests/integration -m "${LOCAL_MARKER_FILTER}" --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
 else
   log "no impacted unit tests mapped for this push (no source/test change contributed a target); nothing to run."
 fi
 
 if [ "$RC" -ne 0 ]; then
   log "ERROR: impacted tests failed (pytest exit ${RC})"
-  log "REMEDIATION: fix the failing tests, then re-push. Reproduce with: uv run pytest ${PATHS_STR:-tests/} --ignore=tests/integration"
+  log "REMEDIATION: fix the failing tests, then re-push. Reproduce with: uv run pytest ${PATHS_STR:-tests/} --ignore=tests/integration -m '${LOCAL_MARKER_FILTER}'"
   exit "$RC"
 fi
 
