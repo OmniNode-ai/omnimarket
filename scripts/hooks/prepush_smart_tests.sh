@@ -304,12 +304,40 @@ RC=0
 # OMN-15719: `--ignore=tests/integration` is PATH-based and only covers tests
 # physically located under that directory. An `@pytest.mark.integration` test
 # living elsewhere (e.g. tests/nodes/test_repository_code_entity_postgres.py)
-# is not excluded by the ignore flag and needs a live Postgres this local run
-# never provisions (unlike CI's `test`/`integration-guard` jobs, which run a
-# postgres:16-alpine service container). `-m "not integration"` closes that
-# gap by marker, matching the ignore flag's actual intent: no test that needs
-# a real provisioned service runs in this local, service-less invocation.
-LOCAL_MARKER_FILTER="not kafka and not integration"
+# is not excluded by the ignore flag and can need a live Postgres this local
+# run never provisions (unlike CI's `test`/`integration-guard` jobs, which run
+# a postgres:16-alpine service container).
+#
+# A blanket `-m "not integration"` was considered and REJECTED: a collect-only
+# audit (`--ignore=tests/integration -m "integration and not kafka"
+# --collect-only`) found 80 integration-marked tests across 24 files outside
+# tests/integration/ that this local run previously exercised -- and a
+# service-free sample of them (tests/test_handoff_failure_modes.py,
+# tests/test_handler_handoff_effect.py,
+# tests/test_skill_mapping_input_coverage.py,
+# tests/ci/test_cross_repo_contract_deps.py,
+# tests/nodes/node_contract_sweep/test_cli_contract_sweep.py) executes clean
+# with zero services provisioned. Excluding the whole marker would have
+# silently dropped that real, fast, passing local coverage as collateral
+# damage from a fix aimed at exactly one Postgres-touching test.
+#
+# The precise fix is the fixture-level reachability guard in
+# tests/conftest.py's `postgres_fixture`: an unreachable Postgres connect now
+# `pytest.skip`s instead of raising OSError, so any `@pytest.mark.integration`
+# test that goes through the shared fixture degrades gracefully wherever it
+# lives, without excluding tests that never touch Postgres at all. Every other
+# real-service integration test in this repo already carries the same
+# try/except-skip guard on its own connect call (test_rls_tranche2_omn14894.py,
+# test_writer_tenant_isolation_omn14898.py,
+# test_projection_delegation_tier_distribution_omn13662.py,
+# test_delegation_savings_tenant_id_column_omn14058.py,
+# test_datasource_postgres.py's `_has_reachable_db` skipif); the sole
+# unguarded connect (test_delegation_legacy_schema_reconcile_omn14974.py) sits
+# behind an opt-in `OMN14974_POSTGRES_DSN` env var that is unset by default,
+# so it self-skips before ever calling `asyncpg.connect`. No blanket marker
+# exclusion is needed; the local marker filter matches CI's
+# `-m "not kafka"` (see CLAUDE.md's canonical local command) unchanged.
+LOCAL_MARKER_FILTER="not kafka"
 
 # SINGLE SOURCE OF TRUTH for "what the heavy run is" (OMN-15408): the
 # fail-closed escalation runs exactly this target, and `selection_is_whole_suite`
