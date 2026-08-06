@@ -47,7 +47,7 @@
 DO $unforce_registry_rls$
 BEGIN
   IF to_regclass('public.node_service_registry') IS NOT NULL THEN
-    ALTER TABLE node_service_registry NO FORCE ROW LEVEL SECURITY;
+    ALTER TABLE public.node_service_registry NO FORCE ROW LEVEL SECURITY;
   ELSE
     RAISE NOTICE
       'node_service_registry is absent; FORCE-RLS reversal is a no-op '
