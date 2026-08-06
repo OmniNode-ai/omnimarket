@@ -196,6 +196,29 @@ def _gh_json_lines(
     return items, ""
 
 
+# OMN-15715 D1/D2: narrow, positive-confirmation signals for classifying a
+# ``branches/{base}/protection/required_status_checks`` 404 detail string.
+# ``gh api`` does not expose a structured HTTP-status field through this
+# subprocess path — only the rendered stderr (e.g. ``"gh: Branch not found
+# (HTTP 404)"``) — so string-matching stays the most structured signal
+# available. It stays deliberately NARROW (requires ALL tokens,
+# case-insensitively) so it cannot accidentally fire on an unrelated
+# 403/5xx/timeout/OSError detail, and the two GitHub messages are matched
+# separately because they mean opposite things: "Branch not found" (base
+# genuinely does not exist) vs "Branch not protected" (base exists, was
+# simply never protected — see D2).
+_BASE_BRANCH_NOT_FOUND_TOKENS = ("404", "branch not found")
+_BASE_BRANCH_NOT_PROTECTED_TOKENS = ("404", "branch not protected")
+
+
+def _detail_matches_all(detail: str, tokens: tuple[str, ...]) -> bool:
+    """True iff every token in ``tokens`` appears in ``detail``, case-
+    insensitively. See the module-level comment above for why this is the
+    narrowest available signal for classifying a ``gh api`` error detail."""
+    lowered = detail.lower()
+    return all(token in lowered for token in tokens)
+
+
 def _is_green_check_run(run: dict[str, object]) -> bool:
     """A raw Checks-API check-run is green iff it completed with a
     non-failing conclusion — the two-field (``status``/``conclusion``)
@@ -683,33 +706,70 @@ class HandlerDodEvidenceGithubEffect:
             )
 
         if not required_names:
-            # OMN-15715 carve-out (design option (a)): the PR is confirmed
-            # MERGED (checked above — a not-merged PR already returned
-            # fail-closed before this point) but its base branch's live
-            # protection could not be resolved, typically because the base
-            # branch — the standard post-merge state for a stacked-PR
-            # chain — was deleted, so branches/{base}/protection 404s
-            # permanently. Do not fail closed solely on that: the merge
-            # event itself is the evidence that whatever branch protection
-            # governed the base at merge time was satisfied. The own-SHA
-            # check-run history is consulted only as EXISTENCE
-            # corroboration that this commit produced observable CI
-            # activity — not to re-derive which contexts were required or
-            # to gate on individual run conclusions (see
-            # _checks_green_from_own_history docstring for why a
-            # per-conclusion re-check is unsound post-merge and how this
-            # differs from the reverted first cut of this carve-out).
-            # Foreign/ambiguous-branch filtering (OMN-15709) still applies
-            # so a sibling PR sharing this head SHA cannot pollute the
-            # existence check.
-            return self._checks_green_from_own_history(
+            # OMN-15715 D1 fix: the carve-out below (design option (a)) may
+            # ONLY fire on a POSITIVELY-CONFIRMED-absent base — GitHub's own
+            # "Branch not found (HTTP 404)" on the protection probe. The v1
+            # carve-out fired on ANY empty ``required_names``, which
+            # includes a 403/5xx/timeout/OSError on the protection probe
+            # (indistinguishable from a deleted base once collapsed to
+            # ``None`` by ``_gh_json``) and a base branch that is alive but
+            # was simply never protected — none of those are evidence that
+            # a merge-time gate existed and was satisfied. Every one of
+            # those other causes now falls through to the fail-closed
+            # branches below, matching evidence_collector._verify_live_pr's
+            # doctrine: "Failing closed — a Done-flip must not proceed on
+            # unverifiable PR state."
+            if _detail_matches_all(classic_detail, _BASE_BRANCH_NOT_FOUND_TOKENS):
+                # Confirmed: the base branch itself does not exist —
+                # typically the standard post-merge cleanup step for a
+                # stacked-PR chain. The merge event itself is the evidence
+                # that whatever branch protection governed the base at
+                # merge time was satisfied. The own-SHA check-run history
+                # is consulted only as EXISTENCE corroboration that this
+                # commit produced observable CI activity — not to
+                # re-derive which contexts were required or to gate on
+                # individual run conclusions (see
+                # _checks_green_from_own_history docstring). Foreign/
+                # ambiguous-branch filtering (OMN-15709) still applies so a
+                # sibling PR sharing this head SHA cannot pollute the
+                # existence check.
+                return self._checks_green_from_own_history(
+                    command,
+                    base_branch=base_branch,
+                    head_branch=head_branch,
+                    sha=sha,
+                    runs=runs,
+                    suite_branch=suite_branch,
+                    base_protection_detail=base_protection_detail,
+                )
+            if _detail_matches_all(classic_detail, _BASE_BRANCH_NOT_PROTECTED_TOKENS):
+                # OMN-15715 D2: the base branch is CONFIRMED alive and
+                # simply never had branch protection — there was no
+                # merge-time gate for the merge event to have passed, so
+                # crediting this as "merged through branch protection"
+                # would be a fabricated basis (the exact gaming vector: a
+                # PR merged into one's own unprotected branch with CI
+                # fully red). Say so honestly and fail closed — this is
+                # NOT the deleted-base carve-out.
+                return self._checks_not_green(
+                    command,
+                    f"no branch protection governed {repo}@{base_branch}; "
+                    f"no required contexts existed to verify — failing "
+                    f"closed rather than crediting a merge-time gate that "
+                    f"never existed (OMN-15715 D2)",
+                )
+            # Every other cause (403, 5xx, timeout, OSError, auth failure,
+            # or any detail string that doesn't positively confirm either
+            # of the two cases above): base-branch protection state is
+            # simply unverifiable right now. Fail closed rather than
+            # guessing which case this is (OMN-15715 D1).
+            return self._checks_not_green(
                 command,
-                base_branch=base_branch,
-                head_branch=head_branch,
-                sha=sha,
-                runs=runs,
-                suite_branch=suite_branch,
-                base_protection_detail=base_protection_detail,
+                f"{base_protection_detail}; could not positively confirm "
+                f"{base_branch} is absent (only a confirmed 404 'Branch "
+                f"not found' qualifies for the deleted-base carve-out) — "
+                f"failing closed on unverifiable base-branch protection "
+                f"state (OMN-15715 D1)",
             )
 
         missing: list[str] = []

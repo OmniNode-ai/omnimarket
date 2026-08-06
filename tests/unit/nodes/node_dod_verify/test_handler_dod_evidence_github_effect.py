@@ -65,6 +65,8 @@ def _routed_gh(
     view_rc: int = 0,
     protection: str = "",
     protection_rc: int = 0,
+    protection_stderr: str = "",
+    protection_exc: Exception | None = None,
     rules: str = "[]",
     rules_rc: int = 0,
     suites: str = "",
@@ -75,7 +77,20 @@ def _routed_gh(
     """Route ``gh`` invocations for FETCH_PR_CHECKS_GREEN's 5-call sequence
     (``pr view`` -> classic branch protection -> branch rules -> check-suites
     -> check-runs) to the fixture matching each call's shape, keyed by
-    distinctive substrings in the invocation argv rather than call order."""
+    distinctive substrings in the invocation argv rather than call order.
+
+    ``protection_stderr`` lets a fixture carry the real ``gh api`` 404 detail
+    text (e.g. ``"gh: Branch not found (HTTP 404)"`` vs ``"gh: Branch not
+    protected (HTTP 404)"``) that OMN-15715's D1/D2 fix gates on — the prior
+    fixtures only set ``protection_rc=1`` with empty stdout/stderr, which
+    ``_gh_json`` renders as the generic ``"non-zero exit (1)"`` placeholder
+    and does NOT match either narrow 404 signal.
+
+    ``protection_exc``, when set, makes the protection call raise instead of
+    returning — used to simulate ``subprocess.TimeoutExpired``/``OSError`` on
+    that specific probe (OMN-15715 D1 RED control) without affecting the
+    other 4 calls in the sequence.
+    """
 
     def _run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
         argv = [str(a) for a in (list(args[0]) if args else [])]
@@ -85,8 +100,13 @@ def _routed_gh(
                 args=argv, returncode=view_rc, stdout=view, stderr=""
             )
         if "protection/required_status_checks" in joined:
+            if protection_exc is not None:
+                raise protection_exc
             return subprocess.CompletedProcess(
-                args=argv, returncode=protection_rc, stdout=protection, stderr=""
+                args=argv,
+                returncode=protection_rc,
+                stdout=protection,
+                stderr=protection_stderr,
             )
         if "rules/branches" in joined:
             return subprocess.CompletedProcess(
@@ -1153,6 +1173,7 @@ class TestFetchPrChecksGreenMergedDeletedBase:
                 ),
                 protection="",
                 protection_rc=1,  # 404: base branch deleted post-merge
+                protection_stderr="gh: Branch not found (HTTP 404)",
                 rules="[]",
                 suites=_lines(
                     {
@@ -1214,6 +1235,7 @@ class TestFetchPrChecksGreenMergedDeletedBase:
                 ),
                 protection="",
                 protection_rc=1,
+                protection_stderr="gh: Branch not found (HTTP 404)",
                 rules="[]",
                 suites=_lines({"id": 1, "head_branch": "mine"}),
                 runs=_lines(
@@ -1270,6 +1292,7 @@ class TestFetchPrChecksGreenMergedDeletedBase:
                 ),
                 protection="",
                 protection_rc=1,
+                protection_stderr="gh: Branch not found (HTTP 404)",
                 rules="[]",
                 suites=_lines(),
                 runs=_lines(),
@@ -1318,6 +1341,158 @@ class TestFetchPrChecksGreenMergedDeletedBase:
         )
         result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
         assert result.checks_green is False
+
+
+# ---------------------------------------------------------------------------
+# OMN-15715 D1/D2 — the carve-out above must gate on a POSITIVELY-CONFIRMED
+# absent base (GitHub's "Branch not found (HTTP 404)"), never on ANY empty
+# ``required_names``. Adversarial review (Opus verdict on b8a1eb65) proved
+# two deterministic RED probes against a live, PROTECTED dev branch: a 403
+# on the protection probe, and a TimeoutExpired on the protection probe,
+# BOTH resolved checks_green=True under the pre-fix carve-out despite the
+# base branch genuinely existing and being protected. Separately, an
+# unprotected-but-EXISTING base (GitHub's distinct "Branch not protected
+# (HTTP 404)") must never be credited with "merged through branch
+# protection" — that phrase would be fabricated where no protection ever
+# governed the merge (the #2558-shaped gaming vector: merge red CI into
+# your own unprotected branch).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFetchPrChecksGreenBaseConfirmationGating:
+    def test_merged_pr_protection_probe_403_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RED control (D1, probe 1): a 403 on the protection probe for a
+        MERGED PR whose base is alive and protected must fail closed, not
+        resolve green via the deleted-base carve-out. Prior to the fix this
+        collapsed to the same ``None``/empty ``required_names`` shape as a
+        genuine 404 and fired the carve-out anyway."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view(
+                    "mine", base="dev", state="MERGED", merged_at="2026-08-05T00:00:00Z"
+                ),
+                protection="",
+                protection_rc=1,
+                protection_stderr="gh: Resource not accessible by integration (HTTP 403)",
+                rules="[]",
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "merged through branch protection" not in (result.detail or "")
+
+    def test_merged_pr_protection_probe_timeout_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RED control (D1, probe 2): a TimeoutExpired on the protection
+        probe for a MERGED PR whose base is alive and protected must fail
+        closed, not resolve green via the deleted-base carve-out."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view(
+                    "mine", base="dev", state="MERGED", merged_at="2026-08-05T00:00:00Z"
+                ),
+                protection_exc=subprocess.TimeoutExpired(cmd="gh", timeout=30),
+                rules="[]",
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "merged through branch protection" not in (result.detail or "")
+
+    def test_merged_pr_unprotected_base_fails_closed_honest_wording(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """RED control (D2): a MERGED PR whose base branch is CONFIRMED
+        alive but never protected (GitHub's "Branch not protected (HTTP
+        404)", distinct from "Branch not found") must fail closed and must
+        NOT claim "merged through branch protection" — the exact
+        gaming-vector wording (open a PR into your own unprotected branch,
+        merge with CI fully red) this defect closes."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view(
+                    "mine",
+                    base="my-unprotected-branch",
+                    state="MERGED",
+                    merged_at="2026-08-05T00:00:00Z",
+                ),
+                protection="",
+                protection_rc=1,
+                protection_stderr="gh: Branch not protected (HTTP 404)",
+                rules="[]",
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "merged through branch protection" not in (result.detail or "")
+        assert "no branch protection governed" in (result.detail or "")
+
+    def test_merged_pr_confirmed_deleted_base_still_resolves_green(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Positive control: the carve-out still fires — and still says
+        "merged through branch protection" — for the genuine case, a
+        POSITIVELY-CONFIRMED-absent base ("Branch not found"), corroborated
+        by own-branch check-run history. Distinguishes this suite's fixed
+        gating from a blanket "never say the phrase" regression."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view(
+                    "mine",
+                    base="deleted-base",
+                    state="MERGED",
+                    merged_at="2026-08-05T00:00:00Z",
+                ),
+                protection="",
+                protection_rc=1,
+                protection_stderr="gh: Branch not found (HTTP 404)",
+                rules="[]",
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "ci / build",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is True, result.detail
+        assert "merged through branch protection" in (result.detail or "")
 
 
 # ---------------------------------------------------------------------------
