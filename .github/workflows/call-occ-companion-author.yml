@@ -148,7 +148,24 @@ jobs:
         # (184 packages, no ML/CUDA packages) then
         # `python -c "import omnimarket.nodes.node_occ_companion_effect"` and
         # `onex node node_occ_companion_effect --help` both succeed clean.
-        run: uv sync --locked
+        # Retry is bounded (3 attempts, 15s/30s backoff) to absorb transient
+        # git-RPC failures fetching the pinned `omninode-memory` git dependency
+        # (observed live: run 31142165386, "RPC failed; curl 56 GnuTLS recv
+        # error (-54)" mid-clone) — it does not change what gets installed.
+        run: |
+          set -euo pipefail
+          attempt=1
+          max_attempts=3
+          until uv sync --locked; do
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "::error::uv sync --locked failed after ${max_attempts} attempts"
+              exit 1
+            fi
+            sleep_seconds=$((attempt == 1 ? 15 : 30))
+            echo "::warning::uv sync --locked failed (attempt ${attempt}/${max_attempts}); retrying in ${sleep_seconds}s"
+            sleep "$sleep_seconds"
+            attempt=$((attempt + 1))
+          done
 
       - name: Build author payload (mode from operator variable, allowlisted)
         env:
