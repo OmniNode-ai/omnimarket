@@ -132,12 +132,24 @@ jobs:
         uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
         with:
           version: "latest"
+          enable-cache: true
 
       - name: Set up Python 3.12
         run: uv python install 3.12
 
       - name: Install dependencies
-        run: uv sync --locked --all-extras
+        # OMN-15711: node_occ_companion_effect needs no optional extra — the
+        # repo's only two extras are `dep-health` (graphifyy, used by
+        # node_dependency_health_sweep) and `intelligence` (adaptive-classifier,
+        # not imported anywhere in this node's path). `--all-extras` was
+        # transitively pulling ~2GB of the ML/CUDA stack (torch, nvidia-cublas,
+        # nvidia-cudnn, triton, onnx, faiss) via the git-sourced
+        # onex_change_control dependency, and the job died there on
+        # timeout/network before ever reading OMNI_OCC_AUTOAUTHOR_MODE. Proven
+        # locally: `uv sync --locked` (184 packages, no ML/CUDA packages) then
+        # `python -c "import omnimarket.nodes.node_occ_companion_effect"` and
+        # `onex node node_occ_companion_effect --help` both succeed clean.
+        run: uv sync --locked
 
       - name: Build author payload (mode from operator variable, allowlisted)
         env:
