@@ -1,3 +1,6 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -8,6 +11,9 @@ ROOT = Path(__file__).resolve().parents[1]
 NODE_DIR = ROOT / "src/omnimarket/nodes/node_projection_registration"
 METADATA = NODE_DIR / "metadata.yaml"
 CREATE_MIGRATION = NODE_DIR / "migrations/0000_create_node_service_registry.sql"
+NO_FORCE_RLS_MIGRATION = (
+    NODE_DIR / "migrations/0004_node_service_registry_no_force_rls.sql"
+)
 OWNERSHIP_DOC = ROOT / "docs/migrations/node-service-registry-ownership.md"
 
 
@@ -45,6 +51,16 @@ def test_create_migration_carries_cross_repo_ownership_fence() -> None:
     assert "omnimarket.nodes.node_projection_registration is the" in content
     assert "Do not add a duplicate CREATE TABLE" in content
     assert "omnibase_infra" in content
+
+
+def test_force_rls_reversal_targets_public_table() -> None:
+    content = NO_FORCE_RLS_MIGRATION.read_text()
+
+    assert "to_regclass('public.node_service_registry') IS NOT NULL" in content
+    assert (
+        "ALTER TABLE public.node_service_registry NO FORCE ROW LEVEL SECURITY;"
+        in content
+    )
 
 
 def test_ownership_doc_records_infra_non_owner_status() -> None:
