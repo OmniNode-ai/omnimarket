@@ -46,7 +46,7 @@
   "physical_seed_database": "omnidash_analytics",
   "relation_counts": {
     "extension": 1,
-    "function": 14,
+    "function": 15,
     "sequence": 14,
     "table": 56,
     "view": 10
@@ -108,6 +108,42 @@
       "producer": "omnimarket_node_migration_stream",
       "readers": [],
       "target_schema": "platform_catalog",
+      "writers": []
+    },
+    {
+      "accessor_nodes": [
+        "node_canary_score_reducer"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_canary_score_reducer/migrations/0003_capability_scores_tenant_id_to_uuid.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "owning node migration plus referenced table domains",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "keys": [],
+      "kind": "function",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_canary_score_reducer",
+      "name": "house_tenant_map_slug_to_uuid",
+      "owner_declaration": "node_canary_score_reducer",
+      "partitioning": [],
+      "producer": "node_canary_score_reducer",
+      "readers": [],
+      "target_schema": "tenant",
       "writers": []
     },
     {
