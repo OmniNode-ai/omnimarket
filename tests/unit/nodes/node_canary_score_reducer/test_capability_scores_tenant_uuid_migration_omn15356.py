@@ -11,15 +11,15 @@ by the Docker fixture harness in ``omnibase_infra``
 (``docker/tenant-uuid-conversion-proof``) -- this file cannot and does not
 claim to prove PostgreSQL execution semantics.
 
-OMN-15732 AC2 split the original single 0003 file into two: 0003 defines the
-new, schema-qualified, ownership-declared ``platform_catalog.
-house_tenant_map_slug_to_uuid`` mapping function; 0004 does the
-``ALTER COLUMN ... TYPE UUID`` conversion against the pre-existing
-``public.capability_scores`` table using that function. The split exists so
-the NEW function can be fully linted and ownership-checked by
-omnibase_infra's application-database-domain-sql gate while the PRE-EXISTING
-table's deferred-to-OMN-15359 schema exemption stays scoped to just the file
-that still touches it.
+OMN-15732 AC2 adjudication (2026-08-08): an earlier revision split the
+mapping into its own schema-qualified `platform_catalog.
+house_tenant_map_slug_to_uuid` catalog function so it could carry an
+ownership declaration. That placement was rejected -- `platform_catalog` is
+inadmissible for a `node:%` migration stream at both the static domain gate
+and the runtime ledger CHECK constraint in omnibase_infra, and the function
+had exactly one DDL-time consumer and no runtime caller. The mapping is now
+inlined directly into this single migration with no CREATE FUNCTION and no
+new schema-qualified object; there is no `0004` file.
 """
 
 from __future__ import annotations
@@ -34,54 +34,65 @@ _REPO_ROOT = Path(__file__).resolve().parents[4]
 _MIGRATIONS_DIR = (
     _REPO_ROOT / "src/omnimarket/nodes/node_canary_score_reducer/migrations"
 )
-_FUNCTION_MIGRATION = _MIGRATIONS_DIR / "0003_house_tenant_map_slug_to_uuid.sql"
-_ALTER_MIGRATION = _MIGRATIONS_DIR / "0004_capability_scores_tenant_id_to_uuid.sql"
+_MIGRATION = _MIGRATIONS_DIR / "0003_capability_scores_tenant_id_to_uuid.sql"
 
 
-def _read_function_migration() -> str:
-    assert _FUNCTION_MIGRATION.exists(), f"expected migration at {_FUNCTION_MIGRATION}"
-    return _FUNCTION_MIGRATION.read_text(encoding="utf-8")
+def _read_migration() -> str:
+    assert _MIGRATION.exists(), f"expected migration at {_MIGRATION}"
+    return _MIGRATION.read_text(encoding="utf-8")
 
 
-def _read_alter_migration() -> str:
-    assert _ALTER_MIGRATION.exists(), f"expected migration at {_ALTER_MIGRATION}"
-    return _ALTER_MIGRATION.read_text(encoding="utf-8")
-
-
-def test_migration_files_exist_and_are_numbered_after_0002() -> None:
+def test_migration_file_exists_and_is_numbered_after_0002() -> None:
     numbers = sorted(
         int(path.name.split("_", 1)[0])
         for path in _MIGRATIONS_DIR.glob("*.sql")
         if path.name[:4].isdigit() or path.name[:3].isdigit()
     )
     assert 3 in numbers
-    assert 4 in numbers
-    assert max(numbers) >= 4
+    # OMN-15732 AC2 adjudication: no 0004 -- the split was reverted.
+    assert 4 not in numbers
 
 
-def test_function_migration_qualifies_the_function_into_platform_catalog() -> None:
-    """OMN-15732 AC2: the new function must be schema-qualified, not public."""
-    text = _read_function_migration()
-    assert (
-        "CREATE OR REPLACE FUNCTION platform_catalog.house_tenant_map_slug_to_uuid"
-        in text
-    )
-    assert "CREATE SCHEMA IF NOT EXISTS platform_catalog" in text
+def test_defines_no_persistent_mapping_function_or_new_schema() -> None:
+    """OMN-15732 AC2 adjudication: no catalog object escapes ownership
+    declaration because none is created -- the mapping is inlined. Scans
+    executable lines only (strips ``--`` comments first) so the header's own
+    prose, which explains why there is no CREATE FUNCTION, cannot
+    self-trigger this check."""
+    executable = "\n".join(
+        line
+        for line in _read_migration().splitlines()
+        if not line.lstrip().startswith("--")
+    ).upper()
+    assert "CREATE FUNCTION" not in executable
+    assert "CREATE OR REPLACE FUNCTION" not in executable
+    assert "PLATFORM_CATALOG" not in executable
+    assert "CREATE SCHEMA" not in executable
 
 
-def test_defines_the_fail_closed_mapping_function() -> None:
-    text = _read_function_migration()
+def test_has_a_preguard_raise_for_unmapped_tenant_values() -> None:
+    text = _read_migration()
     assert "RAISE EXCEPTION" in text
     assert "'omninode'" in text
     assert "820272f9-4aaf-5add-a2df-0af942852ab2" in text
+    assert "IS DISTINCT FROM 'omninode'" in text
 
 
-def test_converts_the_column_type_using_the_qualified_mapping_function() -> None:
-    text = _read_alter_migration()
+def test_converts_the_column_type_with_a_case_expression_and_no_else() -> None:
+    """The `USING` clause must be a bare CASE with no ELSE branch: an
+    unmapped value evaluates to NULL and is rejected by the column's NOT
+    NULL constraint -- the second, independent fail-closed guard."""
+    text = _read_migration()
     assert "ALTER COLUMN tenant_id TYPE UUID" in text
-    assert "USING platform_catalog.house_tenant_map_slug_to_uuid(tenant_id)" in text
-    # the unqualified call must be gone entirely, not merely supplemented
-    assert "USING house_tenant_map_slug_to_uuid(tenant_id)" not in text
+    assert "CASE tenant_id" in text
+    assert "WHEN 'omninode' THEN" in text
+    # No ELSE branch anywhere in the executable CASE expression.
+    executable = "\n".join(
+        line for line in text.splitlines() if not line.lstrip().startswith("--")
+    )
+    case_start = executable.index("CASE tenant_id")
+    case_end = executable.index("END", case_start)
+    assert "ELSE" not in executable[case_start:case_end]
 
 
 def test_does_not_drop_or_recreate_the_tenant_id_index_or_unique_constraint() -> None:
@@ -93,7 +104,7 @@ def test_does_not_drop_or_recreate_the_tenant_id_index_or_unique_constraint() ->
     self-trigger this check."""
     executable = "\n".join(
         line
-        for line in _read_alter_migration().splitlines()
+        for line in _read_migration().splitlines()
         if not line.lstrip().startswith("--")
     )
     assert "DROP INDEX" not in executable.upper()
@@ -104,20 +115,20 @@ def test_does_not_drop_or_recreate_the_tenant_id_index_or_unique_constraint() ->
 def test_grants_app_dashboard_select_alongside_the_recreated_policy() -> None:
     """OMN-14894 ratchet: every file that (re)creates the ``tenant_isolation``
     policy must grant ``app_dashboard`` SELECT in the same file."""
-    text = _read_alter_migration()
+    text = _read_migration()
     assert "CREATE POLICY tenant_isolation ON" in text
     assert "GRANT SELECT ON public.capability_scores TO app_dashboard" in text
 
 
 def test_rls_policy_casts_the_guc_to_uuid() -> None:
-    text = _read_alter_migration()
+    text = _read_migration()
     assert "current_setting('app.tenant_id', true)::uuid" in text
     # both the USING and WITH CHECK clauses must carry the cast, not just one
     assert text.count("current_setting('app.tenant_id', true)::uuid") >= 2
 
 
 def test_conversion_guard_handles_uuid_text_and_unexpected_type() -> None:
-    text = _read_alter_migration()
+    text = _read_migration()
     assert "v_current_type = 'uuid'" in text
     assert "v_current_type = 'text'" in text
     assert "RAISE EXCEPTION" in text

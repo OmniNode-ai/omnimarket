@@ -69,26 +69,3 @@ relation_evidence:
     classification_evidence: >-
       node_projection_delegation tenant projection table; OMN-15503 appends
       typed terminal outcome columns without changing tenant authority.
-  - name: house_tenant_map_slug_to_uuid
-    kind: function
-    database_ref: application
-    schema: platform_catalog
-    domain: PLATFORM_CATALOG
-    owner_declaration: service:omnimarket_projection_migration_runner
-    function_signature: "(p_value TEXT)"
-    producer: src/omnimarket/nodes/node_canary_score_reducer/migrations/0003_house_tenant_map_slug_to_uuid.sql
-    readers:
-      - src/omnimarket/nodes/node_canary_score_reducer/migrations/0004_capability_scores_tenant_id_to_uuid.sql
-    writers:
-      - src/omnimarket/nodes/node_canary_score_reducer/migrations/0003_house_tenant_map_slug_to_uuid.sql
-    authoritative_sources:
-      - src/omnimarket/nodes/node_canary_score_reducer/migrations/0003_house_tenant_map_slug_to_uuid.sql
-    classification_evidence: >-
-      OMN-15356/OMN-15732: closed, static tenant-slug->UUID mapping function
-      (today: 'omninode' only). Interim platform_catalog placement --
-      platform_catalog is guaranteed created via
-      omnibase_infra/docker/migrations/forward/_ledger/bootstrap.sql before
-      any node migration runs, unlike omninode_internal (cutover-only
-      bootstrap) or tenant (requires the still-pending OMN-15359 governed
-      cutover this migration does not perform). No customer-owned or
-      per-tenant rows; not runtime bookkeeping state.

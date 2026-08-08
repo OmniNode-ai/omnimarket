@@ -1,23 +1,39 @@
 -- OMN-15356: convert capability_scores.tenant_id from the legacy TEXT slug
 -- to the canonical UUID identity, for the classified-TENANT relation set.
 --
--- SPLIT FROM THE ORIGINAL 0003 (OMN-15732 AC2)
---   This file used to also define `house_tenant_map_slug_to_uuid`. That
---   function is now defined in 0003_house_tenant_map_slug_to_uuid.sql (which
---   runs first -- lexical sort order in the node migration runner -- and is
---   NOT exempted from omnibase_infra's application-database-domain-sql
---   gate). This file still ALTERs `public.capability_scores`, a
---   pre-existing table intentionally deferred to the governed OMN-15359
---   schema cutover, so it keeps the same file-level "legacy default schema"
---   exemption its predecessor (0002) already carries; see 0003's header for
---   the full split rationale.
+-- OMN-15732 AC2 ADJUDICATION (2026-08-08, no gate widened)
+--   An earlier revision of this migration split the mapping into a
+--   standalone, schema-qualified `platform_catalog.house_tenant_map_slug_to_
+--   uuid` function so it could be ownership-declared as a new application
+--   object. That placement was rejected on adjudication: the migration-ledger
+--   `domain` column is the *declared target schema domain* (omnibase_infra
+--   docker/migrations/forward/_ledger/bootstrap.sql), and `platform_catalog`
+--   (topology domain PLATFORM_CATALOG) is inadmissible for a `node:%`
+--   migration stream at both the static gate
+--   (scripts/validation/validate_application_migration_manifest.py) and the
+--   runtime `schema_migrations_stream_domain_check` CHECK constraint, which
+--   together restrict node-stream domains to exactly {tenant,
+--   omninode_internal}. `tenant` and `omninode_internal` both fail
+--   apply-time schema presence today (the former needs the still-pending
+--   OMN-15359 cutover; the latter is created only by the cutover-only
+--   initializer, never by the forward-migration stream). The function has
+--   exactly one consumer -- this file's own DDL-time `USING` clause -- and no
+--   runtime caller; the runtime implementation is the single Python
+--   function `omnimarket.projection.tenant_isolation.resolve_tenant_uuid`.
+--   A persistent catalog object read once by one ALTER buys nothing here and
+--   cannot be given a truthful ownership/domain declaration on every surface
+--   at once. The mapping is therefore inlined below with no CREATE FUNCTION
+--   and no new schema-qualified object; OMN-15359's governed tenant/internal
+--   cutover is the right place to promote this into a shared,
+--   truthfully-declared `tenant.house_tenant_map_slug_to_uuid` alongside the
+--   other classified-TENANT relations' conversions.
 --
 -- WHY THIS TABLE FIRST
 --   capability_scores is the relation the OMN-15356 identity module
 --   (`omnimarket.projection.tenant_isolation.resolve_tenant_uuid`) and its
 --   test (`test_the_tenant_classified_relations_carry_a_tenant_id_migration`)
 --   already use as the canonical worked example. This migration lands the
---   full end-to-end pattern -- mapping function, fail-closed conversion,
+--   full end-to-end pattern -- inline fail-closed mapping, conversion,
 --   index/constraint preservation, RLS policy cast -- for ONE relation as the
 --   reviewable shape. The remaining classified-TENANT relations (see the
 --   `expected` table in `test_house_tenant_identity.py` plus
@@ -26,17 +42,19 @@
 --   via the identical mechanical pattern in follow-up migrations under this
 --   same ticket -- NOT silently dropped, deferred and named in the PR body.
 --
--- FAIL-CLOSED: NO SENTINEL SURVIVES
---   `platform_catalog.house_tenant_map_slug_to_uuid` is the SQL mirror of
---   `omnimarket.projection.tenant_isolation.resolve_tenant_uuid` -- same
---   closed mapping (today: 'omninode' only), same refusal behavior. Postgres
---   evaluates the `USING` expression for every row as part of the single
---   `ALTER TABLE` DDL statement; if ANY row's tenant_id is not an exact key in
---   the mapping, the function RAISEs, the statement fails, and -- because DDL
---   in PostgreSQL is transactional -- the entire migration transaction rolls
---   back. There is no partial conversion, no invented UUID, and no
---   'unmapped rows keep their old value' fallback: the column stays TEXT
---   until every row maps, exactly the "no sentinel/default survives"
+-- FAIL-CLOSED: NO SENTINEL SURVIVES (two independent guards)
+--   (1) A pre-guard `IF EXISTS` check below RAISEs before any DDL runs if any
+--   row's tenant_id is not the one closed mapping key this codebase knows
+--   about. (2) Even if that guard were ever bypassed, the `ALTER COLUMN ...
+--   TYPE UUID USING (CASE ... END)` below has no ELSE branch: an unmapped
+--   value evaluates the CASE to NULL, which then violates the column's
+--   pre-existing NOT NULL constraint (migration 0002) and aborts the
+--   statement. Postgres evaluates the `USING` expression for every row as
+--   part of the single `ALTER TABLE` DDL statement, and because DDL in
+--   PostgreSQL is transactional, either guard failing rolls back the entire
+--   migration transaction. There is no partial conversion, no invented UUID,
+--   and no 'unmapped rows keep their old value' fallback: the column stays
+--   TEXT until every row maps, exactly the "no sentinel/default survives"
 --   acceptance criterion.
 --
 -- CONSTRAINTS AND INDEXES SURVIVE THE TYPE CHANGE
@@ -59,8 +77,7 @@
 --   non-owner pools), not duplicated here.
 --
 -- Idempotent: the column-type guard only runs the ALTER when the column is
--- not already UUID, so a second application is a no-op. Requires 0003 to
--- have already applied (house_tenant_map_slug_to_uuid must exist).
+-- not already UUID, so a second application is a no-op.
 
 DO $$
 DECLARE
@@ -80,6 +97,26 @@ BEGIN
         RAISE NOTICE
             'public.capability_scores.tenant_id is already uuid; skipping conversion';
     ELSIF v_current_type = 'text' THEN
+        -- Pre-guard: refuse before any DDL runs if any row carries a
+        -- tenant_id value outside the closed mapping (today: 'omninode'
+        -- only). This is the first of the two independent fail-closed
+        -- guards described in the file header above.
+        IF EXISTS (
+            SELECT 1 FROM public.capability_scores
+            WHERE tenant_id IS DISTINCT FROM 'omninode'
+        ) THEN
+            RAISE EXCEPTION
+                'OMN-15356: no canonical UUID mapping for tenant value % -- '
+                'refusing to invent or default one; extend the closed mapping '
+                'in this migration only after confirming this is a real, '
+                'reviewed tenant identity',
+                (
+                    SELECT tenant_id FROM public.capability_scores
+                    WHERE tenant_id IS DISTINCT FROM 'omninode'
+                    LIMIT 1
+                );
+        END IF;
+
         -- The pre-existing tenant_isolation POLICY (migration 0002) depends
         -- on this column -- PostgreSQL refuses ALTER COLUMN ... TYPE while
         -- any policy references it, so the policy must be dropped first and
@@ -97,9 +134,18 @@ BEGIN
         -- DEFAULT set after it. Also caught by the same fixture proof.
         ALTER TABLE public.capability_scores
             ALTER COLUMN tenant_id DROP DEFAULT;
+        -- Second, independent fail-closed guard: the CASE has no ELSE, so
+        -- any value that reaches this point despite the pre-guard above
+        -- (e.g. a row inserted between the guard and the ALTER within the
+        -- same transaction) evaluates to NULL and is rejected by the
+        -- column's existing NOT NULL constraint, aborting the statement.
         ALTER TABLE public.capability_scores
             ALTER COLUMN tenant_id TYPE UUID
-            USING platform_catalog.house_tenant_map_slug_to_uuid(tenant_id);
+            USING (
+                CASE tenant_id
+                    WHEN 'omninode' THEN '820272f9-4aaf-5add-a2df-0af942852ab2'::uuid
+                END
+            );
         ALTER TABLE public.capability_scores
             ALTER COLUMN tenant_id SET DEFAULT '820272f9-4aaf-5add-a2df-0af942852ab2'::uuid;
     ELSE
