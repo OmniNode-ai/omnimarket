@@ -115,7 +115,7 @@
         "node_canary_score_reducer"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_canary_score_reducer/migrations/0003_capability_scores_tenant_id_to_uuid.sql"
+        "src/omnimarket/nodes/node_canary_score_reducer/migrations/0003_house_tenant_map_slug_to_uuid.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -123,7 +123,7 @@
       "constraints": [],
       "contract_sources": [],
       "current_schema": [
-        "public"
+        "platform_catalog"
       ],
       "dependencies": [],
       "dependent_objects": [],

@@ -1,6 +1,17 @@
 -- OMN-15356: convert capability_scores.tenant_id from the legacy TEXT slug
 -- to the canonical UUID identity, for the classified-TENANT relation set.
 --
+-- SPLIT FROM THE ORIGINAL 0003 (OMN-15732 AC2)
+--   This file used to also define `house_tenant_map_slug_to_uuid`. That
+--   function is now defined in 0003_house_tenant_map_slug_to_uuid.sql (which
+--   runs first -- lexical sort order in the node migration runner -- and is
+--   NOT exempted from omnibase_infra's application-database-domain-sql
+--   gate). This file still ALTERs `public.capability_scores`, a
+--   pre-existing table intentionally deferred to the governed OMN-15359
+--   schema cutover, so it keeps the same file-level "legacy default schema"
+--   exemption its predecessor (0002) already carries; see 0003's header for
+--   the full split rationale.
+--
 -- WHY THIS TABLE FIRST
 --   capability_scores is the relation the OMN-15356 identity module
 --   (`omnimarket.projection.tenant_isolation.resolve_tenant_uuid`) and its
@@ -16,7 +27,7 @@
 --   same ticket -- NOT silently dropped, deferred and named in the PR body.
 --
 -- FAIL-CLOSED: NO SENTINEL SURVIVES
---   `house_tenant_map_slug_to_uuid` is the SQL mirror of
+--   `platform_catalog.house_tenant_map_slug_to_uuid` is the SQL mirror of
 --   `omnimarket.projection.tenant_isolation.resolve_tenant_uuid` -- same
 --   closed mapping (today: 'omninode' only), same refusal behavior. Postgres
 --   evaluates the `USING` expression for every row as part of the single
@@ -47,26 +58,9 @@
 --   fails closed -- proving that behavior is OMN-15416's scope (real
 --   non-owner pools), not duplicated here.
 --
--- Idempotent: the mapping function is CREATE OR REPLACE; the column-type
--- guard only runs the ALTER when the column is not already UUID, so a
--- second application is a no-op.
-
-CREATE OR REPLACE FUNCTION house_tenant_map_slug_to_uuid(p_value TEXT)
-RETURNS UUID
-LANGUAGE plpgsql
-IMMUTABLE
-AS $$
-BEGIN
-    IF p_value = 'omninode' THEN
-        RETURN '820272f9-4aaf-5add-a2df-0af942852ab2'::uuid;
-    END IF;
-    RAISE EXCEPTION
-        'OMN-15356: no canonical UUID mapping for tenant value % -- refusing '
-        'to invent or default one; extend house_tenant_map_slug_to_uuid only '
-        'after confirming this is a real, reviewed tenant identity',
-        p_value;
-END;
-$$;
+-- Idempotent: the column-type guard only runs the ALTER when the column is
+-- not already UUID, so a second application is a no-op. Requires 0003 to
+-- have already applied (house_tenant_map_slug_to_uuid must exist).
 
 DO $$
 DECLARE
@@ -105,7 +99,7 @@ BEGIN
             ALTER COLUMN tenant_id DROP DEFAULT;
         ALTER TABLE public.capability_scores
             ALTER COLUMN tenant_id TYPE UUID
-            USING house_tenant_map_slug_to_uuid(tenant_id);
+            USING platform_catalog.house_tenant_map_slug_to_uuid(tenant_id);
         ALTER TABLE public.capability_scores
             ALTER COLUMN tenant_id SET DEFAULT '820272f9-4aaf-5add-a2df-0af942852ab2'::uuid;
     ELSE

@@ -93,12 +93,16 @@ TENANT_GUC = "app.tenant_id"
 #                      Introducing a UUID column alongside a TEXT one would
 #                      fork the identity inside one database -- OMN-15356
 #                      converts each relation's column in place instead
-#                      (capability_scores migration 0003 is the first landed
-#                      conversion; the remaining classified-TENANT relations
-#                      follow the identical pattern). :func:`resolve_tenant_uuid`
-#                      is the single Python implementation of that mapping;
-#                      ``house_tenant_map_slug_to_uuid`` in each conversion
-#                      migration is its SQL mirror.
+#                      (capability_scores migrations 0003+0004 are the first
+#                      landed conversion; the remaining classified-TENANT
+#                      relations follow the identical mechanical pattern).
+#                      :func:`resolve_tenant_uuid` is the single Python
+#                      implementation of that mapping;
+#                      ``platform_catalog.house_tenant_map_slug_to_uuid`` is
+#                      its SQL mirror (OMN-15732 AC2: qualified into
+#                      platform_catalog as a new, ownership-declared
+#                      application object -- interim pending the OMN-15359
+#                      cutover that moves it to ``tenant``).
 #
 #   HOUSE_TENANT_UUID  the canonical immutable identifier ADR-0027 requires and
 #                      the value every OMN-15356 conversion resolves the slug
@@ -155,8 +159,9 @@ def resolve_tenant_uuid(tenant_value: str | None) -> UUID:
     rather than guessing. This is the single implementation the
     ``ALTER COLUMN ... TYPE UUID USING`` conversion for every classified
     TENANT relation is derived from (SQL mirror:
-    ``house_tenant_map_slug_to_uuid`` in migration 0003 of
-    ``node_canary_score_reducer``, and every relation that follows it).
+    ``platform_catalog.house_tenant_map_slug_to_uuid``, defined in migration
+    0003 and used by migration 0004 of ``node_canary_score_reducer``, and
+    every relation that follows it).
     """
     if isinstance(tenant_value, str):
         mapped = _LEGACY_TENANT_UUID_MAP.get(tenant_value)
