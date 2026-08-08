@@ -95,10 +95,15 @@ TENANT_GUC = "app.tenant_id"
 #                      converts each relation's column in place instead
 #                      (capability_scores migration 0003 is the first landed
 #                      conversion; the remaining classified-TENANT relations
-#                      follow the identical pattern). :func:`resolve_tenant_uuid`
-#                      is the single Python implementation of that mapping;
-#                      ``house_tenant_map_slug_to_uuid`` in each conversion
-#                      migration is its SQL mirror.
+#                      follow the identical mechanical pattern).
+#                      :func:`resolve_tenant_uuid` is the single named
+#                      implementation of that mapping. There is no separate
+#                      SQL function: OMN-15732 AC2 adjudication (2026-08-08)
+#                      rejected a standalone ``platform_catalog.
+#                      house_tenant_map_slug_to_uuid`` catalog function as
+#                      inadmissible for a node migration stream, so each
+#                      conversion migration inlines the same closed mapping
+#                      directly into its ``ALTER COLUMN ... USING`` clause.
 #
 #   HOUSE_TENANT_UUID  the canonical immutable identifier ADR-0027 requires and
 #                      the value every OMN-15356 conversion resolves the slug
@@ -154,9 +159,11 @@ def resolve_tenant_uuid(tenant_value: str | None) -> UUID:
     this repo has no record of -- raises :class:`UnmappedTenantIdentityError`
     rather than guessing. This is the single implementation the
     ``ALTER COLUMN ... TYPE UUID USING`` conversion for every classified
-    TENANT relation is derived from (SQL mirror:
-    ``house_tenant_map_slug_to_uuid`` in migration 0003 of
-    ``node_canary_score_reducer``, and every relation that follows it).
+    TENANT relation is derived from: each conversion migration (starting
+    with migration 0003 of ``node_canary_score_reducer``) inlines the
+    identical closed mapping directly into its own ``USING`` clause rather
+    than calling a shared SQL function (OMN-15732 AC2 adjudication,
+    2026-08-08).
     """
     if isinstance(tenant_value, str):
         mapped = _LEGACY_TENANT_UUID_MAP.get(tenant_value)
