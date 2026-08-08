@@ -375,14 +375,25 @@ async def postgres_fixture(
 ) -> AsyncGenerator[asyncpg.Connection, None]:
     """Real asyncpg connection — reads INTEGRATION_POSTGRES_HOST from env.
 
-    Skips automatically when not under @pytest.mark.integration or when
-    POSTGRES_PASSWORD is unset (CI without .env).
+    Skips automatically when not under @pytest.mark.integration, when
+    POSTGRES_PASSWORD is unset (CI without .env), or when the configured
+    Postgres host is genuinely unreachable (OMN-15719) — e.g. a local run
+    with no service container. The unreachable-DB skip reason matches the
+    `required_services.postgres.missing_skip_patterns` in
+    scripts/ci/integration_skip_guard.yaml, so if this skip ever fires on the
+    CI job that DOES provision Postgres, the OMN-14172 silent-skip gate still
+    turns it RED as a false-green — this fixture never masks a real outage.
     """
     if not request.node.get_closest_marker("integration"):
         pytest.skip("postgres_fixture requires @pytest.mark.integration")
     if not _POSTGRES_PASSWORD:
         pytest.skip("POSTGRES_PASSWORD not set — skipping integration postgres fixture")
-    conn: asyncpg.Connection = await asyncpg.connect(_integration_dsn())
+    try:
+        conn: asyncpg.Connection = await asyncpg.connect(_integration_dsn())
+    except (TimeoutError, OSError) as exc:
+        pytest.skip(
+            f"no reachable Postgres at {_POSTGRES_HOST}:{_POSTGRES_PORT}: {exc}"
+        )
     try:
         yield conn
     finally:

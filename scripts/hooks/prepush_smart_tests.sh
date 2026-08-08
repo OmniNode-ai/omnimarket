@@ -301,6 +301,44 @@ RC=0
 # CI-with-services concern). The local escalation must match what CI actually
 # enforces, or it diverges into failing on tests CI never runs here (OMN-14746).
 #
+# OMN-15719: `--ignore=tests/integration` is PATH-based and only covers tests
+# physically located under that directory. An `@pytest.mark.integration` test
+# living elsewhere (e.g. tests/nodes/test_repository_code_entity_postgres.py)
+# is not excluded by the ignore flag and can need a live Postgres this local
+# run never provisions (unlike CI's `test`/`integration-guard` jobs, which run
+# a postgres:16-alpine service container).
+#
+# A blanket `-m "not integration"` was considered and REJECTED: a collect-only
+# audit (`--ignore=tests/integration -m "integration and not kafka"
+# --collect-only`) found 80 integration-marked tests across 24 files outside
+# tests/integration/ that this local run previously exercised -- and a
+# service-free sample of them (tests/test_handoff_failure_modes.py,
+# tests/test_handler_handoff_effect.py,
+# tests/test_skill_mapping_input_coverage.py,
+# tests/ci/test_cross_repo_contract_deps.py,
+# tests/nodes/node_contract_sweep/test_cli_contract_sweep.py) executes clean
+# with zero services provisioned. Excluding the whole marker would have
+# silently dropped that real, fast, passing local coverage as collateral
+# damage from a fix aimed at exactly one Postgres-touching test.
+#
+# The precise fix is the fixture-level reachability guard in
+# tests/conftest.py's `postgres_fixture`: an unreachable Postgres connect now
+# `pytest.skip`s instead of raising OSError, so any `@pytest.mark.integration`
+# test that goes through the shared fixture degrades gracefully wherever it
+# lives, without excluding tests that never touch Postgres at all. Every other
+# real-service integration test in this repo already carries the same
+# try/except-skip guard on its own connect call (test_rls_tranche2_omn14894.py,
+# test_writer_tenant_isolation_omn14898.py,
+# test_projection_delegation_tier_distribution_omn13662.py,
+# test_delegation_savings_tenant_id_column_omn14058.py,
+# test_datasource_postgres.py's `_has_reachable_db` skipif); the sole
+# unguarded connect (test_delegation_legacy_schema_reconcile_omn14974.py) sits
+# behind an opt-in `OMN14974_POSTGRES_DSN` env var that is unset by default,
+# so it self-skips before ever calling `asyncpg.connect`. No blanket marker
+# exclusion is needed; the local marker filter matches CI's
+# `-m "not kafka"` (see CLAUDE.md's canonical local command) unchanged.
+LOCAL_MARKER_FILTER="not kafka"
+
 # SINGLE SOURCE OF TRUTH for "what the heavy run is" (OMN-15408): the
 # fail-closed escalation runs exactly this target, and `selection_is_whole_suite`
 # measures the impacted-subset selection against this same value. Changing the
@@ -309,9 +347,9 @@ FULL_SUITE_TARGET="tests/"
 
 if [ "$IS_FULL" = "True" ] || [ "$IS_FULL" = "true" ]; then
   guard_full_suite_host
-  log "running FULL suite (fail-closed escalation): uv run pytest ${FULL_SUITE_TARGET} --ignore=tests/integration -m 'not kafka' ${PREPUSH_PYTEST_ARGS:-}"
+  log "running FULL suite (fail-closed escalation): uv run pytest ${FULL_SUITE_TARGET} --ignore=tests/integration -m '${LOCAL_MARKER_FILTER}' ${PREPUSH_PYTEST_ARGS:-}"
   # shellcheck disable=SC2086
-  uv run pytest "${FULL_SUITE_TARGET}" --ignore=tests/integration -m "not kafka" --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
+  uv run pytest "${FULL_SUITE_TARGET}" --ignore=tests/integration -m "${LOCAL_MARKER_FILTER}" --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
 elif [ "${#PATHS[@]}" -gt 0 ]; then
   # OMN-15408: guard on the SELECTED WORK, not the is_full_suite flag. A
   # selection that covers the whole full-suite target is the heavy run under
@@ -319,16 +357,16 @@ elif [ "${#PATHS[@]}" -gt 0 ]; then
   if selection_is_whole_suite "$FULL_SUITE_TARGET" "${PATHS[@]}"; then
     guard_full_suite_host "whole-suite-equivalent impacted selection (is_full_suite=${IS_FULL}, selected paths [ ${PATHS_STR}] cover the entire '${FULL_SUITE_TARGET}' escalation target)"
   fi
-  log "running impacted subset: uv run pytest ${PATHS_STR}--ignore=tests/integration -m 'not kafka' ${PREPUSH_PYTEST_ARGS:-}"
+  log "running impacted subset: uv run pytest ${PATHS_STR}--ignore=tests/integration -m '${LOCAL_MARKER_FILTER}' ${PREPUSH_PYTEST_ARGS:-}"
   # shellcheck disable=SC2086
-  uv run pytest "${PATHS[@]}" --ignore=tests/integration -m "not kafka" --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
+  uv run pytest "${PATHS[@]}" --ignore=tests/integration -m "${LOCAL_MARKER_FILTER}" --tb=short ${PREPUSH_PYTEST_ARGS:-} || RC=$?
 else
   log "no impacted unit tests mapped for this push (no source/test change contributed a target); nothing to run."
 fi
 
 if [ "$RC" -ne 0 ]; then
   log "ERROR: impacted tests failed (pytest exit ${RC})"
-  log "REMEDIATION: fix the failing tests, then re-push. Reproduce with: uv run pytest ${PATHS_STR:-tests/} --ignore=tests/integration"
+  log "REMEDIATION: fix the failing tests, then re-push. Reproduce with: uv run pytest ${PATHS_STR:-tests/} --ignore=tests/integration -m '${LOCAL_MARKER_FILTER}'"
   exit "$RC"
 fi
 
