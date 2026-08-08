@@ -85,27 +85,6 @@ _GH_CHECK_GREEN_STATES = frozenset({"SUCCESS", "SKIPPED", "NEUTRAL"})
 # AND its conclusion is one of these.
 _GH_CHECK_RUN_GREEN_CONCLUSIONS = frozenset({"success", "skipped", "neutral"})
 
-# OMN-15413 (AC6 dev-basis rescope, operator ruling R-l, 2026-08-05): the only
-# branches this org ever configures required-status-checks on. A PR whose
-# BASE branch is neither of these (a stacked PR landed on a feature branch)
-# is expected to have ZERO required contexts — GitHub protection is
-# per-branch and feature branches never carry it. Confined to exactly these
-# two names so a genuinely misconfigured/renamed mainline branch still fails
-# closed rather than silently widening the exemption.
-_MAINLINE_BASE_BRANCHES = frozenset({"dev", "main"})
-
-# Substring GitHub's ``gh api`` CLI emits on both 404 shapes this handler can
-# hit while resolving branch protection for a non-mainline base branch:
-# ``Branch not found`` (the branch itself no longer exists — deleted
-# post-merge, the common case for a stacked PR's feature-branch base) and
-# ``Branch not protected`` (the branch still exists but never carried
-# protection, e.g. read immediately after merge, before cleanup). Both are a
-# CONFIRMED, permanent absence of any requirement — never a transient/infra
-# failure (timeout, auth, malformed JSON), whose ``_gh_json`` detail strings
-# take a different shape entirely (``"{argv[:2]} error: {exc}"`` or a
-# non-HTTP stderr line) and therefore never match this marker.
-_CONFIRMED_BRANCH_ABSENCE_MARKER = "404"
-
 
 def _required_check_names_from_classic(data: object) -> set[str]:
     """Extract required check names from classic branch protection.
@@ -215,6 +194,29 @@ def _gh_json_lines(
         if isinstance(obj, dict):
             items.append(obj)
     return items, ""
+
+
+# OMN-15715 D1/D2: narrow, positive-confirmation signals for classifying a
+# ``branches/{base}/protection/required_status_checks`` 404 detail string.
+# ``gh api`` does not expose a structured HTTP-status field through this
+# subprocess path — only the rendered stderr (e.g. ``"gh: Branch not found
+# (HTTP 404)"``) — so string-matching stays the most structured signal
+# available. It stays deliberately NARROW (requires ALL tokens,
+# case-insensitively) so it cannot accidentally fire on an unrelated
+# 403/5xx/timeout/OSError detail, and the two GitHub messages are matched
+# separately because they mean opposite things: "Branch not found" (base
+# genuinely does not exist) vs "Branch not protected" (base exists, was
+# simply never protected — see D2).
+_BASE_BRANCH_NOT_FOUND_TOKENS = ("404", "branch not found")
+_BASE_BRANCH_NOT_PROTECTED_TOKENS = ("404", "branch not protected")
+
+
+def _detail_matches_all(detail: str, tokens: tuple[str, ...]) -> bool:
+    """True iff every token in ``tokens`` appears in ``detail``, case-
+    insensitively. See the module-level comment above for why this is the
+    narrowest available signal for classifying a ``gh api`` error detail."""
+    lowered = detail.lower()
+    return all(token in lowered for token in tokens)
 
 
 def _is_green_check_run(run: dict[str, object]) -> bool:
@@ -610,7 +612,7 @@ class HandlerDodEvidenceGithubEffect:
                 "--repo",
                 repo,
                 "--json",
-                "headRefName,baseRefName,headRefOid",
+                "headRefName,baseRefName,headRefOid,state,mergedAt",
             ],
             _GH_PR_TIMEOUT_S,
         )
@@ -626,6 +628,8 @@ class HandlerDodEvidenceGithubEffect:
                 command,
                 "gh pr view response missing headRefName/baseRefName/headRefOid",
             )
+        pr_state = str(pr_data.get("state") or "UNKNOWN")
+        is_merged = bool(pr_data.get("mergedAt")) or pr_state.upper() == "MERGED"
 
         classic_required, classic_detail = _gh_json(
             [
@@ -647,39 +651,17 @@ class HandlerDodEvidenceGithubEffect:
             _required_check_names_from_classic(classic_required)
             | _required_check_names_from_rules(rules_required)
         )
-        if not required_names:
-            if (
-                base_branch not in _MAINLINE_BASE_BRANCHES
-                and _CONFIRMED_BRANCH_ABSENCE_MARKER in classic_detail
-            ):
-                # OMN-15413 (R-l): a stacked PR's non-mainline base branch has
-                # no live-resolvable protection — either it never had any
-                # (a plain feature branch) or it no longer exists (deleted
-                # post-merge cleanup). Both are CONFIRMED terminal facts, not
-                # an unresolvable/transient error, so treating this hop as
-                # "not green" would be permanently and unfalsifiably RED for
-                # an already-merged PR. Zero required contexts on a
-                # non-mainline branch is vacuously satisfied; mainline
-                # (dev/main) ancestry is proven by a separate check.
-                return ModelDodEvidenceGithubLookupResultEvent(
-                    correlation_id=command.correlation_id,
-                    operation=command.operation,
-                    checks_green=True,
-                    detail=(
-                        f"base branch {base_branch!r} is non-mainline and its "
-                        f"required-status-checks are confirmed absent "
-                        f"(classic={classic_detail}) rather than unresolvable "
-                        f"— treated as vacuously satisfied for this hop; "
-                        f"mainline (dev/main) ancestry must be proven by a "
-                        f"separate check"
-                    ),
-                )
-            return self._checks_not_green(
-                command,
-                f"could not resolve required status checks for {repo}@{base_branch}: "
-                f"classic={classic_detail or 'no names'}; "
-                f"rules={rules_detail or 'no names'}",
-            )
+        base_protection_detail = (
+            f"could not resolve required status checks for {repo}@{base_branch}: "
+            f"classic={classic_detail or 'no names'}; "
+            f"rules={rules_detail or 'no names'}"
+        )
+        if not required_names and not is_merged:
+            # Fail-closed, unchanged from pre-OMN-15715 behavior: an OPEN (or
+            # otherwise not-yet-MERGED) PR whose base branch protection is
+            # unresolvable has no merge-time-durable evidence to fall back
+            # on — a Done-flip must not proceed on unverifiable live state.
+            return self._checks_not_green(command, base_protection_detail)
 
         suites, suites_detail = _gh_json_lines(
             [
@@ -721,6 +703,73 @@ class HandlerDodEvidenceGithubEffect:
             return self._checks_not_green(
                 command,
                 f"could not enumerate check-runs for {sha[:12]}: {runs_detail}",
+            )
+
+        if not required_names:
+            # OMN-15715 D1 fix: the carve-out below (design option (a)) may
+            # ONLY fire on a POSITIVELY-CONFIRMED-absent base — GitHub's own
+            # "Branch not found (HTTP 404)" on the protection probe. The v1
+            # carve-out fired on ANY empty ``required_names``, which
+            # includes a 403/5xx/timeout/OSError on the protection probe
+            # (indistinguishable from a deleted base once collapsed to
+            # ``None`` by ``_gh_json``) and a base branch that is alive but
+            # was simply never protected — none of those are evidence that
+            # a merge-time gate existed and was satisfied. Every one of
+            # those other causes now falls through to the fail-closed
+            # branches below, matching evidence_collector._verify_live_pr's
+            # doctrine: "Failing closed — a Done-flip must not proceed on
+            # unverifiable PR state."
+            if _detail_matches_all(classic_detail, _BASE_BRANCH_NOT_FOUND_TOKENS):
+                # Confirmed: the base branch itself does not exist —
+                # typically the standard post-merge cleanup step for a
+                # stacked-PR chain. The merge event itself is the evidence
+                # that whatever branch protection governed the base at
+                # merge time was satisfied. The own-SHA check-run history
+                # is consulted only as EXISTENCE corroboration that this
+                # commit produced observable CI activity — not to
+                # re-derive which contexts were required or to gate on
+                # individual run conclusions (see
+                # _checks_green_from_own_history docstring). Foreign/
+                # ambiguous-branch filtering (OMN-15709) still applies so a
+                # sibling PR sharing this head SHA cannot pollute the
+                # existence check.
+                return self._checks_green_from_own_history(
+                    command,
+                    base_branch=base_branch,
+                    head_branch=head_branch,
+                    sha=sha,
+                    runs=runs,
+                    suite_branch=suite_branch,
+                    base_protection_detail=base_protection_detail,
+                )
+            if _detail_matches_all(classic_detail, _BASE_BRANCH_NOT_PROTECTED_TOKENS):
+                # OMN-15715 D2: the base branch is CONFIRMED alive and
+                # simply never had branch protection — there was no
+                # merge-time gate for the merge event to have passed, so
+                # crediting this as "merged through branch protection"
+                # would be a fabricated basis (the exact gaming vector: a
+                # PR merged into one's own unprotected branch with CI
+                # fully red). Say so honestly and fail closed — this is
+                # NOT the deleted-base carve-out.
+                return self._checks_not_green(
+                    command,
+                    f"no branch protection governed {repo}@{base_branch}; "
+                    f"no required contexts existed to verify — failing "
+                    f"closed rather than crediting a merge-time gate that "
+                    f"never existed (OMN-15715 D2)",
+                )
+            # Every other cause (403, 5xx, timeout, OSError, auth failure,
+            # or any detail string that doesn't positively confirm either
+            # of the two cases above): base-branch protection state is
+            # simply unverifiable right now. Fail closed rather than
+            # guessing which case this is (OMN-15715 D1).
+            return self._checks_not_green(
+                command,
+                f"{base_protection_detail}; could not positively confirm "
+                f"{base_branch} is absent (only a confirmed 404 'Branch "
+                f"not found' qualifies for the deleted-base carve-out) — "
+                f"failing closed on unverifiable base-branch protection "
+                f"state (OMN-15715 D1)",
             )
 
         missing: list[str] = []
@@ -786,6 +835,103 @@ class HandlerDodEvidenceGithubEffect:
             detail=(
                 f"all {len(required_names)} required context(s) green for "
                 f"{head_branch}@{sha[:12]}"
+            ),
+        )
+
+    def _checks_green_from_own_history(
+        self,
+        command: ModelDodEvidenceGithubLookupCommand,
+        *,
+        base_branch: str,
+        head_branch: str,
+        sha: str,
+        runs: list[dict[str, object]],
+        suite_branch: dict[int, str | None],
+        base_protection_detail: str,
+    ) -> ModelDodEvidenceGithubLookupResultEvent:
+        """OMN-15715 merged+deleted-base carve-out — design option (a).
+
+        Basis: a PR that reports MERGED necessarily passed whatever branch
+        protection governed its base at merge time — GitHub does not unlock
+        the merge button past a red REQUIRED status check (barring an
+        explicit, separately-auditable admin bypass, which is a distinct
+        event, not a silent one). When that required-context set is
+        unresolvable *now* — typically because the base branch, the
+        standard post-merge cleanup step for a stacked-PR chain, was
+        deleted — the sound basis for ``checks_green`` is the merge event
+        itself, not a re-derivation of which of the PR's OWN check-runs
+        were "required" at merge time. We have no reliable way to
+        reconstruct that historical required-set post-hoc.
+
+        This function's first cut (reverted here, live-verified against
+        OmniNode-ai/omnibase_infra#2558) treated EVERY own-branch check-run
+        as gating regardless of whether it was ever a required context —
+        reddening on purely informational contexts such as
+        ``non-dev-base-guard`` and ``occ-companion-effect / Publish
+        occ-companion-effect command`` that never gated the merge at all.
+        That is the exact bug this rewrite closes: option (b) (evaluate
+        only check-runs whose names match the repo's CURRENT dev/main
+        required-context sets) was considered and rejected — "current" is
+        not "as of merge time" and drifts independently (branch protection
+        is edited continuously per this repo's own CLAUDE.md history), so
+        it would silently swap one wrong required-set for another instead
+        of removing the unfounded assumption that we can reconstruct
+        historical required-ness at all post-hoc.
+
+        Consequently this path does NOT inspect individual run
+        conclusions. A "genuinely red REQUIRED check" cannot exist for an
+        already-merged commit: whatever conclusion GitHub required was
+        necessarily green (or admin-bypassed, a distinct auditable event)
+        before the merge was allowed to land — there is nothing left
+        post-hoc to re-verify by conclusion, so a test asserting "merged +
+        real required-context failure stays red" cannot be constructed
+        under this design; see
+        ``TestFetchPrChecksGreenMergedDeletedBase`` for the replacement
+        coverage. The only residual check kept here is EXISTENCE:
+        own-branch (or unattributable) check-run history entirely absent
+        for this commit still fails closed, as a defensive corroboration
+        that the commit produced *some* observable CI activity rather than
+        silently trusting a possibly-malformed ``gh pr view`` response.
+
+        OMN-15715 D2 closing fix: the reasoning above justifies the
+        ``checks_green=True`` VERDICT, but the emitted ``detail`` text must
+        NOT claim "merged through branch protection" as a fact about this
+        specific base branch — once the base is deleted, whether it was
+        ever protected at merge time is unrecoverable from live state, and
+        asserting it anyway is exactly the fabricated-basis pattern this
+        fix closes (see the D2 branch above, which fails closed on a
+        POSITIVELY-CONFIRMED-unprotected base for the same reason). The
+        detail states only what is independently knowable: GitHub recorded
+        the merge, and own-branch check-run history corroborates CI
+        activity for the commit. It does not assert what governed the
+        merge.
+        """
+        own_runs = [
+            run
+            for run in runs
+            if _check_run_is_own_or_ambiguous(run, head_branch, suite_branch)
+        ]
+        if not own_runs:
+            return self._checks_not_green(
+                command,
+                f"{base_protection_detail} (base branch likely deleted "
+                f"post-merge); no own-branch or unattributable check-run "
+                f"history exists on {head_branch}@{sha[:12]} to corroborate "
+                f"the merge — cannot resolve checks_green",
+            )
+        return ModelDodEvidenceGithubLookupResultEvent(
+            correlation_id=command.correlation_id,
+            operation=command.operation,
+            checks_green=True,
+            detail=(
+                f"base branch {base_branch} confirmed deleted post-merge "
+                f"(gh: Branch not found, HTTP 404); merge-time protection "
+                f"state is unrecoverable and is NOT asserted; basis: GitHub "
+                f"recorded the merge, plus {len(own_runs)} own-branch "
+                f"check-run(s) on {head_branch}@{sha[:12]} corroborating CI "
+                f"activity for this commit (OMN-15715 D2 closing fix; "
+                f"individual run conclusions not inspected — see "
+                f"_checks_green_from_own_history docstring)"
             ),
         )
 
