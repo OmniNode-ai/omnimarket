@@ -47,6 +47,10 @@ from omnimarket.seams.models.model_seam_graph import (
     ModelSeamGraphSourceHashEntry,
     ModelSeamGraphV1,
 )
+from omnimarket.seams.models.model_seam_projection import (
+    EnumSeamDeliverySemantics,
+    ModelSeamProjectionField,
+)
 
 __all__ = ["extract_seam_graph"]
 
@@ -117,6 +121,88 @@ def _discover_files(
     return sorted(found)
 
 
+def _parse_key_fields(raw: object) -> tuple[ModelSeamProjectionField, ...]:
+    """Optional ``key_fields:`` list on a seams: entry — ``[{name, type}]``.
+
+    Malformed entries (wrong type, missing key) are skipped individually
+    rather than failing the whole edge, matching this reader's existing
+    skip-not-fabricate posture for the entry itself."""
+
+    if not isinstance(raw, list):
+        return ()
+    fields: list[ModelSeamProjectionField] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        try:
+            fields.append(
+                ModelSeamProjectionField(
+                    name=item["name"], field_type=item["field_type"]
+                )
+            )
+        except (KeyError, ValidationError):
+            continue
+    return tuple(fields)
+
+
+def _parse_delivery_semantics(raw: object) -> EnumSeamDeliverySemantics:
+    """Optional ``delivery_semantics:`` scalar — an unrecognized or absent
+    value falls back to UNKNOWN, never a fabricated guess."""
+
+    if isinstance(raw, str):
+        try:
+            return EnumSeamDeliverySemantics(raw)
+        except ValueError:
+            return EnumSeamDeliverySemantics.UNKNOWN
+    return EnumSeamDeliverySemantics.UNKNOWN
+
+
+def _parse_fsm_state_transitions(raw: object) -> tuple[str, ...]:
+    """Optional ``fsm_state_transitions:`` list of state-name strings."""
+
+    if not isinstance(raw, list):
+        return ()
+    return tuple(item for item in raw if isinstance(item, str) and item)
+
+
+def _correlate_contract_paths(
+    edges: list[ModelSeamGraphEdgeDeclaration],
+) -> list[ModelSeamGraphEdgeDeclaration]:
+    """Fill each edge's counterpart ``producer_contract_path`` /
+    ``consumer_contract_path`` from any other declaration in this same scan
+    that shares its ``edge_id`` with the opposite role — a producer-side
+    declaration alone only knows its own path; the consumer path is only
+    knowable once both sides have been discovered."""
+
+    producer_path_by_edge: dict[str, str] = {}
+    consumer_path_by_edge: dict[str, str] = {}
+    for edge in edges:
+        if edge.producer_contract_path is not None:
+            producer_path_by_edge[edge.edge_id] = edge.producer_contract_path
+        if edge.consumer_contract_path is not None:
+            consumer_path_by_edge[edge.edge_id] = edge.consumer_contract_path
+
+    correlated: list[ModelSeamGraphEdgeDeclaration] = []
+    for edge in edges:
+        producer_path = producer_path_by_edge.get(edge.edge_id)
+        consumer_path = consumer_path_by_edge.get(edge.edge_id)
+        if (
+            producer_path == edge.producer_contract_path
+            and consumer_path == edge.consumer_contract_path
+        ):
+            correlated.append(edge)
+            continue
+        correlated.append(
+            edge.model_copy(
+                update={
+                    "producer_contract_path": producer_path,
+                    "consumer_contract_path": consumer_path,
+                }
+            )
+        )
+    return correlated
+
+
 def _extract_declared_edges(
     contract_path: Path, repo_base: Path
 ) -> tuple[ModelSeamGraphEdgeDeclaration, ...]:
@@ -140,15 +226,29 @@ def _extract_declared_edges(
             # numeric `seam`) must fail pydantic validation and be skipped,
             # not be silently stringified into a plausible-looking but wrong
             # value ("None", "123") that then poisons the emitted graph.
+            role = entry["role"]
             edges.append(
                 ModelSeamGraphEdgeDeclaration(
                     edge_id=entry["id"],
                     seam=entry["seam"],
-                    role=entry["role"],
+                    role=role,
                     source_contract_path=source_contract_path,
                     topic=entry["topic"],
                     envelope_model=entry["envelope_model"],
                     envelope_version=entry["envelope_version"],
+                    key_fields=_parse_key_fields(entry.get("key_fields")),
+                    delivery_semantics=_parse_delivery_semantics(
+                        entry.get("delivery_semantics")
+                    ),
+                    producer_contract_path=(
+                        source_contract_path if role == "producer" else None
+                    ),
+                    consumer_contract_path=(
+                        source_contract_path if role == "consumer" else None
+                    ),
+                    fsm_state_transitions=_parse_fsm_state_transitions(
+                        entry.get("fsm_state_transitions")
+                    ),
                 )
             )
         except (KeyError, ValidationError):
@@ -195,13 +295,40 @@ def _call_topic_literal(call: ast.Call) -> str | None:
     return None
 
 
+def _is_producer_receiver(name: str) -> bool:
+    """Matches ``producer``, ``_producer``, ``kafka_producer``,
+    ``event_producer``, etc. — any receiver whose trailing identifier
+    component is or ends with ``producer`` — not only the bare exact name.
+    Real call sites almost never use the bare name (``self._producer``,
+    ``self.kafka_producer`` are the live idiom); requiring exact equality
+    was the fixture-shaped false-negative the corpus run exposed."""
+
+    lowered = name.lower()
+    return lowered == "producer" or lowered.endswith("_producer")
+
+
+def _is_consumer_receiver(name: str) -> bool:
+    lowered = name.lower()
+    return lowered == "consumer" or lowered.endswith("_consumer")
+
+
+def _is_event_bus_receiver(name: str) -> bool:
+    lowered = name.lower()
+    return lowered == "event_bus" or lowered.endswith("_event_bus")
+
+
 def _classify_call(call: ast.Call) -> EnumSeamGraphObservationKind | None:
     func = call.func
     if not isinstance(func, ast.Attribute):
         return None
-    if func.attr == "send" and _attr_base_name(func.value) == "producer":
+    base_name = _attr_base_name(func.value)
+    if func.attr == "send" and _is_producer_receiver(base_name):
         return EnumSeamGraphObservationKind.PRODUCER_SEND
-    if func.attr == "subscribe" and _attr_base_name(func.value) == "consumer":
+    if func.attr == "publish" and (
+        _is_producer_receiver(base_name) or _is_event_bus_receiver(base_name)
+    ):
+        return EnumSeamGraphObservationKind.PRODUCER_SEND
+    if func.attr == "subscribe" and _is_consumer_receiver(base_name):
         return EnumSeamGraphObservationKind.CONSUMER_SUBSCRIBE
     if (
         func.attr == "get"
@@ -290,6 +417,38 @@ def _extract_ref_pin_observations(
     return observations
 
 
+def _extract_yaml_ref_pin_observations(
+    text: str, repo_relative: str
+) -> list[ModelSeamGraphCodeObservation]:
+    """``@ref:`` pins in YAML files — a real config ref is a STRING VALUE
+    (``endpoint_ref: "@ref:configs/service_endpoints.yaml#backends.x"``),
+    not a Python-style comment, so the ``tokenize``-COMMENT restriction used
+    for ``.py`` files (which exists to reject a docstring/string-literal
+    false positive) does not apply here: matching any line in a YAML file is
+    correct, because a YAML value containing ``@ref:`` genuinely IS the pin
+    the seam graph needs to observe. Line-based, not full YAML parsing, so a
+    malformed YAML file still yields whatever pins are textually present."""
+
+    observations: list[ModelSeamGraphCodeObservation] = []
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        for match in _REF_PIN_RE.finditer(line):
+            # Strip a trailing YAML quote/bracket the greedy \S+ swallowed
+            # (e.g. `"@ref:x.yaml#y"` — the pin's own value never legitimately
+            # ends in one of these).
+            value = match.group(1).rstrip("\"'`,)]}")
+            if not value:
+                continue
+            observations.append(
+                ModelSeamGraphCodeObservation(
+                    source_path=repo_relative,
+                    kind=EnumSeamGraphObservationKind.REF_PIN,
+                    value=value,
+                    line_number=line_number,
+                )
+            )
+    return observations
+
+
 def _extract_code_observations(
     source_path: Path, repo_base: Path
 ) -> tuple[ModelSeamGraphCodeObservation, ...]:
@@ -326,17 +485,39 @@ def extract_seam_graph(
 
     contract_paths = _discover_files(repo_base, discovery_roots, "contract.yaml")
     python_paths = _discover_files(repo_base, discovery_roots, "*.py")
+    # "*.yaml"/"*.yml" is a strict superset of contract_paths (contract.yaml
+    # matches "*.yaml" too) — scanned separately for @ref pins because a
+    # real @ref pin lives in ANY yaml file's string values, not only
+    # contract.yaml's, and the seams: block reader above only cares about
+    # contract.yaml specifically.
+    yaml_paths = _discover_files(
+        repo_base, discovery_roots, "*.yaml"
+    ) + _discover_files(repo_base, discovery_roots, "*.yml")
 
     edges: list[ModelSeamGraphEdgeDeclaration] = []
     for contract_path in contract_paths:
         edges.extend(_extract_declared_edges(contract_path, repo_base))
+    edges = _correlate_contract_paths(edges)
 
     code_observations: list[ModelSeamGraphCodeObservation] = []
     for python_path in python_paths:
         code_observations.extend(_extract_code_observations(python_path, repo_base))
+    for yaml_path in yaml_paths:
+        try:
+            yaml_text = yaml_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        code_observations.extend(
+            _extract_yaml_ref_pin_observations(
+                yaml_text, _repo_relative(yaml_path, repo_base)
+            )
+        )
 
+    manifest_source_paths = sorted(
+        set(contract_paths) | set(python_paths) | set(yaml_paths)
+    )
     manifest_entries: list[ModelSeamGraphSourceHashEntry] = []
-    for source_path in (*contract_paths, *python_paths):
+    for source_path in manifest_source_paths:
         manifest_entries.append(
             ModelSeamGraphSourceHashEntry(
                 source_path=_repo_relative(source_path, repo_base),

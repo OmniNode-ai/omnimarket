@@ -207,6 +207,108 @@ class TestThreeLegMatch:
         assert verdict.leg1_declared_vs_declared.mismatching_field_path == "topic"
         assert verdict.regenerability == EnumSeamRegenerabilityClass.NOT_APPLICABLE
 
+    def test_envelope_model_mismatch_names_exact_field_path(self) -> None:
+        producer = _projection(
+            role=EnumSeamProjectionRole.PRODUCER,
+            envelope_model="pkg.models.wire.ModelA",
+        )
+        consumer = _projection(
+            role=EnumSeamProjectionRole.CONSUMER,
+            envelope_model="pkg.models.wire.ModelB",
+        )
+        request = ModelSeamMatchRequest(
+            edge_id="S1", declared_producer=producer, declared_consumer=consumer
+        )
+        verdict = HandlerSeamMatch().handle(request)
+        assert verdict.verdict == EnumSeamMatchVerdict.MISMATCH
+        assert (
+            verdict.leg1_declared_vs_declared.mismatching_field_path == "envelope_model"
+        )
+
+    def test_envelope_version_mismatch_names_exact_field_path(self) -> None:
+        producer = _projection(
+            role=EnumSeamProjectionRole.PRODUCER, envelope_version="1.0.0"
+        )
+        consumer = _projection(
+            role=EnumSeamProjectionRole.CONSUMER, envelope_version="2.0.0"
+        )
+        request = ModelSeamMatchRequest(
+            edge_id="S1", declared_producer=producer, declared_consumer=consumer
+        )
+        verdict = HandlerSeamMatch().handle(request)
+        assert verdict.verdict == EnumSeamMatchVerdict.MISMATCH
+        assert (
+            verdict.leg1_declared_vs_declared.mismatching_field_path
+            == "envelope_version"
+        )
+
+    def test_delivery_semantics_mismatch_names_exact_field_path(self) -> None:
+        producer = _projection(
+            role=EnumSeamProjectionRole.PRODUCER,
+            delivery_semantics=EnumSeamDeliverySemantics.AT_LEAST_ONCE,
+        )
+        consumer = _projection(
+            role=EnumSeamProjectionRole.CONSUMER,
+            delivery_semantics=EnumSeamDeliverySemantics.EXACTLY_ONCE,
+        )
+        request = ModelSeamMatchRequest(
+            edge_id="S1", declared_producer=producer, declared_consumer=consumer
+        )
+        verdict = HandlerSeamMatch().handle(request)
+        assert verdict.verdict == EnumSeamMatchVerdict.MISMATCH
+        assert (
+            verdict.leg1_declared_vs_declared.mismatching_field_path
+            == "delivery_semantics"
+        )
+
+    def test_key_field_name_mismatch_names_nested_field_path(self) -> None:
+        producer = _projection(
+            role=EnumSeamProjectionRole.PRODUCER,
+            key_fields=(
+                ModelSeamProjectionField(name="request_id", field_type="uuid.UUID"),
+            ),
+        )
+        consumer = _projection(
+            role=EnumSeamProjectionRole.CONSUMER,
+            key_fields=(
+                ModelSeamProjectionField(name="correlation_id", field_type="uuid.UUID"),
+            ),
+        )
+        request = ModelSeamMatchRequest(
+            edge_id="S1", declared_producer=producer, declared_consumer=consumer
+        )
+        verdict = HandlerSeamMatch().handle(request)
+        assert verdict.verdict == EnumSeamMatchVerdict.MISMATCH
+        assert (
+            verdict.leg1_declared_vs_declared.mismatching_field_path
+            == "key_fields[0].name"
+        )
+
+    def test_key_fields_arity_mismatch_names_key_fields_path(self) -> None:
+        # Shared common-prefix field on both sides (same name+type) so a
+        # zip(..., strict=False) mutation that silently truncates to the
+        # shorter side's length would find no per-element difference and
+        # wrongly report a match — only an explicit arity check catches
+        # this. Regression guard for the mutation-testing finding.
+        shared_field = ModelSeamProjectionField(name="tenant_id", field_type="str")
+        producer = _projection(
+            role=EnumSeamProjectionRole.PRODUCER,
+            key_fields=(
+                shared_field,
+                ModelSeamProjectionField(name="request_id", field_type="uuid.UUID"),
+            ),
+        )
+        consumer = _projection(
+            role=EnumSeamProjectionRole.CONSUMER,
+            key_fields=(shared_field,),
+        )
+        request = ModelSeamMatchRequest(
+            edge_id="S1", declared_producer=producer, declared_consumer=consumer
+        )
+        verdict = HandlerSeamMatch().handle(request)
+        assert verdict.verdict == EnumSeamMatchVerdict.MISMATCH
+        assert verdict.leg1_declared_vs_declared.mismatching_field_path == "key_fields"
+
     def test_key_field_type_mismatch_names_nested_field_path(self) -> None:
         producer = _projection(
             role=EnumSeamProjectionRole.PRODUCER,
