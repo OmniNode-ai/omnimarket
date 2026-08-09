@@ -47,6 +47,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+import time
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -727,7 +728,7 @@ class HandlerOccObservationEffect:
     def _find_reusable_observation_pr(
         self, occ_owner: str, occ_name: str, token: str
     ) -> tuple[str, int, str] | None:
-        """First OPEN observation PR, of ANY identity (OMN-15777).
+        """First OPEN + MERGEABLE observation PR, of ANY identity (OMN-15777).
 
         Widened sibling of ``_open_pr_for_identity``: that method only ever
         matches the SAME identity (same product repo/PR/head_sha/policy
@@ -742,14 +743,151 @@ class HandlerOccObservationEffect:
 
         Callers must have already ruled out a same-identity match — this
         method does not distinguish identity at all, by design.
+
+        Hardening (post-OMN-15777, live 2026-08-09): the original version
+        returned the oldest match unconditionally, even when GitHub already
+        reports that PR's merge state as CONFLICTING. Live OCC state showed
+        every new observation funneling onto exactly one unmergeable PR
+        (OCC#6155) for this reason — appending two more commits onto a branch
+        GitHub cannot cleanly merge does not repair the conflict, it just
+        deadlocks every future observation onto the same dead-end PR. A
+        CONFLICTING candidate is now skipped in favor of the next-oldest
+        MERGEABLE one; if every open candidate is CONFLICTING, no reuse
+        target exists at all and the caller mints a fresh branch/PR instead
+        (see ``_write_sync``) rather than compounding the deadlock.
         """
         for pr in self._iter_open_prs(occ_owner, occ_name, token, "asc"):
             match = self._matching_observation_pr(
                 pr, occ_owner, occ_name, _OBSERVATION_BRANCH_PREFIX
             )
-            if match is not None:
-                return match
+            if match is None:
+                continue
+            _ref, number, _url = match
+            if self._reuse_candidate_should_be_skipped(
+                occ_owner, occ_name, number, token
+            ):
+                continue
+            return match
         return None
+
+    #: Bounded retry budget for an UNRESOLVED (``mergeable: null`` /
+    #: ``mergeable_state: "unknown"``) GitHub merge-state computation before a
+    #: candidate is given up on. GitHub computes ``mergeable``/
+    #: ``mergeable_state`` asynchronously in the background, so a single-PR
+    #: GET made immediately after that PR was created or pushed to often
+    #: returns "unknown" while the computation is still running (CodeRabbit
+    #: finding, OMN-15777 hardening) — a short bounded retry lets a normal,
+    #: fast recompute resolve before the selector gives up.
+    _MERGE_STATE_POLL_ATTEMPTS = 3
+    _MERGE_STATE_POLL_SLEEP_SECONDS = 2.0
+
+    def _reuse_candidate_should_be_skipped(
+        self, occ_owner: str, occ_name: str, number: int, token: str
+    ) -> bool:
+        """True if OCC#``number`` must NOT be used as a reuse target.
+
+        Three independent reasons skip a candidate:
+
+        1. **STALE** — the single-PR GET reports ``state`` other than
+           ``"open"``. ``_iter_open_prs``'s listing can go stale between when
+           it was fetched and when this per-candidate check runs (the
+           candidate closed or merged in the meantime, e.g. by a concurrent
+           caller or a human) — reusing a non-open PR's branch is not a
+           candidate to fall back from, it is simply invalid, so this check
+           runs FIRST, before either mergeability check below is even
+           meaningful.
+        2. **CONFLICTING** — GitHub reports ``mergeable_state == "dirty"`` (or
+           ``mergeable is False``): appending onto a branch GitHub cannot
+           cleanly merge does not repair the conflict, it just deadlocks
+           every future observation onto the same dead-end PR.
+        3. **UNRESOLVED** — after :attr:`_MERGE_STATE_POLL_ATTEMPTS` polls,
+           GitHub still has not finished computing the merge state
+           (``mergeable`` is ``None`` / ``mergeable_state == "unknown"``).
+           An unresolved state is not proof the PR is mergeable — treating it
+           as safe would let the selector pick a candidate GitHub has not
+           actually cleared yet, so it is treated as non-reusable instead of
+           assumed safe.
+
+        The PR-listing endpoint that backs ``_iter_open_prs`` never populates
+        ``state``/``mergeable``/``mergeable_state`` — GitHub only computes the
+        latter two for one PR at a time — so a second, single-PR REST GET
+        (polled) is required per candidate this selector considers.
+        """
+        payload = self._poll_pr_merge_state(occ_owner, occ_name, number, token)
+        if payload.get("state") != "open":
+            logger.warning(
+                "occ_observation_effect: skipping reuse candidate OCC#%s — "
+                "the open-PR list is stale: a single-PR GET reports "
+                "state=%r, not 'open' (closed or merged between listing and "
+                "this check)",
+                number,
+                payload.get("state"),
+            )
+            return True
+        if self._merge_state_is_unresolved(payload):
+            logger.warning(
+                "occ_observation_effect: skipping reuse candidate OCC#%s — "
+                "GitHub's merge-state computation never resolved after %d "
+                "attempt(s) (still mergeable_state=%r); an UNRESOLVED state "
+                "is not proof of MERGEABLE, so this candidate is treated as "
+                "non-reusable",
+                number,
+                self._MERGE_STATE_POLL_ATTEMPTS,
+                payload.get("mergeable_state"),
+            )
+            return True
+        if (
+            payload.get("mergeable_state") == "dirty"
+            or payload.get("mergeable") is False
+        ):
+            logger.warning(
+                "occ_observation_effect: skipping CONFLICTING reuse "
+                "candidate OCC#%s — appending onto an unmergeable branch "
+                "cannot repair the conflict and would deadlock every future "
+                "observation onto it; continuing to scan for a mergeable "
+                "candidate, or minting a fresh PR if none remains",
+                number,
+            )
+            return True
+        return False
+
+    @staticmethod
+    def _merge_state_is_unresolved(payload: dict[str, Any]) -> bool:
+        return (
+            payload.get("mergeable") is None
+            or payload.get("mergeable_state") == "unknown"
+        )
+
+    def _poll_pr_merge_state(
+        self, occ_owner: str, occ_name: str, number: int, token: str
+    ) -> dict[str, Any]:
+        """Single-PR GET, retried with backoff while the result is unresolved.
+
+        Stops immediately (no further retries) once ``state`` reads other
+        than ``"open"`` — a closed/merged PR's merge state will never
+        "resolve" into something reusable, so retrying it out is pure wasted
+        latency; the caller's ``state`` check decides the outcome.
+        """
+        payload: dict[str, Any] = {}
+        for attempt in range(self._MERGE_STATE_POLL_ATTEMPTS):
+            payload = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_name}/pulls/{number}",
+                token=token,
+            )
+            if payload.get("state") != "open":
+                return payload
+            if not self._merge_state_is_unresolved(payload):
+                return payload
+            if attempt < self._MERGE_STATE_POLL_ATTEMPTS - 1:
+                self._sleep_between_merge_state_polls()
+        return payload
+
+    def _sleep_between_merge_state_polls(self) -> None:
+        """Real wait, isolated to its own method so tests can monkeypatch it
+        away instead of actually blocking on wall-clock time (OMN-15777
+        hardening)."""
+        time.sleep(self._MERGE_STATE_POLL_SLEEP_SECONDS)
 
     def _first_open_pr(
         self, occ_owner: str, occ_name: str, branch: str, token: str
