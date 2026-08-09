@@ -10,6 +10,8 @@ from typing import Any
 
 import yaml
 
+from omnimarket.projection.discovery import load_projection_exposures_from_contract
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -80,6 +82,17 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
 
         self._table_registry: str = _by_role["registry"]
 
+        # OMN-15800: resolve this node's own bus_backed exposure (if any) from
+        # its own already-loaded contract dict -- no full discover_contracts()
+        # traversal of every other node's contract.
+        node_name = str(self._contract.get("name", "projection_registration"))
+        exposures = load_projection_exposures_from_contract(
+            self._contract, node_name, _path
+        )
+        self._snapshot_exposure: ProjectionTableConfig | None = next(
+            (exposure for exposure in exposures if exposure.bus_backed), None
+        )
+
     @property
     def subscribe_topics(self) -> list[str]:
         return list(self._contract.get("event_bus", {}).get("subscribe_topics", []))
@@ -112,14 +125,31 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
         topic_state_change = subscribe[2] if len(subscribe) > 2 else ""
 
         if topic == topic_introspection:
-            return await self._project_introspection(data)
+            return await self._project_introspection(data, meta)
         if topic == topic_heartbeat:
-            return await self._project_heartbeat(data)
+            return await self._project_heartbeat(data, meta)
         if topic == topic_state_change:
-            return await self._project_state_change(data)
+            return await self._project_state_change(data, meta)
         return False
 
-    async def _project_introspection(self, data: dict[str, Any]) -> bool:
+    async def _publish_snapshot_if_available(
+        self, row: dict[str, Any] | None, meta: MessageMeta, data: dict[str, Any]
+    ) -> None:
+        """Best-effort snapshot publish (OMN-15800): a no-op unless this node
+        declares a bus_backed exposure AND the write returned a real row."""
+        if self._snapshot_exposure is None or row is None:
+            return
+        source_event_id = str(data.get("correlation_id") or meta.fallback_id)
+        await self.publish_snapshot_delta(
+            self._snapshot_exposure,
+            op="upsert",
+            row=row,
+            source_event_id=source_event_id,
+        )
+
+    async def _project_introspection(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
         node_name = data.get("node_name") or data.get("nodeName") or None
         node_id = data.get("node_id") or data.get("nodeId") or None
         service_name = data.get("service_name") or node_name or node_id
@@ -167,7 +197,7 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
         # slipped through; the topic is JSON so this is belt-and-suspenders.
         metadata_json = json.dumps(metadata, default=str)
 
-        await self.db.execute(
+        rows = await self.db.execute(
             f"""
             INSERT INTO {self._table_registry} (
               service_name, service_url, service_type, health_status,
@@ -185,6 +215,8 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
               is_active = EXCLUDED.is_active,
               updated_at = EXCLUDED.updated_at,
               projected_at = EXCLUDED.projected_at
+            RETURNING service_name, service_type, health_status, is_active,
+              last_health_check, updated_at, projected_at
             """,
             str(service_name),
             str(service_url),
@@ -192,9 +224,10 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
             str(health_status),
             metadata_json,
         )
+        await self._publish_snapshot_if_available(rows[0] if rows else None, meta, data)
         return True
 
-    async def _project_heartbeat(self, data: dict[str, Any]) -> bool:
+    async def _project_heartbeat(self, data: dict[str, Any], meta: MessageMeta) -> bool:
         service_name = (
             data.get("service_name")
             or data.get("node_name")
@@ -232,7 +265,7 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
         # as a fallback.
         node_id = data.get("node_id") or data.get("nodeId")
 
-        await self.db.execute(
+        rows = await self.db.execute(
             f"""
             UPDATE {self._table_registry}
             SET health_status = $1,
@@ -244,6 +277,8 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
                 projected_at = NOW()
             WHERE service_name = $4
                OR ($5::text IS NOT NULL AND metadata->>'node_id' = $5::text)
+            RETURNING service_name, service_type, health_status, is_active,
+              last_health_check, updated_at, projected_at
             """,
             str(health_status),
             _optional_int(data.get("uptime_seconds")),
@@ -251,9 +286,12 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
             str(service_name),
             str(node_id) if node_id else None,
         )
+        await self._publish_snapshot_if_available(rows[0] if rows else None, meta, data)
         return True
 
-    async def _project_state_change(self, data: dict[str, Any]) -> bool:
+    async def _project_state_change(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
         service_name = (
             data.get("service_name")
             or data.get("node_name")
@@ -273,18 +311,21 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
         )
         is_active = str(new_state).lower() == "active"
 
-        await self.db.execute(
+        rows = await self.db.execute(
             f"""
             UPDATE {self._table_registry}
             SET health_status = $1,
                 is_active = $2,
                 updated_at = NOW()
             WHERE service_name = $3
+            RETURNING service_name, service_type, health_status, is_active,
+              last_health_check, updated_at, projected_at
             """,
             str(new_state),
             is_active,
             str(service_name),
         )
+        await self._publish_snapshot_if_available(rows[0] if rows else None, meta, data)
         return True
 
 

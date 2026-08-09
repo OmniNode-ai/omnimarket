@@ -92,6 +92,13 @@ projection_api:
       order_by: created_at DESC
       freshness_column: updated_at
       limit: 500
+      # OMN-15800 (2026-08-09 operator ruling): served from the bus-fed
+      # SnapshotCache, never from Postgres. The other 2 exposures in this
+      # file are aggregate views (not raw upserted rows) and stay
+      # SQL-served / not_yet_bus_backed pending a follow-up ticket.
+      bus_backed: true
+      key_columns:
+        - session_id
     - topic: onex.snapshot.projection.delegation.savings.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_savings
       schema: public

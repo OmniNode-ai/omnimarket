@@ -18,11 +18,15 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 import yaml
 
-from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
+from omnimarket.projection.models import (
+    OrderBySpec,
+    ProjectionStatus,
+    ProjectionTableConfig,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -330,6 +334,48 @@ def _parse_projection_api_section(
         return None
     order_by: str | None = raw_order_by
 
+    # OMN-15800 Seam C (OMN-15799 inheritance): parse order_by into a typed,
+    # multi-column-safe spec at contract-load time. A free-text order_by
+    # handed to a request-time SQL/sort builder silently lost every sort key
+    # after the first comma (OMN-15799) — parsing once here, and failing
+    # loudly on an unknown column, closes that class of defect for every
+    # exposure, not just the two converting to bus_backed in this slice.
+    order_by_spec = _parse_order_by_spec(order_by, columns, node_name, contract_path)
+    if order_by_spec is None:
+        return None
+
+    raw_bus_backed = section.get("bus_backed", False)
+    if not isinstance(raw_bus_backed, bool):
+        logger.error(
+            "Contract %r (path: %s): projection_api.bus_backed must be a "
+            "boolean when present — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
+    bus_backed: bool = raw_bus_backed
+
+    raw_key_columns = section.get("key_columns", [])
+    if not isinstance(raw_key_columns, list) or any(
+        not isinstance(column, str) or not column for column in raw_key_columns
+    ):
+        logger.error(
+            "Contract %r (path: %s): projection_api.key_columns must be a "
+            "list of strings when present — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
+    key_columns: tuple[str, ...] = tuple(raw_key_columns)
+    if bus_backed and not key_columns:
+        logger.error(
+            "Contract %r (path: %s): projection_api.bus_backed is true but "
+            "key_columns is empty — contract excluded",
+            node_name,
+            contract_path,
+        )
+        return None
+
     raw_freshness = section.get("freshness_column")
     if raw_freshness is not None and not isinstance(raw_freshness, str):
         logger.error(
@@ -411,6 +457,7 @@ def _parse_projection_api_section(
         columns=columns,
         json_columns=json_columns,
         order_by=order_by,
+        order_by_spec=order_by_spec,
         freshness_column=freshness_column,
         expected_event_interval_seconds=expected_event_interval_seconds,
         cursor_column=cursor_column,
@@ -423,7 +470,96 @@ def _parse_projection_api_section(
         source_contract=node_name,
         status=ProjectionStatus.OK,
         degraded_reason="",
+        bus_backed=bus_backed,
+        key_columns=key_columns,
     )
+
+
+def _parse_order_by_spec(
+    order_by: str | None,
+    columns: tuple[str, ...] | tuple[Literal["*"]],
+    node_name: str,
+    contract_path: Path,
+) -> OrderBySpec | None:
+    """Parse a free-text ``order_by`` into a typed, multi-column-safe spec.
+
+    Returns ``()`` when ``order_by`` is absent (ordering undefined), the
+    parsed spec on success, or ``None`` on a malformed/unknown-column
+    ``order_by`` (caller excludes the exposure, matching every other
+    validation failure in this module).
+    """
+    if order_by is None:
+        return ()
+
+    bare_columns: frozenset[str] | None = (
+        None if columns == ("*",) else frozenset(c.strip('"') for c in columns)
+    )
+
+    spec: list[tuple[str, Literal["ASC", "DESC"]]] = []
+    for clause in order_by.split(","):
+        tokens = clause.split()
+        if not tokens:
+            logger.error(
+                "Contract %r (path: %s): projection_api.order_by has an "
+                "empty clause in %r — contract excluded",
+                node_name,
+                contract_path,
+                order_by,
+            )
+            return None
+        column = tokens[0]
+        if len(tokens) > 1:
+            direction_token = tokens[1].upper()
+            if direction_token not in {"ASC", "DESC"} or len(tokens) > 2:
+                logger.error(
+                    "Contract %r (path: %s): projection_api.order_by clause "
+                    "%r must be '<column>' or '<column> ASC|DESC' — contract "
+                    "excluded",
+                    node_name,
+                    contract_path,
+                    clause,
+                )
+                return None
+            direction: Literal["ASC", "DESC"] = (
+                "ASC" if direction_token == "ASC" else "DESC"
+            )
+        else:
+            direction = "ASC"
+
+        if bare_columns is not None and column.strip('"') not in bare_columns:
+            logger.error(
+                "Contract %r (path: %s): projection_api.order_by column %r "
+                "is not a member of projection_api.columns — contract "
+                "excluded",
+                node_name,
+                contract_path,
+                column,
+            )
+            return None
+        spec.append((column, direction))
+
+    return tuple(spec)
+
+
+def load_projection_exposures_from_contract(
+    contract: dict[str, object],
+    node_name: str,
+    contract_path: Path,
+) -> tuple[ProjectionTableConfig, ...]:
+    """Parse a node's own already-loaded ``contract.yaml`` dict into its
+    ``ProjectionTableConfig`` exposures.
+
+    Public wrapper over the same section parser :func:`build_projection_topic_map`
+    uses, for a projection runner (write-side reducer) that needs its own
+    exposure config to publish a snapshot delta (OMN-15800) without re-parsing
+    every other node's contract via full :func:`discover_contracts` traversal.
+    Returns ``()`` when the contract has no ``projection_api`` section or
+    ``expose`` is not ``True``.
+    """
+    section = contract.get("projection_api")
+    if not isinstance(section, dict) or not section.get("expose", False):
+        return ()
+    return _parse_projection_api_sections(section, node_name, contract_path)
 
 
 _INVALID_OPTIONAL_FIELD = object()

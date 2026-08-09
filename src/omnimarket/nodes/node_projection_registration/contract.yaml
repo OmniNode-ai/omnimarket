@@ -98,6 +98,13 @@ projection_api:
   order_by: "updated_at DESC"
   freshness_column: "updated_at"
   limit: 100
+  # OMN-15800 (2026-08-09 operator ruling): served from the bus-fed
+  # SnapshotCache, never from Postgres. table/schema above stay for the
+  # writer-side / pre-conversion record; the serving path reads bus_backed
+  # + key_columns only.
+  bus_backed: true
+  key_columns:
+    - "service_name"
 
 metadata:
   transport_type: kafka

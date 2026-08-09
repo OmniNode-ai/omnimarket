@@ -9,12 +9,13 @@ import json
 import logging
 import os
 import signal
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
@@ -38,6 +39,11 @@ from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.error_classification import (
     ProjectionErrorClass,
     classify_projection_error,
+)
+from omnimarket.projection.models import (
+    ModelProjectionSnapshotDelta,
+    ProjectionTableConfig,
+    snapshot_json_value,
 )
 
 logger = logging.getLogger(__name__)
@@ -400,44 +406,165 @@ class BaseProjectionRunner(ABC):
             else "legacy-env-settings"
         )
 
-    async def get_publish_fn(self) -> PublishFn | None:
-        """Return the runtime-owned publish callable, building a producer if needed.
+    async def _ensure_producer(self) -> AIOKafkaProducer | None:
+        """Build (once) and return the runtime-owned ``AIOKafkaProducer``.
 
-        The projection runtime owns the Kafka producer lifecycle (OMN-12810):
-        an injected ``publish_fn`` is used as-is; otherwise a single
-        ``AIOKafkaProducer`` is built lazily from the resolved bootstrap servers
-        and reused for the runner's lifetime. Returns ``None`` when no brokers are
-        configured so handlers can skip best-effort emission gracefully. The
-        producer is stopped in :meth:`shutdown`.
+        The projection runtime owns the Kafka producer lifecycle (OMN-12810).
+        Shared by :meth:`get_publish_fn` (topic+value publish, e.g. terminal
+        events / DLQ) and :meth:`publish_snapshot_delta` (topic+key+headers+
+        value publish, OMN-15800) so exactly one producer instance is ever
+        built per runner — never a second producer for snapshot publishing.
+        Returns ``None`` when no brokers are configured or the producer fails
+        to start; callers degrade to a no-op rather than raising. The producer
+        is stopped in :meth:`shutdown`.
         """
-        if self._publish_fn is not None:
-            return self._publish_fn
+        if self._producer is not None:
+            return self._producer
 
         brokers = self.kafka_bootstrap_servers
         if not brokers:
             return None
 
-        if self._producer is None:
-            producer = AIOKafkaProducer(
-                bootstrap_servers=brokers,
-                value_serializer=lambda v: (
-                    v if isinstance(v, bytes) else v.encode("utf-8")
-                ),
-            )
-            try:
-                await producer.start()
-            except Exception as exc:
-                logger.warning("Kafka producer failed to start: %s", exc)
-                return None
-            self._producer = producer
+        producer = AIOKafkaProducer(
+            bootstrap_servers=brokers,
+            # None must pass through unchanged: aiokafka calls the serializer
+            # unconditionally, including for a tombstone publish (value=None,
+            # OMN-15800 publish_snapshot_delta deletes) — a naive
+            # ``v.encode("utf-8")`` would raise AttributeError on None.
+            value_serializer=lambda v: (
+                v if v is None or isinstance(v, bytes) else v.encode("utf-8")
+            ),
+        )
+        try:
+            await producer.start()
+        except Exception as exc:
+            logger.warning("Kafka producer failed to start: %s", exc)
+            return None
+        self._producer = producer
+        return producer
 
-        producer = self._producer
+    async def get_publish_fn(self) -> PublishFn | None:
+        """Return the runtime-owned publish callable, building a producer if needed.
+
+        An injected ``publish_fn`` is used as-is; otherwise the shared
+        producer from :meth:`_ensure_producer` is used. Returns ``None`` when
+        no brokers are configured so handlers can skip best-effort emission
+        gracefully.
+        """
+        if self._publish_fn is not None:
+            return self._publish_fn
+
+        producer = await self._ensure_producer()
+        if producer is None:
+            return None
 
         async def _publish(topic: str, value: bytes) -> None:
             await producer.send_and_wait(topic, value)
 
         self._publish_fn = _publish
         return self._publish_fn
+
+    async def publish_snapshot_delta(
+        self,
+        exposure: ProjectionTableConfig,
+        *,
+        op: Literal["upsert", "delete"],
+        row: dict[str, Any] | None,
+        source_event_id: str,
+        tenant_id: str = "omninode",
+    ) -> bool:
+        """Publish one keyed row-delta snapshot for a bus_backed exposure.
+
+        OMN-15800 Seam A. No-op (returns ``False``) when the exposure is not
+        ``bus_backed`` or no publish transport is available — a handler calls
+        this unconditionally after a successful DB upsert; whether anything
+        is actually published is entirely contract-driven, never a per-call
+        decision in the handler.
+
+        A ``delete`` publishes a genuine Kafka tombstone (``value=None``) so
+        the compacted topic reclaims the key; ``row`` must be ``None`` for a
+        delete and non-``None`` for an upsert.
+
+        Raises ``RuntimeError`` (not silently dropped) when the exposure is
+        misconfigured (``bus_backed`` with no ``key_columns``) or the caller's
+        row is missing a declared key column — both are programming errors in
+        the calling handler, never a runtime/network condition.
+        """
+        if not exposure.bus_backed:
+            return False
+        if not exposure.key_columns:
+            raise RuntimeError(
+                f"projection_api exposure {exposure.topic!r} is bus_backed "
+                "but declares no key_columns"
+            )
+        if op == "upsert" and row is None:
+            raise RuntimeError(
+                f"publish_snapshot_delta({exposure.topic!r}, op='upsert') "
+                "requires a row"
+            )
+        if op == "delete" and row is not None:
+            raise RuntimeError(
+                f"publish_snapshot_delta({exposure.topic!r}, op='delete') "
+                "must not carry a row"
+            )
+
+        key_source = row if row is not None else {}
+        try:
+            key_parts = tuple(
+                str(key_source[column]) for column in exposure.key_columns
+            )
+        except KeyError as exc:
+            raise RuntimeError(
+                f"snapshot delta for {exposure.topic!r} is missing declared "
+                f"key column {exc}"
+            ) from exc
+        key_bytes = "|".join(key_parts).encode("utf-8")
+
+        producer = await self._ensure_producer()
+        if producer is None:
+            logger.warning(
+                "publish_snapshot_delta: no Kafka producer available for %s "
+                "(delta not published)",
+                exposure.topic,
+            )
+            return False
+
+        headers = [
+            ("tenant_id", tenant_id.encode("utf-8")),
+            ("content_type", b"application/json"),
+            ("schema_version", b"projection_snapshot.v1"),
+        ]
+
+        if op == "delete":
+            await producer.send_and_wait(
+                exposure.topic, value=None, key=key_bytes, headers=headers
+            )
+            return True
+
+        serialized_row = {
+            column: snapshot_json_value(
+                value, decode_json_string=column in exposure.json_columns
+            )
+            for column, value in (row or {}).items()
+        }
+        delta = ModelProjectionSnapshotDelta(
+            topic=exposure.topic,
+            key=key_parts,
+            op="upsert",
+            row=serialized_row,
+            observed_at=datetime.now(UTC).isoformat(),
+            source_event_id=source_event_id,
+            # Process-local wall-clock nanoseconds rather than an in-memory
+            # counter: monotonic in practice AND restart-safe (a counter reset
+            # to 0 after a restart would make every post-restart delta look
+            # stale to SnapshotCache's ingest_sequence idempotence check).
+            ingest_sequence=time.time_ns(),
+        )
+        value_bytes = delta.model_dump_json().encode("utf-8")
+        await producer.send_and_wait(
+            exposure.topic, value=value_bytes, key=key_bytes, headers=headers
+        )
+        return True
 
     async def _stop_producer(self) -> None:
         """Stop the runtime-owned producer, if one was built."""

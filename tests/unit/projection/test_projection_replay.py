@@ -1,39 +1,32 @@
-"""Unit tests for projection topic map immutability (OMN-10490).
+"""Unit tests for projection topic map immutability (OMN-10490 / OMN-15800).
 
 Tests:
 - Startup snapshot is not mutated after lifespan completes
-- DEGRADED entry persists across requests without re-checking DB
+- DEGRADED entry persists across requests without ever reaching the cache
 """
 
 from __future__ import annotations
 
 from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
-from scripts.projection_api_server import app, get_pool, get_topic_map
+from scripts.projection_api_server import app, get_snapshot_cache, get_topic_map
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
 
-def _make_pool(rows: list[dict[str, Any]], latest_ts: str | None = None) -> MagicMock:
-    conn = AsyncMock()
-    conn.fetch = AsyncMock(return_value=rows)
-    conn.fetchval = AsyncMock(return_value=latest_ts)
-
-    acquire_ctx = MagicMock()
-    acquire_ctx.__aenter__ = AsyncMock(return_value=conn)
-    acquire_ctx.__aexit__ = AsyncMock(return_value=None)
-
-    pool = MagicMock()
-    pool.acquire = MagicMock(return_value=acquire_ctx)
-    return pool
+def _make_cache() -> MagicMock:
+    cache = MagicMock()
+    cache.is_bootstrapped = MagicMock(return_value=True)
+    cache.get_rows = MagicMock(return_value=[])
+    cache.latest_event_at = MagicMock(return_value=None)
+    return cache
 
 
 def _make_degraded_cfg(topic: str = "test.topic.v1") -> ProjectionTableConfig:
@@ -58,20 +51,23 @@ def _make_ok_cfg(topic: str = "test.topic.v1") -> ProjectionTableConfig:
         schema_name="public",
         columns=("col_a",),
         order_by="col_a DESC",
+        order_by_spec=(("col_a", "DESC"),),
         freshness_column="col_a",
         limit=100,
         source_contract="node_test",
         status=ProjectionStatus.OK,
         degraded_reason="",
+        bus_backed=True,
+        key_columns=("col_a",),
     )
 
 
 @contextmanager
 def _with_overrides(
-    pool: MagicMock,
+    cache: MagicMock,
     topic_map: dict[str, ProjectionTableConfig],
 ) -> Generator[TestClient, None, None]:
-    app.dependency_overrides[get_pool] = lambda: pool
+    app.dependency_overrides[get_snapshot_cache] = lambda: cache
     app.dependency_overrides[get_topic_map] = lambda: topic_map
     client = TestClient(app, raise_server_exceptions=True)
     try:
@@ -105,8 +101,9 @@ class TestStartupSnapshotImmutable:
         original_cfg_id = id(topic_map[topic])
         original_map_len = len(topic_map)
 
-        pool = _make_pool([{"col_a": "value"}], latest_ts=None)
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache()
+        cache.get_rows = MagicMock(return_value=[{"col_a": "value"}])
+        with _with_overrides(cache, topic_map) as client:
             for _ in range(3):
                 client.get(f"/projection/{topic}")
 
@@ -124,9 +121,9 @@ class TestDegradedEntryPersists:
         topic = "test.degraded.topic.v1"
         cfg = _make_degraded_cfg(topic)
         topic_map = {topic: cfg}
-        pool = _make_pool([])
+        cache = _make_cache()
 
-        with _with_overrides(pool, topic_map) as client:
+        with _with_overrides(cache, topic_map) as client:
             for _ in range(3):
                 resp = client.get(f"/projection/{topic}")
                 assert resp.status_code == 503, (
@@ -141,25 +138,23 @@ class TestDegradedEntryPersists:
         assert cfg.degraded_reason == expected_reason
 
         topic_map = {topic: cfg}
-        pool = _make_pool([])
+        cache = _make_cache()
 
-        with _with_overrides(pool, topic_map) as client:
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get(f"/projection/{topic}")
 
         assert resp.status_code == 503
         body = resp.json()
         assert body.get("reason") == expected_reason
 
-    def test_degraded_entry_does_not_recheck_db(self) -> None:
-        """A DEGRADED entry never issues a DB query — pool.acquire is not called."""
+    def test_degraded_entry_never_reaches_cache(self) -> None:
+        """A DEGRADED entry never touches the SnapshotCache — get_rows not called."""
         topic = "test.degraded.topic.v1"
         cfg = _make_degraded_cfg(topic)
         topic_map = {topic: cfg}
+        cache = _make_cache()
 
-        pool = MagicMock()
-        pool.acquire = MagicMock()
-
-        with _with_overrides(pool, topic_map) as client:
+        with _with_overrides(cache, topic_map) as client:
             client.get(f"/projection/{topic}")
 
-        pool.acquire.assert_not_called()
+        cache.get_rows.assert_not_called()
