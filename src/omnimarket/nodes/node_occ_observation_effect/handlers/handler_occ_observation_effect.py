@@ -47,9 +47,10 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 from omnibase_core.validation.validator_receipt_gate import (
@@ -642,35 +643,85 @@ class HandlerOccObservationEffect:
             )
         return number, str(created.get("html_url") or "")
 
+    #: Hard cap on pages fetched by ``_iter_open_prs`` (100/page -> 1000 PRs).
+    #: A bound, not an unlimited loop: real observation-PR volume never
+    #: approaches this, and a misbehaving API (e.g. never returning a
+    #: short/empty page) must still terminate rather than loop forever.
+    _MAX_OPEN_PR_PAGES = 10
+
+    def _iter_open_prs(
+        self, occ_owner: str, occ_name: str, token: str, direction: str
+    ) -> Generator[dict[str, Any], None, None]:
+        """Yield every OPEN pull request, paginating past the first 100 (OMN-15777).
+
+        A single ``per_page=100`` call missed a matching PR whenever more than
+        100 unrelated PRs were open — the selector would then either suppress
+        nothing it should have, or (for the reuse selector) open a SECOND
+        conflicting PR instead of finding the one already open. Pages are
+        fetched until a short page (fewer than 100 results) ends the list, or
+        ``_MAX_OPEN_PR_PAGES`` is hit.
+        """
+        for page in range(1, self._MAX_OPEN_PR_PAGES + 1):
+            prs = rest_json_array(
+                "GET",
+                f"/repos/{occ_owner}/{occ_name}/pulls"
+                f"?state=open&sort=created&direction={direction}"
+                f"&per_page=100&page={page}",
+                token=token,
+            )
+            yield from prs
+            if len(prs) < 100:
+                return
+
+    @staticmethod
+    def _matching_observation_pr(
+        pr: dict[str, Any], occ_owner: str, occ_name: str, branch_prefix: str
+    ) -> tuple[str, int, str] | None:
+        """A PR matches only if its head branch is IN the OCC repo itself.
+
+        ``head.ref`` is scoped to whatever repository opened the PR — a fork
+        can name its branch ``auto/occ-observation-*`` too. Without this check
+        a selector could return a fork branch name, which ``_clone_branch``
+        would then try to clone FROM the OCC repo (not the fork) and fail,
+        turning an unrelated fork PR into a denial-of-service on every
+        subsequent observation write. Requiring ``head.repo.full_name`` to be
+        this run's own ``{occ_owner}/{occ_name}`` closes that.
+        """
+        head = pr.get("head")
+        if not isinstance(head, dict):
+            return None
+        ref = head.get("ref")
+        repo = head.get("repo")
+        full_name = repo.get("full_name") if isinstance(repo, dict) else None
+        number = pr.get("number")
+        if (
+            full_name == f"{occ_owner}/{occ_name}"
+            and isinstance(ref, str)
+            and ref.startswith(branch_prefix)
+            and isinstance(number, int)
+        ):
+            return ref, number, str(pr.get("html_url") or "")
+        return None
+
     def _open_pr_for_identity(
         self, occ_owner: str, occ_name: str, branch_prefix: str, token: str
     ) -> tuple[int, str] | None:
         """First OPEN observation PR whose branch shares this identity prefix.
 
-        Scans the most recently created page of open PRs rather than paginating
-        the whole list. That bound is deliberate and sufficient for the failure
-        this closes: duplicate attempts for one head sha arrive seconds apart,
-        so a live sibling is always among the newest open PRs. A sibling that
-        has already aged out of that page is not suppressed — the guard is
-        best-effort de-duplication, never a correctness barrier, and missing one
-        costs a redundant PR, not a lost observation.
+        Scanned most-recently-created first: duplicate attempts for one head
+        sha arrive seconds apart, so a live sibling is always among the
+        newest open PRs, and this ordering finds it fastest. Still a
+        best-effort de-duplication, never a correctness barrier — missing one
+        (e.g. past ``_MAX_OPEN_PR_PAGES``) costs a redundant PR, not a lost
+        observation.
         """
-        prs = rest_json_array(
-            "GET",
-            f"/repos/{occ_owner}/{occ_name}/pulls"
-            "?state=open&sort=created&direction=desc&per_page=100",
-            token=token,
-        )
-        for pr in prs:
-            head = pr.get("head")
-            ref = head.get("ref") if isinstance(head, dict) else None
-            number = pr.get("number")
-            if (
-                isinstance(ref, str)
-                and ref.startswith(branch_prefix)
-                and isinstance(number, int)
-            ):
-                return number, str(pr.get("html_url") or "")
+        for pr in self._iter_open_prs(occ_owner, occ_name, token, "desc"):
+            match = self._matching_observation_pr(
+                pr, occ_owner, occ_name, branch_prefix
+            )
+            if match is not None:
+                _ref, number, url = match
+                return number, url
         return None
 
     def _find_reusable_observation_pr(
@@ -692,22 +743,12 @@ class HandlerOccObservationEffect:
         Callers must have already ruled out a same-identity match — this
         method does not distinguish identity at all, by design.
         """
-        prs = rest_json_array(
-            "GET",
-            f"/repos/{occ_owner}/{occ_name}/pulls"
-            "?state=open&sort=created&direction=asc&per_page=100",
-            token=token,
-        )
-        for pr in prs:
-            head = pr.get("head")
-            ref = head.get("ref") if isinstance(head, dict) else None
-            number = pr.get("number")
-            if (
-                isinstance(ref, str)
-                and ref.startswith(_OBSERVATION_BRANCH_PREFIX)
-                and isinstance(number, int)
-            ):
-                return ref, number, str(pr.get("html_url") or "")
+        for pr in self._iter_open_prs(occ_owner, occ_name, token, "asc"):
+            match = self._matching_observation_pr(
+                pr, occ_owner, occ_name, _OBSERVATION_BRANCH_PREFIX
+            )
+            if match is not None:
+                return match
         return None
 
     def _first_open_pr(

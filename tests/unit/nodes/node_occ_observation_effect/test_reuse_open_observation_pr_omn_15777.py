@@ -135,7 +135,16 @@ class FakeGitHub:
         self._next_number += 1
         url = f"https://github.com/OmniNode-ai/onex_change_control/pull/{number}"
         self.open_prs.append(
-            {"number": number, "html_url": url, "head": {"ref": body["head"]}}
+            {
+                "number": number,
+                "html_url": url,
+                # OMN-15777: the selector requires the head branch to be IN
+                # the OCC repo itself (fork-repo hardening).
+                "head": {
+                    "ref": body["head"],
+                    "repo": {"full_name": "OmniNode-ai/onex_change_control"},
+                },
+            }
         )
         self.created_titles.append(body["title"])
         return {"number": number, "html_url": url}
@@ -296,6 +305,48 @@ async def test_no_open_pr_opens_a_fresh_one_existing_behavior(
         occ_observation_record_relpath(_record(2001, "a" * 40, 900001))
     )
     assert len(fake.created_titles) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_fork_head_pr_is_ignored_by_the_reuse_selector(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A PR whose head branch lives in a FORK (not the OCC repo itself) must
+    never be treated as a reuse target, even if its branch name matches the
+    ``auto/occ-observation-*`` prefix — cloning that branch name FROM the OCC
+    repo (not the fork) would fail and block every subsequent observation
+    write (CodeRabbit finding, OMN-15777)."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    # Seed a fork PR directly (not via fake.rest_json's POST path, which
+    # always stamps the OCC repo) sharing the exact prefix a real observation
+    # branch would use.
+    fake.open_prs.append(
+        {
+            "number": 9999,
+            "html_url": "https://github.com/OmniNode-ai/onex_change_control/pull/9999",
+            "head": {
+                "ref": "auto/occ-observation-forked-attempt",
+                "repo": {"full_name": "some-attacker/onex_change_control"},
+            },
+        }
+    )
+
+    result = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(2001, "a" * 40, 900001), mode="mutate"
+        )
+    )
+
+    assert result.appended_to_existing_pr is False, (
+        "the fork-headed PR must not be selected as a reuse target"
+    )
+    assert result.occ_pr_number != 9999
+    assert len(fake.created_titles) == 1, "a fresh, OCC-owned PR is opened instead"
 
 
 @pytest.mark.unit

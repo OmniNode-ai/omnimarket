@@ -125,7 +125,17 @@ class FakeGitHub:
         self._next_number += 1
         url = f"https://github.com/OmniNode-ai/onex_change_control/pull/{number}"
         self.open_prs.append(
-            {"number": number, "html_url": url, "head": {"ref": body["head"]}}
+            {
+                "number": number,
+                "html_url": url,
+                # OMN-15777: the selector now requires the head branch to be
+                # IN the OCC repo itself (fork-repo hardening), so the fake
+                # must carry that field for a match to succeed.
+                "head": {
+                    "ref": body["head"],
+                    "repo": {"full_name": "OmniNode-ai/onex_change_control"},
+                },
+            }
         )
         self.created_titles.append(body["title"])
         self.created_bodies.append(body["body"])
