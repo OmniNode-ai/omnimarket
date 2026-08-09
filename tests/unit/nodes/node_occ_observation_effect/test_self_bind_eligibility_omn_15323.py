@@ -135,6 +135,11 @@ async def _run_producer(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> _Run
         lambda: "dummy-token",
     )
     monkeypatch.setattr(handler, "_open_pr_for_identity", lambda *_a, **_k: None)
+    # OMN-15777: also probes for ANY open observation PR (cross-identity reuse
+    # target) before deciding which branch to clone. None exists here.
+    monkeypatch.setattr(
+        handler, "_find_reusable_observation_pr", lambda *_a, **_k: None
+    )
     monkeypatch.setattr(
         handler,
         "_clone_default",

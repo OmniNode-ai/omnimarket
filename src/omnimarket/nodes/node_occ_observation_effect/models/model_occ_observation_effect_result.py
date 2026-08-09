@@ -31,6 +31,14 @@ class ModelOccObservationEffectResult(BaseModel):
         "by workflow run) already existed, so this run opened no second PR "
         "(OMN-15300 duplicate-emission guard).",
     )
+    appended_to_existing_pr: bool = Field(
+        default=False,
+        description="True when this observation's record + self-bind commits "
+        "were appended onto an already-open auto/occ-observation-* PR for a "
+        "DIFFERENT identity, rather than branching + opening a new PR (OMN-15777 "
+        "cross-identity conflict-factory fix). At most one observation PR is "
+        "ever open at a time once this is set.",
+    )
     occ_branch: str = Field(default="", description="Deterministic OCC append branch.")
     occ_pr_number: int | None = Field(
         default=None, description="OCC observation PR number (opened or reused)."

@@ -1,0 +1,350 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+"""OMN-15777: cross-identity observation PRs must share ONE open PR, not N.
+
+`_open_pr_for_identity` (OMN-15300) only ever suppressed a SECOND PR for the
+SAME identity (same product repo/PR/head_sha/policy_version). Two DIFFERENT
+identities each still branched + opened their own PR, and because every
+observation's self-bind commit appends to the identical
+``contracts/OMN-14888.yaml`` tail, any two simultaneously-open observation PRs
+are structural conflicts with each other (live evidence: 10/10 open OCC PRs
+CONFLICTING/DIRTY on 2026-08-09).
+
+The fix: when ANY `auto/occ-observation-*` PR is already open — regardless of
+identity — this run's record + self-bind commits land as two MORE commits on
+THAT branch instead of a fresh branch/PR. Evidence-item ids are keyed on
+workflow-run-id/attempt (`occ_observation_evidence_item_id`), so two different
+identities appending to the same branch never collide on an id, and each
+append starts from the branch's current tip, so a later append's insertion
+point is always past the earlier append's entry — no merge, no conflict.
+
+Hermetic: every GitHub call is stubbed, git is a real local repo, no network.
+"""
+
+from __future__ import annotations
+
+import shutil
+import subprocess
+from pathlib import Path
+from typing import Any
+
+import pytest
+import yaml
+
+from omnimarket.events.occ_autoauthor import ModelOccAutoauthorObservation
+from omnimarket.events.occ_observation_record import ModelOccObservationRecord
+from omnimarket.events.occ_observation_store import (
+    OCC_OBSERVATION_EVIDENCE_TICKET,
+    occ_observation_contract_relpath,
+    occ_observation_evidence_item_id,
+    occ_observation_record_relpath,
+)
+from omnimarket.nodes.node_occ_observation_effect.handlers.handler_occ_observation_effect import (
+    HandlerOccObservationEffect,
+    _branch_name,
+)
+from omnimarket.nodes.node_occ_observation_effect.models.model_occ_observation_effect_request import (
+    ModelOccObservationEffectRequest,
+)
+from tests.unit.nodes.node_occ_observation_effect.conftest import OCC_FIXTURE_ROOT
+
+
+def _record(
+    product_pr_number: int, head_sha: str, workflow_run_id: int
+) -> ModelOccObservationRecord:
+    """A distinct IDENTITY per call (different product_pr_number/head_sha)."""
+    return ModelOccObservationRecord(
+        product_repo="OmniNode-ai/omnimarket",
+        product_pr_number=product_pr_number,
+        head_sha=head_sha,
+        policy_version="v1",
+        workflow_run_id=workflow_run_id,
+        run_attempt=1,
+        recorded_at="2026-08-09T00:00:00Z",
+        observation=ModelOccAutoauthorObservation(
+            product_repo="OmniNode-ai/omnimarket",
+            product_pr_number=product_pr_number,
+            occ_pr_number=None,
+            minted_by_node=True,
+            attestation_match=False,
+            occ_preflight_eligible=True,
+            observed_at="2026-08-09T00:00:00Z",
+            reason="mismatch",
+        ),
+    )
+
+
+def _git(cwd: Path, *args: str) -> str:
+    return subprocess.run(
+        ["git", *args], cwd=str(cwd), check=True, capture_output=True, text=True
+    ).stdout.strip()
+
+
+def _seed_repo(tmp_path: Path, name: str = "seed") -> Path:
+    seed = tmp_path / name
+    shutil.copytree(OCC_FIXTURE_ROOT, seed)
+    _git(seed, "init", "-q")
+    _git(seed, "config", "user.name", "test")
+    _git(seed, "config", "user.email", "test@omninode.ai")
+    _git(seed, "add", "-A")
+    _git(seed, "commit", "-q", "-m", "OCC fixture base")
+    return seed
+
+
+class FakeGitHub:
+    """Minimal stand-in for the REST calls the handler makes, PLUS a real
+    in-memory `origin` bare repo so a cloned branch can genuinely carry a
+    PRIOR run's commits (proving requirement (d): sequential appends onto an
+    already-advanced branch never conflict)."""
+
+    def __init__(self, tmp_path: Path, seed: Path) -> None:
+        self.tmp_path = tmp_path
+        self.origin = tmp_path / "origin.git"
+        subprocess.run(
+            ["git", "clone", "--bare", "-q", str(seed), str(self.origin)],
+            check=True,
+            capture_output=True,
+        )
+        self.open_prs: list[dict[str, Any]] = []
+        self.created_titles: list[str] = []
+        self.pushes: list[tuple[str, str]] = []  # (branch, head_sha_after_push)
+        self._next_number = 7001
+
+    # -- rest_json_array (PR listing) ---------------------------------------
+    def rest_json_array(
+        self, _method: str, path: str, **_kwargs: Any
+    ) -> list[dict[str, Any]]:
+        if "head=" in path:
+            wanted = path.split("head=")[1].split("&")[0].split(":", 1)[1]
+            return [pr for pr in self.open_prs if pr["head"]["ref"] == wanted]
+        return list(self.open_prs)
+
+    # -- rest_json (PR create + commit probe) --------------------------------
+    def rest_json(
+        self,
+        _method: str,
+        path: str,
+        *,
+        body: dict[str, Any] | None = None,
+        **_kwargs: Any,
+    ) -> dict[str, Any]:
+        if body is None:
+            sha = path.rsplit("/", 1)[-1]
+            return {"sha": sha}
+        number = self._next_number
+        self._next_number += 1
+        url = f"https://github.com/OmniNode-ai/onex_change_control/pull/{number}"
+        self.open_prs.append(
+            {"number": number, "html_url": url, "head": {"ref": body["head"]}}
+        )
+        self.created_titles.append(body["title"])
+        return {"number": number, "html_url": url}
+
+    # -- clone / push against the real bare origin ---------------------------
+    def clone_default(self, clone_dir: str, _token: str, _occ_repo: str) -> str:
+        subprocess.run(
+            ["git", "clone", "-q", str(self.origin), clone_dir],
+            check=True,
+            capture_output=True,
+        )
+        return "dev"
+
+    def clone_branch(
+        self, clone_dir: str, _token: str, _occ_repo: str, branch: str
+    ) -> None:
+        subprocess.run(
+            [
+                "git",
+                "clone",
+                "-q",
+                "--single-branch",
+                "--branch",
+                branch,
+                str(self.origin),
+                clone_dir,
+            ],
+            check=True,
+            capture_output=True,
+        )
+
+    def push(self, clone_dir: str, branch: str, _token: str, _occ_repo: str) -> None:
+        subprocess.run(
+            ["git", "push", "-q", str(self.origin), f"HEAD:refs/heads/{branch}"],
+            cwd=clone_dir,
+            check=True,
+            capture_output=True,
+        )
+        head_sha = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=clone_dir,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        self.pushes.append((branch, head_sha))
+
+    def contract_text_on(self, branch: str) -> str:
+        return subprocess.run(
+            ["git", "show", f"{branch}:{OCC_OBSERVATION_CONTRACT_RELPATH}"],
+            cwd=str(self.origin),
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout
+
+
+OCC_OBSERVATION_CONTRACT_RELPATH = occ_observation_contract_relpath(
+    OCC_OBSERVATION_EVIDENCE_TICKET
+)
+
+_HANDLER_MODULE = (
+    "omnimarket.nodes.node_occ_observation_effect.handlers."
+    "handler_occ_observation_effect"
+)
+
+
+def _install(
+    handler: HandlerOccObservationEffect,
+    fake: FakeGitHub,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(f"{_HANDLER_MODULE}._resolve_github_token", lambda: "tok")
+    monkeypatch.setattr(f"{_HANDLER_MODULE}.rest_json_array", fake.rest_json_array)
+    monkeypatch.setattr(f"{_HANDLER_MODULE}.rest_json", fake.rest_json)
+    monkeypatch.setattr(handler, "_clone_default", fake.clone_default)
+    monkeypatch.setattr(handler, "_clone_branch", fake.clone_branch)
+    monkeypatch.setattr(handler, "_push", fake.push)
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_different_identity_appends_to_existing_open_pr_no_second_pr(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(a) With an open auto/occ-observation-* PR present, a DIFFERENT
+    identity's observation appends to that branch — no second PR opens."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    first = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(2001, "a" * 40, 900001), mode="mutate"
+        )
+    )
+    second = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(2002, "b" * 40, 900002), mode="mutate"
+        )
+    )
+
+    assert first.appended_to_existing_pr is False
+    assert first.superseded_by_open_pr is False
+    assert second.appended_to_existing_pr is True
+    assert second.superseded_by_open_pr is False, (
+        "a genuinely new observation must still be WRITTEN, not silently dropped"
+    )
+    assert second.occ_pr_number == first.occ_pr_number, "must reuse the same PR"
+    assert len(fake.created_titles) == 1, "exactly one PR ever opened"
+
+    # Both records really landed on the SAME branch, as two more commits.
+    assert len(fake.pushes) == 4, "2 pushes per observation x 2 observations"
+    branches = {b for b, _ in fake.pushes}
+    assert branches == {first.occ_branch}, "all pushes target the one shared branch"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_no_open_pr_opens_a_fresh_one_existing_behavior(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(b) With no open observation PR, a fresh branch + PR is created —
+    unchanged from pre-OMN-15777 behavior."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    result = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(2001, "a" * 40, 900001), mode="mutate"
+        )
+    )
+
+    assert result.appended_to_existing_pr is False
+    assert result.superseded_by_open_pr is False
+    assert result.occ_branch == _branch_name(
+        occ_observation_record_relpath(_record(2001, "a" * 40, 900001))
+    )
+    assert len(fake.created_titles) == 1
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_same_identity_dedupe_still_holds(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(c) Same-identity dedupe (OMN-15300) is untouched by the widened reuse
+    check: a second attempt at the SAME identity is still a pure no-op, never
+    a write, even while a reuse target would otherwise be available."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    same_head = "c" * 40
+    first = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(2001, same_head, 900001), mode="mutate"
+        )
+    )
+    second = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(2001, same_head, 900002), mode="mutate"
+        )
+    )
+
+    assert second.superseded_by_open_pr is True
+    assert second.appended_to_existing_pr is False
+    assert second.occ_pr_number == first.occ_pr_number
+    assert len(fake.created_titles) == 1
+    assert len(fake.pushes) == 2, "the superseded attempt must never push"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_sequential_appends_onto_an_already_advanced_branch_do_not_conflict(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """(d) A THIRD, different-identity observation appends onto a branch whose
+    OMN-14888.yaml tail was already advanced by the SECOND observation — each
+    append starts from the branch's live tip, so there is nothing to conflict
+    with, and both prior entries survive byte-identical."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    r1, r2, r3 = (
+        _record(3001, "a" * 40, 910001),
+        _record(3002, "b" * 40, 910002),
+        _record(3003, "c" * 40, 910003),
+    )
+    for r in (r1, r2, r3):
+        result = await handler.handle(
+            ModelOccObservationEffectRequest(record=r, mode="mutate")
+        )
+        assert result.occ_pr_number is not None
+
+    assert len(fake.created_titles) == 1, "still exactly one PR after 3 observations"
+
+    final_branch = fake.pushes[-1][0]
+    contract_text = fake.contract_text_on(final_branch)
+    parsed = yaml.safe_load(contract_text)
+    ids = {item["id"] for item in parsed["dod_evidence"]}
+    for r in (r1, r2, r3):
+        assert occ_observation_evidence_item_id(r) in ids, (
+            "every observation's evidence entry must survive on the final branch"
+        )
+    assert len(ids) == len(set(ids)), "no id collision across the three appends"

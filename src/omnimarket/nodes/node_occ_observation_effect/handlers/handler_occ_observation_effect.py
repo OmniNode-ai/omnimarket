@@ -104,6 +104,12 @@ def _resolve_github_token() -> str:
 #: (workflow run id + attempt).
 _RUN_SEGMENT_MARKER = "--run"
 
+#: Every branch this producer ever pushes starts with this literal prefix
+#: (see ``_branch_name``). OMN-15777 widens the reuse check from "same
+#: identity" to "ANY branch with this prefix" so at most one observation PR is
+#: ever open at a time — there is nothing left for a sibling to conflict with.
+_OBSERVATION_BRANCH_PREFIX = "auto/occ-observation-"
+
 
 def _branch_name(relpath: str) -> str:
     """Deterministic branch name derived 1:1 from the record's own path.
@@ -275,22 +281,45 @@ class HandlerOccObservationEffect:
                 occ_pr_url=existing_url,
             )
 
+        # Cross-identity conflict-factory guard (OMN-15777): every observation
+        # PR's self-bind commit appends to the SAME shared
+        # contracts/OMN-14888.yaml tail, so any two simultaneously-open
+        # observation PRs are structural conflicts with each other, even
+        # though each is individually well-formed. If ANY observation PR is
+        # already open — regardless of identity — this run's commits land as
+        # two MORE commits on THAT branch instead of a fresh branch/PR, so at
+        # most one observation PR is ever open at a time. The evidence-item id
+        # this run declares is keyed on its own workflow-run-id/attempt
+        # (occ_observation_evidence_item_id), so two different identities
+        # appending to the same branch never collide on an id, and each
+        # append starts from the branch's CURRENT tip (a fresh clone of it),
+        # so a later append's insertion point is always past an earlier one's
+        # — no merge, no conflict, even across many sequential appends.
+        reuse_target = self._find_reusable_observation_pr(occ_owner, occ_name, token)
+
         with tempfile.TemporaryDirectory(prefix="occ-observation-effect-") as tmp:
             clone_dir = str(Path(tmp) / "onex_change_control")
-            default_branch = self._clone_default(clone_dir, token, request.occ_repo)
+            default_branch = ""
+            if reuse_target is not None:
+                target_branch, _reuse_number, _reuse_url = reuse_target
+                self._clone_branch(clone_dir, token, request.occ_repo, target_branch)
+            else:
+                target_branch = branch
+                default_branch = self._clone_default(clone_dir, token, request.occ_repo)
 
             if (Path(clone_dir) / relpath).exists():
                 # Idempotent no-op: this exact raw attempt is already durable.
                 return ModelOccObservationEffectResult(
                     mode="mutate",
-                    action=f"no-op: {relpath} already present on {default_branch}",
+                    action=f"no-op: {relpath} already present on {target_branch}",
                     relpath=relpath,
                     already_present=True,
-                    occ_branch=branch,
+                    occ_branch=target_branch,
                 )
 
             base_sha = self._head_sha(clone_dir)
-            run_git(["git", "checkout", "-B", branch], cwd=clone_dir)
+            if reuse_target is None:
+                run_git(["git", "checkout", "-B", target_branch], cwd=clone_dir)
             self._write_file(clone_dir, relpath, content)
             self._commit_paths(
                 clone_dir,
@@ -299,7 +328,7 @@ class HandlerOccObservationEffect:
             )
             record_commit_sha = self._head_sha(clone_dir)
             self._assert_append_only(clone_dir, base_sha, {relpath})
-            self._push(clone_dir, branch, token, request.occ_repo)
+            self._push(clone_dir, target_branch, token, request.occ_repo)
 
             # OMN-15323: the record alone can never merge — eligibility needs a
             # DECLARED, PR-BOUND PASS receipt. Authored as a second commit on
@@ -311,18 +340,33 @@ class HandlerOccObservationEffect:
                 request=request,
                 relpath=relpath,
                 record_commit_sha=record_commit_sha,
-                branch=branch,
+                branch=target_branch,
                 token=token,
                 occ_owner=occ_owner,
                 occ_name=occ_name,
             )
             self._assert_append_only(clone_dir, base_sha, {relpath, *self_bind_paths})
-            self._push(clone_dir, branch, token, request.occ_repo)
+            self._push(clone_dir, target_branch, token, request.occ_repo)
+
+        if reuse_target is not None:
+            _, reuse_number, reuse_url = reuse_target
+            return ModelOccObservationEffectResult(
+                mode="mutate",
+                action=(
+                    f"appended {relpath} onto existing observation PR "
+                    f"(OCC#{reuse_number}); no second PR opened"
+                ),
+                relpath=relpath,
+                appended_to_existing_pr=True,
+                occ_branch=target_branch,
+                occ_pr_number=reuse_number,
+                occ_pr_url=reuse_url,
+            )
 
         occ_pr_number, occ_pr_url = self._open_or_sync_occ_pr(
             occ_owner,
             occ_name,
-            branch,
+            target_branch,
             default_branch,
             relpath,
             token,
@@ -332,7 +376,7 @@ class HandlerOccObservationEffect:
             mode="mutate",
             action=f"appended {relpath} on OCC#{occ_pr_number}",
             relpath=relpath,
-            occ_branch=branch,
+            occ_branch=target_branch,
             occ_pr_number=occ_pr_number,
             occ_pr_url=occ_pr_url,
         )
@@ -349,6 +393,36 @@ class HandlerOccObservationEffect:
         run_git(["git", "config", "user.name", _GIT_AUTHOR_NAME], cwd=clone_dir)
         run_git(["git", "config", "user.email", _GIT_AUTHOR_EMAIL], cwd=clone_dir)
         return run_git(["git", "rev-parse", "--abbrev-ref", "HEAD"], cwd=clone_dir)
+
+    def _clone_branch(
+        self, clone_dir: str, token: str, occ_repo: str, branch: str
+    ) -> None:
+        """Clone directly onto an EXISTING branch (OMN-15777 append-reuse path).
+
+        Single-branch, depth=1 — same cost profile as ``_clone_default`` — but
+        checks out ``branch`` instead of the repo's default branch, so this
+        run's commits start from whatever that branch's tip already carries
+        (including any prior observation's append). That is what makes
+        sequential appends onto an already-advanced branch conflict-free: each
+        append clones the LIVE tip and inserts past it, never a stale base.
+        """
+        url = authenticated_occ_url(token, occ_repo)
+        run_git(
+            [
+                "git",
+                "clone",
+                "--depth=1",
+                "--single-branch",
+                "--branch",
+                branch,
+                url,
+                clone_dir,
+            ],
+            cwd=str(Path(clone_dir).parent),
+            timeout=_GIT_TIMEOUT_SECONDS,
+        )
+        run_git(["git", "config", "user.name", _GIT_AUTHOR_NAME], cwd=clone_dir)
+        run_git(["git", "config", "user.email", _GIT_AUTHOR_EMAIL], cwd=clone_dir)
 
     def _write_file(self, clone_dir: str, relpath: str, content: str) -> None:
         path = Path(clone_dir) / relpath
@@ -597,6 +671,43 @@ class HandlerOccObservationEffect:
                 and isinstance(number, int)
             ):
                 return number, str(pr.get("html_url") or "")
+        return None
+
+    def _find_reusable_observation_pr(
+        self, occ_owner: str, occ_name: str, token: str
+    ) -> tuple[str, int, str] | None:
+        """First OPEN observation PR, of ANY identity (OMN-15777).
+
+        Widened sibling of ``_open_pr_for_identity``: that method only ever
+        matches the SAME identity (same product repo/PR/head_sha/policy
+        prefix), which suppresses a duplicate PR for a re-fired event but does
+        nothing for two genuinely different observations. Every observation
+        PR's self-bind commit appends to the identical
+        ``contracts/OMN-14888.yaml`` tail, so any two simultaneously open
+        observation PRs are structural conflicts with each other regardless of
+        identity. Returning the first (oldest) open match gives every
+        concurrent caller the SAME reuse target, converging on one branch
+        instead of racing to create several.
+
+        Callers must have already ruled out a same-identity match — this
+        method does not distinguish identity at all, by design.
+        """
+        prs = rest_json_array(
+            "GET",
+            f"/repos/{occ_owner}/{occ_name}/pulls"
+            "?state=open&sort=created&direction=asc&per_page=100",
+            token=token,
+        )
+        for pr in prs:
+            head = pr.get("head")
+            ref = head.get("ref") if isinstance(head, dict) else None
+            number = pr.get("number")
+            if (
+                isinstance(ref, str)
+                and ref.startswith(_OBSERVATION_BRANCH_PREFIX)
+                and isinstance(number, int)
+            ):
+                return ref, number, str(pr.get("html_url") or "")
         return None
 
     def _first_open_pr(

@@ -119,6 +119,11 @@ async def test_new_record_mutate_write_readback(
     # OMN-15300: the write path now probes for an open sibling PR before
     # cloning. No sibling exists in this scenario.
     monkeypatch.setattr(handler, "_open_pr_for_identity", lambda *_a, **_k: None)
+    # OMN-15777: also probes for ANY open observation PR (cross-identity reuse
+    # target) before deciding which branch to clone. None exists here.
+    monkeypatch.setattr(
+        handler, "_find_reusable_observation_pr", lambda *_a, **_k: None
+    )
 
     def _clone_stub(clone_dir_arg: str, _token: str, _occ_repo: str) -> str:
         _copy_into(seed_dir, clone_dir_arg)
