@@ -1,0 +1,20 @@
+name: node_seam_graph_compute
+version: "1.0.0"
+description: "Manifest-driven deterministic seam-graph extractor (contract + code level)"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_seam_graph_compute: "omnimarket.nodes.node_seam_graph_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+  - "pyyaml>=6.0.2,<7.0.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "seam-graph", "deterministic", "extractor"]
+pack: "seams"
+display_name: "Seam Graph Compute"
+node_role: "compute"

@@ -192,7 +192,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # staging-composition contract — zero I/O, no live bus wiring yet,
     # directly-invoked only, same pattern as node_report_validation_compute):
     # 383 -> 384.
-    assert summary["node_dirs"] == 384
+    # OMN-15763 adds node_seam_graph_compute (COMPUTE; manifest-driven
+    # seam-graph extractor — contract-declared `seams:` blocks + code-level
+    # producer/consumer/env/@ref scan, no live bus wiring yet, directly
+    # invoked via runtime_dispatch.command_topic) and node_seam_match_compute
+    # (COMPUTE; canonical seam-projection/v1 serializer + three-leg
+    # seam-match classifier, same directly-invoked pattern): 384 -> 386.
+    assert summary["node_dirs"] == 386
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -227,7 +233,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # runtime_dispatch, resolves as routable): 379 -> 380.
     # OMN-15253 adds the staging-readiness-compute route (addressable via
     # runtime_dispatch, resolves as routable): 380 -> 381.
-    assert summary["entry_points"] == 381
+    # OMN-15763 adds the seam-graph-compute and seam-match-compute routes
+    # (both addressable via runtime_dispatch.command_topic, resolve as
+    # routable): 381 -> 383.
+    assert summary["entry_points"] == 383
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

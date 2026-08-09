@@ -1,0 +1,99 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""``seam-graph/v1`` output models for node_seam_graph_compute (OMN-15763).
+
+Two extraction classes, kept structurally distinct so a reviewer can see
+which is which:
+
+* ``ModelSeamGraphEdgeDeclaration`` — a declared seam edge read from a
+  producing ``contract.yaml``'s ``seams:`` block (proposal step 1). This is
+  the authoritative, typed declaration.
+* ``ModelSeamGraphCodeObservation`` — a raw code-level observation (Kafka
+  producer/consumer topic literal, ``os.environ`` read, ``@ref`` pin) found
+  by scanning source files. These are evidence, not declarations — they feed
+  ``node_seam_match_compute``'s "observed" legs once correlated to an edge.
+
+Both are covered by the same per-source sha256 manifest (mirroring
+``node_contract_graph_ir_compute``) so the whole graph is provably
+reproducible from a pinned tree (AC7): re-running against the same source
+bytes always yields the same edges, the same observations, and the same
+manifest, because both are derived by sorting deterministically and hashing
+file bytes rather than relying on filesystem iteration order.
+"""
+
+from __future__ import annotations
+
+from enum import StrEnum
+from typing import Literal
+
+from pydantic import BaseModel, ConfigDict, Field
+
+__all__ = [
+    "EnumSeamGraphObservationKind",
+    "ModelSeamGraphCodeObservation",
+    "ModelSeamGraphEdgeDeclaration",
+    "ModelSeamGraphSourceHashEntry",
+    "ModelSeamGraphV1",
+]
+
+
+class EnumSeamGraphObservationKind(StrEnum):
+    """Which code-level extractor produced this observation."""
+
+    PRODUCER_SEND = "producer_send"
+    CONSUMER_SUBSCRIBE = "consumer_subscribe"
+    ENV_READ = "env_read"
+    REF_PIN = "ref_pin"
+
+
+class ModelSeamGraphEdgeDeclaration(BaseModel):
+    """One seam edge declared in a producing contract.yaml's seams: block."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    edge_id: str = Field(min_length=1)
+    seam: str = Field(min_length=1)
+    role: str = Field(min_length=1)
+    source_contract_path: str = Field(min_length=1)
+    topic: str = Field(min_length=1)
+    envelope_model: str = Field(min_length=1)
+    envelope_version: str = Field(min_length=1)
+
+
+class ModelSeamGraphCodeObservation(BaseModel):
+    """One raw code-level observation from scanning a source file."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_path: str = Field(min_length=1)
+    kind: EnumSeamGraphObservationKind
+    value: str = Field(min_length=1)
+    line_number: int = Field(ge=1)
+
+
+class ModelSeamGraphSourceHashEntry(BaseModel):
+    """Per-source sha256 manifest entry (determinism proof, AC7)."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_path: str = Field(min_length=1)
+    source_sha256: str = Field(min_length=64, max_length=64)
+
+
+class ModelSeamGraphV1(BaseModel):
+    """The full ``seam-graph/v1`` output: declared edges + code observations
+    + the per-source sha256 manifest that proves the graph is reproducible.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    schema_version: Literal["seam-graph/v1"] = "seam-graph/v1"
+    discovery_roots: tuple[str, ...] = Field(default_factory=tuple)
+    edges: tuple[ModelSeamGraphEdgeDeclaration, ...] = Field(default_factory=tuple)
+    code_observations: tuple[ModelSeamGraphCodeObservation, ...] = Field(
+        default_factory=tuple
+    )
+    source_manifest: tuple[ModelSeamGraphSourceHashEntry, ...] = Field(
+        default_factory=tuple
+    )

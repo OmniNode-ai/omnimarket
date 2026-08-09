@@ -1,0 +1,153 @@
+#!/usr/bin/env python3
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+
+"""Seed ``src/omnimarket/configs/seams.v1.yaml`` from the verified
+delegation seam graph (OMN-15763).
+
+Source of truth: ``docs/design/2026-08-08-delegation-seam-graph.json``
+(commit 92483f200, adversarially re-verified 21:17:24Z — see
+docs/design/2026-08-08-delegation-seam-graph.md §6). That JSON carries
+free-text ``producer.shape`` / ``consumer.shape`` descriptions and
+both-sides file:line citations, not the field-level structured shape
+``ModelSeamProjection`` requires (topic / envelope_model / envelope_version
+/ key_fields as separate typed values) — the 2026-08-08 addendum notes that
+field-level extraction needs the actual Python model files read, which
+``node_seam_graph_compute``'s contract-declared extractor path performs
+once producing contracts declare ``seams:`` blocks (proposal step 1, not
+yet done for these 15 edges).
+
+Seeding a fabricated ``ModelSeamProjection`` from prose here would invent
+structure the source data does not actually carry. Instead this script
+pins each edge's VERIFIED SOURCE RECORD (edge id, seam description,
+classification, producer/consumer shape prose) with a sha256 computed via
+the same canonical-JSON idiom as ``omnimarket.seams.canonical`` — so the
+registry is provably reproducible from the JSON and any edit to the source
+record changes its pin, without claiming a per-field wire-projection match
+that has not actually been extracted yet.
+
+Regenerable status is honest, not optimistic: the 2026-08-08 methodology
+(§0.3) found 1 nominal MATCHED (S10) but ZERO actually regenerable of 15 —
+S10 is a contract.yaml-vs-contract.yaml shape comparison, exactly what the
+regeneration-boundary rule excludes. Every edge here is seeded
+``regenerable: false`` until a real node_seam_match_compute three-leg run
+(with live observed projections) proves otherwise.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import sys
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_OUTPUT_PATH = _REPO_ROOT / "src" / "omnimarket" / "configs" / "seams.v1.yaml"
+
+
+def _resolve_source_json() -> Path | None:
+    """Locate the source JSON via $OMNI_HOME — never guess repo-nesting
+    depth, since that varies between the canonical clone (omni_home/omnimarket)
+    and a worktree checkout (omni_home/omni_worktrees/<ticket>/omnimarket).
+
+    Returns ``None`` (not a raised ``KeyError``) when $OMNI_HOME is unset, so
+    ``main()`` reaches its own controlled error-and-exit path rather than a
+    raw traceback.
+    """
+
+    omni_home_raw = os.environ.get("OMNI_HOME")
+    if not omni_home_raw:
+        return None
+    return (
+        Path(omni_home_raw)
+        / "docs"
+        / "design"
+        / "2026-08-08-delegation-seam-graph.json"
+    )
+
+
+def _canonical_json(record: dict[str, Any]) -> str:
+    return json.dumps(record, sort_keys=True, separators=(",", ":"))
+
+
+def _pin_hash(record: dict[str, Any]) -> str:
+    return hashlib.sha256(_canonical_json(record).encode("utf-8")).hexdigest()
+
+
+def _seed_entry(edge: dict[str, Any]) -> dict[str, Any]:
+    producer = edge.get("producer") or {}
+    consumer = edge.get("consumer") or {}
+    record = {
+        "edge_id": edge["id"],
+        "seam": edge["seam"],
+        "classification": edge["classification"],
+        "producer_shape": producer.get("shape"),
+        "consumer_shape": consumer.get("shape"),
+    }
+    return {
+        "edge_id": edge["id"],
+        "seam": edge["seam"],
+        "leg": edge.get("leg"),
+        "classification": edge["classification"],
+        "severity": edge.get("severity"),
+        "producer_shape": producer.get("shape"),
+        "consumer_shape": consumer.get("shape"),
+        "regenerable": False,
+        "pinned_hash": _pin_hash(record),
+        "related_tickets": edge.get("related_tickets", []),
+    }
+
+
+def build_registry(source_json_path: Path) -> dict[str, Any]:
+    data = json.loads(source_json_path.read_text(encoding="utf-8"))
+    edges = sorted(data["edges"], key=lambda e: e["id"])
+    entries = [_seed_entry(edge) for edge in edges]
+    regenerable_count = sum(1 for entry in entries if entry["regenerable"])
+    matched_count = sum(1 for entry in entries if entry["classification"] == "MATCHED")
+    return {
+        "schema_version": "seams-registry/v1",
+        "generated_from": {
+            "source_path": "docs/design/2026-08-08-delegation-seam-graph.json",
+            "source_schema_version": data.get("schema_version"),
+            "generated_at": data.get("generated_at"),
+        },
+        "summary": {
+            "edges_total": len(entries),
+            "matched_count": matched_count,
+            "regenerable_count": regenerable_count,
+            "by_classification": data.get("summary_counts", {}),
+        },
+        "edges": entries,
+    }
+
+
+def main() -> int:
+    source_json = _resolve_source_json()
+    if source_json is None:
+        print("OMNI_HOME is not set — cannot locate the source JSON", file=sys.stderr)
+        return 1
+    if not source_json.exists():
+        print(f"source JSON not found: {source_json}", file=sys.stderr)
+        return 1
+    registry = build_registry(source_json)
+    _OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    header = (
+        "# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.\n"
+        "# SPDX-License-Identifier: MIT\n"
+        "# GENERATED by scripts/seed_seams_registry.py (OMN-15763) — do not hand-edit.\n"
+        "# Source of truth: docs/design/2026-08-08-delegation-seam-graph.json\n"
+        "# Regenerate: uv run python scripts/seed_seams_registry.py\n"
+    )
+    with _OUTPUT_PATH.open("w", encoding="utf-8") as handle:
+        handle.write(header)
+        yaml.safe_dump(registry, handle, sort_keys=False, default_flow_style=False)
+    print(f"wrote {_OUTPUT_PATH} ({len(registry['edges'])} edges)")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
