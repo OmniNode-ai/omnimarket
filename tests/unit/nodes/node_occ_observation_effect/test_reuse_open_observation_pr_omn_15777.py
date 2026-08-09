@@ -141,12 +141,29 @@ class FakeGitHub:
         return {"number": number, "html_url": url}
 
     # -- clone / push against the real bare origin ---------------------------
+    @staticmethod
+    def _configure_identity(clone_dir: str) -> None:
+        """CI runners carry no global git identity (unlike a dev machine), and
+        the real ``_clone_default``/``_clone_branch`` always configure this
+        after cloning — the fake must too, or the handler's later ``git
+        commit`` fails with exit 128 ("Please tell me who you are") only in
+        an identity-less environment, never locally."""
+        subprocess.run(
+            ["git", "config", "user.name", "test"], cwd=clone_dir, check=True
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@omninode.ai"],
+            cwd=clone_dir,
+            check=True,
+        )
+
     def clone_default(self, clone_dir: str, _token: str, _occ_repo: str) -> str:
         subprocess.run(
             ["git", "clone", "-q", str(self.origin), clone_dir],
             check=True,
             capture_output=True,
         )
+        self._configure_identity(clone_dir)
         return "dev"
 
     def clone_branch(
@@ -166,6 +183,7 @@ class FakeGitHub:
             check=True,
             capture_output=True,
         )
+        self._configure_identity(clone_dir)
 
     def push(self, clone_dir: str, branch: str, _token: str, _occ_repo: str) -> None:
         subprocess.run(
