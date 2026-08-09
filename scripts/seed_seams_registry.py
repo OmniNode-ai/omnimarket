@@ -49,13 +49,25 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _OUTPUT_PATH = _REPO_ROOT / "src" / "omnimarket" / "configs" / "seams.v1.yaml"
 
 
-def _resolve_source_json() -> Path:
+def _resolve_source_json() -> Path | None:
     """Locate the source JSON via $OMNI_HOME — never guess repo-nesting
     depth, since that varies between the canonical clone (omni_home/omnimarket)
-    and a worktree checkout (omni_home/omni_worktrees/<ticket>/omnimarket)."""
+    and a worktree checkout (omni_home/omni_worktrees/<ticket>/omnimarket).
 
-    omni_home = Path(os.environ["OMNI_HOME"])
-    return omni_home / "docs" / "design" / "2026-08-08-delegation-seam-graph.json"
+    Returns ``None`` (not a raised ``KeyError``) when $OMNI_HOME is unset, so
+    ``main()`` reaches its own controlled error-and-exit path rather than a
+    raw traceback.
+    """
+
+    omni_home_raw = os.environ.get("OMNI_HOME")
+    if not omni_home_raw:
+        return None
+    return (
+        Path(omni_home_raw)
+        / "docs"
+        / "design"
+        / "2026-08-08-delegation-seam-graph.json"
+    )
 
 
 def _canonical_json(record: dict[str, Any]) -> str:
@@ -72,6 +84,7 @@ def _seed_entry(edge: dict[str, Any]) -> dict[str, Any]:
     record = {
         "edge_id": edge["id"],
         "seam": edge["seam"],
+        "classification": edge["classification"],
         "producer_shape": producer.get("shape"),
         "consumer_shape": consumer.get("shape"),
     }
@@ -114,6 +127,9 @@ def build_registry(source_json_path: Path) -> dict[str, Any]:
 
 def main() -> int:
     source_json = _resolve_source_json()
+    if source_json is None:
+        print("OMNI_HOME is not set — cannot locate the source JSON", file=sys.stderr)
+        return 1
     if not source_json.exists():
         print(f"source JSON not found: {source_json}", file=sys.stderr)
         return 1

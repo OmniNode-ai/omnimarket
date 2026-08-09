@@ -65,18 +65,23 @@ def test_seam_match_verdict_covers_every_declared_output_field() -> None:
         envelope_model="omnibase_core.models.wire.model_delegation_routing_input.ModelDelegationRoutingInput",
         envelope_version="1.0.0",
     )
+    from omnimarket.seams.canonical import canonical_sha256
+
     request = ModelSeamMatchRequest(
         edge_id="S1",
         declared_producer=producer,
         declared_consumer=consumer,
         observed_producer=producer,
         observed_consumer=consumer,
+        pinned_hash=canonical_sha256(producer),
     )
     verdict = HandlerSeamMatch().handle(request)
 
     # Every field named in node_seam_match_compute/contract.yaml `outputs:`,
     # exercised as a real attribute access against a real handler result.
     assert verdict.edge_id == "S1"
+    assert verdict.stale_proof is not None
+    assert verdict.stale_proof.stale is False
     assert verdict.verdict is not None
     assert verdict.regenerability is not None
     assert verdict.leg1_declared_vs_declared.passed is True

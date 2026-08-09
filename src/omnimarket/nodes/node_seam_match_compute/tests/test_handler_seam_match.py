@@ -251,3 +251,64 @@ class TestStaleProofDetector:
         assert result.stale is True
         assert result.detail == "seam changed, proof stale"
         assert result.pinned_hash != result.current_hash
+
+
+@pytest.mark.unit
+class TestStaleProofWiredIntoHandle:
+    """CodeRabbit finding: ModelSeamMatchRequest.pinned_hash was declared but
+    handle() never read it, so the node entry point could never report a
+    stale proof. These verify the wiring, not just the standalone helper."""
+
+    def test_matching_pinned_hash_yields_non_stale_verdict(self) -> None:
+        producer = _projection(role=EnumSeamProjectionRole.PRODUCER)
+        consumer = _projection(role=EnumSeamProjectionRole.CONSUMER)
+        pinned = canonical_sha256(producer)
+        request = ModelSeamMatchRequest(
+            edge_id="S1",
+            declared_producer=producer,
+            declared_consumer=consumer,
+            pinned_hash=pinned,
+        )
+        verdict = HandlerSeamMatch().handle(request)
+        assert verdict.stale_proof is not None
+        assert verdict.stale_proof.stale is False
+
+    def test_drifted_pinned_hash_yields_stale_verdict(self) -> None:
+        producer = _projection(
+            role=EnumSeamProjectionRole.PRODUCER, envelope_version="1.0.0"
+        )
+        consumer = _projection(role=EnumSeamProjectionRole.CONSUMER)
+        stale_pin = canonical_sha256(_projection(envelope_version="0.1.0"))
+        request = ModelSeamMatchRequest(
+            edge_id="S1",
+            declared_producer=producer,
+            declared_consumer=consumer,
+            pinned_hash=stale_pin,
+        )
+        verdict = HandlerSeamMatch().handle(request)
+        assert verdict.stale_proof is not None
+        assert verdict.stale_proof.stale is True
+        assert verdict.stale_proof.detail == "seam changed, proof stale"
+
+    def test_no_pinned_hash_yields_none_not_false_not_stale(self) -> None:
+        producer = _projection(role=EnumSeamProjectionRole.PRODUCER)
+        consumer = _projection(role=EnumSeamProjectionRole.CONSUMER)
+        request = ModelSeamMatchRequest(
+            edge_id="S1", declared_producer=producer, declared_consumer=consumer
+        )
+        verdict = HandlerSeamMatch().handle(request)
+        assert verdict.stale_proof is None
+
+    def test_stale_proof_still_computed_on_unmatched_edge(self) -> None:
+        producer = _projection(role=EnumSeamProjectionRole.PRODUCER)
+        pinned = canonical_sha256(producer)
+        request = ModelSeamMatchRequest(
+            edge_id="S1",
+            declared_producer=producer,
+            declared_consumer=None,
+            pinned_hash=pinned,
+        )
+        verdict = HandlerSeamMatch().handle(request)
+        assert verdict.verdict == EnumSeamMatchVerdict.UNMATCHED
+        assert verdict.stale_proof is not None
+        assert verdict.stale_proof.stale is False

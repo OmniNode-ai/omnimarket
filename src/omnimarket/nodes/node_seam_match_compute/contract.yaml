@@ -94,6 +94,12 @@ outputs:
     type: string
   declared_consumer_hash:
     type: string
+  stale_proof:
+    type: object
+    description: >-
+      Populated only when pinned_hash + declared_producer were both
+      supplied; null (never a false "not stale") when there was nothing to
+      check against.
 
 terminal_event: onex.evt.omnimarket.seam-match-completed.v1
 

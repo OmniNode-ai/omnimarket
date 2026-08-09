@@ -99,6 +99,25 @@ def _leg(
     return ModelSeamLegResult(passed=path is None, mismatching_field_path=path)
 
 
+def _stale_proof_for_request(
+    request: ModelSeamMatchRequest, producer: ModelSeamProjection | None
+) -> ModelSeamStaleProofCheck | None:
+    """Wire the stale-proof detector into every ``handle`` return path.
+
+    ``None`` (not a false "not stale") when there is nothing to check — no
+    ``pinned_hash`` was supplied, or there is no declared producer to check
+    it against.
+    """
+
+    if request.pinned_hash is None or producer is None:
+        return None
+    return check_stale_proof(
+        edge_id=request.edge_id,
+        pinned_hash=request.pinned_hash,
+        current_producer=producer,
+    )
+
+
 class HandlerSeamMatch:
     """ONEX compute handler for the three-leg seam-match classification."""
 
@@ -108,6 +127,7 @@ class HandlerSeamMatch:
 
         declared_producer_hash = canonical_sha256(producer) if producer else None
         declared_consumer_hash = canonical_sha256(consumer) if consumer else None
+        stale_proof = _stale_proof_for_request(request, producer)
 
         if producer is None or consumer is None:
             # UNMATCHED: a produced seam has no consumer, or a consumed
@@ -123,6 +143,7 @@ class HandlerSeamMatch:
                 leg3_observed_consumer_vs_declared=not_evaluated,
                 declared_producer_hash=declared_producer_hash,
                 declared_consumer_hash=declared_consumer_hash,
+                stale_proof=stale_proof,
             )
 
         leg1 = _leg(producer, consumer)
@@ -145,6 +166,7 @@ class HandlerSeamMatch:
                 leg3_observed_consumer_vs_declared=not_evaluated,
                 declared_producer_hash=declared_producer_hash,
                 declared_consumer_hash=declared_consumer_hash,
+                stale_proof=stale_proof,
             )
 
         leg2 = _leg(producer, request.observed_producer)
@@ -169,6 +191,7 @@ class HandlerSeamMatch:
             leg3_observed_consumer_vs_declared=leg3,
             declared_producer_hash=declared_producer_hash,
             declared_consumer_hash=declared_consumer_hash,
+            stale_proof=stale_proof,
         )
 
 

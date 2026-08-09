@@ -21,4 +21,7 @@ class ModelSeamGraphExtractionRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     repo_base_path: str = Field(min_length=1)
-    discovery_roots: tuple[str, ...] = Field(default_factory=tuple)
+    # No default: contract.yaml declares this required:true. A silent empty
+    # default would let a caller omit it and get a graph with zero edges,
+    # zero observations, and zero manifest entries with no error at all.
+    discovery_roots: tuple[str, ...] = Field(min_length=1)

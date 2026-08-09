@@ -57,21 +57,6 @@ class ModelSeamLegResult(BaseModel):
     mismatching_field_path: str | None = None
 
 
-class ModelSeamMatchVerdict(BaseModel):
-    """Full seam-match verdict for one edge."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    edge_id: str = Field(min_length=1)
-    verdict: EnumSeamMatchVerdict
-    regenerability: EnumSeamRegenerabilityClass
-    leg1_declared_vs_declared: ModelSeamLegResult
-    leg2_observed_producer_vs_declared: ModelSeamLegResult
-    leg3_observed_consumer_vs_declared: ModelSeamLegResult
-    declared_producer_hash: str | None = None
-    declared_consumer_hash: str | None = None
-
-
 class ModelSeamStaleProofCheck(BaseModel):
     """Stale-proof detector result: does the pinned registry hash still
     match the current declared-producer projection's canonical hash?
@@ -87,3 +72,22 @@ class ModelSeamStaleProofCheck(BaseModel):
     current_hash: str = Field(min_length=1)
     stale: bool
     detail: str = Field(min_length=1)
+
+
+class ModelSeamMatchVerdict(BaseModel):
+    """Full seam-match verdict for one edge."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    edge_id: str = Field(min_length=1)
+    verdict: EnumSeamMatchVerdict
+    regenerability: EnumSeamRegenerabilityClass
+    leg1_declared_vs_declared: ModelSeamLegResult
+    leg2_observed_producer_vs_declared: ModelSeamLegResult
+    leg3_observed_consumer_vs_declared: ModelSeamLegResult
+    declared_producer_hash: str | None = None
+    declared_consumer_hash: str | None = None
+    # Populated only when the request supplied both a pinned_hash and a
+    # declared_producer to check it against; None (not a false "not stale")
+    # when there was nothing to check.
+    stale_proof: ModelSeamStaleProofCheck | None = None

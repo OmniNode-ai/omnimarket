@@ -111,12 +111,27 @@ class TestSeamsRegistryStaleProof:
         fresh_by_id = {edge["edge_id"]: edge for edge in fresh["edges"]}
         checked_in_by_id = {edge["edge_id"]: edge for edge in checked_in["edges"]}
 
+        # The edge-ID SET itself must match — a new/removed source edge is
+        # staleness too, not just a changed pin on an edge both sides agree
+        # exists.
+        assert set(checked_in_by_id) == set(fresh_by_id), (
+            "seam changed, proof stale: registry edge-ID set does not match a "
+            "fresh regeneration from the source JSON (edge added/removed) — "
+            "re-run scripts/seed_seams_registry.py. "
+            f"checked-in-only: {sorted(set(checked_in_by_id) - set(fresh_by_id))}; "
+            f"fresh-only: {sorted(set(fresh_by_id) - set(checked_in_by_id))}"
+        )
+
         for edge_id, checked_in_edge in checked_in_by_id.items():
             fresh_edge = fresh_by_id[edge_id]
-            assert checked_in_edge["pinned_hash"] == fresh_edge["pinned_hash"], (
-                f"seam changed, proof stale: {edge_id} pinned_hash does not match "
+            # Compare the COMPLETE generated record, not just pinned_hash —
+            # catches a changed unpinned generated field (e.g. severity,
+            # related_tickets) that a hash-only comparison would miss.
+            assert checked_in_edge == fresh_edge, (
+                f"seam changed, proof stale: {edge_id} record does not match "
                 "a fresh regeneration from the source JSON — re-run "
-                "scripts/seed_seams_registry.py"
+                "scripts/seed_seams_registry.py. "
+                f"checked-in: {checked_in_edge}; fresh: {fresh_edge}"
             )
 
     def test_pin_hash_is_deterministic_across_repeat_calls(self) -> None:

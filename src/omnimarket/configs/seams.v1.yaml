@@ -27,7 +27,7 @@ edges:
   producer_shape: BARE canonical topic string, e.g. `onex.cmd.omnibase-infra.delegation-request.v1`
   consumer_shape: TENANT-PREFIXED wire topic, `tenant-<slug>.onex.cmd.omnibase-infra.delegation-request.v1`
   regenerable: false
-  pinned_hash: df236706213dbddd28b3fe48fea81023c1490dffc3d0cd7ad9c3d8ee03d206b6
+  pinned_hash: 0d133ec25ac35e11f63dc2267728f5ed17fbd16df042c3cd2c92f9eae6eb57ca
   related_tickets:
   - OMN-15680
   - OMN-10858
@@ -41,7 +41,7 @@ edges:
     strip
   consumer_shape: identical bare topic strings
   regenerable: false
-  pinned_hash: aff52afc553ddce7b0cc6b447a372066c5869481ab1d7e6cfd6e4e3f0aed6ef8
+  pinned_hash: eedf954201c8d6774e5723942b36184446078b05d5da38cd1d0568b650289d35
   related_tickets:
   - OMN-14346
 - edge_id: S11
@@ -53,7 +53,7 @@ edges:
   consumer_shape: ModelDelegateSkillRequest with extra='forbid'; tenant_id documented
     as a slug
   regenerable: false
-  pinned_hash: 7c115db39c8ec0053bb406850699efd1bbef3bf6b1672f41d5e92545e33c5fee
+  pinned_hash: 6a14c7a1668d0790436398f4e21404870a3c94cee060a43e7cfdd27cb0187714
   related_tickets:
   - OMN-14367
   - OMN-15683
@@ -66,7 +66,7 @@ edges:
   consumer_shape: omnibase_infra reads `dispatcher_id`, with a getattr fallback shim
     reconciling the two names at the call site
   regenerable: false
-  pinned_hash: 3af38e537b308a96110f64f5dc814165cea271c90a08e047c9a8a92916117dc6
+  pinned_hash: 26c2172a9e02960c8879d06bddb7a9d0da37dacd290794cdc0f7a6cea30fec7d
   related_tickets:
   - OMN-4057
 - edge_id: S13
@@ -78,7 +78,7 @@ edges:
   consumer_shape: "byte-identical literal string, defined independently \u2014 not\
     \ imported"
   regenerable: false
-  pinned_hash: 0a94294186611afa0c1af36085b05cf4e27a7ff28c947d6ed03f042777adab33
+  pinned_hash: 8968717b9d139760836c383edd4cb83ac39d0ac90af372dec907f250429efc9a
   related_tickets: []
 - edge_id: S14
   seam: onex.cmd.omniclaude.delegate-task.v1 and its two evt topics
@@ -89,7 +89,7 @@ edges:
   consumer_shape: no producer for the subscribe topic, no emitter for either publish
     topic, and node.py is a bare NodeOrchestrator shell
   regenerable: false
-  pinned_hash: f4ee877356d3760cc5d3826020c5adbac29ec94749618d2aa1b8498832a4a6c7
+  pinned_hash: 24312e5aef9825bb6e2917d946b3082c34373e98d083788df8daf8e289d88b8e
   related_tickets:
   - OMN-10834
   - OMN-14584
@@ -102,7 +102,7 @@ edges:
   consumer_shape: required non-empty for any backend used; otherwise _build_env_config()
     returns None and DelegationRunner.run() always returns None
   regenerable: false
-  pinned_hash: a410a6cd216956fe11160a45205a022785a8933bde4bcb38604299a132169e88
+  pinned_hash: 9c39195e80f3a6cf2e0cfb51282be4118bab10270b9080749138960abd172291
   related_tickets: []
 - edge_id: S2
   seam: kafka wire topic for delegation-completed / delegation-failed
@@ -112,7 +112,7 @@ edges:
   producer_shape: TENANT-PREFIXED wire topic, `tenant-<slug>.onex.evt.omnibase-infra.delegation-completed.v1`
   consumer_shape: BARE canonical topic strings
   regenerable: false
-  pinned_hash: fbd77a17337b8f1ff8a930b4f7e2b3287183fa31f614c0219e9f16f6719ed0c2
+  pinned_hash: 63977b0fe227e8afd26c6b40d34fc247fa1924e91a788752d89114730fefc267
   related_tickets:
   - OMN-15680
   - OMN-15681
@@ -128,7 +128,7 @@ edges:
   consumer_shape: onex-api's own publisher and terminal consumer both use the BARE
     names, which this provisioner never creates
   regenerable: false
-  pinned_hash: 43cccac402d5c6b47a523dca2cbb12367cb87839cdde91132e274dfbfd61c909
+  pinned_hash: 81ba1589eb5e5315aa0a7b3296eb510927b61b1a3b4f43514ef7ae57ba10b8da
   related_tickets:
   - OMN-12911
   - OMN-15751
@@ -143,7 +143,7 @@ edges:
     envelope_version{...}'
   consumer_shape: ModelEventEnvelope[dict[str,object]].model_validate_json(...)
   regenerable: false
-  pinned_hash: cf8797a5084263f37fd39abe3d8e001ffd2dcae272e5e44ebeb3156256342a6c
+  pinned_hash: 3038694e3910b27b43ffaeed76bd53a8dfeeae57a107a04c5f530fd6af75615a
   related_tickets: []
 - edge_id: S5
   seam: metadata.tags.source_tenant_id / source_tenant_principal_id
@@ -156,7 +156,7 @@ edges:
     tags[''source_tenant_id''] == str(identity.tenant_id), tags[''source_tenant_principal_id'']
     == str(identity.principal_id); ValueError otherwise'
   regenerable: false
-  pinned_hash: c8377c10922f513d6bc0397c734365e9488ede267d1311829a734c9a949823c7
+  pinned_hash: 3a7a3f9c4678d52e075de5e55306e7c7514d6880539292078f7274c4b352352e
   related_tickets:
   - OMN-15751
 - edge_id: S6
@@ -169,7 +169,7 @@ edges:
   consumer_shape: "no live caller \u2014 the deployed process calls ServiceGatewayForwarder._prepare_outbound/_prepare_inbound\
     \ on raw ModelEventEnvelope instead"
   regenerable: false
-  pinned_hash: 8e1adfa7c9e5faf87d6044afc12f45b439b835b99042e75bf8baa2bdaae19a63
+  pinned_hash: 9fb28d3f1ac2a0224030f2491e4edc9f5c4d7e6f3fe9cf8e7989b99aa6a1ecf1
   related_tickets:
   - OMN-15740
 - edge_id: S7
@@ -182,7 +182,7 @@ edges:
   consumer_shape: "no resolver \u2014 the deployed YAML hardcodes the literal broker\
     \ list and region instead"
   regenerable: false
-  pinned_hash: 346572fc9e14d68213c5247bf34f3e6e5d3a60ec6316b13e34b2d98924ba2939
+  pinned_hash: 39b4d9c30fc2d1b8bfa942c06c6b4562769221021326902d9dd836623dd2d865
   related_tickets:
   - OMN-15743
   - OMN-15744
@@ -195,7 +195,7 @@ edges:
   consumer_shape: read only by EventBusKafka, which this process never instantiates;
     the process uses KafkaTransport, which never reads it
   regenerable: false
-  pinned_hash: ec6144fb44bb12d81ecab8feb70dca7c1ce232922fc706c56eac670737c222ec
+  pinned_hash: 35f6c0b32e96ca8544719ad600dd6f846044fa3587b8469ebed6ef67c38872cd
   related_tickets: []
 - edge_id: S9
   seam: gateway-heartbeat topic listed in BOTH mirror_topics.inbound and mirror_topics.outbound
@@ -208,5 +208,5 @@ edges:
     \ entry becomes a cloud publish target \u2014 so the process subscribes to the\
     \ heartbeat it itself publishes"
   regenerable: false
-  pinned_hash: 04bede0cce5ff67058c7a8d3b52853837da335fe290009bd7e54d6951d300429
+  pinned_hash: e37d44449c773610b25ecdd9a6bcb7a951d29d46c7455953b19f34cd9a44e42f
   related_tickets: []
