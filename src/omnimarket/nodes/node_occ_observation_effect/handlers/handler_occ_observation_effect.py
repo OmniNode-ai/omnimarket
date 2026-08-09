@@ -727,7 +727,7 @@ class HandlerOccObservationEffect:
     def _find_reusable_observation_pr(
         self, occ_owner: str, occ_name: str, token: str
     ) -> tuple[str, int, str] | None:
-        """First OPEN observation PR, of ANY identity (OMN-15777).
+        """First OPEN + MERGEABLE observation PR, of ANY identity (OMN-15777).
 
         Widened sibling of ``_open_pr_for_identity``: that method only ever
         matches the SAME identity (same product repo/PR/head_sha/policy
@@ -742,14 +742,59 @@ class HandlerOccObservationEffect:
 
         Callers must have already ruled out a same-identity match — this
         method does not distinguish identity at all, by design.
+
+        Hardening (post-OMN-15777, live 2026-08-09): the original version
+        returned the oldest match unconditionally, even when GitHub already
+        reports that PR's merge state as CONFLICTING. Live OCC state showed
+        every new observation funneling onto exactly one unmergeable PR
+        (OCC#6155) for this reason — appending two more commits onto a branch
+        GitHub cannot cleanly merge does not repair the conflict, it just
+        deadlocks every future observation onto the same dead-end PR. A
+        CONFLICTING candidate is now skipped in favor of the next-oldest
+        MERGEABLE one; if every open candidate is CONFLICTING, no reuse
+        target exists at all and the caller mints a fresh branch/PR instead
+        (see ``_write_sync``) rather than compounding the deadlock.
         """
         for pr in self._iter_open_prs(occ_owner, occ_name, token, "asc"):
             match = self._matching_observation_pr(
                 pr, occ_owner, occ_name, _OBSERVATION_BRANCH_PREFIX
             )
-            if match is not None:
-                return match
+            if match is None:
+                continue
+            _ref, number, _url = match
+            if self._open_pr_is_conflicting(occ_owner, occ_name, number, token):
+                logger.warning(
+                    "occ_observation_effect: skipping CONFLICTING reuse "
+                    "candidate OCC#%s — appending onto an unmergeable branch "
+                    "cannot repair the conflict and would deadlock every "
+                    "future observation onto it; continuing to scan for a "
+                    "mergeable candidate, or minting a fresh PR if none "
+                    "remains",
+                    number,
+                )
+                continue
+            return match
         return None
+
+    def _open_pr_is_conflicting(
+        self, occ_owner: str, occ_name: str, number: int, token: str
+    ) -> bool:
+        """True if GitHub reports ``number``'s merge state as CONFLICTING.
+
+        The PR-listing endpoint that backs ``_iter_open_prs`` never populates
+        ``mergeable``/``mergeable_state`` — GitHub only computes those for one
+        PR at a time — so a second, single-PR REST GET is required per
+        candidate this selector considers.
+        """
+        payload = rest_json(
+            "GET",
+            f"/repos/{occ_owner}/{occ_name}/pulls/{number}",
+            token=token,
+        )
+        return (
+            payload.get("mergeable_state") == "dirty"
+            or payload.get("mergeable") is False
+        )
 
     def _first_open_pr(
         self, occ_owner: str, occ_name: str, branch: str, token: str

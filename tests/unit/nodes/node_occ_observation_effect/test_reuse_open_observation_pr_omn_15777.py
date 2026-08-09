@@ -109,6 +109,12 @@ class FakeGitHub:
         self.created_titles: list[str] = []
         self.pushes: list[tuple[str, str]] = []  # (branch, head_sha_after_push)
         self._next_number = 7001
+        #: PR number -> single-PR GET payload (OMN-15777 hardening). A number
+        #: absent from this map defaults to clean/mergeable, matching every
+        #: freshly-created branch's real starting state and preserving every
+        #: pre-existing test's behavior unmodified.
+        self.mergeable_by_number: dict[int, dict[str, Any]] = {}
+        self.mergeable_probe_numbers: list[int] = []
 
     # -- rest_json_array (PR listing) ---------------------------------------
     def rest_json_array(
@@ -119,7 +125,7 @@ class FakeGitHub:
             return [pr for pr in self.open_prs if pr["head"]["ref"] == wanted]
         return list(self.open_prs)
 
-    # -- rest_json (PR create + commit probe) --------------------------------
+    # -- rest_json (PR create + commit probe + single-PR mergeable check) ----
     def rest_json(
         self,
         _method: str,
@@ -128,10 +134,21 @@ class FakeGitHub:
         body: dict[str, Any] | None = None,
         **_kwargs: Any,
     ) -> dict[str, Any]:
-        if body is None:
+        if body is not None:
+            number = self._next_number
+            return self._create_pr(body, number)
+        if "/commits/" in path:
             sha = path.rsplit("/", 1)[-1]
             return {"sha": sha}
-        number = self._next_number
+        # Single-PR GET (mergeable check, OMN-15777 hardening):
+        # /repos/{owner}/{name}/pulls/{number}
+        number = int(path.rsplit("/", 1)[-1])
+        self.mergeable_probe_numbers.append(number)
+        return self.mergeable_by_number.get(
+            number, {"mergeable": True, "mergeable_state": "clean"}
+        )
+
+    def _create_pr(self, body: dict[str, Any], number: int) -> dict[str, Any]:
         self._next_number += 1
         url = f"https://github.com/OmniNode-ai/onex_change_control/pull/{number}"
         self.open_prs.append(
@@ -417,3 +434,130 @@ async def test_sequential_appends_onto_an_already_advanced_branch_do_not_conflic
             "every observation's evidence entry must survive on the final branch"
         )
     assert len(ids) == len(set(ids)), "no id collision across the three appends"
+
+
+# -- OMN-15777 hardening: reuse selector must skip CONFLICTING candidates ----
+#
+# `_find_reusable_observation_pr` returned the FIRST/OLDEST open
+# `auto/occ-observation-*` PR unconditionally, even when GitHub already
+# reports that PR's merge state as CONFLICTING. On 2026-08-09 live OCC state
+# showed every new observation funneling onto unmergeable OCC#6155 for exactly
+# this reason. The fix skips a CONFLICTING candidate and keeps scanning for
+# the oldest OPEN + MERGEABLE one; if every open candidate is CONFLICTING, no
+# reuse target exists and a fresh PR is minted instead (see the docstring on
+# `_find_reusable_observation_pr` for why: appending onto a branch GitHub
+# cannot cleanly merge does not repair the conflict, it just deadlocks every
+# future observation onto the same unmergeable PR).
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_conflicting_reuse_candidate_is_skipped_fresh_pr_minted(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With exactly one open observation PR, and it is CONFLICTING, the
+    selector must not reuse it — a fresh, mergeable branch/PR is minted."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    conflicting_number = 6155
+    fake.open_prs.append(
+        {
+            "number": conflicting_number,
+            "html_url": (
+                "https://github.com/OmniNode-ai/onex_change_control/pull/"
+                f"{conflicting_number}"
+            ),
+            "head": {
+                "ref": "auto/occ-observation-only-conflicting",
+                "repo": {"full_name": "OmniNode-ai/onex_change_control"},
+            },
+        }
+    )
+    fake.mergeable_by_number[conflicting_number] = {
+        "mergeable": False,
+        "mergeable_state": "dirty",
+    }
+
+    result = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(5001, "f" * 40, 950001), mode="mutate"
+        )
+    )
+
+    assert result.appended_to_existing_pr is False, (
+        "a CONFLICTING candidate must never be treated as a reuse target"
+    )
+    assert result.superseded_by_open_pr is False
+    assert result.occ_pr_number != conflicting_number
+    assert len(fake.created_titles) == 1, (
+        "a fresh PR is opened; the conflicting one is left untouched"
+    )
+    assert conflicting_number in fake.mergeable_probe_numbers, (
+        "the selector must have actually probed the candidate's merge state"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_conflicting_oldest_is_skipped_for_mergeable_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """With TWO open observation PRs — an older CONFLICTING one and a younger
+    MERGEABLE one — the selector must skip the older conflicting PR and reuse
+    the mergeable one, never mint a third PR."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    # Step 1: a genuine observation opens a real (mergeable-by-default) PR —
+    # this becomes the reuse target the fix must select.
+    first = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(4001, "d" * 40, 940001), mode="mutate"
+        )
+    )
+    mergeable_number = first.occ_pr_number
+    assert mergeable_number is not None
+
+    # Step 2: seed an OLDER (listed first — `_find_reusable_observation_pr`
+    # scans ascending/oldest-first) CONFLICTING PR ahead of the mergeable one.
+    conflicting_number = 6100
+    fake.open_prs.insert(
+        0,
+        {
+            "number": conflicting_number,
+            "html_url": (
+                "https://github.com/OmniNode-ai/onex_change_control/pull/"
+                f"{conflicting_number}"
+            ),
+            "head": {
+                "ref": "auto/occ-observation-oldest-conflicting",
+                "repo": {"full_name": "OmniNode-ai/onex_change_control"},
+            },
+        },
+    )
+    fake.mergeable_by_number[conflicting_number] = {
+        "mergeable": False,
+        "mergeable_state": "dirty",
+    }
+
+    # Step 3: a third, different-identity observation must skip the
+    # conflicting oldest PR and append onto the mergeable one instead.
+    third = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(4002, "e" * 40, 940002), mode="mutate"
+        )
+    )
+
+    assert third.appended_to_existing_pr is True
+    assert third.occ_pr_number == mergeable_number
+    assert third.occ_pr_number != conflicting_number
+    assert len(fake.created_titles) == 1, "no second/third PR is ever opened"
+    assert conflicting_number in fake.mergeable_probe_numbers, (
+        "the selector must have actually probed the older candidate's merge "
+        "state before skipping it"
+    )
