@@ -786,13 +786,21 @@ class HandlerOccObservationEffect:
     ) -> bool:
         """True if OCC#``number`` must NOT be used as a reuse target.
 
-        Two independent reasons skip a candidate:
+        Three independent reasons skip a candidate:
 
-        1. **CONFLICTING** — GitHub reports ``mergeable_state == "dirty"`` (or
+        1. **STALE** — the single-PR GET reports ``state`` other than
+           ``"open"``. ``_iter_open_prs``'s listing can go stale between when
+           it was fetched and when this per-candidate check runs (the
+           candidate closed or merged in the meantime, e.g. by a concurrent
+           caller or a human) — reusing a non-open PR's branch is not a
+           candidate to fall back from, it is simply invalid, so this check
+           runs FIRST, before either mergeability check below is even
+           meaningful.
+        2. **CONFLICTING** — GitHub reports ``mergeable_state == "dirty"`` (or
            ``mergeable is False``): appending onto a branch GitHub cannot
            cleanly merge does not repair the conflict, it just deadlocks
            every future observation onto the same dead-end PR.
-        2. **UNRESOLVED** — after :attr:`_MERGE_STATE_POLL_ATTEMPTS` polls,
+        3. **UNRESOLVED** — after :attr:`_MERGE_STATE_POLL_ATTEMPTS` polls,
            GitHub still has not finished computing the merge state
            (``mergeable`` is ``None`` / ``mergeable_state == "unknown"``).
            An unresolved state is not proof the PR is mergeable — treating it
@@ -801,11 +809,21 @@ class HandlerOccObservationEffect:
            assumed safe.
 
         The PR-listing endpoint that backs ``_iter_open_prs`` never populates
-        ``mergeable``/``mergeable_state`` — GitHub only computes those for one
-        PR at a time — so a second, single-PR REST GET (polled) is required
-        per candidate this selector considers.
+        ``state``/``mergeable``/``mergeable_state`` — GitHub only computes the
+        latter two for one PR at a time — so a second, single-PR REST GET
+        (polled) is required per candidate this selector considers.
         """
         payload = self._poll_pr_merge_state(occ_owner, occ_name, number, token)
+        if payload.get("state") != "open":
+            logger.warning(
+                "occ_observation_effect: skipping reuse candidate OCC#%s — "
+                "the open-PR list is stale: a single-PR GET reports "
+                "state=%r, not 'open' (closed or merged between listing and "
+                "this check)",
+                number,
+                payload.get("state"),
+            )
+            return True
         if self._merge_state_is_unresolved(payload):
             logger.warning(
                 "occ_observation_effect: skipping reuse candidate OCC#%s — "
@@ -843,7 +861,13 @@ class HandlerOccObservationEffect:
     def _poll_pr_merge_state(
         self, occ_owner: str, occ_name: str, number: int, token: str
     ) -> dict[str, Any]:
-        """Single-PR GET, retried with backoff while the result is unresolved."""
+        """Single-PR GET, retried with backoff while the result is unresolved.
+
+        Stops immediately (no further retries) once ``state`` reads other
+        than ``"open"`` — a closed/merged PR's merge state will never
+        "resolve" into something reusable, so retrying it out is pure wasted
+        latency; the caller's ``state`` check decides the outcome.
+        """
         payload: dict[str, Any] = {}
         for attempt in range(self._MERGE_STATE_POLL_ATTEMPTS):
             payload = rest_json(
@@ -851,6 +875,8 @@ class HandlerOccObservationEffect:
                 f"/repos/{occ_owner}/{occ_name}/pulls/{number}",
                 token=token,
             )
+            if payload.get("state") != "open":
+                return payload
             if not self._merge_state_is_unresolved(payload):
                 return payload
             if attempt < self._MERGE_STATE_POLL_ATTEMPTS - 1:

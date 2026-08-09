@@ -127,7 +127,7 @@ class FakeGitHub:
         # clean/mergeable, matching every freshly-created branch's real
         # starting state -- this file's fake doesn't model conflicting PRs,
         # that is covered by test_reuse_open_observation_pr_omn_15777.py.
-        return {"mergeable": True, "mergeable_state": "clean"}
+        return {"state": "open", "mergeable": True, "mergeable_state": "clean"}
 
     def _create_pr(self, body: dict[str, Any]) -> dict[str, Any]:
         number = self._next_number

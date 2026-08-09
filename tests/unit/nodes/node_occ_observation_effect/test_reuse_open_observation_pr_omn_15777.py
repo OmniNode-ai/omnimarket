@@ -154,7 +154,7 @@ class FakeGitHub:
         if sequence:
             return sequence.pop(0) if len(sequence) > 1 else sequence[0]
         return self.mergeable_by_number.get(
-            number, {"mergeable": True, "mergeable_state": "clean"}
+            number, {"state": "open", "mergeable": True, "mergeable_state": "clean"}
         )
 
     def _create_pr(self, body: dict[str, Any], number: int) -> dict[str, Any]:
@@ -489,6 +489,7 @@ async def test_conflicting_reuse_candidate_is_skipped_fresh_pr_minted(
         }
     )
     fake.mergeable_by_number[conflicting_number] = {
+        "state": "open",
         "mergeable": False,
         "mergeable_state": "dirty",
     }
@@ -553,6 +554,7 @@ async def test_conflicting_oldest_is_skipped_for_mergeable_candidate(
         },
     )
     fake.mergeable_by_number[conflicting_number] = {
+        "state": "open",
         "mergeable": False,
         "mergeable_state": "dirty",
     }
@@ -617,6 +619,7 @@ async def test_unresolved_mergeable_state_never_settling_is_skipped(
         }
     )
     fake.mergeable_by_number[unresolved_number] = {
+        "state": "open",
         "mergeable": None,
         "mergeable_state": "unknown",
     }
@@ -661,8 +664,8 @@ async def test_mergeable_state_that_resolves_clean_within_budget_is_reused(
     assert resolving_number is not None
     # Resolves to clean on the 2nd of 3 poll attempts.
     fake.mergeable_sequence_by_number[resolving_number] = [
-        {"mergeable": None, "mergeable_state": "unknown"},
-        {"mergeable": True, "mergeable_state": "clean"},
+        {"state": "open", "mergeable": None, "mergeable_state": "unknown"},
+        {"state": "open", "mergeable": True, "mergeable_state": "clean"},
     ]
 
     second = await handler.handle(
@@ -705,8 +708,8 @@ async def test_mergeable_state_that_resolves_dirty_within_budget_is_skipped(
         }
     )
     fake.mergeable_sequence_by_number[resolving_conflicting_number] = [
-        {"mergeable": None, "mergeable_state": "unknown"},
-        {"mergeable": False, "mergeable_state": "dirty"},
+        {"state": "open", "mergeable": None, "mergeable_state": "unknown"},
+        {"state": "open", "mergeable": False, "mergeable_state": "dirty"},
     ]
 
     result = await handler.handle(
@@ -718,3 +721,67 @@ async def test_mergeable_state_that_resolves_dirty_within_budget_is_skipped(
     assert result.appended_to_existing_pr is False
     assert result.occ_pr_number != resolving_conflicting_number
     assert len(fake.created_titles) == 1
+
+
+# -- OMN-15777 hardening: a stale open-list entry must not be reused
+# (CodeRabbit finding on PR #2030) --------------------------------------
+#
+# `_iter_open_prs`'s listing can go stale between when it was fetched and
+# when the per-candidate single-PR GET actually runs -- the candidate could
+# have been closed or merged in the meantime (a concurrent caller, a human,
+# or -- for a candidate that had to retry through the unresolved-mergeable
+# path -- simply the wall-clock time the retries themselves consumed). A
+# closed/merged PR is not a fallback-eligible candidate at all, regardless
+# of what its (possibly stale-cached) mergeable/mergeable_state fields say.
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_candidate_closed_between_listing_and_single_pr_get_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The open-PR list reports a candidate as open; the single-PR GET
+    (fetched moments later) reports it as closed. The candidate must be
+    skipped -- a fresh PR is minted -- even though its cached
+    mergeable/mergeable_state fields would otherwise read as safe to reuse."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    stale_number = 6500
+    fake.open_prs.append(
+        {
+            "number": stale_number,
+            "html_url": (
+                "https://github.com/OmniNode-ai/onex_change_control/pull/"
+                f"{stale_number}"
+            ),
+            "head": {
+                "ref": "auto/occ-observation-closed-since-listing",
+                "repo": {"full_name": "OmniNode-ai/onex_change_control"},
+            },
+        }
+    )
+    # Otherwise a perfectly reusable-looking payload -- ONLY state is stale.
+    fake.mergeable_by_number[stale_number] = {
+        "state": "closed",
+        "mergeable": True,
+        "mergeable_state": "clean",
+    }
+
+    result = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(6005, "5" * 40, 960005), mode="mutate"
+        )
+    )
+
+    assert result.appended_to_existing_pr is False, (
+        "a candidate the single-PR GET reports as non-open must never be "
+        "reused, regardless of its cached mergeable fields"
+    )
+    assert result.occ_pr_number != stale_number
+    assert len(fake.created_titles) == 1
+    # Exactly one probe -- the stale-state check short-circuits further
+    # retries instead of burning the whole unresolved-mergeable poll budget.
+    assert fake.mergeable_probe_numbers.count(stale_number) == 1
