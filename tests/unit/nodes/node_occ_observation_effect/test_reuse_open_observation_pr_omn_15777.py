@@ -114,6 +114,12 @@ class FakeGitHub:
         #: freshly-created branch's real starting state and preserving every
         #: pre-existing test's behavior unmodified.
         self.mergeable_by_number: dict[int, dict[str, Any]] = {}
+        #: PR number -> a SEQUENCE of payloads, popped one per poll attempt
+        #: (OMN-15777 hardening, unresolved-mergeable-state retry). The last
+        #: entry repeats once the sequence is exhausted, so a short sequence
+        #: models "resolves on attempt N then stays that way". Checked before
+        #: ``mergeable_by_number``.
+        self.mergeable_sequence_by_number: dict[int, list[dict[str, Any]]] = {}
         self.mergeable_probe_numbers: list[int] = []
 
     # -- rest_json_array (PR listing) ---------------------------------------
@@ -144,6 +150,9 @@ class FakeGitHub:
         # /repos/{owner}/{name}/pulls/{number}
         number = int(path.rsplit("/", 1)[-1])
         self.mergeable_probe_numbers.append(number)
+        sequence = self.mergeable_sequence_by_number.get(number)
+        if sequence:
+            return sequence.pop(0) if len(sequence) > 1 else sequence[0]
         return self.mergeable_by_number.get(
             number, {"mergeable": True, "mergeable_state": "clean"}
         )
@@ -258,6 +267,9 @@ def _install(
     monkeypatch.setattr(handler, "_clone_default", fake.clone_default)
     monkeypatch.setattr(handler, "_clone_branch", fake.clone_branch)
     monkeypatch.setattr(handler, "_push", fake.push)
+    # Never really sleep in tests -- the merge-state poll backoff is real
+    # wall-clock time in production (OMN-15777 hardening).
+    monkeypatch.setattr(handler, "_sleep_between_merge_state_polls", lambda: None)
 
 
 @pytest.mark.unit
@@ -561,3 +573,148 @@ async def test_conflicting_oldest_is_skipped_for_mergeable_candidate(
         "the selector must have actually probed the older candidate's merge "
         "state before skipping it"
     )
+
+
+# -- OMN-15777 hardening: UNRESOLVED mergeable state must not be treated as
+# safe (CodeRabbit finding on PR #2030) ---------------------------------
+#
+# GitHub computes `mergeable`/`mergeable_state` asynchronously in the
+# background. A single-PR GET made immediately after that PR was created or
+# pushed to often returns `{"mergeable": null, "mergeable_state": "unknown"}`
+# while the computation is still running. The original conflicting-skip fix
+# only checked for `mergeable_state == "dirty"` / `mergeable is False` --
+# "unknown" satisfied NEITHER condition, so it fell through as "not
+# conflicting" and would have been selected as a reuse target GitHub had not
+# actually cleared yet. The fix polls with bounded backoff and treats a
+# still-unresolved result as non-reusable, never as "probably fine".
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_unresolved_mergeable_state_never_settling_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A candidate whose merge state stays UNKNOWN for the whole retry budget
+    must be skipped -- a fresh PR is minted, exactly as for a genuinely
+    CONFLICTING candidate."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    unresolved_number = 6300
+    fake.open_prs.append(
+        {
+            "number": unresolved_number,
+            "html_url": (
+                "https://github.com/OmniNode-ai/onex_change_control/pull/"
+                f"{unresolved_number}"
+            ),
+            "head": {
+                "ref": "auto/occ-observation-never-resolves",
+                "repo": {"full_name": "OmniNode-ai/onex_change_control"},
+            },
+        }
+    )
+    fake.mergeable_by_number[unresolved_number] = {
+        "mergeable": None,
+        "mergeable_state": "unknown",
+    }
+
+    result = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(6001, "1" * 40, 960001), mode="mutate"
+        )
+    )
+
+    assert result.appended_to_existing_pr is False, (
+        "an UNRESOLVED merge state must never be treated as safe to reuse"
+    )
+    assert result.occ_pr_number != unresolved_number
+    assert len(fake.created_titles) == 1
+    probe_count = fake.mergeable_probe_numbers.count(unresolved_number)
+    assert probe_count == handler._MERGE_STATE_POLL_ATTEMPTS, (
+        "the selector must retry the full poll budget before giving up, "
+        f"not stop after the first unresolved response (probed {probe_count} "
+        f"times)"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_mergeable_state_that_resolves_clean_within_budget_is_reused(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A candidate that starts UNKNOWN but resolves to clean/mergeable
+    partway through the retry budget IS reused -- the retry recovers it."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    first = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(6002, "2" * 40, 960002), mode="mutate"
+        )
+    )
+    resolving_number = first.occ_pr_number
+    assert resolving_number is not None
+    # Resolves to clean on the 2nd of 3 poll attempts.
+    fake.mergeable_sequence_by_number[resolving_number] = [
+        {"mergeable": None, "mergeable_state": "unknown"},
+        {"mergeable": True, "mergeable_state": "clean"},
+    ]
+
+    second = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(6003, "3" * 40, 960003), mode="mutate"
+        )
+    )
+
+    assert second.appended_to_existing_pr is True
+    assert second.occ_pr_number == resolving_number
+    assert len(fake.created_titles) == 1, "the retry must recover -- no fresh PR"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_mergeable_state_that_resolves_dirty_within_budget_is_skipped(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A candidate that starts UNKNOWN and resolves to CONFLICTING/dirty
+    within the retry budget is still skipped -- the retry doesn't mask a
+    real conflict, it only guards against a premature "not conflicting"
+    read."""
+    seed = _seed_repo(tmp_path)
+    fake = FakeGitHub(tmp_path, seed)
+    handler = HandlerOccObservationEffect()
+    _install(handler, fake, monkeypatch)
+
+    resolving_conflicting_number = 6400
+    fake.open_prs.append(
+        {
+            "number": resolving_conflicting_number,
+            "html_url": (
+                "https://github.com/OmniNode-ai/onex_change_control/pull/"
+                f"{resolving_conflicting_number}"
+            ),
+            "head": {
+                "ref": "auto/occ-observation-resolves-dirty",
+                "repo": {"full_name": "OmniNode-ai/onex_change_control"},
+            },
+        }
+    )
+    fake.mergeable_sequence_by_number[resolving_conflicting_number] = [
+        {"mergeable": None, "mergeable_state": "unknown"},
+        {"mergeable": False, "mergeable_state": "dirty"},
+    ]
+
+    result = await handler.handle(
+        ModelOccObservationEffectRequest(
+            record=_record(6004, "4" * 40, 960004), mode="mutate"
+        )
+    )
+
+    assert result.appended_to_existing_pr is False
+    assert result.occ_pr_number != resolving_conflicting_number
+    assert len(fake.created_titles) == 1

@@ -47,6 +47,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+import time
 from collections.abc import Generator
 from datetime import UTC, datetime
 from pathlib import Path
@@ -762,39 +763,105 @@ class HandlerOccObservationEffect:
             if match is None:
                 continue
             _ref, number, _url = match
-            if self._open_pr_is_conflicting(occ_owner, occ_name, number, token):
-                logger.warning(
-                    "occ_observation_effect: skipping CONFLICTING reuse "
-                    "candidate OCC#%s — appending onto an unmergeable branch "
-                    "cannot repair the conflict and would deadlock every "
-                    "future observation onto it; continuing to scan for a "
-                    "mergeable candidate, or minting a fresh PR if none "
-                    "remains",
-                    number,
-                )
+            if self._reuse_candidate_should_be_skipped(
+                occ_owner, occ_name, number, token
+            ):
                 continue
             return match
         return None
 
-    def _open_pr_is_conflicting(
+    #: Bounded retry budget for an UNRESOLVED (``mergeable: null`` /
+    #: ``mergeable_state: "unknown"``) GitHub merge-state computation before a
+    #: candidate is given up on. GitHub computes ``mergeable``/
+    #: ``mergeable_state`` asynchronously in the background, so a single-PR
+    #: GET made immediately after that PR was created or pushed to often
+    #: returns "unknown" while the computation is still running (CodeRabbit
+    #: finding, OMN-15777 hardening) — a short bounded retry lets a normal,
+    #: fast recompute resolve before the selector gives up.
+    _MERGE_STATE_POLL_ATTEMPTS = 3
+    _MERGE_STATE_POLL_SLEEP_SECONDS = 2.0
+
+    def _reuse_candidate_should_be_skipped(
         self, occ_owner: str, occ_name: str, number: int, token: str
     ) -> bool:
-        """True if GitHub reports ``number``'s merge state as CONFLICTING.
+        """True if OCC#``number`` must NOT be used as a reuse target.
+
+        Two independent reasons skip a candidate:
+
+        1. **CONFLICTING** — GitHub reports ``mergeable_state == "dirty"`` (or
+           ``mergeable is False``): appending onto a branch GitHub cannot
+           cleanly merge does not repair the conflict, it just deadlocks
+           every future observation onto the same dead-end PR.
+        2. **UNRESOLVED** — after :attr:`_MERGE_STATE_POLL_ATTEMPTS` polls,
+           GitHub still has not finished computing the merge state
+           (``mergeable`` is ``None`` / ``mergeable_state == "unknown"``).
+           An unresolved state is not proof the PR is mergeable — treating it
+           as safe would let the selector pick a candidate GitHub has not
+           actually cleared yet, so it is treated as non-reusable instead of
+           assumed safe.
 
         The PR-listing endpoint that backs ``_iter_open_prs`` never populates
         ``mergeable``/``mergeable_state`` — GitHub only computes those for one
-        PR at a time — so a second, single-PR REST GET is required per
-        candidate this selector considers.
+        PR at a time — so a second, single-PR REST GET (polled) is required
+        per candidate this selector considers.
         """
-        payload = rest_json(
-            "GET",
-            f"/repos/{occ_owner}/{occ_name}/pulls/{number}",
-            token=token,
-        )
-        return (
+        payload = self._poll_pr_merge_state(occ_owner, occ_name, number, token)
+        if self._merge_state_is_unresolved(payload):
+            logger.warning(
+                "occ_observation_effect: skipping reuse candidate OCC#%s — "
+                "GitHub's merge-state computation never resolved after %d "
+                "attempt(s) (still mergeable_state=%r); an UNRESOLVED state "
+                "is not proof of MERGEABLE, so this candidate is treated as "
+                "non-reusable",
+                number,
+                self._MERGE_STATE_POLL_ATTEMPTS,
+                payload.get("mergeable_state"),
+            )
+            return True
+        if (
             payload.get("mergeable_state") == "dirty"
             or payload.get("mergeable") is False
+        ):
+            logger.warning(
+                "occ_observation_effect: skipping CONFLICTING reuse "
+                "candidate OCC#%s — appending onto an unmergeable branch "
+                "cannot repair the conflict and would deadlock every future "
+                "observation onto it; continuing to scan for a mergeable "
+                "candidate, or minting a fresh PR if none remains",
+                number,
+            )
+            return True
+        return False
+
+    @staticmethod
+    def _merge_state_is_unresolved(payload: dict[str, Any]) -> bool:
+        return (
+            payload.get("mergeable") is None
+            or payload.get("mergeable_state") == "unknown"
         )
+
+    def _poll_pr_merge_state(
+        self, occ_owner: str, occ_name: str, number: int, token: str
+    ) -> dict[str, Any]:
+        """Single-PR GET, retried with backoff while the result is unresolved."""
+        payload: dict[str, Any] = {}
+        for attempt in range(self._MERGE_STATE_POLL_ATTEMPTS):
+            payload = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_name}/pulls/{number}",
+                token=token,
+            )
+            if not self._merge_state_is_unresolved(payload):
+                return payload
+            if attempt < self._MERGE_STATE_POLL_ATTEMPTS - 1:
+                self._sleep_between_merge_state_polls()
+        return payload
+
+    def _sleep_between_merge_state_polls(self) -> None:
+        """Real wait, isolated to its own method so tests can monkeypatch it
+        away instead of actually blocking on wall-clock time (OMN-15777
+        hardening)."""
+        time.sleep(self._MERGE_STATE_POLL_SLEEP_SECONDS)
 
     def _first_open_pr(
         self, occ_owner: str, occ_name: str, branch: str, token: str

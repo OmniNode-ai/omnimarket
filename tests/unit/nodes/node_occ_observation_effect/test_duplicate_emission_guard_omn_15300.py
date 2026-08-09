@@ -115,12 +115,21 @@ class FakeGitHub:
         body: dict[str, Any] | None = None,
         **_kwargs: Any,
     ) -> dict[str, Any]:
+        if body is not None:
+            return self._create_pr(body)
         # OMN-15323: the self-bind receipt's probe reads the pushed record
         # commit back from the remote before claiming PASS.
-        if body is None:
+        if "/commits/" in path:
             sha = path.rsplit("/", 1)[-1]
             self.commit_probes.append(sha)
             return {"sha": sha}
+        # Single-PR GET (mergeable check, OMN-15777 hardening): defaults to
+        # clean/mergeable, matching every freshly-created branch's real
+        # starting state -- this file's fake doesn't model conflicting PRs,
+        # that is covered by test_reuse_open_observation_pr_omn_15777.py.
+        return {"mergeable": True, "mergeable_state": "clean"}
+
+    def _create_pr(self, body: dict[str, Any]) -> dict[str, Any]:
         number = self._next_number
         self._next_number += 1
         url = f"https://github.com/OmniNode-ai/onex_change_control/pull/{number}"
@@ -167,6 +176,7 @@ def _install(
         lambda clone_dir, _t, _r, _b: shutil.copytree(seed, clone_dir),
     )
     monkeypatch.setattr(handler, "_push", lambda *_a, **_k: None)
+    monkeypatch.setattr(handler, "_sleep_between_merge_state_polls", lambda: None)
 
 
 @pytest.mark.unit
