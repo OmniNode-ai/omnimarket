@@ -25,7 +25,31 @@ from omnimarket.nodes.node_seam_graph_compute.models.model_seam_graph_extraction
 )
 from omnimarket.seams.models.model_seam_graph import EnumSeamGraphObservationKind
 
-_FIXTURE_REPO_BASE = Path(__file__).parent / "fixtures" / "repo_a"
+
+def _find_repo_root(start: Path) -> Path:
+    """Walk up from ``start`` to the nearest ancestor carrying pyproject.toml.
+
+    The fixture tree lives under top-level ``tests/nodes/`` (not this node's
+    own ``src/omnimarket/nodes/.../tests/`` — canonical_handler_shape.py's
+    src-scoped node-discovery scan would otherwise treat the fixture's bare
+    ``contracts/contract.yaml`` as a real, non-canonical node), so this test
+    file needs a robust cross-directory reference rather than a fragile
+    hardcoded ``parents[N]`` count.
+    """
+    for candidate in (start, *start.parents):
+        if (candidate / "pyproject.toml").exists():
+            return candidate
+    raise RuntimeError(f"could not locate repo root (pyproject.toml) above {start}")
+
+
+_FIXTURE_REPO_BASE = (
+    _find_repo_root(Path(__file__).resolve())
+    / "tests"
+    / "nodes"
+    / "node_seam_graph_compute"
+    / "fixtures"
+    / "repo_a"
+)
 
 
 def _request(

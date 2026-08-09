@@ -93,9 +93,7 @@ def test_seam_match_verdict_covers_every_declared_output_field() -> None:
 
 @pytest.mark.unit
 def test_seam_graph_output_covers_every_declared_output_field() -> None:
-    fixture_repo_base = Path(
-        "src/omnimarket/nodes/node_seam_graph_compute/tests/fixtures/repo_a"
-    )
+    fixture_repo_base = Path("tests/nodes/node_seam_graph_compute/fixtures/repo_a")
     request = ModelSeamGraphExtractionRequest(
         repo_base_path=str(fixture_repo_base),
         discovery_roots=("svc_producer",),
