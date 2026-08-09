@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 import yaml
 
-from scripts.seed_seams_registry import _pin_hash, build_registry
+from scripts.seed_seams_registry import _source_record_pin_hash, build_registry
 
 _REGISTRY_PATH = Path("src/omnimarket/configs/seams.v1.yaml")
 
@@ -69,12 +69,32 @@ class TestSeamsRegistryShape:
         edge_ids = {edge["edge_id"] for edge in edges}
         assert edge_ids == {f"S{n}" for n in range(1, 16)}
 
-    def test_every_edge_has_a_64_char_hex_pin(self) -> None:
+    def test_every_edge_has_a_64_char_hex_source_record_pin(self) -> None:
         registry = _load_registry()
         for edge in registry["edges"]:
-            pinned = edge["pinned_hash"]
+            pinned = edge["source_record_pinned_hash"]
             assert len(pinned) == 64
             int(pinned, 16)  # raises ValueError if not hex
+
+    def test_projection_pinned_hash_is_none_not_a_fabricated_value(self) -> None:
+        """AC1 honesty guard: no edge may claim a ModelSeamProjection-
+        namespace pin until real field-level extraction backs it — a
+        non-None value here without a corresponding extractor change would
+        be exactly the fabrication the module docstring forbids."""
+
+        registry = _load_registry()
+        for edge in registry["edges"]:
+            assert edge["projection_pinned_hash"] is None
+
+    def test_registry_never_emits_the_ambiguous_pinned_hash_key(self) -> None:
+        """Regression guard for the post-merge namespace-confusion fix: the
+        bare ``pinned_hash`` key must never come back, because it invites
+        being fed directly into ``ModelSeamMatchRequest.pinned_hash`` — a
+        different (ModelSeamProjection) hash namespace entirely."""
+
+        registry = _load_registry()
+        for edge in registry["edges"]:
+            assert "pinned_hash" not in edge
 
     def test_regenerable_count_reported_separately_from_matched_count(self) -> None:
         registry = _load_registry()
@@ -141,7 +161,7 @@ class TestSeamsRegistryStaleProof:
             "producer_shape": "a",
             "consumer_shape": "b",
         }
-        assert _pin_hash(record) == _pin_hash(record)
+        assert _source_record_pin_hash(record) == _source_record_pin_hash(record)
 
     def test_pin_hash_changes_when_record_field_changes(self) -> None:
         a = {"edge_id": "S1", "seam": "x", "producer_shape": "a", "consumer_shape": "b"}
@@ -151,4 +171,4 @@ class TestSeamsRegistryStaleProof:
             "producer_shape": "a-changed",
             "consumer_shape": "b",
         }
-        assert _pin_hash(a) != _pin_hash(b)
+        assert _source_record_pin_hash(a) != _source_record_pin_hash(b)

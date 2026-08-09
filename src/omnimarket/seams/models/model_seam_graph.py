@@ -3,6 +3,21 @@
 
 """``seam-graph/v1`` output models for node_seam_graph_compute (OMN-15763).
 
+**Schema extension (post-merge fix-forward pass, 2026-08-08 addendum
+reconciliation).** The addendum flagged, and adversarial verify of the
+merged PR confirmed unresolved, that this schema must carry per edge: "topic
+name including the tenant-prefix rule, envelope model + version, key
+fields/types, producer/consumer contract paths, and the FSM state
+transitions the edge participates in" — because OMN-15756's registry
+consumers and OMN-15767's DAG-walk consumer both depend on the expanded
+shape being right the first time. ``ModelSeamGraphEdgeDeclaration`` now
+carries ``key_fields``, ``delivery_semantics``, ``producer_contract_path``,
+``consumer_contract_path``, and ``fsm_state_transitions`` — all optional
+(default empty/``None``/``UNKNOWN``) since a producing ``contract.yaml``'s
+``seams:`` block entry may not declare every one of them yet, and the
+counterpart contract path is filled by post-extraction correlation (below),
+not by the declaring side alone.
+
 Two extraction classes, kept structurally distinct so a reviewer can see
 which is which:
 
@@ -29,6 +44,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.seams.models.model_seam_projection import (
+    EnumSeamDeliverySemantics,
+    ModelSeamProjectionField,
+)
+
 __all__ = [
     "EnumSeamGraphObservationKind",
     "ModelSeamGraphCodeObservation",
@@ -48,7 +68,20 @@ class EnumSeamGraphObservationKind(StrEnum):
 
 
 class ModelSeamGraphEdgeDeclaration(BaseModel):
-    """One seam edge declared in a producing contract.yaml's seams: block."""
+    """One seam edge declared in a contract.yaml's seams: block.
+
+    ``key_fields`` / ``delivery_semantics`` mirror ``ModelSeamProjection``'s
+    wire-crossing fields (same types, reused rather than duplicated) so a
+    declaration can be lifted directly into a projection once field-level
+    extraction backs it. ``producer_contract_path`` /
+    ``consumer_contract_path`` are filled by ``extract_seam_graph``'s
+    post-extraction correlation pass — the declaring side's own path is
+    known immediately, the counterpart's only once a matching-edge_id
+    declaration with the opposite role is found somewhere in the same scan.
+    ``fsm_state_transitions`` names the FSM states this edge participates in
+    (OMN-15767's DAG-walk consumer), read from an optional
+    ``fsm_state_transitions:`` list on the seams: entry.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -59,6 +92,11 @@ class ModelSeamGraphEdgeDeclaration(BaseModel):
     topic: str = Field(min_length=1)
     envelope_model: str = Field(min_length=1)
     envelope_version: str = Field(min_length=1)
+    key_fields: tuple[ModelSeamProjectionField, ...] = Field(default_factory=tuple)
+    delivery_semantics: EnumSeamDeliverySemantics = EnumSeamDeliverySemantics.UNKNOWN
+    producer_contract_path: str | None = None
+    consumer_contract_path: str | None = None
+    fsm_state_transitions: tuple[str, ...] = Field(default_factory=tuple)
 
 
 class ModelSeamGraphCodeObservation(BaseModel):

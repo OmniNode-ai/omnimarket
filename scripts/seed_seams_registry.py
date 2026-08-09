@@ -26,6 +26,28 @@ registry is provably reproducible from the JSON and any edit to the source
 record changes its pin, without claiming a per-field wire-projection match
 that has not actually been extracted yet.
 
+**Two distinct hash namespaces — never conflate them (post-merge correction,
+OMN-15763 fix-forward pass).** The field emitted here is named
+``source_record_pinned_hash`` and lives entirely in the PROSE-RECORD
+namespace: it is ``sha256(canonical_json({edge_id, seam, classification,
+producer_shape, consumer_shape}))``. It is NOT comparable to
+``omnimarket.seams.canonical.canonical_sha256(ModelSeamProjection)``, which
+hashes the typed wire-projection (``seam-projection/v1``) that
+``node_seam_match_compute``'s ``check_stale_proof`` expects as
+``ModelSeamMatchRequest.pinned_hash``. Feeding this script's pin into that
+request field is a type-confusion bug: the two hash spaces share nothing but
+the sha256 algorithm, so the comparison reports ``stale=True``
+unconditionally regardless of whether the seam actually changed. A sibling
+``projection_pinned_hash`` field is also emitted per edge, ``None`` for all
+15 rows today because field-level ``ModelSeamProjection`` extraction for
+these hand-traced edges has not been done — that is the AC1 gap this
+comment documents rather than papers over (node_seam_graph_compute's
+contract-declared extractor path populates it once producing contracts
+declare real ``seams:`` blocks for these edges, which is still open work).
+See ``tests/test_seams_registry_match_integration.py`` for the cross-
+boundary proof that ``check_stale_proof`` DOES return "hash pin current"
+when it is actually fed a projection-namespace pin.
+
 Regenerable status is honest, not optimistic: the 2026-08-08 methodology
 (§0.3) found 1 nominal MATCHED (S10) but ZERO actually regenerable of 15 —
 S10 is a contract.yaml-vs-contract.yaml shape comparison, exactly what the
@@ -74,7 +96,11 @@ def _canonical_json(record: dict[str, Any]) -> str:
     return json.dumps(record, sort_keys=True, separators=(",", ":"))
 
 
-def _pin_hash(record: dict[str, Any]) -> str:
+def _source_record_pin_hash(record: dict[str, Any]) -> str:
+    """sha256 of the PROSE-RECORD namespace only — never comparable to
+    ``omnimarket.seams.canonical.canonical_sha256(ModelSeamProjection)``.
+    See the module docstring's "Two distinct hash namespaces" section."""
+
     return hashlib.sha256(_canonical_json(record).encode("utf-8")).hexdigest()
 
 
@@ -97,7 +123,12 @@ def _seed_entry(edge: dict[str, Any]) -> dict[str, Any]:
         "producer_shape": producer.get("shape"),
         "consumer_shape": consumer.get("shape"),
         "regenerable": False,
-        "pinned_hash": _pin_hash(record),
+        "source_record_pinned_hash": _source_record_pin_hash(record),
+        # ModelSeamProjection-namespace pin (seam-projection/v1,
+        # omnimarket.seams.canonical.canonical_sha256): None until real
+        # field-level extraction exists for this hand-traced edge — see the
+        # module docstring. Never populate this with a source-record hash.
+        "projection_pinned_hash": None,
         "related_tickets": edge.get("related_tickets", []),
     }
 
