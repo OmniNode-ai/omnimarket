@@ -1,0 +1,19 @@
+name: node_seam_match_compute
+version: "1.0.0"
+description: "Canonical seam-projection/v1 serializer + three-leg seam-match classifier"
+omnibase_core_compat: ">=0.42.0,<0.43.0"
+entry_points:
+  onex.nodes:
+    node_seam_match_compute: "omnimarket.nodes.node_seam_match_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+dependencies:
+  - "omnibase_core>=0.42.0,<0.43.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "seam-graph", "deterministic", "seam-projection"]
+pack: "seams"
+display_name: "Seam Match Compute"
+node_role: "compute"

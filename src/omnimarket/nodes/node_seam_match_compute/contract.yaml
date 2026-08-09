@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — node_seam_match_compute (OMN-15763)
+---
+name: node_seam_match_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Pure canonical seam-projection/v1 serializer + three-leg seam-match
+  classifier. Each side of a seam edge is reduced to its wire-crossing
+  ModelSeamProjection, canonically serialized (sorted-key JSON) and
+  sha256-hashed; the match verdict is a structural diff of the two
+  serializations naming the exact mismatching field path, never a boolean.
+  REGENERABLE requires all three legs green (declared==declared,
+  observed(producer)==declared, observed(consumer)==declared); a shape-only
+  match (leg 1 only) is SHAPE_ONLY and never counted as regenerable. No I/O:
+  live probe results are supplied as input, never fetched by this node.
+
+handler:
+  module: omnimarket.nodes.node_seam_match_compute.handlers.handler_seam_match
+  class: HandlerSeamMatch
+  input_model: omnimarket.nodes.node_seam_match_compute.models.model_seam_match_request.ModelSeamMatchRequest
+  output_model: omnimarket.nodes.node_seam_match_compute.models.model_seam_match_verdict.ModelSeamMatchVerdict
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: match
+      handler:
+        name: HandlerSeamMatch
+        module: omnimarket.nodes.node_seam_match_compute.handlers.handler_seam_match
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 500
+  runtime_profiles:
+    - main
+
+# No CLI/skill shim publishes onex.cmd.omnimarket.seam-match-requested.v1 to
+# the bus in this PR (that wiring belongs to the seam-validator gate,
+# OMN-15756, per the settled 15756/15763 split) — this node is invoked
+# directly via `onex run-node`, whose CLI dispatch target IS
+# command_topic. Declaring it honestly here (rather than a bare orphaned
+# subscribe) is what makes the contract-topic-graph gate treat this as a
+# real CLI entry point instead of an accidental dead-consumer shape.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.seam-match-requested.v1
+
+inputs:
+  edge_id:
+    type: string
+    required: true
+  declared_producer:
+    type: object
+    required: false
+    description: "seam-projection/v1 for the producing side, from its own contract"
+  declared_consumer:
+    type: object
+    required: false
+    description: "seam-projection/v1 for the consuming side, from its own contract"
+  observed_producer:
+    type: object
+    required: false
+    description: "seam-projection/v1 observed live (node_seam_probe_effect output)"
+  observed_consumer:
+    type: object
+    required: false
+    description: "seam-projection/v1 observed live (node_seam_probe_effect output)"
+  pinned_hash:
+    type: string
+    required: false
+    description: "registry-pinned sha256 for stale-proof detection"
+
+outputs:
+  edge_id:
+    type: string
+  verdict:
+    type: string
+    description: "UNMATCHED | MISMATCH | MATCHED"
+  regenerability:
+    type: string
+    description: "REGENERABLE | SHAPE_ONLY | NOT_APPLICABLE"
+  leg1_declared_vs_declared:
+    type: object
+  leg2_observed_producer_vs_declared:
+    type: object
+  leg3_observed_consumer_vs_declared:
+    type: object
+  declared_producer_hash:
+    type: string
+  declared_consumer_hash:
+    type: string
+
+terminal_event: onex.evt.omnimarket.seam-match-completed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.seam-match-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.seam-match-completed.v1
+
+# Consumed by seam-validator gate tooling (OMN-15756) outside this repo's
+# node graph — same externally-consumed pattern as node_contract_graph_ir_compute.
+externally_consumed_topics:
+  - onex.evt.omnimarket.seam-match-completed.v1
+
+metadata:
+  transport_type: kafka

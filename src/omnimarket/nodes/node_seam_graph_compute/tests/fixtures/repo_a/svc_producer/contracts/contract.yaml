@@ -1,0 +1,12 @@
+name: svc_producer_node
+node_type: effect
+description: "Fixture contract.yaml exercising node_seam_graph_compute's seams: block extractor (OMN-15763)."
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+seams:
+  - id: S1
+    seam: "delegation command wire crossing"
+    role: producer
+    topic: "tenant-{slug}.onex.cmd.omnibase-infra.delegation-request.v1"
+    envelope_model: "omnibase_core.models.wire.model_delegation_routing_input.ModelDelegationRoutingInput"
+    envelope_version: "1.0.0"

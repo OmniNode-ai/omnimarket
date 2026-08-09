@@ -1,0 +1,91 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — node_seam_graph_compute (OMN-15763)
+---
+name: node_seam_graph_compute
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: compute
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Manifest-driven, deterministic seam-graph extractor. Walks the given
+  discovery_roots (resolved against repo_base_path, a pinned already-
+  materialized tree — checkout/fetch/ref-resolution happen upstream) for
+  contract.yaml "seams:" declarations plus code-level Kafka
+  producer/consumer topic literals, os.environ reads, and @ref pins. Emits
+  seam-graph/v1 plus a per-source sha256 manifest so the same pinned tree
+  always yields a byte-identical graph (AC7), mirroring
+  node_contract_graph_ir_compute's manifest-driven purity argument (§2.2):
+  purity holds because the tree is pinned before this node runs, not because
+  the node performs no filesystem reads.
+
+handler:
+  module: omnimarket.nodes.node_seam_graph_compute.handlers.handler_seam_graph
+  class: HandlerSeamGraph
+  input_model: omnimarket.nodes.node_seam_graph_compute.models.model_seam_graph_extraction_request.ModelSeamGraphExtractionRequest
+  output_model: omnimarket.seams.models.model_seam_graph.ModelSeamGraphV1
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: extract
+      handler:
+        name: HandlerSeamGraph
+        module: omnimarket.nodes.node_seam_graph_compute.handlers.handler_seam_graph
+
+descriptor:
+  node_archetype: compute
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - main
+
+# No CLI/skill shim publishes onex.cmd.omnimarket.seam-graph-requested.v1 to
+# the bus in this PR (that wiring belongs to the seam-validator gate,
+# OMN-15756, per the settled 15756/15763 split) — this node is invoked
+# directly via `onex run-node`, whose CLI dispatch target IS command_topic.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.seam-graph-requested.v1
+
+inputs:
+  repo_base_path:
+    type: string
+    required: true
+    description: "Absolute filesystem path of the pinned tree root"
+  discovery_roots:
+    type: array
+    items:
+      type: string
+    required: true
+    description: "Repo-relative directory roots to scan"
+
+outputs:
+  schema_version:
+    type: string
+  edges:
+    type: array
+    description: "Contract-declared seam edges (seam-graph/v1)"
+  code_observations:
+    type: array
+    description: "Code-level extractor observations (producer/consumer/env/@ref)"
+  source_manifest:
+    type: array
+    description: "Per-source sha256 hash manifest, deterministically ordered"
+
+terminal_event: onex.evt.omnimarket.seam-graph-computed.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.seam-graph-requested.v1
+  publish_topics:
+    - onex.evt.omnimarket.seam-graph-computed.v1
+
+# Consumed by seam-validator gate tooling (OMN-15756) and the registry
+# seeding script outside this repo's node graph — same
+# externally-consumed pattern as node_contract_graph_ir_compute.
+externally_consumed_topics:
+  - onex.evt.omnimarket.seam-graph-computed.v1
+
+metadata:
+  transport_type: kafka
