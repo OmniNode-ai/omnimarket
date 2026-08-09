@@ -89,6 +89,12 @@ async def test_reingesting_the_same_attempt_is_a_no_op(
     # OMN-15300: the write path now probes for an open sibling PR before
     # cloning. No sibling exists in this scenario.
     monkeypatch.setattr(handler, "_open_pr_for_identity", lambda *_a, **_k: None)
+    # OMN-15777: the write path also probes for ANY open observation PR
+    # (cross-identity reuse target) before deciding which branch to clone.
+    # None exists in this scenario.
+    monkeypatch.setattr(
+        handler, "_find_reusable_observation_pr", lambda *_a, **_k: None
+    )
     monkeypatch.setattr(
         handler,
         "_clone_default",

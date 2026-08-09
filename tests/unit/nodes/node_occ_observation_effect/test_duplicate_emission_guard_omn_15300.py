@@ -125,7 +125,17 @@ class FakeGitHub:
         self._next_number += 1
         url = f"https://github.com/OmniNode-ai/onex_change_control/pull/{number}"
         self.open_prs.append(
-            {"number": number, "html_url": url, "head": {"ref": body["head"]}}
+            {
+                "number": number,
+                "html_url": url,
+                # OMN-15777: the selector now requires the head branch to be
+                # IN the OCC repo itself (fork-repo hardening), so the fake
+                # must carry that field for a match to succeed.
+                "head": {
+                    "ref": body["head"],
+                    "repo": {"full_name": "OmniNode-ai/onex_change_control"},
+                },
+            }
         )
         self.created_titles.append(body["title"])
         self.created_bodies.append(body["body"])
@@ -145,6 +155,16 @@ def _install(
         handler,
         "_clone_default",
         lambda clone_dir, _t, _r: (shutil.copytree(seed, clone_dir), "dev")[1],
+    )
+    # OMN-15777: the reuse path clones directly onto an existing PR's branch
+    # instead of the default branch. This fake doesn't model a real evolving
+    # remote (that is covered by test_reuse_open_observation_pr_omn_15777.py's
+    # real-bare-origin fixture) — it only needs to prove WHICH branch/PR this
+    # run targets, so cloning the same static seed is sufficient here too.
+    monkeypatch.setattr(
+        handler,
+        "_clone_branch",
+        lambda clone_dir, _t, _r, _b: shutil.copytree(seed, clone_dir),
     )
     monkeypatch.setattr(handler, "_push", lambda *_a, **_k: None)
 
@@ -175,10 +195,13 @@ async def test_same_identity_second_run_opens_no_second_pr(
 
 @pytest.mark.unit
 @pytest.mark.asyncio
-async def test_a_different_head_sha_still_opens_its_own_pr(
+async def test_a_different_head_sha_appends_to_the_open_pr_not_a_second_one(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """The guard must not swallow a genuinely new observation."""
+    """The guard must not swallow a genuinely new observation (OMN-15300) —
+    but OMN-15777 widened the DESTINATION: a different identity is still
+    WRITTEN, just onto the one already-open observation PR rather than a
+    fresh one (this is what kills the cross-identity conflict factory)."""
     handler = HandlerOccObservationEffect()
     fake = FakeGitHub()
     _install(handler, fake, _seed_repo(tmp_path), monkeypatch)
@@ -193,8 +216,12 @@ async def test_a_different_head_sha_still_opens_its_own_pr(
         ModelOccObservationEffectRequest(record=other, mode="mutate")
     )
 
-    assert second.superseded_by_open_pr is False
-    assert len(fake.created_titles) == 2
+    assert second.superseded_by_open_pr is False, (
+        "a genuinely new observation is written"
+    )
+    assert second.appended_to_existing_pr is True
+    assert second.occ_pr_number == 5245, "reuses the sibling's PR, no second PR opens"
+    assert len(fake.created_titles) == 1, "still exactly one PR-open attempt"
 
 
 @pytest.mark.unit
