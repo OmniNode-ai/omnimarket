@@ -26,6 +26,24 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_delegation/migrations/0029_delegation_terminal_failure_cause.sql
       access: read_write
       role: tenant_projection_table
+    # OMN-15359: the physical CREATE TABLE for this node's already-declared
+    # db_io.db_tables[0] (schema: omninode_internal, in this node's own
+    # contract.yaml) lives in the omnibase_infra repo, not here -- the
+    # omninode_internal schema and its physical table copies are an
+    # omnibase_infra-owned migration stream (docker/migrations/forward/098,
+    # 099). This entry registers this repository as the CATALOG owner of the
+    # physical relation regardless of which repo's migration corpus creates
+    # it, matching the node's existing read/write contract authority. Zero
+    # behavior change: node_projection_live_events has targeted
+    # schema: omninode_internal in db_io.db_tables since before this entry
+    # existed; this only satisfies the OMN-15361 SQL ownership gate so
+    # omnibase_infra#<PR1> can schema-qualify the physical CREATE TABLE.
+    - name: live_events
+      database_ref: application
+      schema: omninode_internal
+      migration: docker/migrations/forward/099_create_omninode_internal_live_events.sql
+      access: write
+      role: live_events
 
 relation_evidence:
   - name: omnimarket_schema_migrations
