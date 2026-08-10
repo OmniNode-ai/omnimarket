@@ -111,7 +111,14 @@ def _install_ladder(
 
     # ``roi_overlay`` accepted (OMN-14001) so the doubles match the extended
     # routing-authority signature; this ladder ignores it (no ROI suppression).
-    def fake_next_eligible_tier(current, excluded, *, task_type=None, roi_overlay=None):
+    def fake_next_eligible_tier(
+        current,
+        excluded,
+        *,
+        task_type=None,
+        roi_overlay=None,
+        excluded_backend_refs=frozenset(),
+    ):
         try:
             idx = _LADDER.index(current)
         except ValueError:

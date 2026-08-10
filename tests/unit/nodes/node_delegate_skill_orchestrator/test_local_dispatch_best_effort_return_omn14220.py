@@ -60,7 +60,14 @@ def _install_ladder(monkeypatch: pytest.MonkeyPatch) -> None:
             return _backend_for_tier("local")
         return _backend_for_tier(_BACKEND_TIER[backend_id])
 
-    def fake_next_eligible_tier(current, excluded, *, task_type=None, roi_overlay=None):
+    def fake_next_eligible_tier(
+        current,
+        excluded,
+        *,
+        task_type=None,
+        roi_overlay=None,
+        excluded_backend_refs=frozenset(),
+    ):
         try:
             idx = _LADDER.index(current)
         except ValueError:

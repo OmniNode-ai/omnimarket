@@ -221,6 +221,31 @@ _NON_RETRYABLE_TRANSPORT_FAILURE_CLASSES: frozenset[EnumDelegationFailureClass] 
 )
 
 
+def _routing_tier_name(backend: ModelResolvedDelegationBackend) -> str:
+    """Return the routing-authority tier name for ``backend`` (OMN-15803).
+
+    ``ModelResolvedDelegationBackend.tier`` is populated from the bifrost
+    contract's own descriptive ``tier:`` field (e.g. ``cloud-gemini-pro``
+    declares ``tier: frontier_api`` in ``bifrost_delegation.yaml``) — a
+    DIFFERENT vocabulary than the routing_tiers.yaml ``tier_order`` names
+    (``local``/``cheap_cloud``/``claude``) the task-class contract declares.
+    Every attempts[]/log/wire-metadata surface must report the ROUTING tier —
+    the tier_order member actually walked — never the raw bifrost label, which
+    is not even guaranteed to be a member of the task class's declared
+    ``tier_order``. Reading ``backend.tier`` directly produced a receipt
+    showing ``tier="frontier_api"`` even though the resolver had correctly
+    walked ``cheap_cloud -> claude``, and fed the same wrong label into
+    ``ModelLlmDelegationCallRequest.model_tier``, which
+    ``handler_llm_delegation_call._get_tier_price_per_1m`` /
+    ``_FALLBACK_PRICE_PER_1M`` key on routing_tiers.yaml vocabulary — silently
+    mispricing the call. ``tier_for_backend`` is the single parsing path
+    (``handler_delegation_routing``); the bifrost field is the fallback ONLY
+    for a backend not declared in routing_tiers.yaml at all (should not occur
+    for a resolved backend).
+    """
+    return tier_for_backend(backend.backend_id) or backend.tier
+
+
 def _is_retryable_transport_failure(
     failure_class: EnumDelegationFailureClass | None,
 ) -> bool:
@@ -514,6 +539,13 @@ class LocalDelegationDispatchPort:
         # Tiers already attempted (excluded from re-selection), mirroring the bus
         # ``excluded_tiers`` set threaded into ``next_eligible_tier``.
         excluded_tiers: set[str] = set()
+        # OMN-15803: every backend_id already attempted anywhere in THIS
+        # dispatch (transport failure OR quality-gate FAIL), threaded into
+        # every escalation hop's ``next_eligible_tier`` call — see
+        # ``_resolve_next_backend``'s docstring. Without this, two routing
+        # tiers that declare the same concrete backend for a task type made
+        # escalation a functional no-op (identical backend+model re-attempted).
+        excluded_backend_refs: set[str] = set()
         # Cumulative metered spend banked across every attempted tier (OMN-13849):
         # a rejected metered tier's real cost is never dropped (bus
         # ``_bank_attempt_spend`` parity). Projected as the row's cost_usd.
@@ -598,8 +630,9 @@ class LocalDelegationDispatchPort:
                     transport_is_failure = False
 
             if transport_is_failure:
-                current_tier = tier_for_backend(backend.backend_id) or backend.tier
+                current_tier = _routing_tier_name(backend)
                 excluded_tiers.add(current_tier)
+                excluded_backend_refs.add(backend.backend_id)
 
                 escalated_backend: ModelResolvedDelegationBackend | None = None
                 if (
@@ -611,6 +644,7 @@ class LocalDelegationDispatchPort:
                         task_type=task_type,
                         excluded_tiers=frozenset(excluded_tiers),
                         roi_overlay=roi_overlay,
+                        excluded_backend_refs=frozenset(excluded_backend_refs),
                     )
 
                 # A transport failure never runs the quality gate, so bank its
@@ -620,7 +654,7 @@ class LocalDelegationDispatchPort:
                 cumulative_savings_usd += transport_result.savings_usd
                 attempts.append(
                     {
-                        "tier": backend.tier,
+                        "tier": current_tier,
                         "backend_id": backend.backend_id,
                         "model_id": backend.model_id,
                         "quality_gate_passed": False,
@@ -647,7 +681,7 @@ class LocalDelegationDispatchPort:
                         "(attempt %d/%d) correlation=%s reason=%s",
                         task_type,
                         current_tier,
-                        escalated_backend.tier,
+                        _routing_tier_name(escalated_backend),
                         transport_failure_class,
                         escalation_count + 1,
                         max_escalations,
@@ -699,6 +733,8 @@ class LocalDelegationDispatchPort:
             cumulative_cost_usd += result.actual_cost_usd
             cumulative_savings_usd += result.savings_usd
 
+            attempt_tier = _routing_tier_name(backend)
+
             # OMN-14225: paid escalation is ON (metered) but NEVER SILENT. Any attempt
             # that incurred real metered spend is logged prominently — model,
             # task_type, tier, this attempt's cost, the running paid total for the
@@ -714,7 +750,7 @@ class LocalDelegationDispatchPort:
                     "set ONEX_DELEGATION_ALLOW_PAID=0 to disable paid escalation.",
                     task_type,
                     backend.model_id,
-                    backend.tier,
+                    attempt_tier,
                     float(result.actual_cost_usd),
                     float(cumulative_cost_usd),
                     escalation_count,
@@ -726,7 +762,7 @@ class LocalDelegationDispatchPort:
             quality_passed = self._is_quality_accepted(task_type, gate_result)
             attempts.append(
                 {
-                    "tier": backend.tier,
+                    "tier": attempt_tier,
                     "backend_id": backend.backend_id,
                     "model_id": backend.model_id,
                     "quality_gate_passed": quality_passed,
@@ -781,7 +817,7 @@ class LocalDelegationDispatchPort:
 
             # --- Quality-gate FAIL: evaluate escalation (mirror bus loop) -------
             gate_failure_message = "; ".join(gate_result.failure_reasons)
-            current_tier = tier_for_backend(backend.backend_id) or backend.tier
+            current_tier = attempt_tier
 
             # OMN-14234 (retry-local / best-of-N): before escalating off a FREE
             # tier, retry the SAME backend up to its contract-declared max_retries
@@ -814,6 +850,7 @@ class LocalDelegationDispatchPort:
                 continue
 
             excluded_tiers.add(current_tier)
+            excluded_backend_refs.add(backend.backend_id)
 
             # OMN-14004: persist the rejected candidate's own content, not just the
             # failure reason. Before this the capture log (and the terminal
@@ -828,7 +865,7 @@ class LocalDelegationDispatchPort:
                 "LocalDelegationDispatch: rejected candidate content "
                 "(task_type=%s tier=%s correlation=%s reason=%s):\n%s",
                 task_type,
-                backend.tier,
+                current_tier,
                 correlation_id,
                 gate_failure_message,
                 result.content or "",
@@ -841,6 +878,7 @@ class LocalDelegationDispatchPort:
                     task_type=task_type,
                     excluded_tiers=frozenset(excluded_tiers),
                     roi_overlay=roi_overlay,
+                    excluded_backend_refs=frozenset(excluded_backend_refs),
                 )
 
             if next_backend is None:
@@ -890,7 +928,7 @@ class LocalDelegationDispatchPort:
                 "tier=%s (attempt %d/%d) correlation=%s reason=%s",
                 task_type,
                 current_tier,
-                next_backend.tier,
+                _routing_tier_name(next_backend),
                 escalation_count + 1,
                 max_escalations,
                 correlation_id,
@@ -1039,12 +1077,29 @@ class LocalDelegationDispatchPort:
         task_type: str,
         excluded_tiers: frozenset[str],
         roi_overlay: ModelRoutingRoiOverlay | None = None,
+        excluded_backend_refs: frozenset[str] = frozenset(),
     ) -> ModelResolvedDelegationBackend | None:
         """Resolve the next eligible tier's backend, or None if none exists.
 
         OMN-14001: ``roi_overlay`` (when set) demotes ROI-suppressed tiers on the
         escalation hop too, with the overlay's fail-safe second pass keeping the
         ladder reachable when suppression would exhaust it.
+
+        OMN-15803: ``excluded_backend_refs`` carries every ``backend_id`` already
+        attempted anywhere earlier in THIS dispatch (mirrors the bus
+        orchestrator / OMN-15503's ``next_eligible_tier(...,
+        excluded_backend_refs=...)`` parameter, which this local bus-less path
+        previously never threaded). Two DIFFERENT routing tiers can declare the
+        SAME concrete bifrost backend for a task type (e.g. ``cheap_cloud`` and
+        ``claude`` both resolve ``research`` to ``cloud-gemini-pro`` in the live
+        contract) — without this, escalating "up" a tier that only offers an
+        already-failed backend re-dispatches the IDENTICAL backend+model, a
+        functional no-op. ``next_eligible_tier`` skips any tier whose only
+        routable backend is excluded; the defensive ``backend_id in
+        excluded_backend_refs`` check below additionally guards against
+        ``backend_id_for_tier`` (which does not itself accept an exclusion set)
+        re-selecting an excluded backend for a multi-backend tier that
+        ``next_eligible_tier`` judged eligible via a DIFFERENT candidate.
 
         Mirrors the bus orchestrator's ``_decide_escalation`` tier resolution
         (:748-811): ``next_eligible_tier`` reads the closed-set task-class
@@ -1056,12 +1111,31 @@ class LocalDelegationDispatchPort:
         populated endpoint in the local overlay (fail-closed, no silent hang).
         """
         next_tier = next_eligible_tier(
-            current_tier, excluded_tiers, task_type=task_type, roi_overlay=roi_overlay
+            current_tier,
+            excluded_tiers,
+            task_type=task_type,
+            roi_overlay=roi_overlay,
+            excluded_backend_refs=excluded_backend_refs,
         )
         if next_tier is None:
             return None
         backend_id = backend_id_for_tier(next_tier, task_type)
         if backend_id is None:
+            return None
+        if backend_id in excluded_backend_refs:
+            # Defensive backstop (OMN-15803): next_eligible_tier judged this
+            # tier eligible (a non-excluded candidate exists somewhere in it),
+            # but backend_id_for_tier's own selection -- which does not accept
+            # an exclusion set -- re-picked the SAME excluded backend by its
+            # normal file-order/use_for priority. Treat as unresolvable rather
+            # than dispatch an identical (backend_id, model_id) pair twice.
+            logger.warning(
+                "LocalDelegationDispatch: escalation tier=%s re-selected "
+                "already-excluded backend=%s for task_type=%s; ladder exhausted",
+                next_tier,
+                backend_id,
+                task_type,
+            )
             return None
         try:
             return resolve_delegation_backend(task_type, backend_id=backend_id)
@@ -1174,7 +1248,14 @@ class LocalDelegationDispatchPort:
             task_type=task_type,
             max_tokens=effective_max_tokens,
             timeout_seconds=timeout_seconds,
-            model_tier=backend.tier,
+            # OMN-15803: the ROUTING-authority tier name (local/cheap_cloud/
+            # claude), never the raw bifrost-declared ``.tier`` label — the
+            # effect boundary's pricing lookup
+            # (handler_llm_delegation_call._get_tier_price_per_1m /
+            # _FALLBACK_PRICE_PER_1M) keys on routing_tiers.yaml vocabulary, so
+            # a bifrost label here (e.g. "frontier_api") silently mispriced
+            # every ceiling-tier call to the generic fallback rate.
+            model_tier=_routing_tier_name(backend),
             provider=backend.backend_id,
             extra_headers=backend.extra_headers,
             provider_request_options=provider_request_options,
