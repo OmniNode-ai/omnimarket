@@ -1111,3 +1111,155 @@ class TestDiscoveryRootConfinement:
         graph = extract_seam_graph(str(tmp_path), ("/etc", "svc"))
         values = {o.value for o in graph.code_observations}
         assert "in-tree-topic" in values
+
+
+@pytest.mark.unit
+class TestTestHarnessSourceClassification:
+    """OMN-15779 R1 audit (RSD lane-2 comment 4acd1d93, 2026-08-10): the
+    corpus-wide producer_send/consumer_subscribe count mixes real
+    inter-service application seams with test-substrate code that happens
+    to be shipped inside a scanned ``src/`` tree rather than under
+    ``tests/`` (e.g. ``omnibase_core``'s ``event_bus/testing/
+    contract_event_bus_substrate.py``, ``runtime/transport/
+    runtime_transport_conformance.py``). A harness observation is real
+    code, correctly extracted — it is excluded from the
+    production-application count, never dropped from the graph itself."""
+
+    def test_event_bus_testing_path_is_classified_as_harness(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "src/omnibase_core/event_bus/testing/contract_event_bus_substrate.py",
+            'producer.send("harness-topic", p)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        observation = next(
+            o for o in graph.code_observations if o.value == "harness-topic"
+        )
+        assert observation.is_test_harness is True
+
+    def test_runtime_transport_conformance_path_is_classified_as_harness(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "src/omnibase_infra/runtime/transport/runtime_transport_conformance.py",
+            'producer.send("conformance-topic", p)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        observation = next(
+            o for o in graph.code_observations if o.value == "conformance-topic"
+        )
+        assert observation.is_test_harness is True
+
+    def test_runtime_transport_non_conformance_file_is_production(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "src/omnibase_infra/runtime/transport/kafka_transport.py",
+            'producer.send("transport-topic", p)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        observation = next(
+            o for o in graph.code_observations if o.value == "transport-topic"
+        )
+        assert observation.is_test_harness is False
+
+    def test_ordinary_production_path_is_not_harness(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "src/omnibase_infra/runtime/consumer_health_emitter.py",
+            'producer.send("prod-topic", p)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        observation = next(
+            o for o in graph.code_observations if o.value == "prod-topic"
+        )
+        assert observation.is_test_harness is False
+
+    def test_tests_directory_within_scanned_tree_is_classified_as_harness(
+        self, tmp_path: Path
+    ) -> None:
+        # Defensive: tests/** is already excluded upstream (no discovery
+        # root passed by any real caller today includes a tests/ dir) —
+        # if one ever did, the classification must still hold rather than
+        # silently mis-counting harness code as production.
+        _write(
+            tmp_path,
+            "src/pkg/tests/test_something.py",
+            'producer.send("test-file-topic", p)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        observation = next(
+            o for o in graph.code_observations if o.value == "test-file-topic"
+        )
+        assert observation.is_test_harness is True
+
+    def test_harness_classification_does_not_depend_on_kind(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "src/pkg/event_bus/testing/contract_event_bus_substrate.py",
+            'consumer.subscribe(["harness-sub"])\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        observation = next(
+            o for o in graph.code_observations if o.value == "harness-sub"
+        )
+        assert observation.is_test_harness is True
+
+
+@pytest.mark.unit
+class TestObservationSummarySplitsHarnessFromProduction:
+    """Summary counts (OMN-15779 R1 audit) surface the
+    production-application vs test-harness-in-src split per observation
+    kind as a durable, code-computed value — replacing the ad hoc manual
+    grep/count a prior session produced by hand."""
+
+    def test_summary_splits_producer_send_by_harness_vs_production(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "src/pkg/event_bus/testing/contract_event_bus_substrate.py",
+            'producer.send("harness-topic", p)\n',
+        )
+        _write(
+            tmp_path,
+            "src/pkg/service/publisher.py",
+            'producer.send("prod-topic", p)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        by_kind = {s.kind: s for s in graph.observation_summary}
+        producer_summary = by_kind[EnumSeamGraphObservationKind.PRODUCER_SEND]
+        assert producer_summary.total == 2
+        assert producer_summary.test_harness == 1
+        assert producer_summary.production_application == 1
+
+    def test_summary_counts_are_internally_consistent_per_kind(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "src/pkg/runtime/transport/runtime_transport_conformance.py",
+            'consumer.subscribe(["harness-sub"])\n',
+        )
+        _write(
+            tmp_path,
+            "src/pkg/service/consumer.py",
+            'consumer.subscribe(["prod-sub"])\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        assert len(graph.observation_summary) > 0
+        for summary in graph.observation_summary:
+            assert (
+                summary.total == summary.test_harness + summary.production_application
+            )
+
+    def test_summary_omits_kinds_with_zero_observations(self, tmp_path: Path) -> None:
+        _write(tmp_path, "src/pkg/nothing.py", "x = 1\n")
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        assert graph.observation_summary == ()
