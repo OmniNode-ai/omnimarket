@@ -332,6 +332,162 @@ class TestContractPathCorrelation:
 
 
 @pytest.mark.unit
+class TestEventBusDeclaredTopicsAreExtracted:
+    """OMN-15763 AC1 fix-forward: the shipped extractor's contract-declared
+    leg only ever read a hand-authored ``seams:`` block that no real
+    contract carries (0/0/0 finding — beta-triage revert comment
+    ``2ef90b79``, 2026-08-10). Real contracts declare topics under
+    ``event_bus.publish_topics`` / ``event_bus.subscribe_topics`` (435+
+    contracts across omnibase_infra/omnimarket/omnibase_core, e.g.
+    ``omnibase_infra/src/omnibase_infra/verification/contract.yaml``) — this
+    is the actual, non-fabricated source-of-truth schema per this repo's own
+    CLAUDE.md ("Keep event topics declared in contract.yaml"). These tests
+    reproduce that real schema shape directly (no ``seams:`` block present)
+    and assert it now yields edges."""
+
+    def test_publish_topics_yield_producer_edges(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "svc/contracts/contract.yaml",
+            "name: verification_event_emitter\n"
+            "node_type: COMPUTE_GENERIC\n"
+            "event_bus:\n"
+            "  subscribe_topics: []\n"
+            "  publish_topics:\n"
+            '    - "onex.evt.platform.contract-verification-result.v1"\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        edge = next(
+            e
+            for e in graph.edges
+            if e.topic == "onex.evt.platform.contract-verification-result.v1"
+        )
+        assert edge.role == "producer"
+        assert edge.source_contract_path == "svc/contracts/contract.yaml"
+        assert edge.producer_contract_path == "svc/contracts/contract.yaml"
+        assert edge.consumer_contract_path is None
+        # Real schema, no envelope info declared — None, not a fabricated
+        # placeholder string.
+        assert edge.envelope_model is None
+        assert edge.envelope_version is None
+
+    def test_subscribe_topics_yield_consumer_edges(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "svc/contracts/contract.yaml",
+            "name: node_polish_task_classifier\n"
+            "node_type: compute\n"
+            "event_bus:\n"
+            "  subscribe_topics:\n"
+            "    - onex.cmd.omnimarket.polish-task-classifier.v1\n"
+            "  publish_topics: []\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        edge = next(
+            e
+            for e in graph.edges
+            if e.topic == "onex.cmd.omnimarket.polish-task-classifier.v1"
+        )
+        assert edge.role == "consumer"
+        assert edge.consumer_contract_path == "svc/contracts/contract.yaml"
+        assert edge.producer_contract_path is None
+
+    def test_producer_and_consumer_contracts_correlate_via_shared_topic(
+        self, tmp_path: Path
+    ) -> None:
+        shared_topic = "onex.evt.omnimarket.polish-task-classifier-completed.v1"
+        _write(
+            tmp_path,
+            "svc_producer/contracts/contract.yaml",
+            "name: svc_producer\n"
+            "event_bus:\n"
+            "  subscribe_topics: []\n"
+            f"  publish_topics:\n    - {shared_topic}\n",
+        )
+        _write(
+            tmp_path,
+            "svc_consumer/contracts/contract.yaml",
+            "name: svc_consumer\n"
+            "event_bus:\n"
+            f"  subscribe_topics:\n    - {shared_topic}\n"
+            "  publish_topics: []\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc_producer", "svc_consumer"))
+        edges = {e.role: e for e in graph.edges if e.topic == shared_topic}
+        assert edges["producer"].producer_contract_path == (
+            "svc_producer/contracts/contract.yaml"
+        )
+        assert edges["producer"].consumer_contract_path == (
+            "svc_consumer/contracts/contract.yaml"
+        )
+        assert edges["consumer"].producer_contract_path == (
+            "svc_producer/contracts/contract.yaml"
+        )
+        assert edges["consumer"].consumer_contract_path == (
+            "svc_consumer/contracts/contract.yaml"
+        )
+
+    def test_missing_event_bus_block_yields_no_event_bus_edges(
+        self, tmp_path: Path
+    ) -> None:
+        _write(tmp_path, "svc/contracts/contract.yaml", "name: no_event_bus\n")
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        assert graph.edges == ()
+
+    def test_empty_topic_lists_yield_no_edges(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "svc/contracts/contract.yaml",
+            "name: empty_lists\nevent_bus:\n  subscribe_topics: []\n  publish_topics: []\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        assert graph.edges == ()
+
+    def test_non_string_topic_entries_are_skipped_not_fabricated(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/contracts/contract.yaml",
+            "name: malformed\nevent_bus:\n  publish_topics: [1, null, '']\n  subscribe_topics: []\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        assert graph.edges == ()
+
+    def test_full_three_repo_corpus_shape_yields_nonzero_declared_edges(
+        self, tmp_path: Path
+    ) -> None:
+        """Reproduces the exact live corpus finding cited in the revert: a
+        realistic scan over infra-style + market-style contract.yaml files
+        (event_bus topics, no seams: block anywhere) previously yielded
+        zero declared edges. It must now yield a nonzero, deterministic
+        count."""
+        _write(
+            tmp_path,
+            "omnibase_infra/verification/contract.yaml",
+            "name: verification_event_emitter\n"
+            "event_bus:\n"
+            "  subscribe_topics: []\n"
+            '  publish_topics:\n    - "onex.evt.platform.contract-verification-result.v1"\n',
+        )
+        _write(
+            tmp_path,
+            "omnimarket/node_polish_task_classifier/contract.yaml",
+            "name: node_polish_task_classifier\n"
+            "event_bus:\n"
+            "  subscribe_topics:\n    - onex.cmd.omnimarket.polish-task-classifier.v1\n"
+            "  publish_topics:\n"
+            "    - onex.evt.omnimarket.polish-task-classifier-completed.v1\n"
+            "    - onex.evt.omnimarket.polish-task-classifier-failed.v1\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("omnibase_infra", "omnimarket"))
+        assert len(graph.edges) == 4
+        first = extract_seam_graph(str(tmp_path), ("omnibase_infra", "omnimarket"))
+        second = extract_seam_graph(str(tmp_path), ("omnibase_infra", "omnimarket"))
+        assert first.model_dump_json() == second.model_dump_json()
+
+
+@pytest.mark.unit
 class TestExpandedSeamsBlockFields:
     """key_fields / delivery_semantics / fsm_state_transitions are optional
     seams: entry fields (2026-08-08 addendum reconciliation)."""

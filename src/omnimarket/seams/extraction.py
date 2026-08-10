@@ -203,20 +203,33 @@ def _correlate_contract_paths(
     return correlated
 
 
-def _extract_declared_edges(
-    contract_path: Path, repo_base: Path
-) -> tuple[ModelSeamGraphEdgeDeclaration, ...]:
+def _load_contract_yaml(contract_path: Path) -> dict[str, object] | None:
+    """Parse one ``contract.yaml`` once, shared by both declared-edge
+    extractors below — avoids reading + parsing the same file twice per
+    contract. Returns ``None`` for unreadable/malformed/non-mapping YAML so
+    each caller can skip it uniformly."""
+
     try:
         raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
     except (yaml.YAMLError, OSError):
-        return ()
+        return None
     if not isinstance(raw, dict):
-        return ()
+        return None
+    return raw
+
+
+def _extract_declared_edges(
+    raw: dict[str, object], source_contract_path: str
+) -> tuple[ModelSeamGraphEdgeDeclaration, ...]:
+    """``seams:`` block extraction (proposal step 1) — a hand-authored,
+    fully-typed declaration schema. Not yet adopted by any real contract in
+    the traced repos; kept for forward-compat and because it is the only
+    schema that can carry ``envelope_model``/``envelope_version``."""
+
     seams = raw.get("seams")
     if not isinstance(seams, list):
         return ()
 
-    source_contract_path = _repo_relative(contract_path, repo_base)
     edges: list[ModelSeamGraphEdgeDeclaration] = []
     for entry in seams:
         if not isinstance(entry, dict):
@@ -258,6 +271,64 @@ def _extract_declared_edges(
             # coerce a partial edge. The contract-sweep-style gates own
             # flagging malformed contracts; this stays a pure reader.
             continue
+    return tuple(edges)
+
+
+def _extract_event_bus_edges(
+    raw: dict[str, object], source_contract_path: str
+) -> tuple[ModelSeamGraphEdgeDeclaration, ...]:
+    """``event_bus.publish_topics`` / ``event_bus.subscribe_topics`` —
+    the REAL declared-topic schema (OMN-15763 AC1 fix-forward). 435+
+    contracts across omnibase_infra/omnimarket/omnibase_core carry this
+    block; none carry a ``seams:`` block. Per repo CLAUDE.md convention,
+    this — not a Kafka-client call-site literal — is the authoritative,
+    contract-first source of a node's topic seams.
+
+    ``edge_id`` is the topic string itself: ONEX topic names are globally
+    unique dot-namespaced identifiers (``onex.evt.<domain>.<name>.v1``), so
+    they are a real, non-fabricated correlation key — unlike the ``seams:``
+    schema's hand-authored ``id:``, nothing here is invented. Multiple
+    contracts publishing or subscribing the same topic (fan-out) each emit
+    their own edge entry; ``_correlate_contract_paths`` then fills each
+    entry's counterpart path from *some* declaring contract sharing that
+    edge_id — a disclosed limitation for many-producer/many-consumer topics
+    (the model carries a single counterpart path, not a list), not a
+    fabrication of any individual entry's own fields.
+
+    No ``envelope_model``/``envelope_version`` — this schema does not
+    declare either, so both are left ``None`` (see the model docstring).
+    """
+
+    event_bus = raw.get("event_bus")
+    if not isinstance(event_bus, dict):
+        return ()
+
+    edges: list[ModelSeamGraphEdgeDeclaration] = []
+    for role, topics_key in (
+        ("producer", "publish_topics"),
+        ("consumer", "subscribe_topics"),
+    ):
+        topics = event_bus.get(topics_key)
+        if not isinstance(topics, list):
+            continue
+        for topic in topics:
+            if not isinstance(topic, str) or not topic.strip():
+                continue
+            edges.append(
+                ModelSeamGraphEdgeDeclaration(
+                    edge_id=topic,
+                    seam=topic,
+                    role=role,
+                    source_contract_path=source_contract_path,
+                    topic=topic,
+                    producer_contract_path=(
+                        source_contract_path if role == "producer" else None
+                    ),
+                    consumer_contract_path=(
+                        source_contract_path if role == "consumer" else None
+                    ),
+                )
+            )
     return tuple(edges)
 
 
@@ -496,7 +567,12 @@ def extract_seam_graph(
 
     edges: list[ModelSeamGraphEdgeDeclaration] = []
     for contract_path in contract_paths:
-        edges.extend(_extract_declared_edges(contract_path, repo_base))
+        raw = _load_contract_yaml(contract_path)
+        if raw is None:
+            continue
+        source_contract_path = _repo_relative(contract_path, repo_base)
+        edges.extend(_extract_declared_edges(raw, source_contract_path))
+        edges.extend(_extract_event_bus_edges(raw, source_contract_path))
     edges = _correlate_contract_paths(edges)
 
     code_observations: list[ModelSeamGraphCodeObservation] = []

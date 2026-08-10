@@ -68,7 +68,11 @@ class EnumSeamGraphObservationKind(StrEnum):
 
 
 class ModelSeamGraphEdgeDeclaration(BaseModel):
-    """One seam edge declared in a contract.yaml's seams: block.
+    """One seam edge declared in a contract.yaml — either a ``seams:`` block
+    entry (proposal-step-1 schema, not yet adopted by any real contract) or
+    an ``event_bus.publish_topics`` / ``event_bus.subscribe_topics`` entry
+    (the schema 435+ real contracts across omnibase_infra/omnimarket/
+    omnibase_core actually carry today — OMN-15763 AC1 fix-forward).
 
     ``key_fields`` / ``delivery_semantics`` mirror ``ModelSeamProjection``'s
     wire-crossing fields (same types, reused rather than duplicated) so a
@@ -81,6 +85,12 @@ class ModelSeamGraphEdgeDeclaration(BaseModel):
     ``fsm_state_transitions`` names the FSM states this edge participates in
     (OMN-15767's DAG-walk consumer), read from an optional
     ``fsm_state_transitions:`` list on the seams: entry.
+
+    ``envelope_model`` / ``envelope_version`` are optional (``None``, not a
+    fabricated placeholder) because the real ``event_bus.publish_topics`` /
+    ``subscribe_topics`` schema does not carry per-topic envelope type
+    information — only the hand-authored ``seams:`` schema does. A ``None``
+    here means "not declared by this source," never "unknown but assumed."
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -90,8 +100,8 @@ class ModelSeamGraphEdgeDeclaration(BaseModel):
     role: str = Field(min_length=1)
     source_contract_path: str = Field(min_length=1)
     topic: str = Field(min_length=1)
-    envelope_model: str = Field(min_length=1)
-    envelope_version: str = Field(min_length=1)
+    envelope_model: str | None = Field(default=None, min_length=1)
+    envelope_version: str | None = Field(default=None, min_length=1)
     key_fields: tuple[ModelSeamProjectionField, ...] = Field(default_factory=tuple)
     delivery_semantics: EnumSeamDeliverySemantics = EnumSeamDeliverySemantics.UNKNOWN
     producer_contract_path: str | None = None
