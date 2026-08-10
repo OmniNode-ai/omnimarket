@@ -2806,7 +2806,8 @@
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_live_events/migrations/0000_create_live_events.sql"
+        "src/omnimarket/nodes/node_projection_live_events/migrations/0000_create_live_events.sql",
+        "src/omnimarket/nodes/node_projection_live_events/migrations/0002_create_omninode_internal_live_events.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
@@ -2817,6 +2818,7 @@
         "src/omnimarket/nodes/node_projection_live_events/contract.yaml"
       ],
       "current_schema": [
+        "omninode_internal",
         "public"
       ],
       "dependencies": [],
@@ -2826,12 +2828,18 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
       "indexes": [
         "idx_live_events_correlation_id",
         "idx_live_events_created_at",
         "idx_live_events_source",
-        "idx_live_events_topic"
+        "idx_live_events_topic",
+        "idx_omninode_internal_live_events_correlation_id",
+        "idx_omninode_internal_live_events_created_at",
+        "idx_omninode_internal_live_events_source",
+        "idx_omninode_internal_live_events_topic"
       ],
       "internal_tenant_column_transform": {
         "key_fk_index_partition_dependencies": [],
