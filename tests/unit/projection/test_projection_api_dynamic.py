@@ -1,12 +1,15 @@
-"""Unit tests for the dynamic projection API (OMN-10490).
+"""Unit tests for the dynamic projection API (OMN-10490 / OMN-15800).
 
-Tests that the projection API server honours the contract-driven topic map:
+Tests that the projection API server honours the contract-driven topic map,
+serving every route from an in-memory SnapshotCache (OMN-15800 — no DB in
+this process):
 - Response columns match contract declaration
 - DEGRADED entries return 503 with reason
 - Unknown topic returns 404 with available topic list
 - GET /projections returns full metadata per topic
-- DB query failure returns 503 with reason in body
+- An unbootstrapped cache returns 503 snapshot_bootstrap_incomplete
 - correlation_id filter on a topic without that column returns 422 (OMN-13165)
+- A topic not yet flipped to bus_backed returns 503 not_yet_bus_backed
 """
 
 from __future__ import annotations
@@ -15,14 +18,14 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from scripts.projection_api_server import (
     app,
-    get_pool,
+    get_snapshot_cache,
     get_topic_map,
     topic_supports_correlation_id_filter,
 )
@@ -36,28 +39,31 @@ def _ts(delta: timedelta) -> str:
     return (datetime.now(UTC) - delta).isoformat()
 
 
-def _make_pool(rows: list[dict[str, Any]], latest_ts: str | None = None) -> MagicMock:
-    conn = AsyncMock()
-    conn.fetch = AsyncMock(return_value=rows)
-    conn.fetchval = AsyncMock(return_value=latest_ts)
-
-    acquire_ctx = MagicMock()
-    acquire_ctx.__aenter__ = AsyncMock(return_value=conn)
-    acquire_ctx.__aexit__ = AsyncMock(return_value=None)
-
-    pool = MagicMock()
-    pool.acquire = MagicMock(return_value=acquire_ctx)
-    return pool
+def _order_by_spec(order_by: str | None) -> tuple[tuple[str, str, str | None], ...]:
+    if order_by is None:
+        return ()
+    parts = order_by.split()
+    column = parts[0]
+    direction = parts[1].upper() if len(parts) > 1 else "ASC"
+    return ((column, direction, None),)
 
 
-def _make_broken_pool() -> MagicMock:
-    acquire_ctx = MagicMock()
-    acquire_ctx.__aenter__ = AsyncMock(side_effect=Exception("connection refused"))
-    acquire_ctx.__aexit__ = AsyncMock(return_value=None)
-
-    pool = MagicMock()
-    pool.acquire = MagicMock(return_value=acquire_ctx)
-    return pool
+def _make_cache(
+    rows: list[dict[str, Any]],
+    latest_ts: str | None = None,
+    *,
+    bootstrapped: bool = True,
+) -> MagicMock:
+    cache = MagicMock()
+    cache.is_bootstrapped = MagicMock(return_value=bootstrapped)
+    cache.get_rows = MagicMock(return_value=rows)
+    parsed_latest = (
+        datetime.fromisoformat(latest_ts.replace("Z", "+00:00"))
+        if latest_ts is not None
+        else None
+    )
+    cache.latest_event_at = MagicMock(return_value=parsed_latest)
+    return cache
 
 
 def _make_cfg(
@@ -75,6 +81,8 @@ def _make_cfg(
     expected_event_interval_seconds: int | None = None,
     status: ProjectionStatus = ProjectionStatus.OK,
     degraded_reason: str = "",
+    bus_backed: bool = True,
+    key_columns: tuple[str, ...] = ("col_a",),
 ) -> ProjectionTableConfig:
     return ProjectionTableConfig(
         topic=topic,
@@ -82,6 +90,7 @@ def _make_cfg(
         schema_name="public",
         columns=columns,
         order_by=order_by,
+        order_by_spec=_order_by_spec(order_by),
         freshness_column=freshness_column,
         expected_event_interval_seconds=expected_event_interval_seconds,
         cursor_column=cursor_column,
@@ -94,16 +103,18 @@ def _make_cfg(
         source_contract="node_test",
         status=status,
         degraded_reason=degraded_reason,
+        bus_backed=bus_backed,
+        key_columns=key_columns if bus_backed else (),
     )
 
 
 @contextmanager
 def _with_overrides(
-    pool: MagicMock,
+    cache: MagicMock,
     topic_map: dict[str, ProjectionTableConfig],
 ) -> Generator[TestClient, None, None]:
-    """Override both get_pool and get_topic_map; yield a TestClient."""
-    app.dependency_overrides[get_pool] = lambda: pool
+    """Override both get_snapshot_cache and get_topic_map; yield a TestClient."""
+    app.dependency_overrides[get_snapshot_cache] = lambda: cache
     app.dependency_overrides[get_topic_map] = lambda: topic_map
     client = TestClient(app, raise_server_exceptions=True)
     try:
@@ -125,9 +136,9 @@ class TestProjectionEndpointDynamic:
             topic="onex.snapshot.projection.test.v1",
             columns=declared_cols,
             freshness_column="updated_at",
+            key_columns=("aggregation_key",),
         )
         topic_map = {cfg.topic: cfg}
-        # DB returns rows with those columns
         rows = [
             {
                 "aggregation_key": "model-a",
@@ -135,12 +146,13 @@ class TestProjectionEndpointDynamic:
                 "total_cost_usd": "1.23",
             }
         ]
-        pool = _make_pool(rows, latest_ts=_ts(timedelta(minutes=1)))
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get("/projection/onex.snapshot.projection.test.v1")
         assert resp.status_code == 200
         body = resp.json()
         assert body["row_count"] == 1
+        assert body["backing"] == "bus"
         row_keys = set(body["rows"][0].keys())
         assert row_keys == {"aggregation_key", "window", "total_cost_usd"}
 
@@ -152,8 +164,8 @@ class TestProjectionEndpointDynamic:
             degraded_reason="table 'public.test_table' not found at startup",
         )
         topic_map = {cfg.topic: cfg}
-        pool = _make_pool([])
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache([])
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get("/projection/onex.snapshot.projection.test.v1")
         assert resp.status_code == 503
         body = resp.json()
@@ -164,8 +176,8 @@ class TestProjectionEndpointDynamic:
         """Unknown topic returns 404 with all available topics listed."""
         cfg = _make_cfg(topic="known.topic.v1")
         topic_map = {"known.topic.v1": cfg}
-        pool = _make_pool([])
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache([])
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get("/projection/unknown.topic.v99")
         assert resp.status_code == 404
         body = resp.json()
@@ -183,8 +195,8 @@ class TestProjectionEndpointDynamic:
             freshness_column="col_a",
         )
         topic_map = {cfg.topic: cfg}
-        pool = _make_pool([])
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache([])
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get("/projections")
         assert resp.status_code == 200
         body = resp.json()
@@ -199,6 +211,26 @@ class TestProjectionEndpointDynamic:
         assert entry["freshness_column"] == "col_a"
         assert entry["limit"] == 100
         assert entry["source_contract"] == "node_test"
+        assert entry["bus_backed"] is True
+        assert entry["backing"] == "bus"
+
+    def test_not_yet_bus_backed_topic_returns_503(self) -> None:
+        """A topic whose contract has not flipped bus_backed: true returns an
+        explicit, self-documenting 503 -- never a stale/absent DB read."""
+        cfg = _make_cfg(
+            topic="onex.snapshot.projection.test.v1",
+            bus_backed=False,
+            key_columns=(),
+        )
+        topic_map = {cfg.topic: cfg}
+        cache = _make_cache([])
+        with _with_overrides(cache, topic_map) as client:
+            resp = client.get("/projection/onex.snapshot.projection.test.v1")
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["error"] == "not_yet_bus_backed"
+        assert body["migration_ticket"] == "OMN-15800"
+        cache.get_rows.assert_not_called()
 
     def test_evidence_pipeline_endpoint_returns_projection_envelope(self) -> None:
         cfg = _make_cfg(
@@ -220,6 +252,7 @@ class TestProjectionEndpointDynamic:
             freshness_state_column="freshness_state",
             degraded_reason_column="degraded_reason",
             observed_at_column="observed_at",
+            key_columns=("projection_cursor",),
         )
         rows = [
             {
@@ -231,9 +264,9 @@ class TestProjectionEndpointDynamic:
                 "observed_at": "2026-05-21T23:00:00Z",
             }
         ]
-        pool = _make_pool(rows, latest_ts="2026-05-21T23:00:00Z")
+        cache = _make_cache(rows, latest_ts="2026-05-21T23:00:00Z")
 
-        with _with_overrides(pool, {cfg.topic: cfg}) as client:
+        with _with_overrides(cache, {cfg.topic: cfg}) as client:
             resp = client.get("/v1/evidence-pipeline/stages")
 
         assert resp.status_code == 200
@@ -254,10 +287,11 @@ class TestProjectionEndpointDynamic:
             columns=("projection_cursor", "last_event_id"),
             cursor_column="projection_cursor",
             last_event_id_column="last_event_id",
+            key_columns=("projection_cursor",),
         )
-        pool = _make_pool([])
+        cache = _make_cache([])
 
-        with _with_overrides(pool, {cfg.topic: cfg}) as client:
+        with _with_overrides(cache, {cfg.topic: cfg}) as client:
             snapshot_resp = client.get("/v1/evidence-pipeline/events")
             stream_resp = client.get("/v1/evidence-pipeline/events/stream")
 
@@ -267,10 +301,7 @@ class TestProjectionEndpointDynamic:
 
     # -----------------------------------------------------------------------
     # OMN-13168: a correlation_id that matches no evidence-pipeline rows must
-    # report EMPTY (healthy-but-no-match), NOT DEGRADED. DEGRADED on a 200
-    # response falsely signals the projection is broken when the correlation
-    # simply is not an evidence-pipeline correlation (e.g. a delegation id),
-    # and it must point callers at the authoritative per-correlation surface.
+    # report EMPTY (healthy-but-no-match), NOT DEGRADED.
     # -----------------------------------------------------------------------
     def test_evidence_pipeline_empty_correlation_reports_empty_not_degraded(
         self,
@@ -295,13 +326,11 @@ class TestProjectionEndpointDynamic:
             freshness_state_column="freshness_state",
             degraded_reason_column="degraded_reason",
             observed_at_column="observed_at",
+            key_columns=("projection_cursor",),
         )
-        # Query succeeds but the requested correlation has no evidence-pipeline
-        # rows (delegation correlation id), and the table itself is empty so the
-        # MAX(observed_at) freshness probe returns NULL.
-        pool = _make_pool([], latest_ts=None)
+        cache = _make_cache([], latest_ts=None)
 
-        with _with_overrides(pool, {cfg.topic: cfg}) as client:
+        with _with_overrides(cache, {cfg.topic: cfg}) as client:
             resp = client.get(
                 "/v1/evidence-pipeline/correlation-traces"
                 "?correlation_id=22f52e6a-a6f7-443e-9ea6-196b0a2eb11c"
@@ -310,11 +339,7 @@ class TestProjectionEndpointDynamic:
         assert resp.status_code == 200
         body = resp.json()
         assert body["row_count"] == 0
-        # The empty-but-healthy result must NOT be reported as DEGRADED.
         assert body["freshness_state"] == "EMPTY", body["freshness_state"]
-        # A filtered, empty result must carry a typed scope pointer so callers
-        # know the endpoint serves evidence-pipeline runs and where to look for
-        # delegation correlation traces.
         assert body["query_scope"] == "evidence_pipeline"
         assert (
             body["authoritative_correlation_source"]
@@ -322,16 +347,7 @@ class TestProjectionEndpointDynamic:
         )
 
     def test_evidence_pipeline_genuinely_stale_table_surfaces_stale(self) -> None:
-        """A populated-but-stale table (no filter) keeps a genuine-staleness signal.
-
-        EMPTY must only apply when a filter returned zero rows; an unfiltered
-        read of a stale projection must continue to surface a non-fresh,
-        non-empty signal so real staleness is not masked. The evidence-pipeline
-        correlation-trace projection is an actively-streaming projection, so it
-        declares an expected cadence (OMN-13035): a 2h-old row is far past 2x the
-        interval and therefore genuinely STALE — NOT the honest "idle" reserved
-        for on-demand topics that have simply gone quiet, and NOT EMPTY.
-        """
+        """A populated-but-stale table (no filter) keeps a genuine-staleness signal."""
         cfg = _make_cfg(
             topic="onex.snapshot.projection.evidence_pipeline.correlations.v1",
             table="evidence_correlation_trace_projection",
@@ -347,6 +363,7 @@ class TestProjectionEndpointDynamic:
             freshness_state_column="freshness_state",
             observed_at_column="observed_at",
             expected_event_interval_seconds=300,
+            key_columns=("projection_cursor",),
         )
         stale_ts = _ts(timedelta(hours=2))
         rows = [
@@ -357,28 +374,27 @@ class TestProjectionEndpointDynamic:
                 "observed_at": stale_ts,
             }
         ]
-        pool = _make_pool(rows, latest_ts=stale_ts)
+        cache = _make_cache(rows, latest_ts=stale_ts)
 
-        with _with_overrides(pool, {cfg.topic: cfg}) as client:
+        with _with_overrides(cache, {cfg.topic: cfg}) as client:
             resp = client.get("/v1/evidence-pipeline/correlation-traces")
 
         assert resp.status_code == 200
         body = resp.json()
         assert body["row_count"] == 1
-        # Non-fresh, non-EMPTY: real staleness is not masked (the cry-wolf-free
-        # signal for a cadenced projection that has fallen behind its cadence).
         assert body["freshness_state"] == "STALE"
 
-    def test_query_failure_returns_503_degraded(self) -> None:
-        """A DB query error during serving returns 503 with reason, not 500."""
+    def test_unbootstrapped_cache_returns_503_degraded(self) -> None:
+        """An unbootstrapped SnapshotCache returns 503, never a partial/empty 200
+        (OMN-15800 -- the bare 200/row_count:0 that hid OMN-15797)."""
         cfg = _make_cfg(topic="onex.snapshot.projection.test.v1")
         topic_map = {cfg.topic: cfg}
-        pool = _make_broken_pool()
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache([], bootstrapped=False)
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get("/projection/onex.snapshot.projection.test.v1")
         assert resp.status_code == 503
         body = resp.json()
-        assert body.get("status") == "degraded" or body.get("error") is not None
+        assert body["error"] == "snapshot_bootstrap_incomplete"
 
     def test_absent_order_by_returns_undefined_ordering(self) -> None:
         """When order_by is None, response includes ordering: undefined."""
@@ -389,8 +405,8 @@ class TestProjectionEndpointDynamic:
         )
         topic_map = {cfg.topic: cfg}
         rows = [{"col_a": "v1", "col_b": "v2"}]
-        pool = _make_pool(rows, latest_ts=_ts(timedelta(minutes=1)))
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get("/projection/onex.snapshot.projection.test.v1")
         assert resp.status_code == 200
         body = resp.json()
@@ -403,8 +419,8 @@ class TestProjectionEndpointDynamic:
             freshness_column=None,
         )
         topic_map = {cfg.topic: cfg}
-        pool = _make_pool([], latest_ts=None)
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache([], latest_ts=None)
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get("/projection/onex.snapshot.projection.test.v1")
         assert resp.status_code == 200
         body = resp.json()
@@ -417,13 +433,8 @@ class TestProjectionEndpointDynamic:
     def test_correlation_id_filter_on_topic_without_column_returns_422(self) -> None:
         """Filtering by correlation_id on a topic whose declared columns do not
         include that column must return a typed 422 (unsupported_filter) before
-        issuing any SQL — not a 503 'column does not exist' from Postgres.
-
-        This is the regression test for the delegation.summary.v1 defect
-        discovered in the 2026-06-15 night gate-zero run (OMN-13165).
+        touching the cache -- not a 503.
         """
-        # Simulate an aggregate/summary topic whose view has no correlation_id.
-        # The camelCase aliases match the delegation.summary.v1 contract pattern.
         cfg = _make_cfg(
             topic="onex.snapshot.projection.delegation.summary.v1",
             table="projection_delegation_summary",
@@ -435,12 +446,11 @@ class TestProjectionEndpointDynamic:
             ),
             order_by=None,
             freshness_column="latest_projection_updated_at",
+            key_columns=("latest_projection_updated_at",),
         )
         topic_map = {cfg.topic: cfg}
-        # A broken pool would surface as 503 — use the healthy one to prove the
-        # guard fires before any DB call.
-        pool = _make_pool([])
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache([])
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get(
                 "/projection/onex.snapshot.projection.delegation.summary.v1"
                 "?correlation_id=1b90ea27-1f06-42ae-b668-ecdf9450f7ca"
@@ -450,8 +460,7 @@ class TestProjectionEndpointDynamic:
         assert body["error"] == "unsupported_filter"
         assert body["filter"] == "correlation_id"
         assert "delegation.summary.v1" in body["topic"]
-        # Must name the authoritative surface so the caller knows where to look.
-        assert "correlation-trace" in body["detail"]
+        assert "correlation_id" in body["detail"]
 
     def test_correlation_id_filter_on_topic_with_column_is_allowed(self) -> None:
         """A topic that explicitly declares ``correlation_id`` in its column list
@@ -469,6 +478,7 @@ class TestProjectionEndpointDynamic:
             ),
             order_by="created_at ASC",
             freshness_column="created_at",
+            key_columns=("id",),
         )
         topic_map = {cfg.topic: cfg}
         rows = [
@@ -480,8 +490,8 @@ class TestProjectionEndpointDynamic:
                 "created_at": _ts(timedelta(minutes=1)),
             }
         ]
-        pool = _make_pool(rows, latest_ts=_ts(timedelta(minutes=1)))
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get(
                 "/projection/onex.snapshot.projection.delegation.correlation-trace.v1"
                 "?correlation_id=1b90ea27-1f06-42ae-b668-ecdf9450f7ca"
@@ -492,18 +502,19 @@ class TestProjectionEndpointDynamic:
 
     def test_correlation_id_filter_on_star_columns_is_allowed(self) -> None:
         """A topic that uses SELECT * (columns = ('*',)) must allow the filter
-        because the underlying table may expose correlation_id even though the
-        column list is not enumerated explicitly.
+        because the underlying row shape may include correlation_id even
+        though the column list is not enumerated explicitly.
         """
         cfg = _make_cfg(
             topic="onex.snapshot.projection.test.star.v1",
             columns=("*",),
             order_by=None,
             freshness_column=None,
+            key_columns=("correlation_id",),
         )
         topic_map = {cfg.topic: cfg}
-        pool = _make_pool([{"correlation_id": "abc", "val": 1}])
-        with _with_overrides(pool, topic_map) as client:
+        cache = _make_cache([{"correlation_id": "abc", "val": 1}])
+        with _with_overrides(cache, topic_map) as client:
             resp = client.get(
                 "/projection/onex.snapshot.projection.test.star.v1?correlation_id=abc"
             )
@@ -528,8 +539,6 @@ class TestTopicSupportsCorrelationIdFilter:
         assert topic_supports_correlation_id_filter(cfg) is True
 
     def test_missing_correlation_id_column_returns_false(self) -> None:
-        # Mirrors the delegation.summary.v1 column set (camelCase aliases, no
-        # correlation_id).
         cfg = self._cfg(
             (
                 '"totalDelegations"',
@@ -544,6 +553,5 @@ class TestTopicSupportsCorrelationIdFilter:
         assert topic_supports_correlation_id_filter(cfg) is True
 
     def test_quoted_correlation_id_column_returns_true(self) -> None:
-        # Although unusual, a contract could declare it with surrounding quotes.
         cfg = self._cfg(('"correlation_id"', "task_type"))
         assert topic_supports_correlation_id_filter(cfg) is True

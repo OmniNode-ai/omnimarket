@@ -18,11 +18,13 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelTaskDelegatedSavingsSource,
 )
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
+from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.dlq import (
     correlation_id_from_payload,
     dlq_topics_from_contract,
     route_to_dlq,
 )
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -82,6 +84,18 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             raise ValueError("Contract missing required table role 'estimates'")
 
         self._table_estimates: str = _by_role["estimates"]
+
+        # OMN-15800: this contract declares 3 exposures; only savings.v1 is
+        # bus_backed in this slice (delegation.savings-series.v1 and
+        # cost.savings-overview.v1 are aggregate views, not raw upserted
+        # rows, and stay SQL-served / not_yet_bus_backed for now).
+        node_name = str(self._contract.get("name", "projection_savings"))
+        exposures = load_projection_exposures_from_contract(
+            self._contract, node_name, _path
+        )
+        self._snapshot_exposure: ProjectionTableConfig | None = next(
+            (exposure for exposure in exposures if exposure.bus_backed), None
+        )
         _topics: list[str] = self._contract.get("event_bus", {}).get(
             "subscribe_topics", []
         )
@@ -166,6 +180,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             partition=int(input_data.pop("_partition", 0)),
             offset=int(input_data.pop("_offset", 0)),
             fallback_id=str(input_data.pop("_fallback_id", "")),
+            topic=topic,
         )
         ok = asyncio.run(self.project_event(topic, input_data, meta))
         return {"projected": ok}
@@ -280,6 +295,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             savings_usd=savings_usd,
             repo_name=repo_name,
             machine_id=machine_id,
+            meta=meta,
         )
         logger.info(
             "Projected savings-estimated for session %s (total_savings=$%s)",
@@ -345,6 +361,8 @@ class SavingsProjectionRunner(BaseProjectionRunner):
                 if projection.machine_id is not None
                 else None
             ),
+            meta=meta,
+            source_event_id=str(source.correlation_id),
         )
         logger.info(
             "Projected canonical delegation savings for %s (savings=$%s)",
@@ -386,6 +404,8 @@ class SavingsProjectionRunner(BaseProjectionRunner):
                 if projection.machine_id is not None
                 else None
             ),
+            meta=meta,
+            source_event_id=str(terminal.correlation_id),
         )
         logger.info(
             "Projected delegate-skill savings for %s (savings=$%s)",
@@ -406,8 +426,10 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         savings_usd: Decimal,
         repo_name: str | None,
         machine_id: str | None,
+        meta: MessageMeta,
+        source_event_id: str | None = None,
     ) -> None:
-        await self.db.execute(
+        rows = await self.db.execute(
             f"""
             INSERT INTO {self._table_estimates} (
               event_timestamp, session_id, model_local, model_cloud_baseline,
@@ -427,6 +449,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
               repo_name = EXCLUDED.repo_name,
               machine_id = EXCLUDED.machine_id,
               updated_at = NOW()
+            RETURNING id, session_id, event_timestamp, model_local,
+              model_cloud_baseline, local_cost_usd, cloud_cost_usd,
+              savings_usd, repo_name, machine_id, created_at, updated_at
             """,
             event_timestamp,
             session_id,
@@ -437,6 +462,18 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             savings_usd,
             repo_name,
             machine_id,
+        )
+        row = rows[0] if rows else None
+        if self._snapshot_exposure is None or row is None:
+            return
+        await self.publish_snapshot_delta(
+            self._snapshot_exposure,
+            op="upsert",
+            row=row,
+            source_event_id=source_event_id or meta.fallback_id,
+            source_topic=meta.topic,
+            source_partition=meta.partition,
+            source_offset=meta.offset,
         )
 
 

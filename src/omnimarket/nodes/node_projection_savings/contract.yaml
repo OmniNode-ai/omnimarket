@@ -92,6 +92,32 @@ projection_api:
       order_by: created_at DESC
       freshness_column: updated_at
       limit: 500
+      # OMN-15800 corrective round (2026-08-10): NOT bus_backed.
+      # savings_estimates is a real 3-tenant table (verified live: a 3-tenant
+      # probe against the bus-backed SnapshotCache returned every tenant's
+      # rows to one unscoped caller — SnapshotCache.get_rows() has no tenant
+      # filter and publish_snapshot_delta() defaults tenant_id="omninode"
+      # with no real caller-supplied value). Per the 2026-08-09 addressing
+      # ruling, real scoping requires the reducer's envelope to carry actual
+      # per-event tenant context — verified absent: the wire envelope this
+      # reducer consumes (omnibase_core ModelEventEnvelope, and its nested
+      # ModelSecurityContext / ModelEnvelopeMetadata) has NO tenant_id field
+      # anywhere in its schema, so there is no real tenant to read at the
+      # publish call site today. That is the OMN-14208 / OMN-15425
+      # tenant-authority write path, not a mechanical fix inside this
+      # ticket's scope. Falling back to the not_yet_bus_backed / SQL-served
+      # path (explicit 503 for callers that request bus_backed serving) per
+      # OMN-15800's own strangler design, rather than shipping a
+      # cross-tenant-exposure defect. Re-flip to true once OMN-15425 lands a
+      # real per-event tenant identity this reducer can read.
+      bus_backed: false
+      # CodeRabbit (OMN-15800): savings_estimates permits multiple rows per
+      # session_id (writers upsert on the composite
+      # (session_id, event_timestamp, model_local, model_cloud_baseline);
+      # `id` is the actual primary key). key_columns: [session_id] would
+      # collapse distinct rows for the same session onto one cache entry.
+      key_columns:
+        - id
     - topic: onex.snapshot.projection.delegation.savings.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_savings
       schema: public

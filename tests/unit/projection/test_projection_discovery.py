@@ -25,7 +25,9 @@ import yaml
 
 from omnimarket.projection.discovery import (
     ALLOWED_SCHEMAS,
+    MalformedOrderBySpecError,
     _load_projection_api_section,
+    _parse_order_by_spec,
     _parse_projection_api_section,
     _parse_projection_api_sections,
     build_projection_topic_map,
@@ -759,3 +761,214 @@ class TestBuildProjectionTopicMap:
         ) as mock_discover:
             build_projection_topic_map(manifest=None)
         mock_discover.assert_called_once_with()
+
+
+# ---------------------------------------------------------------------------
+# OMN-15800 corrective round -- Defect A: order_by NULLS FIRST|LAST support
+# and the order_by hard-fail (never log-and-drop for THIS field specifically).
+# ---------------------------------------------------------------------------
+
+
+class TestOrderByNullsPlacement:
+    def test_bare_column_defaults_asc_no_nulls(self) -> None:
+        spec = _parse_order_by_spec(
+            "updated_at", ("updated_at",), "node_x", Path("contract.yaml")
+        )
+        assert spec == (("updated_at", "ASC", None),)
+
+    def test_direction_only(self) -> None:
+        spec = _parse_order_by_spec(
+            "updated_at DESC", ("updated_at",), "node_x", Path("contract.yaml")
+        )
+        assert spec == (("updated_at", "DESC", None),)
+
+    def test_direction_plus_nulls_last(self) -> None:
+        spec = _parse_order_by_spec(
+            "ingest_sequence ASC NULLS LAST",
+            ("ingest_sequence",),
+            "node_x",
+            Path("contract.yaml"),
+        )
+        assert spec == (("ingest_sequence", "ASC", "LAST"),)
+
+    def test_direction_plus_nulls_first(self) -> None:
+        spec = _parse_order_by_spec(
+            "ingest_sequence DESC NULLS FIRST",
+            ("ingest_sequence",),
+            "node_x",
+            Path("contract.yaml"),
+        )
+        assert spec == (("ingest_sequence", "DESC", "FIRST"),)
+
+    def test_nulls_without_direction(self) -> None:
+        spec = _parse_order_by_spec(
+            "ingest_sequence NULLS LAST",
+            ("ingest_sequence",),
+            "node_x",
+            Path("contract.yaml"),
+        )
+        assert spec == (("ingest_sequence", "ASC", "LAST"),)
+
+    def test_nulls_case_insensitive(self) -> None:
+        spec = _parse_order_by_spec(
+            "ingest_sequence asc nulls last",
+            ("ingest_sequence",),
+            "node_x",
+            Path("contract.yaml"),
+        )
+        assert spec == (("ingest_sequence", "ASC", "LAST"),)
+
+    def test_multi_column_with_nulls_on_one_clause(self) -> None:
+        """The exact live clause from node_evidence_dashboard_reducer/contract.yaml."""
+        spec = _parse_order_by_spec(
+            "ingest_sequence ASC NULLS LAST, observed_at ASC, projection_cursor ASC",
+            ("ingest_sequence", "observed_at", "projection_cursor"),
+            "node_evidence_dashboard_reducer",
+            Path("contract.yaml"),
+        )
+        assert spec == (
+            ("ingest_sequence", "ASC", "LAST"),
+            ("observed_at", "ASC", None),
+            ("projection_cursor", "ASC", None),
+        )
+
+    def test_nulls_not_followed_by_first_or_last_raises(self) -> None:
+        with pytest.raises(MalformedOrderBySpecError):
+            _parse_order_by_spec(
+                "col NULLS SIDEWAYS", ("col",), "node_x", Path("contract.yaml")
+            )
+
+    def test_trailing_garbage_after_nulls_clause_raises(self) -> None:
+        with pytest.raises(MalformedOrderBySpecError):
+            _parse_order_by_spec(
+                "col ASC NULLS LAST EXTRA",
+                ("col",),
+                "node_x",
+                Path("contract.yaml"),
+            )
+
+    def test_unknown_direction_token_raises(self) -> None:
+        with pytest.raises(MalformedOrderBySpecError):
+            _parse_order_by_spec(
+                "col SIDEWAYS", ("col",), "node_x", Path("contract.yaml")
+            )
+
+    def test_unknown_column_raises(self) -> None:
+        with pytest.raises(MalformedOrderBySpecError):
+            _parse_order_by_spec(
+                "not_a_column ASC", ("col",), "node_x", Path("contract.yaml")
+            )
+
+    def test_absent_order_by_returns_empty_tuple(self) -> None:
+        assert _parse_order_by_spec(None, ("col",), "node_x", Path("x")) == ()
+
+
+class TestOrderByHardFailAtBuild:
+    """OMN-15800 defect A: a malformed order_by must crash contract discovery,
+    never silently exclude the exposure. Every OTHER validation failure in
+    this module (missing topic/table/columns, bad schema, ...) keeps its
+    prior "log + exclude" behavior — see TestBuildProjectionTopicMap above.
+    order_by is deliberately different (see MalformedOrderBySpecError's
+    docstring)."""
+
+    def test_malformed_order_by_raises_at_build_not_silently_excluded(
+        self, tmp_path: Path
+    ) -> None:
+        p = _write_contract(
+            tmp_path,
+            """
+            name: node_x
+            projection_api:
+              expose: true
+              topic: "t.v1"
+              table: "test_table"
+              columns: ["col_a"]
+              order_by: "col_a GARBAGE TOKENS HERE"
+            """,
+        )
+        manifest = _make_manifest([_make_contract_stub(p, "node_x")])
+        with pytest.raises(MalformedOrderBySpecError):
+            build_projection_topic_map(manifest)
+
+    def test_unknown_order_by_column_raises_at_build(self, tmp_path: Path) -> None:
+        p = _write_contract(
+            tmp_path,
+            """
+            name: node_x
+            projection_api:
+              expose: true
+              topic: "t.v1"
+              table: "test_table"
+              columns: ["col_a"]
+              order_by: "col_b DESC"
+            """,
+        )
+        manifest = _make_manifest([_make_contract_stub(p, "node_x")])
+        with pytest.raises(MalformedOrderBySpecError):
+            build_projection_topic_map(manifest)
+
+
+class TestOmn15800ExposureParity:
+    """Live-contract regression: the exact defect that dropped 57 -> 55.
+
+    node_evidence_dashboard_reducer declares 4 exposures; 2 of them use
+    'NULLS LAST' in order_by. Before the fix, _parse_order_by_spec rejected
+    that clause and the whole exposure (not just the malformed field) was
+    silently excluded from build_projection_topic_map's result -- correlations.v1
+    and live_events.v1 vanished with only a logger.error line as evidence.
+    """
+
+    def test_live_topic_count_is_57(self) -> None:
+        topic_map = build_projection_topic_map()
+        assert len(topic_map) == 57
+
+    def test_all_four_evidence_pipeline_exposures_present(self) -> None:
+        topic_map = build_projection_topic_map()
+        expected = {
+            "onex.snapshot.projection.evidence_pipeline.stages.v1",
+            "onex.snapshot.projection.evidence_pipeline.correlations.v1",
+            "onex.snapshot.projection.evidence_pipeline.readiness.v1",
+            "onex.snapshot.projection.evidence_pipeline.live_events.v1",
+        }
+        assert expected.issubset(topic_map)
+        for topic in expected:
+            assert topic_map[topic].source_contract == "node_evidence_dashboard_reducer"
+
+    def test_nulls_last_exposures_parsed_with_full_multi_column_spec(self) -> None:
+        topic_map = build_projection_topic_map()
+        cfg = topic_map["onex.snapshot.projection.evidence_pipeline.correlations.v1"]
+        assert cfg.order_by_spec == (
+            ("ingest_sequence", "ASC", "LAST"),
+            ("observed_at", "ASC", None),
+            ("projection_cursor", "ASC", None),
+        )
+
+
+# ---------------------------------------------------------------------------
+# OMN-15800 corrective round -- Defect B: tenant scoping. Real tenant
+# scoping needs a per-event tenant identity this reducer can read (verified
+# absent: omnibase_core.ModelEventEnvelope carries no tenant_id anywhere in
+# its schema, and OMN-14208/OMN-15425's tenant-authority path has zero
+# non-test call sites per test_house_tenant_default_ratchet.py). The
+# honest-fallback path was taken: savings.v1 stays OFF bus_backed so the
+# proven cross-tenant SnapshotCache defect (get_rows never filters by
+# tenant) is unreachable via the real contract.
+# ---------------------------------------------------------------------------
+
+
+class TestOmn15800TenantScopingFallback:
+    def test_savings_v1_is_not_bus_backed(self) -> None:
+        """Pin the fallback: savings.v1 must stay SQL/not_yet_bus_backed
+        (HTTP 503) until real per-event tenant identity exists. Flipping
+        this back to True without also fixing SnapshotCache tenant
+        filtering reopens the proven cross-tenant exposure."""
+        topic_map = build_projection_topic_map()
+        cfg = topic_map["onex.snapshot.projection.savings.v1"]
+        assert cfg.bus_backed is False
+
+    def test_registration_v1_stays_bus_backed(self) -> None:
+        """The one family this ticket proves live end-to-end; single
+        implicit tenant, no cross-tenant surface today."""
+        topic_map = build_projection_topic_map()
+        cfg = topic_map["onex.snapshot.projection.registration.v1"]
+        assert cfg.bus_backed is True
