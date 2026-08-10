@@ -1,8 +1,8 @@
 ---
 name: projection_live_events
-contract_version: {major: 1, minor: 2, patch: 1}
+contract_version: {major: 1, minor: 3, patch: 0}
 node_type: reducer
-node_version: {major: 1, minor: 2, patch: 1}
+node_version: {major: 1, minor: 3, patch: 0}
 input_model: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events.ModelLiveEvent
 description: >
   Projects operator-relevant platform and workflow bus events into the live_events table.
@@ -24,6 +24,15 @@ handler_routing:
         module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
       handler_module: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events
       event_model: omnimarket.nodes.node_projection_live_events.handlers.handler_projection_live_events.ModelLiveEvent
+    # OMN-15800: dedicated Kafka->Postgres consumer that additionally
+    # publishes a bus-fed snapshot delta per upserted row (mirrors
+    # node_projection_registration's registration_projection_runner
+    # operation, handler_registration.py::RegistrationProjectionRunner).
+    - operation: live_events_projection_runner
+      handler:
+        name: HandlerLiveEventsProjectionRunner
+        module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
+      handler_module: omnimarket.nodes.node_projection_live_events.handlers.handler_live_events
 
 descriptor:
   node_archetype: reducer
@@ -110,6 +119,20 @@ projection_api:
       order_by: created_at DESC
       freshness_column: created_at
       limit: 100
+      # OMN-15800: served from the bus-fed SnapshotCache, never from
+      # Postgres (2026-08-09 operator ruling). table/schema above stay for
+      # the writer-side / pre-conversion record; the serving path reads
+      # bus_backed + key_columns only. Unlike node_projection_savings's
+      # savings.v1 (reverted to bus_backed: false in the OMN-15800
+      # corrective round over a live cross-tenant SnapshotCache.get_rows()
+      # leak), live_events carries NO tenant_id column anywhere in its
+      # migrations -- it is a genuinely global, platform-wide operational
+      # event stream, so publish_snapshot_delta's default
+      # tenant_id="omninode" leaks nothing tenant-scoped. See
+      # handler_live_events.py's module docstring for the full analysis.
+      bus_backed: true
+      key_columns:
+        - "event_id"
 
 metadata:
   transport_type: kafka
