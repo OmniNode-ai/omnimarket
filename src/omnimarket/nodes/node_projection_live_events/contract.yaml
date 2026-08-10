@@ -95,7 +95,7 @@ projection_api:
   exposures:
     - topic: onex.snapshot.projection.live-events.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: live_events
-      schema: public
+      schema: omninode_internal
       columns:
         - id
         - event_id
