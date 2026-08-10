@@ -234,6 +234,20 @@ CREATE TABLE IF NOT EXISTS omninode_internal.live_events (
 -- (2026-08-10, out-of-band creation carried only the schema itself), so this
 -- is a mechanical compliance guard, not a response to observed drift -- every
 -- add is a no-op on the fresh-create path this migration actually exercises.
+--
+-- WHAT THIS BLOCK DOES NOT DO (OMN-15819 CodeRabbit thread r3749990744): a
+-- column-level `ADD COLUMN IF NOT EXISTS` can only ever add a NULLABLE
+-- column -- it cannot retroactively apply the PRIMARY KEY, the `event_id`
+-- UNIQUE constraint, or any NOT NULL from the CREATE TABLE above onto a
+-- pre-existing, non-canonical table, and a DO block that attempted that
+-- reconciliation is exactly the procedural-execution shape the
+-- application-database SQL gate rejects (see the file-header rationale).
+-- Rather than silently leaving a shape-degraded table able to accept
+-- duplicate/incomplete events while this migration reports success, section
+-- 7 below adds statically-provable post-conditions asserting the PRIMARY
+-- KEY, the `event_id` UNIQUE constraint, and every required-column NOT NULL
+-- are actually present after this file runs -- on a pre-existing table
+-- missing any of them, the migration now fails loudly instead of no-opping.
 ALTER TABLE omninode_internal.live_events
   ADD COLUMN IF NOT EXISTS id UUID DEFAULT gen_random_uuid();
 ALTER TABLE omninode_internal.live_events
@@ -275,8 +289,91 @@ CREATE INDEX IF NOT EXISTS idx_omninode_internal_live_events_correlation_id
   WHERE correlation_id IS NOT NULL;
 
 -- -----------------------------------------------------------------------------
--- 6. Runtime-owns-DB doctrine: omninode_runtime read/write grant, identical
---    scope to 099's own (SELECT, INSERT, UPDATE -- no DELETE).
+-- 6. Shape post-conditions -- BEFORE any GRANT below, deliberately (OMN-15819
+--    CodeRabbit thread r3751589783). run-forward-migrations.sh invokes
+--    `psql -v ON_ERROR_STOP=1 -f` with no --single-transaction and no
+--    explicit BEGIN wrapping this file, so every statement here autocommits
+--    independently as psql executes it. If these assertions ran AFTER the
+--    GRANT (as in an earlier revision of this file), a failed assertion
+--    would still leave the runtime write grant committed on a table this
+--    migration just rejected. Ordering the grant last means ON_ERROR_STOP
+--    aborts the script -- and grants nothing -- before any GRANT statement
+--    is reached.
+--
+--    Statically provable (no DO/RAISE), matching the OMN-15361
+--    application-database gate's requirement for deployable SQL and
+--    098/099's own convention. The constraint-shape checks close the
+--    reconciliation gap the ADD COLUMN IF NOT EXISTS block above cannot:
+--    it can only add NULLABLE columns, never retroactively apply a PRIMARY
+--    KEY, a UNIQUE constraint, or a NOT NULL onto a pre-existing,
+--    non-canonical table (OMN-15819 CodeRabbit thread r3749990744). Each
+--    check asserts the EXACT column set, not merely "some constraint of
+--    this type exists" (OMN-15819 CodeRabbit thread r3751589796) -- a
+--    pre-existing table with e.g. PRIMARY KEY on the wrong column, or a
+--    composite UNIQUE(event_id, source) instead of UNIQUE(event_id), would
+--    silently pass a looser check while still allowing duplicate event_id
+--    values or rejecting the canonical row shape.
+-- -----------------------------------------------------------------------------
+SELECT 1 / count(*) AS omninode_internal_live_events_exists_assertion
+  FROM information_schema.tables
+ WHERE table_schema = 'omninode_internal' AND table_name = 'live_events';
+
+SELECT 1 / count(*) AS omninode_internal_live_events_primary_key_assertion
+  FROM (
+    SELECT tc.constraint_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON kcu.constraint_name = tc.constraint_name
+       AND kcu.table_schema = tc.table_schema
+     WHERE tc.table_schema = 'omninode_internal'
+       AND tc.table_name = 'live_events'
+       AND tc.constraint_type = 'PRIMARY KEY'
+     GROUP BY tc.constraint_name
+    HAVING count(*) = 1 AND bool_and(kcu.column_name = 'id')
+  ) AS assertion;
+
+SELECT 1 / count(*) AS omninode_internal_live_events_event_id_unique_assertion
+  FROM (
+    SELECT tc.constraint_name
+      FROM information_schema.table_constraints tc
+      JOIN information_schema.key_column_usage kcu
+        ON kcu.constraint_name = tc.constraint_name
+       AND kcu.table_schema = tc.table_schema
+     WHERE tc.table_schema = 'omninode_internal'
+       AND tc.table_name = 'live_events'
+       AND tc.constraint_type = 'UNIQUE'
+     GROUP BY tc.constraint_name
+    HAVING count(*) = 1 AND bool_and(kcu.column_name = 'event_id')
+  ) AS assertion;
+
+SELECT 1 / count(*) AS omninode_internal_live_events_id_type_and_default_assertion
+  FROM information_schema.columns
+ WHERE table_schema = 'omninode_internal'
+   AND table_name = 'live_events'
+   AND column_name = 'id'
+   AND data_type = 'uuid'
+   AND column_default IS NOT NULL;
+
+SELECT 1 / count(*) AS omninode_internal_live_events_not_null_columns_assertion
+  FROM (
+    SELECT 1
+     WHERE (
+       SELECT count(*)
+         FROM information_schema.columns
+        WHERE table_schema = 'omninode_internal'
+          AND table_name = 'live_events'
+          AND column_name IN (
+                'event_id', 'type', 'timestamp', 'source', 'topic',
+                'summary', 'payload', 'created_at'
+              )
+          AND is_nullable = 'NO'
+     ) = 8
+  ) AS assertion;
+
+-- -----------------------------------------------------------------------------
+-- 7. Runtime-owns-DB doctrine: omninode_runtime read/write grant, identical
+--    scope to 099's own (SELECT, INSERT, UPDATE -- no DELETE). Deliberately
+--    last -- see section 6's header for why.
 -- -----------------------------------------------------------------------------
 GRANT USAGE ON SCHEMA omninode_internal TO omninode_runtime;
 GRANT SELECT, INSERT, UPDATE ON omninode_internal.live_events TO omninode_runtime;
@@ -286,15 +383,6 @@ COMMENT ON TABLE omninode_internal.live_events IS
   'the node-owned migration loop per OMN-15819; feeds the omnidash '
   'live-event-stream widget via the contract-declared omninode_internal '
   'write path.';
-
--- -----------------------------------------------------------------------------
--- 7. Post-conditions. Statically provable (no DO/RAISE), matching the
---    OMN-15361 application-database gate's requirement for deployable SQL
---    and 098/099's own convention.
--- -----------------------------------------------------------------------------
-SELECT 1 / count(*) AS omninode_internal_live_events_exists_assertion
-  FROM information_schema.tables
- WHERE table_schema = 'omninode_internal' AND table_name = 'live_events';
 
 SELECT 1 / count(*) AS omninode_runtime_live_events_insert_grant_assertion
   FROM information_schema.role_table_grants
