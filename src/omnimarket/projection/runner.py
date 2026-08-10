@@ -18,6 +18,7 @@ from typing import Any, Literal
 
 import yaml
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
+from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -443,6 +444,10 @@ class BaseProjectionRunner(ABC):
             value_serializer=lambda v: (
                 v if v is None or isinstance(v, bytes) else v.encode("utf-8")
             ),
+            # OMN-15816: see the matching comment on the consumer construction
+            # in run() below -- onex-dev's managed Kafka listener is
+            # SASL_SSL/AWS_MSK_IAM-only.
+            **build_aiokafka_auth_kwargs_from_env(),
         )
         try:
             await producer.start()
@@ -651,6 +656,13 @@ class BaseProjectionRunner(ABC):
                     # silently skipped.
                     enable_auto_commit=False,
                     value_deserializer=None,
+                    # OMN-15816: onex-dev's managed Kafka listener is
+                    # SASL_SSL/AWS_MSK_IAM-only -- a client built without
+                    # these kwargs defaults to PLAINTEXT and the broker
+                    # closes the connection immediately. Same idiom as
+                    # omnibase_infra's own consumers, e.g. AgentActionsConsumer
+                    # (services/observability/agent_actions/consumer.py).
+                    **build_aiokafka_auth_kwargs_from_env(),
                 )
                 await self._consumer.start()
                 self._running = True
