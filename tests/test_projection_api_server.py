@@ -64,7 +64,7 @@ _PROJECTION_TOPIC_MAP: dict[str, ProjectionTableConfig] = {
             "created_at",
         ),
         order_by="created_at DESC",
-        order_by_spec=(("created_at", "DESC"),),
+        order_by_spec=(("created_at", "DESC", None),),
         freshness_column="created_at",
         limit=100,
         source_contract="ab_compare_reducer",
@@ -84,7 +84,7 @@ _PROJECTION_TOPIC_MAP: dict[str, ProjectionTableConfig] = {
             "updated_at",
         ),
         order_by="updated_at DESC",
-        order_by_spec=(("updated_at", "DESC"),),
+        order_by_spec=(("updated_at", "DESC", None),),
         freshness_column="updated_at",
         limit=100,
         source_contract="node_projection_cost_summary",
@@ -105,7 +105,7 @@ _PROJECTION_TOPIC_MAP: dict[str, ProjectionTableConfig] = {
             "created_at",
         ),
         order_by="created_at DESC",
-        order_by_spec=(("created_at", "DESC"),),
+        order_by_spec=(("created_at", "DESC", None),),
         freshness_column="created_at",
         limit=100,
         source_contract="node_projection_cost_token_usage",
@@ -126,7 +126,7 @@ _PROJECTION_TOPIC_MAP: dict[str, ProjectionTableConfig] = {
             "projected_at",
         ),
         order_by="updated_at DESC",
-        order_by_spec=(("updated_at", "DESC"),),
+        order_by_spec=(("updated_at", "DESC", None),),
         freshness_column="updated_at",
         limit=100,
         source_contract="projection_registration",
@@ -141,7 +141,7 @@ _SYSTEM_EVENTS_CONFIG = ProjectionTableConfig(
     table="live_events",
     columns=("event_id", "correlation_id", "topic", "type", "summary"),
     order_by="created_at DESC",
-    order_by_spec=(("created_at", "DESC"),),
+    order_by_spec=(("created_at", "DESC", None),),
     freshness_column="created_at",
     source_contract="node_projection_live_events",
     bus_backed=True,
@@ -574,7 +574,7 @@ class TestProjectionQueryLimitOrderParams:
         # must reach the ACTUAL row order via get_rows(order_by_override=...),
         # not just the reported "ordering" string.
         _args, kwargs = cache.get_rows.call_args
-        assert kwargs["order_by_override"] == (("created_at", "ASC"),)
+        assert kwargs["order_by_override"] == (("created_at", "ASC", None),)
 
     def test_order_default_reaches_cache_as_contract_direction(self) -> None:
         cache = _make_cache([self._row()])
@@ -582,7 +582,7 @@ class TestProjectionQueryLimitOrderParams:
             resp = client.get(f"/projection/{self._TOPIC}")
         assert resp.status_code == 200
         _args, kwargs = cache.get_rows.call_args
-        assert kwargs["order_by_override"] == (("created_at", "DESC"),)
+        assert kwargs["order_by_override"] == (("created_at", "DESC", None),)
 
     def test_invalid_order_value_rejected_with_422(self) -> None:
         cache = _make_cache([self._row()])
@@ -683,7 +683,7 @@ _PR_MERGED_CURSOR_MAP: dict[str, ProjectionTableConfig] = {
             "created_at",
         ),
         order_by="projection_cursor ASC",
-        order_by_spec=(("projection_cursor", "ASC"),),
+        order_by_spec=(("projection_cursor", "ASC", None),),
         freshness_column="created_at",
         cursor_column="projection_cursor",
         limit=500,
@@ -699,7 +699,7 @@ _NO_CURSOR_MAP: dict[str, ProjectionTableConfig] = {
         schema_name="public",
         columns=("id",),
         order_by="id ASC",
-        order_by_spec=(("id", "ASC"),),
+        order_by_spec=(("id", "ASC", None),),
         bus_backed=True,
         key_columns=("id",),
     ),

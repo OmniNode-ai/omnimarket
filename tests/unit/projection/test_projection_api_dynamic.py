@@ -39,13 +39,13 @@ def _ts(delta: timedelta) -> str:
     return (datetime.now(UTC) - delta).isoformat()
 
 
-def _order_by_spec(order_by: str | None) -> tuple[tuple[str, str], ...]:
+def _order_by_spec(order_by: str | None) -> tuple[tuple[str, str, str | None], ...]:
     if order_by is None:
         return ()
     parts = order_by.split()
     column = parts[0]
     direction = parts[1].upper() if len(parts) > 1 else "ASC"
-    return ((column, direction),)
+    return ((column, direction, None),)
 
 
 def _make_cache(
