@@ -86,6 +86,23 @@ CREATE TABLE IF NOT EXISTS log_entries (
     ingested_at     TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: log_entries ----
+-- CREATE TABLE IF NOT EXISTS silently no-ops against a drifted pre-existing
+-- table; the guarded adds below converge such a table onto the shape
+-- declared above (no-ops on the fresh-create path, since every column
+-- already exists there). No DROP, no recreate, no TRUNCATE.
+ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS entry_id UUID;
+ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ;
+ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS node_name TEXT;
+ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS function_name TEXT DEFAULT '';
+ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'info';
+ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS message TEXT;
+ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS correlation_id TEXT;
+ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS duration_ms DOUBLE PRECISION;
+ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
+ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMPTZ DEFAULT NOW();
+-- ---- END OMN-15376 shape reconciliation: log_entries ----
+
 COMMENT ON TABLE log_entries IS
     'Structured log events from ONEX nodes (OMN-12131). '
     '30-day retention window anchored on ingested_at. '
