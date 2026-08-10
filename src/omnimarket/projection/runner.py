@@ -345,6 +345,10 @@ class BaseProjectionRunner(ABC):
         # (tests or a DI container) takes precedence over the lazily-built producer.
         self._publish_fn: PublishFn | None = publish_fn
         self._producer: AIOKafkaProducer | None = None
+        # Per-(topic, key) high-water-mark for the last ingest_sequence this
+        # process published (OMN-15800). Guards against a wall-clock step
+        # backwards making time.time_ns() non-monotonic within this process.
+        self._last_snapshot_sequence: dict[tuple[str, tuple[str, ...]], int] = {}
 
     @property
     @abstractmethod
@@ -518,6 +522,18 @@ class BaseProjectionRunner(ABC):
                 f"snapshot delta for {exposure.topic!r} is missing declared "
                 f"key column {exc}"
             ) from exc
+        # Fail loud rather than silently corrupt the compacted topic
+        # (CodeRabbit, OMN-15800): '|' is the key-part delimiter and
+        # SnapshotCache splits a tombstone's raw key on the same character.
+        # An unescaped '|' inside a key-column value would make the recovered
+        # tombstone key tuple diverge from the upsert's key tuple (a delete
+        # silently misses its row), and could collide two distinct key
+        # tuples onto the same encoded bytes.
+        if any("|" in part for part in key_parts):
+            raise RuntimeError(
+                f"snapshot delta key for {exposure.topic!r} contains the "
+                f"'|' delimiter and cannot be safely encoded: {key_parts!r}"
+            )
         key_bytes = "|".join(key_parts).encode("utf-8")
 
         producer = await self._ensure_producer()
@@ -554,17 +570,33 @@ class BaseProjectionRunner(ABC):
             row=serialized_row,
             observed_at=datetime.now(UTC).isoformat(),
             source_event_id=source_event_id,
-            # Process-local wall-clock nanoseconds rather than an in-memory
-            # counter: monotonic in practice AND restart-safe (a counter reset
-            # to 0 after a restart would make every post-restart delta look
-            # stale to SnapshotCache's ingest_sequence idempotence check).
-            ingest_sequence=time.time_ns(),
+            # Process-local wall-clock nanoseconds, restart-safe (a reset-to-0
+            # in-memory counter would make every post-restart delta look stale
+            # to SnapshotCache's ingest_sequence idempotence check) -- but
+            # NOT safe across processes/replicas or across an NTP backward
+            # step on its own (CodeRabbit, OMN-15800: a genuine residual gap,
+            # tracked as a known limitation for this single-instance slice; a
+            # full fix threads the source Kafka message's own
+            # (partition, offset) through instead of wall-clock time).
+            # Minimal in-process hardening applied here: never emit a
+            # sequence at or below the last one THIS process published for
+            # THIS key, so a backward wall-clock step cannot make an
+            # in-process delta look stale relative to its own predecessor.
+            ingest_sequence=self._next_snapshot_sequence(exposure.topic, key_parts),
         )
         value_bytes = delta.model_dump_json().encode("utf-8")
         await producer.send_and_wait(
             exposure.topic, value=value_bytes, key=key_bytes, headers=headers
         )
         return True
+
+    def _next_snapshot_sequence(self, topic: str, key: tuple[str, ...]) -> int:
+        cache_key = (topic, key)
+        candidate = max(
+            time.time_ns(), self._last_snapshot_sequence.get(cache_key, 0) + 1
+        )
+        self._last_snapshot_sequence[cache_key] = candidate
+        return candidate
 
     async def _stop_producer(self) -> None:
         """Stop the runtime-owned producer, if one was built."""

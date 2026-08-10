@@ -97,8 +97,13 @@ projection_api:
       # file are aggregate views (not raw upserted rows) and stay
       # SQL-served / not_yet_bus_backed pending a follow-up ticket.
       bus_backed: true
+      # CodeRabbit (OMN-15800): savings_estimates permits multiple rows per
+      # session_id (writers upsert on the composite
+      # (session_id, event_timestamp, model_local, model_cloud_baseline);
+      # `id` is the actual primary key). key_columns: [session_id] would
+      # collapse distinct rows for the same session onto one cache entry.
       key_columns:
-        - session_id
+        - id
     - topic: onex.snapshot.projection.delegation.savings.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_savings
       schema: public

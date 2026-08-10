@@ -135,15 +135,20 @@ def resolve_effective_limit(requested: int | None, contract_limit: int) -> int:
     return min(requested, contract_limit)
 
 
-def _reported_ordering(cfg: ProjectionTableConfig, order: str | None) -> str:
-    """Render the ``ordering`` response field FROM the typed spec (Seam C).
+def _effective_order_by_spec(
+    cfg: ProjectionTableConfig, order: str | None
+) -> tuple[tuple[str, str], ...]:
+    """Apply a caller-requested direction flip to the FIRST sort column.
 
-    A caller may flip the FIRST sort column's direction via ``order``; every
-    additional sort key (previously silently dropped by the pre-OMN-15800
-    string-split builder, OMN-15799) is preserved verbatim.
+    Single source of truth for both the actual row order (fed to
+    ``SnapshotCache.get_rows(order_by_override=...)``) and the reported
+    ``ordering`` string (:func:`_reported_ordering`) -- computed once so the
+    two can never diverge (CodeRabbit, OMN-15800: a caller-requested ``order``
+    previously changed only the reported string, not the returned rows).
+    Every sort key beyond the first is preserved verbatim (OMN-15799).
     """
     if not cfg.order_by_spec:
-        return "undefined"
+        return ()
     first_column, first_direction = cfg.order_by_spec[0]
     if order is not None:
         normalised = order.strip().lower()
@@ -151,11 +156,30 @@ def _reported_ordering(cfg: ProjectionTableConfig, order: str | None) -> str:
             first_direction = "ASC"
         elif normalised == "desc":
             first_direction = "DESC"
-    clauses = [f"{first_column} {first_direction}"]
-    clauses.extend(
-        f"{column} {direction}" for column, direction in cfg.order_by_spec[1:]
-    )
-    return ", ".join(clauses)
+    return ((first_column, first_direction), *cfg.order_by_spec[1:])
+
+
+def _reported_ordering(order_by_spec: tuple[tuple[str, str], ...]) -> str:
+    """Render the ``ordering`` response field FROM the typed, already-flipped spec."""
+    if not order_by_spec:
+        return "undefined"
+    return ", ".join(f"{column} {direction}" for column, direction in order_by_spec)
+
+
+def _cursor_compare(value: Any, cursor: str) -> bool:
+    """Return ``True`` when ``value > cursor``, comparing numerically when both
+    sides parse as numbers and falling back to string comparison otherwise.
+
+    OMN-15800 (CodeRabbit): the removed SQL path compared a cursor column
+    using its declared Postgres type; a naive ``str(value) > cursor`` is
+    lexicographic and silently mis-orders numeric cursors (``"10" > "9"`` is
+    ``False`` as strings).
+    """
+    text = str(value)
+    try:
+        return float(text) > float(cursor)
+    except ValueError:
+        return text > cursor
 
 
 def _filter_rows(
@@ -176,7 +200,9 @@ def _filter_rows(
     """
     result = rows
     if cursor_column is not None and cursor is not None:
-        result = [r for r in result if str(r.get(cursor_column, "")) > cursor]
+        result = [
+            r for r in result if _cursor_compare(r.get(cursor_column, ""), cursor)
+        ]
     if correlation_id is not None:
         result = [r for r in result if r.get("correlation_id") == correlation_id]
     if ticket_id is not None:
@@ -202,18 +228,30 @@ def _kafka_bootstrap_servers() -> str:
     Same resolution order as :class:`omnimarket.projection.runner.BaseProjectionRunner`
     (overlay -> env -> Settings) so the serving process and the writer
     reducers agree on which broker to reach without either hardcoding a host.
+
+    Raises ``RuntimeError`` when every source is empty (CodeRabbit,
+    OMN-15800) -- fail fast with a clear configuration error rather than
+    handing an empty broker list to ``AIOKafkaConsumer``, which fails far
+    less legibly deep inside the client.
     """
     binding = projection_runtime_binding_from_overlay_env()
-    if binding is not None:
+    if binding is not None and binding.kafka_bootstrap_servers.strip():
         return binding.kafka_bootstrap_servers
+
     from omnimarket.config.settings import Settings
 
     settings = Settings()
-    return (
+    resolved = (
         os.environ.get(KAFKA_BROKERS_ENV, "").strip()
         or settings.kafka_bootstrap_servers.strip()
         or settings.kafka_broker.strip()
     )
+    if not resolved:
+        raise RuntimeError(
+            "projection-api requires Kafka bootstrap servers; none resolved "
+            f"from a runtime binding overlay, {KAFKA_BROKERS_ENV}, or Settings"
+        )
+    return resolved
 
 
 @asynccontextmanager
@@ -230,10 +268,17 @@ async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
     )
 
     cache = SnapshotCache(_topic_map, bootstrap_servers=_kafka_bootstrap_servers())
-    await cache.start()
-    _snapshot_cache = cache
 
     try:
+        # Assign the module global BEFORE start() (CodeRabbit, OMN-15800): if
+        # the broker is unreachable, self._consumer.start() raises after the
+        # AIOKafkaConsumer object already exists. Assigning first, INSIDE this
+        # try, means the `finally` below always reaches `cache` (via the same
+        # module global) and stops the partially-started consumer instead of
+        # leaking it -- a `finally` always runs when an exception propagates
+        # through its `try` body, including one raised before `yield`.
+        _snapshot_cache = cache
+        await cache.start()
         yield
     finally:
         if _snapshot_cache is not None:
@@ -468,7 +513,8 @@ async def projection_query(
     effective_limit = resolve_effective_limit(limit, cfg.limit)
     generated_at = datetime.now(UTC).isoformat()
 
-    all_rows = cache.get_rows(topic, limit=None)
+    order_by_spec = _effective_order_by_spec(cfg, order)
+    all_rows = cache.get_rows(topic, limit=None, order_by_override=order_by_spec)
     filtered_rows = _filter_rows(
         all_rows,
         cursor_column=cfg.cursor_column,
@@ -500,7 +546,7 @@ async def projection_query(
             "projection_version": _PROJECTION_VERSION,
             "generated_at": generated_at,
             "data_freshness": freshness,
-            "ordering": _reported_ordering(cfg, order),
+            "ordering": _reported_ordering(order_by_spec),
             "row_limit": effective_limit,
             "latest_event_at": latest_ts,
             "latest_projection_updated_at": latest_ts,

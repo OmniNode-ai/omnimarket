@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
@@ -30,8 +31,17 @@ from omnimarket.projection.models import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_GROUP_ID = "omnimarket-projection-api-snapshot-cache-v1"
+# A per-process-unique prefix, never a shared literal (CodeRabbit, OMN-15800):
+# SnapshotCache is a full-topic STATE CACHE, not a work queue -- every
+# replica must see every partition. A single static group_id would let Kafka
+# split partitions across replicas (each caching only a subset while both
+# report bootstrap_complete=True). group_id defaults to this prefix + a fresh
+# uuid4 per instance so each process is its own consumer group and always
+# gets the complete compacted topic.
+DEFAULT_GROUP_ID_PREFIX = "omnimarket-projection-api-snapshot-cache-v1"
 DEFAULT_CLIENT_ID = "omnimarket-projection-api-snapshot-cache"
+_BOOTSTRAP_POLL_INTERVAL_SECONDS = 0.5
+_BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
 
 
 @dataclass(frozen=True)
@@ -112,14 +122,15 @@ class SnapshotCache:
         exposures: dict[str, ProjectionTableConfig],
         *,
         bootstrap_servers: str,
-        group_id: str = DEFAULT_GROUP_ID,
+        group_id: str | None = None,
         client_id: str = DEFAULT_CLIENT_ID,
     ) -> None:
         self._exposures: dict[str, ProjectionTableConfig] = {
             topic: cfg for topic, cfg in exposures.items() if cfg.bus_backed
         }
         self._bootstrap_servers = bootstrap_servers
-        self._group_id = group_id
+        # Per-process-unique unless a caller explicitly pins one (tests).
+        self._group_id = group_id or f"{DEFAULT_GROUP_ID_PREFIX}-{uuid.uuid4()}"
         self._client_id = client_id
         self._state: dict[str, _TopicCacheState] = {
             topic: _TopicCacheState() for topic in self._exposures
@@ -204,16 +215,42 @@ class SnapshotCache:
         exposure = self._exposures[topic]
         max_rows = exposure.limit * 4
         if len(state.rows) > max_rows:
-            ordered = _sort_rows(list(state.rows.items()), exposure.order_by_spec)
-            state.rows = dict(ordered[:max_rows])
+            # Evict by RECENCY (lowest ingest_sequence first), never by the
+            # exposure's display order_by_spec (CodeRabbit, OMN-15800): for an
+            # ASC-ordered exposure, sorting-then-truncating-to-head would keep
+            # the OLDEST rows forever and evict the row this call just wrote.
+            # Retention and display ordering are separate concerns.
+            newest_first = sorted(
+                state.rows.items(),
+                key=lambda item: item[1].ingest_sequence,
+                reverse=True,
+            )
+            state.rows = dict(newest_first[:max_rows])
 
-    def get_rows(self, topic: str, *, limit: int | None = None) -> list[dict[str, Any]]:
-        """Return cached rows for ``topic``, ordered per the exposure's order_by_spec."""
+    def get_rows(
+        self,
+        topic: str,
+        *,
+        limit: int | None = None,
+        order_by_override: tuple[tuple[str, str], ...] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return cached rows for ``topic``, ordered per the exposure's order_by_spec.
+
+        ``order_by_override`` lets a caller apply a caller-requested direction
+        flip (the ``?order=asc|desc`` query param) to the ACTUAL returned rows
+        -- not just to the response envelope's ``ordering`` string, which
+        would otherwise silently diverge from the real row order.
+        """
         state = self._state.get(topic)
         if state is None:
             return []
         exposure = self._exposures[topic]
-        ordered = _sort_rows(list(state.rows.items()), exposure.order_by_spec)
+        spec = (
+            order_by_override
+            if order_by_override is not None
+            else exposure.order_by_spec
+        )
+        ordered = _sort_rows(list(state.rows.items()), spec)
         rows = [cached.row for _key, cached in ordered]
         effective_limit = limit if limit is not None else exposure.limit
         return rows[:effective_limit]
@@ -241,7 +278,25 @@ class SnapshotCache:
 
     async def _consume_loop(self) -> None:
         assert self._consumer is not None
-        await self._mark_bootstrap_complete_when_caught_up()
+        # Poll (not a one-shot check) so a topic with ZERO messages still
+        # reaches bootstrap_complete=True: aiokafka assigns partitions lazily
+        # after the group join, so the assignment is frequently empty on the
+        # very first call, and an idle/empty compacted topic never delivers a
+        # message to re-trigger the check from inside the loop below
+        # (CodeRabbit, OMN-15800). Bounded retries, not an infinite poll.
+        for _attempt in range(_BOOTSTRAP_POLL_MAX_ATTEMPTS):
+            await self._mark_bootstrap_complete_when_caught_up()
+            if all(state.bootstrap_complete for state in self._state.values()):
+                break
+            await asyncio.sleep(_BOOTSTRAP_POLL_INTERVAL_SECONDS)
+        else:
+            logger.warning(
+                "SnapshotCache: bootstrap did not complete for all topics "
+                "within %d attempts; still-incomplete topics keep serving "
+                "503 snapshot_bootstrap_incomplete until a future poll "
+                "inside the consume loop catches them up",
+                _BOOTSTRAP_POLL_MAX_ATTEMPTS,
+            )
         async for msg in self._consumer:
             if not self._running:
                 break

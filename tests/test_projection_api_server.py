@@ -570,6 +570,19 @@ class TestProjectionQueryLimitOrderParams:
             resp = client.get(f"/projection/{self._TOPIC}?order=asc")
         assert resp.status_code == 200
         assert resp.json()["ordering"] == "created_at ASC"
+        # Regression guard (CodeRabbit, OMN-15800): the requested direction
+        # must reach the ACTUAL row order via get_rows(order_by_override=...),
+        # not just the reported "ordering" string.
+        _args, kwargs = cache.get_rows.call_args
+        assert kwargs["order_by_override"] == (("created_at", "ASC"),)
+
+    def test_order_default_reaches_cache_as_contract_direction(self) -> None:
+        cache = _make_cache([self._row()])
+        with _with_cache(cache) as client:
+            resp = client.get(f"/projection/{self._TOPIC}")
+        assert resp.status_code == 200
+        _args, kwargs = cache.get_rows.call_args
+        assert kwargs["order_by_override"] == (("created_at", "DESC"),)
 
     def test_invalid_order_value_rejected_with_422(self) -> None:
         cache = _make_cache([self._row()])
