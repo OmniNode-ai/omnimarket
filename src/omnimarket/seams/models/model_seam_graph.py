@@ -40,9 +40,10 @@ file bytes rather than relying on filesystem iteration order.
 from __future__ import annotations
 
 from enum import StrEnum
+from pathlib import PurePosixPath
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from omnimarket.seams.models.model_seam_projection import (
     EnumSeamDeliverySemantics,
@@ -53,9 +54,66 @@ __all__ = [
     "EnumSeamGraphObservationKind",
     "ModelSeamGraphCodeObservation",
     "ModelSeamGraphEdgeDeclaration",
+    "ModelSeamGraphObservationKindSummary",
     "ModelSeamGraphSourceHashEntry",
     "ModelSeamGraphV1",
 ]
+
+_HARNESS_CONSECUTIVE_MARKERS: tuple[tuple[str, ...], ...] = (
+    # ``event_bus/testing/**`` — event-bus test substrate shipped inside a
+    # scanned ``src/`` tree (e.g. omnibase_core's
+    # ``event_bus/testing/contract_event_bus_substrate.py``).
+    ("event_bus", "testing"),
+    # ``runtime/transport/`` is a directory marker, not sufficient alone —
+    # see ``_is_test_harness_source_path`` below for the accompanying
+    # filename check (``*conformance*``).
+)
+
+
+def _is_test_harness_source_path(source_path: str) -> bool:
+    """True when ``source_path`` (repo-relative, POSIX-separated — the only
+    form ``extract_seam_graph`` ever produces) sits under a known harness
+    location INSIDE a scanned tree: shipped test infrastructure, not a test
+    case (audit R1, OMN-15779, 2026-08-10 RSD lane-2 correction). A harness
+    observation is real code, correctly extracted; this only controls
+    whether it counts as a *production-application* seam signal, never
+    whether it is extracted at all.
+
+    ``tests/**`` is already excluded upstream in real callers (no discovery
+    root passed by ``node_seam_graph_compute`` today includes a ``tests/``
+    directory) — matched here too, defensively, so the classification still
+    holds if a future caller ever widens discovery roots to include one,
+    rather than silently mis-counting it as production.
+
+    * ``event_bus/testing/**`` — any path with ``event_bus`` immediately
+      followed by ``testing`` as consecutive path segments.
+    * ``runtime/transport/*conformance*`` — any path with ``runtime``
+      immediately followed by ``transport`` as consecutive path segments,
+      whose final filename segment contains ``conformance``.
+    * ``tests/**`` — any path containing a ``tests`` segment.
+    """
+
+    parts = PurePosixPath(source_path).parts
+    if not parts:
+        return False
+    if "tests" in parts:
+        return True
+    for marker in _HARNESS_CONSECUTIVE_MARKERS:
+        width = len(marker)
+        if any(
+            parts[index : index + width] == marker
+            for index in range(len(parts) - width + 1)
+        ):
+            return True
+    if (
+        any(
+            parts[index] == "runtime" and parts[index + 1] == "transport"
+            for index in range(len(parts) - 1)
+        )
+        and "conformance" in parts[-1]
+    ):
+        return True
+    return False
 
 
 class EnumSeamGraphObservationKind(StrEnum):
@@ -136,6 +194,32 @@ class ModelSeamGraphCodeObservation(BaseModel):
     value: str = Field(min_length=1)
     line_number: int = Field(ge=1)
 
+    @computed_field(  # type: ignore[prop-decorator]
+        description="True when source_path sits under a known test-harness "
+        "location shipped inside a scanned src/ tree (audit R1, "
+        "OMN-15779) -- always correct (derived from source_path, not a "
+        "constructor input), never a self-graded classification a call "
+        "site could get wrong or forget to set."
+    )
+    @property
+    def is_test_harness(self) -> bool:
+        return _is_test_harness_source_path(self.source_path)
+
+
+class ModelSeamGraphObservationKindSummary(BaseModel):
+    """Per-``kind`` observation counts, split production-application vs
+    test-harness-in-src (audit R1, OMN-15779). Replaces the ad hoc manual
+    grep/count a prior verification pass produced by hand with a durable,
+    code-computed value any gate/golden consumer can read directly instead
+    of re-deriving."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    kind: EnumSeamGraphObservationKind
+    total: int = Field(ge=0)
+    test_harness: int = Field(ge=0)
+    production_application: int = Field(ge=0)
+
 
 class ModelSeamGraphSourceHashEntry(BaseModel):
     """Per-source sha256 manifest entry (determinism proof, AC7)."""
@@ -162,3 +246,31 @@ class ModelSeamGraphV1(BaseModel):
     source_manifest: tuple[ModelSeamGraphSourceHashEntry, ...] = Field(
         default_factory=tuple
     )
+
+    @computed_field(  # type: ignore[prop-decorator]
+        description="Per-kind code_observations counts, split "
+        "production-application vs test-harness-in-src (audit R1, "
+        "OMN-15779) -- always correct (derived from code_observations, "
+        "not a constructor input). Sorted by kind value for determinism "
+        "(AC7). A kind with zero observations is omitted, never emitted "
+        "as an all-zero row."
+    )
+    @property
+    def observation_summary(self) -> tuple[ModelSeamGraphObservationKindSummary, ...]:
+        totals: dict[EnumSeamGraphObservationKind, int] = {}
+        harness_totals: dict[EnumSeamGraphObservationKind, int] = {}
+        for observation in self.code_observations:
+            totals[observation.kind] = totals.get(observation.kind, 0) + 1
+            if observation.is_test_harness:
+                harness_totals[observation.kind] = (
+                    harness_totals.get(observation.kind, 0) + 1
+                )
+        return tuple(
+            ModelSeamGraphObservationKindSummary(
+                kind=kind,
+                total=total,
+                test_harness=harness_totals.get(kind, 0),
+                production_application=total - harness_totals.get(kind, 0),
+            )
+            for kind, total in sorted(totals.items(), key=lambda item: item[0].value)
+        )
