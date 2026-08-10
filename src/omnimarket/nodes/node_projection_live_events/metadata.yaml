@@ -1,5 +1,5 @@
 name: node_projection_live_events
-version: "1.1.0"
+version: "1.2.0"
 description: "Projects platform lifecycle, delegation, and node-generation events into the OmniDash System Event Stream"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
@@ -8,9 +8,13 @@ entry_points:
 capabilities:
   standalone: true
   full_runtime: true
-  requires_network: false
+  # OMN-15800: HandlerLiveEventsProjectionRunner additionally publishes a
+  # bus-fed snapshot delta (own Kafka producer) alongside its own DB
+  # connection, matching node_projection_registration's requires_network/
+  # requires_secrets: true.
+  requires_network: true
   requires_repo: false
-  requires_secrets: false
+  requires_secrets: true
   requires_docker: false
   side_effect_class: write
 dependencies:

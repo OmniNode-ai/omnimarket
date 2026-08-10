@@ -54,6 +54,9 @@ import pytest
 from fastapi.testclient import TestClient
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+from omnimarket.nodes.node_projection_live_events.handlers.handler_live_events import (
+    HandlerLiveEventsProjectionRunner,
+)
 from omnimarket.nodes.node_projection_registration.handlers.handler_registration import (
     RegistrationProjectionRunner,
 )
@@ -63,6 +66,8 @@ from scripts.projection_api_server import app, get_snapshot_cache, get_topic_map
 
 REGISTRATION_TOPIC = "onex.snapshot.projection.registration.v1"
 INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"
+LIVE_EVENTS_TOPIC = "onex.snapshot.projection.live-events.v1"
+NODE_HEARTBEAT_TOPIC = "onex.evt.platform.node-heartbeat.v1"
 
 
 def _mock_db_returning(row: dict[str, Any]) -> Any:
@@ -204,6 +209,116 @@ class TestRegistrationEventToHttpReadback:
         assert row["last_health_check"] == now.isoformat()
         assert row["updated_at"] == now.isoformat()
         assert row["projected_at"] == now.isoformat()
+
+
+@pytest.mark.unit
+class TestLiveEventsEventToHttpReadback:
+    """OMN-15800 follow-up: closes the system_event_stream not_yet_bus_backed
+    gap the first business-proof gate run surfaced (deploy run 31431199686:
+    ``FAIL system_event_stream: ... HTTP 503 (expected 200)``,
+    ``error=not_yet_bus_backed``). Same three-seam shape as
+    ``TestRegistrationEventToHttpReadback`` above, driving
+    ``HandlerLiveEventsProjectionRunner`` instead of
+    ``RegistrationProjectionRunner``.
+    """
+
+    def test_live_events_event_to_http_readback(self) -> None:
+        # ------------------------------------------------------------------
+        # Seam A: real reducer processes a real node-heartbeat payload,
+        # writes (mocked DB, RETURNING-shaped), and publishes a real
+        # snapshot delta.
+        # ------------------------------------------------------------------
+        runner = HandlerLiveEventsProjectionRunner()
+        assert runner._snapshot_exposure is not None, (
+            "HandlerLiveEventsProjectionRunner must resolve a bus_backed "
+            "exposure from its own contract.yaml"
+        )
+        exposure = runner._snapshot_exposure
+        assert exposure.topic == LIVE_EVENTS_TOPIC
+        assert exposure.key_columns == ("event_id",)
+
+        now = datetime.now(UTC)
+        event_id = "omn15800-live-events-seam"
+        returned_row = {
+            "id": str(uuid4()),
+            "event_id": event_id,
+            "type": "ACTION",
+            "timestamp": now,
+            "source": "node-omn15800-seam",
+            "topic": NODE_HEARTBEAT_TOPIC,
+            "summary": "heartbeat ok",
+            "payload": '{"node_name": "node-omn15800-seam"}',
+            "correlation_id": None,
+            "created_at": now,
+        }
+        runner._db = _mock_db_returning(returned_row)
+        fake_producer, sent = _fake_producer()
+        runner._producer = fake_producer
+
+        payload = {
+            "event_id": event_id,
+            "node_name": "node-omn15800-seam",
+            "summary": "heartbeat ok",
+        }
+        meta = MessageMeta(partition=0, offset=0, fallback_id="omn15800-le-fallback")
+
+        ok = asyncio.run(runner.project_event(NODE_HEARTBEAT_TOPIC, payload, meta))
+        assert ok is True
+
+        # Exactly one snapshot delta was published, on the exposure's topic.
+        assert len(sent) == 1
+        published = sent[0]
+        assert published["topic"] == LIVE_EVENTS_TOPIC
+        assert published["key"] == event_id.encode("utf-8")
+        assert published["value"] is not None  # upsert, not a tombstone
+        header_map = dict(published["headers"])
+        assert header_map["schema_version"] == b"projection_snapshot.v1"
+        assert header_map["content_type"] == b"application/json"
+
+        # ------------------------------------------------------------------
+        # Seam B: the exact captured bytes are applied to a REAL
+        # SnapshotCache via the same apply_message() the live consumer loop
+        # calls.
+        # ------------------------------------------------------------------
+        topic_map = {LIVE_EVENTS_TOPIC: exposure}
+        cache = SnapshotCache(
+            topic_map,
+            bootstrap_servers="unused:9092",
+            group_id="test-bus-seam-group-live-events",
+        )
+        cache.apply_message(
+            published["topic"],
+            published["key"],
+            published["value"],
+            published["headers"],
+        )
+        cache._state[LIVE_EVENTS_TOPIC].bootstrap_complete = True
+
+        assert cache.row_count(LIVE_EVENTS_TOPIC) == 1
+        cached_rows = cache.get_rows(LIVE_EVENTS_TOPIC)
+        assert cached_rows[0]["event_id"] == event_id
+        assert cached_rows[0]["source"] == "node-omn15800-seam"
+
+        # ------------------------------------------------------------------
+        # Seam C: the REAL FastAPI app serves the row over HTTP, with NO
+        # asyncpg pool anywhere in the dependency graph.
+        # ------------------------------------------------------------------
+        with _with_cache(cache, LIVE_EVENTS_TOPIC, exposure) as client:
+            resp = client.get(f"/projection/{LIVE_EVENTS_TOPIC}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["topic"] == LIVE_EVENTS_TOPIC
+        assert body["backing"] == "bus"
+        assert body["row_count"] == 1
+        row = body["rows"][0]
+        assert row["event_id"] == event_id
+        assert row["type"] == "ACTION"
+        assert row["source"] == "node-omn15800-seam"
+        assert row["topic"] == NODE_HEARTBEAT_TOPIC
+        assert row["summary"] == "heartbeat ok"
+        assert row["timestamp"] == now.isoformat()
+        assert row["created_at"] == now.isoformat()
 
 
 @pytest.mark.unit
