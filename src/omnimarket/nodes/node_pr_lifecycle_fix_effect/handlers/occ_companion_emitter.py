@@ -729,12 +729,32 @@ class OccCompanionEmitter:
                 base_sha = self._clone_and_branch(clone_dir, branch, tmpdir, token)
 
                 contract_paths: dict[str, Path] = {}
+                # OMN-15785: per-ticket "did this ticket already have a
+                # companion before THIS run's clone" signal, captured BEFORE
+                # any write can change contract_path.is_file()'s answer.
+                # Mirrors node_occ_companion_compute's `state.exists and
+                # state.merged` guard (OMN-15485) — that ticket fixed the
+                # identical defect on the sibling compute-oracle path but
+                # never ported the guard here, and this producer regressed
+                # the exact same class: the admissibility-validator receipt's
+                # evidence_item_id is a fixed, ticket-scoped constant (NOT
+                # PR-scoped like the downstream/CI/self-bind ids), so a
+                # SECOND companion for a ticket that already has one collides
+                # on the SAME path a prior companion already merged. Live
+                # incident: OCC#6264 (OMN-15789, omnibase_core#1550) merged
+                # first; OCC#6276 (same ticket, omnibase_infra#2705) then
+                # unconditionally rewrote #6264's already-merged
+                # dod-occ-evidence-admissibility-validator receipt, tripping
+                # the OCC Append-Only Gate (hand-repaired,
+                # onex_change_control@6240bf817, 2026-08-09).
+                contract_already_had_companion: dict[str, bool] = {}
                 for ticket in tickets:
                     downstream_check_value, ci_check_value = _hosted_safe_check_values(
                         ticket
                     )
                     contract_path = clone_dir / "contracts" / f"{ticket}.yaml"
                     contract_path.parent.mkdir(parents=True, exist_ok=True)
+                    contract_already_had_companion[ticket] = contract_path.is_file()
                     if not contract_path.is_file():
                         contract_path.write_text(
                             render_companion_contract(
@@ -819,11 +839,25 @@ class OccCompanionEmitter:
                         encoding="utf-8",
                     )
                     # OMN-15247 R21b: receipt backing the minted
-                    # admissibility-validator item. REQUIRED --
-                    # validator_occ_merge_eligibility refuses a companion whose
-                    # contract declares a dod_evidence item with no PASS receipt
-                    # (MISSING_RECEIPT), so declaring the item without this would
-                    # trade born-BLOCKED for born-INELIGIBLE.
+                    # admissibility-validator item. REQUIRED on a ticket's
+                    # FIRST companion -- validator_occ_merge_eligibility
+                    # refuses a companion whose contract declares a
+                    # dod_evidence item with no PASS receipt (MISSING_RECEIPT),
+                    # so declaring the item without this would trade
+                    # born-BLOCKED for born-INELIGIBLE.
+                    #
+                    # OMN-15785 NET-NEW-FILE-ONLY GUARD: this item's id
+                    # (ADMISSIBILITY_VALIDATOR_EVIDENCE_ID) is a fixed,
+                    # ticket-scoped constant, unlike evidence_id/ci_evidence_id
+                    # which embed the product PR number and so can never
+                    # collide across companions. When this ticket ALREADY had
+                    # a companion before this run (contract pre-existed), that
+                    # prior companion's admissibility receipt is either
+                    # already merged (immutable) or already on this run's own
+                    # generated tree — either way this run must never write to
+                    # it. Mirrors node_occ_companion_compute's `state.exists
+                    # and state.merged` guard (OMN-15485), which fixed the
+                    # identical defect on the sibling compute-oracle path.
                     #
                     # probe_command / probe_stdout / exit_code record the live
                     # product-PR probe this emitter ACTUALLY ran, exactly as the
@@ -833,39 +867,50 @@ class OccCompanionEmitter:
                     # cannot run `uv run pytest tests/test_evidence_admissibility
                     # .py` -- and fabricating an "N passed" probe_stdout is the
                     # false-evidence class this ticket removes.
-                    validator_dir = (
-                        clone_dir
-                        / "drift"
-                        / "dod_receipts"
-                        / ticket
-                        / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
-                    )
-                    validator_dir.mkdir(parents=True, exist_ok=True)
-                    (validator_dir / "command.yaml").write_text(
-                        render_downstream_receipt(
-                            ticket_id=ticket,
-                            evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
-                            pr_number=pr_number,
-                            repo=repo,
-                            run_timestamp=run_timestamp,
-                            commit_sha=receipt_commit_sha,
-                            branch=branch,
-                            probe_command=downstream_probe_command,
-                            probe_stdout=downstream_stdout,
-                            exit_code=downstream_exit,
-                            # SHORT deliberately -- yamlfmt folds a long plain
-                            # scalar at column 100 and restales the hash
-                            # (F-03 / OMN-14684).
-                            actual_output=(
-                                "PASS: OCC runner executes the declared check; "
-                                "probe is the live PR read."
+                    if contract_already_had_companion[ticket]:
+                        logger.info(
+                            "occ_companion_emitter: skipping "
+                            "%s receipt for %s — ticket already has a prior "
+                            "companion; the item is ticket-shared and "
+                            "already-merged/already-generated (OMN-15785 "
+                            "net-new-file-only guard, never overwrite).",
+                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                            ticket,
+                        )
+                    else:
+                        validator_dir = (
+                            clone_dir
+                            / "drift"
+                            / "dod_receipts"
+                            / ticket
+                            / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+                        )
+                        validator_dir.mkdir(parents=True, exist_ok=True)
+                        (validator_dir / "command.yaml").write_text(
+                            render_downstream_receipt(
+                                ticket_id=ticket,
+                                evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                                pr_number=pr_number,
+                                repo=repo,
+                                run_timestamp=run_timestamp,
+                                commit_sha=receipt_commit_sha,
+                                branch=branch,
+                                probe_command=downstream_probe_command,
+                                probe_stdout=downstream_stdout,
+                                exit_code=downstream_exit,
+                                # SHORT deliberately -- yamlfmt folds a long plain
+                                # scalar at column 100 and restales the hash
+                                # (F-03 / OMN-14684).
+                                actual_output=(
+                                    "PASS: OCC runner executes the declared check; "
+                                    "probe is the live PR read."
+                                ),
+                                runner=self._runner,
+                                verifier=self._verifier,
+                                check_value=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
                             ),
-                            runner=self._runner,
-                            verifier=self._verifier,
-                            check_value=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
-                        ),
-                        encoding="utf-8",
-                    )
+                            encoding="utf-8",
+                        )
                     # OMN-14741 F-01: rebind ONLY this PR's own receipts, never rglob
                     # every receipt under <ticket>/. The whole-file contract_sha256 of
                     # a PRIOR merged receipt for the same ticket goes stale when the
@@ -873,15 +918,21 @@ class OccCompanionEmitter:
                     # prior merged receipt's whole-file hash — so rewriting it here is
                     # a NON-append-only mutation of an already-merged receipt (the
                     # OCC#4293/4295/4296 class). Scope the rebind to this PR's rows.
+                    #
+                    # OMN-15785: the admissibility id is included ONLY when this
+                    # run itself just minted it (fresh ticket) — when it was
+                    # skipped above (pre-existing ticket) it must never be
+                    # rebound either, or the "skip the write" guard above would
+                    # be defeated by this rebind pass mutating the same merged
+                    # file's contract_sha256/contract_entry_sha256 fields.
+                    rebind_evidence_ids = {evidence_id, ci_evidence_id}
+                    if not contract_already_had_companion[ticket]:
+                        rebind_evidence_ids.add(ADMISSIBILITY_VALIDATOR_EVIDENCE_ID)
                     self._rebind_receipts(
                         clone_dir,
                         ticket,
                         contract_path,
-                        {
-                            evidence_id,
-                            ci_evidence_id,
-                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
-                        },
+                        rebind_evidence_ids,
                     )
 
                 self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
@@ -904,16 +955,19 @@ class OccCompanionEmitter:
                 # touched anything outside this run's contract + receipt set. This is a
                 # real diff against the clone base, not the assertion-only comment the
                 # force-push previously relied on.
+                #
+                # OMN-15785: the admissibility path is allowed ONLY for tickets
+                # that did not already have a companion — the same tickets the
+                # write/rebind guards above actually touched. Widening this to
+                # every ticket would silently re-permit the exact overwrite the
+                # write guard just refused to perform.
                 self._assert_append_only(
                     clone_dir,
                     base_sha,
-                    self._allowed_paths(
-                        tickets,
-                        {
-                            evidence_id,
-                            ci_evidence_id,
-                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
-                        },
+                    self._allowed_paths(tickets, {evidence_id, ci_evidence_id})
+                    | self._allowed_paths(
+                        [t for t in tickets if not contract_already_had_companion[t]],
+                        {ADMISSIBILITY_VALIDATOR_EVIDENCE_ID},
                     ),
                 )
                 # Force-push: the auto/* bot branch is fully REGENERATED each run
@@ -997,21 +1051,36 @@ class OccCompanionEmitter:
                     # CI, self-bind) against the now-final contract — never the whole
                     # ticket. The per-entry hash is append-invariant; only these fresh
                     # receipts need the current whole-file hash.
+                    #
+                    # OMN-15785: the admissibility id joins this rebind pass
+                    # ONLY when this ticket had no PRIOR companion — i.e. only
+                    # when THIS run minted the receipt in pass 1 above. When
+                    # the ticket already had a companion the receipt was
+                    # skipped in pass 1 and must not be touched here either;
+                    # its whole-file contract_sha256 stays whatever the prior,
+                    # already-merged companion bound it to (the eligibility
+                    # gate grandfathers that value — see the F-01 note two
+                    # blocks up).
+                    pass2_rebind_evidence_ids = {
+                        evidence_id,
+                        ci_evidence_id,
+                        self_bind_evidence_id,
+                    }
+                    if not contract_already_had_companion[ticket]:
+                        # OMN-15247 R21b: pass 2 re-renders the contract with
+                        # the self-bind entry appended, so its whole-file
+                        # digest changes and EVERY pass-1 receipt THIS RUN
+                        # minted must be rebound -- the validator's included,
+                        # or it ships a stale contract_sha256 and fails the
+                        # receipt gate.
+                        pass2_rebind_evidence_ids.add(
+                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+                        )
                     self._rebind_receipts(
                         clone_dir,
                         ticket,
                         contract_paths[ticket],
-                        {
-                            evidence_id,
-                            ci_evidence_id,
-                            self_bind_evidence_id,
-                            # OMN-15247 R21b: pass 2 re-renders the contract with
-                            # the self-bind entry appended, so its whole-file
-                            # digest changes and EVERY pass-1 receipt must be
-                            # rebound -- the validator's included, or it ships a
-                            # stale contract_sha256 and fails the receipt gate.
-                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
-                        },
+                        pass2_rebind_evidence_ids,
                     )
 
                 self._run_git(["git", "add", "contracts", "drift"], cwd=str(clone_dir))
@@ -1029,17 +1098,20 @@ class OccCompanionEmitter:
                 )
                 # OMN-14741 F-01: re-assert append-only over the FINAL tree (both
                 # commits) before the deterministic all-adds force-push.
+                #
+                # OMN-15785: same admissibility-path narrowing as the pass-1
+                # assertion above — allowed only for tickets this run actually
+                # minted/rebound the receipt for.
                 self._assert_append_only(
                     clone_dir,
                     base_sha,
                     self._allowed_paths(
                         tickets,
-                        {
-                            evidence_id,
-                            ci_evidence_id,
-                            self_bind_evidence_id,
-                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
-                        },
+                        {evidence_id, ci_evidence_id, self_bind_evidence_id},
+                    )
+                    | self._allowed_paths(
+                        [t for t in tickets if not contract_already_had_companion[t]],
+                        {ADMISSIBILITY_VALIDATOR_EVIDENCE_ID},
                     ),
                 )
                 # Force-push (see rationale above): deterministic all-adds regeneration.
