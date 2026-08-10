@@ -129,7 +129,17 @@ class ModelProjectionSnapshotDelta(BaseModel):
     row: dict[str, Any] | None
     observed_at: str
     source_event_id: str
-    ingest_sequence: int
+    # Ordering authority (CodeRabbit, OMN-15800 round 3, discussion
+    # r3745850632): the SOURCE Kafka message's own coordinates, never a
+    # wall-clock token. Per (source_topic, source_partition), the broker
+    # assigns source_offset monotonically -- independent of which replica
+    # (and which replica's clock) does the processing, so neither an NTP
+    # backward step nor a rebalance to a lagging-clock replica can make a
+    # genuinely newer delta look stale. `observed_at` above remains
+    # display-only metadata and is never consulted for staleness.
+    source_topic: str
+    source_partition: int
+    source_offset: int
     projection_version: str = SNAPSHOT_DELTA_SCHEMA_VERSION
 
     @model_validator(mode="after")

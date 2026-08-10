@@ -9,7 +9,6 @@ import json
 import logging
 import os
 import signal
-import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
@@ -62,11 +61,21 @@ PublishFn = Callable[[str, bytes], Coroutine[Any, Any, None]]
 
 @dataclass
 class MessageMeta:
-    """Kafka message coordinates for deterministic dedup."""
+    """Kafka message coordinates for deterministic dedup.
+
+    ``topic`` defaults to "" so the many pre-existing positional/keyword
+    call sites across handler test suites that predate OMN-15800 round 3
+    keep constructing valid instances; every live consumption path
+    (``BaseProjectionRunner._handle_message`` and each node's ``handle()``
+    RuntimeLocal shim) populates it for real. It is the authoritative
+    source-ordering coordinate (with partition/offset) consumed by
+    ``publish_snapshot_delta`` -- see CodeRabbit discussion r3745850632.
+    """
 
     partition: int
     offset: int
     fallback_id: str
+    topic: str = ""
 
 
 @dataclass
@@ -345,10 +354,6 @@ class BaseProjectionRunner(ABC):
         # (tests or a DI container) takes precedence over the lazily-built producer.
         self._publish_fn: PublishFn | None = publish_fn
         self._producer: AIOKafkaProducer | None = None
-        # Per-(topic, key) high-water-mark for the last ingest_sequence this
-        # process published (OMN-15800). Guards against a wall-clock step
-        # backwards making time.time_ns() non-monotonic within this process.
-        self._last_snapshot_sequence: dict[tuple[str, tuple[str, ...]], int] = {}
 
     @property
     @abstractmethod
@@ -475,6 +480,9 @@ class BaseProjectionRunner(ABC):
         op: Literal["upsert", "delete"],
         row: dict[str, Any] | None,
         source_event_id: str,
+        source_topic: str,
+        source_partition: int,
+        source_offset: int,
         tenant_id: str = "omninode",
     ) -> bool:
         """Publish one keyed row-delta snapshot for a bus_backed exposure.
@@ -488,6 +496,15 @@ class BaseProjectionRunner(ABC):
         A ``delete`` publishes a genuine Kafka tombstone (``value=None``) so
         the compacted topic reclaims the key; ``row`` must be ``None`` for a
         delete and non-``None`` for an upsert.
+
+        ``source_topic``/``source_partition``/``source_offset`` are the
+        caller's own ``MessageMeta`` coordinates for the SOURCE event being
+        projected -- the ordering authority ``SnapshotCache.apply_message``
+        keys its staleness comparison on (CodeRabbit, OMN-15800 round 3,
+        discussion r3745850632). Required unconditionally (including for a
+        ``delete``, where they are unused by the tombstone wire shape) so
+        every call site supplies them from its own ``MessageMeta`` rather
+        than a subset of callers silently omitting the ordering token.
 
         Raises ``RuntimeError`` (not silently dropped) when the exposure is
         misconfigured (``bus_backed`` with no ``key_columns``) or the caller's
@@ -568,35 +585,23 @@ class BaseProjectionRunner(ABC):
             key=key_parts,
             op="upsert",
             row=serialized_row,
+            # Display-only metadata (CodeRabbit, OMN-15800 round 3, discussion
+            # r3745850632): never consulted for staleness. The ordering
+            # authority is source_topic/source_partition/source_offset below
+            # -- broker-assigned Kafka coordinates of the SOURCE message,
+            # immune to a wall-clock step or a rebalance to a lagging-clock
+            # replica.
             observed_at=datetime.now(UTC).isoformat(),
             source_event_id=source_event_id,
-            # Process-local wall-clock nanoseconds, restart-safe (a reset-to-0
-            # in-memory counter would make every post-restart delta look stale
-            # to SnapshotCache's ingest_sequence idempotence check) -- but
-            # NOT safe across processes/replicas or across an NTP backward
-            # step on its own (CodeRabbit, OMN-15800: a genuine residual gap,
-            # tracked as a known limitation for this single-instance slice; a
-            # full fix threads the source Kafka message's own
-            # (partition, offset) through instead of wall-clock time).
-            # Minimal in-process hardening applied here: never emit a
-            # sequence at or below the last one THIS process published for
-            # THIS key, so a backward wall-clock step cannot make an
-            # in-process delta look stale relative to its own predecessor.
-            ingest_sequence=self._next_snapshot_sequence(exposure.topic, key_parts),
+            source_topic=source_topic,
+            source_partition=source_partition,
+            source_offset=source_offset,
         )
         value_bytes = delta.model_dump_json().encode("utf-8")
         await producer.send_and_wait(
             exposure.topic, value=value_bytes, key=key_bytes, headers=headers
         )
         return True
-
-    def _next_snapshot_sequence(self, topic: str, key: tuple[str, ...]) -> int:
-        cache_key = (topic, key)
-        candidate = max(
-            time.time_ns(), self._last_snapshot_sequence.get(cache_key, 0) + 1
-        )
-        self._last_snapshot_sequence[cache_key] = candidate
-        return candidate
 
     async def _stop_producer(self) -> None:
         """Stop the runtime-owned producer, if one was built."""
@@ -743,6 +748,7 @@ class BaseProjectionRunner(ABC):
                 partition=msg.partition,
                 offset=msg.offset,
                 fallback_id=fallback_id,
+                topic=topic,
             )
 
             projected = await self.project_event(topic, data, meta)

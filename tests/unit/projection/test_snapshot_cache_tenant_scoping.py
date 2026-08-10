@@ -48,7 +48,7 @@ def _make_cache() -> SnapshotCache:
 
 
 def _delta_bytes(
-    *, row_id: str, tenant_id: str, amount: int, ingest_sequence: int
+    *, row_id: str, tenant_id: str, amount: int, source_offset: int = 0
 ) -> bytes:
     payload = {
         "topic": _TOPIC,
@@ -57,7 +57,9 @@ def _delta_bytes(
         "row": {"id": row_id, "tenant_id": tenant_id, "amount": amount},
         "observed_at": "2026-08-10T00:00:00Z",
         "source_event_id": f"evt-{row_id}",
-        "ingest_sequence": ingest_sequence,
+        "source_topic": "onex.evt.platform.node-heartbeat.v1",
+        "source_partition": 0,
+        "source_offset": source_offset,
         "projection_version": "projection_snapshot.v1",
     }
     return json.dumps(payload).encode("utf-8")
@@ -75,7 +77,7 @@ def test_get_rows_returns_every_tenant_to_an_unscoped_caller() -> None:
         _TOPIC,
         key=b"row-a",
         value=_delta_bytes(
-            row_id="row-a", tenant_id="tenant-alpha", amount=1, ingest_sequence=1
+            row_id="row-a", tenant_id="tenant-alpha", amount=1, source_offset=1
         ),
         headers=[("tenant_id", b"tenant-alpha")],
     )
@@ -83,7 +85,7 @@ def test_get_rows_returns_every_tenant_to_an_unscoped_caller() -> None:
         _TOPIC,
         key=b"row-b",
         value=_delta_bytes(
-            row_id="row-b", tenant_id="tenant-beta", amount=2, ingest_sequence=1
+            row_id="row-b", tenant_id="tenant-beta", amount=2, source_offset=1
         ),
         headers=[("tenant_id", b"tenant-beta")],
     )
@@ -91,7 +93,7 @@ def test_get_rows_returns_every_tenant_to_an_unscoped_caller() -> None:
         _TOPIC,
         key=b"row-c",
         value=_delta_bytes(
-            row_id="row-c", tenant_id="tenant-gamma", amount=3, ingest_sequence=1
+            row_id="row-c", tenant_id="tenant-gamma", amount=3, source_offset=1
         ),
         headers=[("tenant_id", b"tenant-gamma")],
     )

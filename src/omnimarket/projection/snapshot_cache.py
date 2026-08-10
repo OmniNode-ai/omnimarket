@@ -46,11 +46,21 @@ _BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
 
 @dataclass(frozen=True)
 class CachedRow:
-    """One cached row: the serialized column values plus cache metadata."""
+    """One cached row: the serialized column values plus cache metadata.
+
+    ``observed_at`` is display-only (never consulted for staleness -- it is
+    wall-clock time and can move backward across replicas/NTP steps).
+    ``source_topic``/``source_partition``/``source_offset`` are the
+    authoritative ordering token: broker-assigned Kafka coordinates of the
+    SOURCE message that produced this row (CodeRabbit, OMN-15800 round 3,
+    discussion r3745850632).
+    """
 
     row: dict[str, Any]
     observed_at: datetime
-    ingest_sequence: int
+    source_topic: str
+    source_partition: int
+    source_offset: int
     tenant_id: str
 
 
@@ -193,7 +203,7 @@ class SnapshotCache:
 
         if value is None:
             # Genuine Kafka tombstone: unconditional delete, no
-            # ingest_sequence to compare (see publish_snapshot_delta).
+            # source offset to compare (see publish_snapshot_delta).
             if key is None:
                 return
             key_tuple = tuple(key.decode("utf-8").split("|"))
@@ -214,15 +224,30 @@ class SnapshotCache:
                 tenant_id = header_value.decode("utf-8")
                 break
 
+        # Staleness authority (CodeRabbit, OMN-15800 round 3, discussion
+        # r3745850632): compare the SOURCE message's own (partition, offset)
+        # -- never wall-clock time. A delta from a DIFFERENT source_topic
+        # than what's cached is never comparable (independent offset
+        # spaces -- e.g. node-introspection.v1 and node-heartbeat.v1 both
+        # update the same registry row) and always applies; only a replay
+        # of an offset <= the cached one from the SAME source_topic+
+        # source_partition is dropped as stale/idempotent-replay.
         existing = state.rows.get(delta.key)
-        if existing is not None and delta.ingest_sequence <= existing.ingest_sequence:
+        if (
+            existing is not None
+            and delta.source_topic == existing.source_topic
+            and delta.source_partition == existing.source_partition
+            and delta.source_offset <= existing.source_offset
+        ):
             return  # stale/replayed delta relative to cache state -- idempotent
 
         observed_at = _parse_observed_at(delta.observed_at)
         state.rows[delta.key] = CachedRow(
             row=dict(delta.row or {}),
             observed_at=observed_at,
-            ingest_sequence=delta.ingest_sequence,
+            source_topic=delta.source_topic,
+            source_partition=delta.source_partition,
+            source_offset=delta.source_offset,
             tenant_id=tenant_id,
         )
         if state.latest_event_at is None or observed_at > state.latest_event_at:
@@ -231,14 +256,20 @@ class SnapshotCache:
         exposure = self._exposures[topic]
         max_rows = exposure.limit * 4
         if len(state.rows) > max_rows:
-            # Evict by RECENCY (lowest ingest_sequence first), never by the
+            # Evict by RECENCY (lowest observed_at first), never by the
             # exposure's display order_by_spec (CodeRabbit, OMN-15800): for an
             # ASC-ordered exposure, sorting-then-truncating-to-head would keep
             # the OLDEST rows forever and evict the row this call just wrote.
             # Retention and display ordering are separate concerns.
+            # observed_at (wall-clock, display-only metadata) is a globally
+            # comparable soft-LRU signal here -- capacity eviction is not the
+            # correctness-critical authority path (that's the offset-keyed
+            # staleness check above); a rare mis-ordered eviction under an
+            # NTP step is a capacity heuristic miss, not a silently dropped
+            # newer row.
             newest_first = sorted(
                 state.rows.items(),
-                key=lambda item: item[1].ingest_sequence,
+                key=lambda item: item[1].observed_at,
                 reverse=True,
             )
             state.rows = dict(newest_first[:max_rows])

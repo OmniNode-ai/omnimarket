@@ -180,6 +180,7 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             partition=int(input_data.pop("_partition", 0)),
             offset=int(input_data.pop("_offset", 0)),
             fallback_id=str(input_data.pop("_fallback_id", "")),
+            topic=topic,
         )
         ok = asyncio.run(self.project_event(topic, input_data, meta))
         return {"projected": ok}
@@ -470,6 +471,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             op="upsert",
             row=row,
             source_event_id=source_event_id or meta.fallback_id,
+            source_topic=meta.topic,
+            source_partition=meta.partition,
+            source_offset=meta.offset,
         )
 
 
