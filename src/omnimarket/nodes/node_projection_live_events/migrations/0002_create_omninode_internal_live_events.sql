@@ -62,7 +62,7 @@
 --   WITH GRANT OPTION corrects the ticket's originally-stated recipe (plain
 --   GRANT, no grant option) -- live-proven while authoring this file that
 --   plain USAGE lets role_omnidash create the table but leaves its OWN
---   onward `GRANT USAGE ... TO omninode_runtime` (step 6 below) a silent
+--   onward `GRANT USAGE ... TO omninode_runtime` (step 5 below) a silent
 --   no-op (`WARNING: no privileges were granted`), which would leave the
 --   runtime write path broken while this migration reports success. See
 --   precondition 2 below for the live citation.
@@ -71,25 +71,41 @@
 --   is explicitly out of scope. Instead it ASSERTS the precondition
 --   fail-fast, by design: a migration that silently no-ops or half-applies
 --   against a schema it cannot use is a worse failure mode than a named,
---   loud refusal that points at the exact operator step still pending.
+--   loud refusal.
 --
--- WHY has_schema_privilege AND NOT A TRY/CATCH ON THE CREATE TABLE
---   `to_regclass('omninode_internal.live_events')` itself raises
---   `permission denied for schema omninode_internal` (not a NULL result)
---   when the connecting role lacks USAGE -- confirmed live above. A bare
---   `CREATE TABLE IF NOT EXISTS omninode_internal.live_events (...)` without
---   USAGE fails the same way, ON_ERROR_STOP=1 kills the migration Job, and
---   the operator is left decoding a raw Postgres permission error instead
---   of being told which OMN-15819 step is outstanding. Asserting the
---   precondition first, with RAISE EXCEPTION naming the exact GRANT
---   statement needed, is strictly more useful and no more expensive.
+-- WHY EVERY PRECONDITION IS A BARE SELECT, NOT A DO/RAISE BLOCK
+--   The application-database SQL gate
+--   (src/omnibase_infra/validation/application_database_domain_enforcement.py
+--   `_requires_dynamic_sql_rejection`) rejects ANY new `DO $$ ... $$` block
+--   in a migration touching an application-topology schema, unconditionally
+--   -- procedural execution cannot be proven to target only statically-known
+--   relations, so it is refused outright rather than inspected case-by-case.
+--   098/099 (both DO-block-heavy) predate this gate's diff scope and were
+--   never re-scanned against it. This file has no such grandfathering, so
+--   every precondition below uses the same statically-provable
+--   `SELECT 1 / count(*)` division-by-zero idiom 098/099 already use for
+--   their own POST-conditions (OMN-15361) -- division by zero is Postgres's
+--   own fail-closed primitive when the guarded condition is false, and it
+--   needs no procedural block to express. The tradeoff is a generic
+--   `division by zero` error instead of a hand-authored message naming the
+--   exact OMN-15819 remedy; that remedy is documented here and on the
+--   ticket instead of in the error text itself.
+--
+--   The same constraint retired the omninode_runtime guard-created-if-absent
+--   DO block 099 uses (CREATE ROLE has no IF NOT EXISTS form in Postgres, so
+--   idempotent creation is a DO-block-only idiom). Provisioning
+--   omninode_runtime is not this migration's concern any more than
+--   provisioning omninode_internal itself is (see the schema trap above) --
+--   the role already exists on the live target (pg_roles, 2026-08-10) and is
+--   now asserted, not created, exactly like the schema and privilege
+--   preconditions above it.
 --
 -- IDEMPOTENCY
---   CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS / a
---   NOT-EXISTS-guarded GRANT-adjacent CREATE ROLE are all safe to re-run.
---   The two precondition DO blocks are read-only catalog probes -- re-run
---   is a no-op once the operator grant has landed. No ALTER of any kind
---   appears in this file.
+--   CREATE TABLE IF NOT EXISTS / CREATE INDEX IF NOT EXISTS are safe to
+--   re-run. Every precondition is a read-only catalog probe -- re-run is a
+--   no-op once the operator grant has landed. No ALTER of any kind (other
+--   than the guarded ADD COLUMN IF NOT EXISTS reconciliation block) appears
+--   in this file.
 --
 -- CANONICAL SHAPE (do not hand-retype, OMN-15384 shape-parity gate)
 --   The CREATE TABLE body below is copied VERBATIM from
@@ -111,133 +127,92 @@
 --   binding -- the same write-path grant 099 itself carries (SELECT,
 --   INSERT, UPDATE; no DELETE -- a projection writer upserts, it does not
 --   reshape the table, matching 096's role_omnidash invariant and 099's own
---   omninode_runtime invariant). The omninode_runtime ROLE already exists on
---   the live target (live-confirmed via pg_roles, 2026-08-10) but is
---   guard-created here anyway, matching 099's own precedent exactly, so
---   this file is also correct on a fresh lane (e.g. the standalone
---   top-level-only "Migration Integration Test" CI scope) where it might
---   not.
+--   omninode_runtime invariant).
 -- =============================================================================
 
 -- -----------------------------------------------------------------------------
--- 1. Precondition: the schema must exist at all before any privilege check
---    on it is meaningful -- has_schema_privilege() RAISES (does not return
---    false) for a schema name that does not exist, which would surface here
---    as an unhelpful catalog error instead of a named OMN-15819 pointer.
---    pg_namespace needs no schema-level privilege to read, so this check is
---    safe under any connecting role.
+-- 1. Precondition: the schema must exist at all. Statically provable (no
+--    DO/RAISE -- see the file-header rationale above): division by zero
+--    when the schema is absent. pg_namespace needs no schema-level
+--    privilege to read, so this probe is safe under any connecting role.
+--    has_schema_privilege() itself RAISES (not a false/NULL result) for a
+--    schema name that does not exist, which is why this check runs FIRST,
+--    strictly before precondition 2 below ever calls it.
 -- -----------------------------------------------------------------------------
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = 'omninode_internal'
-  ) THEN
-    RAISE EXCEPTION
-      'OMN-15819: schema omninode_internal does not exist in this database. '
-      'It is created out-of-band on the managed/RDS lane (master-owned; see '
-      'this file''s header) or by 098_create_omninode_internal_schema.sql on '
-      'lanes where that flat file actually executes (e.g. compose, which has '
-      'no cross-DB skip logic). This migration refuses to guess and will not '
-      'create the schema itself.';
-  END IF;
-END;
-$$;
+SELECT 1 / count(*) AS omninode_internal_schema_exists_precondition
+  FROM pg_catalog.pg_namespace
+ WHERE nspname = 'omninode_internal';
 
 -- -----------------------------------------------------------------------------
 -- 2. Precondition: CURRENT_USER (whichever role is actually executing this
---    file) must hold USAGE + CREATE on omninode_internal. Checked against
---    current_user, not a hardcoded role name, because the connecting
---    identity differs by lane: role_omnidash on the k8s Job / managed RDS
---    lane (OMN-15313 NODE_DB_USER), but the `postgres` superuser on the
---    compose lane (POSTGRES_USER default, no per-role split there -- see
---    096's own docstring for the live readback proving this). A superuser
---    always reads back `true` here regardless of ACL rows, so this check is
---    a no-op on compose and a real, live-confirmed-false gate on RDS today.
---    Fails loud and names the exact operator remedy rather than letting the
---    CREATE TABLE below fail on a raw `permission denied for schema`.
+--    file) must hold USAGE, CREATE, and USAGE WITH GRANT OPTION on
+--    omninode_internal. Checked against current_user, not a hardcoded role
+--    name, because the connecting identity differs by lane: role_omnidash
+--    on the k8s Job / managed RDS lane (OMN-15313 NODE_DB_USER), but the
+--    `postgres` superuser on the compose lane (POSTGRES_USER default, no
+--    per-role split there -- see 096's own docstring for the live readback
+--    proving this). A superuser always reads back `true` for every
+--    has_schema_privilege() check regardless of ACL rows, so this precondition
+--    is a no-op on compose and a real, live-confirmed-false gate on RDS
+--    today (role_omnidash has neither USAGE nor CREATE, 2026-08-10).
+--
+--    USAGE WITH GRANT OPTION is a SEPARATE requirement from plain USAGE:
+--    this migration re-grants schema USAGE onward to omninode_runtime
+--    (step 5 below), and Postgres requires the granting role to hold grant
+--    option for that specific privilege, not merely the privilege itself,
+--    or the onward GRANT silently no-ops with `WARNING: no privileges were
+--    granted for "omninode_internal"` -- proven live in an ephemeral
+--    sandbox while authoring this file: a plain (non-grant-option) USAGE
+--    grant to role_omnidash let this migration create the table and grant
+--    TABLE-level privileges (ownership of a self-created object carries its
+--    own grant rights), but the SCHEMA-level forward to omninode_runtime
+--    silently granted nothing, which would have left the runtime write path
+--    just as broken as before this migration (permission denied for
+--    schema, not UndefinedTable) while the migration itself reported
+--    success. This corrects the ticket's originally-stated operator recipe
+--    (OMN-15819 step 3), which did not specify WITH GRANT OPTION --
+--    flagged on the PR and on the ticket.
 -- -----------------------------------------------------------------------------
-DO $$
-BEGIN
-  IF NOT has_schema_privilege(current_user, 'omninode_internal', 'USAGE') THEN
-    RAISE EXCEPTION
-      'OMN-15819: % lacks USAGE on schema omninode_internal -- run OMN-15819 '
-      'step 3 first (operator, one-time, as omninodeadmin master): GRANT '
-      'USAGE, CREATE ON SCHEMA omninode_internal TO role_omnidash WITH '
-      'GRANT OPTION; This migration refuses to guess at a schema it cannot '
-      'use.', current_user;
-  END IF;
-  IF NOT has_schema_privilege(current_user, 'omninode_internal', 'CREATE') THEN
-    RAISE EXCEPTION
-      'OMN-15819: % lacks CREATE on schema omninode_internal -- run '
-      'OMN-15819 step 3 first (operator, one-time, as omninodeadmin '
-      'master): GRANT USAGE, CREATE ON SCHEMA omninode_internal TO '
-      'role_omnidash WITH GRANT OPTION; This migration refuses to guess at '
-      'a schema it cannot create in.', current_user;
-  END IF;
-  -- WITH GRANT OPTION, specifically for USAGE, is a SEPARATE precondition
-  -- from plain USAGE above -- this migration re-grants schema USAGE onward
-  -- to omninode_runtime (step 6 below), and Postgres requires the granting
-  -- role to hold GRANT OPTION for that specific privilege, not merely the
-  -- privilege itself, or the onward GRANT silently no-ops with
-  -- `WARNING: no privileges were granted for "omninode_internal"` --
-  -- proven live in an ephemeral sandbox while authoring this file: a plain
-  -- (non-grant-option) USAGE grant to role_omnidash let this migration
-  -- create the table and grant TABLE-level privileges (ownership of a
-  -- self-created object carries its own grant rights), but the SCHEMA-level
-  -- forward to omninode_runtime silently granted nothing, which would have
-  -- left the runtime write path just as broken as before this migration
-  -- (permission denied for schema, not UndefinedTable) while the migration
-  -- itself reported success. This corrects the ticket's originally-stated
-  -- operator recipe (OMN-15819 step 3), which did not specify
-  -- WITH GRANT OPTION -- flagged in the PR body and on the ticket.
-  IF NOT has_schema_privilege(
-    current_user, 'omninode_internal', 'USAGE WITH GRANT OPTION'
-  ) THEN
-    RAISE EXCEPTION
-      'OMN-15819: % has USAGE on schema omninode_internal but not WITH '
-      'GRANT OPTION -- this migration forwards USAGE to omninode_runtime '
-      '(step 6 below), which requires grant option, not just the '
-      'privilege itself, or Postgres silently grants nothing. Re-run '
-      'OMN-15819 step 3 as: GRANT USAGE, CREATE ON SCHEMA omninode_internal '
-      'TO role_omnidash WITH GRANT OPTION;', current_user;
-  END IF;
-END;
-$$;
+SELECT 1 / count(*) AS omninode_internal_schema_privilege_precondition
+  FROM (
+    SELECT 1
+     WHERE has_schema_privilege(current_user, 'omninode_internal', 'USAGE')
+       AND has_schema_privilege(current_user, 'omninode_internal', 'CREATE')
+       AND has_schema_privilege(
+             current_user, 'omninode_internal', 'USAGE WITH GRANT OPTION'
+           )
+  ) AS assertion;
 
 -- -----------------------------------------------------------------------------
--- 3. omninode_runtime role existence, guarded exactly like 099's own
---    precedent (and 094/096 before it): CREATE only when absent, so a role
---    provisioned out-of-band on a managed instance is never re-created or
---    clobbered. NOLOGIN at create time -- LOGIN + password attach stays
---    deployment-owned and is never asserted here.
+-- 3. Precondition: omninode_runtime must already exist. Provisioning it is
+--    not this migration's concern (see the file-header rationale above) --
+--    the role already exists on the live target (pg_roles, 2026-08-10) and
+--    is asserted, not created.
 -- -----------------------------------------------------------------------------
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'omninode_runtime') THEN
-    BEGIN
-      CREATE ROLE omninode_runtime WITH
-        NOLOGIN
-        NOSUPERUSER
-        NOBYPASSRLS
-        NOCREATEDB
-        NOCREATEROLE
-        NOREPLICATION;
-    EXCEPTION
-      WHEN duplicate_object OR unique_violation THEN
-        NULL; -- created concurrently by another migration path
-    END;
-  END IF;
-END;
-$$;
+SELECT 1 / count(*) AS omninode_runtime_role_exists_precondition
+  FROM pg_catalog.pg_roles
+ WHERE rolname = 'omninode_runtime';
 
 -- -----------------------------------------------------------------------------
 -- 4. Canonical 10-column shape, copied verbatim from
 --    docker/migrations/forward/099_create_omninode_internal_live_events.sql
 --    -- see the file-header rationale above. Do not hand-retype; if the
 --    shape ever needs to change, change 099 first and copy forward again.
+--
+--    No CREATE EXTENSION pgcrypto here (unlike 099): this node's own
+--    0000_create_live_events.sql already issues
+--    `CREATE EXTENSION IF NOT EXISTS pgcrypto` (unqualified) and runs
+--    strictly before this file in every scope that applies node migrations
+--    at all (same node directory, sorted lexical order, same database) --
+--    the extension is a database-level object that persists across the
+--    separate psql connection each file gets, so it is already installed
+--    and reachable via the default search_path by the time this file runs.
+--    A second, redundant CREATE EXTENSION here would also need an explicit
+--    `WITH SCHEMA <application-schema>` target (application-database SQL
+--    gate, tests/unit/validation/test_application_database_domain_enforcement.py)
+--    and a matching schema-qualified gen_random_uuid() call below --
+--    strictly worse than relying on the guarantee 0000 already provides.
 -- -----------------------------------------------------------------------------
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
 CREATE TABLE IF NOT EXISTS omninode_internal.live_events (
   id             UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   event_id       TEXT        UNIQUE NOT NULL,
