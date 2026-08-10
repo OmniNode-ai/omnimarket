@@ -92,6 +92,34 @@ class RegistrationProjectionRunner(BaseProjectionRunner):
         self._snapshot_exposure: ProjectionTableConfig | None = next(
             (exposure for exposure in exposures if exposure.bus_backed), None
         )
+        # OMN-15800 cold-start (documented fresh-start, not a backfill
+        # publisher): the onex.snapshot.projection.registration.v1 topic
+        # starts EMPTY at conversion time -- the 3 rows already materialized
+        # in node_service_registry do not appear on the bus until this
+        # reducer next upserts+republishes them. This is a deliberate
+        # fresh-start, not an oversight: every currently-live registered
+        # service re-emits a node-introspection/node-heartbeat event on a
+        # 30s interval by default (verified live:
+        # omnibase_infra.mixins.mixin_node_introspection
+        # .MixinNodeIntrospection._heartbeat_loop /
+        # heartbeat_interval_seconds=30.0), and every one of
+        # _project_introspection / _project_heartbeat / _project_state_change
+        # calls _publish_snapshot_if_available() unconditionally on write --
+        # so the cache self-heals to steady state within one heartbeat
+        # interval (~30s) of SnapshotCache startup, no one-shot backfill
+        # publisher required.
+        #
+        # Known residual gap (not silently hidden): a registry row for a
+        # service that is registered but NOT currently heartbeating (torn
+        # down, crashed, or the row is simply stale) never republishes and
+        # stays permanently absent from the bus-backed cache until that
+        # service comes back online. A one-shot runtime-side backfill
+        # publisher (reading this node's own DB once at conversion time,
+        # ruling-compliant since the reducer/runtime may read its own
+        # database) would close that gap; not built here because it cannot
+        # be verified against a live broker in this change (OMN-15804 .201
+        # disk-exhaustion outage). Track as a follow-up if a stale-but-never-
+        # heartbeating registration row is observed to matter in practice.
 
     @property
     def subscribe_topics(self) -> list[str]:
