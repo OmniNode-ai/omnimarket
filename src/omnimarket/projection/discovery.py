@@ -23,7 +23,9 @@ from typing import Literal, Protocol
 import yaml
 
 from omnimarket.projection.models import (
+    NullsPlacement,
     OrderBySpec,
+    OrderDirection,
     ProjectionStatus,
     ProjectionTableConfig,
 )
@@ -340,9 +342,13 @@ def _parse_projection_api_section(
     # after the first comma (OMN-15799) — parsing once here, and failing
     # loudly on an unknown column, closes that class of defect for every
     # exposure, not just the two converting to bus_backed in this slice.
+    #
+    # Unlike every other field parsed in this function, a malformed order_by
+    # is NOT caught and turned into "contract excluded": it propagates as
+    # MalformedOrderBySpecError all the way out of build_projection_topic_map,
+    # a deliberate startup hard-fail (OMN-15800 defect A — see that
+    # exception's docstring for why this one field is different).
     order_by_spec = _parse_order_by_spec(order_by, columns, node_name, contract_path)
-    if order_by_spec is None:
-        return None
 
     raw_bus_backed = section.get("bus_backed", False)
     if not isinstance(raw_bus_backed, bool):
@@ -475,18 +481,42 @@ def _parse_projection_api_section(
     )
 
 
+class MalformedOrderBySpecError(ValueError):
+    """A contract's ``projection_api.order_by`` could not be parsed.
+
+    OMN-15800 defect A: this used to be a logged error that silently dropped
+    the whole exposure (matching every other validation failure in this
+    module). That is the wrong failure mode specifically for ``order_by`` —
+    unlike a missing ``topic``/``table``/``columns`` field (which reflects an
+    unrelated node's authoring mistake and is safe to skip), a malformed
+    ``order_by`` on an otherwise-complete, actively-used exposure silently
+    dropped 2 of 4 ``node_evidence_dashboard_reducer`` exposures in
+    production (57 -> 55) with no operator-visible signal beyond a log line.
+    Raising here — and letting it propagate out of
+    :func:`build_projection_topic_map` uncaught — turns that into a startup
+    hard-fail (the FastAPI ``lifespan`` never completes, so ``/ready`` never
+    turns green) instead of a silent data loss.
+    """
+
+
 def _parse_order_by_spec(
     order_by: str | None,
     columns: tuple[str, ...] | tuple[Literal["*"]],
     node_name: str,
     contract_path: Path,
-) -> OrderBySpec | None:
+) -> OrderBySpec:
     """Parse a free-text ``order_by`` into a typed, multi-column-safe spec.
 
-    Returns ``()`` when ``order_by`` is absent (ordering undefined), the
-    parsed spec on success, or ``None`` on a malformed/unknown-column
-    ``order_by`` (caller excludes the exposure, matching every other
-    validation failure in this module).
+    Each comma-separated clause is ``<column> [ASC|DESC] [NULLS FIRST|LAST]``
+    — column and direction are optional-direction/optional-nulls-placement,
+    but if present must appear in that order. ``NULLS FIRST``/``NULLS LAST``
+    is accepted case-insensitively, matching the SQL clause contracts already
+    declare (e.g. ``"ingest_sequence ASC NULLS LAST"``).
+
+    Returns ``()`` when ``order_by`` is absent (ordering undefined) or the
+    parsed spec on success. Raises :class:`MalformedOrderBySpecError` on a
+    malformed clause or unknown column — this is a hard failure, not a
+    caller-catchable "excluded" signal (see the exception's docstring).
     """
     if order_by is None:
         return ()
@@ -495,48 +525,49 @@ def _parse_order_by_spec(
         None if columns == ("*",) else frozenset(c.strip('"') for c in columns)
     )
 
-    spec: list[tuple[str, Literal["ASC", "DESC"]]] = []
+    spec: list[tuple[str, OrderDirection, NullsPlacement | None]] = []
     for clause in order_by.split(","):
         tokens = clause.split()
         if not tokens:
-            logger.error(
-                "Contract %r (path: %s): projection_api.order_by has an "
-                "empty clause in %r — contract excluded",
-                node_name,
-                contract_path,
-                order_by,
+            raise MalformedOrderBySpecError(
+                f"Contract {node_name!r} (path: {contract_path}): "
+                f"projection_api.order_by has an empty clause in {order_by!r}"
             )
-            return None
         column = tokens[0]
-        if len(tokens) > 1:
-            direction_token = tokens[1].upper()
-            if direction_token not in {"ASC", "DESC"} or len(tokens) > 2:
-                logger.error(
-                    "Contract %r (path: %s): projection_api.order_by clause "
-                    "%r must be '<column>' or '<column> ASC|DESC' — contract "
-                    "excluded",
-                    node_name,
-                    contract_path,
-                    clause,
+        rest = tokens[1:]
+        idx = 0
+        direction: OrderDirection = "ASC"
+        if idx < len(rest) and rest[idx].upper() in {"ASC", "DESC"}:
+            direction = "ASC" if rest[idx].upper() == "ASC" else "DESC"
+            idx += 1
+
+        nulls: NullsPlacement | None = None
+        if idx < len(rest) and rest[idx].upper() == "NULLS":
+            idx += 1
+            if idx < len(rest) and rest[idx].upper() in {"FIRST", "LAST"}:
+                nulls = "FIRST" if rest[idx].upper() == "FIRST" else "LAST"
+                idx += 1
+            else:
+                raise MalformedOrderBySpecError(
+                    f"Contract {node_name!r} (path: {contract_path}): "
+                    f"projection_api.order_by clause {clause!r} has 'NULLS' "
+                    "not followed by 'FIRST' or 'LAST'"
                 )
-                return None
-            direction: Literal["ASC", "DESC"] = (
-                "ASC" if direction_token == "ASC" else "DESC"
+
+        if idx != len(rest):
+            raise MalformedOrderBySpecError(
+                f"Contract {node_name!r} (path: {contract_path}): "
+                f"projection_api.order_by clause {clause!r} must be "
+                "'<column> [ASC|DESC] [NULLS FIRST|LAST]'"
             )
-        else:
-            direction = "ASC"
 
         if bare_columns is not None and column.strip('"') not in bare_columns:
-            logger.error(
-                "Contract %r (path: %s): projection_api.order_by column %r "
-                "is not a member of projection_api.columns — contract "
-                "excluded",
-                node_name,
-                contract_path,
-                column,
+            raise MalformedOrderBySpecError(
+                f"Contract {node_name!r} (path: {contract_path}): "
+                f"projection_api.order_by column {column!r} is not a member "
+                "of projection_api.columns"
             )
-            return None
-        spec.append((column, direction))
+        spec.append((column, direction, nulls))
 
     return tuple(spec)
 

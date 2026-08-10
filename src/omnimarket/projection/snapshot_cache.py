@@ -66,21 +66,33 @@ class _TopicCacheState:
 class _SortWrapper:
     """Comparable wrapper enabling per-column ASC/DESC in a single sort key.
 
-    ``None`` sorts last regardless of direction (both directions want a
-    missing value at the bottom of the page, not interleaved by accident).
+    ``None`` sorts last by default, independent of ASC/DESC direction
+    (matches every pre-OMN-15800-defect-A order_by, none of which declared
+    NULLS placement explicitly). A contract that explicitly declares ``NULLS
+    FIRST`` flips this per column via ``nulls_last=False`` (OMN-15800 defect
+    A) -- direction and NULLS placement are independent SQL knobs.
     """
 
-    __slots__ = ("reverse", "value")
+    __slots__ = ("nulls_last", "reverse", "value")
 
-    def __init__(self, value: Any, reverse: bool) -> None:
+    def __init__(self, value: Any, reverse: bool, nulls_last: bool = True) -> None:
         self.value = value
         self.reverse = reverse
+        # OMN-15800 defect A: explicit NULLS FIRST|LAST placement, independent
+        # of ASC/DESC direction (SQL semantics — an explicit NULLS clause
+        # overrides whatever the direction's implicit default would be).
+        # Defaults True to preserve this cache's pre-existing behavior for
+        # every order_by that does not declare NULLS explicitly (nulls always
+        # sorted last, unconditionally).
+        self.nulls_last = nulls_last
 
     def __lt__(self, other: _SortWrapper) -> bool:
-        if self.value is None:
+        if self.value is None and other.value is None:
             return False
+        if self.value is None:
+            return not self.nulls_last
         if other.value is None:
-            return True
+            return self.nulls_last
         if self.reverse:
             return bool(other.value < self.value)
         return bool(self.value < other.value)
@@ -88,7 +100,7 @@ class _SortWrapper:
 
 def _sort_rows(
     items: list[tuple[tuple[str, ...], CachedRow]],
-    order_by_spec: tuple[tuple[str, str], ...],
+    order_by_spec: tuple[tuple[str, str, str | None], ...],
 ) -> list[tuple[tuple[str, ...], CachedRow]]:
     if not order_by_spec:
         return items
@@ -98,8 +110,12 @@ def _sort_rows(
     ) -> tuple[_SortWrapper, ...]:
         _key, cached = item
         return tuple(
-            _SortWrapper(cached.row.get(column), reverse=(direction == "DESC"))
-            for column, direction in order_by_spec
+            _SortWrapper(
+                cached.row.get(column),
+                reverse=(direction == "DESC"),
+                nulls_last=(nulls != "FIRST"),
+            )
+            for column, direction, nulls in order_by_spec
         )
 
     return sorted(items, key=_sort_key)
@@ -232,7 +248,7 @@ class SnapshotCache:
         topic: str,
         *,
         limit: int | None = None,
-        order_by_override: tuple[tuple[str, str], ...] | None = None,
+        order_by_override: tuple[tuple[str, str, str | None], ...] | None = None,
     ) -> list[dict[str, Any]]:
         """Return cached rows for ``topic``, ordered per the exposure's order_by_spec.
 

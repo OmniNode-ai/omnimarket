@@ -137,7 +137,7 @@ def resolve_effective_limit(requested: int | None, contract_limit: int) -> int:
 
 def _effective_order_by_spec(
     cfg: ProjectionTableConfig, order: str | None
-) -> tuple[tuple[str, str], ...]:
+) -> tuple[tuple[str, str, str | None], ...]:
     """Apply a caller-requested direction flip to the FIRST sort column.
 
     Single source of truth for both the actual row order (fed to
@@ -145,25 +145,31 @@ def _effective_order_by_spec(
     ``ordering`` string (:func:`_reported_ordering`) -- computed once so the
     two can never diverge (CodeRabbit, OMN-15800: a caller-requested ``order``
     previously changed only the reported string, not the returned rows).
-    Every sort key beyond the first is preserved verbatim (OMN-15799).
+    Every sort key beyond the first is preserved verbatim (OMN-15799), the
+    NULLS placement included (OMN-15800 defect A corrective round) -- a
+    caller-requested direction flip changes ASC/DESC only, never the
+    contract-declared NULLS FIRST|LAST for that column.
     """
     if not cfg.order_by_spec:
         return ()
-    first_column, first_direction = cfg.order_by_spec[0]
+    first_column, first_direction, first_nulls = cfg.order_by_spec[0]
     if order is not None:
         normalised = order.strip().lower()
         if normalised == "asc":
             first_direction = "ASC"
         elif normalised == "desc":
             first_direction = "DESC"
-    return ((first_column, first_direction), *cfg.order_by_spec[1:])
+    return ((first_column, first_direction, first_nulls), *cfg.order_by_spec[1:])
 
 
-def _reported_ordering(order_by_spec: tuple[tuple[str, str], ...]) -> str:
+def _reported_ordering(order_by_spec: tuple[tuple[str, str, str | None], ...]) -> str:
     """Render the ``ordering`` response field FROM the typed, already-flipped spec."""
     if not order_by_spec:
         return "undefined"
-    return ", ".join(f"{column} {direction}" for column, direction in order_by_spec)
+    return ", ".join(
+        f"{column} {direction}" + (f" NULLS {nulls}" if nulls else "")
+        for column, direction, nulls in order_by_spec
+    )
 
 
 def _cursor_compare(value: Any, cursor: str) -> bool:

@@ -33,7 +33,12 @@ class ProjectionStatus(StrEnum):
 # inheritance) so a multi-column order_by can never silently lose a sort key
 # and an unknown column can never reach a query/sort at request time.
 OrderDirection = Literal["ASC", "DESC"]
-OrderBySpec = tuple[tuple[str, OrderDirection], ...]
+# Explicit NULLS FIRST|LAST placement (OMN-15800 defect A). ``None`` means the
+# clause did not declare a placement — the sort falls back to the pre-existing
+# default (nulls sort last, independent of ASC/DESC) so contracts that predate
+# this field keep their prior behavior unchanged.
+NullsPlacement = Literal["FIRST", "LAST"]
+OrderBySpec = tuple[tuple[str, OrderDirection, NullsPlacement | None], ...]
 
 
 class ProjectionTableConfig(BaseModel):
@@ -160,6 +165,7 @@ def snapshot_json_value(value: Any, *, decode_json_string: bool = False) -> Any:
 __all__ = [
     "SNAPSHOT_DELTA_SCHEMA_VERSION",
     "ModelProjectionSnapshotDelta",
+    "NullsPlacement",
     "OrderBySpec",
     "OrderDirection",
     "ProjectionStatus",
