@@ -226,7 +226,7 @@ class SnapshotCache:
                 "SnapshotCache: no bus_backed exposures declared; not starting a consumer"
             )
             return
-        self._consumer = AIOKafkaConsumer(
+        self._consumer = AIOKafkaConsumer(  # no-contract-check: projection-api runtime owns the snapshot-cache consumer lifecycle (OMN-15800), same runtime-boundary pattern as BaseProjectionRunner.run()
             *self._exposures.keys(),
             bootstrap_servers=self._bootstrap_servers,
             group_id=self._group_id,
