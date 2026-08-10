@@ -906,22 +906,29 @@ class HandlerDodEvidenceGithubEffect:
 
         if missing or foreign_only:
             absent = missing + foreign_only
-            shown = ", ".join(absent[:10])
-            more = "" if len(absent) <= 10 else f" (+{len(absent) - 10} more)"
+            # CodeRabbit (PR #2045): the fetch-failure marker must survive
+            # ``_checks_not_green``'s 400-char ``detail`` truncation even when
+            # ``absent`` holds many/long required-context names — placed
+            # FIRST (bounded to a fixed ~150-char budget, independent of
+            # ``absent``'s length) rather than appended after the
+            # variable-length context list, so a long list can no longer
+            # push it past the truncation boundary.
             merge_fetch_note = (
-                f"; merge-commit check-runs fetch failed "
-                f"({merge_runs_fetch_detail or 'unknown error'}) — treating "
-                f"affected context(s) as missing rather than not-applicable "
-                f"since absence there is unverified (F1 fail-closed fix)"
+                f"merge-commit check-runs fetch failed "
+                f"({(merge_runs_fetch_detail or 'unknown error')[:120]}), so "
+                f"absent context(s) below are unverified there rather than "
+                f"confirmed not-applicable (F1 fail-closed fix); "
                 if merge_runs_fetch_failed
                 else ""
             )
+            shown = ", ".join(absent[:10])
+            more = "" if len(absent) <= 10 else f" (+{len(absent) - 10} more)"
             return self._checks_not_green(
                 command,
-                f"{len(absent)} required context(s) absent from "
-                f"{head_branch}@{sha[:12]} (missing entirely or only "
+                f"{merge_fetch_note}{len(absent)} required context(s) absent "
+                f"from {head_branch}@{sha[:12]} (missing entirely or only "
                 f"produced by a foreign branch sharing this SHA): "
-                f"{shown}{more}{merge_fetch_note}",
+                f"{shown}{more}",
             )
         if not_green:
             shown = ", ".join(not_green[:10])

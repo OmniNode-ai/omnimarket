@@ -1909,6 +1909,43 @@ class TestFetchPrChecksGreenMergedRequiredContextTiming:
         result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
         assert result.checks_green is True, result.detail
 
+    def test_f1_merge_fetch_failure_marker_survives_long_context_list_truncation(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CodeRabbit (PR #2045): ``_checks_not_green`` truncates ``detail``
+        to 400 chars. With MANY/long required-context names absent, the
+        fetch-failure marker must still appear in the emitted detail — it is
+        placed FIRST, in a fixed ~150-char budget independent of the
+        variable-length context list, specifically so a long list cannot
+        push it past the truncation boundary."""
+        long_names = [
+            f"very-long-required-context-name-number-{i:02d}" for i in range(20)
+        ]
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_merged("mine", merge_sha="f1deadbeef4"),
+                protection=json.dumps(long_names),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs="",  # nothing on the pre-merge head SHA for any of them
+                merge_sha="f1deadbeef4",
+                merge_runs="",
+                merge_runs_rc=1,  # merge-commit fetch failure
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        detail = result.detail or ""
+        assert len(detail) <= 400
+        assert "merge-commit check-runs fetch failed" in detail
+        assert "F1 fail-closed fix" in detail
+
 
 # ---------------------------------------------------------------------------
 # EvidenceCollector delegation — proves behavior-identical parity: the
