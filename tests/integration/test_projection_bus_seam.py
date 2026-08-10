@@ -162,7 +162,13 @@ class TestRegistrationEventToHttpReadback:
         # via the same apply_message() the live consumer loop calls.
         # ------------------------------------------------------------------
         topic_map = {REGISTRATION_TOPIC: exposure}
-        cache = SnapshotCache(topic_map, bootstrap_servers="unused:9092")
+        cache = SnapshotCache(
+            topic_map,
+            bootstrap_servers="unused:9092",
+            # Explicit override (OMN-15840): this test exercises the bus seam,
+            # not the default group-id derivation, which requires ONEX_ENVIRONMENT.
+            group_id="test-bus-seam-group",
+        )
         cache.apply_message(
             published["topic"],
             published["key"],

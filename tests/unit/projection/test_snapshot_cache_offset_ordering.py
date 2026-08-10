@@ -45,7 +45,13 @@ def _make_cache() -> SnapshotCache:
         key_columns=("id",),
         limit=100,
     )
-    return SnapshotCache({_TOPIC: exposure}, bootstrap_servers="unused:9092")
+    return SnapshotCache(
+        {_TOPIC: exposure},
+        bootstrap_servers="unused:9092",
+        # Explicit override (OMN-15840): this test exercises offset ordering,
+        # not the default group-id derivation, which requires ONEX_ENVIRONMENT.
+        group_id="test-offset-ordering-group",
+    )
 
 
 def _delta_bytes(

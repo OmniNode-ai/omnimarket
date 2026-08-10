@@ -17,13 +17,17 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import logging
+import os
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
 from aiokafka import AIOKafkaConsumer, TopicPartition
+from omnibase_infra.enums import EnumConsumerGroupPurpose
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+from omnibase_infra.models import ModelNodeIdentity
+from omnibase_infra.utils import apply_instance_discriminator, compute_consumer_group_id
 
 from omnimarket.projection.models import (
     ModelProjectionSnapshotDelta,
@@ -32,17 +36,56 @@ from omnimarket.projection.models import (
 
 logger = logging.getLogger(__name__)
 
-# A per-process-unique prefix, never a shared literal (CodeRabbit, OMN-15800):
+# A per-process-unique group, never a shared literal (CodeRabbit, OMN-15800):
 # SnapshotCache is a full-topic STATE CACHE, not a work queue -- every
 # replica must see every partition. A single static group_id would let Kafka
 # split partitions across replicas (each caching only a subset while both
-# report bootstrap_complete=True). group_id defaults to this prefix + a fresh
-# uuid4 per instance so each process is its own consumer group and always
-# gets the complete compacted topic.
-DEFAULT_GROUP_ID_PREFIX = "omnimarket-projection-api-snapshot-cache-v1"
+# report bootstrap_complete=True). group_id defaults to a canonically-derived
+# base (OMN-15840) plus a fresh uuid4 instance discriminator per process, so
+# each process is still its own consumer group and always gets the complete
+# compacted topic -- while landing inside the MSK-IAM-pinned "onex-dev.*"
+# pattern. The pre-OMN-15840 literal prefix (f"{prefix}-{uuid4()}") matched
+# none of the six patterns pinned in
+# omninode_infra/tests/test_msk_group_pattern_pin.py and died
+# GroupAuthorizationFailedError before the consumer could join -- same defect
+# class as OMN-15700 (omnibase_infra#2681), whose ModelNodeIdentity +
+# compute_consumer_group_id mechanism this reuses rather than a parallel one.
+_GROUP_SERVICE_NAME = "omnimarket-projection-api"
+_GROUP_NODE_NAME = "snapshot-cache"
+_GROUP_VERSION = "v1"
 DEFAULT_CLIENT_ID = "omnimarket-projection-api-snapshot-cache"
 _BOOTSTRAP_POLL_INTERVAL_SECONDS = 0.5
 _BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
+
+
+def _default_group_id() -> str:
+    """Derive this instance's default consumer group id canonically.
+
+    Reuses the same mechanism as omnibase_infra#2681 (OMN-15700): a typed
+    ``ModelNodeIdentity`` fed through ``compute_consumer_group_id()``, rather
+    than a bespoke f-string literal, so the result is authorized by the
+    MSK-IAM-pinned ``onex-dev.*`` pattern in the deployed environment.
+
+    The environment component MUST come from ``ONEX_ENVIRONMENT`` -- the
+    deployment env var the onex-dev ConfigMap already sets for every other
+    runtime process. This reads it via ``os.environ[...]`` (fail-fast) rather
+    than ``os.getenv(..., "local")``: a silent "local" default is the exact
+    fail-open class flagged on OMN-15835 for the sibling savings-estimator
+    group, and it would derive a group id that is authorized nowhere.
+    """
+    environment = os.environ["ONEX_ENVIRONMENT"]
+    identity = ModelNodeIdentity(
+        env=environment,
+        service=_GROUP_SERVICE_NAME,
+        node_name=_GROUP_NODE_NAME,
+        version=_GROUP_VERSION,
+    )
+    base_group_id = compute_consumer_group_id(
+        identity, EnumConsumerGroupPurpose.CONSUME
+    )
+    # Per-instance uniqueness (see module comment above): every replica of
+    # this full-topic state cache must be its own consumer group.
+    return apply_instance_discriminator(base_group_id, str(uuid.uuid4()))  # type: ignore[no-any-return]
 
 
 @dataclass(frozen=True)
@@ -157,7 +200,7 @@ class SnapshotCache:
         }
         self._bootstrap_servers = bootstrap_servers
         # Per-process-unique unless a caller explicitly pins one (tests).
-        self._group_id = group_id or f"{DEFAULT_GROUP_ID_PREFIX}-{uuid.uuid4()}"
+        self._group_id = group_id or _default_group_id()
         self._client_id = client_id
         self._state: dict[str, _TopicCacheState] = {
             topic: _TopicCacheState() for topic in self._exposures

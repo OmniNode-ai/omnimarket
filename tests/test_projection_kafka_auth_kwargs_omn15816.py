@@ -98,7 +98,13 @@ def _make_cache() -> SnapshotCache:
         key_columns=("id",),
         limit=100,
     )
-    return SnapshotCache({_SNAPSHOT_TOPIC: exposure}, bootstrap_servers="unused:9098")
+    return SnapshotCache(
+        {_SNAPSHOT_TOPIC: exposure},
+        bootstrap_servers="unused:9098",
+        # Explicit override (OMN-15840): this test exercises SASL auth kwargs,
+        # not the default group-id derivation, which requires ONEX_ENVIRONMENT.
+        group_id="test-kafka-auth-kwargs-group",
+    )
 
 
 class _FakeAsyncClient:
