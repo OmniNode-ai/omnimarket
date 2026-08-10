@@ -29,6 +29,13 @@ class EnumDurableEvidenceCheck(StrEnum):
     # merged-PR check — a genuine no-source-change runtime-ops fix proven by a
     # read-only live readback rather than a merged PR.
     RUNTIME_OPS_READBACK = "runtime_ops_readback"
+    # OMN-15817 shape 5: the PR-less doctrine proof class (`proof_class:
+    # "receipt-bound"`, omni_home/CLAUDE.md "Proof capacity" rule) — a pure
+    # read-only investigation/audit (e.g. OMN-15087, zero product PR) whose
+    # Done-proof is the durable receipt trail itself. Verified against this
+    # check instead of CONTRACT_CITES_MERGE_COMMIT when the contract declares
+    # itself receipt-bound (see services/receipt_bound_evidence.py).
+    RECEIPT_BOUND = "receipt_bound"
     CONTRACT_ON_OCC_MAIN = "contract_on_occ_main"
     DEFECT_PREVENTION_GATE = "defect_prevention_gate"
     DONE_CLASS_LABEL = "done_class_label"

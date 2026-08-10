@@ -612,7 +612,7 @@ class HandlerDodEvidenceGithubEffect:
                 "--repo",
                 repo,
                 "--json",
-                "headRefName,baseRefName,headRefOid,state,mergedAt",
+                "headRefName,baseRefName,headRefOid,state,mergedAt,mergeCommit",
             ],
             _GH_PR_TIMEOUT_S,
         )
@@ -630,6 +630,20 @@ class HandlerDodEvidenceGithubEffect:
             )
         pr_state = str(pr_data.get("state") or "UNKNOWN")
         is_merged = bool(pr_data.get("mergedAt")) or pr_state.upper() == "MERGED"
+        # OMN-15817 shape 2b: the squash ``mergeCommit.oid`` — the commit that
+        # actually lands on the target branch (``dev``/``main``) and that a
+        # push-triggered context (e.g. a "CI Summary" umbrella job) produces
+        # check-runs against. ``sha``/``headRefOid`` above is the PRE-MERGE
+        # source-branch tip; once that source branch is deleted post-merge
+        # (normal squash-merge hygiene) it never gains any further check-run
+        # history, so a required context that only ever runs on a push to the
+        # target branch is permanently "missing" if only ``sha`` is consulted.
+        merge_commit = pr_data.get("mergeCommit")
+        merge_sha = ""
+        if isinstance(merge_commit, dict):
+            raw_merge_sha = merge_commit.get("oid")
+            if isinstance(raw_merge_sha, str):
+                merge_sha = raw_merge_sha
 
         classic_required, classic_detail = _gh_json(
             [
@@ -705,6 +719,31 @@ class HandlerDodEvidenceGithubEffect:
                 f"could not enumerate check-runs for {sha[:12]}: {runs_detail}",
             )
 
+        # OMN-15817 shape 2b: for a MERGED PR, also enumerate check-runs on the
+        # squash merge commit (when GitHub reports one and it differs from the
+        # pre-merge source-branch tip). A merge commit is unique to exactly one
+        # merge event — unlike ``sha`` above, there is no foreign-PR/sibling-
+        # branch attribution question, so every run found here is unconditionally
+        # this PR's own evidence. This is purely ADDITIVE evidence: a fetch
+        # failure here degrades to an empty list rather than failing the whole
+        # check, since the existing head-SHA rollup remains a complete,
+        # independently-sufficient source on its own.
+        merge_runs: list[dict[str, object]] = []
+        if is_merged and merge_sha and merge_sha != sha:
+            fetched_merge_runs, _merge_runs_detail = _gh_json_lines(
+                [
+                    "gh",
+                    "api",
+                    f"repos/{repo}/commits/{merge_sha}/check-runs",
+                    "--paginate",
+                    "--jq",
+                    ".check_runs[] | {name, status, conclusion}",
+                ],
+                _GH_PR_TIMEOUT_S,
+            )
+            if fetched_merge_runs is not None:
+                merge_runs = fetched_merge_runs
+
         if not required_names:
             # OMN-15715 D1 fix: the carve-out below (design option (a)) may
             # ONLY fire on a POSITIVELY-CONFIRMED-absent base — GitHub's own
@@ -777,15 +816,45 @@ class HandlerDodEvidenceGithubEffect:
         not_green: list[str] = []
         evaluated_any = False
         for name in required_names:
-            matches = [r for r in runs if str(r.get("name") or "") == name]
-            if not matches:
+            head_matches = [r for r in runs if str(r.get("name") or "") == name]
+            merge_matches = [r for r in merge_runs if str(r.get("name") or "") == name]
+            if not head_matches and not merge_matches:
+                # OMN-15817 shapes 2b/3: a required context absent from BOTH
+                # the pre-merge source-branch history and the post-merge
+                # commit's own history never gated this MERGED PR — either it
+                # was added to branch protection AFTER the merge (shape 3:
+                # today's ``required_names`` is a live, continuously-edited
+                # set, not a historical snapshot as-of merge time — a context
+                # added later cannot retroactively fail a terminal merge), or
+                # it is a push-triggered umbrella job that only ever runs on
+                # the target branch and this merge's own push produced no
+                # observable run for it (shape 2b). Design option (a),
+                # unchanged from OMN-15715: GitHub does not unlock the merge
+                # button past a red REQUIRED status check, so the merge event
+                # itself is the evidence for whatever WAS required at merge
+                # time. This is narrow and non-weakening: it treats an
+                # entirely-absent context as not-applicable, it does NOT
+                # relax a context that DID run with a failing conclusion (see
+                # the ``not_green`` branch below) — a genuine red-at-merge-time
+                # failure still fails closed identically for merged and open
+                # PRs. Open PRs are unaffected: the merge-commit fetch above
+                # is itself gated on ``is_merged``, so an OPEN PR always has
+                # an empty ``merge_runs`` and this branch falls through to the
+                # unchanged fail-closed ``missing`` path below exactly as
+                # before this fix.
+                if is_merged:
+                    continue
                 missing.append(name)
                 continue
-            relevant = [
+            head_relevant = [
                 run
-                for run in matches
+                for run in head_matches
                 if _check_run_is_own_or_ambiguous(run, head_branch, suite_branch)
             ]
+            # ``merge_matches`` need no foreign-branch attribution: a squash
+            # merge commit is unique to exactly one merge event, so every run
+            # found there is unconditionally this PR's own evidence.
+            relevant = head_relevant + merge_matches
             if not relevant:
                 # Every instance of this required context is PROVABLY foreign
                 # (it ran only on a different, resolvable branch sharing this
@@ -801,6 +870,12 @@ class HandlerDodEvidenceGithubEffect:
                 continue
             evaluated_any = True
             if any(not _is_green_check_run(run) for run in relevant):
+                # A context that genuinely ran (on either commit) with a
+                # non-green conclusion still fails closed regardless of
+                # merge state — this is the non-weakening half of shapes
+                # 2b/3: only a context with ZERO observed runs anywhere is
+                # ever treated as not-applicable, never one that ran and
+                # failed.
                 not_green.append(name)
 
         if missing or foreign_only:

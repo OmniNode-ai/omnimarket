@@ -75,6 +75,10 @@ from omnimarket.nodes.node_dod_verify.models.model_durable_evidence_gate import 
     ModelDurableEvidenceCheckResult,
     ModelDurableEvidenceGateResult,
 )
+from omnimarket.nodes.node_dod_verify.services.receipt_bound_evidence import (
+    evaluate_receipt_bound,
+    is_receipt_bound_contract,
+)
 from omnimarket.nodes.node_dod_verify.services.runtime_ops_readback import (
     evaluate_runtime_ops_readback,
     is_runtime_ops_receipt_set,
@@ -680,6 +684,28 @@ class DurableEvidenceGate:
                     check=EnumDurableEvidenceCheck.RUNTIME_OPS_READBACK,
                     passed=ro_passed,
                     message=ro_message,
+                )
+            )
+        elif is_receipt_bound_contract(contract):
+            # OMN-15817 shape 5: a PR-less receipt-bound ticket (e.g.
+            # OMN-15087 — a read-only audit with durable receipts and no
+            # product PR) — the contract itself declares proof_class ==
+            # "receipt-bound", so route Check 2 through the receipt-bound
+            # verifier instead of demanding a merged-PR citation that this
+            # proof class structurally cannot produce.
+            pass_receipts = [
+                r
+                for r in receipts
+                if isinstance(r, dict)
+                and isinstance(r.get("status"), str)
+                and str(r["status"]).upper() == "PASS"
+            ]
+            rb_passed, rb_message, receipt_keys = evaluate_receipt_bound(pass_receipts)
+            checks.append(
+                ModelDurableEvidenceCheckResult(
+                    check=EnumDurableEvidenceCheck.RECEIPT_BOUND,
+                    passed=rb_passed,
+                    message=rb_message,
                 )
             )
         else:
