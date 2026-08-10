@@ -26,6 +26,20 @@ Two extraction classes, kept separate:
   actual comment tokens via ``tokenize`` (never a string literal that merely
   contains the substring ``@ref:``). These are raw evidence, not
   declarations.
+
+**Symbol/constant resolution (OMN-15779).** A real call site almost never
+passes a literal ``ast.Constant`` topic argument — it passes a ``Name``/
+``Attribute`` assigned earlier (a module constant, a class attribute, a
+``self.attr`` set in ``__init__``, or a dict-literal-backed registry
+``.resolve(key)`` lookup). ``omnimarket.seams.symbol_resolution`` builds a
+pure, deterministic, project-wide symbol table from the same parsed ASTs
+this module already produces and resolves such a reference back to its
+literal value when that is statically determinable. When it is genuinely
+NOT statically determinable (an f-string, an unmodeled function call, an
+``os.environ``-derived value), the call site still matched a real
+producer/consumer receiver+method shape, so it is emitted as an explicit
+``*_UNRESOLVED`` observation (``value`` = best-effort ``ast.unparse()`` of
+the unresolved argument) — never silently dropped, never fabricated.
 """
 
 from __future__ import annotations
@@ -50,6 +64,11 @@ from omnimarket.seams.models.model_seam_graph import (
 from omnimarket.seams.models.model_seam_projection import (
     EnumSeamDeliverySemantics,
     ModelSeamProjectionField,
+)
+from omnimarket.seams.symbol_resolution import (
+    ProjectIndex,
+    build_project_index,
+    resolve_topic_expr,
 )
 
 __all__ = ["extract_seam_graph"]
@@ -351,9 +370,14 @@ def _attr_base_name(value: ast.expr) -> str:
     return ""
 
 
-def _call_topic_literal(call: ast.Call) -> str | None:
+def _call_topic_literal(
+    call: ast.Call, source_path: str, project_index: ProjectIndex
+) -> str | None:
     """First string literal argument, unwrapping a single-element list
-    (the ``consumer.subscribe(["topic"])`` idiom)."""
+    (the ``consumer.subscribe(["topic"])`` idiom). Falls back to
+    project-wide symbol resolution (OMN-15779) when the argument is not a
+    direct literal — a module constant, class attribute, ``self.attr``
+    chain, or registry ``.resolve(key)``/``.get(key)`` lookup."""
 
     if not call.args:
         return None
@@ -362,8 +386,34 @@ def _call_topic_literal(call: ast.Call) -> str | None:
     if literal is not None:
         return literal
     if isinstance(first, ast.List) and first.elts:
-        return _string_constant(first.elts[0])
-    return None
+        list_literal = _string_constant(first.elts[0])
+        if list_literal is not None:
+            return list_literal
+    return resolve_topic_expr(first, source_path, project_index)
+
+
+_UNRESOLVED_KIND_BY_KIND: dict[
+    EnumSeamGraphObservationKind, EnumSeamGraphObservationKind
+] = {
+    EnumSeamGraphObservationKind.PRODUCER_SEND: (
+        EnumSeamGraphObservationKind.PRODUCER_SEND_UNRESOLVED
+    ),
+    EnumSeamGraphObservationKind.CONSUMER_SUBSCRIBE: (
+        EnumSeamGraphObservationKind.CONSUMER_SUBSCRIBE_UNRESOLVED
+    ),
+}
+
+
+def _best_effort_unparse(expr: ast.expr) -> str:
+    """Diagnostic-only text for an unresolved argument expression -- never
+    load-bearing correctness, so a pathological node that ``ast.unparse``
+    cannot render simply yields no unresolved observation rather than
+    raising."""
+
+    try:
+        return ast.unparse(expr)
+    except (ValueError, TypeError, RecursionError):
+        return ""
 
 
 def _is_producer_receiver(name: str) -> bool:
@@ -383,9 +433,20 @@ def _is_consumer_receiver(name: str) -> bool:
     return lowered == "consumer" or lowered.endswith("_consumer")
 
 
-def _is_event_bus_receiver(name: str) -> bool:
+def _is_bus_receiver(name: str) -> bool:
+    """Matches ``bus``, ``_bus``, ``event_bus``, ``typed_bus``, etc. — any
+    receiver whose trailing identifier component is or ends with ``bus``.
+    OMN-15779 corpus finding: the dominant real-corpus receiver for BOTH
+    ``.publish()`` and ``.subscribe()`` is a bus reference
+    (``self._event_bus``, ``self._bus``, a bare ``bus``/``typed_bus``
+    parameter — see ``feedback_bus_is_the_transport``), essentially never a
+    ``producer``/``consumer``-suffixed name. The previously-shipped
+    ``_is_event_bus_receiver`` only matched the exact ``event_bus`` suffix,
+    which matched zero real ``.subscribe()`` call sites in the traced
+    corpus."""
+
     lowered = name.lower()
-    return lowered == "event_bus" or lowered.endswith("_event_bus")
+    return lowered == "bus" or lowered.endswith("_bus")
 
 
 def _classify_call(call: ast.Call) -> EnumSeamGraphObservationKind | None:
@@ -396,10 +457,12 @@ def _classify_call(call: ast.Call) -> EnumSeamGraphObservationKind | None:
     if func.attr == "send" and _is_producer_receiver(base_name):
         return EnumSeamGraphObservationKind.PRODUCER_SEND
     if func.attr == "publish" and (
-        _is_producer_receiver(base_name) or _is_event_bus_receiver(base_name)
+        _is_producer_receiver(base_name) or _is_bus_receiver(base_name)
     ):
         return EnumSeamGraphObservationKind.PRODUCER_SEND
-    if func.attr == "subscribe" and _is_consumer_receiver(base_name):
+    if func.attr == "subscribe" and (
+        _is_consumer_receiver(base_name) or _is_bus_receiver(base_name)
+    ):
         return EnumSeamGraphObservationKind.CONSUMER_SUBSCRIBE
     if (
         func.attr == "get"
@@ -421,7 +484,7 @@ def _is_os_environ_subscript(node: ast.Subscript) -> bool:
 
 
 def _extract_ast_observations(
-    tree: ast.AST, repo_relative: str
+    tree: ast.AST, repo_relative: str, project_index: ProjectIndex
 ) -> list[ModelSeamGraphCodeObservation]:
     observations: list[ModelSeamGraphCodeObservation] = []
     for node in ast.walk(tree):
@@ -431,23 +494,46 @@ def _extract_ast_observations(
                 continue
             if kind is EnumSeamGraphObservationKind.ENV_READ:
                 value = _string_constant(node.args[0]) if node.args else None
-            else:
-                value = _call_topic_literal(node)
-            if not value or not value.strip():
-                continue
-            if (
-                kind is EnumSeamGraphObservationKind.ENV_READ
-                and not _ENV_VAR_NAME_RE.match(value)
-            ):
-                continue
-            observations.append(
-                ModelSeamGraphCodeObservation(
-                    source_path=repo_relative,
-                    kind=kind,
-                    value=value,
-                    line_number=node.lineno,
+                if not value or not value.strip():
+                    continue
+                if not _ENV_VAR_NAME_RE.match(value):
+                    continue
+                observations.append(
+                    ModelSeamGraphCodeObservation(
+                        source_path=repo_relative,
+                        kind=kind,
+                        value=value,
+                        line_number=node.lineno,
+                    )
                 )
-            )
+                continue
+            value = _call_topic_literal(node, repo_relative, project_index)
+            if value and value.strip():
+                observations.append(
+                    ModelSeamGraphCodeObservation(
+                        source_path=repo_relative,
+                        kind=kind,
+                        value=value,
+                        line_number=node.lineno,
+                    )
+                )
+                continue
+            # The call site genuinely matched a producer/consumer
+            # receiver+method shape (a real seam) but the topic argument is
+            # not statically resolvable -- disclose it explicitly rather
+            # than dropping it silently (OMN-15779).
+            unresolved_kind = _UNRESOLVED_KIND_BY_KIND.get(kind)
+            if unresolved_kind is not None and node.args:
+                unparsed = _best_effort_unparse(node.args[0])
+                if unparsed:
+                    observations.append(
+                        ModelSeamGraphCodeObservation(
+                            source_path=repo_relative,
+                            kind=unresolved_kind,
+                            value=unparsed,
+                            line_number=node.lineno,
+                        )
+                    )
         elif isinstance(node, ast.Subscript) and _is_os_environ_subscript(node):
             value = _string_constant(node.slice)
             if value is not None and _ENV_VAR_NAME_RE.match(value):
@@ -462,12 +548,41 @@ def _extract_ast_observations(
     return observations
 
 
+def _resolve_ref_pin_target(pin_value: str, repo_base: Path) -> str | None:
+    """Resolve a ``<path>.yaml#<dotted.key>`` / ``<path>.yml#<dotted.key>``
+    ``@ref:`` pin to the literal string value it names (OMN-15779 scope item
+    3: "``@ref:`` indirection"). ``<path>`` is resolved confined inside
+    ``repo_base`` (same safety rule as a discovery root — a pin is content
+    read from the scanned source tree, not a trusted input). Returns
+    ``None`` (never raises, never fabricates) for a missing file, malformed
+    YAML, a missing key, or a non-string terminal value."""
+
+    file_part, sep, key_path = pin_value.partition("#")
+    if not sep or not key_path or not file_part.endswith((".yaml", ".yml")):
+        return None
+    target = _resolve_confined_root(repo_base, file_part)
+    if target is None or not target.is_file():
+        return None
+    try:
+        raw = yaml.safe_load(target.read_text(encoding="utf-8"))
+    except (yaml.YAMLError, OSError, UnicodeDecodeError):
+        return None
+    current: object = raw
+    for segment in key_path.split("."):
+        if not isinstance(current, dict) or segment not in current:
+            return None
+        current = current[segment]
+    return current if isinstance(current, str) and current else None
+
+
 def _extract_ref_pin_observations(
-    text: str, repo_relative: str
+    text: str, repo_relative: str, repo_base: Path
 ) -> list[ModelSeamGraphCodeObservation]:
     """``@ref:`` pins, restricted to actual comment TOKENS (``tokenize``),
     never a string literal or docstring that merely contains the substring
-    ``@ref:``."""
+    ``@ref:``. Each raw pin is additionally, best-effort, resolved to its
+    target's underlying value (OMN-15779) -- the raw ``REF_PIN`` observation
+    is always emitted regardless of whether that resolution succeeds."""
 
     observations: list[ModelSeamGraphCodeObservation] = []
     try:
@@ -475,21 +590,32 @@ def _extract_ref_pin_observations(
             if tok.type != tokenize.COMMENT:
                 continue
             for match in _REF_PIN_RE.finditer(tok.string):
+                pin_value = match.group(1)
                 observations.append(
                     ModelSeamGraphCodeObservation(
                         source_path=repo_relative,
                         kind=EnumSeamGraphObservationKind.REF_PIN,
-                        value=match.group(1),
+                        value=pin_value,
                         line_number=tok.start[0],
                     )
                 )
+                resolved = _resolve_ref_pin_target(pin_value, repo_base)
+                if resolved is not None:
+                    observations.append(
+                        ModelSeamGraphCodeObservation(
+                            source_path=repo_relative,
+                            kind=EnumSeamGraphObservationKind.REF_PIN_RESOLVED,
+                            value=resolved,
+                            line_number=tok.start[0],
+                        )
+                    )
     except (tokenize.TokenError, IndentationError, SyntaxError):
         return observations
     return observations
 
 
 def _extract_yaml_ref_pin_observations(
-    text: str, repo_relative: str
+    text: str, repo_relative: str, repo_base: Path
 ) -> list[ModelSeamGraphCodeObservation]:
     """``@ref:`` pins in YAML files — a real config ref is a STRING VALUE
     (``endpoint_ref: "@ref:configs/service_endpoints.yaml#backends.x"``),
@@ -517,29 +643,34 @@ def _extract_yaml_ref_pin_observations(
                     line_number=line_number,
                 )
             )
+            resolved = _resolve_ref_pin_target(value, repo_base)
+            if resolved is not None:
+                observations.append(
+                    ModelSeamGraphCodeObservation(
+                        source_path=repo_relative,
+                        kind=EnumSeamGraphObservationKind.REF_PIN_RESOLVED,
+                        value=resolved,
+                        line_number=line_number,
+                    )
+                )
     return observations
 
 
 def _extract_code_observations(
-    source_path: Path, repo_base: Path
+    repo_relative: str,
+    tree: ast.AST | None,
+    text: str,
+    repo_base: Path,
+    project_index: ProjectIndex,
 ) -> tuple[ModelSeamGraphCodeObservation, ...]:
-    try:
-        text = source_path.read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ()
-
-    repo_relative = _repo_relative(source_path, repo_base)
     observations: list[ModelSeamGraphCodeObservation] = []
 
-    try:
-        tree = ast.parse(text)
-    except SyntaxError:
-        tree = None
-
     if tree is not None:
-        observations.extend(_extract_ast_observations(tree, repo_relative))
+        observations.extend(
+            _extract_ast_observations(tree, repo_relative, project_index)
+        )
 
-    observations.extend(_extract_ref_pin_observations(text, repo_relative))
+    observations.extend(_extract_ref_pin_observations(text, repo_relative, repo_base))
 
     return tuple(observations)
 
@@ -575,9 +706,30 @@ def extract_seam_graph(
         edges.extend(_extract_event_bus_edges(raw, source_contract_path))
     edges = _correlate_contract_paths(edges)
 
-    code_observations: list[ModelSeamGraphCodeObservation] = []
+    # Parse every python file exactly once, keyed by repo-relative path, so
+    # both the project-wide symbol index (OMN-15779) and the per-file
+    # observation pass share the same ASTs instead of re-parsing twice.
+    parsed_python: dict[str, tuple[ast.AST | None, str]] = {}
     for python_path in python_paths:
-        code_observations.extend(_extract_code_observations(python_path, repo_base))
+        try:
+            text = python_path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        try:
+            tree: ast.AST | None = ast.parse(text)
+        except SyntaxError:
+            tree = None
+        parsed_python[_repo_relative(python_path, repo_base)] = (tree, text)
+
+    project_index = build_project_index(parsed_python)
+
+    code_observations: list[ModelSeamGraphCodeObservation] = []
+    for repo_relative, (tree, text) in parsed_python.items():
+        code_observations.extend(
+            _extract_code_observations(
+                repo_relative, tree, text, repo_base, project_index
+            )
+        )
     for yaml_path in yaml_paths:
         try:
             yaml_text = yaml_path.read_text(encoding="utf-8")
@@ -585,7 +737,7 @@ def extract_seam_graph(
             continue
         code_observations.extend(
             _extract_yaml_ref_pin_observations(
-                yaml_text, _repo_relative(yaml_path, repo_base)
+                yaml_text, _repo_relative(yaml_path, repo_base), repo_base
             )
         )
 

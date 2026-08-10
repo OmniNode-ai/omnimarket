@@ -59,12 +59,29 @@ __all__ = [
 
 
 class EnumSeamGraphObservationKind(StrEnum):
-    """Which code-level extractor produced this observation."""
+    """Which code-level extractor produced this observation.
+
+    ``*_UNRESOLVED`` (OMN-15779) — the call site matched a producer/consumer
+    receiver+method shape (a real seam), but the topic argument could not be
+    statically resolved to a literal (a dynamic f-string, an unmodeled
+    function call, an ``os.environ``-derived value, etc.). Emitted so a
+    genuinely-dynamic call site is disclosed as an explicit, typed
+    observation rather than silently dropped — ``value`` carries a
+    best-effort ``ast.unparse()`` of the unresolved argument expression, not
+    a fabricated topic string.
+
+    ``REF_PIN_RESOLVED`` (OMN-15779) — a ``@ref:<file>.yaml#<dotted.key>``
+    pin whose target file+key was actually read and resolved to a literal
+    string value, in addition to the raw ``REF_PIN`` observation (which
+    always fires regardless of whether resolution succeeds)."""
 
     PRODUCER_SEND = "producer_send"
     CONSUMER_SUBSCRIBE = "consumer_subscribe"
     ENV_READ = "env_read"
     REF_PIN = "ref_pin"
+    PRODUCER_SEND_UNRESOLVED = "producer_send_unresolved"
+    CONSUMER_SUBSCRIBE_UNRESOLVED = "consumer_subscribe_unresolved"
+    REF_PIN_RESOLVED = "ref_pin_resolved"
 
 
 class ModelSeamGraphEdgeDeclaration(BaseModel):
