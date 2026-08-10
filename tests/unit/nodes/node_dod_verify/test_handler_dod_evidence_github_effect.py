@@ -73,11 +73,15 @@ def _routed_gh(
     suites_rc: int = 0,
     runs: str = "",
     runs_rc: int = 0,
+    merge_sha: str = "",
+    merge_runs: str = "",
+    merge_runs_rc: int = 0,
 ) -> object:
-    """Route ``gh`` invocations for FETCH_PR_CHECKS_GREEN's 5-call sequence
+    """Route ``gh`` invocations for FETCH_PR_CHECKS_GREEN's call sequence
     (``pr view`` -> classic branch protection -> branch rules -> check-suites
-    -> check-runs) to the fixture matching each call's shape, keyed by
-    distinctive substrings in the invocation argv rather than call order.
+    -> check-runs -> [merged-PR only] merge-commit check-runs) to the fixture
+    matching each call's shape, keyed by distinctive substrings in the
+    invocation argv rather than call order.
 
     ``protection_stderr`` lets a fixture carry the real ``gh api`` 404 detail
     text (e.g. ``"gh: Branch not found (HTTP 404)"`` vs ``"gh: Branch not
@@ -90,6 +94,13 @@ def _routed_gh(
     returning — used to simulate ``subprocess.TimeoutExpired``/``OSError`` on
     that specific probe (OMN-15715 D1 RED control) without affecting the
     other 4 calls in the sequence.
+
+    ``merge_sha``/``merge_runs``/``merge_runs_rc`` (OMN-15817 shapes 2b/3):
+    when ``merge_sha`` is set, a ``check-runs`` call whose URL names that
+    exact SHA is routed to ``merge_runs`` instead of the head-SHA ``runs``
+    fixture — the handler only issues this second call for a MERGED PR whose
+    ``gh pr view`` fixture (see :func:`_pr_view_merged`) reports a
+    ``mergeCommit.oid`` distinct from ``headRefOid``.
     """
 
     def _run(*args: object, **kwargs: object) -> subprocess.CompletedProcess:
@@ -117,6 +128,10 @@ def _routed_gh(
                 args=argv, returncode=suites_rc, stdout=suites, stderr=""
             )
         if "check-runs" in joined:
+            if merge_sha and f"commits/{merge_sha}/check-runs" in joined:
+                return subprocess.CompletedProcess(
+                    args=argv, returncode=merge_runs_rc, stdout=merge_runs, stderr=""
+                )
             return subprocess.CompletedProcess(
                 args=argv, returncode=runs_rc, stdout=runs, stderr=""
             )
@@ -461,6 +476,29 @@ def _pr_view(
             "headRefOid": _OCC_SHA,
             "state": state,
             "mergedAt": merged_at,
+        }
+    )
+
+
+def _pr_view_merged(
+    branch: str,
+    *,
+    base: str = "dev",
+    merged_at: str = "2026-07-29T00:00:00Z",
+    head_sha: str = _OCC_SHA,
+    merge_sha: str = "",
+) -> str:
+    """Like :func:`_pr_view` but always MERGED and carries ``mergeCommit.oid``
+    (OMN-15817 shapes 2b/3) — the squash commit that lands on ``base`` and
+    that the handler now additionally fetches check-runs for."""
+    return json.dumps(
+        {
+            "headRefName": branch,
+            "baseRefName": base,
+            "headRefOid": head_sha,
+            "state": "MERGED",
+            "mergedAt": merged_at,
+            "mergeCommit": {"oid": merge_sha} if merge_sha else None,
         }
     )
 
@@ -1522,6 +1560,228 @@ class TestFetchPrChecksGreenBaseConfirmationGating:
             "_checks_green_from_own_history docstring)"
         )
         assert "merged through branch protection" in old_style_detail
+
+
+# ---------------------------------------------------------------------------
+# FETCH_PR_CHECKS_GREEN (OMN-15817 shapes 2b/3) — a MERGED PR whose base
+# branch protection genuinely resolves (unlike OMN-15715's deleted-base
+# carve-out above) still false-negatived when a required context was either
+# added to branch protection AFTER the merge, or only ever produces a
+# check-run on a push to the target branch (a "CI Summary" umbrella job)
+# rather than on the pre-merge source-branch tip. Live signature: OMN-15817,
+# ``required context(s) not green on <branch>: CI Summary`` on ~53% of a
+# 15-ticket sweep of verifiably-merged, green-CI PRs.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFetchPrChecksGreenMergedRequiredContextTiming:
+    def test_merged_pr_context_added_after_merge_does_not_fail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A context required TODAY (e.g. a CRLF Gate added to branch
+        protection after this PR merged) that never produced a check-run on
+        EITHER the pre-merge head SHA or the post-merge commit must not
+        retroactively fail an already-terminal merge — the sole other
+        required context ('verify') is green on the head SHA."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_merged("mine", merge_sha="deadbeef01"),
+                protection=json.dumps(["verify", "CRLF Gate"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "verify",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+                merge_sha="deadbeef01",
+                merge_runs=_lines(
+                    {
+                        "name": "verify",
+                        "status": "completed",
+                        "conclusion": "success",
+                    }
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is True, result.detail
+        assert "CRLF Gate" not in (result.detail or "")
+
+    def test_merged_pr_red_at_merge_time_still_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-weakening proof: a required context that DID run (on the
+        head SHA) with a genuinely failing conclusion must still fail
+        closed for a merged PR — the shapes-2b/3 fix only relaxes contexts
+        with ZERO observed runs anywhere, never a context that ran red."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_merged("mine", merge_sha="deadbeef02"),
+                protection=json.dumps(["verify"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "verify",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+                merge_sha="deadbeef02",
+                merge_runs="",
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "verify" in (result.detail or "")
+
+    def test_merged_pr_context_only_on_merge_commit_resolves_green(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-15817's exact live symptom: a required context ('CI Summary')
+        that never produced a check-run on the pre-merge source branch
+        (it is push-triggered, only firing on the actual push to the target
+        branch) but IS green on the squash merge commit's own history must
+        resolve green — this is shape 2b's 'resolve the merge commit / PR
+        head SHA instead' fix, proven directly rather than only via the
+        weaker 'missing is not-applicable' path."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_merged("mine", merge_sha="deadbeef03"),
+                protection=json.dumps(["CI Summary"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs="",  # nothing on the pre-merge head SHA
+                merge_sha="deadbeef03",
+                merge_runs=_lines(
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "success",
+                    }
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is True, result.detail
+
+    def test_merged_pr_context_red_on_merge_commit_still_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Mirror non-weakening proof for the merge-commit source itself: a
+        required context found ONLY on the merge commit, with a failing
+        conclusion there, must still fail closed."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_merged("mine", merge_sha="deadbeef04"),
+                protection=json.dumps(["CI Summary"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs="",
+                merge_sha="deadbeef04",
+                merge_runs=_lines(
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "failure",
+                    }
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "CI Summary" in (result.detail or "")
+
+    def test_merged_pr_all_required_contexts_missing_everywhere_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-weakening floor: if EVERY required context is absent from
+        both the head SHA and the merge commit, there is zero observable
+        evidence for this merge at all — must still fail closed exactly
+        like the pre-existing 'no required context had an own-branch or
+        unattributable check-run' catch-all."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_merged("mine", merge_sha="deadbeef05"),
+                protection=json.dumps(["verify"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs="",
+                merge_sha="deadbeef05",
+                merge_runs="",
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+
+    def test_open_pr_context_added_after_still_fails_closed_regression(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Regression control: an OPEN PR (not merged) with a required
+        context absent from its head-SHA history must remain fail-closed —
+        the shapes-2b/3 relaxation applies ONLY to merged PRs. No
+        ``mergeCommit`` is fetched or consulted for an OPEN PR at all."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view("mine", state="OPEN", merged_at=None),
+                protection=json.dumps(["verify", "never-ran"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "verify",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "never-ran" in (result.detail or "")
 
 
 # ---------------------------------------------------------------------------
