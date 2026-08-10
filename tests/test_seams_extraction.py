@@ -225,6 +225,46 @@ class TestRealCorpusIdiomsNoLongerMissed:
         }
         assert "event-bus-topic" in values
 
+    def test_bus_subscribe_is_observed(self, tmp_path: Path) -> None:
+        # <bus-like>.subscribe(...) -- OMN-15779 corpus finding: the
+        # dominant real-corpus subscribe receiver name is a bus reference
+        # ("event_bus", "self._bus", "bus", "typed_bus" --
+        # omnibase_infra/src/omnibase_infra/event_bus/event_bus_kafka.py:168
+        # et al.), never a "consumer"-suffixed name. The pre-existing
+        # classifier only recognized a consumer-suffixed receiver for
+        # ``.subscribe()``, so this idiom never matched at all (0 real
+        # consumer_subscribe observations on the corpus even before symbol
+        # resolution was in play).
+        _write(
+            tmp_path,
+            "svc/consumer.py",
+            "class Service:\n"
+            "    async def run(self):\n"
+            '        await self._event_bus.subscribe("bus-subscribe-topic", identity, handler)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.CONSUMER_SUBSCRIBE
+        }
+        assert "bus-subscribe-topic" in values
+
+    def test_bare_bus_subscribe_is_observed(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "svc/consumer.py",
+            "async def run(bus):\n"
+            '    await bus.subscribe("bare-bus-topic", identity, handler)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.CONSUMER_SUBSCRIBE
+        }
+        assert "bare-bus-topic" in values
+
 
 @pytest.mark.unit
 class TestYamlRefPinsAreObserved:
@@ -579,6 +619,470 @@ class TestMalformedSeamDeclarationsSkippedNotFatal:
         )
         graph = extract_seam_graph(str(tmp_path), ("svc",))
         assert graph.edges == ()
+
+
+@pytest.mark.unit
+class TestSymbolResolutionModuleConstant:
+    """OMN-15779 AC1 residual: a ``Name`` argument to ``.send()``/
+    ``.subscribe()`` resolves through a module-level constant, not just a
+    literal."""
+
+    def test_module_level_constant_resolves(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "svc/publisher.py",
+            'TOPIC = "onex.evt.svc.module-const.v1"\n'
+            "\n"
+            "def emit():\n"
+            "    producer.send(TOPIC, payload)\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert "onex.evt.svc.module-const.v1" in values
+
+    def test_module_level_constant_via_local_alias_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/publisher.py",
+            'TOPIC = "onex.evt.svc.alias-const.v1"\n'
+            "\n"
+            "def emit():\n"
+            "    topic = TOPIC\n"
+            "    producer.send(topic, payload)\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert "onex.evt.svc.alias-const.v1" in values
+
+    def test_list_wrapped_module_constant_resolves_for_subscribe(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/consumer.py",
+            'TOPIC = "onex.cmd.svc.list-const.v1"\n'
+            "\n"
+            "def run():\n"
+            "    consumer.subscribe([TOPIC])\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.CONSUMER_SUBSCRIBE
+        }
+        assert "onex.cmd.svc.list-const.v1" in values
+
+
+@pytest.mark.unit
+class TestSymbolResolutionClassAttribute:
+    def test_class_body_constant_resolves(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "svc/publisher.py",
+            "class TopicBase:\n"
+            '    FOO = "onex.evt.svc.class-attr.v1"\n'
+            "\n"
+            "def emit():\n"
+            "    producer.send(TopicBase.FOO, payload)\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert "onex.evt.svc.class-attr.v1" in values
+
+
+@pytest.mark.unit
+class TestSymbolResolutionSelfAttribute:
+    """Regression coverage for the ticket's own named example --
+    ``consumer_health_emitter.py:150``'s ``self._producer.send(self._topic, ...)``
+    where ``self._topic`` is assigned in ``__init__`` from a local variable
+    chain, not a direct literal."""
+
+    def test_self_attr_assigned_directly_to_literal_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/emitter.py",
+            "class Emitter:\n"
+            "    def __init__(self):\n"
+            '        self._topic = "onex.evt.svc.self-attr-literal.v1"\n'
+            "\n"
+            "    def emit(self):\n"
+            "        self._producer.send(self._topic, payload)\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert "onex.evt.svc.self-attr-literal.v1" in values
+
+    def test_self_attr_assigned_via_local_var_chain_resolves(
+        self, tmp_path: Path
+    ) -> None:
+        # Mirrors omnibase_infra's consumer_health_emitter.py: the ctor
+        # takes an optional ``topic`` param, resolves it via a local
+        # variable when absent, then stores it on ``self``.
+        _write(
+            tmp_path,
+            "svc/emitter.py",
+            'DEFAULT_TOPIC = "onex.evt.svc.self-attr-chain.v1"\n'
+            "\n"
+            "class Emitter:\n"
+            "    def __init__(self, topic=None):\n"
+            "        if topic is None:\n"
+            "            topic = DEFAULT_TOPIC\n"
+            "        self._topic = topic\n"
+            "\n"
+            "    def emit(self):\n"
+            "        self._producer.send(self._topic, payload)\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert "onex.evt.svc.self-attr-chain.v1" in values
+
+
+@pytest.mark.unit
+class TestSymbolResolutionRegistryDictLookup:
+    """Mirrors the dominant real-corpus idiom: a factory function builds a
+    dict literal mapping key constants to value constants, and a
+    ``.resolve(KEY)``/``.get(KEY)`` call looks the topic up by key --
+    ``ServiceTopicRegistry.from_defaults().resolve(topic_keys.X)`` in
+    omnibase_infra."""
+
+    def test_registry_resolve_call_resolves_through_dict_literal(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/topic_keys.py",
+            'CONSUMER_HEALTH = "CONSUMER_HEALTH"\n',
+        )
+        _write(
+            tmp_path,
+            "svc/topic_suffixes.py",
+            'SUFFIX_CONSUMER_HEALTH = "onex.evt.svc.registry-lookup.v1"\n',
+        )
+        _write(
+            tmp_path,
+            "svc/registry.py",
+            "from svc import topic_keys\n"
+            "from svc import topic_suffixes\n"
+            "\n"
+            "class ServiceTopicRegistry:\n"
+            "    def __init__(self, topics):\n"
+            "        self._topics = dict(topics)\n"
+            "\n"
+            "    @classmethod\n"
+            "    def from_defaults(cls):\n"
+            "        topics = {\n"
+            "            topic_keys.CONSUMER_HEALTH: topic_suffixes.SUFFIX_CONSUMER_HEALTH,\n"
+            "        }\n"
+            "        return cls(topics)\n"
+            "\n"
+            "    def resolve(self, key):\n"
+            "        return self._topics[key]\n",
+        )
+        _write(
+            tmp_path,
+            "svc/emitter.py",
+            "from svc import topic_keys\n"
+            "from svc.registry import ServiceTopicRegistry\n"
+            "\n"
+            "class Emitter:\n"
+            "    def __init__(self, producer, topic=None):\n"
+            "        if topic is None:\n"
+            "            topic = ServiceTopicRegistry.from_defaults().resolve(\n"
+            "                topic_keys.CONSUMER_HEALTH\n"
+            "            )\n"
+            "        self._producer = producer\n"
+            "        self._topic = topic\n"
+            "\n"
+            "    def emit(self):\n"
+            "        self._producer.send(self._topic, payload)\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert "onex.evt.svc.registry-lookup.v1" in values
+
+    def test_ambiguous_key_across_two_dicts_stays_unresolved(
+        self, tmp_path: Path
+    ) -> None:
+        # Two distinct dict literals map the same resolved key to two
+        # DIFFERENT values -- must not fabricate a pick.
+        _write(
+            tmp_path,
+            "svc/registries.py",
+            'KEY = "SHARED_KEY"\n'
+            'MAP_A = {KEY: "onex.evt.svc.ambiguous-a.v1"}\n'
+            'MAP_B = {KEY: "onex.evt.svc.ambiguous-b.v1"}\n',
+        )
+        _write(
+            tmp_path,
+            "svc/emitter.py",
+            "from svc.registries import KEY, MAP_A\n"
+            "\n"
+            "def emit():\n"
+            "    producer.send(MAP_A.get(KEY), payload)\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert "onex.evt.svc.ambiguous-a.v1" not in values
+        assert "onex.evt.svc.ambiguous-b.v1" not in values
+        unresolved = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND_UNRESOLVED
+        }
+        assert unresolved  # emitted as an honest unresolved observation
+
+
+@pytest.mark.unit
+class TestSymbolResolutionCrossFileImport:
+    def test_module_constant_resolves_across_files_via_from_import(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/constants.py",
+            'TOPIC = "onex.evt.svc.cross-file-const.v1"\n',
+        )
+        _write(
+            tmp_path,
+            "svc/publisher.py",
+            "from svc.constants import TOPIC\n"
+            "\n"
+            "def emit():\n"
+            "    producer.send(TOPIC, payload)\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert "onex.evt.svc.cross-file-const.v1" in values
+
+    def test_class_attribute_resolves_across_files_via_from_import(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/constants.py",
+            'class TopicBase:\n    FOO = "onex.evt.svc.cross-file-class-attr.v1"\n',
+        )
+        _write(
+            tmp_path,
+            "svc/publisher.py",
+            "from svc.constants import TopicBase\n"
+            "\n"
+            "def emit():\n"
+            "    producer.send(TopicBase.FOO, payload)\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        values = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert "onex.evt.svc.cross-file-class-attr.v1" in values
+
+
+@pytest.mark.unit
+class TestSymbolResolutionUnresolvedIsExplicit:
+    """The ticket's own carve-out: a dynamic/f-string topic (or any other
+    unmodeled dynamic expression) must surface as an explicit
+    ``*_UNRESOLVED`` observation, not a silent miss and not a fabricated
+    value."""
+
+    def test_fstring_topic_is_unresolved_not_silently_dropped(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/publisher.py",
+            "def emit(slug):\n"
+            '    producer.send(f"tenant-{slug}.onex.evt.svc.dynamic.v1", payload)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        resolved_kinds = {
+            o.kind
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert not resolved_kinds
+        unresolved = [
+            o
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND_UNRESOLVED
+        ]
+        assert len(unresolved) == 1
+        assert "slug" in unresolved[0].value
+        assert unresolved[0].line_number == 2
+
+    def test_unmodeled_function_call_result_is_unresolved(self, tmp_path: Path) -> None:
+        _write(
+            tmp_path,
+            "svc/consumer.py",
+            "def run():\n    consumer.subscribe([compute_dynamic_topic()])\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        resolved = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.CONSUMER_SUBSCRIBE
+        }
+        assert not resolved
+        unresolved = [
+            o
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.CONSUMER_SUBSCRIBE_UNRESOLVED
+        ]
+        assert len(unresolved) == 1
+
+
+@pytest.mark.unit
+class TestRefPinIndirectionResolution:
+    """OMN-15779 scope item 3: a ``@ref:`` pin pointing at a YAML file+key is
+    additionally resolved to the underlying literal value it names, without
+    changing the existing raw ``REF_PIN`` observation."""
+
+    def test_ref_pin_target_resolves_to_underlying_value(self, tmp_path: Path) -> None:
+        # @ref: paths resolve confined against repo_base (the whole pinned
+        # tree), not against the pinning file's own discovery root -- same
+        # convention as a discovery root itself.
+        _write(
+            tmp_path,
+            "configs/service_endpoints.yaml",
+            "backends:\n  cloud-x: onex.evt.svc.ref-resolved.v1\n",
+        )
+        _write(
+            tmp_path,
+            "svc/publisher.py",
+            "# @ref: configs/service_endpoints.yaml#backends.cloud-x\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        raw_pins = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.REF_PIN
+        }
+        assert "configs/service_endpoints.yaml#backends.cloud-x" in raw_pins
+        resolved_pins = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.REF_PIN_RESOLVED
+        }
+        assert "onex.evt.svc.ref-resolved.v1" in resolved_pins
+
+    def test_ref_pin_with_missing_target_stays_unresolved_only(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/publisher.py",
+            "# @ref: configs/does-not-exist.yaml#backends.x\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        raw_pins = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.REF_PIN
+        }
+        assert "configs/does-not-exist.yaml#backends.x" in raw_pins
+        resolved_pins = {
+            o.value
+            for o in graph.code_observations
+            if o.kind == EnumSeamGraphObservationKind.REF_PIN_RESOLVED
+        }
+        assert not resolved_pins
+
+
+@pytest.mark.unit
+class TestSymbolResolutionDeterminism:
+    def test_two_runs_over_symbol_resolved_tree_are_byte_identical(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/topic_keys.py",
+            'CONSUMER_HEALTH = "CONSUMER_HEALTH"\n',
+        )
+        _write(
+            tmp_path,
+            "svc/topic_suffixes.py",
+            'SUFFIX_CONSUMER_HEALTH = "onex.evt.svc.determinism.v1"\n',
+        )
+        _write(
+            tmp_path,
+            "svc/registry.py",
+            "from svc import topic_keys, topic_suffixes\n"
+            "\n"
+            "class Registry:\n"
+            "    def __init__(self, topics):\n"
+            "        self._topics = dict(topics)\n"
+            "\n"
+            "    @classmethod\n"
+            "    def from_defaults(cls):\n"
+            "        return cls(\n"
+            "            {topic_keys.CONSUMER_HEALTH: topic_suffixes.SUFFIX_CONSUMER_HEALTH}\n"
+            "        )\n"
+            "\n"
+            "    def resolve(self, key):\n"
+            "        return self._topics[key]\n",
+        )
+        _write(
+            tmp_path,
+            "svc/emitter.py",
+            "from svc import topic_keys\n"
+            "from svc.registry import Registry\n"
+            "\n"
+            "class Emitter:\n"
+            "    def __init__(self):\n"
+            "        self._topic = Registry.from_defaults().resolve(\n"
+            "            topic_keys.CONSUMER_HEALTH\n"
+            "        )\n"
+            "\n"
+            "    def emit(self):\n"
+            "        self._producer.send(self._topic, payload)\n",
+        )
+        first = extract_seam_graph(str(tmp_path), ("svc",))
+        second = extract_seam_graph(str(tmp_path), ("svc",))
+        assert first.model_dump_json() == second.model_dump_json()
+        values = {
+            o.value
+            for o in first.code_observations
+            if o.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        }
+        assert "onex.evt.svc.determinism.v1" in values
 
 
 @pytest.mark.unit
