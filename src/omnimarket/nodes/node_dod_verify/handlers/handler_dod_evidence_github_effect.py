@@ -724,13 +724,25 @@ class HandlerDodEvidenceGithubEffect:
         # pre-merge source-branch tip). A merge commit is unique to exactly one
         # merge event — unlike ``sha`` above, there is no foreign-PR/sibling-
         # branch attribution question, so every run found here is unconditionally
-        # this PR's own evidence. This is purely ADDITIVE evidence: a fetch
-        # failure here degrades to an empty list rather than failing the whole
-        # check, since the existing head-SHA rollup remains a complete,
-        # independently-sufficient source on its own.
+        # this PR's own evidence. This is ADDITIVE evidence layered on top of
+        # the head-SHA rollup — but only when the fetch actually SUCCEEDS. A
+        # fetch FAILURE (timeout/OSError/non-zero exit/unparseable JSON) is
+        # NOT interchangeable with a successful fetch that genuinely found
+        # zero runs: collapsing both to an empty ``merge_runs`` list was the
+        # F1 audit finding (HIGH fail-open) — it let a transient failure here
+        # silently masquerade as "nothing exists on the merge commit," which
+        # then fed the ``is_merged: continue`` not-applicable carve-out below
+        # even for a required context that may have run RED on the merge
+        # commit and simply went unobserved. ``merge_runs_fetch_failed`` is
+        # tracked explicitly so that carve-out can be suppressed per-context
+        # (GATE-DIRECTION LAW: fetch FAILURE is always fail-closed — unknown
+        # != absent; only a successful fetch returning empty may be treated
+        # as genuinely-absent).
         merge_runs: list[dict[str, object]] = []
+        merge_runs_fetch_failed = False
+        merge_runs_fetch_detail = ""
         if is_merged and merge_sha and merge_sha != sha:
-            fetched_merge_runs, _merge_runs_detail = _gh_json_lines(
+            fetched_merge_runs, merge_runs_fetch_detail = _gh_json_lines(
                 [
                     "gh",
                     "api",
@@ -743,6 +755,8 @@ class HandlerDodEvidenceGithubEffect:
             )
             if fetched_merge_runs is not None:
                 merge_runs = fetched_merge_runs
+            else:
+                merge_runs_fetch_failed = True
 
         if not required_names:
             # OMN-15715 D1 fix: the carve-out below (design option (a)) may
@@ -842,7 +856,19 @@ class HandlerDodEvidenceGithubEffect:
                 # an empty ``merge_runs`` and this branch falls through to the
                 # unchanged fail-closed ``missing`` path below exactly as
                 # before this fix.
-                if is_merged:
+                #
+                # F1 fix (audit finding, HIGH fail-open): the carve-out above
+                # is sound ONLY when both commits were actually OBSERVED — a
+                # merge-commit fetch FAILURE (``merge_runs_fetch_failed``)
+                # means this context's true state on the merge commit is
+                # UNKNOWN, not confirmed-absent, so the carve-out must not
+                # fire for it; it falls through to ``missing`` instead,
+                # exactly like an unresolved head-SHA context. This is
+                # narrowly scoped to contexts actually affected by the failed
+                # fetch — a context already resolved via ``head_matches`` (or
+                # a merge commit fetch that never ran at all, e.g. no merge
+                # commit reported) is untouched by this branch.
+                if is_merged and not merge_runs_fetch_failed:
                     continue
                 missing.append(name)
                 continue
@@ -882,12 +908,20 @@ class HandlerDodEvidenceGithubEffect:
             absent = missing + foreign_only
             shown = ", ".join(absent[:10])
             more = "" if len(absent) <= 10 else f" (+{len(absent) - 10} more)"
+            merge_fetch_note = (
+                f"; merge-commit check-runs fetch failed "
+                f"({merge_runs_fetch_detail or 'unknown error'}) — treating "
+                f"affected context(s) as missing rather than not-applicable "
+                f"since absence there is unverified (F1 fail-closed fix)"
+                if merge_runs_fetch_failed
+                else ""
+            )
             return self._checks_not_green(
                 command,
                 f"{len(absent)} required context(s) absent from "
                 f"{head_branch}@{sha[:12]} (missing entirely or only "
                 f"produced by a foreign branch sharing this SHA): "
-                f"{shown}{more}",
+                f"{shown}{more}{merge_fetch_note}",
             )
         if not_green:
             shown = ", ".join(not_green[:10])

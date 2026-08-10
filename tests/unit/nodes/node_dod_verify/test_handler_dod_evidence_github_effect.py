@@ -1783,6 +1783,132 @@ class TestFetchPrChecksGreenMergedRequiredContextTiming:
         assert result.checks_green is False, result.detail
         assert "never-ran" in (result.detail or "")
 
+    def test_f1_merge_commit_fetch_failure_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """F1 audit finding (HIGH fail-open): when the merge-commit
+        check-runs fetch itself FAILS (rc=1) rather than succeeding with
+        zero runs, a required context absent from the head-SHA rollup
+        ('CI Summary', which never ran pre-merge — it's push-triggered)
+        must NOT be silently credited as not-applicable. Pre-fix, the
+        ``fetched_merge_runs is not None`` guard discarded the failure and
+        collapsed ``merge_runs`` to ``[]`` — indistinguishable from a
+        genuinely-empty successful fetch — so the ``is_merged: continue``
+        carve-out fired and this evaluated GREEN despite the merge commit's
+        real state (FAILURE, see the positive-control test below) being
+        unobserved. Fetch FAILURE must fail closed (GATE-DIRECTION LAW:
+        unknown != absent)."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_merged("mine", merge_sha="f1deadbeef"),
+                protection=json.dumps(["verify", "CI Summary"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "verify",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+                merge_sha="f1deadbeef",
+                merge_runs="",
+                merge_runs_rc=1,  # transient gh/API failure on the merge-commit fetch
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "CI Summary" in (result.detail or "")
+
+    def test_f1_merge_commit_fetch_failure_positive_control_real_red(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Positive control for the F1 RED test above: identical fixture,
+        but the merge-commit fetch SUCCEEDS (rc=0) and reports 'CI Summary'
+        as a genuine FAILURE on the merge commit. This must resolve
+        not-green both before and after the F1 fix — it proves the RED
+        test's False assertion is driven by the injected fetch failure
+        (rc=1), not by a broken fixture, since a successful fetch surfacing
+        a real red context was already handled correctly pre-fix."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_merged("mine", merge_sha="f1deadbeef2"),
+                protection=json.dumps(["verify", "CI Summary"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "verify",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+                merge_sha="f1deadbeef2",
+                merge_runs=_lines(
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "failure",
+                    }
+                ),
+                merge_runs_rc=0,
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "CI Summary" in (result.detail or "")
+
+    def test_f1_merge_commit_fetch_success_empty_keeps_not_applicable_carveout(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-weakening proof for the F1 fix: when the merge-commit fetch
+        SUCCEEDS (rc=0) and genuinely finds zero runs, a required context
+        absent from both commits must still resolve not-applicable-at-
+        merge-time (the legitimate OMN-15817 shape-3 behavior) — the F1 fix
+        distinguishes fetch-FAILED from fetch-succeeded-empty and must only
+        suppress the carve-out for the former."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_merged("mine", merge_sha="f1deadbeef3"),
+                protection=json.dumps(["verify", "CI Summary"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "verify",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                    }
+                ),
+                merge_sha="f1deadbeef3",
+                merge_runs="",
+                merge_runs_rc=0,  # successful fetch, genuinely zero runs
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is True, result.detail
+
 
 # ---------------------------------------------------------------------------
 # EvidenceCollector delegation — proves behavior-identical parity: the
