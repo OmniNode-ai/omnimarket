@@ -29,6 +29,12 @@ from omnibase_core.validation.validator_receipt_gate import (
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
 )
+from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+    ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+    render_companion_contract,
+    render_downstream_receipt,
+)
 
 _MOD = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter"
 
@@ -658,6 +664,204 @@ class TestFullEmitFlow:
             )
         assert r1 == r2 == "core-ran"
         assert core.call_count == 2
+
+
+# ---------------------------------------------------------------------------
+# OMN-15785 — the ticket-shared admissibility-validator receipt must be
+# minted net-new-file-only. A live incident (2026-08-09) proved the producer
+# unconditionally `write_text()`-ed
+# `drift/dod_receipts/<ticket>/dod-occ-evidence-admissibility-validator/
+# command.yaml` on EVERY companion mint. That path is keyed on
+# ADMISSIBILITY_VALIDATOR_EVIDENCE_ID, a fixed constant shared by every
+# companion for the SAME ticket (unlike the downstream/CI/self-bind receipts,
+# whose ids embed the product PR / OCC PR number and so never collide across
+# companions). OMN-15789 got two companions under one ticket — OCC#6264 for
+# omnibase_core#1550, then OCC#6276 for omnibase_infra#2705 — and the second
+# companion's Stage-1 write silently overwrote the first companion's
+# already-merged receipt, tripping the OCC Append-Only Gate (hand-repaired at
+# onex_change_control@6240bf817). Root cause: no existence check before the
+# write. Fix: mirror node_occ_companion_compute's own `state.exists and
+# state.merged` guard (OMN-15485, which fixed the identical defect on the
+# sibling compute-oracle path but was never ported here) — mint the
+# admissibility receipt ONLY when this ticket's contract did not already
+# exist before this run's clone, never on the "contract pre-existed" path.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestAdmissibilityReceiptNetNewFileOnly:
+    """OMN-15785: a second companion for an already-companioned ticket must
+    never rewrite the shared, ticket-scoped admissibility-validator receipt.
+    """
+
+    @staticmethod
+    def _seed_first_companion(clone_dir: Path) -> str:
+        """Write a merged-looking first companion for OMN-9999 into the fresh
+        clone dir, exactly as it would look after OCC#N (the ticket's FIRST
+        companion, for a different product PR) already merged to dev — the
+        state a second companion's `_clone_and_branch` observes.
+        """
+        contract_path = clone_dir / "contracts" / "OMN-9999.yaml"
+        contract_path.parent.mkdir(parents=True, exist_ok=True)
+        contract_path.write_text(
+            render_companion_contract(
+                ticket_id="OMN-9999",
+                repo="OmniNode-ai/omnibase_core",
+                pr_number=1550,
+                evidence_id="dod-OmniNode-ai-omnibase_core-pr-1550",
+            ),
+            encoding="utf-8",
+        )
+        merged_receipt_text = render_downstream_receipt(
+            ticket_id="OMN-9999",
+            evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+            pr_number=1550,
+            repo="OmniNode-ai/omnibase_core",
+            run_timestamp="2026-08-09T17:37:20.644407+00:00",
+            commit_sha="a" * 40,
+            branch="auto/omninode-ai-omnibase_core-pr-1550-occ-autobind",
+            probe_command="gh pr view 1550 --repo OmniNode-ai/omnibase_core --json number,state",
+            probe_stdout='{"number":1550,"state":"OPEN"}',
+            exit_code=0,
+            actual_output=(
+                "PASS: OCC runner executes the declared check; "
+                "probe is the live PR read."
+            ),
+            check_value=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+        )
+        merged_receipt_dir = (
+            clone_dir
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+        )
+        merged_receipt_dir.mkdir(parents=True, exist_ok=True)
+        (merged_receipt_dir / "command.yaml").write_text(
+            merged_receipt_text, encoding="utf-8"
+        )
+        return merged_receipt_text
+
+    def _run_second_companion(
+        self, emitter: OccCompanionEmitter, tmp_path: Path
+    ) -> tuple[str, Path, str]:
+        """Drive `_emit_companion_sync` for a SECOND product PR (#322) that
+        cites the SAME ticket (OMN-9999) a first companion already bound,
+        against a clone dir pre-seeded with that first companion's merged
+        contract + admissibility receipt.
+        """
+        clone_root = tmp_path / "onex_change_control"
+        merged_receipt_text = ""
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            if path.endswith("/pulls/322"):
+                return {
+                    "body": "Implements the other thing.",
+                    "title": "feat(OMN-9999): the other thing",
+                    "head": {"sha": "d" * 40, "ref": "feature-branch-2"},
+                    "state": "open",
+                }
+            if "/pulls/56" in path:
+                return {"number": 56, "state": "open"}
+            return {}
+
+        def fake_run_git(argv: list[str], *, cwd: str) -> str:
+            return "e" * 40 if "rev-parse" in argv else ""
+
+        def seed_clone(cd: Path, *_a: object) -> None:
+            nonlocal merged_receipt_text
+            cd.mkdir(parents=True)
+            merged_receipt_text = self._seed_first_companion(cd)
+
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+            patch(f"{_MOD}.acquire_occ_companion_lease", return_value=True),
+            patch(f"{_MOD}.release_occ_companion_lease"),
+            patch.object(emitter, "_run_git", side_effect=fake_run_git),
+            patch.object(emitter, "_clone_and_branch", side_effect=seed_clone),
+            patch.object(emitter, "_open_or_sync_occ_pr", return_value=56),
+            patch.object(emitter, "_observe_pr_probe", return_value=("{}", 0)),
+            patch.object(emitter, "_patch_evidence_source"),
+            patch(
+                f"{_MOD}.tempfile.TemporaryDirectory",
+                return_value=_FakeTempDir(tmp_path),
+            ),
+        ):
+            action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 322, None)
+        return action, clone_root, merged_receipt_text
+
+    def test_second_companion_never_overwrites_the_merged_admissibility_receipt(
+        self, tmp_path: Path
+    ) -> None:
+        emitter = OccCompanionEmitter()
+        _action, clone_root, merged_receipt_text = self._run_second_companion(
+            emitter, tmp_path
+        )
+
+        receipt_path = (
+            clone_root
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+            / "command.yaml"
+        )
+        assert receipt_path.read_text() == merged_receipt_text, (
+            "OMN-15785: a second companion for an already-companioned ticket "
+            "rewrote the already-merged, ticket-shared admissibility receipt "
+            "instead of leaving it byte-for-byte untouched — the exact "
+            "OCC#6264 -> #6276 append-only violation (2026-08-09)."
+        )
+        # The rewrite this receipt suffered live also included a re-bind pass
+        # (contract_sha256 / contract_entry_sha256 restamped to the new
+        # contract state) — assert those fields specifically, since a partial
+        # fix that stops the Stage-1 write but still runs `_rebind_receipts`
+        # over this id would still mutate the merged file.
+        assert 'commit_sha: "' + "a" * 40 + '"' in receipt_path.read_text()
+        assert "d" * 40 not in receipt_path.read_text()
+        assert "pr_number: 1550" in receipt_path.read_text()
+
+        # This PR's OWN companion evidence still mints normally alongside the
+        # untouched shared receipt — the guard suppresses ONLY the collision.
+        own_downstream = (
+            clone_root
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / "dod-OmniNode-ai-omnimarket-pr-322"
+            / "command.yaml"
+        )
+        assert own_downstream.is_file()
+        assert 'commit_sha: "' + "d" * 40 + '"' in own_downstream.read_text()
+
+    def test_first_companion_for_a_ticket_still_mints_the_admissibility_receipt(
+        self, tmp_path: Path
+    ) -> None:
+        """Normal mint (contract does not pre-exist) is unchanged: (b)."""
+        emitter = OccCompanionEmitter()
+        _action, clone_root = TestFullEmitFlow()._run(emitter, tmp_path)
+
+        receipt_path = (
+            clone_root
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+            / "command.yaml"
+        )
+        assert receipt_path.is_file(), (
+            "a ticket's FIRST companion must still mint the admissibility "
+            "receipt net-new — the OMN-15785 guard must not suppress the "
+            "ordinary case, only the same-ticket collision"
+        )
+        assert (
+            'check_value: "uv run pytest tests/test_evidence_admissibility.py -q"'
+            in (receipt_path.read_text())
+            or "uv run pytest tests/test_evidence_admissibility.py -q"
+            in (receipt_path.read_text())
+        )
+        assert "PENDING" not in receipt_path.read_text()
 
 
 # ---------------------------------------------------------------------------
