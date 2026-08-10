@@ -15,8 +15,8 @@ receipt-bound ticket such as OMN-15087 (a Postgres RLS role/connection audit,
 zero product PR, only durable receipts) was permanently BLOCKED at Check 2
 with no route to PASS.
 
-This module implements the receipt-bound alternative to Check 2, discriminated
-by a top-level ``proof_class: "receipt-bound"`` contract field — the SAME
+Check 2's receipt-bound alternative branch here is discriminated by a
+top-level ``proof_class: "receipt-bound"`` contract field — the SAME
 vocabulary doctrine already uses — rather than a new receipt-level
 ``evidence_class`` enum member: adding an ``omnibase_core``
 ``EnumEvidenceClass`` member is cross-repo scope this fix does not take on,
@@ -33,6 +33,11 @@ Guardrails (mirrors the ``RUNTIME_OPS_READBACK`` G1/G3 discipline, OMN-14168):
         readback is indistinguishable from a probe that never ran.
 * R3 — at least one PASS receipt exists; a receipt-bound contract with zero
         PASS receipts has nothing to verify and fails closed.
+* R4 — ``evidence_item_id``/``check_type`` are present and non-blank; a
+        receipt that cannot bind to a real contract entry must not silently
+        contribute nothing to ``receipt_keys`` while still counting toward
+        an overall PASS (Check 3 computes ``receipt_keys - main_contract_keys``,
+        which is vacuously satisfied when ``receipt_keys`` is empty).
 
 Deliberately NARROWER than ``RUNTIME_OPS_READBACK``: no mutation-verb
 allowlist (nothing mutates), no prod-target waiver-refusal (nothing is
@@ -123,10 +128,28 @@ def evaluate_receipt_bound(
                 ),
                 set(),
             )
-        evidence_item_id = receipt.get("evidence_item_id")
-        check_type = receipt.get("check_type")
-        if isinstance(evidence_item_id, str) and isinstance(check_type, str):
-            receipt_keys.add((evidence_item_id, check_type))
+        # R4 — the receipt must bind a real evidence key. A PASS receipt
+        # missing (or carrying a blank) evidence_item_id/check_type would
+        # otherwise silently contribute nothing to receipt_keys while still
+        # counting toward this function's overall passed=True — Check 3
+        # (CONTRACT_ON_OCC_MAIN) computes `receipt_keys - main_contract_keys`,
+        # which is vacuously empty when receipt_keys itself is empty, so a
+        # malformed receipt would pass Check 2 AND Check 3 without ever
+        # binding to a real contract entry (CodeRabbit finding).
+        evidence_item_id = _str_field(receipt, "evidence_item_id")
+        check_type = _str_field(receipt, "check_type")
+        if not evidence_item_id or not check_type:
+            return (
+                False,
+                (
+                    "Receipt-bound evidence receipt is missing or has a "
+                    "blank evidence_item_id/check_type — it cannot bind to "
+                    "any contract entry, so it must not silently count "
+                    "toward a PASS (OMN-15817 shape 5, R4)."
+                ),
+                set(),
+            )
+        receipt_keys.add((evidence_item_id, check_type))
 
     return (
         True,

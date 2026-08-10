@@ -230,6 +230,44 @@ class TestEvaluateReceiptBoundPure:
         assert "self-attested" in message
         assert keys == set()
 
+    def test_missing_evidence_item_id_rejected(self) -> None:
+        """CodeRabbit finding on the introducing PR: a PASS receipt missing
+        evidence_item_id must not silently contribute nothing to
+        receipt_keys while still counting toward an overall PASS — Check 3
+        (`receipt_keys - main_contract_keys`) is vacuously satisfied when
+        receipt_keys is empty, so this would let a malformed receipt bind to
+        nothing yet still pass the gate."""
+        payload = _receipt_bound_receipt()
+        del payload["evidence_item_id"]
+        passed, message, keys = evaluate_receipt_bound([payload])
+        assert passed is False
+        assert "evidence_item_id" in message
+        assert keys == set()
+
+    def test_missing_check_type_rejected(self) -> None:
+        payload = _receipt_bound_receipt()
+        del payload["check_type"]
+        passed, message, keys = evaluate_receipt_bound([payload])
+        assert passed is False
+        assert "check_type" in message
+        assert keys == set()
+
+    def test_blank_evidence_item_id_rejected(self) -> None:
+        passed, message, keys = evaluate_receipt_bound(
+            [_receipt_bound_receipt(evidence_item_id="   ")]
+        )
+        assert passed is False
+        assert "evidence_item_id" in message
+        assert keys == set()
+
+    def test_blank_check_type_rejected(self) -> None:
+        passed, message, keys = evaluate_receipt_bound(
+            [_receipt_bound_receipt(check_type="")]
+        )
+        assert passed is False
+        assert "check_type" in message
+        assert keys == set()
+
 
 @pytest.mark.unit
 class TestIsReceiptBoundContract:
