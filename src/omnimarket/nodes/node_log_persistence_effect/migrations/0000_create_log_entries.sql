@@ -64,7 +64,16 @@
 --   role_omnidash owns the `omninode_internal` schema's CREATE privilege
 --   (see above) and, as the connecting/creating identity, becomes the table
 --   owner automatically with full implicit privileges. No GRANT statement
---   is required or issued.
+--   for role_omnidash itself is required or issued.
+--
+-- WHY THIS FILE ALSO GRANTS omninode_runtime (separate principal, below)
+--   The shipped topology (src/omnibase_infra/topology/instances/*.yaml,
+--   derived from this node's own db_io.db_tables declaration via
+--   scripts/generate_application_database_table_grants.py) declares
+--   INSERT/SELECT/UPDATE for omninode_runtime on omninode_internal.log_entries
+--   -- the same shared runtime write-path identity 099 already grants for
+--   omninode_internal.live_events. See the dedicated comment block near the
+--   end of this file for the full rationale (mirrors 099's own).
 --
 -- CONSUMER (currently dormant on onex-dev, tracked separately)
 --   omnimarket.nodes.node_log_persistence_effect INSERTs into this table on
@@ -201,3 +210,67 @@ CREATE INDEX IF NOT EXISTS idx_log_entries_level_ts
 -- Standalone timestamp: full time-range scans and retention sweeps
 CREATE INDEX IF NOT EXISTS idx_log_entries_ts
     ON omninode_internal.log_entries (timestamp DESC);
+
+-- -----------------------------------------------------------------------------
+-- omninode_runtime grant (topology-derived, OMN-15846)
+-- -----------------------------------------------------------------------------
+-- src/omnibase_infra/topology/instances/*.yaml declares
+-- principals.omninode_runtime.grants[schema: omninode_internal] for this
+-- table (regenerated in the paired omnibase_infra PR via
+-- scripts/generate_application_database_table_grants.py --write) --
+-- INSERT/SELECT/UPDATE only, matching the projection-writer invariant 096
+-- and 099 both already state (no DELETE: a projection writer upserts, it
+-- does not reshape the table). The guarded CREATE mirrors 099's own
+-- precedent exactly: omninode_runtime has never been created by any flat
+-- migration in this corpus (the standalone "Migration Integration Test" CI
+-- gate applies only docker/migrations/forward/*.sql via
+-- scripts/run-migrations.py against a bare postgres:16-alpine service and
+-- never runs 000_create_multiple_databases.sh), so an unguarded GRANT would
+-- fail closed with `role "omninode_runtime" does not exist` in that CI
+-- scope. NOLOGIN at create time -- LOGIN + password attach stays
+-- deployment-owned, never re-asserted here even though the topology
+-- declares login: true.
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'omninode_runtime') THEN
+    BEGIN
+      CREATE ROLE omninode_runtime WITH
+        NOLOGIN
+        NOSUPERUSER
+        NOBYPASSRLS
+        NOCREATEDB
+        NOCREATEROLE
+        NOREPLICATION;
+    EXCEPTION
+      WHEN duplicate_object OR unique_violation THEN
+        NULL; -- created concurrently by another migration path
+    END;
+  END IF;
+END;
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'omninode_runtime') THEN
+    RAISE EXCEPTION
+      'omninode_runtime role does not exist and could not be created -- the '
+      'executing role lacks CREATEROLE. On a managed instance the role is '
+      'provisioned at the provisioning seam; this migration refuses to record '
+      'itself against a role that is not there.';
+  END IF;
+END;
+$$;
+
+GRANT USAGE ON SCHEMA omninode_internal TO omninode_runtime;
+GRANT SELECT, INSERT, UPDATE ON omninode_internal.log_entries TO omninode_runtime;
+
+-- Post-condition on the grant-gap repair itself: the write-path role must
+-- actually carry INSERT on the physical table this migration just created.
+-- Statically provable (no DO/RAISE), matching the OMN-15361 application
+-- database gate's requirement for deployable SQL (same idiom 098/099 use).
+SELECT 1 / count(*) AS omninode_runtime_log_entries_insert_grant_assertion
+  FROM information_schema.role_table_grants
+ WHERE table_schema = 'omninode_internal'
+   AND table_name = 'log_entries'
+   AND grantee = 'omninode_runtime'
+   AND privilege_type = 'INSERT';
