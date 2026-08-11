@@ -17,7 +17,10 @@ from pathlib import Path
 import pytest
 
 from omnimarket.seams.extraction import _resolve_confined_root, extract_seam_graph
-from omnimarket.seams.models.model_seam_graph import EnumSeamGraphObservationKind
+from omnimarket.seams.models.model_seam_graph import (
+    EnumSeamGraphObservationKind,
+    ModelSeamGraphV1,
+)
 
 
 def _write(root: Path, relative: str, content: str) -> None:
@@ -1263,3 +1266,322 @@ class TestObservationSummarySplitsHarnessFromProduction:
         _write(tmp_path, "src/pkg/nothing.py", "x = 1\n")
         graph = extract_seam_graph(str(tmp_path), ("src",))
         assert graph.observation_summary == ()
+
+
+# OMN-15854: measured basis (this session's own run, reproduced live against
+# omnibase_core/omnibase_infra/omnimarket at their current dev tips) -- 8
+# validator-runtime-tooling files, each contributing 2 producer_send + 2
+# consumer_subscribe production-application hits (16 of 22 per kind), and
+# the 6+6 genuine inter-service sites making up the remaining 6 of 22 per
+# kind. Paths below are the exact repo-relative source_path strings the
+# extractor produces when scanning with discovery_roots =
+# ("omnibase_core/src", "omnibase_infra/src", "omnimarket/src") against a
+# repo_base containing all three repos side by side (the real production
+# scan shape) -- not the bare "src/..." shorthand most other tests in this
+# file use, because pinning the LITERAL source_path is the point here.
+_TOOLING_FILES: tuple[str, ...] = (
+    "omnibase_core/src/omnibase_core/validation/doc_content_scan/runtime_doc_content_scan.py",
+    "omnibase_core/src/omnibase_core/validation/hardcoded_topic/runtime_hardcoded_topic.py",
+    "omnibase_core/src/omnibase_core/validation/local_paths/runtime_local_paths.py",
+    "omnibase_core/src/omnibase_core/validation/localhost_url/runtime_localhost_url.py",
+    "omnibase_core/src/omnibase_core/validation/no_faked_boundary/runtime_no_faked_boundary.py",
+    "omnibase_core/src/omnibase_core/validation/pin_hygiene/runtime_pin_hygiene.py",
+    "omnibase_core/src/omnibase_core/validation/private_ip/runtime_private_ip.py",
+    "omnibase_core/src/omnibase_core/validation/todo_marker/runtime_todo_marker.py",
+)
+
+# The 6 genuine inter-service producer_send sites (OMN-15854 ticket list).
+_INTER_SERVICE_PRODUCER_FILES: tuple[str, ...] = (
+    "omnibase_infra/src/omnibase_infra/event_bus/consumer_health_emitter.py",
+    "omnibase_infra/src/omnibase_infra/nodes/node_consumer_health_triage_effect/handlers/handler_consumer_health_triage.py",
+    "omnibase_infra/src/omnibase_infra/observability/runtime_log_event_bridge.py",
+    "omnibase_infra/src/omnibase_infra/services/registry_api/registry_discovery.py",
+    "omnimarket/src/omnimarket/logging/structured_logger.py",
+    "omnimarket/src/omnimarket/nodes/node_review_thread_reconciler/handlers/handler_review_thread_reconciler.py",
+)
+
+# The 6 genuine inter-service consumer_subscribe sites (2 files, 5+1 sites
+# -- OMN-15854 ticket list).
+_INTER_SERVICE_CONSUMER_FILES: tuple[str, ...] = (
+    "omnibase_core/src/omnibase_core/mixins/mixin_service_registry.py",
+    "omnibase_core/src/omnibase_core/runtime/runtime_local.py",
+)
+
+
+@pytest.mark.unit
+class TestValidatorRuntimeToolingThirdSplit:
+    """OMN-15854: production-application -> {validator-runtime-tooling,
+    inter-service-application}. Pins the 8 tooling files' classification
+    and asserts the split is non-weakening against the 12 named genuine
+    inter-service sites (6 producer + 6 consumer)."""
+
+    @pytest.mark.parametrize("tooling_path", _TOOLING_FILES)
+    def test_each_of_the_8_tooling_files_classifies_as_validator_runtime_tooling(
+        self, tmp_path: Path, tooling_path: str
+    ) -> None:
+        _write(
+            tmp_path,
+            tooling_path,
+            'producer.send("tool-topic", p)\nconsumer.subscribe(["tool-sub"])\n',
+        )
+        graph = extract_seam_graph(
+            str(tmp_path), ("omnibase_core/src", "omnibase_infra/src", "omnimarket/src")
+        )
+        producer_obs = next(
+            o for o in graph.code_observations if o.value == "tool-topic"
+        )
+        consumer_obs = next(o for o in graph.code_observations if o.value == "tool-sub")
+        assert producer_obs.is_test_harness is False
+        assert producer_obs.is_validator_runtime_tooling is True
+        assert consumer_obs.is_test_harness is False
+        assert consumer_obs.is_validator_runtime_tooling is True
+
+    @pytest.mark.parametrize("inter_service_path", _INTER_SERVICE_PRODUCER_FILES)
+    def test_each_of_the_6_genuine_producer_sites_is_not_reclassified_as_tooling(
+        self, tmp_path: Path, inter_service_path: str
+    ) -> None:
+        _write(tmp_path, inter_service_path, 'producer.send("real-topic", p)\n')
+        graph = extract_seam_graph(
+            str(tmp_path), ("omnibase_core/src", "omnibase_infra/src", "omnimarket/src")
+        )
+        observation = next(
+            o for o in graph.code_observations if o.value == "real-topic"
+        )
+        assert observation.is_test_harness is False
+        assert observation.is_validator_runtime_tooling is False
+
+    @pytest.mark.parametrize("inter_service_path", _INTER_SERVICE_CONSUMER_FILES)
+    def test_each_of_the_2_genuine_consumer_files_is_not_reclassified_as_tooling(
+        self, tmp_path: Path, inter_service_path: str
+    ) -> None:
+        _write(tmp_path, inter_service_path, 'consumer.subscribe(["real-sub"])\n')
+        graph = extract_seam_graph(
+            str(tmp_path), ("omnibase_core/src", "omnibase_infra/src", "omnimarket/src")
+        )
+        observation = next(o for o in graph.code_observations if o.value == "real-sub")
+        assert observation.is_test_harness is False
+        assert observation.is_validator_runtime_tooling is False
+
+    def test_named_inter_service_site_consumer_health_emitter_stays_inter_service(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "omnibase_infra/src/omnibase_infra/event_bus/consumer_health_emitter.py",
+            'producer.send("health-topic", p)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("omnibase_infra/src",))
+        observation = next(
+            o for o in graph.code_observations if o.value == "health-topic"
+        )
+        assert observation.is_validator_runtime_tooling is False
+
+    def test_named_inter_service_site_mixin_service_registry_stays_inter_service(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "omnibase_core/src/omnibase_core/mixins/mixin_service_registry.py",
+            'consumer.subscribe(["registry-sub"])\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("omnibase_core/src",))
+        observation = next(
+            o for o in graph.code_observations if o.value == "registry-sub"
+        )
+        assert observation.is_validator_runtime_tooling is False
+
+    def test_validation_dir_without_runtime_prefix_filename_is_not_tooling(
+        self, tmp_path: Path
+    ) -> None:
+        """Both conditions are required -- a validation/ path whose
+        filename does NOT start with runtime_ must not match."""
+        _write(
+            tmp_path,
+            "omnibase_core/src/omnibase_core/validation/doc_content_scan/scanner.py",
+            'producer.send("scanner-topic", p)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("omnibase_core/src",))
+        observation = next(
+            o for o in graph.code_observations if o.value == "scanner-topic"
+        )
+        assert observation.is_validator_runtime_tooling is False
+
+    def test_runtime_prefix_filename_without_validation_dir_is_not_tooling(
+        self, tmp_path: Path
+    ) -> None:
+        """Both conditions are required -- a runtime_*.py filename outside
+        validation/ (e.g. runtime_local.py, runtime_log_event_bridge.py)
+        must not match, matching the two named counter-examples in the
+        OMN-15854 ticket."""
+        _write(
+            tmp_path,
+            "omnibase_core/src/omnibase_core/runtime/runtime_local.py",
+            'consumer.subscribe(["local-sub"])\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("omnibase_core/src",))
+        observation = next(o for o in graph.code_observations if o.value == "local-sub")
+        assert observation.is_validator_runtime_tooling is False
+
+    def test_unrecognized_path_defaults_fail_closed_to_inter_service_application(
+        self, tmp_path: Path
+    ) -> None:
+        """A file matching neither the harness glob nor the tooling glob
+        defaults to inter_service_application (un-suppressed) -- proving
+        tooling-bucket membership requires an explicit, positive glob
+        match; absence of proof never silently hides an observation from
+        the trusted-signal count."""
+        _write(
+            tmp_path,
+            "omnibase_infra/src/omnibase_infra/some_new_module/emitter.py",
+            'producer.send("unrecognized-topic", p)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("omnibase_infra/src",))
+        observation = next(
+            o for o in graph.code_observations if o.value == "unrecognized-topic"
+        )
+        assert observation.is_test_harness is False
+        assert observation.is_validator_runtime_tooling is False
+
+    def test_full_corpus_shape_reproduces_22_16_6_split_per_kind(
+        self, tmp_path: Path
+    ) -> None:
+        """End-to-end reproduction of the OMN-15854 measured basis: 22
+        production-application hits per kind, 16 of which are tooling (the
+        8 files x 2 hits), 6 of which are genuine inter-service sites."""
+        for tooling_path in _TOOLING_FILES:
+            _write(
+                tmp_path,
+                tooling_path,
+                'producer.send("t", p)\nproducer.send("t2", p)\n'
+                'consumer.subscribe(["c"])\nconsumer.subscribe(["c2"])\n',
+            )
+        for producer_path in _INTER_SERVICE_PRODUCER_FILES:
+            _write(tmp_path, producer_path, 'producer.send("real", p)\n')
+        _write(
+            tmp_path,
+            "omnibase_core/src/omnibase_core/mixins/mixin_service_registry.py",
+            "\n".join(f'consumer.subscribe(["real{i}"])' for i in range(5)) + "\n",
+        )
+        _write(
+            tmp_path,
+            "omnibase_core/src/omnibase_core/runtime/runtime_local.py",
+            'consumer.subscribe(["real-local"])\n',
+        )
+        graph = extract_seam_graph(
+            str(tmp_path), ("omnibase_core/src", "omnibase_infra/src", "omnimarket/src")
+        )
+        by_kind = {s.kind: s for s in graph.observation_summary}
+        producer_summary = by_kind[EnumSeamGraphObservationKind.PRODUCER_SEND]
+        consumer_summary = by_kind[EnumSeamGraphObservationKind.CONSUMER_SUBSCRIBE]
+        assert producer_summary.production_application == 22
+        assert producer_summary.validator_runtime_tooling == 16
+        assert producer_summary.inter_service_application == 6
+        assert consumer_summary.production_application == 22
+        assert consumer_summary.validator_runtime_tooling == 16
+        assert consumer_summary.inter_service_application == 6
+
+
+@pytest.mark.unit
+class TestObservationSummaryThirdSplitInvariants:
+    """OMN-15854: production_application == validator_runtime_tooling +
+    inter_service_application, and total == test_harness +
+    validator_runtime_tooling + inter_service_application, for every
+    summary row -- not merely for the two hand-picked cases above."""
+
+    def test_summary_rows_satisfy_the_three_way_split_invariant(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "src/pkg/event_bus/testing/contract_event_bus_substrate.py",
+            'producer.send("harness-topic", p)\n',
+        )
+        _write(
+            tmp_path,
+            "src/omnibase_core/validation/doc_content_scan/runtime_doc_content_scan.py",
+            'producer.send("tool-topic", p)\n',
+        )
+        _write(
+            tmp_path,
+            "src/pkg/service/publisher.py",
+            'producer.send("prod-topic", p)\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        assert len(graph.observation_summary) > 0
+        for summary in graph.observation_summary:
+            assert (
+                summary.total
+                == summary.test_harness
+                + summary.validator_runtime_tooling
+                + summary.inter_service_application
+            )
+            assert (
+                summary.production_application
+                == summary.validator_runtime_tooling + summary.inter_service_application
+            )
+        producer_summary = next(
+            s
+            for s in graph.observation_summary
+            if s.kind == EnumSeamGraphObservationKind.PRODUCER_SEND
+        )
+        assert producer_summary.total == 3
+        assert producer_summary.test_harness == 1
+        assert producer_summary.validator_runtime_tooling == 1
+        assert producer_summary.inter_service_application == 1
+
+
+@pytest.mark.unit
+class TestSchemaVersionV2Bump:
+    """OMN-15854 R2 fix: schema_version bumped from seam-graph/v1 to
+    seam-graph/v2 in the same PR that adds the third-split computed
+    fields, and the full serialized field set is pinned so a future
+    computed-field addition fails loudly rather than silently drifting the
+    wire shape again."""
+
+    def test_schema_version_literal_is_v2(self, tmp_path: Path) -> None:
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        assert graph.schema_version == "seam-graph/v2"
+
+    def test_default_constructed_schema_version_is_v2(self) -> None:
+        assert ModelSeamGraphV1().schema_version == "seam-graph/v2"
+
+    def test_top_level_serialized_field_set_is_pinned(self, tmp_path: Path) -> None:
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        assert set(graph.model_dump().keys()) == {
+            "schema_version",
+            "discovery_roots",
+            "edges",
+            "code_observations",
+            "source_manifest",
+            "observation_summary",
+        }
+
+    def test_code_observation_serialized_field_set_is_pinned(
+        self, tmp_path: Path
+    ) -> None:
+        _write(tmp_path, "src/pkg/publisher.py", 'producer.send("t", p)\n')
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        observation = graph.code_observations[0]
+        assert set(observation.model_dump().keys()) == {
+            "source_path",
+            "kind",
+            "value",
+            "line_number",
+            "is_test_harness",
+            "is_validator_runtime_tooling",
+        }
+
+    def test_observation_kind_summary_serialized_field_set_is_pinned(
+        self, tmp_path: Path
+    ) -> None:
+        _write(tmp_path, "src/pkg/publisher.py", 'producer.send("t", p)\n')
+        graph = extract_seam_graph(str(tmp_path), ("src",))
+        summary = graph.observation_summary[0]
+        assert set(summary.model_dump().keys()) == {
+            "kind",
+            "total",
+            "test_harness",
+            "production_application",
+            "validator_runtime_tooling",
+            "inter_service_application",
+        }

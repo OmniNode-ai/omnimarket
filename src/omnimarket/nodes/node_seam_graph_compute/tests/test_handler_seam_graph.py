@@ -6,7 +6,7 @@
 Covers: contract-declared ``seams:`` block extraction, code-level extraction
 (Kafka producer/consumer topic args, ``os.environ`` reads, ``@ref`` pins),
 and AC7 determinism — two runs over the same pinned fixture tree emit a
-byte-identical ``seam-graph/v1`` graph and an identical per-source sha256
+byte-identical ``seam-graph/v2`` graph and an identical per-source sha256
 manifest.
 """
 
@@ -65,7 +65,7 @@ def _request(
 class TestContractDeclaredExtraction:
     def test_extracts_declared_seam_edge_from_contract_yaml(self) -> None:
         graph = HandlerSeamGraph().handle(_request())
-        assert graph.schema_version == "seam-graph/v1"
+        assert graph.schema_version == "seam-graph/v2"
         edge_ids = {edge.edge_id for edge in graph.edges}
         assert "S1" in edge_ids
         edge = next(e for e in graph.edges if e.edge_id == "S1")

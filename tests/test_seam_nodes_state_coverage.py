@@ -107,7 +107,7 @@ def test_seam_graph_output_covers_every_declared_output_field() -> None:
 
     # Every field named in node_seam_graph_compute/contract.yaml `outputs:`,
     # exercised as a real attribute access against a real handler result.
-    assert graph.schema_version == "seam-graph/v1"
+    assert graph.schema_version == "seam-graph/v2"
     assert len(graph.edges) > 0
     assert len(graph.code_observations) > 0
     assert len(graph.source_manifest) > 0
