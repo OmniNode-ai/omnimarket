@@ -280,16 +280,15 @@ async def test_runner_consumer_applies_sasl_auth_kwargs_omn15816(
     _set_sasl_env(monkeypatch)
     runner = _make_runner()
     _FakeConsumerStopAfterConstruct.captured_kwargs = None
-    # Separate, out-of-scope defect found while writing this test (filed as
-    # its own ticket, not fixed here): run()'s while-loop guard is
-    # `attempts < MAX_RETRY_ATTEMPTS and self._running is not False`, but
-    # __init__ sets `self._running = False` -- so `self._running is not
-    # False` is False on a freshly constructed runner and the loop body
-    # (including the AIOKafkaConsumer construction this test targets) never
-    # executes at all. Priming `_running = True` here is a test-only
-    # workaround so this test can reach and assert on the OMN-15816
-    # construction site without also fixing the unrelated defect.
-    runner._running = True
+    # A separate, out-of-scope defect found while writing this test (filed
+    # as OMN-15868, fixed there, not here) previously made run()'s
+    # while-loop guard `attempts < MAX_RETRY_ATTEMPTS and self._running is
+    # not False` False on a freshly constructed runner (`_running` starts
+    # `False`), so the loop body never executed at all -- this test used to
+    # need `runner._running = True` priming to reach the AIOKafkaConsumer
+    # construction site it targets. OMN-15868 replaced that guard with a
+    # dedicated `_shutdown_requested` sentinel, so the loop now enters on a
+    # freshly constructed runner without any priming.
 
     with (
         patch(
@@ -314,9 +313,8 @@ async def test_runner_consumer_no_env_stays_plaintext_omn15816(
     _clear_kafka_env(monkeypatch)
     runner = _make_runner()
     _FakeConsumerStopAfterConstruct.captured_kwargs = None
-    # See the sibling `_applies_sasl_auth_kwargs` test above for why this
-    # test-only priming is needed (separate, out-of-scope run()-loop defect).
-    runner._running = True
+    # See the sibling `_applies_sasl_auth_kwargs` test above -- no priming
+    # needed since OMN-15868 fixed the run()-loop guard.
 
     with (
         patch(
