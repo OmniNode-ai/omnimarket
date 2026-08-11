@@ -42,6 +42,7 @@ from omnimarket.models.delegation.wire.model_quality_gate import (
     ModelQualityGateResult,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    CONFLICT_KEY,
     TABLE,
     HandlerProjectionDelegation,
 )
@@ -205,3 +206,58 @@ def test_quality_gate_result_projection_tolerates_topic_metadata_key_omn14855() 
     result = HandlerProjectionDelegation().handle(payload)
 
     assert result == {"rows_upserted": 1, "table": TABLE}
+
+
+@pytest.mark.unit
+def test_result_first_quality_gate_result_stamps_created_at() -> None:
+    """CodeRabbit (PR #2052): ``delegation_events.created_at`` is NOT NULL and
+    (per OMN-13171) not every backing store applies an implicit DB default on
+    INSERT. A quality-gate-result arriving before any terminal event must
+    stamp ``created_at`` explicitly on the fresh row it creates.
+    """
+    correlation_id = uuid4()
+    event = _deterministic_result(correlation_id=correlation_id)
+    db = InmemoryDatabaseAdapter()
+    payload = event.model_dump(mode="json")
+    payload["_db"] = db
+    payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
+
+    HandlerProjectionDelegation().handle(payload)
+
+    row = db.query(TABLE, {"correlation_id": str(correlation_id)})[0]
+    assert row.get("created_at")
+
+
+@pytest.mark.unit
+def test_quality_gate_result_does_not_clobber_existing_created_at() -> None:
+    """A quality-gate-result arriving AFTER the terminal event must not
+    overwrite the row's original ``created_at`` -- only a genuinely fresh row
+    gets the explicit stamp.
+    """
+    correlation_id = uuid4()
+    db = InmemoryDatabaseAdapter()
+    original_created_at = "2026-01-01T00:00:00+00:00"
+    # Seed directly through the adapter: represents a row already written by
+    # an earlier terminal-event UPSERT (project_delegate_skill_terminal /
+    # project() both stamp created_at on their own INSERT path -- OMN-13171).
+    db.upsert(
+        TABLE,
+        CONFLICT_KEY,
+        {
+            "correlation_id": str(correlation_id),
+            "task_type": "code_generation",
+            "delegated_to": "claude",
+            "created_at": original_created_at,
+        },
+    )
+
+    verdict_event = _deterministic_result(correlation_id=correlation_id, passed=True)
+    verdict_payload = verdict_event.model_dump(mode="json")
+    verdict_payload["_db"] = db
+    verdict_payload["_event_type"] = _QUALITY_GATE_RESULT_TOPIC
+
+    HandlerProjectionDelegation().handle(verdict_payload)
+
+    row = db.query(TABLE, {"correlation_id": str(correlation_id)})[0]
+    assert row["created_at"] == original_created_at
+    assert row["quality_gate_passed"] is True

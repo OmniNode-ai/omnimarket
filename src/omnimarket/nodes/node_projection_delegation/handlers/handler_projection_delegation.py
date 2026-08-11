@@ -658,7 +658,28 @@ class HandlerProjectionDelegation:
         semantics shared by every DatabaseAdapter implementation
         (postgres_sync_database.py, sqlite_database.py, the in-memory test
         double) leave them untouched in either write order.
+
+        Two properties this method must hold on a result-first arrival
+        (CodeRabbit, PR #2052):
+
+        1. ``created_at`` -- ``delegation_events.created_at`` is NOT NULL. The
+           deployed Postgres schema carries a DB-level ``DEFAULT NOW()``, but
+           OMN-13171 already documents a backing store without an implicit
+           default (the local SQLite evidence target) raising a NOT NULL
+           violation when a write omits it -- exactly the same gap
+           ``project_delegate_skill_terminal`` closed for its own result-first
+           path. Stamped ONLY when no row exists yet: an UPDATE must never
+           clobber the terminal event's own ``created_at``.
+        2. Tenant isolation -- ``project()`` and
+           ``project_delegate_skill_terminal()`` both call
+           :func:`require_tenant_id` before their UPSERT so a
+           ``ENFORCE_TENANT_ISOLATION=true`` lane refuses a write that would
+           otherwise fall through to the shared tenant column default.
+           ``ModelQualityGateResult`` carries no tenant field, so this path
+           always resolves ``None`` -- a no-op today (default False), and a
+           fail-closed refusal once that lane flips.
         """
+        require_tenant_id(None, table=TABLE)
         row: dict[str, object] = {
             "correlation_id": str(event.correlation_id),
             "quality_gate_passed": event.passed,
@@ -670,6 +691,13 @@ class HandlerProjectionDelegation:
             ),
             "score_source": event.score_source or None,
         }
+        existing = db.query(TABLE, {CONFLICT_KEY: row["correlation_id"]})
+        if not existing:
+            # OMN-13171 pattern: only a genuine fresh row needs the explicit
+            # stamp -- an UPDATE leaves the terminal event's created_at intact
+            # because it is not named in this dict (ON CONFLICT DO UPDATE SET
+            # <listed columns only>).
+            row["created_at"] = datetime.now(tz=UTC).isoformat()
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0, table=TABLE)
 
