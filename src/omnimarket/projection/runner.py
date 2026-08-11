@@ -407,6 +407,14 @@ class BaseProjectionRunner(ABC):
         )
         self._stats = ProjectionStats()
         self._running = False
+        # OMN-15868: shutdown intent is tracked separately from the
+        # readiness signal. `_running` starts `False` on every fresh
+        # instance (it means "not yet connected", not "shutdown
+        # requested"), so `run()`'s retry-loop guard must never test
+        # `_running` -- reusing it there made the guard False before a
+        # single AIOKafkaConsumer was ever constructed. `shutdown()` is
+        # the only writer of this flag.
+        self._shutdown_requested = False
         self._consumer: AIOKafkaConsumer | None = None
         # The projection runtime owns the producer lifecycle (OMN-12810); handlers
         # never construct transport clients themselves. An injected publish_fn
@@ -733,7 +741,7 @@ class BaseProjectionRunner(ABC):
             )
         attempts = 0
 
-        while attempts < MAX_RETRY_ATTEMPTS and self._running is not False:
+        while attempts < MAX_RETRY_ATTEMPTS and not self._shutdown_requested:
             try:
                 self._consumer = AIOKafkaConsumer(
                     *self.topics,
@@ -800,6 +808,7 @@ class BaseProjectionRunner(ABC):
         """Graceful shutdown."""
         logger.info("Shutting down...")
         self._running = False
+        self._shutdown_requested = True
         self._stop_health_server()
         if self._consumer:
             with contextlib.suppress(Exception):
