@@ -48,6 +48,9 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
 )
+from omnimarket.models.delegation.wire.model_quality_gate import (
+    ModelQualityGateResult,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
     ModelDelegationBudgetStateEvent,
     materialize_budget_state,
@@ -301,6 +304,16 @@ class HandlerProjectionDelegation:
             payload.pop("_topic", None)
             verdict = ModelDelegationJudgeVerdictEvent(**payload)
             result = self.project_judge_verdict(verdict, db_raw)
+            return result.model_dump(mode="json")
+        if "quality-gate-result" in event_type:
+            # OMN-15850: the deterministic-scoring path (no LLM judge) publishes
+            # ONLY this topic -- delegation-judge-verdict.v1 above is never
+            # emitted for it (handler_quality_gate_intent.py:198-200). Same
+            # OMN-14855 "_topic" envelope-metadata-key stripping as the
+            # judge-verdict branch: ModelQualityGateResult sets extra="forbid".
+            payload.pop("_topic", None)
+            gate_result = ModelQualityGateResult(**payload)
+            result = self.project_quality_gate_result(gate_result, db_raw)
             return result.model_dump(mode="json")
         if (
             "node-generation-completed" in event_type
@@ -617,6 +630,48 @@ class HandlerProjectionDelegation:
         return ModelProjectionResult(
             rows_upserted=1 if ok else 0, table=JUDGE_VERDICT_TABLE
         )
+
+    def project_quality_gate_result(
+        self,
+        event: ModelQualityGateResult,
+        db: DatabaseAdapter,
+    ) -> ModelProjectionResult:
+        """UPSERT a quality-gate verdict onto the delegation_events row.
+
+        OMN-15850. The business-proof ``quality_gate`` check
+        (``evaluate_business_proof.py::_check_quality_gate``) reads
+        ``delegation_events.quality_gate_passed`` via the tenant delegations
+        endpoint and FAILs when no row exists for the correlation_id -- absent
+        is FAIL, never skip. The deterministic-scoring path (no LLM judge)
+        publishes ONLY ``quality-gate-result.v1``, never
+        ``delegation-judge-verdict.v1``, so this is the only event this
+        projection sees for that path.
+
+        This is a partial UPSERT: only the verdict-owned columns are written.
+        ``ModelQualityGateResult`` carries no task_type/delegated_to/model_name
+        (those belong to the canonical delegation-completed/failed terminal),
+        so when this event lands FIRST the INSERT falls through to the
+        delegation_events column defaults (empty string / FALSE) for them
+        rather than violating a NOT NULL constraint. When a terminal event has
+        already written (or later writes) those columns, the
+        ``ON CONFLICT (correlation_id) DO UPDATE SET <only listed columns>``
+        semantics shared by every DatabaseAdapter implementation
+        (postgres_sync_database.py, sqlite_database.py, the in-memory test
+        double) leave them untouched in either write order.
+        """
+        row: dict[str, object] = {
+            "correlation_id": str(event.correlation_id),
+            "quality_gate_passed": event.passed,
+            "quality_gate_detail": "; ".join(event.failure_reasons) or None,
+            "actual_score": (
+                event.actual_score
+                if event.actual_score is not None
+                else event.quality_score
+            ),
+            "score_source": event.score_source or None,
+        }
+        ok = db.upsert(TABLE, CONFLICT_KEY, row)
+        return ModelProjectionResult(rows_upserted=1 if ok else 0, table=TABLE)
 
     def project_batch(
         self,

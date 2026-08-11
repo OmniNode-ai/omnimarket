@@ -115,6 +115,16 @@ event_bus:
     - onex.evt.omnibase-infra.delegation-completed.v1
     - onex.evt.omnibase-infra.delegation-failed.v1
     - onex.evt.omnibase-infra.delegation-judge-verdict.v1
+    # OMN-15850: the deterministic-scoring path (no LLM judge -- the default
+    # path absent a judge-combinable task class) publishes ONLY this topic;
+    # delegation-judge-verdict.v1 above is never emitted for it
+    # (handler_quality_gate_intent.py:198-200: judge_verdict is None unless the
+    # task class is judge-combinable AND carries no explicit response_contract).
+    # Without this subscription the quality verdict for every deterministic-path
+    # delegation had no route into delegation_events, and the business-proof
+    # quality_gate check (which reads that table) failed FAIL "no delegation
+    # projection row" rather than a passed/failed verdict.
+    - onex.evt.omnibase-infra.quality-gate-result.v1
   publish_topics:
     - onex.evt.omnimarket.projection-delegation-applied.v1
     # Projection-API snapshot topics: this reducer materializes each exposure
