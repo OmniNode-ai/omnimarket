@@ -409,10 +409,14 @@ class TestEventBusDeclaredTopicsAreExtracted:
         assert edge.source_contract_path == "svc/contracts/contract.yaml"
         assert edge.producer_contract_path == "svc/contracts/contract.yaml"
         assert edge.consumer_contract_path is None
-        # Real schema, no envelope info declared — None, not a fabricated
-        # placeholder string.
+        # ONEX topic names are versioned by convention
+        # (``onex.<kind>.<domain>.<name>.vN``) — the trailing ``.v1`` is read
+        # straight off the topic string itself, not fabricated (OMN-15843).
+        # No ``published_events:`` block present anywhere in this fixture,
+        # so envelope_model stays honestly None (no producer-declared wire
+        # type to correlate against).
         assert edge.envelope_model is None
-        assert edge.envelope_version is None
+        assert edge.envelope_version == "v1"
 
     def test_subscribe_topics_yield_consumer_edges(self, tmp_path: Path) -> None:
         _write(
@@ -528,6 +532,211 @@ class TestEventBusDeclaredTopicsAreExtracted:
         first = extract_seam_graph(str(tmp_path), ("omnibase_infra", "omnimarket"))
         second = extract_seam_graph(str(tmp_path), ("omnibase_infra", "omnimarket"))
         assert first.model_dump_json() == second.model_dump_json()
+
+
+@pytest.mark.unit
+class TestEventBusEnvelopeFieldsResolved:
+    """OMN-15843 (OMN-15763 F7 residual): the event_bus-schema leg emitted
+    ``envelope_model``/``envelope_version=None`` for all 1460 corpus edges.
+    Two real, non-fabricated sources close most of the gap:
+
+    1. ``envelope_version`` — ONEX topic names are versioned by convention
+       (``onex.<kind>.<domain>.<name>.vN``); the trailing ``.vN`` is read
+       straight off the topic string already on the edge. Applies uniformly
+       to every conforming topic, both roles.
+    2. ``envelope_model`` — a contract's own ``published_events:`` block
+       (``ModelPublishedEventEntry``: ``{topic, event_type}``) is a real,
+       already-declared per-topic wire-type name. It is producer-authored,
+       but pub/sub means one topic has exactly one wire envelope, so a
+       consumer-side edge on the same topic inherits the same
+       ``event_type`` via cross-contract correlation — not a guess, the
+       same wire type the producer already declared.
+
+    A topic with no ``.vN`` suffix, or no matching ``published_events:``
+    entry anywhere in the scan, stays honestly ``None`` — never a
+    fabricated placeholder.
+    """
+
+    def test_envelope_version_derived_from_topic_version_suffix(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/contracts/contract.yaml",
+            "name: svc\n"
+            "event_bus:\n"
+            "  subscribe_topics: []\n"
+            '  publish_topics:\n    - "onex.evt.svc.thing-happened.v3"\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        edge = next(
+            e for e in graph.edges if e.topic == "onex.evt.svc.thing-happened.v3"
+        )
+        assert edge.envelope_version == "v3"
+
+    def test_topic_without_version_suffix_leaves_envelope_version_none(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/contracts/contract.yaml",
+            "name: svc\n"
+            "event_bus:\n"
+            "  subscribe_topics: []\n"
+            '  publish_topics:\n    - "legacy-unversioned-topic"\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        edge = next(e for e in graph.edges if e.topic == "legacy-unversioned-topic")
+        assert edge.envelope_version is None
+
+    def test_envelope_model_resolved_from_published_events_block(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/contracts/contract.yaml",
+            "name: svc\n"
+            "event_bus:\n"
+            "  subscribe_topics: []\n"
+            '  publish_topics:\n    - "onex.evt.svc.thing-happened.v1"\n'
+            "published_events:\n"
+            '  - topic: "onex.evt.svc.thing-happened.v1"\n'
+            '    event_type: "ModelThingHappened"\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        edge = next(
+            e for e in graph.edges if e.topic == "onex.evt.svc.thing-happened.v1"
+        )
+        assert edge.envelope_model == "ModelThingHappened"
+
+    def test_envelope_model_none_when_no_published_events_entry(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/contracts/contract.yaml",
+            "name: svc\n"
+            "event_bus:\n"
+            "  subscribe_topics: []\n"
+            '  publish_topics:\n    - "onex.evt.svc.unmapped.v1"\n'
+            "published_events:\n"
+            '  - topic: "onex.evt.svc.some-other-topic.v1"\n'
+            '    event_type: "ModelSomeOtherEvent"\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        edge = next(e for e in graph.edges if e.topic == "onex.evt.svc.unmapped.v1")
+        assert edge.envelope_model is None
+
+    def test_consumer_edge_inherits_envelope_model_from_producer_published_events(
+        self, tmp_path: Path
+    ) -> None:
+        shared_topic = "onex.evt.svc.cross-contract-shared.v1"
+        _write(
+            tmp_path,
+            "svc_producer/contracts/contract.yaml",
+            "name: svc_producer\n"
+            "event_bus:\n"
+            "  subscribe_topics: []\n"
+            f"  publish_topics:\n    - {shared_topic}\n"
+            "published_events:\n"
+            f"  - topic: {shared_topic}\n"
+            '    event_type: "ModelSharedThing"\n',
+        )
+        _write(
+            tmp_path,
+            "svc_consumer/contracts/contract.yaml",
+            "name: svc_consumer\n"
+            "event_bus:\n"
+            f"  subscribe_topics:\n    - {shared_topic}\n"
+            "  publish_topics: []\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc_producer", "svc_consumer"))
+        consumer_edge = next(
+            e for e in graph.edges if e.topic == shared_topic and e.role == "consumer"
+        )
+        # The consumer's own contract never declared published_events —
+        # this can only be populated by cross-contract correlation against
+        # the producer's declaration, same as producer_contract_path.
+        assert consumer_edge.envelope_model == "ModelSharedThing"
+
+    def test_malformed_published_events_entries_skipped_not_fabricated(
+        self, tmp_path: Path
+    ) -> None:
+        _write(
+            tmp_path,
+            "svc/contracts/contract.yaml",
+            "name: svc\n"
+            "event_bus:\n"
+            "  subscribe_topics: []\n"
+            '  publish_topics:\n    - "onex.evt.svc.malformed-source.v1"\n'
+            "published_events:\n"
+            "  - topic: null\n"
+            '    event_type: "ModelShouldNotAttach"\n'
+            "  - event_type: missing_topic_key\n"
+            '  - topic: "onex.evt.svc.malformed-source.v1"\n'
+            "    event_type: 123\n",
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        edge = next(
+            e for e in graph.edges if e.topic == "onex.evt.svc.malformed-source.v1"
+        )
+        assert edge.envelope_model is None
+
+    def test_seams_block_declared_envelope_fields_are_never_overwritten(
+        self, tmp_path: Path
+    ) -> None:
+        """The hand-authored ``seams:`` schema already carries real
+        envelope_model/envelope_version — the new correlation pass must not
+        clobber a genuinely-declared value even if a same-topic
+        published_events entry exists elsewhere in the scan."""
+        _write(
+            tmp_path,
+            "svc/contracts/contract.yaml",
+            "name: svc\n"
+            "seams:\n"
+            "  - id: S1\n"
+            "    seam: declared edge\n"
+            "    role: producer\n"
+            "    topic: onex.evt.svc.declared.v1\n"
+            "    envelope_model: pkg.models.ModelDeclaredExplicit\n"
+            "    envelope_version: '9.9.9'\n"
+            "published_events:\n"
+            "  - topic: onex.evt.svc.declared.v1\n"
+            '    event_type: "ModelShouldNotWin"\n',
+        )
+        graph = extract_seam_graph(str(tmp_path), ("svc",))
+        edge = next(e for e in graph.edges if e.edge_id == "S1")
+        assert edge.envelope_model == "pkg.models.ModelDeclaredExplicit"
+        assert edge.envelope_version == "9.9.9"
+
+    def test_two_runs_with_envelope_correlation_are_byte_identical(
+        self, tmp_path: Path
+    ) -> None:
+        shared_topic = "onex.evt.svc.determinism-check.v1"
+        _write(
+            tmp_path,
+            "svc_producer/contracts/contract.yaml",
+            "name: svc_producer\n"
+            "event_bus:\n"
+            "  subscribe_topics: []\n"
+            f"  publish_topics:\n    - {shared_topic}\n"
+            "published_events:\n"
+            f"  - topic: {shared_topic}\n"
+            '    event_type: "ModelDeterminismCheck"\n',
+        )
+        _write(
+            tmp_path,
+            "svc_consumer/contracts/contract.yaml",
+            "name: svc_consumer\n"
+            "event_bus:\n"
+            f"  subscribe_topics:\n    - {shared_topic}\n"
+            "  publish_topics: []\n",
+        )
+        first = extract_seam_graph(str(tmp_path), ("svc_producer", "svc_consumer"))
+        second = extract_seam_graph(str(tmp_path), ("svc_producer", "svc_consumer"))
+        assert first.model_dump_json() == second.model_dump_json()
+        assert any(e.envelope_model == "ModelDeterminismCheck" for e in first.edges)
+        assert any(e.envelope_version == "v1" for e in first.edges)
 
 
 @pytest.mark.unit

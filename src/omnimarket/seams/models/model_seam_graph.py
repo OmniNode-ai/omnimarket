@@ -230,8 +230,16 @@ class ModelSeamGraphEdgeDeclaration(BaseModel):
     ``envelope_model`` / ``envelope_version`` are optional (``None``, not a
     fabricated placeholder) because the real ``event_bus.publish_topics`` /
     ``subscribe_topics`` schema does not carry per-topic envelope type
-    information — only the hand-authored ``seams:`` schema does. A ``None``
-    here means "not declared by this source," never "unknown but assumed."
+    information — only the hand-authored ``seams:`` schema declares both
+    directly. ``extract_seam_graph``'s post-extraction correlation pass
+    (OMN-15843) fills in what it honestly can for an event_bus-schema edge
+    without fabricating: ``envelope_version`` from the topic's own ``.vN``
+    version suffix (ONEX topic names are versioned by convention), and
+    ``envelope_model`` from any contract's ``published_events:`` block that
+    declares the same topic (producer-authored, but a consumer edge shares
+    the same topic's single wire envelope, so it inherits the value too). A
+    ``None`` remaining after that pass means "not declared/resolvable by
+    any scanned source," never "unknown but assumed."
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
