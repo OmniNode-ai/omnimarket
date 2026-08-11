@@ -48,7 +48,7 @@
     "extension": 1,
     "function": 14,
     "sequence": 14,
-    "table": 56,
+    "table": 57,
     "view": 10
   },
   "relations": [
@@ -3119,6 +3119,59 @@
     },
     {
       "accessor_nodes": [
+        "node_log_persistence_effect"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_log_persistence_effect/migrations/0000_create_log_entries.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_log_persistence_effect/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "OMNINODE_INTERNAL",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [
+        "idx_log_entries_correlation",
+        "idx_log_entries_level_ts",
+        "idx_log_entries_node_ts",
+        "idx_log_entries_ts"
+      ],
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
+      "keys": [
+        "PRIMARY KEY (entry_id)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_log_persistence_effect",
+      "name": "log_entries",
+      "owner_declaration": "node_log_persistence_effect",
+      "partitioning": [],
+      "producer": "node_log_persistence_effect",
+      "readers": [],
+      "target_schema": "omninode_internal",
+      "writers": [
+        "node_log_persistence_effect"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_mcp_tools"
       ],
       "authoritative_sources": [
@@ -4782,15 +4835,15 @@
   ],
   "retained_live_census": {
     "evidence_source": "omni_home/docs/plans/2026-07-29-two-database-tenant-vs-internal-split-plan.md",
-    "minimum_unreconciled_live_base_tables": 32,
+    "minimum_unreconciled_live_base_tables": 31,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 54,
-    "source_declared_tables": 56
+    "source_created_tables": 55,
+    "source_declared_tables": 57
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -4806,7 +4859,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 54 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-32-table gap require an authorized catalog read",
+      "reason": "repository sources contain 55 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-31-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
