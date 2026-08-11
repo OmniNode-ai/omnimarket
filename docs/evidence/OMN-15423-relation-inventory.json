@@ -3119,7 +3119,8 @@
     },
     {
       "accessor_nodes": [
-        "node_log_persistence_effect"
+        "node_log_persistence_effect",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_log_persistence_effect/migrations/0000_create_log_entries.sql"
@@ -3129,10 +3130,11 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_log_persistence_effect/contract.yaml"
       ],
       "current_schema": [
-        "public"
+        "omninode_internal"
       ],
       "dependencies": [],
       "dependent_objects": [],
@@ -3167,7 +3169,8 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_log_persistence_effect"
+        "node_log_persistence_effect",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
