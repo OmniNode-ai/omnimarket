@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from omnimarket.projection.runner import (
+    PROJECTION_RUNNER_HEALTH_PORT_ENV,
     PROJECTION_RUNTIME_BINDING_OVERLAY_ENV,
     BaseProjectionRunner,
     MessageMeta,
@@ -369,3 +370,76 @@ class TestFailLoudOffsetCommit:
         source = inspect.getsource(runner_module.BaseProjectionRunner.run)
         assert "enable_auto_commit=False" in source
         assert "enable_auto_commit=True" not in source
+
+
+class TestReadinessHealthServer:
+    """OMN-15800 AC2 follow-on.
+
+    A standalone writer process (e.g. HandlerLiveEventsProjectionRunner on
+    onex-dev) has no HTTP surface by default, but onex-dev's own CI gate
+    requires readinessProbe.httpGet.path in {/ready, /healthz} on every
+    k8s/onex-dev/runtime Deployment. This is the opt-in server that closes
+    that gap without imposing an HTTP surface on every existing deployment
+    (e.g. .201's docker-catalog wiring, which declares healthcheck: null).
+    """
+
+    def test_not_started_when_env_var_unset(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv(PROJECTION_RUNNER_HEALTH_PORT_ENV, raising=False)
+        runner = DummyProjectionRunner()
+        runner._start_health_server_if_configured()
+        try:
+            assert runner._health_server is None
+            assert runner._health_thread is None
+        finally:
+            runner._stop_health_server()
+
+    def test_healthz_always_ok_and_ready_reflects_running_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        import http.client
+
+        monkeypatch.setenv(PROJECTION_RUNNER_HEALTH_PORT_ENV, "0")
+        runner = DummyProjectionRunner()
+        try:
+            runner._start_health_server_if_configured()
+            assert runner._health_server is not None
+            port = runner._health_server.server_address[1]
+
+            conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+            try:
+                conn.request("GET", "/healthz")
+                resp = conn.getresponse()
+                assert resp.status == 200
+                resp.read()
+
+                # Not running yet -- /ready must fail closed, never a bare 200.
+                conn.request("GET", "/ready")
+                resp = conn.getresponse()
+                assert resp.status == 503
+                resp.read()
+
+                runner._running = True
+                conn.request("GET", "/ready")
+                resp = conn.getresponse()
+                assert resp.status == 200
+                resp.read()
+
+                conn.request("GET", "/not-a-real-path")
+                resp = conn.getresponse()
+                assert resp.status == 404
+                resp.read()
+            finally:
+                conn.close()
+        finally:
+            runner._stop_health_server()
+
+    def test_stop_is_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(PROJECTION_RUNNER_HEALTH_PORT_ENV, "0")
+        runner = DummyProjectionRunner()
+        runner._start_health_server_if_configured()
+        runner._stop_health_server()
+        assert runner._health_server is None
+        runner._stop_health_server()  # must not raise on a second call
+        assert runner._health_server is None

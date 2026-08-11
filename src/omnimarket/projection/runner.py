@@ -5,10 +5,12 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import hashlib
+import http.server
 import json
 import logging
 import os
 import signal
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
@@ -56,8 +58,64 @@ RETRY_BASE_DELAY = 2.0
 RETRY_MAX_DELAY = 30.0
 MAX_RETRY_ATTEMPTS = 10
 
+# OMN-15800 AC2 follow-on: a standalone BaseProjectionRunner process (e.g. the
+# onex-dev k8s Deployment for HandlerLiveEventsProjectionRunner) has no HTTP
+# surface, but omninode_infra's own CI gate
+# (scripts/check-readiness-probe-paths.py, OMN-4705) requires every
+# k8s/onex-dev/runtime Deployment to declare a readinessProbe.httpGet.path in
+# {/ready, /healthz}. Opt-in via this env var so every deployment that does
+# NOT set it (e.g. the .201 docker-catalog wiring, which declares
+# `healthcheck: null` for this same process) is completely unaffected.
+PROJECTION_RUNNER_HEALTH_PORT_ENV = "PROJECTION_RUNNER_HEALTH_PORT"
+
 # Async publish callable injected into projection handlers: (topic, value_bytes) -> None.
 PublishFn = Callable[[str, bytes], Coroutine[Any, Any, None]]
+
+
+class _ProjectionHealthServer(http.server.ThreadingHTTPServer):
+    """``ThreadingHTTPServer`` carrying a typed readiness predicate.
+
+    Subclassed (not a bare attribute bolt-on) so ``is_ready`` is a declared
+    attribute, not an implicit runtime injection.
+    """
+
+    is_ready: Callable[[], bool]
+
+
+class _ProjectionHealthRequestHandler(http.server.BaseHTTPRequestHandler):
+    """Minimal stdlib readiness/liveness endpoint for onex-dev k8s probes.
+
+    Two paths only, stdlib-only (no new dependency): ``/healthz`` always
+    answers 200 once the process is up; ``/ready`` answers 200 only once the
+    Kafka consumer loop has actually started (mirrors the semantics
+    ``check-readiness-probe-paths.py`` documents for every other runtime
+    Deployment -- "'/ready' gates on Kafka subscription readiness").
+    """
+
+    server: _ProjectionHealthServer
+
+    def do_GET(self) -> None:
+        if self.path == "/healthz":
+            self._respond(200, b"ok")
+            return
+        if self.path == "/ready":
+            ready = self.server.is_ready()
+            self._respond(200 if ready else 503, b"ready" if ready else b"not-ready")
+            return
+        self._respond(404, b"not-found")
+
+    def _respond(self, status: int, body: bytes) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def log_message(self, format: str, *args: Any) -> None:
+        # Silence stdlib per-request access logging; the runner's own
+        # structured logger (module-level `logger`) is authoritative for
+        # this process's diagnostics.
+        return
 
 
 @dataclass
@@ -355,6 +413,43 @@ class BaseProjectionRunner(ABC):
         # (tests or a DI container) takes precedence over the lazily-built producer.
         self._publish_fn: PublishFn | None = publish_fn
         self._producer: AIOKafkaProducer | None = None
+        self._health_server: _ProjectionHealthServer | None = None
+        self._health_thread: threading.Thread | None = None
+
+    def _start_health_server_if_configured(self) -> None:
+        """Start the readiness/liveness HTTP server iff configured.
+
+        See ``PROJECTION_RUNNER_HEALTH_PORT_ENV`` for the opt-in rationale.
+        A malformed port value fails loudly (``int()`` raises) rather than
+        silently skipping the server -- this repo forbids defensive
+        swallow-and-continue on a caller-declared config value.
+        """
+        raw_port = os.environ.get(PROJECTION_RUNNER_HEALTH_PORT_ENV, "").strip()
+        if not raw_port:
+            return
+        port = int(raw_port)
+        server = _ProjectionHealthServer(
+            ("0.0.0.0", port), _ProjectionHealthRequestHandler
+        )
+        server.is_ready = lambda: self._running is True
+        thread = threading.Thread(
+            target=server.serve_forever,
+            name="projection-runner-health",
+            daemon=True,
+        )
+        thread.start()
+        self._health_server = server
+        self._health_thread = thread
+        logger.info(
+            "Readiness/liveness HTTP server started on :%d (/ready, /healthz)", port
+        )
+
+    def _stop_health_server(self) -> None:
+        if self._health_server is not None:
+            self._health_server.shutdown()
+            self._health_server.server_close()
+            self._health_server = None
+        self._health_thread = None
 
     @property
     @abstractmethod
@@ -625,6 +720,8 @@ class BaseProjectionRunner(ABC):
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, lambda: asyncio.ensure_future(self.shutdown()))
 
+        self._start_health_server_if_configured()
+
         await self._db.connect()
         logger.info("DB connected")
 
@@ -695,6 +792,7 @@ class BaseProjectionRunner(ABC):
                 await asyncio.sleep(delay)
 
         logger.error("Consumer failed after %d retries", MAX_RETRY_ATTEMPTS)
+        self._stop_health_server()
         await self._stop_producer()
         await self._db.close()
 
@@ -702,6 +800,7 @@ class BaseProjectionRunner(ABC):
         """Graceful shutdown."""
         logger.info("Shutting down...")
         self._running = False
+        self._stop_health_server()
         if self._consumer:
             with contextlib.suppress(Exception):
                 await self._consumer.stop()
