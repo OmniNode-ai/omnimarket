@@ -23,6 +23,15 @@ handler_routing:
         name: NodeLogPersistenceEffect
         module: omnimarket.nodes.node_log_persistence_effect.handlers.handler_log_persistence_effect
 
+db_io:
+  db_tables:
+    - name: log_entries
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_log_entries.sql"
+      access: write
+      role: log_entries
+
 event_bus:
   subscribe_topics:
     - onex.evt.platform.log-entry.v1

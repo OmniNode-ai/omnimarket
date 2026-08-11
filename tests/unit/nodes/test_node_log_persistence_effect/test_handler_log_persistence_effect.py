@@ -9,10 +9,12 @@ No real database — asyncpg pool is mocked throughout.
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+import yaml
 
 from omnimarket.nodes.node_log_persistence_effect.handlers.handler_log_persistence_effect import (
     ModelLogPersistenceResult,
@@ -188,3 +190,31 @@ def test_handle_raw_returns_skipped_status() -> None:
 
     assert result["entry_id"] == entry.entry_id
     assert result["status"] == "skipped"
+
+
+# ---------------------------------------------------------------------------
+# Contract: terminal event
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_contract_declares_the_log_persistence_completed_terminal_event() -> None:
+    """Runtime wiring normalizes the handler's typed return into an output
+    event and publishes it through this contract-declared terminal topic
+    (the handler itself never publishes — see the module docstring's
+    handler-no-publish-access constraint). Pins the exact string so contract
+    drift is caught here, not only at deploy time."""
+    contract_path = (
+        Path(__file__).parents[4]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_log_persistence_effect"
+        / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+
+    assert (
+        contract["terminal_event"] == "onex.evt.omnimarket.log-persistence-completed.v1"
+    )
+    assert contract["terminal_event"] in contract["event_bus"]["publish_topics"]

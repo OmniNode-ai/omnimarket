@@ -149,9 +149,17 @@ def test_retained_live_census_gap_fails_closed() -> None:
         "blocked_pending_live_catalog_and_activity_evidence"
     )
     assert census["observed_base_tables"] == 86
-    assert census["source_created_tables"] == 54
-    assert census["source_declared_tables"] == 56
-    assert census["minimum_unreconciled_live_base_tables"] == 32
+    # 55 as of OMN-15846: +1 for the new node-owned
+    # node_log_persistence_effect/0000_create_log_entries.sql CREATE TABLE
+    # (the node-owned replacement for the flat 083_create_log_entries.sql,
+    # which has no execution path in the k8s Job that applies flat
+    # migrations — cross-DB \connect).
+    assert census["source_created_tables"] == 55
+    # 57 as of OMN-15846: +1 for node_log_persistence_effect's new db_io
+    # declaration (log_entries), required by the shadow gate
+    # (application sources create tables with no db_io declaration).
+    assert census["source_declared_tables"] == 57
+    assert census["minimum_unreconciled_live_base_tables"] == 31
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 
