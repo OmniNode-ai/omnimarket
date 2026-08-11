@@ -56,6 +56,13 @@ _GROUP_VERSION = "v1"
 DEFAULT_CLIENT_ID = "omnimarket-projection-api-snapshot-cache"
 _BOOTSTRAP_POLL_INTERVAL_SECONDS = 0.5
 _BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
+# OMN-15876: batch size for the post-bootstrap-poll consume loop's
+# getmany() calls. The catch-up check runs at most once per batch (not once
+# per message), so this bounds RPC overhead to roughly
+# (backlog_size / this) end_offsets()/position() round trips during a fresh
+# pod's bootstrap replay, independent of how large the topic's retained
+# backlog is.
+_CONSUME_BATCH_MAX_RECORDS = 500
 
 
 def _default_group_id() -> str:
@@ -394,12 +401,42 @@ class SnapshotCache:
                 "inside the consume loop catches them up",
                 _BOOTSTRAP_POLL_MAX_ATTEMPTS,
             )
-        async for msg in self._consumer:
+        # OMN-15876: consume in BATCHES and run the RPC-heavy catch-up check
+        # at most once per batch, never once per message. The prior
+        # `async for msg in self._consumer: ... if not bootstrapped: await
+        # _mark_bootstrap_complete_when_caught_up()` shape fired an
+        # end_offsets() broker round trip (across every assigned partition)
+        # plus a position() round trip per assigned partition on EVERY
+        # message from a not-yet-bootstrapped topic. Against a topic with a
+        # large, actively-growing retained backlog (onex-dev's
+        # live-events.v1 exposure: 60,724+ messages) that is tens of
+        # thousands of unbatched broker round trips before a single fresh
+        # pod's bootstrap replay can complete -- observed live as a pod that
+        # ran 47+ minutes with zero restarts and never left /ready 503
+        # (readinessProbe only marks NotReady; it never restarts the pod, so
+        # this was a genuine non-convergent-in-practice algorithm, not a
+        # crash). Batching bounds RPC overhead by (batch count), not
+        # (message count), independent of backlog size.
+        while self._running:
+            batches = await self._consumer.getmany(
+                timeout_ms=int(_BOOTSTRAP_POLL_INTERVAL_SECONDS * 1000),
+                max_records=_CONSUME_BATCH_MAX_RECORDS,
+            )
             if not self._running:
                 break
-            headers = list(msg.headers or [])
-            self.apply_message(msg.topic, msg.key, msg.value, headers)
-            if not self.is_bootstrapped(msg.topic):
+            for _tp, messages in batches.items():
+                for msg in messages:
+                    headers = list(msg.headers or [])
+                    self.apply_message(msg.topic, msg.key, msg.value, headers)
+            # Run the catch-up check whenever any topic remains
+            # un-bootstrapped -- including an EMPTY batch. A late partition
+            # assignment (aiokafka assigns lazily post-group-join; can land
+            # after the initial bounded poll window above has already
+            # exhausted) on a topic with zero traffic would otherwise never
+            # get a chance to be marked bootstrap_complete: getmany() keeps
+            # returning {} forever and this loop would never call the check
+            # again (CodeRabbit, PR #2051, PRRT_kwDOR6jjtc6YWuL5).
+            if any(not state.bootstrap_complete for state in self._state.values()):
                 await self._mark_bootstrap_complete_when_caught_up()
 
     async def _mark_bootstrap_complete_when_caught_up(self) -> None:
