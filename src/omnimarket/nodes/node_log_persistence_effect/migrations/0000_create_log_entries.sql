@@ -118,6 +118,59 @@ ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS correlation_i
 ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS duration_ms DOUBLE PRECISION;
 ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
 ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Defaults: ADD COLUMN IF NOT EXISTS ... DEFAULT is a no-op on a column that
+-- already existed without one -- restore the declared defaults explicitly so
+-- a drifted pre-existing column converges too, not only a brand-new one.
+ALTER TABLE omninode_internal.log_entries ALTER COLUMN function_name SET DEFAULT '';
+ALTER TABLE omninode_internal.log_entries ALTER COLUMN level SET DEFAULT 'info';
+ALTER TABLE omninode_internal.log_entries ALTER COLUMN metadata SET DEFAULT '{}';
+ALTER TABLE omninode_internal.log_entries ALTER COLUMN ingested_at SET DEFAULT NOW();
+
+-- NOT NULL convergence: only promoted when every existing row already
+-- satisfies it (never guessed/backfilled) -- a pre-existing row holding NULL
+-- fails loud and names the exact conflict instead of silently reshaping data.
+DO $$
+DECLARE
+    v_col   TEXT;
+    v_nulls BIGINT;
+BEGIN
+    FOREACH v_col IN ARRAY ARRAY[
+        'entry_id', 'timestamp', 'node_name', 'function_name', 'level',
+        'message', 'metadata', 'ingested_at'
+    ]
+    LOOP
+        EXECUTE format(
+            'SELECT count(*) FROM %s WHERE %I IS NULL',
+            'omninode_internal.log_entries'::regclass, v_col
+        ) INTO v_nulls;
+        IF v_nulls = 0 THEN
+            EXECUTE format(
+                'ALTER TABLE %s ALTER COLUMN %I SET NOT NULL',
+                'omninode_internal.log_entries'::regclass, v_col
+            );
+        ELSE
+            RAISE EXCEPTION
+                'OMN-15846: cannot converge omninode_internal.log_entries.% to NOT NULL -- % pre-existing row(s) hold NULL. This needs a data ruling (backfill value, or drop the NOT NULL from the contract); the migration refuses to guess.',
+                v_col, v_nulls;
+        END IF;
+    END LOOP;
+END$$;
+
+-- Primary key: guarded so a pre-existing table without one gets it, and a
+-- table that already has it (fresh-create path, or a prior partial apply)
+-- is left untouched. entry_id is NOT NULL by the block above at this point,
+-- so the constraint can always be added once reached.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint
+        WHERE conrelid = 'omninode_internal.log_entries'::regclass AND contype = 'p'
+    ) THEN
+        ALTER TABLE omninode_internal.log_entries
+            ADD CONSTRAINT log_entries_pkey PRIMARY KEY (entry_id);
+    END IF;
+END$$;
 -- ---- END OMN-15376 shape reconciliation: omninode_internal.log_entries ----
 
 COMMENT ON TABLE omninode_internal.log_entries IS

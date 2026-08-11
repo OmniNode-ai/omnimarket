@@ -139,7 +139,7 @@ class NodeLogPersistenceEffect:
         async with pool.acquire() as conn:
             inserted_id = await conn.fetchval(
                 """
-                INSERT INTO log_entries (
+                INSERT INTO omninode_internal.log_entries (
                     entry_id,
                     timestamp,
                     node_name,
