@@ -228,6 +228,52 @@ def _is_green_check_run(run: dict[str, object]) -> bool:
     return status == "completed" and conclusion in _GH_CHECK_RUN_GREEN_CONCLUSIONS
 
 
+def _latest_check_run_key(run: dict[str, object]) -> tuple[int, str, int]:
+    """Sort key implementing OMN-15852's latest-completed-run-wins ordering
+    for check-runs sharing a single ``(name, sha)`` pair — a rerun creates a
+    NEW check-run object rather than replacing the old one, so the raw
+    Checks API can carry multiple entries for one required context name on
+    one commit.
+
+    Tier 0 (completed): ordered by the run's own ``completed_at``. GitHub's
+    check-run timestamps are fixed-width ISO-8601 UTC (``...Z``), so plain
+    string comparison is chronologically correct — no datetime parsing, no
+    parse-failure branch to fail open through.
+
+    Tier 1 (not completed — queued/in_progress/etc.): sorts AFTER every
+    completed run. A rerun only starts once the prior attempt has finished,
+    so an in-progress run is chronologically the most recent attempt for
+    this context — it must not be shadowed by an earlier COMPLETED run
+    (semantics guard: never credit in-progress).
+
+    Within either tier, ties (identical ``completed_at``, or multiple
+    simultaneously-pending runs) are broken by the greatest ``id`` —
+    GitHub assigns check-run ids in monotonically increasing creation
+    order, which settles the OMN-15446 same-second case independent of
+    fetch/list ordering.
+    """
+    status = str(run.get("status") or "").lower()
+    completed_at = run.get("completed_at")
+    completed_at_str = completed_at if isinstance(completed_at, str) else ""
+    run_id = run.get("id")
+    run_id_int = run_id if isinstance(run_id, int) else -1
+    tier = 0 if status == "completed" else 1
+    return (tier, completed_at_str, run_id_int)
+
+
+def _latest_check_run(
+    runs: list[dict[str, object]],
+) -> dict[str, object] | None:
+    """Collapse ``runs`` (already filtered to a single required-context name
+    on a single commit sha) to the one run that authoritatively represents
+    that context's CURRENT state, per :func:`_latest_check_run_key`. Returns
+    ``None`` for an empty input, matching the "context produced zero runs
+    here" case callers already handle."""
+    if not runs:
+        return None
+    return max(runs, key=_latest_check_run_key)
+
+
 def _check_run_is_own_or_ambiguous(
     run: dict[str, object],
     pr_head_branch: str,
@@ -709,7 +755,7 @@ class HandlerDodEvidenceGithubEffect:
                 f"repos/{repo}/commits/{sha}/check-runs",
                 "--paginate",
                 "--jq",
-                ".check_runs[] | {name, status, conclusion, check_suite}",
+                ".check_runs[] | {name, status, conclusion, check_suite, id, completed_at}",
             ],
             _GH_PR_TIMEOUT_S,
         )
@@ -749,7 +795,7 @@ class HandlerDodEvidenceGithubEffect:
                     f"repos/{repo}/commits/{merge_sha}/check-runs",
                     "--paginate",
                     "--jq",
-                    ".check_runs[] | {name, status, conclusion}",
+                    ".check_runs[] | {name, status, conclusion, id, completed_at}",
                 ],
                 _GH_PR_TIMEOUT_S,
             )
@@ -880,7 +926,22 @@ class HandlerDodEvidenceGithubEffect:
             # ``merge_matches`` need no foreign-branch attribution: a squash
             # merge commit is unique to exactly one merge event, so every run
             # found there is unconditionally this PR's own evidence.
-            relevant = head_relevant + merge_matches
+            #
+            # OMN-15852: a rerun of this context on either commit creates a
+            # NEW check-run object rather than replacing the old one, so
+            # ``head_relevant``/``merge_matches`` can each carry multiple
+            # entries for this one ``name``. Collapse each group
+            # independently — per (name, sha); the head sha and merge sha
+            # are different commits and stay separately-evaluated ADDITIVE
+            # evidence exactly as before this fix — to the single run that
+            # authoritatively represents THAT commit's current state for
+            # this context (latest-completed-run-wins; see
+            # ``_latest_check_run``). Without this, a stale FAILED rerun
+            # superseded by a later green run on the same sha permanently
+            # reddened the context.
+            head_winner = _latest_check_run(head_relevant)
+            merge_winner = _latest_check_run(merge_matches)
+            relevant = [w for w in (head_winner, merge_winner) if w is not None]
             if not relevant:
                 # Every instance of this required context is PROVABLY foreign
                 # (it ran only on a different, resolvable branch sharing this

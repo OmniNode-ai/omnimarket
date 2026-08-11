@@ -1168,6 +1168,241 @@ class TestFetchPrChecksGreenScoping:
 
 
 # ---------------------------------------------------------------------------
+# FETCH_PR_CHECKS_GREEN (OMN-15852) — latest-completed-run-wins for duplicate
+# check-run names sharing a single (name, sha) pair. A rerun creates a NEW
+# check-run object rather than replacing the old one, so the raw Checks API
+# can carry multiple entries for one required context on one commit. Prior
+# to this fix, the rollup treated ANY red run anywhere as reddening the
+# whole context — a FAILED run superseded by a later GREEN rerun before
+# merge read red forever. Live reproduction: OCC#6333 head ``ce7f89f9`` had
+# two ``CI Summary`` check-runs on the same SHA — a failure at 21:24:31Z
+# (id 93602866978) and a success at 21:35:25Z (id 93605566948) — merged
+# 22:00:42Z; the evaluator read that context red until this fix.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestFetchPrChecksGreenLatestRunWins:
+    def test_latest_run_wins_reproduces_occ_6333_stale_failure_recovers_green(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Live reproduction (OCC#6333): a FAILURE at 21:24:31Z superseded
+        by a SUCCESS at 21:35:25Z on the same head SHA must resolve GREEN —
+        the run with the greatest ``completed_at`` is this context's
+        authoritative state, not the mere presence of an earlier failure."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_occ_pr_view("mine"),
+                protection=json.dumps(["CI Summary"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "check_suite": {"id": 1},
+                        "id": 93602866978,
+                        "completed_at": "2026-08-08T21:24:31Z",
+                    },
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                        "id": 93605566948,
+                        "completed_at": "2026-08-08T21:35:25Z",
+                    },
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is True, result.detail
+
+    def test_latest_run_red_stays_red_even_when_earlier_run_was_green(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Non-weakening control (the mirror image of the repro above): when
+        the LATER-completed run is the failure — an earlier green run was
+        superseded by a genuine regression on rerun — the context must stay
+        red. Latest-run-wins means "prefer recency," never "prefer green."
+        """
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_occ_pr_view("mine"),
+                protection=json.dumps(["CI Summary"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                        "id": 1001,
+                        "completed_at": "2026-08-08T21:24:31Z",
+                    },
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "check_suite": {"id": 1},
+                        "id": 1002,
+                        "completed_at": "2026-08-08T21:35:25Z",
+                    },
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "CI Summary" in (result.detail or "")
+
+    def test_same_second_completion_tiebreaks_by_run_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-15446: two runs completed within the same wall-clock second
+        carry an IDENTICAL ``completed_at`` string, so ``completed_at``
+        alone cannot order them. The tiebreak is the monotonically
+        increasing run id (GitHub assigns ids in creation order) — here the
+        HIGHER id (the failure) is listed FIRST in the fixture to prove the
+        winner is chosen by id, not by fetch/list position."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_occ_pr_view("mine"),
+                protection=json.dumps(["CI Summary"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "check_suite": {"id": 1},
+                        "id": 2002,
+                        "completed_at": "2026-08-08T21:24:31Z",
+                    },
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                        "id": 2001,
+                        "completed_at": "2026-08-08T21:24:31Z",
+                    },
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+        assert "CI Summary" in (result.detail or "")
+
+    def test_pending_latest_run_is_not_green_even_after_earlier_success(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Semantics guard: a rerun still IN PROGRESS (no ``completed_at``)
+        is chronologically the latest attempt for this context — a rerun
+        only starts once the prior attempt finished — and must not be
+        shadowed by an earlier COMPLETED success. An in-progress run is
+        never credited as green."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_occ_pr_view("mine"),
+                protection=json.dumps(["CI Summary"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs=_lines(
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "check_suite": {"id": 1},
+                        "id": 3001,
+                        "completed_at": "2026-08-08T21:24:31Z",
+                    },
+                    {
+                        "name": "CI Summary",
+                        "status": "in_progress",
+                        "conclusion": None,
+                        "check_suite": {"id": 1},
+                        "id": 3002,
+                        "completed_at": None,
+                    },
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is False, result.detail
+
+    def test_latest_run_wins_scoped_independently_per_sha_on_merge_commit(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The (name, sha) grouping applies to the merge-commit fetch path
+        too, independently of the head-SHA path: two reruns of 'CI Summary'
+        on the merge commit alone (nothing on the pre-merge head SHA)
+        collapse to their own latest-completed winner (success), resolving
+        green — proving duplicate collapsing is not accidentally specific
+        to the head-SHA jq projection."""
+        monkeypatch.setattr(
+            hd_mod.subprocess,
+            "run",
+            _routed_gh(
+                view=_pr_view_merged("mine", merge_sha="deadbeef06"),
+                protection=json.dumps(["CI Summary"]),
+                suites=_lines({"id": 1, "head_branch": "mine"}),
+                runs="",  # nothing on the pre-merge head SHA (push-triggered)
+                merge_sha="deadbeef06",
+                merge_runs=_lines(
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "failure",
+                        "id": 4001,
+                        "completed_at": "2026-08-08T21:24:31Z",
+                    },
+                    {
+                        "name": "CI Summary",
+                        "status": "completed",
+                        "conclusion": "success",
+                        "id": 4002,
+                        "completed_at": "2026-08-08T21:35:25Z",
+                    },
+                ),
+            ),
+        )
+        command = ModelDodEvidenceGithubLookupCommand(
+            operation=EnumDodEvidenceGithubOperation.FETCH_PR_CHECKS_GREEN,
+            repo=_REPO,
+            pr_number=_PR,
+        )
+        result = HandlerDodEvidenceGithubEffect().handle(command).events[0]
+        assert result.checks_green is True, result.detail
+
+
+# ---------------------------------------------------------------------------
 # FETCH_PR_CHECKS_GREEN (OMN-15715) — merged PR whose base branch was deleted
 # post-merge (the standard stacked-PR cleanup step). Live-verified repro:
 # ``omnibase_infra#2558`` merged into
