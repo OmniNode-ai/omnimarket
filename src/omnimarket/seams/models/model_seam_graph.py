@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""``seam-graph/v1`` output models for node_seam_graph_compute (OMN-15763).
+"""``seam-graph/v2`` output models for node_seam_graph_compute (OMN-15763).
 
 **Schema extension (post-merge fix-forward pass, 2026-08-08 addendum
 reconciliation).** The addendum flagged, and adversarial verify of the
@@ -17,6 +17,23 @@ carries ``key_fields``, ``delivery_semantics``, ``producer_contract_path``,
 ``seams:`` block entry may not declare every one of them yet, and the
 counterpart contract path is filled by post-extraction correlation (below),
 not by the declaring side alone.
+
+**``seam-graph/v1`` -> ``seam-graph/v2`` bump (OMN-15854).** PR #2043
+(OMN-15779) added ``is_test_harness`` (a Pydantic v2 ``computed_field`` on
+``ModelSeamGraphCodeObservation``) and ``observation_summary`` (a
+``computed_field`` on ``ModelSeamGraphV1``) — both serialize into
+``model_dump()``/``model_dump_json()`` by Pydantic v2's default
+computed-field behavior, which is a wire-shape change. That PR left
+``schema_version`` at the literal ``"seam-graph/v1"``, an unbumped drift
+flagged as OMN-15854's R2 companion fact. This PR bumps to
+``"seam-graph/v2"`` in the same change that adds the third-split fields
+below (``is_validator_runtime_tooling`` on the observation,
+``validator_runtime_tooling``/``inter_service_application`` on the
+summary) — one intentional version bump covering both the already-shipped
+and the newly-added computed-field additions, rather than two silent
+drifts. Verified zero external deserializers exist today (cross-repo grep,
+see the PR body) — this is a schema-hygiene fix-forward, not a live
+compat break.
 
 Two extraction classes, kept structurally distinct so a reviewer can see
 which is which:
@@ -116,6 +133,55 @@ def _is_test_harness_source_path(source_path: str) -> bool:
     return False
 
 
+def _is_validator_runtime_tooling_source_path(source_path: str) -> bool:
+    """True when ``source_path`` sits under a ``validation/`` tree AND its
+    filename is the ``runtime_*.py`` conformance/self-test harness for one
+    of ``omnibase_core``'s static validators (OMN-15854 third split, audit
+    R1 follow-up). Glob: ``**/validation/**/runtime_*.py``.
+
+    This is the ``validator-runtime-tooling`` sub-bucket of the
+    ``production-application`` (non-test-harness) population --
+    single-process validator conformance scaffolding, not cross-boundary
+    Kafka application traffic, even though it is NOT excluded by
+    ``_is_test_harness_source_path`` (no ``tests/`` segment, no
+    ``event_bus/testing``, no ``runtime/transport/*conformance*``). Measured
+    basis (OMN-15854): 8 such files under
+    ``omnibase_core/src/omnibase_core/validation/**/runtime_*.py``, each
+    contributing 2 ``producer_send`` + 2 ``consumer_subscribe``
+    observations = 16 of the 22 ``production-application`` hits per kind.
+
+    **BOTH conditions required** so this never reclassifies a genuine
+    inter-service site whose filename happens to start with ``runtime_``
+    but which does NOT sit under ``validation/`` -- e.g.
+    ``omnibase_infra/observability/runtime_log_event_bridge.py`` and
+    ``omnibase_core/runtime/runtime_local.py`` are both real inter-service
+    application sites (OMN-15854's named 6+6) whose filenames start with
+    ``runtime_`` but whose paths have no ``validation`` segment, so this
+    predicate is ``False`` for both.
+
+    **Fail-closed default:** requires a POSITIVE glob match to be excluded
+    into this suppression bucket -- mirroring
+    ``_is_test_harness_source_path``'s own convention (a path must prove
+    harness status to be excluded from ``production_application``; absence
+    of proof means it stays counted). A path that matches NEITHER this glob
+    nor the harness glob above defaults to ``inter_service_application`` --
+    the un-suppressed, "still counted as real signal" bucket -- so an
+    unrecognized new file is never silently hidden from a downstream gate's
+    trusted-seam count without an explicit, narrow, auditable glob match
+    proving it is tooling.
+    """
+
+    parts = PurePosixPath(source_path).parts
+    if not parts:
+        return False
+    filename = parts[-1]
+    return (
+        "validation" in parts[:-1]
+        and filename.startswith("runtime_")
+        and filename.endswith(".py")
+    )
+
+
 class EnumSeamGraphObservationKind(StrEnum):
     """Which code-level extractor produced this observation.
 
@@ -205,13 +271,38 @@ class ModelSeamGraphCodeObservation(BaseModel):
     def is_test_harness(self) -> bool:
         return _is_test_harness_source_path(self.source_path)
 
+    @computed_field(  # type: ignore[prop-decorator]
+        description="True when source_path sits under a validation/ tree "
+        "with a runtime_*.py filename -- validator-runtime conformance/"
+        "self-test tooling (OMN-15854 third split), not cross-boundary "
+        "application traffic. Always correct (derived from source_path). "
+        "Meaningful only when is_test_harness is False -- a harness path "
+        "is already excluded from production_application upstream of this "
+        "split; the two predicates are independent and, on the corpus "
+        "measured for OMN-15854, do not overlap."
+    )
+    @property
+    def is_validator_runtime_tooling(self) -> bool:
+        return _is_validator_runtime_tooling_source_path(self.source_path)
+
 
 class ModelSeamGraphObservationKindSummary(BaseModel):
     """Per-``kind`` observation counts, split production-application vs
-    test-harness-in-src (audit R1, OMN-15779). Replaces the ad hoc manual
+    test-harness-in-src (audit R1, OMN-15779), with production-application
+    further split into validator-runtime-tooling vs inter-service-
+    application (OMN-15854 third split). Replaces the ad hoc manual
     grep/count a prior verification pass produced by hand with a durable,
     code-computed value any gate/golden consumer can read directly instead
-    of re-deriving."""
+    of re-deriving.
+
+    Invariants (asserted in tests, not merely documented):
+    ``total == test_harness + validator_runtime_tooling +
+    inter_service_application`` and ``production_application ==
+    validator_runtime_tooling + inter_service_application``.
+    ``production_application`` is kept (not removed) for backward-shape
+    continuity with the pre-third-split field a consumer may already read;
+    the two new fields are additive.
+    """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
@@ -219,6 +310,8 @@ class ModelSeamGraphObservationKindSummary(BaseModel):
     total: int = Field(ge=0)
     test_harness: int = Field(ge=0)
     production_application: int = Field(ge=0)
+    validator_runtime_tooling: int = Field(ge=0)
+    inter_service_application: int = Field(ge=0)
 
 
 class ModelSeamGraphSourceHashEntry(BaseModel):
@@ -237,7 +330,7 @@ class ModelSeamGraphV1(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    schema_version: Literal["seam-graph/v1"] = "seam-graph/v1"
+    schema_version: Literal["seam-graph/v2"] = "seam-graph/v2"
     discovery_roots: tuple[str, ...] = Field(default_factory=tuple)
     edges: tuple[ModelSeamGraphEdgeDeclaration, ...] = Field(default_factory=tuple)
     code_observations: tuple[ModelSeamGraphCodeObservation, ...] = Field(
@@ -250,7 +343,9 @@ class ModelSeamGraphV1(BaseModel):
     @computed_field(  # type: ignore[prop-decorator]
         description="Per-kind code_observations counts, split "
         "production-application vs test-harness-in-src (audit R1, "
-        "OMN-15779) -- always correct (derived from code_observations, "
+        "OMN-15779), with production-application further split into "
+        "validator-runtime-tooling vs inter-service-application (OMN-15854 "
+        "third split) -- always correct (derived from code_observations, "
         "not a constructor input). Sorted by kind value for determinism "
         "(AC7). A kind with zero observations is omitted, never emitted "
         "as an all-zero row."
@@ -259,11 +354,21 @@ class ModelSeamGraphV1(BaseModel):
     def observation_summary(self) -> tuple[ModelSeamGraphObservationKindSummary, ...]:
         totals: dict[EnumSeamGraphObservationKind, int] = {}
         harness_totals: dict[EnumSeamGraphObservationKind, int] = {}
+        tooling_totals: dict[EnumSeamGraphObservationKind, int] = {}
         for observation in self.code_observations:
             totals[observation.kind] = totals.get(observation.kind, 0) + 1
             if observation.is_test_harness:
                 harness_totals[observation.kind] = (
                     harness_totals.get(observation.kind, 0) + 1
+                )
+            elif observation.is_validator_runtime_tooling:
+                # elif, not a second independent `if`: tooling classification
+                # only applies within the non-harness (production-
+                # application) population -- a harness path is already
+                # excluded above and must not also be double-counted into
+                # the tooling bucket.
+                tooling_totals[observation.kind] = (
+                    tooling_totals.get(observation.kind, 0) + 1
                 )
         return tuple(
             ModelSeamGraphObservationKindSummary(
@@ -271,6 +376,10 @@ class ModelSeamGraphV1(BaseModel):
                 total=total,
                 test_harness=harness_totals.get(kind, 0),
                 production_application=total - harness_totals.get(kind, 0),
+                validator_runtime_tooling=tooling_totals.get(kind, 0),
+                inter_service_application=(
+                    total - harness_totals.get(kind, 0) - tooling_totals.get(kind, 0)
+                ),
             )
             for kind, total in sorted(totals.items(), key=lambda item: item[0].value)
         )

@@ -13,7 +13,7 @@ description: >
   materialized tree — checkout/fetch/ref-resolution happen upstream) for
   contract.yaml "seams:" declarations plus code-level Kafka
   producer/consumer topic literals, os.environ reads, and @ref pins. Emits
-  seam-graph/v1 plus a per-source sha256 manifest so the same pinned tree
+  seam-graph/v2 plus a per-source sha256 manifest so the same pinned tree
   always yields a byte-identical graph (AC7), mirroring
   node_contract_graph_ir_compute's manifest-driven purity argument (§2.2):
   purity holds because the tree is pinned before this node runs, not because
@@ -65,7 +65,7 @@ outputs:
     type: string
   edges:
     type: array
-    description: "Contract-declared seam edges (seam-graph/v1)"
+    description: "Contract-declared seam edges (seam-graph/v2)"
   code_observations:
     type: array
     description: "Code-level extractor observations (producer/consumer/env/@ref)"
