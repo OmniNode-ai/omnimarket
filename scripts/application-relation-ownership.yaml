@@ -44,6 +44,22 @@ db_io:
       migration: docker/migrations/forward/099_create_omninode_internal_live_events.sql
       access: write
       role: live_events
+    # OMN-15846: node_log_persistence_effect's own contract.yaml already
+    # declares this db_io.db_tables entry (schema: omninode_internal); this
+    # top-level entry registers it in the ownership catalog
+    # scripts/ci/check_application_database_sql.py reads via
+    # --ownership-manifest, satisfying the OMN-15361 SQL ownership gate for
+    # the node-owned migration's schema-qualified
+    # omninode_internal.log_entries CREATE TABLE (the node-owned replacement
+    # for the flat 083_create_log_entries.sql migration, which has no
+    # execution path in the k8s Job that applies flat migrations -- cross-DB
+    # \connect).
+    - name: log_entries
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_log_persistence_effect/migrations/0000_create_log_entries.sql
+      access: write
+      role: log_entries
 
 relation_evidence:
   - name: omnimarket_schema_migrations

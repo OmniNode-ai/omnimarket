@@ -10,7 +10,8 @@
 --          omnibase_infra), OMN-15819 (the precedent this file follows:
 --          node-owned replacement for a flat migration the k8s Job cannot
 --          reach), OMN-15282/OMN-15313 (node-owned migration discovery loop
---          this file runs through)
+--          this file runs through), OMN-15359/OMN-15423 (omninode_internal
+--          domain classification this file's schema qualification follows)
 -- Version: 1.0.0
 --
 -- WHY THIS FILE EXISTS (OMN-15846)
@@ -41,15 +42,29 @@
 --   tombstone comment, OMN-15846) as the ledgered historical record of the
 --   original design.
 --
+-- WHY SCHEMA-QUALIFIED omninode_internal.log_entries, NOT BARE log_entries
+--   083's original design created the table unqualified (implicit `public`
+--   in the omnidash_analytics session). Because this table has never
+--   physically existed anywhere (see above), there is no legacy `public`
+--   row set to reconcile against — this is a first physical creation, not a
+--   cutover. `scripts/ci/check_application_database_sql.py`
+--   (OMN-15361/OMN-15423 domain enforcement) requires every NEW deployable
+--   SQL target to be schema-qualified against a declared topology domain;
+--   `omninode_internal` matches this node's own `db_io.db_tables[].schema`
+--   declaration in contract.yaml and the same domain node_service_registry,
+--   node_projection_live_events, and every other OMNINODE_INTERNAL-domain
+--   node migration in this corpus already uses. role_omnidash — the
+--   identity the node-owned loop connects as — was live-confirmed
+--   2026-08-10 to already hold USAGE and CREATE on schema
+--   `omninode_internal` in omnidash_analytics (the OMN-15819 step-3
+--   operator grant has since landed), so this file can create directly
+--   under it with no additional grant required.
+--
 -- WHY role_omnidash NEEDS NO EXPLICIT GRANT HERE
---   Unlike 098/099's omninode_internal.live_events (a schema owned
---   out-of-band by the RDS master, requiring an explicit runtime-role
---   grant), `log_entries` is created directly in `public` by the node-owned
---   loop's own connecting identity (role_omnidash). role_omnidash already
---   owns the `public` schema of omnidash_analytics on this lane (RDS
---   two-owner-split provisioning, OMN-15335) — CREATE TABLE under that
---   identity makes role_omnidash the table owner automatically, with full
---   implicit privileges. No GRANT statement is required or issued.
+--   role_omnidash owns the `omninode_internal` schema's CREATE privilege
+--   (see above) and, as the connecting/creating identity, becomes the table
+--   owner automatically with full implicit privileges. No GRANT statement
+--   is required or issued.
 --
 -- CONSUMER (currently dormant on onex-dev, tracked separately)
 --   omnimarket.nodes.node_log_persistence_effect INSERTs into this table on
@@ -61,19 +76,21 @@
 --   gap; the DSN-wiring gap that keeps the feature end-to-end dormant is a
 --   separate, already-filed concern (see OMN-14153 for the sibling .201
 --   dev-lane symptom of the same feature family) and is not this file's
---   scope.
+--   scope. The handler's own `INSERT INTO log_entries` (unqualified) will
+--   need a matching schema-qualification follow-up when that DSN-wiring
+--   ticket is picked up — out of scope here, noted for that ticket.
 --
 -- IDEMPOTENCY
 --   CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS are safe to
 --   re-run. No role or grant DDL appears in this file.
 --
 -- ROLLBACK
---   DROP TABLE log_entries. Safe: the table is created empty by this file
---   on every path that executes it, and nothing else in the corpus
---   references it.
+--   DROP TABLE omninode_internal.log_entries. Safe: the table is created
+--   empty by this file on every path that executes it, and nothing else in
+--   the corpus references it.
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS log_entries (
+CREATE TABLE IF NOT EXISTS omninode_internal.log_entries (
     entry_id        UUID            PRIMARY KEY,
     timestamp       TIMESTAMPTZ     NOT NULL,
     node_name       TEXT            NOT NULL,
@@ -86,48 +103,48 @@ CREATE TABLE IF NOT EXISTS log_entries (
     ingested_at     TIMESTAMPTZ     NOT NULL DEFAULT NOW()
 );
 
--- ---- BEGIN OMN-15376 shape reconciliation: log_entries ----
+-- ---- BEGIN OMN-15376 shape reconciliation: omninode_internal.log_entries ----
 -- CREATE TABLE IF NOT EXISTS silently no-ops against a drifted pre-existing
 -- table; the guarded adds below converge such a table onto the shape
 -- declared above (no-ops on the fresh-create path, since every column
 -- already exists there). No DROP, no recreate, no TRUNCATE.
-ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS entry_id UUID;
-ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ;
-ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS node_name TEXT;
-ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS function_name TEXT DEFAULT '';
-ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'info';
-ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS message TEXT;
-ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS correlation_id TEXT;
-ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS duration_ms DOUBLE PRECISION;
-ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
-ALTER TABLE log_entries ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMPTZ DEFAULT NOW();
--- ---- END OMN-15376 shape reconciliation: log_entries ----
+ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS entry_id UUID;
+ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS timestamp TIMESTAMPTZ;
+ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS node_name TEXT;
+ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS function_name TEXT DEFAULT '';
+ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS level TEXT DEFAULT 'info';
+ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS message TEXT;
+ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS correlation_id TEXT;
+ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS duration_ms DOUBLE PRECISION;
+ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS metadata JSONB DEFAULT '{}';
+ALTER TABLE omninode_internal.log_entries ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMPTZ DEFAULT NOW();
+-- ---- END OMN-15376 shape reconciliation: omninode_internal.log_entries ----
 
-COMMENT ON TABLE log_entries IS
+COMMENT ON TABLE omninode_internal.log_entries IS
     'Structured log events from ONEX nodes (OMN-12131). '
     '30-day retention window anchored on ingested_at. '
     'Consumed by node_log_persistence_effect via onex.evt.*.log-emitted.v1.';
 
-COMMENT ON COLUMN log_entries.entry_id IS
+COMMENT ON COLUMN omninode_internal.log_entries.entry_id IS
     'Client-supplied UUID — idempotency key for exactly-once ingestion.';
 
-COMMENT ON COLUMN log_entries.ingested_at IS
+COMMENT ON COLUMN omninode_internal.log_entries.ingested_at IS
     '30-day retention anchor. Rows with ingested_at < NOW() - INTERVAL ''30 days'' '
     'are eligible for pruning by the nightly retention job.';
 
 -- Partial index: correlation lookups (skip NULL rows to reduce index size)
 CREATE INDEX IF NOT EXISTS idx_log_entries_correlation
-    ON log_entries (correlation_id)
+    ON omninode_internal.log_entries (correlation_id)
     WHERE correlation_id IS NOT NULL;
 
 -- Composite: node-scoped time-range queries (dashboard primary query path)
 CREATE INDEX IF NOT EXISTS idx_log_entries_node_ts
-    ON log_entries (node_name, timestamp DESC);
+    ON omninode_internal.log_entries (node_name, timestamp DESC);
 
 -- Composite: level-filtered time-range queries (error/warn filtering)
 CREATE INDEX IF NOT EXISTS idx_log_entries_level_ts
-    ON log_entries (level, timestamp DESC);
+    ON omninode_internal.log_entries (level, timestamp DESC);
 
 -- Standalone timestamp: full time-range scans and retention sweeps
 CREATE INDEX IF NOT EXISTS idx_log_entries_ts
-    ON log_entries (timestamp DESC);
+    ON omninode_internal.log_entries (timestamp DESC);
