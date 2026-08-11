@@ -105,18 +105,36 @@ class _FakeMessage:
 class _FakeConsumer:
     """Minimal AIOKafkaConsumer stand-in: a fixed backlog on one partition,
     served via getmany() batches, with call counters on the two RPCs the
-    bootstrap catch-up check makes (end_offsets, position)."""
+    bootstrap catch-up check makes (end_offsets, position).
 
-    def __init__(self, *, topic: str, backlog: list[_FakeMessage]) -> None:
+    ``assignment_delay_calls`` simulates aiokafka's lazy post-group-join
+    partition assignment (module docstring in snapshot_cache.py): the first
+    N calls to ``assignment()`` return no partitions at all, as if the
+    group join has not yet completed.
+    """
+
+    def __init__(
+        self,
+        *,
+        topic: str,
+        backlog: list[_FakeMessage],
+        assignment_delay_calls: int = 0,
+    ) -> None:
         self._tp = TopicPartition(topic, 0)
         self._backlog = list(backlog)
         self._end_offset = len(backlog)
         self._position = 0
+        self._assignment_calls = 0
+        self._assignment_delay_calls = assignment_delay_calls
         self.end_offsets_calls = 0
         self.position_calls = 0
         self.getmany_calls = 0
+        self.max_records_seen: list[int | None] = []
 
     def assignment(self) -> frozenset[TopicPartition]:
+        self._assignment_calls += 1
+        if self._assignment_calls <= self._assignment_delay_calls:
+            return frozenset()
         return frozenset({self._tp})
 
     async def end_offsets(
@@ -133,6 +151,7 @@ class _FakeConsumer:
         self, *, timeout_ms: int = 0, max_records: int | None = None
     ) -> dict[TopicPartition, list[_FakeMessage]]:
         self.getmany_calls += 1
+        self.max_records_seen.append(max_records)
         if not self._backlog:
             # Idle: real aiokafka blocks up to timeout_ms then returns {}.
             await asyncio.sleep(0)
@@ -198,4 +217,57 @@ async def test_bootstrap_catch_up_check_is_batched_not_per_message(
         "the exact RPC-storm mechanism that leaves onex-dev's "
         "live-events.v1 exposure (60,724+ retained messages) permanently "
         "not_ready under real backlog size."
+    )
+    # CodeRabbit (PR #2051, PRRT_kwDOR6jjtc6YWuME): a getmany() call with no
+    # bound would still pass the RPC-count assertion above (one call, one
+    # batch, one check) without actually protecting the bounded-batch
+    # contract. Assert every call actually requested a bounded batch.
+    assert fake.max_records_seen, "getmany() was never called"
+    assert all(n is not None and 0 < n <= 500 for n in fake.max_records_seen), (
+        f"expected every getmany() call to request a bounded batch "
+        f"(1..500), got max_records values {fake.max_records_seen} -- an "
+        "unbounded (None) or oversized request defeats the batching fix's "
+        "RPC-overhead bound."
+    )
+
+
+async def test_bootstrap_catch_up_check_still_runs_after_a_late_empty_assignment(
+    monkeypatch: object,
+) -> None:
+    """CodeRabbit (PR #2051, PRRT_kwDOR6jjtc6YWuL5): if partition assignment
+    happens AFTER the initial bounded poll window exhausts (aiokafka assigns
+    partitions lazily post-group-join -- see the module docstring), and the
+    assigned topic turns out to be empty, the consume loop must still notice
+    and complete bootstrap -- not skip the catch-up check forever just
+    because getmany() keeps returning no records."""
+    import omnimarket.projection.snapshot_cache as snapshot_cache_module
+
+    # Small, deterministic initial poll window that exhausts BEFORE the
+    # fake's assignment ever appears (assignment_delay_calls > poll attempts
+    # below), reproducing "assignment occurs after the initial poll window".
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        snapshot_cache_module, "_BOOTSTRAP_POLL_INTERVAL_SECONDS", 0.0
+    )
+    monkeypatch.setattr(  # type: ignore[attr-defined]
+        snapshot_cache_module, "_BOOTSTRAP_POLL_MAX_ATTEMPTS", 2
+    )
+
+    cache = _make_cache()
+    # Empty topic (zero backlog): assignment first appears on the 5th call
+    # to assignment() -- after the 2-attempt initial poll window (which
+    # calls assignment() once per attempt via
+    # _mark_bootstrap_complete_when_caught_up) has already exhausted.
+    fake = _FakeConsumer(topic=_TOPIC, backlog=[], assignment_delay_calls=4)
+    cache._consumer = fake
+    cache._running = True
+
+    await _run_until_bootstrapped(cache, timeout=5.0)
+
+    assert cache.is_bootstrapped(_TOPIC), (
+        "bootstrap must complete once a late partition assignment appears, "
+        "even though every getmany() call returns an empty batch (empty "
+        "topic) -- skipping the catch-up check whenever a batch is empty "
+        "leaves the cache permanently un-bootstrapped and /ready "
+        "permanently 503 for any bus_backed topic with zero traffic that "
+        "gets assigned after the initial poll window"
     )

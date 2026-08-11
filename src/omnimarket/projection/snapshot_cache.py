@@ -424,16 +424,19 @@ class SnapshotCache:
             )
             if not self._running:
                 break
-            if not batches:
-                continue
-            any_unbootstrapped = False
             for _tp, messages in batches.items():
                 for msg in messages:
                     headers = list(msg.headers or [])
                     self.apply_message(msg.topic, msg.key, msg.value, headers)
-                    if not self.is_bootstrapped(msg.topic):
-                        any_unbootstrapped = True
-            if any_unbootstrapped:
+            # Run the catch-up check whenever any topic remains
+            # un-bootstrapped -- including an EMPTY batch. A late partition
+            # assignment (aiokafka assigns lazily post-group-join; can land
+            # after the initial bounded poll window above has already
+            # exhausted) on a topic with zero traffic would otherwise never
+            # get a chance to be marked bootstrap_complete: getmany() keeps
+            # returning {} forever and this loop would never call the check
+            # again (CodeRabbit, PR #2051, PRRT_kwDOR6jjtc6YWuL5).
+            if any(not state.bootstrap_complete for state in self._state.values()):
                 await self._mark_bootstrap_complete_when_caught_up()
 
     async def _mark_bootstrap_complete_when_caught_up(self) -> None:
