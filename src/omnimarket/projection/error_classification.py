@@ -44,6 +44,25 @@ purpose: the schema self-heals when the migration lands, and the event
 itself was fine. Do not fold ``UndefinedColumnError`` (or its
 ``SyntaxOrAccessError`` siblings) into POISON without re-deriving that
 tradeoff — see ``test_undefined_column_is_still_recoverable_after_data_error_fix``.
+
+OMN-15919 addendum: ``asyncpg.exceptions.InsufficientPrivilegeError``
+(SQLSTATE 42501) is ALSO POISON. Postgres raises this exact SQLSTATE/class for
+a row-level-security ``WITH CHECK``/``USING`` policy violation ("new row
+violates row-level security policy for table ..."), which is what surfaced
+live when the RLS tenant GUC and the row's own ``tenant_id`` diverged (the
+GUC was stamped from a READ-path default resolver, independently of the
+event's real tenant — OMN-15919 fixes the divergence itself; this
+classification is the safety net for whatever residual case still trips the
+policy). A policy violation is a property of the EVENT's resolved tenant
+identity, not of the infrastructure: retrying the identical payload against
+the identical (mismatched) tenant context can never succeed, so it must DLQ
+like ``DataError``/``NotNullViolationError`` rather than retry forever.
+``InsufficientPrivilegeError`` is also raised for a genuine missing-GRANT
+misconfiguration (not an RLS mismatch) — that is a systemic infra defect that
+would DLQ every event on the affected table, which is the loud, visible
+failure mode this classification accepts: a hot silent-retry loop is worse,
+and the DLQ is durably inspectable by SQLSTATE/message, unlike a wedged
+partition.
 """
 
 from __future__ import annotations
@@ -51,7 +70,12 @@ from __future__ import annotations
 from enum import StrEnum
 
 import asyncpg
-from asyncpg.exceptions import DataError, NotNullViolationError, PostgresError
+from asyncpg.exceptions import (
+    DataError,
+    InsufficientPrivilegeError,
+    NotNullViolationError,
+    PostgresError,
+)
 from pydantic import ValidationError
 
 
@@ -88,16 +112,18 @@ _RECOVERABLE_TYPES: tuple[type[BaseException], ...] = (
 
 # Exception types that are always POISON: the event payload is bad.
 #
-# DataError/NotNullViolationError are BOTH subclasses of PostgresError (also
-# in _RECOVERABLE_TYPES above) -- classify_projection_error() checks POISON
-# first, so the more specific classification wins for these two without
-# touching PostgresError's own RECOVERABLE default for every other server
-# error (connection loss, server shutdown, undefined column, etc.).
+# DataError/NotNullViolationError/InsufficientPrivilegeError are ALL
+# subclasses of PostgresError (also in _RECOVERABLE_TYPES above) --
+# classify_projection_error() checks POISON first, so the more specific
+# classification wins for these without touching PostgresError's own
+# RECOVERABLE default for every other server error (connection loss, server
+# shutdown, undefined column, etc.).
 _POISON_TYPES: tuple[type[BaseException], ...] = (
     ValidationError,
     PoisonEventError,
     DataError,
     NotNullViolationError,
+    InsufficientPrivilegeError,
 )
 
 

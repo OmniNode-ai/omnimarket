@@ -48,7 +48,7 @@ from contextlib import asynccontextmanager
 from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
-from urllib.parse import quote_plus
+from urllib.parse import quote, quote_plus
 from uuid import uuid4
 
 import asyncpg
@@ -590,3 +590,266 @@ class TestRedProofFixtures:
                 correlation_id,
             )
             assert len(rows) == 1
+
+
+# ---------------------------------------------------------------------------
+# 3. OMN-15919: real-Postgres RLS write-context resolver proof.
+#
+# ``_provisioned_runner`` above writes as the ``postgres`` SUPERUSER, which
+# bypasses RLS unconditionally regardless of migration 0023's FORCE ROW LEVEL
+# SECURITY (see that helper's own docstring) -- it structurally cannot
+# exercise the OMN-15919 defect (GUC-vs-row tenant mismatch) at all, since a
+# superuser write never evaluates a policy. This section provisions a
+# genuinely non-superuser, NOBYPASSRLS LOGIN role -- the same shape the live
+# k8s writer connects as -- so a regression here reproduces the exact live
+# failure mode ("new row violates row-level security policy for table
+# \"delegation_events\"", InsufficientPrivilegeError / SQLSTATE 42501), not a
+# bypassed no-op.
+# ---------------------------------------------------------------------------
+
+_RLS_WRITER_ROLE = "omn15919_rls_writer"
+_RLS_WRITER_PASSWORD = "omn15919-test-only-throwaway"
+
+_RLS_WRITER_ROLE_SQL = f"""
+DO $$
+BEGIN
+  BEGIN
+    CREATE ROLE {_RLS_WRITER_ROLE} WITH
+      LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION
+      PASSWORD '{_RLS_WRITER_PASSWORD}';
+  EXCEPTION
+    WHEN duplicate_object THEN
+      NULL;
+  END;
+END;
+$$;
+ALTER ROLE {_RLS_WRITER_ROLE}
+  LOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION
+  PASSWORD '{_RLS_WRITER_PASSWORD}';
+"""
+
+
+def _rls_writer_dsn(schema: str) -> str:
+    host = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
+    port = os.environ.get("INTEGRATION_POSTGRES_PORT", "5432")
+    db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
+    options = quote(f"-c search_path={schema},public")
+    return (
+        f"postgresql://{_RLS_WRITER_ROLE}:{_RLS_WRITER_PASSWORD}@{host}:{port}/{db}"
+        f"?options={options}"
+    )
+
+
+@asynccontextmanager
+async def _provisioned_rls_writer() -> AsyncIterator[
+    tuple[DelegationProjectionRunner, AsyncpgAdapter, asyncpg.Connection, str]
+]:
+    """Provision a disposable schema, migrate it, grant a genuinely
+    RLS-bound (non-superuser, NOBYPASSRLS) writer role real DML on it, and
+    bind a ``DelegationProjectionRunner`` to a pool connected AS THAT ROLE
+    (not the superuser ``admin_conn``, which is retained only for DDL setup
+    and RLS-bypassing readback assertions).
+
+    Yields ``(runner, adapter, admin_conn, schema)``.
+    """
+    admin_conn = await _connect_or_skip()
+    schema = f"omn15919_{uuid4().hex[:16]}"
+    pool: asyncpg.Pool | None = None
+    try:
+        await admin_conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await admin_conn.execute(f"CREATE SCHEMA {schema}")
+        await admin_conn.execute(f"SET search_path TO {schema}, public")
+        await admin_conn.execute(_APP_DASHBOARD_ROLE_SQL)
+        await admin_conn.execute(_RLS_WRITER_ROLE_SQL)
+        db_name = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
+        # The role has no CONNECT privilege on any database by default.
+        await admin_conn.execute(
+            f'GRANT CONNECT ON DATABASE "{db_name}" TO {_RLS_WRITER_ROLE}'
+        )
+        for migration_path in _live_migration_files():
+            sql = _test_schema_safe_sql(migration_path.read_text(encoding="utf-8"))
+            await admin_conn.execute(sql)
+        # The writer needs real DML -- INSERT/UPDATE for the projection
+        # writes themselves, SELECT for the handler's own existing-row
+        # lookups (_preserve_existing_evidence_async, the quality-gate-result
+        # idempotency check, the budget-state accumulation read).
+        await admin_conn.execute(
+            f"GRANT USAGE ON SCHEMA {schema} TO {_RLS_WRITER_ROLE}"
+        )
+        await admin_conn.execute(
+            f"GRANT INSERT, UPDATE, SELECT ON ALL TABLES IN SCHEMA {schema} "
+            f"TO {_RLS_WRITER_ROLE}"
+        )
+
+        pool = await asyncpg.create_pool(
+            _rls_writer_dsn(schema),
+            min_size=1,
+            max_size=3,
+            server_settings={"search_path": f"{schema},public"},
+        )
+        adapter = AsyncpgAdapter(dsn=_rls_writer_dsn(schema))
+        adapter._pool = pool  # type: ignore[attr-defined]
+
+        runner = DelegationProjectionRunner()
+        runner._db = adapter  # type: ignore[assignment]
+
+        yield runner, adapter, admin_conn, schema
+    finally:
+        if pool is not None:
+            with contextlib.suppress(Exception):
+                await pool.close()
+        with contextlib.suppress(Exception):
+            await admin_conn.execute("SET search_path TO public")
+            await admin_conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+        await admin_conn.close()
+
+
+@pytest.mark.integration
+class TestRlsWriteContextResolver:
+    """OMN-15919: proves the GUC/row-tenant resolver mismatch is REJECTED by
+    a genuinely RLS-bound writer role, and that threading the resolved
+    tenant through ``AsyncpgAdapter``'s explicit ``tenant`` kwarg (the fix)
+    is what makes the write -- and only a correctly-scoped read-back --
+    succeed.
+    """
+
+    async def test_ambient_default_guc_with_mismatched_row_tenant_is_rejected(
+        self,
+    ) -> None:
+        """Permanent regression sentinel for the OMN-15919 defect shape: a
+        row stamped for a real tenant, written through ``AsyncpgAdapter``
+        with NO explicit ``tenant`` kwarg -- the exact pre-fix
+        ``_set_tenant_context`` shape, which fell through to
+        ``resolve_read_tenant(None)`` (the house tenant) regardless of the
+        row -- is rejected by real Postgres under a genuinely RLS-bound
+        writer role. If a future call site regresses by omitting the
+        ``tenant`` kwarg for a real-tenant row, this is the mechanism that
+        catches it.
+        """
+        async with _provisioned_rls_writer() as (_runner, adapter, admin_conn, _schema):
+            correlation_id = str(uuid4())
+            with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
+                await adapter.execute(
+                    "INSERT INTO delegation_events "
+                    "(correlation_id, tenant_id, task_type, delegated_to, timestamp) "
+                    "VALUES ($1, $2, $3, $4, $5)",
+                    correlation_id,
+                    "beta-business-proof",
+                    "code-review",
+                    "local-runtime",
+                    datetime.now(tz=UTC),
+                )
+            rows = await admin_conn.fetch(
+                "SELECT 1 FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+            )
+            assert rows == [], "a rejected write must never produce a partial row"
+
+    async def test_explicit_tenant_kwarg_matching_row_is_accepted_and_rls_scoped(
+        self,
+    ) -> None:
+        """GREEN: the identical row, written WITH the resolved tenant
+        threaded into the SAME transaction's GUC (the ``tenant=`` kwarg),
+        succeeds -- and the row is visible back ONLY under that tenant's RLS
+        scope, proving this is real RLS binding, not a bypassed no-op.
+        """
+        async with _provisioned_rls_writer() as (
+            _runner,
+            adapter,
+            _admin_conn,
+            _schema,
+        ):
+            correlation_id = str(uuid4())
+            await adapter.execute(
+                "INSERT INTO delegation_events "
+                "(correlation_id, tenant_id, task_type, delegated_to, timestamp) "
+                "VALUES ($1, $2, $3, $4, $5)",
+                correlation_id,
+                "beta-business-proof",
+                "code-review",
+                "local-runtime",
+                datetime.now(tz=UTC),
+                tenant="beta-business-proof",
+            )
+            same_tenant = await adapter.execute(
+                "SELECT tenant_id FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+                tenant="beta-business-proof",
+            )
+            assert [dict(r) for r in same_tenant] == [
+                {"tenant_id": "beta-business-proof"}
+            ]
+            other_tenant = await adapter.execute(
+                "SELECT tenant_id FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+                tenant="omninode",
+            )
+            assert other_tenant == [], (
+                "the row must be invisible outside its own tenant's RLS scope"
+            )
+
+    async def test_delegation_completed_event_with_real_tenant_writes_and_reads_back_scoped(
+        self,
+    ) -> None:
+        """RED/GREEN at the HANDLER level (the actual OMN-15919 escape
+        fixture): the FULL ``project_event()`` path (typed event ->
+        ``_project_typed_event_async`` -> ``_dynamic_upsert``), driven
+        through a genuinely RLS-bound writer, for an event whose tenant
+        (``beta-business-proof``) differs from the ambient house-tenant
+        default -- the exact live business-proof-gate shape from the
+        OMN-15919 diagnosis. Pre-fix, ``_dynamic_upsert`` called
+        ``self.db.execute(query, *values)`` with no ``tenant`` kwarg, so this
+        raised ``asyncpg.exceptions.InsufficientPrivilegeError`` (uncaught --
+        ``project_event`` has no try/except around this path) instead of
+        returning. Post-fix it returns ``True`` and the row lands under, and
+        is only readable under, the correct tenant scope.
+        """
+        async with _provisioned_rls_writer() as (runner, _adapter, admin_conn, _schema):
+            correlation_id = str(uuid4())
+            data = _real_delegation_completed_payload(
+                correlation_id=correlation_id, tenant_id="beta-business-proof"
+            )
+            meta = MessageMeta(partition=0, offset=0, fallback_id=correlation_id)
+
+            ok = await runner.project_event(
+                runner._topic_delegation_completed, data, meta
+            )
+
+            assert ok is True
+            row = await admin_conn.fetchrow(
+                "SELECT * FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+            )
+            assert row is not None, "the write must have landed a real row"
+            assert row["tenant_id"] == "beta-business-proof"
+
+    async def test_missing_envelope_tenant_falls_back_consistently_on_both_sides(
+        self,
+    ) -> None:
+        """The event/row genuinely has no tenant -- ``_dynamic_upsert``
+        resolves the SAME house-tenant fallback for the GUC
+        (``resolve_write_tenant``) as the column DEFAULT the omitted key
+        falls through to on INSERT, so the write succeeds under a real
+        RLS-bound writer role. This is NOT a coincidental pre-fix match:
+        pre-fix, both sides happened to land on ``'omninode'`` too, but for
+        the wrong reason (an unconditional read-path resolver with no
+        connection to the row at all) -- this test pins that the post-fix
+        shape is a single shared derivation, not two independent resolvers
+        that happen to agree today.
+        """
+        async with _provisioned_rls_writer() as (runner, _adapter, admin_conn, _schema):
+            correlation_id = str(uuid4())
+            row: dict[str, object] = {
+                "correlation_id": correlation_id,
+                "task_type": "code-review",
+                "delegated_to": "local-runtime",
+                "timestamp": datetime.now(tz=UTC),
+            }
+            await runner._dynamic_upsert(
+                table="delegation_events", conflict_key="correlation_id", row=row
+            )
+            landed = await admin_conn.fetch(
+                "SELECT tenant_id FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+            )
+            assert [dict(r) for r in landed] == [{"tenant_id": "omninode"}]
