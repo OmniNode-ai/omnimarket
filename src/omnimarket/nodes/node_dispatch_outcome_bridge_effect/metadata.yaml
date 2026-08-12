@@ -21,6 +21,7 @@ capabilities:
 dependencies:
   - "aiokafka"
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3,<0.39.0"
   - "omniintelligence"
 authors: ["OmniNode Platform Team"]
 license: "MIT"

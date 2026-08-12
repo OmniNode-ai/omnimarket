@@ -27,6 +27,7 @@ entry_flags:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "omnibase_compat>=0.5.6"
+  - "omnibase-infra>=0.38.3,<0.39.0"
   - "aiokafka>=0.10.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"

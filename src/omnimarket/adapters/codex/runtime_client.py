@@ -23,6 +23,7 @@ from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.enums import EnumInfraTransportType
 from omnibase_infra.errors import ModelInfraErrorContext, ProtocolConfigurationError
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
@@ -329,6 +330,7 @@ class _CodexDispatchBusAdapter:
             enable_auto_commit=False,
             auto_offset_reset="latest",
             **_direct_kafka_client_version_kwargs(self._transport),
+            **build_aiokafka_auth_kwargs_from_env(),
         )
         try:
             await asyncio.wait_for(consumer.start(), timeout=timeout_seconds)

@@ -177,6 +177,13 @@ jobs:
       # and inline `# onex-topic-allow` annotations (delegation thin-shim plan, Task 8).
       - name: Topic-literal guardrail (annotation allowlist)
         run: uv run python scripts/ci/check_no_hardcoded_topics.py
+      # OMN-15833: bare AIOKafkaConsumer/AIOKafkaProducer construction (zero auth
+      # kwargs) silently connects PLAINTEXT against a SASL/IAM-only MSK broker —
+      # third occurrence of the OMN-14155 class, this time in omnimarket itself.
+      # AST call-site check (not file-level substring) so it does not repeat the
+      # OMN-14158 bypass. SYNC with pre-commit hook 'aiokafka-construction-auth'.
+      - name: Bare aiokafka construction gate (auth kwargs)
+        run: uv run python scripts/ci/check_aiokafka_construction_auth.py
       # OMN-13548 (D-03): a projection handler that catches ValidationError must
       # route the malformed event to its contract-declared DLQ topic, not drop it
       # silently. SYNC with pre-commit hook 'projection-dlq-path'.

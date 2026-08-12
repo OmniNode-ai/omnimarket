@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from onex_change_control.overseer.model_overnight_contract import (
     ModelOvernightContract,
@@ -524,4 +525,20 @@ class TestDispatchCiWatchSkip:
 
         assert not (success is False and error_msg is None), (
             "(False, None) is a silent failure, not a typed skip"
+        )
+
+    def test_contract_declares_nightly_loop_start_publish_topic(self) -> None:
+        """Pins onex.cmd.omnimarket.nightly-loop-start.v1 (OMN-8025
+        nightly_loop_controller trigger) as a contract-declared publish topic
+        (OMN-15833 state-coverage close-out). NOTE: _dispatch_nightly_loop
+        currently calls HandlerNightlyLoopController().handle() in-process
+        rather than publishing to the bus, so this declared topic has no live
+        producer today — a pre-existing contract/runtime gap tracked as a
+        follow-up, out of OMN-15833's scope."""
+        contract_path = "src/omnimarket/nodes/node_overnight/contract.yaml"
+        with open(contract_path) as f:
+            contract = yaml.safe_load(f)
+        assert (
+            "onex.cmd.omnimarket.nightly-loop-start.v1"
+            in contract["event_bus"]["publish_topics"]
         )

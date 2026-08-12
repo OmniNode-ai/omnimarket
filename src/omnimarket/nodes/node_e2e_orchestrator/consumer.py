@@ -39,6 +39,8 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
     TOPIC_BUILD_LOOP_COMPLETED as TOPIC_BUILD_COMPLETED,
 )
@@ -303,10 +305,12 @@ async def _run_consumer(
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
         auto_offset_reset="latest",
         enable_auto_commit=False,
+        **build_aiokafka_auth_kwargs_from_env(),
     )
     producer = AIOKafkaProducer(
         bootstrap_servers=broker,
         value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"),
+        **build_aiokafka_auth_kwargs_from_env(),
     )
 
     await consumer.start()

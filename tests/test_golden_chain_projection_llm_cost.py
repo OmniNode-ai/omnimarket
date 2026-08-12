@@ -158,3 +158,17 @@ class TestLlmCostProjection:
             if t.get("access") == "write"
         ]
         assert write_tables == [TABLE]
+
+    def test_contract_declares_projection_applied_terminal_event(self) -> None:
+        """Pins onex.evt.omnimarket.projection-llm-cost-applied.v1 as the
+        contract-declared terminal_event + publish topic (OMN-15833
+        state-coverage close-out; this literal has no hardcoded Python
+        producer today — the node's runtime publish path resolves the
+        terminal event from the contract at dispatch time rather than a
+        source constant, which is why it was previously uncovered)."""
+        contract_path = "src/omnimarket/nodes/node_projection_llm_cost/contract.yaml"
+        with open(contract_path) as f:
+            contract = yaml.safe_load(f)
+        terminal_event = "onex.evt.omnimarket.projection-llm-cost-applied.v1"
+        assert contract["terminal_event"] == terminal_event
+        assert terminal_event in contract["event_bus"]["publish_topics"]

@@ -23,6 +23,7 @@ from omnibase_core.enums.cost import EnumUsageSource
 from omnibase_core.enums.enum_dispatch_verdict import EnumDispatchVerdict
 from omnibase_core.models.cost import ModelCostProvenance
 from omnibase_core.models.dispatch import ModelDispatchEvalResult
+from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 
 from omnimarket.nodes.contract_topics import (
     contract_publish_topics,
@@ -342,7 +343,9 @@ async def _run_consumer(broker: str, group_id: str, db_dsn: str) -> None:
     await db.connect()
     _log.info("DB connected")
 
-    producer = AIOKafkaProducer(bootstrap_servers=broker)
+    producer = AIOKafkaProducer(
+        bootstrap_servers=broker, **build_aiokafka_auth_kwargs_from_env()
+    )
     await producer.start()
 
     consumer = AIOKafkaConsumer(
@@ -351,6 +354,7 @@ async def _run_consumer(broker: str, group_id: str, db_dsn: str) -> None:
         group_id=group_id,
         auto_offset_reset="earliest",
         enable_auto_commit=True,
+        **build_aiokafka_auth_kwargs_from_env(),
     )
     await consumer.start()
     _log.info(

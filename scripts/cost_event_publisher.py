@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from aiokafka import AIOKafkaProducer
+from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 
 _topics_path = (
     Path(__file__).parent.parent / "src" / "omnimarket" / "events" / "topics.py"
@@ -176,7 +177,10 @@ class CostEventPublisher:
         key = idempotency_key.encode()
 
         # Publish with retry
-        producer = AIOKafkaProducer(bootstrap_servers=self._bootstrap_servers)
+        producer = AIOKafkaProducer(
+            bootstrap_servers=self._bootstrap_servers,
+            **build_aiokafka_auth_kwargs_from_env(),
+        )
         await producer.start()
         last_exc: Exception | None = None
         try:
