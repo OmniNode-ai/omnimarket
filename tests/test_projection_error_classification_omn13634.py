@@ -163,6 +163,40 @@ class TestClassifyProjectionError:
         )
         assert classify_projection_error(exc) is ProjectionErrorClass.RECOVERABLE
 
+    # -- OMN-15919 (defect #3 of the OMN-15905 chain): RLS write-context ----
+    #
+    # Root cause: ``AsyncpgAdapter._set_tenant_context()`` stamped the RLS GUC
+    # (``app.tenant_id``) from a READ-path default resolver
+    # (``resolve_read_tenant(None)``), independently of the row's own
+    # ``tenant_id`` the write actually carried. Any event whose real tenant
+    # differed from the ambient default tripped ``WITH CHECK`` on every
+    # INSERT/UPDATE: ``new row violates row-level security policy for table
+    # "delegation_events"``. Postgres raises SQLSTATE 42501
+    # (``InsufficientPrivilegeError``) for this. Pre-fix, that fell through to
+    # the RECOVERABLE default (a PostgresError subclass not otherwise
+    # special-cased) -- a deterministic per-event failure retried forever,
+    # never reaching the DLQ, exactly the OMN-15905 DataError shape this
+    # module already fixed once.
+
+    def test_insufficient_privilege_rls_violation_is_poison(self) -> None:
+        # The exact exception class/SQLSTATE the live pod logs cited for the
+        # OMN-15919 RLS-context mismatch: "new row violates row-level
+        # security policy for table \"delegation_events\"".
+        exc = asyncpg.exceptions.InsufficientPrivilegeError(
+            'new row violates row-level security policy for table "delegation_events"'
+        )
+        assert classify_projection_error(exc) is ProjectionErrorClass.POISON
+
+    def test_undefined_column_is_still_recoverable_after_rls_fix(self) -> None:
+        # Regression guard: adding InsufficientPrivilegeError to POISON must
+        # not widen the net to its SyntaxOrAccessError sibling
+        # UndefinedColumnError -- the two share a base class but only the
+        # named leaf type is POISON.
+        exc = asyncpg.exceptions.UndefinedColumnError(
+            'column "corpus_checked" of relation "generation_events" does not exist'
+        )
+        assert classify_projection_error(exc) is ProjectionErrorClass.RECOVERABLE
+
 
 # ---------------------------------------------------------------------------
 # Runner integration: _handle_message applies the classification.
@@ -397,6 +431,54 @@ class TestDelegationRunnerSafetyNet:
         dlq_hits = [t for t, _ in published if t == DELEGATION_DLQ_TOPIC]
         assert len(dlq_hits) == 1, (
             "a POISON DataError must be durably captured on the DLQ, not "
+            "silently dropped"
+        )
+
+    @pytest.mark.asyncio
+    async def test_escaped_rls_violation_routes_to_dlq_and_commits(self) -> None:
+        """OMN-15919: the live acceptance-lane RLS write-context mismatch.
+
+        Pre-fix, ``InsufficientPrivilegeError`` fell through to RECOVERABLE
+        (undifferentiated ``PostgresError``) and retried forever -- a
+        deterministic per-event failure, since the GUC/row divergence never
+        self-heals on retry. Post-fix, it is POISON: DLQ'd and the offset
+        commits, mirroring ``test_escaped_data_error_routes_to_dlq_and_commits``
+        for the sibling OMN-15905 defect class.
+        """
+        published, capture = _capture()
+        runner = DelegationProjectionRunner(publish_fn=capture)
+        mock_db = MagicMock(spec=AsyncpgAdapter)
+        mock_db.execute = AsyncMock(
+            side_effect=asyncpg.exceptions.InsufficientPrivilegeError(
+                "new row violates row-level security policy for table "
+                '"delegation_events"'
+            )
+        )
+        runner._db = mock_db
+        runner._consumer = _CommitRecordingConsumer()  # type: ignore[assignment]
+
+        topic = runner._topic_delegated
+        msg = _wrapped_msg(
+            topic,
+            8,
+            {
+                "correlation_id": "corr-poison-rls",
+                "task_type": "code-review",
+                "delegated_to": "agent-alpha",
+                "tenant_id": "beta-business-proof",
+            },
+        )
+        await runner._handle_message(msg)
+
+        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        assert list(commits[0].values()) == [9], (
+            "a POISON InsufficientPrivilegeError must commit the offset (not "
+            "retried in a hot loop) -- pre-fix this was RECOVERABLE and never "
+            "committed"
+        )
+        dlq_hits = [t for t, _ in published if t == DELEGATION_DLQ_TOPIC]
+        assert len(dlq_hits) == 1, (
+            "a POISON RLS violation must be durably captured on the DLQ, not "
             "silently dropped"
         )
 

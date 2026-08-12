@@ -58,7 +58,10 @@ from omnimarket.projection.runner import (
     PublishFn,
     safe_parse_date,
 )
-from omnimarket.projection.tenant_isolation import require_tenant_id
+from omnimarket.projection.tenant_isolation import (
+    require_tenant_id,
+    resolve_write_tenant,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -450,9 +453,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             ),
             "score_source": event.score_source or None,
         }
+        # OMN-15919: ``ModelQualityGateResult`` carries no tenant field (see
+        # the ``require_tenant_id(None, ...)`` call above), so the row this
+        # method upserts will land under the house-tenant fallback exactly
+        # like ``_dynamic_upsert`` independently resolves for it -- this
+        # lookup uses the SAME resolver so it is not scoped to a different
+        # tenant than the write it precedes.
         existing = await self.db.execute(
             f"SELECT 1 FROM {self._table_delegation} WHERE correlation_id = $1",
             row["correlation_id"],
+            tenant=resolve_write_tenant(None, table=self._table_delegation),
         )
         if not existing:
             # OMN-13171 pattern: only a genuine fresh row needs the explicit
@@ -486,7 +496,20 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         asyncpg does not auto-adapt Python containers the way psycopg2's
         ``Json`` wrapper does for the sync path (see ``postgres_sync_database
         .PostgresSyncProjectionAdapter._adapt``).
+
+        OMN-15919: resolves the write tenant from THIS row (mirroring
+        ``PostgresSyncProjectionAdapter.upsert()``'s
+        ``resolve_write_tenant(row.get("tenant_id"), table=table)`` byte-for-
+        byte) and threads it into the same transaction's RLS GUC via
+        ``AsyncpgAdapter.execute(..., tenant=...)``. This is the single
+        resolver for both sides of the RLS policy comparison -- the row is
+        never written under a GUC that disagrees with the tenant_id the row
+        itself carries (or the column DEFAULT applies when the row omits the
+        key), which is what let ``new row violates row-level security
+        policy`` reject every real-tenant delegation write while the GUC
+        stayed pinned to the read-path house-tenant default.
         """
+        tenant = resolve_write_tenant(row.get("tenant_id"), table=table)
         conflict_keys = [k.strip() for k in conflict_key.split(",") if k.strip()]
         if not conflict_keys:
             raise ValueError("conflict_key must contain at least one key")
@@ -518,7 +541,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             f"VALUES ({', '.join(placeholders)}) "
             f"ON CONFLICT ({', '.join(conflict_keys)}) {on_conflict}"
         )
-        await self.db.execute(query, *values)
+        await self.db.execute(query, *values, tenant=tenant)
 
     async def _preserve_existing_evidence_async(self, row: dict[str, object]) -> None:
         """Async port of ``handler_projection_delegation._preserve_existing_evidence``.
@@ -533,9 +556,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         correlation_id = row.get("correlation_id")
         if not correlation_id:
             return
+        # OMN-15919: the lookup must run under the SAME tenant the pending
+        # write will use (resolved from this row, mirroring _dynamic_upsert's
+        # own resolution) -- otherwise an RLS-enforced writer role never sees
+        # the very row it is about to merge evidence from/into.
+        tenant = resolve_write_tenant(
+            row.get("tenant_id"), table=self._table_delegation
+        )
         existing_rows = await self.db.execute(
             f"SELECT * FROM {self._table_delegation} WHERE correlation_id = $1",
             str(correlation_id),
+            tenant=tenant,
         )
         if not existing_rows:
             return
@@ -626,12 +657,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         now_dt = datetime.now(tz=UTC)
         event_dt = event.resolved_event_time()
 
+        # OMN-15919: same resolver, same value as the row this method is
+        # about to upsert (``row["tenant_id"] = resolved_tenant`` below) --
+        # the existing-row lookup must run under that same GUC or an
+        # RLS-enforced writer role never sees its own prior accumulation.
         existing_rows = await self.db.execute(
             f"SELECT * FROM {self._table_budget_state} "
             "WHERE tenant_id = $1 AND cost_tier_name = $2 AND budget_period = $3",
             resolved_tenant,
             cost_tier_name,
             period,
+            tenant=resolved_tenant,
         )
         if existing_rows:
             existing = existing_rows[0]
