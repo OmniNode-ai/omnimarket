@@ -31,6 +31,19 @@ The default for an unrecognised error is RECOVERABLE — the safe direction. A
 poison-misclassification drops a real event forever; a recoverable-
 misclassification only re-reads a message that may eventually need manual
 attention. We never silently drop an error we do not understand.
+
+OMN-15905 addendum: ``asyncpg.exceptions.DataError`` (class-22 data
+exceptions — an out-of-range/wrong-typed VALUE, e.g. a string bound to a
+TIMESTAMPTZ param) and ``NotNullViolationError`` (a class-23 integrity
+violation for a required column the EVENT PAYLOAD failed to supply) are both
+POISON, not RECOVERABLE: they describe a property of the event's data, not
+of the infrastructure, and retrying the identical payload can never succeed.
+``UndefinedColumnError`` (a class-42 syntax/access error — this module's own
+canonical "not-yet-applied migration" example above) stays RECOVERABLE on
+purpose: the schema self-heals when the migration lands, and the event
+itself was fine. Do not fold ``UndefinedColumnError`` (or its
+``SyntaxOrAccessError`` siblings) into POISON without re-deriving that
+tradeoff — see ``test_undefined_column_is_still_recoverable_after_data_error_fix``.
 """
 
 from __future__ import annotations
@@ -38,7 +51,7 @@ from __future__ import annotations
 from enum import StrEnum
 
 import asyncpg
-from asyncpg.exceptions import PostgresError
+from asyncpg.exceptions import DataError, NotNullViolationError, PostgresError
 from pydantic import ValidationError
 
 
@@ -74,9 +87,17 @@ _RECOVERABLE_TYPES: tuple[type[BaseException], ...] = (
 )
 
 # Exception types that are always POISON: the event payload is bad.
+#
+# DataError/NotNullViolationError are BOTH subclasses of PostgresError (also
+# in _RECOVERABLE_TYPES above) -- classify_projection_error() checks POISON
+# first, so the more specific classification wins for these two without
+# touching PostgresError's own RECOVERABLE default for every other server
+# error (connection loss, server shutdown, undefined column, etc.).
 _POISON_TYPES: tuple[type[BaseException], ...] = (
     ValidationError,
     PoisonEventError,
+    DataError,
+    NotNullViolationError,
 )
 
 
