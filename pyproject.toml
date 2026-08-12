@@ -412,7 +412,6 @@ node_dep_cascade_dedup_orchestrator = "omnimarket.nodes.node_dep_cascade_dedup_o
 node_create_followup_tickets_effect = "omnimarket.nodes.node_create_followup_tickets_effect"
 node_decompose_epic_orchestrator = "omnimarket.nodes.node_decompose_epic_orchestrator"
 node_dispatch_watchdog_orchestrator = "omnimarket.nodes.node_dispatch_watchdog_orchestrator"
-node_multi_agent_orchestrator = "omnimarket.nodes.node_multi_agent_orchestrator"
 node_refill_sprint_orchestrator = "omnimarket.nodes.node_refill_sprint_orchestrator"
 node_ticketing_epic_org_orchestrator = "omnimarket.nodes.node_ticketing_epic_org_orchestrator"
 node_ticketing_insights_compute = "omnimarket.nodes.node_ticketing_insights_compute"

@@ -193,7 +193,6 @@ accepted:
 - ORPHANED_CONSUMER::node_merge_sweep_workflow_orchestrator::onex.evt.skill.merge-sweep-classified.v1
 - ORPHANED_CONSUMER::node_merge_sweep_workflow_orchestrator::onex.evt.skill.merge-sweep-pr-list.v1
 - ORPHANED_CONSUMER::node_model_comparison_runner::onex.cmd.omnimarket.model-comparison-requested.v1
-- ORPHANED_CONSUMER::node_multi_agent_orchestrator::onex.cmd.omnimarket.multi-agent-start.v1
 - ORPHANED_CONSUMER::node_navigation_history_reducer::onex.evt.omnimemory.navigation-session-completed.v1
 - ORPHANED_CONSUMER::node_observability_sink_effect::onex.cmd.omnimarket.observability-sink.v1
 - ORPHANED_CONSUMER::node_occ_companion_compute::onex.cmd.omnimarket.occ-companion-compute-requested.v1
@@ -545,8 +544,6 @@ accepted:
 - ORPHANED_PRODUCER::node_merge_sweep_workflow_orchestrator::onex.evt.skill.merge-sweep-complete.v1
 - ORPHANED_PRODUCER::node_merge_sweep_workflow_orchestrator::onex.evt.skill.merge-sweep-failed.v1
 - ORPHANED_PRODUCER::node_model_comparison_runner::onex.evt.omnimarket.model-comparison-completed.v1
-- ORPHANED_PRODUCER::node_multi_agent_orchestrator::onex.evt.omnimarket.agent-task-result.v1
-- ORPHANED_PRODUCER::node_multi_agent_orchestrator::onex.evt.omnimarket.multi-agent-workflow-completed.v1
 - ORPHANED_PRODUCER::node_occ_companion_compute::onex.evt.omnimarket.occ-companion-compute-completed.v1
 - ORPHANED_PRODUCER::node_occ_evidence_draft_orchestrator::onex.evt.omnimarket.occ-evidence-draft-created.v1
 - ORPHANED_PRODUCER::node_occ_evidence_draft_orchestrator::onex.evt.omnimarket.occ-evidence-draft-failed.v1
