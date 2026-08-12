@@ -104,9 +104,15 @@ async def test_probe_envelope_upserts_delegation_row() -> None:
     projected = await runner.project_event(topic, dict(unwrapped), meta)
 
     assert projected is True, "probe event must project (not be dropped as a no-op)"
-    db.execute.assert_called_once()
-
-    sql, *params = db.execute.call_args[0]
+    # OMN-15905: the ported evidence-preservation step issues a SELECT before
+    # the write (parity with the sync HandlerProjectionDelegation path) --
+    # 1 SELECT + 1 INSERT. Assert on the INSERT specifically.
+    assert db.execute.call_count == 2
+    insert_calls = [
+        c for c in db.execute.call_args_list if "INSERT INTO" in str(c.args[0])
+    ]
+    assert len(insert_calls) == 1
+    sql, *params = insert_calls[0].args
     assert "INSERT INTO delegation_events" in sql, (
         f"probe event must write delegation_events, got SQL: {sql[:80]}"
     )

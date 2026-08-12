@@ -1212,10 +1212,16 @@ class TestNoBackfillMaterialization:
         ok = asyncio.run(runner.project_event(topic, data, meta))
 
         assert ok is True
-        # Exactly one DB write: the reducer's own upsert, no backfill.
-        assert len(captured) == 1
-        sql = str(captured[0][0][0])
-        params = captured[0][0][1:]
+        # OMN-15905: the ported evidence-preservation step (parity with the
+        # sync HandlerProjectionDelegation path) issues a SELECT before the
+        # write to check for a prior row to preserve fields from -- a read,
+        # not a backfill write. Exactly one INSERT: the reducer's own upsert.
+        insert_calls = [
+            c for c in captured if str(c[0][0]).strip().startswith("INSERT")
+        ]
+        assert len(insert_calls) == 1
+        sql = str(insert_calls[0][0][0])
+        params = insert_calls[0][0][1:]
         assert "projection_version" in sql
         assert "reducer_version" in sql
         assert PROJECTION_VERSION in params
