@@ -32,6 +32,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_merge_sweep_compute.adapter_github_http import (
@@ -214,10 +216,12 @@ async def _run_consumer(broker: str, group_id: str, state_dir: str) -> None:
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
         auto_offset_reset="latest",
         enable_auto_commit=True,
+        **build_aiokafka_auth_kwargs_from_env(),
     )
     producer = AIOKafkaProducer(
         bootstrap_servers=broker,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+        **build_aiokafka_auth_kwargs_from_env(),
     )
 
     await consumer.start()

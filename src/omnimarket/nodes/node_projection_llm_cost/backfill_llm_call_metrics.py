@@ -36,6 +36,8 @@ import os
 import signal
 from typing import Any
 
+from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+
 from omnimarket.nodes.node_projection_llm_cost.handlers.handler_llm_cost import (
     CONFLICT_KEY,
     TABLE,
@@ -124,6 +126,7 @@ async def _run_backfill(
         group_id=group_id,
         auto_offset_reset="earliest",
         enable_auto_commit=True,
+        **build_aiokafka_auth_kwargs_from_env(),
     )
     await consumer.start()
     _log.info(

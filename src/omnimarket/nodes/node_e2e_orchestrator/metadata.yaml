@@ -18,6 +18,7 @@ capabilities:
   side_effect_class: effectful
 dependencies:
   - "omnibase_core>=0.39.0"
+  - "omnibase-infra>=0.38.3,<0.39.0"
   - "aiokafka>=0.10.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"

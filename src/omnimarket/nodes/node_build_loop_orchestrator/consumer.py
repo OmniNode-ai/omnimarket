@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID, uuid4
 
+from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
 
 from omnimarket.nodes.node_build_loop_orchestrator.handlers.handler_build_loop_orchestrator import (
@@ -156,10 +157,12 @@ async def _run_consumer(broker: str, group_id: str) -> None:
         value_deserializer=lambda b: json.loads(b.decode("utf-8")),
         auto_offset_reset="latest",
         enable_auto_commit=False,
+        **build_aiokafka_auth_kwargs_from_env(),
     )
     producer = AIOKafkaProducer(
         bootstrap_servers=broker,
         value_serializer=lambda v: json.dumps(v, default=str).encode("utf-8"),
+        **build_aiokafka_auth_kwargs_from_env(),
     )
 
     await consumer.start()

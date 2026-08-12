@@ -30,6 +30,7 @@ import uuid
 from pathlib import Path
 
 import yaml
+from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -111,6 +112,7 @@ async def _publish(args: argparse.Namespace) -> int:
     producer = AIOKafkaProducer(
         bootstrap_servers=args.bootstrap,
         value_serializer=lambda v: json.dumps(v).encode("utf-8"),
+        **build_aiokafka_auth_kwargs_from_env(),
     )
     await producer.start()
     try:

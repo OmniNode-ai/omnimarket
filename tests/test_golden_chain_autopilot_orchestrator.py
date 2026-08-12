@@ -15,6 +15,7 @@ import pytest
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.nodes.node_autopilot_orchestrator.handlers.handler_autopilot_orchestrator import (
+    EnumAutopilotFsmState,
     HandlerAutopilotOrchestrator,
 )
 from omnimarket.nodes.node_autopilot_orchestrator.models.model_autopilot_phase_result import (
@@ -301,3 +302,29 @@ class TestAutopilotOrchestratorGoldenChain:
         assert result.overall_status == EnumAutopilotCycleStatus.HALTED
         assert "Phase D" in result.halt_reason
         assert result.phase_d.status == EnumAutopilotPhaseStatus.HALT
+
+
+@pytest.mark.unit
+def test_fsm_state_enum_matches_contract_declared_states() -> None:
+    """EnumAutopilotFsmState must expose exactly the eight contract.yaml
+    fsm.states members (IDLE, PHASE_A_WORKTREE, PHASE_B_MERGE_SWEEP,
+    PHASE_C_INFRA_GATE, PHASE_D_QUALITY_SWEEPS, COMPLETE, HALTED, FAILED) —
+    pins the runtime FSM surface against contract drift (OMN-15833
+    state-coverage close-out; COMPLETE/HALTED were already covered via
+    EnumAutopilotCycleStatus identifier matches above, IDLE/PHASE_A_WORKTREE/
+    PHASE_B_MERGE_SWEEP/PHASE_C_INFRA_GATE/PHASE_D_QUALITY_SWEEPS/FAILED were
+    not). All eight states are already exercised at runtime by the
+    golden-chain tests above (happy path IDLE->A->B->C->D->COMPLETE,
+    Phase C/D halt ->HALTED, circuit-breaker ->FAILED); this closes the gap
+    where no test file ever referenced the FSM state literals themselves."""
+    observed = {member.value for member in EnumAutopilotFsmState}
+    assert observed == {
+        EnumAutopilotFsmState.IDLE,
+        EnumAutopilotFsmState.PHASE_A_WORKTREE,
+        EnumAutopilotFsmState.PHASE_B_MERGE_SWEEP,
+        EnumAutopilotFsmState.PHASE_C_INFRA_GATE,
+        EnumAutopilotFsmState.PHASE_D_QUALITY_SWEEPS,
+        EnumAutopilotFsmState.COMPLETE,
+        EnumAutopilotFsmState.HALTED,
+        EnumAutopilotFsmState.FAILED,
+    }
