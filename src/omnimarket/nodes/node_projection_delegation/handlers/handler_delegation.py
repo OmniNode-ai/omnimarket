@@ -8,8 +8,9 @@ import asyncio
 import json
 import logging
 import math
-from collections.abc import Mapping
+import re
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -28,10 +29,24 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelDelegateSkillTerminalProjection,
     ModelDelegationEventProjectionRow,
 )
+from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
+from omnimarket.nodes.node_projection_delegation.handlers.handler_budget_state import (
+    ModelDelegationBudgetStateEvent,
+)
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    ModelProjectionTaskDelegatedEvent,
+    _canonical_result_to_task_delegated_payload,
+    _is_blank,
+    _is_zero,
     _judge_verdict_projection_row,
+    _measure_actual_cost,
+    _preserve_terminal_failure,
     compute_generation_proof_fields,
 )
+from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction import (
+    reduce_delegation_attempts,
+)
+from omnimarket.pricing import resolve_tier_cost
 from omnimarket.projection.dlq import (
     correlation_id_from_payload,
     dlq_topics_from_contract,
@@ -43,6 +58,7 @@ from omnimarket.projection.runner import (
     PublishFn,
     safe_parse_date,
 )
+from omnimarket.projection.tenant_isolation import require_tenant_id
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +84,14 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     }
 )
 
+# Trusted-internal-literal identifier guard for the dynamic UPSERT builder
+# (OMN-15905). Every table/column name that reaches ``_dynamic_upsert`` comes
+# from a hand-written dict literal in this module -- never user/network input
+# -- but validating keeps the composed SQL provably injection-free, matching
+# the posture ``postgres_sync_database.PostgresSyncProjectionAdapter`` applies
+# to the sync write path this method ports.
+_IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
 
 class DelegationProjectionRunner(BaseProjectionRunner):
     """Projects task-delegated and delegation-shadow-comparison events.
@@ -80,6 +104,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     envelope to the topic declared as ``terminal_event`` in contract.yaml.  This
     satisfies the golden-chain requirement that Pattern B broker consumers can
     observe projection completions on the event bus.
+
+    OMN-15905: this is the standalone-writer-deployed class (mirrors the
+    ``live_events``/``registration`` sibling writers, §2.2 of the delegation
+    projection writer fix plan). Its write path now reaches parity with
+    ``HandlerProjectionDelegation`` (the shared-kernel handler that the
+    two-handler dispatch ambiguity starves of routes, OMN-15905 §2.1) on
+    tenant stamping, measured-cost re-pricing, budget-state materialization,
+    quality-gate-result handling, sticky-evidence preservation, and
+    timeout-string suppression -- see the imported helpers below, ported into
+    this async path as raw ``self.db.execute()`` calls rather than a
+    sync<->async ``DatabaseAdapter`` bridge (none exists; see the plan §4.1).
     """
 
     def __init__(
@@ -114,11 +149,17 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             raise ValueError(
                 "Contract missing required table role 'judge_verdict_events'"
             )
+        # OMN-15905: required so the ported materialize_budget_state twin can
+        # resolve its table without a defensive default -- the contract has
+        # declared this role since OMN-13235 (contract.yaml db_tables).
+        if "budget_state" not in _by_role:
+            raise ValueError("Contract missing required table role 'budget_state'")
 
         self._table_delegation: str = _by_role["events"]
         self._table_shadow: str = _by_role["shadow_comparisons"]
         self._table_generation: str = _by_role["generation_events"]
         self._table_judge_verdict: str = _by_role["judge_verdict_events"]
+        self._table_budget_state: str = _by_role["budget_state"]
 
         _topics: list[str] = self._contract.get("event_bus", {}).get(
             "subscribe_topics", []
@@ -160,6 +201,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         self._topic_delegation_failed: str = next(
             (t for t in _topics if "delegation-failed" in t), ""
+        )
+        # OMN-15850/OMN-15905: the deterministic-scoring path (no LLM judge)
+        # publishes ONLY this topic. Resolved from the already-declared
+        # subscribe_topics (contract.yaml, landed by omnimarket#2052) so this
+        # runner finally reaches the write path that method sat on unreachable
+        # (Locus 1 of the wiring gap, plan §2.1).
+        self._topic_quality_gate_result: str = next(
+            (t for t in _topics if "quality-gate-result" in t), ""
         )
         self._terminal_topic: str | None = self._contract.get("terminal_event")
         # OMN-13548 (D-03): contract-declared DLQ topic for malformed events. A
@@ -297,6 +346,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             self._topic_delegation_failed,
         }:
             ok = await self._project_delegation_terminal_result(data, meta)
+        elif (
+            self._topic_quality_gate_result and topic == self._topic_quality_gate_result
+        ):
+            ok = await self._project_quality_gate_result(data, meta)
         else:
             return False
 
@@ -359,202 +412,401 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         return True
 
+    async def _project_quality_gate_result(
+        self, data: dict[str, Any], meta: MessageMeta
+    ) -> bool:
+        """Async port of ``HandlerProjectionDelegation.project_quality_gate_result``.
+
+        OMN-15850 / OMN-15905. The business-proof ``quality_gate`` check reads
+        ``delegation_events.quality_gate_passed`` and FAILs when no row exists
+        for the correlation_id. The deterministic-scoring path (no LLM judge)
+        publishes ONLY this topic, never ``delegation-judge-verdict.v1``. This
+        method must reach the write path the shared-kernel dispatch gap starved
+        (Locus 1, plan §2.1) -- it is the entire point of standing up this
+        standalone writer.
+
+        Unlike the shared-kernel ``handle()`` dict-protocol shim, the standalone
+        runner's ``project_event`` receives the raw unwrapped envelope payload
+        with no synthetic ``_topic``/``_event_type`` keys injected (those are an
+        auto-wiring fan-out artifact this class bypasses entirely, §2.2) — the
+        same assumption ``_project_judge_verdict`` above already relies on.
+        """
+        try:
+            event = ModelQualityGateResult(**data)
+        except ValidationError as exc:
+            return await self._route_malformed_to_dlq(
+                data, f"quality-gate-result event failed model validation: {exc}", meta
+            )
+
+        require_tenant_id(None, table=self._table_delegation)
+        row: dict[str, object] = {
+            "correlation_id": str(event.correlation_id),
+            "quality_gate_passed": event.passed,
+            "quality_gate_detail": "; ".join(event.failure_reasons) or None,
+            "actual_score": (
+                event.actual_score
+                if event.actual_score is not None
+                else event.quality_score
+            ),
+            "score_source": event.score_source or None,
+        }
+        existing = await self.db.execute(
+            f"SELECT 1 FROM {self._table_delegation} WHERE correlation_id = $1",
+            row["correlation_id"],
+        )
+        if not existing:
+            # OMN-13171 pattern: only a genuine fresh row needs the explicit
+            # stamp -- an UPDATE leaves a terminal event's created_at intact
+            # because it is not named in this dict (targeted-column UPSERT).
+            row["created_at"] = datetime.now(tz=UTC).isoformat()
+        await self._dynamic_upsert(
+            table=self._table_delegation, conflict_key="correlation_id", row=row
+        )
+        return True
+
+    async def _dynamic_upsert(
+        self, *, table: str, conflict_key: str, row: dict[str, object]
+    ) -> None:
+        """Async targeted-column UPSERT (OMN-15905 port).
+
+        Mirrors ``PostgresSyncProjectionAdapter.upsert()``'s semantics byte-for-
+        byte: ``EXCLUDED`` overwrite for columns present in ``row`` only -- a
+        column omitted from ``row`` is left untouched on an existing row and
+        takes its DB default on INSERT. This is the same contract every
+        ``DatabaseAdapter`` implementation (``InmemoryDatabaseAdapter``,
+        ``SqliteDatabaseAdapter``, ``PostgresSyncProjectionAdapter``) gives the
+        sync ``project()``/``project_delegate_skill_terminal`` write paths, so
+        porting the row-dict + this generic upsert reaches parity without
+        hand-writing a bespoke ``COALESCE``-laden SQL statement per call site.
+
+        ``list``/``dict`` values are JSONB-serialized + ``::jsonb``-cast --
+        asyncpg does not auto-adapt Python containers the way psycopg2's
+        ``Json`` wrapper does for the sync path (see ``postgres_sync_database
+        .PostgresSyncProjectionAdapter._adapt``).
+        """
+        conflict_keys = [k.strip() for k in conflict_key.split(",") if k.strip()]
+        if not conflict_keys:
+            raise ValueError("conflict_key must contain at least one key")
+        missing = [k for k in conflict_keys if k not in row]
+        if missing:
+            raise KeyError(f"row missing conflict key(s): {missing}")
+
+        columns = list(row.keys())
+        for name in (table, *columns):
+            if not _IDENTIFIER_RE.match(name):
+                raise ValueError(f"invalid SQL identifier: {name!r}")
+
+        values: list[object] = []
+        placeholders: list[str] = []
+        for i, col in enumerate(columns, start=1):
+            value = row[col]
+            if isinstance(value, list | dict):
+                values.append(json.dumps(value, default=str))
+                placeholders.append(f"${i}::jsonb")
+            else:
+                values.append(value)
+                placeholders.append(f"${i}")
+
+        update_cols = [c for c in columns if c not in conflict_keys]
+        set_clause = ", ".join(f"{c} = EXCLUDED.{c}" for c in update_cols)
+        on_conflict = f"DO UPDATE SET {set_clause}" if update_cols else "DO NOTHING"
+        query = (
+            f"INSERT INTO {table} ({', '.join(columns)}) "
+            f"VALUES ({', '.join(placeholders)}) "
+            f"ON CONFLICT ({', '.join(conflict_keys)}) {on_conflict}"
+        )
+        await self.db.execute(query, *values)
+
+    async def _preserve_existing_evidence_async(self, row: dict[str, object]) -> None:
+        """Async port of ``handler_projection_delegation._preserve_existing_evidence``.
+
+        Keeps terminal evidence when a sparse compatibility event arrives
+        later (OMN-13596/OMN-15503 sticky-evidence family). Reuses the pure
+        (no-I/O) helpers ``_is_blank``/``_is_zero``/``_preserve_terminal_failure``
+        imported from the sync handler so the merge RULES cannot drift between
+        the two write paths -- only the row lookup differs (async SELECT vs.
+        sync ``db.query()``).
+        """
+        correlation_id = row.get("correlation_id")
+        if not correlation_id:
+            return
+        existing_rows = await self.db.execute(
+            f"SELECT * FROM {self._table_delegation} WHERE correlation_id = $1",
+            str(correlation_id),
+        )
+        if not existing_rows:
+            return
+        existing = existing_rows[0]
+        for key in ("prompt_text", "response_text", "context_pack_hash"):
+            if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
+                row[key] = existing[key]
+        # OMN-13596: a confirmed PASS row's response_text must never be
+        # overwritten by a later FAILED/timeout terminal's error string.
+        if bool(existing.get("quality_gate_passed")) and not bool(
+            row.get("quality_gate_passed")
+        ):
+            existing_response = existing.get("response_text")
+            if not _is_blank(existing_response):
+                row["response_text"] = existing_response
+        for key in (
+            "tokens_input",
+            "tokens_output",
+            "tokens_to_compliance",
+            "cost_usd",
+            "cost_savings_usd",
+            "delegation_latency_ms",
+            "pricing_manifest_version",
+            "required_bar",
+            "actual_score",
+            "escalation_count",
+        ):
+            if _is_zero(row.get(key)) and not _is_zero(existing.get(key)):
+                row[key] = existing[key]
+        for key in ("authority_source", "score_source"):
+            if _is_blank(row.get(key)) and not _is_blank(existing.get(key)):
+                row[key] = existing[key]
+        if bool(existing.get("request_override_applied")):
+            row["request_override_applied"] = True
+        if existing.get("override_within_bounds") is False:
+            row["override_within_bounds"] = False
+        if (
+            _as_int_local(row.get("compliance_attempts")) <= 1
+            and _as_int_local(existing.get("compliance_attempts")) > 1
+        ):
+            row["compliance_attempts"] = existing["compliance_attempts"]
+        _preserve_terminal_failure(existing, row)
+
+    async def _materialize_budget_state_async(
+        self,
+        *,
+        correlation_id: str,
+        cost_tier_name: str,
+        cost_measurement_source: str,
+        budget_headroom_consumed_usd: float,
+        cost_usd: float,
+        tenant_id: str | None,
+        timestamp: str | None,
+    ) -> None:
+        """Async port of ``handler_budget_state.materialize_budget_state`` (OMN-13235/OMN-15905).
+
+        Event-sources the per-tenant ceiling budget state from a delegation's
+        measured drawdown, exactly mirroring the sync reducer's accumulation
+        math (``resolve_tier_cost`` is pure and reused unmodified) with the
+        SELECT-then-UPSERT I/O ported to async ``self.db.execute()`` calls.
+        """
+        cost = resolve_tier_cost(cost_tier_name)
+        if cost is None or cost.monthly_cap_usd is None:
+            return
+
+        # OMN-14898: no-op unless ENFORCE_TENANT_ISOLATION is set (preserves
+        # the OMN-14058 DEFAULT_TENANT fallback below by default).
+        require_tenant_id(tenant_id, table=self._table_budget_state)
+        event = ModelDelegationBudgetStateEvent(
+            correlation_id=correlation_id,
+            cost_tier_name=cost_tier_name,
+            cost_measurement_source=cost_measurement_source,
+            budget_headroom_consumed_usd=_as_decimal_local(
+                budget_headroom_consumed_usd
+            ),
+            cost_usd=_as_decimal_local(cost_usd),
+            tenant_id=tenant_id,
+            timestamp=timestamp,
+        )
+        resolved_tenant = event.resolved_tenant()
+        period = event.budget_period()
+        cap = Decimal(str(cost.monthly_cap_usd))
+        drawdown = event.budget_headroom_consumed_usd
+        overage = event.cost_usd
+        now_iso = datetime.now(tz=UTC).isoformat()
+        event_iso = event.resolved_event_time().isoformat()
+
+        existing_rows = await self.db.execute(
+            f"SELECT * FROM {self._table_budget_state} "
+            "WHERE tenant_id = $1 AND cost_tier_name = $2 AND budget_period = $3",
+            resolved_tenant,
+            cost_tier_name,
+            period,
+        )
+        if existing_rows:
+            existing = existing_rows[0]
+            # Idempotent replay guard: the same source event already applied.
+            if str(existing.get("last_correlation_id") or "") == event.correlation_id:
+                return
+            consumed = _as_decimal_local(existing.get("consumed_usd")) + drawdown
+            overage_total = _as_decimal_local(existing.get("overage_usd")) + overage
+            count = _as_int_local(existing.get("delegation_count")) + 1
+            first_event_at = str(existing.get("first_event_at") or event_iso)
+        else:
+            consumed = drawdown
+            overage_total = overage
+            count = 1
+            first_event_at = event_iso
+
+        headroom_remaining = cap - consumed
+        if headroom_remaining < Decimal("0"):
+            headroom_remaining = Decimal("0")
+
+        row: dict[str, object] = {
+            "tenant_id": resolved_tenant,
+            "cost_tier_name": cost_tier_name,
+            "budget_period": period,
+            "monthly_cap_usd": cap,
+            "consumed_usd": consumed,
+            "overage_usd": overage_total,
+            "headroom_remaining_usd": headroom_remaining,
+            "delegation_count": count,
+            "last_correlation_id": event.correlation_id,
+            "first_event_at": first_event_at,
+            "last_event_at": event_iso,
+            "created_at": now_iso,
+            "updated_at": now_iso,
+        }
+        await self._dynamic_upsert(
+            table=self._table_budget_state,
+            conflict_key="tenant_id,cost_tier_name,budget_period",
+            row=row,
+        )
+
+    async def _project_typed_event_async(
+        self, event: ModelProjectionTaskDelegatedEvent, meta: MessageMeta
+    ) -> bool:
+        """Async port of ``HandlerProjectionDelegation.project()`` (OMN-15905).
+
+        Shared by the compat task-delegated path and the canonical
+        delegation-completed/failed terminal path -- both build the same typed
+        ``ModelProjectionTaskDelegatedEvent`` and must reach the SAME parity on
+        tenant stamping, measured-cost re-pricing, evidence preservation, and
+        budget-state materialization the sync ``project()`` already proves
+        correct. Porting logic into this single shared method (rather than
+        duplicating it per caller) is what keeps the two call sites from
+        re-diverging the way ``DelegationProjectionRunner`` diverged from
+        ``HandlerProjectionDelegation`` in the first place (plan §4.1).
+        """
+        now = datetime.now(tz=UTC).isoformat()
+        measurement = _measure_actual_cost(event)
+        row: dict[str, object] = {
+            "correlation_id": event.correlation_id,
+            "session_id": event.session_id,
+            "timestamp": event.timestamp or now,
+            "task_type": event.task_type,
+            "delegated_to": event.delegated_to,
+            "model_name": event.model_name,
+            "delegated_by": event.delegated_by,
+            "quality_gate_passed": event.quality_gate_passed,
+            "quality_gates_checked": _gate_count(event.quality_gates_checked),
+            "quality_gates_failed": _gate_count(event.quality_gates_failed),
+            "quality_gates_checked_jsonb": event.quality_gates_checked,
+            "quality_gates_failed_jsonb": event.quality_gates_failed,
+            "quality_gate_detail": event.quality_gate_detail,
+            # OMN-13355: cost_usd is the MEASURED actual cost (the serving
+            # tier's typed cost model priced against the measured tokens),
+            # matching the sync project() path's provenance exactly.
+            "cost_usd": measurement.cost_usd,
+            "cost_savings_usd": measurement.cost_savings_usd,
+            "delegation_latency_ms": event.delegation_latency_ms,
+            "repo": event.repo,
+            "is_shadow": event.is_shadow,
+            "llm_call_id": event.llm_call_id or None,
+            "tokens_input": event.tokens_input,
+            "tokens_output": event.tokens_output,
+            "tokens_to_compliance": event.tokens_to_compliance,
+            "compliance_attempts": event.compliance_attempts,
+            "prompt_text": event.prompt_text,
+            "response_text": event.response_text,
+            "context_pack_hash": event.context_pack_hash,
+            "pricing_manifest_version": event.pricing_manifest_version,
+            "premium_counterfactual": (
+                event.premium_counterfactual.model_dump(mode="json")
+                if event.premium_counterfactual is not None
+                else None
+            ),
+            "cost_tier_type": measurement.cost_tier_type,
+            "cost_tier_name": measurement.cost_tier_name,
+            "cost_measurement_source": measurement.cost_measurement_source,
+            "budget_headroom_consumed_usd": measurement.headroom_consumed_usd,
+            "required_bar": event.required_bar,
+            "actual_score": event.actual_score,
+            "escalation_count": event.escalation_count,
+            "authority_source": event.authority_source,
+            "score_source": event.score_source,
+            "request_override_applied": event.request_override_applied,
+            "override_within_bounds": event.override_within_bounds,
+        }
+        # OMN-14898: refuse the write before it is built out further when
+        # isolation enforcement is on and no tenant was resolved. No-op while
+        # ENFORCE_TENANT_ISOLATION is False (OMN-14058 interim default).
+        require_tenant_id(event.tenant_id, table=self._table_delegation)
+        # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
+        # source event carried one -- omitting the key lets the column
+        # DEFAULT 'omninode' apply on INSERT and leaves an already-known
+        # tenant untouched on UPDATE (targeted-column upsert semantics).
+        if event.tenant_id:
+            row["tenant_id"] = event.tenant_id
+        evidence = extract_quality_bar_evidence(row)
+        evidence.update(
+            extract_quality_bar_evidence(
+                {},
+                checked_labels=event.quality_gates_checked or (),
+            )
+        )
+        row.update(evidence)
+        await self._preserve_existing_evidence_async(row)
+        await self._dynamic_upsert(
+            table=self._table_delegation, conflict_key="correlation_id", row=row
+        )
+        # OMN-13235: event-source the per-tenant ceiling budget state.
+        await self._materialize_budget_state_async(
+            correlation_id=event.correlation_id,
+            cost_tier_name=measurement.cost_tier_name,
+            cost_measurement_source=measurement.cost_measurement_source,
+            budget_headroom_consumed_usd=measurement.headroom_consumed_usd,
+            cost_usd=measurement.cost_usd,
+            tenant_id=event.tenant_id,
+            timestamp=event.timestamp,
+        )
+        return True
+
     async def _project_delegation_terminal_result(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        normalized = _canonical_result_to_task_delegated_payload(data)
-        return await self._upsert_canonical_delegation_terminal(normalized, meta)
+        """Canonical ``delegation-completed.v1``/``delegation-failed.v1`` path.
 
-    async def _upsert_canonical_delegation_terminal(
-        self, data: dict[str, Any], meta: MessageMeta
-    ) -> bool:
-        """UPSERT a canonical delegation terminal result into delegation_events.
-
-        The compatibility task-delegated event can materialize a row before the
-        terminal result arrives. Terminal results therefore update missing row
-        evidence instead of using the task-delegated insert-only conflict policy.
+        OMN-15905: normalizes via the SAME converter
+        ``HandlerProjectionDelegation`` uses (imported, not re-implemented --
+        the module-local duplicate this file previously carried had silently
+        diverged: it dropped tenant_id, context_pack_hash, the authoritative
+        cost_tier_name resolution, and the timeout-string suppression baked
+        into the correct converter's response_text field). Building the typed
+        event and routing through ``_project_typed_event_async`` reaches full
+        parity in one place.
         """
-        # OMN-12811: ``data`` is the snake_case output of
-        # ``_canonical_result_to_task_delegated_payload`` (the canonical
-        # ``ModelDelegationResult`` terminal, ``extra='forbid'``). The legacy
-        # camelCase coalescing aliases were dead and are dropped; the remaining
-        # multi-key reads are snake_case field-name fallbacks within the one schema.
-        correlation_id = data.get("correlation_id") or meta.fallback_id
-        task_type = data.get("task_type")
-        delegated_to = data.get("delegated_to") or data.get("model_used")
-        if not task_type or not delegated_to:
-            logger.warning(
-                "delegation terminal event missing required fields (correlation_id=%s)",
-                correlation_id,
+        normalized = _canonical_result_to_task_delegated_payload(data)
+        if not normalized.get("correlation_id"):
+            normalized["correlation_id"] = meta.fallback_id
+        try:
+            event = ModelProjectionTaskDelegatedEvent(**normalized)
+        except ValidationError as exc:
+            return await self._route_malformed_to_dlq(
+                data, f"delegation terminal event failed model validation: {exc}", meta
             )
-            return True
-
-        timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
-        model_name = data.get("model_name") or delegated_to
-        quality_gates_checked = data.get("quality_gates_checked")
-        quality_gates_failed = data.get("quality_gates_failed")
-        qgc_labels = _coerce_gate_labels(quality_gates_checked)
-        qgf_labels = _coerce_gate_labels(quality_gates_failed)
-        qgc_json = json.dumps(qgc_labels) if qgc_labels else None
-        qgf_json = json.dumps(qgf_labels) if qgf_labels else None
-        quality_gate_detail = data.get("quality_gate_detail") or None
-        quality_bar_evidence = extract_quality_bar_evidence(
-            data,
-            checked_labels=qgc_labels,
-        )
-        cost_usd = _safe_numeric_str(data.get("cost_usd"))
-        cost_savings_usd = _safe_numeric_str(
-            data.get("cost_savings_usd") or data.get("estimated_savings_usd")
-        )
-        pricing_manifest_version = (
-            _safe_int_or_none(data.get("pricing_manifest_version")) or 0
-        )
-        delegation_latency_ms = _safe_int_or_none(
-            data.get("delegation_latency_ms") or data.get("latency_ms")
-        )
-        tokens_input = (
-            _safe_int_or_none(data.get("tokens_input") or data.get("prompt_tokens"))
-            or 0
-        )
-        tokens_output = (
-            _safe_int_or_none(
-                data.get("tokens_output") or data.get("completion_tokens")
-            )
-            or 0
-        )
-        tokens_to_compliance = _safe_int_or_none(data.get("tokens_to_compliance")) or 0
-        compliance_attempts = _safe_int_or_none(data.get("compliance_attempts")) or 1
-        prompt_text = _blank_to_none(data.get("prompt_text"))
-        response_text = _blank_to_none(data.get("response_text"))
-
-        await self.db.execute(
-            f"""
-            INSERT INTO {self._table_delegation} (
-              correlation_id, session_id, timestamp, task_type,
-              delegated_to, model_name, delegated_by, quality_gate_passed,
-              quality_gates_checked, quality_gates_failed,
-              quality_gates_checked_jsonb, quality_gates_failed_jsonb,
-              quality_gate_detail,
-              cost_usd, cost_savings_usd, delegation_latency_ms,
-              repo, is_shadow, prompt_text, response_text,
-              tokens_input, tokens_output, tokens_to_compliance,
-              compliance_attempts, pricing_manifest_version,
-              required_bar, actual_score, escalation_count, authority_source,
-              score_source, request_override_applied, override_within_bounds
-            ) VALUES (
-              $1, $2, $3, $4,
-              $5, $6, $7, $8,
-              $9, $10,
-              $11::jsonb, $12::jsonb,
-              $13,
-              $14, $15, $16,
-              $17, $18, $19, $20,
-              $21, $22, $23,
-              $24, $25,
-              $26, $27, $28, $29,
-              $30, $31, $32
-            )
-            ON CONFLICT (correlation_id) DO UPDATE SET
-              session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
-              timestamp = EXCLUDED.timestamp,
-              task_type = EXCLUDED.task_type,
-              delegated_to = EXCLUDED.delegated_to,
-              model_name = COALESCE(NULLIF(EXCLUDED.model_name, ''), {self._table_delegation}.model_name),
-              delegated_by = COALESCE(EXCLUDED.delegated_by, {self._table_delegation}.delegated_by),
-              quality_gate_passed = EXCLUDED.quality_gate_passed,
-              quality_gates_checked = EXCLUDED.quality_gates_checked,
-              quality_gates_failed = EXCLUDED.quality_gates_failed,
-              quality_gates_checked_jsonb = EXCLUDED.quality_gates_checked_jsonb,
-              quality_gates_failed_jsonb = EXCLUDED.quality_gates_failed_jsonb,
-              quality_gate_detail = COALESCE(EXCLUDED.quality_gate_detail, {self._table_delegation}.quality_gate_detail),
-              cost_usd = COALESCE(EXCLUDED.cost_usd, {self._table_delegation}.cost_usd),
-              cost_savings_usd = COALESCE(EXCLUDED.cost_savings_usd, {self._table_delegation}.cost_savings_usd),
-              delegation_latency_ms = COALESCE(EXCLUDED.delegation_latency_ms, {self._table_delegation}.delegation_latency_ms),
-              repo = COALESCE(EXCLUDED.repo, {self._table_delegation}.repo),
-              is_shadow = EXCLUDED.is_shadow,
-              prompt_text = COALESCE(EXCLUDED.prompt_text, {self._table_delegation}.prompt_text),
-              response_text = COALESCE(EXCLUDED.response_text, {self._table_delegation}.response_text),
-              tokens_input = CASE
-                WHEN EXCLUDED.tokens_input > 0 THEN EXCLUDED.tokens_input
-                ELSE {self._table_delegation}.tokens_input
-              END,
-              tokens_output = CASE
-                WHEN EXCLUDED.tokens_output > 0 THEN EXCLUDED.tokens_output
-                ELSE {self._table_delegation}.tokens_output
-              END,
-              tokens_to_compliance = CASE
-                WHEN EXCLUDED.tokens_to_compliance > 0 THEN EXCLUDED.tokens_to_compliance
-                ELSE {self._table_delegation}.tokens_to_compliance
-              END,
-              compliance_attempts = CASE
-                WHEN EXCLUDED.compliance_attempts > 0 THEN EXCLUDED.compliance_attempts
-                ELSE {self._table_delegation}.compliance_attempts
-              END,
-              pricing_manifest_version = CASE
-                WHEN EXCLUDED.pricing_manifest_version > 0 THEN EXCLUDED.pricing_manifest_version
-                ELSE {self._table_delegation}.pricing_manifest_version
-              END,
-              required_bar = COALESCE(EXCLUDED.required_bar, {self._table_delegation}.required_bar),
-              actual_score = COALESCE(EXCLUDED.actual_score, {self._table_delegation}.actual_score),
-              escalation_count = GREATEST(EXCLUDED.escalation_count, {self._table_delegation}.escalation_count),
-              authority_source = COALESCE(EXCLUDED.authority_source, {self._table_delegation}.authority_source),
-              score_source = COALESCE(EXCLUDED.score_source, {self._table_delegation}.score_source),
-              request_override_applied = EXCLUDED.request_override_applied OR {self._table_delegation}.request_override_applied,
-              override_within_bounds = EXCLUDED.override_within_bounds AND {self._table_delegation}.override_within_bounds
-            """,
-            str(correlation_id),
-            str(data.get("session_id")) if data.get("session_id") else None,
-            timestamp,
-            str(task_type),
-            str(delegated_to),
-            str(model_name) if model_name else "",
-            str(data.get("delegated_by")) if data.get("delegated_by") else None,
-            bool(data.get("quality_gate_passed")),
-            len(qgc_labels),
-            len(qgf_labels),
-            qgc_json,
-            qgf_json,
-            str(quality_gate_detail) if quality_gate_detail else None,
-            cost_usd,
-            cost_savings_usd,
-            delegation_latency_ms,
-            str(data.get("repo")) if data.get("repo") else None,
-            bool(data.get("is_shadow")),
-            prompt_text,
-            response_text,
-            tokens_input,
-            tokens_output,
-            tokens_to_compliance,
-            compliance_attempts,
-            pricing_manifest_version,
-            _safe_numeric_str(quality_bar_evidence.get("required_bar")),
-            _safe_numeric_str(quality_bar_evidence.get("actual_score")),
-            _safe_int_or_none(quality_bar_evidence.get("escalation_count")) or 0,
-            str(quality_bar_evidence.get("authority_source"))
-            if quality_bar_evidence.get("authority_source") is not None
-            else None,
-            str(quality_bar_evidence.get("score_source"))
-            if quality_bar_evidence.get("score_source") is not None
-            else None,
-            bool(quality_bar_evidence.get("request_override_applied") or False),
-            bool(quality_bar_evidence.get("override_within_bounds") is not False),
-        )
-        return True
+        return await self._project_typed_event_async(event, meta)
 
     async def _project_task_delegated(
         self, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        correlation_id = (
-            data.get("correlation_id") or data.get("correlationId") or meta.fallback_id
-        )
+        """Legacy compat ``task-delegated.v1`` path (e2e-probe harness only).
 
-        task_type = data.get("task_type") or data.get("taskType")
-        delegated_to = (
-            data.get("delegated_to")
-            or data.get("delegatedTo")
-            or data.get("model_used")
-            or data.get("modelUsed")
-        )
+        OMN-13629 dropped the live producer for this topic; per contract.yaml
+        it is retained only for the still-live e2e-probe harness, which
+        publishes an already-snake_case payload -- so the pre-port camelCase
+        dual-shape coalescing here was dead code (``ModelProjectionTaskDelegated
+        Event`` carries no camelCase validation aliases; the sync ``handle()``
+        default branch never supported them either). OMN-15905 drops the dead
+        coalescing and routes through the same typed pipeline as the canonical
+        terminal path for full parity.
+        """
+        task_type = data.get("task_type")
+        delegated_to = data.get("delegated_to") or data.get("model_used")
         if not task_type or not delegated_to:
             return await self._route_malformed_to_dlq(
                 data,
@@ -562,178 +814,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 f"(task_type={task_type!r}, delegated_to={delegated_to!r})",
                 meta,
             )
-
-        session_id = data.get("session_id") or data.get("sessionId") or None
-        timestamp = safe_parse_date(data.get("timestamp") or data.get("emitted_at"))
-        delegated_by = (
-            data.get("delegated_by")
-            or data.get("delegatedBy")
-            or data.get("handler_used")
-            or data.get("handlerUsed")
-            or None
-        )
-        quality_gate_passed = bool(
-            data.get("quality_gate_passed")
-            if data.get("quality_gate_passed") is not None
-            else data.get("qualityGatePassed") or False
-        )
-
-        quality_gates_checked = data.get("quality_gates_checked") or data.get(
-            "qualityGatesChecked"
-        )
-        quality_gates_failed = data.get("quality_gates_failed") or data.get(
-            "qualityGatesFailed"
-        )
-        qgc_labels = _coerce_gate_labels(quality_gates_checked)
-        qgf_labels = _coerce_gate_labels(quality_gates_failed)
-        qgc_json = json.dumps(qgc_labels) if qgc_labels else None
-        qgf_json = json.dumps(qgf_labels) if qgf_labels else None
-        quality_gate_detail = (
-            data.get("quality_gate_detail") or data.get("qualityGateDetail") or None
-        )
-        quality_bar_evidence = extract_quality_bar_evidence(
-            data,
-            checked_labels=qgc_labels,
-        )
-
-        cost_usd = _safe_numeric_str(data.get("cost_usd") or data.get("costUsd"))
-        cost_savings_usd = _safe_numeric_str(
-            data.get("cost_savings_usd")
-            or data.get("costSavingsUsd")
-            or data.get("estimated_savings_usd")
-            or data.get("estimatedSavingsUsd")
-        )
-        pricing_manifest_version = (
-            _safe_int_or_none(
-                data.get("pricing_manifest_version")
-                or data.get("pricingManifestVersion"),
+        payload = dict(data)
+        if not payload.get("correlation_id"):
+            payload["correlation_id"] = meta.fallback_id
+        try:
+            event = ModelProjectionTaskDelegatedEvent(**payload)
+        except ValidationError as exc:
+            return await self._route_malformed_to_dlq(
+                data, f"task-delegated event failed model validation: {exc}", meta
             )
-            or 0
-        )
-        delegation_latency_ms = _safe_int_or_none(
-            data.get("delegation_latency_ms")
-            or data.get("delegationLatencyMs")
-            or data.get("latency_ms")
-            or data.get("latencyMs")
-        )
-        repo = data.get("repo") or None
-        is_shadow = bool(
-            data.get("is_shadow")
-            if data.get("is_shadow") is not None
-            else data.get("isShadow") or False
-        )
-
-        prompt_text = data.get("prompt_text")
-        if prompt_text is None:
-            prompt_text = data.get("promptText")
-
-        response_text = data.get("response_text")
-        if response_text is None:
-            response_text = data.get("responseText")
-        tokens_input = (
-            _safe_int_or_none(
-                data.get("tokens_input")
-                or data.get("tokensInput")
-                or data.get("prompt_tokens")
-                or data.get("promptTokens")
-            )
-            or 0
-        )
-        tokens_output = (
-            _safe_int_or_none(
-                data.get("tokens_output")
-                or data.get("tokensOutput")
-                or data.get("completion_tokens")
-                or data.get("completionTokens")
-            )
-            or 0
-        )
-        tokens_to_compliance = (
-            _safe_int_or_none(
-                data.get("tokens_to_compliance") or data.get("tokensToCompliance")
-            )
-            or 0
-        )
-        compliance_attempts = (
-            _safe_int_or_none(
-                data.get("compliance_attempts") or data.get("complianceAttempts")
-            )
-            or 1
-        )
-
-        await self.db.execute(
-            f"""
-            INSERT INTO {self._table_delegation} (
-              correlation_id, session_id, timestamp, task_type,
-              delegated_to, delegated_by, quality_gate_passed,
-              quality_gates_checked, quality_gates_failed,
-              quality_gates_checked_jsonb, quality_gates_failed_jsonb,
-              quality_gate_detail,
-              cost_usd, cost_savings_usd, delegation_latency_ms,
-              repo, is_shadow, prompt_text, response_text,
-              tokens_input, tokens_output, tokens_to_compliance,
-              compliance_attempts, pricing_manifest_version,
-              required_bar, actual_score, escalation_count, authority_source,
-              score_source, request_override_applied, override_within_bounds
-            ) VALUES (
-              $1, $2, $3, $4,
-              $5, $6, $7,
-              $8, $9,
-              $10::jsonb, $11::jsonb,
-              $12,
-              $13, $14, $15,
-              $16, $17, $18, $19,
-              $20, $21, $22,
-              $23, $24,
-              $25, $26, $27, $28,
-              $29, $30, $31
-            )
-            ON CONFLICT (correlation_id) DO UPDATE SET
-              required_bar = COALESCE(EXCLUDED.required_bar, {self._table_delegation}.required_bar),
-              actual_score = COALESCE(EXCLUDED.actual_score, {self._table_delegation}.actual_score),
-              escalation_count = GREATEST(EXCLUDED.escalation_count, {self._table_delegation}.escalation_count),
-              authority_source = COALESCE(EXCLUDED.authority_source, {self._table_delegation}.authority_source),
-              score_source = COALESCE(EXCLUDED.score_source, {self._table_delegation}.score_source),
-              request_override_applied = EXCLUDED.request_override_applied OR {self._table_delegation}.request_override_applied,
-              override_within_bounds = EXCLUDED.override_within_bounds AND {self._table_delegation}.override_within_bounds
-            """,
-            correlation_id,
-            str(session_id) if session_id else None,
-            timestamp,
-            str(task_type),
-            str(delegated_to),
-            str(delegated_by) if delegated_by else None,
-            quality_gate_passed,
-            len(qgc_labels),
-            len(qgf_labels),
-            qgc_json,
-            qgf_json,
-            str(quality_gate_detail) if quality_gate_detail else None,
-            cost_usd,
-            cost_savings_usd,
-            delegation_latency_ms,
-            str(repo) if repo else None,
-            is_shadow,
-            str(prompt_text) if prompt_text is not None else None,
-            str(response_text) if response_text is not None else None,
-            tokens_input,
-            tokens_output,
-            tokens_to_compliance,
-            compliance_attempts,
-            pricing_manifest_version,
-            _safe_numeric_str(quality_bar_evidence.get("required_bar")),
-            _safe_numeric_str(quality_bar_evidence.get("actual_score")),
-            _safe_int_or_none(quality_bar_evidence.get("escalation_count")) or 0,
-            str(quality_bar_evidence.get("authority_source"))
-            if quality_bar_evidence.get("authority_source") is not None
-            else None,
-            str(quality_bar_evidence.get("score_source"))
-            if quality_bar_evidence.get("score_source") is not None
-            else None,
-            bool(quality_bar_evidence.get("request_override_applied") or False),
-            bool(quality_bar_evidence.get("override_within_bounds") is not False),
-        )
-        return True
+        return await self._project_typed_event_async(event, meta)
 
     async def _project_delegate_skill_terminal(
         self, data: dict[str, Any], meta: MessageMeta
@@ -747,103 +837,101 @@ class DelegationProjectionRunner(BaseProjectionRunner):
                 meta,
             )
 
-        row = ModelDelegationEventProjectionRow.from_terminal_event(terminal)
-        await self._upsert_delegate_skill_projection_row(row)
+        row_model = ModelDelegationEventProjectionRow.from_terminal_event(terminal)
+        await self._upsert_delegate_skill_projection_row(row_model, terminal)
         return True
 
     async def _upsert_delegate_skill_projection_row(
         self,
-        row: ModelDelegationEventProjectionRow,
+        row_model: ModelDelegationEventProjectionRow,
+        event: ModelDelegateSkillTerminalProjection,
     ) -> None:
-        quality_gates_checked = list(row.quality_gates_checked)
-        quality_gates_failed = list(row.quality_gates_failed)
-        quality_gates_checked_json = json.dumps(quality_gates_checked)
-        quality_gates_failed_json = json.dumps(quality_gates_failed)
-        session_id = str(row.session_id) if row.session_id is not None else None
-        await self.db.execute(
-            f"""
-            INSERT INTO {self._table_delegation} (
-              correlation_id, session_id, timestamp, task_type,
-              delegated_to, model_name, delegated_by, quality_gate_passed,
-              quality_gates_checked, quality_gates_failed,
-              quality_gates_checked_jsonb, quality_gates_failed_jsonb,
-              quality_gate_detail,
-              cost_usd, cost_savings_usd, delegation_latency_ms,
-              latency_ms, repo, is_shadow, prompt_text, response_text,
-              context_pack_hash, tokens_input, tokens_output, tokens_to_compliance,
-              compliance_attempts, pricing_manifest_version,
-              projection_version, reducer_version
-            ) VALUES (
-              $1, $2, $3, $4,
-              $5, $6, $7, $8,
-              $9, $10,
-              $11::jsonb, $12::jsonb,
-              $13,
-              $14, $15, $16,
-              $17, $18, $19, $20, $21,
-              $22, $23, $24, $25,
-              $26, $27,
-              $28, $29
-            )
-            ON CONFLICT (correlation_id) DO UPDATE SET
-              session_id = COALESCE(EXCLUDED.session_id, {self._table_delegation}.session_id),
-              timestamp = EXCLUDED.timestamp,
-              task_type = EXCLUDED.task_type,
-              delegated_to = EXCLUDED.delegated_to,
-              model_name = EXCLUDED.model_name,
-              delegated_by = EXCLUDED.delegated_by,
-              quality_gate_passed = EXCLUDED.quality_gate_passed,
-              quality_gates_checked = EXCLUDED.quality_gates_checked,
-              quality_gates_failed = EXCLUDED.quality_gates_failed,
-              quality_gates_checked_jsonb = EXCLUDED.quality_gates_checked_jsonb,
-              quality_gates_failed_jsonb = EXCLUDED.quality_gates_failed_jsonb,
-              quality_gate_detail = EXCLUDED.quality_gate_detail,
-              cost_usd = EXCLUDED.cost_usd,
-              cost_savings_usd = EXCLUDED.cost_savings_usd,
-              delegation_latency_ms = EXCLUDED.delegation_latency_ms,
-              latency_ms = EXCLUDED.latency_ms,
-              repo = COALESCE(EXCLUDED.repo, {self._table_delegation}.repo),
-              is_shadow = EXCLUDED.is_shadow,
-              prompt_text = COALESCE(EXCLUDED.prompt_text, {self._table_delegation}.prompt_text),
-              response_text = COALESCE(EXCLUDED.response_text, {self._table_delegation}.response_text),
-              context_pack_hash = COALESCE(NULLIF(EXCLUDED.context_pack_hash, ''), {self._table_delegation}.context_pack_hash),
-              tokens_input = EXCLUDED.tokens_input,
-              tokens_output = EXCLUDED.tokens_output,
-              tokens_to_compliance = EXCLUDED.tokens_to_compliance,
-              compliance_attempts = EXCLUDED.compliance_attempts,
-              pricing_manifest_version = EXCLUDED.pricing_manifest_version,
-              projection_version = EXCLUDED.projection_version,
-              reducer_version = EXCLUDED.reducer_version
-            """,
-            str(row.correlation_id),
-            session_id,
-            row.timestamp,
-            row.task_type,
-            row.delegated_to,
-            row.model_name,
-            row.delegated_by,
-            row.quality_gate_passed,
-            len(quality_gates_checked),
-            len(quality_gates_failed),
-            quality_gates_checked_json,
-            quality_gates_failed_json,
-            row.quality_gate_detail,
-            row.cost_usd,
-            row.cost_savings_usd,
-            row.latency_ms,
-            row.latency_ms,
-            row.repo_name,
-            row.is_shadow,
-            row.prompt_text,
-            row.response_text,
-            row.context_pack_hash,
-            row.tokens_input,
-            row.tokens_output,
-            row.tokens_to_compliance,
-            row.compliance_attempts,
-            row.pricing_manifest_version,
-            row.projection_version,
-            row.reducer_version,
+        """OMN-15905: reaches parity with
+        ``HandlerProjectionDelegation.project_delegate_skill_terminal`` --
+        the typed attempt-ladder reduction (OMN-15503 sticky terminal-failure
+        evidence), tenant stamping (OMN-14898), and sticky-evidence
+        preservation (OMN-13596) were previously async-path-only absent.
+        """
+        quality_gates_checked = list(row_model.quality_gates_checked)
+        quality_gates_failed = list(row_model.quality_gates_failed)
+        timestamp_iso = row_model.timestamp.isoformat()
+        session_id = (
+            str(row_model.session_id) if row_model.session_id is not None else None
+        )
+        row: dict[str, object] = {
+            "correlation_id": str(row_model.correlation_id),
+            "session_id": session_id,
+            "timestamp": timestamp_iso,
+            # OMN-13171: explicit created_at injection for a backing store
+            # without an implicit DB default (e.g. a warm-volume SQLite
+            # evidence target) that would otherwise raise NOT NULL.
+            "created_at": timestamp_iso,
+            "task_type": row_model.task_type,
+            "delegated_to": row_model.delegated_to,
+            "model_name": row_model.model_name,
+            "delegated_by": row_model.delegated_by,
+            "quality_gate_passed": row_model.quality_gate_passed,
+            "quality_gates_checked": len(quality_gates_checked),
+            "quality_gates_failed": len(quality_gates_failed),
+            "quality_gates_checked_jsonb": quality_gates_checked,
+            "quality_gates_failed_jsonb": quality_gates_failed,
+            "quality_gate_detail": row_model.quality_gate_detail,
+            "cost_usd": row_model.cost_usd,
+            "cost_savings_usd": row_model.cost_savings_usd,
+            "delegation_latency_ms": row_model.latency_ms,
+            "latency_ms": row_model.latency_ms,
+            "repo": row_model.repo_name,
+            "is_shadow": row_model.is_shadow,
+            "prompt_text": row_model.prompt_text,
+            "response_text": row_model.response_text,
+            "context_pack_hash": row_model.context_pack_hash,
+            "tokens_input": row_model.tokens_input,
+            "tokens_output": row_model.tokens_output,
+            "tokens_to_compliance": row_model.tokens_to_compliance,
+            "compliance_attempts": row_model.compliance_attempts,
+            "pricing_manifest_version": row_model.pricing_manifest_version,
+            "premium_counterfactual": (
+                row_model.premium_counterfactual.model_dump(mode="json")
+                if row_model.premium_counterfactual is not None
+                else None
+            ),
+            "projection_version": row_model.projection_version,
+            "reducer_version": row_model.reducer_version,
+        }
+        # OMN-15503: the ladder -- not the declared status -- decides. A
+        # terminal that says status="completed" while every inner attempt was
+        # refused with HTTP 429 projects as ok=false with a typed
+        # PROVIDER_QUOTA_EXHAUSTED cause. The ladder itself is persisted so
+        # "refused after N escalations" is provable from the durable row.
+        reduction = reduce_delegation_attempts(
+            declared_status=event.status,
+            declared_quality_gate_passed=event.quality_gate_passed,
+            error_message=event.error_message,
+            attempts=event.attempts,
+        )
+        row["terminal_ok"] = reduction.terminal_ok
+        row["terminal_failure_cause"] = (
+            reduction.terminal_failure_cause.value
+            if reduction.terminal_failure_cause is not None
+            else None
+        )
+        row["attempt_history"] = [
+            attempt.model_dump(mode="json") for attempt in reduction.attempt_history
+        ]
+        if not reduction.terminal_ok:
+            # A ladder-proven failure must not project as a passing delegation.
+            row["quality_gate_passed"] = False
+        # OMN-14898: same fail-closed guard as _project_typed_event_async.
+        require_tenant_id(row_model.tenant_id, table=self._table_delegation)
+        if row_model.tenant_id:
+            row["tenant_id"] = row_model.tenant_id
+        # OMN-13596: preserve an already-correct response_text when this
+        # delegate-skill terminal event carries None/empty response_text (a
+        # late-arriving timeout terminal must not clobber the real answer an
+        # earlier delegation-completed.v1 already wrote).
+        await self._preserve_existing_evidence_async(row)
+        await self._dynamic_upsert(
+            table=self._table_delegation, conflict_key="correlation_id", row=row
         )
 
     async def _project_shadow_comparison(
@@ -1085,13 +1173,6 @@ def _safe_int_or_none(value: Any) -> int | None:
         return None
 
 
-def _blank_to_none(value: Any) -> str | None:
-    if value is None:
-        return None
-    text = str(value)
-    return text if text.strip() else None
-
-
 def _coerce_gate_labels(value: Any) -> list[str]:
     if value is None:
         return []
@@ -1109,113 +1190,40 @@ def _coerce_gate_labels(value: Any) -> list[str]:
     return [str(value)]
 
 
-def _canonical_terminal_result_payload(data: Mapping[str, Any]) -> dict[str, Any]:
-    payload = data.get("payload")
-    if isinstance(payload, Mapping):
-        nested_payload = payload.get("payload")
-        if isinstance(nested_payload, Mapping):
-            return dict(nested_payload)
-        return dict(payload)
-    return dict(data)
+def _gate_count(value: list[str] | None) -> int:
+    return len(value or [])
 
 
-def _first_present(data: Mapping[str, Any], *keys: str) -> Any:
-    for key in keys:
-        value = data.get(key)
-        if value is not None:
-            return value
-    return None
+def _as_decimal_local(value: object) -> Decimal:
+    if value is None:
+        return Decimal("0")
+    if isinstance(value, Decimal):
+        return value
+    if isinstance(value, bool):
+        return Decimal(int(value))
+    if isinstance(value, int | float):
+        return Decimal(str(value))
+    if isinstance(value, str):
+        try:
+            return Decimal(value)
+        except (ValueError, ArithmeticError):
+            return Decimal("0")
+    return Decimal("0")
 
 
-def _first_mapping(data: Mapping[str, Any], *keys: str) -> Mapping[str, Any]:
-    for key in keys:
-        value = data.get(key)
-        if isinstance(value, Mapping):
-            return value
-    return {}
-
-
-def _canonical_result_to_task_delegated_payload(
-    data: dict[str, Any],
-) -> dict[str, Any]:
-    """Normalize canonical delegation terminal results to the projection row shape.
-
-    OMN-12811: the canonical delegation terminal (``delegation-completed.v1`` /
-    ``delegation-failed.v1``) is a single snake_case ``ModelDelegationResult``
-    schema declared ``extra='forbid'`` — the legacy ``task-delegated.v1`` camelCase
-    co-writer was deleted (OMN-13629). Every read here is therefore snake_case; the
-    prior dual-shape camel/snake coalescing aliases were dead and are dropped. The
-    remaining multi-key reads are snake_case field-name fallbacks within the one
-    canonical schema (e.g. ``content`` -> ``response_text``,
-    ``final_attempt_cost`` -> ``cost_usd``), not dual-shape shims.
-    """
-    result = _canonical_terminal_result_payload(data)
-    usage = _first_mapping(result, "usage", "metrics", "token_usage")
-    quality_passed = bool(
-        _first_present(result, "quality_passed", "quality_gate_passed")
-    )
-    failure_reason = _first_present(result, "failure_reason", "error_message") or ""
-    quality_failures = (
-        [str(failure_reason)] if failure_reason and not quality_passed else []
-    )
-    model_used = _first_present(result, "model_used", "model_name")
-    prompt_text = _first_present(result, "prompt_text", "prompt")
-    response_text = _first_present(
-        result, "content", "response_text", "response", "output"
-    )
-    prompt_tokens = _first_present(result, "prompt_tokens", "input_tokens")
-    if prompt_tokens is None:
-        prompt_tokens = _first_present(usage, "prompt_tokens", "input_tokens")
-    completion_tokens = _first_present(result, "completion_tokens", "output_tokens")
-    if completion_tokens is None:
-        completion_tokens = _first_present(usage, "completion_tokens", "output_tokens")
-    return {
-        "correlation_id": (
-            _first_present(result, "correlation_id")
-            or _first_present(data, "correlation_id")
-        ),
-        "session_id": _first_present(result, "session_id"),
-        "task_type": _first_present(result, "task_type") or "unknown",
-        "delegated_to": (
-            model_used or _first_present(result, "delegated_to") or "unknown"
-        ),
-        "model_name": model_used or "",
-        "quality_gate_passed": quality_passed,
-        "quality_gates_failed": quality_failures,
-        "quality_gate_detail": str(failure_reason) if failure_reason else None,
-        "delegation_latency_ms": _first_present(
-            result, "latency_ms", "delegation_latency_ms"
-        ),
-        "latency_ms": _first_present(result, "latency_ms"),
-        "prompt_text": prompt_text,
-        "response_text": response_text,
-        "tokens_input": prompt_tokens or 0,
-        "tokens_output": completion_tokens or 0,
-        "tokens_to_compliance": _first_present(result, "tokens_to_compliance") or 0,
-        "compliance_attempts": _first_present(result, "compliance_attempts") or 1,
-        "cost_usd": _first_present(result, "cost_usd", "final_attempt_cost") or 0,
-        "cost_savings_usd": _first_present(result, "cost_savings_usd") or 0,
-        "pricing_manifest_version": (
-            _first_present(result, "pricing_manifest_version") or 0
-        ),
-        "required_bar": _first_present(result, "required_bar"),
-        "actual_score": (
-            _first_present(result, "actual_score")
-            or _first_present(result, "quality_score")
-        ),
-        "escalation_count": _first_present(result, "escalation_count") or 0,
-        "authority_source": (
-            _first_present(result, "authority_source")
-            or _first_present(result, "required_bar_source")
-        ),
-        "score_source": _first_present(result, "score_source"),
-        "request_override_applied": (
-            _first_present(result, "request_override_applied") or False
-        ),
-        "override_within_bounds": (
-            _first_present(result, "override_within_bounds") is not False
-        ),
-    }
+def _as_int_local(value: object) -> int:
+    if value is None:
+        return 0
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int | float | Decimal):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return 0
+    return 0
 
 
 if __name__ == "__main__":

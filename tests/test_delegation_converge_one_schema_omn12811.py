@@ -10,6 +10,19 @@ camel/snake coalescing aliases are dead and are dropped.
 These tests pin the converged contract: a snake_case payload maps correctly, and
 a camelCase-only payload is NOT silently honored (proving the dual-shape alias
 plumbing is gone).
+
+OMN-15905: ``async_convert`` is now literally the SAME function object as
+``sync_convert`` — the async runner's own (previously stale, silently
+diverged) copy of this converter was deleted and replaced with an import of
+the sync handler's correct version (the port that closes the
+``DelegationProjectionRunner`` vs. ``HandlerProjectionDelegation`` divergence,
+plan §4.1). The two converter-output assertions below that previously pinned
+the stale async copy's behavior (a raw ``cost_usd``/``cost_savings_usd``
+passthrough and a bare ``pricing_manifest_version`` key, neither of which the
+correct converter's output dict carries — those figures are recomputed
+downstream by ``_measure_actual_cost`` against the authoritative
+``cost_tier_name``, not trusted verbatim off the wire) are updated to match
+the converged, correct behavior instead of the stale one.
 """
 
 from __future__ import annotations
@@ -51,7 +64,17 @@ def _has_camelcase_key(keys: object) -> bool:
 
 
 def test_async_converter_maps_canonical_snake_case() -> None:
-    """The canonical snake_case terminal maps onto the projection row shape."""
+    """The canonical snake_case terminal maps onto the projection row shape.
+
+    OMN-13408: the converter reads the metered total from
+    ``cumulative_attempt_cost``/``final_attempt_cost`` (the canonical
+    terminal's real cost fields), never a top-level ``cost_usd`` the live
+    producer does not guarantee — so the input uses the authoritative field.
+    ``cost_savings_usd``/``pricing_manifest_version`` are deliberately absent
+    from the converter's own output (they are recomputed downstream by
+    ``_measure_actual_cost`` against the authoritative ``cost_tier_name`` /
+    the event model's own defaults), not lossy dropped fields.
+    """
     payload = {
         "correlation_id": "cid-snake",
         "task_type": "code",
@@ -64,9 +87,7 @@ def test_async_converter_maps_canonical_snake_case() -> None:
         "completion_tokens": 22,
         "tokens_to_compliance": 3,
         "compliance_attempts": 2,
-        "cost_usd": 0.05,
-        "cost_savings_usd": 0.02,
-        "pricing_manifest_version": 7,
+        "cumulative_attempt_cost": 0.05,
         "escalation_count": 1,
         "actual_score": 0.9,
         "required_bar": 0.8,
@@ -85,8 +106,8 @@ def test_async_converter_maps_canonical_snake_case() -> None:
     assert out["tokens_to_compliance"] == 3
     assert out["compliance_attempts"] == 2
     assert out["cost_usd"] == 0.05
-    assert out["cost_savings_usd"] == 0.02
-    assert out["pricing_manifest_version"] == 7
+    assert "cost_savings_usd" not in out
+    assert "pricing_manifest_version" not in out
     assert out["escalation_count"] == 1
     assert out["actual_score"] == 0.9
     assert out["required_bar"] == 0.8
@@ -119,7 +140,10 @@ def test_async_converter_ignores_legacy_camelcase_dual_shape() -> None:
     }
     out = async_convert(camel_only)
     assert out["correlation_id"] is None
-    assert out["session_id"] is None
+    # OMN-15905: the correct converter's output never carries a session_id
+    # key (session_id is not part of the canonical terminal conversion; it
+    # resolves via the event model's own default of None downstream).
+    assert "session_id" not in out
     assert out["task_type"] == "unknown"
     assert out["delegated_to"] == "unknown"
     assert out["model_name"] == ""
@@ -129,7 +153,7 @@ def test_async_converter_ignores_legacy_camelcase_dual_shape() -> None:
     assert out["tokens_input"] == 0
     assert out["tokens_output"] == 0
     assert out["cost_usd"] == 0
-    assert out["cost_savings_usd"] == 0
+    assert "cost_savings_usd" not in out
     assert out["delegation_latency_ms"] is None
     assert out["escalation_count"] == 0
     assert out["actual_score"] is None

@@ -23,6 +23,22 @@ def _make_meta(partition: int = 0, offset: int = 0) -> MessageMeta:
     )
 
 
+def _param_by_column(call_args: tuple[object, ...]) -> dict[str, object]:
+    """Map column name -> bound value for a dynamic-UPSERT INSERT call.
+
+    OMN-15905: the ported ``DelegationProjectionRunner._dynamic_upsert``
+    builds its column list (and therefore its positional-param order) from a
+    Python dict's insertion order, which shifts whenever a new column is
+    ported in. Tests that need to assert a specific column's bound value use
+    this name-based lookup instead of a fragile ``args[-N]`` index.
+    """
+    sql = str(call_args[0])
+    columns_segment = sql.split("(", 1)[1].split(")", 1)[0]
+    columns = [c.strip() for c in columns_segment.split(",")]
+    values = call_args[1:]
+    return dict(zip(columns, values, strict=True))
+
+
 @pytest.fixture
 def mock_db() -> AsyncMock:
     db = AsyncMock()
@@ -167,7 +183,10 @@ class TestDelegationHandler:
             "onex.evt.omniclaude.task-delegated.v1", data, _make_meta()
         )
         assert result is True
-        mock_db.execute.assert_called_once()
+        # OMN-15905: the ported evidence-preservation step issues a SELECT
+        # before the write (parity with the sync HandlerProjectionDelegation
+        # path) -- 1 SELECT + 1 INSERT.
+        assert mock_db.execute.call_count == 2
 
     @pytest.mark.asyncio
     async def test_task_delegated_preserves_manifest_pricing_fields(
@@ -195,17 +214,34 @@ class TestDelegationHandler:
         )
 
         assert result is True
-        mock_db.execute.assert_called_once()
+        # OMN-15905: SELECT (evidence preservation) + INSERT.
+        assert mock_db.execute.call_count == 2
         args = mock_db.execute.call_args[0]
         assert "pricing_manifest_version" in args[0]
         assert "corr-pricing-proof" in args
-        assert "0.00525" in args
-        assert args[-1] == 1
+        # OMN-15905: the ported write path stores the measured actual cost as
+        # a native float/Decimal param (matching the sync project() path),
+        # not a pre-stringified value the old async-only converter produced.
+        by_column = _param_by_column(args)
+        assert by_column["cost_savings_usd"] == 0.00525
+        assert by_column["pricing_manifest_version"] == 1
 
     @pytest.mark.asyncio
     async def test_delegation_terminal_enriches_nested_result_payload(
         self, mock_db: AsyncMock
     ) -> None:
+        """OMN-15905: ``data`` here is the FLAT canonical terminal payload --
+        the shape ``project_event`` actually receives in production, since
+        ``BaseProjectionRunner._handle_message`` always runs the raw Kafka
+        message through ``unwrap_envelope()`` first (unwrapping a
+        ``{"payload": {...}}`` broker envelope into its flat inner dict)
+        before ever calling ``project_event``. The pre-port async-runner-only
+        converter defensively re-unwrapped a nested ``{"topic":...,
+        "payload": {...}}`` shape that ``project_event`` never actually
+        receives; the ported (correct) converter matches the sync
+        ``HandlerProjectionDelegation.handle()`` contract, which has never
+        needed that second unwrap either.
+        """
         from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
             DelegationProjectionRunner,
         )
@@ -220,25 +256,16 @@ class TestDelegationHandler:
             "    assert True\n"
         )
         data = {
-            "topic": "onex.evt.omnibase-infra.delegation-completed.v1",
-            "payload": {
-                "correlation_id": "c65f5188-4250-4b42-8a45-b9e355b207ee",
-                "task_type": "test_generation",
-                "model_used": "Qwen3.6-27B-MTP-IQ4_XS.gguf",
-                "prompt": "Write focused pytest coverage for the projection reducer.",
-                "content": useful_response,
-                "quality_passed": True,
-                "quality_score": 1.0,
-                "latency_ms": 2400,
-                "usage": {
-                    "input_tokens": 321,
-                    "output_tokens": 654,
-                    "total_tokens": 975,
-                },
-                "tokens_to_compliance": 975,
-                "compliance_attempts": 1,
-                "pricing_manifest_version": 1,
-            },
+            "correlation_id": "c65f5188-4250-4b42-8a45-b9e355b207ee",
+            "task_type": "test_generation",
+            "model_used": "Qwen3.6-27B-MTP-IQ4_XS.gguf",
+            "prompt_text": "Write focused pytest coverage for the projection reducer.",
+            "content": useful_response,
+            "quality_passed": True,
+            "quality_score": 1.0,
+            "latency_ms": 2400,
+            "prompt_tokens": 321,
+            "completion_tokens": 654,
         }
 
         result = await runner.project_event(
@@ -246,18 +273,16 @@ class TestDelegationHandler:
         )
 
         assert result is True
-        mock_db.execute.assert_called_once()
+        # OMN-15905: SELECT (evidence preservation) + INSERT.
+        assert mock_db.execute.call_count == 2
         args = mock_db.execute.call_args[0]
         assert "ON CONFLICT (correlation_id) DO UPDATE SET" in args[0]
-        assert "prompt_text = COALESCE(EXCLUDED.prompt_text" in args[0]
-        assert "response_text = COALESCE(EXCLUDED.response_text" in args[0]
         assert "c65f5188-4250-4b42-8a45-b9e355b207ee" in args
         assert "Qwen3.6-27B-MTP-IQ4_XS.gguf" in args
         assert "Write focused pytest coverage for the projection reducer." in args
         assert useful_response in args
         assert 321 in args
         assert 654 in args
-        assert 975 in args
 
     @pytest.mark.asyncio
     async def test_shadow_comparison(self, mock_db: AsyncMock) -> None:
@@ -431,7 +456,8 @@ class TestDelegationHandler:
         )
 
         assert result is True
-        mock_db.execute.assert_called_once()
+        # OMN-15905: SELECT (evidence preservation) + INSERT.
+        assert mock_db.execute.call_count == 2
         args = mock_db.execute.call_args[0]
         assert "tokens_input" in args[0]
         assert "quality_gates_checked_jsonb" in args[0]
@@ -445,14 +471,13 @@ class TestDelegationHandler:
         assert 144 in args
         assert 593 in args
         assert 737 in args
-        # OMN-12606: pricing_manifest_version is followed by the materializer
-        # provenance columns (projection_version, reducer_version), which are
-        # now the final two bound parameters.
+        # OMN-12606: the materializer provenance columns are stamped.
         assert "projection_version" in args[0]
         assert "reducer_version" in args[0]
-        assert args[-3] == 1  # pricing_manifest_version
-        assert args[-2] == "1.0.0"  # projection_version
-        assert args[-1] == "1.0.0"  # reducer_version
+        by_column = _param_by_column(args)
+        assert by_column["pricing_manifest_version"] == 1
+        assert by_column["projection_version"] == "1.0.0"
+        assert by_column["reducer_version"] == "1.0.0"
 
 
 class TestRegistrationHandler:
