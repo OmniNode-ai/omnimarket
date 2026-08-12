@@ -77,6 +77,10 @@ _EXCLUDED_PATH_PARTS = frozenset({".venv", "__pycache__", "node_modules", ".git"
 
 _ENV_VAR_NAME_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
 _REF_PIN_RE = re.compile(r"@ref:\s*(\S+)")
+# ONEX topic names are versioned by convention:
+# onex.<kind>.<domain>.<name>.vN — the trailing segment IS the wire
+# envelope's version, already present in the topic string (OMN-15843).
+_TOPIC_VERSION_SUFFIX_RE = re.compile(r"\.(v\d+)$")
 
 
 def _repo_relative(path: Path, repo_base: Path) -> str:
@@ -314,8 +318,13 @@ def _extract_event_bus_edges(
     (the model carries a single counterpart path, not a list), not a
     fabrication of any individual entry's own fields.
 
-    No ``envelope_model``/``envelope_version`` — this schema does not
-    declare either, so both are left ``None`` (see the model docstring).
+    ``envelope_model``/``envelope_version`` are left ``None`` here — this
+    schema does not declare either per-topic — and are filled in later by
+    ``_apply_envelope_info``'s whole-graph correlation pass (OMN-15843):
+    ``envelope_version`` from the topic's own ``.vN`` version suffix,
+    ``envelope_model`` from any contract's ``published_events:`` block
+    declaring that exact topic. Still ``None`` (not a fabricated
+    placeholder) for any edge neither source can resolve.
     """
 
     event_bus = raw.get("event_bus")
@@ -349,6 +358,77 @@ def _extract_event_bus_edges(
                 )
             )
     return tuple(edges)
+
+
+def _envelope_version_from_topic(topic: str) -> str | None:
+    """Read the wire envelope version straight off the topic's own ``.vN``
+    suffix (OMN-15843) — not a guess: ONEX topic names encode their version
+    in the name itself (``onex.evt.<domain>.<name>.v1``). ``None`` for a
+    topic that does not follow the convention, never a fabricated ``"v1"``
+    default."""
+
+    match = _TOPIC_VERSION_SUFFIX_RE.search(topic)
+    if match is None:
+        return None
+    return match.group(1)
+
+
+def _parse_published_events(raw: dict[str, object]) -> dict[str, str]:
+    """``published_events:`` block (``ModelPublishedEventEntry`` shape:
+    ``{topic, event_type}``) — a contract's own, already-declared per-topic
+    wire-type name (OMN-15843). Present on a minority of contracts, but
+    real, non-fabricated data where it exists. Malformed entries (wrong
+    type, missing/blank field) are skipped individually, matching this
+    module's existing skip-not-fabricate posture."""
+
+    published = raw.get("published_events")
+    if not isinstance(published, list):
+        return {}
+    result: dict[str, str] = {}
+    for entry in published:
+        if not isinstance(entry, dict):
+            continue
+        topic = entry.get("topic")
+        event_type = entry.get("event_type")
+        if (
+            isinstance(topic, str)
+            and topic.strip()
+            and isinstance(event_type, str)
+            and event_type.strip()
+        ):
+            result[topic] = event_type
+    return result
+
+
+def _apply_envelope_info(
+    edges: list[ModelSeamGraphEdgeDeclaration],
+    event_type_by_topic: dict[str, str],
+) -> list[ModelSeamGraphEdgeDeclaration]:
+    """Whole-graph correlation pass (OMN-15843), mirroring
+    ``_correlate_contract_paths``'s shape: fills ``envelope_version`` from
+    each edge's own topic version suffix, and ``envelope_model`` from
+    ``event_type_by_topic`` (built from every scanned contract's
+    ``published_events:`` block) keyed by the edge's topic — so a
+    consumer-side edge inherits the same wire type its topic's producer
+    already declared, since one topic has exactly one wire envelope.
+
+    Only fills fields that are currently ``None`` — a genuinely-declared
+    ``seams:`` block value (or an already-filled event_bus value) is never
+    overwritten."""
+
+    filled: list[ModelSeamGraphEdgeDeclaration] = []
+    for edge in edges:
+        update: dict[str, str] = {}
+        if edge.envelope_model is None:
+            resolved_model = event_type_by_topic.get(edge.topic)
+            if resolved_model is not None:
+                update["envelope_model"] = resolved_model
+        if edge.envelope_version is None:
+            resolved_version = _envelope_version_from_topic(edge.topic)
+            if resolved_version is not None:
+                update["envelope_version"] = resolved_version
+        filled.append(edge.model_copy(update=update) if update else edge)
+    return filled
 
 
 def _string_constant(node: ast.expr | None) -> str | None:
@@ -697,6 +777,7 @@ def extract_seam_graph(
     ) + _discover_files(repo_base, discovery_roots, "*.yml")
 
     edges: list[ModelSeamGraphEdgeDeclaration] = []
+    event_type_by_topic: dict[str, str] = {}
     for contract_path in contract_paths:
         raw = _load_contract_yaml(contract_path)
         if raw is None:
@@ -704,7 +785,9 @@ def extract_seam_graph(
         source_contract_path = _repo_relative(contract_path, repo_base)
         edges.extend(_extract_declared_edges(raw, source_contract_path))
         edges.extend(_extract_event_bus_edges(raw, source_contract_path))
+        event_type_by_topic.update(_parse_published_events(raw))
     edges = _correlate_contract_paths(edges)
+    edges = _apply_envelope_info(edges, event_type_by_topic)
 
     # Parse every python file exactly once, keyed by repo-relative path, so
     # both the project-wide symbol index (OMN-15779) and the per-file
