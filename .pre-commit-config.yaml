@@ -658,6 +658,20 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-15909: a projection write-path diff (node_projection_*/handlers/**
+      # or projection/runner.py) must ship an accompanying real-Postgres
+      # @pytest.mark.integration test in the same diff -- closes the mock-DB
+      # blind spot that let the OMN-15905 str-where-datetime TIMESTAMPTZ
+      # defect merge. SYNC with ci.yml step "Projection write-path real-DB
+      # gate (OMN-15909)".
+      - id: projection-write-path-db-gate
+        name: Projection write-path real-DB gate
+        language: system
+        entry: uv run python scripts/ci/check_projection_write_path_db_gate.py --staged
+        files: ^(src/omnimarket/nodes/node_projection_.*/handlers/.*\.py$|src/omnimarket/projection/runner\.py$|tests/.*\.py$)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12959: FSM terminal-state invariant — watchdog topic literals may
       # only live in the canonical omnimarket.events.topics registry (the source
       # of truth; omnimarket.events.watchdog imports them and exposes the typed
