@@ -458,7 +458,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             # OMN-13171 pattern: only a genuine fresh row needs the explicit
             # stamp -- an UPDATE leaves a terminal event's created_at intact
             # because it is not named in this dict (targeted-column UPSERT).
-            row["created_at"] = datetime.now(tz=UTC).isoformat()
+            # OMN-15905: bind a real datetime, not an isoformat() string --
+            # asyncpg's TIMESTAMPTZ codec requires a datetime.datetime
+            # instance and raises DataError on a str param.
+            row["created_at"] = datetime.now(tz=UTC)
         await self._dynamic_upsert(
             table=self._table_delegation, conflict_key="correlation_id", row=row
         )
@@ -617,8 +620,11 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         cap = Decimal(str(cost.monthly_cap_usd))
         drawdown = event.budget_headroom_consumed_usd
         overage = event.cost_usd
-        now_iso = datetime.now(tz=UTC).isoformat()
-        event_iso = event.resolved_event_time().isoformat()
+        # OMN-15905: keep these as real datetime objects -- asyncpg's
+        # TIMESTAMPTZ codec requires datetime.datetime instances, not
+        # isoformat() strings, or the INSERT raises DataError.
+        now_dt = datetime.now(tz=UTC)
+        event_dt = event.resolved_event_time()
 
         existing_rows = await self.db.execute(
             f"SELECT * FROM {self._table_budget_state} "
@@ -635,12 +641,14 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             consumed = _as_decimal_local(existing.get("consumed_usd")) + drawdown
             overage_total = _as_decimal_local(existing.get("overage_usd")) + overage
             count = _as_int_local(existing.get("delegation_count")) + 1
-            first_event_at = str(existing.get("first_event_at") or event_iso)
+            # asyncpg returns a native datetime for a TIMESTAMPTZ column read
+            # back via SELECT -- pass it straight through, never str()-ified.
+            first_event_at = existing.get("first_event_at") or event_dt
         else:
             consumed = drawdown
             overage_total = overage
             count = 1
-            first_event_at = event_iso
+            first_event_at = event_dt
 
         headroom_remaining = cap - consumed
         if headroom_remaining < Decimal("0"):
@@ -657,9 +665,9 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             "delegation_count": count,
             "last_correlation_id": event.correlation_id,
             "first_event_at": first_event_at,
-            "last_event_at": event_iso,
-            "created_at": now_iso,
-            "updated_at": now_iso,
+            "last_event_at": event_dt,
+            "created_at": now_dt,
+            "updated_at": now_dt,
         }
         await self._dynamic_upsert(
             table=self._table_budget_state,
@@ -682,12 +690,18 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         re-diverging the way ``DelegationProjectionRunner`` diverged from
         ``HandlerProjectionDelegation`` in the first place (plan §4.1).
         """
-        now = datetime.now(tz=UTC).isoformat()
         measurement = _measure_actual_cost(event)
         row: dict[str, object] = {
             "correlation_id": event.correlation_id,
             "session_id": event.session_id,
-            "timestamp": event.timestamp or now,
+            # OMN-15905: bind a real datetime, not a wall-clock isoformat()
+            # string. safe_parse_date() parses event.timestamp when the
+            # source event carried one, and falls back to wall-clock
+            # datetime.now(UTC) -- already a datetime, never a string --
+            # only when it is absent (the business-proof gate's synthetic
+            # event carried no timestamp field, which is exactly what
+            # crashed the live INSERT with asyncpg.exceptions.DataError).
+            "timestamp": safe_parse_date(event.timestamp),
             "task_type": event.task_type,
             "delegated_to": event.delegated_to,
             "model_name": event.model_name,
@@ -854,18 +868,22 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         """
         quality_gates_checked = list(row_model.quality_gates_checked)
         quality_gates_failed = list(row_model.quality_gates_failed)
-        timestamp_iso = row_model.timestamp.isoformat()
+        # OMN-15905: row_model.timestamp is already an AwareDatetime
+        # (ModelDelegationEventProjectionRow) -- bind it directly. Converting
+        # to an isoformat() string here and back only to bind a str param to
+        # a TIMESTAMPTZ column is exactly the class of bug asyncpg rejects
+        # with DataError.
         session_id = (
             str(row_model.session_id) if row_model.session_id is not None else None
         )
         row: dict[str, object] = {
             "correlation_id": str(row_model.correlation_id),
             "session_id": session_id,
-            "timestamp": timestamp_iso,
+            "timestamp": row_model.timestamp,
             # OMN-13171: explicit created_at injection for a backing store
             # without an implicit DB default (e.g. a warm-volume SQLite
             # evidence target) that would otherwise raise NOT NULL.
-            "created_at": timestamp_iso,
+            "created_at": row_model.timestamp,
             "task_type": row_model.task_type,
             "delegated_to": row_model.delegated_to,
             "model_name": row_model.model_name,

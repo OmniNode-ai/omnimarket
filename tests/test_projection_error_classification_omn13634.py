@@ -107,6 +107,62 @@ class TestClassifyProjectionError:
             is ProjectionErrorClass.RECOVERABLE
         )
 
+    # -- OMN-15905 acceptance-lane defect (comment 0a99e8d7) -----------------
+    #
+    # Root cause: a str-where-datetime param bind (defect #1, see
+    # tests/test_omn15905_delegation_projection_writer_seam.py) raised
+    # ``asyncpg.exceptions.DataError`` on the live delegation-writer INSERT.
+    # Before this fix, ``DataError`` fell through to the RECOVERABLE default
+    # (it subclasses ``PostgresError``, already in ``_RECOVERABLE_TYPES``) --
+    # a deterministic, permanent per-event failure was retried forever
+    # (10/10 retries, then CrashLoopBackOff), never reaching the DLQ.
+    #
+    # ``NotNullViolationError`` is included alongside it for the same reason:
+    # a required column missing from the EVENT PAYLOAD is exactly as
+    # deterministic-and-permanent as a wrong-typed value -- retrying the same
+    # malformed payload can never succeed.
+    #
+    # ``UndefinedColumnError`` is DELIBERATELY excluded, even though the
+    # dispatching prompt's literal enumeration named it: it is the module's
+    # own canonical example of a correctly-RECOVERABLE error (a not-yet-
+    # applied migration -- the schema self-heals, the event was fine) per
+    # the module docstring above and ``test_undefined_column_is_recoverable``
+    # below, which this fix must not regress.
+
+    def test_asyncpg_data_error_is_poison(self) -> None:
+        # The exact exception class the live pod logs cited for the OMN-15905
+        # crash: "invalid input for query argument $3 ... expected a
+        # datetime.date or datetime.datetime instance, got 'str'".
+        exc = asyncpg.exceptions.DataError(
+            "invalid input for query argument $3: '2026-08-12T09:23:55+00:00' "
+            "(expected a datetime.date or datetime.datetime instance, got 'str')"
+        )
+        assert classify_projection_error(exc) is ProjectionErrorClass.POISON
+
+    def test_invalid_text_representation_is_poison(self) -> None:
+        # A DataError subclass (class-22 data exception) -- e.g. a malformed
+        # UUID string in a payload field. Must inherit POISON via DataError.
+        exc = asyncpg.exceptions.InvalidTextRepresentationError(
+            'invalid input syntax for type uuid: "not-a-uuid"'
+        )
+        assert classify_projection_error(exc) is ProjectionErrorClass.POISON
+
+    def test_not_null_violation_is_poison(self) -> None:
+        exc = asyncpg.exceptions.NotNullViolationError(
+            'null value in column "task_type" of relation "delegation_events" '
+            "violates not-null constraint"
+        )
+        assert classify_projection_error(exc) is ProjectionErrorClass.POISON
+
+    def test_undefined_column_is_still_recoverable_after_data_error_fix(self) -> None:
+        # Regression guard: adding DataError/NotNullViolationError to POISON
+        # must not widen the net to UndefinedColumnError (a different
+        # PostgresError subtree -- SyntaxOrAccessError, not DataError).
+        exc = asyncpg.exceptions.UndefinedColumnError(
+            'column "corpus_checked" of relation "generation_events" does not exist'
+        )
+        assert classify_projection_error(exc) is ProjectionErrorClass.RECOVERABLE
+
 
 # ---------------------------------------------------------------------------
 # Runner integration: _handle_message applies the classification.
@@ -297,6 +353,52 @@ class TestDelegationRunnerSafetyNet:
 
         assert runner._consumer.commits == []  # type: ignore[attr-defined]
         assert [t for t, _ in published if t == DELEGATION_DLQ_TOPIC] == []
+
+    @pytest.mark.asyncio
+    async def test_escaped_data_error_routes_to_dlq_and_commits(self) -> None:
+        """OMN-15905: the live acceptance-lane failure. Pre-fix, this exact
+        exception fell through to RECOVERABLE and retried forever (10/10
+        attempts, then CrashLoopBackOff, per comment 0a99e8d7's pod-log
+        citation). Post-fix, DataError is POISON: DLQ'd and the offset
+        commits, so the message is not re-read in a hot loop -- proving
+        POISON's existing runner-level policy (DLQ + commit, never a silent
+        drop) actually applies to this new POISON member.
+        """
+        published, capture = _capture()
+        runner = DelegationProjectionRunner(publish_fn=capture)
+        mock_db = MagicMock(spec=AsyncpgAdapter)
+        mock_db.execute = AsyncMock(
+            side_effect=asyncpg.exceptions.DataError(
+                "invalid input for query argument $3: "
+                "'2026-08-12T09:23:55+00:00' (expected a datetime.date or "
+                "datetime.datetime instance, got 'str')"
+            )
+        )
+        runner._db = mock_db
+        runner._consumer = _CommitRecordingConsumer()  # type: ignore[assignment]
+
+        topic = runner._topic_delegated
+        msg = _wrapped_msg(
+            topic,
+            6,
+            {
+                "correlation_id": "corr-poison-dataerror",
+                "task_type": "code-review",
+                "delegated_to": "agent-alpha",
+            },
+        )
+        await runner._handle_message(msg)
+
+        commits = runner._consumer.commits  # type: ignore[attr-defined]
+        assert list(commits[0].values()) == [7], (
+            "a POISON DataError must commit the offset (not retried in a hot "
+            "loop) -- pre-fix this was RECOVERABLE and never committed"
+        )
+        dlq_hits = [t for t, _ in published if t == DELEGATION_DLQ_TOPIC]
+        assert len(dlq_hits) == 1, (
+            "a POISON DataError must be durably captured on the DLQ, not "
+            "silently dropped"
+        )
 
 
 class TestSavingsRunnerSafetyNet:
