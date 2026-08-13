@@ -572,32 +572,16 @@ override-dependencies = [
     "omnibase-compat==0.5.6",
 ]
 
-# OMN-16024: security floors for TRANSITIVE dependencies flagged by the
-# `safety` gate in .github/workflows/security-scan.yml. None of these are
-# declared anywhere else in this repo — they arrive through the omnibase /
-# sigstore / supabase chains — so without an explicit constraint the only
-# thing holding the fixed versions is uv.lock, and any future re-resolution
-# could silently drop back to a vulnerable release. Constraints (not
-# overrides) so they act as floors and never pull a package into the graph
-# that is not already there. Remove an entry once its ecosystem floor has
-# risen past it on its own.
-constraint-dependencies = [
-    # CVE-2026-44432 (decompression-bomb DoS), CVE-2026-44431 (sensitive
-    # header disclosure).
-    "urllib3>=2.7.0",
-    # CVE-2026-39892 (buffer overflow on non-canonical input) and
-    # SFTY-20260615-96125 (sensitive value disclosure, fixed in 48.0.1).
-    "cryptography>=48.0.1",
-    # CVE-2026-41205 / CVE-2026-44307 / PVE-2026-93670 — three path-traversal
-    # advisories in TemplateLookup URI handling; 1.3.12 clears all three.
-    "mako>=1.3.12",
-    # CVE-2026-45409 — DoS; incomplete fix for CVE-2024-3651.
-    "idna>=3.15",
-    # SFTY-20260528-99145 — platform-dependent delegation path validation.
-    # Advisory spec is `<=6.0.0` and publishes no fixed version; 7.0.0 is the
-    # lowest release above the affected range.
-    "tuf>=7.0.0",
-]
+# OMN-16024: the security floors for the five TRANSITIVE packages flagged by
+# the `safety` gate (urllib3, cryptography, mako, idna, tuf) are held by
+# uv.lock, NOT by a [tool.uv] constraint-dependencies list. A constraint list
+# here is repo-global: it is picked up by every `uv` invocation whose working
+# directory is this repo, including the occ-preflight workflow's throwaway
+# venv, which installs omnibase_core from a source checkout that carries its
+# own `cryptography` ceiling. A `cryptography>=48.0.1` constraint made that
+# resolution unsatisfiable and failed a required check, so the constraints
+# were removed. Regression cover is the safety gate in
+# .github/workflows/security-scan.yml, which fails on any vulnerable pin.
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
