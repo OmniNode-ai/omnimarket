@@ -1,0 +1,298 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# OMN-16004 — frozen Milestone-B traversed-slice enumeration.
+#
+# This file IS the deliverable "exact edge IDs traversed by the Milestone-B
+# activation receipt (both directions) are enumerated and frozen as the
+# critical slice" acceptance criterion. It is data, not prose: every golden
+# module loads it, and `test_manifest_registry_binding.py` binds it to
+# `src/omnimarket/configs/seams.v1.yaml` so the tested slice can never drift
+# from the registry of record.
+#
+# Registry of record (asserted, not assumed):
+#   src/omnimarket/configs/seams.v1.yaml, generated from
+#   docs/design/2026-08-13-delegation-seam-graph.json at 2026-08-13T11:15:00Z.
+#   A registry still bound to the superseded 2026-08-08 source is invalid and
+#   the binding guard fails closed on it.
+#
+# `inclusion` vocabulary:
+#   core_round_trip     — a leg of the receipt's item-4 business-path round
+#                         trip (cloud command out, terminal event back).
+#   ws7_mandatory_high  — pulled in by the WS-7 union rule: severity=high in
+#                         the registry, therefore mandatory regardless of
+#                         whether it sits on the runtime leg.
+#   local_processing    — the local dispatch/processing hop between the two
+#                         legs of the round trip.
+#   flagged_ambiguous   — traversal is genuinely uncertain; goldened anyway
+#                         because the edge is a live registry defect either
+#                         way, but NOT asserted as on the receipt's path.
+#   excluded            — deliberately out of slice. Must carry
+#                         `exclusion_reason` and must NOT carry a golden.
+#
+# `producer_symbol_reachable: false` means the producing side's symbol is not
+# importable from this repo's dependency closure, so the golden drives the
+# reachable side against real artifacts and pins the seam disjointness rather
+# than executing both legs. It is recorded here rather than silently
+# downgraded in a test docstring.
+
+schema_version: seam-slice-manifest/v1
+ticket: OMN-16004
+
+registry:
+  path: src/omnimarket/configs/seams.v1.yaml
+  schema_version: seams-registry/v1
+  source_path: docs/design/2026-08-13-delegation-seam-graph.json
+  generated_at: '2026-08-13T11:15:00Z'
+  edges_total: 15
+
+edges:
+
+  - edge_id: S1
+    seam: kafka wire topic for a delegation command
+    leg: cloud->local (command)
+    inclusion: core_round_trip
+    traversed: true
+    registry_classification: MATCHED
+    registry_severity: none
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s1_s2_delegation_round_trip.py
+    rationale: >-
+      The delegation command leg of the receipt's item-4 round trip. The cloud
+      publisher emits the BARE canonical topic; the local gateway forwarder
+      consumes the tenant-prefixed wire form and republishes it bare onto the
+      local bus for the omnibase-infra local runtime.
+
+  - edge_id: S2
+    seam: kafka wire topic for delegation-completed / delegation-failed
+    leg: local->cloud (terminal event / response path)
+    inclusion: core_round_trip
+    traversed: true
+    registry_classification: MATCHED
+    registry_severity: none
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s1_s2_delegation_round_trip.py
+    rationale: >-
+      The return leg of the item-4 round trip — "the same customer path back".
+      The local delegation completion emitter publishes the bare terminal
+      topic; the forwarder binds it to the tenant wire topic for the cloud
+      terminal consumer.
+
+  - edge_id: S4
+    seam: the JSON envelope body on the MSK leg
+    leg: cloud->local (wire body)
+    inclusion: ws7_mandatory_high
+    traversed: true
+    registry_classification: MATCHED_UNTESTED
+    registry_severity: high
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s4_s5_wire_body_and_tenant_tags.py
+    rationale: >-
+      Carries the payload for the S1 forward leg through the ingress/bridge.
+      Independently mandatory under the WS-7 union rule (severity=high). The
+      cloud side hand-rolls a JSON dict literal; the local side parses it with
+      ModelEventEnvelope[dict[str, object]].model_validate_json.
+
+  - edge_id: S5
+    seam: metadata.tags.source_tenant_id / source_tenant_principal_id
+    leg: cloud->local (tenant attribution tags)
+    inclusion: core_round_trip
+    traversed: true
+    registry_classification: MATCHED_UNTESTED
+    registry_severity: medium
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s4_s5_wire_body_and_tenant_tags.py
+    rationale: >-
+      The tenant-attribution gate on the same forward leg as S4, inside the
+      ingress/bridge. The forwarder equality-checks the producer's tags
+      against its own config-bound identity and raises ValueError otherwise.
+
+  - edge_id: S6
+    seam: >-
+      handler_routing operations gateway.forward_outbound /
+      gateway.consume_inbound on ModelGatewayEnvelope
+    leg: contract -> handler, both directions (outbound+inbound)
+    inclusion: core_round_trip
+    traversed: true
+    registry_classification: MATCHED_UNTESTED
+    registry_severity: low
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s6_contract_handler_dispatch.py
+    rationale: >-
+      This is the ingress/bridge component named in the Milestone-B hop
+      sequence, traversed in BOTH directions of the round trip. The golden
+      drives the contract-declared handlers through their real dispatch
+      entrypoint and asserts transform parity against the live forwarder
+      service.
+
+  - edge_id: S10
+    seam: >-
+      mirror_topics inbound/outbound vs omnimarket subscribe_topics /
+      publish_topics
+    leg: local (redpanda -> dispatch -> node), both directions
+    inclusion: local_processing
+    traversed: true
+    registry_classification: MATCHED
+    registry_severity: none
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s10_mirror_topics_local_dispatch.py
+    rationale: >-
+      The processing hop's local dispatch fan-in/fan-out, both directions
+      traversed: the inbound command arrives on the bare topic
+      node_delegation_orchestrator subscribes to, and its completion leaves on
+      a bare topic that same contract publishes.
+
+  - edge_id: S11
+    seam: payload['tenant_id'] stamped as DNS-safe slug (no sibling tenant_slug key)
+    leg: local (payload)
+    inclusion: local_processing
+    traversed: true
+    registry_classification: MATCHED_UNTESTED
+    registry_severity: medium
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s11_tenant_stamp_consumer.py
+    rationale: >-
+      Part of the local processing step immediately preceding node dispatch:
+      the gateway overwrites payload['tenant_id'] with the config-bound
+      DNS-safe slug, and the consumer model forbids extras.
+
+  - edge_id: S12
+    seam: ModelDispatchRoute identity field
+    leg: local runtime
+    inclusion: local_processing
+    traversed: true
+    registry_classification: MISMATCH
+    registry_severity: medium
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s12_dispatch_route_identity.py
+    rationale: >-
+      The dispatch-routing identity seam inside the processing hop. The
+      registry records MISMATCH (core exposes handler_id, infra reads
+      dispatcher_id behind a getattr fallback shim), and this row keeps that
+      value because the manifest must mirror the registry of record. MEASURED
+      DRIFT: driving the pinned omnibase_core shows ModelDispatchRoute now
+      ships BOTH names — handler_id as the field, dispatcher_id as a property,
+      plus validation_alias=AliasChoices("handler_id", "dispatcher_id") — which
+      is precisely the removal condition the infra shim's own docstring names.
+      The golden asserts the measured reality and pins the registry drift
+      explicitly rather than reproducing a mismatch the live code no longer
+      has; re-deriving seams.v1.yaml is a generator run tracked as receipt
+      evidence, not a hand-edit of a generated file.
+
+  - edge_id: S13
+    seam: ONEX_MULTI_EVENT_PUBLISH_SEAM feature flag name
+    leg: local runtime
+    inclusion: local_processing
+    traversed: true
+    registry_classification: MATCHED_UNTESTED
+    registry_severity: medium
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s13_multi_event_publish_flag.py
+    rationale: >-
+      Gates whether the completion leg (S2) may publish multiple correlated
+      events. Two byte-identical literals defined independently in core and
+      infra — never imported across the boundary — so nothing but a real
+      cross-import golden can detect a rename on one side.
+
+  - edge_id: S3
+    seam: which topic names actually exist on MSK for a tenant
+    leg: provisioning
+    inclusion: ws7_mandatory_high
+    traversed: false
+    registry_classification: UNMATCHED
+    registry_severity: high
+    producer_symbol_reachable: false
+    golden_module: tests/seam_goldens/test_s3_tenant_topic_provisioning.py
+    rationale: >-
+      Mandatory under the WS-7 union rule (severity=high, one of only three
+      high-severity edges; the registry rates none critical). Its own leg is
+      provisioning-time rather than runtime, so it is not asserted as
+      traversed — but it is foundational to whether S1/S2's bare topics can
+      exist on the wire at all.
+
+  - edge_id: S7
+    seam: >-
+      cloud_broker_ref / cloud_auth_ref / acl_provisioner_ref / msk_region_ref
+      (@ref pins)
+    leg: config resolution
+    inclusion: ws7_mandatory_high
+    traversed: true
+    registry_classification: UNMATCHED
+    registry_severity: high
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s7_cloud_ref_pins.py
+    rationale: >-
+      Mandatory under the WS-7 union rule (severity=high). Also plausibly
+      on-path: the bridge must resolve broker connectivity to reach the cloud
+      bus at all. The contract declares four required @ref pins and no
+      resolver consumes them — the deployed YAML hardcodes literals instead.
+
+  - edge_id: S9
+    seam: >-
+      gateway-heartbeat topic listed in BOTH mirror_topics.inbound and
+      mirror_topics.outbound
+    leg: topic set
+    inclusion: flagged_ambiguous
+    traversed: false
+    registry_classification: MISMATCH
+    registry_severity: medium
+    producer_symbol_reachable: true
+    golden_module: tests/seam_goldens/test_s9_heartbeat_loopback.py
+    rationale: >-
+      Heartbeat continuity is required by the receipt's credential-lifecycle
+      binding item, which is a DIFFERENT binding item from the business-path
+      item this ticket is scoped to. Traversal is therefore not asserted. The
+      edge is goldened anyway because it is a live MISMATCH either way: the
+      process subscribes to the heartbeat it itself publishes.
+
+  - edge_id: S8
+    seam: ONEX_TOPIC_ENFORCEMENT_MODE=reject
+    leg: config flag
+    inclusion: excluded
+    traversed: false
+    registry_classification: UNMATCHED
+    registry_severity: medium
+    producer_symbol_reachable: true
+    golden_module: null
+    exclusion_reason: >-
+      Not on the real business path despite superficially sounding like an
+      ingress/bridge concern. The registry's own consumer_shape records that
+      this flag is read only by EventBusKafka, which the gateway process never
+      instantiates — the process uses KafkaTransport, which never reads it. At
+      severity=medium it is also below the WS-7 high/critical mandatory bar,
+      so nothing forces it into the union.
+
+  - edge_id: S14
+    seam: onex.cmd.omniclaude.delegate-task.v1 and its two evt topics
+    leg: edge client
+    inclusion: excluded
+    traversed: false
+    registry_classification: UNMATCHED
+    registry_severity: low
+    producer_symbol_reachable: false
+    golden_module: null
+    exclusion_reason: >-
+      Describes a different "local runtime" — an end-customer-facing
+      omniclaude delegate CLI edge client — than the .201 gateway-forwarder
+      plus omnibase-infra local runtime that S1/S2 and the S3-S13 machinery
+      describe. Regardless of scope resolution it is UNMATCHED with zero
+      implementation on either side (node.py is a bare NodeOrchestrator
+      shell), so no real-seam golden could pass today even if it were in
+      slice. Recorded here so the scope ambiguity is inspectable rather than
+      silently resolved.
+
+  - edge_id: S15
+    seam: backend.endpoint_url / backend.model_name
+    leg: edge client config
+    inclusion: excluded
+    traversed: false
+    registry_classification: UNMATCHED
+    registry_severity: medium
+    producer_symbol_reachable: false
+    golden_module: null
+    exclusion_reason: >-
+      Paired edge-client-config seam to S14 and excluded for the same reason.
+      The packaged contract ships endpoint_url/model_name empty by design and
+      the consumer requires them non-empty, so DelegationRunner.run() always
+      returns None — an unimplemented edge-client surface, not a leg of the
+      Milestone-B business path.
