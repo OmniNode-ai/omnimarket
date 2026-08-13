@@ -48,6 +48,7 @@ class _RecordingAdapter:
         *,
         key: str | None,
         correlation_id: str | None,
+        timeout_seconds: float | None = None,
     ) -> None:
         self.received.append((topic, json.dumps(payload).encode("utf-8")))
         self.received_correlation_ids.append(correlation_id)
