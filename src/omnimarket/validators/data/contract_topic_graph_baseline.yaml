@@ -306,7 +306,6 @@ accepted:
 - ORPHANED_CONSUMER::pr_semantic_grader_llm_effect::onex.cmd.omnimarket.pr-semantic-grading-requested.v1
 - ORPHANED_CONSUMER::pr_snapshot_effect::onex.cmd.omnimarket.pr-snapshot-start.v1
 - ORPHANED_CONSUMER::process_watchdog::onex.cmd.omnimarket.watchdog-start.v1
-- ORPHANED_CONSUMER::projection_delegation::onex.evt.omniclaude.delegation-shadow-comparison.v1
 - ORPHANED_CONSUMER::projection_live_events::onex.evt.platform.log-entry.v1
 - ORPHANED_CONSUMER::projection_live_events::onex.evt.platform.node-state-change.v1
 - ORPHANED_CONSUMER::projection_registration::onex.evt.platform.node-state-change.v1
