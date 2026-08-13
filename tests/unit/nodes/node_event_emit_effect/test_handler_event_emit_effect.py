@@ -47,6 +47,7 @@ class FakePublishAdapter:
         *,
         key: str | None,
         correlation_id: str | None,
+        timeout_seconds: float | None = None,
     ) -> None:
         if topic in self._fail_topics:
             raise RuntimeError(f"simulated publish failure for {topic}")
@@ -252,3 +253,249 @@ def test_model_emit_result_rejects_extra_fields() -> None:
         ModelEmitResult.model_validate(
             {"event_id": "e1", "published": True, "bogus": "field"}
         )
+
+
+# ---------------------------------------------------------------------------
+# OMN-15987 finding 3: event_id must not be able to land in a filesystem
+# path outside the spool directory (spool_outbox.py embeds it verbatim in
+# the filename).
+# ---------------------------------------------------------------------------
+
+
+def test_model_emit_request_rejects_event_id_with_path_separator() -> None:
+    with pytest.raises(ValidationError):
+        ModelEmitRequest(
+            event_type="session.started",
+            payload={},
+            event_id="../../etc/passwd",
+        )
+
+
+def test_model_emit_request_rejects_event_id_with_forward_slash() -> None:
+    with pytest.raises(ValidationError):
+        ModelEmitRequest(event_type="session.started", payload={}, event_id="a/b")
+
+
+def test_model_emit_request_accepts_filesystem_safe_event_id() -> None:
+    request = ModelEmitRequest(
+        event_type="session.started",
+        payload={},
+        event_id="valid-event.id_123",
+    )
+    assert request.event_id == "valid-event.id_123"
+
+
+def test_model_emit_request_default_event_id_is_filesystem_safe() -> None:
+    """The auto-generated event_id (str(uuid4())) must itself satisfy the
+    new pattern constraint -- regression guard against the default and the
+    validator drifting apart."""
+    request = ModelEmitRequest(event_type="session.started", payload={})
+    import re
+
+    assert re.match(r"^[A-Za-z0-9._-]+$", request.event_id)
+
+
+# ---------------------------------------------------------------------------
+# OMN-15987 finding 4: topic override must work for an event_type outside
+# the registry's scope entirely.
+# ---------------------------------------------------------------------------
+
+
+def test_topic_override_with_unregistered_event_type_succeeds(
+    tmp_path: Path,
+) -> None:
+    adapter = FakePublishAdapter()
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
+
+    request = ModelEmitRequest(
+        event_type="totally.unregistered.event",
+        payload={"x": 1},
+        topic="onex.evt.omnimarket.some-topic-not-in-the-registry.v1",
+    )
+    result = handler.handle(request)
+
+    assert result.published is True
+    assert result.topics_published == [
+        "onex.evt.omnimarket.some-topic-not-in-the-registry.v1"
+    ]
+    assert len(adapter.calls) == 1
+
+
+def test_topic_override_with_unregistered_event_type_defaults_to_telemetry_tier(
+    tmp_path: Path,
+) -> None:
+    """Unregistered event_type + override topic must not silently inherit
+    never-drop duty_critical semantics it was never declared for -- it
+    defaults to the conservative (bounded, drop-oldest) telemetry tier."""
+    spool = SpoolOutbox(
+        tmp_path / "spool", max_telemetry_messages=1, max_duty_critical_messages=1
+    )
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=None)
+
+    handler.handle(
+        ModelEmitRequest(
+            event_type="unregistered.one",
+            payload={},
+            topic="onex.evt.omnimarket.unregistered-one.v1",
+        )
+    )
+    # A second telemetry-tier event should evict the first (bounded,
+    # drop-oldest) rather than raising SpoolFullError (which duty_critical
+    # would).
+    result = handler.handle(
+        ModelEmitRequest(
+            event_type="unregistered.two",
+            payload={},
+            topic="onex.evt.omnimarket.unregistered-two.v1",
+        )
+    )
+    assert result.dropped_count == 1
+    assert spool.pending_count() == 1
+
+
+def test_topic_override_with_registered_event_type_keeps_registry_tier(
+    tmp_path: Path,
+) -> None:
+    """When event_type IS registered, its registry-derived tier still
+    applies even with an override topic -- the override changes where it
+    publishes, not how durable it is."""
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=None)
+
+    handler.handle(
+        ModelEmitRequest(
+            event_type="session.started",  # registered, telemetry-tier
+            payload={},
+            topic="onex.evt.omnimarket.session-started-override.v1",
+        )
+    )
+    pending = spool.list_pending()
+    assert len(pending) == 1
+    from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
+        EnumDurabilityTier,
+    )
+
+    assert pending[0].record.tier is EnumDurabilityTier.TELEMETRY
+
+
+# ---------------------------------------------------------------------------
+# OMN-15987 finding 1 (result shape): spool_only distinguishes "no adapter
+# configured" from "publish attempted and failed".
+# ---------------------------------------------------------------------------
+
+
+def test_spool_only_true_when_no_adapter_configured(tmp_path: Path) -> None:
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=None)
+
+    result = handler.handle(ModelEmitRequest(event_type="session.started", payload={}))
+    assert result.published is False
+    assert result.spool_only is True
+
+
+def test_spool_only_false_when_publish_attempted_and_failed(
+    tmp_path: Path,
+) -> None:
+    adapter = FakePublishAdapter(
+        fail_topics=frozenset({"onex.evt.omniclaude.session-started.v1"})
+    )
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
+
+    result = handler.handle(ModelEmitRequest(event_type="session.started", payload={}))
+    assert result.published is False
+    assert result.spool_only is False
+
+
+def test_spool_only_false_when_publish_succeeds(tmp_path: Path) -> None:
+    adapter = FakePublishAdapter()
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
+
+    result = handler.handle(ModelEmitRequest(event_type="session.started", payload={}))
+    assert result.published is True
+    assert result.spool_only is False
+
+
+# ---------------------------------------------------------------------------
+# OMN-15987 finding 2: shared publish budget across current-event publish +
+# backlog drain, checked before every topic (not just between records).
+# ---------------------------------------------------------------------------
+
+
+class _SlowPublishAdapter:
+    """Publishes instantly but records the timeout_seconds it was granted
+    for every call -- used to assert the shared-deadline math without
+    actually sleeping in the test."""
+
+    def __init__(self) -> None:
+        self.granted_timeouts: list[float | None] = []
+
+    def publish(
+        self,
+        topic: str,
+        payload: JsonType,
+        *,
+        key: str | None,
+        correlation_id: str | None,
+        timeout_seconds: float | None = None,
+    ) -> None:
+        self.granted_timeouts.append(timeout_seconds)
+
+
+def test_drain_budget_is_shared_across_current_event_and_backlog(
+    tmp_path: Path,
+) -> None:
+    """Every publish call (current event's own topics AND every backlog
+    record's topics) must be granted a timeout_seconds derived from ONE
+    shared deadline for the whole invocation -- not a separate fresh budget
+    for the drain phase (the pre-fix overrun bug)."""
+    spool = SpoolOutbox(tmp_path / "spool")
+    adapter = _SlowPublishAdapter()
+    backlog_handler = HandlerEventEmitEffect(spool=spool, publish_adapter=None)
+    for i in range(3):
+        backlog_handler.handle(
+            ModelEmitRequest(event_type="session.started", payload={"i": i})
+        )
+    assert spool.pending_count() == 3
+
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
+    result = handler.handle(
+        ModelEmitRequest(event_type="session.started", payload={"cur": True})
+    )
+
+    assert result.published is True
+    assert result.drained_count == 3
+    # 1 current-event publish + 3 backlog publishes, all sharing one budget.
+    assert len(adapter.granted_timeouts) == 4
+    for granted in adapter.granted_timeouts:
+        assert granted is not None
+        assert 0 < granted <= 5.0  # bounded by the shared deadline / single-publish cap
+
+
+def test_drain_stops_when_shared_budget_is_exhausted(tmp_path: Path) -> None:
+    """When the shared per-invocation budget is already exhausted before a
+    backlog record's topic gets a turn, that record is left un-acked rather
+    than published with a zero/negative timeout."""
+    spool = SpoolOutbox(tmp_path / "spool")
+    backlog_handler = HandlerEventEmitEffect(spool=spool, publish_adapter=None)
+    for i in range(2):
+        backlog_handler.handle(
+            ModelEmitRequest(event_type="session.started", payload={"i": i})
+        )
+    assert spool.pending_count() == 2
+
+    adapter = FakePublishAdapter()
+    # A budget of 0 means the deadline is already in the past by the time
+    # the current event's own publish is attempted.
+    handler = HandlerEventEmitEffect(
+        spool=spool, publish_adapter=adapter, drain_budget_seconds=0.0
+    )
+    result = handler.handle(
+        ModelEmitRequest(event_type="session.started", payload={"cur": True})
+    )
+
+    assert result.published is False
+    assert result.drained_count == 0
+    assert spool.pending_count() == 3  # nothing acked: current + both backlog

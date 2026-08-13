@@ -49,7 +49,11 @@ class ModelEmitRequest(BaseModel):
             "(onex.{evt|cmd|intent|dlq}.<service>.<name>.vN). Callers "
             "reaching for this to route around a missing registry entry "
             "should register the topic properly instead; it exists for "
-            "cases that are legitimately outside the registry's scope."
+            "cases that are legitimately outside the registry's scope -- "
+            "when supplied, event_type is NOT required to be registered "
+            "(an unregistered event_type + topic override resolves to the "
+            "conservative telemetry durability tier; a registered "
+            "event_type's tier still applies even with an override topic)."
         ),
     )
     partition_key: str | None = Field(
@@ -58,7 +62,13 @@ class ModelEmitRequest(BaseModel):
     event_id: str = Field(
         default_factory=lambda: str(uuid4()),
         min_length=1,
-        description="Unique event identifier; stable across spool retries.",
+        pattern=r"^[A-Za-z0-9._-]+$",
+        description=(
+            "Unique event identifier; stable across spool retries. "
+            "Constrained to filesystem-safe characters (no '/' or other "
+            "path separators) -- it is embedded verbatim into the spool "
+            "filename (see spool/spool_outbox.py::_write)."
+        ),
     )
 
     @field_validator("topic")

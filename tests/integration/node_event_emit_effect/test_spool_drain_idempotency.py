@@ -61,6 +61,7 @@ class RecordingPublishAdapter:
         *,
         key: str | None,
         correlation_id: str | None,
+        timeout_seconds: float | None = None,
     ) -> None:
         self.attempts.append((topic, correlation_id))
         if topic in self._fail_topics:

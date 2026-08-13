@@ -20,8 +20,18 @@ class ModelEmitResult(BaseModel):
     )
     published: bool = Field(
         ...,
-        description="False only in spool-only mode (no KAFKA_BOOTSTRAP_SERVERS) "
-        "or when the current event's publish attempt failed.",
+        description="False in spool-only mode (no KAFKA_BOOTSTRAP_SERVERS) "
+        "or when the current event's publish attempt failed. Use "
+        "spool_only to distinguish the two cases.",
+    )
+    spool_only: bool = Field(
+        default=False,
+        description="True only when no publish adapter was configured "
+        "(KAFKA_BOOTSTRAP_SERVERS unset) -- no publish was even attempted. "
+        "False whenever a publish attempt occurred, whether it succeeded "
+        "(published=True) or failed (published=False). Distinguishes "
+        "'no adapter configured' from 'publish attempted and failed' "
+        "(OMN-15987 finding 1).",
     )
     drained_count: int = Field(
         default=0,
