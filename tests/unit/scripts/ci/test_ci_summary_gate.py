@@ -391,6 +391,81 @@ def test_strict_and_skippable_are_disjoint() -> None:
     assert not (set(STRICT_GATE_JOBS) & set(SKIPPABLE_GATE_JOBS))
 
 
+def _ci_summary_gate_invocations() -> list[str]:
+    """Every ``ci_summary_gate.py`` command line inside ci.yml's ci-summary job."""
+
+    job = _ci_jobs()["ci-summary"]
+    lines: list[str] = []
+    for step in job.get("steps", []):
+        for line in str(step.get("run", "")).splitlines():
+            stripped = line.strip()
+            # Only real invocations — not the prose comments that name the file.
+            if stripped.startswith("python3 ") and "ci_summary_gate.py" in stripped:
+                lines.append(stripped)
+    return lines
+
+
+def test_ci_yml_wires_l4_check_runs_file_and_actor() -> None:
+    """L4 is OPT-IN at the CLI: ``--check-runs-file`` defaults to ``None``, and
+    ``main()`` skips the entire external-context layer when it is absent
+    (exit code then reflects layers 1-3 only). That makes ci.yml's invocation
+    the single load-bearing wire for all
+    ``EXPECTED_EXTERNAL_CONTEXTS`` assertions — dropping the flag in a refactor
+    would silently revert this gate to its pre-L4 behavior with every unit test
+    still green. This pins the wire so that regression fails here instead.
+    """
+
+    invocations = _ci_summary_gate_invocations()
+    assert invocations, "ci-summary job invokes ci_summary_gate.py nowhere"
+
+    for cmd in invocations:
+        assert "--check-runs-file" in cmd, (
+            "ci-summary invocation omits --check-runs-file; L4 "
+            f"({len(EXPECTED_EXTERNAL_CONTEXTS)} external contexts) would "
+            f"silently no-op: {cmd!r}"
+        )
+        assert "--actor" in cmd, (
+            "ci-summary invocation omits --actor; ACTOR_CONDITIONAL_CONTEXTS "
+            f"cannot be resolved and would gap for every actor: {cmd!r}"
+        )
+
+
+def test_ci_summary_job_can_read_check_runs() -> None:
+    """The L4 fetch needs ``checks: read``. Without it the ``gh api`` call 403s,
+    ci.yml's ``|| echo "[]"`` fallback writes an empty array, and every external
+    context reads as unobserved — a permanent PENDING->FAILURE wedge rather
+    than a working gate. Pin the permission that keeps L4 evaluable.
+    """
+
+    permissions = _ci_jobs()["ci-summary"].get("permissions") or {}
+    assert permissions.get("checks") == "read", (
+        f"ci-summary job needs `checks: read` for the L4 "
+        f"commits/{{sha}}/check-runs fetch; got {permissions!r}"
+    )
+
+
+def test_ci_summary_l4_uses_pr_head_sha_not_merge_sha() -> None:
+    """``commits/{sha}/check-runs`` is keyed by commit. On ``pull_request`` the
+    run's own ``github.sha`` is the ephemeral merge commit, which carries none
+    of the other workflows' check-runs — resolving L4 against it would make
+    all external contexts permanently missing. Pin that HEAD_SHA prefers the
+    PR head.
+    """
+
+    job = _ci_jobs()["ci-summary"]
+    head_sha_exprs = [
+        str((step.get("env") or {}).get("HEAD_SHA", ""))
+        for step in job.get("steps", [])
+        if (step.get("env") or {}).get("HEAD_SHA")
+    ]
+    assert head_sha_exprs, "ci-summary defines no HEAD_SHA for the L4 fetch"
+    for expr in head_sha_exprs:
+        assert "pull_request.head.sha" in expr, (
+            "HEAD_SHA must resolve to the PR head SHA on pull_request events, "
+            f"not the merge commit: {expr!r}"
+        )
+
+
 def test_external_contexts_are_disclosed_and_disjoint_from_in_run_gates() -> None:
     """L4 EXPECTED_EXTERNAL_CONTEXTS must be non-empty and not overlap L1/L2.
 
