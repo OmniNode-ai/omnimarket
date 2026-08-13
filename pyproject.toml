@@ -68,7 +68,8 @@ dependencies = [
     "anthropic>=0.25.0",
     "omninode-memory==0.17.0",
     "radon>=6.0.1",
-    "pytest>=8.4.0",
+    # OMN-16024: floor raised 8.4.0 -> 9.0.3 (CVE-2025-71176, insecure tmpdir DoS).
+    "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "docker>=7.0.0",
     "rich>=13.0.0",
@@ -571,6 +572,33 @@ override-dependencies = [
     "omnibase-compat==0.5.6",
 ]
 
+# OMN-16024: security floors for TRANSITIVE dependencies flagged by the
+# `safety` gate in .github/workflows/security-scan.yml. None of these are
+# declared anywhere else in this repo — they arrive through the omnibase /
+# sigstore / supabase chains — so without an explicit constraint the only
+# thing holding the fixed versions is uv.lock, and any future re-resolution
+# could silently drop back to a vulnerable release. Constraints (not
+# overrides) so they act as floors and never pull a package into the graph
+# that is not already there. Remove an entry once its ecosystem floor has
+# risen past it on its own.
+constraint-dependencies = [
+    # CVE-2026-44432 (decompression-bomb DoS), CVE-2026-44431 (sensitive
+    # header disclosure).
+    "urllib3>=2.7.0",
+    # CVE-2026-39892 (buffer overflow on non-canonical input) and
+    # SFTY-20260615-96125 (sensitive value disclosure, fixed in 48.0.1).
+    "cryptography>=48.0.1",
+    # CVE-2026-41205 / CVE-2026-44307 / PVE-2026-93670 — three path-traversal
+    # advisories in TemplateLookup URI handling; 1.3.12 clears all three.
+    "mako>=1.3.12",
+    # CVE-2026-45409 — DoS; incomplete fix for CVE-2024-3651.
+    "idna>=3.15",
+    # SFTY-20260528-99145 — platform-dependent delegation path validation.
+    # Advisory spec is `<=6.0.0` and publishes no fixed version; 7.0.0 is the
+    # lowest release above the affected range.
+    "tuf>=7.0.0",
+]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
 
@@ -579,7 +607,8 @@ artifacts = ["src/omnimarket/**/*.yaml", "src/omnimarket/**/*.sql"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.4.0",
+    # OMN-16024: floor raised 8.4.0 -> 9.0.3 (CVE-2025-71176, insecure tmpdir DoS).
+    "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=6.0.0",
     "pytest-split>=0.10.0",
