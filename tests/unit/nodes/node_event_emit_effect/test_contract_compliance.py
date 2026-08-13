@@ -14,6 +14,12 @@ Covers:
   package (rule 7a).
 - Hard constraint: no node_emit_daemon Python-module import anywhere in the
   node package (registries/topics.yaml is read by path only).
+- contract.yaml compatibility_publish_topics (OMN-15971): the exact declared
+  set, the derived invariant that every cross-domain publish topic appears in
+  it, and a real cross-boundary drive of the runtime's own discovery gate
+  (omnibase_infra _parse_contract -> _contract_targets_active_runtime_packages)
+  under the live onex-dev allowlist -- with the field-removed control proving
+  the test would go red if the field were dropped.
 """
 
 from __future__ import annotations
@@ -134,6 +140,160 @@ def test_publish_topics_matches_expected_set_exactly() -> None:
     event_bus = contract["event_bus"]
     assert isinstance(event_bus, dict)
     assert set(event_bus["publish_topics"]) == set(EXPECTED_PUBLISH_TOPICS)
+
+
+# ---------------------------------------------------------------------------
+# compatibility_publish_topics (OMN-15971)
+#
+# This node fans out into package domains it does not own (omniclaude,
+# omniintelligence). The runtime's auto-wiring discovery gate skips any
+# contract whose publish_topics reach an inactive package domain, which on the
+# onex-dev lane (ONEX_ACTIVE_RUNTIME_PACKAGES=omnibase_infra,omnimarket) meant
+# the whole contract was never wired. compatibility_publish_topics is the
+# runtime's own per-contract escape hatch for exactly this shape. If it is
+# dropped or drifts behind publish_topics, the node silently stops being wired
+# with no test failure anywhere -- these tests are what make that loud.
+# ---------------------------------------------------------------------------
+
+# The onex-dev allowlist as read live from the deployed effects pod.
+ONEX_DEV_ACTIVE_PACKAGES = "omnibase_infra,omnimarket"
+
+EXPECTED_COMPATIBILITY_PUBLISH_TOPICS = [
+    "onex.cmd.omniclaude.delegate-task.v1",
+    "onex.cmd.omniintelligence.claude-hook-event.v1",
+    "onex.cmd.omniintelligence.compliance-evaluate.v1",
+    "onex.cmd.omniintelligence.session-outcome.v1",
+    "onex.cmd.omniintelligence.tool-content.v1",
+    "onex.cmd.omniintelligence.utilization-scoring.v1",
+    "onex.evt.omniclaude.budget-cap-hit.v1",
+    "onex.evt.omniclaude.circuit-breaker-tripped.v1",
+    "onex.evt.omniclaude.delegation-shadow-comparison.v1",
+    "onex.evt.omniclaude.llm-routing-decision.v1",
+    "onex.evt.omniclaude.notification-blocked.v1",
+    "onex.evt.omniclaude.notification-completed.v1",
+    "onex.evt.omniclaude.pattern-enforcement.v1",
+    "onex.evt.omniclaude.phase-metrics.v1",
+    "onex.evt.omniclaude.prompt-submitted.v1",
+    "onex.evt.omniclaude.routing-decision.v1",
+    "onex.evt.omniclaude.routing-feedback.v1",
+    "onex.evt.omniclaude.session-ended.v1",
+    "onex.evt.omniclaude.session-outcome.v1",
+    "onex.evt.omniclaude.session-started.v1",
+    "onex.evt.omniclaude.skill-completed.v1",
+    "onex.evt.omniclaude.skill-started.v1",
+    "onex.evt.omniclaude.tool-executed.v1",
+    "onex.evt.omniintelligence.llm-call-completed.v1",
+]
+
+
+def test_compatibility_publish_topics_matches_expected_set_exactly() -> None:
+    """Pins the declared field so it cannot silently drop or drift.
+
+    A bare `assert "compatibility_publish_topics" in contract` would pass on an
+    empty list, which is exactly as broken as a missing key -- the gate would
+    skip the contract either way. Compare the set.
+    """
+    contract = _load_contract()
+    assert "compatibility_publish_topics" in contract, (
+        "compatibility_publish_topics was removed from contract.yaml; without "
+        "it the runtime discovery gate skips this whole contract on any lane "
+        "where omniclaude/omniintelligence are not active packages."
+    )
+    declared = contract["compatibility_publish_topics"]
+    assert isinstance(declared, list)
+    assert set(declared) == set(EXPECTED_COMPATIBILITY_PUBLISH_TOPICS)
+
+
+def test_compatibility_topics_are_a_subset_of_publish_topics() -> None:
+    """No stale entries: declaring a compatibility topic this node never
+    publishes would quietly widen the escape hatch beyond the real fan-out."""
+    contract = _load_contract()
+    event_bus = contract["event_bus"]
+    assert isinstance(event_bus, dict)
+    declared = contract["compatibility_publish_topics"]
+    assert isinstance(declared, list)
+    assert set(declared) <= set(event_bus["publish_topics"])
+
+
+def test_every_inactive_publish_topic_is_declared_compatible() -> None:
+    """The derived invariant, computed with the runtime's OWN topic-activity
+    function rather than a hand-copied domain list.
+
+    This is the test that catches the real regression shape: someone adds a
+    new cross-domain publish topic to publish_topics and does not add it to
+    compatibility_publish_topics, so discovery starts skipping the contract
+    again.
+    """
+    from omnibase_infra.utils.util_runtime_packages import (
+        get_active_runtime_packages,
+        is_runtime_topic_active,
+    )
+
+    contract = _load_contract()
+    event_bus = contract["event_bus"]
+    assert isinstance(event_bus, dict)
+    publish_topics = event_bus["publish_topics"]
+    assert isinstance(publish_topics, list)
+    declared_raw = contract["compatibility_publish_topics"]
+    assert isinstance(declared_raw, list)
+    declared = set(declared_raw)
+
+    active = get_active_runtime_packages(ONEX_DEV_ACTIVE_PACKAGES)
+    inactive = {
+        topic for topic in publish_topics if not is_runtime_topic_active(topic, active)
+    }
+
+    assert inactive, (
+        "no publish topic resolves as inactive under the onex-dev allowlist -- "
+        "this test has stopped proving anything; re-derive it against the live "
+        "ONEX_ACTIVE_RUNTIME_PACKAGES value before deleting it."
+    )
+    missing = inactive - declared
+    assert not missing, (
+        f"publish topics reach inactive package domains but are not declared "
+        f"in compatibility_publish_topics: {sorted(missing)}. The runtime "
+        f"discovery gate will skip this entire contract."
+    )
+
+
+def test_discovery_gate_wires_this_contract_under_onex_dev_allowlist() -> None:
+    """Real cross-boundary seam drive, not a re-implementation.
+
+    Parses contract.yaml with the runtime's own ``_parse_contract`` and runs
+    the actual ``_contract_targets_active_runtime_packages`` gate under the
+    live onex-dev allowlist. The second half is the control: strip
+    compatibility_publish_topics off the parsed contract and the same gate
+    must return False -- proving this test fails if the field is dropped,
+    rather than passing vacuously.
+    """
+    from omnibase_infra.runtime.auto_wiring.discovery import (
+        _contract_targets_active_runtime_packages,
+        _parse_contract,
+    )
+    from omnibase_infra.utils.util_runtime_packages import get_active_runtime_packages
+
+    parsed = _parse_contract(
+        contract_path=CONTRACT_PATH,
+        entry_point_name="node_event_emit_effect",
+        package_name="omnimarket",
+        package_version="0.0.0",
+    )
+    active = get_active_runtime_packages(ONEX_DEV_ACTIVE_PACKAGES)
+
+    assert set(parsed.compatibility_publish_topics) == set(
+        EXPECTED_COMPATIBILITY_PUBLISH_TOPICS
+    ), "the runtime parser did not read the contract's compatibility topics"
+
+    assert _contract_targets_active_runtime_packages(parsed, active) is True, (
+        "the deployed discovery gate would skip node_event_emit_effect on the "
+        "onex-dev lane"
+    )
+
+    without_compat = parsed.model_copy(update={"compatibility_publish_topics": ()})
+    assert _contract_targets_active_runtime_packages(without_compat, active) is False, (
+        "control failed: the gate accepts this contract even without "
+        "compatibility_publish_topics, so the assertion above proves nothing"
+    )
 
 
 def test_subscribe_topics_is_own_command_topic_only() -> None:
