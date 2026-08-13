@@ -67,12 +67,11 @@ repo: omnimarket
 gates:
   - name: "CI Summary"
     mode: REQUIRED
-    branch: main
     producer_kind: local
     workflow: ci.yml
     job_path: ["ci-summary"]
     skip_semantics: never
-    rationale: "Live required status check on omnimarket dev and main branch protection (verified 2026-07-20 via gh api required_status_checks)."
+    rationale: "Live required status check on BOTH omnimarket dev and main branch protection (re-verified 2026-08-13 via gh api required_status_checks: dev has 33 contexts incl. 'CI Summary', main has 28 incl. 'CI Summary'). Corrects a stale `branch: main` on this row — the omission of `branch:` now correctly means 'required on both', per the schema-v3 convention documented at the top of this file."
 
   - name: "OCC Emitter Golden Gate"
     mode: REQUIRED

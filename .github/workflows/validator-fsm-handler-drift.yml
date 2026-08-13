@@ -7,7 +7,12 @@
 # that each declared handler's VALID_TRANSITIONS + GUARD_CONDITIONS match the
 # contract's state_machine.transitions exactly. Zero allowlist entries.
 #
-# Required status check context: "fsm-handler-drift".
+# Context: "fsm-handler-drift". NOT a direct branch-protection required status
+# check on either dev or main (verified live 2026-08-13 via `gh api
+# repos/OmniNode-ai/omnimarket/branches/{dev,main}/protection/required_status_checks`).
+# It IS asserted fail-closed as an L4 external context by CI Summary's
+# EXPECTED_EXTERNAL_CONTEXTS (scripts/ci/ci_summary_gate.py), which is
+# required — a red or missing run here now blocks merge transitively.
 #
 # This workflow:
 #   1. Installs omnibase_core from the PR SHA so new validator code is available.

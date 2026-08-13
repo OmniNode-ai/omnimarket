@@ -3,12 +3,25 @@
 
 name: Security Scanning
 
+# ENFORCEMENT (2026-08-13, OMN-ci-gate-omnimarket): `pull_request` trigger
+# added — this workflow previously ran ONLY on schedule/workflow_dispatch/push,
+# so `dependency-scan`'s "Run Dependency Review" step (`if:
+# github.event_name == 'pull_request'`) was dead code (the event that gates it
+# could never occur) and none of these three jobs could ever validate a PR
+# before merge. The resulting contexts are NOT yet asserted in CI Summary's
+# EXPECTED_EXTERNAL_CONTEXTS (scripts/ci/ci_summary_gate.py) in this same PR —
+# they are unproven PR-event reporters until observed green on at least one
+# real PR; promoting an unproven reporter straight to a required/asserted
+# context is the documented wedge trap. See the completeness test's
+# EXEMPT_CONTEXTS entries for these three jobs for the tracked follow-up.
 on:
   schedule:
     - cron: '0 2 * * *'
   workflow_dispatch:
   push:
     branches: [main, 'hotfix/**']
+  pull_request:
+    branches: [main, dev]
 
 permissions:
   contents: read
@@ -39,8 +52,13 @@ jobs:
       - name: Run Safety Check
         run: |
           pip install safety
+          # JSON capture is diagnostic-only (feeds the uploaded artifact below);
+          # `|| true` here only prevents a non-zero exit from skipping the
+          # artifact write. The PLAIN invocation below is the enforcing gate —
+          # no `|| true`: `|| true` on an enforcing step is not a valid
+          # exemption form (doctrine). A real finding now fails this job.
           safety check --file requirements.txt --output json > safety-report.json || true
-          safety check --file requirements.txt || true
+          safety check --file requirements.txt
 
       - name: Upload Safety report
         uses: actions/upload-artifact@v7
