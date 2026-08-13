@@ -9,7 +9,6 @@ import yaml
 
 _IMPLEMENTED_NODES = (
     "node_epic_team_orchestrator",
-    "node_multi_agent_orchestrator",
     "node_self_healing_dispatch_orchestrator",
     "node_dispatch_watchdog_orchestrator",
     "node_wave_scheduler_orchestrator",

@@ -42,7 +42,6 @@ RELEASE_TOUCHED_NODES = (
     "node_log_persistence_effect",
     "node_model_comparison_runner",
     "node_model_router",
-    "node_multi_agent_orchestrator",
     "node_observability_sink_effect",
     "node_occ_pr_writer_effect",
     "node_omnigate_projection",

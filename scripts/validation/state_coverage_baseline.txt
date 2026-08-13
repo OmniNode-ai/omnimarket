@@ -289,9 +289,6 @@ node_monitor_alert_responder onex.evt.omnimarket.alert-response-completed.v1
 node_monitor_alert_responder onex.evt.omnimarket.monitor-alert-unhandled.v1
 node_morning_handoff_generator onex.evt.omnimarket.morning-handoff-generated.v1
 node_morning_handoff_generator run_id
-node_multi_agent_orchestrator onex.cmd.omnimarket.agent-task-dispatch.v1
-node_multi_agent_orchestrator onex.evt.omnimarket.agent-task-result.v1
-node_multi_agent_orchestrator onex.evt.omnimarket.multi-agent-workflow-completed.v1
 node_navigation_history_reducer reduced
 node_nightly_loop_controller onex.evt.omnimarket.build-loop-build-completed.v1
 node_nightly_loop_controller onex.evt.omnimarket.build-loop-classify-completed.v1
