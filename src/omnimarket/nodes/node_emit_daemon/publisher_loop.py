@@ -9,10 +9,30 @@ Kafka is down: after N consecutive failures the circuit opens, events are
 buffered locally, and a recovery probe runs after a configurable timeout.
 
 The publish_fn signature allows plugging in any Kafka client:
-    async def publish_fn(topic: str, key: bytes | None, value: bytes, headers: dict) -> None
+    async def publish_fn(topic, key, value, headers) -> ModelPublishReceipt | None
 
 In standalone mode, publish_fn can be a no-op or local logger.
 In kernel mode, publish_fn wraps EventBusKafka.publish().
+
+Durability (OMN-15861)
+----------------------
+An outbox record is truncated ONLY on a ``ModelDurabilityConfirmation`` whose
+``is_durable`` is true -- never on the publish call returning. The publish
+return supplies a ``ModelPublishReceipt`` (a coordinate); a per-tier
+``ProtocolConfirmationStrategy`` turns that coordinate into a durability verdict
+by reading it back off an authoritative surface.
+
+The old code acked on ``publish_fn`` not raising, with an inline comment
+claiming "confirmed publish". That is canonical invariant 7's named
+anti-pattern: a publish return is not durability. A produce can be accepted by a
+leader that dies before replication, and the caller would have already deleted
+its only copy.
+
+Unconfirmed is NOT a publish failure. When the broker accepted the produce but
+the confirmation surface could not vouch for it, the record is retained and
+retried, ``events_unconfirmed`` is incremented, and the circuit breaker is
+deliberately NOT tripped -- the broker is up; opening the circuit on a readback
+problem would halt all publishing over a confirmation-path fault.
 """
 
 from __future__ import annotations
@@ -24,6 +44,16 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from omnibase_infra.enums import EnumConfirmationState
+from omnibase_infra.event_bus.confirmation import PublishReturnOnlyStrategy
+from omnibase_infra.event_bus.models import (
+    ModelDurabilityConfirmation,
+    ModelPublishReceipt,
+)
+from omnibase_infra.protocols.protocol_confirmation_strategy import (
+    ProtocolConfirmationStrategy,
+)
+
 from omnimarket.nodes.node_emit_daemon.event_queue import (
     BoundedEventQueue,
     ModelQueuedEvent,
@@ -34,15 +64,23 @@ from omnimarket.nodes.node_emit_daemon.models.model_durability import (
 from omnimarket.nodes.node_emit_daemon.models.model_emit_daemon_config import (
     EnumCircuitBreakerState,
 )
+from omnimarket.nodes.node_emit_daemon.models.model_publish_attempt import (
+    ModelPublishAttempt,
+)
 
 logger = logging.getLogger(__name__)
 
 PUBLISHER_POLL_INTERVAL_SECONDS: float = 0.1
 
-# Type for the injected publish function
+# Type for the injected publish function.
+# OMN-15861: returns the durability coordinate instead of None. Optional because
+# a spool-only / no-op sink genuinely has no coordinate to report -- and `None`
+# is meaningful, not merely absent: it resolves to EnumConfirmationState.UNKNOWN,
+# which fails closed, so a transport that cannot report a coordinate can never
+# have a duty-critical record acked against it.
 PublishFn = Callable[
     [str, bytes | None, bytes, dict[str, str]],
-    Awaitable[None],
+    Awaitable[ModelPublishReceipt | None],
 ]
 
 
@@ -85,9 +123,31 @@ class KafkaPublisherLoop:
         failure_threshold: int = 5,
         recovery_timeout: float = 30.0,
         half_open_max_probes: int = 1,
+        confirmation_bindings: dict[EnumDurabilityTier, ProtocolConfirmationStrategy]
+        | None = None,
     ) -> None:
         self._queue = queue
         self._publish_fn = publish_fn
+        # OMN-15861: tier -> confirmation strategy. Built via
+        # `build_confirmation_bindings`, which fails fast if duty-critical is
+        # bound to publish-return-only.
+        #
+        # The default is asymmetric ON PURPOSE. TELEMETRY defaults to
+        # PublishReturnOnlyStrategy because bounded loss is already the declared
+        # correct behaviour for that tier and a readback round trip per metric
+        # is a real cost -- but it is the NAMED strategy, so every telemetry ack
+        # is still attributable as publish-return-backed rather than being an
+        # unexamined default. DUTY_CRITICAL is deliberately left UNBOUND: with
+        # no strategy, `_confirm` returns UNKNOWN and the record is never
+        # truncated. A caller that forgets to wire durability therefore gets
+        # outbox backpressure, not silent evidence deletion.
+        self._confirmation_bindings: dict[
+            EnumDurabilityTier, ProtocolConfirmationStrategy
+        ] = dict(
+            confirmation_bindings
+            if confirmation_bindings is not None
+            else {EnumDurabilityTier.TELEMETRY: PublishReturnOnlyStrategy()}
+        )
         self._max_retry_attempts = max_retry_attempts
         self._backoff_base_seconds = backoff_base_seconds
         self._max_backoff_seconds = max_backoff_seconds
@@ -112,6 +172,11 @@ class KafkaPublisherLoop:
         self.events_published: int = 0
         self.events_dropped: int = 0
         self.events_buffered: int = 0
+        # OMN-15861: published-but-not-confirmed. Distinct from
+        # events_dropped (gone) and events_published (durable) precisely so a
+        # confirmation-path outage is visible instead of being absorbed into
+        # either of the two existing counters.
+        self.events_unconfirmed: int = 0
         self._last_publish_at: datetime | None = None
         self._last_failure_at: datetime | None = None
         self._started_at: datetime | None = None
@@ -151,6 +216,23 @@ class KafkaPublisherLoop:
     # ------------------------------------------------------------------
     # Publish callable wiring
     # ------------------------------------------------------------------
+
+    def set_confirmation_bindings(
+        self,
+        bindings: dict[EnumDurabilityTier, ProtocolConfirmationStrategy],
+    ) -> None:
+        """Rebind the per-tier confirmation strategies before the loop starts.
+
+        Mirrors ``set_publish_fn``: the standalone runner cannot build a
+        readback source until the event bus exists on the running loop, so the
+        strategies are bound at the same moment the real publish path is.
+
+        Until this is called, no tier has a strategy and ``_confirm`` returns
+        ``UNKNOWN`` -- so a duty-critical record can be published but never
+        acked. That is the intended failure mode for an unwired daemon: it
+        applies outbox backpressure instead of silently deleting evidence.
+        """
+        self._confirmation_bindings = dict(bindings)
 
     def set_publish_fn(self, publish_fn: PublishFn) -> None:
         """Rebind the publish callable before the loop starts consuming.
@@ -292,15 +374,61 @@ class KafkaPublisherLoop:
                     except TimeoutError:
                         continue
 
-                success = await self._publish_event(event)
+                attempt = await self._publish_event(event)
 
-                if success:
+                confirmation = None
+                if attempt.succeeded:
+                    # OMN-15861: the publish returning is NOT the ack condition.
+                    # Read the coordinate back off an authoritative surface
+                    # first; only a durable verdict may truncate the record.
+                    confirmation = await self._confirm(event, attempt)
+
+                if confirmation is not None and confirmation.is_durable:
                     self._record_success()
                     self._retry_counts.pop(event.event_id, None)
                     # Truncate-on-ack: for duty-critical events this removes the
-                    # durable outbox record only after a confirmed publish.
+                    # durable outbox record, now genuinely only after a
+                    # CONFIRMED publish -- reachable from no other branch.
                     await self._queue.ack(event)
                     self.events_published += 1
+                elif (
+                    attempt.succeeded and event.tier is EnumDurabilityTier.DUTY_CRITICAL
+                ):
+                    # Published but unconfirmed. The broker took the record, so
+                    # this is not a broker failure: do NOT record a circuit
+                    # failure (that would halt publishing over a readback
+                    # fault). The record stays in the outbox and is re-served.
+                    self.events_unconfirmed += 1
+                    retries = self._retry_counts.get(event.event_id, 0) + 1
+                    self._retry_counts[event.event_id] = retries
+                    detail = confirmation.detail if confirmation is not None else ""
+                    logger.warning(
+                        "Publish of duty-critical %s was not confirmed durable "
+                        "(%s); retained in durable outbox for retry: %s",
+                        event.event_id,
+                        confirmation.state.value
+                        if confirmation is not None
+                        else "no_confirmation",
+                        detail,
+                        extra={
+                            "event_type": event.event_type,
+                            "topic": event.topic,
+                        },
+                    )
+                    uncapped_backoff = self._backoff_base_seconds * (2 ** (retries - 1))
+                    backoff = min(uncapped_backoff, self._max_backoff_seconds)
+                    try:
+                        await asyncio.wait_for(
+                            self._shutdown_event.wait(), timeout=backoff
+                        )
+                        break
+                    except TimeoutError:
+                        pass
+                elif attempt.succeeded:
+                    # Telemetry that could not be confirmed. Loss is correct by
+                    # design for this tier, and there is no outbox record to
+                    # retain, so the event is simply not counted as published.
+                    self.events_unconfirmed += 1
                 elif event.tier is EnumDurabilityTier.DUTY_CRITICAL:
                     # Duty-critical events are NEVER dropped. The event remains
                     # in the durable outbox (it was peeked, not removed) and is
@@ -396,8 +524,54 @@ class KafkaPublisherLoop:
 
         logger.info("Publisher loop stopped")
 
-    async def _publish_event(self, event: ModelQueuedEvent) -> bool:
-        """Publish a single event via the injected publish_fn."""
+    async def _confirm(
+        self, event: ModelQueuedEvent, attempt: ModelPublishAttempt
+    ) -> ModelDurabilityConfirmation:
+        """Resolve the attempt's coordinate into a durability verdict.
+
+        Fails closed on every ambiguous path:
+
+        * no strategy bound for the event's tier -> ``UNKNOWN``
+        * strategy itself raises -> ``UNKNOWN``
+
+        A missing binding must not silently degrade to "trust the publish
+        return"; that default is exactly what this ticket removes.
+        """
+        strategy = self._confirmation_bindings.get(event.tier)
+        if strategy is None:
+            return ModelDurabilityConfirmation(
+                state=EnumConfirmationState.UNKNOWN,
+                strategy="unbound",
+                receipt=attempt.receipt,
+                checked_at=datetime.now(UTC),
+                detail=(
+                    f"no confirmation strategy bound for tier "
+                    f"{event.tier.value}; refusing to claim durability"
+                ),
+            )
+        try:
+            return await strategy.confirm(attempt.receipt)
+        except Exception as exc:
+            logger.exception(
+                "Confirmation strategy %s raised for event %s",
+                strategy.name,
+                event.event_id,
+            )
+            return ModelDurabilityConfirmation(
+                state=EnumConfirmationState.UNKNOWN,
+                strategy=strategy.name,
+                receipt=attempt.receipt,
+                checked_at=datetime.now(UTC),
+                detail=f"confirmation strategy raised {type(exc).__name__}: {exc}",
+            )
+
+    async def _publish_event(self, event: ModelQueuedEvent) -> ModelPublishAttempt:
+        """Publish a single event via the injected publish_fn.
+
+        Returns the attempt outcome, including the durability coordinate the
+        transport reported. Returning a coordinate is NOT a durable claim -- see
+        ``_confirm``.
+        """
         try:
             key = event.partition_key.encode("utf-8") if event.partition_key else None
             value = json.dumps(event.payload, default=_json_default).encode("utf-8")
@@ -421,18 +595,24 @@ class KafkaPublisherLoop:
                 "event_type": event.event_type,
                 "timestamp": event.queued_at.isoformat(),
                 "correlation_id": correlation_id,
+                # OMN-15861: the stable logical-event identity. Survives retries
+                # (a re-published record gets a NEW offset but the SAME key), so
+                # this -- not the coordinate -- is what a downstream dedupe or a
+                # projection-confirm must key on.
+                "idempotency_key": event.event_id,
             }
 
-            await self._publish_fn(event.topic, key, value, headers)
+            receipt = await self._publish_fn(event.topic, key, value, headers)
 
             logger.debug(
                 f"Published event {event.event_id}",
                 extra={
                     "event_type": event.event_type,
                     "topic": event.topic,
+                    "coordinate": receipt.coordinate if receipt else None,
                 },
             )
-            return True
+            return ModelPublishAttempt(succeeded=True, receipt=receipt)
 
         except Exception as e:
             logger.warning(
@@ -442,7 +622,7 @@ class KafkaPublisherLoop:
                     "topic": event.topic,
                 },
             )
-            return False
+            return ModelPublishAttempt(succeeded=False, receipt=None)
 
 
 __all__: list[str] = ["KafkaPublisherLoop", "PublishFn"]

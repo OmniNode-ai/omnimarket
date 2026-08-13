@@ -25,6 +25,7 @@ import sys
 from pathlib import Path
 
 from omnimarket.nodes.node_emit_daemon.kafka_publish import (
+    build_kafka_confirmation_bindings,
     build_kafka_publish_fn,
     create_kafka_bus,
 )
@@ -256,6 +257,10 @@ async def _wire_kafka_publisher(
     logger.info(f"Kafka publishing enabled: {bootstrap_servers}")
     event_bus = await create_kafka_bus(bootstrap_servers, timeout_seconds=10.0)
     publisher.set_publish_fn(build_kafka_publish_fn(event_bus, source="omnimarket"))
+    # OMN-15861: bind readback confirmation now that a real broker config
+    # exists. Duty-critical records are truncated only after the produced
+    # coordinate is read back off this same cluster.
+    publisher.set_confirmation_bindings(build_kafka_confirmation_bindings(event_bus))
     return event_bus
 
 
@@ -319,6 +324,20 @@ def _do_start(args: argparse.Namespace) -> int:
         headers: dict[str, str],
     ) -> None:
         logger.debug(f"[no-kafka] Would publish to {topic} ({len(value)} bytes)")
+
+    # OMN-15861: spool-only mode deliberately leaves the confirmation bindings
+    # UNSET. With no broker there is no authoritative surface, so no
+    # duty-critical record can be honestly confirmed -- and the loop therefore
+    # will not truncate one. Previously this path acked duty-critical records
+    # against a logging no-op, i.e. it deleted the only copy of evidence that
+    # had never left the process. The outbox now fills and raises
+    # DurableOutboxFullError as explicit backpressure, which is the declared
+    # never-drop behaviour.
+    logger.warning(
+        "Spool-only mode: no Kafka bootstrap servers supplied, so no "
+        "durability confirmation surface exists. Duty-critical events will be "
+        "retained in the durable outbox and NOT acked until a broker is wired."
+    )
 
     # The publisher loop is constructed with the no-op publish callable. When
     # --kafka-bootstrap-servers is supplied, _run() builds a real EventBusKafka
