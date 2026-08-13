@@ -10,13 +10,13 @@ generated_from:
   generated_at: '2026-08-13T11:15:00Z'
 summary:
   edges_total: 15
-  matched_count: 3
+  matched_count: 4
   regenerable_count: 0
   by_classification:
     edges_total: 15
-    MATCHED: 3
+    MATCHED: 4
     MATCHED_UNTESTED: 5
-    MISMATCH: 2
+    MISMATCH: 1
     UNMATCHED: 5
 edges:
 - edge_id: S1
@@ -68,13 +68,19 @@ edges:
 - edge_id: S12
   seam: ModelDispatchRoute identity field
   leg: local runtime
-  classification: MISMATCH
-  severity: medium
-  producer_shape: omnibase_core ModelDispatchRoute exposes `handler_id`
-  consumer_shape: omnibase_infra reads `dispatcher_id`, with a getattr fallback shim
-    reconciling the two names at the call site
+  classification: MATCHED
+  severity: none
+  producer_shape: 'omnibase_core ModelDispatchRoute exposes `handler_id` AND `dispatcher_id`:
+    the field carries validation_alias=AliasChoices("handler_id", "dispatcher_id")
+    under populate_by_name=True, plus an explicit `dispatcher_id` property returning
+    handler_id. Both names are live on the model, so a consumer reading either name
+    resolves.'
+  consumer_shape: omnibase_infra reads `dispatcher_id` via a getattr helper. As of
+    the measured pin the helper's first branch (getattr(route, 'dispatcher_id')) resolves
+    directly against core's dispatcher_id property, so the helper is VESTIGIAL defensive
+    code, not a reconciliation the seam depends on.
   regenerable: false
-  source_record_pinned_hash: 26c2172a9e02960c8879d06bddb7a9d0da37dacd290794cdc0f7a6cea30fec7d
+  source_record_pinned_hash: 0dd35187273cad600cd41373c0181e2b9ff720c8cf704b9b956b06e581cc5a6f
   projection_pinned_hash: null
   related_tickets:
   - OMN-4057

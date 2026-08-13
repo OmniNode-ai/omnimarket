@@ -161,23 +161,27 @@ edges:
     leg: local runtime
     inclusion: local_processing
     traversed: true
-    registry_classification: MISMATCH
-    registry_severity: medium
+    registry_classification: MATCHED
+    registry_severity: none
     producer_symbol_reachable: true
     golden_module: tests/seam_goldens/test_s12_dispatch_route_identity.py
     rationale: >-
       The dispatch-routing identity seam inside the processing hop. The
-      registry records MISMATCH (core exposes handler_id, infra reads
-      dispatcher_id behind a getattr fallback shim), and this row keeps that
-      value because the manifest must mirror the registry of record. MEASURED
-      DRIFT: driving the pinned omnibase_core shows ModelDispatchRoute now
-      ships BOTH names — handler_id as the field, dispatcher_id as a property,
-      plus validation_alias=AliasChoices("handler_id", "dispatcher_id") — which
-      is precisely the removal condition the infra shim's own docstring names.
-      The golden asserts the measured reality and pins the registry drift
-      explicitly rather than reproducing a mismatch the live code no longer
-      has; re-deriving seams.v1.yaml is a generator run tracked as receipt
-      evidence, not a hand-edit of a generated file.
+      registry records MATCHED at severity none, and this row mirrors it
+      because the manifest must track the registry of record. DRIFT NOW
+      CLOSED: this row previously carried MISMATCH/medium and flagged the
+      measured disagreement — driving the pinned omnibase_core shows
+      ModelDispatchRoute ships BOTH names (handler_id as the field,
+      dispatcher_id as a property, plus
+      validation_alias=AliasChoices("handler_id", "dispatcher_id")), which is
+      precisely the removal condition the infra shim's own docstring names.
+      seams.v1.yaml has since been re-derived from a corrected seam-graph
+      source, so the registry and the measurement agree and the golden asserts
+      the convergence rather than the drift. MATCHED rather than
+      MATCHED_UNTESTED because the golden module named above is itself the
+      cross-boundary enforcement the classification legend requires; the edge
+      is still not regenerable, since that golden compares projections it
+      constructs rather than live observed ones.
 
   - edge_id: S13
     seam: ONEX_MULTI_EVENT_PUBLISH_SEAM feature flag name

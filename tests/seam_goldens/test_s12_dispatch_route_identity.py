@@ -1,31 +1,35 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""S12 — the dispatch-route identity seam, and a registry row measured stale.
+"""S12 — the dispatch-route identity seam, now agreeing with the registry.
 
-The registry records S12 as a live MISMATCH: ``omnibase_core``'s
-``ModelDispatchRoute`` exposes ``handler_id`` while ``omnibase_infra``'s
-dispatch engine reads ``dispatcher_id`` behind a ``getattr`` fallback shim.
-
-**Driving the real symbols shows that is no longer true.** In the
-``omnibase_core`` version this repo pins, ``ModelDispatchRoute`` ships BOTH
-names: ``handler_id`` is the field, ``dispatcher_id`` is a property returning
-it, and the field carries
+In the ``omnibase_core`` version this repo pins, ``ModelDispatchRoute`` ships
+BOTH names: ``handler_id`` is the field, ``dispatcher_id`` is a property
+returning it, and the field carries
 ``validation_alias=AliasChoices("handler_id", "dispatcher_id")`` so either
 name validates on the way in. The infra shim's own docstring names exactly
 this as its removal condition — "Once omnibase_core publishes a release with a
 ``dispatcher_id`` property this shim can be removed." That condition is met.
 
-This module therefore does NOT construct projections that reproduce a mismatch
-the live code does not have — that would be goldening a fiction and would go
-green forever while the registry stayed wrong. It drives the real producer and
-the real consumer, proves the two names resolve to one identity, and then pins
-the registry drift explicitly so it is visible rather than absorbed.
+This module does NOT construct projections that reproduce a mismatch the live
+code does not have — that would be goldening a fiction and would go green
+forever while the registry stayed wrong. It drives the real producer and the
+real consumer and proves the two names resolve to one identity.
 
-The drift pin fails the moment ``seams.v1.yaml`` is re-derived to MATCHED,
-which is the correct signal: delete the pin, the edge is genuinely healthy.
-Finding is carried as evidence on the OMN-16004 receipt; re-deriving a
-generated registry is a generator run, not a hand-edit, and is out of scope
-for a test-only change.
+**The drift this module originally pinned is now closed.** When it was
+written, ``seams.v1.yaml`` still recorded S12 as MISMATCH while the live
+symbols matched, so the module carried an explicit pin on that disagreement
+and stated the exit condition: "The drift pin fails the moment
+``seams.v1.yaml`` is re-derived to MATCHED, which is the correct signal:
+delete the pin, the edge is genuinely healthy." The registry has since been
+re-derived from a corrected seam-graph source and the row is MATCHED at
+severity none, so the pin has been deleted as instructed. What remains below
+asserts the positive form: the live seam matches AND the registry now agrees.
+
+The row is MATCHED rather than MATCHED_UNTESTED precisely because this module
+exists — the legend reserves MATCHED_UNTESTED for agreement that nothing
+mechanically enforces. It is still not ``regenerable``: the match run here
+compares projections this test constructs, not live observed projections from
+a real ``node_seam_match_compute`` three-leg run.
 """
 
 from __future__ import annotations
@@ -151,19 +155,19 @@ class TestConsumerResolvesTheRealProducer:
             _get_route_dispatcher_id(_NamelessRoute())
 
 
-class TestRegistryRowIsMeasuredStale:
-    """Pin the drift between the registry's MISMATCH and the live symbols."""
+class TestRegistryRowAgreesWithTheLiveSymbols:
+    """The registry row and the live symbols now say the same thing."""
 
-    def test_registry_still_records_a_mismatch(self) -> None:
-        assert registry_classification("S12") == "MISMATCH"
+    def test_registry_records_the_edge_as_matched(self) -> None:
+        assert registry_classification("S12") == "MATCHED"
 
-    def test_the_live_seam_matches_despite_that_record(self) -> None:
+    def test_the_live_seam_matches_and_the_record_agrees(self) -> None:
         """Both observed sides are the SAME identity, so leg 1 passes.
 
         The projections here are derived from what the goldens above actually
         drove — one identity readable under either name — rather than from the
-        registry's prose. That is what makes this a measurement of drift
-        instead of a restatement of it.
+        registry's prose. That is what makes this a measurement rather than a
+        restatement of the row.
         """
 
         declared_producer = producer_projection(
@@ -195,10 +199,11 @@ class TestRegistryRowIsMeasuredStale:
 
         assert verdict.verdict.value == "MATCHED"
         assert verdict.regenerability.value == "REGENERABLE"
-        # The drift, stated as an assertion rather than a comment: re-deriving
-        # seams.v1.yaml from a source that reflects the pinned core version
-        # will flip the row and fail `test_registry_still_records_a_mismatch`.
-        assert verdict.verdict.value != registry_classification("S12")
+        # Convergence, stated as an assertion rather than a comment: the
+        # measured verdict and the recorded row agree. This is the inverse of
+        # the `!=` drift pin this module originally carried, and it now fails
+        # if the registry regresses to MISMATCH.
+        assert verdict.verdict.value == registry_classification("S12")
 
     def test_the_shim_removal_condition_named_in_infra_is_satisfied(self) -> None:
         """State the remediation the drift implies, executably.
