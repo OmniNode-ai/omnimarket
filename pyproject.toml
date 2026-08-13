@@ -580,8 +580,19 @@ override-dependencies = [
 # venv, which installs omnibase_core from a source checkout that carries its
 # own `cryptography` ceiling. A `cryptography>=48.0.1` constraint made that
 # resolution unsatisfiable and failed a required check, so the constraints
-# were removed. Regression cover is the safety gate in
-# .github/workflows/security-scan.yml, which fails on any vulnerable pin.
+# were removed.
+#
+# Regression cover is therefore uv.lock plus the safety gate in
+# .github/workflows/security-scan.yml — but be precise about what that gate
+# can do TODAY: its `safety check` invocations end in `|| true` and the
+# workflow carries no `pull_request` trigger, so it reports vulnerable pins
+# without failing anything and does not run on PRs at all. It is a detection
+# surface, not an enforcing gate. Removing `|| true` and adding the PR
+# trigger is already in flight on a separate CI-gate-enforcement branch and
+# is deliberately not duplicated here, to avoid conflicting edits to the
+# same workflow file. Until that lands, a re-resolution that dropped one of
+# these packages back to a vulnerable release would show up in the scheduled
+# scan's output but would not block a merge.
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
