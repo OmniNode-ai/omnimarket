@@ -31,6 +31,8 @@ from __future__ import annotations
 
 import contextlib
 import json
+import logging
+import os
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -39,6 +41,8 @@ from pathlib import Path
 from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
     EnumDurabilityTier,
 )
+
+logger = logging.getLogger(__name__)
 
 JsonType = dict[str, object] | list[object] | str | int | float | bool | None
 
@@ -114,9 +118,16 @@ class SpoolFile:
 
 @dataclass(frozen=True)
 class AppendOutcome:
-    """Result of appending one record to the spool."""
+    """Result of appending one record to the spool.
 
-    spool_file: SpoolFile
+    ``spool_file`` is ``None`` only when a single telemetry record's
+    serialized size alone exceeds ``max_telemetry_bytes`` -- it can never fit
+    even after evicting the entire existing backlog, so it is rejected
+    outright (counted in ``dropped_count``) rather than written past the
+    configured bound.
+    """
+
+    spool_file: SpoolFile | None
     dropped_count: int
 
 
@@ -209,10 +220,21 @@ class SpoolOutbox:
         return self._append_telemetry(record)
 
     def _write(self, record: SpoolRecord) -> Path:
+        """Write one spool file atomically: temp file + ``os.replace``.
+
+        An in-place ``write_text`` lets a concurrent reader observe a
+        partially written file, or a crash mid-write leave a truncated file
+        on disk permanently (``read()``/``list_pending()`` would then swallow
+        it as a corrupt record forever). ``os.replace`` is atomic on the same
+        filesystem, so readers only ever see the file fully absent or fully
+        present.
+        """
         body = record.to_json()
         filename = f"{_next_monotonic_seq():020d}_{record.event_id}.json"
         path = self._spool_dir / filename
-        path.write_text(body, encoding="utf-8")
+        tmp_path = path.with_suffix(f".tmp-{os.getpid()}-{_next_monotonic_seq()}")
+        tmp_path.write_text(body, encoding="utf-8")
+        os.replace(tmp_path, path)
         return path
 
     def _append_duty_critical(self, record: SpoolRecord) -> AppendOutcome:
@@ -241,6 +263,21 @@ class SpoolOutbox:
         existing = self._tier_paths(EnumDurabilityTier.TELEMETRY)
         existing_bytes = sum(p.stat().st_size for p in existing)
         body_bytes = len(record.to_json().encode("utf-8"))
+
+        # A single record whose own serialized size exceeds the byte cap can
+        # never fit -- not even after evicting the entire existing backlog.
+        # Reject it outright instead of evicting everything and writing past
+        # the configured bound anyway.
+        if body_bytes > self._max_telemetry_bytes:
+            logger.warning(
+                "Dropping oversized telemetry event %s: %d bytes > "
+                "max_telemetry_bytes=%d",
+                record.event_id,
+                body_bytes,
+                self._max_telemetry_bytes,
+            )
+            return AppendOutcome(spool_file=None, dropped_count=1)
+
         dropped = 0
         while existing and (
             len(existing) >= self._max_telemetry_messages

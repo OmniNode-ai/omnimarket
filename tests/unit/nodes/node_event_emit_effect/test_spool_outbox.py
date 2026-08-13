@@ -103,6 +103,32 @@ def test_telemetry_never_raises_on_overflow(tmp_path: Path) -> None:
     assert outcome.dropped_count == 1
 
 
+def test_telemetry_rejects_oversized_single_record_without_evicting_backlog(
+    tmp_path: Path,
+) -> None:
+    """A single record whose own serialized size exceeds the byte cap can
+    never fit -- not even after evicting the entire existing backlog. It
+    must be rejected outright, not written past the configured bound after
+    silently discarding everything else."""
+    existing = _record("kept")
+    cap = len(existing.to_json().encode("utf-8")) + 10  # room for one small record
+    outbox = SpoolOutbox(tmp_path / "spool", max_telemetry_bytes=cap)
+    outbox.append(existing)
+
+    oversized = _record("oversized-" + ("x" * 10_000))
+    assert len(oversized.to_json().encode("utf-8")) > cap
+
+    outcome = outbox.append(oversized)
+
+    assert outcome.spool_file is None
+    assert outcome.dropped_count == 1
+    # The existing record was NOT evicted to make room for a record that
+    # could never fit anyway.
+    pending_ids = {f.record.event_id for f in outbox.list_pending()}
+    assert pending_ids == {"kept"}
+    assert outbox.pending_count() == 1
+
+
 # ---------------------------------------------------------------------------
 # FIFO ordering
 # ---------------------------------------------------------------------------
@@ -126,6 +152,7 @@ def test_fifo_ordering_by_filename(tmp_path: Path) -> None:
 def test_ack_removes_file_and_is_idempotent(tmp_path: Path) -> None:
     outbox = SpoolOutbox(tmp_path / "spool")
     outcome = outbox.append(_record("e1"))
+    assert outcome.spool_file is not None
     path = outcome.spool_file.path
 
     assert path.exists()

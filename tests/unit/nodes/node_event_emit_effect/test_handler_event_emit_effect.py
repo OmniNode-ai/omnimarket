@@ -104,12 +104,12 @@ def test_explicit_topic_override(tmp_path: Path) -> None:
     request = ModelEmitRequest(
         event_type="session.started",
         payload={"session_id": "abc"},
-        topic="onex.evt.omniclaude.session-started.v1.override",
+        topic="onex.evt.omnimarket.session-started-override.v1",
     )
     result = handler.handle(request)
 
     assert result.topics_published == [
-        "onex.evt.omniclaude.session-started.v1.override"
+        "onex.evt.omnimarket.session-started-override.v1"
     ]
 
 
@@ -172,6 +172,38 @@ def test_spool_only_mode_when_kafka_unconfigured(
     assert spool.pending_count() == 1  # accumulates until Kafka is configured
 
 
+def test_oversized_current_event_is_dropped_but_backlog_still_drains(
+    tmp_path: Path,
+) -> None:
+    """When the current event itself is too large to spool (oversized
+    telemetry -- see SpoolOutbox._append_telemetry), it can't be published,
+    but an existing backlog is still opportunistically drained."""
+    spool = SpoolOutbox(tmp_path / "spool", max_telemetry_bytes=400)
+    adapter = FakePublishAdapter()
+
+    # Pre-populate a small backlog record that fits comfortably.
+    backlog_handler = HandlerEventEmitEffect(
+        spool=spool, publish_adapter=None
+    )  # spool-only, so it just gets appended
+    # Use the smallest possible request so it fits under the 400-byte cap.
+    small_request = ModelEmitRequest(event_type="session.started", payload={})
+    backlog_handler.handle(small_request)
+    assert spool.pending_count() == 1
+
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
+    oversized_request = ModelEmitRequest(
+        event_type="session.started",
+        payload={"blob": "x" * 1000},
+    )
+    result = handler.handle(oversized_request)
+
+    assert result.published is False
+    assert result.topics_published == []
+    assert result.dropped_count == 1  # the oversized current event itself
+    assert result.drained_count == 1  # the pre-existing small backlog record
+    assert spool.pending_count() == 0
+
+
 # ---------------------------------------------------------------------------
 # Model validation
 # ---------------------------------------------------------------------------
@@ -187,6 +219,28 @@ def test_model_emit_request_rejects_extra_fields() -> None:
 def test_model_emit_request_rejects_empty_event_type() -> None:
     with pytest.raises(ValidationError):
         ModelEmitRequest(event_type="", payload={})
+
+
+def test_model_emit_request_rejects_malformed_topic_override() -> None:
+    with pytest.raises(ValidationError):
+        ModelEmitRequest(
+            event_type="session.started",
+            payload={},
+            topic="not-a-topic",
+        )
+
+
+def test_model_emit_request_accepts_well_formed_topic_override_outside_registry() -> (
+    None
+):
+    """The override is a deliberate escape hatch -- shape-checked, not
+    registry-membership-checked (see the field's own description)."""
+    request = ModelEmitRequest(
+        event_type="session.started",
+        payload={},
+        topic="onex.evt.omnimarket.some-topic-not-in-the-registry.v1",
+    )
+    assert request.topic == "onex.evt.omnimarket.some-topic-not-in-the-registry.v1"
 
 
 def test_model_emit_result_rejects_extra_fields() -> None:

@@ -226,3 +226,10 @@ def test_no_node_emit_daemon_python_import_anywhere_in_package() -> None:
                 assert "node_emit_daemon" not in module, (
                     f"{path}: illegal node_emit_daemon import: {module!r}"
                 )
+                # A bare package import (e.g. "from omnimarket.nodes import
+                # node_emit_daemon") has module="omnimarket.nodes" -- the
+                # check above misses it. Inspect the imported names too.
+                for alias in node.names:
+                    assert alias.name != "node_emit_daemon", (
+                        f"{path}: illegal node_emit_daemon import: {alias.name!r}"
+                    )

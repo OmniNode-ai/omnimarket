@@ -5,11 +5,20 @@
 
 from __future__ import annotations
 
+import re
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 JsonType = dict[str, object] | list[object] | str | int | float | bool | None
+
+# Same shape the static contract-topic-graph enforces
+# (src/omnimarket/validators/contract_topic_graph.py's _TOPIC_RE) -- this is
+# a format check only, not a registry-membership check. ``topic`` is a
+# deliberate escape hatch (see field description below), so it is not
+# restricted to registry-declared topics; it must still be a well-formed
+# ONEX topic string, not an arbitrary value.
+_TOPIC_SHAPE_RE = re.compile(r"^onex\.(evt|cmd|intent|dlq)\.[a-z0-9._-]+\.v\d+$")
 
 
 class ModelEmitRequest(BaseModel):
@@ -32,8 +41,15 @@ class ModelEmitRequest(BaseModel):
     topic: str | None = Field(
         default=None,
         description=(
-            "Explicit topic override. If unset, the topic(s) are resolved "
-            "from the event registry via event_type."
+            "Explicit topic override, publishing to exactly this one topic "
+            "instead of event_type's resolved fan_out set. This is a "
+            "deliberate escape hatch OUTSIDE contract.yaml's declared "
+            "publish_topics / the event registry -- it is not validated "
+            "against either, only against the well-formed ONEX topic shape "
+            "(onex.{evt|cmd|intent|dlq}.<service>.<name>.vN). Callers "
+            "reaching for this to route around a missing registry entry "
+            "should register the topic properly instead; it exists for "
+            "cases that are legitimately outside the registry's scope."
         ),
     )
     partition_key: str | None = Field(
@@ -44,6 +60,16 @@ class ModelEmitRequest(BaseModel):
         min_length=1,
         description="Unique event identifier; stable across spool retries.",
     )
+
+    @field_validator("topic")
+    @classmethod
+    def _topic_must_be_well_formed(cls, value: str | None) -> str | None:
+        if value is not None and not _TOPIC_SHAPE_RE.match(value):
+            raise ValueError(
+                f"topic override {value!r} is not a well-formed ONEX topic "
+                "(expected onex.{evt|cmd|intent|dlq}.<service>.<name>.vN)"
+            )
+        return value
 
 
 __all__: list[str] = ["JsonType", "ModelEmitRequest"]

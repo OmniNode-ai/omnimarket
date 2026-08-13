@@ -30,10 +30,16 @@ pytestmark = pytest.mark.unit
 
 class _RecordingAdapter:
     """Records publish calls in-process; the golden chain replays them onto
-    a real EventBusInmemory to prove the wire shape round-trips."""
+    a real EventBusInmemory to prove the wire shape round-trips.
+
+    Records ``correlation_id`` alongside each message so tests can prove the
+    adapter actually received the original correlation ID, not just that
+    ``ModelEmitResult.correlation_id`` echoes the request.
+    """
 
     def __init__(self) -> None:
         self.received: list[tuple[str, bytes]] = []
+        self.received_correlation_ids: list[str | None] = []
 
     def publish(
         self,
@@ -44,6 +50,7 @@ class _RecordingAdapter:
         correlation_id: str | None,
     ) -> None:
         self.received.append((topic, json.dumps(payload).encode("utf-8")))
+        self.received_correlation_ids.append(correlation_id)
 
 
 class TestGoldenChainEventEmitEffect:
@@ -68,6 +75,9 @@ class TestGoldenChainEventEmitEffect:
         assert result.topics_published == ["onex.evt.omniclaude.session-started.v1"]
         assert result.correlation_id == "corr-golden-1"
         assert spool.pending_count() == 0  # acked -- no leftover file
+        # The adapter itself received the original correlation_id -- not
+        # just an echo on ModelEmitResult.
+        assert recorder.received_correlation_ids == ["corr-golden-1"]
 
         # Now drive the same payload through a real event bus, proving the
         # wire shape (topic + JSON-serialized payload) round-trips.
@@ -146,6 +156,9 @@ class TestGoldenChainEventEmitEffect:
         assert current_result.published is True
         assert current_result.drained_count == 1
         assert spool.pending_count() == 0
+        # The drained backlog record's original correlation_id reached the
+        # adapter unchanged -- proves the idempotency key survives the retry.
+        assert "corr-backlog-1" in recorder.received_correlation_ids
 
         for topic, value in recorder.received:
             await event_bus.publish(topic, key=None, value=value)

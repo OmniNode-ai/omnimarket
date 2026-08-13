@@ -59,6 +59,9 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_DRAIN_BUDGET_SECONDS = 8.0  # margin under contract.descriptor.timeout_ms=10000
 _DEFAULT_MAX_DRAIN_COUNT = 500
+_DEFAULT_PUBLISH_TIMEOUT_SECONDS = 5.0  # bounds a single publish so one hung
+# broker connection can't overrun _drain_budget_seconds -- _drain_backlog only
+# checks its deadline between records, not during a single publish call.
 
 
 class ProtocolPublishAdapter(Protocol):
@@ -89,10 +92,15 @@ class KafkaEventPublisher:
     """
 
     def __init__(
-        self, bootstrap_servers: str, *, source: str = "node_event_emit_effect"
+        self,
+        bootstrap_servers: str,
+        *,
+        source: str = "node_event_emit_effect",
+        publish_timeout_seconds: float = _DEFAULT_PUBLISH_TIMEOUT_SECONDS,
     ) -> None:
         self._bootstrap_servers = bootstrap_servers
         self._source = source
+        self._publish_timeout_seconds = publish_timeout_seconds
 
     def publish(
         self,
@@ -102,9 +110,15 @@ class KafkaEventPublisher:
         key: str | None,
         correlation_id: str | None,
     ) -> None:
-        asyncio.run(
-            self._publish_async(topic, payload, key=key, correlation_id=correlation_id)
-        )
+        async def _run() -> None:
+            await asyncio.wait_for(
+                self._publish_async(
+                    topic, payload, key=key, correlation_id=correlation_id
+                ),
+                timeout=self._publish_timeout_seconds,
+            )
+
+        asyncio.run(_run())
 
     async def _publish_async(
         self,
@@ -223,6 +237,22 @@ class HandlerEventEmitEffect:
                 correlation_id=request.correlation_id,
             )
 
+        if outcome.spool_file is None:
+            # The current record itself was rejected (oversized telemetry --
+            # see SpoolOutbox._append_telemetry); nothing was spooled for it,
+            # so there is nothing to publish. Still opportunistically drain
+            # any existing backlog -- that work is independent of whether the
+            # current event could be spooled.
+            drained_count = self._drain_backlog(adapter, spool, exclude=None)
+            return ModelEmitResult(
+                event_id=request.event_id,
+                topics_published=[],
+                published=False,
+                drained_count=drained_count,
+                dropped_count=outcome.dropped_count,
+                correlation_id=request.correlation_id,
+            )
+
         published = self._try_publish(adapter, outcome.spool_file, spool)
         drained_count = 0
         if published:
@@ -265,12 +295,16 @@ class HandlerEventEmitEffect:
         return True
 
     def _drain_backlog(
-        self, adapter: ProtocolPublishAdapter, spool: SpoolOutbox, *, exclude: Path
+        self,
+        adapter: ProtocolPublishAdapter,
+        spool: SpoolOutbox,
+        *,
+        exclude: Path | None,
     ) -> int:
         deadline = time.monotonic() + self._drain_budget_seconds
         drained = 0
         for spool_file in spool.list_pending():
-            if spool_file.path == exclude:
+            if exclude is not None and spool_file.path == exclude:
                 continue
             if drained >= self._max_drain_count or time.monotonic() >= deadline:
                 break
