@@ -47,10 +47,25 @@ descriptor:
   idempotent: true
   timeout_ms: 10000  # bounded per-invocation drain budget (opportunistic, not a resident daemon)
 
+runtime_dispatch:
+  # Direct def-B CLI / plugin-runtime dispatch, not bus-triggered by any
+  # producer today -- same "no live bus wiring yet, directly-invoked only"
+  # pattern as node_staging_readiness_compute / node_report_validation_compute.
+  # command_topic doubles as this node's own subscribe_topics entry (the
+  # static contract-topic-graph treats a declared command_topic as
+  # self-satisfying: "the CLI's publish target").
+  command_topic: onex.cmd.omnimarket.event-emit.v1
+  terminal_events:
+    success: onex.evt.omnimarket.event-emit-completed.v1
+    failure: onex.evt.omnimarket.event-emit-failed.v1
+  default_timeout_ms: 10000
+  max_timeout_ms: 10000
+
 terminal_event: onex.evt.omnimarket.event-emit-completed.v1
 
 event_bus:
-  subscribe_topics: []  # invoked by direct def-B dispatch (CLI / plugin-runtime call), not bus-triggered
+  subscribe_topics:
+    - onex.cmd.omnimarket.event-emit.v1
   publish_topics:
     # Generated from registries/topics.yaml's fan_out targets at
     # contract-authoring time -- do not hand-copy a stale list; regenerate
@@ -104,15 +119,17 @@ event_bus:
     - onex.evt.omniclaude.tool-executed.v1
     - onex.evt.omniintelligence.llm-call-completed.v1
     - onex.evt.omnimarket.event-emit-completed.v1
+    - onex.evt.omnimarket.event-emit-failed.v1
     - onex.evt.omnimarket.tool-output-captured.v1
 
 externally_consumed_topics:
-  # This node's own terminal event -- genuinely new (verified absent from
+  # This node's own terminal events -- genuinely new (verified absent from
   # both registries/topics.yaml and the omniclaude-generated EVENT_REGISTRY
   # at PR time). Hook wiring (OMN-14317) and shadow-mode parity (R9,
   # OMN-15971) are separate, later scope; declared here so the static
-  # producer/consumer graph does not flag it as an orphan in the meantime.
+  # producer/consumer graph does not flag them as orphans in the meantime.
   - onex.evt.omnimarket.event-emit-completed.v1
+  - onex.evt.omnimarket.event-emit-failed.v1
 
 side_effects:
   reads: [local_spool_read]
@@ -128,13 +145,6 @@ env_dependencies:
     description: "Override the spool directory. Default: $XDG_RUNTIME_DIR/onex/event-emit-effect-spool, else /tmp/onex-event-emit-effect-spool."
 
 metadata:
-  # PRODUCER_ONLY by design (subscribe_topics: [] -- direct def-B CLI /
-  # plugin-runtime dispatch, not bus-triggered). node-orphan-graph gate
-  # (scripts/validate_node_drift.py) requires either both sides declared or
-  # an explicit lifecycle exemption; "experimental" is accurate here, not a
-  # gate workaround -- R1 is not yet hook-wired (OMN-14317) or shadow-mode
-  # proven (R9, OMN-15971). Graduate this once those land.
-  lifecycle: experimental
   transport_type: kafka
   durability: file_spool
   implementation_wave: 1

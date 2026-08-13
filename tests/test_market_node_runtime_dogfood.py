@@ -202,7 +202,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # directions ORPHANED, the same-named /onex:multi_agent CLI skill never
     # dispatches to it, and its only handler-implementation ticket OMN-12329
     # is Canceled with no standing intent to wire): 386 -> 385.
-    assert summary["node_dirs"] == 385
+    # OMN-15965 adds node_event_emit_effect (EFFECT_GENERIC; R1 of the
+    # node_emit_daemon replacement — thin-publish-to-Kafka with a file-based
+    # spool outbox, direct def-B CLI/plugin-runtime dispatch, no live bus
+    # wiring yet): 385 -> 386.
+    assert summary["node_dirs"] == 386
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -242,7 +246,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # routable): 381 -> 383.
     # OMN-15983 removes the node_multi_agent_orchestrator entry point
     # (dead code deletion, see node_dirs comment above): 383 -> 382.
-    assert summary["entry_points"] == 382
+    # OMN-15965 adds the node_event_emit_effect entry point (see node_dirs
+    # comment above): 382 -> 383.
+    assert summary["entry_points"] == 383
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

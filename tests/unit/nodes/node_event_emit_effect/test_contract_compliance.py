@@ -124,6 +124,7 @@ EXPECTED_PUBLISH_TOPICS = [
     "onex.evt.omniclaude.tool-executed.v1",
     "onex.evt.omniintelligence.llm-call-completed.v1",
     "onex.evt.omnimarket.event-emit-completed.v1",
+    "onex.evt.omnimarket.event-emit-failed.v1",
     "onex.evt.omnimarket.tool-output-captured.v1",
 ]
 
@@ -135,12 +136,15 @@ def test_publish_topics_matches_expected_set_exactly() -> None:
     assert set(event_bus["publish_topics"]) == set(EXPECTED_PUBLISH_TOPICS)
 
 
-def test_subscribe_topics_is_empty_direct_dispatch_only() -> None:
-    """Invoked by direct def-B dispatch (CLI / plugin-runtime), not bus-triggered."""
+def test_subscribe_topics_is_own_command_topic_only() -> None:
+    """Direct def-B CLI/plugin-runtime dispatch: subscribe_topics contains only
+    this node's own runtime_dispatch.command_topic, not a live bus trigger."""
     contract = _load_contract()
     event_bus = contract["event_bus"]
     assert isinstance(event_bus, dict)
-    assert event_bus["subscribe_topics"] == []
+    runtime_dispatch = contract["runtime_dispatch"]
+    assert isinstance(runtime_dispatch, dict)
+    assert event_bus["subscribe_topics"] == [runtime_dispatch["command_topic"]]
 
 
 # ---------------------------------------------------------------------------
