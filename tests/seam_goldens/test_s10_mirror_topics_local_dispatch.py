@@ -31,18 +31,24 @@ from tests.seam_goldens.harness import (
     GATEWAY_PRINCIPAL_ID,
     GATEWAY_TENANT_ID,
     GATEWAY_TENANT_SLUG,
+    SEAM_ENVELOPE_MODEL,
+    SEAM_ENVELOPE_VERSION,
     BusMessage,
+    EnumSeamProjectionRole,
     RecordingPublisher,
     assert_correlation_preserved,
+    assert_regenerable,
     assert_registry_classification,
     build_forwarder_config,
     cloud_hand_rolled_envelope_json,
     consumer_projection,
     gateway_mirror_topics,
     local_typed_envelope,
+    observed_projection_from_instance,
     omnimarket_node_event_bus,
     producer_projection,
     run_registry_match,
+    wire_body,
 )
 from tests.seam_goldens.manifest import slice_edge
 
@@ -56,6 +62,29 @@ _S10_KEY_FIELDS: tuple[tuple[str, str], ...] = (
     ("correlation_id", "UUID"),
     ("payload", "dict[str, object]"),
 )
+
+
+def _subscribed_inbound_topic() -> str:
+    """The topic string as the CONSUMER's own contract.yaml declares it.
+
+    This is the whole S10 seam. The producer-side observation takes the topic
+    the forwarder genuinely published to; this takes the topic the node
+    genuinely subscribes to, out of a different file in a different repo layer
+    that does not import the first. The two projections agreeing is the seam
+    holding; a rename on either side alone breaks exactly one leg.
+    """
+
+    subscribed = [
+        topic
+        for topic in omnimarket_node_event_bus(_LOCAL_RUNTIME_NODE).subscribe_topics
+        if "delegation-request.v1" in topic
+    ]
+    if len(subscribed) != 1:
+        raise AssertionError(
+            f"{_LOCAL_RUNTIME_NODE} contract declares {len(subscribed)} "
+            f"delegation-request subscriptions, expected exactly one: {subscribed}"
+        )
+    return subscribed[0]
 
 
 class TestMirrorTopicsAreBareCanonicalStrings:
@@ -200,7 +229,45 @@ class TestOutboundDirectionLeavesTheLocalPublisher:
 
 
 class TestS10RegistryMatch:
-    def test_registry_match_is_regenerable_for_the_driven_seam(self) -> None:
+    async def test_registry_match_is_regenerable_for_the_driven_seam(
+        self, tmp_path: Path
+    ) -> None:
+        """Producer observed from the real republish; consumer from the real
+        contract.
+
+        Both observations read the same crossing message — by construction,
+        because S10 IS one message crossing one hop — but they take the topic
+        from two independent, non-importing sources: what
+        ``ServiceGatewayForwarder`` actually published, and what
+        ``node_delegation_orchestrator``'s contract actually subscribes to.
+        The topic is exactly where this seam can break, and it is exactly where
+        the two projections are independently derived.
+        """
+
+        local_bus = RecordingPublisher()
+        forwarder = ServiceGatewayForwarder(
+            config=build_forwarder_config(dedupe_store_path=tmp_path / "dedupe.sqlite"),
+            local_bus=local_bus,
+            cloud_bus=RecordingPublisher(),
+        )
+        await forwarder.consume_inbound_message(
+            BusMessage(
+                topic=f"tenant-{GATEWAY_TENANT_SLUG}.{_INBOUND_TOPIC}",
+                value=cloud_hand_rolled_envelope_json(
+                    envelope_id=uuid4(),
+                    correlation_id=uuid4(),
+                    event_type="omnibase-infra.delegation-request",
+                    payload={"prompt": "p", "task_type": "summarization"},
+                    source_tenant_id=str(GATEWAY_TENANT_ID),
+                    source_tenant_principal_id=GATEWAY_PRINCIPAL_ID,
+                ),
+            )
+        )
+
+        published = local_bus.only()
+        republished_envelope = published.envelope()
+        republished_body = wire_body(published.value)
+
         declared_producer = producer_projection(
             edge_id="S10", topic=_INBOUND_TOPIC, key_fields=_S10_KEY_FIELDS
         )
@@ -212,9 +279,93 @@ class TestS10RegistryMatch:
             edge_id="S10",
             declared_producer=declared_producer,
             declared_consumer=declared_consumer,
-            observed_producer=declared_producer,
-            observed_consumer=declared_consumer,
+            observed_producer=observed_projection_from_instance(
+                edge_id="S10",
+                role=EnumSeamProjectionRole.PRODUCER,
+                topic=published.topic,
+                instance=republished_envelope,
+                field_names=("correlation_id", "payload"),
+                body=republished_body,
+            ),
+            observed_consumer=observed_projection_from_instance(
+                edge_id="S10",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=_subscribed_inbound_topic(),
+                instance=republished_envelope,
+                field_names=("correlation_id", "payload"),
+                body=republished_body,
+            ),
         )
 
         assert_registry_classification("S10", verdict)
-        assert verdict.regenerability.value == "REGENERABLE"
+        assert_regenerable("S10", verdict)
+
+    def test_a_republish_onto_a_prefixed_topic_would_fail_the_producer_leg(
+        self,
+    ) -> None:
+        """Negative control: the leg that catches a prefix-strip regression.
+
+        A forwarder that stopped stripping the tenant prefix would publish onto
+        a topic the local node does not subscribe to — silent in production
+        until dispatch simply never fires. Observing that topic reddens leg 2
+        alone.
+        """
+
+        declared_producer = producer_projection(
+            edge_id="S10", topic=_INBOUND_TOPIC, key_fields=_S10_KEY_FIELDS
+        )
+        declared_consumer = consumer_projection(
+            edge_id="S10", topic=_INBOUND_TOPIC, key_fields=_S10_KEY_FIELDS
+        )
+        envelope = local_typed_envelope(
+            envelope_id=uuid4(),
+            correlation_id=uuid4(),
+            event_type="omnibase-infra.delegation-request",
+            payload={"prompt": "p", "task_type": "summarization"},
+        )
+        body = wire_body(envelope.model_dump_json(exclude_none=True).encode("utf-8"))
+
+        verdict = run_registry_match(
+            edge_id="S10",
+            declared_producer=declared_producer,
+            declared_consumer=declared_consumer,
+            observed_producer=observed_projection_from_instance(
+                edge_id="S10",
+                role=EnumSeamProjectionRole.PRODUCER,
+                topic=f"tenant-{GATEWAY_TENANT_SLUG}.{_INBOUND_TOPIC}",
+                instance=envelope,
+                field_names=("correlation_id", "payload"),
+                body=body,
+            ),
+            observed_consumer=observed_projection_from_instance(
+                edge_id="S10",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=_subscribed_inbound_topic(),
+                instance=envelope,
+                field_names=("correlation_id", "payload"),
+                body=body,
+            ),
+        )
+
+        assert verdict.leg2_observed_producer_vs_declared.passed is False
+        assert verdict.leg2_observed_producer_vs_declared.mismatching_field_path == (
+            "topic"
+        )
+        assert verdict.leg3_observed_consumer_vs_declared.passed is True
+        assert verdict.regenerability.value == "SHAPE_ONLY"
+
+    def test_declared_projection_pins_the_canonical_envelope_identity(self) -> None:
+        """The declared side is a pinned claim, not a read of the live model.
+
+        Recorded explicitly because the observed projections above read
+        ``envelope_model`` / ``envelope_version`` off the real parsed instance:
+        if the pinned wheel moved ``ModelEventEnvelope`` or bumped its
+        ``envelope_version``, that drift has to surface as a red leg here
+        rather than as two derived values agreeing with each other.
+        """
+
+        declared = producer_projection(
+            edge_id="S10", topic=_INBOUND_TOPIC, key_fields=_S10_KEY_FIELDS
+        )
+        assert declared.envelope_model == SEAM_ENVELOPE_MODEL
+        assert declared.envelope_version == SEAM_ENVELOPE_VERSION
