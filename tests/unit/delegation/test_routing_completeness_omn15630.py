@@ -194,6 +194,15 @@ def test_every_declared_class_is_served_at_every_declared_tier_unpinned() -> Non
     today exactly as it did before this PR's content fix — see
     test_repaired_task_classes_are_explicit_capabilities_on_every_declared_tier
     below for that mechanism proven directly.
+
+    OMN-15961: ``agent_delegation`` is a KNOWN, NAMED exception below, not a
+    silent gate weakening. It requires ``agent_orchestration``
+    (task_class_contracts.v1.yaml), a capability no tier in this
+    HTTP-completion-only file can genuinely provide; the prior use_for/
+    task_model_overrides entries that made it look "served" were a false
+    capability claim (OMN-15503) that ticket removed. Unserved on every rung
+    is the correct, honest state until the real coding-agent producer is
+    wired (WS-4/C6).
     """
     config = _routing_config()
     contract = _yaml_mapping(_TASK_CONTRACT_PATH)
@@ -201,7 +210,12 @@ def test_every_declared_class_is_served_at_every_declared_tier_unpinned() -> Non
 
     unserved = _unserved_rungs_by_class(config, contract, backends)
 
-    assert unserved == {}, f"declared task classes with unserved tiers: {unserved}"
+    known_unserved_pending_agent_wiring = {
+        "agent_delegation": ["local", "cheap_cloud", "claude"],
+    }
+    assert unserved == known_unserved_pending_agent_wiring, (
+        f"declared task classes with unserved tiers: {unserved}"
+    )
 
 
 @pytest.mark.unit
@@ -240,6 +254,12 @@ def test_ceiling_tier_serves_every_declared_class() -> None:
     serve that class -- mechanizes OMN-15623 C4 / OMN-15503 AC5's ceiling-
     reachability reading, generalized to all 15 classes rather than the 3
     OMN-15623 spot-checked.
+
+    OMN-15961: ``agent_delegation``'s ``claude`` ceiling is a KNOWN, NAMED
+    exception below (same rationale as
+    ``test_every_declared_class_is_served_at_every_declared_tier_unpinned``
+    above) -- it genuinely has no serving ceiling until the real coding-agent
+    producer is wired (WS-4/C6).
     """
     config = _routing_config()
     contract = _yaml_mapping(_TASK_CONTRACT_PATH)
@@ -262,7 +282,8 @@ def test_ceiling_tier_serves_every_declared_class() -> None:
         if selected is None:
             dead_ceilings[task_type] = ceiling.name
 
-    assert dead_ceilings == {}, (
+    known_dead_ceiling_pending_agent_wiring = {"agent_delegation": "claude"}
+    assert dead_ceilings == known_dead_ceiling_pending_agent_wiring, (
         f"declared ceiling tier does not serve class: {dead_ceilings}"
     )
 

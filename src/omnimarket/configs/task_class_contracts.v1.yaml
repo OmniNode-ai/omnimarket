@@ -78,11 +78,18 @@ task_model_overrides:
   complex_reasoning: "Qwen3.6-35B-A3B"
   planning: "Qwen3.6-35B-A3B"
   review: "Qwen3.6-35B-A3B"
-  # OMN-15503: agent_delegation moved off the removed cli_agents tier onto the
-  # local-first HTTP ladder, but the generic Qwen default id selected local-coder
-  # before the agent-capable local-reasoner. Pin the intended declared capability;
-  # cloud tiers fall through to their explicit agent_delegation use_for entries.
-  agent_delegation: "Qwen3.6-27B-MTP-IQ4_XS.gguf"
+  # OMN-15961: the OMN-15503 agent_delegation override REMOVED. It pinned
+  # agent_delegation to local-reasoner via this EXPLICIT override map, which
+  # (per _select_model_for_task's id-match escape hatch) bypasses use_for
+  # capability checks entirely — so even after routing_tiers.yaml's
+  # agent_delegation use_for entries were stripped (same ticket), this pin
+  # alone would have silently kept resolving agent_delegation to
+  # local-reasoner's plain HTTP completion, restoring the exact false
+  # capability claim (real agent_orchestration, not just text completion)
+  # the routing_tiers.yaml fix was meant to remove. agent_delegation now
+  # correctly has no model ref anywhere and fails closed
+  # (no_routable_backend_for_task) until the real coding-agent producer is
+  # wired (WS-4/C6).
   # OMN-13541: code_review is its own task class (distinct from the generic
   # `review`); the local Qwen coder serves it, with cheap_cloud fallback.
   code_review: "Qwen3.6-35B-A3B"

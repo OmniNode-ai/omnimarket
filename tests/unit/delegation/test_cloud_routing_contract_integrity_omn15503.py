@@ -167,19 +167,40 @@ def test_every_declared_tier_is_structurally_routable_for_all_fifteen_classes(
         if missing:
             unroutable[task_type] = missing
 
-    assert unroutable == {}, f"declared tiers without task capacity: {unroutable}"
+    # OMN-15961: agent_delegation is a KNOWN, NAMED exception, not a silent
+    # gate weakening. Its task class requires agent_orchestration
+    # (task_class_contracts.v1.yaml), a capability no tier in this
+    # HTTP-completion-only file can genuinely provide — routing_tiers.yaml
+    # previously papered over the gap with a false use_for claim (OMN-15503),
+    # which this ticket removed. agent_delegation stays in its declared
+    # tier_order (WS-4/C6 will make the tiers real, not remove them from the
+    # order) but is correctly unroutable on all three until that lands.
+    known_unroutable_pending_agent_wiring = {
+        "agent_delegation": ["local", "cheap_cloud", "claude"],
+    }
+    assert unroutable == known_unroutable_pending_agent_wiring, (
+        f"declared tiers without task capacity: {unroutable}"
+    )
 
 
 @pytest.mark.unit
 def test_repaired_task_classes_are_explicit_capabilities_on_every_declared_tier() -> (
     None
 ):
-    """Do not rely on the default-model off-capability escape hatch for these gaps."""
+    """Do not rely on the default-model off-capability escape hatch for these gaps.
+
+    OMN-15961: ``agent_delegation`` REMOVED from this tuple. It is no longer
+    an explicit capability on any declared tier by design (see
+    ``test_no_use_for_entry_claims_a_capability_its_tier_cannot_serve`` above
+    and ``test_every_declared_tier_is_structurally_routable_for_all_fifteen_classes``'s
+    named exception) — declaring it here would re-assert the false claim this
+    ticket removed.
+    """
     config = _routing_config()
     contract = _yaml_mapping(_TASK_CONTRACT_PATH)
     missing: dict[str, list[str]] = {}
 
-    for task_type in ("planning", "review", "agent_delegation"):
+    for task_type in ("planning", "review"):
         entry = routing._task_class_entry(contract, task_type)
         assert entry is not None
         absent = [
@@ -194,12 +215,22 @@ def test_repaired_task_classes_are_explicit_capabilities_on_every_declared_tier(
 
 
 @pytest.mark.unit
-def test_agent_delegation_selects_the_declared_local_reasoner(
+def test_agent_delegation_selects_no_backend_anywhere(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """The default Qwen id must not silently send orchestration to local-coder."""
+    """OMN-15961: agent_delegation resolves to NO backend on any declared tier.
+
+    Superseded by OMN-15961's truth-in-naming fix: this test previously
+    asserted the default Qwen id sent agent_delegation to local-reasoner
+    (avoiding a silent bind to code-only local-coder) — a real selection, but
+    one that let a plain HTTP text-completion model masquerade as
+    ``agent_orchestration``. That capability claim is now removed from both
+    ``routing_tiers.yaml`` and ``task_model_overrides``, so unpinned
+    agent_delegation routing correctly finds nothing until the real
+    coding-agent producer is wired (WS-4/C6).
+    """
     selected = _selected_backend_refs_by_task(monkeypatch)
-    assert selected["agent_delegation"][0] == "local-reasoner"
+    assert selected["agent_delegation"] == ()
 
 
 def _failure_domains() -> dict[str, tuple[str, str]]:
@@ -278,4 +309,100 @@ def test_next_tier_skips_a_repeated_exhausted_backend_ref(
             excluded_backend_refs=frozenset({"cloud-gemini-pro"}),
         )
         is None
+    )
+
+
+# OMN-15961: routing_tiers.yaml's own header states every tier "executes through
+# the canonical HTTP inference path ... identical to the lower tiers" and that
+# the former shelled ``cli_agents`` tier "was REMOVED" (OMN-13215) — no tier in
+# this file can genuinely satisfy a task class whose ``required_capabilities``
+# includes ``agent_orchestration`` (real agentic/tool-executing capability, not
+# a chat-completion capability). ``agent_delegation`` was the one class that
+# claimed to be served anyway (a stale artifact of the cli_agents removal that
+# OMN-15503 papered over with an HTTP-completion default instead of restoring
+# real agentic capability), which this ticket strips. The check below is
+# capability-driven, not name-hardcoded, so it also catches a FUTURE task class
+# that declares agent_orchestration and gets mistakenly wired onto this
+# HTTP-only ladder.
+_CAPABILITIES_NO_HTTP_TIER_CAN_SERVE: frozenset[str] = frozenset(
+    {"agent_orchestration"}
+)
+
+
+@pytest.mark.unit
+def test_no_use_for_entry_claims_a_capability_its_tier_cannot_serve() -> None:
+    """No routing_tiers.yaml ``use_for`` entry may claim a task class whose
+    declared ``required_capabilities`` this HTTP-completion-only file can never
+    satisfy (OMN-15961 truth-in-naming; OMN-13251 rework precondition).
+
+    Every tier in ``routing_tiers.yaml`` is a plain HTTP chat-completion
+    backend (see the file's own module header, OMN-13215). Declaring a
+    ``use_for`` entry for a task class that requires ``agent_orchestration`` is
+    a false capability claim: the tier will accept the request and return a
+    text completion, not perform any agentic/tool-executing work. This is a
+    mechanism, not a name-specific regression test — it fails for ANY task
+    class with an unsatisfiable required capability, not only
+    ``agent_delegation``.
+    """
+    config = _routing_config()
+    contract = _yaml_mapping(_TASK_CONTRACT_PATH)
+    task_classes = contract.get("task_classes")
+    assert isinstance(task_classes, dict)
+
+    violations: list[tuple[str, str, str]] = []
+    for tier in config.tiers:
+        for model in tier.models:
+            for task_type in model.use_for:
+                entry = task_classes.get(task_type)
+                required = (
+                    entry.get("required_capabilities", [])
+                    if isinstance(entry, dict)
+                    else []
+                )
+                unsatisfiable = _CAPABILITIES_NO_HTTP_TIER_CAN_SERVE.intersection(
+                    required
+                )
+                if unsatisfiable:
+                    violations.append((tier.name, model.backend_ref, task_type))
+
+    assert violations == [], (
+        "routing_tiers.yaml use_for claims a capability no HTTP-completion "
+        f"tier can serve: {violations}"
+    )
+
+
+@pytest.mark.unit
+def test_no_task_model_override_restores_an_agent_orchestration_class_via_id_match() -> (
+    None
+):
+    """``task_model_overrides`` cannot silently restore the false claim the
+    ``use_for`` check above forbids (OMN-15961).
+
+    ``_select_model_for_task``'s id-match escape hatch resolves an EXPLICIT
+    ``task_model_overrides`` entry to its named model regardless of that
+    model's ``use_for`` list (OMN-10942/OMN-13140, by design — a legitimate
+    mechanism for other task classes). That means an override entry for a
+    task class requiring ``agent_orchestration`` would keep resolving to a
+    plain HTTP model even with the class stripped from every tier's
+    ``use_for``, defeating the fix above through a second mechanism in a
+    different file. No override may name a model for such a class.
+    """
+    contract = _yaml_mapping(_TASK_CONTRACT_PATH)
+    task_classes = contract.get("task_classes")
+    assert isinstance(task_classes, dict)
+    overrides = contract.get("task_model_overrides")
+    assert isinstance(overrides, dict)
+
+    violations: list[tuple[str, str]] = []
+    for task_type, model_id in overrides.items():
+        entry = task_classes.get(task_type)
+        required = (
+            entry.get("required_capabilities", []) if isinstance(entry, dict) else []
+        )
+        if _CAPABILITIES_NO_HTTP_TIER_CAN_SERVE.intersection(required):
+            violations.append((task_type, str(model_id)))
+
+    assert violations == [], (
+        "task_model_overrides pins a capability no HTTP-completion tier can "
+        f"serve: {violations}"
     )

@@ -85,10 +85,17 @@ tiers:
           - planning
           - review
           - document
-          # OMN-15503: agent_delegation's closed ladder starts at local. The
-          # retired cli_agents tier was replaced by local/cheap_cloud/claude in
-          # OMN-13215 without moving this task capability onto those tiers.
-          - agent_delegation
+          # OMN-15961: agent_delegation REMOVED (was OMN-15503's stopgap
+          # after cli_agents was retired in OMN-13215). agent_delegation's
+          # task class requires the agent_orchestration capability
+          # (task_class_contracts.v1.yaml), which this plain HTTP
+          # chat-completion tier cannot genuinely provide — the OMN-15503
+          # entry was a false capability claim (text completion masquerading
+          # as agentic execution), not a real routable rung. agent_delegation
+          # now correctly fails closed (no_routable_backend_for_task) until
+          # the real coding-agent producer is wired (OMN-15961 WS-4/C6);
+          # restoring this entry is that follow-on's job, not a revert of
+          # this one.
           # OMN-15630: documentation and summarization added. Both are
           # natural_language_generation prose classes with no dedicated local
           # server before this — documentation is `document`'s docstring-flavored
@@ -186,7 +193,9 @@ tiers:
           # a decorative/unreachable policy rung.
           - planning
           - review
-          - agent_delegation
+          # OMN-15961: agent_delegation REMOVED here too — see the local-tier
+          # comment above (routing_tiers.yaml:88-98) for the full rationale.
+          # This entry was the same false capability claim one tier over.
           # OMN-15630: validator_generation added — mirrors code_generation/
           # test/refactor above (same DoD family); the class declared
           # cheap_cloud in its closed tier_order but no cheap_cloud model
@@ -321,9 +330,13 @@ tiers:
         use_for:
           - escalation
           - complex_reasoning
-          # OMN-15503: task_type is agent_delegation; agent_orchestration is the
-          # required-capability label, not a routable task taxonomy value.
-          - agent_delegation
+          # OMN-15961: agent_delegation REMOVED — see the local-tier comment
+          # (routing_tiers.yaml:88-98) for the full rationale. OMN-15503's
+          # framing ("agent_orchestration is the required-capability label,
+          # not a routable task taxonomy value") was itself the false
+          # premise: agent_orchestration IS the capability this ceiling
+          # cannot provide, which is exactly why claiming agent_delegation
+          # here was wrong.
           - code_generation
           - reasoning
           - planning
