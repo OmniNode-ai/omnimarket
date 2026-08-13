@@ -1,0 +1,23 @@
+name: node_event_emit_effect
+version: "0.1.0"
+description: "Thin-publish-to-Kafka effect node with a file-based spool outbox, replacing the node_emit_daemon Unix-socket transport for new callers."
+pack: event_emit
+node_role: effect
+display_name: "Event Emit Effect"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_event_emit_effect: "omnimarket.nodes.node_event_emit_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase-infra>=0.38.3,<0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "event-emit", "kafka", "spool", "OMN-15965"]
