@@ -2101,16 +2101,22 @@ jobs:
     # polling: zero self-hosted/LAN dependency. DO NOT rename — the job name IS
     # the required context; a rename re-wedges every PR.
     #
-    # COVERAGE HONESTY: this poller summarizes ci.yml jobs ONLY. ~38 other
-    # required contexts (Hostile Review Gate, deploy-gate, OCC Emitter Golden
-    # Gate, receipt-honesty, ...) are produced by OTHER workflow files, are
-    # independently required, and are NOT summarized here — see
-    # UNSUMMARIZED_REQUIRED_CONTEXTS in the gate script. The name does not imply
-    # whole-PR coverage.
+    # LAYER 4 (added 2026-08-13, OMN-ci-gate-omnimarket): this poller's layers
+    # 1-3 summarize ci.yml jobs ONLY. A 4th layer now ADDITIONALLY asserts
+    # EXPECTED_EXTERNAL_CONTEXTS (scripts/ci/ci_summary_gate.py) against the PR
+    # head SHA's `commits/{sha}/check-runs` — contexts produced by OTHER
+    # workflow files, fail-closed (missing/skipped/non-success all block). This
+    # is what makes ~40 previously-independently-required-only (or, for
+    # fsm-handler-drift / skill-mapping-input-coverage-gate /
+    # node-migration-vendor-parity-gate / node-drift-gate(dev) /
+    # contract-validation(dev) / deploy-gate(dev) / Runtime Profiles / validate,
+    # never-required-anywhere) contexts newly enforced through this one
+    # required umbrella, without any branch-protection edit.
     runs-on: ubuntu-latest
     if: always()
     permissions:
       actions: read
+      checks: read
       contents: read
     # Deadline (below) is comfortably under any run-cancellation window so the
     # required context ALWAYS posts a terminal state first. The concurrency
@@ -2143,6 +2149,11 @@ jobs:
           GH_REPO: ${{ github.repository }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
+          # L4: the PR head SHA (not the run's own SHA) — commits/{sha}/check-runs
+          # is keyed by commit, and on pull_request the run's own SHA is a merge
+          # commit that never carries other workflows' check-runs.
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event_name == 'merge_group' && github.event.merge_group.head_sha || github.sha }}
+          ACTOR: ${{ github.actor }}
           # Bounded poll window (minutes) — kept under the run-cancel window so
           # the required context always reaches a terminal state first.
           DEADLINE_MINUTES: "90"
@@ -2168,17 +2179,25 @@ jobs:
               sleep "${POLL_INTERVAL_SECONDS}"
               continue
             fi
-            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}"
+            # L4: commits/{sha}/check-runs for the PR head — a fetch failure here
+            # is NOT retried on its own bounded loop; ci_summary_gate.py treats a
+            # missing/unreadable file as "every external context unobserved"
+            # (PENDING, never a blind pass), so a transient failure here just
+            # costs one poll cycle, not a false green.
+            gh api --paginate \
+                "repos/${GH_REPO}/commits/${HEAD_SHA}/check-runs?filter=latest&per_page=100" \
+                --jq '.check_runs[]' | jq -s '.' > check_runs.json || echo "[]" > check_runs.json
+            python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}"
             rc=$?
             case "${rc}" in
-              0) echo "::notice::CI Summary = SUCCESS (all gating jobs provably passed)"; exit 0 ;;
-              1) echo "::error::CI Summary = FAILURE (fail-closed: a gating job failed/cancelled)"; exit 1 ;;
-              2) : ;;  # PENDING — gating jobs still running; keep polling
+              0) echo "::notice::CI Summary = SUCCESS (all gating jobs + external contexts provably passed)"; exit 0 ;;
+              1) echo "::error::CI Summary = FAILURE (fail-closed: a gating job or an asserted external context failed/cancelled)"; exit 1 ;;
+              2) : ;;  # PENDING — gating jobs or external contexts still running; keep polling
               *) echo "::error::ci_summary_gate.py returned unexpected code ${rc}; failing closed"; exit 1 ;;
             esac
             if [ "$(date +%s)" -ge "${deadline}" ]; then
               echo "::error::CI Summary poll deadline (${DEADLINE_MINUTES}m) reached with gating jobs still pending — failing closed"
-              python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --report-only || true
+              python3 scripts/ci/ci_summary_gate.py --jobs-file jobs.json --run-attempt "${RUN_ATTEMPT}" --check-runs-file check_runs.json --actor "${ACTOR}" --report-only || true
               exit 1
             fi
             sleep "${POLL_INTERVAL_SECONDS}"
