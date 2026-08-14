@@ -874,6 +874,11 @@ class HandlerDodEvidenceGithubEffect:
         missing: list[str] = []
         foreign_only: list[str] = []
         not_green: list[str] = []
+        # OMN-16055: contexts whose merge-commit (post-merge push) run is red
+        # while the merge-gate artifact on the head SHA is green. Demoted to
+        # non-load-bearing (see the loop below) but NEVER dropped silently —
+        # reported in the result detail either way.
+        push_run_red_head_green: list[str] = []
         evaluated_any = False
         for name in required_names:
             head_matches = [r for r in runs if str(r.get("name") or "") == name]
@@ -941,7 +946,54 @@ class HandlerDodEvidenceGithubEffect:
             # reddened the context.
             head_winner = _latest_check_run(head_relevant)
             merge_winner = _latest_check_run(merge_matches)
-            relevant = [w for w in (head_winner, merge_winner) if w is not None]
+            # OMN-16055 (seam fix vs. OMN-15817 shape 2b): EVIDENCE PRECEDENCE.
+            #
+            # The head-SHA winner is the MERGE-GATE ARTIFACT — the exact
+            # check-run object branch protection consults to unlock the merge
+            # button for this PR. The merge-commit winner is a run against the
+            # target branch AFTER the merge already happened; it gates nothing
+            # and its scope is the branch, not this PR.
+            #
+            # Shape 2b added the merge commit because a push-triggered umbrella
+            # context (e.g. "CI Summary") produces NO run on the pre-merge
+            # source branch, so the merge commit is its ONLY observer. That
+            # remains true and is preserved in full below: whenever the head SHA
+            # produced no own/unattributable run for this context, the
+            # merge-commit winner is the sole evidence and stays fully
+            # load-bearing INCLUDING fail-closed on a red conclusion.
+            #
+            # What shape 2b over-reached on is the one cell where BOTH observers
+            # exist and disagree in the head-green direction. A required context
+            # that passed on the head SHA and is red on the merge commit is
+            # reporting post-merge BRANCH health, which is reddened by causes
+            # wholly unattributable to this PR — a target-branch job that cannot
+            # succeed on a `push` event by construction, or a push run cancelled
+            # mid-flight under runner-fleet pressure. Live measurement on
+            # omnibase_core: the "CI Summary" check-run on the dev merge commit
+            # was `failure` for 8/8 consecutive merges spanning 2026-08-05..14,
+            # six of which predate the ci.yml change usually blamed for it, so
+            # this cell produced a 100% false-negative rate and deterministically
+            # blocked EVERY Done-flip for that repo.
+            #
+            # Precedence is granted only by a GREEN head winner. A head winner
+            # that is present but not green (red, cancelled, still running) earns
+            # nothing: the additive `any(not green)` evaluation below applies
+            # unchanged, so a red head winner still fails closed and a green
+            # merge-commit run can never rehabilitate it.
+            #
+            # Demotion is never silent: the context is recorded in
+            # `push_run_red_head_green` and named in the result detail so a
+            # permanently-red target branch stays visible in every receipt.
+            if (
+                head_winner is not None
+                and _is_green_check_run(head_winner)
+                and merge_winner is not None
+                and not _is_green_check_run(merge_winner)
+            ):
+                push_run_red_head_green.append(name)
+                relevant = [head_winner]
+            else:
+                relevant = [w for w in (head_winner, merge_winner) if w is not None]
             if not relevant:
                 # Every instance of this required context is PROVABLY foreign
                 # (it ran only on a different, resolvable branch sharing this
@@ -991,13 +1043,31 @@ class HandlerDodEvidenceGithubEffect:
                 f"produced by a foreign branch sharing this SHA): "
                 f"{shown}{more}",
             )
+        # OMN-16055: never silent. Rendered into BOTH the green and the
+        # not-green detail so a target branch whose post-merge push CI is
+        # permanently red stays legible in every receipt, even though it no
+        # longer gates this ticket's flip.
+        push_note = ""
+        if push_run_red_head_green:
+            shown_push = ", ".join(push_run_red_head_green[:10])
+            more_push = (
+                ""
+                if len(push_run_red_head_green) <= 10
+                else f" (+{len(push_run_red_head_green) - 10} more)"
+            )
+            push_note = (
+                f"; NOTE {len(push_run_red_head_green)} required context(s) red on "
+                f"merge commit {merge_sha[:12]} but green on the merge-gate head "
+                f"SHA — post-merge {base_branch} branch health, not this PR's gate "
+                f"(OMN-16055): {shown_push}{more_push}"
+            )
         if not_green:
             shown = ", ".join(not_green[:10])
             more = "" if len(not_green) <= 10 else f" (+{len(not_green) - 10} more)"
             return self._checks_not_green(
                 command,
                 f"{len(not_green)} required context(s) not green on "
-                f"{head_branch}: {shown}{more}",
+                f"{head_branch}: {shown}{more}{push_note}",
             )
         if not evaluated_any:
             return self._checks_not_green(
@@ -1011,7 +1081,7 @@ class HandlerDodEvidenceGithubEffect:
             checks_green=True,
             detail=(
                 f"all {len(required_names)} required context(s) green for "
-                f"{head_branch}@{sha[:12]}"
+                f"{head_branch}@{sha[:12]}{push_note}"
             ),
         )
 
