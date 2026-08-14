@@ -181,7 +181,7 @@ class TestRegistryRegenerableFlagIsMeasuredStale:
     ``0`` — which was true when the registry was derived, because no executable
     proof existed for any edge yet.
 
-    That is no longer true for five edges, and the divergence has to be
+    That is no longer true for four edges, and the divergence has to be
     load-bearing somewhere or the goldens' REGENERABLE verdict binds to
     nothing at all. (In the first cut it bound to nothing twice over: the
     verdict itself was tautological AND it was never compared against this
@@ -201,7 +201,16 @@ class TestRegistryRegenerableFlagIsMeasuredStale:
             assert registry_edge(edge_id)["regenerable"] is False, edge_id
 
     def test_the_slice_measures_regenerable_edges_the_registry_denies(self) -> None:
-        """The measured set the next registry re-derivation must account for."""
+        """The measured set the next registry re-derivation must account for.
+
+        S6 was in this set until 2026-08-14 and is not any more. That is not a
+        downgrade to stay green: under the seam graph's ``tracing_convention``
+        A (OMN-16033) the edge re-scored ``UNMATCHED`` at the resolved
+        omnibase_infra rev, and an UNMATCHED edge has no second side to
+        observe, so ``NOT_CLAIMED`` is the only honest class for it. The
+        entitlement follows the measurement; it was not chosen to make a test
+        pass.
+        """
 
         measured = {
             edge.edge_id
@@ -209,7 +218,7 @@ class TestRegistryRegenerableFlagIsMeasuredStale:
                 EnumSeamObservationClass.REGENERABLE
             )
         }
-        assert measured == {"S6", "S10", "S11", "S12", "S13"}, (
+        assert measured == {"S10", "S11", "S12", "S13"}, (
             "the set of edges with a genuine two-sided observation changed; "
             "re-derive seams.v1.yaml and update this pin deliberately"
         )

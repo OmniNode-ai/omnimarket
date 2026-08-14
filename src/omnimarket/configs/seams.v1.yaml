@@ -15,9 +15,9 @@ summary:
   by_classification:
     edges_total: 15
     MATCHED: 4
-    MATCHED_UNTESTED: 5
+    MATCHED_UNTESTED: 4
     MISMATCH: 1
-    UNMATCHED: 5
+    UNMATCHED: 6
 edges:
 - edge_id: S1
   seam: kafka wire topic for a delegation command
@@ -188,18 +188,22 @@ edges:
   seam: handler_routing operations gateway.forward_outbound / gateway.consume_inbound
     on ModelGatewayEnvelope
   leg: contract -> handler
-  classification: MATCHED_UNTESTED
-  severity: low
+  classification: UNMATCHED
+  severity: high
   producer_shape: contract declares two COMPUTE handlers + input/output model ModelGatewayEnvelope
-  consumer_shape: 'LIVE caller as of OMN-15740 (omnibase_infra#2689, commit 642e60a87):
-    ServiceGatewayForwarder._prepare_outbound/_prepare_inbound now DELEGATE the tenant-prefix
-    transform to the contract-declared HandlerForwardOutbound/HandlerConsumeInbound
-    COMPUTE handlers rather than re-deriving it locally.'
+  consumer_shape: "no live caller at the resolved rev \u2014 the deployed process\
+    \ constructs ServiceGatewayForwarder directly and re-derives the tenant-prefix\
+    \ transform locally from service_gateway_topic_transform; neither contract-declared\
+    \ handler class is referenced by any production module, only by unit tests. Contract-declared\
+    \ surface and executing surface are two separate implementations on two different\
+    \ input models (ModelGatewayEnvelope vs ModelEventEnvelope)."
   regenerable: false
-  source_record_pinned_hash: 5fc884c30a2f6f2cc3c8243cbe2013f54446f4542f2a66f3718432f7998840ab
+  source_record_pinned_hash: a749bb16e10970861f98d720579e90fecf4988ecb8a5d429520fe4da410506de
   projection_pinned_hash: null
   related_tickets:
   - OMN-15740
+  - OMN-16033
+  - OMN-16004
 - edge_id: S7
   seam: cloud_broker_ref / cloud_auth_ref / acl_provisioner_ref / msk_region_ref (@ref
     pins)
