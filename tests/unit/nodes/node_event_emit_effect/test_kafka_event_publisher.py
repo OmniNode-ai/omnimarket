@@ -194,3 +194,49 @@ async def test_publish_timeout_inside_running_loop_raises_timeout() -> None:
             correlation_id=None,
             timeout_seconds=0.2,
         )
+
+
+# ---------------------------------------------------------------------------
+# _build_default_bus() -- the REAL default factory (OMN-16049).
+#
+# Every test above injects ``bus_factory``, so the default factory itself had
+# zero coverage. It seeded ``ModelKafkaEventBusConfig.environment`` from
+# ``OMNICLAUDE_PUBLISHER_ENVIRONMENT`` defaulted to "", which the config model
+# rejects ("environment cannot be empty") -- so on any deployment that does not
+# set that omniclaude-namespaced variable (onex-dev does not), EVERY real
+# publish raised and was swallowed by ``_try_publish`` into ``published=False``.
+# ---------------------------------------------------------------------------
+
+
+def test_build_default_bus_succeeds_when_publisher_environment_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The default bus factory must not depend on OMNICLAUDE_PUBLISHER_ENVIRONMENT.
+
+    RED before the fix: raises ProtocolConfigurationError
+    "environment cannot be empty" because the handler passed "" explicitly,
+    overriding the config model's own valid ``default="local"``.
+    """
+    monkeypatch.delenv("OMNICLAUDE_PUBLISHER_ENVIRONMENT", raising=False)
+    monkeypatch.delenv("KAFKA_ENVIRONMENT", raising=False)
+
+    publisher = KafkaEventPublisher("fake-bootstrap:9092")
+
+    bus = publisher._build_default_bus()
+
+    assert bus is not None
+
+
+def test_build_default_bus_uses_standard_kafka_environment_source(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """KAFKA_ENVIRONMENT -- the runtime's standard source, applied by
+    ``apply_environment_overrides()`` -- must drive the bus environment."""
+    monkeypatch.delenv("OMNICLAUDE_PUBLISHER_ENVIRONMENT", raising=False)
+    monkeypatch.setenv("KAFKA_ENVIRONMENT", "onex-dev")
+
+    publisher = KafkaEventPublisher("fake-bootstrap:9092")
+
+    bus = publisher._build_default_bus()
+
+    assert bus._environment == "onex-dev"
