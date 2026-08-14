@@ -208,9 +208,19 @@ class KafkaEventPublisher:
         from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
         from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
 
+        # OMN-16049: do NOT seed ``environment`` from a bespoke, omniclaude-
+        # namespaced variable. ``os.environ.get(..., "")`` returned "" on every
+        # deployment that does not set it (onex-dev does not), and the config
+        # model REJECTS empty ("environment cannot be empty") -- so this
+        # override replaced the model's own valid ``default="local"`` with a
+        # value guaranteed to raise. ``_try_publish``'s broad ``except
+        # Exception`` then swallowed it into ``published=False``, making a
+        # permanent total publish outage look like documented spool-only mode.
+        # Leave the field unset: the model's default stands, and
+        # ``apply_environment_overrides()`` applies the runtime's STANDARD
+        # source (``KAFKA_ENVIRONMENT``) when it is set.
         config = ModelKafkaEventBusConfig(
             bootstrap_servers=self._bootstrap_servers,
-            environment=os.environ.get("OMNICLAUDE_PUBLISHER_ENVIRONMENT", ""),
         ).apply_environment_overrides()
         return EventBusKafka(config)
 

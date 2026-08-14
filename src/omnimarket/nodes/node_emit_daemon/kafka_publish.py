@@ -22,7 +22,6 @@ The returned callable matches ``PublishFn`` from ``publisher_loop`` exactly:
 
 from __future__ import annotations
 
-import os
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
@@ -49,10 +48,14 @@ async def create_kafka_bus(bootstrap_servers: str, *, timeout_seconds: float) ->
     from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
     from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
 
-    environment = os.environ.get("OMNICLAUDE_PUBLISHER_ENVIRONMENT", "")
+    # OMN-16049: same defect as node_event_emit_effect's bus factory --
+    # ``OMNICLAUDE_PUBLISHER_ENVIRONMENT`` is unset on our deployments, so this
+    # passed "" and the config model rejects empty ("environment cannot be
+    # empty"), overriding its own valid ``default="local"``. Leave the field
+    # unset so the default stands and the runtime's STANDARD source
+    # (``KAFKA_ENVIRONMENT``, applied below) governs it.
     config = ModelKafkaEventBusConfig(
         bootstrap_servers=bootstrap_servers,
-        environment=environment,
         timeout_seconds=int(timeout_seconds),
     ).apply_environment_overrides()
 
