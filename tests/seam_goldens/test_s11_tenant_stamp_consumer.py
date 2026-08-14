@@ -43,13 +43,20 @@ from tests.seam_goldens.harness import (
     GATEWAY_PRINCIPAL_ID,
     GATEWAY_TENANT_ID,
     GATEWAY_TENANT_SLUG,
+    UNVERSIONED_MODEL,
     BusMessage,
+    EnumSeamProjectionRole,
     RecordingPublisher,
     assert_correlation_preserved,
+    assert_regenerable,
     assert_registry_classification,
     build_forwarder_config,
     cloud_hand_rolled_envelope_json,
     consumer_projection,
+    model_identity,
+    observed_projection_from_instance,
+    observed_projection_from_mapping,
+    omnimarket_node_event_bus,
     producer_projection,
     run_registry_match,
 )
@@ -57,10 +64,40 @@ from tests.seam_goldens.manifest import slice_edge
 
 pytestmark = pytest.mark.unit
 
+_LOCAL_RUNTIME_NODE = "node_delegation_orchestrator"
 _INBOUND_TOPIC = "onex.cmd.omnibase-infra.delegation-request.v1"
 _INBOUND_WIRE = f"tenant-{GATEWAY_TENANT_SLUG}.{_INBOUND_TOPIC}"
 
 _S11_KEY_FIELDS: tuple[tuple[str, str], ...] = (("tenant_id", "str"),)
+
+# ``ModelDelegateSkillRequest`` carries no wire version field, so the projection
+# says so rather than inventing one (harness.UNVERSIONED_MODEL).
+_S11_DECLARED_MODEL = (
+    "omnimarket.models.delegation.wire.model_delegate_skill_request."
+    "ModelDelegateSkillRequest"
+)
+
+
+def _subscribed_inbound_topic() -> str:
+    """The consumer's topic, read from its own real contract.yaml.
+
+    Sourced independently of ``_INBOUND_TOPIC`` so the observed consumer
+    projection is not a restatement of the declaration: if the orchestrator's
+    contract stopped declaring this subscription, the string resolved here
+    changes (or the lookup fails) and leg 3 goes red.
+    """
+
+    subscribed = [
+        topic
+        for topic in omnimarket_node_event_bus(_LOCAL_RUNTIME_NODE).subscribe_topics
+        if "delegation-request.v1" in topic
+    ]
+    if len(subscribed) != 1:
+        raise AssertionError(
+            f"{_LOCAL_RUNTIME_NODE} contract declares {len(subscribed)} "
+            f"delegation-request subscriptions, expected exactly one: {subscribed}"
+        )
+    return subscribed[0]
 
 
 def _raw_delegation_payload() -> dict[str, object]:
@@ -213,25 +250,62 @@ class TestStampFromTheRealGatewayIngressHop:
 
 
 class TestS11RegistryMatch:
-    def test_registry_match_is_regenerable_for_the_driven_stamp(self) -> None:
+    async def test_registry_match_is_regenerable_for_the_driven_stamp(
+        self, tmp_path: Path
+    ) -> None:
+        """Both observed sides come from the real ingress hop, not from the
+        declaration.
+
+        PRODUCER: the payload mapping the real ``ServiceGatewayForwarder``
+        published to the local bus. Its model identity is not asserted — it is
+        DEMONSTRATED, by validating that exact mapping against
+        ``ModelDelegateSkillRequest`` and recording the class that accepted it.
+        A gateway that stopped stamping ``tenant_id`` would make the observed
+        producer field ``ABSENT_FROM_WIRE`` and redden leg 2.
+
+        CONSUMER: the validated instance, on the topic read out of
+        ``node_delegation_orchestrator``'s own contract.yaml — a different file
+        from the one the producer side came from.
+        """
+
+        local_bus = RecordingPublisher()
+        forwarder = ServiceGatewayForwarder(
+            config=build_forwarder_config(dedupe_store_path=tmp_path / "dedupe.sqlite"),
+            local_bus=local_bus,
+            cloud_bus=RecordingPublisher(),
+        )
+        await forwarder.consume_inbound_message(
+            BusMessage(
+                topic=_INBOUND_WIRE,
+                value=cloud_hand_rolled_envelope_json(
+                    envelope_id=uuid4(),
+                    correlation_id=uuid4(),
+                    event_type="omnibase-infra.delegation-request",
+                    payload=_raw_delegation_payload(),
+                    source_tenant_id=str(GATEWAY_TENANT_ID),
+                    source_tenant_principal_id=GATEWAY_PRINCIPAL_ID,
+                ),
+            )
+        )
+
+        published = local_bus.only()
+        stamped_payload = published.envelope().payload
+        assert isinstance(stamped_payload, dict)
+        # Demonstrate, do not assert, the model identity recorded below.
+        validated = ModelDelegateSkillRequest.model_validate(stamped_payload)
+
         declared_producer = producer_projection(
             edge_id="S11",
             topic=_INBOUND_TOPIC,
-            envelope_model=(
-                "omnimarket.models.delegation.wire.model_delegate_skill_request."
-                "ModelDelegateSkillRequest"
-            ),
-            envelope_version="1.0.0",
+            envelope_model=_S11_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
             key_fields=_S11_KEY_FIELDS,
         )
         declared_consumer = consumer_projection(
             edge_id="S11",
             topic=_INBOUND_TOPIC,
-            envelope_model=(
-                "omnimarket.models.delegation.wire.model_delegate_skill_request."
-                "ModelDelegateSkillRequest"
-            ),
-            envelope_version="1.0.0",
+            envelope_model=_S11_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
             key_fields=_S11_KEY_FIELDS,
         )
 
@@ -239,9 +313,76 @@ class TestS11RegistryMatch:
             edge_id="S11",
             declared_producer=declared_producer,
             declared_consumer=declared_consumer,
-            observed_producer=declared_producer,
-            observed_consumer=declared_consumer,
+            observed_producer=observed_projection_from_mapping(
+                edge_id="S11",
+                role=EnumSeamProjectionRole.PRODUCER,
+                topic=published.topic,
+                mapping=stamped_payload,
+                field_names=("tenant_id",),
+                envelope_model=model_identity(type(validated)),
+            ),
+            observed_consumer=observed_projection_from_instance(
+                edge_id="S11",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=_subscribed_inbound_topic(),
+                instance=validated,
+                field_names=("tenant_id",),
+            ),
         )
 
         assert_registry_classification("S11", verdict)
-        assert verdict.regenerability.value == "REGENERABLE"
+        assert_regenerable("S11", verdict)
+
+    async def test_an_unstamped_payload_would_fail_the_producer_leg(
+        self, tmp_path: Path
+    ) -> None:
+        """Negative control: leg 2 must be able to detect a dropped stamp.
+
+        Built from a payload that never went through the gateway, so
+        ``tenant_id`` is genuinely absent from the mapping — the exact wire
+        shape a regressed stamp would produce.
+        """
+
+        declared_producer = producer_projection(
+            edge_id="S11",
+            topic=_INBOUND_TOPIC,
+            envelope_model=_S11_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
+            key_fields=_S11_KEY_FIELDS,
+        )
+        declared_consumer = consumer_projection(
+            edge_id="S11",
+            topic=_INBOUND_TOPIC,
+            envelope_model=_S11_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
+            key_fields=_S11_KEY_FIELDS,
+        )
+
+        verdict = run_registry_match(
+            edge_id="S11",
+            declared_producer=declared_producer,
+            declared_consumer=declared_consumer,
+            observed_producer=observed_projection_from_mapping(
+                edge_id="S11",
+                role=EnumSeamProjectionRole.PRODUCER,
+                topic=_INBOUND_TOPIC,
+                mapping=_raw_delegation_payload(),
+                field_names=("tenant_id",),
+                envelope_model=_S11_DECLARED_MODEL,
+            ),
+            observed_consumer=observed_projection_from_instance(
+                edge_id="S11",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=_subscribed_inbound_topic(),
+                instance=ModelDelegateSkillRequest.model_validate(
+                    stamp_verified_tenant_slug(
+                        _raw_delegation_payload(), GATEWAY_TENANT_SLUG
+                    )
+                ),
+                field_names=("tenant_id",),
+            ),
+        )
+
+        assert verdict.leg2_observed_producer_vs_declared.passed is False
+        assert verdict.leg3_observed_consumer_vs_declared.passed is True
+        assert verdict.regenerability.value == "SHAPE_ONLY"

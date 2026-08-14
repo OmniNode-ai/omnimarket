@@ -20,6 +20,19 @@ checks ``metadata.tags.source_tenant_id`` / ``source_tenant_principal_id``
 against its own config-bound identity and raises ``ValueError`` otherwise. A
 golden that only proved the happy path would leave the security-relevant half
 of the seam unproven, so both the accept and the reject direction are driven.
+
+Both edges are ``SHAPE_ONLY``, and that is the honest classification rather
+than a weakening. The producing side of each is the cloud ``onex-api`` MSK
+publisher — the registry's own ``producer_shape`` for S4 says as much
+("hand-rolled dict literal") — and it is not a Python package in this repo's
+dependency closure. The only "producer" available to project would be
+``harness.cloud_hand_rolled_envelope_json``, a literal this suite wrote, so
+projecting it as an observation would compare the tests to themselves. The
+first cut of these goldens did exactly that (it passed the declared projection
+straight back in as the observation) and therefore asserted ``REGENERABLE`` on
+both edges without testing anything. ``observed_producer=None`` now leaves leg
+2 unevaluated; the consumer leg is real, is asserted green, and has its own
+negative controls below.
 """
 
 from __future__ import annotations
@@ -38,14 +51,20 @@ from tests.seam_goldens.harness import (
     GATEWAY_TENANT_ID,
     GATEWAY_TENANT_SLUG,
     BusMessage,
+    EnumSeamProjectionRole,
     RecordingPublisher,
     assert_correlation_preserved,
     assert_registry_classification,
+    assert_shape_only,
     build_forwarder_config,
     cloud_hand_rolled_envelope_json,
     consumer_projection,
+    model_identity,
+    observed_projection_from_instance,
+    observed_projection_from_mapping,
     producer_projection,
     run_registry_match,
+    wire_body,
 )
 from tests.seam_goldens.manifest import slice_edge
 
@@ -166,7 +185,30 @@ class TestS4WireBody:
         assert decoded.envelope_version.major == 2
         assert decoded.envelope_version.minor == 1
 
-    def test_registry_match_is_regenerable_for_the_driven_body(self) -> None:
+    def test_registry_match_is_shape_only_because_the_producer_is_out_of_closure(
+        self,
+    ) -> None:
+        """S4 is honestly SHAPE_ONLY, and the manifest says why.
+
+        The producing side of this edge is the cloud ``onex-api`` MSK
+        publisher. It is not a Python package in this repo's dependency
+        closure, so there is no artifact it authored to observe — the bytes fed
+        in here come from ``harness.cloud_hand_rolled_envelope_json``, which
+        this suite wrote. Projecting those bytes as an "observed producer"
+        would compare the test to itself, which is precisely the tautology the
+        first cut of this golden shipped. ``observed_producer=None`` leaves leg
+        2 unevaluated and the shipped classifier correctly refuses
+        REGENERABLE.
+
+        The CONSUMER leg is real and is asserted green: the decode the actual
+        bridge performs, with field presence taken from the raw JSON body so a
+        dropped field cannot hide behind a model default.
+        """
+
+        correlation_id = uuid4()
+        message = _cloud_message(correlation_id=correlation_id)
+        decoded = ServiceGatewayForwarder.decode_message(message)
+
         declared_producer = producer_projection(
             edge_id="S4", topic=_WIRE_TOPIC, key_fields=_S4_KEY_FIELDS
         )
@@ -178,12 +220,60 @@ class TestS4WireBody:
             edge_id="S4",
             declared_producer=declared_producer,
             declared_consumer=declared_consumer,
-            observed_producer=declared_producer,
-            observed_consumer=declared_consumer,
+            observed_producer=None,
+            observed_consumer=observed_projection_from_instance(
+                edge_id="S4",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=message.topic,
+                instance=decoded,
+                field_names=tuple(name for name, _ in _S4_KEY_FIELDS),
+                body=wire_body(message.value),
+            ),
         )
 
         assert_registry_classification("S4", verdict)
-        assert verdict.regenerability.value == "REGENERABLE"
+        assert_shape_only(
+            "S4", verdict, producer_observed=False, consumer_observed=True
+        )
+
+    def test_a_body_missing_correlation_id_reddens_the_observed_consumer_leg(
+        self,
+    ) -> None:
+        """Negative control on the observation itself, not just the assertion.
+
+        ``correlation_id`` defaults to ``None`` on the model, so a producer
+        that stops emitting it still parses cleanly. Presence is therefore
+        decided against the raw wire body: the observed consumer records
+        ``ABSENT_FROM_WIRE`` and leg 3 goes red, which is what makes the S4
+        observation load-bearing rather than decorative.
+        """
+
+        body = json.loads(_cloud_message(correlation_id=uuid4()).value)
+        del body["correlation_id"]
+        message = BusMessage(topic=_WIRE_TOPIC, value=json.dumps(body).encode("utf-8"))
+
+        verdict = run_registry_match(
+            edge_id="S4",
+            declared_producer=producer_projection(
+                edge_id="S4", topic=_WIRE_TOPIC, key_fields=_S4_KEY_FIELDS
+            ),
+            declared_consumer=consumer_projection(
+                edge_id="S4", topic=_WIRE_TOPIC, key_fields=_S4_KEY_FIELDS
+            ),
+            observed_consumer=observed_projection_from_instance(
+                edge_id="S4",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=message.topic,
+                instance=ServiceGatewayForwarder.decode_message(message),
+                field_names=tuple(name for name, _ in _S4_KEY_FIELDS),
+                body=wire_body(message.value),
+            ),
+        )
+
+        assert verdict.leg3_observed_consumer_vs_declared.passed is False
+        assert verdict.leg3_observed_consumer_vs_declared.mismatching_field_path == (
+            "key_fields[1].field_type"
+        )
 
     def test_a_body_missing_correlation_id_is_caught_not_defaulted(self) -> None:
         """Negative control on the property that matters most for this slice.
@@ -294,7 +384,23 @@ class TestS5TenantAttributionTags:
             observed=published.envelope().correlation_id,
         )
 
-    def test_registry_match_is_regenerable_for_the_driven_gate(self) -> None:
+    def test_registry_match_is_shape_only_because_the_producer_is_out_of_closure(
+        self, forwarder: ServiceGatewayForwarder
+    ) -> None:
+        """Same closure boundary as S4: the tags are authored in the cloud.
+
+        The observed CONSUMER projection is the tag mapping the real
+        ``decode_message`` parse yields, and the gate that reads it is driven
+        for real immediately below — ``validate_inbound_message`` raises if the
+        tags do not match the forwarder's config-bound identity, so a green leg
+        3 here is backed by an accept the production code actually performed.
+        """
+
+        message = _cloud_message(correlation_id=uuid4())
+        decoded = ServiceGatewayForwarder.decode_message(message)
+        # The real gate, on the same message the projection is built from.
+        forwarder.validate_inbound_message(message)
+
         declared_producer = producer_projection(
             edge_id="S5", topic=_WIRE_TOPIC, key_fields=_S5_KEY_FIELDS
         )
@@ -306,9 +412,58 @@ class TestS5TenantAttributionTags:
             edge_id="S5",
             declared_producer=declared_producer,
             declared_consumer=declared_consumer,
-            observed_producer=declared_producer,
-            observed_consumer=declared_consumer,
+            observed_producer=None,
+            observed_consumer=observed_projection_from_mapping(
+                edge_id="S5",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=message.topic,
+                mapping=decoded.metadata.tags,
+                field_names=tuple(name for name, _ in _S5_KEY_FIELDS),
+                envelope_model=model_identity(type(decoded)),
+                envelope_version=str(decoded.envelope_version),
+            ),
         )
 
         assert_registry_classification("S5", verdict)
-        assert verdict.regenerability.value == "REGENERABLE"
+        assert_shape_only(
+            "S5", verdict, producer_observed=False, consumer_observed=True
+        )
+
+    def test_a_body_with_no_tenant_tags_reddens_the_observed_consumer_leg(
+        self,
+    ) -> None:
+        """Negative control: absent attribution must not read as "no objection".
+
+        The gate already rejects this message (asserted above); this proves the
+        *projection* also records the absence, so the seam classification and
+        the runtime gate cannot disagree about what crossed.
+        """
+
+        body = json.loads(_cloud_message(correlation_id=uuid4()).value)
+        body["metadata"]["tags"] = {}
+        message = BusMessage(topic=_WIRE_TOPIC, value=json.dumps(body).encode("utf-8"))
+        decoded = ServiceGatewayForwarder.decode_message(message)
+
+        verdict = run_registry_match(
+            edge_id="S5",
+            declared_producer=producer_projection(
+                edge_id="S5", topic=_WIRE_TOPIC, key_fields=_S5_KEY_FIELDS
+            ),
+            declared_consumer=consumer_projection(
+                edge_id="S5", topic=_WIRE_TOPIC, key_fields=_S5_KEY_FIELDS
+            ),
+            observed_consumer=observed_projection_from_mapping(
+                edge_id="S5",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=message.topic,
+                mapping=decoded.metadata.tags,
+                field_names=tuple(name for name, _ in _S5_KEY_FIELDS),
+                envelope_model=model_identity(type(decoded)),
+                envelope_version=str(decoded.envelope_version),
+            ),
+        )
+
+        assert verdict.leg3_observed_consumer_vs_declared.passed is False
+        assert verdict.leg3_observed_consumer_vs_declared.mismatching_field_path == (
+            "key_fields[0].field_type"
+        )

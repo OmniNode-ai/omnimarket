@@ -24,6 +24,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 __all__ = [
     "SLICE_MANIFEST_PATH",
+    "EnumSeamObservationClass",
     "EnumSliceInclusion",
     "ModelSliceEdge",
     "ModelSliceManifest",
@@ -47,6 +48,30 @@ class EnumSliceInclusion(StrEnum):
     LOCAL_PROCESSING = "local_processing"
     FLAGGED_AMBIGUOUS = "flagged_ambiguous"
     EXCLUDED = "excluded"
+
+
+class EnumSeamObservationClass(StrEnum):
+    """How strong a claim this edge's golden is entitled to make.
+
+    Mirrors ``EnumSeamRegenerabilityClass`` from the shipped classifier, but
+    lives in the frozen manifest so the entitlement is a committed fact the
+    goldens are checked AGAINST rather than something each golden asserts about
+    itself.
+
+    ``REGENERABLE`` requires both sides of the edge to be observable from
+    artifacts the tests do not author. ``SHAPE_ONLY`` is the honest outcome when
+    a side is out of this repo's dependency closure — the cloud ``onex-api``
+    publisher and the cloud terminal consumer both are. ``NOT_CLAIMED`` is for
+    an in-slice edge whose golden deliberately makes no observed-vs-declared
+    claim at all (an ``UNMATCHED`` edge has no second side to compare against;
+    a ``MISMATCH`` edge has no single declared shape to observe). All three of
+    ``SHAPE_ONLY``, ``NOT_CLAIMED`` and any downgrade must carry an
+    ``observation_note`` naming which side is unobservable and why.
+    """
+
+    REGENERABLE = "REGENERABLE"
+    SHAPE_ONLY = "SHAPE_ONLY"
+    NOT_CLAIMED = "NOT_CLAIMED"
 
 
 class ModelSliceRegistryBinding(BaseModel):
@@ -85,6 +110,9 @@ class ModelSliceEdge(BaseModel):
     registry_classification: str = Field(min_length=1)
     registry_severity: str = Field(min_length=1)
     producer_symbol_reachable: bool
+    consumer_symbol_reachable: bool
+    observation_class: EnumSeamObservationClass | None = None
+    observation_note: str | None = None
     golden_module: str | None = None
     rationale: str | None = None
     exclusion_reason: str | None = None
@@ -119,6 +147,11 @@ class ModelSliceEdge(BaseModel):
                 raise ValueError(
                     f"{self.edge_id}: excluded edges must state an exclusion_reason"
                 )
+            if self.observation_class is not None:
+                raise ValueError(
+                    f"{self.edge_id}: excluded edges carry no golden, so they "
+                    f"must not claim an observation_class"
+                )
             return self
 
         if self.golden_module is None:
@@ -128,6 +161,48 @@ class ModelSliceEdge(BaseModel):
         if self.exclusion_reason:
             raise ValueError(
                 f"{self.edge_id}: exclusion_reason is only valid on excluded edges"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_observation_class_is_earned(self) -> ModelSliceEdge:
+        """An observation class must follow from the recorded reachability.
+
+        This is the structural guard against the defect that shipped in the
+        first cut: every golden asserted ``REGENERABLE`` while three of the
+        nine edges had a producer that is not in this repo's dependency closure
+        at all. Reachability is the input; the class is derived from it and
+        cannot be set independently.
+        """
+
+        if self.is_excluded:
+            return self
+        if self.observation_class is None:
+            raise ValueError(
+                f"{self.edge_id}: included edges require an observation_class"
+            )
+
+        both_sides_reachable = (
+            self.producer_symbol_reachable and self.consumer_symbol_reachable
+        )
+        if (
+            self.observation_class is EnumSeamObservationClass.REGENERABLE
+            and not both_sides_reachable
+        ):
+            raise ValueError(
+                f"{self.edge_id}: REGENERABLE requires BOTH sides observable "
+                f"(producer_symbol_reachable={self.producer_symbol_reachable}, "
+                f"consumer_symbol_reachable={self.consumer_symbol_reachable}); "
+                f"an unreachable side means SHAPE_ONLY"
+            )
+        if (
+            self.observation_class is not EnumSeamObservationClass.REGENERABLE
+            and not self.observation_note
+        ):
+            raise ValueError(
+                f"{self.edge_id}: a {self.observation_class.value} classification "
+                f"must state, in observation_note, which side is unobservable "
+                f"and why"
             )
         return self
 
@@ -165,6 +240,17 @@ class ModelSliceManifest(BaseModel):
 
     def traversed(self) -> tuple[ModelSliceEdge, ...]:
         return tuple(edge for edge in self.edges if edge.traversed)
+
+    def by_observation_class(
+        self, observation_class: EnumSeamObservationClass
+    ) -> tuple[ModelSliceEdge, ...]:
+        """Every included edge entitled to exactly this strength of claim."""
+
+        return tuple(
+            edge
+            for edge in self.included()
+            if edge.observation_class is observation_class
+        )
 
 
 @lru_cache(maxsize=1)

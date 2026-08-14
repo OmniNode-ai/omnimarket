@@ -26,6 +26,7 @@ import pytest
 
 from tests.seam_goldens.harness import registry_edge, registry_edge_ids, registry_header
 from tests.seam_goldens.manifest import (
+    EnumSeamObservationClass,
     EnumSliceInclusion,
     ModelSliceEdge,
     load_slice_manifest,
@@ -170,6 +171,61 @@ class TestWs7MandatoryUnionIsComplete:
         for edge in _included_edges():
             if edge.registry_severity == "high":
                 assert edge.inclusion is EnumSliceInclusion.WS7_MANDATORY_HIGH
+
+
+class TestRegistryRegenerableFlagIsMeasuredStale:
+    """Bind the goldens' measured regenerability to the registry's own flag.
+
+    The registry of record carries a per-edge ``regenerable`` boolean and a
+    ``summary.regenerable_count``. Every row records ``false`` and the count is
+    ``0`` — which was true when the registry was derived, because no executable
+    proof existed for any edge yet.
+
+    That is no longer true for five edges, and the divergence has to be
+    load-bearing somewhere or the goldens' REGENERABLE verdict binds to
+    nothing at all. (In the first cut it bound to nothing twice over: the
+    verdict itself was tautological AND it was never compared against this
+    flag.) Re-deriving ``seams.v1.yaml`` is a generator run against
+    ``docs/design/2026-08-13-delegation-seam-graph.json``, not a hand-edit of a
+    generated file, so it is out of scope for a test-only change and is carried
+    as receipt evidence instead. The divergence is pinned here so it stays
+    visible, and so the re-derivation FAILS these tests — which is the correct
+    signal to delete the pin.
+    """
+
+    def test_registry_still_records_zero_regenerable_edges(self) -> None:
+        summary = registry_header()["summary"]
+        assert isinstance(summary, dict)
+        assert summary["regenerable_count"] == 0
+        for edge_id in registry_edge_ids():
+            assert registry_edge(edge_id)["regenerable"] is False, edge_id
+
+    def test_the_slice_measures_regenerable_edges_the_registry_denies(self) -> None:
+        """The measured set the next registry re-derivation must account for."""
+
+        measured = {
+            edge.edge_id
+            for edge in load_slice_manifest().by_observation_class(
+                EnumSeamObservationClass.REGENERABLE
+            )
+        }
+        assert measured == {"S6", "S10", "S11", "S12", "S13"}, (
+            "the set of edges with a genuine two-sided observation changed; "
+            "re-derive seams.v1.yaml and update this pin deliberately"
+        )
+        for edge_id in measured:
+            assert registry_edge(edge_id)["regenerable"] is False, (
+                f"{edge_id}: seams.v1.yaml now records regenerable=true, so the "
+                f"registry has been re-derived — delete this divergence pin"
+            )
+
+    def test_no_edge_claims_regenerable_against_an_unreachable_side(self) -> None:
+        """The invariant the first cut violated, asserted at the slice level."""
+
+        for edge in load_slice_manifest().included():
+            if edge.observation_class is EnumSeamObservationClass.REGENERABLE:
+                assert edge.producer_symbol_reachable, edge.edge_id
+                assert edge.consumer_symbol_reachable, edge.edge_id
 
 
 class TestTraversalClaimsAreHonest:

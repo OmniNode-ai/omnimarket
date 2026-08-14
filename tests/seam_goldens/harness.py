@@ -28,11 +28,51 @@ every round-trip golden mints one ``correlation_id`` at the producer and
 asserts that exact UUID is observed at the consumer, after a full serialize /
 transform / deserialize cycle. A shape match with a dropped correlation id
 fails these goldens.
+
+Observed projections — the rule this module enforces
+----------------------------------------------------
+
+``HandlerSeamMatch`` earns ``REGENERABLE`` only when legs 2 and 3 (observed
+producer vs declared, observed consumer vs declared) are both explicitly
+green. That verdict is worth exactly as much as the ``observed_*`` inputs are
+independent of the ``declared_*`` ones. Passing the *same projection object*
+for both makes the comparison ``x == x``, so ``REGENERABLE`` is guaranteed
+whenever leg 1 passes and is insensitive to everything the golden drove. That
+tautology shipped in the first cut of these goldens; this module now makes it
+impossible:
+
+* :func:`run_registry_match` **rejects** an ``observed_*`` argument that is the
+  same object as a ``declared_*`` argument, and
+* ``tests/seam_goldens/test_no_tautological_observations.py`` rejects the
+  syntactic aliasing pattern (``observed_producer=declared_producer``) across
+  every golden module.
+
+An *observed* projection is only honest when every field of it is derived from
+an artifact **the test did not author**: bytes a real service published, a real
+handler's returned model, a real committed contract file inside the pinned
+wheel, or a real imported module constant. Where no such artifact exists for a
+side of an edge — the cloud ``onex-api`` publisher and the cloud terminal
+consumer are not in this repo's dependency closure — the golden supplies
+``None`` for that side, the handler leaves the leg unevaluated, and the edge
+classifies as ``SHAPE_ONLY``. ``slice_manifest.yaml`` records that outcome per
+edge in ``observation_class`` / ``observation_note``, so a downgrade is a
+committed, inspectable fact rather than a silent one.
+
+``envelope_version`` follows the same rule. Models that carry a wire version
+(``ModelEventEnvelope.envelope_version``) have it read off the real parsed
+instance. Models that carry none (``ModelGatewayEnvelope``,
+``ModelDelegateSkillRequest``, ``ModelDispatchRoute``) record the
+:data:`UNVERSIONED_MODEL` sentinel on both sides rather than a fabricated
+``"1.0.0"`` — the field genuinely carries no signal for those edges and says
+so.
 """
 
 from __future__ import annotations
 
 import json
+import types
+import typing
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cache, lru_cache
 from pathlib import Path
@@ -71,31 +111,49 @@ from omnimarket.seams.models.model_seam_projection import (
     ModelSeamProjection,
     ModelSeamProjectionField,
 )
-from tests.seam_goldens.manifest import REPO_ROOT, load_slice_manifest
+from tests.seam_goldens.manifest import (
+    REPO_ROOT,
+    EnumSeamObservationClass,
+    load_slice_manifest,
+)
 
 __all__ = [
+    "ABSENT_FROM_WIRE",
     "GATEWAY_PRINCIPAL_ID",
     "GATEWAY_TENANT_ID",
     "GATEWAY_TENANT_SLUG",
     "INFRA_GATEWAY_CONTRACT_PATH",
     "SEAM_ENVELOPE_MODEL",
     "SEAM_ENVELOPE_VERSION",
+    "UNVERSIONED_MODEL",
     "BusMessage",
+    "EnumSeamProjectionRole",
+    "RecordingEventBus",
     "RecordingPublisher",
+    "annotated_type_name",
     "assert_correlation_preserved",
+    "assert_regenerable",
     "assert_registry_classification",
+    "assert_shape_only",
     "build_forwarder_config",
     "cloud_hand_rolled_envelope_json",
     "consumer_projection",
     "gateway_cloud_leg",
+    "gateway_contract_version",
     "gateway_mirror_topics",
     "load_gateway_contract",
     "local_typed_envelope",
+    "model_identity",
+    "observed_projection_from_instance",
+    "observed_projection_from_mapping",
+    "observed_projection_from_model_class",
+    "observed_type_name",
     "omnimarket_node_event_bus",
     "producer_projection",
     "registry_edge",
     "registry_header",
     "run_registry_match",
+    "wire_body",
 ]
 
 # ---------------------------------------------------------------------------
@@ -189,6 +247,62 @@ class RecordingPublisher:
 
 
 @dataclass(frozen=True)
+class RecordedEnvelopePublish:
+    """One captured ``publish_envelope`` call at the local event-bus boundary."""
+
+    topic: str
+    envelope: ModelEventEnvelope[object]
+
+    def reparsed(self) -> ModelEventEnvelope[dict[str, object]]:
+        """Serialize then re-parse, exactly as the local broker leg would.
+
+        The dispatcher hands the bus a live model object; a consumer only ever
+        sees bytes. Round-tripping here means the observed projection is built
+        from the wire form, not from a retained in-memory object — the same
+        discipline :meth:`RecordedPublish.envelope` applies on the broker legs.
+        """
+
+        return ModelEventEnvelope[dict[str, object]].model_validate_json(
+            self.serialized()
+        )
+
+    def serialized(self) -> bytes:
+        return self.envelope.model_dump_json(exclude_none=True).encode("utf-8")
+
+
+class RecordingEventBus:
+    """A ``ProtocolEventBus`` publish sink that captures instead of brokering.
+
+    Structurally satisfies the one method the delegation dispatchers call
+    (``publish_envelope(envelope, topic=...)``), so ``DispatcherQualityGateResult``
+    runs its genuine terminal-emission path with nothing patched. This is the
+    S2 analogue of :class:`RecordingPublisher`: a transport sink outside the
+    seam, never a seam participant.
+    """
+
+    def __init__(self) -> None:
+        self.published: list[RecordedEnvelopePublish] = []
+
+    async def publish_envelope(
+        self, envelope: ModelEventEnvelope[object], topic: str
+    ) -> None:
+        self.published.append(RecordedEnvelopePublish(topic=topic, envelope=envelope))
+
+    def only(self) -> RecordedEnvelopePublish:
+        """The single envelope publish this leg produced; fails on 0 or 2+."""
+
+        if len(self.published) != 1:
+            raise AssertionError(
+                f"expected exactly one envelope publish, captured "
+                f"{len(self.published)}: {[p.topic for p in self.published]}"
+            )
+        return self.published[0]
+
+    def topics(self) -> list[str]:
+        return [published.topic for published in self.published]
+
+
+@dataclass(frozen=True)
 class BusMessage:
     """The minimal bus-message shape the forwarder reads off a subscription.
 
@@ -226,6 +340,21 @@ def _gateway_forwarder_block() -> dict[str, object]:
     if not isinstance(block, dict):
         raise TypeError("gateway contract gateway_forwarder block is not a mapping")
     return block
+
+
+def gateway_contract_version() -> str:
+    """The packaged contract's own ``contract_version``, rendered as semver.
+
+    Read from the wheel rather than typed here so the S6 projection's version
+    field is an observation of the shipped contract. A wheel bump that moves
+    the contract version moves this string and the S6 golden fails — which is
+    the drift signal, not noise.
+    """
+
+    raw = load_gateway_contract()["contract_version"]
+    if not isinstance(raw, dict):
+        raise TypeError("gateway contract_version block is not a mapping")
+    return f"{raw['major']}.{raw['minor']}.{raw['patch']}"
 
 
 def gateway_cloud_leg() -> dict[str, object]:
@@ -543,6 +672,271 @@ def consumer_projection(
     )
 
 
+# ---------------------------------------------------------------------------
+# Observation: building a projection from an artifact the test did not author.
+# ---------------------------------------------------------------------------
+
+#: Recorded as a field's type when the name the registry says crosses the wire
+#: is simply not present in the artifact that crossed. Distinct from ``None``:
+#: a model can default a missing field to ``None`` and look healthy, so the
+#: presence check runs against the raw wire body, not the parsed object.
+ABSENT_FROM_WIRE: Final[str] = "<absent-from-wire>"
+
+#: Recorded as ``envelope_version`` for models that declare no wire version.
+#: Naming the absence is honest; inventing ``"1.0.0"`` is not.
+UNVERSIONED_MODEL: Final[str] = "unversioned"
+
+
+def model_identity(model_cls: type) -> str:
+    """Fully-qualified dotted name, with pydantic generic parametrization dropped.
+
+    ``ModelEventEnvelope[dict[str, object]]`` and ``ModelEventEnvelope`` are the
+    same wire model; the parametrization is a Python-side detail that must not
+    read as an envelope-model mismatch.
+    """
+
+    metadata = getattr(model_cls, "__pydantic_generic_metadata__", None)
+    if isinstance(metadata, dict) and metadata.get("origin") is not None:
+        model_cls = metadata["origin"]
+    return f"{model_cls.__module__}.{model_cls.__qualname__}"
+
+
+def observed_type_name(value: object) -> str:
+    """The seam type name of an OBSERVED runtime value.
+
+    Deliberately coarse and deterministic: the seam cares whether a UUID
+    crossed where a UUID was declared, not which UUID. ``bool`` is checked
+    before ``int`` because ``bool`` is an ``int`` subclass and a boolean
+    crossing where an integer was declared is a real seam difference.
+    """
+
+    if value is None:
+        return "NoneType"
+    if isinstance(value, UUID):
+        return "UUID"
+    if isinstance(value, bool):
+        return "bool"
+    if isinstance(value, int):
+        return "int"
+    if isinstance(value, float):
+        return "float"
+    if isinstance(value, str):
+        return "str"
+    if isinstance(value, Mapping):
+        return "dict[str, object]"
+    if isinstance(value, Sequence):
+        return "list"
+    return type(value).__name__
+
+
+def annotated_type_name(annotation: object) -> str:
+    """The seam type name of a DECLARED model annotation.
+
+    The class-level mirror of :func:`observed_type_name`, used when the artifact
+    being observed is a model class the contract names rather than an instance
+    that crossed. ``X | None`` collapses to ``X``: optionality is a producer
+    liveness question the correlation assertions cover, not a type identity.
+    """
+
+    origin = typing.get_origin(annotation)
+    args = typing.get_args(annotation)
+    if origin in (types.UnionType, typing.Union):
+        present = [arg for arg in args if arg is not type(None)]
+        if len(present) == 1:
+            return annotated_type_name(present[0])
+        return " | ".join(annotated_type_name(arg) for arg in present)
+    if origin is dict:
+        return "dict[str, object]"
+    if origin in (list, tuple, set, frozenset):
+        return str(origin.__name__)
+    name = getattr(annotation, "__name__", None)
+    return str(name) if name is not None else str(annotation)
+
+
+def wire_body(raw: bytes) -> dict[str, object]:
+    """Parse captured wire bytes into the raw mapping that actually crossed."""
+
+    body = json.loads(raw)
+    if not isinstance(body, dict):
+        raise TypeError("captured wire bytes did not parse to a JSON object")
+    return body
+
+
+def _observed_version(instance: object) -> str:
+    """Read a wire version off a real instance, or name its absence."""
+
+    envelope_version = getattr(instance, "envelope_version", None)
+    if envelope_version is not None:
+        return str(envelope_version)
+    schema_version = getattr(instance, "schema_version", None)
+    if schema_version is not None:
+        return str(schema_version)
+    return UNVERSIONED_MODEL
+
+
+def _reject_aliased_observation(
+    *,
+    edge_id: str,
+    declared_producer: ModelSeamProjection | None,
+    declared_consumer: ModelSeamProjection | None,
+    observed_producer: ModelSeamProjection | None,
+    observed_consumer: ModelSeamProjection | None,
+) -> None:
+    """Fail closed when an observed side is literally a declared side.
+
+    Object identity, not value equality: a genuinely observed projection is
+    ALLOWED to compare equal to the declared one — that equality is precisely
+    what earns ``REGENERABLE``. What is never allowed is the same object
+    arriving on both sides, because then no observation happened at all.
+    """
+
+    declared = {
+        "declared_producer": declared_producer,
+        "declared_consumer": declared_consumer,
+    }
+    observed = {
+        "observed_producer": observed_producer,
+        "observed_consumer": observed_consumer,
+    }
+    for observed_name, observed_value in observed.items():
+        if observed_value is None:
+            continue
+        for declared_name, declared_value in declared.items():
+            if declared_value is observed_value:
+                raise AssertionError(
+                    f"{edge_id}: {observed_name} is the same object as "
+                    f"{declared_name}; that makes the observed-vs-declared leg "
+                    f"a self-comparison and REGENERABLE unconditional. Build "
+                    f"the observed projection from what the golden actually "
+                    f"drove (observed_projection_from_instance / "
+                    f"_from_mapping / _from_model_class), or pass None and "
+                    f"classify the edge SHAPE_ONLY."
+                )
+
+
+def observed_projection_from_instance(
+    *,
+    edge_id: str,
+    role: EnumSeamProjectionRole,
+    topic: str,
+    instance: object,
+    field_names: tuple[str, ...],
+    body: Mapping[str, object] | None = None,
+    delivery_semantics: EnumSeamDeliverySemantics = (
+        EnumSeamDeliverySemantics.AT_LEAST_ONCE
+    ),
+) -> ModelSeamProjection:
+    """Project a model instance that real code produced or really parsed.
+
+    ``topic`` must be the topic the artifact was genuinely published to or read
+    from, sourced independently of the declared projection — the whole point is
+    that a producer publishing to a renamed topic diverges here.
+
+    ``body`` is the raw wire mapping when one exists. Presence is decided by it
+    rather than by the parsed object, because a model that defaults a dropped
+    field still yields an attribute: only the raw body can distinguish "the
+    producer sent null" from "the producer stopped sending it".
+    """
+
+    key_fields: list[tuple[str, str]] = []
+    for name in field_names:
+        if body is not None and name not in body:
+            key_fields.append((name, ABSENT_FROM_WIRE))
+            continue
+        key_fields.append((name, observed_type_name(getattr(instance, name, None))))
+
+    return _projection(
+        edge_id=edge_id,
+        role=role,
+        topic=topic,
+        envelope_model=model_identity(type(instance)),
+        envelope_version=_observed_version(instance),
+        key_fields=tuple(key_fields),
+        delivery_semantics=delivery_semantics,
+    )
+
+
+def observed_projection_from_mapping(
+    *,
+    edge_id: str,
+    role: EnumSeamProjectionRole,
+    topic: str,
+    mapping: Mapping[str, object],
+    field_names: tuple[str, ...],
+    envelope_model: str,
+    envelope_version: str = UNVERSIONED_MODEL,
+    delivery_semantics: EnumSeamDeliverySemantics = (
+        EnumSeamDeliverySemantics.AT_LEAST_ONCE
+    ),
+) -> ModelSeamProjection:
+    """Project a raw mapping that real code produced (a payload, a tag block).
+
+    Used where the crossing artifact is a bare ``dict`` rather than a model —
+    the gateway's stamped payload (S11) and the tenant-attribution tag block
+    (S5). ``envelope_model`` is supplied by the caller because a bare mapping
+    has no class identity of its own; callers pass the identity of a model they
+    have DEMONSTRATED the mapping validates against, never an unproven claim.
+    """
+
+    key_fields = tuple(
+        (
+            name,
+            observed_type_name(mapping[name]) if name in mapping else ABSENT_FROM_WIRE,
+        )
+        for name in field_names
+    )
+    return _projection(
+        edge_id=edge_id,
+        role=role,
+        topic=topic,
+        envelope_model=envelope_model,
+        envelope_version=envelope_version,
+        key_fields=key_fields,
+        delivery_semantics=delivery_semantics,
+    )
+
+
+def observed_projection_from_model_class(
+    *,
+    edge_id: str,
+    role: EnumSeamProjectionRole,
+    topic: str,
+    model_cls: type[object],
+    field_names: tuple[str, ...],
+    envelope_version: str = UNVERSIONED_MODEL,
+    delivery_semantics: EnumSeamDeliverySemantics = (
+        EnumSeamDeliverySemantics.AT_LEAST_ONCE
+    ),
+) -> ModelSeamProjection:
+    """Project a model class a real committed contract names.
+
+    The S6 producer is a declaration, not a message: the packaged
+    ``contract.yaml`` names ``input_model``, and what that class actually
+    declares is the producer's observable shape. Field types come from the
+    class annotations via :func:`annotated_type_name`; a field the contract's
+    model no longer declares reads as :data:`ABSENT_FROM_WIRE`.
+    """
+
+    model_fields = getattr(model_cls, "model_fields", {})
+    key_fields: list[tuple[str, str]] = []
+    for name in field_names:
+        info = model_fields.get(name)
+        if info is None:
+            key_fields.append((name, ABSENT_FROM_WIRE))
+            continue
+        key_fields.append((name, annotated_type_name(info.annotation)))
+
+    return _projection(
+        edge_id=edge_id,
+        role=role,
+        topic=topic,
+        envelope_model=model_identity(model_cls),
+        envelope_version=envelope_version,
+        key_fields=tuple(key_fields),
+        delivery_semantics=delivery_semantics,
+    )
+
+
 def run_registry_match(
     *,
     edge_id: str,
@@ -561,6 +955,14 @@ def run_registry_match(
     insufficient" bar, enforced by the production classifier rather than
     restated in an assertion here.
 
+    **Tautology guard.** Handing the same projection object to a ``declared_*``
+    and an ``observed_*`` parameter reduces the corresponding leg to ``x == x``,
+    which passes unconditionally and makes ``REGENERABLE`` insensitive to
+    everything the golden drove. That is rejected here rather than merely
+    discouraged, because a comment cannot stop the next edit from reintroducing
+    it. Observed projections must be BUILT from a driven artifact — see the
+    ``observed_projection_from_*`` constructors above.
+
     Any ``projection_pinned_hash`` recorded on the row is threaded through to
     the stale-proof detector. Every row currently carries ``null`` there (the
     registry pins only a prose ``source_record_pinned_hash``, a different hash
@@ -568,6 +970,14 @@ def run_registry_match(
     starts pinning projections, these goldens begin enforcing staleness with
     no edit here.
     """
+
+    _reject_aliased_observation(
+        edge_id=edge_id,
+        declared_producer=declared_producer,
+        declared_consumer=declared_consumer,
+        observed_producer=observed_producer,
+        observed_consumer=observed_consumer,
+    )
 
     row = registry_edge(edge_id)
     pinned = row.get("projection_pinned_hash")
@@ -610,6 +1020,96 @@ def assert_registry_classification(
             f"{edge_id}: live seam match returned {verdict.verdict.value} but "
             f"seams.v1.yaml records {recorded}; the registry and the real seam "
             f"have drifted apart"
+        )
+
+
+def assert_regenerable(edge_id: str, verdict: ModelSeamMatchVerdict) -> None:
+    """Assert a genuinely two-sided observation earned ``REGENERABLE``.
+
+    Both observed legs must be explicitly green — not merely "not red" — and
+    the frozen slice must agree the edge is observable on both sides. Binding
+    to ``slice_manifest.yaml`` here is what stops a golden from claiming an
+    observation the manifest says is impossible.
+    """
+
+    edge = load_slice_manifest().by_id(edge_id)
+    if edge.observation_class is not EnumSeamObservationClass.REGENERABLE:
+        raise AssertionError(
+            f"{edge_id}: golden asserts REGENERABLE but slice_manifest.yaml "
+            f"records observation_class={edge.observation_class}; the "
+            f"manifest and the golden must agree on what is observable"
+        )
+    if verdict.leg2_observed_producer_vs_declared.passed is not True:
+        raise AssertionError(
+            f"{edge_id}: leg 2 (observed producer vs declared) is "
+            f"{verdict.leg2_observed_producer_vs_declared.passed!r}, mismatching "
+            f"field {verdict.leg2_observed_producer_vs_declared.mismatching_field_path!r}"
+        )
+    if verdict.leg3_observed_consumer_vs_declared.passed is not True:
+        raise AssertionError(
+            f"{edge_id}: leg 3 (observed consumer vs declared) is "
+            f"{verdict.leg3_observed_consumer_vs_declared.passed!r}, mismatching "
+            f"field {verdict.leg3_observed_consumer_vs_declared.mismatching_field_path!r}"
+        )
+    if verdict.regenerability.value != "REGENERABLE":
+        raise AssertionError(
+            f"{edge_id}: both observed legs are green but the classifier "
+            f"returned {verdict.regenerability.value}"
+        )
+
+
+def assert_shape_only(
+    edge_id: str,
+    verdict: ModelSeamMatchVerdict,
+    *,
+    producer_observed: bool,
+    consumer_observed: bool,
+) -> None:
+    """Assert an edge is honestly SHAPE_ONLY, and for the recorded reason.
+
+    ``SHAPE_ONLY`` is a real result, not a failure — but it must be the result
+    of an unobservable side, not of a silently broken observation. The caller
+    states which sides it could observe, and this checks the classifier's legs
+    agree: an unobserved side must be ``None`` (not evaluated) and an observed
+    side must be green. A leg that went RED is a seam defect and fails here
+    instead of being absorbed into "well, it's shape-only anyway".
+    """
+
+    edge = load_slice_manifest().by_id(edge_id)
+    if edge.observation_class is not EnumSeamObservationClass.SHAPE_ONLY:
+        raise AssertionError(
+            f"{edge_id}: golden asserts SHAPE_ONLY but slice_manifest.yaml "
+            f"records observation_class={edge.observation_class}"
+        )
+    expectations = (
+        (
+            "leg 2 (producer)",
+            producer_observed,
+            verdict.leg2_observed_producer_vs_declared,
+        ),
+        (
+            "leg 3 (consumer)",
+            consumer_observed,
+            verdict.leg3_observed_consumer_vs_declared,
+        ),
+    )
+    for label, was_observed, leg in expectations:
+        if was_observed and leg.passed is not True:
+            raise AssertionError(
+                f"{edge_id}: {label} was observed but did not pass "
+                f"({leg.passed!r}, field {leg.mismatching_field_path!r}) — the "
+                f"observable half of this seam has drifted"
+            )
+        if not was_observed and leg.passed is not None:
+            raise AssertionError(
+                f"{edge_id}: {label} is recorded as unobservable but the "
+                f"classifier evaluated it ({leg.passed!r}); the golden is "
+                f"supplying an observation the manifest denies"
+            )
+    if verdict.regenerability.value != "SHAPE_ONLY":
+        raise AssertionError(
+            f"{edge_id}: expected SHAPE_ONLY, classifier returned "
+            f"{verdict.regenerability.value}"
         )
 
 
