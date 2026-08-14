@@ -104,15 +104,22 @@ class TestSeamsRegistryShape:
         registry = _load_registry()
         summary = registry["summary"]
         # §0.3 regeneration-boundary rule, honest count re-derived 2026-08-13
-        # (OMN-15784, post-omninode_infra#833): 3 nominal MATCHED (S1, S2 —
+        # (OMN-15784, post-omninode_infra#833): 4 nominal MATCHED (S1, S2 —
         # reclassified from MISMATCH once the bare-topic decision of record
         # was re-traced; S10, unchanged shape-only contract.yaml-vs-
-        # contract.yaml comparison) but ZERO actually regenerable of 15 — a
-        # shape match, or a same-repo cross-boundary test, never counts as
-        # regenerable on its own per the RSD §0.3 bar (a real three-leg
+        # contract.yaml comparison; S12 — reclassified from MISMATCH once the
+        # pinned omnibase_core was measured to ship BOTH handler_id and
+        # dispatcher_id, retiring the infra getattr shim's stated removal
+        # condition) but ZERO actually regenerable of 15 — a shape match, or a
+        # same-repo cross-boundary test, never counts as regenerable on its own
+        # per the RSD §0.3 bar (a real three-leg
         # producer<->registry<->consumer proof through node_seam_match_compute
-        # is required; that node does not exist yet).
-        assert summary["matched_count"] == 3
+        # is required; that node does not exist yet). S12 is the live example
+        # of that distinction: it HAS a cross-boundary golden — which is what
+        # lifts it to MATCHED rather than MATCHED_UNTESTED — and is still not
+        # regenerable, because that golden compares projections it builds
+        # itself rather than live observed ones.
+        assert summary["matched_count"] == 4
         assert summary["regenerable_count"] == 0
         assert summary["matched_count"] != summary["regenerable_count"] or (
             summary["matched_count"] == 0
