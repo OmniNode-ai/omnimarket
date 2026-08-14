@@ -46,10 +46,32 @@ class UnknownEventTypeError(ValueError):
 
 @dataclass(frozen=True)
 class ResolvedTopic:
-    """One fan-out target for an ``event_type``: a topic and its tier."""
+    """One fan-out target for an ``event_type``: topic, tier, and transform.
+
+    ``transform_name`` is the registry's symbolic ``fan_out[].transform`` name
+    (``None`` when the rule declares none). It is resolved to a callable by
+    ``enrichment.apply_transform`` at publish time -- the daemon applies the
+    transform PER FAN-OUT RULE, so two topics of the same event can carry
+    different payloads (OMN-16048).
+    """
 
     topic: str
     tier: EnumDurabilityTier
+    transform_name: str | None = None
+
+
+@dataclass(frozen=True)
+class RegisteredEvent:
+    """A registry entry: its fan-out targets and its partition-key field.
+
+    ``partition_key_field`` is the registry's declared
+    ``events.<event_type>.partition_key_field``. The daemon reads it via
+    ``EventRegistry.get_partition_key`` to compute the Kafka message key
+    (OMN-16020); ``None`` means the event declares no key.
+    """
+
+    topics: tuple[ResolvedTopic, ...]
+    partition_key_field: str | None = None
 
 
 def default_registry_path() -> Path:
@@ -64,14 +86,12 @@ def default_registry_path() -> Path:
     return nodes_root / "node_emit_daemon" / "registries" / "topics.yaml"
 
 
-def _parse_registry(
-    raw: dict[str, Any], *, source: Path
-) -> dict[str, tuple[ResolvedTopic, ...]]:
+def _parse_registry(raw: dict[str, Any], *, source: Path) -> dict[str, RegisteredEvent]:
     events_raw = raw.get("events", {})
     if not isinstance(events_raw, dict):
         raise ValueError(f"{source}: 'events' key must be a dict")
 
-    resolved: dict[str, tuple[ResolvedTopic, ...]] = {}
+    resolved: dict[str, RegisteredEvent] = {}
     for event_type, event_def in events_raw.items():
         if not isinstance(event_def, dict):
             continue
@@ -94,13 +114,28 @@ def _parse_registry(
                     f"'{topic}' declares unknown tier '{tier_raw}'. Valid "
                     f"tiers: {valid}."
                 ) from exc
-            topics.append(ResolvedTopic(topic=topic, tier=tier))
-        resolved[event_type] = tuple(topics)
+            topics.append(
+                ResolvedTopic(
+                    topic=topic,
+                    tier=tier,
+                    transform_name=rule.get("transform"),
+                )
+            )
+        partition_key_field = event_def.get("partition_key_field")
+        if partition_key_field is not None and not isinstance(partition_key_field, str):
+            raise ValueError(
+                f"{source}: event '{event_type}' declares a non-string "
+                f"partition_key_field {partition_key_field!r}."
+            )
+        resolved[event_type] = RegisteredEvent(
+            topics=tuple(topics),
+            partition_key_field=partition_key_field,
+        )
     return resolved
 
 
 @lru_cache(maxsize=8)
-def _load_registry(path_str: str) -> dict[str, tuple[ResolvedTopic, ...]]:
+def _load_registry(path_str: str) -> dict[str, RegisteredEvent]:
     path = Path(path_str)
     if not path.is_file():
         raise FileNotFoundError(
@@ -124,18 +159,42 @@ def resolve_event_type(
     registered, or is registered with an empty ``fan_out`` list -- no silent
     default topic.
     """
-    path = registry_path if registry_path is not None else default_registry_path()
-    registry = _load_registry(str(path))
-    topics = registry.get(event_type)
-    if topics is None:
-        raise UnknownEventTypeError(
-            f"Unknown event_type '{event_type}'; no registration in {path}."
-        )
-    if not topics:
+    registration = _registration(event_type, registry_path=registry_path)
+    if not registration.topics:
+        path = registry_path if registry_path is not None else default_registry_path()
         raise UnknownEventTypeError(
             f"event_type '{event_type}' has no fan_out topics declared in {path}."
         )
-    return topics
+    return registration.topics
+
+
+def _registration(
+    event_type: str, *, registry_path: Path | None = None
+) -> RegisteredEvent:
+    path = registry_path if registry_path is not None else default_registry_path()
+    registry = _load_registry(str(path))
+    registration = registry.get(event_type)
+    if registration is None:
+        raise UnknownEventTypeError(
+            f"Unknown event_type '{event_type}'; no registration in {path}."
+        )
+    return registration
+
+
+def resolve_partition_key_field(
+    event_type: str, *, registry_path: Path | None = None
+) -> str | None:
+    """Return the registry-declared ``partition_key_field`` for ``event_type``.
+
+    Mirrors the field ``EventRegistry.get_partition_key`` reads (OMN-16020).
+    ``None`` means the event declares no partition key -- the daemon publishes
+    those with a null Kafka key, and so must the node.
+
+    Raises :class:`UnknownEventTypeError` if ``event_type`` is not registered,
+    matching ``resolve_event_type``'s fail-fast posture (the daemon's
+    ``get_partition_key`` raises ``KeyError`` in the same situation).
+    """
+    return _registration(event_type, registry_path=registry_path).partition_key_field
 
 
 def resolve_tier(topics: tuple[ResolvedTopic, ...]) -> EnumDurabilityTier:
@@ -154,9 +213,11 @@ def resolve_tier(topics: tuple[ResolvedTopic, ...]) -> EnumDurabilityTier:
 
 __all__: list[str] = [
     "EnumDurabilityTier",
+    "RegisteredEvent",
     "ResolvedTopic",
     "UnknownEventTypeError",
     "default_registry_path",
     "resolve_event_type",
+    "resolve_partition_key_field",
     "resolve_tier",
 ]

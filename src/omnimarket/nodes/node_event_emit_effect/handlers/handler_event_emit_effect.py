@@ -8,11 +8,22 @@ handler constructor performs no I/O -- only ``handle()`` touches disk or
 network (asserted by ``tests/unit/nodes/node_event_emit_effect/
 test_contract_compliance.py``).
 
+Envelope enrichment (OMN-16048 / OMN-16018 / OMN-16020). Before spooling,
+``handle()`` reproduces the legacy daemon's publish-time enrichment exactly:
+inject the standard metadata fields, apply the registry's per-fan-out-rule
+payload transform, and derive the Kafka partition key from the registry's
+declared ``partition_key_field`` against the POST-transform payload. See
+``../enrichment.py`` for the field-by-field port and the determinism seam.
+The enriched, per-topic payload is frozen into the spool record, so a
+restart-replayed event goes out with the bytes it was enriched with, not
+re-enriched under a later clock.
+
 Drain semantics on each ``handle()`` invocation:
-    1. Append the current request to the spool.
-    2. Attempt to publish the current event (skipped entirely in
-       spool-only mode, i.e. ``KAFKA_BOOTSTRAP_SERVERS`` unset).
-    3. On success, ack (delete its spool file).
+    1. Enrich, then append ONE spool record per fan-out topic (mirroring the
+       daemon's one-queued-event-per-fan-out-rule shape).
+    2. Attempt to publish each of the current event's records (skipped
+       entirely in spool-only mode, i.e. ``KAFKA_BOOTSTRAP_SERVERS`` unset).
+    3. On success, ack (delete that record's spool file).
     4. Drain remaining spool files oldest-first up to a bounded
        per-invocation budget (``timeout_ms`` on the contract bounds this).
     5. Stop on first publish failure mid-drain, leaving the remainder
@@ -40,6 +51,13 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
+from omnimarket.nodes.node_event_emit_effect.enrichment import (
+    apply_transform,
+    default_clock,
+    default_correlation_id_factory,
+    derive_partition_key,
+    inject_metadata,
+)
 from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
     JsonType,
     ModelEmitRequest,
@@ -54,8 +72,10 @@ from omnimarket.nodes.node_event_emit_effect.spool.spool_outbox import (
 )
 from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
     EnumDurabilityTier,
+    ResolvedTopic,
     UnknownEventTypeError,
     resolve_event_type,
+    resolve_partition_key_field,
     resolve_tier,
 )
 
@@ -333,6 +353,8 @@ class HandlerEventEmitEffect:
         spool_dir: Path | None = None,
         drain_budget_seconds: float = _DEFAULT_TOTAL_BUDGET_SECONDS,
         max_drain_count: int = _DEFAULT_MAX_DRAIN_COUNT,
+        clock: Callable[[], datetime] = default_clock,
+        correlation_id_factory: Callable[[], str] = default_correlation_id_factory,
     ) -> None:
         """No I/O here -- ``spool``/``publish_adapter`` are injected, not built.
 
@@ -340,12 +362,107 @@ class HandlerEventEmitEffect:
         shared across the current event's own publish attempt and the
         backlog drain that follows it (OMN-15987 finding 2 fix; previously
         drain-only, letting the current-event publish overrun uncounted).
+
+        ``clock`` / ``correlation_id_factory`` are the enrichment determinism
+        seam (OMN-16048). Their defaults are exactly the daemon's inline
+        expressions (``datetime.now(UTC)`` / ``str(uuid4())``), so runtime
+        behavior is unchanged; the parity harness overrides both on BOTH
+        paths so the two implementations' generated ``emitted_at`` /
+        ``correlation_id`` are comparable instead of trivially unequal.
         """
         self._spool = spool
         self._publish_adapter = publish_adapter
         self._spool_dir = spool_dir
         self._drain_budget_seconds = drain_budget_seconds
         self._max_drain_count = max_drain_count
+        self._clock = clock
+        self._correlation_id_factory = correlation_id_factory
+
+    def _resolve_targets(
+        self, request: ModelEmitRequest
+    ) -> tuple[tuple[ResolvedTopic, ...], str | None]:
+        """Resolve the fan-out targets and the registry partition-key field."""
+        if not request.topic:
+            resolved_topics = resolve_event_type(request.event_type)
+            return resolved_topics, resolve_partition_key_field(request.event_type)
+
+        try:
+            resolved_topics = resolve_event_type(request.event_type)
+            tier = resolve_tier(resolved_topics)
+            partition_key_field = resolve_partition_key_field(request.event_type)
+        except UnknownEventTypeError:
+            # Deliberate escape hatch (OMN-15987 finding 4): a topic
+            # override may target an event_type that is legitimately
+            # outside the registry's scope entirely -- resolve_event_type
+            # must not veto that. Default to the conservative tier
+            # (telemetry: bounded, drop-oldest) so an unregistered
+            # override never inherits never-drop duty_critical semantics
+            # it was never declared for. When event_type IS registered,
+            # its registry-derived tier still applies even with an
+            # override topic (secondary note in the finding) -- the
+            # override changes where it publishes, not how durable it is.
+            tier = EnumDurabilityTier.TELEMETRY
+            partition_key_field = None
+        # An override topic has no fan-out rule, so no declared transform:
+        # the payload goes out enriched but untransformed. The registry's
+        # partition_key_field still applies when event_type IS registered, so
+        # an override does not silently lose key-based ordering.
+        return (
+            ResolvedTopic(topic=request.topic, tier=tier, transform_name=None),
+        ), partition_key_field
+
+    def _build_messages(
+        self,
+        request: ModelEmitRequest,
+        targets: tuple[ResolvedTopic, ...],
+        partition_key_field: str | None,
+    ) -> list[tuple[str, JsonType, str | None]]:
+        """Enrich once, then transform + key per fan-out topic.
+
+        Mirrors ``EmitSocketServer._handle_emit``: metadata is injected ONCE
+        into the raw payload, then each fan-out rule's transform is applied to
+        that shared enriched payload, and the partition key is derived from
+        each rule's own post-transform result.
+
+        A non-dict ``payload`` (the model permits list/str/number/bool/None)
+        has no field surface to enrich, transform or key off, so it is
+        published verbatim -- as the daemon would also do, since it rejects
+        such payloads outright rather than enriching them.
+        """
+        raw = request.payload
+        if not isinstance(raw, dict):
+            return [(t.topic, raw, request.partition_key) for t in targets]
+
+        enriched = inject_metadata(
+            raw,
+            request.correlation_id,
+            clock=self._clock,
+            correlation_id_factory=self._correlation_id_factory,
+        )
+        messages: list[tuple[str, JsonType, str | None]] = []
+        for target in targets:
+            transformed = apply_transform(target.transform_name, enriched)
+            key = (
+                request.partition_key
+                if request.partition_key is not None
+                else derive_partition_key(partition_key_field, transformed)
+            )
+            messages.append((target.topic, transformed, key))
+        return messages
+
+    @staticmethod
+    def _envelope_correlation_id(payload: JsonType, fallback: str | None) -> str | None:
+        """Correlation ID carried on the message envelope for this payload.
+
+        The daemon's publisher loop reads it back out of the payload
+        (``publisher_loop._publish_event``), so post-enrichment the payload is
+        the authority -- not the request field, which is only a seed.
+        """
+        if isinstance(payload, dict):
+            value = payload.get("correlation_id")
+            if isinstance(value, str):
+                return value
+        return fallback
 
     def handle(self, request: ModelEmitRequest) -> ModelEmitResult:
         spool = self._spool if self._spool is not None else self._build_default_spool()
@@ -355,39 +472,35 @@ class HandlerEventEmitEffect:
             else self._build_default_adapter()
         )
 
-        if request.topic:
-            topics: tuple[str, ...] = (request.topic,)
-            try:
-                resolved_topics = resolve_event_type(request.event_type)
-                tier = resolve_tier(resolved_topics)
-            except UnknownEventTypeError:
-                # Deliberate escape hatch (OMN-15987 finding 4): a topic
-                # override may target an event_type that is legitimately
-                # outside the registry's scope entirely -- resolve_event_type
-                # must not veto that. Default to the conservative tier
-                # (telemetry: bounded, drop-oldest) so an unregistered
-                # override never inherits never-drop duty_critical semantics
-                # it was never declared for. When event_type IS registered,
-                # its registry-derived tier still applies even with an
-                # override topic (secondary note in the finding) -- the
-                # override changes where it publishes, not how durable it is.
-                tier = EnumDurabilityTier.TELEMETRY
-        else:
-            resolved_topics = resolve_event_type(request.event_type)
-            tier = resolve_tier(resolved_topics)
-            topics = tuple(t.topic for t in resolved_topics)
+        targets, partition_key_field = self._resolve_targets(request)
+        tier = resolve_tier(targets)
+        messages = self._build_messages(request, targets, partition_key_field)
+        queued_at = self._clock()
 
-        record = SpoolRecord(
-            event_id=request.event_id,
-            event_type=request.event_type,
-            topics=topics,
-            tier=tier,
-            payload=request.payload,
-            partition_key=request.partition_key,
-            correlation_id=request.correlation_id,
-            queued_at=datetime.now(UTC),
+        appended: list[SpoolFile] = []
+        dropped_count = 0
+        for topic, payload, partition_key in messages:
+            outcome = spool.append(
+                SpoolRecord(
+                    event_id=request.event_id,
+                    event_type=request.event_type,
+                    topic=topic,
+                    tier=tier,
+                    payload=payload,
+                    partition_key=partition_key,
+                    correlation_id=self._envelope_correlation_id(
+                        payload, request.correlation_id
+                    ),
+                    queued_at=queued_at,
+                )
+            )
+            dropped_count += outcome.dropped_count
+            if outcome.spool_file is not None:
+                appended.append(outcome.spool_file)
+
+        result_correlation_id = self._envelope_correlation_id(
+            messages[0][1] if messages else None, request.correlation_id
         )
-        outcome = spool.append(record)
 
         # Single shared deadline for this invocation: current-event publish
         # + backlog drain both draw from the same budget (OMN-15987 finding 2).
@@ -400,46 +513,47 @@ class HandlerEventEmitEffect:
                 published=False,
                 spool_only=True,
                 drained_count=0,
-                dropped_count=outcome.dropped_count,
-                correlation_id=request.correlation_id,
+                dropped_count=dropped_count,
+                correlation_id=result_correlation_id,
             )
 
-        if outcome.spool_file is None:
-            # The current record itself was rejected (oversized telemetry --
-            # see SpoolOutbox._append_telemetry); nothing was spooled for it,
-            # so there is nothing to publish. Still opportunistically drain
-            # any existing backlog -- that work is independent of whether the
-            # current event could be spooled.
-            drained_count = self._drain_backlog(
-                adapter, spool, exclude=None, deadline=deadline
-            )
-            return ModelEmitResult(
-                event_id=request.event_id,
-                topics_published=[],
-                published=False,
-                spool_only=False,
-                drained_count=drained_count,
-                dropped_count=outcome.dropped_count,
-                correlation_id=request.correlation_id,
-            )
-
-        published = self._try_publish(
-            adapter, outcome.spool_file, spool, deadline=deadline
+        # Records rejected at append time (oversized telemetry -- see
+        # SpoolOutbox._append_telemetry) were never spooled, so they cannot be
+        # published; the event only counts as published when every one of its
+        # fan-out topics went out.
+        published_topics: list[str] = []
+        publish_failed = False
+        for spool_file in appended:
+            if self._try_publish(adapter, spool_file, spool, deadline=deadline):
+                published_topics.append(spool_file.record.topic)
+            else:
+                publish_failed = True
+                break
+        all_published = (
+            not publish_failed and len(appended) == len(messages) and bool(messages)
         )
+
+        # The backlog drain is gated on a real publish FAILURE only -- an
+        # append-time drop of the current event says nothing about whether
+        # the broker is reachable, so the pre-existing backlog still gets its
+        # opportunistic drain.
         drained_count = 0
-        if published:
+        if not publish_failed:
             drained_count = self._drain_backlog(
-                adapter, spool, exclude=outcome.spool_file.path, deadline=deadline
+                adapter,
+                spool,
+                exclude={f.path for f in appended},
+                deadline=deadline,
             )
 
         return ModelEmitResult(
             event_id=request.event_id,
-            topics_published=list(topics) if published else [],
-            published=published,
+            topics_published=published_topics if all_published else [],
+            published=all_published,
             spool_only=False,
             drained_count=drained_count,
-            dropped_count=outcome.dropped_count,
-            correlation_id=request.correlation_id,
+            dropped_count=dropped_count,
+            correlation_id=result_correlation_id,
         )
 
     def _try_publish(
@@ -452,23 +566,22 @@ class HandlerEventEmitEffect:
     ) -> bool:
         record = spool_file.record
         try:
-            for topic in record.topics:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    # Budget already exhausted before this topic even got a
-                    # chance -- fail fast rather than attempt a publish with
-                    # a zero/negative timeout (OMN-15987 finding 2).
-                    raise TimeoutError(
-                        f"Publish budget exhausted before topic {topic!r} "
-                        f"for event {record.event_id}"
-                    )
-                adapter.publish(
-                    topic,
-                    record.payload,
-                    key=record.partition_key,
-                    correlation_id=record.correlation_id,
-                    timeout_seconds=min(remaining, _SINGLE_PUBLISH_CAP_SECONDS),
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                # Budget already exhausted before this topic even got a
+                # chance -- fail fast rather than attempt a publish with
+                # a zero/negative timeout (OMN-15987 finding 2).
+                raise TimeoutError(
+                    f"Publish budget exhausted before topic {record.topic!r} "
+                    f"for event {record.event_id}"
                 )
+            adapter.publish(
+                record.topic,
+                record.payload,
+                key=record.partition_key,
+                correlation_id=record.correlation_id,
+                timeout_seconds=min(remaining, _SINGLE_PUBLISH_CAP_SECONDS),
+            )
         except Exception:
             logger.warning(
                 "Publish failed for event %s; leaving spooled for retry",
@@ -484,12 +597,12 @@ class HandlerEventEmitEffect:
         adapter: ProtocolPublishAdapter,
         spool: SpoolOutbox,
         *,
-        exclude: Path | None,
+        exclude: set[Path],
         deadline: float,
     ) -> int:
         drained = 0
         for spool_file in spool.list_pending():
-            if exclude is not None and spool_file.path == exclude:
+            if spool_file.path in exclude:
                 continue
             if drained >= self._max_drain_count or time.monotonic() >= deadline:
                 break

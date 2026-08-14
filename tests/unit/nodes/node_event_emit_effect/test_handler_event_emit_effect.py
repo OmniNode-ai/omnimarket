@@ -174,19 +174,26 @@ def test_spool_only_mode_when_kafka_unconfigured(
 
 
 def test_oversized_current_event_is_dropped_but_backlog_still_drains(
-    tmp_path: Path,
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """When the current event itself is too large to spool (oversized
     telemetry -- see SpoolOutbox._append_telemetry), it can't be published,
     but an existing backlog is still opportunistically drained."""
-    spool = SpoolOutbox(tmp_path / "spool", max_telemetry_bytes=400)
+    # The cap must sit above an enriched empty-payload record (~460 B since
+    # OMN-16048 added correlation_id/emitted_at/entity_id/schema_version) and
+    # below that record plus the 1000-byte blob below. The env is pinned so
+    # the optional session_id/entity_id injection cannot move the record size
+    # across the cap on a developer machine that has the var set.
+    monkeypatch.delenv("CLAUDE_CODE_SESSION_ID", raising=False)
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    spool = SpoolOutbox(tmp_path / "spool", max_telemetry_bytes=800)
     adapter = FakePublishAdapter()
 
     # Pre-populate a small backlog record that fits comfortably.
     backlog_handler = HandlerEventEmitEffect(
         spool=spool, publish_adapter=None
     )  # spool-only, so it just gets appended
-    # Use the smallest possible request so it fits under the 400-byte cap.
+    # Use the smallest possible request so it fits under the byte cap.
     small_request = ModelEmitRequest(event_type="session.started", payload={})
     backlog_handler.handle(small_request)
     assert spool.pending_count() == 1

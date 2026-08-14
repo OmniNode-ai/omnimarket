@@ -393,3 +393,85 @@ def test_no_node_emit_daemon_python_import_anywhere_in_package() -> None:
                     assert alias.name != "node_emit_daemon", (
                         f"{path}: illegal node_emit_daemon import: {alias.name!r}"
                     )
+
+
+# ---------------------------------------------------------------------------
+# OMN-16048: envelope enrichment is contract-declared, not implicit
+# ---------------------------------------------------------------------------
+
+
+def test_contract_declares_envelope_enrichment_block() -> None:
+    contract = _load_contract()
+    enrichment = contract.get("envelope_enrichment")
+    assert isinstance(enrichment, dict), (
+        "contract.yaml must declare envelope_enrichment: the injected fields "
+        "and the partition-key computation are wire contract (OMN-16048 "
+        "ruled REPLICATE), not handler implementation detail."
+    )
+    assert (
+        enrichment["applied_by"]
+        == "omnimarket.nodes.node_event_emit_effect.enrichment.inject_metadata"
+    )
+
+
+def test_contract_injected_fields_match_the_implementation() -> None:
+    """The declared field list and enrichment.ENRICHMENT_FIELDS must agree.
+
+    This is the anti-drift assertion: adding a field to inject_metadata
+    without declaring it (or vice versa) fails here.
+    """
+    from omnimarket.nodes.node_event_emit_effect.enrichment import (
+        ENRICHMENT_FIELDS,
+        SCHEMA_VERSION,
+        SESSION_ID_ENV_VAR,
+        UNCONDITIONAL_ENRICHMENT_FIELDS,
+    )
+
+    contract = _load_contract()
+    enrichment = contract["envelope_enrichment"]
+    assert isinstance(enrichment, dict)
+    declared = enrichment["injected_fields"]
+    assert isinstance(declared, list)
+
+    by_name = {entry["name"]: entry for entry in declared}
+    assert set(by_name) == set(ENRICHMENT_FIELDS)
+    assert tuple(entry["name"] for entry in declared) == ENRICHMENT_FIELDS
+
+    assert by_name["schema_version"]["value"] == SCHEMA_VERSION
+    assert by_name["session_id"]["env_var"] == SESSION_ID_ENV_VAR
+
+    # Only the two seam-backed fields are marked generated.
+    generated = {name for name, e in by_name.items() if e["generated"]}
+    assert generated == {"correlation_id", "emitted_at"}
+    assert set(UNCONDITIONAL_ENRICHMENT_FIELDS) <= set(ENRICHMENT_FIELDS)
+
+
+def test_contract_declares_registry_driven_partition_key_and_transforms() -> None:
+    from omnimarket.nodes.node_event_emit_effect.enrichment import TRANSFORM_REGISTRY
+
+    contract = _load_contract()
+    enrichment = contract["envelope_enrichment"]
+    assert isinstance(enrichment, dict)
+
+    partition_key = enrichment["partition_key"]
+    assert "partition_key_field" in partition_key["source"]
+    assert partition_key["override"] == "ModelEmitRequest.partition_key"
+
+    transform = enrichment["per_topic_transform"]
+    assert set(transform["supported"]) == set(TRANSFORM_REGISTRY)
+
+
+def test_handler_exposes_the_declared_determinism_seam() -> None:
+    """contract.yaml names the two seam parameters; they must actually exist."""
+    contract = _load_contract()
+    enrichment = contract["envelope_enrichment"]
+    assert isinstance(enrichment, dict)
+    seam = enrichment["determinism_seam"]
+
+    params = inspect.signature(HandlerEventEmitEffect.__init__).parameters
+    for declared in seam.values():
+        param_name = declared.rsplit(".", 1)[-1]
+        assert param_name in params, (
+            f"contract declares determinism seam {declared!r} but "
+            f"HandlerEventEmitEffect.__init__ has no {param_name!r} parameter"
+        )

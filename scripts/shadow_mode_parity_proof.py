@@ -19,6 +19,24 @@ Scope and honesty note (proof lane, OMN-15971):
     identical raw input payloads, whether the two code paths as they
     exist on `dev` today produce byte-identical (topic, payload) output.
 
+Determinism seam (OMN-16048):
+    Two enriched fields are GENERATED, not derived -- ``emitted_at`` (wall
+    clock) and ``correlation_id`` (a fresh UUID, only when the payload
+    carries none). Left alone they are trivially unequal between the two
+    runs, which would make byte-parity unmeasurable rather than false. Both
+    implementations therefore expose the clock and the ID source as injected
+    callables whose defaults are the production expressions
+    (``datetime.now(UTC)`` / ``str(uuid4())``), and this harness drives BOTH
+    sides from the SAME frozen clock and the SAME ID source below.
+
+    This is not a normalization: no field is excluded from the diff, no
+    value is rewritten after the fact, and both sides run their real
+    generation branches. What is proven is the generation POLICY (which
+    field is preserved vs. minted, and its exact format); what is NOT
+    proven -- and is not provable, because the daemon has the same property
+    against itself run-to-run -- is that two independent invocations pick
+    the same instant and the same random UUID.
+
 Usage:
     uv run python scripts/shadow_mode_parity_proof.py [--out FILE]
 
@@ -52,6 +70,27 @@ REGISTRY_PATH = (
     / "registries"
     / "topics.yaml"
 )
+
+
+# =============================================================================
+# Shared determinism seam -- injected identically into BOTH paths
+# =============================================================================
+
+#: Frozen publish instant. Both paths format it themselves (``.isoformat()``),
+#: so the formatting step is still compared, only the instant is shared.
+FROZEN_EMITTED_AT = datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+
+#: Shared source for a GENERATED correlation_id (used only on the events
+#: whose payload does not already carry one -- the "mint it" branch).
+FROZEN_CORRELATION_ID = "00000000-0000-4000-8000-000000000000"
+
+
+def frozen_clock() -> datetime:
+    return FROZEN_EMITTED_AT
+
+
+def frozen_correlation_id_factory() -> str:
+    return FROZEN_CORRELATION_ID
 
 
 # =============================================================================
@@ -282,6 +321,8 @@ async def run_old_path(
         queue=queue,
         registry=registry,
         publisher_loop=loop,
+        clock=frozen_clock,
+        correlation_id_factory=frozen_correlation_id_factory,
     )
 
     await loop.start()
@@ -354,7 +395,10 @@ async def run_new_path(
 
     adapter: ProtocolPublishAdapter = FakeAdapter()
     handler = HandlerEventEmitEffect(
-        publish_adapter=adapter, spool_dir=tmp_root / "new-spool"
+        publish_adapter=adapter,
+        spool_dir=tmp_root / "new-spool",
+        clock=frozen_clock,
+        correlation_id_factory=frozen_correlation_id_factory,
     )
 
     errors: list[tuple[str, str]] = []

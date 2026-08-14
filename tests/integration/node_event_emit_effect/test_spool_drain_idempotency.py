@@ -82,7 +82,7 @@ def _backlog_record(
         event_type="session.started"
         if tier is EnumDurabilityTier.TELEMETRY
         else "session.outcome",
-        topics=(topic,),
+        topic=topic,
         tier=tier,
         payload={"seq": seq},
         partition_key=None,
@@ -119,8 +119,14 @@ def test_backlog_drains_fifo_and_current_event_publishes(tmp_path: Path) -> None
     # FIFO by filename (telemetry 0-2, then duty_critical 3-4, in append
     # order) -- not just set membership.
     published_ids_in_order = [cid for _, cid in adapter.attempts]
+    # The current event's envelope correlation_id is the ENRICHED one
+    # (OMN-16048): the request supplied none, so inject_metadata minted it and
+    # the payload -- not the request field -- is the authority, matching the
+    # daemon's publisher loop reading it back out of the payload.
+    assert result.correlation_id is not None
+    assert result.correlation_id != request.correlation_id
     assert published_ids_in_order == [
-        request.correlation_id,
+        result.correlation_id,
         "corr-0",
         "corr-1",
         "corr-2",
@@ -252,16 +258,13 @@ def test_unacked_leftover_file_is_republished_with_stable_idempotency_key(
     # never called (simulating a crash in the window between broker-ack and
     # local ack/delete) -- the file must still be on disk afterward.
     first_attempt_adapter = RecordingPublishAdapter()
-    for topic in leftover.topics:
-        first_attempt_adapter.publish(
-            topic,
-            leftover.payload,
-            key=leftover.partition_key,
-            correlation_id=leftover.correlation_id,
-        )
-    assert first_attempt_adapter.attempts == [
-        (leftover.topics[0], leftover.correlation_id)
-    ]
+    first_attempt_adapter.publish(
+        leftover.topic,
+        leftover.payload,
+        key=leftover.partition_key,
+        correlation_id=leftover.correlation_id,
+    )
+    assert first_attempt_adapter.attempts == [(leftover.topic, leftover.correlation_id)]
     assert spool.pending_count() == 1  # ack suppressed -- file still pending
 
     # Second invocation: the handler finds the still-pending file and
@@ -280,11 +283,9 @@ def test_unacked_leftover_file_is_republished_with_stable_idempotency_key(
     # attempt with the leftover's original correlation_id is what proves the
     # retry carried the same idempotency key.
     assert (
-        leftover.topics[0],
+        leftover.topic,
         leftover.correlation_id,
     ) in second_attempt_adapter.attempts
     # Same event_id/correlation_id on both independent publish attempts.
-    assert first_attempt_adapter.attempts == [
-        (leftover.topics[0], leftover.correlation_id)
-    ]
+    assert first_attempt_adapter.attempts == [(leftover.topic, leftover.correlation_id)]
     assert leftover.event_id == "backlog-99"  # key stable across the retry
