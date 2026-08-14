@@ -23,6 +23,8 @@ driven for real (they read ``os.environ`` directly) without leaking state.
 
 from __future__ import annotations
 
+from typing import Final
+
 import pytest
 from omnibase_core.runtime.runtime_local_adapter import (
     ENV_MULTI_EVENT_PUBLISH_SEAM as CORE_FLAG_NAME,
@@ -37,15 +39,34 @@ from omnibase_infra.runtime.auto_wiring.handler_wiring import (
     multi_event_seam_enabled as infra_seam_enabled,
 )
 
+from omnimarket.seams.models.model_seam_projection import ModelSeamProjection
 from tests.seam_goldens.harness import (
+    UNVERSIONED_MODEL,
+    EnumSeamProjectionRole,
+    assert_regenerable,
     assert_registry_classification,
     consumer_projection,
+    model_identity,
+    observed_projection_from_mapping,
     producer_projection,
     run_registry_match,
 )
 from tests.seam_goldens.manifest import slice_edge
 
 pytestmark = pytest.mark.unit
+
+# The DECLARED literal — pinned here, deliberately not imported. The whole seam
+# is "two runtimes independently define this exact string", so the registry's
+# claim about it has to be written down somewhere that neither runtime can move.
+# The OBSERVED side is CORE_FLAG_NAME / INFRA_FLAG_NAME, imported for real: a
+# rename on either side alone turns that side's observed key field into
+# ABSENT_FROM_WIRE and fails its leg.
+_DECLARED_FLAG_LITERAL: Final[str] = "ONEX_MULTI_EVENT_PUBLISH_SEAM"
+
+# An env var crosses as a plain string; there is no envelope model here. Both
+# sides record the builtin type identity, which each side's observation derives
+# from its own real constant rather than from this declaration.
+_DECLARED_FLAG_CARRIER: Final[str] = "builtins.str"
 
 # Every string the goldens drive through both parsers. Covers the documented
 # truthy set, obvious falsy values, and the casing/whitespace variants the
@@ -143,33 +164,105 @@ class TestBothParsersAgreeOnEveryValue:
         assert infra_seam_enabled() is False
 
 
+def _declared() -> tuple[ModelSeamProjection, ModelSeamProjection]:
+    """The registry's claim about this seam, written from the pinned literal."""
+
+    declared_producer = producer_projection(
+        edge_id="S13",
+        topic=_DECLARED_FLAG_LITERAL,
+        envelope_model=_DECLARED_FLAG_CARRIER,
+        envelope_version=UNVERSIONED_MODEL,
+        key_fields=((_DECLARED_FLAG_LITERAL, "str"),),
+    )
+    declared_consumer = consumer_projection(
+        edge_id="S13",
+        topic=_DECLARED_FLAG_LITERAL,
+        envelope_model=_DECLARED_FLAG_CARRIER,
+        envelope_version=UNVERSIONED_MODEL,
+        key_fields=((_DECLARED_FLAG_LITERAL, "str"),),
+    )
+    return declared_producer, declared_consumer
+
+
 class TestS13RegistryMatch:
     def test_registry_match_is_regenerable_for_the_driven_flag(self) -> None:
-        declared_producer = producer_projection(
-            edge_id="S13",
-            topic=CORE_FLAG_NAME,
-            envelope_model="omnibase_core.runtime.runtime_local_adapter",
-            envelope_version="1.0.0",
-            key_fields=(("ONEX_MULTI_EVENT_PUBLISH_SEAM", "str"),),
-        )
-        declared_consumer = consumer_projection(
-            edge_id="S13",
-            topic=INFRA_FLAG_NAME,
-            envelope_model="omnibase_core.runtime.runtime_local_adapter",
-            envelope_version="1.0.0",
-            key_fields=(("ONEX_MULTI_EVENT_PUBLISH_SEAM", "str"),),
-        )
+        """Declared = the pinned literal. Observed = the two real constants.
+
+        Neither observed projection is derived from the declaration: each is
+        built from the constant its own runtime actually exports, keyed by the
+        declared name. Rename ``ENV_MULTI_EVENT_PUBLISH_SEAM`` in core and the
+        producer leg goes red; rename it in infra and the consumer leg does.
+        That asymmetry is impossible to express when both sides are the same
+        object, which is what this call site used to do.
+        """
+
+        declared_producer, declared_consumer = _declared()
 
         verdict = run_registry_match(
             edge_id="S13",
             declared_producer=declared_producer,
             declared_consumer=declared_consumer,
-            observed_producer=declared_producer,
-            observed_consumer=declared_consumer,
+            observed_producer=observed_projection_from_mapping(
+                edge_id="S13",
+                role=EnumSeamProjectionRole.PRODUCER,
+                topic=CORE_FLAG_NAME,
+                mapping={CORE_FLAG_NAME: CORE_FLAG_NAME},
+                field_names=(_DECLARED_FLAG_LITERAL,),
+                envelope_model=model_identity(type(CORE_FLAG_NAME)),
+            ),
+            observed_consumer=observed_projection_from_mapping(
+                edge_id="S13",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=INFRA_FLAG_NAME,
+                mapping={INFRA_FLAG_NAME: INFRA_FLAG_NAME},
+                field_names=(_DECLARED_FLAG_LITERAL,),
+                envelope_model=model_identity(type(INFRA_FLAG_NAME)),
+            ),
         )
 
         assert_registry_classification("S13", verdict)
-        assert verdict.regenerability.value == "REGENERABLE"
+        assert_regenerable("S13", verdict)
+
+    def test_a_renamed_core_constant_would_fail_the_producer_leg(self) -> None:
+        """Negative control on the OBSERVED leg, not just on leg 1.
+
+        Simulates core renaming its constant while infra keeps the old name.
+        The observed producer no longer carries the declared key, so leg 2 goes
+        red while leg 1 and leg 3 stay green — the precise signature of a
+        one-sided rename, and a result the old ``x == x`` call site could never
+        produce.
+        """
+
+        declared_producer, declared_consumer = _declared()
+        renamed = f"{_DECLARED_FLAG_LITERAL}_V2"
+
+        verdict = run_registry_match(
+            edge_id="S13",
+            declared_producer=declared_producer,
+            declared_consumer=declared_consumer,
+            observed_producer=observed_projection_from_mapping(
+                edge_id="S13",
+                role=EnumSeamProjectionRole.PRODUCER,
+                topic=renamed,
+                mapping={renamed: renamed},
+                field_names=(_DECLARED_FLAG_LITERAL,),
+                envelope_model=_DECLARED_FLAG_CARRIER,
+            ),
+            observed_consumer=observed_projection_from_mapping(
+                edge_id="S13",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=INFRA_FLAG_NAME,
+                mapping={INFRA_FLAG_NAME: INFRA_FLAG_NAME},
+                field_names=(_DECLARED_FLAG_LITERAL,),
+                envelope_model=model_identity(type(INFRA_FLAG_NAME)),
+            ),
+        )
+
+        assert verdict.verdict.value == "MATCHED"
+        assert verdict.leg1_declared_vs_declared.passed is True
+        assert verdict.leg2_observed_producer_vs_declared.passed is False
+        assert verdict.leg3_observed_consumer_vs_declared.passed is True
+        assert verdict.regenerability.value == "SHAPE_ONLY"
 
     def test_a_renamed_literal_would_fail_the_registry_match(self) -> None:
         """Negative control: prove the match would actually catch the rename."""
