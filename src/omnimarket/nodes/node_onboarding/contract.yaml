@@ -6,9 +6,12 @@ node_version: {major: 1, minor: 0, patch: 0}
 
 description: >
   Contract-driven progressive onboarding for new users and employees.
-  Accepts a policy name (new_employee, standalone_quickstart, contributor_local,
-  full_platform) or explicit target_capabilities. Resolves the policy, executes
-  verification for each step, and renders markdown progress output.
+  Accepts a policy name (setup, standalone_quickstart, new_employee,
+  contributor_local, contributor_cloud, contributor_hybrid, omnimarket_quickstart,
+  full_platform, interactive_onboarding) or explicit target_capabilities.
+  DAG policies resolve to a step plan and execute verification per step;
+  the interactive policy drives a branching prompt flow and writes an
+  overlay/env configuration. Renders markdown progress output either way.
 
 handler_routing:
   routing_strategy: operation_match
@@ -32,9 +35,9 @@ descriptor:
 inputs:
   policy_name:
     type: str
-    description: "Policy to apply: new_employee, standalone_quickstart, contributor_local, full_platform"
+    description: "Policy to apply; interactive_onboarding selects the interactive path"
     required: false
-    default: "new_employee"
+    default: "setup"
   target_capabilities:
     type: list
     description: "Override target capabilities directly (bypasses policy lookup)"
@@ -53,6 +56,14 @@ inputs:
     description: "Print the resolved step plan without executing verifications"
     required: false
     default: false
+  env_output_path:
+    type: str
+    description: "Interactive path only: destination for the legacy .env write; required when dry_run is false"
+    required: false
+  overlay_output_path:
+    type: str
+    description: "Interactive path only: destination for the overlay YAML write; derived from env_output_path when omitted"
+    required: false
 
 outputs:
   success:
@@ -74,6 +85,26 @@ outputs:
   resolved_steps:
     type: list
     description: "Step keys resolved by the policy resolver (present in dry-run response)"
+    required: false
+  policy_type:
+    type: str
+    description: "Resolved policy type; 'interactive' when the interactive path ran"
+    required: false
+  visited_steps:
+    type: list
+    description: "Interactive path only: step ids visited before the terminal step"
+    required: false
+  terminal_step:
+    type: str
+    description: "Interactive path only: the terminal step reached"
+    required: false
+  env_output_path_written:
+    type: str
+    description: "Interactive path only: path of the legacy .env file written, if any"
+    required: false
+  overlay_output_path_written:
+    type: str
+    description: "Interactive path only: path of the overlay YAML written, if any"
     required: false
 
 terminal_event: onex.evt.omnimarket.onboarding-completed.v1

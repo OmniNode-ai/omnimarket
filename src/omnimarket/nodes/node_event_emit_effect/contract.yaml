@@ -122,6 +122,70 @@ event_bus:
     - onex.evt.omnimarket.event-emit-failed.v1
     - onex.evt.omnimarket.tool-output-captured.v1
 
+compatibility_publish_topics:
+  # WHY THIS KEY EXISTS HERE (OMN-15971).
+  #
+  # The runtime's auto-wiring discovery gate
+  # (omnibase_infra/src/omnibase_infra/runtime/auto_wiring/discovery.py,
+  # _contract_targets_active_runtime_packages) skips any contract whose
+  # publish_topics reach into a package domain that is not in
+  # ONEX_ACTIVE_RUNTIME_PACKAGES. On the onex-dev lane that allowlist is
+  # `omnibase_infra,omnimarket`, so this contract was skipped in all three
+  # runtime profiles with the log line:
+  #
+  #   Skipping contract 'node_event_emit_effect' from 'omnimarket' because it
+  #   targets an inactive runtime package domain
+  #
+  # That is correct-by-design for a normal node: publishing into a domain IS
+  # being part of that domain's producer surface. This node is the deliberate
+  # exception -- it is a generic fan-out emitter whose entire job is to
+  # publish events on behalf of OTHER domains (omniclaude, omniintelligence)
+  # that it does not own and does not consume from. Its own domain surface is
+  # only the four omnimarket/omnibase-infra topics below the fold; the 24
+  # topics listed here are pure cross-domain fan-out targets.
+  #
+  # WHY THIS ROUTE, NOT ACTIVATING THE DOMAINS. The alternative -- adding
+  # omniclaude/omniintelligence/omnimemory to ONEX_ACTIVE_RUNTIME_PACKAGES --
+  # was measured in-pod against the deployed image before being rejected: it
+  # newly activates 25 contracts (not 1), 122 topics, and 29 NEW SUBSCRIBE
+  # topics, i.e. 29 consumer groups that all three runtime Deployments would
+  # join at boot, pulling in memory/persona/intent storage + retrieval +
+  # lifecycle handlers whose Postgres/Qdrant dependencies are not provisioned
+  # on that lane. That is a boot-path change to every runtime pod. This key is
+  # the runtime's own purpose-built, per-contract escape hatch for exactly
+  # this shape: it activates 1 contract and adds 0 new subscribe topics.
+  #
+  # INVARIANT (pinned by tests/unit/nodes/node_event_emit_effect/
+  # test_contract_compliance.py): every publish topic whose domain segment is
+  # outside this node's owning packages must appear here, and this list must
+  # contain nothing that is not a declared publish topic. Adding a new
+  # cross-domain publish topic without adding it here silently re-skips the
+  # whole contract at discovery -- the test is what stops that regression.
+  - onex.cmd.omniclaude.delegate-task.v1
+  - onex.cmd.omniintelligence.claude-hook-event.v1
+  - onex.cmd.omniintelligence.compliance-evaluate.v1
+  - onex.cmd.omniintelligence.session-outcome.v1
+  - onex.cmd.omniintelligence.tool-content.v1
+  - onex.cmd.omniintelligence.utilization-scoring.v1
+  - onex.evt.omniclaude.budget-cap-hit.v1
+  - onex.evt.omniclaude.circuit-breaker-tripped.v1
+  - onex.evt.omniclaude.delegation-shadow-comparison.v1
+  - onex.evt.omniclaude.llm-routing-decision.v1
+  - onex.evt.omniclaude.notification-blocked.v1
+  - onex.evt.omniclaude.notification-completed.v1
+  - onex.evt.omniclaude.pattern-enforcement.v1
+  - onex.evt.omniclaude.phase-metrics.v1
+  - onex.evt.omniclaude.prompt-submitted.v1
+  - onex.evt.omniclaude.routing-decision.v1
+  - onex.evt.omniclaude.routing-feedback.v1
+  - onex.evt.omniclaude.session-ended.v1
+  - onex.evt.omniclaude.session-outcome.v1
+  - onex.evt.omniclaude.session-started.v1
+  - onex.evt.omniclaude.skill-completed.v1
+  - onex.evt.omniclaude.skill-started.v1
+  - onex.evt.omniclaude.tool-executed.v1
+  - onex.evt.omniintelligence.llm-call-completed.v1
+
 externally_consumed_topics:
   # This node's own terminal events -- genuinely new (verified absent from
   # both registries/topics.yaml and the omniclaude-generated EVENT_REGISTRY

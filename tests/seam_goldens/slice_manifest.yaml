@@ -30,11 +30,39 @@
 #   excluded            — deliberately out of slice. Must carry
 #                         `exclusion_reason` and must NOT carry a golden.
 #
-# `producer_symbol_reachable: false` means the producing side's symbol is not
-# importable from this repo's dependency closure, so the golden drives the
-# reachable side against real artifacts and pins the seam disjointness rather
-# than executing both legs. It is recorded here rather than silently
-# downgraded in a test docstring.
+# `producer_symbol_reachable` / `consumer_symbol_reachable` record whether that
+# side of the edge can be OBSERVED from an artifact these tests do not author —
+# a real service's published bytes, a real handler's returned model, a real
+# committed contract inside the pinned wheel, or a real imported constant.
+# `false` means the side is out of this repo's dependency closure (the cloud
+# `onex-api` publisher and the cloud terminal consumer both are), so the golden
+# drives the reachable side against real artifacts and leaves the other leg
+# unevaluated.
+#
+# `observation_class` is DERIVED from those two booleans and is the strongest
+# claim the edge's golden is entitled to make:
+#   REGENERABLE  — both sides observable; the shipped HandlerSeamMatch legs 2
+#                  and 3 both run against real driven artifacts.
+#   SHAPE_ONLY   — one side unobservable; that leg is not evaluated and the
+#                  classifier correctly refuses REGENERABLE.
+#   NOT_CLAIMED  — the golden deliberately makes no observed-vs-declared claim
+#                  (an UNMATCHED edge has no second side; a MISMATCH edge has no
+#                  single declared shape to observe against).
+# Anything other than REGENERABLE must carry an `observation_note` naming the
+# unobservable side. `manifest.py` enforces all of this at load time, so an
+# edge can never claim REGENERABLE while recording an unreachable side.
+#
+# 2026-08-13 correction (OMN-16004 fix-forward): the first cut of this file
+# recorded `producer_symbol_reachable: true` for S1/S2/S4/S5 and every golden
+# asserted REGENERABLE. That was wrong on both counts. The producing side of
+# S1/S4/S5 is the cloud onex-api MSK publisher, which is not a Python package
+# in this closure at all — the "producer" those goldens drove was a dict
+# literal authored inside `tests/seam_goldens/harness.py`. Every registry-match
+# call site also passed the SAME projection object for `declared_*` and
+# `observed_*`, reducing legs 2 and 3 to `x == x` so REGENERABLE was
+# unconditional whenever leg 1 passed. Both defects are closed: the reachability
+# booleans below are measured, the classes are derived from them, and
+# `run_registry_match` now rejects an aliased observation outright.
 
 schema_version: seam-slice-manifest/v1
 ticket: OMN-16004
@@ -55,7 +83,19 @@ edges:
     traversed: true
     registry_classification: MATCHED
     registry_severity: none
-    producer_symbol_reachable: true
+    producer_symbol_reachable: false
+    consumer_symbol_reachable: true
+    observation_class: SHAPE_ONLY
+    observation_note: >-
+      PRODUCER UNOBSERVABLE. The producing side is the cloud onex-api MSK
+      publisher; it is not a Python package in this repo's dependency closure,
+      so no artifact it authored can be read here. The bytes the golden feeds
+      in come from `harness.cloud_hand_rolled_envelope_json`, a dict literal
+      this test suite wrote — projecting it as an "observed producer" would
+      only prove the test agrees with itself. Leg 2 is therefore left
+      unevaluated and the edge classifies SHAPE_ONLY. The CONSUMER side is
+      fully observed: the real `ModelEventEnvelope` parse of those bytes, on
+      the topic read out of node_delegation_orchestrator's real contract.yaml.
     golden_module: tests/seam_goldens/test_s1_s2_delegation_round_trip.py
     rationale: >-
       The delegation command leg of the receipt's item-4 round trip. The cloud
@@ -71,6 +111,20 @@ edges:
     registry_classification: MATCHED
     registry_severity: none
     producer_symbol_reachable: true
+    consumer_symbol_reachable: false
+    observation_class: SHAPE_ONLY
+    observation_note: >-
+      PRODUCER OBSERVED, CONSUMER UNOBSERVABLE. The producing side is real
+      product code in this repo and the golden now drives it end to end:
+      DispatcherQualityGateResult mints the terminal ModelEventEnvelope and
+      publishes it to TOPIC_ID_DELEGATION_COMPLETED, and the observed producer
+      projection is built from those published bytes after a serialize /
+      re-parse cycle. (The first cut asserted this leg against
+      `harness.local_typed_envelope`, a model the test constructed itself; that
+      is what "producer_symbol_reachable: true" was silently standing in for.)
+      The CONSUMING side is the cloud terminal consumer / projection service,
+      which is not in this repo's dependency closure, so leg 3 stays
+      unevaluated and the edge classifies SHAPE_ONLY.
     golden_module: tests/seam_goldens/test_s1_s2_delegation_round_trip.py
     rationale: >-
       The return leg of the item-4 round trip — "the same customer path back".
@@ -85,7 +139,16 @@ edges:
     traversed: true
     registry_classification: MATCHED_UNTESTED
     registry_severity: high
-    producer_symbol_reachable: true
+    producer_symbol_reachable: false
+    consumer_symbol_reachable: true
+    observation_class: SHAPE_ONLY
+    observation_note: >-
+      PRODUCER UNOBSERVABLE — same cloud onex-api publisher as S1, and the
+      registry's own producer_shape says so ("hand-rolled dict literal"). The
+      CONSUMER side is fully observed: the real
+      `ServiceGatewayForwarder.decode_message` parse, with field presence
+      decided against the raw JSON body so a producer that stops emitting
+      correlation_id reads as absent rather than as a defaulted None.
     golden_module: tests/seam_goldens/test_s4_s5_wire_body_and_tenant_tags.py
     rationale: >-
       Carries the payload for the S1 forward leg through the ingress/bridge.
@@ -100,7 +163,15 @@ edges:
     traversed: true
     registry_classification: MATCHED_UNTESTED
     registry_severity: medium
-    producer_symbol_reachable: true
+    producer_symbol_reachable: false
+    consumer_symbol_reachable: true
+    observation_class: SHAPE_ONLY
+    observation_note: >-
+      PRODUCER UNOBSERVABLE — the tenant-attribution tags are authored by the
+      same out-of-closure cloud publisher as S1/S4. The CONSUMER side is fully
+      observed: the tag mapping the real `decode_message` parse yields, plus
+      the real `validate_inbound_message` gate driven in both the accept and
+      the reject direction.
     golden_module: tests/seam_goldens/test_s4_s5_wire_body_and_tenant_tags.py
     rationale: >-
       The tenant-attribution gate on the same forward leg as S4, inside the
@@ -117,6 +188,16 @@ edges:
     registry_classification: MATCHED_UNTESTED
     registry_severity: low
     producer_symbol_reachable: true
+    consumer_symbol_reachable: true
+    observation_class: REGENERABLE
+    observation_note: >-
+      Both sides observable from artifacts this suite did not author. PRODUCER:
+      the `contract.yaml` packaged inside the pinned omnibase_infra wheel — its
+      declared `input_model`, its `contract_version`, and its `mirror_topics`
+      are read from the file and the named class is resolved by import, so a
+      contract that renames its IO model or drops a mirror topic diverges here.
+      CONSUMER: the ModelGatewayEnvelope that `HandlerConsumeInbound.handle()`
+      actually returns when driven through its real dispatch entrypoint.
     golden_module: tests/seam_goldens/test_s6_contract_handler_dispatch.py
     rationale: >-
       This is the ingress/bridge component named in the Milestone-B hop
@@ -135,6 +216,16 @@ edges:
     registry_classification: MATCHED
     registry_severity: none
     producer_symbol_reachable: true
+    consumer_symbol_reachable: true
+    observation_class: REGENERABLE
+    observation_note: >-
+      Both sides observable, and from two INDEPENDENT sources — which is what
+      makes this edge's match non-circular. PRODUCER: the topic
+      `ServiceGatewayForwarder` actually republished to, read off the captured
+      publish. CONSUMER: the topic string read out of
+      node_delegation_orchestrator's real contract.yaml subscribe_topics.
+      Neither file imports the other, so a rename on either side breaks the
+      match.
     golden_module: tests/seam_goldens/test_s10_mirror_topics_local_dispatch.py
     rationale: >-
       The processing hop's local dispatch fan-in/fan-out, both directions
@@ -150,6 +241,15 @@ edges:
     registry_classification: MATCHED_UNTESTED
     registry_severity: medium
     producer_symbol_reachable: true
+    consumer_symbol_reachable: true
+    observation_class: REGENERABLE
+    observation_note: >-
+      Both sides observable. PRODUCER: the stamped payload mapping the real
+      gateway ingress hop published to the local bus (not the helper called
+      directly) — the model identity recorded for it is DEMONSTRATED by
+      validating that exact mapping, never asserted. CONSUMER: the real
+      ModelDelegateSkillRequest instance that validation produced, on the topic
+      resolved from node_delegation_orchestrator's real contract.yaml.
     golden_module: tests/seam_goldens/test_s11_tenant_stamp_consumer.py
     rationale: >-
       Part of the local processing step immediately preceding node dispatch:
@@ -164,6 +264,15 @@ edges:
     registry_classification: MATCHED
     registry_severity: none
     producer_symbol_reachable: true
+    consumer_symbol_reachable: true
+    observation_class: REGENERABLE
+    observation_note: >-
+      Both sides observable through genuinely different code paths. PRODUCER: a
+      ModelDispatchRoute built through omnibase_core's production model under
+      its own `handler_id` name. CONSUMER: a route validated through the
+      INFRA-side `dispatcher_id` alias and then resolved by the real
+      `omnibase_infra.runtime.message_dispatch_engine._get_route_dispatcher_id`
+      shim — so the two projections are not two readings of one object.
     golden_module: tests/seam_goldens/test_s12_dispatch_route_identity.py
     rationale: >-
       The dispatch-routing identity seam inside the processing hop. The
@@ -191,6 +300,16 @@ edges:
     registry_classification: MATCHED_UNTESTED
     registry_severity: medium
     producer_symbol_reachable: true
+    consumer_symbol_reachable: true
+    observation_class: REGENERABLE
+    observation_note: >-
+      Both sides observable, and this is the edge where the declared/observed
+      split has the most teeth. DECLARED is the pinned literal
+      "ONEX_MULTI_EVENT_PUBLISH_SEAM"; OBSERVED is the constant actually
+      imported from each runtime — `omnibase_core.runtime.runtime_local_adapter`
+      for the producer, `omnibase_infra.runtime.auto_wiring.handler_wiring` for
+      the consumer. Renaming the literal on either side alone flips that side's
+      leg red, which is exactly the defect no per-side unit suite can see.
     golden_module: tests/seam_goldens/test_s13_multi_event_publish_flag.py
     rationale: >-
       Gates whether the completion leg (S2) may publish multiple correlated
@@ -206,6 +325,15 @@ edges:
     registry_classification: UNMATCHED
     registry_severity: high
     producer_symbol_reachable: false
+    consumer_symbol_reachable: false
+    observation_class: NOT_CLAIMED
+    observation_note: >-
+      NEITHER SIDE OBSERVABLE, and the registry agrees — UNMATCHED means there
+      is no second side to compare against, so there is no observed-vs-declared
+      claim to make. Both the MSK topic-provisioning producer and its consumer
+      are cloud-side and out of this repo's dependency closure. The golden
+      asserts the reachable facts (which topic names the local declarations
+      require to exist) and makes no registry-match claim at all.
     golden_module: tests/seam_goldens/test_s3_tenant_topic_provisioning.py
     rationale: >-
       Mandatory under the WS-7 union rule (severity=high, one of only three
@@ -224,6 +352,15 @@ edges:
     registry_classification: UNMATCHED
     registry_severity: high
     producer_symbol_reachable: true
+    consumer_symbol_reachable: false
+    observation_class: NOT_CLAIMED
+    observation_note: >-
+      CONSUMER DOES NOT EXIST — that absence IS the defect this edge records.
+      The packaged contract declares four required @ref pins (producer side,
+      fully observable in the wheel) and no resolver anywhere consumes them;
+      the deployed YAML hardcodes literals instead. UNMATCHED has no second
+      side, so the golden asserts the declared pins against the real contract
+      and makes no observed-vs-declared claim.
     golden_module: tests/seam_goldens/test_s7_cloud_ref_pins.py
     rationale: >-
       Mandatory under the WS-7 union rule (severity=high). Also plausibly
@@ -241,6 +378,16 @@ edges:
     registry_classification: MISMATCH
     registry_severity: medium
     producer_symbol_reachable: true
+    consumer_symbol_reachable: true
+    observation_class: NOT_CLAIMED
+    observation_note: >-
+      BOTH SIDES OBSERVABLE BUT THERE IS NO SINGLE DECLARED SHAPE TO OBSERVE
+      AGAINST. The registry records MISMATCH, and the classifier's own rule is
+      that a leg-1 mismatch makes observed-vs-declared meaningless — there is
+      not one declared shape, there are two that disagree. The golden asserts
+      the measured loopback (the process subscribes to the heartbeat it itself
+      publishes) directly against the packaged mirror_topics sets and makes no
+      registry-match claim.
     golden_module: tests/seam_goldens/test_s9_heartbeat_loopback.py
     rationale: >-
       Heartbeat continuity is required by the receipt's credential-lifecycle
@@ -257,6 +404,7 @@ edges:
     registry_classification: UNMATCHED
     registry_severity: medium
     producer_symbol_reachable: true
+    consumer_symbol_reachable: true
     golden_module: null
     exclusion_reason: >-
       Not on the real business path despite superficially sounding like an
@@ -274,6 +422,7 @@ edges:
     registry_classification: UNMATCHED
     registry_severity: low
     producer_symbol_reachable: false
+    consumer_symbol_reachable: false
     golden_module: null
     exclusion_reason: >-
       Describes a different "local runtime" — an end-customer-facing
@@ -293,6 +442,7 @@ edges:
     registry_classification: UNMATCHED
     registry_severity: medium
     producer_symbol_reachable: false
+    consumer_symbol_reachable: false
     golden_module: null
     exclusion_reason: >-
       Paired edge-client-config seam to S14 and excluded for the same reason.

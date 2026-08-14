@@ -27,9 +27,11 @@ asserts the positive form: the live seam matches AND the registry now agrees.
 
 The row is MATCHED rather than MATCHED_UNTESTED precisely because this module
 exists — the legend reserves MATCHED_UNTESTED for agreement that nothing
-mechanically enforces. It is still not ``regenerable``: the match run here
-compares projections this test constructs, not live observed projections from
-a real ``node_seam_match_compute`` three-leg run.
+mechanically enforces. The edge is ``REGENERABLE`` in
+``slice_manifest.yaml``: both observed legs are driven through genuinely
+different code paths — the producer through core's own ``handler_id`` field,
+the consumer through infra's ``dispatcher_id`` alias read by the real shim —
+rather than from one shared object or a restatement of the declaration.
 """
 
 from __future__ import annotations
@@ -40,8 +42,14 @@ from omnibase_core.models.dispatch.model_dispatch_route import ModelDispatchRout
 from omnibase_infra.runtime.message_dispatch_engine import _get_route_dispatcher_id
 
 from tests.seam_goldens.harness import (
+    UNVERSIONED_MODEL,
+    EnumSeamProjectionRole,
     assert_correlation_preserved,
+    assert_regenerable,
     consumer_projection,
+    model_identity,
+    observed_projection_from_instance,
+    observed_projection_from_mapping,
     producer_projection,
     registry_classification,
     run_registry_match,
@@ -52,6 +60,32 @@ pytestmark = pytest.mark.unit
 
 _HANDLER_ID = "delegation-command-handler"
 _TOPIC = "onex.cmd.omnibase-infra.delegation-request.v1"
+
+# ``ModelDispatchRoute`` declares no wire version, so the projection records
+# that rather than a made-up "1.0.0" — see harness.UNVERSIONED_MODEL.
+_S12_DECLARED_MODEL = (
+    "omnibase_core.models.dispatch.model_dispatch_route.ModelDispatchRoute"
+)
+_S12_KEY_FIELDS: tuple[tuple[str, str], ...] = (("handler_id", "str"),)
+
+
+def _alias_named_route() -> ModelDispatchRoute:
+    """A route validated through INFRA's field name, not core's.
+
+    This is what makes the S12 observation two-sided rather than two readings
+    of one object: the producer projection comes from a route built with
+    ``handler_id``, the consumer projection from a route that entered through
+    the ``dispatcher_id`` alias and was then resolved by the real infra shim.
+    """
+
+    return ModelDispatchRoute.model_validate(
+        {
+            "route_id": "delegation-commands",
+            "topic_pattern": _TOPIC,
+            "message_category": EnumMessageCategory.COMMAND,
+            "dispatcher_id": _HANDLER_ID,
+        }
+    )
 
 
 def _core_route(handler_id: str = _HANDLER_ID) -> ModelDispatchRoute:
@@ -162,48 +196,117 @@ class TestRegistryRowAgreesWithTheLiveSymbols:
         assert registry_classification("S12") == "MATCHED"
 
     def test_the_live_seam_matches_and_the_record_agrees(self) -> None:
-        """Both observed sides are the SAME identity, so leg 1 passes.
+        """Both observed sides resolve to one identity, so leg 1 passes.
 
-        The projections here are derived from what the goldens above actually
-        drove — one identity readable under either name — rather than from the
-        registry's prose. That is what makes this a measurement rather than a
-        restatement of the row.
+        The two observed projections come from two different code paths, not
+        from the declaration and not from one shared object: the producer from
+        a ``ModelDispatchRoute`` built through core's own ``handler_id`` field,
+        the consumer from a route that entered through infra's ``dispatcher_id``
+        alias and was then read by the real
+        ``_get_route_dispatcher_id`` shim. If core dropped the alias, or the
+        shim stopped resolving, the consumer leg goes red here — which the
+        previous ``observed=declared`` form could not detect.
         """
 
         declared_producer = producer_projection(
             edge_id="S12",
             topic=_TOPIC,
-            envelope_model=(
-                "omnibase_core.models.dispatch.model_dispatch_route.ModelDispatchRoute"
-            ),
-            envelope_version="1.0.0",
-            key_fields=(("handler_id", "str"),),
+            envelope_model=_S12_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
+            key_fields=_S12_KEY_FIELDS,
         )
         declared_consumer = consumer_projection(
             edge_id="S12",
             topic=_TOPIC,
-            envelope_model=(
-                "omnibase_core.models.dispatch.model_dispatch_route.ModelDispatchRoute"
-            ),
-            envelope_version="1.0.0",
-            key_fields=(("handler_id", "str"),),
+            envelope_model=_S12_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
+            key_fields=_S12_KEY_FIELDS,
         )
+
+        core_named_route = _core_route()
+        alias_named_route = _alias_named_route()
+        resolved_identity = _get_route_dispatcher_id(alias_named_route)
 
         verdict = run_registry_match(
             edge_id="S12",
             declared_producer=declared_producer,
             declared_consumer=declared_consumer,
-            observed_producer=declared_producer,
-            observed_consumer=declared_consumer,
+            observed_producer=observed_projection_from_instance(
+                edge_id="S12",
+                role=EnumSeamProjectionRole.PRODUCER,
+                topic=core_named_route.topic_pattern,
+                instance=core_named_route,
+                field_names=("handler_id",),
+            ),
+            observed_consumer=observed_projection_from_mapping(
+                edge_id="S12",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=alias_named_route.topic_pattern,
+                mapping={"handler_id": resolved_identity},
+                field_names=("handler_id",),
+                envelope_model=model_identity(type(alias_named_route)),
+            ),
         )
 
         assert verdict.verdict.value == "MATCHED"
-        assert verdict.regenerability.value == "REGENERABLE"
+        assert_regenerable("S12", verdict)
         # Convergence, stated as an assertion rather than a comment: the
         # measured verdict and the recorded row agree. This is the inverse of
         # the `!=` drift pin this module originally carried, and it now fails
         # if the registry regresses to MISMATCH.
         assert verdict.verdict.value == registry_classification("S12")
+
+    def test_a_consumer_that_resolved_nothing_would_fail_the_observed_leg(
+        self,
+    ) -> None:
+        """Negative control on leg 3 specifically.
+
+        The failure this edge exists to catch is the shim resolving to a
+        different or empty identity while both declarations still look aligned.
+        Observing a ``None`` resolution turns the consumer key field's type from
+        ``str`` to ``NoneType`` and reddens leg 3 alone.
+        """
+
+        declared_producer = producer_projection(
+            edge_id="S12",
+            topic=_TOPIC,
+            envelope_model=_S12_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
+            key_fields=_S12_KEY_FIELDS,
+        )
+        declared_consumer = consumer_projection(
+            edge_id="S12",
+            topic=_TOPIC,
+            envelope_model=_S12_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
+            key_fields=_S12_KEY_FIELDS,
+        )
+        route = _core_route()
+
+        verdict = run_registry_match(
+            edge_id="S12",
+            declared_producer=declared_producer,
+            declared_consumer=declared_consumer,
+            observed_producer=observed_projection_from_instance(
+                edge_id="S12",
+                role=EnumSeamProjectionRole.PRODUCER,
+                topic=route.topic_pattern,
+                instance=route,
+                field_names=("handler_id",),
+            ),
+            observed_consumer=observed_projection_from_mapping(
+                edge_id="S12",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=route.topic_pattern,
+                mapping={"handler_id": None},
+                field_names=("handler_id",),
+                envelope_model=_S12_DECLARED_MODEL,
+            ),
+        )
+
+        assert verdict.leg2_observed_producer_vs_declared.passed is True
+        assert verdict.leg3_observed_consumer_vs_declared.passed is False
+        assert verdict.regenerability.value == "SHAPE_ONLY"
 
     def test_the_shim_removal_condition_named_in_infra_is_satisfied(self) -> None:
         """State the remediation the drift implies, executably.

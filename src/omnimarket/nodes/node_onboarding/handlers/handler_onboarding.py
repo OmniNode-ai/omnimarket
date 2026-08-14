@@ -1,10 +1,21 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Compute handler for node_onboarding (OMN-8273).
+"""Compute handler for node_onboarding (OMN-8273, OMN-16039).
 
 Resolves a policy name to target_capabilities, constructs ModelOnboardingInput,
 and delegates to handle_onboarding via await.
+
+Two paths, chosen from the resolved policy's ``policy_type``:
+
+- **interactive** — ``policy_name`` plus the output paths are forwarded and an
+  ``AdapterCliInput`` is injected as ``input_adapter``, which is what routes
+  upstream into ``_handle_interactive`` / ``InteractiveExecutor``.
+- **DAG** (everything else) — ``policy_name`` is deliberately left ``None`` on
+  ``ModelOnboardingInput``. Upstream ``handle_onboarding`` branches on
+  ``policy_name is not None``, *not* on ``policy_type``, so forwarding it for a
+  DAG policy would silently reroute every ordinary run into the interactive
+  executor.
 
 Architecture note:
     This handler wraps the omnibase_infra onboarding library and orchestrator
@@ -26,6 +37,7 @@ from omnibase_infra.nodes.node_onboarding_orchestrator.models.model_onboarding_i
 from omnibase_infra.nodes.node_onboarding_orchestrator.models.model_onboarding_output import (
     ModelOnboardingOutput,
 )
+from omnibase_infra.onboarding.adapter_cli_input import AdapterCliInput
 from omnibase_infra.onboarding.loader import load_canonical_graph
 from omnibase_infra.onboarding.policy_resolver import (
     load_builtin_policies,
@@ -60,6 +72,17 @@ def _load_local_policies() -> dict[str, dict[str, Any]]:
     return result
 
 
+def _resolve_policies() -> dict[str, dict[str, Any]]:
+    """Merge upstream + local fallback policies; local takes precedence.
+
+    A yaml shipped with this node can fill gaps in older omnibase_infra
+    wheels (see the OMN-8270 removal note above).
+    """
+    policies: dict[str, dict[str, Any]] = dict(load_builtin_policies())
+    policies.update(_load_local_policies())
+    return policies
+
+
 class HandlerOnboarding:
     """Compute handler for node_onboarding.
 
@@ -80,19 +103,37 @@ class HandlerOnboarding:
         Raises:
             ValueError: If policy_name is not found in builtin policies.
         """
+        policies = _resolve_policies()
+        policy_data = policies.get(command.policy_name)
+
         # Resolve target capabilities
         target_capabilities = list(command.target_capabilities)
         if not target_capabilities:
-            # Merge upstream + local fallback policies; local takes precedence
-            # so a yaml shipped with this node can fill gaps in older
-            # omnibase_infra wheels (see OMN-8270 removal note above).
-            policies: dict[str, dict[str, Any]] = dict(load_builtin_policies())
-            policies.update(_load_local_policies())
-            policy_data = policies.get(command.policy_name)
             if policy_data is None:
                 msg = f"Unknown policy: {command.policy_name!r}. Available: {sorted(policies)}"
                 raise ValueError(msg)
             target_capabilities = list(policy_data["target_capabilities"])
+
+        # Interactive path: forward policy_name + output paths and inject the
+        # CLI adapter. This is the only thing that makes the upstream
+        # interactive executor reachable — see the module docstring.
+        if policy_data is not None and policy_data.get("policy_type") == "interactive":
+            interactive_input = ModelOnboardingInput(
+                policy_name=command.policy_name,
+                target_capabilities=target_capabilities,
+                skip_steps=command.skip_steps or [],
+                continue_on_failure=command.continue_on_failure,
+                dry_run=command.dry_run,
+                env_output_path=command.env_output_path,
+                overlay_output_path=command.overlay_output_path,
+            )
+            interactive_output = cast(
+                ModelOnboardingOutput,
+                await handle_onboarding(
+                    interactive_input, input_adapter=AdapterCliInput()
+                ),
+            )
+            return cast(dict[str, Any], interactive_output.model_dump())
 
         # Dry-run: resolve and print plan without executing verifications
         if command.dry_run:

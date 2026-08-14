@@ -26,10 +26,20 @@ golden asserts the property that must hold either way and that catches the
 real risk: the two implementations of the transform must agree byte for byte.
 If infra later lands the delegation, this parity holds trivially. If they
 drift, the seam breaks here instead of in production.
+
+S6 is one of the five edges that classify ``REGENERABLE``, and it earns that
+from two genuinely independent artifacts. The observed PRODUCER is read out of
+the ``contract.yaml`` packaged inside the pinned wheel — its declared
+``input_model`` is resolved by import and its field types come from that
+class's own annotations, on the mirror topic that same file declares. The
+observed CONSUMER is the ``ModelGatewayEnvelope`` ``HandlerConsumeInbound``
+actually returned from a real dispatch. A contract that renames its IO model
+reddens leg 2; a handler that stops stripping the prefix reddens leg 3.
 """
 
 from __future__ import annotations
 
+import importlib
 import inspect
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -59,15 +69,23 @@ from tests.seam_goldens.harness import (
     GATEWAY_PRINCIPAL_ID,
     GATEWAY_TENANT_ID,
     GATEWAY_TENANT_SLUG,
+    UNVERSIONED_MODEL,
     BusMessage,
+    EnumSeamProjectionRole,
     RecordingPublisher,
     assert_correlation_preserved,
+    assert_regenerable,
     assert_registry_classification,
     build_forwarder_config,
     cloud_hand_rolled_envelope_json,
     consumer_projection,
+    gateway_contract_version,
+    gateway_mirror_topics,
     load_gateway_contract,
     local_typed_envelope,
+    model_identity,
+    observed_projection_from_instance,
+    observed_projection_from_model_class,
     producer_projection,
     run_registry_match,
 )
@@ -88,6 +106,55 @@ _S6_KEY_FIELDS: tuple[tuple[str, str], ...] = (
     ("canonical_topic", "str"),
     ("wire_topic", "str"),
 )
+
+# ``ModelGatewayEnvelope`` declares no wire version field. The projection
+# records that (harness.UNVERSIONED_MODEL) instead of a fabricated semver; the
+# packaged contract's own ``contract_version`` is pinned separately below,
+# where it is a real assertion rather than a decoration on a projection.
+_S6_DECLARED_MODEL = (
+    "omnibase_infra.nodes.node_bus_forwarder_effect.models."
+    "model_gateway_envelope.ModelGatewayEnvelope"
+)
+_EXPECTED_CONTRACT_VERSION = "0.1.0"
+
+
+def _contract_declared_input_model() -> type[object]:
+    """Import the IO model class the PACKAGED contract names.
+
+    The S6 producer is a declaration, not a message, so this is what observing
+    it means: read ``input_model.module`` / ``input_model.name`` out of the
+    contract shipped in the wheel and resolve them. A contract that renames its
+    IO model, or names a class that no longer exists, fails right here rather
+    than at runtime.
+    """
+
+    input_model = load_gateway_contract()["input_model"]
+    if not isinstance(input_model, dict):
+        raise TypeError("gateway contract input_model block is not a mapping")
+    module = importlib.import_module(str(input_model["module"]))
+    resolved = getattr(module, str(input_model["name"]))
+    if not isinstance(resolved, type):
+        raise TypeError(
+            f"gateway contract input_model {input_model['name']!r} did not "
+            f"resolve to a class"
+        )
+    return resolved
+
+
+def _contract_declared_inbound_topic() -> str:
+    """The inbound mirror topic string, read from the packaged contract."""
+
+    declared = [
+        topic
+        for topic in gateway_mirror_topics().inbound
+        if "delegation-request.v1" in topic
+    ]
+    if len(declared) != 1:
+        raise AssertionError(
+            f"packaged gateway contract declares {len(declared)} inbound "
+            f"delegation-request mirror topics, expected exactly one: {declared}"
+        )
+    return str(declared[0])
 
 
 @pytest.fixture
@@ -395,25 +462,61 @@ class TestHandlerAndLiveServiceAgree:
 
 
 class TestS6RegistryMatch:
-    def test_registry_match_is_regenerable_for_the_driven_handlers(self) -> None:
+    def test_packaged_contract_version_is_pinned(self) -> None:
+        """A wheel bump that moves the contract version is a decision.
+
+        Kept as its own assertion rather than folded into the projection: the
+        gateway envelope carries no wire version, so putting a semver on the
+        projection would have been decoration. Here it is a real check against
+        the packaged file.
+        """
+
+        assert gateway_contract_version() == _EXPECTED_CONTRACT_VERSION
+
+    async def test_registry_match_is_regenerable_for_the_driven_handlers(
+        self, config: ModelGatewayForwarderConfig
+    ) -> None:
+        """Producer observed from the packaged contract; consumer from a real run.
+
+        PRODUCER: the ``input_model`` class the contract inside the pinned
+        omnibase_infra wheel names, resolved by import, with its field types
+        read off the class's own annotations, on the mirror topic that same
+        contract declares. Nothing here is authored by this test.
+
+        CONSUMER: the ``ModelGatewayEnvelope`` that ``HandlerConsumeInbound``
+        actually returned when driven through its real dispatch entrypoint, on
+        the canonical topic that handler actually produced.
+
+        The two are derived from different artifacts — a YAML declaration and a
+        handler return value — so a handler that stopped stripping the prefix,
+        or a contract that renamed its IO model, breaks exactly one leg.
+        """
+
+        correlation_id = uuid4()
+        output = await HandlerConsumeInbound(config).handle(
+            _dispatched_dict(
+                _gateway_envelope(
+                    correlation_id=correlation_id,
+                    canonical_topic=_INBOUND_TOPIC,
+                    wire_topic=_INBOUND_WIRE,
+                    source_topic=_INBOUND_WIRE,
+                )
+            )
+        )
+        assert output.result is not None
+
         declared_producer = producer_projection(
             edge_id="S6",
             topic=_INBOUND_TOPIC,
-            envelope_model=(
-                "omnibase_infra.nodes.node_bus_forwarder_effect.models."
-                "model_gateway_envelope.ModelGatewayEnvelope"
-            ),
-            envelope_version="0.1.0",
+            envelope_model=_S6_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
             key_fields=_S6_KEY_FIELDS,
         )
         declared_consumer = consumer_projection(
             edge_id="S6",
             topic=_INBOUND_TOPIC,
-            envelope_model=(
-                "omnibase_infra.nodes.node_bus_forwarder_effect.models."
-                "model_gateway_envelope.ModelGatewayEnvelope"
-            ),
-            envelope_version="0.1.0",
+            envelope_model=_S6_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
             key_fields=_S6_KEY_FIELDS,
         )
 
@@ -421,9 +524,90 @@ class TestS6RegistryMatch:
             edge_id="S6",
             declared_producer=declared_producer,
             declared_consumer=declared_consumer,
-            observed_producer=declared_producer,
-            observed_consumer=declared_consumer,
+            observed_producer=observed_projection_from_model_class(
+                edge_id="S6",
+                role=EnumSeamProjectionRole.PRODUCER,
+                topic=_contract_declared_inbound_topic(),
+                model_cls=_contract_declared_input_model(),
+                field_names=tuple(name for name, _ in _S6_KEY_FIELDS),
+            ),
+            observed_consumer=observed_projection_from_instance(
+                edge_id="S6",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=output.result.canonical_topic,
+                instance=output.result,
+                field_names=tuple(name for name, _ in _S6_KEY_FIELDS),
+            ),
         )
 
         assert_registry_classification("S6", verdict)
-        assert verdict.regenerability.value == "REGENERABLE"
+        assert_regenerable("S6", verdict)
+
+    def test_the_observed_producer_is_the_contract_not_this_module(self) -> None:
+        """Prove the producer observation actually reads the wheel.
+
+        Without this, "observed from the packaged contract" is a claim in a
+        docstring. The resolved class must be the real
+        ``ModelGatewayEnvelope`` the handlers transform, reached by importing
+        the module path the contract names.
+        """
+
+        resolved = _contract_declared_input_model()
+
+        assert resolved is ModelGatewayEnvelope
+        assert model_identity(resolved) == _S6_DECLARED_MODEL
+        assert _contract_declared_inbound_topic() == _INBOUND_TOPIC
+
+    async def test_a_handler_that_stopped_stripping_reddens_the_consumer_leg(
+        self, config: ModelGatewayForwarderConfig
+    ) -> None:
+        """Negative control on leg 3: observe the outbound handler instead.
+
+        ``HandlerForwardOutbound`` legitimately produces the tenant-prefixed
+        wire topic. Projecting its result against the inbound declaration is
+        the shape a consume-side prefix-strip regression would take, and it
+        must redden leg 3 rather than pass on envelope-model similarity.
+        """
+
+        output = await HandlerForwardOutbound(config).handle(
+            _dispatched_dict(
+                _gateway_envelope(
+                    correlation_id=uuid4(),
+                    canonical_topic=_OUTBOUND_TOPIC,
+                    wire_topic=_OUTBOUND_WIRE,
+                    source_topic=_OUTBOUND_TOPIC,
+                    payload={"status": "completed"},
+                )
+            )
+        )
+        assert output.result is not None
+
+        verdict = run_registry_match(
+            edge_id="S6",
+            declared_producer=producer_projection(
+                edge_id="S6",
+                topic=_INBOUND_TOPIC,
+                envelope_model=_S6_DECLARED_MODEL,
+                envelope_version=UNVERSIONED_MODEL,
+                key_fields=_S6_KEY_FIELDS,
+            ),
+            declared_consumer=consumer_projection(
+                edge_id="S6",
+                topic=_INBOUND_TOPIC,
+                envelope_model=_S6_DECLARED_MODEL,
+                envelope_version=UNVERSIONED_MODEL,
+                key_fields=_S6_KEY_FIELDS,
+            ),
+            observed_consumer=observed_projection_from_instance(
+                edge_id="S6",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=output.result.wire_topic,
+                instance=output.result,
+                field_names=tuple(name for name, _ in _S6_KEY_FIELDS),
+            ),
+        )
+
+        assert verdict.leg3_observed_consumer_vs_declared.passed is False
+        assert verdict.leg3_observed_consumer_vs_declared.mismatching_field_path == (
+            "topic"
+        )
