@@ -764,3 +764,21 @@ external_producers:
   onex.evt.onex-change-control.cosmetic-compliance-scored.v1: "published by onex_change_control/OCC governance automation outside the checked node-contract corpus — OMN-15006"
   onex.evt.onex-change-control.governance-check-completed.v1: "published by onex_change_control/OCC governance automation outside the checked node-contract corpus — OMN-15006"
   onex.evt.steel-onslaught.match-terminal.v1: "published by private steel_onslaught Kafka forwarder outside the OmniNode contract corpus — OMN-15168"
+  # OMN-16077: the 0.38.6 infra pin brings in node_gateway_attach_effect
+  # (OMN-15750, gateway node-architecture lift G6). Its three command topics
+  # are published by the gateway ingress (onex-api in private omninode_infra)
+  # forwarding tenant-edge attach/heartbeat/detach requests onto the bus —
+  # an external, non-contract publisher outside the checked corpus, same
+  # class as the omniclaude raw-hook publishers above.
+  onex.cmd.omnibase-infra.gateway-attach-request.v1: "published by the onex-api gateway ingress (private omninode_infra) forwarding tenant-edge attach requests — OMN-16077"
+  onex.cmd.omnibase-infra.gateway-detach-request.v1: "published by the onex-api gateway ingress (private omninode_infra) forwarding tenant-edge detach requests — OMN-16077"
+  onex.cmd.omnibase-infra.gateway-heartbeat-request.v1: "published by the onex-api gateway ingress (private omninode_infra) forwarding tenant-edge heartbeat requests — OMN-16077"
+external_consumers:
+  # OMN-16077: session lifecycle events from node_gateway_attach_effect are
+  # consumed by the onex-api gateway_sessions projection (private
+  # omninode_infra — the tolerant-window consumer shipped in its PR #907),
+  # outside the checked contract corpus. The producing contract is PINNED
+  # (0.38.6 wheel), so its externally_consumed_topics cannot be amended from
+  # this repo; this declaration is the consume-side mirror of
+  # external_producers for exactly that case.
+  onex.evt.omnibase-infra.gateway-session.v1: "consumed by the onex-api gateway_sessions projection (private omninode_infra) — OMN-16077"

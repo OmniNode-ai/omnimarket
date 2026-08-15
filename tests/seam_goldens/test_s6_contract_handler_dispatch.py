@@ -1,56 +1,45 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""S6 — the contract -> handler seam at the ingress/bridge, scored at the pin.
+"""S6 — the contract -> handler seam at the ingress/bridge, both directions.
 
-The registry classifies S6 ``UNMATCHED`` / severity ``high``, re-scored
-2026-08-14 under the seam graph's ``tracing_convention`` A (``PINNED_REF``,
-OMN-16033): an edge is measured against the ``omnibase_infra`` revision this
-repo actually resolves — ``b6bd79c34`` — not that repo's upstream HEAD. The
-delegation commit that made this edge look matched (``642e60a87``) is not an
-ancestor of the pin, and both trees report version ``0.38.4``, which is why the
-staleness was invisible. This module is the executable half of that finding.
+S6 is the component the Milestone-B hop sequence names as the ingress/bridge,
+and the receipt's round trip traverses it twice: ``gateway.consume_inbound`` on
+the way in and ``gateway.forward_outbound`` on the way back. Both handlers are
+driven through their real dispatch entrypoint — ``handle()`` with the outer
+envelope delivered as a raw ``dict``, which is the shape the runtime dispatcher
+genuinely passes (the OMN-13580 coercion path) rather than the convenience
+typed form.
 
-What the pin actually contains, and what these goldens drive:
+Correlation preservation here is not incidental: ``handle()`` returns a
+``ModelHandlerOutput`` whose ``correlation_id`` is contractually "copied from
+the input envelope", so the goldens assert that copy actually happens in both
+directions.
 
-* The PRODUCER side is real and observable. The ``contract.yaml`` packaged
-  inside the pinned wheel declares both COMPUTE operations
-  (``gateway.forward_outbound`` / ``gateway.consume_inbound``) and names
-  ``ModelGatewayEnvelope`` as its IO model. The goldens read that file and
-  resolve the named classes by import, so a contract that renames its IO model
-  or drops a mirror topic fails here.
-* Both handlers really work when driven — through their genuine dispatch
-  entrypoint, ``handle()`` with the outer envelope delivered as a raw ``dict``
-  (the OMN-13580 coercion path), not the convenience typed form. Correlation
-  preservation is asserted in both directions because ``handle()`` contractually
-  copies ``correlation_id`` from the input envelope.
-* The CONSUMER side does not exist. Nothing in the executing path dispatches
-  either declared operation: ``runtime/gateway_forwarder.py`` constructs
-  ``ServiceGatewayForwarder`` directly, and that service re-derives the
-  tenant-prefix transform locally without importing either handler class.
-  ``test_pinned_infra_does_not_delegate_to_the_contract_handlers`` pins exactly
-  that, and it is the positive evidence for the ``UNMATCHED`` row rather than a
-  divergence from it.
+A note on the consumer side, re-scored at the pin (OMN-16077). The registry
+records S6's consumer shape as ``ServiceGatewayForwarder._prepare_outbound`` /
+``_prepare_inbound`` delegating to these contract-declared handlers. At the
+``omnibase_infra`` rev this repo now resolves — ``94247acff``, which has the
+OMN-15740 delegation commit ``642e60a87`` as an ancestor — that delegation is
+real: the executing service imports and constructs both handler classes and
+routes the tenant-prefix transform through them. This restores the pre-
+OMN-16033 scoring, whose ``UNMATCHED`` verdict was specific to the earlier
+``b6bd79c34`` pin that predated the delegation. The golden still asserts the
+transform-parity property directly, because it is the property whose
+violation is the outage regardless of which implementation runs.
 
-So the edge is ``NOT_CLAIMED`` in ``slice_manifest.yaml``: an ``UNMATCHED``
-edge has no second side, so this module supplies no observed projection at all
-(``test_no_tautological_observations`` enforces that a NOT_CLAIMED-only module
-never does). The registry-match leg is driven with ``declared_consumer=None``,
-the faithful encoding of "there is no consumer", and must reproduce
-``UNMATCHED``.
-
-What the goldens still assert positively is the property whose violation is the
-actual outage: the two independent implementations of the tenant-prefix
-transform — the contract-declared handlers and the executing service — must
-produce the same canonical/wire topic and stamp the same verified tenant. If
-infra lands the delegation AND this repo moves the pin past ``642e60a87``, the
-non-delegation pin fails first; that failure is the signal to re-score the row,
-not to delete the assertion.
+S6 is one of the five edges that classify ``REGENERABLE``, and it earns that
+from two genuinely independent artifacts. The observed PRODUCER is read out of
+the ``contract.yaml`` packaged inside the pinned wheel — its declared
+``input_model`` is resolved by import and its field types come from that
+class's own annotations, on the mirror topic that same file declares. The
+observed CONSUMER is the ``ModelGatewayEnvelope`` ``HandlerConsumeInbound``
+actually returned from a real dispatch. A contract that renames its IO model
+reddens leg 2; a handler that stops stripping the prefix reddens leg 3.
 """
 
 from __future__ import annotations
 
 import importlib
-import inspect
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -81,24 +70,25 @@ from tests.seam_goldens.harness import (
     GATEWAY_TENANT_SLUG,
     UNVERSIONED_MODEL,
     BusMessage,
+    EnumSeamProjectionRole,
     RecordingPublisher,
     assert_correlation_preserved,
+    assert_regenerable,
     assert_registry_classification,
     build_forwarder_config,
     cloud_hand_rolled_envelope_json,
+    consumer_projection,
     gateway_contract_version,
     gateway_mirror_topics,
     load_gateway_contract,
     local_typed_envelope,
     model_identity,
+    observed_projection_from_instance,
+    observed_projection_from_model_class,
     producer_projection,
     run_registry_match,
 )
-from tests.seam_goldens.manifest import (
-    EnumSeamObservationClass,
-    EnumSliceInclusion,
-    slice_edge,
-)
+from tests.seam_goldens.manifest import slice_edge
 
 pytestmark = pytest.mark.unit
 
@@ -124,7 +114,9 @@ _S6_DECLARED_MODEL = (
     "omnibase_infra.nodes.node_bus_forwarder_effect.models."
     "model_gateway_envelope.ModelGatewayEnvelope"
 )
-_EXPECTED_CONTRACT_VERSION = "0.1.0"
+# 0.1.0 -> 0.1.1: the packaged contract gained the contract-declared canary
+# probe block (OMN-15741) in the 0.38.6 wheel this repo pins as of OMN-16077.
+_EXPECTED_CONTRACT_VERSION = "0.1.1"
 
 
 def _contract_declared_input_model() -> type[object]:
@@ -210,37 +202,10 @@ def _dispatched_dict(gateway_envelope: ModelGatewayEnvelope) -> dict[str, object
 class TestContractDeclaresBothOperations:
     """The producer side of S6 is the packaged contract's handler_routing."""
 
-    def test_slice_row_records_the_pinned_scoring(self) -> None:
-        """The frozen row must say what the pin measurement found.
-
-        Read from the manifest rather than restated here, so the golden and the
-        frozen slice cannot drift: the edge covers both declared operations, is
-        mandatory because the registry rates it ``high``, and does NOT claim the
-        Milestone-B receipt traverses it — at the pin nothing dispatches these
-        operations, so the receipt crosses the forwarder component without ever
-        crossing this seam.
-        """
-
+    def test_slice_row_covers_both_directions(self) -> None:
         edge = slice_edge("S6")
-        assert "both declared operations" in edge.leg
-        assert edge.inclusion is EnumSliceInclusion.WS7_MANDATORY_HIGH
-        assert edge.registry_severity == "high"
-        assert not edge.traversed
-
-    def test_slice_row_records_the_consumer_side_as_unobservable(self) -> None:
-        """The entitlement this module is allowed to claim, bound to the manifest.
-
-        ``UNMATCHED`` means one side was never found. The manifest records that
-        as ``consumer_symbol_reachable: false`` / ``NOT_CLAIMED``; asserting it
-        through the loader (not as a literal in this file) is what stops a
-        future edit from quietly re-upgrading the claim while the seam is still
-        one-sided.
-        """
-
-        edge = slice_edge("S6")
-        assert edge.producer_symbol_reachable
-        assert not edge.consumer_symbol_reachable
-        assert edge.observation_class is EnumSeamObservationClass.NOT_CLAIMED
+        assert edge.traversed
+        assert "both directions" in edge.leg
 
     def test_contract_declares_the_two_gateway_operations(self) -> None:
         routing = load_gateway_contract()["handler_routing"]
@@ -367,38 +332,97 @@ class TestForwardOutboundDirection:
 
 
 class TestHandlerAndLiveServiceAgree:
-    """The evidence for ``UNMATCHED``, plus the parity property that must hold.
+    """The parity assertion, plus the delegation pin that keeps the row honest.
 
-    See the module docstring: at the pinned ``omnibase_infra`` rev the
-    contract-declared handlers have no live caller, so this is where that fact
-    is measured rather than asserted in prose — and where the risk it creates
-    (two implementations of one transform, drifting silently) is pinned.
+    See the module docstring: at the pinned rev the registry's claim that the
+    live service delegates to these handlers is TRUE, and the pin below
+    measures it. The parity goldens still pin that the two transform
+    implementations produce the same wire result — the property whose
+    violation is the actual outage.
     """
 
-    def test_pinned_infra_does_not_delegate_to_the_contract_handlers(
-        self,
+    async def test_pinned_infra_delegates_to_the_contract_handlers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Measure the missing consumer side that makes S6 ``UNMATCHED``.
+        """Pin the agreement between the registry row and the wheel.
 
-        The registry row states that the executing surface and the
-        contract-declared surface are two separate implementations, and that
-        nothing invokes the declared operations. The executable form of that
-        claim is this: the module that actually runs in the gateway process
-        never references either handler class, so editing
-        ``HandlerForwardOutbound`` / ``HandlerConsumeInbound`` cannot change
-        what the pinned wheel executes.
+        The registry's S6 ``consumer_shape`` states that
+        ``ServiceGatewayForwarder._prepare_outbound`` / ``_prepare_inbound``
+        "now DELEGATE the tenant-prefix transform to the contract-declared
+        HandlerForwardOutbound/HandlerConsumeInbound COMPUTE handlers rather
+        than re-deriving it locally". Measured against the ``omnibase_infra``
+        rev this repo pins as of OMN-16077 (``94247acff``, which contains the
+        OMN-15740 delegation commit ``642e60a87``), that is true — and this
+        pin measures the INVOCATION, not name presence: spy subclasses are
+        patched over the handler classes in the service module's namespace,
+        both live entrypoints are driven with real bus messages, and each spy
+        must record a call to its transform method (``forward_outbound`` /
+        ``consume_inbound`` — the delegation seam the service actually
+        invokes). A service that reverted to a local re-implementation
+        (leaving the imports as dead references) fails here, which a
+        source-text substring check could not catch.
 
-        This is a measurement, not an endorsement. It fails the moment infra's
-        delegation (``642e60a87``) enters this repo's resolved dependency
-        closure — i.e. when the pin moves past it — and that failure is the
-        intended signal: under ``tracing_convention`` A, moving a pin is a seam
-        event, so re-score the row, re-derive ``seams.v1.yaml``, and only then
-        replace this assertion.
+        This inverts the ``does_not_yet_delegate`` pin that guarded the
+        pre-delegation pins (``b6bd79c34`` and earlier), exactly as that pin's
+        docstring prescribed when it fired. If a future pin move drops the
+        delegation again, this fails — and the registry row must be re-scored
+        before this assertion is touched.
         """
 
-        source = inspect.getsource(forwarder_module)
-        assert "HandlerForwardOutbound" not in source
-        assert "HandlerConsumeInbound" not in source
+        invoked: list[str] = []
+
+        class SpyForwardOutbound(HandlerForwardOutbound):
+            def forward_outbound(self, *args: object, **kwargs: object) -> object:
+                invoked.append("outbound")
+                return super().forward_outbound(*args, **kwargs)
+
+        class SpyConsumeInbound(HandlerConsumeInbound):
+            def consume_inbound(self, *args: object, **kwargs: object) -> object:
+                invoked.append("inbound")
+                return super().consume_inbound(*args, **kwargs)
+
+        monkeypatch.setattr(
+            forwarder_module, "HandlerForwardOutbound", SpyForwardOutbound
+        )
+        monkeypatch.setattr(
+            forwarder_module, "HandlerConsumeInbound", SpyConsumeInbound
+        )
+
+        config = build_forwarder_config(dedupe_store_path=tmp_path / "dedupe.sqlite")
+        service = ServiceGatewayForwarder(
+            config=config,
+            local_bus=RecordingPublisher(),
+            cloud_bus=RecordingPublisher(),
+        )
+
+        await service.forward_outbound_message(
+            BusMessage(
+                topic=_OUTBOUND_TOPIC,
+                value=local_typed_envelope(
+                    envelope_id=uuid4(),
+                    correlation_id=uuid4(),
+                    event_type="omnibase-infra.delegation-completed",
+                    payload={"status": "completed"},
+                )
+                .model_dump_json(exclude_none=True)
+                .encode("utf-8"),
+            )
+        )
+        await service.consume_inbound_message(
+            BusMessage(
+                topic=_INBOUND_WIRE,
+                value=cloud_hand_rolled_envelope_json(
+                    envelope_id=uuid4(),
+                    correlation_id=uuid4(),
+                    event_type="omnibase-infra.delegation-request",
+                    payload={"prompt": "ping", "task_type": "summarization"},
+                    source_tenant_id=str(GATEWAY_TENANT_ID),
+                    source_tenant_principal_id=GATEWAY_PRINCIPAL_ID,
+                ),
+            )
+        )
+
+        assert invoked == ["outbound", "inbound"]
 
     async def test_inbound_transform_parity(self, tmp_path: Path) -> None:
         """Handler and live service must strip to the same canonical topic
@@ -509,64 +533,83 @@ class TestS6RegistryMatch:
 
         assert gateway_contract_version() == _EXPECTED_CONTRACT_VERSION
 
-    def test_registry_match_reports_unmatched(self) -> None:
-        """The live match must reproduce ``UNMATCHED`` — a declared seam, no consumer.
+    async def test_registry_match_is_regenerable_for_the_driven_handlers(
+        self, config: ModelGatewayForwarderConfig
+    ) -> None:
+        """Producer observed from the packaged contract; consumer from a real run.
 
-        ``declared_consumer=None`` is the faithful encoding, and the same shape
-        S3/S7 use: at the pinned rev nothing invokes ``gateway.consume_inbound``
-        or ``gateway.forward_outbound``, so there is no consuming side to
-        project. Synthesising one would manufacture the agreement this row
-        exists to record as absent — and would put this module back in the
-        business of supplying an observation for an edge that has no second
-        side.
+        PRODUCER: the ``input_model`` class the contract inside the pinned
+        omnibase_infra wheel names, resolved by import, with its field types
+        read off the class's own annotations, on the mirror topic that same
+        contract declares. Nothing here is authored by this test.
 
-        The declared PRODUCER is not synthesised either: its topic is the
-        inbound mirror topic read out of the contract packaged in the pinned
-        wheel.
+        CONSUMER: the ``ModelGatewayEnvelope`` that ``HandlerConsumeInbound``
+        actually returned when driven through its real dispatch entrypoint, on
+        the canonical topic that handler actually produced.
+
+        The two are derived from different artifacts — a YAML declaration and a
+        handler return value — so a handler that stopped stripping the prefix,
+        or a contract that renamed its IO model, breaks exactly one leg.
         """
+
+        correlation_id = uuid4()
+        output = await HandlerConsumeInbound(config).handle(
+            _dispatched_dict(
+                _gateway_envelope(
+                    correlation_id=correlation_id,
+                    canonical_topic=_INBOUND_TOPIC,
+                    wire_topic=_INBOUND_WIRE,
+                    source_topic=_INBOUND_WIRE,
+                )
+            )
+        )
+        assert output.result is not None
+
+        declared_producer = producer_projection(
+            edge_id="S6",
+            topic=_INBOUND_TOPIC,
+            envelope_model=_S6_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
+            key_fields=_S6_KEY_FIELDS,
+        )
+        declared_consumer = consumer_projection(
+            edge_id="S6",
+            topic=_INBOUND_TOPIC,
+            envelope_model=_S6_DECLARED_MODEL,
+            envelope_version=UNVERSIONED_MODEL,
+            key_fields=_S6_KEY_FIELDS,
+        )
 
         verdict = run_registry_match(
             edge_id="S6",
-            declared_producer=producer_projection(
+            declared_producer=declared_producer,
+            declared_consumer=declared_consumer,
+            observed_producer=observed_projection_from_model_class(
                 edge_id="S6",
+                role=EnumSeamProjectionRole.PRODUCER,
                 topic=_contract_declared_inbound_topic(),
-                envelope_model=_S6_DECLARED_MODEL,
-                envelope_version=UNVERSIONED_MODEL,
-                key_fields=_S6_KEY_FIELDS,
+                model_cls=_contract_declared_input_model(),
+                field_names=tuple(name for name, _ in _S6_KEY_FIELDS),
             ),
-            declared_consumer=None,
+            observed_consumer=observed_projection_from_instance(
+                edge_id="S6",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=output.result.canonical_topic,
+                instance=output.result,
+                field_names=tuple(name for name, _ in _S6_KEY_FIELDS),
+            ),
         )
 
         assert_registry_classification("S6", verdict)
-        assert verdict.regenerability.value == "NOT_APPLICABLE"
-        assert verdict.declared_consumer_hash is None
+        assert_regenerable("S6", verdict)
 
-    def test_unmatched_edge_is_never_reported_regenerable(self) -> None:
-        """A one-sided edge can never earn the strongest claim.
+    def test_the_observed_producer_is_the_contract_not_this_module(self) -> None:
+        """Prove the producer observation actually reads the wheel.
 
-        The manifest already records ``NOT_CLAIMED``; this asserts the shipped
-        classifier agrees, so the entitlement and the runtime verdict cannot
-        drift apart in the direction that would let the row look healthier than
-        the seam is.
-        """
-
-        verdict = run_registry_match(
-            edge_id="S6",
-            declared_producer=producer_projection(
-                edge_id="S6", topic=_contract_declared_inbound_topic()
-            ),
-            declared_consumer=None,
-        )
-
-        assert verdict.regenerability.value != "REGENERABLE"
-
-    def test_the_declared_producer_is_the_contract_not_this_module(self) -> None:
-        """Prove the producer side actually reads the wheel.
-
-        Without this, "declared by the packaged contract" is a claim in a
-        docstring. The resolved class must be the real ``ModelGatewayEnvelope``
-        the handlers transform, reached by importing the module path the
-        contract names, on the mirror topic that same file declares.
+        Without this, "observed from the packaged contract" is a claim in a
+        docstring. The resolved class must be the real
+        ``ModelGatewayEnvelope`` the handlers transform, reached by importing
+        the module path the contract names.
         """
 
         resolved = _contract_declared_input_model()
@@ -574,3 +617,57 @@ class TestS6RegistryMatch:
         assert resolved is ModelGatewayEnvelope
         assert model_identity(resolved) == _S6_DECLARED_MODEL
         assert _contract_declared_inbound_topic() == _INBOUND_TOPIC
+
+    async def test_a_handler_that_stopped_stripping_reddens_the_consumer_leg(
+        self, config: ModelGatewayForwarderConfig
+    ) -> None:
+        """Negative control on leg 3: observe the outbound handler instead.
+
+        ``HandlerForwardOutbound`` legitimately produces the tenant-prefixed
+        wire topic. Projecting its result against the inbound declaration is
+        the shape a consume-side prefix-strip regression would take, and it
+        must redden leg 3 rather than pass on envelope-model similarity.
+        """
+
+        output = await HandlerForwardOutbound(config).handle(
+            _dispatched_dict(
+                _gateway_envelope(
+                    correlation_id=uuid4(),
+                    canonical_topic=_OUTBOUND_TOPIC,
+                    wire_topic=_OUTBOUND_WIRE,
+                    source_topic=_OUTBOUND_TOPIC,
+                    payload={"status": "completed"},
+                )
+            )
+        )
+        assert output.result is not None
+
+        verdict = run_registry_match(
+            edge_id="S6",
+            declared_producer=producer_projection(
+                edge_id="S6",
+                topic=_INBOUND_TOPIC,
+                envelope_model=_S6_DECLARED_MODEL,
+                envelope_version=UNVERSIONED_MODEL,
+                key_fields=_S6_KEY_FIELDS,
+            ),
+            declared_consumer=consumer_projection(
+                edge_id="S6",
+                topic=_INBOUND_TOPIC,
+                envelope_model=_S6_DECLARED_MODEL,
+                envelope_version=UNVERSIONED_MODEL,
+                key_fields=_S6_KEY_FIELDS,
+            ),
+            observed_consumer=observed_projection_from_instance(
+                edge_id="S6",
+                role=EnumSeamProjectionRole.CONSUMER,
+                topic=output.result.wire_topic,
+                instance=output.result,
+                field_names=tuple(name for name, _ in _S6_KEY_FIELDS),
+            ),
+        )
+
+        assert verdict.leg3_observed_consumer_vs_declared.passed is False
+        assert verdict.leg3_observed_consumer_vs_declared.mismatching_field_path == (
+            "topic"
+        )
