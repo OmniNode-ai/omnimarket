@@ -40,7 +40,6 @@ reddens leg 2; a handler that stops stripping the prefix reddens leg 3.
 from __future__ import annotations
 
 import importlib
-import inspect
 from pathlib import Path
 from uuid import UUID, uuid4
 
@@ -342,8 +341,8 @@ class TestHandlerAndLiveServiceAgree:
     violation is the actual outage.
     """
 
-    def test_pinned_infra_delegates_to_the_contract_handlers(
-        self,
+    async def test_pinned_infra_delegates_to_the_contract_handlers(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         """Pin the agreement between the registry row and the wheel.
 
@@ -353,8 +352,15 @@ class TestHandlerAndLiveServiceAgree:
         HandlerForwardOutbound/HandlerConsumeInbound COMPUTE handlers rather
         than re-deriving it locally". Measured against the ``omnibase_infra``
         rev this repo pins as of OMN-16077 (``94247acff``, which contains the
-        OMN-15740 delegation commit ``642e60a87``), that is true: the service
-        module references both handler classes.
+        OMN-15740 delegation commit ``642e60a87``), that is true — and this
+        pin measures the INVOCATION, not name presence: spy subclasses are
+        patched over the handler classes in the service module's namespace,
+        both live entrypoints are driven with real bus messages, and each spy
+        must record a call to its transform method (``forward_outbound`` /
+        ``consume_inbound`` — the delegation seam the service actually
+        invokes). A service that reverted to a local re-implementation
+        (leaving the imports as dead references) fails here, which a
+        source-text substring check could not catch.
 
         This inverts the ``does_not_yet_delegate`` pin that guarded the
         pre-delegation pins (``b6bd79c34`` and earlier), exactly as that pin's
@@ -363,9 +369,60 @@ class TestHandlerAndLiveServiceAgree:
         before this assertion is touched.
         """
 
-        source = inspect.getsource(forwarder_module)
-        assert "HandlerForwardOutbound" in source
-        assert "HandlerConsumeInbound" in source
+        invoked: list[str] = []
+
+        class SpyForwardOutbound(HandlerForwardOutbound):
+            def forward_outbound(self, *args: object, **kwargs: object) -> object:
+                invoked.append("outbound")
+                return super().forward_outbound(*args, **kwargs)
+
+        class SpyConsumeInbound(HandlerConsumeInbound):
+            def consume_inbound(self, *args: object, **kwargs: object) -> object:
+                invoked.append("inbound")
+                return super().consume_inbound(*args, **kwargs)
+
+        monkeypatch.setattr(
+            forwarder_module, "HandlerForwardOutbound", SpyForwardOutbound
+        )
+        monkeypatch.setattr(
+            forwarder_module, "HandlerConsumeInbound", SpyConsumeInbound
+        )
+
+        config = build_forwarder_config(dedupe_store_path=tmp_path / "dedupe.sqlite")
+        service = ServiceGatewayForwarder(
+            config=config,
+            local_bus=RecordingPublisher(),
+            cloud_bus=RecordingPublisher(),
+        )
+
+        await service.forward_outbound_message(
+            BusMessage(
+                topic=_OUTBOUND_TOPIC,
+                value=local_typed_envelope(
+                    envelope_id=uuid4(),
+                    correlation_id=uuid4(),
+                    event_type="omnibase-infra.delegation-completed",
+                    payload={"status": "completed"},
+                )
+                .model_dump_json(exclude_none=True)
+                .encode("utf-8"),
+            )
+        )
+        await service.consume_inbound_message(
+            BusMessage(
+                topic=_INBOUND_WIRE,
+                value=cloud_hand_rolled_envelope_json(
+                    envelope_id=uuid4(),
+                    correlation_id=uuid4(),
+                    event_type="omnibase-infra.delegation-request",
+                    payload={"prompt": "ping", "task_type": "summarization"},
+                    source_tenant_id=str(GATEWAY_TENANT_ID),
+                    source_tenant_principal_id=GATEWAY_PRINCIPAL_ID,
+                ),
+            )
+        )
+
+        assert invoked == ["outbound", "inbound"]
 
     async def test_inbound_transform_parity(self, tmp_path: Path) -> None:
         """Handler and live service must strip to the same canonical topic

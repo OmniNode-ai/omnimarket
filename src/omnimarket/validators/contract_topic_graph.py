@@ -217,6 +217,13 @@ class ModelTopicGraph(BaseModel):
     # Topics an external, non-contract actor legitimately publishes (the skill
     # CLI, a GitHub webhook, the omniclaude hook daemon). Declared, never assumed.
     external_producers: dict[str, str] = Field(default_factory=dict)
+    # Mirror of external_producers for the consume side: topics whose ONLY
+    # consumer lives outside the checked contract corpus (e.g. the onex-api
+    # gateway projection in private omninode_infra). The producing contract's
+    # own externally_consumed_topics is the preferred declaration, but a
+    # PINNED foreign contract cannot be edited from this repo — this is the
+    # declared-never-assumed escape for that case. Declared, never assumed.
+    external_consumers: dict[str, str] = Field(default_factory=dict)
 
     @property
     def topics(self) -> set[str]:
@@ -509,6 +516,7 @@ def discover_contract_roots() -> dict[str, Path]:
 def build_graph(
     roots: dict[str, Path] | None = None,
     external_producers: dict[str, str] | None = None,
+    external_consumers: dict[str, str] | None = None,
 ) -> ModelTopicGraph:
     """Build the contract graph, failing closed on an incomplete package surface."""
     roots = roots if roots is not None else discover_contract_roots()
@@ -564,6 +572,7 @@ def build_graph(
         producers={t: tuple(v) for t, v in producers.items()},
         consumers={t: tuple(v) for t, v in consumers.items()},
         external_producers=dict(external_producers or {}),
+        external_consumers=dict(external_consumers or {}),
     )
 
 
@@ -649,7 +658,11 @@ def find_defects(graph: ModelTopicGraph) -> list[ModelGraphFinding]:
 
     # --- ORPHANED PRODUCER: published, but nothing consumes it. Output goes nowhere.
     for topic in sorted(graph.producers):
-        if graph.consumers.get(topic) or topic in externally_consumed:
+        if (
+            graph.consumers.get(topic)
+            or topic in externally_consumed
+            or topic in graph.external_consumers
+        ):
             continue
         for producer in graph.producers[topic]:
             producer_node = _resolve_node_for_topic(
@@ -826,6 +839,7 @@ class ModelBaseline(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     external_producers: dict[str, str] = Field(default_factory=dict)
+    external_consumers: dict[str, str] = Field(default_factory=dict)
     accepted: list[str] = Field(default_factory=list)
 
 
@@ -938,7 +952,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     baseline = load_baseline(args.baseline)
-    graph = build_graph(external_producers=baseline.external_producers)
+    graph = build_graph(
+        external_producers=baseline.external_producers,
+        external_consumers=baseline.external_consumers,
+    )
     findings = find_defects(graph)
 
     if args.write_baseline:
@@ -947,6 +964,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             yaml.safe_dump(
                 {
                     "external_producers": baseline.external_producers,
+                    "external_consumers": baseline.external_consumers,
                     "accepted": sorted({f.key() for f in findings}),
                 },
                 sort_keys=True,
