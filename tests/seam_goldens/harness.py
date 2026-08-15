@@ -83,6 +83,9 @@ import omnibase_infra
 import yaml
 from omnibase_core.models.core.model_envelope_metadata import ModelEnvelopeMetadata
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_canary_config import (
+    ModelGatewayCanaryConfig,
+)
 from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_cloud_bus_config import (
     ModelGatewayCloudBusConfig,
 )
@@ -383,6 +386,26 @@ def gateway_mirror_topics() -> ModelGatewayMirrorTopics:
     )
 
 
+def gateway_canary() -> ModelGatewayCanaryConfig:
+    """The contract-declared canary probe block, validated by the real model.
+
+    OMN-15741 made the path-verifying healthcheck's topic, cadence, and per-leg
+    deadlines contract-declared; ``ModelGatewayForwarderConfig`` requires the
+    block as of infra 0.38.6. Read from the packaged contract like every other
+    wire-relevant value so the goldens exercise the deployed declaration.
+    """
+
+    raw = _gateway_forwarder_block()["canary"]
+    if not isinstance(raw, dict):
+        raise TypeError("gateway contract canary block is not a mapping")
+    return ModelGatewayCanaryConfig(
+        topic=str(raw["topic"]),
+        cadence_seconds=int(raw["cadence_seconds"]),  # type: ignore[call-overload]
+        produce_deadline_seconds=float(raw["produce_deadline_seconds"]),  # type: ignore[arg-type]
+        readback_deadline_seconds=float(raw["readback_deadline_seconds"]),  # type: ignore[arg-type]
+    )
+
+
 def build_forwarder_config(*, dedupe_store_path: Path) -> ModelGatewayForwarderConfig:
     """Assemble the real forwarder config from the real packaged contract.
 
@@ -412,6 +435,7 @@ def build_forwarder_config(*, dedupe_store_path: Path) -> ModelGatewayForwarderC
         cloud_bus=cloud_bus,
         local_transport_flavor="containerized",
         mirror_topics=gateway_mirror_topics(),
+        canary=gateway_canary(),
         dedupe_store_path=dedupe_store_path,
     )
 

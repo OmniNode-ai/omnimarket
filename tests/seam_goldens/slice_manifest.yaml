@@ -182,42 +182,29 @@ edges:
     seam: >-
       handler_routing operations gateway.forward_outbound /
       gateway.consume_inbound on ModelGatewayEnvelope
-    leg: contract -> handler, both declared operations (outbound+inbound)
-    inclusion: ws7_mandatory_high
-    traversed: false
-    registry_classification: UNMATCHED
-    registry_severity: high
+    leg: contract -> handler, both directions (outbound+inbound)
+    inclusion: core_round_trip
+    traversed: true
+    registry_classification: MATCHED_UNTESTED
+    registry_severity: low
     producer_symbol_reachable: true
-    consumer_symbol_reachable: false
-    observation_class: NOT_CLAIMED
+    consumer_symbol_reachable: true
+    observation_class: REGENERABLE
     observation_note: >-
-      Re-scored 2026-08-14 under the seam graph's `tracing_convention` A
-      (PINNED_REF, OMN-16033): the edge is measured at the omnibase_infra rev
-      this repo actually resolves, `b6bd79c34`. PRODUCER is observable — the
-      `contract.yaml` packaged inside that wheel declares both COMPUTE handler
-      operations and the `ModelGatewayEnvelope` IO model, and the golden reads
-      the file and resolves the named classes by import. CONSUMER is NOT
-      observable, because at this rev it does not exist: nothing in the
-      executing path invokes `gateway.forward_outbound` /
-      `gateway.consume_inbound`. `runtime/gateway_forwarder.py:136-140`
-      constructs `ServiceGatewayForwarder` directly (never the node, never the
-      dispatch engine) and that service re-derives the tenant-prefix transform
-      locally (`service_gateway_forwarder.py:249` `strip_topic_prefix`, `:312`
-      `prefix_topic`) without importing either handler class. The handler
-      classes' only referents at this rev are the package re-export and unit
-      tests. An UNMATCHED edge has no second side to compare against, so the
-      golden makes no observed-vs-declared claim.
+      Both sides observable from artifacts this suite did not author. PRODUCER:
+      the `contract.yaml` packaged inside the pinned omnibase_infra wheel — its
+      declared `input_model`, its `contract_version`, and its `mirror_topics`
+      are read from the file and the named class is resolved by import, so a
+      contract that renames its IO model or drops a mirror topic diverges here.
+      CONSUMER: the ModelGatewayEnvelope that `HandlerConsumeInbound.handle()`
+      actually returns when driven through its real dispatch entrypoint.
     golden_module: tests/seam_goldens/test_s6_contract_handler_dispatch.py
     rationale: >-
-      In slice because the registry rates it severity `high`, which the WS-7
-      union rule makes mandatory regardless of runtime leg. `traversed: false`
-      is the honest claim at the pin: the Milestone-B receipt crosses the
-      gateway forwarder *component*, but it never crosses THIS seam, because
-      the contract-declared handler operations are never dispatched. The golden
-      proves the producer declaration is real and drives both handlers through
-      their genuine dispatch entrypoint, then pins the divergence itself —
-      that the executing service does not delegate to them — plus the parity
-      property that must hold whichever implementation runs.
+      This is the ingress/bridge component named in the Milestone-B hop
+      sequence, traversed in BOTH directions of the round trip. The golden
+      drives the contract-declared handlers through their real dispatch
+      entrypoint and asserts transform parity against the live forwarder
+      service.
 
   - edge_id: S10
     seam: >-
