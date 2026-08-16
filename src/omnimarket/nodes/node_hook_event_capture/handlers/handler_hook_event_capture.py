@@ -1,9 +1,16 @@
 # SPDX-License-Identifier: MIT
 """Hook-event capture: gateway command batch -> hook_events rows (OMN-16090).
 
-Consumes ``onex.cmd.omnimarket.hook-event-capture-requested.v1``, validates the
-batch against :class:`ModelHookEventCaptureRequest`, and writes one row per
-carried event, idempotent on ``(tenant_id, event_sha)``.
+Consumes the capture command topic declared in this node's ``contract.yaml``
+(``event_bus.subscribe_topics``), validates the batch against
+:class:`ModelHookEventCaptureRequest`, and writes one row per carried event,
+idempotent on ``(tenant_id, event_sha)``.
+
+No topic literal appears anywhere in this module -- ``topics`` and
+``poison_dlq_topics`` both read the contract at call time. That is not only
+ARCH-TOPIC-001 compliance: a literal here would be a second, ungoverned copy of
+a name the contract already owns, and nothing would ever validate the two
+against each other.
 
 Three properties are load-bearing and each is enforced rather than assumed:
 

@@ -30,11 +30,18 @@ SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
 # attribution-only on this wire and is overwritten by the forwarder path.
 TENANT_PRINCIPAL = re.compile(r"^t-[0-9a-f]{32}$")
 
-# A producer event type: either a canonical ONEX topic-shaped name
-# ("onex.evt.omniclaude.skill-started.v1") or a bare dotted name
-# ("artifact.captured"). Deliberately NOT an allowlist of the four measured
-# families -- a new hook family must not need a release of this node to be
-# capturable.
+# A producer event type. Two shapes appear in the real corpus: a canonical
+# ONEX topic-shaped name (the omniclaude skill-lifecycle families) and a bare
+# dotted name (the artifact/tool capture families). Deliberately NOT an
+# allowlist of the four measured families -- a new hook family must not need a
+# release of this node to be capturable.
+#
+# No literal topic string appears in this comment on purpose: ARCH-TOPIC-001
+# scans handler/model source for hardcoded Kafka topics and does not special-
+# case comments. It is right not to -- a topic literal in a comment is exactly
+# how a second, ungoverned copy of a topic name starts, and it drifts silently
+# because nothing validates a comment. The authoritative topic names for this
+# node live in its contract.yaml and nowhere else.
 EVENT_TYPE = re.compile(r"^[a-z0-9]([a-z0-9._-]*[a-z0-9])?$")
 
 MAX_EVENTS_PER_BATCH = 250
