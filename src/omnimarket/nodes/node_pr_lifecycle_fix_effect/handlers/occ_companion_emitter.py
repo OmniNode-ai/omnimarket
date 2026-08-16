@@ -73,7 +73,10 @@ from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
 
-from omnimarket.events.occ_autoauthor import OCC_MACHINE_MINTED_LABEL
+from omnimarket.events.occ_autoauthor import (
+    OCC_AUTHOR_TIME_LABELS,
+    OCC_MACHINE_MINTED_LABEL,
+)
 from omnimarket.github_api import (
     GitHubApiError,
     rest_json,
@@ -2009,7 +2012,7 @@ class OccCompanionEmitter:
                 "POST",
                 f"/repos/{owner}/{repo_name}/issues/{occ_pr_number}/labels",
                 token=token,
-                body={"labels": [OCC_MACHINE_MINTED_LABEL]},
+                body={"labels": list(OCC_AUTHOR_TIME_LABELS)},
             )
         except (
             GitHubApiError,

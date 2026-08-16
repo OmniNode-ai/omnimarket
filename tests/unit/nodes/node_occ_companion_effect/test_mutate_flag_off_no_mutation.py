@@ -157,4 +157,9 @@ def test_marker_label_posts_the_machine_minted_label(
         "OmniNode-ai", "onex_change_control", 4284, "t"
     )
     assert captured["method"] == "POST"
-    assert captured["body"] == {"labels": [OCC_MACHINE_MINTED_LABEL]}
+    # OMN-16071: the author-time POST now carries `ci:ready` alongside the
+    # provenance marker. Without it a dev-targeting companion can never satisfy
+    # CI Summary (the OMN-15731 label-gated pilot skips `pre-commit`, and the
+    # strict block fails closed on a skip), so the writer was minting PRs that
+    # only a human could unstall.
+    assert captured["body"] == {"labels": [OCC_MACHINE_MINTED_LABEL, "ci:ready"]}

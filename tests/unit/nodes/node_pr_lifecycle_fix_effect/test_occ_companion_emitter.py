@@ -137,7 +137,10 @@ class TestOpenOrSyncOccPr:
         def fake_rest_array(method: str, path: str, *, body=None, token=None) -> list:
             label_calls.append(path)
             assert method == "POST"
-            assert body == {"labels": ["occ:machine-minted"]}
+            # OMN-16071: `ci:ready` is applied with the marker so the companion's
+            # CI wave can fire at all (the OMN-15731 label-gated pilot otherwise
+            # skips `pre-commit`, which CI Summary fails closed on).
+            assert body == {"labels": ["occ:machine-minted", "ci:ready"]}
             return _LABELS_ARRAY_RESPONSE
 
         with (
@@ -189,10 +192,11 @@ class TestOpenOrSyncOccPr:
         assert posted["base"] == "dev"  # OCC default branch, never hardcoded main
         # OMN-14893 provenance marker: applied on create too (the OCC#4661
         # gap — this emitter never applied it before this fix).
+        # OMN-16071: `ci:ready` lands in the same POST as the marker.
         assert label_calls == [
             (
                 "/repos/OmniNode-ai/onex_change_control/issues/77/labels",
-                {"labels": ["occ:machine-minted"]},
+                {"labels": ["occ:machine-minted", "ci:ready"]},
             )
         ]
 

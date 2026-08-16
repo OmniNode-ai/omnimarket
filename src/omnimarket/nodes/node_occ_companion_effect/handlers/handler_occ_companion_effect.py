@@ -41,7 +41,10 @@ import tempfile
 from pathlib import Path
 from typing import Literal
 
-from omnimarket.events.occ_autoauthor import OCC_MACHINE_MINTED_LABEL
+from omnimarket.events.occ_autoauthor import (
+    OCC_AUTHOR_TIME_LABELS,
+    OCC_MACHINE_MINTED_LABEL,
+)
 from omnimarket.events.occ_companion import (
     EnumCompanionFileKind,
     ModelCompanionFile,
@@ -692,7 +695,7 @@ class HandlerOccCompanionEffect:
                 "POST",
                 f"/repos/{occ_owner}/{occ_name}/issues/{occ_pr_number}/labels",
                 token=token,
-                body={"labels": [OCC_MACHINE_MINTED_LABEL]},
+                body={"labels": list(OCC_AUTHOR_TIME_LABELS)},
             )
         except (
             GitHubApiError,
