@@ -14,6 +14,7 @@ Target table schema (from 0000_create_intent_classification_events.sql):
   ingested_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
   created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
   updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  agent_source   TEXT (nullable; 'claude' | 'cursor' provenance)
 """
 
 # dlq-path-not-required: ValidationError propagates via extra="ignore"; no silent drop.
@@ -22,7 +23,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AliasChoices, BaseModel, ConfigDict, Field
 
 from omnimarket.projection.handler_shim import split_projection_input
 from omnimarket.projection.protocol_database import DatabaseAdapter
@@ -38,12 +39,18 @@ class ModelIntentClassifiedEvent(BaseModel):
     are silently ignored for forward-compatibility.
     """
 
-    model_config = ConfigDict(frozen=True, extra="ignore")
+    model_config = ConfigDict(frozen=True, extra="ignore", populate_by_name=True)
 
     correlation_id: str = Field(..., description="Unique correlation identifier.")
     session_id: str = Field(..., description="Session identifier.")
     intent_class: str = Field(
-        ..., description="Classified intent class (e.g. feature, bugfix, refactor)."
+        ...,
+        # The live publisher (node_claude_hook_event_effect, shared by the
+        # Cursor path) emits this field as "intent_category" on the wire;
+        # accepting only "intent_class" made every real event fail validation
+        # and the projection stay empty.
+        validation_alias=AliasChoices("intent_class", "intent_category"),
+        description="Classified intent class (e.g. feature, bugfix, refactor).",
     )
     confidence: float = Field(
         ..., ge=0.0, le=1.0, description="Classification confidence score."
@@ -51,6 +58,13 @@ class ModelIntentClassifiedEvent(BaseModel):
     keywords: list[str] = Field(default_factory=list, description="Extracted keywords.")
     emitted_at: str | None = Field(
         default=None, description="ISO 8601 emission timestamp."
+    )
+    agent_source: str | None = Field(
+        default=None,
+        description=(
+            "Originating dispatcher frontend ('claude' | 'cursor'); None for "
+            "events published before the field existed."
+        ),
     )
 
 
@@ -92,6 +106,7 @@ class HandlerProjectionIntentClassification:
             "keywords": event.keywords,
             "emitted_at": event.emitted_at or now,
             "ingested_at": now,
+            "agent_source": event.agent_source,
         }
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)

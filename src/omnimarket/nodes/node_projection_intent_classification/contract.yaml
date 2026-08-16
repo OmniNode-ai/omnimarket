@@ -84,6 +84,7 @@ projection_api:
         - emitted_at
         - ingested_at
         - created_at
+        - agent_source
       order_by: emitted_at DESC
       freshness_column: ingested_at
       limit: 500
@@ -96,6 +97,7 @@ projection_api:
         - session_id
         - confidence
         - emitted_at
+        - agent_source
       order_by: emitted_at DESC
       freshness_column: ingested_at
       limit: 1000

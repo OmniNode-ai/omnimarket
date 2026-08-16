@@ -14,7 +14,10 @@ CREATE TABLE IF NOT EXISTS intent_classification_events (
     emitted_at     TIMESTAMPTZ NOT NULL,
     ingested_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- OMN-14751: dispatcher provenance ('claude' | 'cursor'). Nullable by
+    -- design: rows projected from events that predate the field stay NULL.
+    agent_source   TEXT
 );
 
 -- ---- BEGIN OMN-15376 shape reconciliation: intent_classification_events ----
@@ -50,6 +53,9 @@ ALTER TABLE intent_classification_events ADD COLUMN IF NOT EXISTS emitted_at TIM
 ALTER TABLE intent_classification_events ADD COLUMN IF NOT EXISTS ingested_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE intent_classification_events ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE intent_classification_events ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+-- agent_source stays nullable (see CREATE TABLE) -- deliberately NOT in the
+-- NOT NULL convergence loop below.
+ALTER TABLE intent_classification_events ADD COLUMN IF NOT EXISTS agent_source TEXT;
 
 DO $$
 DECLARE

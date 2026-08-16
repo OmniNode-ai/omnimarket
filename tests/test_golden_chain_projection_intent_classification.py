@@ -259,3 +259,83 @@ class TestIntentClassificationProjectionQuery:
         results = db.query(TABLE, {"intent_class": "bugfix"})
         assert len(results) == 1
         assert results[0]["correlation_id"] == "q-002"
+
+
+class TestAgentSourceSeam:
+    """OMN-14751 (B3): agent_source read-mapping + live wire-shape acceptance."""
+
+    # The exact shape node_claude_hook_event_effect publishes (verified live,
+    # C3 runtime receipt on omnicursor PR #12): field is named intent_category,
+    # and agent_source distinguishes the dispatcher frontend.
+    WIRE_EVENT: dict[str, object] = {
+        "event_type": "IntentClassified",
+        "session_id": "c3-proof-865bb00d",
+        "correlation_id": "865bb00d-5f40-406c-b9fa-198a0b5d1c6a",
+        "intent_category": "code_generation",
+        "confidence": 1.0,
+        "keywords": ["one"],
+        "timestamp": "2026-07-27T22:47:37.634933+00:00",
+        "success": True,
+        "agent_source": "cursor",
+        "provenance": {
+            "source_system": "omniintelligence",
+            "source_node": "cursor_hook_event_effect",
+        },
+    }
+
+    def test_live_wire_shape_validates(self) -> None:
+        """The published event names the field intent_category — it must parse.
+
+        Regression guard: requiring intent_class only made every real wire
+        event fail validation, so the projection stayed empty (the
+        intent-classification.v1=404 the dashboard probe recorded).
+        """
+        event = ModelIntentClassifiedEvent(**self.WIRE_EVENT)  # type: ignore[arg-type]
+        assert event.intent_class == "code_generation"
+        assert event.agent_source == "cursor"
+
+    def test_live_wire_shape_projects_with_agent_source(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelIntentClassifiedEvent(**self.WIRE_EVENT)  # type: ignore[arg-type]
+        result = HANDLER.project(event, db)
+        assert result.rows_upserted == 1
+        rows = db.query(TABLE)
+        assert rows[0]["agent_source"] == "cursor"
+        assert rows[0]["intent_class"] == "code_generation"
+
+    def test_intent_class_name_still_accepted(self) -> None:
+        """Events (and tests) using the column name keep working."""
+        event = ModelIntentClassifiedEvent(
+            correlation_id="corr-b3-01",
+            session_id="sess-b3-01",
+            intent_class="feature",
+            confidence=0.9,
+            agent_source="claude",
+        )
+        assert event.intent_class == "feature"
+
+    def test_agent_source_defaults_to_none_for_legacy_events(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelIntentClassifiedEvent(
+            correlation_id="corr-b3-02",
+            session_id="sess-b3-02",
+            intent_class="analysis",
+            confidence=0.4,
+        )
+        HANDLER.project(event, db)
+        assert db.query(TABLE)[0]["agent_source"] is None
+
+    def test_contract_exposes_agent_source(self) -> None:
+        contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
+        exposures = contract["projection_api"]["exposures"]
+        snapshot = next(e for e in exposures if e["topic"] == SNAPSHOT_TOPIC)
+        assert "agent_source" in snapshot["columns"]
+
+    def test_migration_adds_agent_source(self) -> None:
+        sql = (
+            NODE_DIR / "migrations" / "0000_create_intent_classification_events.sql"
+        ).read_text()
+        assert "agent_source   TEXT" in sql
+        assert "ADD COLUMN IF NOT EXISTS agent_source TEXT" in sql, (
+            "shape-reconciliation block must converge drifted tables"
+        )
