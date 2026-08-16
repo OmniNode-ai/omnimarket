@@ -46,6 +46,16 @@ class ModelEmitDaemonHealth(BaseModel):
         ge=0,
         description="Events buffered during circuit OPEN state",
     )
+    events_unconfirmed: int = Field(
+        default=0,
+        ge=0,
+        description=(
+            "Publishes that completed but were not confirmed durable "
+            "(OMN-15861): the record was retained, not acked. Rising while "
+            "events_published is flat means the confirmation surface -- not "
+            "the broker -- is unhealthy."
+        ),
+    )
 
     # Timestamps
     last_publish_at: datetime | None = Field(

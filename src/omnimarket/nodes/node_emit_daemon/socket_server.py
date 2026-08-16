@@ -251,6 +251,7 @@ class EmitSocketServer:
         events_published = 0
         events_dropped = 0
         events_buffered = 0
+        events_unconfirmed = 0
         last_publish_at = None
         last_failure_at = None
         circuit_opened_at = None
@@ -265,6 +266,7 @@ class EmitSocketServer:
             events_published = getattr(loop, "events_published", 0)
             events_dropped = getattr(loop, "events_dropped", 0)
             events_buffered = getattr(loop, "events_buffered", 0)
+            events_unconfirmed = getattr(loop, "events_unconfirmed", 0)
             last_publish_at = getattr(loop, "last_publish_at", None)
             last_failure_at = getattr(loop, "last_failure_at", None)
             circuit_opened_at = getattr(loop, "circuit_opened_at", None)
@@ -284,6 +286,7 @@ class EmitSocketServer:
             events_published=events_published,
             events_dropped=events_dropped,
             events_buffered=events_buffered,
+            events_unconfirmed=events_unconfirmed,
             last_publish_at=last_publish_at,
             last_failure_at=last_failure_at,
             circuit_opened_at=circuit_opened_at,

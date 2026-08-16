@@ -287,6 +287,15 @@ async def run_old_path(
     ``prompt.submitted`` and ``response.stopped`` -- a topic-name join key
     would silently misattribute those).
     """
+    from datetime import UTC, datetime
+
+    from omnibase_infra.enums import EnumInfraTransportType
+    from omnibase_infra.event_bus.confirmation import BrokerReadbackStrategy
+    from omnibase_infra.event_bus.models import ModelPublishReceipt
+
+    from omnimarket.nodes.node_emit_daemon.confirmation_binding import (
+        build_confirmation_bindings,
+    )
     from omnimarket.nodes.node_emit_daemon.event_queue import BoundedEventQueue
     from omnimarket.nodes.node_emit_daemon.event_registry import EventRegistry
     from omnimarket.nodes.node_emit_daemon.models.model_protocol import (
@@ -297,9 +306,27 @@ async def run_old_path(
 
     all_messages: list[PublishedMessage] = []
 
+    # OMN-15861: the loop acks duty-critical records only on a CONFIRMED
+    # readback, so this capture sink must be durability-honest -- it returns a
+    # real coordinate per publish and answers readbacks from its own landed
+    # set. Without this, duty-critical events wedge at the outbox head
+    # (correctly: nothing confirms them) and starve the drain.
+    landed: set[tuple[str, int, int]] = set()
+    offsets: dict[str, int] = {}
+
+    class _CaptureReadback:
+        @property
+        def transport(self) -> EnumInfraTransportType:
+            return EnumInfraTransportType.KAFKA
+
+        async def observe(
+            self, receipt: ModelPublishReceipt, *, deadline_seconds: float
+        ) -> bool:
+            return (receipt.topic, receipt.partition, receipt.offset) in landed
+
     async def fake_publish_fn(
         topic: str, key: bytes | None, value: bytes, headers: dict[str, str]
-    ) -> None:
+    ) -> ModelPublishReceipt:
         all_messages.append(
             PublishedMessage(
                 topic=topic,
@@ -308,6 +335,18 @@ async def run_old_path(
                 correlation_id=headers.get("correlation_id"),
             )
         )
+        offset = offsets.get(topic, 0)
+        offsets[topic] = offset + 1
+        landed.add((topic, 0, offset))
+        return ModelPublishReceipt(
+            topic=topic,
+            partition=0,
+            offset=offset,
+            cluster="parity-harness:9092",
+            produced_at=datetime.now(UTC),
+            transport=EnumInfraTransportType.KAFKA,
+            idempotency_key=headers.get("idempotency_key"),
+        )
 
     registry = EventRegistry.from_yaml(REGISTRY_PATH)
     queue = BoundedEventQueue(
@@ -315,7 +354,15 @@ async def run_old_path(
         spool_dir=tmp_root / "old-spool",
         outbox_dir=tmp_root / "old-outbox",
     )
-    loop = KafkaPublisherLoop(queue=queue, publish_fn=fake_publish_fn)
+    loop = KafkaPublisherLoop(
+        queue=queue,
+        publish_fn=fake_publish_fn,
+        confirmation_bindings=build_confirmation_bindings(
+            duty_critical=BrokerReadbackStrategy(
+                _CaptureReadback(), readback_deadline_seconds=0.5
+            ),
+        ),
+    )
     server = EmitSocketServer(
         socket_path=str(tmp_root / "old.sock"),
         queue=queue,

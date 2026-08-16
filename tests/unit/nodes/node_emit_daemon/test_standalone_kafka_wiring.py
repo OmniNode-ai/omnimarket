@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
 
 from omnimarket.nodes.node_emit_daemon.event_queue import (
     BoundedEventQueue,
@@ -50,6 +51,12 @@ class _FakeKafkaBus:
         self.started = False
         self.closed = False
         self.published: list[dict[str, object]] = []
+        # OMN-15861: a real EventBusKafka carries the config the readback
+        # consumer is built from (public ``config`` property), and
+        # _wire_kafka_publisher now binds a readback confirmation off it. A
+        # double without one would let the wiring test pass against a bus
+        # shape that cannot exist.
+        self.config = ModelKafkaEventBusConfig(bootstrap_servers="localhost:9092")
 
     async def start(self) -> None:
         self.started = True
@@ -213,6 +220,20 @@ class TestWireKafkaPublisher:
 
         assert returned is bus
         assert bus.started is True
+
+        # OMN-15861: wiring the real bus must also bind readback confirmation
+        # for duty-critical traffic — a publish path without it can never ack
+        # (fail closed), so leaving it unbound here would stall the outbox.
+        from omnibase_infra.event_bus.confirmation import BrokerReadbackStrategy
+
+        from omnimarket.nodes.node_emit_daemon.models.model_durability import (
+            EnumDurabilityTier,
+        )
+
+        bound = publisher._confirmation_bindings.get(EnumDurabilityTier.DUTY_CRITICAL)
+        assert isinstance(bound, BrokerReadbackStrategy), (
+            "duty-critical traffic must be confirmation-bound when Kafka is wired"
+        )
 
         # The publisher must now route through the real bus, not the sentinel.
         await queue.enqueue(_make_event())
