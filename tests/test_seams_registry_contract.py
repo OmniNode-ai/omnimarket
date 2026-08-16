@@ -1,11 +1,15 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Regression coverage for src/omnimarket/configs/seams.v1.yaml (OMN-15763).
+"""Regression coverage for src/omnimarket/configs/seams.v1.yaml (OMN-15763,
+re-derived under OMN-15784).
 
 The registry is GENERATED (scripts/seed_seams_registry.py), not
 hand-maintained, from the verified delegation seam graph
-(docs/design/2026-08-08-delegation-seam-graph.json, commit 92483f200).
+(docs/design/2026-08-13-delegation-seam-graph.json, re-traced against the
+bare-topic decision of record post-omninode_infra#833; supersedes
+docs/design/2026-08-08-delegation-seam-graph.json, commit 92483f200, which
+carried a pre-revert premise on three edges).
 These tests are themselves a stale-proof check at the registry-file
 granularity: if the checked-in YAML ever drifts from what the generator
 would produce right now (source edited without re-running the script, or
@@ -47,7 +51,7 @@ def _source_json_path() -> Path | None:
         Path(omni_home_raw)
         / "docs"
         / "design"
-        / "2026-08-08-delegation-seam-graph.json"
+        / "2026-08-13-delegation-seam-graph.json"
     )
     return candidate if candidate.exists() else None
 
@@ -99,11 +103,23 @@ class TestSeamsRegistryShape:
     def test_regenerable_count_reported_separately_from_matched_count(self) -> None:
         registry = _load_registry()
         summary = registry["summary"]
-        # §0.3 regeneration-boundary rule, honest count 2026-08-08: 1 nominal
-        # MATCHED (S10, a shape-only contract.yaml-vs-contract.yaml comparison)
-        # but ZERO actually regenerable of 15 — a shape match never counts as
-        # regenerable on its own.
-        assert summary["matched_count"] == 1
+        # §0.3 regeneration-boundary rule, honest count re-derived 2026-08-13
+        # (OMN-15784, post-omninode_infra#833): 4 nominal MATCHED (S1, S2 —
+        # reclassified from MISMATCH once the bare-topic decision of record
+        # was re-traced; S10, unchanged shape-only contract.yaml-vs-
+        # contract.yaml comparison; S12 — reclassified from MISMATCH once the
+        # pinned omnibase_core was measured to ship BOTH handler_id and
+        # dispatcher_id, retiring the infra getattr shim's stated removal
+        # condition) but ZERO actually regenerable of 15 — a shape match, or a
+        # same-repo cross-boundary test, never counts as regenerable on its own
+        # per the RSD §0.3 bar (a real three-leg
+        # producer<->registry<->consumer proof through node_seam_match_compute
+        # is required; that node does not exist yet). S12 is the live example
+        # of that distinction: it HAS a cross-boundary golden — which is what
+        # lifts it to MATCHED rather than MATCHED_UNTESTED — and is still not
+        # regenerable, because that golden compares projections it builds
+        # itself rather than live observed ones.
+        assert summary["matched_count"] == 4
         assert summary["regenerable_count"] == 0
         assert summary["matched_count"] != summary["regenerable_count"] or (
             summary["matched_count"] == 0

@@ -9,10 +9,19 @@ backlog) opportunistically on invocation. This module owns the on-disk
 format and the two-tier bounded policy only -- publish/drain sequencing
 lives in ``handlers/handler_event_emit_effect.py``.
 
-Format: one JSON file per pending event, filename
+Format: one JSON file per pending **(event, fan-out topic)** pair, filename
 ``{monotonic_seq:020d}_{event_id}.json``, sorted lexically for FIFO.
-Contents: ``event_id``, ``event_type``, ``topics``, ``tier``, ``payload``,
+Contents: ``event_id``, ``event_type``, ``topic``, ``tier``, ``payload``,
 ``partition_key``, ``correlation_id``, ``queued_at`` (UTC, tz-aware).
+
+Cardinality note (OMN-16048): a record is per-TOPIC, not per-event. The
+legacy daemon enqueues one ``ModelQueuedEvent`` per fan-out rule, each
+carrying that rule's own transformed payload and its own derived partition
+key -- two topics of the same event legitimately differ on the wire (e.g.
+``prompt.submitted``'s ``strip_prompt`` topic). A single record holding one
+shared payload for N topics cannot represent that, so the spool mirrors the
+daemon's per-rule shape. Each topic is published and acked independently, so
+a partial fan-out failure retries only the topics that actually failed.
 
 Bounded policy (two tiers, per-topic ``tier`` from
 ``spool/topic_resolver.py``):
@@ -64,11 +73,18 @@ class SpoolFullError(RuntimeError):
 
 @dataclass(frozen=True)
 class SpoolRecord:
-    """A single spooled event, backed by (at most) one file on disk."""
+    """One spooled (event, topic) pair, backed by (at most) one file on disk.
+
+    ``payload`` is the fully enriched, post-transform payload for THIS topic,
+    and ``partition_key`` is the key derived from it -- both are computed once
+    in the handler and frozen into the record, so a spooled event replays
+    byte-identically after a process restart instead of being re-enriched with
+    a later clock (OMN-16048).
+    """
 
     event_id: str
     event_type: str
-    topics: tuple[str, ...]
+    topic: str
     tier: EnumDurabilityTier
     payload: JsonType
     partition_key: str | None
@@ -80,7 +96,7 @@ class SpoolRecord:
             {
                 "event_id": self.event_id,
                 "event_type": self.event_type,
-                "topics": list(self.topics),
+                "topic": self.topic,
                 "tier": self.tier.value,
                 "payload": self.payload,
                 "partition_key": self.partition_key,
@@ -93,13 +109,24 @@ class SpoolRecord:
     @classmethod
     def from_json(cls, raw: str) -> SpoolRecord:
         data = json.loads(raw)
+        if "topic" not in data:
+            # Pre-OMN-16048 records carried a ``topics`` list and one shared
+            # payload. That format cannot express the per-topic transformed
+            # payload / derived partition key the wire contract requires, so
+            # it is rejected rather than silently replayed unenriched.
+            # ``list_pending`` turns this into a skip-with-warning.
+            raise ValueError(
+                "spool record has no 'topic' key (pre-OMN-16048 multi-topic "
+                "format); it cannot be replayed under the enriched wire "
+                "contract"
+            )
         queued_at = datetime.fromisoformat(data["queued_at"])
         if queued_at.tzinfo is None:
             queued_at = queued_at.replace(tzinfo=UTC)
         return cls(
             event_id=data["event_id"],
             event_type=data["event_type"],
-            topics=tuple(data["topics"]),
+            topic=data["topic"],
             tier=EnumDurabilityTier(data["tier"]),
             payload=data["payload"],
             partition_key=data.get("partition_key"),
@@ -210,7 +237,12 @@ class SpoolOutbox:
         for path in self._pending_paths():
             try:
                 files.append(SpoolFile(record=self.read(path), path=path))
-            except (OSError, ValueError):
+            except (OSError, ValueError) as exc:
+                # Corrupt/truncated file, or a pre-OMN-16048 multi-topic
+                # record (see SpoolRecord.from_json). Logged rather than
+                # silently skipped so an accumulating unreplayable backlog is
+                # visible instead of invisible.
+                logger.warning("Skipping unreadable spool record %s: %s", path, exc)
                 continue
         return files
 

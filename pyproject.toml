@@ -68,7 +68,8 @@ dependencies = [
     "anthropic>=0.25.0",
     "omninode-memory==0.17.0",
     "radon>=6.0.1",
-    "pytest>=8.4.0",
+    # OMN-16024: floor raised 8.4.0 -> 9.0.3 (CVE-2025-71176, insecure tmpdir DoS).
+    "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "docker>=7.0.0",
     "rich>=13.0.0",
@@ -538,13 +539,15 @@ omnimarket = "omnimarket.nodes"
 # reintroduce a git rev here: land the core change, publish, then bump the range.
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
-# OMN-15423 rebase: re-pinned from 77144f83 to protected infra dev b6bd79c3,
-# which contains the OMN-15418 companion squash plus later domain-enforcement,
-# migration-fixture, and test-isolation fixes required by the current Market
-# gates. The old exact companion head 9e9e62c3 is reachable from this dev tip.
+# OMN-16086 re-bump: re-pinned from 94247acf (v0.38.6, pre-#2736) to infra dev
+# HEAD 254c3672 — the omnibase_infra#2736 merge commit (OMN-16022: gateway
+# session expiry enforcement; node_gateway_attach_effect contract 0.3 -> 0.4,
+# ModelGatewayHeartbeatResponse.revoked -> termination_reason). This is the
+# lineage the post-#2736 onex-dev runtime image rebuild and deploy consume.
+# 94247acf remains an ancestor of this tip.
 # REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing this
 # commit, delete this override (the range pin above already covers it) and `uv lock`.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "b6bd79c34169b62b664d58f4419a72b3d31bc07c" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "254c3672471261c596c565245fb51ac9d951c494" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
@@ -571,6 +574,28 @@ override-dependencies = [
     "omnibase-compat==0.5.6",
 ]
 
+# OMN-16024: the security floors for the five TRANSITIVE packages flagged by
+# the `safety` gate (urllib3, cryptography, mako, idna, tuf) are held by
+# uv.lock, NOT by a [tool.uv] constraint-dependencies list. A constraint list
+# here is repo-global: it is picked up by every `uv` invocation whose working
+# directory is this repo, including the occ-preflight workflow's throwaway
+# venv, which installs omnibase_core from a source checkout that carries its
+# own `cryptography` ceiling. A `cryptography>=48.0.1` constraint made that
+# resolution unsatisfiable and failed a required check, so the constraints
+# were removed.
+#
+# Regression cover is therefore uv.lock plus the safety gate in
+# .github/workflows/security-scan.yml — but be precise about what that gate
+# can do TODAY: its `safety check` invocations end in `|| true` and the
+# workflow carries no `pull_request` trigger, so it reports vulnerable pins
+# without failing anything and does not run on PRs at all. It is a detection
+# surface, not an enforcing gate. Removing `|| true` and adding the PR
+# trigger is already in flight on a separate CI-gate-enforcement branch and
+# is deliberately not duplicated here, to avoid conflicting edits to the
+# same workflow file. Until that lands, a re-resolution that dropped one of
+# these packages back to a vulnerable release would show up in the scheduled
+# scan's output but would not block a merge.
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/omnimarket"]
 
@@ -579,7 +604,8 @@ artifacts = ["src/omnimarket/**/*.yaml", "src/omnimarket/**/*.sql"]
 
 [dependency-groups]
 dev = [
-    "pytest>=8.4.0",
+    # OMN-16024: floor raised 8.4.0 -> 9.0.3 (CVE-2025-71176, insecure tmpdir DoS).
+    "pytest>=9.0.3",
     "pytest-asyncio>=1.3.0",
     "pytest-cov>=6.0.0",
     "pytest-split>=0.10.0",

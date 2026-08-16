@@ -45,14 +45,15 @@ What this harness proves
   instead of failing a deploy; a repaired one fails CI until it is removed from
   the ratchet. This is what converts this defect class from deploy-caught to
   CI-caught.
-* ``test_internal_evidence_tables_are_blocked_only_by_absent_table_grants`` is a
-  tripwire. After the schema repair the evidence relations still cannot wire,
-  because no topology instance declares any ``object_type: TABLE`` grant at all
-  (OMN-15656, an omnibase_infra defect). This test asserts the residual failure
-  is EXACTLY the grants failure and NOT an unknown-schema/unknown-database
-  failure, so the omnimarket half is provably clear. It fails loudly the moment
-  OMN-15656 lands and the pinned ``omnibase-infra`` rev is bumped, which is the
-  signal to delete it and promote the census to a zero-failure assertion.
+* ``test_internal_evidence_tables_resolve_end_to_end`` is the promoted form of
+  the retired grants tripwire. The tripwire asserted the residual failure was
+  EXACTLY the missing ``object_type: TABLE`` grants (OMN-15656, an
+  omnibase_infra defect) — and, per its own docstring, it fired the moment the
+  grants landed and the pinned rev was bumped (OMN-16077, pin ``94247acff``,
+  where every shipped instance declares TABLE grants). As that docstring
+  prescribed, the tripwire is deleted and replaced by the zero-failure
+  assertion: the exact resolver that failed the deploy now returns a full
+  binding for the evidence relations on every profile, with no exception.
 
 References
 ----------
@@ -109,38 +110,32 @@ _PROFILES: Final[tuple[str, ...]] = tuple(sorted(SUPPORTED_TOPOLOGY_PROFILES))
 # ---------------------------------------------------------------------------
 _TRACKED_UNRESOLVED_DECLARATIONS: Final[frozenset[tuple[str, str, str, str]]] = (
     frozenset(
-        {
-            # RETIRED 2026-08-02 -- the nine relations that used to sit here
-            # (eight `application`.`public` placeholders plus
-            # node_projection_delegation's `unresolved` landmine) are gone from
-            # this ratchet because the operator CLASSIFIED them, which is the
-            # only sanctioned way an entry leaves: "this is all per tenant."
-            # All nine now declare `schema: tenant` and resolve on every
-            # profile. See OMN-15655 / OMN-15423 and the house-tenant ruling.
-            #
-            # CORRECTION to the retired comment, which was FALSE for two of the
-            # ten entries: it claimed "None of them declares a
-            # `descriptor.runtime_profiles`, so ... none is boot-fatal today."
-            # `node_projection_delegation` (delegation_judge_verdict_events) and
-            # `node_dispatch_outcome_bridge_effect` (dispatch_eval_results) BOTH
-            # declare `runtime_profiles: [effects]`, so both were strict-mode
-            # boot-fatal on the deployed effects pod, on the onex-dev green
-            # path. The claim held only for the eight PUBLIC placeholders.
-            #
-            # OMN-15668 / OMN-15655 residual: `omniintelligence` is a genuinely
-            # separate,
-            # service-owned database (`OMNIINTELLIGENCE_DB_URL`, migration owned
-            # by the omniintelligence repo). ADR-0027 keeps independently
-            # service-owned databases separate, so the repair is to DECLARE the
-            # database in the typed topology (an omnibase_infra change), not to
-            # relocate the relation into `application`.
-            (
-                "node_dispatch_outcome_bridge_effect",
-                "dispatch_eval_results",
-                "omniintelligence",
-                "public",
-            ),
-        }
+        # RETIRED 2026-08-02 -- the nine relations that used to sit here
+        # (eight `application`.`public` placeholders plus
+        # node_projection_delegation's `unresolved` landmine) are gone from
+        # this ratchet because the operator CLASSIFIED them, which is the
+        # only sanctioned way an entry leaves: "this is all per tenant."
+        # All nine now declare `schema: tenant` and resolve on every
+        # profile. See OMN-15655 / OMN-15423 and the house-tenant ruling.
+        #
+        # CORRECTION to the retired comment, which was FALSE for two of the
+        # ten entries: it claimed "None of them declares a
+        # `descriptor.runtime_profiles`, so ... none is boot-fatal today."
+        # `node_projection_delegation` (delegation_judge_verdict_events) and
+        # `node_dispatch_outcome_bridge_effect` (dispatch_eval_results) BOTH
+        # declare `runtime_profiles: [effects]`, so both were strict-mode
+        # boot-fatal on the deployed effects pod, on the onex-dev green
+        # path. The claim held only for the eight PUBLIC placeholders.
+        #
+        # RETIRED 2026-08-15 (OMN-16077 infra pin bump to 94247acff): the
+        # last residual, node_dispatch_outcome_bridge_effect's
+        # (`omniintelligence`.`public`.`dispatch_eval_results`), left the
+        # ratchet the sanctioned way — the OMN-15668 repair landed in
+        # omnibase_infra (the `omniintelligence` service-owned database is
+        # now DECLARED in the typed topology, per ADR-0027), so the
+        # declaration resolves on every shipped profile. The ratchet is
+        # empty; it stays here so a future bad declaration still fails CI
+        # against an exact (now-empty) expected set.
     )
 )
 
@@ -256,33 +251,24 @@ def test_every_declared_db_table_resolves_or_is_a_tracked_residual(
 
 
 @pytest.mark.parametrize("profile", _PROFILES)
-def test_internal_evidence_tables_are_blocked_only_by_absent_table_grants(
+def test_internal_evidence_tables_resolve_end_to_end(
     profile: str,
 ) -> None:
-    """Tripwire: the residual blocker is OMN-15656, not an omnimarket defect.
+    """The evidence relations wire fully — the promoted grants-tripwire.
 
-    After the schema repair, full strict resolution of the evidence relations
-    still raises -- every shipped topology instance declares zero
-    ``object_type: TABLE`` grants, so ``_require_projection_binding_privileges``
-    refuses the write binding. This asserts the residual failure is EXACTLY that
-    grants failure, proving the omnimarket half of the deploy RED is cleared.
-
-    When OMN-15656 lands in omnibase_infra and the pinned rev is bumped here,
-    this test FAILS. That is the intended signal: delete it and tighten
-    ``test_every_declared_db_table_resolves_or_is_a_tracked_residual`` into a
-    full ``_resolve_projection_database_target`` zero-failure assertion.
+    Until OMN-16077 bumped the pinned ``omnibase-infra`` rev to ``94247acff``,
+    this test was ``test_internal_evidence_tables_are_blocked_only_by_absent_
+    table_grants``: it asserted the ONLY residual failure was the missing
+    ``object_type: TABLE`` grants (OMN-15656). The pinned topology now declares
+    those grants on every shipped instance, the tripwire fired exactly as its
+    docstring predicted, and this is the promotion it prescribed: the exact
+    resolver that failed onex-dev deploy run 30737415706 must return a complete
+    target for the evidence relations with zero failures, on every profile.
     """
     topology = _topology(profile)
-    with pytest.raises(ValueError, match="lacks declared write privileges") as excinfo:
-        _resolve_projection_database_target(_evidence_declarations(), topology)
-
-    message = str(excinfo.value)
-    assert "Unknown schema" not in message, (
-        f"{profile}: the OMN-15655 classification defect is NOT cleared: {message}"
-    )
-    assert "Unknown database_ref" not in message, (
-        f"{profile}: the OMN-15655 classification defect is NOT cleared: {message}"
-    )
-    assert "omninode_internal.deployment_evidence_projection" in message, (
-        f"{profile}: the failure must name the internal-domain relation, got: {message}"
+    target = _resolve_projection_database_target(_evidence_declarations(), topology)
+    resolved_names = {table.table.name for table in target.table_targets}
+    assert resolved_names == set(_EVIDENCE_TABLES), (
+        f"{profile}: expected a full binding for {sorted(_EVIDENCE_TABLES)}, "
+        f"got {sorted(resolved_names)}"
     )

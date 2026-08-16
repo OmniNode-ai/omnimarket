@@ -1,0 +1,2829 @@
+{
+  "_provenance": {
+    "captured_at": "2026-08-14",
+    "how": [
+      "gh pr view 1557 --repo OmniNode-ai/omnibase_core --json headRefName,baseRefName,headRefOid,state,mergedAt,mergeCommit",
+      "gh api repos/OmniNode-ai/omnibase_core/branches/dev/protection/required_status_checks",
+      "gh api --paginate repos/.../commits/<head>/check-suites --jq '.check_suites[]|{id,head_branch}'",
+      "gh api --paginate repos/.../commits/<head>/check-runs --jq '.check_runs[]|{name,status,conclusion,check_suite,id,completed_at}'",
+      "gh api --paginate repos/.../commits/<merge>/check-runs --jq '.check_runs[]|{name,status,conclusion,id,completed_at}'"
+    ],
+    "note": "Unedited live capture. Every field below is exactly what FETCH_PR_CHECKS_GREEN reads from the GitHub API for this merged PR.",
+    "pr_number": 1557,
+    "repo": "OmniNode-ai/omnibase_core"
+  },
+  "head_check_runs": [
+    {
+      "check_suite": {
+        "id": 86225422088
+      },
+      "completed_at": "2026-08-14T08:22:22Z",
+      "conclusion": "skipped",
+      "id": 94714566870,
+      "name": "auto-tag",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86225421637
+      },
+      "completed_at": "2026-08-14T08:22:32Z",
+      "conclusion": "success",
+      "id": 94714564917,
+      "name": "TODO Audit",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86225000681
+      },
+      "completed_at": "2026-08-14T08:20:06Z",
+      "conclusion": "success",
+      "id": 94714082757,
+      "name": "CodeQL",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286205
+      },
+      "completed_at": "2026-08-14T08:20:48Z",
+      "conclusion": "success",
+      "id": 94713080723,
+      "name": "CodeQL / CodeQL Analysis (python)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286205
+      },
+      "completed_at": "2026-08-14T08:15:08Z",
+      "conclusion": "success",
+      "id": 94712924505,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:26Z",
+      "conclusion": "success",
+      "id": 94689726793,
+      "name": "Core-Infra Boundary",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:46Z",
+      "conclusion": "success",
+      "id": 94689725257,
+      "name": "Compose Drift",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:39Z",
+      "conclusion": "success",
+      "id": 94689723759,
+      "name": "SDK Boundary Guard",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:29Z",
+      "conclusion": "success",
+      "id": 94689721316,
+      "name": "Node Purity Check",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:38Z",
+      "conclusion": "success",
+      "id": 94689719336,
+      "name": "Contract-Config Compliance (OMN-10688)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:49:15Z",
+      "conclusion": "success",
+      "id": 94689710784,
+      "name": "Tests Gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:49:28Z",
+      "conclusion": "success",
+      "id": 94689710444,
+      "name": "Shadow Selection Compare",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:11Z",
+      "conclusion": "success",
+      "id": 94689709489,
+      "name": "Tests (Split 40/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:42:45Z",
+      "conclusion": "success",
+      "id": 94689709358,
+      "name": "Tests (Split 39/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:44:52Z",
+      "conclusion": "success",
+      "id": 94689709301,
+      "name": "Tests (Split 36/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:43:54Z",
+      "conclusion": "success",
+      "id": 94689709264,
+      "name": "Tests (Split 38/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:42:08Z",
+      "conclusion": "success",
+      "id": 94689709065,
+      "name": "Tests (Split 32/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:43:08Z",
+      "conclusion": "success",
+      "id": 94689709041,
+      "name": "Tests (Split 37/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:45:03Z",
+      "conclusion": "success",
+      "id": 94689709019,
+      "name": "Tests (Split 33/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:44:26Z",
+      "conclusion": "success",
+      "id": 94689709018,
+      "name": "Tests (Split 31/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:49:05Z",
+      "conclusion": "success",
+      "id": 94689708958,
+      "name": "Tests (Split 34/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:17Z",
+      "conclusion": "success",
+      "id": 94689708854,
+      "name": "Tests (Split 35/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:45:48Z",
+      "conclusion": "success",
+      "id": 94689708527,
+      "name": "Tests (Split 26/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:23Z",
+      "conclusion": "success",
+      "id": 94689708455,
+      "name": "Tests (Split 29/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:13Z",
+      "conclusion": "success",
+      "id": 94689708392,
+      "name": "Tests (Split 23/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:27Z",
+      "conclusion": "success",
+      "id": 94689708350,
+      "name": "Tests (Split 30/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:55Z",
+      "conclusion": "success",
+      "id": 94689708244,
+      "name": "Tests (Split 27/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:27Z",
+      "conclusion": "success",
+      "id": 94689708239,
+      "name": "Tests (Split 28/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:40:20Z",
+      "conclusion": "success",
+      "id": 94689708188,
+      "name": "Tests (Split 25/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:45:07Z",
+      "conclusion": "success",
+      "id": 94689707994,
+      "name": "Tests (Split 22/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:49Z",
+      "conclusion": "success",
+      "id": 94689707943,
+      "name": "Tests (Split 20/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:42:51Z",
+      "conclusion": "success",
+      "id": 94689707915,
+      "name": "Tests (Split 19/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:16Z",
+      "conclusion": "success",
+      "id": 94689707892,
+      "name": "Tests (Split 24/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:38:54Z",
+      "conclusion": "success",
+      "id": 94689707604,
+      "name": "Tests (Split 15/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:44:14Z",
+      "conclusion": "success",
+      "id": 94689707561,
+      "name": "Tests (Split 21/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:43:52Z",
+      "conclusion": "success",
+      "id": 94689707555,
+      "name": "Tests (Split 14/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:32:21Z",
+      "conclusion": "success",
+      "id": 94689707542,
+      "name": "Tests (Split 16/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:42:15Z",
+      "conclusion": "success",
+      "id": 94689707528,
+      "name": "Tests (Split 18/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:42:53Z",
+      "conclusion": "success",
+      "id": 94689707389,
+      "name": "Tests (Split 13/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:13Z",
+      "conclusion": "success",
+      "id": 94689707382,
+      "name": "Tests (Split 17/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:36:30Z",
+      "conclusion": "success",
+      "id": 94689707140,
+      "name": "Tests (Split 10/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:32Z",
+      "conclusion": "success",
+      "id": 94689707057,
+      "name": "Tests (Split 12/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:46:54Z",
+      "conclusion": "success",
+      "id": 94689706940,
+      "name": "Tests (Split 11/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:43:19Z",
+      "conclusion": "success",
+      "id": 94689706928,
+      "name": "Tests (Split 6/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:29Z",
+      "conclusion": "success",
+      "id": 94689706917,
+      "name": "Tests (Split 9/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:37:16Z",
+      "conclusion": "success",
+      "id": 94689706864,
+      "name": "Tests (Split 8/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:25:06Z",
+      "conclusion": "success",
+      "id": 94689706771,
+      "name": "Integration Tests (Split 4/4)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:25:11Z",
+      "conclusion": "success",
+      "id": 94689706654,
+      "name": "Integration Tests (Split 3/4)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:25:09Z",
+      "conclusion": "success",
+      "id": 94689706577,
+      "name": "Integration Tests (Split 2/4)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:41:43Z",
+      "conclusion": "success",
+      "id": 94689706512,
+      "name": "Tests (Split 3/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:35:58Z",
+      "conclusion": "success",
+      "id": 94689706501,
+      "name": "Tests (Split 4/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:44:49Z",
+      "conclusion": "success",
+      "id": 94689706441,
+      "name": "Tests (Split 7/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:34:07Z",
+      "conclusion": "success",
+      "id": 94689706391,
+      "name": "Tests (Split 5/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:39:31Z",
+      "conclusion": "success",
+      "id": 94689706324,
+      "name": "Tests (Split 2/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:44:09Z",
+      "conclusion": "success",
+      "id": 94689706320,
+      "name": "Tests (Split 1/40)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:25:10Z",
+      "conclusion": "success",
+      "id": 94689706221,
+      "name": "Integration Tests (Split 1/4)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:24:07Z",
+      "conclusion": "success",
+      "id": 94689705874,
+      "name": "Detect Changes",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:23:48Z",
+      "conclusion": "success",
+      "id": 94689705204,
+      "name": "Zone Filter (docs-only check)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:23:37Z",
+      "conclusion": "success",
+      "id": 94689705146,
+      "name": "Quality Gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:21:02Z",
+      "conclusion": "success",
+      "id": 94689703203,
+      "name": "No IO Outside Effects Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:47Z",
+      "conclusion": "success",
+      "id": 94689703178,
+      "name": "Pin Hygiene Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:42Z",
+      "conclusion": "success",
+      "id": 94689703131,
+      "name": "No None Guard Publish",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:48Z",
+      "conclusion": "success",
+      "id": 94689703125,
+      "name": "No Except Swallow",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:54Z",
+      "conclusion": "success",
+      "id": 94689703105,
+      "name": "No Hardcoded IP Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:48Z",
+      "conclusion": "success",
+      "id": 94689703084,
+      "name": "TODO Marker Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:44Z",
+      "conclusion": "success",
+      "id": 94689703069,
+      "name": "Hardcoded Topic Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:35Z",
+      "conclusion": "success",
+      "id": 94689703065,
+      "name": "Breaking-Schema-Change (OMN-12621)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:56Z",
+      "conclusion": "success",
+      "id": 94689703052,
+      "name": "Cross-repo boundary validation",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:50Z",
+      "conclusion": "success",
+      "id": 94689703033,
+      "name": "No Raw Sqlite3 Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:35Z",
+      "conclusion": "success",
+      "id": 94689703030,
+      "name": "Pull-Request Workflow Ratchet (OMN-14907)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:38Z",
+      "conclusion": "success",
+      "id": 94689703015,
+      "name": "Dispatch-Surface Test Required (OMN-12960)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:48Z",
+      "conclusion": "success",
+      "id": 94689703012,
+      "name": "Duplicate Registry Ids",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:54Z",
+      "conclusion": "success",
+      "id": 94689703009,
+      "name": "Pydantic extra=\"forbid\" Ratchet (OMN-14515)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:38Z",
+      "conclusion": "success",
+      "id": 94689703005,
+      "name": "Backend Secret Discipline",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:45Z",
+      "conclusion": "success",
+      "id": 94689703000,
+      "name": "Bypass-Token Blocklist",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:22:21Z",
+      "conclusion": "success",
+      "id": 94689702955,
+      "name": "AI Slop Patterns",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:40Z",
+      "conclusion": "success",
+      "id": 94689702923,
+      "name": "dispatched contract handlers[0].operation Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:38Z",
+      "conclusion": "success",
+      "id": 94689702913,
+      "name": "Doc-Content Scan",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:29Z",
+      "conclusion": "success",
+      "id": 94689702899,
+      "name": "Reject localhost/env fallbacks (OMN-7227)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:37Z",
+      "conclusion": "success",
+      "id": 94689702884,
+      "name": "Non-Canonical Lifecycle-Class Ratchet (OMN-14350)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:31Z",
+      "conclusion": "success",
+      "id": 94689702851,
+      "name": "Naming Conventions",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:46Z",
+      "conclusion": "success",
+      "id": 94689702836,
+      "name": "No Import None Fallback",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:53Z",
+      "conclusion": "success",
+      "id": 94689702834,
+      "name": "No Direct Kafka Producer Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:39Z",
+      "conclusion": "success",
+      "id": 94689702829,
+      "name": "SPDX Headers",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:21:27Z",
+      "conclusion": "success",
+      "id": 94689702825,
+      "name": "Pyright Type Checking",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:43Z",
+      "conclusion": "success",
+      "id": 94689702804,
+      "name": "operation_match Operation Field Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:34Z",
+      "conclusion": "success",
+      "id": 94689702788,
+      "name": "Demo-Path Topic Coherence (OMN-12777)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:21:47Z",
+      "conclusion": "success",
+      "id": 94689702786,
+      "name": "Code Quality",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:41Z",
+      "conclusion": "success",
+      "id": 94689702774,
+      "name": "Contract Compliance",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:40Z",
+      "conclusion": "success",
+      "id": 94689702744,
+      "name": "Gitignore Baseline Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:39Z",
+      "conclusion": "success",
+      "id": 94689702739,
+      "name": "Release Identity Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:31Z",
+      "conclusion": "success",
+      "id": 94689702736,
+      "name": "Pydantic Patterns",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:28Z",
+      "conclusion": "success",
+      "id": 94689702731,
+      "name": "OCC Companion Merged Gate (OMN-15214)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:23:30Z",
+      "conclusion": "success",
+      "id": 94689702687,
+      "name": "Detect Secrets",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:32Z",
+      "conclusion": "success",
+      "id": 94689702684,
+      "name": "Deterministic Skill Routing",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:37Z",
+      "conclusion": "success",
+      "id": 94689702663,
+      "name": "Contract Compliance Check",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:37Z",
+      "conclusion": "success",
+      "id": 94689702651,
+      "name": "No New os.environ Reads (OMN-13566)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:32Z",
+      "conclusion": "success",
+      "id": 94689702641,
+      "name": "Exports Validation",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:49Z",
+      "conclusion": "success",
+      "id": 94689702632,
+      "name": "generated-node model-class-existence Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:40Z",
+      "conclusion": "success",
+      "id": 94689702623,
+      "name": "Enum Governance Check",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:40Z",
+      "conclusion": "success",
+      "id": 94689702618,
+      "name": "command-category Event Model Validator",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:36Z",
+      "conclusion": "success",
+      "id": 94689702610,
+      "name": "Mypy Validation Scripts",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:31Z",
+      "conclusion": "success",
+      "id": 94689702579,
+      "name": "Documentation Validation",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:30Z",
+      "conclusion": "success",
+      "id": 94689702564,
+      "name": "Version Pin Compliance",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T06:40:55Z",
+      "conclusion": "success",
+      "id": 94689702547,
+      "name": "CI Summary",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285594
+      },
+      "completed_at": "2026-08-14T05:20:41Z",
+      "conclusion": "success",
+      "id": 94689702453,
+      "name": "Import Layering Oracle",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286134
+      },
+      "completed_at": "2026-08-14T05:33:04Z",
+      "conclusion": "failure",
+      "id": 94683542452,
+      "name": "Enable Auto-Merge",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286134
+      },
+      "completed_at": "2026-08-14T05:32:39Z",
+      "conclusion": "success",
+      "id": 94683520971,
+      "name": "Resolve PR (fanout guard)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286134
+      },
+      "completed_at": "2026-08-14T05:32:32Z",
+      "conclusion": "success",
+      "id": 94683414318,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286896
+      },
+      "completed_at": "2026-08-14T05:22:09Z",
+      "conclusion": "success",
+      "id": 94681908199,
+      "name": "call-reject-skip-token / scan / reject-skip-gate-token",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286501
+      },
+      "completed_at": "2026-08-14T05:21:39Z",
+      "conclusion": "success",
+      "id": 94681811637,
+      "name": "required-check-skip-guard / check-skip-vectors",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286387
+      },
+      "completed_at": "2026-08-14T05:21:32Z",
+      "conclusion": "success",
+      "id": 94681811041,
+      "name": "gate / CodeRabbit Thread Check",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286284
+      },
+      "completed_at": "2026-08-14T05:21:47Z",
+      "conclusion": "success",
+      "id": 94681806027,
+      "name": "deploy-gate / deploy-gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286152
+      },
+      "completed_at": "2026-08-14T05:21:34Z",
+      "conclusion": "success",
+      "id": 94681805893,
+      "name": "Dep Provenance Gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286181
+      },
+      "completed_at": "2026-08-14T05:21:30Z",
+      "conclusion": "success",
+      "id": 94681799822,
+      "name": "LLM refs drift check (OMN-11932)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286138
+      },
+      "completed_at": "2026-08-14T05:21:37Z",
+      "conclusion": "success",
+      "id": 94681797507,
+      "name": "Check architecture handshake",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286896
+      },
+      "completed_at": "2026-08-14T05:22:02Z",
+      "conclusion": "success",
+      "id": 94681796981,
+      "name": "call-reject-skip-token / occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286224
+      },
+      "completed_at": "2026-08-14T05:21:44Z",
+      "conclusion": "success",
+      "id": 94681793167,
+      "name": "URL Authority Gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286172
+      },
+      "completed_at": "2026-08-14T05:21:51Z",
+      "conclusion": "success",
+      "id": 94681792554,
+      "name": "fsm-handler-drift",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285928
+      },
+      "completed_at": "2026-08-14T05:21:35Z",
+      "conclusion": "success",
+      "id": 94681790781,
+      "name": "contract-validation",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286243
+      },
+      "completed_at": "2026-08-14T05:22:23Z",
+      "conclusion": "success",
+      "id": 94681789457,
+      "name": "main-target-guard",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285978
+      },
+      "completed_at": "2026-08-14T05:22:03Z",
+      "conclusion": "success",
+      "id": 94681785984,
+      "name": "verify / verify",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286131
+      },
+      "completed_at": "2026-08-14T05:21:30Z",
+      "conclusion": "success",
+      "id": 94681785377,
+      "name": "pr-title / check-title",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286190
+      },
+      "completed_at": "2026-08-14T05:21:39Z",
+      "conclusion": "success",
+      "id": 94681778605,
+      "name": "runtime-profiles",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285612
+      },
+      "completed_at": "2026-08-14T05:21:17Z",
+      "conclusion": "success",
+      "id": 94681773949,
+      "name": "ONEX Architecture Compliance",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285612
+      },
+      "completed_at": "2026-08-14T05:21:19Z",
+      "conclusion": "success",
+      "id": 94681773931,
+      "name": "Legacy Compatibility Check",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285612
+      },
+      "completed_at": "2026-08-14T05:21:18Z",
+      "conclusion": "success",
+      "id": 94681773927,
+      "name": "Decommissioned Pattern Scanner (OMN-4801)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285612
+      },
+      "completed_at": "2026-08-14T05:21:19Z",
+      "conclusion": "success",
+      "id": 94681773884,
+      "name": "Ecosystem Integration Validation",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285612
+      },
+      "completed_at": "2026-08-14T05:21:21Z",
+      "conclusion": "success",
+      "id": 94681773882,
+      "name": "CI Naming Convention",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286148
+      },
+      "completed_at": "2026-08-14T05:21:48Z",
+      "conclusion": "success",
+      "id": 94681773202,
+      "name": "receipt-honesty",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286001
+      },
+      "completed_at": "2026-08-14T05:21:35Z",
+      "conclusion": "success",
+      "id": 94681765751,
+      "name": "no-plugin-daemon-classes",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285790
+      },
+      "completed_at": "2026-08-14T05:21:16Z",
+      "conclusion": "success",
+      "id": 94681759891,
+      "name": "Stale TODO Gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285980
+      },
+      "completed_at": "2026-08-14T05:21:35Z",
+      "conclusion": "success",
+      "id": 94681758422,
+      "name": "No Faked Boundary Gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285851
+      },
+      "completed_at": "2026-08-14T05:21:50Z",
+      "conclusion": "success",
+      "id": 94681756955,
+      "name": "AST Risk Labeler",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285896
+      },
+      "completed_at": "2026-08-14T05:21:14Z",
+      "conclusion": "success",
+      "id": 94681756197,
+      "name": "DB ownership CI twin (B1)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285820
+      },
+      "completed_at": "2026-08-14T05:21:27Z",
+      "conclusion": "success",
+      "id": 94681753884,
+      "name": "Canonical Inference Gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285848
+      },
+      "completed_at": "2026-08-14T05:22:06Z",
+      "conclusion": "success",
+      "id": 94681752826,
+      "name": "no-unguarded-git-subprocess",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286896
+      },
+      "completed_at": "2026-08-14T05:21:18Z",
+      "conclusion": "success",
+      "id": 94681697120,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286501
+      },
+      "completed_at": "2026-08-14T05:21:23Z",
+      "conclusion": "success",
+      "id": 94681694081,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286387
+      },
+      "completed_at": "2026-08-14T05:21:23Z",
+      "conclusion": "success",
+      "id": 94681692486,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286284
+      },
+      "completed_at": "2026-08-14T05:21:21Z",
+      "conclusion": "success",
+      "id": 94681691038,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286243
+      },
+      "completed_at": "2026-08-14T05:21:15Z",
+      "conclusion": "success",
+      "id": 94681688032,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286224
+      },
+      "completed_at": "2026-08-14T05:21:16Z",
+      "conclusion": "success",
+      "id": 94681686502,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286190
+      },
+      "completed_at": "2026-08-14T05:21:11Z",
+      "conclusion": "success",
+      "id": 94681685786,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286181
+      },
+      "completed_at": "2026-08-14T05:21:19Z",
+      "conclusion": "success",
+      "id": 94681683108,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286172
+      },
+      "completed_at": "2026-08-14T05:21:16Z",
+      "conclusion": "success",
+      "id": 94681682537,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286152
+      },
+      "completed_at": "2026-08-14T05:21:21Z",
+      "conclusion": "success",
+      "id": 94681681773,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286148
+      },
+      "completed_at": "2026-08-14T05:21:09Z",
+      "conclusion": "success",
+      "id": 94681678888,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286138
+      },
+      "completed_at": "2026-08-14T05:21:18Z",
+      "conclusion": "success",
+      "id": 94681677544,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286131
+      },
+      "completed_at": "2026-08-14T05:21:13Z",
+      "conclusion": "success",
+      "id": 94681676533,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286065
+      },
+      "completed_at": "2026-08-14T05:21:18Z",
+      "conclusion": "success",
+      "id": 94681674494,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286001
+      },
+      "completed_at": "2026-08-14T05:21:06Z",
+      "conclusion": "success",
+      "id": 94681672659,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285980
+      },
+      "completed_at": "2026-08-14T05:21:03Z",
+      "conclusion": "success",
+      "id": 94681671735,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285978
+      },
+      "completed_at": "2026-08-14T05:21:13Z",
+      "conclusion": "success",
+      "id": 94681668951,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285928
+      },
+      "completed_at": "2026-08-14T05:21:15Z",
+      "conclusion": "success",
+      "id": 94681667507,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285896
+      },
+      "completed_at": "2026-08-14T05:21:02Z",
+      "conclusion": "success",
+      "id": 94681665291,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285851
+      },
+      "completed_at": "2026-08-14T05:21:03Z",
+      "conclusion": "success",
+      "id": 94681664222,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285820
+      },
+      "completed_at": "2026-08-14T05:21:01Z",
+      "conclusion": "success",
+      "id": 94681662572,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285848
+      },
+      "completed_at": "2026-08-14T05:21:01Z",
+      "conclusion": "success",
+      "id": 94681660499,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285790
+      },
+      "completed_at": "2026-08-14T05:21:04Z",
+      "conclusion": "success",
+      "id": 94681658950,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285612
+      },
+      "completed_at": "2026-08-14T05:21:09Z",
+      "conclusion": "success",
+      "id": 94681657334,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162174383
+      },
+      "completed_at": "2026-08-14T01:04:02Z",
+      "conclusion": "success",
+      "id": 94642374035,
+      "name": "call-reject-skip-token / scan / reject-skip-gate-token",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162172438
+      },
+      "completed_at": "2026-08-14T01:15:28Z",
+      "conclusion": "success",
+      "id": 94642257341,
+      "name": "main-target-guard",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162172402
+      },
+      "completed_at": "2026-08-14T01:03:32Z",
+      "conclusion": "success",
+      "id": 94642253672,
+      "name": "URL Authority Gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162174383
+      },
+      "completed_at": "2026-08-14T01:03:54Z",
+      "conclusion": "success",
+      "id": 94642252520,
+      "name": "call-reject-skip-token / occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162173294
+      },
+      "completed_at": "2026-08-14T01:13:10Z",
+      "conclusion": "success",
+      "id": 94642248651,
+      "name": "pr-title / check-title",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162172358
+      },
+      "completed_at": "2026-08-14T01:03:51Z",
+      "conclusion": "success",
+      "id": 94642241628,
+      "name": "verify / verify",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162172709
+      },
+      "completed_at": "2026-08-14T01:03:35Z",
+      "conclusion": "success",
+      "id": 94642238458,
+      "name": "No Faked Boundary Gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162172714
+      },
+      "completed_at": "2026-08-14T01:03:30Z",
+      "conclusion": "success",
+      "id": 94642232818,
+      "name": "Canonical Inference Gate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162174383
+      },
+      "completed_at": "2026-08-14T01:03:11Z",
+      "conclusion": "success",
+      "id": 94642135165,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162172709
+      },
+      "completed_at": "2026-08-14T01:03:06Z",
+      "conclusion": "success",
+      "id": 94642133543,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162173294
+      },
+      "completed_at": "2026-08-14T01:03:10Z",
+      "conclusion": "success",
+      "id": 94642133471,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162172714
+      },
+      "completed_at": "2026-08-14T01:03:04Z",
+      "conclusion": "success",
+      "id": 94642133044,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162172438
+      },
+      "completed_at": "2026-08-14T01:03:13Z",
+      "conclusion": "success",
+      "id": 94642132542,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162172358
+      },
+      "completed_at": "2026-08-14T01:03:07Z",
+      "conclusion": "success",
+      "id": 94642132448,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86162172402
+      },
+      "completed_at": "2026-08-14T01:03:11Z",
+      "conclusion": "success",
+      "id": 94642132277,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285870
+      },
+      "completed_at": "2026-08-14T00:57:29Z",
+      "conclusion": "success",
+      "id": 94641274937,
+      "name": "product-readiness / evaluate",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285870
+      },
+      "completed_at": "2026-08-14T00:57:34Z",
+      "conclusion": "success",
+      "id": 94641274829,
+      "name": "reason-graph",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161286442
+      },
+      "completed_at": "2026-08-14T01:03:53Z",
+      "conclusion": "success",
+      "id": 94641085352,
+      "name": "occ-companion-effect / Publish occ-companion-effect command",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285870
+      },
+      "completed_at": "2026-08-14T00:57:19Z",
+      "conclusion": "success",
+      "id": 94641084584,
+      "name": "typecheck (shadow)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285870
+      },
+      "completed_at": "2026-08-14T00:56:29Z",
+      "conclusion": "success",
+      "id": 94641084533,
+      "name": "lint (shadow)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285870
+      },
+      "completed_at": "2026-08-14T00:56:39Z",
+      "conclusion": "success",
+      "id": 94641084487,
+      "name": "tests+coverage (shadow)",
+      "status": "completed"
+    },
+    {
+      "check_suite": {
+        "id": 86161285545
+      },
+      "completed_at": "2026-08-14T00:56:26Z",
+      "conclusion": "success",
+      "id": 94641084061,
+      "name": "Precommit Parity Gate",
+      "status": "completed"
+    }
+  ],
+  "head_check_suites": [
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86160845570
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86160845764
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86160845895
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285545
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285594
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285612
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285790
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285820
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285848
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285851
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285870
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285896
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285928
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285978
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161285980
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286001
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286065
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286131
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286134
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286138
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286148
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286152
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286172
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286181
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286190
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286205
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286224
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286243
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286284
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286387
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286442
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286501
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86161286896
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86162172358
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86162172402
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86162172438
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86162172709
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86162172714
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86162173294
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86162174383
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86225000681
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86225421637
+    },
+    {
+      "head_branch": "jonah/omn-15862-skip-never-aggregates-pass",
+      "id": 86225422088
+    }
+  ],
+  "merge_check_runs": [
+    {
+      "completed_at": "2026-08-14T08:39:53Z",
+      "conclusion": "skipped",
+      "id": 94718321908,
+      "name": "Harvest shadow records",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:38:19Z",
+      "conclusion": "success",
+      "id": 94717814293,
+      "name": "no-unguarded-git-subprocess",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:20Z",
+      "conclusion": "skipped",
+      "id": 94716692466,
+      "name": "Shadow Selection Compare",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:20Z",
+      "conclusion": "skipped",
+      "id": 94716691869,
+      "name": "Tests (Split ${{ matrix.split }}/${{ needs.detect-changes.outputs.split_count }})",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:20Z",
+      "conclusion": "skipped",
+      "id": 94716691854,
+      "name": "Integration Tests (Split ${{ matrix.split }}/4)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:20Z",
+      "conclusion": "skipped",
+      "id": 94716691779,
+      "name": "Detect Changes",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:29Z",
+      "conclusion": "failure",
+      "id": 94716691662,
+      "name": "Tests Gate",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:20Z",
+      "conclusion": "skipped",
+      "id": 94716690925,
+      "name": "Zone Filter (docs-only check)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:19Z",
+      "conclusion": "failure",
+      "id": 94716627684,
+      "name": "Quality Gate",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:31:43Z",
+      "conclusion": "success",
+      "id": 94716235807,
+      "name": "receipt-honesty",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:16Z",
+      "conclusion": "success",
+      "id": 94716083344,
+      "name": "Legacy Compatibility Check",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:14Z",
+      "conclusion": "success",
+      "id": 94716083324,
+      "name": "ONEX Architecture Compliance",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:06Z",
+      "conclusion": "success",
+      "id": 94716083292,
+      "name": "Decommissioned Pattern Scanner (OMN-4801)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:13Z",
+      "conclusion": "success",
+      "id": 94716083281,
+      "name": "Ecosystem Integration Validation",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:16Z",
+      "conclusion": "success",
+      "id": 94716083224,
+      "name": "CI Naming Convention",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:32Z",
+      "conclusion": "success",
+      "id": 94715799086,
+      "name": "LLM refs drift check (OMN-11932)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:17Z",
+      "conclusion": "success",
+      "id": 94715774157,
+      "name": "fsm-handler-drift",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:41:48Z",
+      "conclusion": "success",
+      "id": 94715342576,
+      "name": "CodeQL / CodeQL Analysis (python)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:51Z",
+      "conclusion": "success",
+      "id": 94715299222,
+      "name": "Check architecture handshake",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:25Z",
+      "conclusion": "success",
+      "id": 94715239395,
+      "name": "no-plugin-daemon-classes",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:40Z",
+      "conclusion": "success",
+      "id": 94715111581,
+      "name": "DB ownership CI twin (B1)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:24Z",
+      "conclusion": "success",
+      "id": 94715049324,
+      "name": "runtime-profiles",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:17Z",
+      "conclusion": "success",
+      "id": 94714566317,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:31Z",
+      "conclusion": "success",
+      "id": 94714566122,
+      "name": "dispatched contract handlers[0].operation Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:27:19Z",
+      "conclusion": "success",
+      "id": 94714566039,
+      "name": "Pull-Request Workflow Ratchet (OMN-14907)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:20Z",
+      "conclusion": "success",
+      "id": 94714566027,
+      "name": "No Hardcoded IP Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:27Z",
+      "conclusion": "success",
+      "id": 94714565999,
+      "name": "No IO Outside Effects Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:56Z",
+      "conclusion": "failure",
+      "id": 94714565980,
+      "name": "CI Summary",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:41Z",
+      "conclusion": "success",
+      "id": 94714565970,
+      "name": "TODO Marker Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:39:48Z",
+      "conclusion": "success",
+      "id": 94714565932,
+      "name": "Bypass-Token Blocklist",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:27:53Z",
+      "conclusion": "success",
+      "id": 94714565921,
+      "name": "Release Identity Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:24:30Z",
+      "conclusion": "success",
+      "id": 94714565913,
+      "name": "Non-Canonical Lifecycle-Class Ratchet (OMN-14350)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:14Z",
+      "conclusion": "success",
+      "id": 94714565888,
+      "name": "No Direct Kafka Producer Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:11Z",
+      "conclusion": "success",
+      "id": 94714565883,
+      "name": "No None Guard Publish",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:27:36Z",
+      "conclusion": "success",
+      "id": 94714565869,
+      "name": "operation_match Operation Field Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:45Z",
+      "conclusion": "success",
+      "id": 94714565848,
+      "name": "Pin Hygiene Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:22:32Z",
+      "conclusion": "success",
+      "id": 94714565835,
+      "name": "OCC Companion Merged Gate (OMN-15214)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:24:44Z",
+      "conclusion": "success",
+      "id": 94714565830,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:01Z",
+      "conclusion": "failure",
+      "id": 94714565828,
+      "name": "Contract Compliance Check",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:58Z",
+      "conclusion": "success",
+      "id": 94714565827,
+      "name": "No Import None Fallback",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:31:49Z",
+      "conclusion": "success",
+      "id": 94714565810,
+      "name": "No Raw Sqlite3 Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:48Z",
+      "conclusion": "success",
+      "id": 94714565804,
+      "name": "command-category Event Model Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:26:33Z",
+      "conclusion": "success",
+      "id": 94714565783,
+      "name": "Pydantic extra=\"forbid\" Ratchet (OMN-14515)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:58Z",
+      "conclusion": "success",
+      "id": 94714565777,
+      "name": "generated-node model-class-existence Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:43Z",
+      "conclusion": "success",
+      "id": 94714565768,
+      "name": "Gitignore Baseline Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:02Z",
+      "conclusion": "success",
+      "id": 94714565748,
+      "name": "No Except Swallow",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:25Z",
+      "conclusion": "success",
+      "id": 94714565740,
+      "name": "Cross-repo boundary validation",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:22Z",
+      "conclusion": "success",
+      "id": 94714565724,
+      "name": "Breaking-Schema-Change (OMN-12621)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:27Z",
+      "conclusion": "cancelled",
+      "id": 94714565699,
+      "name": "Detect Secrets",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:27:46Z",
+      "conclusion": "success",
+      "id": 94714565682,
+      "name": "Compose Drift",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:26:09Z",
+      "conclusion": "success",
+      "id": 94714565676,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:41Z",
+      "conclusion": "success",
+      "id": 94714565649,
+      "name": "Contract-Config Compliance (OMN-10688)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:25:02Z",
+      "conclusion": "success",
+      "id": 94714565613,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:27Z",
+      "conclusion": "success",
+      "id": 94714565594,
+      "name": "Hardcoded Topic Validator",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:16Z",
+      "conclusion": "success",
+      "id": 94714565589,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:02Z",
+      "conclusion": "success",
+      "id": 94714565584,
+      "name": "No New os.environ Reads (OMN-13566)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:37:26Z",
+      "conclusion": "cancelled",
+      "id": 94714565570,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:10Z",
+      "conclusion": "cancelled",
+      "id": 94714565542,
+      "name": "Reject localhost/env fallbacks (OMN-7227)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:24:16Z",
+      "conclusion": "success",
+      "id": 94714565498,
+      "name": "Doc-Content Scan",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:26:23Z",
+      "conclusion": "success",
+      "id": 94714565488,
+      "name": "Enum Governance Check",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:08Z",
+      "conclusion": "success",
+      "id": 94714565423,
+      "name": "Import Layering Oracle",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:21Z",
+      "conclusion": "success",
+      "id": 94714565422,
+      "name": "Backend Secret Discipline",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:25:39Z",
+      "conclusion": "success",
+      "id": 94714565414,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:24:50Z",
+      "conclusion": "success",
+      "id": 94714565409,
+      "name": "Naming Conventions",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:24:32Z",
+      "conclusion": "success",
+      "id": 94714565403,
+      "name": "SPDX Headers",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:33Z",
+      "conclusion": "success",
+      "id": 94714565402,
+      "name": "Contract Compliance",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:25:45Z",
+      "conclusion": "success",
+      "id": 94714565394,
+      "name": "Node Purity Check",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:25:40Z",
+      "conclusion": "success",
+      "id": 94714565381,
+      "name": "AI Slop Patterns",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:26:23Z",
+      "conclusion": "success",
+      "id": 94714565372,
+      "name": "Version Pin Compliance",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:24:33Z",
+      "conclusion": "success",
+      "id": 94714565363,
+      "name": "Exports Validation",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:53Z",
+      "conclusion": "cancelled",
+      "id": 94714565350,
+      "name": "Deterministic Skill Routing",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:32:01Z",
+      "conclusion": "success",
+      "id": 94714565340,
+      "name": "Duplicate Registry Ids",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:31:41Z",
+      "conclusion": "success",
+      "id": 94714565327,
+      "name": "SDK Boundary Guard",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:44Z",
+      "conclusion": "cancelled",
+      "id": 94714565318,
+      "name": "Demo-Path Topic Coherence (OMN-12777)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:52Z",
+      "conclusion": "success",
+      "id": 94714565316,
+      "name": "Documentation Validation",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:24:11Z",
+      "conclusion": "success",
+      "id": 94714565297,
+      "name": "Pydantic Patterns",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:27:55Z",
+      "conclusion": "success",
+      "id": 94714565275,
+      "name": "Dispatch-Surface Test Required (OMN-12960)",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:31:56Z",
+      "conclusion": "success",
+      "id": 94714565195,
+      "name": "Mypy Validation Scripts",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:24:12Z",
+      "conclusion": "success",
+      "id": 94714565193,
+      "name": "Core-Infra Boundary",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:56Z",
+      "conclusion": "success",
+      "id": 94714565158,
+      "name": "Code Quality",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:30:19Z",
+      "conclusion": "success",
+      "id": 94714565111,
+      "name": "Pyright Type Checking",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:29:36Z",
+      "conclusion": "success",
+      "id": 94714564886,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:28:10Z",
+      "conclusion": "success",
+      "id": 94714564866,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:25:56Z",
+      "conclusion": "success",
+      "id": 94714564838,
+      "name": "occ-preflight / eligibility",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:24:54Z",
+      "conclusion": "success",
+      "id": 94714564435,
+      "name": "Cross-Repo Validation",
+      "status": "completed"
+    },
+    {
+      "completed_at": "2026-08-14T08:22:41Z",
+      "conclusion": "success",
+      "id": 94714564268,
+      "name": "Precommit Parity Gate",
+      "status": "completed"
+    }
+  ],
+  "pr_view": {
+    "baseRefName": "dev",
+    "headRefName": "jonah/omn-15862-skip-never-aggregates-pass",
+    "headRefOid": "83b6804e3559ff2e0a2c465a528eccc13cafb9af",
+    "mergeCommit": {
+      "oid": "355b4e032660e948b2db2692085f9618159033ec"
+    },
+    "mergedAt": "2026-08-14T08:22:18Z",
+    "state": "MERGED"
+  },
+  "required_status_checks": {
+    "checks": [
+      {
+        "app_id": 15368,
+        "context": "call-reject-skip-token / scan / reject-skip-gate-token"
+      },
+      {
+        "app_id": 15368,
+        "context": "verify / verify"
+      },
+      {
+        "app_id": 15368,
+        "context": "contract-validation"
+      },
+      {
+        "app_id": 15368,
+        "context": "URL Authority Gate"
+      },
+      {
+        "app_id": 15368,
+        "context": "deploy-gate / deploy-gate"
+      },
+      {
+        "app_id": 15368,
+        "context": "Dep Provenance Gate"
+      },
+      {
+        "app_id": 15368,
+        "context": "Canonical Inference Gate"
+      },
+      {
+        "app_id": 15368,
+        "context": "No Faked Boundary Gate"
+      },
+      {
+        "app_id": 15368,
+        "context": "reason-graph"
+      },
+      {
+        "app_id": 15368,
+        "context": "gate / CodeRabbit Thread Check"
+      },
+      {
+        "app_id": 15368,
+        "context": "pr-title / check-title"
+      },
+      {
+        "app_id": 15368,
+        "context": "no-plugin-daemon-classes"
+      },
+      {
+        "app_id": 15368,
+        "context": "receipt-honesty"
+      },
+      {
+        "app_id": 15368,
+        "context": "runtime-profiles"
+      },
+      {
+        "app_id": 15368,
+        "context": "fsm-handler-drift"
+      },
+      {
+        "app_id": 15368,
+        "context": "Check architecture handshake"
+      },
+      {
+        "app_id": 15368,
+        "context": "Stale TODO Gate"
+      },
+      {
+        "app_id": 15368,
+        "context": "AST Risk Labeler"
+      },
+      {
+        "app_id": 15368,
+        "context": "Precommit Parity Gate"
+      },
+      {
+        "app_id": 15368,
+        "context": "ONEX Architecture Compliance"
+      },
+      {
+        "app_id": 15368,
+        "context": "Legacy Compatibility Check"
+      },
+      {
+        "app_id": 15368,
+        "context": "Decommissioned Pattern Scanner (OMN-4801)"
+      },
+      {
+        "app_id": 15368,
+        "context": "CI Naming Convention"
+      },
+      {
+        "app_id": 15368,
+        "context": "main-target-guard"
+      },
+      {
+        "app_id": 15368,
+        "context": "occ-preflight / eligibility"
+      },
+      {
+        "app_id": 57789,
+        "context": "CodeQL"
+      },
+      {
+        "app_id": 15368,
+        "context": "CodeQL / CodeQL Analysis (python)"
+      },
+      {
+        "app_id": 15368,
+        "context": "Ecosystem Integration Validation"
+      },
+      {
+        "app_id": 15368,
+        "context": "call-reject-skip-token / occ-preflight / eligibility"
+      },
+      {
+        "app_id": 15368,
+        "context": "lint (shadow)"
+      },
+      {
+        "app_id": 15368,
+        "context": "no-unguarded-git-subprocess"
+      },
+      {
+        "app_id": 15368,
+        "context": "occ-companion-effect / Publish occ-companion-effect command"
+      },
+      {
+        "app_id": 15368,
+        "context": "product-readiness / evaluate"
+      },
+      {
+        "app_id": 15368,
+        "context": "required-check-skip-guard / check-skip-vectors"
+      },
+      {
+        "app_id": 15368,
+        "context": "tests+coverage (shadow)"
+      },
+      {
+        "app_id": 15368,
+        "context": "typecheck (shadow)"
+      },
+      {
+        "app_id": 15368,
+        "context": "CI Summary"
+      }
+    ],
+    "contexts": [
+      "call-reject-skip-token / scan / reject-skip-gate-token",
+      "verify / verify",
+      "contract-validation",
+      "URL Authority Gate",
+      "deploy-gate / deploy-gate",
+      "Dep Provenance Gate",
+      "Canonical Inference Gate",
+      "No Faked Boundary Gate",
+      "reason-graph",
+      "gate / CodeRabbit Thread Check",
+      "pr-title / check-title",
+      "no-plugin-daemon-classes",
+      "receipt-honesty",
+      "runtime-profiles",
+      "fsm-handler-drift",
+      "Check architecture handshake",
+      "Stale TODO Gate",
+      "AST Risk Labeler",
+      "Precommit Parity Gate",
+      "ONEX Architecture Compliance",
+      "Legacy Compatibility Check",
+      "Decommissioned Pattern Scanner (OMN-4801)",
+      "CI Naming Convention",
+      "main-target-guard",
+      "occ-preflight / eligibility",
+      "CodeQL",
+      "CodeQL / CodeQL Analysis (python)",
+      "Ecosystem Integration Validation",
+      "call-reject-skip-token / occ-preflight / eligibility",
+      "lint (shadow)",
+      "no-unguarded-git-subprocess",
+      "occ-companion-effect / Publish occ-companion-effect command",
+      "product-readiness / evaluate",
+      "required-check-skip-guard / check-skip-vectors",
+      "tests+coverage (shadow)",
+      "typecheck (shadow)",
+      "CI Summary"
+    ],
+    "contexts_url": "https://api.github.com/repos/OmniNode-ai/omnibase_core/branches/dev/protection/required_status_checks/contexts",
+    "strict": false,
+    "url": "https://api.github.com/repos/OmniNode-ai/omnibase_core/branches/dev/protection/required_status_checks"
+  }
+}

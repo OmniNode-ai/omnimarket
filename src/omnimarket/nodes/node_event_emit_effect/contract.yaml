@@ -122,6 +122,70 @@ event_bus:
     - onex.evt.omnimarket.event-emit-failed.v1
     - onex.evt.omnimarket.tool-output-captured.v1
 
+compatibility_publish_topics:
+  # WHY THIS KEY EXISTS HERE (OMN-15971).
+  #
+  # The runtime's auto-wiring discovery gate
+  # (omnibase_infra/src/omnibase_infra/runtime/auto_wiring/discovery.py,
+  # _contract_targets_active_runtime_packages) skips any contract whose
+  # publish_topics reach into a package domain that is not in
+  # ONEX_ACTIVE_RUNTIME_PACKAGES. On the onex-dev lane that allowlist is
+  # `omnibase_infra,omnimarket`, so this contract was skipped in all three
+  # runtime profiles with the log line:
+  #
+  #   Skipping contract 'node_event_emit_effect' from 'omnimarket' because it
+  #   targets an inactive runtime package domain
+  #
+  # That is correct-by-design for a normal node: publishing into a domain IS
+  # being part of that domain's producer surface. This node is the deliberate
+  # exception -- it is a generic fan-out emitter whose entire job is to
+  # publish events on behalf of OTHER domains (omniclaude, omniintelligence)
+  # that it does not own and does not consume from. Its own domain surface is
+  # only the four omnimarket/omnibase-infra topics below the fold; the 24
+  # topics listed here are pure cross-domain fan-out targets.
+  #
+  # WHY THIS ROUTE, NOT ACTIVATING THE DOMAINS. The alternative -- adding
+  # omniclaude/omniintelligence/omnimemory to ONEX_ACTIVE_RUNTIME_PACKAGES --
+  # was measured in-pod against the deployed image before being rejected: it
+  # newly activates 25 contracts (not 1), 122 topics, and 29 NEW SUBSCRIBE
+  # topics, i.e. 29 consumer groups that all three runtime Deployments would
+  # join at boot, pulling in memory/persona/intent storage + retrieval +
+  # lifecycle handlers whose Postgres/Qdrant dependencies are not provisioned
+  # on that lane. That is a boot-path change to every runtime pod. This key is
+  # the runtime's own purpose-built, per-contract escape hatch for exactly
+  # this shape: it activates 1 contract and adds 0 new subscribe topics.
+  #
+  # INVARIANT (pinned by tests/unit/nodes/node_event_emit_effect/
+  # test_contract_compliance.py): every publish topic whose domain segment is
+  # outside this node's owning packages must appear here, and this list must
+  # contain nothing that is not a declared publish topic. Adding a new
+  # cross-domain publish topic without adding it here silently re-skips the
+  # whole contract at discovery -- the test is what stops that regression.
+  - onex.cmd.omniclaude.delegate-task.v1
+  - onex.cmd.omniintelligence.claude-hook-event.v1
+  - onex.cmd.omniintelligence.compliance-evaluate.v1
+  - onex.cmd.omniintelligence.session-outcome.v1
+  - onex.cmd.omniintelligence.tool-content.v1
+  - onex.cmd.omniintelligence.utilization-scoring.v1
+  - onex.evt.omniclaude.budget-cap-hit.v1
+  - onex.evt.omniclaude.circuit-breaker-tripped.v1
+  - onex.evt.omniclaude.delegation-shadow-comparison.v1
+  - onex.evt.omniclaude.llm-routing-decision.v1
+  - onex.evt.omniclaude.notification-blocked.v1
+  - onex.evt.omniclaude.notification-completed.v1
+  - onex.evt.omniclaude.pattern-enforcement.v1
+  - onex.evt.omniclaude.phase-metrics.v1
+  - onex.evt.omniclaude.prompt-submitted.v1
+  - onex.evt.omniclaude.routing-decision.v1
+  - onex.evt.omniclaude.routing-feedback.v1
+  - onex.evt.omniclaude.session-ended.v1
+  - onex.evt.omniclaude.session-outcome.v1
+  - onex.evt.omniclaude.session-started.v1
+  - onex.evt.omniclaude.skill-completed.v1
+  - onex.evt.omniclaude.skill-started.v1
+  - onex.evt.omniclaude.tool-executed.v1
+  - onex.evt.omniintelligence.llm-call-completed.v1
+
 externally_consumed_topics:
   # This node's own terminal events -- genuinely new (verified absent from
   # both registries/topics.yaml and the omniclaude-generated EVENT_REGISTRY
@@ -130,6 +194,65 @@ externally_consumed_topics:
   # producer/consumer graph does not flag them as orphans in the meantime.
   - onex.evt.omnimarket.event-emit-completed.v1
   - onex.evt.omnimarket.event-emit-failed.v1
+
+envelope_enrichment:
+  # OMN-16048 ruled REPLICATE: the fields below and the partition-key
+  # computation are WIRE CONTRACT, reproduced byte-for-byte from the legacy
+  # node_emit_daemon (EmitSocketServer._inject_metadata +
+  # EventRegistry.get_partition_key). Declared here, not left implicit in the
+  # handler, so the contract is the authority and drift is detectable --
+  # tests/unit/nodes/node_event_emit_effect/test_contract_compliance.py
+  # asserts this block against enrichment.ENRICHMENT_FIELDS.
+  #
+  # Carrier: the PAYLOAD, not typed ModelEmitRequest fields. These fields are
+  # what downstream consumers read off the wire (they are payload keys in
+  # every registered event's schema today), so hoisting them into request-
+  # level fields would have changed the wire shape -- the one thing the
+  # REPLICATE ruling forbids. ModelEmitRequest.correlation_id remains a seed
+  # for the generate-when-absent branch; the payload always wins.
+  applied_by: omnimarket.nodes.node_event_emit_effect.enrichment.inject_metadata
+  injected_fields:
+    - name: correlation_id
+      policy: preserve_else_generate   # request seed, else correlation_id_factory()
+      generated: true
+    - name: causation_id
+      policy: preserve_else_null
+      generated: false
+    - name: emitted_at
+      policy: preserve_else_clock      # clock().isoformat(), UTC
+      generated: true
+    - name: session_id
+      policy: preserve_else_env
+      env_var: CLAUDE_CODE_SESSION_ID
+      generated: false
+    - name: entity_id
+      policy: derive_from_session_id   # UUID passthrough, else sha256[:32] as UUID
+      generated: false
+    - name: schema_version
+      policy: constant
+      value: "1.0.0"
+      generated: false
+
+  # The two GENERATED fields are injected through callables whose defaults are
+  # the daemon's own inline expressions (datetime.now(UTC) / str(uuid4())).
+  # The seam exists so shadow-mode parity can be MEASURED rather than waived;
+  # it changes nothing at runtime. See enrichment.py's module docstring.
+  determinism_seam:
+    clock: HandlerEventEmitEffect.clock
+    correlation_id: HandlerEventEmitEffect.correlation_id_factory
+
+  per_topic_transform:
+    # Applied PER FAN-OUT RULE to the shared enriched payload, so two topics
+    # of one event legitimately differ on the wire.
+    source: registries/topics.yaml events.<event_type>.fan_out[].transform
+    supported: [passthrough, strip_prompt, strip_body]
+
+  partition_key:
+    # Derived from the POST-transform payload, matching the daemon's
+    # get_partition_key(event_type, rule.apply_transform(enriched)) ordering.
+    source: registries/topics.yaml events.<event_type>.partition_key_field
+    null_when: [field_undeclared, field_absent_or_null]
+    override: ModelEmitRequest.partition_key
 
 side_effects:
   reads: [local_spool_read]
@@ -148,4 +271,4 @@ metadata:
   transport_type: kafka
   durability: file_spool
   implementation_wave: 1
-  related_tickets: ["OMN-15965", "OMN-15964", "OMN-13213"]
+  related_tickets: ["OMN-16048", "OMN-15965", "OMN-15964", "OMN-13213"]

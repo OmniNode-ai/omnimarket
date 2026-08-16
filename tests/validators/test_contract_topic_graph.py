@@ -67,7 +67,11 @@ def _write(tmp_path: Path, package: str, node: str, contract: dict) -> Path:
     return path
 
 
-def _graph(tmp_path: Path, external: dict[str, str] | None = None) -> ModelTopicGraph:
+def _graph(
+    tmp_path: Path,
+    external: dict[str, str] | None = None,
+    external_consumers: dict[str, str] | None = None,
+) -> ModelTopicGraph:
     """Build a graph over an empty-but-resolvable root for every GRAPH_PACKAGES
     entry. build_graph() fails closed if a package root is UNRESOLVABLE (the
     census-completeness invariant), but an empty root is a legitimate state --
@@ -78,7 +82,11 @@ def _graph(tmp_path: Path, external: dict[str, str] | None = None) -> ModelTopic
     roots = {package: tmp_path / package for package in GRAPH_PACKAGES}
     for root in roots.values():
         root.mkdir(parents=True, exist_ok=True)
-    return build_graph(roots=roots, external_producers=external or {})
+    return build_graph(
+        roots=roots,
+        external_producers=external or {},
+        external_consumers=external_consumers or {},
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -716,6 +724,43 @@ def test_declared_external_producer_makes_a_consumer_reachable(tmp_path: Path) -
     assert find_defects(declared) == []
 
 
+def test_declared_external_consumer_clears_an_orphaned_producer(
+    tmp_path: Path,
+) -> None:
+    """The consume-side mirror of the external-producer declaration.
+
+    A topic can be consumed only OUTSIDE the checked corpus (the onex-api
+    gateway_sessions projection in private omninode_infra). The producing
+    contract's own externally_consumed_topics is the preferred declaration,
+    but when that contract arrives via a PINNED foreign wheel it cannot be
+    amended from this repo -- the baseline's external_consumers is the
+    declared-never-assumed escape for exactly that case.
+    """
+    _write(
+        tmp_path,
+        "omnibase_infra",
+        "node_session_emitter",
+        {
+            "name": "node_session_emitter",
+            "event_bus": {
+                "publish_topics": ["onex.evt.omnibase-infra.session-lifecycle.v1"]
+            },
+        },
+    )
+
+    assert [d.defect for d in find_defects(_graph(tmp_path))] == ["ORPHANED_PRODUCER"]
+
+    declared = _graph(
+        tmp_path,
+        external_consumers={
+            "onex.evt.omnibase-infra.session-lifecycle.v1": (
+                "onex-api projection (private omninode_infra), off-corpus"
+            )
+        },
+    )
+    assert find_defects(declared) == []
+
+
 # ---------------------------------------------------------------------------
 # THE PARSER — a shape it cannot read is a defect it cannot see.
 # ---------------------------------------------------------------------------
@@ -1083,7 +1128,10 @@ def _real_graph() -> ModelTopicGraph:
         Path(__file__).parents[2]
         / "src/omnimarket/validators/data/contract_topic_graph_baseline.yaml"
     )
-    return build_graph(external_producers=baseline.external_producers)
+    return build_graph(
+        external_producers=baseline.external_producers,
+        external_consumers=baseline.external_consumers,
+    )
 
 
 def _live_edges() -> list[object]:

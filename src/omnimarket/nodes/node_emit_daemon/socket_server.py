@@ -20,6 +20,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import cast
 from uuid import UUID, uuid4
@@ -75,6 +76,11 @@ class EmitSocketServer:
         socket_timeout_seconds: Timeout for client read operations.
         socket_permissions: Unix permissions for the socket file.
         max_payload_bytes: Maximum payload size in bytes.
+        publisher_loop: Optional publisher loop, read for health snapshots.
+        clock: Optional UTC clock for ``emitted_at`` injection. Defaults to
+            ``datetime.now(UTC)`` -- see the OMN-16048 note in ``__init__``.
+        correlation_id_factory: Optional ID source for generated
+            ``correlation_id`` values. Defaults to ``str(uuid4())``.
     """
 
     def __init__(
@@ -86,7 +92,26 @@ class EmitSocketServer:
         socket_permissions: int = 0o660,
         max_payload_bytes: int = 1_048_576,
         publisher_loop: object | None = None,
+        clock: Callable[[], datetime] | None = None,
+        correlation_id_factory: Callable[[], str] | None = None,
     ) -> None:
+        # OMN-16048 determinism seam. ``_inject_metadata`` generates two
+        # fields inline (``emitted_at`` from the wall clock, ``correlation_id``
+        # from ``uuid4()`` when the payload carries none), which makes them
+        # trivially unequal between any two runs. Exposing them as injectable
+        # callables -- with these exact expressions as the defaults, so
+        # runtime behavior is unchanged -- lets the shadow-mode parity harness
+        # drive this daemon and node_event_emit_effect from ONE shared clock
+        # and ID source, and so compare the generation POLICY byte-for-byte
+        # instead of waiving the two fields.
+        self._clock: Callable[[], datetime] = (
+            clock if clock is not None else (lambda: datetime.now(UTC))
+        )
+        self._correlation_id_factory: Callable[[], str] = (
+            correlation_id_factory
+            if correlation_id_factory is not None
+            else (lambda: str(uuid4()))
+        )
         self._socket_path = socket_path
         self._queue = queue
         self._registry = registry
@@ -226,6 +251,7 @@ class EmitSocketServer:
         events_published = 0
         events_dropped = 0
         events_buffered = 0
+        events_unconfirmed = 0
         last_publish_at = None
         last_failure_at = None
         circuit_opened_at = None
@@ -240,6 +266,7 @@ class EmitSocketServer:
             events_published = getattr(loop, "events_published", 0)
             events_dropped = getattr(loop, "events_dropped", 0)
             events_buffered = getattr(loop, "events_buffered", 0)
+            events_unconfirmed = getattr(loop, "events_unconfirmed", 0)
             last_publish_at = getattr(loop, "last_publish_at", None)
             last_failure_at = getattr(loop, "last_failure_at", None)
             circuit_opened_at = getattr(loop, "circuit_opened_at", None)
@@ -259,6 +286,7 @@ class EmitSocketServer:
             events_published=events_published,
             events_dropped=events_dropped,
             events_buffered=events_buffered,
+            events_unconfirmed=events_unconfirmed,
             last_publish_at=last_publish_at,
             last_failure_at=last_failure_at,
             circuit_opened_at=circuit_opened_at,
@@ -277,11 +305,11 @@ class EmitSocketServer:
 
         result = dict(payload)
         if "correlation_id" not in result or result["correlation_id"] is None:
-            result["correlation_id"] = correlation_id or str(uuid4())
+            result["correlation_id"] = correlation_id or self._correlation_id_factory()
         if "causation_id" not in result:
             result["causation_id"] = None
         if "emitted_at" not in result:
-            result["emitted_at"] = datetime.now(UTC).isoformat()
+            result["emitted_at"] = self._clock().isoformat()
         # session_id: preserve payload value; fall back to CLAUDE_CODE_SESSION_ID env var.
         # Clients (Option B) are the canonical source — daemon is session-agnostic.
         if "session_id" not in result or not result["session_id"]:

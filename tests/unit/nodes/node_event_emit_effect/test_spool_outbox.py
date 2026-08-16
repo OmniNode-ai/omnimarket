@@ -37,7 +37,7 @@ def _record(
     return SpoolRecord(
         event_id=event_id,
         event_type="session.started",
-        topics=(topic,),
+        topic=topic,
         tier=tier,
         payload={"n": event_id},
         partition_key=None,
