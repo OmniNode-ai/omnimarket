@@ -539,14 +539,15 @@ omnimarket = "omnimarket.nodes"
 # reintroduce a git rev here: land the core change, publish, then bump the range.
 # omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
 #
-# OMN-16077 re-bump: re-pinned from b6bd79c3 to infra dev HEAD 94247acf
-# (v0.38.6 lineage), which carries the unattended-renewal attach contract,
-# the gateway JWT client port, seed-keycloak-clients baked into the runtime
-# image, and the reverse-env-parity key classification the onex-dev runtime
-# deploy depends on. b6bd79c3 remains an ancestor of this tip.
+# OMN-16086 re-bump: re-pinned from 94247acf (v0.38.6, pre-#2736) to infra dev
+# HEAD 254c3672 — the omnibase_infra#2736 merge commit (OMN-16022: gateway
+# session expiry enforcement; node_gateway_attach_effect contract 0.3 -> 0.4,
+# ModelGatewayHeartbeatResponse.revoked -> termination_reason). This is the
+# lineage the post-#2736 onex-dev runtime image rebuild and deploy consume.
+# 94247acf remains an ancestor of this tip.
 # REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing this
 # commit, delete this override (the range pin above already covers it) and `uv lock`.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "94247acffdab730105408d93c761986f4591cf55" }
+omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "254c3672471261c596c565245fb51ac9d951c494" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" }
 onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
