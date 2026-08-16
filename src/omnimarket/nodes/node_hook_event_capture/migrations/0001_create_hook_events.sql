@@ -32,7 +32,16 @@
 --   Discovered + applied by scripts/run-projection-migrations.py (node-owned
 --   migrations/ discovery).
 --
--- Idempotent: CREATE TABLE / INDEX / TRIGGER / POLICY are all guarded.
+-- ROW-LEVEL SECURITY IS NOT IN THIS FILE -- see 0002. It was, in the first
+-- draft, and that made this a FORCE-RLS migration, which the forward-migration
+-- runner refuses outright unless the id is in the operator fence
+-- (docker/migrations/forward/fenced-node-migrations.yaml). Splitting it is not
+-- a workaround: it is the shape every sibling already uses (create, then a
+-- separate tenant-RLS file), and it is what lets the TABLE be created on every
+-- lane while the RLS posture stays under the operator fence that the
+-- platform-wide writer-proof programme governs.
+--
+-- Idempotent: CREATE TABLE / INDEX / TRIGGER are all guarded.
 
 -- ============================================================================
 -- HOOK_EVENTS TABLE
@@ -242,64 +251,3 @@ CREATE TRIGGER trigger_hook_events_updated_at
     BEFORE UPDATE ON hook_events
     FOR EACH ROW
     EXECUTE FUNCTION update_hook_events_updated_at();
-
--- ============================================================================
--- ROW LEVEL SECURITY (house-tenant ruling 2026-08-02, OMN-15655 pattern)
--- ============================================================================
--- Fail-closed: current_setting('app.tenant_id', true) is NULL when the GUC is
--- unset, the predicate is NULL, and ZERO rows are visible. No default-tenant
--- fallback, by design.
---
--- BLAST RADIUS -- FORCE constrains the table OWNER too, but a writer connected
--- as the postgres SUPERUSER (the compose lanes) bypasses RLS regardless. The
--- real isolation boundary is this policy PLUS a non-superuser, NOBYPASSRLS
--- writer role (OMN-14899 / OMN-15425).
---
--- PHYSICAL SCHEMA IS NOT MOVED HERE -- see OMN-15359. Every relation already
--- classified TENANT is still physically in `public`; relocating this one alone
--- would create the split that the target/current inventory exists to prevent,
--- and would fail outright against a database with no `tenant` schema.
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1
-    FROM pg_roles
-    WHERE rolname = 'app_dashboard'
-      AND NOT rolsuper
-      AND NOT rolbypassrls
-  ) THEN
-    RAISE EXCEPTION
-      'app_dashboard role missing or RLS-bypassing - apply omnibase_infra forward migration '
-      '094_create_app_dashboard_role.sql (OMN-14899) before this RLS '
-      'migration. RLS grants without the constrained read role are the '
-      'exact bypass this work exists to prevent.';
-  END IF;
-END;
-$$;
-
-GRANT USAGE ON SCHEMA public TO app_dashboard;
-
-ALTER TABLE public.hook_events ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.hook_events FORCE ROW LEVEL SECURITY;
-
-DROP POLICY IF EXISTS tenant_isolation ON public.hook_events;
-CREATE POLICY tenant_isolation ON public.hook_events
-  FOR ALL
-  USING (tenant_id = current_setting('app.tenant_id', true))
-  WITH CHECK (tenant_id = current_setting('app.tenant_id', true));
-
--- Read grant for the constrained dashboard reader. RLS still filters every row
--- this role can see -- the grant is what makes the RLS-scoped read path
--- reachable at all, not a widening of it.
---
--- This grant is REQUIRED, not optional, and not a judgement call: the
--- OMN-14894 ratchet (tests/unit/projection/
--- test_tenant_isolation_migrations_grant_app_dashboard_select_omn14894.py)
--- asserts that every migration creating a `tenant_isolation` policy also
--- carries the sibling app_dashboard SELECT grant IN THE SAME FILE. The first
--- draft of this migration omitted it on the reasoning that no dashboard reader
--- consumes hook_events yet; the ratchet rejected that, and the ratchet is
--- right -- a policy landing without its paired grant is how a relation ends up
--- RLS-protected but unreadable by the only constrained role that should ever
--- read it, discovered later at query time rather than here.
-GRANT SELECT ON public.hook_events TO app_dashboard;

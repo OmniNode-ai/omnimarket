@@ -43,6 +43,14 @@ NODE_DIR = (
 )
 CONTRACT = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
 MIGRATION = (NODE_DIR / "migrations" / "0001_create_hook_events.sql").read_text()
+# RLS lives in a SEPARATE migration on purpose: the forward-migration runner
+# refuses any new node migration applying FORCE ROW LEVEL SECURITY unless its id
+# is in the operator fence, so the create and the RLS posture cannot share a
+# file. Splitting them lets the TABLE land on every lane while the RLS posture
+# stays under the fence.
+MIGRATION_RLS = (
+    NODE_DIR / "migrations" / "0002_hook_events_tenant_rls.sql"
+).read_text()
 
 PRINCIPAL = "t-" + "0" * 32
 
@@ -391,10 +399,22 @@ class TestContractSeam:
         assert "0001_create_hook_events.sql" in declared
         assert (NODE_DIR / "migrations" / "0001_create_hook_events.sql").is_file()
 
-    def test_migration_is_fail_closed_on_rls(self) -> None:
-        assert "ENABLE ROW LEVEL SECURITY" in MIGRATION
-        assert "FORCE ROW LEVEL SECURITY" in MIGRATION
-        assert "current_setting('app.tenant_id', true)" in MIGRATION
+    def test_rls_migration_is_fail_closed(self) -> None:
+        assert "ENABLE ROW LEVEL SECURITY" in MIGRATION_RLS
+        assert "FORCE ROW LEVEL SECURITY" in MIGRATION_RLS
+        assert "current_setting('app.tenant_id', true)" in MIGRATION_RLS
+
+    def test_the_create_migration_carries_no_force_rls(self) -> None:
+        """It must stay applyable without an operator fence entry.
+
+        A FORCE-RLS statement anywhere in 0001 makes the whole create
+        migration refusable by the forward runner, which would mean the TABLE
+        never lands on any lane -- a strictly worse outcome than shipping the
+        table with its RLS posture fenced.
+        """
+        assert "FORCE ROW LEVEL SECURITY" not in MIGRATION
+        assert "ENABLE ROW LEVEL SECURITY" not in MIGRATION
+        assert "CREATE TABLE IF NOT EXISTS hook_events" in MIGRATION
 
     def test_migration_carries_the_shape_reconciliation_block(self) -> None:
         """A drifted pre-existing table must converge, not kill the deploy."""
