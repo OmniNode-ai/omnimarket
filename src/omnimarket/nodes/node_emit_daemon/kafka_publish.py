@@ -139,8 +139,8 @@ def build_kafka_confirmation_bindings(
     telemetry event is a real cost this codebase already avoids elsewhere.
 
     Args:
-        bus: A started ``EventBusKafka``. Its ``_config`` supplies bootstrap
-            servers and auth for the readback consumer.
+        bus: A started ``EventBusKafka``. Its public ``config`` property
+            supplies bootstrap servers and auth for the readback consumer.
 
     Raises:
         DurabilityPolicyError: If the resulting binding would let duty-critical
@@ -152,7 +152,9 @@ def build_kafka_confirmation_bindings(
         KafkaReadbackSource,
     )
 
-    config = bus._config  # type: ignore[attr-defined]  # noqa: SLF001 -- readback must use the publishing bus's exact cluster+auth
+    # Readback must use the publishing bus's exact cluster+auth, so it is built
+    # from the same config object the bus publishes with.
+    config = bus.config  # type: ignore[attr-defined]
     return build_confirmation_bindings(
         duty_critical=BrokerReadbackStrategy(KafkaReadbackSource(config)),
     )

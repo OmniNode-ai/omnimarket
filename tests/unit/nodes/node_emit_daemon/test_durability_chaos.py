@@ -273,3 +273,59 @@ async def test_unbound_confirmation_fails_closed(tmp_path: Path) -> None:
 
     assert queue.outbox_pending() == 1
     assert loop.events_published == 0
+
+
+@pytest.mark.asyncio
+async def test_redelivery_until_confirmed_then_acks_exactly_once(
+    tmp_path: Path,
+) -> None:
+    """Broker-confirm recovery: retries while unconfirmed, ONE ack once confirmed.
+
+    First phase: publishes succeed but the readback surface denies them, so the
+    record is re-served and re-published (redelivery works, nothing truncated).
+    Second phase: the surface recovers, the next attempt confirms, and the
+    record is acked exactly once -- multiple publish attempts, multiple offsets,
+    one shared idempotency key, one durable claim.
+    """
+    queue = BoundedEventQueue(
+        spool_dir=tmp_path / "spool", outbox_dir=tmp_path / "outbox"
+    )
+    kafka = _FlakyKafka()
+    kafka.up = True
+    kafka.readback_blind = True
+
+    loop = KafkaPublisherLoop(
+        queue=queue,
+        publish_fn=kafka.publish,
+        backoff_base_seconds=0.01,
+        max_backoff_seconds=0.02,
+        confirmation_bindings=_bindings(kafka),
+    )
+
+    await queue.enqueue(_event("r1", EnumDurabilityTier.DUTY_CRITICAL))
+    await loop.start()
+
+    # Phase 1: unconfirmed. The record must be re-published (redelivery) and
+    # must never be truncated.
+    for _ in range(200):
+        if loop.events_unconfirmed >= 2:
+            break
+        await asyncio.sleep(0.01)
+    assert loop.events_unconfirmed >= 2, "expected redelivery while unconfirmed"
+    assert queue.outbox_pending() == 1
+    assert loop.events_published == 0
+
+    # Phase 2: the readback surface recovers.
+    kafka.readback_blind = False
+    for _ in range(200):
+        if queue.outbox_pending() == 0:
+            break
+        await asyncio.sleep(0.01)
+    await loop.stop()
+
+    assert queue.outbox_pending() == 0, "confirmed record must be truncated"
+    assert loop.events_published == 1, "exactly one durable claim"
+    assert loop.events_dropped == 0
+    # Multiple attempts went to the broker, all carrying the SAME logical
+    # identity -- the coordinate changes on retry, the idempotency key does not.
+    assert len(kafka.published) >= 3

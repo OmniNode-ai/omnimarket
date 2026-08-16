@@ -995,6 +995,9 @@ class TestHealthEndpoint:
                     assert "events_published" in health
                     assert "events_dropped" in health
                     assert "events_buffered" in health
+                    # OMN-15861: a confirmation-path outage must be visible on
+                    # the health surface, distinct from published/dropped.
+                    assert "events_unconfirmed" in health
                     assert "uptime_seconds" in health
                 finally:
                     writer.close()
