@@ -260,22 +260,40 @@ class TestGoldenChain:
         await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
         assert table.rows == snapshot
 
-    def test_runtime_local_dispatch_shim_drives_the_same_chain(
+    def test_definition_b_entrypoint_drives_the_same_chain(
         self, chain: tuple[_Handler, InmemoryHookEventsTable]
     ) -> None:
-        """handle() is the def-B entrypoint auto-wiring binds; it must work.
+        """handle() is the canonical def-B entrypoint auto-wiring binds.
 
-        Without it the runtime binds _missing_handle and every dispatch raises
-        at runtime while CI stays green.
+        Typed model in, typed result out (OMN-14355). Without a bound handle()
+        the runtime binds _missing_handle and every dispatch raises at runtime
+        while CI stays green; with the legacy dict-in/dict-out shape the
+        canon-shape ratchet refuses the node outright, and it is right to --
+        that shape is baselined debt, not a pattern to copy.
         """
         handler, table = chain
-        payload = gateway_wire_payload()
-        payload["_topic"] = COMMAND_TOPIC
-        payload["_partition"] = 3
-        payload["_offset"] = 99
-        payload["_fallback_id"] = "fb"
-        assert handler.handle(payload) == {"captured": True}
+        request = ModelHookEventCaptureRequest.model_validate(gateway_wire_payload())
+        result = handler.handle(request)
+
+        assert result.batch_sha == request.batch_sha
+        assert result.events_received == len(REAL_FAMILIES)
+        assert result.events_persisted == len(REAL_FAMILIES)
+        assert result.events_already_present == 0
         assert len(table.rows) == len(REAL_FAMILIES)
+
+    def test_definition_b_result_distinguishes_a_replay_from_new_work(
+        self, chain: tuple[_Handler, InmemoryHookEventsTable]
+    ) -> None:
+        """A caller that cannot tell these apart cannot tell progress from a stall."""
+        handler, _ = chain
+        request = ModelHookEventCaptureRequest.model_validate(gateway_wire_payload())
+        first = handler.handle(request)
+        second = handler.handle(request)
+
+        assert first.events_persisted == len(REAL_FAMILIES)
+        assert first.events_already_present == 0
+        assert second.events_persisted == 0
+        assert second.events_already_present == len(REAL_FAMILIES)
 
     @pytest.mark.asyncio
     async def test_writer_stamps_the_row_tenant_as_the_rls_guc(

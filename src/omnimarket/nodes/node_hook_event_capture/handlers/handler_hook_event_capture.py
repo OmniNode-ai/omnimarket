@@ -46,6 +46,7 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_hook_event_capture.models.model_hook_event_capture_request import (
     ModelHookEventCaptureRequest,
+    ModelHookEventCaptureResult,
 )
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
@@ -94,36 +95,36 @@ class HandlerHookEventCapture(BaseProjectionRunner):
         # into a silent one, which is the wrong direction.
         return _contract_topics("dlq_topics")
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim (canonical definition-B entrypoint).
+    def handle(
+        self, request: ModelHookEventCaptureRequest
+    ) -> ModelHookEventCaptureResult:
+        """Canonical definition-B entrypoint: typed payload in, typed result out.
 
-        Without this, auto-wiring binds the handler to ``_missing_handle`` and
-        EVERY dispatch raises at runtime while CI stays green -- the failure
-        mode ``tests/validators/test_handler_dispatch_entrypoint.py`` exists to
-        catch. Same shape as the sibling projection runners: pop the transport
-        coordinates the runtime threads in under reserved ``_``-prefixed keys,
-        then delegate to the one real implementation in ``project_event``.
+        This is the signature auto-wiring binds and the OMN-14355 canon-shape
+        ratchet requires of a new node. The older sibling projection runners
+        take a raw ``dict`` and return a ``dict``; that shape is baselined debt,
+        not a pattern to copy, and the ratchet correctly refused this node when
+        it was first written that way.
 
-        The coordinates are POPPED, not read: they are transport metadata, not
-        contract fields, and ``ModelHookEventCaptureRequest`` is
-        ``extra="forbid"`` -- leaving them in the dict would make every
-        RuntimeLocal dispatch fail validation as a malformed batch.
+        The Kafka consumer path stays on :meth:`project_event`, which carries
+        real partition/offset coordinates. Definition-B dispatch has no
+        transport coordinates to carry -- there is no Kafka message -- so the
+        meta below is synthesised with the batch identity as its fallback id
+        rather than pretending to a partition and offset that do not exist.
         """
         topics = self.topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
         meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-            topic=topic,
+            partition=0,
+            offset=0,
+            fallback_id=request.batch_sha,
+            topic=topics[0] if topics else "",
         )
-        captured = asyncio.run(self.project_event(topic, input_data, meta))
-        return {"captured": captured}
+        return asyncio.run(self._capture(topics[0] if topics else "", request, meta))
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
-        """Persist every event in one batch. Returns False only on DB trouble."""
+        """Kafka consumer path. Returns False only on DB trouble."""
         try:
             batch = ModelHookEventCaptureRequest.model_validate(data)
         except ValidationError as exc:
@@ -132,7 +133,13 @@ class HandlerHookEventCapture(BaseProjectionRunner):
                 f"malformed hook-event-capture batch on {topic} "
                 f"(partition={meta.partition} offset={meta.offset}): {exc}"
             ) from exc
+        await self._capture(topic, batch, meta)
+        return True
 
+    async def _capture(
+        self, topic: str, batch: ModelHookEventCaptureRequest, meta: MessageMeta
+    ) -> ModelHookEventCaptureResult:
+        """The one real implementation. Both entrypoints funnel through here."""
         # The stored tenant value must equal what the database will hold, so an
         # RLS WITH CHECK evaluated by a non-superuser writer has something true
         # to compare against (OMN-15301). The helper fails closed when
@@ -142,10 +149,10 @@ class HandlerHookEventCapture(BaseProjectionRunner):
 
         inserted = await self._insert_batch(batch, tenant_id)
         duplicates = len(batch.events) - inserted
-        await self._publish_terminal(batch, inserted, duplicates)
+        published = await self._publish_terminal(batch, inserted, duplicates)
         logger.info(
             "hook-event-capture batch %s: %d event(s), %d new, %d already present "
-            "(source=%s tenant=%s principal=%s)",
+            "(source=%s tenant=%s principal=%s topic=%s)",
             batch.batch_sha[:12],
             len(batch.events),
             inserted,
@@ -153,8 +160,15 @@ class HandlerHookEventCapture(BaseProjectionRunner):
             batch.source,
             tenant_id,
             batch.tenant_principal_id,
+            topic,
         )
-        return True
+        return ModelHookEventCaptureResult(
+            batch_sha=batch.batch_sha,
+            events_received=len(batch.events),
+            events_persisted=inserted,
+            events_already_present=duplicates,
+            terminal_event_published=published,
+        )
 
     async def _publish_terminal(
         self, batch: ModelHookEventCaptureRequest, inserted: int, duplicates: int

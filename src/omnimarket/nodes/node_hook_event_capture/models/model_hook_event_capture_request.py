@@ -170,3 +170,21 @@ class ModelHookEventCaptureRequest(BaseModel):
                 "storage key."
             )
         return value
+
+
+class ModelHookEventCaptureResult(BaseModel):
+    """Typed result of capturing one batch (canonical definition-B output).
+
+    Counts are reported rather than a bare boolean because a replay and a
+    first delivery are BOTH successes and must be distinguishable: a caller
+    that cannot tell "250 new rows" from "250 already present" cannot tell
+    progress from a stuck loop.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    batch_sha: str
+    events_received: int = Field(ge=0)
+    events_persisted: int = Field(ge=0)
+    events_already_present: int = Field(ge=0)
+    terminal_event_published: bool
