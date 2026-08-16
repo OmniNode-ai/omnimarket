@@ -46,9 +46,9 @@
   "physical_seed_database": "omnidash_analytics",
   "relation_counts": {
     "extension": 1,
-    "function": 14,
+    "function": 15,
     "sequence": 14,
-    "table": 57,
+    "table": 58,
     "view": 10
   },
   "relations": [
@@ -470,6 +470,42 @@
       "producer": "node_projection_cost_by_repo",
       "readers": [],
       "target_schema": "omninode_internal",
+      "writers": []
+    },
+    {
+      "accessor_nodes": [
+        "node_hook_event_capture"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_hook_event_capture/migrations/0001_create_hook_events.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "owning node migration plus referenced table domains",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "keys": [],
+      "kind": "function",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_hook_event_capture",
+      "name": "update_hook_events_updated_at",
+      "owner_declaration": "node_hook_event_capture",
+      "partitioning": [],
+      "producer": "node_hook_event_capture",
+      "readers": [],
+      "target_schema": "tenant",
       "writers": []
     },
     {
@@ -2697,6 +2733,64 @@
     },
     {
       "accessor_nodes": [
+        "node_hook_event_capture"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_hook_event_capture/migrations/0001_create_hook_events.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [
+        "hook_events_batch_sha_is_sha256",
+        "hook_events_event_sha_is_sha256",
+        "hook_events_payload_is_object",
+        "uq_hook_events_tenant_event_sha"
+      ],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_hook_event_capture/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [
+        "SELECT TO app_dashboard"
+      ],
+      "indexes": [
+        "idx_hook_events_batch_sha",
+        "idx_hook_events_correlation_id",
+        "idx_hook_events_event_type_occurred_at",
+        "idx_hook_events_occurred_at",
+        "idx_hook_events_run_id",
+        "idx_hook_events_tenant_id"
+      ],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (id)",
+        "UNIQUE (tenant_id, event_sha)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_hook_event_capture",
+      "name": "hook_events",
+      "owner_declaration": "node_hook_event_capture",
+      "partitioning": [],
+      "producer": "node_hook_event_capture",
+      "readers": [],
+      "target_schema": "tenant",
+      "writers": [
+        "node_hook_event_capture"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_instruction_eval"
       ],
       "authoritative_sources": [
@@ -4852,15 +4946,15 @@
   ],
   "retained_live_census": {
     "evidence_source": "omni_home/docs/plans/2026-07-29-two-database-tenant-vs-internal-split-plan.md",
-    "minimum_unreconciled_live_base_tables": 31,
+    "minimum_unreconciled_live_base_tables": 30,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 55,
-    "source_declared_tables": 57
+    "source_created_tables": 56,
+    "source_declared_tables": 58
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -4876,7 +4970,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 55 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-31-table gap require an authorized catalog read",
+      "reason": "repository sources contain 56 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-30-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

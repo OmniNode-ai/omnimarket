@@ -206,7 +206,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_emit_daemon replacement — thin-publish-to-Kafka with a file-based
     # spool outbox, direct def-B CLI/plugin-runtime dispatch, no live bus
     # wiring yet): 385 -> 386.
-    assert summary["node_dirs"] == 386
+    # OMN-16090 adds node_hook_event_capture (REDUCER_GENERIC; consumes the
+    # gateway's hook-event-capture command topic and persists each carried
+    # event into hook_events, idempotent on (tenant_id, event_sha) — the cloud
+    # half of the path that drains an operator machine's stranded emit spool.
+    # Its catalog entry lands FENCED on the gateway side, so there is no live
+    # traffic on the command topic yet): 386 -> 387.
+    assert summary["node_dirs"] == 387
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -248,7 +254,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # (dead code deletion, see node_dirs comment above): 383 -> 382.
     # OMN-15965 adds the node_event_emit_effect entry point (see node_dirs
     # comment above): 382 -> 383.
-    assert summary["entry_points"] == 383
+    # OMN-16090 adds the node_hook_event_capture entry point (see node_dirs
+    # comment above): 383 -> 384.
+    assert summary["entry_points"] == 384
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

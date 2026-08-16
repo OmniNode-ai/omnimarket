@@ -149,17 +149,24 @@ def test_retained_live_census_gap_fails_closed() -> None:
         "blocked_pending_live_catalog_and_activity_evidence"
     )
     assert census["observed_base_tables"] == 86
-    # 55 as of OMN-15846: +1 for the new node-owned
-    # node_log_persistence_effect/0000_create_log_entries.sql CREATE TABLE
-    # (the node-owned replacement for the flat 083_create_log_entries.sql,
-    # which has no execution path in the k8s Job that applies flat
-    # migrations — cross-DB \connect).
-    assert census["source_created_tables"] == 55
-    # 57 as of OMN-15846: +1 for node_log_persistence_effect's new db_io
-    # declaration (log_entries), required by the shadow gate
-    # (application sources create tables with no db_io declaration).
-    assert census["source_declared_tables"] == 57
-    assert census["minimum_unreconciled_live_base_tables"] == 31
+    # 56 as of OMN-16090: +1 for the new node-owned
+    # node_hook_event_capture/0001_create_hook_events.sql CREATE TABLE (the
+    # landing zone for hook/skill events submitted through the secure workflow
+    # gateway). Previously 55 as of OMN-15846 (node_log_persistence_effect).
+    assert census["source_created_tables"] == 56
+    # 58 as of OMN-16090: +1 for node_hook_event_capture's new db_io
+    # declaration (hook_events), required by the shadow gate (application
+    # sources must not create tables with no db_io declaration). Previously 57
+    # as of OMN-15846 (node_log_persistence_effect / log_entries).
+    assert census["source_declared_tables"] == 58
+    # 30 as of OMN-16090. This figure is arithmetic, not an observation:
+    # the generator computes max(0, 86 - source_created_tables), so adding one
+    # source-created table (hook_events) necessarily drops it by one. It does
+    # NOT assert that hook_events exists in the live catalog -- the census was
+    # observed 2026-07-29 and hook_events had not been created then. The
+    # bound is a LOWER bound on unreconciled live tables and stays honest
+    # either way; parity_status is still "blocked".
+    assert census["minimum_unreconciled_live_base_tables"] == 30
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 
