@@ -21,6 +21,8 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+from omnibase_infra.enums import EnumInfraTransportType
+from omnibase_infra.event_bus.models import ModelPublishReceipt
 
 from omnimarket.nodes.node_emit_daemon.event_queue import (
     BoundedEventQueue,
@@ -60,7 +62,11 @@ def _make_loop(
     if queue is None:
         queue = BoundedEventQueue(max_memory_queue=100)
     if publish_fn is None:
-        publish_fn = AsyncMock()
+        # OMN-15861: `return_value=None` is load-bearing, not cosmetic. A bare
+        # AsyncMock awaits to a Mock, which is not a ModelPublishReceipt and is
+        # rejected by the seam. None is the honest value for a sink that
+        # reports no durability coordinate.
+        publish_fn = AsyncMock(return_value=None)
     return KafkaPublisherLoop(
         queue=queue,
         publish_fn=publish_fn,
@@ -199,21 +205,49 @@ class TestShouldProbe:
 
 class TestPublishEvent:
     @pytest.mark.asyncio
-    async def test_publish_event_success_returns_true(self) -> None:
-        publish_fn = AsyncMock()
+    async def test_publish_event_success_reports_attempt_not_durability(self) -> None:
+        """INVERTED under OMN-15861.
+
+        This asserted ``result is True``. That bare bool was the whole defect:
+        it collapsed "the publish call completed" into "the record is durable",
+        which is what let the outbox truncate on a publish return. The attempt
+        now reports the two facts separately, and a sink reporting no coordinate
+        yields ``receipt=None`` -- explicitly NOT a durable claim.
+        """
+        publish_fn = AsyncMock(return_value=None)
         loop = _make_loop(publish_fn=publish_fn)
         event = _make_event()
         result = await loop._publish_event(event)
-        assert result is True
+        assert result.succeeded is True
+        assert result.receipt is None, (
+            "a sink with no coordinate must not manufacture one"
+        )
         publish_fn.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_publish_event_failure_returns_false(self) -> None:
+    async def test_publish_event_success_propagates_the_receipt(self) -> None:
+        """A transport that reports a coordinate has it carried through intact."""
+        receipt = ModelPublishReceipt(
+            topic="onex.evt.test.topic.v1",
+            partition=2,
+            offset=0,  # 0 is a valid coordinate, not a falsy sentinel
+            cluster="test-broker:9092",
+            produced_at=datetime.now(UTC),
+            transport=EnumInfraTransportType.KAFKA,
+        )
+        loop = _make_loop(publish_fn=AsyncMock(return_value=receipt))
+        result = await loop._publish_event(_make_event())
+        assert result.succeeded is True
+        assert result.receipt == receipt
+
+    @pytest.mark.asyncio
+    async def test_publish_event_failure_reports_no_attempt(self) -> None:
         publish_fn = AsyncMock(side_effect=Exception("broker down"))
         loop = _make_loop(publish_fn=publish_fn)
         event = _make_event()
         result = await loop._publish_event(event)
-        assert result is False
+        assert result.succeeded is False
+        assert result.receipt is None
 
     @pytest.mark.asyncio
     async def test_publish_event_passes_correct_topic(self) -> None:
@@ -292,7 +326,7 @@ class TestPublisherLoopCounters:
 
     @pytest.mark.asyncio
     async def test_successful_publish_increments_events_published(self) -> None:
-        publish_fn = AsyncMock()
+        publish_fn = AsyncMock(return_value=None)
         queue: BoundedEventQueue = BoundedEventQueue(max_memory_queue=10)
         loop = _make_loop(queue=queue, publish_fn=publish_fn, max_retry_attempts=0)
 

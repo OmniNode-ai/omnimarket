@@ -9,10 +9,12 @@ decides how strong a durability proof that traffic needs:
 * ``DUTY_CRITICAL`` -> a readback (or projection) confirmation. Nothing weaker
   is acceptable, because these records are commands and terminal evidence whose
   loss is unrecoverable.
-* ``TELEMETRY`` -> publish-return is fine. Bounded loss is correct by design for
-  high-volume metrics, and a readback round trip per telemetry event is a real
-  cost the platform already flags (``composition.py`` keeps ``/ready`` cheap for
-  exactly this reason).
+* ``TELEMETRY`` -> no confirmation at all. Bounded loss is correct by design for
+  high-volume metrics, there is no outbox record to truncate, and a readback
+  round trip per telemetry event is a real cost the platform already flags
+  (``composition.py`` keeps ``/ready`` cheap for exactly this reason). The
+  publisher loop therefore never consults a strategy for that tier, so this
+  module does not bind one.
 
 The binding **fails fast at construction time**, not at publish time. A
 duty-critical tier wired to ``PublishReturnOnlyStrategy`` is precisely the
@@ -24,10 +26,7 @@ rule with no declared tier rather than defaulting one.
 
 from __future__ import annotations
 
-from omnibase_infra.event_bus.confirmation import (
-    STRATEGY_NAME_PUBLISH_RETURN_ONLY,
-    PublishReturnOnlyStrategy,
-)
+from omnibase_infra.event_bus.confirmation import STRATEGY_NAME_PUBLISH_RETURN_ONLY
 from omnibase_infra.protocols.protocol_confirmation_strategy import (
     ProtocolConfirmationStrategy,
 )
@@ -47,21 +46,21 @@ class DurabilityPolicyError(RuntimeError):
 def build_confirmation_bindings(
     *,
     duty_critical: ProtocolConfirmationStrategy,
-    telemetry: ProtocolConfirmationStrategy | None = None,
 ) -> dict[EnumDurabilityTier, ProtocolConfirmationStrategy]:
-    """Bind one confirmation strategy per durability tier.
+    """Bind the confirmation strategy for duty-critical traffic.
+
+    Only ``DUTY_CRITICAL`` appears in the returned mapping. ``TELEMETRY`` is
+    absent on purpose rather than bound to a weak strategy: the publisher loop
+    does not consult a strategy for that tier at all, because bounded loss is
+    already its declared-correct behaviour and there is no outbox record to
+    truncate. Binding it would imply a durability decision the loop never makes.
 
     Args:
         duty_critical: Strategy for duty-critical traffic. MUST NOT be
             ``PublishReturnOnlyStrategy``.
-        telemetry: Strategy for telemetry traffic. Defaults to
-            ``PublishReturnOnlyStrategy`` -- the cheap path, explicitly named.
 
     Returns:
-        A tier -> strategy mapping covering every member of
-        ``EnumDurabilityTier``. Exhaustive on purpose: a missing tier would have
-        to be defaulted at publish time, and a defaulted durability policy is
-        how the unexamined weak path gets reintroduced.
+        A ``{DUTY_CRITICAL: strategy}`` mapping.
 
     Raises:
         DurabilityPolicyError: If ``duty_critical`` is publish-return-only.
@@ -75,18 +74,7 @@ def build_confirmation_bindings(
             "projection-backed strategy instead."
         )
 
-    bindings: dict[EnumDurabilityTier, ProtocolConfirmationStrategy] = {
-        EnumDurabilityTier.DUTY_CRITICAL: duty_critical,
-        EnumDurabilityTier.TELEMETRY: telemetry or PublishReturnOnlyStrategy(),
-    }
-
-    missing = set(EnumDurabilityTier) - set(bindings)
-    if missing:
-        raise DurabilityPolicyError(
-            f"no confirmation strategy bound for tier(s): "
-            f"{sorted(t.value for t in missing)}"
-        )
-    return bindings
+    return {EnumDurabilityTier.DUTY_CRITICAL: duty_critical}
 
 
 __all__: list[str] = [

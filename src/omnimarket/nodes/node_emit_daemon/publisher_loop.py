@@ -45,7 +45,6 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
 from omnibase_infra.enums import EnumConfirmationState
-from omnibase_infra.event_bus.confirmation import PublishReturnOnlyStrategy
 from omnibase_infra.event_bus.models import (
     ModelDurabilityConfirmation,
     ModelPublishReceipt,
@@ -132,22 +131,14 @@ class KafkaPublisherLoop:
         # `build_confirmation_bindings`, which fails fast if duty-critical is
         # bound to publish-return-only.
         #
-        # The default is asymmetric ON PURPOSE. TELEMETRY defaults to
-        # PublishReturnOnlyStrategy because bounded loss is already the declared
-        # correct behaviour for that tier and a readback round trip per metric
-        # is a real cost -- but it is the NAMED strategy, so every telemetry ack
-        # is still attributable as publish-return-backed rather than being an
-        # unexamined default. DUTY_CRITICAL is deliberately left UNBOUND: with
-        # no strategy, `_confirm` returns UNKNOWN and the record is never
-        # truncated. A caller that forgets to wire durability therefore gets
-        # outbox backpressure, not silent evidence deletion.
+        # DUTY_CRITICAL is deliberately left UNBOUND by default: with no
+        # strategy `_confirm` returns UNKNOWN and the record is never truncated,
+        # so a caller that forgets to wire durability gets outbox backpressure
+        # rather than silent evidence deletion. Only TELEMETRY is unaffected by
+        # an empty map, because that tier does not consult a strategy at all.
         self._confirmation_bindings: dict[
             EnumDurabilityTier, ProtocolConfirmationStrategy
-        ] = dict(
-            confirmation_bindings
-            if confirmation_bindings is not None
-            else {EnumDurabilityTier.TELEMETRY: PublishReturnOnlyStrategy()}
-        )
+        ] = dict(confirmation_bindings or {})
         self._max_retry_attempts = max_retry_attempts
         self._backoff_base_seconds = backoff_base_seconds
         self._max_backoff_seconds = max_backoff_seconds
@@ -376,14 +367,33 @@ class KafkaPublisherLoop:
 
                 attempt = await self._publish_event(event)
 
-                confirmation = None
-                if attempt.succeeded:
-                    # OMN-15861: the publish returning is NOT the ack condition.
-                    # Read the coordinate back off an authoritative surface
-                    # first; only a durable verdict may truncate the record.
+                # OMN-15861: for duty-critical traffic the publish returning is
+                # NOT the ack condition. Read the coordinate back off an
+                # authoritative surface first; only a durable verdict may
+                # truncate the outbox record.
+                #
+                # TELEMETRY is deliberately NOT gated on a confirmation. Bounded
+                # loss is the declared-correct behaviour for that tier, there is
+                # no outbox record to truncate (telemetry is removed from
+                # memory/spool at dequeue), and a readback round trip per metric
+                # is a cost this codebase avoids elsewhere. Gating it would also
+                # mean any transport reporting no coordinate -- a no-op sink, a
+                # spool-only runner -- could never record a publish or reset the
+                # circuit breaker: a reporting and recovery regression bought
+                # for no durability gain on a tier that tolerates loss.
+                is_duty_critical = event.tier is EnumDurabilityTier.DUTY_CRITICAL
+                confirmation: ModelDurabilityConfirmation | None = None
+                if attempt.succeeded and is_duty_critical:
                     confirmation = await self._confirm(event, attempt)
 
-                if confirmation is not None and confirmation.is_durable:
+                if is_duty_critical:
+                    # Reachable only through a CONFIRMED verdict.
+                    may_ack = confirmation is not None and confirmation.is_durable
+                else:
+                    # Telemetry: publish success is the ack condition.
+                    may_ack = attempt.succeeded
+
+                if may_ack:
                     self._record_success()
                     self._retry_counts.pop(event.event_id, None)
                     # Truncate-on-ack: for duty-critical events this removes the
@@ -424,11 +434,6 @@ class KafkaPublisherLoop:
                         break
                     except TimeoutError:
                         pass
-                elif attempt.succeeded:
-                    # Telemetry that could not be confirmed. Loss is correct by
-                    # design for this tier, and there is no outbox record to
-                    # retain, so the event is simply not counted as published.
-                    self.events_unconfirmed += 1
                 elif event.tier is EnumDurabilityTier.DUTY_CRITICAL:
                     # Duty-critical events are NEVER dropped. The event remains
                     # in the durable outbox (it was peeked, not removed) and is

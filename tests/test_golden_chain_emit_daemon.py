@@ -512,7 +512,11 @@ class TestKafkaPublisherLoop:
     async def test_publish_single_event(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             queue = BoundedEventQueue(spool_dir=Path(tmpdir))
-            mock_publish = AsyncMock()
+            # OMN-15861: `return_value=None` is load-bearing. A bare AsyncMock
+            # awaits to a Mock, which is not a ModelPublishReceipt and the seam
+            # rejects it; None is the honest value for a sink that reports no
+            # durability coordinate.
+            mock_publish = AsyncMock(return_value=None)
             publisher = KafkaPublisherLoop(queue=queue, publish_fn=mock_publish)
 
             await queue.enqueue(self._make_event())

@@ -31,6 +31,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
+from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
 
 from omnimarket.nodes.node_emit_daemon.event_queue import (
     BoundedEventQueue,
@@ -50,6 +51,11 @@ class _FakeKafkaBus:
         self.started = False
         self.closed = False
         self.published: list[dict[str, object]] = []
+        # OMN-15861: a real EventBusKafka carries the config the readback
+        # consumer is built from, and _wire_kafka_publisher now binds a
+        # readback confirmation off it. A double without one would let the
+        # wiring test pass against a bus shape that cannot exist.
+        self._config = ModelKafkaEventBusConfig(bootstrap_servers="localhost:9092")
 
     async def start(self) -> None:
         self.started = True
