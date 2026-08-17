@@ -73,10 +73,7 @@ from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
 
-from omnimarket.events.occ_autoauthor import (
-    OCC_AUTHOR_TIME_LABELS,
-    OCC_MACHINE_MINTED_LABEL,
-)
+from omnimarket.events.occ_autoauthor import OCC_AUTHOR_TIME_LABELS
 from omnimarket.github_api import (
     GitHubApiError,
     rest_json,
@@ -134,6 +131,7 @@ from omnimarket.occ_git_transport import (
     OCC_REPO,
     acquire_occ_companion_lease,
     authenticated_occ_url,
+    call_with_retry,
     release_occ_companion_lease,
     run_git,
 )
@@ -1982,48 +1980,45 @@ class OccCompanionEmitter:
     def _apply_machine_minted_label(
         owner: str, repo_name: str, occ_pr_number: int, token: str
     ) -> None:
-        """Best-effort: add the machine-minted marker label to the OCC PR.
+        """Add the machine-minted marker + ``ci:ready`` labels to the OCC PR.
 
-        The distinguishable marker (OMN-14393 / OMN-14893) that lets the
+        Two labels land in one POST (:data:`OCC_AUTHOR_TIME_LABELS`): the
+        distinguishable marker (OMN-14393 / OMN-14893) that lets the
         report-only window — and any human skimming the PR list — decide
-        ``minted_by_node`` without inspecting git commit authorship (the
-        signal that caused a real misattribution, per the OMN-14893
-        investigation). Mirrors ``HandlerOccCompanionEffect``'s
-        ``_apply_machine_minted_label`` byte-for-byte (net-negative-surface:
-        same label constant, same best-effort contract, same ``rest_json_array``
-        helper). Non-fatal: any failure is logged and swallowed so a label API
-        hiccup can never abort a successful author.
+        ``minted_by_node`` without inspecting git commit authorship, and
+        ``ci:ready`` (OMN-16071), which decides whether the companion's
+        required CI wave runs at all on the OCC repo's label-gated pilot.
+        Mirrors ``HandlerOccCompanionEffect``'s ``_apply_machine_minted_label``
+        (net-negative-surface: same label constant, same
+        ``call_with_retry``-wrapped ``rest_json_array`` helper).
+
+        RETRYABLE + FAIL-CLOSED (OMN-16071 CodeRabbit follow-up): routed
+        through :func:`omnimarket.occ_git_transport.call_with_retry`, which
+        retries a bounded 3 attempts on a transient transport shape (network /
+        5xx) before re-raising. A prior revision logged-and-swallowed every
+        failure with the rationale "the label is observability, not a gate" —
+        that no longer holds now that ``ci:ready`` is CI-gating: a swallowed
+        failure here would report a companion as successfully authored while it
+        silently carries only the marker and can never pass CI Summary,
+        reproducing the exact OCC#6540-class stall this ticket fixes. This
+        emitter is the LIVE producer per
+        ``reference_two_occ_producers_canonical_not_wired``, so this path is
+        where that failure mode would actually be observed in production.
 
         OMN-15441: routed through ``rest_json_array``, not ``rest_json``. The
         labels endpoint responds with the issue's full label ARRAY, which
         ``rest_json``'s dict-only contract rejects with "unexpected JSON
-        response type" after the POST has already committed — spurious swallowed
-        WARNING noise falsely reporting a lost provenance marker (the label
-        itself always landed; see the effect handler's docstring for the live
-        OCC#5516 corroboration). Fixed in BOTH producers in the same change:
-        this emitter is the LIVE producer per
-        ``reference_two_occ_producers_canonical_not_wired``, so fixing only the
-        effect handler would have left the observed defect in the path that
-        actually runs, while the byte-for-byte parity claim above silently went
-        stale.
+        response type". That shape defect is orthogonal to this
+        retry/propagate contract and remains fixed: a successful POST still
+        decodes cleanly.
         """
-        try:
-            rest_json_array(
-                "POST",
-                f"/repos/{owner}/{repo_name}/issues/{occ_pr_number}/labels",
-                token=token,
-                body={"labels": list(OCC_AUTHOR_TIME_LABELS)},
-            )
-        except (
-            GitHubApiError,
-            OSError,
-        ) as exc:  # fallback-ok: label is observability, not a gate
-            logger.warning(
-                "occ_companion_emitter: could not apply %r label to OCC#%s: %s",
-                OCC_MACHINE_MINTED_LABEL,
-                occ_pr_number,
-                exc,
-            )
+        call_with_retry(
+            rest_json_array,
+            "POST",
+            f"/repos/{owner}/{repo_name}/issues/{occ_pr_number}/labels",
+            token=token,
+            body={"labels": list(OCC_AUTHOR_TIME_LABELS)},
+        )
 
     @staticmethod
     def _occ_default_branch(owner: str, repo_name: str, token: str) -> str:

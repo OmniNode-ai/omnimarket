@@ -200,11 +200,16 @@ class TestOpenOrSyncOccPr:
             )
         ]
 
-    def test_label_failure_is_swallowed_never_aborts_author(self) -> None:
-        """Best-effort contract (OMN-14893): a label API hiccup must not fail the mint."""
+    def test_label_failure_retries_then_fails_the_author(self) -> None:
+        """OMN-16071: `ci:ready` is CI-gating, so a persistent label API
+        failure must retry (bounded) and then fail the mint — not silently
+        report a synced companion as successful while it may carry only the
+        marker and can never pass CI Summary.
+        """
         from omnimarket.github_api import GitHubApiError
 
         emitter = OccCompanionEmitter()
+        label_attempts = 0
 
         def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
             if "/search/issues" in path:
@@ -212,6 +217,8 @@ class TestOpenOrSyncOccPr:
             raise AssertionError(f"unexpected call: {method} {path}")
 
         def fake_rest_array(method: str, path: str, *, body=None, token=None) -> list:
+            nonlocal label_attempts
+            label_attempts += 1
             assert path.endswith("/labels")
             raise GitHubApiError("label API down", status_code=500)
 
@@ -219,14 +226,16 @@ class TestOpenOrSyncOccPr:
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
             patch(f"{_MOD}.rest_json_array", side_effect=fake_rest_array),
             patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+            patch("omnimarket.occ_git_transport.time.sleep"),
+            pytest.raises(GitHubApiError, match="label API down"),
         ):
-            result = emitter._open_or_sync_occ_pr(
+            emitter._open_or_sync_occ_pr(
                 branch="auto/x-pr-1-occ-autobind",
                 ticket="OMN-9999",
                 repo="OmniNode-ai/omnimarket",
                 pr_number=1,
             )
-        assert result == 4242  # mint still succeeds despite the label failure
+        assert label_attempts == 3  # _RETRY_MAX_ATTEMPTS, all exhausted
 
     def test_raises_on_missing_number(self) -> None:
         emitter = OccCompanionEmitter()

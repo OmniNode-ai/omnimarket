@@ -132,11 +132,22 @@ class TestLabelPostDecodesArrayResponse:
 
         assert "could not apply" not in caplog.text
 
-    def test_handler_still_swallows_a_real_api_failure(self, caplog) -> None:
-        """The non-fatal contract is preserved — a 500 must not abort authoring."""
+    def test_a_persistent_500_is_retried_then_fails_authoring(self) -> None:
+        """OMN-16071: `ci:ready` is CI-gating now, so the old swallow is gone.
+
+        A 500 is a transient transport shape (``_is_transient_github_error``),
+        so ``call_with_retry`` retries it up to ``_RETRY_MAX_ATTEMPTS`` before
+        re-raising — the exception then propagates out of
+        ``_apply_machine_minted_label`` and fails the authoring operation
+        rather than silently reporting a companion as authored while it
+        carries only the marker label.
+        """
         handler = HandlerOccCompanionEffect.__new__(HandlerOccCompanionEffect)
+        attempts = 0
 
         def _boom(req, timeout=None):  # type: ignore[no-untyped-def]
+            nonlocal attempts
+            attempts += 1
             raise urllib.error.HTTPError(
                 req.full_url,
                 500,
@@ -146,14 +157,15 @@ class TestLabelPostDecodesArrayResponse:
             )
 
         with (
-            caplog.at_level(logging.WARNING, logger=_MOD),
             patch("urllib.request.urlopen", side_effect=_boom),
+            patch("omnimarket.occ_git_transport.time.sleep"),
+            pytest.raises(GitHubApiError),
         ):
             handler._apply_machine_minted_label(
                 "OmniNode-ai", "onex_change_control", 5516, "tok"
             )
 
-        assert "could not apply" in caplog.text
+        assert attempts == 3  # _RETRY_MAX_ATTEMPTS, all exhausted
 
     def test_the_shape_error_is_raised_after_the_post_has_committed(self) -> None:
         """The pre-fix defect lost the response DECODE, never the label itself.

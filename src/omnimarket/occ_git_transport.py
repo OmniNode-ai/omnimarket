@@ -152,7 +152,7 @@ def _is_transient_github_error(exc: GitHubApiError) -> bool:
     return exc.status_code is None or exc.status_code >= 500
 
 
-def _call_with_retry[T](fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+def call_with_retry[T](fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     """Call ``fn(*args, **kwargs)``, retrying transient :class:`GitHubApiError`.
 
     Bounded at :data:`_RETRY_MAX_ATTEMPTS` attempts total with short exponential
@@ -162,6 +162,11 @@ def _call_with_retry[T](fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
     the module's existing fail-closed posture. After the attempt cap is
     exhausted the last exception is re-raised exactly as raised today (never
     swallowed).
+
+    Promoted from the lease-only ``_call_with_retry`` (OMN-15347) to a public,
+    shared helper (OMN-16071) so any GitHub-mutating call in the two OCC
+    companion producers can opt into the same bounded-retry / fail-closed
+    contract, not only the lease acquire/release path.
     """
     for attempt in range(1, _RETRY_MAX_ATTEMPTS + 1):
         try:
@@ -172,7 +177,7 @@ def _call_with_retry[T](fn: Callable[..., T], *args: Any, **kwargs: Any) -> T:
             delay = _RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
             delay += random.uniform(0, delay * 0.5)
             logger.warning(
-                "occ_companion_lease: transient GitHub API error on attempt "
+                "occ_git_transport: transient GitHub API error on attempt "
                 "%d/%d: %s (retrying in %.2fs)",
                 attempt,
                 _RETRY_MAX_ATTEMPTS,
@@ -216,7 +221,7 @@ def _resolve_reusable_tree_sha(owner: str, repo_name: str, token: str) -> str:
     merged, and no consumer ever reads its tree contents — so reuse the
     repo's current default-branch tree instead of trying to create one.
     """
-    repo_info = _call_with_retry(
+    repo_info = call_with_retry(
         rest_json, "GET", f"/repos/{owner}/{repo_name}", token=token
     )
     default_branch = repo_info.get("default_branch")
@@ -224,7 +229,7 @@ def _resolve_reusable_tree_sha(owner: str, repo_name: str, token: str) -> str:
         raise GitHubApiError(
             f"repo {owner}/{repo_name} has no default_branch: {repo_info!r}"
         )
-    head_commit = _call_with_retry(
+    head_commit = call_with_retry(
         rest_json,
         "GET",
         f"/repos/{owner}/{repo_name}/commits/{default_branch}",
@@ -270,7 +275,7 @@ def _create_lease_commit(
         },
         sort_keys=True,
     )
-    commit = _call_with_retry(
+    commit = call_with_retry(
         rest_json,
         "POST",
         f"/repos/{owner}/{repo_name}/git/commits",
@@ -339,7 +344,7 @@ def _create_lease_ref(
     other status propagates (fail-closed).
     """
     try:
-        _call_with_retry(
+        call_with_retry(
             rest_json,
             "POST",
             f"/repos/{owner}/{repo_name}/git/refs",
@@ -546,7 +551,7 @@ def release_occ_companion_lease(
     owner, repo_name = split_repo(occ_repo)
     key = _lease_key(repo_slug, pr_number, head_sha)
     try:
-        _call_with_retry(
+        call_with_retry(
             rest_no_content,
             "DELETE",
             f"/repos/{owner}/{repo_name}/git/refs/occ-companion-leases/{key}",

@@ -41,10 +41,7 @@ import tempfile
 from pathlib import Path
 from typing import Literal
 
-from omnimarket.events.occ_autoauthor import (
-    OCC_AUTHOR_TIME_LABELS,
-    OCC_MACHINE_MINTED_LABEL,
-)
+from omnimarket.events.occ_autoauthor import OCC_AUTHOR_TIME_LABELS
 from omnimarket.events.occ_companion import (
     EnumCompanionFileKind,
     ModelCompanionFile,
@@ -77,6 +74,7 @@ from omnimarket.nodes.node_occ_state_effect.handlers.handler_occ_state_effect im
 from omnimarket.occ_git_transport import (
     acquire_occ_companion_lease,
     authenticated_occ_url,
+    call_with_retry,
     release_occ_companion_lease,
     run_git,
 )
@@ -367,11 +365,15 @@ class HandlerOccCompanionEffect:
                     occ_owner, occ_name, branch, plan.tickets, request, token
                 )
 
-                # Marker seam (OMN-14393): stamp the machine-minted label so the
-                # report-only window can decide `minted_by_node`. OccCompanionEmitter
-                # and this node share the `auto/…-occ-autobind` branch prefix, so
-                # branch alone is not a discriminator. Best-effort: a label failure
-                # must never abort authoring (the label is observability, not a gate).
+                # Marker seam (OMN-14393) + CI-gating seam (OMN-16071): stamp the
+                # machine-minted marker AND `ci:ready` so the report-only window can
+                # decide `minted_by_node` and the companion's CI wave can actually
+                # fire. OccCompanionEmitter and this node share the
+                # `auto/…-occ-autobind` branch prefix, so branch alone is not a
+                # discriminator. `ci:ready` is CI-gating, not observability — a
+                # label failure here must abort authoring (OMN-16071 CodeRabbit
+                # follow-up) rather than report a companion as successfully
+                # authored while it is silently unmergeable.
                 self._apply_machine_minted_label(
                     occ_owner, occ_name, occ_pr_number, token
                 )
@@ -664,49 +666,40 @@ class HandlerOccCompanionEffect:
     def _apply_machine_minted_label(
         self, occ_owner: str, occ_name: str, occ_pr_number: int, token: str
     ) -> None:
-        """Best-effort: add the machine-minted marker label to the OCC PR.
+        """Add the machine-minted marker + ``ci:ready`` labels to the OCC PR.
 
-        The distinguishable marker (OMN-14393) that lets the report-only window
-        decide ``minted_by_node``. Non-fatal by contract: any failure is logged
-        and swallowed so a label API hiccup can never abort a successful author.
+        Two labels land in one POST (:data:`OCC_AUTHOR_TIME_LABELS`): the
+        distinguishable marker (OMN-14393) that lets the report-only window
+        decide ``minted_by_node``, and ``ci:ready`` (OMN-16071), which decides
+        whether the companion's required CI wave runs at all on the OCC repo's
+        label-gated pilot.
+
+        RETRYABLE + FAIL-CLOSED (OMN-16071 CodeRabbit follow-up): routed through
+        :func:`omnimarket.occ_git_transport.call_with_retry`, which retries a
+        bounded 3 attempts on a transient transport shape (network / 5xx) before
+        re-raising. A prior revision of this method logged-and-swallowed every
+        failure with the rationale "the label is observability, not a gate" —
+        that rationale no longer holds now that ``ci:ready`` is CI-gating: a
+        swallowed failure here would report a companion as successfully
+        authored while it silently carries only the marker and can never pass
+        CI Summary, reproducing the exact OCC#6540-class stall this ticket
+        fixes. So any exception exhausted out of ``call_with_retry`` propagates
+        to the caller's ``try/finally`` (releases the mint lease, then re-raises
+        — never masked), failing the authoring operation instead.
 
         OMN-15441: uses ``rest_json_array`` — the labels endpoint responds with
         the issue's full label ARRAY, so ``rest_json``'s dict-only contract
         rejected every (otherwise successful) call with "unexpected JSON
-        response type".
-
-        Blast radius, stated precisely: **the label still landed.** ``rest_json``
-        raises only AFTER ``urlopen`` returns, so the POST had already committed
-        server-side and GitHub had already applied the label; only the decode of
-        the response failed. Live corroboration — OCC#5516 carries
-        ``occ:machine-minted``, applied by ``onexbot-occ-writer[bot]`` at
-        2026-07-29T22:26:20Z, in the very run whose log says "could not apply".
-        Peers OCC#5526/#5528/#5530 likewise. So the defect was a spurious
-        swallowed WARNING that falsely reported a missing provenance marker —
-        misleading operators and any log-scraping audit, but ``minted_by_node``
-        never actually lost its marker. Ordering is pinned by
-        ``test_the_shape_error_is_raised_after_the_post_has_committed``.
-
-        This is a response-SHAPE defect, not a permission one — unrelated to the
-        product-body 403 despite surfacing in the same run.
+        response type". That shape defect is orthogonal to this retry/propagate
+        contract and remains fixed: a successful POST still decodes cleanly.
         """
-        try:
-            rest_json_array(
-                "POST",
-                f"/repos/{occ_owner}/{occ_name}/issues/{occ_pr_number}/labels",
-                token=token,
-                body={"labels": list(OCC_AUTHOR_TIME_LABELS)},
-            )
-        except (
-            GitHubApiError,
-            OSError,
-        ) as exc:  # fallback-ok: label is observability, not a gate
-            logger.warning(
-                "occ_companion_effect: could not apply %r label to OCC#%s: %s",
-                OCC_MACHINE_MINTED_LABEL,
-                occ_pr_number,
-                exc,
-            )
+        call_with_retry(
+            rest_json_array,
+            "POST",
+            f"/repos/{occ_owner}/{occ_name}/issues/{occ_pr_number}/labels",
+            token=token,
+            body={"labels": list(OCC_AUTHOR_TIME_LABELS)},
+        )
 
     def _first_open_pr(
         self, occ_owner: str, occ_name: str, branch: str, token: str
