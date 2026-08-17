@@ -773,6 +773,13 @@ external_producers:
   onex.cmd.omnibase-infra.gateway-attach-request.v1: "published by the onex-api gateway ingress (private omninode_infra) forwarding tenant-edge attach requests — OMN-16077"
   onex.cmd.omnibase-infra.gateway-detach-request.v1: "published by the onex-api gateway ingress (private omninode_infra) forwarding tenant-edge detach requests — OMN-16077"
   onex.cmd.omnibase-infra.gateway-heartbeat-request.v1: "published by the onex-api gateway ingress (private omninode_infra) forwarding tenant-edge heartbeat requests — OMN-16077"
+  # OMN-16090: the hook-event-capture command topic is published by the
+  # onex-api Secure Workflow Gateway (private omninode_infra), which resolves
+  # it from its own workflow-contracts.yaml catalog entry rather than from any
+  # node contract in this corpus. Same class as the gateway topics above: a
+  # real, declared producer that simply lives outside the checked repo. The
+  # gateway entry lands FENCED, so no traffic flows until it is un-fenced.
+  onex.cmd.omnimarket.hook-event-capture-requested.v1: "published by the onex-api Secure Workflow Gateway ingress (private omninode_infra) from the hook-event-capture catalog entry — OMN-16090"
 external_consumers:
   # OMN-16077: session lifecycle events from node_gateway_attach_effect are
   # consumed by the onex-api gateway_sessions projection (private
@@ -782,3 +789,16 @@ external_consumers:
   # this repo; this declaration is the consume-side mirror of
   # external_producers for exactly that case.
   onex.evt.omnibase-infra.gateway-session.v1: "consumed by the onex-api gateway_sessions projection (private omninode_infra) — OMN-16077"
+  # OMN-16090: the hook-event-capture batch-completion event is consumed by
+  # the onex-api workflow_terminal_consumer (private omninode_infra), the
+  # same component that already closes GET /v1/workflows/{id}/status for the
+  # delegation and push-validation workflow types. Outside the checked
+  # contract corpus, hence the declaration here.
+  #
+  # STATE OF THAT CONSUMER, stated plainly: it does not yet know this topic.
+  # Teaching workflow_terminal_consumer the third terminal pair is gateway-
+  # side work tracked with the un-fence conditions on the catalog entry.
+  # Until it lands, a submitted batch is persisted but its workflow status
+  # never advances past `published` -- which is why the operator shipper
+  # refuses to move spool files aside on a 202 alone.
+  onex.evt.omnimarket.hook-events-captured.v1: "consumed by the onex-api workflow_terminal_consumer (private omninode_infra) to close workflow status — OMN-16090"

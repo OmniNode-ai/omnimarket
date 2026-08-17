@@ -1,0 +1,38 @@
+name: hook_event_capture
+version: "1.0.0"
+description: >
+  Persists gateway-submitted hook and skill-lifecycle event batches into the
+  hook_events read model, idempotent on (tenant_id, event_sha).
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - capture
+  - hooks
+  - reducer
+ownership:
+  hook_events:
+    ddl_owner: omnimarket.nodes.node_hook_event_capture
+    table_role: projection_read_model
+    create_migration: "migrations/0001_create_hook_events.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+      - omninode_infra
+    rationale: >
+      hook_events is the landing zone this node writes for events submitted
+      through the secure workflow gateway. omnibase_infra owns the local
+      emitter and its own runtime tables; omninode_infra owns the gateway
+      catalog entry that routes batches here. Neither owns this table's
+      CREATE TABLE migration.
+pack: "data"
+display_name: "Hook Event Capture"
+node_role: "effect"

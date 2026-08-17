@@ -1,0 +1,106 @@
+---
+name: node_hook_event_capture
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: REDUCER_GENERIC
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: ModelHookEventCaptureRequest
+description: >
+  Consumes hook-event-capture command batches submitted through the secure
+  workflow gateway (POST /v1/workflows, workflow_type "hook-event-capture")
+  and persists each carried event into the hook_events read model, idempotent
+  on (tenant_id, event_sha).
+
+  WHY THIS NODE EXISTS. Operator machines emit contract-typed hook and
+  skill-lifecycle events through a local emit socket. When that socket is
+  absent the emitter SPOOLS to disk instead of dropping -- correct behaviour,
+  but the spool had no drain to anywhere. Measured 2026-08-16 on one operator
+  machine: 1931 spooled events, every one carrying
+  `spool_reason: "FileNotFoundError: [Errno 2] No such file or directory"`,
+  across four families (artifact.captured 751, tool.output.captured 437,
+  skill-started 429, skill-completed 314). Durable on disk, invisible to every
+  projection. This node is the cloud half of the path that ends that.
+
+  WHY event_sha AND NOT event_id. Only two of the four measured families carry
+  an event_id at all. Keying idempotency on it would drop 61% of the corpus or
+  force this node to invent identity. The submitter computes
+  event_sha = sha256 over the canonical event body; this node dedupes on
+  (tenant_id, event_sha) and treats event_id as correlation metadata only.
+
+  WHY payload_json IS OPAQUE HERE TOO. The gateway asserts framing, size and
+  identity; it deliberately does not validate the inner body, because the four
+  families are independently versioned and new families appear without a
+  gateway release. This node stores the body verbatim as JSONB. It does NOT
+  re-interpret per-family semantics -- a downstream projection that cares
+  about a specific family reads hook_events and owns that interpretation.
+  Storing what was actually sent is the point: this is a capture surface.
+
+handler:
+  module: omnimarket.nodes.node_hook_event_capture.handlers.handler_hook_event_capture
+  class: HandlerHookEventCapture
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: hook_event_capture
+      handler:
+        name: HandlerHookEventCapture
+        module: omnimarket.nodes.node_hook_event_capture.handlers.handler_hook_event_capture
+      handler_module: omnimarket.nodes.node_hook_event_capture.handlers.handler_hook_event_capture
+      event_model: omnimarket.nodes.node_hook_event_capture.models.model_hook_event_capture_request.ModelHookEventCaptureRequest
+
+descriptor:
+  node_archetype: reducer
+  purity: effectful
+  idempotent: true
+  timeout_ms: 60000
+  runtime_profiles: [effects]
+
+idempotency:
+  enabled: true
+  strategy: snapshot_upsert
+  hash_fields:
+    - tenant_id
+    - event_sha
+
+# The gateway's workflow_terminal_consumer reads this to close
+# GET /v1/workflows/{id}/status from published -> completed. Without it a
+# submitter can never confirm delivery, which matters here specifically:
+# publish is fail-open, so a 202 alone does not mean the batch landed, and the
+# shipper on the operator machine refuses to move spool files aside until it
+# sees a terminal status. The terminal event is what makes that confirmation
+# possible -- it is load-bearing, not ceremony.
+terminal_event: onex.evt.omnimarket.hook-events-captured.v1
+
+db_io:
+  db_tables:
+    - name: hook_events
+      database_ref: application
+      # OMN-15655 / house-tenant ruling: these rows are workload-attributable
+      # (they record a tenant's own hook and skill runs), so they are TENANT
+      # data. Platform-own workloads are the house tenant's rows, not an
+      # absence of a tenant.
+      schema: tenant
+      migration: "0001_create_hook_events.sql"
+      access: write
+      role: hook_events
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.hook-event-capture-requested.v1
+  publish_topics:
+    # ONE terminal event per batch. This is NOT re-emission of the captured
+    # events onto their original evt topics -- that stays out of scope
+    # (persistence is the requirement, and fanning a submission across N
+    # caller-named topics is the injection shape the gateway exists to
+    # prevent). This is a single batch-completion signal.
+    #
+    # An earlier revision of this contract declared the topic while the handler
+    # never emitted it. Two gates caught that immediately -- contract-topic-graph
+    # as an ORPHANED_PRODUCER and state-coverage as an uncovered output state --
+    # and they were right: a declared output nothing produces is a claim the
+    # code does not honour. The handler now actually publishes it after a
+    # successful batch.
+    - onex.evt.omnimarket.hook-events-captured.v1
+
+metadata:
+  transport_type: kafka
