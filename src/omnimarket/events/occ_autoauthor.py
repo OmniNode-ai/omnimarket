@@ -33,6 +33,23 @@ from pydantic import BaseModel, ConfigDict, Field
 # the write-EFFECT (node_occ_companion_effect) at author time, mutate mode only.
 OCC_MACHINE_MINTED_LABEL = "occ:machine-minted"
 
+# OMN-16071. The OCC repo runs the OMN-15731 label-gated CI pilot: on a
+# dev-targeting PR the heavy `pre-commit` job runs ONLY when `ci:ready` is
+# present, and CI Summary then fails closed unless `pre-commit` SUCCEEDED
+# (skipped and cancelled both block). A machine-minted companion therefore
+# cannot merge -- ever -- until some human hand-applies this label, which is
+# exactly how OCC#6540 and its peers #6533/#6529/#6515 stalled.
+#
+# This is NOT a review gate being auto-satisfied: `ci:ready` only decides
+# whether the wave RUNS. Every gate still has to pass on its merits afterwards,
+# and CI Summary's strict block is untouched. Applying it at author time simply
+# stops the writer from minting PRs that are structurally unmergeable.
+OCC_CI_READY_LABEL = "ci:ready"
+
+# Applied together at author time (mutate mode only): the provenance marker and
+# the label that lets the companion's CI wave actually fire.
+OCC_AUTHOR_TIME_LABELS = (OCC_MACHINE_MINTED_LABEL, OCC_CI_READY_LABEL)
+
 
 def is_machine_minted(labels: Iterable[str]) -> bool:
     """Pure: True iff the OCC PR carries the machine-minted marker label.

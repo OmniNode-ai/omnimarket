@@ -36,6 +36,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import urllib.error
 from typing import Any
 from unittest.mock import patch
@@ -297,10 +298,19 @@ class TestEmitterLabelDecodesArrayResponse:
 
         assert "could not apply" not in caplog.text
 
-    def test_still_swallows_a_real_api_failure(self, caplog) -> None:
-        """The best-effort contract is preserved — a 500 must not abort a mint."""
+    def test_a_persistent_500_is_retried_then_fails_authoring(self) -> None:
+        """OMN-16071: `ci:ready` is CI-gating now, so the old swallow is gone.
+
+        A 500 is a transient transport shape, so ``call_with_retry`` retries it
+        up to ``_RETRY_MAX_ATTEMPTS`` before re-raising — the exception then
+        propagates out of ``_apply_machine_minted_label`` rather than silently
+        reporting the companion as authored while it carries only the marker.
+        """
+        attempts = 0
 
         def _boom(req, timeout=None):  # type: ignore[no-untyped-def]
+            nonlocal attempts
+            attempts += 1
             raise urllib.error.HTTPError(
                 req.full_url,
                 500,
@@ -310,14 +320,15 @@ class TestEmitterLabelDecodesArrayResponse:
             )
 
         with (
-            caplog.at_level(logging.WARNING, logger=_MOD),
             patch("urllib.request.urlopen", side_effect=_boom),
+            patch("omnimarket.occ_git_transport.time.sleep"),
+            pytest.raises(GitHubApiError),
         ):
             OccCompanionEmitter._apply_machine_minted_label(
                 "OmniNode-ai", "onex_change_control", 5516, "tok"
             )
 
-        assert "could not apply" in caplog.text
+        assert attempts == 3  # _RETRY_MAX_ATTEMPTS, all exhausted
 
     def test_both_producers_route_the_label_post_through_the_same_helper(self) -> None:
         """Pins the documented byte-for-byte parity invariant mechanically.
@@ -339,11 +350,26 @@ class TestEmitterLabelDecodesArrayResponse:
         )
 
         for src, who in ((emitter_src, "emitter"), (effect_src, "effect handler")):
-            assert "rest_json_array(" in src, (
+            assert "rest_json_array" in src, (
                 f"{who} must POST the label through rest_json_array — the "
                 "endpoint returns a label ARRAY and rest_json rejects it"
             )
             # Guard the exact regression: a bare ``rest_json(`` call.
             assert "\n            rest_json(" not in src, (
                 f"{who} still routes the label POST through dict-only rest_json"
+            )
+            # OMN-16071: both producers must route through the shared
+            # bounded-retry helper — ci:ready is CI-gating, not observability,
+            # so neither may quietly swallow a persistent failure anymore.
+            assert "call_with_retry(" in src, (
+                f"{who} must route the label POST through call_with_retry so a "
+                "transient failure retries before failing authoring closed"
+            )
+            # Matches an actual `except` clause (not prose words like
+            # "exception"): `except`, `except:`, `except (Foo` all start a
+            # line (modulo indentation) and are followed by whitespace,
+            # a colon, or an open paren.
+            assert not re.search(r"^\s*except[\s(:]", src, flags=re.MULTILINE), (
+                f"{who} must not swallow a label POST failure — ci:ready is "
+                "CI-gating, not observability (OMN-16071)"
             )

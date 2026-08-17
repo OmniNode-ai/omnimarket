@@ -147,11 +147,14 @@ class TestClassifyCompanionProvenance:
         )
 
     def test_unlabelled_autobind_branch_is_machine(self) -> None:
-        """``_apply_machine_minted_label`` is best-effort and swallows failures.
+        """The branch-prefix fallback still matters even though OMN-16071 made
+        a label POST failure fail authoring closed (rather than swallow it).
 
-        Without the branch leg, a machine companion whose label call was
-        swallowed would classify HAND_AUTHORED and the emitter would defer to
-        ITSELF — the highest-severity self-inflicted failure mode here.
+        A companion can still legitimately reach this classifier unlabeled —
+        e.g. a pre-OMN-14393 companion, or a read observed mid-retry before the
+        label lands. Without the branch leg, an unlabeled machine companion
+        would classify HAND_AUTHORED and the emitter would defer to ITSELF —
+        the highest-severity self-inflicted failure mode here.
         """
         assert (
             classify_companion_provenance(
