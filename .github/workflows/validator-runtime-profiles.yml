@@ -17,7 +17,16 @@
 # repo root (pyproject.toml). The gate blocks NEW orphans.
 #
 # Requires the omnibase_core pin to include OMN-12957's validator (new rules).
-# Required status check context: "Runtime Profiles / validate".
+# Context: "validate" (CORRECTED 2026-08-13 — this comment previously claimed
+# "Runtime Profiles / validate", which is FALSE: the `validate` job below
+# carries no job-level `uses:`, so GitHub names its check-run after the job's
+# own `name:` field only, same as the sibling bare-name `state-coverage-gate`
+# job — never workflow-name-prefixed). NOT a direct branch-protection
+# required status check on either dev or main (verified live 2026-08-13 via
+# `gh api repos/OmniNode-ai/omnimarket/branches/{dev,main}/protection/required_status_checks`).
+# It IS asserted fail-closed as an L4 external context by CI Summary's
+# EXPECTED_EXTERNAL_CONTEXTS (scripts/ci/ci_summary_gate.py), which is
+# required — a red or missing run here now blocks merge transitively.
 
 name: Runtime Profiles
 

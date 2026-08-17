@@ -77,21 +77,60 @@ instantiated. If a gate is missing or still running, the verdict is PENDING
 (poll again). At the caller's deadline, PENDING is converted to FAILURE
 (fail-closed): the required context always reaches a terminal state.
 
-COVERAGE HONESTY — ``CI Summary`` summarizes ``ci.yml`` ONLY
-------------------------------------------------------------
-``CI Summary`` polls the jobs of **its own workflow run** (``ci.yml``). It
-therefore aggregates ONLY the ``ci.yml`` jobs enumerated in :data:`STRICT_GATE_JOBS`
-+ :data:`SKIPPABLE_GATE_JOBS` + the test matrix. It does **NOT** summarize the
-many *independently-required* branch-protection contexts produced by *other*
-workflow files — those run in separate workflow runs the poller never sees.
-The known-unsummarized required contexts are listed in
-:data:`UNSUMMARIZED_REQUIRED_CONTEXTS` so the name never implies coverage it
-lacks. Measured live 2026-07-21 on ``omnimarket`` ``dev``: 58 required contexts,
-of which ``CI Summary`` covers ~20 (the ``ci.yml`` gate jobs above + itself);
-the remaining ~38 are independently required and unsummarized. Do NOT expand
-this poller to "cover" those contexts — each is separately required and gates on
-its own; folding them in here would hide their individual pass/fail behind one
-rollup.
+LAYER 4 — ``EXPECTED_EXTERNAL_CONTEXTS`` (enforce-everything gate, 2026-08)
+---------------------------------------------------------------------------
+``CI Summary`` polls the jobs of **its own workflow run** (``ci.yml``) via
+``actions/runs/{run_id}/jobs`` — layers 1-3 above. That covers every job that
+lives *inside* ``ci.yml``. It does NOT, by itself, see jobs produced by any of
+omnimarket's ~60 *other* workflow files — those run in separate workflow runs
+the in-run poller never observes. Until this layer existed, the poller merely
+*disclosed* that gap (a hand-maintained, unenforced ``UNSUMMARIZED_REQUIRED_CONTEXTS``
+doc-only list) instead of closing it — so a required context silently dropped
+from branch protection (as 19 rows were on 2026-07-25) had nothing checking
+that it stayed required, and a genuinely never-required validator
+(fsm-handler-drift, skill-mapping-input-coverage-gate,
+node-migration-vendor-parity-gate, node-drift-gate on dev, contract-validation
+on dev, deploy-gate on dev, ``Runtime Profiles / validate``) could report red
+on every PR forever with zero effect on mergeability.
+
+:data:`EXPECTED_EXTERNAL_CONTEXTS` closes that gap: it is an ASSERTED tuple,
+resolved against the PR head SHA's ``commits/{sha}/check-runs`` (a different
+API surface than the in-run jobs list — this is what lets the poller see
+check-runs produced by OTHER workflow files' runs), each required **present +
+completed + conclusion == "success"** (:data:`EXTERNAL_GOOD_CONCLUSIONS` — a
+*stricter* set than :data:`GOOD_CONCLUSIONS`: an externally skipped context
+fails closed here, because none of the L4 entries carry a legitimate skip
+precondition this gate re-derives — a skip is either a real failure-to-run or
+a producer-side ``if:`` this gate does not re-verify, so it is not eligible
+for the SKIPPABLE (L2) treatment). Missing or still-running is PENDING,
+converted to FAILURE at the caller's deadline exactly like layers 1-3. An
+unfetchable check-runs response (``check_runs is None``) is treated as
+*every* L4 context unobserved — never a blind pass.
+
+:data:`ACTOR_CONDITIONAL_CONTEXTS` names the one legitimate producer-side
+absence in this set: ``cr-thread-gate-caller.yml``'s ``gate`` job carries
+``if: github.actor != 'dependabot[bot]'``, so no check-run is ever created for
+a dependabot PR — an applicability rule, not a bypass, scoped to that one
+actor for that one context only.
+
+Jobs produced by other workflow files that are NOT in
+:data:`EXPECTED_EXTERNAL_CONTEXTS` are exempt only by explicit, reasoned
+classification — see ``tests/unit/scripts/ci/test_ci_summary_gate.py``'s
+``EXEMPT_CONTEXTS`` and its completeness test
+(``test_every_pr_triggered_job_is_classified``), which enumerates every job
+reachable from ``on.pull_request`` across ``.github/workflows/*.yml`` and
+proves STRICT | SKIPPABLE | EXTERNAL | EXEMPT covers it — a new, unclassified
+workflow job fails that test until it is triaged into one of the four
+buckets.
+
+COVERAGE HONESTY — what ``CI Summary`` does not see even with L4
+------------------------------------------------------------------
+``EXPECTED_EXTERNAL_CONTEXTS`` is a fixed, curated tuple, not derived live
+from branch protection. If a context is added to ``required_status_checks``
+without a matching addition here (or removed from protection but left here),
+the two drift apart silently — ``.github/required-checks.yaml`` plus its
+``required-check-skip-guard`` gate is the durable cross-check for that drift;
+this module does not read branch protection directly.
 
 Exit codes: ``0`` success, ``1`` failure, ``2`` pending.
 """
@@ -206,14 +245,28 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
     }
 )
 
-# Required branch-protection contexts on omnimarket that CI Summary does NOT
-# summarize because they are produced by OTHER workflow files (separate runs the
-# poller never observes). Listed here purely for honesty/auditability — the
-# poller does not read this set. Measured live 2026-07-21 via
-# ``gh api repos/OmniNode-ai/omnimarket/branches/dev/protection/required_status_checks``.
-# This is a coverage-gap DISCLOSURE, not a to-do to fold them in: each of these
-# is independently required and gates on its own.
-UNSUMMARIZED_REQUIRED_CONTEXTS: tuple[str, ...] = (
+# L4: contexts produced by OTHER workflow files (separate runs the in-run
+# poller never observes), ASSERTED against the PR head SHA's
+# `commits/{sha}/check-runs`. Superset of the old UNSUMMARIZED_REQUIRED_CONTEXTS
+# doc-only list: every entry that was already live-required on dev and/or main
+# stays here (now enforced, not merely disclosed); `reason-graph` was dropped
+# (removed from branch protection 2026-07-25 — product-readiness-shadow.yml is
+# a self-declared non-required Phase-3 canary, see EXEMPT_CONTEXTS in the test
+# file); `receipt-honesty` / `shell-hygiene` were dropped for the same reason
+# (self-declared staged/deferred promotion, see EXEMPT_CONTEXTS); `verify /
+# verify` and `call-reject-skip-token / scan / reject-skip-gate-token` were
+# added (live main-required, missing from the old disclosure list). NEW gap
+# closures (never required anywhere before this gate): `fsm-handler-drift`,
+# `skill-mapping-input-coverage-gate`, `node-migration-vendor-parity-gate`,
+# `node-drift-gate` (was main-only), `contract-validation` (was main-only),
+# `deploy-gate / deploy-gate` (was main-only), `validate` (from
+# validator-runtime-profiles.yml — its own header claimed the required-
+# status-check name is "Runtime Profiles / validate", which is FALSE: that
+# job has no job-level `uses:`, so GitHub names its check-run after the job's
+# own `name:` field only, exactly like the sibling bare-name `state-coverage-
+# gate` job — "validate", not workflow-name-prefixed. Corrected in the same
+# PR that adds this assertion.).
+EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Architectural Compliance Lint",
     "Canonical Inference Gate",
     "CI Naming Convention",
@@ -237,6 +290,7 @@ UNSUMMARIZED_REQUIRED_CONTEXTS: tuple[str, ...] = (
     "URL Authority Gate",
     "call / validate-docs",
     "call-reject-skip-token / occ-preflight / eligibility",
+    "call-reject-skip-token / scan / reject-skip-gate-token",
     "contract-validation",
     "deploy-gate / deploy-gate",
     "dispatcher-route-coverage",
@@ -244,15 +298,32 @@ UNSUMMARIZED_REQUIRED_CONTEXTS: tuple[str, ...] = (
     "gate / CodeRabbit Thread Check",
     "imperative-contract-guard / Imperative Contract Guard",
     "main-target-guard",
+    "node-drift-gate",
+    "node-migration-vendor-parity-gate",
     "non-dev-base-guard",
     "occ-preflight / eligibility",
     "pr-title / check-title",
-    "reason-graph",
-    "receipt-honesty",
-    "shell-hygiene",
+    "required-check-skip-guard / check-skip-vectors",
     "skill-mapping-input-coverage-gate",
     "state-coverage-gate",
+    "validate",
+    "verify / verify",
 )
+
+# Conclusions that count as "provably passed" for an L4 external context. A
+# STRICTER set than GOOD_CONCLUSIONS: no L4 entry carries a skip precondition
+# this gate re-derives, so "skipped" is not eligible for L2-style leniency here
+# — it fails closed.
+EXTERNAL_GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success"})
+
+# Contexts that are legitimately ABSENT (no check-run at all) for one specific
+# actor, because the producer's own `if:` skips the job for that actor before
+# any check-run is created. An applicability rule, not a bypass — scoped per
+# context, per actor.
+ACTOR_CONDITIONAL_CONTEXTS: dict[str, frozenset[str]] = {
+    # cr-thread-gate-caller.yml: `if: github.actor != 'dependabot[bot]'`.
+    "gate / CodeRabbit Thread Check": frozenset({"dependabot[bot]"}),
+}
 
 # Conclusions that count as "provably passed".
 GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success", "skipped"})
@@ -495,12 +566,148 @@ def _report(
     if gate_missing_or_pending:
         lines.append(f"  gates missing/pending: {', '.join(gate_missing_or_pending)}")
     lines.append(
-        "  NOTE: CI Summary summarizes ci.yml jobs ONLY; "
-        f"{len(UNSUMMARIZED_REQUIRED_CONTEXTS)} other required contexts "
-        "(other workflow files) are independently required and NOT summarized "
-        "here — see UNSUMMARIZED_REQUIRED_CONTEXTS."
+        "  NOTE: the in-run layers above (1-3) summarize ci.yml jobs ONLY; "
+        f"{len(EXPECTED_EXTERNAL_CONTEXTS)} contexts from OTHER workflow files "
+        "are asserted separately as L4 EXPECTED_EXTERNAL_CONTEXTS — see the "
+        "external-context section of this report if present."
     )
     return "\n".join(lines)
+
+
+# --------------------------------------------------------------------------- #
+# Layer 4: external contexts (other workflow files), via commits/{sha}/check-runs.
+# --------------------------------------------------------------------------- #
+
+
+@dataclass(frozen=True)
+class CheckRunState:
+    """The latest-attempt state of a single GitHub check-run (by display name)."""
+
+    name: str
+    status: str  # queued | in_progress | completed | ...
+    conclusion: str | None
+    started_at: str  # ISO-8601; used only to break ties between duplicate rows.
+
+
+def _check_run_severity(state: CheckRunState) -> int:
+    """Rank a check-run row by how blocking it is: bad > incomplete > good.
+
+    A more-recent-but-less-blocking row (e.g. a fresh success superseding a
+    stale in-flight rerun row) still wins by ``started_at`` — see
+    :func:`dedup_latest_check_runs`. This ranking only breaks ties when two
+    rows are otherwise indistinguishable in time, and guarantees a completed
+    non-good conclusion is never silently dropped in favor of an incomplete
+    duplicate row for the same check name.
+    """
+
+    if state.status != "completed":
+        return 1
+    if state.conclusion not in EXTERNAL_GOOD_CONCLUSIONS:
+        return 2
+    return 0
+
+
+def dedup_latest_check_runs(
+    check_runs: list[dict[str, object]],
+) -> dict[str, CheckRunState]:
+    """Collapse a raw ``commits/{sha}/check-runs`` array to one row per name.
+
+    The GitHub API call this feeds is expected to pass ``filter=latest``
+    (one row per check name already), so this is defense-in-depth: rows are
+    kept by most-recent ``started_at``; a tie in ``started_at`` is broken by
+    the more-blocking row (:func:`_check_run_severity`) so a stale duplicate
+    can never hide a real failure.
+    """
+
+    latest: dict[str, CheckRunState] = {}
+    for raw in check_runs:
+        name = str(raw.get("name") or "")
+        if not name:
+            continue
+        conclusion = raw.get("conclusion")
+        current = CheckRunState(
+            name=name,
+            status=str(raw.get("status") or ""),
+            conclusion=None if conclusion is None else str(conclusion),
+            started_at=str(raw.get("started_at") or ""),
+        )
+        prev = latest.get(name)
+        if prev is None:
+            latest[name] = current
+            continue
+        if current.started_at > prev.started_at or (
+            current.started_at == prev.started_at
+            and _check_run_severity(current) > _check_run_severity(prev)
+        ):
+            latest[name] = current
+    return latest
+
+
+def evaluate_external(
+    check_runs: list[dict[str, object]] | None,
+    *,
+    actor: str | None = None,
+    expected: tuple[str, ...] = EXPECTED_EXTERNAL_CONTEXTS,
+    actor_conditional: dict[str, frozenset[str]] = ACTOR_CONDITIONAL_CONTEXTS,
+) -> tuple[int, str]:
+    """Return ``(exit_code, human_report)`` for the L4 external-context layer.
+
+    ``check_runs is None`` means the ``commits/{sha}/check-runs`` fetch itself
+    failed — every expected context is treated as unobserved (PENDING), never
+    as a blind pass.
+    """
+
+    if check_runs is None:
+        lines = [
+            "External contexts verdict: PENDING",
+            "  check-runs fetch failed or not yet attempted; "
+            f"{len(expected)} expected external contexts unobserved.",
+        ]
+        return EXIT_PENDING, "\n".join(lines)
+
+    latest = dedup_latest_check_runs(check_runs)
+    failures: list[str] = []
+    missing: list[str] = []
+
+    for name in expected:
+        st = latest.get(name)
+        if st is None:
+            allowed_actors = actor_conditional.get(name)
+            if (
+                allowed_actors is not None
+                and actor is not None
+                and actor in allowed_actors
+            ):
+                continue  # legitimately absent for this actor — not a gap.
+            missing.append(name)
+            continue
+        if st.status != "completed":
+            missing.append(name)
+            continue
+        if st.conclusion not in EXTERNAL_GOOD_CONCLUSIONS:
+            failures.append(name)
+
+    lines = [f"External contexts asserted: {len(expected)}"]
+    if failures:
+        lines.append(f"  external-context failures: {', '.join(sorted(failures))}")
+    if missing:
+        lines.append(
+            f"  external-context missing/pending: {', '.join(sorted(missing))}"
+        )
+
+    if failures:
+        return EXIT_FAILURE, "\n".join(lines)
+    if missing:
+        return EXIT_PENDING, "\n".join(lines)
+    lines.append("  all external contexts present + success.")
+    return EXIT_SUCCESS, "\n".join(lines)
+
+
+def _worse(a: int, b: int) -> int:
+    """FAILURE beats PENDING beats SUCCESS, regardless of numeric exit value."""
+
+    order = {EXIT_FAILURE: 2, EXIT_PENDING: 1, EXIT_SUCCESS: 0}
+    return a if order[a] >= order[b] else b
 
 
 def _load_jobs(path: str | None) -> list[dict[str, object]]:
@@ -517,6 +724,27 @@ def _load_jobs(path: str | None) -> list[dict[str, object]]:
     return jobs
 
 
+def _load_check_runs(path: str | None) -> list[dict[str, object]] | None:
+    """Load a ``commits/{sha}/check-runs`` payload. ``None`` means "not fetched"."""
+
+    if path is None:
+        return None
+    try:
+        with open(path, encoding="utf-8") as handle:
+            raw = handle.read()
+    except OSError:
+        return None
+    if not raw.strip():
+        return None
+    data = json.loads(raw)
+    check_runs = data.get("check_runs", []) if isinstance(data, dict) else data
+    if not isinstance(check_runs, list):
+        raise ValueError(
+            "check-runs payload must be a list or an object with a 'check_runs' array"
+        )
+    return check_runs
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -524,6 +752,21 @@ def main(argv: list[str] | None = None) -> int:
         default="-",
         help="Path to the GitHub Actions jobs JSON (default: stdin). Accepts the "
         "raw endpoint object or a bare array of job objects.",
+    )
+    parser.add_argument(
+        "--check-runs-file",
+        default=None,
+        help="Path to the commits/{sha}/check-runs JSON for the PR head SHA "
+        "(L4 external-context layer). Omit to skip L4 evaluation entirely "
+        "(exit code reflects layers 1-3 only) — used by the unit tests and by "
+        "any caller not yet wired for L4.",
+    )
+    parser.add_argument(
+        "--actor",
+        default=None,
+        help="github.actor for the current run, used to resolve "
+        "ACTOR_CONDITIONAL_CONTEXTS (a legitimately-absent context for one "
+        "specific actor).",
     )
     parser.add_argument(
         "--report-only",
@@ -541,6 +784,13 @@ def main(argv: list[str] | None = None) -> int:
     jobs = _load_jobs(args.jobs_file)
     code, report = evaluate(jobs, run_attempt=args.run_attempt)
     print(report)
+
+    if args.check_runs_file is not None:
+        check_runs = _load_check_runs(args.check_runs_file)
+        ext_code, ext_report = evaluate_external(check_runs, actor=args.actor)
+        print(ext_report)
+        code = _worse(code, ext_code)
+
     if args.report_only:
         return EXIT_SUCCESS
     return code

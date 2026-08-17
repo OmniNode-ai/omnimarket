@@ -42,10 +42,20 @@
 #   renames, and direct infra-tree edits) — it complements it by removing the
 #   only path that produces net-new drift asymmetrically.
 #
-# INTENDED WIRING (follow-up, requires repo-admin branch-protection edit —
-#   not made in this PR): add `node-migration-vendor-parity-gate` as a
-#   required status check on omnimarket's dev branch protection so a green
-#   run is mandatory, not merely advisory.
+# ENFORCEMENT (2026-08-13): asserted fail-closed as an L4 external context by
+# CI Summary's EXPECTED_EXTERNAL_CONTEXTS (scripts/ci/ci_summary_gate.py) —
+# CI Summary is a REQUIRED branch-protection context on both dev and main, so
+# a red or missing run here now blocks merge transitively. No direct
+# branch-protection edit was needed or made.
+#
+# NO `paths:` FILTER (removed 2026-08-13, was: `src/omnimarket/nodes/*/migrations/*.sql`):
+# a context that is asserted must ALWAYS produce a check-run, or an asserting
+# poller can never distinguish "no migration changed" from "job never ran" and
+# permanently PENDs. The job already had the correct in-job short-circuit for
+# this (the "no node migration files changed" `git diff` branch below, which
+# exits 0 with a notice) — the paths filter was redundant with it and is what
+# made the job invisible on every non-migration PR. Always-fire + in-job
+# short-circuit, per the standard conversion pattern.
 
 name: node-migration-vendor-parity-gate
 
@@ -53,8 +63,6 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
     branches: [main, dev]
-    paths:
-      - "src/omnimarket/nodes/*/migrations/*.sql"
 
 permissions:
   contents: read

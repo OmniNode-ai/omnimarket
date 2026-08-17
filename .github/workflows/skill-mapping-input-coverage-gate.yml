@@ -12,9 +12,13 @@
 # omnibase_infra dep) against each node's resolved input model and FAILs on any
 # defaulted-arg / missing-field pair.
 #
-# Runs on every PR/merge_group with no paths filter: a required status check
-# must report on every PR (mirrors state-coverage-gate.yml), otherwise it stays
-# permanently "expected" and blocks the queue.
+# Runs on every PR/merge_group with no paths filter so it always reports
+# (mirrors state-coverage-gate.yml). NOT a direct branch-protection required
+# status check on either dev or main (verified live 2026-08-13 via `gh api
+# repos/OmniNode-ai/omnimarket/branches/{dev,main}/protection/required_status_checks`).
+# It IS asserted fail-closed as an L4 external context by CI Summary's
+# EXPECTED_EXTERNAL_CONTEXTS (scripts/ci/ci_summary_gate.py), which is
+# required — a red or missing run here now blocks merge transitively.
 
 name: skill-mapping-input-coverage-gate
 
