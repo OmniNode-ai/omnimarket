@@ -19,7 +19,6 @@ import pytest
 
 from omnimarket.github_api import GitHubApiError
 from omnimarket.occ_git_transport import (
-    _call_with_retry,
     _create_lease_commit,
     _create_lease_ref,
     _lease_is_stale,
@@ -27,6 +26,7 @@ from omnimarket.occ_git_transport import (
     _reap_stale_sibling_leases,
     _resolve_reusable_tree_sha,
     acquire_occ_companion_lease,
+    call_with_retry,
     release_occ_companion_lease,
 )
 
@@ -363,7 +363,7 @@ class TestReleaseLease:
 
 
 # ---------------------------------------------------------------------------
-# _call_with_retry — bounded retry with jitter (OMN-15347)
+# call_with_retry — bounded retry with jitter (OMN-15347)
 # ---------------------------------------------------------------------------
 
 
@@ -377,7 +377,7 @@ class TestCallWithRetry:
             ]
         )
         with patch(f"{_MOD}.time.sleep") as sleep_mock:
-            result = _call_with_retry(fn, "GET", "/x", token="t")
+            result = call_with_retry(fn, "GET", "/x", token="t")
         assert result == {"ok": True}
         assert fn.call_count == 2
         sleep_mock.assert_called_once()
@@ -390,7 +390,7 @@ class TestCallWithRetry:
             patch(f"{_MOD}.time.sleep") as sleep_mock,
             pytest.raises(GitHubApiError) as exc_info,
         ):
-            _call_with_retry(fn, "POST", "/x", token="t")
+            call_with_retry(fn, "POST", "/x", token="t")
         assert exc_info.value.status_code == 422
         assert fn.call_count == 1
         sleep_mock.assert_not_called()
@@ -401,7 +401,7 @@ class TestCallWithRetry:
             patch(f"{_MOD}.time.sleep") as sleep_mock,
             pytest.raises(GitHubApiError),
         ):
-            _call_with_retry(fn, "GET", "/x", token="t")
+            call_with_retry(fn, "GET", "/x", token="t")
         assert fn.call_count == 1
         sleep_mock.assert_not_called()
 
@@ -412,7 +412,7 @@ class TestCallWithRetry:
             patch(f"{_MOD}.time.sleep"),
             pytest.raises(GitHubApiError) as exc_info,
         ):
-            _call_with_retry(fn, "GET", "/x", token="t")
+            call_with_retry(fn, "GET", "/x", token="t")
         assert exc_info.value is original
         assert exc_info.value.status_code == 502
         assert fn.call_count == 3  # _RETRY_MAX_ATTEMPTS
@@ -428,7 +428,7 @@ class TestCallWithRetry:
             ]
         )
         with patch(f"{_MOD}.time.sleep"):
-            assert _call_with_retry(fn) == "ok"
+            assert call_with_retry(fn) == "ok"
         assert fn.call_count == 3
 
 
