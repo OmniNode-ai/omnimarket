@@ -143,6 +143,7 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
+from omnimarket.projection.tenant_isolation import TenantContextMissingError
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     resolve_delegation_backend,
@@ -450,14 +451,22 @@ class LocalDelegationDispatchPort:
     def _default_roi_overlay_reader(
         self, task_type: str
     ) -> ModelRoutingRoiOverlay | None:
-        """Resolve the ROI overlay from ``roi_db`` — fail-OPEN (OMN-14001).
+        """Resolve the ROI overlay from ``roi_db`` — fail-OPEN on outage (OMN-14001).
 
         Returns None when no ROI projection adapter was injected (the local
-        default), or on ANY read error, so a captured-outcome read never breaks a
+        default), or on a read error, so a captured-outcome read never breaks a
         live delegation. When a ``roi_db`` carrying ``context_roi_scores`` IS
         provided (the runtime / live-proof wiring), the real per-tier success rates
         drive tier suppression. ``tier_for_backend`` maps each row's
         ``endpoint_ref`` to its routing tier.
+
+        OMN-16092 — ``TenantContextMissingError`` PROPAGATES instead of degrading.
+        ``context_roi_scores`` is RLS-covered: a read with no ``app.tenant_id``
+        tenant context comes back EMPTY rather than erroring, so absorbing that
+        refusal here would silently route on a blinded read and be
+        indistinguishable from "no ROI data yet". This handler's fail-open remit
+        is telemetry OUTAGES; a missing tenant seam is a correctness defect and
+        must surface.
         """
         if self._roi_db is None:
             return None
@@ -467,6 +476,14 @@ class LocalDelegationDispatchPort:
                 task_type=task_type,
                 tier_of_endpoint=tier_for_backend,
             )
+        except TenantContextMissingError:
+            logger.error(
+                "ROI overlay refused for task_type=%s: no tenant context for the "
+                "RLS-covered projection read; failing the delegation closed rather "
+                "than degrading to static tiers on a blinded read (OMN-16092)",
+                task_type,
+            )
+            raise
         except Exception:
             logger.warning(
                 "ROI overlay resolution failed for task_type=%s; static tiers",

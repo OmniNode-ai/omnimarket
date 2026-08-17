@@ -69,6 +69,24 @@ class TenantRequiredError(ValueError):
     """
 
 
+class TenantContextMissingError(ValueError):
+    """Raised when an RLS-covered READ cannot resolve a tenant (OMN-16092).
+
+    The read-side counterpart of :class:`TenantRequiredError`. RLS fails OPEN
+    from the caller's point of view: with the ``app.tenant_id`` GUC unset the
+    policy predicate is NULL, so an RLS-covered ``SELECT`` returns ZERO ROWS
+    rather than raising -- indistinguishable from "no data yet". Any consumer
+    that treats an empty read as a benign signal (``roi_overlay`` degrading to
+    static routing) therefore degrades SILENTLY on a blinded read.
+
+    Raising this BEFORE the ``SELECT`` is issued converts that silent zero into
+    a loud, typed failure the caller must handle explicitly. It is deliberately
+    NOT caught by a reader's fail-open ``except Exception``: a telemetry outage
+    (unreachable host, missing table) is fail-open by design, but a missing
+    tenant seam is a correctness defect, not an outage.
+    """
+
+
 # OMN-15306: the GUC the RLS policies compare ``tenant_id`` against (migration
 # 0023 and siblings). Shared with the onex-api and omnidash reader seams -- a
 # cross-repo contract, not a local choice.
@@ -253,6 +271,41 @@ def resolve_read_tenant(tenant_value: object) -> str:
     return get_settings().onex_tenant_id.strip() or INTERIM_DEFAULT_TENANT
 
 
+def resolve_rls_read_tenant(tenant_value: object, *, table: str) -> str:
+    """Resolve the tenant an RLS-covered READ runs under -- FAIL-CLOSED (OMN-16092).
+
+    Same resolution ORDER as :func:`resolve_read_tenant` (explicit value, then
+    the lane's configured tenant, then the house tenant), and the same ratchet
+    posture as the writer's :func:`require_tenant_id`: the house-tenant fallback
+    is allowed only while ``ENFORCE_TENANT_ISOLATION`` is off. Under enforcement
+    an unresolvable tenant raises :class:`TenantContextMissingError` instead.
+
+    Why this exists alongside :func:`resolve_read_tenant`, which never raises:
+    that function serves the WRITER's existing-row probe, where raising would
+    break the very check that guards against clobbering already-written evidence
+    -- an unresolvable tenant there is safe because the probe's caller is about
+    to fail closed on the write anyway. This one serves readers whose RESULT is
+    the product (``context_roi_scores`` -> the routing ROI overlay), where an
+    unresolvable tenant would otherwise produce a plausible-looking empty result
+    set that the caller cannot distinguish from real emptiness.
+
+    Called BEFORE any connection or SQL, so a refused read issues no statement.
+    """
+    if isinstance(tenant_value, str) and tenant_value.strip():
+        return tenant_value.strip()
+    configured = get_settings().onex_tenant_id.strip()
+    if configured:
+        return configured
+    if get_settings().enforce_tenant_isolation:
+        raise TenantContextMissingError(
+            f"{table} read refused: no tenant_id resolved and "
+            "ENFORCE_TENANT_ISOLATION=true (OMN-16092) -- refusing to issue an "
+            "RLS-covered SELECT with no tenant context, which would return zero "
+            "rows indistinguishable from an empty table."
+        )
+    return INTERIM_DEFAULT_TENANT
+
+
 def require_tenant_id(tenant_id: str | None, *, table: str) -> None:
     """Raise :class:`TenantRequiredError` when isolation is enforced and blank.
 
@@ -278,11 +331,13 @@ __all__: list[str] = [
     "HOUSE_TENANT_UUID",
     "INTERIM_DEFAULT_TENANT",
     "TENANT_GUC",
+    "TenantContextMissingError",
     "TenantRequiredError",
     "UnmappedTenantIdentityError",
     "house_tenant_write_stamp",
     "require_tenant_id",
     "resolve_read_tenant",
+    "resolve_rls_read_tenant",
     "resolve_tenant_uuid",
     "resolve_write_tenant",
 ]

@@ -28,9 +28,23 @@ Architecture (why the read lives here, not in ``delta``):
 
     The caller on the live path (the local delegation dispatch port, or a bus
     orchestrator effect) reads the overlay and threads it in. ``resolve_roi_overlay``
-    is fail-OPEN: any read error / missing table / unreachable DB returns ``None``,
-    so a telemetry outage degrades to the static tier order and NEVER breaks
-    routing.
+    is fail-OPEN for TELEMETRY OUTAGES: a read error / missing table / unreachable
+    DB returns ``None``, so an outage degrades to the static tier order and NEVER
+    breaks routing.
+
+Tenant seam (OMN-16092) — the ONE fail-CLOSED exception to that posture:
+    ``context_roi_scores`` is RLS-covered (migration
+    ``003_context_roi_scores_tenant_id_and_rls.sql``, policy ``tenant_isolation``).
+    With ``app.tenant_id`` unset the policy predicate is NULL and the read returns
+    ZERO ROWS rather than erroring — so a blinded read looked EXACTLY like "no ROI
+    data yet" and silently degraded this overlay to static routing with no error,
+    no 5xx and no distinguishing signal. That is a correctness defect, not an
+    outage, so ``TenantContextMissingError`` is deliberately NOT absorbed by the
+    fail-open handlers below: it propagates to the caller, which must fail closed
+    rather than route on a silently-blinded read. The seam itself lives in
+    ``PostgresReadDatabaseAdapter`` (``set_config('app.tenant_id', ...)`` before
+    every SELECT), and ``resolve_context_roi_db`` resolves the tenant eagerly so
+    the refusal surfaces at wiring time rather than mid-decision.
 
 The ``context_roi_scores`` table carries no ``task_type`` column; its rows are the
 context-ROI experiment's per-(task x arm x model) generation outcomes. Each row's
@@ -73,6 +87,11 @@ from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.projection.tenant_isolation import (
+    TenantContextMissingError,
+    resolve_rls_read_tenant,
+)
 
 if TYPE_CHECKING:
     from omnimarket.projection.protocol_database import DatabaseAdapter
@@ -448,15 +467,21 @@ def resolve_roi_overlay(
     lookback_rows: int | None = None,
     window_seconds: float | None = None,
 ) -> ModelRoutingRoiOverlay | None:
-    """Read ``context_roi_scores`` and build the ROI overlay — FAIL-OPEN.
+    """Read ``context_roi_scores`` and build the ROI overlay — FAIL-OPEN on outage.
 
     Reads every captured row through the ``DatabaseAdapter.query`` protocol
     (in-memory / SQLite / asyncpg all satisfy it) and aggregates via
-    ``build_roi_overlay``. Returns ``None`` on ANY failure — missing table,
+    ``build_roi_overlay``. Returns ``None`` on a read FAILURE — missing table,
     unreachable DB, adapter error — so a telemetry outage degrades to the static
     tier order and never breaks a live routing decision. An empty (but readable)
     table returns an overlay with no signals, which the reducer treats exactly
     like the static path.
+
+    OMN-16092 — ``TenantContextMissingError`` is the ONE exception and PROPAGATES:
+    ``context_roi_scores`` is RLS-covered, so a read with no ``app.tenant_id``
+    tenant context returns zero rows instead of erroring. Swallowing that into a
+    ``None`` (or into an empty overlay) would be exactly the silent static-routing
+    degrade this ticket exists to remove — the caller must fail closed on it.
 
     ``lookback_rows`` / ``window_seconds`` (else the ``DELEGATION_ROI_LOOKBACK_ROWS``
     / ``DELEGATION_ROI_WINDOW_SECONDS`` env vars, resolved inside ``build_roi_overlay``)
@@ -467,6 +492,18 @@ def resolve_roi_overlay(
     """
     try:
         rows = db.query(CONTEXT_ROI_TABLE)
+    except TenantContextMissingError:
+        # FAIL-CLOSED (OMN-16092): never degrade to static routing on a missing
+        # tenant seam — an RLS-blinded read is indistinguishable from an empty
+        # table, so absorbing it here is precisely the silent degrade the
+        # fail-open handler below must not be allowed to cover.
+        _logger.error(
+            "roi_overlay read refused for task_type=%s: no tenant context for "
+            "RLS-covered %s; failing closed rather than routing on a blinded read",
+            task_type,
+            CONTEXT_ROI_TABLE,
+        )
+        raise
     except Exception:
         _logger.warning(
             "roi_overlay read failed for task_type=%s; falling back to static tiers",
@@ -498,30 +535,40 @@ def resolve_roi_overlay(
 
 
 def resolve_context_roi_db() -> DatabaseAdapter | None:
-    """Resolve a read-only projection adapter for ``context_roi_scores`` — FAIL-OPEN.
+    """Resolve a read-only projection adapter for ``context_roi_scores``.
 
     Gated on the ``OMNIDASH_ANALYTICS_DB_URL`` DSN (the projection DB that
     materialises the table). Returns ``None`` when the DSN is unset (the common
-    local case — no ROI read, static routing) or on ANY construction error, so a
+    local case — no ROI read, static routing) or on a construction error, so a
     delegation never fails because a telemetry DB is absent or unreachable. The
     adapter connects LAZILY with a bounded timeout, so this factory does no I/O —
-    the first actual read happens inside ``resolve_roi_overlay``, which is itself
-    wrapped fail-open.
+    the first actual read happens inside ``resolve_roi_overlay``.
 
     This is the live-wiring entrypoint (OMN-14001): the delegation dispatch-port
-    selector calls it to point the ROI reader at the real projection DB. It is a
-    deliberate, documented exception to the fail-fast-on-missing-env rule — a
-    telemetry read must degrade to static routing, never crash the caller.
+    selector calls it to point the ROI reader at the real projection DB. Its
+    fail-open posture is a deliberate, documented exception to the
+    fail-fast-on-missing-env rule — a telemetry read must degrade to static
+    routing, never crash the caller.
+
+    OMN-16092: the tenant the adapter will read under is resolved HERE, eagerly
+    (no I/O — a settings read), and injected. That places the fail-closed refusal
+    at wiring time, where it is attributable, instead of mid-decision. A
+    ``TenantContextMissingError`` therefore PROPAGATES out of this factory rather
+    than being absorbed into a ``None`` — returning ``None`` for it would restore
+    the exact silent static-routing degrade this fixes.
     """
     dsn = os.environ.get(_ENV_CONTEXT_ROI_DSN, "").strip()
     if not dsn:
         return None
+    # Resolved before the import/construction below so the refusal is not
+    # reachable through the fail-open handler.
+    tenant = resolve_rls_read_tenant(None, table=CONTEXT_ROI_TABLE)
     try:
         from omnimarket.projection.postgres_read_database import (
             PostgresReadDatabaseAdapter,
         )
 
-        return PostgresReadDatabaseAdapter(dsn)
+        return PostgresReadDatabaseAdapter(dsn, tenant_id=tenant)
     except Exception:
         _logger.warning(
             "resolve_context_roi_db failed to construct a projection adapter from "
