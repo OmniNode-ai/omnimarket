@@ -102,9 +102,24 @@ class ModelCapturedHookEvent(BaseModel):
         nothing useful; and a bare scalar (``"3"``, ``"null"``) would store a
         JSONB scalar where every reader expects an object. Rejecting here
         turns both into an actionable message naming the event.
+
+        ``json.loads`` accepts the non-standard constants ``NaN``,
+        ``Infinity`` and ``-Infinity`` by default (a Python stdlib extension,
+        not RFC 8259 JSON). Postgres' ``jsonb`` rejects them at the
+        ``payload_json::jsonb`` cast in ``_insert_batch`` -- a driver-level
+        error identical in shape to the malformed-JSON case above, just one
+        statement later. ``parse_constant`` rejects them here instead, at the
+        same validation boundary as every other payload defect.
         """
+
+        def _reject_constant(token: str) -> None:
+            raise ValueError(
+                f"payload_json contains the non-standard JSON constant {token!r}, "
+                "which Postgres jsonb cannot store"
+            )
+
         try:
-            parsed = json.loads(value)
+            parsed = json.loads(value, parse_constant=_reject_constant)
         except json.JSONDecodeError as exc:
             raise ValueError(f"payload_json is not valid JSON: {exc}") from exc
         if not isinstance(parsed, dict):

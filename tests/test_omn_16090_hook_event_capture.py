@@ -20,6 +20,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
+from omnimarket.config.settings import get_settings
 from omnimarket.nodes.node_hook_event_capture.handlers.handler_hook_event_capture import (
     TABLE,
     HandlerHookEventCapture,
@@ -57,6 +58,19 @@ PRINCIPAL = "t-" + "0" * 32
 
 def _sha(seed: str) -> str:
     return hashlib.sha256(seed.encode()).hexdigest()
+
+
+def _pin_interim_tenant_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Pin the OMN-14058 house-tenant interim so a lane's real env cannot
+    change the resolved tenant out from under an assertion that expects it.
+
+    ``get_settings()`` is ``@lru_cache``d, so mutating the cached instance's
+    attributes (the same pattern ``test_house_tenant_default_ratchet.py``
+    uses) takes effect immediately without needing to clear the cache.
+    """
+    settings = get_settings()
+    monkeypatch.setattr(settings, "onex_tenant_id", "", raising=True)
+    monkeypatch.setattr(settings, "enforce_tenant_isolation", False, raising=True)
 
 
 def _event(seed: str = "e0", **overrides: Any) -> dict[str, Any]:
@@ -214,25 +228,44 @@ class TestIdempotency:
 
     @pytest.mark.asyncio
     async def test_same_event_sha_under_a_different_tenant_is_a_separate_row(
-        self, runner: tuple[_Runner, FakeConflictAwareDB]
+        self,
+        runner: tuple[_Runner, FakeConflictAwareDB],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The key is (tenant_id, event_sha), not event_sha alone.
 
         Two tenants can legitimately capture byte-identical events; collapsing
-        them would delete one tenant's history.
+        them would delete one tenant's history. Both rows must come from the
+        HANDLER's own tenant resolution (``house_tenant_write_stamp`` reading
+        ``Settings.onex_tenant_id``) -- hand-inserting the second row would
+        only prove ``FakeConflictAwareDB``'s own conflict-key comparison, not
+        that the handler actually scopes writes by tenant.
         """
         r, db = runner
+        _pin_interim_tenant_settings(monkeypatch)
         await r.project_event("t", _batch([_event("shared")]), META)
-        db.rows[("other-tenant", _sha("shared"))] = {"tenant_id": "other-tenant"}
+        monkeypatch.setattr(
+            get_settings(), "onex_tenant_id", "other-tenant", raising=True
+        )
         await r.project_event("t", _batch([_event("shared")]), META)
         assert len(db.rows) == 2
+        assert {tenant for tenant, _ in db.rows} == {"omninode", "other-tenant"}
 
     @pytest.mark.asyncio
     async def test_writer_stamps_the_rls_guc_explicitly(
-        self, runner: tuple[_Runner, FakeConflictAwareDB]
+        self,
+        runner: tuple[_Runner, FakeConflictAwareDB],
+        monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """OMN-15919: never let the adapter re-derive a tenant of its own."""
+        """OMN-15919: never let the adapter re-derive a tenant of its own.
+
+        The resolved tenant is pinned via monkeypatch (not left to whatever
+        the running lane's real env happens to carry) so this test fails for
+        a code reason, never because CI exports ``ONEX_TENANT_ID`` or
+        ``ENFORCE_TENANT_ISOLATION``.
+        """
         r, db = runner
+        _pin_interim_tenant_settings(monkeypatch)
         await r.project_event("t", _batch(), META)
         assert db.tenants_seen == ["omninode"]
         assert db.tenants_seen[0] is not None
@@ -286,6 +319,18 @@ class TestMalformedBatchIsPoison:
             ),
             pytest.param(
                 _batch(tenant_principal_id="omninode"), id="slug-as-principal"
+            ),
+            pytest.param(
+                _batch([_event(payload_json='{"value": NaN}')]),
+                id="payload-json-nan-constant",
+            ),
+            pytest.param(
+                _batch([_event(payload_json='{"value": Infinity}')]),
+                id="payload-json-infinity-constant",
+            ),
+            pytest.param(
+                _batch([_event(payload_json='{"value": -Infinity}')]),
+                id="payload-json-negative-infinity-constant",
             ),
         ],
     )
