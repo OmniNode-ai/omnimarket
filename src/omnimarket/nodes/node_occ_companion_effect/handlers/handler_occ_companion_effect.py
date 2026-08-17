@@ -514,6 +514,24 @@ class HandlerOccCompanionEffect:
         (the OMN-13418 prod-promotion gate's source of truth) or an allowlist
         would otherwise sail through the membership check. Plan membership must
         never be able to authorize a write outside the evidence surfaces.
+
+        (d) OMN-16071: membership in ``allowed_paths`` is not, by itself,
+        proof that a path is genuinely new at ``base_sha`` — it only proves
+        the compute plan *intended* to write that path this run. A shared,
+        ticket-scoped evidence id whose directory a PRIOR companion already
+        merged renders to the SAME deterministic path every time
+        (``compute_companion_plan`` is a pure function of ticket + evidence
+        id), so it is, by construction, always present in this run's own
+        allowed set too — meaning a status-``M`` write there previously
+        passed this guard silently despite ``assert_append_only_emissions``
+        (OMN-15485) existing precisely to prevent the compute plan from ever
+        emitting such a file. This is the belt to that mechanism's suspenders:
+        even if a future/legacy caller's plan-level guard has a gap, this
+        final pre-push assertion now independently refuses any status other
+        than ``A`` (added), matching the hosted OCC Append-Only Gate's own
+        semantics (which flags any M/D/R/C status and requires corrections
+        to be net-new ``.supersede.<NNNN>.yaml`` files) directly against the
+        git status letter rather than trusting path membership alone.
         """
         diff = run_git(
             ["git", "diff", "--no-renames", "--name-status", base_sha, "HEAD"],
@@ -541,6 +559,15 @@ class HandlerOccCompanionEffect:
                 violations.append(
                     f"{status} {path} (outside the contracts//drift/ evidence "
                     "roots — never machine-mintable, OMN-14941)"
+                )
+            elif not status.startswith("A"):
+                # OMN-16071: unconditional — a path in allowed_paths is only
+                # a claim of intent, never proof the path is new.
+                violations.append(
+                    f"{status} {path} (not a net-new add — a receipt or "
+                    "contract may never be opened for write once it exists "
+                    "at the clone base; express a genuine change as a "
+                    "net-new .supersede.<NNNN>.yaml file, OMN-16071)"
                 )
             elif path not in allowed_paths:
                 violations.append(f"{status} {path}")

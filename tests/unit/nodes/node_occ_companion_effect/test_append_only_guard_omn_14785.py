@@ -121,3 +121,28 @@ class TestAppendOnlyGuard:
             HandlerOccCompanionEffect()._assert_append_only(
                 str(tmp_path), base, {"contracts/OMN-9999.yaml"}
             )
+
+    def test_modifying_a_merged_receipt_the_writer_itself_allowlists_is_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-16071: membership in ``allowed_paths`` is not proof a path is
+        genuinely new at ``base_sha``. A shared, ticket-scoped evidence id a
+        PRIOR companion already merged occupies a path this run's OWN compute
+        plan may legitimately list as something it intends to touch (e.g. it
+        renders the same deterministic path for every companion on that
+        ticket) -- so the guard must reject a status-``M`` change to that path
+        even when the writer's own plan calls it "allowed". Before the fix,
+        checking only ``path not in allowed_paths`` let this sail through
+        silently: the OCC Append-Only Gate is the only thing that ultimately
+        caught the mutation (OMN-16071's title incident), because this local
+        pre-push guard never independently verified the git status letter.
+        """
+        base = _init_repo_with_merged_receipt(tmp_path)
+        merged_rel = "drift/dod_receipts/OMN-1/dod-001/command.yaml"
+        (tmp_path / merged_rel).write_text("status: FAIL\n", encoding="utf-8")
+        _git(tmp_path, "add", "-A")
+        _git(tmp_path, "commit", "-q", "-m", "mutate merged receipt in place")
+        with pytest.raises(RuntimeError, match="append-only violation"):
+            HandlerOccCompanionEffect()._assert_append_only(
+                str(tmp_path), base, {merged_rel}
+            )

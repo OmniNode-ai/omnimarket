@@ -631,6 +631,19 @@ class TestF01AppendOnly:
             f"A\tdrift/dod_receipts/OMN-9999/{self._EID}/command.yaml"
         )
 
+    def test_append_only_guard_rejects_in_set_modify(self) -> None:
+        """OMN-16071: a status-``M`` change to a path THIS RUN'S OWN
+        ``_allowed_paths`` call lists must still be rejected. Membership in
+        the writer's own allowed set only proves it intended to touch that
+        path this run -- it says nothing about whether the path already
+        existed (and was already merged) at ``base_sha``. The exact incident
+        this proves: a shared, ticket-scoped evidence id whose path a prior
+        companion already merged is (by construction) always in THIS run's
+        own allowed set too, so the guard must not trust membership alone.
+        """
+        with pytest.raises(RuntimeError, match="append-only violation"):
+            self._guard(f"M\tdrift/dod_receipts/OMN-9999/{self._EID}/command.yaml")
+
 
 # ---------------------------------------------------------------------------
 # F-06 — runtime probe is the GraphQL `gh pr view --json files` (OMN-14766)

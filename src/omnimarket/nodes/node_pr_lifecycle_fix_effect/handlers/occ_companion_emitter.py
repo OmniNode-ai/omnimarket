@@ -1860,6 +1860,21 @@ class OccCompanionEmitter:
         assertion-only "all-adds" comment the force-push previously trusted — the
         exact gap that let generated companions mutate already-merged receipts
         (OCC#4293/4295/4296).
+
+        OMN-16071: membership in ``allowed_paths`` alone is NOT sufficient —
+        it only proves this run's writer *intended* to touch a path, not that
+        the path is genuinely new at ``base_sha``. A shared, ticket-scoped
+        evidence id whose directory a PRIOR companion already merged is, by
+        construction, always present in THIS run's own allowed set too (the
+        writer renders the same deterministic path every time), so a status-
+        ``M`` change there previously sailed through this guard silently —
+        the mutate-in-place defect named in the ticket title. The git status
+        letter is now checked directly, matching the hosted OCC Append-Only
+        Gate's own semantics (``omnibase_core.validation.
+        validator_occ_append_only.evaluate_append_only``, which flags any
+        M/D/R/C status and requires corrections to be net-new
+        ``.supersede.<NNNN>.yaml`` files): only ``A`` (added) ever passes,
+        unconditionally, regardless of whether the path is nominally allowed.
         """
         diff = self._run_git(
             ["git", "diff", "--name-status", base_sha, "HEAD"], cwd=str(clone_dir)
@@ -1874,6 +1889,13 @@ class OccCompanionEmitter:
             path = parts[-1]  # rename → dest path is last field
             if status.startswith("D"):
                 violations.append(f"deletes {path}")
+            elif not status.startswith("A"):
+                violations.append(
+                    f"{status} {path} (not a net-new add — a receipt or "
+                    "contract may never be opened for write once it exists "
+                    "at the clone base; express a genuine change as a "
+                    "net-new .supersede.<NNNN>.yaml file, OMN-16071)"
+                )
             elif path not in allowed_paths:
                 violations.append(f"{status} {path}")
         if violations:
