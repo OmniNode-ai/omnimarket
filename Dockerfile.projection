@@ -2,11 +2,23 @@ FROM python:3.12-slim
 
 WORKDIR /app
 
+# git is required at build time: pyproject.toml pins the core dependency
+# omninode-memory to a git+https source (OMN-15800 — a stock python:3.12-slim
+# image has no git binary, so `uv pip install -e .` failed unconditionally on
+# every projection-writer image build, not just this one's [projection] extras).
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install uv for fast dependency resolution
 RUN pip install --no-cache-dir uv
 
-# Copy dependency file first for layer caching
-COPY pyproject.toml ./
+# Copy dependency file first for layer caching. README.md is required too:
+# pyproject.toml declares readme = "README.md" and hatchling's editable-install
+# metadata validation (`uv pip install -e .`) fails with
+# "OSError: Readme file does not exist" if it is not present in the build
+# context (OMN-15800 -- second independent build defect found alongside the
+# missing-git one above).
+COPY pyproject.toml README.md ./
 COPY src/ ./src/
 
 # Install the package with projection dependencies
