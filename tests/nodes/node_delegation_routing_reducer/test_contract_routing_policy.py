@@ -480,24 +480,28 @@ class TestDeltaContractRouting:
         prev_routing_path = os.environ.get("DELEGATION_ROUTING_TIERS_PATH")
         prev_task_contract_path = os.environ.get("TASK_CLASS_CONTRACT_PATH")
         prev_bifrost_contract_path = os.environ.get("BIFROST_CONTRACT_PATH")
+        prev_bifrost_overlay_path = os.environ.get("BIFROST_OVERLAY_PATH")
         os.environ["DELEGATION_ROUTING_TIERS_PATH"] = str(routing_file)
         os.environ["TASK_CLASS_CONTRACT_PATH"] = str(contract_file)
         os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
+        # OMN-16087 R2: this test never bound BIFROST_OVERLAY_PATH itself, so a
+        # developer machine with its own real overlay set (e.g. an
+        # ~/.omninode/delegation/bifrost_overrides.yaml used for local
+        # delegation) leaks in and merges a DIFFERENT, complete
+        # (.../v1/chat/completions) endpoint_url for local-reasoner over this
+        # test's bare fixture value -- a real, machine-dependent test-isolation
+        # gap, not the product under test being non-deterministic. Per
+        # _load_bifrost_endpoints' OMN-15628 remediation comment, an overlay
+        # override must be explicitly unset here so no incidental
+        # dev-machine overlay is picked up when only the contract override is
+        # bound. CI (no such overlay present) always saw the correct bare
+        # value; a contaminated dev shell was the only place this masked it.
+        os.environ.pop("BIFROST_OVERLAY_PATH", None)
 
         try:
             decision = delta(self._make_request("test"))
             assert decision.selected_model == MODEL_QWEN3_27B_MTP
-            # OMN-12815: every resolved endpoint_url is the COMPLETE final URL
-            # (incl. the full /v1/chat/completions path) -- see
-            # src/omnimarket/routing/delegation_backend_resolution.py. This
-            # assertion was stale (comparing against the bare-base fixture
-            # value); the bare base is correct as the fixture's declared
-            # config INPUT (line 445 above), but the resolved decision's
-            # endpoint_url is always the completed URL.
-            assert (
-                decision.endpoint_url
-                == f"{_LOCAL_REASONER_ENDPOINT}/v1/chat/completions"
-            )
+            assert decision.endpoint_url == _LOCAL_REASONER_ENDPOINT
         finally:
             if prev_routing_path is None:
                 os.environ.pop("DELEGATION_ROUTING_TIERS_PATH", None)
@@ -511,6 +515,10 @@ class TestDeltaContractRouting:
                 os.environ.pop("BIFROST_CONTRACT_PATH", None)
             else:
                 os.environ["BIFROST_CONTRACT_PATH"] = prev_bifrost_contract_path
+            if prev_bifrost_overlay_path is None:
+                os.environ.pop("BIFROST_OVERLAY_PATH", None)
+            else:
+                os.environ["BIFROST_OVERLAY_PATH"] = prev_bifrost_overlay_path
 
     def test_reasoning_tasks_route_to_deepseek(self, tmp_path: Path) -> None:
         """research task_type routes to deepseek-r1 via task_model_overrides."""
