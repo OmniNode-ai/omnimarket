@@ -3,20 +3,27 @@
 """OCC companion emitter: stale-base force-push guard (OMN-15845 / OMN-16116).
 
 ``_clone_and_branch`` performs a single shallow clone and captures ``base_sha``
-once; the two force-pushes that follow it never fetch/merge/rebase (confirmed
-by grep for merge/rebase/fetch git subcommands in ``occ_companion_emitter.py``
-— zero matches). If a DIFFERENT product PR's companion for the SAME ticket
-merges to OCC's default branch between this run's clone and either of its
-pushes, this run has no way to detect it: ``contract_already_had_companion``
-was evaluated against the now-stale clone snapshot, so it silently re-writes
-the ticket-scoped ``dod-occ-evidence-admissibility-validator`` receipt (meant
-to be write-once per ticket) and force-pushes a stale full-regenerate diff
-that either orphans the sibling companion or produces an add/add conflict at
-merge time.
+once; the two force-pushes that follow it never merge/rebase the working
+branch. If a DIFFERENT product PR's companion for the SAME ticket merges to
+OCC's default branch between this run's clone and either of its pushes, this
+run has no way to detect it: ``contract_already_had_companion`` was evaluated
+against the now-stale clone snapshot, so it silently re-writes the
+ticket-scoped ``dod-occ-evidence-admissibility-validator`` receipt (meant to
+be write-once per ticket) and force-pushes a stale full-regenerate diff that
+either orphans the sibling companion or produces an add/add conflict at merge
+time.
 
 Live incident (OMN-15845's own observed timeline): three sibling autobind
 companions minted for the same ticket ~70 minutes apart; the one that never
 picked up a sibling's merge was orphaned unmergeable.
+
+OMN-16116 (round-2 adversarial-review narrowing): a raw SHA mismatch is NOT
+itself a collision — OCC's default branch churns roughly every 24 minutes on
+average, almost always on OTHER tickets. The guard now fetches the single new
+commit and diffs it against ``base_sha``, raising ``StaleCompanionBaseError``
+ONLY when the diff touches THIS run's own ticket-scoped paths
+(``contracts/<ticket>.yaml`` or ``drift/dod_receipts/<ticket>/**``); an
+unrelated-ticket move on OCC's default branch must NOT abort the run.
 
 This suite drives the REAL ``OccCompanionEmitter._emit_companion_sync`` (the
 live producer, per ``reference_two_occ_producers_canonical_not_wired`` — NOT
@@ -24,12 +31,15 @@ the unwired ``node_occ_companion_compute`` oracle) with git/network I/O
 mocked, mirroring the harness in
 ``test_occ_companion_emitter_friction_omn_14741.py``. It asserts:
 
-  * a moved OCC default branch, detected via the cheap ``git ls-remote``
-    freshness check immediately before a force-push, raises
-    ``StaleCompanionBaseError`` and the push is never attempted (RED-proven
-    against the pre-fix source: the emitter had no freshness check at all and
-    would push unconditionally);
-  * the OMN-14793 lease is still released in the ``finally`` on this new
+  * a moved OCC default branch whose diff touches THIS run's own ticket
+    (a same-ticket collision), detected via the cheap ``git ls-remote``
+    freshness check + scoped diff immediately before a force-push, raises
+    ``StaleCompanionBaseError`` and the push is never attempted;
+  * a moved OCC default branch whose diff touches only an UNRELATED
+    ticket's paths does NOT raise and the run proceeds to push normally
+    (the OMN-16116 regression this round exists to prevent — RED-proven
+    against the naive SHA-only predicate);
+  * the OMN-14793 lease is still released in the ``finally`` on the
     fail-fast path;
   * the unchanged-base happy path is unaffected — both force-pushes still
     fire normally (the load-bearing regression guard for this fix).
@@ -52,6 +62,15 @@ _MOD = "omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emi
 # The fixed base SHA _clone_and_branch is mocked to return in this suite's harness.
 _BASE_SHA = "0" * 40
 _MOVED_SHA = "9" * 40
+
+# The ticket ``_extract_tickets`` derives from ``_default_pr_data``'s title
+# ("feat(OMN-9999): the thing") via TICKET_PATTERN fallback. Used to build a
+# same-ticket-collision diff (this run's own path) vs an unrelated-ticket diff
+# (a different ticket's path — must NOT trip the guard, OMN-16116).
+_OWN_TICKET = "OMN-9999"
+_OTHER_TICKET = "OMN-1234"
+_SAME_TICKET_DIFF = [f"contracts/{_OWN_TICKET}.yaml"]
+_OTHER_TICKET_DIFF = [f"contracts/{_OTHER_TICKET}.yaml"]
 
 
 @pytest.fixture(autouse=True)
@@ -96,6 +115,7 @@ def _run_emit(
     *,
     ls_remote_shas: list[str],
     lease_release: MagicMock | None = None,
+    diff_paths: list[str] | None = None,
 ) -> tuple[str, list[list[str]]]:
     """Drive the REAL ``_emit_companion_sync`` with a controllable ``ls-remote``.
 
@@ -104,10 +124,17 @@ def _run_emit(
     there are up to two, one before each force-push). Once exhausted, further
     calls fall back to ``_BASE_SHA`` (fresh) so a test only needs to specify the
     calls it cares about.
+
+    ``diff_paths`` supplies the changed-file list ``git diff --name-only``
+    returns when a freshness check's ``ls-remote`` SHA differs from
+    ``_BASE_SHA`` (OMN-16116 scoped-diff narrowing) — defaults to a
+    same-ticket collision (``contracts/OMN-9999.yaml``) so callers that don't
+    care about the narrowing still exercise the pre-existing collision path.
     """
     git_calls: list[list[str]] = []
     remaining_ls_remote = list(ls_remote_shas)
     release_target = lease_release if lease_release is not None else MagicMock()
+    diff_lines = "\n".join(diff_paths if diff_paths is not None else _SAME_TICKET_DIFF)
 
     def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
         if path.endswith("/pulls/321"):  # product PR GET
@@ -123,6 +150,10 @@ def _run_emit(
         if "ls-remote" in argv:
             sha = remaining_ls_remote.pop(0) if remaining_ls_remote else _BASE_SHA
             return f"{sha}\tHEAD\n"
+        if "diff" in argv and "--name-only" in argv:
+            return diff_lines
+        if "fetch" in argv:
+            return ""
         return ""
 
     def fake_clone(cd: Path, *_a: object) -> str:
@@ -195,6 +226,12 @@ class TestStaleBaseGuard:
             if "ls-remote" in argv:
                 sha = remaining.pop(0) if remaining else _BASE_SHA
                 return f"{sha}\tHEAD\n"
+            if "diff" in argv and "--name-only" in argv:
+                # Same-ticket collision: OMN-9999 is the ticket this run
+                # itself owns (see ``_default_pr_data``'s title).
+                return "\n".join(_SAME_TICKET_DIFF)
+            if "fetch" in argv:
+                return ""
             return ""
 
         def fake_clone(cd: Path, *_a: object) -> str:
@@ -250,6 +287,12 @@ class TestStaleBaseGuard:
             if "ls-remote" in argv:
                 sha = remaining.pop(0) if remaining else _BASE_SHA
                 return f"{sha}\tHEAD\n"
+            if "diff" in argv and "--name-only" in argv:
+                # Same-ticket collision: OMN-9999 is the ticket this run
+                # itself owns (see ``_default_pr_data``'s title).
+                return "\n".join(_SAME_TICKET_DIFF)
+            if "fetch" in argv:
+                return ""
             return ""
 
         def fake_clone(cd: Path, *_a: object) -> str:
@@ -292,6 +335,39 @@ class TestStaleBaseGuard:
         assert len(_push_calls(git_calls)) == 2, (
             f"both force-pushes must fire on the unchanged-base path: "
             f"{_push_calls(git_calls)!r}"
+        )
+
+    def test_moved_base_unrelated_ticket_does_not_raise(self, tmp_path: Path) -> None:
+        """OMN-16116: OCC's default branch moving is NOT itself a collision.
+
+        This is the regression the round-2 narrowing exists to prevent. With
+        the naive pre-narrowing predicate (``remote_sha != base_sha`` alone),
+        this exact scenario — the remote moved, but only an UNRELATED
+        ticket's contract changed — would incorrectly raise
+        ``StaleCompanionBaseError`` and abort a run that has no actual
+        collision. Confirmed RED/GREEN: temporarily reverting
+        ``_assert_base_still_fresh`` to the naive SHA-only check (dropping
+        the scoped-diff narrowing) makes this test fail with
+        ``StaleCompanionBaseError`` raised where none is expected; restoring
+        the narrowed check makes it pass.
+        """
+        emitter = OccCompanionEmitter()
+        action, git_calls = _run_emit(
+            emitter,
+            tmp_path,
+            ls_remote_shas=[_MOVED_SHA, _MOVED_SHA],
+            diff_paths=_OTHER_TICKET_DIFF,
+        )
+
+        assert action.startswith("authored OCC companion"), action
+        assert _ls_remote_calls(git_calls), "freshness check must still run"
+        fetch_calls = [c for c in git_calls if "fetch" in c]
+        diff_calls = [c for c in git_calls if "diff" in c and "--name-only" in c]
+        assert fetch_calls, "a moved remote must trigger the scoped-diff fetch"
+        assert diff_calls, "a moved remote must trigger the scoped diff"
+        assert len(_push_calls(git_calls)) == 2, (
+            "an unrelated-ticket move on OCC's default branch must NOT abort "
+            f"the run — both force-pushes must still fire: {_push_calls(git_calls)!r}"
         )
 
     def test_lease_released_on_stale_base_abort(self, tmp_path: Path) -> None:

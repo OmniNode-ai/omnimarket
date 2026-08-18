@@ -260,13 +260,17 @@ def _resolve_product_token(occ_token: str) -> tuple[str, bool]:
 
 
 class StaleCompanionBaseError(RuntimeError):
-    """Raised when OCC's default branch moved since this run's clone (OMN-15845).
+    """Raised on a same-ticket collision detected before a push (OMN-15845).
 
     ``_clone_and_branch`` performs a single shallow clone and captures
-    ``base_sha`` once; the two force-pushes that follow never fetch/merge/
-    rebase, so a SIBLING companion for the SAME ticket that merges to OCC's
-    default branch between this run's clone and either of its pushes is
-    invisible to this run. Concretely: ``contract_already_had_companion`` is
+    ``base_sha`` once; the two force-pushes that follow never merge/rebase
+    (OMN-16116: the freshness check itself now does a minimal single-commit
+    fetch to diff trees when the remote HEAD has moved — see
+    :meth:`OccCompanionEmitter._assert_base_still_fresh` — but this is a
+    read-only diff, never a merge/rebase of the working branch), so a
+    SIBLING companion for the SAME ticket that merges to OCC's default
+    branch between this run's clone and either of its pushes is invisible to
+    this run unless that check catches it. Concretely: ``contract_already_had_companion`` is
     evaluated against the stale clone snapshot, so this run silently treats
     the ticket as still companion-less, re-writes the ticket-scoped
     ``dod-occ-evidence-admissibility-validator`` receipt (meant to be
@@ -1009,7 +1013,7 @@ class OccCompanionEmitter:
                 # ``base_sha`` immediately before the push — see
                 # :meth:`_assert_base_still_fresh` / :class:`StaleCompanionBaseError`.
                 self._assert_base_still_fresh(
-                    base_sha=base_sha, token=token, cwd=str(clone_dir)
+                    base_sha=base_sha, token=token, cwd=str(clone_dir), tickets=tickets
                 )
                 self._run_git(
                     ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
@@ -1155,7 +1159,7 @@ class OccCompanionEmitter:
                 # the same run (two GitHub round-trips — open-or-sync PR + self-bind
                 # probe — separate them).
                 self._assert_base_still_fresh(
-                    base_sha=base_sha, token=token, cwd=str(clone_dir)
+                    base_sha=base_sha, token=token, cwd=str(clone_dir), tickets=tickets
                 )
                 self._run_git(
                     ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
@@ -1957,19 +1961,32 @@ class OccCompanionEmitter:
     def _head_sha(self, cwd: str) -> str:
         return self._run_git(["git", "rev-parse", "HEAD"], cwd=cwd)
 
-    def _assert_base_still_fresh(self, *, base_sha: str, token: str, cwd: str) -> None:
-        """Fail fast (OMN-15845) if OCC's default branch moved past ``base_sha``.
+    def _assert_base_still_fresh(
+        self, *, base_sha: str, token: str, cwd: str, tickets: Sequence[str]
+    ) -> None:
+        """Fail fast (OMN-15845) ONLY on a same-ticket collision, not any churn.
 
         Cheap freshness check — ``git ls-remote <url> HEAD`` — run immediately
-        before EACH force-push. No history is fetched; only the remote's
-        current default-branch HEAD SHA is compared against the SHA this run's
-        clone was cut from. A mismatch means a sibling companion for the same
-        ticket (or any other write) landed on OCC's default branch after this
-        run's clone, so pushing now would force-push a stale-based, silently
-        wrong companion (see :class:`StaleCompanionBaseError`). Deliberately
-        does NOT attempt a live merge/rebase — that would require recomputing
-        ``contract_already_had_companion`` and every downstream receipt, a
-        much larger change than this fail-fast fix.
+        before EACH force-push. When the remote's current default-branch HEAD
+        SHA still matches the SHA this run's clone was cut from, this returns
+        immediately (no fetch, no diff).
+
+        OMN-16116 (round-2 narrowing): a raw SHA mismatch is NOT itself a
+        collision — live measurement showed OCC's default branch churns
+        roughly every 24 minutes on average (bursts of 5 commits in 20
+        minutes observed), almost entirely on OTHER tickets. The original
+        ``remote_sha != base_sha`` predicate turned the rare same-ticket race
+        this ticket exists to catch into a frequent liveness problem: any
+        mint whose clone-to-push window overlapped an unrelated ticket's OCC
+        merge would hard-abort. When the remote HAS moved, this now does a
+        minimal single-commit fetch (never a full unshallow/merge/rebase —
+        that would require recomputing ``contract_already_had_companion`` and
+        every downstream receipt, a much larger change than this fail-fast
+        fix) and diffs just the two trees, scoped to whether the new commit
+        touched THIS run's own ticket(s) — ``contracts/<ticket>.yaml`` or
+        anything under ``drift/dod_receipts/<ticket>/``. Only that scoped
+        collision raises :class:`StaleCompanionBaseError`; an unrelated-ticket
+        move on OCC's default branch is allowed to proceed.
         """
         remote_url = authenticated_occ_url(token, self._occ_repo)
         output = self._run_git(["git", "ls-remote", remote_url, "HEAD"], cwd=cwd)
@@ -1980,15 +1997,65 @@ class OccCompanionEmitter:
                 "could not verify OCC base freshness before push: "
                 f"unparseable `git ls-remote` output {output!r}"
             )
-        if remote_sha != base_sha:
-            raise StaleCompanionBaseError(
-                f"OCC default branch moved from {base_sha} to {remote_sha} "
-                "since this run's clone — a sibling write (possibly another "
-                "companion for the same ticket) may have merged in between; "
-                "refusing to force-push a stale-based companion (OMN-15845). "
-                "Safe to retry: this producer re-fires on the product PR's "
-                "next lifecycle event and will clone a fresh base."
+        if remote_sha == base_sha:
+            return  # fast path: remote hasn't moved — no fetch/diff needed.
+
+        # The remote moved. Pull in just the one new commit (against the
+        # already-configured ``origin`` remote, which carries the same
+        # authenticated URL the initial shallow clone used) and diff trees —
+        # `git diff` compares commit trees directly and needs no shared
+        # ancestry, so this works even though both sides are independent
+        # depth=1 shallow fetches.
+        self._run_git(["git", "fetch", "--depth=1", "origin", remote_sha], cwd=cwd)
+        diff_output = self._run_git(
+            ["git", "diff", "--name-only", base_sha, remote_sha], cwd=cwd
+        )
+        changed_paths = {p.strip() for p in diff_output.splitlines() if p.strip()}
+        scoped_prefixes = self._ticket_scoped_path_prefixes(tickets)
+        colliding = sorted(
+            path
+            for path in changed_paths
+            if any(
+                path == prefix or path.startswith(prefix) for prefix in scoped_prefixes
             )
+        )
+        if not colliding:
+            logger.info(
+                "occ_companion_emitter: OCC default branch moved from %s to "
+                "%s but the diff touches none of this run's ticket-scoped "
+                "paths %s — proceeding (OMN-16116 narrowing).",
+                base_sha,
+                remote_sha,
+                sorted(scoped_prefixes),
+            )
+            return
+        raise StaleCompanionBaseError(
+            f"OCC default branch moved from {base_sha} to {remote_sha} since "
+            "this run's clone, and the diff touches this run's own "
+            f"ticket-scoped path(s): {', '.join(colliding)} — a sibling "
+            "companion for the same ticket likely merged in between; "
+            "refusing to force-push a stale-based companion (OMN-15845). "
+            "Safe to retry: this producer re-fires on the product PR's next "
+            "lifecycle event and will clone a fresh base."
+        )
+
+    @staticmethod
+    def _ticket_scoped_path_prefixes(tickets: Iterable[str]) -> set[str]:
+        """Path prefixes that scope the OMN-15845/OMN-16116 freshness check.
+
+        Mirrors :meth:`_allowed_paths`'s path construction (contract +
+        receipt-tree layout) but evidence-id-agnostic: unlike
+        ``_allowed_paths`` (which names exact receipt files THIS run writes),
+        a same-ticket collision is any change anywhere under a ticket's
+        ``drift/dod_receipts/<ticket>/`` tree — including a sibling
+        companion's OWN evidence ids, which this run never writes and so
+        would never appear in ``_allowed_paths``' output.
+        """
+        prefixes: set[str] = set()
+        for ticket in tickets:
+            prefixes.add(f"contracts/{ticket}.yaml")
+            prefixes.add(f"drift/dod_receipts/{ticket}/")
+        return prefixes
 
     @staticmethod
     def _receipt_commit_sha(pr_data: dict[str, object], head_sha: str) -> str:
