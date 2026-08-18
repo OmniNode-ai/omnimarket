@@ -604,8 +604,68 @@ def declared_check_value_for(parsed_contract: object, evidence_id: str) -> str |
     return None
 
 
+_SUPERSEDES_DOD_EVIDENCE_PREFIX = "supersedes_dod_evidence:"
+
+
+def _direct_lineage_target(parsed_contract: object, evidence_id: str) -> str | None:
+    """Return the id ``evidence_id``'s OWN entry names via ``evidence_artifact``.
+
+    Reads the CONTRACT-level ``evidence_artifact: "supersedes_dod_evidence:<id>"``
+    declaration — the authoring-time lineage marker, distinct from the
+    receipt-level ``.supersede.<NNNN>.yaml`` rebind chain. ``None`` when the
+    item is absent, declares no marker, or the marker doesn't match the exact
+    prefix. Mirrors ``node_dod_verify.services.evidence_collector.
+    _supersedes_marker`` — a separate node's private helper this node must not
+    import (CLAUDE.md: no cross-node private imports; promote shared types
+    instead) — so per that file's own docstring convention this is a
+    deliberate, documented mirror, not a new duplication pattern.
+    """
+    if not isinstance(parsed_contract, dict):
+        return None
+    items = parsed_contract.get("dod_evidence")
+    if not isinstance(items, list):
+        return None
+    for item in items:
+        if not isinstance(item, dict) or item.get("id") != evidence_id:
+            continue
+        marker = item.get("evidence_artifact")
+        if not isinstance(marker, str) or not marker.startswith(
+            _SUPERSEDES_DOD_EVIDENCE_PREFIX
+        ):
+            return None
+        target = marker[len(_SUPERSEDES_DOD_EVIDENCE_PREFIX) :].strip()
+        return target or None
+    return None
+
+
+def _is_declared_lineage_chain(parsed_contract: object, group: set[str]) -> bool:
+    """True when every member of ``group`` but one traces to another member.
+
+    Walks each member's own :func:`_direct_lineage_target`; a member whose
+    target lies OUTSIDE the group is a root (the oldest entry in this local
+    chain — its own target, if any, points at something not in this
+    collision). Exactly one root is required: two or more roots means the
+    collision spans two lineages that merely happen to land on the same
+    value — the actual OMN-15459 wrong-item rebind (OCC#5534, OCC#5528) this
+    guard exists to catch — not a single declared same-bar relabel (OMN-16148;
+    OMN-15800's ``dod-source-presence-probe-pr-2032-rebind-f2958714``
+    correcting only the ``evidence_item_id`` of
+    ``dod-deploy-live-probe-pr-2032-rebind-f2958714``, keeping the identical
+    check_value on purpose because only the label was wrong).
+    """
+    roots = 0
+    for entry in group:
+        if _direct_lineage_target(parsed_contract, entry) not in group:
+            roots += 1
+    return roots == 1
+
+
 def assert_supersession_checks_are_item_bound(
-    checks_by_entry: dict[str, str], *, ticket_id: str, pr_number: int
+    checks_by_entry: dict[str, str],
+    *,
+    ticket_id: str,
+    pr_number: int,
+    parsed_contract: object | None = None,
 ) -> None:
     """Refuse a cohort of supersessions that share one check across distinct items.
 
@@ -621,17 +681,32 @@ def assert_supersession_checks_are_item_bound(
     authoritative proof of N distinct bars: that is the wrong-item rebind live in
     OCC#5534 (8 items, one ``grep -c 'def _build_specs'``) and OCC#5528 (6).
 
+    OMN-16148: a collision whose members form a single declared lineage chain
+    (see :func:`_is_declared_lineage_chain`) is NOT a wrong-item rebind — it is
+    a deliberate same-bar relabel, and is exempted. This is symmetric with the
+    matching S1 exemption in ``check_receipt_hardening.py``: a fix on only one
+    side would just relocate the refusal from this producer to the OCC
+    companion PR's own CI, not resolve it. Without ``parsed_contract`` (e.g.
+    the pure invariant-falsifier calls, or a fresh-path caller with no merged
+    contract to read lineage from), no exemption is possible and every
+    collision is flagged — unchanged prior behaviour.
+
     Raises:
         SupersessionCheckBindingError: naming every colliding evidence id.
     """
     by_value: dict[str, list[str]] = {}
     for entry, value in checks_by_entry.items():
         by_value.setdefault(value, []).append(entry)
-    collisions = {
-        value: sorted(entries)
-        for value, entries in by_value.items()
-        if len(entries) > 1
-    }
+    collisions: dict[str, list[str]] = {}
+    for value, entries in by_value.items():
+        if len(entries) <= 1:
+            continue
+        group = set(entries)
+        if parsed_contract is not None and _is_declared_lineage_chain(
+            parsed_contract, group
+        ):
+            continue
+        collisions[value] = sorted(entries)
     if not collisions:
         return
     detail = "; ".join(
@@ -645,7 +720,9 @@ def assert_supersession_checks_are_item_bound(
         "8 items on one grep; OCC#5528, 6), which the required "
         "supersession-binding gate rejects as S1. A producer that can only "
         "synthesize one probe per PR must supersede ONE item, not blanket the "
-        "directory."
+        "directory. (A declared same-lineage relabel — one item's "
+        "evidence_artifact naming another in this same collision — is exempt; "
+        "none of these do.)"
     )
 
 
@@ -968,7 +1045,10 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                     )
                 )
             assert_supersession_checks_are_item_bound(
-                supersede_checks, ticket_id=ticket, pr_number=pr_number
+                supersede_checks,
+                ticket_id=ticket,
+                pr_number=pr_number,
+                parsed_contract=parsed_contract,
             )
         else:
             # Fresh (absent, or exists-but-open → full regeneration all-adds).
