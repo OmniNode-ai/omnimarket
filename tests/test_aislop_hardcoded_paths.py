@@ -49,7 +49,9 @@ class TestHardcodedPathDetection:
 
     def test_detects_volumes_path(self) -> None:
         # test-literal-ok: planted canary, this is the pattern under test
-        findings = _run_check('WORKTREES_ROOT = "/Volumes/SOMEDISK/Code/worktrees"\n')
+        findings = _run_check(
+            'WORKTREES_ROOT = "/Volumes/SOMEDISK/Code/worktrees"\n'  # onex-allow-test-fixture OMN-16156 reason="planted canary the hardcoded-paths detector under test must catch"
+        )
         assert len(findings) == 1
         assert findings[0].check == "hardcoded-paths"
 

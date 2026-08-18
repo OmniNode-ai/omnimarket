@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-16156 reason="asserts the real committed dev-lane broker (omninode-pc.tail75df5e.ts.net) resolves correctly from shipped config; not a new leak"
 """Publisher <-> consumer parity for the occ-autobind command (OMN-13990).
 
 The born-path bug was a shape mismatch: the publisher emitted

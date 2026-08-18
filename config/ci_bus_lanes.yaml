@@ -43,7 +43,7 @@
 # ROTATION SEQUENCING (OMN-14800 follow-up -- RESOLVED, OMN-14813): `dev` was
 # `from-secret` while a `KAFKA_BOOTSTRAP_SERVERS` rotation was in flight. The
 # rotation has settled and the canonical dev-lane broker
-# (`omninode-pc.tail75df5e.ts.net:19092` -- the .201 runner_host Tailscale
+# (`omninode-pc.tail75df5e.ts.net:19092` -- the .201 runner_host Tailscale  # onex-allow-internal-ip OMN-16156 reason="pre-existing architectural comment describing the real committed dev-lane broker; not a new leak"
 # MagicDNS name + the dev-lane Redpanda EXTERNAL listener, verified reachable)
 # is now declared directly below. The occ-autobind fan-out no longer depends on
 # the per-repo `KAFKA_BOOTSTRAP_SERVERS` GHA secret: with that secret dropped
