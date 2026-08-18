@@ -82,14 +82,13 @@ INTROSPECTION_TOPIC = "onex.evt.platform.node-introspection.v1"
 LIVE_EVENTS_TOPIC = "onex.snapshot.projection.live-events.v1"
 NODE_HEARTBEAT_TOPIC = "onex.evt.platform.node-heartbeat.v1"
 
-# Real dev-lane Redpanda -- the only real broker reachable from this repo's
-# dev/CI hosts (no local broker is provisioned for this test's environment).
-# Overridable so a host with its own local broker (or a future embedded
-# fixture) does not have to reach across the LAN.
-KAFKA_BOOTSTRAP_SERVERS = os.environ.get(
-    "KAFKA_BOOTSTRAP_SERVERS",
-    "192.168.86.201:19092",  # onex-allow-internal-ip OMN-15800 reason="dev-lane Redpanda; real broker for the AC5 real-seam proof, not a runtime default"
-)
+# Safe localhost default (established pattern --
+# tests/integration/test_cost_event_publisher_kafka.py): a host without a
+# route to a real broker just skips on the probe below rather than a
+# hardcoded LAN literal silently targeting an unrelated machine on a
+# different network. Point this at a real broker (e.g. the dev-lane
+# Redpanda) via the environment variable.
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:19092")
 
 
 async def _real_broker_or_skip(bootstrap_servers: str) -> None:
@@ -100,6 +99,11 @@ async def _real_broker_or_skip(bootstrap_servers: str) -> None:
         await asyncio.wait_for(probe.start(), timeout=5)
         await probe.stop()
     except Exception as exc:
+        # A still-in-flight connection attempt from the timed-out start()
+        # can make probe.stop() itself hang indefinitely -- bound it too,
+        # never let cleanup outlast the probe it is cleaning up after.
+        with contextlib.suppress(Exception):
+            await asyncio.wait_for(probe.stop(), timeout=5)
         pytest.skip(f"Kafka not reachable at {bootstrap_servers}: {exc}")
 
 
@@ -184,41 +188,45 @@ async def _ephemeral_registration_postgres() -> AsyncIterator[AsyncpgAdapter]:
     sock_dir.mkdir()
     dbname = "omn15800ac5"
 
-    subprocess.run(
-        [
-            str(_INITDB),
-            "-D",
-            str(data_dir),
-            "-U",
-            "postgres",
-            "--auth-local=trust",
-            "--auth-host=trust",
-            "-E",
-            "UTF8",
-        ],
-        check=True,
-        capture_output=True,
-        env=_pg_subprocess_env(),
-    )
-    subprocess.run(
-        [
-            str(_PG_CTL),
-            "-D",
-            str(data_dir),
-            "-l",
-            str(root / "postgres.log"),
-            "-o",
-            f"-k {sock_dir} -h ''",
-            "-w",
-            "start",
-        ],
-        check=True,
-        capture_output=True,
-        env=_pg_subprocess_env(),
-    )
-
     pool: asyncpg.Pool | None = None
     try:
+        # Inside the try/finally (not before it): a check=True failure here
+        # (a started-then-failed postmaster, in particular) must still reach
+        # the finally block's pg_ctl stop / rmtree cleanup below, or a stray
+        # postmaster and the temp root can outlive the test.
+        subprocess.run(
+            [
+                str(_INITDB),
+                "-D",
+                str(data_dir),
+                "-U",
+                "postgres",
+                "--auth-local=trust",
+                "--auth-host=trust",
+                "-E",
+                "UTF8",
+            ],
+            check=True,
+            capture_output=True,
+            env=_pg_subprocess_env(),
+        )
+        subprocess.run(
+            [
+                str(_PG_CTL),
+                "-D",
+                str(data_dir),
+                "-l",
+                str(root / "postgres.log"),
+                "-o",
+                f"-k {sock_dir} -h ''",
+                "-w",
+                "start",
+            ],
+            check=True,
+            capture_output=True,
+            env=_pg_subprocess_env(),
+        )
+
         bootstrap = await asyncpg.connect(
             host=str(sock_dir), user="postgres", database="postgres"
         )
@@ -378,105 +386,140 @@ class TestRegistrationEventToHttpReadback:
             )
             assert ok is True
 
-            # Ground truth: the actual row EphemeralPostgres now holds,
-            # read back directly -- what the HTTP envelope below is
-            # compared against field-by-field.
-            db_rows = await adapter.execute(
-                "SELECT service_name, service_type, health_status, is_active, "
-                "last_health_check, updated_at, projected_at "
-                "FROM node_service_registry WHERE service_name = $1",
-                service_name,
-            )
-            assert len(db_rows) == 1, (
-                f"expected exactly one EphemeralPostgres row for "
-                f"{service_name!r}, found {len(db_rows)}"
-            )
-            db_row = db_rows[0]
-            assert db_row["health_status"] == "healthy"
-            assert db_row["is_active"] is True
-
-            # ------------------------------------------------------------
-            # Seam B: a REAL SnapshotCache with a REAL AIOKafkaConsumer,
-            # against the SAME broker -- bootstraps by replaying the
-            # compacted topic from earliest to end-of-partition.
-            # ------------------------------------------------------------
-            topic_map = {REGISTRATION_TOPIC: exposure}
-            cache = SnapshotCache(
-                topic_map,
-                bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
-                # Explicit override (OMN-15840): this test exercises the bus
-                # seam, not the default group-id derivation, which requires
-                # ONEX_ENVIRONMENT.
-                group_id=f"omn15800-ac5-seam-{uuid4().hex[:8]}",
-            )
-            await cache.start()
             try:
-                # The shared dev-lane topic can carry a real, several-
-                # thousand-message backlog (observed: 3582 on
-                # registration.v1) -- SnapshotCache's own internal poll
-                # window (40 attempts x 0.5s = 20s) only checks partition
-                # assignment/offset position, and the actual catch-up
-                # consumption happens afterward in its batched main loop
-                # (max 500 records/batch). 120s gives that comfortable
-                # headroom without hard-coding a bespoke short timeout that
-                # would flake as the shared topic grows.
-                for _attempt in range(240):
-                    if cache.is_bootstrapped(REGISTRATION_TOPIC):
-                        break
-                    await asyncio.sleep(0.5)
-                else:
-                    pytest.fail(
-                        "SnapshotCache did not bootstrap "
-                        f"{REGISTRATION_TOPIC} against the real broker "
-                        "within 120s"
+                # Ground truth: the actual row EphemeralPostgres now holds,
+                # read back directly -- what the HTTP envelope below is
+                # compared against field-by-field.
+                db_rows = await adapter.execute(
+                    "SELECT service_name, service_type, health_status, is_active, "
+                    "last_health_check, updated_at, projected_at "
+                    "FROM node_service_registry WHERE service_name = $1",
+                    service_name,
+                )
+                assert len(db_rows) == 1, (
+                    f"expected exactly one EphemeralPostgres row for "
+                    f"{service_name!r}, found {len(db_rows)}"
+                )
+                db_row = db_rows[0]
+                assert db_row["health_status"] == "healthy"
+                assert db_row["is_active"] is True
+
+                # ----------------------------------------------------------
+                # Seam B: a REAL SnapshotCache with a REAL AIOKafkaConsumer,
+                # against the SAME broker -- bootstraps by replaying the
+                # compacted topic from earliest to end-of-partition.
+                # ----------------------------------------------------------
+                topic_map = {REGISTRATION_TOPIC: exposure}
+                cache = SnapshotCache(
+                    topic_map,
+                    bootstrap_servers=KAFKA_BOOTSTRAP_SERVERS,
+                    # Explicit override (OMN-15840): this test exercises the
+                    # bus seam, not the default group-id derivation, which
+                    # requires ONEX_ENVIRONMENT.
+                    group_id=f"omn15800-ac5-seam-{uuid4().hex[:8]}",
+                )
+                await cache.start()
+                try:
+                    # The shared dev-lane topic can carry a real, several-
+                    # thousand-message backlog (observed: 3582 on
+                    # registration.v1) -- SnapshotCache's own internal poll
+                    # window (40 attempts x 0.5s = 20s) only checks partition
+                    # assignment/offset position, and the actual catch-up
+                    # consumption happens afterward in its batched main loop
+                    # (max 500 records/batch). 120s gives that comfortable
+                    # headroom without hard-coding a bespoke short timeout
+                    # that would flake as the shared topic grows.
+                    for _attempt in range(240):
+                        if cache.is_bootstrapped(REGISTRATION_TOPIC):
+                            break
+                        await asyncio.sleep(0.5)
+                    else:
+                        pytest.fail(
+                            "SnapshotCache did not bootstrap "
+                            f"{REGISTRATION_TOPIC} against the real broker "
+                            "within 120s"
+                        )
+
+                    # The real topic may carry other real/live-lane rows
+                    # (compacted, keyed by service_name) -- match on our own
+                    # unique key rather than asserting a total row count.
+                    cached_rows = cache.get_rows(REGISTRATION_TOPIC, limit=10_000)
+                    cache_matches = [
+                        r for r in cached_rows if r["service_name"] == service_name
+                    ]
+                    assert len(cache_matches) == 1, (
+                        f"expected exactly one cached row for {service_name!r} "
+                        f"after a real broker round trip, found "
+                        f"{len(cache_matches)} of {len(cached_rows)} cached rows"
                     )
+                    assert cache_matches[0]["health_status"] == "healthy"
 
-                # The real topic may carry other real/live-lane rows
-                # (compacted, keyed by service_name) -- match on our own
-                # unique key rather than asserting a total row count.
-                cached_rows = cache.get_rows(REGISTRATION_TOPIC, limit=10_000)
-                cache_matches = [
-                    r for r in cached_rows if r["service_name"] == service_name
-                ]
-                assert len(cache_matches) == 1, (
-                    f"expected exactly one cached row for {service_name!r} "
-                    f"after a real broker round trip, found "
-                    f"{len(cache_matches)} of {len(cached_rows)} cached rows"
-                )
-                assert cache_matches[0]["health_status"] == "healthy"
+                    # ------------------------------------------------------
+                    # Seam C: the REAL FastAPI app serves the row over HTTP,
+                    # with NO asyncpg pool anywhere in the dependency graph
+                    # -- asserted field-by-field against the EphemeralPostgres
+                    # ground truth read back above.
+                    # ------------------------------------------------------
+                    with _with_cache(cache, REGISTRATION_TOPIC, exposure) as client:
+                        resp = client.get(f"/projection/{REGISTRATION_TOPIC}")
 
-                # --------------------------------------------------------
-                # Seam C: the REAL FastAPI app serves the row over HTTP,
-                # with NO asyncpg pool anywhere in the dependency graph --
-                # asserted field-by-field against the EphemeralPostgres
-                # ground truth read back above.
-                # --------------------------------------------------------
-                with _with_cache(cache, REGISTRATION_TOPIC, exposure) as client:
-                    resp = client.get(f"/projection/{REGISTRATION_TOPIC}")
-
-                assert resp.status_code == 200
-                body = resp.json()
-                assert body["topic"] == REGISTRATION_TOPIC
-                assert body["backing"] == "bus"
-                http_matches = [
-                    r for r in body["rows"] if r["service_name"] == service_name
-                ]
-                assert len(http_matches) == 1, (
-                    f"expected exactly one HTTP row for {service_name!r}, "
-                    f"found {len(http_matches)} of {body['row_count']} rows"
-                )
-                row = http_matches[0]
-                assert row["service_name"] == db_row["service_name"]
-                assert row["service_type"] == db_row["service_type"]
-                assert row["health_status"] == db_row["health_status"]
-                assert row["is_active"] == db_row["is_active"]
-                assert (
-                    row["last_health_check"] == db_row["last_health_check"].isoformat()
-                )
-                assert row["updated_at"] == db_row["updated_at"].isoformat()
-                assert row["projected_at"] == db_row["projected_at"].isoformat()
+                    assert resp.status_code == 200
+                    body = resp.json()
+                    assert body["topic"] == REGISTRATION_TOPIC
+                    assert body["backing"] == "bus"
+                    http_matches = [
+                        r for r in body["rows"] if r["service_name"] == service_name
+                    ]
+                    assert len(http_matches) == 1, (
+                        f"expected exactly one HTTP row for {service_name!r}, "
+                        f"found {len(http_matches)} of {body['row_count']} rows"
+                    )
+                    row = http_matches[0]
+                    assert row["service_name"] == db_row["service_name"]
+                    assert row["service_type"] == db_row["service_type"]
+                    assert row["health_status"] == db_row["health_status"]
+                    assert row["is_active"] == db_row["is_active"]
+                    assert (
+                        row["last_health_check"]
+                        == db_row["last_health_check"].isoformat()
+                    )
+                    assert row["updated_at"] == db_row["updated_at"].isoformat()
+                    assert row["projected_at"] == db_row["projected_at"].isoformat()
+                finally:
+                    await cache.stop()
             finally:
-                await cache.stop()
+                # The compacted registration topic never reclaims a key that
+                # appears once (compaction needs a later delta on the same
+                # key) -- publish a genuine tombstone for our unique
+                # service_name so this test doesn't leave a permanent,
+                # ever-growing record on the shared dev-lane topic. Runs on
+                # both pass and failure, through the SAME real producer the
+                # writes above used.
+                #
+                # NOT routed through publish_snapshot_delta(op="delete"):
+                # that path unconditionally requires row=None for a delete,
+                # then derives the message key from that same (now-empty)
+                # row -- key_source[column] always raises KeyError, so
+                # op="delete" cannot succeed as currently written. That is a
+                # real, pre-existing bug in BaseProjectionRunner, out of
+                # scope for this test-only AC5 fix (no delete call site
+                # exists anywhere in src/ today to have caught it) --
+                # sending the tombstone bytes directly here, exactly the
+                # shape publish_snapshot_delta's own delete branch sends.
+                with contextlib.suppress(Exception):
+                    producer = await runner._ensure_producer()
+                    if producer is not None:
+                        await producer.send_and_wait(
+                            REGISTRATION_TOPIC,
+                            value=None,
+                            key=service_name.encode("utf-8"),
+                            headers=[
+                                ("tenant_id", b"omninode"),
+                                ("content_type", b"application/json"),
+                                ("schema_version", b"projection_snapshot.v1"),
+                            ],
+                        )
+                await runner._stop_producer()
 
 
 @pytest.mark.unit
