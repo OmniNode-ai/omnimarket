@@ -155,10 +155,15 @@ def test_handler_constructor_performs_no_io(
 # ---------------------------------------------------------------------------
 
 
-def test_spool_only_mode_when_kafka_unconfigured(
+def test_spool_only_mode_when_kafka_unconfigured_and_opted_out(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The legitimate "intentionally no Kafka target yet" case (OMN-16167):
+    ONEX_EMIT_EFFECT_SPOOL_ONLY is the explicit, contract-declared opt-out --
+    absence of KAFKA_BOOTSTRAP_SERVERS no longer silently selects this mode
+    on its own (see test_kafka_unconfigured_without_opt_out_fails_loudly)."""
     monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.setenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", "true")
     spool = SpoolOutbox(tmp_path / "spool")
     handler = HandlerEventEmitEffect(spool=spool)  # no publish_adapter injected
 
@@ -171,6 +176,46 @@ def test_spool_only_mode_when_kafka_unconfigured(
     assert result.topics_published == []
     assert result.drained_count == 0
     assert spool.pending_count() == 1  # accumulates until Kafka is configured
+
+
+def test_kafka_unconfigured_without_opt_out_fails_loudly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-16167: a genuinely unconfigured Kafka target (no opt-out declared)
+    must fail loudly at adapter construction -- not silently degrade to
+    spool-only the way a bare ``os.environ.get("KAFKA_BOOTSTRAP_SERVERS")``
+    read used to. The event must still be durably spooled first, so the
+    loud failure does not also lose data (no durability regression)."""
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.delenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", raising=False)
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool)  # no publish_adapter injected
+
+    request = ModelEmitRequest(
+        event_type="session.started", payload={"session_id": "x"}
+    )
+
+    with pytest.raises(KeyError, match="KAFKA_BOOTSTRAP_SERVERS"):
+        handler.handle(request)
+
+    # Durability preserved: the event was appended to the spool outbox
+    # before adapter resolution raised.
+    assert spool.pending_count() == 1
+
+
+def test_kafka_unconfigured_spool_only_opt_out_accepts_common_truthy_spellings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.setenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", "1")
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool)
+
+    result = handler.handle(
+        ModelEmitRequest(event_type="session.started", payload={"session_id": "x"})
+    )
+    assert result.published is False
+    assert result.spool_only is True
 
 
 def test_oversized_current_event_is_dropped_but_backlog_still_drains(
