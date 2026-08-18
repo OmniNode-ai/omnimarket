@@ -173,6 +173,7 @@ def test_spool_only_mode_when_kafka_unconfigured_and_opted_out(
     result = handler.handle(request)
 
     assert result.published is False
+    assert result.spool_only is True
     assert result.topics_published == []
     assert result.drained_count == 0
     assert spool.pending_count() == 1  # accumulates until Kafka is configured
