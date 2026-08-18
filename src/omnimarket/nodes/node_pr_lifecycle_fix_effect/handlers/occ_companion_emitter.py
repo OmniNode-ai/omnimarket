@@ -259,6 +259,32 @@ def _resolve_product_token(occ_token: str) -> tuple[str, bool]:
     return occ_token, False
 
 
+class StaleCompanionBaseError(RuntimeError):
+    """Raised when OCC's default branch moved since this run's clone (OMN-15845).
+
+    ``_clone_and_branch`` performs a single shallow clone and captures
+    ``base_sha`` once; the two force-pushes that follow never fetch/merge/
+    rebase, so a SIBLING companion for the SAME ticket that merges to OCC's
+    default branch between this run's clone and either of its pushes is
+    invisible to this run. Concretely: ``contract_already_had_companion`` is
+    evaluated against the stale clone snapshot, so this run silently treats
+    the ticket as still companion-less, re-writes the ticket-scoped
+    ``dod-occ-evidence-admissibility-validator`` receipt (meant to be
+    write-once per ticket), and force-pushes a stale full-regenerate diff
+    that either orphans the sibling's companion or produces an add/add
+    conflict at merge time (the OMN-15845 incident: three sibling autobind
+    companions minted for the same ticket ~70 minutes apart, one orphaned
+    unmergeable).
+
+    Raised instead of pushing so the caller's normal error path applies
+    (the ``finally`` in :meth:`OccCompanionEmitter._emit_companion_sync`
+    still releases the OMN-14793 lease). This is a fail-fast, safe-to-retry
+    outcome, not a dead end: the emitter is re-invoked on the product PR's
+    next lifecycle event (see ``_open_or_sync_occ_pr``'s ``synchronize``
+    re-fire note), and a subsequent run clones a fresh, current base.
+    """
+
+
 class OccCompanionEmitter:
     """Author the OCC companion (contract + receipts) + rebind a product PR.
 
@@ -978,6 +1004,13 @@ class OccCompanionEmitter:
                 # forward (OMN-13990 / CodeRabbit). Force-push is safe here (content
                 # is deterministic and the branch always presents the companion as
                 # all-adds relative to base, keeping the append-only gate green).
+                #
+                # OMN-15845: verify OCC's default branch has not moved past
+                # ``base_sha`` immediately before the push — see
+                # :meth:`_assert_base_still_fresh` / :class:`StaleCompanionBaseError`.
+                self._assert_base_still_fresh(
+                    base_sha=base_sha, token=token, cwd=str(clone_dir)
+                )
                 self._run_git(
                     ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
                 )
@@ -1116,6 +1149,14 @@ class OccCompanionEmitter:
                     ),
                 )
                 # Force-push (see rationale above): deterministic all-adds regeneration.
+                #
+                # OMN-15845: re-verify freshness immediately before THIS push too —
+                # a sibling companion can land between the first and second push of
+                # the same run (two GitHub round-trips — open-or-sync PR + self-bind
+                # probe — separate them).
+                self._assert_base_still_fresh(
+                    base_sha=base_sha, token=token, cwd=str(clone_dir)
+                )
                 self._run_git(
                     ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
                 )
@@ -1916,6 +1957,39 @@ class OccCompanionEmitter:
     def _head_sha(self, cwd: str) -> str:
         return self._run_git(["git", "rev-parse", "HEAD"], cwd=cwd)
 
+    def _assert_base_still_fresh(self, *, base_sha: str, token: str, cwd: str) -> None:
+        """Fail fast (OMN-15845) if OCC's default branch moved past ``base_sha``.
+
+        Cheap freshness check — ``git ls-remote <url> HEAD`` — run immediately
+        before EACH force-push. No history is fetched; only the remote's
+        current default-branch HEAD SHA is compared against the SHA this run's
+        clone was cut from. A mismatch means a sibling companion for the same
+        ticket (or any other write) landed on OCC's default branch after this
+        run's clone, so pushing now would force-push a stale-based, silently
+        wrong companion (see :class:`StaleCompanionBaseError`). Deliberately
+        does NOT attempt a live merge/rebase — that would require recomputing
+        ``contract_already_had_companion`` and every downstream receipt, a
+        much larger change than this fail-fast fix.
+        """
+        remote_url = authenticated_occ_url(token, self._occ_repo)
+        output = self._run_git(["git", "ls-remote", remote_url, "HEAD"], cwd=cwd)
+        fields = output.split()
+        remote_sha = fields[0] if fields else ""
+        if not remote_sha or not SHA_RE.match(remote_sha):
+            raise StaleCompanionBaseError(
+                "could not verify OCC base freshness before push: "
+                f"unparseable `git ls-remote` output {output!r}"
+            )
+        if remote_sha != base_sha:
+            raise StaleCompanionBaseError(
+                f"OCC default branch moved from {base_sha} to {remote_sha} "
+                "since this run's clone — a sibling write (possibly another "
+                "companion for the same ticket) may have merged in between; "
+                "refusing to force-push a stale-based companion (OMN-15845). "
+                "Safe to retry: this producer re-fires on the product PR's "
+                "next lifecycle event and will clone a fresh base."
+            )
+
     @staticmethod
     def _receipt_commit_sha(pr_data: dict[str, object], head_sha: str) -> str:
         """Resolve the commit SHA the downstream receipt should cite (OMN-14255).
@@ -2144,4 +2218,4 @@ class OccCompanionEmitter:
             ) from exc
 
 
-__all__ = ["OccCompanionEmitter"]
+__all__ = ["OccCompanionEmitter", "StaleCompanionBaseError"]
