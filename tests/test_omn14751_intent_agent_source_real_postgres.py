@@ -117,12 +117,14 @@ def _adapter_dsn_for_schema(schema: str) -> str:
     )
 
 
-async def _runner_on_schema(schema: str) -> tuple[
-    IntentClassificationProjectionRunner, AsyncpgAdapter
-]:
+async def _runner_on_schema(
+    schema: str,
+) -> tuple[IntentClassificationProjectionRunner, AsyncpgAdapter]:
     """The REAL runner, wired to a REAL asyncpg pool scoped to ``schema``."""
     runner = IntentClassificationProjectionRunner()
-    adapter = AsyncpgAdapter(dsn=_adapter_dsn_for_schema(schema), min_size=1, max_size=2)
+    adapter = AsyncpgAdapter(
+        dsn=_adapter_dsn_for_schema(schema), min_size=1, max_size=2
+    )
     await adapter.connect()
     runner._db = adapter  # type: ignore[assignment]
     return runner, adapter
