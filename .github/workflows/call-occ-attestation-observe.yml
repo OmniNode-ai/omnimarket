@@ -91,7 +91,25 @@ name: OCC Attestation Observe (report-only)
 on:
   pull_request:
     branches: [main, dev, "hotfix/**"]
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    # OMN-16171: `edited` REMOVED. This workflow is a write effect, not a
+    # read/eligibility check -- it force-pushes the shared
+    # `auto/occ-observation-*` branch against onex_change_control, and every
+    # such force-push detonates a full ~19-job onex_change_control CI wave.
+    # OCC's own evidence-stamp bots rewrite product-PR bodies with a minted
+    # App token, which DOES emit `pull_request: edited` (GitHub's recursion
+    # guard only suppresses edits authored by the ambient GITHUB_TOKEN), so
+    # the observation pipeline's own output re-triggered the observation
+    # pipeline. Measured 2026-08-18: one observation branch took 114 CI runs
+    # across 10 force-push waves in a 45-minute window. Unlike
+    # `call-occ-preflight.yml` -- which keeps `edited` because a post-open
+    # `Evidence-Source:` stamp must re-clear a stale FAILURE (OMN-14241) --
+    # this workflow has no self-heal requirement: a missed observation is
+    # re-emitted by the next push, and the record alone can never merge a PR.
+    # Accepted residual: a PR whose title gains its `OMN-` reference only via
+    # a later title edit (see the `if:` below) will not emit an observation
+    # until its next push; the branch-name arm of that same condition already
+    # covers the repo's `jonah/omn-XXXX-...` convention.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # OMN-15300: one observation per (PR, head sha), not one per event.
 # `types:` includes `edited`, which fires on every title/body change — and the
