@@ -37,6 +37,15 @@
       "kind": "table",
       "name": "schema_migrations",
       "reason": "retained live evidence identifies the omnidash filename ledger, but no authoritative repository DDL or owner declaration was found"
+    },
+    {
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_hook_event_capture/migrations/0001_create_hook_events.sql"
+      ],
+      "current_database": "omnidash_analytics",
+      "kind": "function",
+      "name": "update_hook_events_updated_at",
+      "reason": "schema 'unresolved' does not resolve through deployment topology"
     }
   ],
   "completion_status": "blocked_pending_live_catalog_and_activity_evidence",
@@ -479,9 +488,11 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_hook_event_capture/migrations/0001_create_hook_events.sql"
       ],
-      "blocked_reasons": [],
+      "blocked_reasons": [
+        "schema 'unresolved' does not resolve through deployment topology"
+      ],
       "classification_evidence": "owning node migration plus referenced table domains",
-      "classification_status": "classified",
+      "classification_status": "blocked",
       "constraints": [],
       "contract_sources": [],
       "current_schema": [
@@ -489,7 +500,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "TENANT",
+      "domain": null,
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -505,7 +516,7 @@
       "partitioning": [],
       "producer": "node_hook_event_capture",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "unresolved",
       "writers": []
     },
     {
@@ -2755,7 +2766,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "TENANT",
+      "domain": "PUBLIC",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -2784,7 +2795,7 @@
       "partitioning": [],
       "producer": "node_hook_event_capture",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "public",
       "writers": [
         "node_hook_event_capture"
       ]
