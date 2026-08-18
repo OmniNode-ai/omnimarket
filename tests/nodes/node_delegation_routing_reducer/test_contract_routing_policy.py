@@ -487,7 +487,17 @@ class TestDeltaContractRouting:
         try:
             decision = delta(self._make_request("test"))
             assert decision.selected_model == MODEL_QWEN3_27B_MTP
-            assert decision.endpoint_url == _LOCAL_REASONER_ENDPOINT
+            # OMN-12815: every resolved endpoint_url is the COMPLETE final URL
+            # (incl. the full /v1/chat/completions path) -- see
+            # src/omnimarket/routing/delegation_backend_resolution.py. This
+            # assertion was stale (comparing against the bare-base fixture
+            # value); the bare base is correct as the fixture's declared
+            # config INPUT (line 445 above), but the resolved decision's
+            # endpoint_url is always the completed URL.
+            assert (
+                decision.endpoint_url
+                == f"{_LOCAL_REASONER_ENDPOINT}/v1/chat/completions"
+            )
         finally:
             if prev_routing_path is None:
                 os.environ.pop("DELEGATION_ROUTING_TIERS_PATH", None)
