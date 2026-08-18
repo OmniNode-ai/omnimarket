@@ -76,10 +76,32 @@ db_io:
     - name: hook_events
       database_ref: application
       # OMN-15655 / house-tenant ruling: these rows are workload-attributable
-      # (they record a tenant's own hook and skill runs), so they are TENANT
-      # data. Platform-own workloads are the house tenant's rows, not an
-      # absence of a tenant.
-      schema: tenant
+      # (they record a tenant's own hook and skill runs), so they are
+      # logically TENANT data -- platform-own workloads are the house
+      # tenant's rows, not an absence of a tenant. That ruling is unchanged.
+      #
+      # OMN-16090 correction: this field must name the table's actual
+      # PHYSICAL schema, not its logical domain classification, because
+      # handler_wiring._resolve_projection_database_target /
+      # ProjectionTableTarget.schema (omnibase_infra) passes this value
+      # straight into schema-qualified SQL ('INSERT INTO "{schema}"."{table}"')
+      # with no logical->physical translation -- unlike the privilege-check
+      # path (_require_projection_binding_privileges), which does run every
+      # TENANT-domain table through physical_schema_mapping.
+      # physical_grant_schema_for_table() before comparing against topology
+      # grants. hook_events' 0001 migration creates the table unqualified
+      # (default search_path => public); it is NOT enrolled in
+      # TENANT_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359, so that mapping
+      # would not rewrite it even if this field said "tenant". No live
+      # database in this deployment topology has a `tenant` schema today.
+      # Declaring "tenant" here is inert until OMN-15800/#2101 lands (it
+      # replaces this node's BaseProjectionRunner dispatch with the injected,
+      # schema-qualifying DatabaseAdapter) -- at that point it becomes a hard
+      # failure ("schema \"tenant\" does not exist") on every write. "public"
+      # is correct today and remains correct post-#2101, matching the other
+      # 14 house-tenant tables' physical location. Revisit when the OMN-15359
+      # cutover physically moves this table's family into `tenant` for real.
+      schema: public
       migration: "0001_create_hook_events.sql"
       access: write
       role: hook_events
