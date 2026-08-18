@@ -1,158 +1,166 @@
 # SPDX-License-Identifier: MIT
 """Hook-event capture: gateway command batch -> hook_events rows (OMN-16090).
 
-Consumes the capture command topic declared in this node's ``contract.yaml``
-(``event_bus.subscribe_topics``), validates the batch against
-:class:`ModelHookEventCaptureRequest`, and writes one row per carried event,
-idempotent on ``(tenant_id, event_sha)``.
+DISPATCH SHAPE (OMN-16090 fix). The contract declares ``db_io.db_tables``, and
+``omnibase_infra.runtime.auto_wiring.handler_wiring.wire_from_manifest``
+branches on that BEFORE it ever looks at ``handler_routing``/``event_model``
+(``if db_tables: ... callback = _make_projection_dispatch_callback(...)`` —
+unconditional). That projection arm builds a PLAIN ``dict`` — the payload's
+``model_dump(mode="json")`` plus injected ``_db`` / ``_event_type`` / ``_topic``
+keys — and calls ``handler_instance.handle(input_data)``. It never calls
+``project_event()`` and it never passes a validated model.
 
-No topic literal appears anywhere in this module -- ``topics`` and
-``poison_dlq_topics`` both read the contract at call time. That is not only
-ARCH-TOPIC-001 compliance: a literal here would be a second, ungoverned copy of
-a name the contract already owns, and nothing would ever validate the two
-against each other.
+This node originally shipped ``handle(self, request: ModelHookEventCaptureRequest)``.
+That signature satisfied the OMN-14355 canon-shape ratchet's STATIC check (a
+parameter literally named ``request`` classifies canonical regardless of its
+type annotation — see ``MAGIC_PARAM_NAMES`` in
+``omnibase_core/scripts/ci/canonical_handler_shape.py``) but never actually ran
+on the real dispatch path: every live call passed a dict, and
+``request.batch_sha`` raised ``AttributeError``. The arm's generic
+``except Exception`` swallowed it, logged it, and routed the raw envelope to
+platform quarantine (no ``dlq_topics`` declared here) — a silent
+consume-then-drop: the Kafka offset commits, consumer-group lag reads 0, and
+zero rows land. Same class as the OMN-13825 incident documented in
+``omnimarket/projection/handler_shim.py``.
 
-Three properties are load-bearing and each is enforced rather than assumed:
+The fix keeps the parameter name ``request`` (still magic, still canonical per
+the ratchet) but accepts the shape the runtime actually sends: a mapping
+carrying the injected metadata keys alongside the batch payload. Injected-key
+extraction routes through the canonical :func:`split_projection_input` helper
+(``omnimarket.projection.handler_shim``) so this handler does not hand-roll
+``.pop()`` calls — the pattern every other ``db_io`` projection handler in
+this repo (``node_projection_dep_health``, ``node_projection_overnight``, ...)
+already follows.
 
-1.  **Idempotency is the database's job, not the runner's.** A redelivered
-    Kafka batch (rebalance, offset replay, a retried submission) must be a
-    no-op, and the only place that can be guaranteed is the UNIQUE constraint.
-    The writer uses ``ON CONFLICT ... DO NOTHING`` and reports how many rows
-    were actually new, so a replay is observable rather than invisible.
+WHY THIS CLASS NO LONGER EXTENDS ``BaseProjectionRunner``. The previous
+revision subclassed it and implemented ``project_event()`` as a second,
+parallel entrypoint. ``BaseProjectionRunner.__init__`` builds its OWN
+``AsyncpgAdapter`` from ``ModelProjectionRuntimeBinding.from_legacy_settings()``
+— a topology-BLIND DB connection, entirely disconnected from the
+topology-resolved ``DatabaseAdapter`` the projection dispatch arm actually
+injects at ``input_data['_db']``. Nothing in the deployed topology constructs
+a standalone ``BaseProjectionRunner`` process for THIS node — auto-wiring
+subscribes the node itself via the projection arm; there is no dedicated
+Deployment, unlike e.g. ``HandlerLiveEventsProjectionRunner``, which onex-dev
+does run standalone. So ``project_event()`` was dead on the only path that
+actually dispatches events to this handler. Keeping it as "dead but harmless"
+would not have been harmless: a future standalone Deployment wired against
+``project_event()`` would silently write through the wrong DB resolution,
+diverging from every other ``db_io`` node's topology-routed adapter, and the
+class would keep carrying two contradictory persistence implementations with
+no test proving either matches the deployed reality. Deleted, not parked.
 
-2.  **The tenant key is the immutable principal.** ``payload.tenant_id`` is
-    attribution-only on this wire (onex-api says so explicitly: the forwarder
-    path overwrites it, and the direct-lane consumer falls back to
-    ``ONEX_TENANT_ID``). Keying tenant-isolated rows on it would silently merge
-    or split two tenants' history. The model requires ``tenant_principal_id``.
+IDEMPOTENCY, AND WHY IT IS QUERY-THEN-UPSERT INSTEAD OF ONE UNNEST STATEMENT.
+The injected ``DatabaseAdapter`` (``omnibase_infra`` `ProjectionDatabaseOperations`,
+matching the local ``omnimarket.projection.protocol_database.DatabaseAdapter``
+protocol) exposes only ``upsert(table, conflict_key, row) -> bool`` and
+``query(table, filters) -> list[dict]`` — one row at a time, no raw multi-row
+SQL. Its ``upsert()`` also has no ``ON CONFLICT ... DO NOTHING`` mode: when the
+row carries any column besides the conflict key, it always builds
+``ON CONFLICT (...) DO UPDATE SET ...`` (see
+``ProjectionDatabaseOperations._execute_upsert``). ``hook_events`` has a
+``BEFORE UPDATE`` trigger that bumps ``updated_at`` — so an unconditional
+``upsert()`` on every redelivered event would touch ``updated_at`` on a pure
+replay, contradicting "captured events are immutable history" (the exact
+reason the ORIGINAL raw-SQL design chose ``DO NOTHING`` over ``DO UPDATE``).
+This handler queries for an existing ``(tenant_id, event_sha)`` row BEFORE
+writing and skips the upsert when found, so the realistic Kafka-redelivery
+case — the same consumer re-processing an already-committed batch — never
+touches ``updated_at``, and ``events_persisted`` / ``events_already_present``
+stay accurate. Trade-off: up to 2N round trips per batch instead of one atomic
+statement — a real change from the original design, forced by the injected
+adapter's single-row surface. A genuine concurrent double-delivery (two
+processes upserting the same never-before-seen event at once) can still race
+through to the ``DO UPDATE`` fallback; that residual is pre-existing to every
+``DatabaseAdapter``-backed projection handler in this repo, not something this
+fix introduces.
 
-3.  **A malformed batch is POISON, not a retry.** A batch that fails model
-    validation will fail identically on every redelivery. Returning False would
-    spin the consumer forever on the same offset; raising the classified poison
-    path routes it to the DLQ once.
+TERMINAL EVENT. The contract declares ``terminal_event`` in ``publish_topics``,
+so the projection dispatch arm emits it itself (gated on the returned dict's
+``rows_upserted`` >= 1 via ``_extract_rows_upserted``) once ``handle()``
+returns — matching ``node_projection_overnight`` and every other ``db_io``
+node with a declared terminal event. This handler no longer publishes its own
+terminal event; the previous manual ``_publish_terminal``/``get_publish_fn``
+machinery is gone with ``BaseProjectionRunner``.
 """
 
 from __future__ import annotations
 
-import asyncio
-import json
 import logging
-from datetime import datetime
-from pathlib import Path
-from typing import Any
+from collections.abc import Mapping
 
-import yaml
 from pydantic import ValidationError
 
 from omnimarket.nodes.node_hook_event_capture.models.model_hook_event_capture_request import (
     ModelHookEventCaptureRequest,
     ModelHookEventCaptureResult,
 )
-from omnimarket.projection.runner import (
-    BaseProjectionRunner,
-    MessageMeta,
-    safe_parse_date,
-)
+from omnimarket.projection.handler_shim import split_projection_input
+from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.tenant_isolation import house_tenant_write_stamp
 
 logger = logging.getLogger(__name__)
 
 TABLE = "hook_events"
-_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
-
-
-def _contract_topics(key: str) -> list[str]:
-    """Read a topic list from THIS node's contract.
-
-    Topics are read from the contract rather than restated as literals here:
-    the contract is the declaration the platform's topic gates and the gateway
-    catalog are checked against, so a second copy in Python is a drift surface
-    with no upside.
-    """
-    data: dict[str, Any] = yaml.safe_load(_CONTRACT_PATH.read_text())
-    bus: dict[str, Any] = data.get("event_bus") or {}
-    topics: list[str] = list(bus.get(key) or [])
-    return topics
+CONFLICT_KEY = "tenant_id,event_sha"
 
 
 class HookEventCaptureError(Exception):
     """Malformed capture batch. Classified POISON: retrying cannot help."""
 
 
-class HandlerHookEventCapture(BaseProjectionRunner):
+class HandlerHookEventCapture:
     """Persists gateway-submitted hook-event batches into ``hook_events``."""
 
-    @property
-    def topics(self) -> list[str]:
-        return _contract_topics("subscribe_topics")
+    def handle(self, request: object) -> dict[str, object]:
+        """Canonical definition-B entrypoint the runtime auto-wiring binds.
 
-    @property
-    def poison_dlq_topics(self) -> list[str]:
-        # No DLQ topic is declared for this node yet, so the base class's
-        # fail-loud behaviour applies: an unroutable poison event re-raises
-        # rather than being silently dropped. Declaring a DLQ topic here
-        # without provisioning it on the broker would convert a loud failure
-        # into a silent one, which is the wrong direction.
-        return _contract_topics("dlq_topics")
-
-    def handle(
-        self, request: ModelHookEventCaptureRequest
-    ) -> ModelHookEventCaptureResult:
-        """Canonical definition-B entrypoint: typed payload in, typed result out.
-
-        This is the signature auto-wiring binds and the OMN-14355 canon-shape
-        ratchet requires of a new node. The older sibling projection runners
-        take a raw ``dict`` and return a ``dict``; that shape is baselined debt,
-        not a pattern to copy, and the ratchet correctly refused this node when
-        it was first written that way.
-
-        The Kafka consumer path stays on :meth:`project_event`, which carries
-        real partition/offset coordinates. Definition-B dispatch has no
-        transport coordinates to carry -- there is no Kafka message -- so the
-        meta below is synthesised with the batch identity as its fallback id
-        rather than pretending to a partition and offset that do not exist.
+        ``request`` carries the runtime-injected metadata (``_db``,
+        ``_event_type``, ``_topic``) alongside the batch payload — see the
+        module docstring for why this is a mapping rather than the typed
+        ``ModelHookEventCaptureRequest`` a naive def-B read would expect.
         """
-        topics = self.topics
-        meta = MessageMeta(
-            partition=0,
-            offset=0,
-            fallback_id=request.batch_sha,
-            topic=topics[0] if topics else "",
-        )
-        return asyncio.run(self._capture(topics[0] if topics else "", request, meta))
-
-    async def project_event(
-        self, topic: str, data: dict[str, Any], meta: MessageMeta
-    ) -> bool:
-        """Kafka consumer path. Returns False only on DB trouble."""
+        if not isinstance(request, Mapping):
+            raise TypeError(
+                "HandlerHookEventCapture.handle() expects the runtime-injected "
+                f"payload mapping (with _db/_event_type/_topic), got "
+                f"{type(request).__name__}"
+            )
+        db, payload, _meta = split_projection_input(dict(request))
         try:
-            batch = ModelHookEventCaptureRequest.model_validate(data)
+            batch = ModelHookEventCaptureRequest.model_validate(payload)
         except ValidationError as exc:
-            # POISON, not a retry: identical redelivery fails identically.
+            # POISON, not a retry: identical redelivery fails identically. A
+            # plain ValidationError would already route to the contract DLQ
+            # via the arm's generic except-Exception handler; wrapping it
+            # keeps this handler's own error type stable for callers/tests.
             raise HookEventCaptureError(
-                f"malformed hook-event-capture batch on {topic} "
-                f"(partition={meta.partition} offset={meta.offset}): {exc}"
+                f"malformed hook-event-capture batch: {exc}"
             ) from exc
-        await self._capture(topic, batch, meta)
-        return True
+        result = self._capture(batch, db)
+        payload_out: dict[str, object] = result.model_dump(mode="json")
+        # OMN-13360: the arm gates its own terminal-event emission on
+        # rows_upserted >= 1 (see _extract_rows_upserted); events_persisted is
+        # this handler's exact same count under a different, node-local name.
+        payload_out["rows_upserted"] = result.events_persisted
+        return payload_out
 
-    async def _capture(
-        self, topic: str, batch: ModelHookEventCaptureRequest, meta: MessageMeta
+    def _capture(
+        self, batch: ModelHookEventCaptureRequest, db: DatabaseAdapter
     ) -> ModelHookEventCaptureResult:
-        """The one real implementation. Both entrypoints funnel through here."""
-        # The stored tenant value must equal what the database will hold, so an
-        # RLS WITH CHECK evaluated by a non-superuser writer has something true
-        # to compare against (OMN-15301). The helper fails closed when
+        """The one real implementation."""
+        # The stamped tenant value must equal what the database will hold, so
+        # an RLS WITH CHECK evaluated by a non-superuser writer has something
+        # true to compare against (OMN-15301). The helper fails closed when
         # ENFORCE_TENANT_ISOLATION flips and no tenant can be resolved.
         tenant_stamp = house_tenant_write_stamp(table=TABLE)
         tenant_id = tenant_stamp.get("tenant_id", "omninode")
 
-        inserted = await self._insert_batch(batch, tenant_id)
+        inserted = self._insert_batch(batch, tenant_id, db)
         duplicates = len(batch.events) - inserted
-        published = await self._publish_terminal(batch, inserted, duplicates)
         logger.info(
             "hook-event-capture batch %s: %d event(s), %d new, %d already present "
-            "(source=%s tenant=%s principal=%s topic=%s)",
+            "(source=%s tenant=%s principal=%s)",
             batch.batch_sha[:12],
             len(batch.events),
             inserted,
@@ -160,141 +168,56 @@ class HandlerHookEventCapture(BaseProjectionRunner):
             batch.source,
             tenant_id,
             batch.tenant_principal_id,
-            topic,
         )
         return ModelHookEventCaptureResult(
             batch_sha=batch.batch_sha,
             events_received=len(batch.events),
             events_persisted=inserted,
             events_already_present=duplicates,
-            terminal_event_published=published,
         )
 
-    async def _publish_terminal(
-        self, batch: ModelHookEventCaptureRequest, inserted: int, duplicates: int
-    ) -> bool:
-        """Emit ONE batch-completion event. Best-effort by design.
-
-        This is what lets the gateway's workflow_terminal_consumer move
-        GET /v1/workflows/{id}/status from `published` to `completed`, which is
-        the only signal a submitter can trust: the gateway's publish is
-        fail-open, so a 202 does not mean the batch landed, and the operator
-        shipper refuses to move spool files aside without a terminal status.
-
-        Best-effort, and deliberately so: the rows are already committed when
-        this runs. Failing the message here would re-deliver a batch that has
-        already been persisted -- harmless for the rows (the unique constraint
-        absorbs it) but it would stall the partition on a transport problem
-        that has nothing to do with the data. A missing terminal event degrades
-        confirmation, it does not corrupt capture; the error is logged loudly
-        rather than swallowed silently.
-
-        NOT a re-emission of the captured events onto their original topics.
-        One event, carrying counts and the batch identity.
-        """
-        topics = _contract_topics("publish_topics")
-        if not topics:
-            return False
-        publish = await self.get_publish_fn()
-        if publish is None:
-            # No broker configured (unit/CLI contexts). Not an error.
-            return False
-        payload = {
-            "event_type": "omnimarket.hook-events-captured",
-            "batch_sha": batch.batch_sha,
-            "source": batch.source,
-            "correlation_id": batch.correlation_id,
-            "tenant_principal_id": batch.tenant_principal_id,
-            "events_received": len(batch.events),
-            "events_persisted": inserted,
-            "events_already_present": duplicates,
-        }
-        try:
-            await publish(topics[0], json.dumps(payload).encode("utf-8"))
-        except Exception:
-            logger.exception(
-                "hook-event-capture: batch %s persisted %d/%d event(s) but the "
-                "terminal event could not be published to %s. The rows are "
-                "committed; the submitter will not see a terminal status and "
-                "will leave its spool files in place, which is the safe "
-                "direction.",
-                batch.batch_sha[:12],
-                inserted,
-                len(batch.events),
-                topics[0],
-            )
-            return False
-        return True
-
-    async def _insert_batch(
-        self, batch: ModelHookEventCaptureRequest, tenant_id: str
+    def _insert_batch(
+        self,
+        batch: ModelHookEventCaptureRequest,
+        tenant_id: str,
+        db: DatabaseAdapter,
     ) -> int:
-        """Insert every event in one statement. Returns the count of NEW rows.
+        """Write every NEW event in the batch. Returns the count of NEW rows.
 
-        One statement, not a loop. A 250-event batch as 250 round trips would
-        also be 250 separate transactions, so a mid-batch failure would leave
-        the batch half-applied with the offset un-committed; the next delivery
-        would re-insert the surviving half and lean entirely on the unique
-        constraint to stay correct. A single statement makes the batch atomic:
-        either the whole batch lands or none of it does.
-
-        ``ON CONFLICT DO NOTHING`` rather than ``DO UPDATE``: a captured event
-        is immutable history. Re-receiving the same event_sha means the same
-        bytes arrived twice, so there is nothing to update -- and an UPDATE
-        would move ``updated_at``, making a pure replay look like new activity
-        to anything reading that column.
-
-        ``tenant=`` is passed explicitly (OMN-15919). Leaving it None makes the
-        adapter stamp the RLS GUC from its own READ-path resolver, which can
-        differ from the tenant the row actually carries -- the exact
-        two-resolver split that produced "new row violates row-level security
-        policy" on every delegation write whose row tenant differed from the
-        read-path default.
+        Queries for an existing ``(tenant_id, event_sha)`` row first and skips
+        the write when found — see the module docstring for why: the injected
+        adapter's ``upsert()`` has no ``DO NOTHING`` mode, and an unconditional
+        upsert would bump ``hook_events.updated_at`` on every replay.
         """
-        occurred_at: list[datetime] = [
-            safe_parse_date(e.occurred_at) for e in batch.events
-        ]
-        spooled_at: list[datetime | None] = [
-            safe_parse_date(e.spooled_at) if e.spooled_at else None
-            for e in batch.events
-        ]
-        rows = await self.db.execute(
-            f"""
-            INSERT INTO {TABLE} (
-                tenant_id, event_sha, event_type, occurred_at, payload,
-                event_id, correlation_id, run_id,
-                source, batch_sha, spooled_at, spool_reason
+        inserted = 0
+        for event in batch.events:
+            existing = db.query(
+                TABLE, {"tenant_id": tenant_id, "event_sha": event.event_sha}
             )
-            SELECT
-                $1,
-                src.event_sha, src.event_type, src.occurred_at,
-                src.payload_json::jsonb,
-                src.event_id, src.correlation_id, src.run_id,
-                $2, $3, src.spooled_at, src.spool_reason
-            FROM unnest(
-                $4::text[], $5::text[], $6::timestamptz[], $7::text[],
-                $8::text[], $9::text[], $10::text[],
-                $11::timestamptz[], $12::text[]
-            ) AS src(
-                event_sha, event_type, occurred_at, payload_json,
-                event_id, correlation_id, run_id,
-                spooled_at, spool_reason
-            )
-            ON CONFLICT (tenant_id, event_sha) DO NOTHING
-            RETURNING id
-            """,
-            tenant_id,
-            batch.source,
-            batch.batch_sha,
-            [e.event_sha for e in batch.events],
-            [e.event_type for e in batch.events],
-            occurred_at,
-            [e.payload_json for e in batch.events],
-            [e.event_id for e in batch.events],
-            [e.correlation_id for e in batch.events],
-            [e.run_id for e in batch.events],
-            spooled_at,
-            [e.spool_reason for e in batch.events],
-            tenant=tenant_id,
-        )
-        return len(rows)
+            if existing:
+                continue
+            row: dict[str, object] = {
+                "tenant_id": tenant_id,
+                "event_sha": event.event_sha,
+                "event_type": event.event_type,
+                "occurred_at": event.occurred_at,
+                "payload": event.payload(),
+                "event_id": event.event_id,
+                "correlation_id": event.correlation_id,
+                "run_id": event.run_id,
+                "source": batch.source,
+                "batch_sha": batch.batch_sha,
+                "spooled_at": event.spooled_at,
+                "spool_reason": event.spool_reason,
+            }
+            db.upsert(TABLE, CONFLICT_KEY, row)
+            inserted += 1
+        return inserted
+
+
+__all__: list[str] = [
+    "CONFLICT_KEY",
+    "TABLE",
+    "HandlerHookEventCapture",
+    "HookEventCaptureError",
+]
