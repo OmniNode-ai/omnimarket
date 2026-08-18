@@ -184,7 +184,7 @@ class PostgresSyncProjectionAdapter:
         # OMN-15306: reads need the GUC too. Without it an RLS-covered table
         # returns ZERO rows rather than erroring, so existing-row probes would
         # silently conclude no prior row exists and clobber real evidence.
-        tenant = resolve_read_tenant((filters or {}).get("tenant_id"))
+        tenant = resolve_read_tenant((filters or {}).get("tenant_id"), table=table)
         conn = self._connect()
         try:
             with (

@@ -60,6 +60,7 @@ from omnimarket.projection.runner import (
 )
 from omnimarket.projection.tenant_isolation import (
     require_tenant_id,
+    resolve_tenant_uuid_or_none,
     resolve_write_tenant,
 )
 
@@ -788,10 +789,16 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         require_tenant_id(event.tenant_id, table=self._table_delegation)
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
         # source event carried one -- omitting the key lets the column
-        # DEFAULT 'omninode' apply on INSERT and leaves an already-known
-        # tenant untouched on UPDATE (targeted-column upsert semantics).
-        if event.tenant_id:
-            row["tenant_id"] = event.tenant_id
+        # DEFAULT apply on INSERT and leaves an already-known tenant
+        # untouched on UPDATE (targeted-column upsert semantics).
+        # OMN-15683: delegation_events.tenant_id is UUID (migration 0031) --
+        # resolve the verified SLUG event.tenant_id to its canonical UUID
+        # before it reaches the row. This is the LIVE production write path
+        # (the async Kafka runner); the sync CLI path in
+        # HandlerProjectionDelegation.project() carries the identical fix.
+        resolved_tenant_uuid = resolve_tenant_uuid_or_none(event.tenant_id)
+        if resolved_tenant_uuid is not None:
+            row["tenant_id"] = resolved_tenant_uuid
         evidence = extract_quality_bar_evidence(row)
         evidence.update(
             extract_quality_bar_evidence(
@@ -977,8 +984,10 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             row["quality_gate_passed"] = False
         # OMN-14898: same fail-closed guard as _project_typed_event_async.
         require_tenant_id(row_model.tenant_id, table=self._table_delegation)
-        if row_model.tenant_id:
-            row["tenant_id"] = row_model.tenant_id
+        # OMN-15683: same UUID resolution as _project_typed_event_async above.
+        resolved_tenant_uuid = resolve_tenant_uuid_or_none(row_model.tenant_id)
+        if resolved_tenant_uuid is not None:
+            row["tenant_id"] = resolved_tenant_uuid
         # OMN-13596: preserve an already-correct response_text when this
         # delegate-skill terminal event carries None/empty response_text (a
         # late-arriving timeout terminal must not clobber the real answer an

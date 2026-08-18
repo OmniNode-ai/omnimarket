@@ -51,7 +51,15 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
-_INJECTED_TENANT = "mt-dogfood-omn14481"
+# OMN-15683: delegation_events.tenant_id is now UUID, resolved from a closed
+# slug->UUID mapping. The original dogfood slug "mt-dogfood-omn14481" (the
+# live incident this module documents) has no entry in that mapping and
+# would raise UnmappedTenantIdentityError rather than exercising the
+# tenant-carry seam this module actually tests -- use a mapped tenant
+# instead. The mechanism under test (does the tenant reach the row at all)
+# is unaffected by which mapped slug is used.
+_INJECTED_TENANT = "beta-business-proof"
+_INJECTED_TENANT_UUID = "91c74442-1233-4c97-b191-911a10346fdf"
 
 
 class _StubDispatchPort:
@@ -146,9 +154,11 @@ async def test_request_tenant_carries_through_response_to_projection_row() -> No
     # RED before the fix: the response had no tenant_id field, so the terminal
     # payload was tenant-less and the row omitted tenant_id (== 'omninode' default
     # on real Postgres). GREEN after: the response carries the injected tenant.
-    assert row.get("tenant_id") == _INJECTED_TENANT, (
-        "delegation_events row must carry the injected tenant, not the default; "
-        f"got {row.get('tenant_id')!r}"
+    # OMN-15683: the projection resolves the verified slug to its canonical UUID
+    # before the row is built, so the stored value is the UUID, not the slug.
+    assert row.get("tenant_id") == _INJECTED_TENANT_UUID, (
+        "delegation_events row must carry the injected tenant's resolved UUID, "
+        f"not the default; got {row.get('tenant_id')!r}"
     )
     # Never the interim single-tenant column default masquerading as isolation.
     assert row.get("tenant_id") != "omninode"
@@ -187,7 +197,11 @@ async def test_env_tenant_interim_carries_through_response_to_projection_row(
     no verified tenant_id. The response must fall back to the env-var interim so the
     row still stamps a real tenant instead of the 'omninode' default.
     """
-    env_tenant = "mt-env-only-tenant"
+    # OMN-15683: a mapped slug, distinct from _INJECTED_TENANT above, so this
+    # test still proves the env-interim path independently -- "mt-env-only-
+    # tenant" has no canonical UUID mapping and would raise.
+    env_tenant = "beta-gateway-canary-79afa7263852"
+    env_tenant_uuid = "79afa726-3852-464f-b7a4-d4b8b9c75ee7"
     monkeypatch.setattr(
         handler_module,
         "get_settings",
@@ -205,9 +219,9 @@ async def test_env_tenant_interim_carries_through_response_to_projection_row(
 
     row = await _drive_write_path(request)
 
-    assert row.get("tenant_id") == env_tenant, (
-        "env-var interim tenant must carry onto the row when the request omits one; "
-        f"got {row.get('tenant_id')!r}"
+    assert row.get("tenant_id") == env_tenant_uuid, (
+        "env-var interim tenant's resolved UUID must carry onto the row when the "
+        f"request omits one; got {row.get('tenant_id')!r}"
     )
 
 
