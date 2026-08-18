@@ -337,3 +337,60 @@ def test_contract_registry_migration_creates_table() -> None:
     assert "contract_hash" in sql
     assert "idx_contract_registry_node_name" in sql
     assert "idx_contract_registry_status" in sql
+
+
+# ---------------------------------------------------------------------------
+# projection_watermarks migration file exists and has correct DDL (OMN-16146)
+#
+# BaseProjectionRunner._update_watermark() (src/omnimarket/projection/runner.py)
+# upserts into projection_watermarks on every projected batch, for every
+# projection writer node (registration, llm-cost, savings, delegation,
+# baselines, routing-decision, session-outcome, ...). The table was never
+# migrated, so the writer logs "Failed to update watermark: relation
+# projection_watermarks does not exist" on every batch and restart/recovery
+# cannot resume from a persisted watermark. This is a single physical table
+# in the shared omnidash_analytics DB, so one migration (owned here, by the
+# writer named in OMN-16146) creates it once for every projection writer.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_projection_watermarks_migration_file_exists() -> None:
+    migration_file = (
+        Path(__file__).parent.parent.parent
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_projection_registration"
+        / "migrations"
+        / "0005_create_projection_watermarks.sql"
+    )
+    assert migration_file.exists(), f"Expected migration file at {migration_file}"
+
+
+@pytest.mark.unit
+def test_projection_watermarks_migration_creates_table() -> None:
+    migration_file = (
+        Path(__file__).parent.parent.parent
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_projection_registration"
+        / "migrations"
+        / "0005_create_projection_watermarks.sql"
+    )
+    sql = migration_file.read_text()
+    assert "CREATE TABLE IF NOT EXISTS projection_watermarks" in sql
+    # Columns referenced by BaseProjectionRunner._update_watermark's
+    # INSERT/ON CONFLICT statement -- the migration must match exactly.
+    assert "projection_name" in sql
+    assert "last_offset" in sql
+    assert "events_projected" in sql
+    assert "last_projected_at" in sql
+    assert "updated_at" in sql
+    # projection_name must be the ON CONFLICT target -- PRIMARY KEY or UNIQUE.
+    assert (
+        "projection_name TEXT PRIMARY KEY" in sql
+        or "PRIMARY KEY (projection_name)" in sql
+        or "UNIQUE (projection_name)" in sql
+    )
