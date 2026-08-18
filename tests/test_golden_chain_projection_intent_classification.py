@@ -332,10 +332,28 @@ class TestAgentSourceSeam:
         assert "agent_source" in snapshot["columns"]
 
     def test_migration_adds_agent_source(self) -> None:
-        sql = (
-            NODE_DIR / "migrations" / "0000_create_intent_classification_events.sql"
+        """agent_source arrives as its own forward migration, not a 0000 edit.
+
+        0000's content SHA-256 is pinned in omnibase_infra's
+        docker/migrations/forward/_ledger/application-migrations.tsv. Editing it
+        in place fails the forward runner's checksum gate on any database that
+        already applied it, so the column ships as 0001.
+        """
+        migrations = NODE_DIR / "migrations"
+        base_sql = (
+            migrations / "0000_create_intent_classification_events.sql"
         ).read_text()
-        assert "agent_source   TEXT" in sql
-        assert "ADD COLUMN IF NOT EXISTS agent_source TEXT" in sql, (
-            "shape-reconciliation block must converge drifted tables"
+        assert "agent_source" not in base_sql, (
+            "0000 is checksum-pinned in the infra ledger and must stay untouched"
+        )
+
+        add_sql = (
+            migrations / "0001_intent_classification_agent_source.sql"
+        ).read_text()
+        assert "ADD COLUMN IF NOT EXISTS agent_source TEXT" in add_sql, (
+            "the column must be added idempotently so warm volumes reconcile"
+        )
+        assert "NOT NULL" not in add_sql.split("ALTER TABLE")[1], (
+            "agent_source must stay nullable -- rows projected before the column "
+            "existed legitimately have no source"
         )
