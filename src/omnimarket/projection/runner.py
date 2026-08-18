@@ -16,11 +16,10 @@ from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 import yaml
 from aiokafka import AIOKafkaConsumer, AIOKafkaProducer, TopicPartition
-from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -31,22 +30,26 @@ from pydantic import (
     model_validator,
 )
 
-from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.config.settings import Settings
 from omnimarket.projection.dlq import (
     build_dlq_envelope,
     correlation_id_from_payload,
 )
 from omnimarket.projection.envelope import unwrap_envelope
-from omnimarket.projection.error_classification import (
-    ProjectionErrorClass,
-    classify_projection_error,
-)
 from omnimarket.projection.models import (
     ModelProjectionSnapshotDelta,
     ProjectionTableConfig,
     snapshot_json_value,
 )
+
+if TYPE_CHECKING:
+    # OMN-15800 AC6: the projection-api process must never load asyncpg --
+    # only the runtime (this runner, when it actually consumes and writes)
+    # does. Import for type checking only; the runtime imports are lazy, at
+    # the call sites that construct an AsyncpgAdapter or classify a DB error
+    # (error_classification imports asyncpg's exception hierarchy at module
+    # scope for the same reason).
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 
 logger = logging.getLogger(__name__)
 
@@ -398,6 +401,12 @@ class BaseProjectionRunner(ABC):
             if resolved_binding is not None
             else DEFAULT_CLIENT_ID
         )
+        # Lazy import (OMN-15800 AC6): AsyncpgAdapter pulls in asyncpg, and
+        # only the runtime process is allowed to load a DB driver -- the
+        # projection-api process imports names from this module but must
+        # never reach asyncpg transitively.
+        from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+
         self._db = AsyncpgAdapter(
             dsn=(
                 resolved_binding.resolve_database_url()
@@ -537,6 +546,15 @@ class BaseProjectionRunner(ABC):
         brokers = self.kafka_bootstrap_servers
         if not brokers:
             return None
+
+        # Lazy import (OMN-15800 AC6): importing anything from
+        # ``omnibase_infra`` transitively loads asyncpg (that package's own
+        # top-level __init__ chain reaches a module-scope asyncpg.exceptions
+        # import); the projection-api process must never load asyncpg, but
+        # api_server.py imports names from this module.
+        from omnibase_infra.event_bus.kafka_auth import (
+            build_aiokafka_auth_kwargs_from_env,
+        )
 
         producer = AIOKafkaProducer(
             bootstrap_servers=brokers,
@@ -724,6 +742,11 @@ class BaseProjectionRunner(ABC):
 
     async def run(self) -> None:
         """Main entry point -- connect to DB and Kafka, consume events."""
+        # Lazy import (OMN-15800 AC6): see the note in _ensure_producer().
+        from omnibase_infra.event_bus.kafka_auth import (
+            build_aiokafka_auth_kwargs_from_env,
+        )
+
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):
             loop.add_signal_handler(sig, lambda: asyncio.ensure_future(self.shutdown()))
@@ -874,6 +897,14 @@ class BaseProjectionRunner(ABC):
             projected = await self.project_event(topic, data, meta)
         except Exception as err:
             # OMN-13634: classify before deciding offset policy.
+            # Lazy import (OMN-15800 AC6): error_classification imports
+            # asyncpg's exception hierarchy at module scope; only the
+            # runtime (which reaches this except-branch) may load it.
+            from omnimarket.projection.error_classification import (
+                ProjectionErrorClass,
+                classify_projection_error,
+            )
+
             self._stats.errors_count += 1
             ts = self._stats.topic_stats.setdefault(
                 topic, {"projected": 0, "errors": 0}
