@@ -1,6 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 # onex-allow-file OMN-16156 reason="test fixture for the gate's own extended pattern catalog; deliberately contains every new topology-class literal as test data"
+# onex-allow-internal-ip OMN-16156 reason="same as above -- whole-file exemption for tests/unit/structure/test_no_hardcoded_literals.py"
 """Tests for the generalized topology/PII pattern catalog in
 ``scripts/validation/check_leaked_literals.sh`` (OMN-16156, W0-GATE / G1).
 
