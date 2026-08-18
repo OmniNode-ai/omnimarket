@@ -46,6 +46,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup im
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
+    EnumOccRefRefreshOutcome,
     ModelEvidenceCheckResult,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
@@ -89,6 +90,26 @@ _DEFAULT_EXECUTION_SCOPE = cast(
 # collect() with no recovery (CodeRabbit — Stability). Kept generous because a
 # fetch of the OCC repo may transfer real objects.
 _GIT_OP_TIMEOUT_S = 60
+
+# OMN-15454: a failed OCC ref refresh (git fetch) used to be swallowed at
+# logger.info and the collector proceeded against whatever the local
+# remote-tracking ref already had, while still logging that the run resolved
+# "dev-first" — a fail-open on the ONLY sanctioned Done-flip tool's evidence
+# source. Default behaviour is now fail-closed: FETCH_FAILED refuses the
+# whole collect() rather than silently grounding a verdict in a possibly-stale
+# clone. This named, logged override is the sole documented escape hatch (per
+# the ticket's fix-item 2b) — proceeding under it marks every returned check
+# result un-attributable to a verified-fresh origin/dev rather than pretending
+# nothing happened.
+_ALLOW_STALE_OCC_REF_ENV = "DOD_VERIFY_ALLOW_STALE_OCC_REF"
+
+# Substring git prints for the specific ref-lock race this ticket's fix-item 4
+# calls out: "cannot lock ref 'refs/remotes/origin/dev': is at X but expected
+# Y" under a concurrent fetch/push into the SAME OCC clone (the ordinary state
+# of this repo while the merge controller runs — i.e. precisely when
+# dod_verify is invoked for a Done-flip). Retriable; distinct from an offline
+# host or an absent remote, which a retry cannot fix.
+_REF_LOCK_ERROR_MARKER = "cannot lock ref"
 
 # OMN-14207: live GitHub PR-state verification.
 #
@@ -1056,6 +1077,18 @@ class EvidenceCollector:
         # visible SKIPPED note instead of silently omitting the live-state
         # check. Reset per item (mirrors ``_current_evidence_item_id``).
         self._last_binding_note: str | None = None
+        # OMN-15454 AC2: provenance of the OCC governance ref actually read by
+        # the most recent auto-resolved collect() call. Populated by
+        # ``collect()`` before it returns; read by ``handler_dod_verify`` to
+        # stamp ``ModelDodVerifyState``. None when collect() was called with
+        # an explicit contract_path (no OCC auto-resolution happened at all).
+        self.occ_refresh_outcome: EnumOccRefRefreshOutcome | None = None
+        self.occ_resolved_sha: str | None = None
+
+    @property
+    def occ_governance_ref(self) -> str:
+        """The OCC governance ref this collector resolves against (e.g. ``origin/dev``)."""
+        return self._occ_governance_ref
 
     @staticmethod
     def _github_lookup_result(
@@ -1094,7 +1127,56 @@ class EvidenceCollector:
 
         created_worktree: Path | None = None
         try:
-            dev_root, created_worktree = self._materialize_occ_dev_worktree()
+            dev_root, created_worktree, refresh_outcome, resolved_sha = (
+                self._materialize_occ_dev_worktree()
+            )
+            self.occ_refresh_outcome = refresh_outcome
+            self.occ_resolved_sha = resolved_sha
+
+            # OMN-15454: fail-closed by default. A failed refresh must not
+            # silently yield an "origin/dev-resolved" verdict — the local
+            # clone content at that point is UNKNOWN freshness, and UNKNOWN
+            # must never read as fresh. The only sanctioned continuation is
+            # the named, logged override below, which marks every returned
+            # result un-attributable rather than pretending nothing happened.
+            allow_stale = os.environ.get(
+                _ALLOW_STALE_OCC_REF_ENV, ""
+            ).strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            )
+            if (
+                refresh_outcome is EnumOccRefRefreshOutcome.FETCH_FAILED
+                and not allow_stale
+            ):
+                logger.error(
+                    "Refusing to resolve %s for %s: OCC ref refresh failed and "
+                    "%s is not set. Set %s=1 to proceed anyway (results will be "
+                    "marked un-attributable to a verified-fresh origin/dev).",
+                    self._occ_governance_ref,
+                    ticket_id,
+                    _ALLOW_STALE_OCC_REF_ENV,
+                    _ALLOW_STALE_OCC_REF_ENV,
+                )
+                return [
+                    ModelEvidenceCheckResult(
+                        evidence_id="occ_ref_refresh",
+                        description=(
+                            f"OCC ref refresh failed for {self._occ_governance_ref}"
+                        ),
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=(
+                            "OCC_REF_REFRESH_FAILED: git fetch of "
+                            f"{self._occ_governance_ref} failed (after retrying "
+                            "the ref-lock race once) — the local clone's "
+                            "freshness is UNKNOWN, so this run refuses rather "
+                            f"than resolving evidence against it. Set "
+                            f"{_ALLOW_STALE_OCC_REF_ENV}=1 to override."
+                        ),
+                    )
+                ]
+
             if dev_root is not None:
                 dev_candidate = Path(dev_root) / "contracts" / f"{ticket_id}.yaml"
                 if dev_candidate.exists():
@@ -1102,10 +1184,13 @@ class EvidenceCollector:
                     self._occ_dev_root = dev_root
                     logger.info(
                         "Resolved OCC contract for %s from %s worktree at %s "
-                        "(dev-first, overrides any main working-tree copy)",
+                        "(dev-first, overrides any main working-tree copy; "
+                        "refresh=%s, resolved_sha=%s)",
                         ticket_id,
                         self._occ_governance_ref,
                         dev_root,
+                        refresh_outcome.value if refresh_outcome else None,
+                        resolved_sha,
                     )
                 elif self._find_contract(ticket_id) is None:
                     logger.info(
@@ -1114,7 +1199,39 @@ class EvidenceCollector:
                         ticket_id,
                         self._occ_governance_ref,
                     )
-            return self._collect_impl(ticket_id, contract_path)
+            results = self._collect_impl(ticket_id, contract_path)
+            if refresh_outcome is EnumOccRefRefreshOutcome.FETCH_FAILED:
+                # allow_stale is True here (the refusal branch above already
+                # returned otherwise). Disclosed, not buried: every result
+                # this run produced is marked un-attributable, plus a
+                # standalone item names the override explicitly.
+                results = [
+                    result.model_copy(
+                        update={
+                            "message": (
+                                f"{result.message or ''} "
+                                "[OMN-15454: UNATTRIBUTABLE — OCC ref refresh "
+                                f"failed; {_ALLOW_STALE_OCC_REF_ENV} override "
+                                "active, verdict not grounded in a verified-"
+                                "fresh origin/dev]"
+                            ).strip()
+                        }
+                    )
+                    for result in results
+                ]
+                results.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id="occ_ref_refresh_override",
+                        description="OCC ref refresh failure — override active",
+                        status=EnumEvidenceCheckStatus.SKIPPED,
+                        message=(
+                            f"{_ALLOW_STALE_OCC_REF_ENV} was set; every check "
+                            "result above is un-attributable to a verified-"
+                            f"fresh {self._occ_governance_ref}."
+                        ),
+                    )
+                )
+            return results
         finally:
             self._occ_dev_root = None
             if created_worktree is not None:
@@ -1132,28 +1249,43 @@ class EvidenceCollector:
                 return occ
         return None
 
-    def _materialize_occ_dev_worktree(self) -> tuple[str | None, Path | None]:
-        """Add a detached ``origin/dev`` worktree of the OCC repo.
+    def _materialize_occ_dev_worktree(
+        self,
+    ) -> tuple[str | None, Path | None, EnumOccRefRefreshOutcome | None, str | None]:
+        """Add a detached worktree of the OCC repo at ``self._occ_governance_ref``.
 
-        Returns ``(worktree_path_str, worktree_path)`` on success, else
-        ``(None, None)``. The worktree is placed under ``OMNI_HOME`` (when set) so
-        relative ``file_exists`` checks stay inside the containment boundary.
+        Returns ``(worktree_path_str, worktree_path, refresh_outcome,
+        resolved_sha)``. ``refresh_outcome`` is ``None`` only when no fetch
+        was even attempted — no OCC root resolvable at all (a legitimate,
+        pre-existing case: the caller falls back to the working-tree contract
+        search) — never as a stand-in for a failed attempt; a real attempt
+        always yields ``FETCHED`` / ``FETCH_FAILED`` / ``NOT_APPLICABLE``. The
+        first two return values are ``(None, None)`` when the worktree could
+        not be materialised at all (the ``git worktree add`` itself
+        failed/timed out) — a different failure class from a refresh outcome
+        of ``FETCH_FAILED``, where the worktree DOES materialise, just against
+        whatever the local remote-tracking ref already had. ``resolved_sha``
+        is the worktree HEAD's 40-char commit SHA (OMN-15454 AC2 provenance)
+        when a worktree was created, else ``None``. The worktree is placed
+        under ``OMNI_HOME`` (when set) so relative ``file_exists`` checks stay
+        inside the containment boundary.
         """
         occ = self._resolve_occ_root()
         if occ is None:
-            return None, None
+            return None, None, None, None
         # Refresh the remote-tracking ref first so a long-lived OMNI_HOME clone
         # does not materialise a STALE origin/dev and miss the very contract this
-        # rider exists to pick up (CodeRabbit — Data Integrity). Best-effort: a
-        # fetch failure (offline, no remote — e.g. the local-branch test ref)
-        # falls through to whatever the local clone already has.
-        self._refresh_occ_ref(occ)
+        # rider exists to pick up (CodeRabbit — Data Integrity). The outcome is
+        # now consumed by the caller (OMN-15454) rather than discarded — a
+        # failed refresh no longer silently grounds a verdict in the local
+        # clone as if it were fresh.
+        refresh_outcome = self._refresh_occ_ref(occ)
         omni_home = os.environ.get("OMNI_HOME", "").strip()
         parent = Path(omni_home) if omni_home and Path(omni_home).is_dir() else None
         try:
             tmp = Path(tempfile.mkdtemp(prefix=".occ-dev-wt-", dir=parent))
         except OSError:
-            return None, None
+            return None, None, refresh_outcome, None
         try:
             proc = subprocess.run(
                 [
@@ -1179,7 +1311,7 @@ class EvidenceCollector:
                 _GIT_OP_TIMEOUT_S,
             )
             shutil.rmtree(tmp, ignore_errors=True)
-            return None, None
+            return None, None, refresh_outcome, None
         if proc.returncode != 0:
             logger.warning(
                 "Could not materialise %s worktree of OCC: %s",
@@ -1187,20 +1319,37 @@ class EvidenceCollector:
                 proc.stderr.strip(),
             )
             shutil.rmtree(tmp, ignore_errors=True)
-            return None, None
-        return str(tmp), tmp
+            return None, None, refresh_outcome, None
+        resolved_sha = self._resolve_worktree_head_sha(tmp)
+        return str(tmp), tmp, refresh_outcome, resolved_sha
 
-    def _refresh_occ_ref(self, occ: Path) -> None:
-        """Best-effort ``git fetch`` of the OCC governance ref's remote branch.
+    def _resolve_worktree_head_sha(self, worktree: Path) -> str | None:
+        """Return the 40-char commit SHA the worktree actually checked out.
 
-        Only fires for a ``<remote>/<branch>`` ref (e.g. ``origin/dev``); a bare
-        local-branch ref (test override) is left untouched. Failures are logged
-        and swallowed — the worktree add proceeds against the local clone.
+        OMN-15454 AC2: "attribution must name what was actually read, not
+        what was intended." Best-effort — a failure here does not roll back
+        the worktree add; it only means provenance is unavailable, which the
+        caller surfaces as ``None`` rather than fabricating a value.
         """
-        ref = self._occ_governance_ref
-        if "/" not in ref:
-            return
-        remote, branch = ref.split("/", 1)
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(worktree), "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_GIT_OP_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            return None
+        if proc.returncode != 0:
+            return None
+        sha = proc.stdout.strip()
+        return sha or None
+
+    def _run_occ_fetch(
+        self, occ: Path, remote: str, branch: str
+    ) -> tuple[EnumOccRefRefreshOutcome, str]:
+        """Run one ``git fetch`` attempt. Pure I/O helper, no retry logic."""
         try:
             proc = subprocess.run(
                 ["git", "-C", str(occ), "fetch", "--quiet", remote, branch],
@@ -1210,15 +1359,57 @@ class EvidenceCollector:
                 timeout=_GIT_OP_TIMEOUT_S,
             )
         except subprocess.TimeoutExpired:
-            logger.warning("Timed out fetching %s for OCC worktree refresh", ref)
-            return
-        if proc.returncode != 0:
+            return EnumOccRefRefreshOutcome.FETCH_FAILED, "timed out"
+        if proc.returncode == 0:
+            return EnumOccRefRefreshOutcome.FETCHED, ""
+        return EnumOccRefRefreshOutcome.FETCH_FAILED, proc.stderr.strip()
+
+    def _refresh_occ_ref(self, occ: Path) -> EnumOccRefRefreshOutcome:
+        """``git fetch`` the OCC governance ref's remote branch — typed outcome.
+
+        OMN-15454: previously logged a failure at ``logger.info`` and returned
+        ``None`` unconditionally, which every caller discarded — the worktree
+        add proceeded against the local clone regardless, while ``collect()``
+        still logged that the run resolved "dev-first". Callers now consume
+        this typed outcome and decide explicitly rather than continuing on a
+        swallowed failure.
+
+        Only fires for a ``<remote>/<branch>`` ref (e.g. ``origin/dev``); a bare
+        local-branch ref (test override, AC4) has no remote and is
+        ``NOT_APPLICABLE`` — that path is unchanged.
+
+        The specific ``cannot lock ref ... is at X but expected Y`` race
+        (fix-item 4) is a symptom of concurrent mutation of the SAME OCC
+        clone — the *normal* state of this repo while the merge controller
+        runs, i.e. precisely when a Done-flip is attempted — and is retried
+        once. Any other failure (offline, no remote) is not retried; a second
+        attempt cannot fix those.
+        """
+        ref = self._occ_governance_ref
+        if "/" not in ref:
+            return EnumOccRefRefreshOutcome.NOT_APPLICABLE
+        remote, branch = ref.split("/", 1)
+        outcome, stderr = self._run_occ_fetch(occ, remote, branch)
+        if outcome is EnumOccRefRefreshOutcome.FETCHED:
+            return outcome
+        if _REF_LOCK_ERROR_MARKER in stderr:
             logger.info(
-                "OCC ref refresh (git fetch %s %s) failed; using local clone: %s",
+                "OCC ref refresh (git fetch %s %s) hit a ref-lock race; "
+                "retrying once: %s",
                 remote,
                 branch,
-                proc.stderr.strip(),
+                stderr,
             )
+            outcome, stderr = self._run_occ_fetch(occ, remote, branch)
+            if outcome is EnumOccRefRefreshOutcome.FETCHED:
+                return outcome
+        logger.warning(
+            "OCC ref refresh (git fetch %s %s) failed: %s",
+            remote,
+            branch,
+            stderr,
+        )
+        return EnumOccRefRefreshOutcome.FETCH_FAILED
 
     def _remove_occ_dev_worktree(self, worktree: Path) -> None:
         occ = self._resolve_occ_root()
