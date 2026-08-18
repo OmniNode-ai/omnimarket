@@ -60,6 +60,21 @@ db_io:
       migration: src/omnimarket/nodes/node_log_persistence_effect/migrations/0000_create_log_entries.sql
       access: write
       role: log_entries
+    # OMN-14751: node_projection_intent_classification's own contract.yaml
+    # already declares this db_io.db_tables entry (schema: omninode_internal,
+    # name: intent_classification_events); this top-level entry registers it
+    # in the ownership catalog scripts/ci/check_application_database_sql.py
+    # reads via --ownership-manifest, satisfying the OMN-15361 SQL ownership
+    # gate for this migration's schema-qualified
+    # omninode_internal.intent_classification_events ALTER TABLE (a node-owned
+    # migration vendored into omnibase_infra's forward-migration tree via
+    # scripts/sync-node-migrations.sh, same pattern as log_entries above).
+    - name: intent_classification_events
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_intent_classification/migrations/0001_intent_classification_agent_source.sql
+      access: write
+      role: intent_classification_events
 
 relation_evidence:
   - name: omnimarket_schema_migrations

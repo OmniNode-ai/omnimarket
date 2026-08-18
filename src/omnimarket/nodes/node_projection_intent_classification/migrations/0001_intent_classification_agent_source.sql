@@ -19,5 +19,5 @@
 --
 -- Idempotent ADD so warm dev/stability volumes reconcile cleanly.
 
-ALTER TABLE intent_classification_events
+ALTER TABLE omninode_internal.intent_classification_events
   ADD COLUMN IF NOT EXISTS agent_source TEXT;

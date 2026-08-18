@@ -966,7 +966,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_intent_classification"
+        "node_projection_intent_classification",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_intent_classification/migrations/0000_create_intent_classification_events.sql"
@@ -976,6 +977,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_intent_classification/contract.yaml"
       ],
       "current_schema": [
@@ -1005,7 +1007,8 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_intent_classification"
+        "node_projection_intent_classification",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -2847,7 +2850,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_intent_classification"
+        "node_projection_intent_classification",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_intent_classification/migrations/0000_create_intent_classification_events.sql"
@@ -2857,6 +2861,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_intent_classification/contract.yaml"
       ],
       "current_schema": [
@@ -2897,7 +2902,8 @@
       "readers": [],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_intent_classification"
+        "node_projection_intent_classification",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
