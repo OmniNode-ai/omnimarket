@@ -24,10 +24,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 from aiokafka import AIOKafkaConsumer, TopicPartition
-from omnibase_infra.enums import EnumConsumerGroupPurpose
-from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
-from omnibase_infra.models import ModelNodeIdentity
-from omnibase_infra.utils import apply_instance_discriminator, compute_consumer_group_id
 
 from omnimarket.projection.models import (
     ModelProjectionSnapshotDelta,
@@ -80,6 +76,18 @@ def _default_group_id() -> str:
     fail-open class flagged on OMN-15835 for the sibling savings-estimator
     group, and it would derive a group id that is authorized nowhere.
     """
+    # Lazy import (OMN-15800 AC6): importing anything from ``omnibase_infra``
+    # transitively loads asyncpg (that package's own top-level __init__
+    # chain reaches a module-scope asyncpg.exceptions import), and the
+    # projection-api process must never load asyncpg. This function only
+    # runs at SnapshotCache instance construction, never at module import.
+    from omnibase_infra.enums import EnumConsumerGroupPurpose
+    from omnibase_infra.models import ModelNodeIdentity
+    from omnibase_infra.utils import (
+        apply_instance_discriminator,
+        compute_consumer_group_id,
+    )
+
     environment = os.environ["ONEX_ENVIRONMENT"]
     identity = ModelNodeIdentity(
         env=environment,
@@ -361,6 +369,11 @@ class SnapshotCache:
                 "SnapshotCache: no bus_backed exposures declared; not starting a consumer"
             )
             return
+        # Lazy import (OMN-15800 AC6): see the note in _default_group_id().
+        from omnibase_infra.event_bus.kafka_auth import (
+            build_aiokafka_auth_kwargs_from_env,
+        )
+
         self._consumer = AIOKafkaConsumer(  # no-contract-check: projection-api runtime owns the snapshot-cache consumer lifecycle (OMN-15800), same runtime-boundary pattern as BaseProjectionRunner.run()
             *self._exposures.keys(),
             bootstrap_servers=self._bootstrap_servers,

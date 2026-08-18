@@ -43,6 +43,8 @@ RED (documented — this test failed before OMN-15800 with an AttributeError:
 from __future__ import annotations
 
 import asyncio
+import subprocess
+import sys
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -341,3 +343,45 @@ def test_api_server_module_graph_reaches_no_asyncpg_or_psycopg2() -> None:
     assert "get_pool" not in module_vars
     assert "_dsn" not in module_vars
     assert "ModelProjectionDatabaseBinding" not in module_vars
+
+
+@pytest.mark.unit
+def test_api_server_import_never_loads_asyncpg_or_psycopg2_in_sys_modules() -> None:
+    """OMN-15800 AC6: importing api_server must not pull asyncpg/psycopg2 in.
+
+    The source/namespace check above only inspects ``api_server.py``'s own
+    text and top-level names -- it cannot see a transitive eager import
+    pulled in by a name api_server.py imports from elsewhere (e.g.
+    ``omnimarket.projection.runner`` importing ``AsyncpgAdapter`` at module
+    scope). It is also blind in-process: once any earlier test in the same
+    pytest session imports asyncpg for any reason, ``sys.modules`` already
+    has it before this test runs, so even a ``sys.modules`` assertion taken
+    in-process would be contaminated.
+
+    This test runs in a fresh subprocess that imports ONLY
+    ``omnimarket.projection.api_server`` and reports whether asyncpg/
+    psycopg2 ended up in ``sys.modules`` -- the only way to observe the
+    real, isolated import graph the deployed projection-api process has.
+    """
+    probe = (
+        "import sys\n"
+        "import omnimarket.projection.api_server\n"
+        "print('asyncpg' in sys.modules)\n"
+        "print('psycopg2' in sys.modules)\n"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", probe],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
+    has_asyncpg, has_psycopg2 = completed.stdout.strip().splitlines()
+    assert has_asyncpg == "False", (
+        "asyncpg landed in sys.modules via the api_server import graph "
+        f"(subprocess stdout: {completed.stdout!r})"
+    )
+    assert has_psycopg2 == "False", (
+        "psycopg2 landed in sys.modules via the api_server import graph "
+        f"(subprocess stdout: {completed.stdout!r})"
+    )

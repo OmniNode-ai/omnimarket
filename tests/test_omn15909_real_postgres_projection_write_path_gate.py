@@ -275,6 +275,48 @@ async def _provisioned_runner() -> AsyncIterator[
 
 
 # ---------------------------------------------------------------------------
+# 0. OMN-15800 AC6 regression sentinel: BaseProjectionRunner.__init__ now
+#    lazy-imports AsyncpgAdapter (moved out of runner.py's module scope so
+#    the projection-api process never loads asyncpg -- see
+#    tests/integration/test_projection_bus_seam.py::
+#    test_api_server_import_never_loads_asyncpg_or_psycopg2_in_sys_modules).
+#    This proves the lazy import didn't silently break real DB connectivity:
+#    constructing a BaseProjectionRunner subclass still yields a working
+#    AsyncpgAdapter against a real, migrated Postgres schema.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestOmn15800LazyAsyncpgImportStillConnects:
+    async def test_runner_constructor_lazy_import_still_yields_working_db(
+        self,
+    ) -> None:
+        async with _provisioned_runner() as (runner, admin_conn, _schema):
+            # runner.db is the AsyncpgAdapter BaseProjectionRunner.__init__
+            # constructed via the now-lazy `from omnimarket.adapters
+            # .asyncpg_adapter import AsyncpgAdapter` -- proves the import
+            # move didn't break attribute wiring or the pool binding this
+            # fixture performs on top of it.
+            assert isinstance(runner.db, AsyncpgAdapter)
+            correlation_id = str(uuid4())
+            data = _real_delegation_completed_payload(
+                correlation_id=correlation_id, tenant_id="acme-corp"
+            )
+            meta = MessageMeta(partition=0, offset=0, fallback_id=correlation_id)
+
+            ok = await runner.project_event(
+                runner._topic_delegation_completed, data, meta
+            )
+
+            assert ok is True
+            row = await admin_conn.fetchrow(
+                "SELECT 1 FROM delegation_events WHERE correlation_id = $1",
+                correlation_id,
+            )
+            assert row is not None, "the lazy-import-backed write must still land"
+
+
+# ---------------------------------------------------------------------------
 # 1. End-to-end write path: the REAL DelegationProjectionRunner.project_event()
 #    against real, migrated Postgres.
 # ---------------------------------------------------------------------------
