@@ -31,12 +31,12 @@ import subprocess
 from datetime import UTC, datetime
 from typing import Any
 
+from omnibase_core.enums.overseer.enum_failure_class import EnumFailureClass
+from omnibase_core.enums.overseer.enum_verifier_verdict import EnumVerifierVerdict
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
-from onex_change_control.overseer.enum_failure_class import EnumFailureClass
-from onex_change_control.overseer.enum_verifier_verdict import EnumVerifierVerdict
-from onex_change_control.overseer.model_context_bundle import ModelContextBundle
-from onex_change_control.overseer.model_verifier_output import ModelVerifierOutput
+from omnibase_core.models.overseer.model_context_bundle import ModelContextBundle
+from omnibase_core.models.overseer.model_verifier_output import ModelVerifierOutput
 
 from omnimarket.nodes.node_overseer_verifier.models.model_claimed_pr import (
     ModelClaimedPr,

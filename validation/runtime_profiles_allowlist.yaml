@@ -38,8 +38,6 @@ allowlist:
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: demo_drift_detector
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
-  - node_id: doc_freshness_sweep
-    reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: dod_verify
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: duplication_sweep

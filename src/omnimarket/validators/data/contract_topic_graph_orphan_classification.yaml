@@ -197,13 +197,6 @@ entries:
   topic: onex.cmd.omnimarket.dispatch-worker-execution-start.v1
   tag: genuine_orphan
   signal: null
-- key: ORPHANED_CONSUMER::doc_freshness_sweep::onex.cmd.omnimarket.doc-freshness-sweep-start.v1
-  defect: ORPHANED_CONSUMER
-  node: doc_freshness_sweep
-  package: omnimarket
-  topic: onex.cmd.omnimarket.doc-freshness-sweep-start.v1
-  tag: cli_dispatch_reachable
-  signal: skill_mapping_registry
 - key: ORPHANED_CONSUMER::duplication_sweep::onex.cmd.omnimarket.duplication-sweep-start.v1
   defect: ORPHANED_CONSUMER
   node: duplication_sweep
@@ -2444,13 +2437,6 @@ entries:
   topic: onex.evt.omnimarket.dispatch-worker-execution-completed.v1
   tag: genuine_orphan
   signal: null
-- key: ORPHANED_PRODUCER::doc_freshness_sweep::onex.evt.omnimarket.doc-freshness-sweep-completed.v1
-  defect: ORPHANED_PRODUCER
-  node: doc_freshness_sweep
-  package: omnimarket
-  topic: onex.evt.omnimarket.doc-freshness-sweep-completed.v1
-  tag: cli_dispatch_reachable
-  signal: skill_mapping_registry
 - key: ORPHANED_PRODUCER::dod_verify::onex.evt.omnimarket.dod-verify-completed.v1
   defect: ORPHANED_PRODUCER
   node: dod_verify
