@@ -5,6 +5,11 @@ on:
     branches: [main, 'hotfix/**']
   pull_request:
     branches: [main, dev]
+    # OMN-16217: default types (opened/synchronize/reopened) don't retrigger
+    # on a draft->ready flip. `ready_for_review` is added so undrafting a PR
+    # re-evaluates the draft-state admission gate on the current head without
+    # requiring a new push — see coverage-sweep-gate's `if:` below.
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
 
 # OMN-14645: single-flight per ref, QUEUE — never cancel — an older candidate.
@@ -1687,7 +1692,35 @@ jobs:
   # ============================================================================
   coverage-sweep-gate:
     needs: occ-preflight
-    if: always()
+    # OMN-16217: draft-state CI admission gate (org-wide fan-out of the
+    # mechanism proven on onex_change_control#6686 / OMN-15731) — GATED here,
+    # and ONLY for dev-targeting PRs; push/merge_group/main-or-hotfix-
+    # targeting PRs are unaffected (`always()` still holds for them),
+    # preserving the dev->main promotion-boundary guarantee (root CLAUDE.md
+    # rule #4) exactly as before. `coverage-sweep-gate` is the target: this
+    # file's own concurrency-group comment above already documents it as "the
+    # longest-pole job (3 fresh sibling clones + uv sync --all-extras + full
+    # pytest --cov)" — the single most expensive unconditional job in this
+    # workflow, and the closest omnimarket analog to OCC's `pre-commit`
+    # target. omnimarket has no `ci:ready`-style merge-intent label pilot
+    # (unlike OCC), so this is a PURE draft gate — no dual-accept fallback
+    # arm.
+    #
+    # Fail-closed proof is structural, not a new code path: `Coverage Sweep
+    # Gate` stays in STRICT_GATE_JOBS in scripts/ci/ci_summary_gate.py (it is
+    # not, and must not become, a member of SKIPPABLE_GATE_JOBS) — a
+    # `skipped` conclusion (draft or otherwise) already fails `CI Summary`
+    # closed for a dev-targeting PR, so a draft PR's gate context reads red
+    # (never green-by-skip). Undrafting fires `ready_for_review` (added to
+    # this workflow's `pull_request.types` above), which re-evaluates this
+    # `if:` on the current head and runs the job for real. This job is
+    # currently NOT a directly-required branch-protection context (removed
+    # from .github/required-checks.yaml 2026-07-25 per that file's header —
+    # verified live against `gh api .../branches/{dev,main}/protection/
+    # required_status_checks`), so the required-check skip-vector guard does
+    # not analyze it directly; it is enforced transitively, only through `CI
+    # Summary`'s STRICT_GATE_JOBS membership, exactly as documented there.
+    if: always() && (github.event_name != 'pull_request' || github.base_ref != 'dev' || !github.event.pull_request.draft)
     name: Coverage Sweep Gate
     runs-on: ubuntu-latest
     # OMN-14645: bound the longest-pole job explicitly. The generation step caps
