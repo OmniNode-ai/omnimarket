@@ -95,6 +95,38 @@ CREATE TABLE IF NOT EXISTS omninode_internal.projection_watermarks (
     CONSTRAINT non_negative_projection_watermarks_events_projected CHECK (events_projected >= 0)
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: omninode_internal.projection_watermarks ----
+-- CREATE TABLE IF NOT EXISTS silently no-ops against a drifted pre-existing
+-- table; the guarded adds below converge such a table onto the shape
+-- declared above (no-ops on the fresh-create path, since every column
+-- already exists there). No DROP, no recreate, no TRUNCATE. Matches
+-- node_log_persistence_effect/0000_create_log_entries.sql's own precedent.
+ALTER TABLE omninode_internal.projection_watermarks ADD COLUMN IF NOT EXISTS projection_name TEXT;
+ALTER TABLE omninode_internal.projection_watermarks ADD COLUMN IF NOT EXISTS last_offset BIGINT DEFAULT 0;
+ALTER TABLE omninode_internal.projection_watermarks ADD COLUMN IF NOT EXISTS events_projected BIGINT DEFAULT 0;
+ALTER TABLE omninode_internal.projection_watermarks ADD COLUMN IF NOT EXISTS last_projected_at TIMESTAMPTZ;
+ALTER TABLE omninode_internal.projection_watermarks ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE omninode_internal.projection_watermarks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- Defaults: ADD COLUMN IF NOT EXISTS ... DEFAULT is a no-op on a column that
+-- already existed without one -- restore the declared defaults explicitly so
+-- a drifted pre-existing column converges too, not only a brand-new one.
+ALTER TABLE omninode_internal.projection_watermarks ALTER COLUMN last_offset SET DEFAULT 0;
+ALTER TABLE omninode_internal.projection_watermarks ALTER COLUMN events_projected SET DEFAULT 0;
+ALTER TABLE omninode_internal.projection_watermarks ALTER COLUMN created_at SET DEFAULT NOW();
+ALTER TABLE omninode_internal.projection_watermarks ALTER COLUMN updated_at SET DEFAULT NOW();
+
+-- No NOT NULL/PRIMARY KEY convergence block here (unlike log_entries'
+-- precedent): this table has never physically existed anywhere (see the
+-- file header), so there is no pre-existing drifted-shape row set to
+-- reconcile against -- the CREATE TABLE above already declares
+-- projection_name PRIMARY KEY and the NOT NULL columns directly, which is
+-- sufficient on a genuine fresh-create path. A DO $$ ... $$ convergence
+-- block would also unconditionally trip
+-- scripts/ci/check_application_database_sql.py's dynamic-SQL rejection for
+-- a newly-linted file (see above) with no compensating benefit here.
+-- ---- END OMN-15376 shape reconciliation: omninode_internal.projection_watermarks ----
+
 CREATE INDEX IF NOT EXISTS idx_projection_watermarks_updated_at
     ON omninode_internal.projection_watermarks (updated_at DESC);
 
