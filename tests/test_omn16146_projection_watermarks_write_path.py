@@ -47,7 +47,7 @@ _MIGRATION_SQL = (
     / "0005_create_projection_watermarks.sql"
 ).resolve()
 
-_SCHEMA = "omn16146_watermarks_test"
+_SCHEMA = "omninode_internal"
 
 
 class _WatermarkOnlyRunner(BaseProjectionRunner):
@@ -117,12 +117,21 @@ async def test_real_postgres_update_watermark_upserts_with_monotonic_offset() ->
     """
     conn = await _connect_or_skip()
 
-    await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
-    await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+    # OMN-16146 follow-up: the migration is schema-qualified
+    # (omninode_internal.projection_watermarks, matching contract.yaml's
+    # db_io.db_tables[].schema declaration and check_application_database_sql.py's
+    # OMN-15361 requirement), so it can no longer be redirected into a disposable
+    # per-test schema via search_path -- it hardcodes its own target. Apply it
+    # for real (idempotent: every DDL statement is IF NOT EXISTS / guarded) and
+    # isolate by row (a unique projection_name), not by schema; clean up by
+    # deleting only this test's own rows, never the shared table.
+    test_projection_name = "omn16146-test-topic:0"
+    await conn.execute(_MIGRATION_SQL.read_text(encoding="utf-8"))
+    await conn.execute(
+        f"DELETE FROM {_SCHEMA}.projection_watermarks WHERE projection_name = $1",
+        test_projection_name,
+    )
     try:
-        await conn.execute(f"SET search_path TO {_SCHEMA}, public")
-        await conn.execute(_MIGRATION_SQL.read_text(encoding="utf-8"))
-
         runner = _WatermarkOnlyRunner()
         runner._db = AsyncpgAdapter(dsn=_pool_dsn_for_schema(_SCHEMA))
         await runner._db.connect()
@@ -168,5 +177,10 @@ async def test_real_postgres_update_watermark_upserts_with_monotonic_offset() ->
         finally:
             await runner._db._pool.close()  # type: ignore[union-attr]
     finally:
-        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        # omninode_internal is the real, shared schema (not a disposable
+        # per-test one) -- clean up only this test's own row, never DROP it.
+        await conn.execute(
+            f"DELETE FROM {_SCHEMA}.projection_watermarks WHERE projection_name = $1",
+            test_projection_name,
+        )
         await conn.close()

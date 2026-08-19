@@ -4009,7 +4009,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_registration"
+        "node_projection_registration",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_registration/migrations/0005_create_projection_watermarks.sql"
@@ -4022,10 +4023,11 @@
         "non_negative_projection_watermarks_last_offset"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_registration/contract.yaml"
       ],
       "current_schema": [
-        "public"
+        "omninode_internal"
       ],
       "dependencies": [],
       "dependent_objects": [],
@@ -4034,7 +4036,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
       "indexes": [
         "idx_projection_watermarks_updated_at"
       ],
@@ -4060,7 +4064,8 @@
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_registration"
+        "node_projection_registration",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {

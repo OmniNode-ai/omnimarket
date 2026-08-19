@@ -380,7 +380,7 @@ def test_projection_watermarks_migration_creates_table() -> None:
         / "0005_create_projection_watermarks.sql"
     )
     sql = migration_file.read_text()
-    assert "CREATE TABLE IF NOT EXISTS projection_watermarks" in sql
+    assert "CREATE TABLE IF NOT EXISTS omninode_internal.projection_watermarks" in sql
     # Columns referenced by BaseProjectionRunner._update_watermark's
     # INSERT/ON CONFLICT statement -- the migration must match exactly.
     assert "projection_name" in sql
