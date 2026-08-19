@@ -125,6 +125,24 @@ async def test_real_postgres_update_watermark_upserts_with_monotonic_offset() ->
     # for real (idempotent: every DDL statement is IF NOT EXISTS / guarded) and
     # isolate by row (a unique projection_name), not by schema; clean up by
     # deleting only this test's own rows, never the shared table.
+    #
+    # The migration's own GRANT to omninode_runtime is deliberately
+    # unconditional (no guarded CREATE ROLE -- see the migration file's own
+    # header for why a DO $$ ... $$ role-creation block is not an option
+    # here), matching the real-deploy precondition that the role is already
+    # provisioned "at the provisioning seam" before any node-owned migration
+    # runs. This test replicates that precondition rather than relying on
+    # migration-side defensiveness: on a CI-provisioned Postgres, the role
+    # does not exist yet, so create it here, first, exactly as a real deploy
+    # would have already done by the time this migration executes.
+    await conn.execute(
+        "DO $$ BEGIN "
+        "IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'omninode_runtime') THEN "
+        "CREATE ROLE omninode_runtime WITH NOLOGIN NOSUPERUSER NOBYPASSRLS "
+        "NOCREATEDB NOCREATEROLE NOREPLICATION; "
+        "END IF; "
+        "END $$;"
+    )
     test_projection_name = "omn16146-test-topic:0"
     await conn.execute(_MIGRATION_SQL.read_text(encoding="utf-8"))
     await conn.execute(
