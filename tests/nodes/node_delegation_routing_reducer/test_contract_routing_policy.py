@@ -480,22 +480,16 @@ class TestDeltaContractRouting:
         prev_routing_path = os.environ.get("DELEGATION_ROUTING_TIERS_PATH")
         prev_task_contract_path = os.environ.get("TASK_CLASS_CONTRACT_PATH")
         prev_bifrost_contract_path = os.environ.get("BIFROST_CONTRACT_PATH")
+        # OMN-16149: an ambient BIFROST_OVERLAY_PATH (provisioned on some dev
+        # machines per OMN-12931, e.g. ~/.omninode/delegation/bifrost_overrides.yaml)
+        # merges on top of this test's own bifrost_file fixture and can carry a
+        # complete-path endpoint_url for the same backend_id, silently overriding
+        # the bare-base value this test asserts against. Isolate it like the other
+        # three env vars so the test's outcome depends only on its own fixtures.
         prev_bifrost_overlay_path = os.environ.get("BIFROST_OVERLAY_PATH")
         os.environ["DELEGATION_ROUTING_TIERS_PATH"] = str(routing_file)
         os.environ["TASK_CLASS_CONTRACT_PATH"] = str(contract_file)
         os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
-        # OMN-16087 R2: this test never bound BIFROST_OVERLAY_PATH itself, so a
-        # developer machine with its own real overlay set (e.g. an
-        # ~/.omninode/delegation/bifrost_overrides.yaml used for local
-        # delegation) leaks in and merges a DIFFERENT, complete
-        # (.../v1/chat/completions) endpoint_url for local-reasoner over this
-        # test's bare fixture value -- a real, machine-dependent test-isolation
-        # gap, not the product under test being non-deterministic. Per
-        # _load_bifrost_endpoints' OMN-15628 remediation comment, an overlay
-        # override must be explicitly unset here so no incidental
-        # dev-machine overlay is picked up when only the contract override is
-        # bound. CI (no such overlay present) always saw the correct bare
-        # value; a contaminated dev shell was the only place this masked it.
         os.environ.pop("BIFROST_OVERLAY_PATH", None)
 
         try:

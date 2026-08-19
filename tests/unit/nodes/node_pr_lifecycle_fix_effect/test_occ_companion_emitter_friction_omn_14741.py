@@ -178,7 +178,15 @@ def _run_emit(
 
     def fake_run_git(argv: list[str], *, cwd: str) -> str:
         git_calls.append(argv)
-        return "c" * 40 if "rev-parse" in argv else ""
+        if "rev-parse" in argv:
+            return "c" * 40
+        if "ls-remote" in argv:
+            # OMN-15845: the base-freshness check runs before each force-push;
+            # report the same base SHA fake_clone returns below so it always
+            # reads as fresh — staleness itself is covered by
+            # test_occ_companion_emitter_stale_base_omn_15845.py.
+            return "0" * 40 + "\tHEAD\n"
+        return ""
 
     def fake_clone(cd: Path, *_a: object) -> str:
         cd.mkdir(parents=True, exist_ok=True)
