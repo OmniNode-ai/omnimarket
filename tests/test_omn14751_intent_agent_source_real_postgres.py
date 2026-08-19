@@ -112,12 +112,15 @@ async def _connect_or_skip() -> asyncpg.Connection:
         )
     dsn = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
     try:
-        conn = await asyncpg.connect(dsn)
+        return await asyncpg.connect(dsn)
     except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infra
+        # Matches the repo-standard _connect_or_skip shape
+        # (test_writer_tenant_isolation_omn14898 and 4 sibling proofs).
+        # CodeQL notes the implicit fall-through; pytest.skip is NoReturn so it
+        # is unreachable. Hoisting the return to satisfy that note instead
+        # raised py/uninitialized-local-variable at ERROR severity, which fails
+        # the CodeQL check outright -- a strictly worse trade.
         pytest.skip(f"no reachable Postgres for intent agent_source DB proof: {exc}")
-    # Single explicit return: pytest.skip is NoReturn, but a bare `return` in
-    # the try arm reads to CodeQL as an implicit-None fall-through.
-    return conn
 
 
 def _adapter_dsn_for_schema(schema: str) -> str:
