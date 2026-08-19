@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
+# onex-allow-file OMN-16156 reason="real local-inference endpoint (100.109.203.94:8000) used repeatedly as fixture data for the local backend under test"
 """Regression: a broken/mismatched venv must never silently escalate to paid cloud (OMN-14097).
 
 Root cause (2026-07-07 dogfood): running ``onex delegate`` from omnimarket's own
