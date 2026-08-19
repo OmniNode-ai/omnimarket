@@ -42,7 +42,17 @@ db_io:
   db_tables:
     - name: intent_classification_events
       database_ref: application
-      schema: omninode_internal
+      # OMN-14751: corrected from the stale `omninode_internal` declaration.
+      # 0000_create_intent_classification_events.sql was never schema-
+      # qualified and the forward-migration runner never sets search_path, so
+      # the table has always physically lived in Postgres's default `public`
+      # schema. Live-verified 2026-08-18 against .201 dev
+      # (omnibase-infra-postgres) and stability-test
+      # (omnibase-infra-stability-test-postgres), database
+      # omnidash_analytics: `SELECT schemaname FROM pg_tables WHERE
+      # tablename = 'intent_classification_events'` returns `public` on
+      # both. `omninode_internal` was aspirational and never true.
+      schema: public
       migration: "0000_create_intent_classification_events.sql"
       access: write
       role: events
