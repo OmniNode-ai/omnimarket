@@ -32,15 +32,6 @@
       "reason": "no authoritative CREATE TABLE migration found"
     },
     {
-      "authoritative_sources": [
-        "src/omnimarket/nodes/node_projection_intent_classification/migrations/0000_create_intent_classification_events.sql"
-      ],
-      "current_database": "omnidash_analytics",
-      "kind": "function",
-      "name": "refresh_intent_classification_events_updated_at",
-      "reason": "schema 'unresolved' does not resolve through deployment topology"
-    },
-    {
       "authoritative_sources": [],
       "current_database": "omnidash_analytics",
       "kind": "table",
@@ -308,11 +299,9 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_intent_classification/migrations/0000_create_intent_classification_events.sql"
       ],
-      "blocked_reasons": [
-        "schema 'unresolved' does not resolve through deployment topology"
-      ],
+      "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [],
       "current_schema": [
@@ -320,7 +309,7 @@
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": null,
+      "domain": "OMNINODE_INTERNAL",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -336,7 +325,7 @@
       "partitioning": [],
       "producer": "node_projection_intent_classification",
       "readers": [],
-      "target_schema": "unresolved",
+      "target_schema": "omninode_internal",
       "writers": []
     },
     {
@@ -977,8 +966,7 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_intent_classification",
-        "service:omnimarket_projection_migration_runner"
+        "node_projection_intent_classification"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_intent_classification/migrations/0000_create_intent_classification_events.sql"
@@ -988,7 +976,6 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_intent_classification/contract.yaml"
       ],
       "current_schema": [
@@ -1000,7 +987,7 @@
       "dependent_objects": [
         "table:intent_classification_events"
       ],
-      "domain": "PUBLIC",
+      "domain": "OMNINODE_INTERNAL",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -1016,10 +1003,9 @@
       "partitioning": [],
       "producer": "node_projection_intent_classification",
       "readers": [],
-      "target_schema": "public",
+      "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_intent_classification",
-        "service:omnimarket_projection_migration_runner"
+        "node_projection_intent_classification"
       ]
     },
     {
@@ -2861,8 +2847,7 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_intent_classification",
-        "service:omnimarket_projection_migration_runner"
+        "node_projection_intent_classification"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_intent_classification/migrations/0000_create_intent_classification_events.sql"
@@ -2872,7 +2857,6 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_intent_classification/contract.yaml"
       ],
       "current_schema": [
@@ -2882,7 +2866,7 @@
       "dependent_objects": [
         "sequence:intent_classification_events_id_seq"
       ],
-      "domain": "PUBLIC",
+      "domain": "OMNINODE_INTERNAL",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -2893,7 +2877,12 @@
         "idx_intent_classification_events_intent_class",
         "idx_intent_classification_events_session_id"
       ],
-      "internal_tenant_column_transform": null,
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
       "keys": [
         "PRIMARY KEY (id)",
         "UNIQUE (correlation_id)"
@@ -2906,10 +2895,9 @@
       "partitioning": [],
       "producer": "node_projection_intent_classification",
       "readers": [],
-      "target_schema": "public",
+      "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_intent_classification",
-        "service:omnimarket_projection_migration_runner"
+        "node_projection_intent_classification"
       ]
     },
     {

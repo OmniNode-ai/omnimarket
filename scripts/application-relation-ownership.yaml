@@ -60,33 +60,6 @@ db_io:
       migration: src/omnimarket/nodes/node_log_persistence_effect/migrations/0000_create_log_entries.sql
       access: write
       role: log_entries
-    # OMN-14751: node_projection_intent_classification's own contract.yaml
-    # declares this db_io.db_tables entry (schema: public, corrected in this
-    # PR from a stale `omninode_internal` -- live-verified 2026-08-18 against
-    # .201 dev and stability-test that the table has always physically lived
-    # in `public`: 0000_create_intent_classification_events.sql was never
-    # schema-qualified and the forward-migration runner never sets
-    # search_path). This top-level entry registers the ownership catalog's
-    # record of that same fact, matching the corrected contract declaration
-    # (scripts/generate_application_relation_inventory.py fails closed on any
-    # schema mismatch between contract.yaml sources and this file).
-    #
-    # NOTE: this does NOT make 0001_intent_classification_agent_source.sql's
-    # ALTER TABLE pass the OMN-15361 SQL ownership gate
-    # (scripts/ci/check_application_database_sql.py in omnibase_infra) --
-    # that gate unconditionally rejects any application relation explicitly
-    # qualified to `public` (see application_database_domain_enforcement.py's
-    # `if schema == "public": ... "is prohibited in public"`), so the
-    # unqualified form is deliberately kept in the migration file. Making
-    # this table policy-compliant requires physically migrating it out of
-    # `public` into a real namespaced schema -- a separate, larger change
-    # this PR does not attempt.
-    - name: intent_classification_events
-      database_ref: application
-      schema: public
-      migration: src/omnimarket/nodes/node_projection_intent_classification/migrations/0001_intent_classification_agent_source.sql
-      access: write
-      role: intent_classification_events
 
 relation_evidence:
   - name: omnimarket_schema_migrations
