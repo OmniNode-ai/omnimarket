@@ -41,6 +41,7 @@ import os
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import quote, quote_plus
+from uuid import uuid4
 
 import asyncpg
 import pytest
@@ -67,7 +68,15 @@ _MIGRATION_SQL_FILES = (
     _MIGRATIONS_DIR / "0001_intent_classification_agent_source.sql",
 )
 
-_SCHEMA = "omn14751_intent_agent_source_test"
+# Per-invocation, because setup and teardown both DROP ... CASCADE. A fixed
+# name means two concurrent runs against the same database (CI matrix legs, a
+# local run alongside CI) delete each other's schema mid-test.
+_SCHEMA_PREFIX = "omn14751_intent_agent_source_test"
+
+
+def _unique_schema() -> str:
+    return f"{_SCHEMA_PREFIX}_{uuid4().hex[:12]}"
+
 
 # The recorded C3 live wire event -- the same capture TestAgentSourceSeam is
 # seeded from. Note `intent_category`, not `intent_class`: that is the field
@@ -103,9 +112,12 @@ async def _connect_or_skip() -> asyncpg.Connection:
         )
     dsn = f"postgresql://{quote_plus(user)}:{quote_plus(password)}@{host}:{port}/{db}"
     try:
-        return await asyncpg.connect(dsn)
+        conn = await asyncpg.connect(dsn)
     except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infra
         pytest.skip(f"no reachable Postgres for intent agent_source DB proof: {exc}")
+    # Single explicit return: pytest.skip is NoReturn, but a bare `return` in
+    # the try arm reads to CodeQL as an implicit-None fall-through.
+    return conn
 
 
 def _adapter_dsn_for_schema(schema: str) -> str:
@@ -133,16 +145,16 @@ async def _runner_on_schema(
 @pytest.mark.integration
 async def test_real_postgres_intent_write_path_round_trips_agent_source() -> None:
     """Drive the live wire event through the real handler into real Postgres."""
+    schema = _unique_schema()
     conn = await _connect_or_skip()
-    await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
-    await conn.execute(f"CREATE SCHEMA {_SCHEMA}")
+    await conn.execute(f"CREATE SCHEMA {schema}")
     adapter: AsyncpgAdapter | None = None
     try:
-        await conn.execute(f"SET search_path TO {_SCHEMA}, public")
+        await conn.execute(f"SET search_path TO {schema}, public")
         for sql_file in _MIGRATION_SQL_FILES:
             await conn.execute(sql_file.read_text(encoding="utf-8"))
 
-        runner, adapter = await _runner_on_schema(_SCHEMA)
+        runner, adapter = await _runner_on_schema(schema)
         meta = MessageMeta(partition=0, offset=0, fallback_id="")
 
         # --- 1. Cursor event carrying agent_source, keyed by intent_category ---
@@ -207,5 +219,5 @@ async def test_real_postgres_intent_write_path_round_trips_agent_source() -> Non
         if adapter is not None:
             await adapter.close()
         await conn.execute("SET search_path TO public")
-        await conn.execute(f"DROP SCHEMA IF EXISTS {_SCHEMA} CASCADE")
+        await conn.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
         await conn.close()

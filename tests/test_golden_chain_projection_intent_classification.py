@@ -303,6 +303,53 @@ class TestAgentSourceSeam:
         assert rows[0]["agent_source"] == "cursor"
         assert rows[0]["intent_class"] == "code_generation"
 
+    def test_live_wire_timestamp_is_the_projected_emitted_at(self) -> None:
+        """The publisher names the emission time ``timestamp``, not ``emitted_at``.
+
+        Without that alias the field was dropped by ``extra="ignore"`` and
+        ``project()`` substituted ``now``, so every projected row reported its
+        ingestion time as its emission time and ``emitted_at``/``ingested_at``
+        were identical for the entire live corpus.
+        """
+        db = InmemoryDatabaseAdapter()
+        event = ModelIntentClassifiedEvent(**self.WIRE_EVENT)  # type: ignore[arg-type]
+        assert event.emitted_at == self.WIRE_EVENT["timestamp"]
+
+        HANDLER.project(event, db)
+        rows = db.query(TABLE)
+        assert rows[0]["emitted_at"] == self.WIRE_EVENT["timestamp"]
+        assert rows[0]["emitted_at"] != rows[0]["ingested_at"], (
+            "emitted_at must carry the wire timestamp, not collapse onto ingested_at"
+        )
+
+    def test_camel_case_wire_keys_persist_through_handle(self) -> None:
+        """``handle()`` must accept every key form the live runner accepts.
+
+        ``IntentClassificationProjectionRunner.project_event`` reads
+        ``intentClass``/``agentSource``/``sessionId``/``correlationId``. Before
+        the aliases, this path raised ValidationError on ``intentClass`` and
+        silently NULLed ``agentSource`` -- a same-node, same-table divergence.
+        """
+        db = InmemoryDatabaseAdapter()
+        camel_event: dict[str, object] = {
+            "_db": db,
+            "correlationId": "corr-b3-camel",
+            "sessionId": "sess-b3-camel",
+            "intentClass": "code_generation",
+            "confidence": 0.75,
+            "keywords": ["camel"],
+            "emittedAt": "2026-07-27T22:47:37.634933+00:00",
+            "agentSource": "cursor",
+        }
+        assert HANDLER.handle(camel_event)["rows_upserted"] == 1
+
+        rows = db.query(TABLE, {"correlation_id": "corr-b3-camel"})
+        assert len(rows) == 1
+        assert rows[0]["agent_source"] == "cursor"
+        assert rows[0]["intent_class"] == "code_generation"
+        assert rows[0]["session_id"] == "sess-b3-camel"
+        assert rows[0]["emitted_at"] == "2026-07-27T22:47:37.634933+00:00"
+
     def test_intent_class_name_still_accepted(self) -> None:
         """Events (and tests) using the column name keep working."""
         event = ModelIntentClassifiedEvent(
