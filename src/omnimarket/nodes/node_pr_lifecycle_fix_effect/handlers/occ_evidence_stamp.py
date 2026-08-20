@@ -223,7 +223,9 @@ _CI_ITEM_PUBLIC_CHECK_VALUE = "gh pr view ${PR_NUMBER} --repo ${REPO} --json fil
 _SELF_BIND_ITEM_CHECK_VALUE = _DOWNSTREAM_ITEM_PUBLIC_CHECK_VALUE
 
 
-def downstream_dod_evidence_check_value(*, pr_number: int, repo: str) -> str:
+def downstream_dod_evidence_check_value(
+    *, pr_number: int, repo: str, content_bound_check_value: str | None = None
+) -> str:
     """Return the literal, Rule-B-compliant downstream binding ``check_value``.
 
     OMN-15407 (F1x follow-up to OMN-15382's ``self_bind_check_value``): the
@@ -240,18 +242,41 @@ def downstream_dod_evidence_check_value(*, pr_number: int, repo: str) -> str:
     build ``evidence_id`` (see ``occ_companion_emitter.py`` /
     ``handler_occ_companion_compute.py``), so the id and the check_value can
     never disagree about which PR is pinned.
+
+    OMN-16160: the Rule-A/B-compliant literal form above is STILL refused by
+    the newer, stricter OMN-14443 deploy-gate falsifiability ratchet and the
+    OMN-15309 ``evidence_admissibility`` predicate -- bare ``gh`` never
+    qualifies as a live-surface probe under either, only the compound ``gh
+    api`` token does. ``content_bound_check_value`` lets a caller that has
+    already derived a real content-bound probe (see
+    ``omnimarket.occ_content_probe.build_content_read_check``, typically via
+    the live-I/O ``_derive_content_bound_check``/``select_asserted_check``
+    seam in ``occ_companion_emitter.py`` / an upstream read-EFFECT) render it
+    verbatim instead. ``None`` (the default) preserves the literal-pin
+    fallback byte-for-byte -- no regression for any caller that cannot derive
+    a content-bound candidate.
     """
+    if content_bound_check_value:
+        return content_bound_check_value
     return f"gh pr view {pr_number} --repo {repo} --json number,state"
 
 
-def ci_dod_evidence_check_value(*, pr_number: int, repo: str) -> str:
+def ci_dod_evidence_check_value(
+    *, pr_number: int, repo: str, content_bound_check_value: str | None = None
+) -> str:
     """Return the literal, Rule-B-compliant product-diff-scope ``check_value``.
 
     Same rationale as :func:`downstream_dod_evidence_check_value` -- the CI
     item's id is ``ci_check_evidence_id(evidence_id)``
     (``dod-<repo_slug>-pr-<pr_number>-ci``), which also embeds the PR number,
     so it is equally subject to Rule B and needs the same literal pin.
+
+    OMN-16160: ``content_bound_check_value`` is the same admissible-shape
+    escape hatch as on :func:`downstream_dod_evidence_check_value` -- see that
+    docstring.
     """
+    if content_bound_check_value:
+        return content_bound_check_value
     return f"gh pr view {pr_number} --repo {repo} --json files"
 
 
@@ -273,6 +298,21 @@ def self_bind_check_value(*, occ_pr_number: int, occ_repo: str) -> str:
     also stays lint-clean under Rule A. This is the exact shape the
     hand-authored ``occ-self-bind-pr-<N>-strict`` supersession entries used
     to repair the pre-fix companions (see contracts/OMN-15382.yaml).
+
+    OMN-16160 decision: NOT rewritten to a content-bound shape. A self-bind
+    item asserts facts about the OCC companion PR itself -- there is no
+    product-repo file for it to point at, so the content-bound shape (a read
+    of a CHANGED PRODUCT FILE at a pinned ref) does not apply here the way it
+    does to the downstream/CI/deploy-assessment items. It stays inadmissible
+    under OMN-14443/OMN-15309 same as before this ticket; this is safe because
+    ``_has_effective_check`` (onex_change_control) requires only ONE
+    admissible item across the whole contract, and the unconditionally-minted
+    :func:`render_admissibility_validator_dod_evidence_item` item already
+    supplies one. Deploy-gate is likewise unaffected by self-bind's shape --
+    it only needs ONE falsifiable check anywhere in the ticket's
+    ``dod_evidence``. See ``test_occ_evidence_stamp_admissible_shapes_omn_
+    16160.py::TestSelfBindCheckValueDocumentedDecision`` for the live-gate
+    proof of both claims, and the OMN-16160 PR body for the full reasoning.
     """
     return f"gh pr view {occ_pr_number} --repo {occ_repo} --json number,state"
 
@@ -779,11 +819,28 @@ _DEPLOY_ASSESSMENT_PATH_PATTERN = (
 )
 
 
-def deploy_assessment_check_value(*, pr_number: int, repo: str) -> str:
+def deploy_assessment_check_value(
+    *, pr_number: int, repo: str, content_bound_check_value: str | None = None
+) -> str:
     """Return the literal, SIGPIPE-safe deploy-scope ``check_value``.
 
     See the two-part note above this function for why both the literal pin and
     the ``grep -c`` counting form are required, and why they must land together.
+
+    OMN-16160: the literal-pin form below (bare ``gh pr diff`` in command
+    position) is refused by the OMN-14443 deploy-gate falsifiability ratchet
+    -- live-observed on omnimarket#2093 / OMN-16148.yaml: "commands found:
+    ['gh', 'grep']; expected one of: [...'gh-api'...]". ``content_bound_
+    check_value`` lets a caller supply an already-derived, admissible
+    content-bound probe (``gh api .../contents/<path>?ref=<sha> | base64 -d |
+    grep ...``, see ``omnimarket.occ_content_probe.build_content_read_check``)
+    to render instead. ``None`` (the default) preserves the pre-OMN-16160
+    literal form byte-for-byte -- callers that cannot derive a content-bound
+    candidate (e.g. a deploy-sensitive PR touching zero Python declarations)
+    keep the same disclosed, pre-existing gap the R21b note above already
+    names: the literal form still satisfies the LEGACY substring rule
+    (``"deploy"`` in the value) so it does not regress, it just does not
+    (yet) clear the newer falsifiability ratchet on that narrow path.
 
     Consumer properties preserved by construction (all three are load-bearing):
 
@@ -815,6 +872,8 @@ def deploy_assessment_check_value(*, pr_number: int, repo: str) -> str:
     picks the quoted form or a fold-proof literal block scalar, so a longer
     repo slug or PR number cannot restale ``contract_sha256``.
     """
+    if content_bound_check_value:
+        return content_bound_check_value
     return (
         f"gh pr diff {pr_number} --repo {repo} --name-only | "
         f"grep -ciE '{_DEPLOY_ASSESSMENT_PATH_PATTERN}'"
@@ -844,7 +903,9 @@ _COMPUTE_DEPLOY_ASSESSMENT_ENTRY_HEAD_TEMPLATE = (
 )
 
 
-def render_deploy_assessment_dod_evidence_item(*, repo: str, pr_number: int) -> str:
+def render_deploy_assessment_dod_evidence_item(
+    *, repo: str, pr_number: int, check_value: str | None = None
+) -> str:
     """Render the deploy-assessment dod_evidence list item (F-05, OMN-14742).
 
     Appended to the compute-oracle companion contract when the product PR touches
@@ -858,6 +919,13 @@ def render_deploy_assessment_dod_evidence_item(*, repo: str, pr_number: int) -> 
     "accepted for call-site symmetry" — it is interpolated into the command, so
     both parameters are load-bearing. It is still deliberately absent from the
     (short) ``description``, which must stay inside yamlfmt's wrap width.
+
+    OMN-16160: ``check_value`` is a full override (mirrors
+    :func:`render_downstream_dod_evidence_item` / :func:`render_ci_dod_
+    evidence_item`), so a caller with a derived content-bound probe can supply
+    it directly instead of threading it through :func:`deploy_assessment_
+    check_value`'s own ``content_bound_check_value`` parameter. ``None`` (the
+    default) is unchanged from pre-OMN-16160 behavior.
     """
     return _COMPUTE_DEPLOY_ASSESSMENT_ENTRY_HEAD_TEMPLATE.format(
         evidence_id=DEPLOY_ASSESSMENT_EVIDENCE_ID,
@@ -865,7 +933,7 @@ def render_deploy_assessment_dod_evidence_item(*, repo: str, pr_number: int) -> 
         pr_number=pr_number,
     ) + render_check_value_field(
         "check_value",
-        deploy_assessment_check_value(pr_number=pr_number, repo=repo),
+        check_value or deploy_assessment_check_value(pr_number=pr_number, repo=repo),
     )
 
 
@@ -1068,7 +1136,9 @@ def hosted_safe_diff_scope_check_value() -> str:
     return _CI_ITEM_PUBLIC_CHECK_VALUE
 
 
-def downstream_receipt_public_check_value(*, pr_number: int, repo: str) -> str:
+def downstream_receipt_public_check_value(
+    *, pr_number: int, repo: str, content_bound_check_value: str | None = None
+) -> str:
     """Downstream (binding) receipt ``check_value`` — literal, product-PR-pinned.
 
     A RECEIPT's ``check_value`` records what the producer actually ran at mint
@@ -1084,16 +1154,31 @@ def downstream_receipt_public_check_value(*, pr_number: int, repo: str) -> str:
     provenance substitutes an admissible-LOOKING string for the probe the
     producer actually ran. A receipt's one job is to record what happened, so
     this is the pre-R21 literal form, restored.
+
+    OMN-16160: when the producer's ACTUAL probe was a genuine content-bound
+    read (``content_bound_check_value``, e.g. the same value the sibling
+    contract item now declares), recording that verbatim is still "what
+    actually happened" — it is not a substitution of an admissible-looking
+    string for a different real probe, because in that case the content-bound
+    read IS the real probe. ``None`` (the default) is the unchanged pre-fix
+    literal form.
     """
+    if content_bound_check_value:
+        return content_bound_check_value
     return f"gh pr view {pr_number} --repo {repo} --json number,state,headRefName"
 
 
-def ci_receipt_public_check_value(*, pr_number: int, repo: str) -> str:
+def ci_receipt_public_check_value(
+    *, pr_number: int, repo: str, content_bound_check_value: str | None = None
+) -> str:
     """Product-diff-scope receipt ``check_value`` — literal, product-PR-pinned.
 
     Pre-R21 form restored for the reason given in
-    :func:`downstream_receipt_public_check_value`.
+    :func:`downstream_receipt_public_check_value`. ``content_bound_check_value``
+    (OMN-16160) is the same escape hatch documented there.
     """
+    if content_bound_check_value:
+        return content_bound_check_value
     return f"gh pr view {pr_number} --repo {repo} --json files"
 
 
@@ -1423,6 +1508,7 @@ def render_compute_companion_contract(
     emit_deploy_assessment: bool = False,
     binding_check_value: str | None = None,
     diff_scope_check_value: str | None = None,
+    deploy_check_value: str | None = None,
 ) -> str:
     """Render the RSD compute-oracle companion contract YAML.
 
@@ -1454,6 +1540,13 @@ def render_compute_companion_contract(
     ordered before self-bind so the merged-path suffix subtraction (which renders
     with ``emit_deploy_assessment`` False on both calls) still isolates exactly
     the self-bind entry. Pure function of its inputs.
+
+    OMN-16160: ``deploy_check_value`` overrides the deploy-assessment item's
+    check_value the same way ``binding_check_value``/``diff_scope_check_value``
+    override the downstream/CI items — a caller with an already-derived
+    content-bound probe passes it here instead of falling through to
+    :func:`deploy_assessment_check_value`'s inadmissible literal default.
+    Ignored when ``emit_deploy_assessment`` is False.
     """
     parts = [
         _COMPUTE_CONTRACT_HEAD_TEMPLATE.format(
@@ -1476,7 +1569,9 @@ def render_compute_companion_contract(
     ]
     if emit_deploy_assessment:
         parts.append(
-            render_deploy_assessment_dod_evidence_item(repo=repo, pr_number=pr_number)
+            render_deploy_assessment_dod_evidence_item(
+                repo=repo, pr_number=pr_number, check_value=deploy_check_value
+            )
         )
     # OMN-15247 R21b: ALWAYS minted, and ordered BEFORE any self-bind entry for
     # the same reason the deploy item is -- the merged path renders this function

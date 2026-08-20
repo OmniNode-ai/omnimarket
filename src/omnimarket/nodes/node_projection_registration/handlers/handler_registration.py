@@ -32,6 +32,7 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         "savings_estimates",
         "session_outcomes",
         "injection_effectiveness",
+        "projection_watermarks",
     }
 )
 

@@ -92,7 +92,7 @@ def _stable_cloud_escalation_route(
                     {
                         "backend_id": "local-coder",
                         "endpoint_url": (
-                            "http://100.109.203.94:8000/v1/chat/completions"
+                            "http://100.109.203.94:8000/v1/chat/completions"  # onex-allow-test-fixture OMN-16156 reason="real local-inference endpoint used as fixture data for the local backend under test"
                         ),
                         "model_name": "Qwen3.6-35B-A3B",
                         "tier": "local",

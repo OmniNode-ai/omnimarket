@@ -57,7 +57,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 # Tailscale MagicDNS name for the .201 runtime host — resolves both on-LAN and
 # off-network, unlike a raw private IP (OMN-14531, mirrors OMN-14526).
-_DEFAULT_RUNTIME_HOST: Final[str] = "omninode-pc.tail75df5e.ts.net"
+_DEFAULT_RUNTIME_HOST: Final[str] = (
+    "omninode-pc.tail75df5e.ts.net"  # onex-allow-internal-ip OMN-16156 reason="env-overridable runtime-host default, already documented above (OMN-14531/OMN-14526)"
+)
 _SSH_USER: Final[str] = "jonah"
 
 

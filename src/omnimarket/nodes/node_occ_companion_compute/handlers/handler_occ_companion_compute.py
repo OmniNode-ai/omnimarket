@@ -72,6 +72,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     deploy_assessment_check_value,
     downstream_receipt_public_check_value,
     find_deploy_sensitive_paths,
+    is_product_observing_check_value,
     render_compute_companion_contract,
     render_compute_receipt,
 )
@@ -791,6 +792,27 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         or downstream_receipt_public_check_value(pr_number=pr_number, repo=repo)
     )
 
+    # OMN-16160: the CONTRACT-declared checks -- what the hosted OCC
+    # contract-compliance runner actually EXECUTES -- previously never used
+    # ``request.downstream_check_value`` at all: ``contract_binding_check`` /
+    # ``contract_diff_scope_check`` below were hardcoded ``None``, so this
+    # producer's contract always fell through to
+    # ``downstream_dod_evidence_check_value``/``ci_dod_evidence_check_value``'s
+    # inadmissible ``gh pr view`` literal default even when the upstream
+    # read-EFFECT (``node_occ_state_effect``) had already derived a real
+    # content-bound probe. ``is_product_observing_check_value`` (the same "?ref="
+    # discriminator the born-path emitter uses) distinguishes a genuine
+    # content-bound read from the generic ``gh api .../files`` receipt fallback
+    # above, which is provenance only and must NOT be promoted into the
+    # contract (it is itself an inadmissible bare-``gh`` form under OMN-14443).
+    _content_bound = (
+        request.downstream_check_value
+        if is_product_observing_check_value(request.downstream_check_value)
+        else None
+    )
+    contract_binding_check: str | None = _content_bound
+    contract_diff_scope_check: str | None = _content_bound
+
     # F-05 (OMN-14742): does the product PR touch runtime/deploy-sensitive paths
     # that would trip the product repo's required deploy-gate? If so, the OCC
     # companion contract must declare a deploy-keyword dod_evidence item or the
@@ -800,6 +822,19 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     # classifier mirrors the canonical deploy-gate runtime-path predicate.
     deploy_hits = find_deploy_sensitive_paths(request.changed_files)
     emit_deploy_assessment = bool(deploy_hits)
+    # OMN-16160: reuse the SAME content-bound value for the deploy-assessment
+    # item -- it is the same product PR, so one derived candidate backs all
+    # three generated contract items, exactly mirroring how the born-path
+    # emitter (occ_companion_emitter.py) reuses one derived value for its two
+    # items. Falls back to deploy_assessment_check_value's own (disclosed,
+    # pre-existing) literal default when no content-bound candidate exists.
+    deploy_assessment_final_check_value = (
+        deploy_assessment_check_value(
+            pr_number=pr_number, repo=repo, content_bound_check_value=_content_bound
+        )
+        if emit_deploy_assessment
+        else None
+    )
 
     files: list[ModelCompanionFile] = []
 
@@ -834,8 +869,10 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         # ``handler_occ_state_effect`` where that pin is derived.
         #
         # The receipt keeps the literal product-PR-pinned probe as provenance.
-        contract_binding_check: str | None = None
-        contract_diff_scope_check: str | None = None
+        # OMN-16160: `contract_binding_check` / `contract_diff_scope_check` are
+        # now computed ONCE above (PR-level, like `downstream_check` and
+        # `emit_deploy_assessment`) from a genuine content-bound candidate when
+        # one is derivable -- no longer unconditionally None here.
         receipt_check_value = downstream_check
 
         if state.exists and state.merged:
@@ -988,6 +1025,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 emit_deploy_assessment=emit_deploy_assessment,
                 binding_check_value=contract_binding_check,
                 diff_scope_check_value=contract_diff_scope_check,
+                deploy_check_value=deploy_assessment_final_check_value,
             )
             contract_hash = _sha256_hex(contract_content)
             # Parse the just-rendered contract so the downstream receipt's
@@ -1117,6 +1155,12 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         # declared on the just-rendered fresh contract, so its per-entry hash
         # resolves exactly like the downstream item's.
         if emit_deploy_assessment and not (state.exists and state.merged):
+            # `deploy_assessment_final_check_value` is computed as non-None
+            # exactly when `emit_deploy_assessment` is True (see above) --
+            # mypy cannot see that correlation across the two conditionals, so
+            # this assert narrows it for the `_receipt(check_value=...)` call
+            # below without changing runtime behavior.
+            assert deploy_assessment_final_check_value is not None
             deploy_entry_hash = _entry_hash_for(
                 parsed_contract, DEPLOY_ASSESSMENT_EVIDENCE_ID
             )
@@ -1124,13 +1168,14 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 request=request,
                 ticket_id=ticket,
                 evidence_id=DEPLOY_ASSESSMENT_EVIDENCE_ID,
-                # OMN-15407: the receipt records the SAME literal, PR-pinned,
-                # SIGPIPE-safe command the contract declares — one authoring
-                # home (occ_evidence_stamp.deploy_assessment_check_value), so
-                # the declared check and the recorded probe cannot drift.
-                check_value=deploy_assessment_check_value(
-                    pr_number=pr_number, repo=repo
-                ),
+                # OMN-15407: the receipt records the SAME command the contract
+                # declares — one authoring home
+                # (occ_evidence_stamp.deploy_assessment_check_value), so the
+                # declared check and the recorded probe cannot drift.
+                # OMN-16160: `deploy_assessment_final_check_value` is that same
+                # single-source value, computed once above (content-bound when
+                # derivable, else the pre-existing literal default).
+                check_value=deploy_assessment_final_check_value,
                 contract_sha256=contract_hash,
                 contract_entry_sha256=deploy_entry_hash,
                 commit_sha=request.pr_head_sha,
