@@ -46,10 +46,18 @@
 #   Ignored dirs: .git/**, dist/**, build/**, .venv/**, node_modules/**, *.lock
 #
 # Patterns scanned (mirrors the leak-class catalog in
-# docs/plans/2026-05-05-omnimarket-public-shippable.md):
-#   192.168.86.            (LAN block)
-#   /Users/jonah           (per-user home path)
-#   /Volumes/PRO-G40       (per-machine mount)
+# docs/plans/2026-05-05-omnimarket-public-shippable.md, generalized to the
+# org-wide Tier-1 topology class under OMN-16156 / W0-GATE G1 — see
+# docs/plans/2026-08-17-public-docs-kb-consolidation-plan.md §3/§5c):
+#   192.168.x.             (LAN block — any /16, not just the .86 subnet)
+#   100.64.0.0/10           (Tailscale CGNAT range)
+#   *.tail<id>.ts.net       (Tailscale MagicDNS / tailnet hostname)
+#   /Users/jonah            (per-user home path)
+#   /home/<user>/           (generic Linux home path)
+#   /Volumes/<mount>        (per-machine mount, any name — not just PRO-G40)
+#   *.svc.cluster.local     (k8s internal service FQDN)
+#   18.209.126.195          (known-real external cluster IP — onex-dev)
+#   installed_by:<user>     (operator attribution in committed handshake files)
 #   cyankiwi/              (private HF org — coder model)
 #   Corianas/              (private HF org — reasoner model)
 #   mlx-community/Qwen3-Next | DeepSeek | Qwen3-Embedding-8B | Qwen3.5
@@ -60,6 +68,14 @@
 #   i-0e596e8b557e27785    (EC2 instance id)
 #   onreviewbot@gmail.com  (personal email)
 #   super-secret           (test-fixture credential placeholder that looks credentialed)
+#
+# The topology classes above (LAN/CGNAT/MagicDNS/home-path/Volumes-mount/k8s
+# FQDN/external-IP/installed_by) are the org-wide generalization target: G1
+# (advisory-only, this rollout) extends the pattern catalog so the same
+# script — still resident only in omnimarket, per the plan's explicit G1 vs
+# G1-FULL split — can be pointed at any sibling repo's working tree via
+# scripts/validation/run_leaked_literals_org_wide.sh. Flipping other repos to
+# *blocking* mode with their own CI wiring is G1-FULL (post-beta).
 #
 # Governance: docs/leaked-literals-governance.md
 #
@@ -81,8 +97,20 @@ if [[ "${SCOPE}" != "all" && "${SCOPE}" != "diff" ]]; then
 fi
 
 # Single combined regex. Uses POSIX ERE so it works with BSD grep (macOS)
-# and GNU grep (Linux/CI). Each alternative is a leak class.
-LEAK_REGEX='192\.168\.86\.|/Users/jonah|/Volumes/PRO-G40|cyankiwi/|Corianas/|mlx-community/(Qwen3-Next|DeepSeek|Qwen3-Embedding-8B|Qwen3\.5)|jonahgabriel|dash\.dev\.omninode\.ai|272493677981|OmniCloudPlatformAdmin|i-0e596e8b557e27785|onreviewbot@gmail\.com|super-secret'
+# and GNU grep (Linux/CI) — no PCRE escapes (\s, \d, non-greedy) anywhere
+# below; use POSIX classes ([[:space:]], [0-9]) instead.
+#
+# Topology classes (OMN-16156 / W0-GATE G1) come first:
+#   192\.168\.[0-9]{1,3}\.                    LAN, any /16 subnet
+#   100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}
+#                                              Tailscale CGNAT (100.64.0.0/10)
+#   \.tail[A-Za-z0-9]+\.ts\.net                MagicDNS / tailnet hostname
+#   /home/[A-Za-z0-9_.-]+/                     generic Linux home path
+#   /Volumes/[A-Za-z0-9_-]+                    any per-machine mount name
+#   \.svc\.cluster\.local                      k8s internal service FQDN
+#   18\.209\.126\.195                          known-real external cluster IP
+#   installed_by:[[:space:]]*[A-Za-z0-9_.-]+   operator attribution
+LEAK_REGEX='192\.168\.[0-9]{1,3}\.|100\.(6[4-9]|[7-9][0-9]|1[01][0-9]|12[0-7])\.[0-9]{1,3}\.[0-9]{1,3}|\.tail[A-Za-z0-9]+\.ts\.net|/Users/jonah|/home/[A-Za-z0-9_.-]+/|/Volumes/[A-Za-z0-9_-]+|\.svc\.cluster\.local|18\.209\.126\.195|installed_by:[[:space:]]*[A-Za-z0-9_.-]+|cyankiwi/|Corianas/|mlx-community/(Qwen3-Next|DeepSeek|Qwen3-Embedding-8B|Qwen3\.5)|jonahgabriel|dash\.dev\.omninode\.ai|272493677981|OmniCloudPlatformAdmin|i-0e596e8b557e27785|onreviewbot@gmail\.com|super-secret'
 
 # Allowlist annotation: must include leak-class, ticket, and reason.
 # Extended with onex-allow-model-id for private HuggingFace model identifiers.
@@ -105,6 +133,13 @@ SELF_EXEMPT_FILES=(
   "docs/audits/2026-05-05-contracts-dir-references.csv"
   # Tracking docs may reference lab addresses as examples or config hints.
   "docs/tracking/delegation-cost-projection-lane.md"
+  # OMN-16156: ADR-canary ground-truth corpus embeds real merged ADRs'
+  # verbatim text ("the full text of the authoritative ADR (inline)" per its
+  # own header) as a benchmark fixture. An illustrative IPv4 example inside
+  # one embedded ADR's edge-case table is not a real leak, and editing embedded
+  # ADR text to annotate it would corrupt the ground-truth fidelity the file
+  # exists to provide.
+  "docs/adr-canary/ground_truth_manifest.yaml"
 )
 
 # Locate the repo root robustly (tolerates being called from elsewhere).

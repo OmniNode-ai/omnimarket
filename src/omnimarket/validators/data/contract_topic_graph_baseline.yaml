@@ -49,7 +49,6 @@ accepted:
 - ORPHANED_CONSUMER::demo_fix_dispatcher::onex.cmd.omnimarket.demo-fix-dispatch-start.v1
 - ORPHANED_CONSUMER::demo_rehearsal::onex.cmd.omnimarket.demo-rehearsal-start.v1
 - ORPHANED_CONSUMER::dispatch_worker_execution_effect::onex.cmd.omnimarket.dispatch-worker-execution-start.v1
-- ORPHANED_CONSUMER::doc_freshness_sweep::onex.cmd.omnimarket.doc-freshness-sweep-start.v1
 - ORPHANED_CONSUMER::duplication_sweep::onex.cmd.omnimarket.duplication-sweep-start.v1
 - ORPHANED_CONSUMER::environment_health_scanner::onex.cmd.omnimarket.environment-health-scan-start.v1
 - ORPHANED_CONSUMER::full_triage_orchestrator::onex.cmd.omnimarket.full-triage-start.v1
@@ -368,7 +367,6 @@ accepted:
 - ORPHANED_PRODUCER::database_sweep::onex.evt.omnimarket.database-sweep-table-checked.v1
 - ORPHANED_PRODUCER::dispatch_worker_execution_effect::onex.cmd.omnimarket.delegation-request.v1
 - ORPHANED_PRODUCER::dispatch_worker_execution_effect::onex.evt.omnimarket.dispatch-worker-execution-completed.v1
-- ORPHANED_PRODUCER::doc_freshness_sweep::onex.evt.omnimarket.doc-freshness-sweep-completed.v1
 - ORPHANED_PRODUCER::dod_verify::onex.evt.omnimarket.dod-verify-completed.v1
 - ORPHANED_PRODUCER::duplication_sweep::onex.evt.omnimarket.duplication-sweep-completed.v1
 - ORPHANED_PRODUCER::emit_daemon::onex.evt.omniclaude.agent-actions.v1

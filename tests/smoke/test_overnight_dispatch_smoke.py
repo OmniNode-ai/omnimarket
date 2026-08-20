@@ -17,12 +17,14 @@ from unittest.mock import MagicMock
 
 import pytest
 import yaml
-from onex_change_control.overseer.model_overnight_contract import ModelOvernightContract
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     EnumOvernightStatus,
     HandlerOvernight,
     ModelOvernightCommand,
+)
+from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
+    ModelOvernightContract,
 )
 
 _CONTRACT_ENV = os.environ.get("ONEX_OVERNIGHT_CONTRACT", "")

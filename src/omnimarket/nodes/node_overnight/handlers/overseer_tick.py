@@ -20,7 +20,8 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from onex_change_control.overseer.model_overnight_contract import (
+
+from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
     ModelOvernightContract,
     ModelOvernightHaltCondition,
 )

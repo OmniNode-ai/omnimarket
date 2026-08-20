@@ -12,6 +12,7 @@ Related:
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import cast
 
@@ -24,6 +25,7 @@ from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
 from omnimarket.nodes.node_overseer_verifier.handlers.handler_overseer_verifier_consumer import (
     TOPIC_PUBLISH,
     TOPIC_SUBSCRIBE,
+    TOPIC_VERIFICATION_RECEIPT_START,
     HandlerOverseerVerifierConsumer,
 )
 
@@ -159,3 +161,78 @@ def test_consumer_response_has_timestamp() -> None:
 
     assert "timestamp" in result
     assert result["timestamp"]  # non-empty
+
+
+# ---------------------------------------------------------------------------
+# verification-receipt-start publish
+# ---------------------------------------------------------------------------
+
+
+class _RecordingPublisher:
+    """Captures published (topic, value) pairs instead of reaching a broker."""
+
+    def __init__(self) -> None:
+        self.published: list[tuple[str, bytes]] = []
+
+    async def publish(self, topic: str, key: bytes | None, value: bytes) -> None:
+        self.published.append((topic, value))
+
+
+@pytest.mark.unit
+def test_verification_receipt_start_topic_matches_contract() -> None:
+    """The third topic this consumer publishes, declared but previously untested."""
+    assert (
+        TOPIC_VERIFICATION_RECEIPT_START
+        == "onex.cmd.omnimarket.verification-receipt-start.v1"
+    )
+
+
+@pytest.mark.unit
+async def test_task_id_triggers_verification_receipt_start_publish() -> None:
+    """A command carrying task_id must start a receipt alongside the verdict.
+
+    This is what makes node_verification_receipt_generator produce formal
+    evidence for a verification. The publish is fire-and-forget on the running
+    loop, so the test is async — without a loop the handler logs a warning and
+    silently skips, which is the failure mode worth pinning.
+    """
+    bus = _RecordingPublisher()
+    consumer = HandlerOverseerVerifierConsumer(
+        event_bus=cast(ProtocolEventBusPublisher, bus)
+    )
+
+    consumer.process(_make_cmd(task_id="OMN-1234", repo="omnimarket", pr_number=77))
+    await asyncio.sleep(0)  # let the fire-and-forget publish task run
+
+    receipt_starts = [
+        json.loads(value)
+        for topic, value in bus.published
+        if topic == TOPIC_VERIFICATION_RECEIPT_START
+    ]
+    assert len(receipt_starts) == 1, (
+        f"expected exactly one {TOPIC_VERIFICATION_RECEIPT_START} publish, "
+        f"got topics {[t for t, _ in bus.published]}"
+    )
+    payload = receipt_starts[0]
+    assert payload["task_id"] == "OMN-1234"
+    assert payload["correlation_id"] == "corr-1234"
+    assert payload["repo"] == "omnimarket"
+    assert payload["pr_number"] == 77
+
+
+@pytest.mark.unit
+async def test_absent_task_id_publishes_no_receipt_start() -> None:
+    """No task_id means no receipt to start — the publish must not fire blindly."""
+    bus = _RecordingPublisher()
+    consumer = HandlerOverseerVerifierConsumer(
+        event_bus=cast(ProtocolEventBusPublisher, bus)
+    )
+
+    payload = json.loads(_make_cmd())
+    del payload["task_id"]
+    consumer.process(json.dumps(payload).encode())
+    await asyncio.sleep(0)
+
+    assert not [
+        topic for topic, _ in bus.published if topic == TOPIC_VERIFICATION_RECEIPT_START
+    ]
