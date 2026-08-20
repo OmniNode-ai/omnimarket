@@ -32,6 +32,26 @@ class EnumEvidenceCheckStatus(StrEnum):
     SUPERSEDED = "superseded"
 
 
+class EnumOccRefRefreshOutcome(StrEnum):
+    """Outcome of refreshing the OCC governance ref's remote-tracking branch.
+
+    OMN-15454: ``EvidenceCollector`` used to swallow a failed ``git fetch``
+    at ``logger.info`` and proceed against whatever the local
+    remote-tracking ref happened to have, while still logging that it
+    resolved from ``origin/dev`` — a fail-open that made a stale local
+    clone (the *expected* state under concurrent merge activity, not an
+    edge case) indistinguishable from a genuinely fresh one. Every caller
+    now consumes a typed outcome instead of a discarded ``None``.
+    """
+
+    FETCHED = "fetched"
+    FETCH_FAILED = "fetch_failed"
+    # A bare local-branch OCC_GOVERNANCE_REF (no ``<remote>/<branch>`` shape —
+    # the test-override case) has no remote to fetch at all; this is not a
+    # failure and must keep resolving exactly as before (AC4).
+    NOT_APPLICABLE = "not_applicable"
+
+
 class ModelEvidenceCheckResult(BaseModel):
     """Result of a single DoD evidence check."""
 
@@ -59,11 +79,26 @@ class ModelDodVerifyState(BaseModel):
     skipped_count: int = Field(default=0, ge=0)
     superseded_count: int = Field(default=0, ge=0)
     error_message: str | None = Field(default=None)
+    # OMN-15454 AC2: provenance of the OCC governance ref actually read this
+    # run — "attribution must name what was actually read, not what was
+    # intended." None only when collect() was never asked to auto-resolve an
+    # OCC ref (an explicit contract_path was supplied).
+    occ_governance_ref: str | None = Field(
+        default=None, description="OCC governance ref requested (e.g. origin/dev)."
+    )
+    occ_refresh_outcome: EnumOccRefRefreshOutcome | None = Field(
+        default=None, description="Outcome of refreshing that ref before resolving."
+    )
+    occ_resolved_sha: str | None = Field(
+        default=None,
+        description="40-char commit SHA of the OCC worktree HEAD actually read.",
+    )
 
 
 __all__: list[str] = [
     "EnumDodVerifyStatus",
     "EnumEvidenceCheckStatus",
+    "EnumOccRefRefreshOutcome",
     "ModelDodVerifyState",
     "ModelEvidenceCheckResult",
 ]
