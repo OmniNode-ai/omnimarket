@@ -57,8 +57,9 @@ _BUS_OPTIONAL_NODE_KINDS = frozenset({EnumNodeKind.COMPUTE, EnumNodeKind.RUNTIME
 # ``omni_worktrees`` directory segment is. ``.claude/worktrees`` is covered by
 # the bare ``worktrees`` segment; ``omni_worktrees`` is the sibling per-ticket
 # clone convention. The 2026-06-26 dev sweep showed 48% of findings (and its
-# sole phantom CRITICAL) came from these duplicate trees. Sibling-class fix to
-# OMN-13521 (node_doc_freshness_sweep), whose exclusion set this mirrors.
+# sole phantom CRITICAL) came from these duplicate trees. This exclusion set was
+# originally shared with the doc-freshness sweep node, which has since been
+# removed; the set is maintained here now and has no other owner.
 _WORKTREE_EXCLUDED_SEGMENTS = frozenset(
     {
         ".claude",

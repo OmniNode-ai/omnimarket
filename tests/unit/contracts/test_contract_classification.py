@@ -24,6 +24,19 @@ def _read_audit() -> list[dict[str, str]]:
         return list(csv.DictReader(fh))
 
 
+def _audit_rows_for_existing_nodes(rows: list[dict[str, str]]) -> list[dict[str, str]]:
+    """Drop rows whose node no longer exists.
+
+    The audit CSV is a dated point-in-time snapshot, not a live inventory. A node
+    deleted since the audit cannot violate a rule about how existing nodes must
+    be configured, and treating the snapshot as an inventory makes every node
+    deletion fail this file for a reason unrelated to what it checks. Rewriting a
+    dated audit artifact to match today's tree would be worse — it would falsify
+    the record the audit exists to preserve.
+    """
+    return [r for r in rows if (NODES_DIR / r["node_name"] / "contract.yaml").exists()]
+
+
 def _read_contract(node_name: str) -> dict:
     path = NODES_DIR / node_name / "contract.yaml"
     if not path.exists():
@@ -56,7 +69,7 @@ def test_every_config_required_node_has_transport_type(
     audit_rows: list[dict[str, str]],
 ) -> None:
     missing: list[str] = []
-    for row in audit_rows:
+    for row in _audit_rows_for_existing_nodes(audit_rows):
         if row["classification"] != "config_required":
             continue
         contract = _read_contract(row["node_name"])
@@ -90,7 +103,7 @@ def test_transport_type_value_is_known(audit_rows: list[dict[str, str]]) -> None
     """transport_type must be one of the canonical transports the apply script
     can choose. Catches stray hand-edits with unknown values."""
     allowed = {"kafka", "postgres", "valkey", "infisical", "llm"}
-    for row in audit_rows:
+    for row in _audit_rows_for_existing_nodes(audit_rows):
         if row["classification"] != "config_required":
             continue
         contract = _read_contract(row["node_name"])
