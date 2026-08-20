@@ -14,11 +14,6 @@ from unittest.mock import MagicMock
 import pytest
 import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
-from onex_change_control.overseer.model_overnight_contract import (
-    ModelOvernightContract,
-    ModelOvernightHaltCondition,
-    ModelOvernightPhaseSpec,
-)
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     EnumOvernightStatus,
@@ -26,6 +21,11 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     HandlerOvernight,
     ModelOvernightCommand,
     _dispatch_ci_watch,
+)
+from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
+    ModelOvernightContract,
+    ModelOvernightHaltCondition,
+    ModelOvernightPhaseSpec,
 )
 
 CMD_TOPIC = "onex.cmd.omnimarket.overnight-start.v1"

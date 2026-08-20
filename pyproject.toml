@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.3"
+version = "0.4.7"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -49,7 +49,6 @@ dependencies = [
     "omnibase-compat==0.5.6",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
-    "onex-change-control>=0.5.1",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -312,7 +311,6 @@ node_semantic_antipattern_validator_orchestrator = "omnimarket.nodes.node_semant
 node_database_sweep = "omnimarket.nodes.node_database_sweep"
 node_volume_config_drift_sweep = "omnimarket.nodes.node_volume_config_drift_sweep"
 node_duplication_sweep = "omnimarket.nodes.node_duplication_sweep"
-node_doc_freshness_sweep = "omnimarket.nodes.node_doc_freshness_sweep"
 node_memory_storage_effect = "omnimarket.nodes.node_memory_storage_effect"
 node_memory_retrieval_effect = "omnimarket.nodes.node_memory_retrieval_effect"
 node_persona_storage_effect = "omnimarket.nodes.node_persona_storage_effect"
@@ -550,7 +548,6 @@ omnimarket = "omnimarket.nodes"
 # commit, delete this override (the range pin above already covers it) and `uv lock`.
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "6fdbba6d8b6bcd7cc98a3da7dc8eb510f67a0e6a" }
 omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" }
-onex-change-control = { git = "https://github.com/OmniNode-ai/onex_change_control.git", rev = "dd2620d18001495b8d0f493b421b38399e9aab4b" }
 
 [tool.uv]
 # OMN-13836: these overrides exist to force the ONEX core/spi/infra/compat
@@ -676,10 +673,6 @@ ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
 module = "omnibase_core.validation.antipattern_registry_loader"
-ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = "onex_change_control.*"
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
