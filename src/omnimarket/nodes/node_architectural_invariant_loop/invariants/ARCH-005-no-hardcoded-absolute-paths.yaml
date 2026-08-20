@@ -13,7 +13,7 @@ description: >
   relative resolution. Annotate legitimate test fixtures with # local-path-ok.
 violation_examples:
   - '"/Users/alice/Code/project"  # hardcoded machine path'
-  - 'Path("/Volumes/DISK/Code/worktrees")'
+  - 'Path("/Volumes/DISK/Code/worktrees")'  # onex-allow-test-fixture OMN-16156 reason="illustrative violation example for the ARCH-005 validator, not a real leak"
 runtime_scope: module
 generated_from_principle: ARCH-005
 generated_at: "2026-05-18T00:00:00+00:00"

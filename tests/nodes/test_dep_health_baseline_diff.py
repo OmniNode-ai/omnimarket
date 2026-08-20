@@ -122,7 +122,7 @@ def test_diff_normalizes_absolute_src_paths(tmp_path: Path) -> None:
     )
     current_finding = _make_finding(
         detail="finding A",
-        file_path="/home/runner/work/omnimarket/omnimarket/src/omnimarket/nodes/node_example/contract.yaml",
+        file_path="/actions-runner/work/omnimarket/omnimarket/src/omnimarket/nodes/node_example/contract.yaml",
     )
 
     baseline = ModelBaselineSnapshot(

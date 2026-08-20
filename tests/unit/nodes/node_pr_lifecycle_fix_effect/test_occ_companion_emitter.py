@@ -380,7 +380,20 @@ class TestFullEmitFlow:
 
         def fake_run_git(argv: list[str], *, cwd: str) -> str:
             git_calls.append(argv)
-            return "c" * 40 if "rev-parse" in argv else ""
+            if "rev-parse" in argv:
+                return "c" * 40
+            if "ls-remote" in argv:
+                # OMN-15845: the base-freshness check runs before each
+                # force-push; report the same base SHA _clone_and_branch is
+                # mocked to return below, so it always reads as fresh (this
+                # helper's own concern is the emit flow, not staleness — that
+                # is covered by test_occ_companion_emitter_stale_base_omn_15845.py).
+                return "0" * 40 + "\tHEAD\n"
+            return ""
+
+        def fake_clone_and_branch(cd: Path, *_a: object) -> str:
+            cd.mkdir(parents=True)
+            return "0" * 40
 
         with (
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
@@ -396,7 +409,7 @@ class TestFullEmitFlow:
             patch.object(
                 emitter,
                 "_clone_and_branch",
-                side_effect=lambda cd, *_a: cd.mkdir(parents=True),
+                side_effect=fake_clone_and_branch,
             ),
             patch.object(emitter, "_open_or_sync_occ_pr", return_value=55),
             patch.object(emitter, "_observe_pr_probe", return_value=("{}", 0)),
@@ -779,12 +792,20 @@ class TestAdmissibilityReceiptNetNewFileOnly:
             return {}
 
         def fake_run_git(argv: list[str], *, cwd: str) -> str:
-            return "e" * 40 if "rev-parse" in argv else ""
+            if "rev-parse" in argv:
+                return "e" * 40
+            if "ls-remote" in argv:
+                # OMN-15845: report the same base SHA seed_clone returns below
+                # so the freshness check reads fresh — staleness itself is
+                # covered by test_occ_companion_emitter_stale_base_omn_15845.py.
+                return "0" * 40 + "\tHEAD\n"
+            return ""
 
-        def seed_clone(cd: Path, *_a: object) -> None:
+        def seed_clone(cd: Path, *_a: object) -> str:
             nonlocal merged_receipt_text
             cd.mkdir(parents=True)
             merged_receipt_text = self._seed_first_companion(cd)
+            return "0" * 40
 
         with (
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),

@@ -74,8 +74,8 @@ def collect_live_consumer_groups(bootstrap_servers: str) -> list[str]:
 
     Args:
         bootstrap_servers: Kafka/Redpanda bootstrap servers connection string
-            (e.g. ``omninode-pc.tail75df5e.ts.net:18085``). This is operational
-            plumbing — the broker *address* — never the census data itself.
+            (e.g. ``<onex-host>:18085``). This is operational plumbing — the
+            broker *address* — never the census data itself.
 
     Returns:
         Sorted list of LIVE consumer group IDs. An empty list is a legal,
