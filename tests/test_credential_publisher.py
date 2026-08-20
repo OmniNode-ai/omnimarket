@@ -40,7 +40,7 @@ from omnimarket.projection.credential_publisher import (
 
 pytestmark = pytest.mark.unit
 
-_SECRET_VALUE = "sk-super-secret-do-not-leak-abc123"
+_SECRET_VALUE = "sk-super-secret-do-not-leak-abc123"  # onex-allow-test-fixture OMN-16316 reason="synthetic BYOK key literal asserted to never appear in any response/event/log, not a real credential"
 
 
 def _make_request(**overrides: object) -> ModelInferenceCredentialCreateRequest:
