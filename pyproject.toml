@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.7"
+version = "0.4.8"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -65,7 +65,7 @@ dependencies = [
     "psycopg2-binary>=2.9.10",
     "httpx>=0.27.0",
     "anthropic>=0.25.0",
-    "omninode-memory==0.17.0",
+    "omninode-memory==0.17.1",
     "radon>=6.0.1",
     # OMN-16024: floor raised 8.4.0 -> 9.0.3 (CVE-2025-71176, insecure tmpdir DoS).
     "pytest>=9.0.3",
@@ -547,7 +547,15 @@ omnimarket = "omnimarket.nodes"
 # REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing this
 # commit, delete this override (the range pin above already covers it) and `uv lock`.
 omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "6fdbba6d8b6bcd7cc98a3da7dc8eb510f67a0e6a" }
-omninode-memory = { git = "https://github.com/OmniNode-ai/omnimemory.git", rev = "887dc679816b9ca4fe1cf51354ac9d5f2869d4ba" }
+# omninode-memory git-rev override REMOVED (OMN-16191 repin, 2026-08-20): the
+# override pinned rev 887dc679 (omninode-memory 0.17.0), which silently forced
+# 0.17.0 regardless of the `==0.17.1` specifier declared above -- uv does not
+# validate a [tool.uv.sources] git source's resolved version against the
+# dependencies-list specifier, so the override was masking the exact bug this
+# repin fixes. omninode-memory 0.17.1 is now published on PyPI and 887dc679 is
+# an ancestor of the 0.17.1 tag commit (1b1092e6), so the override's own
+# removal criterion (target released) is met. Do not reintroduce this override
+# without updating the version pin above in the same edit.
 
 [tool.uv]
 # OMN-13836: these overrides exist to force the ONEX core/spi/infra/compat
