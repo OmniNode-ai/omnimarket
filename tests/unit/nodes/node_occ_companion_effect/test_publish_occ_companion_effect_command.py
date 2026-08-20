@@ -228,7 +228,12 @@ class TestPublisherSideIdempotency:
         env.pop("KAFKA_BOOTSTRAP_SERVERS", None)
         result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
         assert result.exit_code == 0, result.output
-        assert recorder.brokers == ["omninode-pc.tail75df5e.ts.net:19092"]
+        assert (
+            recorder.brokers
+            == [
+                "omninode-pc.tail75df5e.ts.net:19092"  # onex-allow-test-fixture OMN-16156 reason="asserts the real committed dev-lane broker resolves correctly from config"
+            ]
+        )
 
     def test_missing_runner_is_trusted_flag_fails_fast(self) -> None:
         """The RUNNER_IS_TRUSTED wiring-gap fail-fast carries over (OMN-14451)."""

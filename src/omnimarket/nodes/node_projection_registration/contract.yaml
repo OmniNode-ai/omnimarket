@@ -64,6 +64,12 @@ db_io:
       migration: "0000_create_node_service_registry.sql"
       access: write
       role: registry
+    - name: projection_watermarks
+      database_ref: application
+      schema: omninode_internal
+      migration: "0005_create_projection_watermarks.sql"
+      access: write
+      role: watermark_tracking
 
 event_bus:
   subscribe_topics:

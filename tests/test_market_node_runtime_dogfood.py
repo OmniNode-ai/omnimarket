@@ -212,7 +212,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # half of the path that drains an operator machine's stranded emit spool.
     # Its catalog entry lands FENCED on the gateway side, so there is no live
     # traffic on the command topic yet): 386 -> 387.
-    assert summary["node_dirs"] == 387
+    # OMN-16191 deletes node_doc_freshness_sweep. It never had an implementation
+    # of its own — it called onex_change_control's scanner functions behind a
+    # try/except ImportError whose fallback returned status="error" with every
+    # count defaulting to zero, indistinguishable from a clean sweep. Product
+    # code no longer depends on the governance repo, which left the node with no
+    # implementation at all rather than a degraded one: 387 -> 386.
+    assert summary["node_dirs"] == 386
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -256,7 +262,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # comment above): 382 -> 383.
     # OMN-16090 adds the node_hook_event_capture entry point (see node_dirs
     # comment above): 383 -> 384.
-    assert summary["entry_points"] == 384
+    # OMN-16191 removes the node_doc_freshness_sweep entry point along with the
+    # node (see node_dirs comment above): 384 -> 383.
+    assert summary["entry_points"] == 383
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

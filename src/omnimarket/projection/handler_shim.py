@@ -9,6 +9,21 @@ dispatches projection reducers through ``handle(input_data)`` — not
 * ``_db``          -> the sync ``DatabaseAdapter`` the reducer writes through
 * ``_event_type``  -> the event_type derived from the source topic
 * ``_topic``       -> the source Kafka topic
+* ``_envelope_id`` -> the dispatched envelope's stable UUID identity, injected
+  only when the envelope carries a coercible ``envelope_id``
+
+This key set is a CROSS-REPO SEAM, and it drifted once (OMN-16249). The
+producer side lives in ``omnibase_infra`` and enumerates the keys as separate
+assignment statements, so adding one there is a one-line change with no
+compile-time link to this module. ``_envelope_id`` was added upstream without
+this frozenset being widened; every event carrying it then failed
+``extra_forbidden`` here. Because it is injected only ``if envelope_id is not
+None``, the breakage was invisible to every reducer fed by internal events that
+carry no envelope identity, and surfaced only on the gateway-published path,
+where an envelope UUID is always present. ``tests/`` carries a fail-closed
+drift guard that harvests the producer's key set from the INSTALLED
+``omnibase_infra`` and fails when this frozenset does not cover it — that guard,
+not this docstring, is what keeps the two halves matched.
 
 When a projection's inbound event model is declared ``extra="forbid"`` (e.g.
 ``ModelDepHealthSweepCompletedEvent``), splatting the injected dict straight into
@@ -39,8 +54,10 @@ from typing import Final
 from omnimarket.projection.protocol_database import DatabaseAdapter
 
 __all__: list[str] = [
+    "INJECTED_ENVELOPE_ID_KEY",
     "INJECTED_EVENT_TYPE_KEY",
     "INJECTED_TOPIC_KEY",
+    "RUNTIME_INJECTED_KEYS",
     "split_projection_input",
 ]
 
@@ -48,9 +65,22 @@ __all__: list[str] = [
 _INJECTED_DB_KEY: Final[str] = "_db"
 INJECTED_EVENT_TYPE_KEY: Final[str] = "_event_type"
 INJECTED_TOPIC_KEY: Final[str] = "_topic"
-_RUNTIME_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
-    {_INJECTED_DB_KEY, INJECTED_EVENT_TYPE_KEY, INJECTED_TOPIC_KEY}
+INJECTED_ENVELOPE_ID_KEY: Final[str] = "_envelope_id"
+
+# Exported so the drift guard asserts against the same object the split uses,
+# rather than a second copy that could itself drift.
+RUNTIME_INJECTED_KEYS: Final[frozenset[str]] = frozenset(
+    {
+        _INJECTED_DB_KEY,
+        INJECTED_EVENT_TYPE_KEY,
+        INJECTED_TOPIC_KEY,
+        INJECTED_ENVELOPE_ID_KEY,
+    }
 )
+
+# The subset handed back to shims as ``injected_meta``. ``_db`` is excluded
+# because it is returned separately as the first element of the triple.
+_RETURNED_META_KEYS: Final[frozenset[str]] = RUNTIME_INJECTED_KEYS - {_INJECTED_DB_KEY}
 
 
 def split_projection_input(
@@ -72,8 +102,11 @@ def split_projection_input(
           safe to splat into a strict (``extra="forbid"``) event model. Domain
           fields (including underscore-aliased ones such as
           ``_runtime_backend``) are preserved.
-        * ``injected_meta`` carries ``_event_type``/``_topic`` (when present)
-          for shims that route on them.
+        * ``injected_meta`` carries ``_event_type``/``_topic``/``_envelope_id``
+          (each when present) for shims that route on them. ``_envelope_id`` is
+          surfaced rather than merely dropped so a reducer can use the stable
+          envelope UUID as its durable idempotency key across Kafka
+          redeliveries — the reason the runtime injects it at all.
 
     Raises:
         TypeError: if ``input_data['_db']`` is absent or is not a
@@ -85,11 +118,9 @@ def split_projection_input(
     model_payload = {
         key: value
         for key, value in input_data.items()
-        if key not in _RUNTIME_INJECTED_KEYS
+        if key not in RUNTIME_INJECTED_KEYS
     }
     injected_meta = {
-        key: value
-        for key, value in input_data.items()
-        if key in {INJECTED_EVENT_TYPE_KEY, INJECTED_TOPIC_KEY}
+        key: value for key, value in input_data.items() if key in _RETURNED_META_KEYS
     }
     return db_raw, model_payload, injected_meta
