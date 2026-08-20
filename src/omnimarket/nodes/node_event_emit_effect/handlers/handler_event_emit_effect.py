@@ -22,7 +22,10 @@ Drain semantics on each ``handle()`` invocation:
     1. Enrich, then append ONE spool record per fan-out topic (mirroring the
        daemon's one-queued-event-per-fan-out-rule shape).
     2. Attempt to publish each of the current event's records (skipped
-       entirely in spool-only mode, i.e. ``KAFKA_BOOTSTRAP_SERVERS`` unset).
+       entirely in spool-only mode -- the explicit, contract-declared
+       ``ONEX_EMIT_EFFECT_SPOOL_ONLY`` opt-out; see ``_build_default_adapter``
+       for why an absent ``KAFKA_BOOTSTRAP_SERVERS`` alone no longer selects
+       this mode, OMN-16167).
     3. On success, ack (delete that record's spool file).
     4. Drain remaining spool files oldest-first up to a bounded
        per-invocation budget (``timeout_ms`` on the contract bounds this).
@@ -101,6 +104,14 @@ _SINGLE_PUBLISH_CAP_SECONDS = 5.0  # a single publish is never granted more
 _LOOP_HANDOFF_MARGIN_SECONDS = 1.0  # extra slack given to the background-loop
 # future.result() wait beyond the coroutine's own internal timeout, to
 # absorb thread-handoff scheduling jitter without masking a real timeout.
+
+# OMN-16167: the ONE sanctioned, contract-declared opt-out for a lane that is
+# intentionally running with no Kafka publish target yet (local unit tests, a
+# lane mid-bring-up). Declared in contract.yaml's env_dependencies block.
+# This must never be conflated with "KAFKA_BOOTSTRAP_SERVERS happens to be
+# unset" -- see _build_default_adapter().
+_SPOOL_ONLY_ENV_VAR = "ONEX_EMIT_EFFECT_SPOOL_ONLY"
+_SPOOL_ONLY_TRUE_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 class ProtocolPublishAdapter(Protocol):
@@ -466,11 +477,6 @@ class HandlerEventEmitEffect:
 
     def handle(self, request: ModelEmitRequest) -> ModelEmitResult:
         spool = self._spool if self._spool is not None else self._build_default_spool()
-        adapter = (
-            self._publish_adapter
-            if self._publish_adapter is not None
-            else self._build_default_adapter()
-        )
 
         targets, partition_key_field = self._resolve_targets(request)
         tier = resolve_tier(targets)
@@ -500,6 +506,18 @@ class HandlerEventEmitEffect:
 
         result_correlation_id = self._envelope_correlation_id(
             messages[0][1] if messages else None, request.correlation_id
+        )
+
+        # Adapter resolution happens AFTER the append loop above (OMN-16167):
+        # a loud failure out of _build_default_adapter() (genuinely
+        # unconfigured Kafka target, no spool_only opt-out declared) must not
+        # cost the current event its durability -- it is already on disk by
+        # this point, ready for the next invocation's drain once Kafka is
+        # configured.
+        adapter = (
+            self._publish_adapter
+            if self._publish_adapter is not None
+            else self._build_default_adapter()
         )
 
         # Single shared deadline for this invocation: current-event publish
@@ -618,10 +636,43 @@ class HandlerEventEmitEffect:
         return SpoolOutbox(spool_dir)
 
     def _build_default_adapter(self) -> ProtocolPublishAdapter | None:
-        bootstrap = os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
-        if not bootstrap:
+        """Resolve the Kafka publish target via the shared config model (OMN-16167).
+
+        This no longer reads ``KAFKA_BOOTSTRAP_SERVERS`` directly to decide
+        behavior -- the operator ruled that pattern out org-wide (OMN-15938):
+        a bare env-var read silently choosing "no publish target" hides a
+        real misconfiguration behind an indistinguishable-looking spool-only
+        mode.
+
+        Spool-only mode is now an explicit, contract-declared opt-out
+        (``ONEX_EMIT_EFFECT_SPOOL_ONLY`` -- see contract.yaml
+        ``env_dependencies``), for a lane that is genuinely, intentionally
+        running with no Kafka target yet (local unit tests, a lane
+        mid-bring-up). Absent that opt-out, ``bootstrap_servers`` is
+        resolved through ``ModelKafkaEventBusConfig`` -- the same shared,
+        env-override-aware config model every other Kafka publisher in this
+        codebase already builds its connection from (this class's own
+        ``_build_default_bus``, ``node_emit_daemon.kafka_publish``). That
+        model's ``bootstrap_servers`` field has no default: construction
+        fails loudly (``KeyError``) if the var is genuinely missing, instead
+        of this handler silently choosing spool-only on the operator's
+        behalf. ``handle()`` resolves the adapter only after the current
+        event has already been appended to the spool outbox, so a loud
+        failure here never loses the event -- it stays durable on disk for
+        the next invocation once Kafka is configured.
+        """
+        if self._spool_only_opt_out():
             return None
-        return KafkaEventPublisher(bootstrap)
+
+        from omnibase_infra.event_bus.models.config import ModelKafkaEventBusConfig
+
+        config = ModelKafkaEventBusConfig().apply_environment_overrides()
+        return KafkaEventPublisher(config.bootstrap_servers)
+
+    @staticmethod
+    def _spool_only_opt_out() -> bool:
+        raw = os.environ.get(_SPOOL_ONLY_ENV_VAR, "")
+        return raw.strip().lower() in _SPOOL_ONLY_TRUE_VALUES
 
 
 __all__: list[str] = [

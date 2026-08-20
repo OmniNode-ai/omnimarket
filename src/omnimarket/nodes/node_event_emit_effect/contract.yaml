@@ -260,9 +260,33 @@ side_effects:
   duplicate_key_fields: [event_id, correlation_id]
 
 env_dependencies:
+  # OMN-16167: KAFKA_BOOTSTRAP_SERVERS is bootstrap-class config (host/overlay
+  # -sourced -- see omnibase_infra/config/overlays/{mac-dev,linux-server,
+  # cloud-k8s}.yaml -- never Infisical, per that mapping's documented
+  # circular-bootstrap-dependency exclusion). The handler no longer reads it
+  # ad hoc to decide behavior: it is resolved through
+  # omnibase_infra.event_bus.models.config.ModelKafkaEventBusConfig, the same
+  # shared, env-override-aware model every other Kafka publisher in this
+  # codebase already builds its connection from. That model's
+  # bootstrap_servers field has no default, so a genuinely missing var now
+  # fails adapter construction loudly (KeyError) instead of the handler
+  # silently choosing spool-only on the operator's behalf.
   KAFKA_BOOTSTRAP_SERVERS:
+    required: true
+    description: >
+      Kafka bootstrap servers for the publish adapter, resolved via
+      ModelKafkaEventBusConfig. Required unless ONEX_EMIT_EFFECT_SPOOL_ONLY
+      declares this lane intentionally spool-only.
+  ONEX_EMIT_EFFECT_SPOOL_ONLY:
     required: false
-    description: "Omit to run spool-only (no publish, drain accumulates until configured)."
+    description: >
+      Explicit, contract-declared opt-out for a lane intentionally running
+      with no Kafka publish target configured yet (local unit tests, a lane
+      mid-bring-up). One of "1"/"true"/"yes"/"on" (case-insensitive) skips
+      Kafka adapter construction entirely and runs spool-only -- exactly
+      what an absent KAFKA_BOOTSTRAP_SERVERS used to trigger implicitly.
+      Every event is still appended to the spool outbox first regardless of
+      this setting; only the publish attempt is skipped.
   ONEX_EMIT_EFFECT_SPOOL_DIR:
     required: false
     description: "Override the spool directory. Default: $XDG_RUNTIME_DIR/onex/event-emit-effect-spool, else /tmp/onex-event-emit-effect-spool."
@@ -271,4 +295,4 @@ metadata:
   transport_type: kafka
   durability: file_spool
   implementation_wave: 1
-  related_tickets: ["OMN-16048", "OMN-15965", "OMN-15964", "OMN-13213"]
+  related_tickets: ["OMN-16167", "OMN-16048", "OMN-15965", "OMN-15964", "OMN-13213"]
