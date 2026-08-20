@@ -60,6 +60,20 @@ db_io:
       migration: src/omnimarket/nodes/node_log_persistence_effect/migrations/0000_create_log_entries.sql
       access: write
       role: log_entries
+    # OMN-16146: node_projection_registration's own contract.yaml already
+    # declares this db_io.db_tables entry (schema: omninode_internal); this
+    # top-level entry registers it in the ownership catalog
+    # scripts/ci/check_application_database_sql.py reads via
+    # --ownership-manifest, satisfying the OMN-15361 SQL ownership gate for
+    # the node-owned migration's schema-qualified
+    # omninode_internal.projection_watermarks CREATE TABLE, matching
+    # log_entries' own precedent above.
+    - name: projection_watermarks
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_registration/migrations/0005_create_projection_watermarks.sql
+      access: write
+      role: projection_watermarks
 
 relation_evidence:
   - name: omnimarket_schema_migrations
