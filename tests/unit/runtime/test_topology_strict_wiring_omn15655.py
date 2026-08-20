@@ -137,36 +137,11 @@ _TRACKED_UNRESOLVED_DECLARATIONS: Final[frozenset[tuple[str, str, str, str]]] = 
             # declaration resolves on every shipped profile. The ratchet was
             # empty from 2026-08-15 until the entry below.
             #
-            # ADDED 2026-08-20 (OMN-15631 v1(a), operator-classification
-            # decision per the ticket's own design-feasibility assessment,
-            # comment 41f99997): node_delegation_routing_reducer's new
-            # `delegation_routing_tenant_overlay` (migration 0001). The
-            # intended domain IS `tenant` (tenant-attributable workload data
-            # per the house-tenant ruling 2026-08-02 — NOT
-            # `omninode_internal`), but the physical `tenant` Postgres schema
-            # does not yet exist anywhere in this repo's bootstrap fixture
-            # (discovered live while landing the paired omnibase_infra vendor
-            # PR: a `tenant.`-qualified CREATE TABLE divide-by-zero-asserts
-            # against pg_catalog.pg_namespace and fails on a virgin database).
-            # Every OTHER `schema: tenant`-declared table in this corpus is
-            # bare/`public` and grandfathered under
-            # scripts/ci/check_application_database_sql.py's frozen
-            # shrink-only baseline; a NEW table cannot join that
-            # grandfathering, and there is no way to correctly schema-qualify
-            # a new `tenant.*` object until the schema itself is provisioned.
-            # This is exactly the `tenant`-schema RLS foundation gap
-            # (OMN-14894/OMN-15356) the ticket's own assessment named for
-            # AC2 — it turns out to include the bare schema object too, not
-            # only RLS policies on it. OMN-16314 (the AC2 follow-on) promotes
-            # this table — schema creation, qualification, and RLS together —
-            # once that foundation lands; this entry leaves the ratchet then,
-            # the only sanctioned way an entry leaves.
-            (
-                "node_delegation_routing_reducer",
-                "delegation_routing_tenant_overlay",
-                "application",
-                "unresolved",
-            ),
+            # RETIRED 2026-08-20 (OMN-15631 merge-sweep repair): the
+            # node_delegation_routing_reducer tenant-overlay table now declares
+            # `schema: tenant` and resolves against the shipped topology. The
+            # v1(a) table remains no-RLS; OMN-16314 still owns the later tenant
+            # isolation policy/foundation work.
         }
     )
 )

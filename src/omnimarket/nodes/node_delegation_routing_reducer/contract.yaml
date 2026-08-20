@@ -140,28 +140,13 @@ db_io:
     # OMN-15631 v1(a): the rows are tenant-attributable workload data (a
     # tenant's own routing config), not attribution-meaningless infra state
     # -- the house-tenant ruling 2026-08-02 reserves `omninode_internal` for
-    # the latter. The intended DOMAIN is `tenant` (the same ADR-0027
-    # classification `delegation_events`/migration 0022 uses) but `schema`
-    # here is deliberately `unresolved`, not `tenant`, because -- discovered
-    # live 2026-08-20 while landing the paired omnibase_infra vendor PR --
-    # the physical `tenant` Postgres schema does not yet exist in this
-    # repo's bootstrap fixture (unlike `omninode_internal`, which is
-    # asserted/present there). Every other `schema: tenant`-declared table
-    # in this corpus is bare/`public` and grandfathered under the
-    # domain-enforcement gate's frozen shrink-only baseline; a NEW table
-    # cannot join that grandfathering, and there is currently no way to
-    # correctly schema-qualify a new `tenant.*` object because the schema
-    # itself is not provisionable yet. This is exactly the gap OMN-15631's
-    # own design-feasibility assessment named for the RLS foundation
-    # (OMN-14894/OMN-15356) -- it turns out to include the bare schema
-    # object too, not only RLS policies on it. Tracked as a residual in
-    # tests/unit/runtime/test_topology_strict_wiring_omn15655.py's
-    # _TRACKED_UNRESOLVED_DECLARATIONS (entry cites OMN-15631 + OMN-16314,
-    # the AC2 follow-on that promotes this table -- schema creation,
-    # qualification, and RLS together -- once the foundation lands).
+    # the latter. The domain/schema is `tenant`, matching ADR-0027's
+    # classification for tenant-attributable workload data. The table remains
+    # v1(a) / no-RLS in this PR; OMN-16314 owns the later tenant-isolation
+    # policy/foundation work.
     - name: delegation_routing_tenant_overlay
       database_ref: application
-      schema: unresolved
+      schema: tenant
       migration: "0001_create_delegation_routing_tenant_overlay.sql"
       access: read_write
       role: tenant_routing_overlay
