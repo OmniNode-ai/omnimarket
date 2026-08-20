@@ -137,17 +137,21 @@ metadata:
 
 db_io:
   db_tables:
-    # OMN-15631 v1(a): additive, no-RLS staging table (migration 0001). Schema
-    # is deliberately "unresolved" -- it is NOT yet `tenant` (no RLS exists
-    # for it) and NOT `omninode_internal` (the rows ARE tenant-attributable
-    # workload data, not attribution-meaningless infra state — the house-
-    # tenant ruling 2026-08-02 reserves omninode_internal for the latter).
-    # OMN-16314 (the AC2 follow-on) resolves this to `tenant` once the
-    # RLS foundation (OMN-14894/OMN-15356) lands and the rows are promoted;
-    # do not hand-resolve this to `tenant` before that migration exists.
+    # OMN-15631 v1(a): the rows are tenant-attributable workload data (a
+    # tenant's own routing config), not attribution-meaningless infra state
+    # -- the house-tenant ruling 2026-08-02 reserves `omninode_internal` for
+    # the latter -- so this declares `schema: tenant`, the same ADR-0027
+    # domain classification `delegation_events` (migration 0022) already
+    # uses. RLS enforcement does NOT exist on this specific table yet
+    # (migration 0001 is deliberately additive/no-RLS, per the OMN-15631
+    # v1(a) design assessment); OMN-16314 (the AC2 follow-on, blocked on
+    # OMN-14894/OMN-15356) adds it in a later migration -- mirroring exactly
+    # how `delegation_events` got its `tenant` classification in 0022 and
+    # its RLS policy in a separate later migration 0023. The domain
+    # classification is decided now; the enforcement lands later.
     - name: delegation_routing_tenant_overlay
       database_ref: application
-      schema: unresolved
+      schema: tenant
       migration: "0001_create_delegation_routing_tenant_overlay.sql"
       access: read_write
       role: tenant_routing_overlay
