@@ -75,11 +75,48 @@
 --   defaults rule, rather than swallowing that gap silently.
 --
 -- Idempotency: CREATE TABLE / INDEX are guarded so the migration is safe on
--- a DB where the table already exists and on a fresh omnidash_analytics.
--- The GRANT below is idempotent by Postgres's own semantics (re-granting an
--- already-held privilege is a no-op, not an error).
+-- a DB where the table already exists. The GRANT below is idempotent by
+-- Postgres's own semantics (re-granting an already-held privilege is a no-op,
+-- not an error).
+--
+-- NOT safe on a database where the omninode_internal schema is absent: this file
+-- asserts that schema rather than creating it (see the precondition below for
+-- why), so schema provisioning is a prerequisite, not something this migration
+-- performs. An earlier revision of this comment claimed the file was safe "on a
+-- fresh omnidash_analytics"; that was true only while it issued CREATE SCHEMA,
+-- which is precisely the statement the deployed role has no privilege to run.
 
-CREATE SCHEMA IF NOT EXISTS omninode_internal;
+-- -----------------------------------------------------------------------------
+-- Precondition: the schema must ALREADY exist. This asserts; it does not create.
+--
+-- This file previously ran `CREATE SCHEMA IF NOT EXISTS omninode_internal`, which
+-- fails on the deployed onex-dev lane with:
+--
+--     ERROR:  permission denied for database omnidash_analytics
+--
+-- CREATE SCHEMA requires CREATE on the DATABASE, which the migration role
+-- (role_omnidash / NODE_DB_USER on the managed RDS lane) does not hold -- and
+-- `IF NOT EXISTS` does not help, because Postgres checks the privilege before it
+-- checks existence. The statement therefore failed even though the schema was
+-- already present, taking the whole migrate Job past its backoff limit and, with
+-- it, the entire staging deploy (every post-migration step, including the runtime
+-- image pin, is skipped when this Job fails).
+--
+-- The sibling file node_projection_live_events/0002_create_omninode_internal_live_events.sql
+-- documents this exact hazard under the heading "THE SCHEMA TRAP THIS FILE
+-- ASSERTS, NOT WORKS AROUND" and uses the pattern reproduced below: read
+-- pg_catalog.pg_namespace, which needs no schema-level privilege and is therefore
+-- safe under any connecting role, and let integer division by zero fail the
+-- migration loudly when the schema is genuinely absent. Statically provable, so it
+-- needs no DO/RAISE block (which the repo's dynamic-SQL rejection would refuse).
+--
+-- Safe on this lane: 0002 above is recorded as already applied against
+-- omnidash_analytics, and it carries this same divide-by-zero assert -- it could
+-- not have applied if omninode_internal did not exist there.
+-- -----------------------------------------------------------------------------
+SELECT 1 / count(*) AS omninode_internal_schema_exists_precondition
+  FROM pg_catalog.pg_namespace
+ WHERE nspname = 'omninode_internal';
 
 CREATE TABLE IF NOT EXISTS omninode_internal.projection_watermarks (
     projection_name TEXT PRIMARY KEY,
