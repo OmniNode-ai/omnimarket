@@ -18,11 +18,7 @@ import subprocess
 from datetime import UTC, datetime
 from unittest.mock import MagicMock, patch
 
-from onex_change_control.overseer.model_overnight_contract import (
-    ModelDispatchItem,
-    ModelOvernightContract,
-    ModelOvernightPhaseSpec,
-)
+from omnibase_core.models.overseer import ModelDispatchItem
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     EnumOvernightStatus,
@@ -30,6 +26,10 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     HandlerOvernight,
     ModelOvernightCommand,
     _execute_dispatch_items,
+)
+from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
+    ModelOvernightContract,
+    ModelOvernightPhaseSpec,
 )
 
 
@@ -239,7 +239,7 @@ def test_execute_dispatch_items_file_not_found_halt_on_failure_false_continues()
     None
 ):
     """FileNotFoundError with halt_on_failure=False logs and continues to next item."""
-    from onex_change_control.overseer.model_overnight_contract import (
+    from omnibase_core.models.overseer import (
         ModelDispatchItem,
     )
 

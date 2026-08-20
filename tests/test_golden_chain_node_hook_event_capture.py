@@ -22,6 +22,12 @@ asserts the consumer accepts NOTHING outside it — which is what makes the
 reproduction falsifiable rather than decorative. If the gateway leg ever adds a
 field, ``extra="forbid"`` turns that into a loud failure at this seam instead of
 a silent drop in production.
+
+``handle()`` (called through this file with the runtime-injected dict shape —
+payload plus ``_db``/``_event_type``/``_topic``) is the ONLY entrypoint the
+real projection dispatch arm ever calls for this node (OMN-16090). The
+end-to-end proof that the arm itself dispatches this shape correctly lives in
+``test_omn16090_real_dispatch_path.py``.
 """
 
 from __future__ import annotations
@@ -41,7 +47,6 @@ from omnimarket.nodes.node_hook_event_capture.handlers.handler_hook_event_captur
 from omnimarket.nodes.node_hook_event_capture.models.model_hook_event_capture_request import (
     ModelHookEventCaptureRequest,
 )
-from omnimarket.projection.runner import MessageMeta, PublishFn
 
 pytestmark = pytest.mark.unit
 
@@ -102,60 +107,32 @@ REAL_FAMILIES: tuple[tuple[str, dict[str, Any]], ...] = (
 
 
 class InmemoryHookEventsTable:
-    """Stands in for hook_events with the migration's real conflict target."""
+    """Stands in for hook_events with the migration's real conflict target.
+
+    Implements the injected ``DatabaseAdapter`` protocol (single-row
+    ``upsert``/``query``) that the real projection dispatch arm hands
+    ``handle()`` — see ``handler_hook_event_capture``'s module docstring for
+    why the handler queries before writing instead of relying on a SQL-level
+    ``DO NOTHING``.
+    """
 
     def __init__(self) -> None:
         self.rows: dict[tuple[str, str], dict[str, Any]] = {}
-        self.tenant_gucs: list[str | None] = []
 
-    async def execute(
-        self, query: str, *params: Any, tenant: str | None = None
+    def upsert(self, table: str, conflict_key: str, row: dict[str, Any]) -> bool:
+        key = (str(row["tenant_id"]), str(row["event_sha"]))
+        self.rows[key] = dict(row)
+        return True
+
+    def query(
+        self, table: str, filters: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        self.tenant_gucs.append(tenant)
-        tenant_id, source, batch_sha = params[0], params[1], params[2]
-        cols = params[3:12]
-        inserted: list[dict[str, Any]] = []
-        for i, sha in enumerate(cols[0]):
-            key = (tenant_id, sha)
-            if key in self.rows:
-                continue
-            self.rows[key] = {
-                "tenant_id": tenant_id,
-                "event_sha": sha,
-                "event_type": cols[1][i],
-                "occurred_at": cols[2][i],
-                "payload": json.loads(cols[3][i]),
-                "event_id": cols[4][i],
-                "correlation_id": cols[5][i],
-                "run_id": cols[6][i],
-                "source": source,
-                "batch_sha": batch_sha,
-                "spooled_at": cols[7][i],
-                "spool_reason": cols[8][i],
-            }
-            inserted.append({"id": f"row-{i}"})
-        return inserted
-
-
-class _Handler(HandlerHookEventCapture):
-    """Real handler with only its two outbound seams substituted.
-
-    The DB and the publish transport are overridden at the SAME public seams
-    the base class exposes (``db``, ``get_publish_fn``) rather than by poking
-    private attributes, so the test exercises the production call path instead
-    of a reshaped one.
-    """
-
-    def __init__(self, table: InmemoryHookEventsTable) -> None:
-        self._table = table
-        self.publish: PublishFn | None = None
-
-    @property
-    def db(self) -> Any:
-        return self._table
-
-    async def get_publish_fn(self) -> PublishFn | None:
-        return self.publish
+        applied = filters or {}
+        return [
+            dict(row)
+            for row in self.rows.values()
+            if all(row.get(k) == v for k, v in applied.items())
+        ]
 
 
 def _event_sha(event_type: str, payload: dict[str, Any], occurred_at: str) -> str:
@@ -202,44 +179,49 @@ def gateway_wire_payload() -> dict[str, Any]:
     }
 
 
-META = MessageMeta(partition=0, offset=42, fallback_id="f", topic=COMMAND_TOPIC)
+def _dispatch_input(
+    batch_payload: dict[str, Any], db: InmemoryHookEventsTable
+) -> dict[str, Any]:
+    """Reproduce exactly what the projection dispatch arm hands to handle()."""
+    return {
+        **batch_payload,
+        "_db": db,
+        "_event_type": "hook-event-capture-requested",
+        "_topic": COMMAND_TOPIC,
+    }
 
 
 @pytest.fixture
-def chain() -> tuple[_Handler, InmemoryHookEventsTable]:
-    table = InmemoryHookEventsTable()
-    return _Handler(table), table
+def chain() -> tuple[HandlerHookEventCapture, InmemoryHookEventsTable]:
+    return HandlerHookEventCapture(), InmemoryHookEventsTable()
 
 
 class TestGoldenChain:
-    @pytest.mark.asyncio
-    async def test_gateway_payload_lands_as_rows(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
+    def test_gateway_payload_lands_as_rows(
+        self, chain: tuple[HandlerHookEventCapture, InmemoryHookEventsTable]
     ) -> None:
         handler, table = chain
-        assert await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
+        handler.handle(_dispatch_input(gateway_wire_payload(), table))
         assert len(table.rows) == len(REAL_FAMILIES)
         stored = {r["event_type"] for r in table.rows.values()}
         assert stored == {family for family, _ in REAL_FAMILIES}
 
-    @pytest.mark.asyncio
-    async def test_payload_body_is_stored_verbatim(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
+    def test_payload_body_is_stored_verbatim(
+        self, chain: tuple[HandlerHookEventCapture, InmemoryHookEventsTable]
     ) -> None:
         """A capture surface that mangles the body has captured nothing."""
         handler, table = chain
-        await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
+        handler.handle(_dispatch_input(gateway_wire_payload(), table))
         by_type = {r["event_type"]: r["payload"] for r in table.rows.values()}
         for family, body in REAL_FAMILIES:
             assert by_type[family] == body
 
-    @pytest.mark.asyncio
-    async def test_families_without_event_id_still_land(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
+    def test_families_without_event_id_still_land(
+        self, chain: tuple[HandlerHookEventCapture, InmemoryHookEventsTable]
     ) -> None:
         """61% of the real corpus has no event_id — it must not be dropped."""
         handler, table = chain
-        await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
+        handler.handle(_dispatch_input(gateway_wire_payload(), table))
         no_id = [
             r
             for r in table.rows.values()
@@ -249,62 +231,55 @@ class TestGoldenChain:
         assert all(r["event_id"] is None for r in no_id)
         assert all(len(r["event_sha"]) == 64 for r in no_id)
 
-    @pytest.mark.asyncio
-    async def test_replay_of_the_whole_chain_is_a_no_op(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
+    def test_replay_of_the_whole_chain_is_a_no_op(
+        self, chain: tuple[HandlerHookEventCapture, InmemoryHookEventsTable]
     ) -> None:
         handler, table = chain
         payload = gateway_wire_payload()
-        await handler.project_event(COMMAND_TOPIC, payload, META)
+        handler.handle(_dispatch_input(payload, table))
         snapshot = dict(table.rows)
-        await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
+        handler.handle(_dispatch_input(gateway_wire_payload(), table))
         assert table.rows == snapshot
 
-    def test_definition_b_entrypoint_drives_the_same_chain(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
+    def test_handle_returns_the_typed_result_shape(
+        self, chain: tuple[HandlerHookEventCapture, InmemoryHookEventsTable]
     ) -> None:
-        """handle() is the canonical def-B entrypoint auto-wiring binds.
-
-        Typed model in, typed result out (OMN-14355). Without a bound handle()
-        the runtime binds _missing_handle and every dispatch raises at runtime
-        while CI stays green; with the legacy dict-in/dict-out shape the
-        canon-shape ratchet refuses the node outright, and it is right to --
-        that shape is baselined debt, not a pattern to copy.
-        """
+        """``handle()`` is the canonical def-B dispatch entrypoint auto-wiring
+        binds. It returns a dict (the JSON-mode dump of
+        ``ModelHookEventCaptureResult`` plus ``rows_upserted`` for the arm's
+        own terminal-event gating) — see the handler module docstring for why
+        the INPUT is a dict too, not the typed request model."""
         handler, table = chain
-        request = ModelHookEventCaptureRequest.model_validate(gateway_wire_payload())
-        result = handler.handle(request)
+        payload = gateway_wire_payload()
+        result = handler.handle(_dispatch_input(payload, table))
 
-        assert result.batch_sha == request.batch_sha
-        assert result.events_received == len(REAL_FAMILIES)
-        assert result.events_persisted == len(REAL_FAMILIES)
-        assert result.events_already_present == 0
+        assert result["batch_sha"] == payload["batch_sha"]
+        assert result["events_received"] == len(REAL_FAMILIES)
+        assert result["events_persisted"] == len(REAL_FAMILIES)
+        assert result["events_already_present"] == 0
+        assert result["rows_upserted"] == len(REAL_FAMILIES)
         assert len(table.rows) == len(REAL_FAMILIES)
 
-    def test_definition_b_result_distinguishes_a_replay_from_new_work(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
+    def test_result_distinguishes_a_replay_from_new_work(
+        self, chain: tuple[HandlerHookEventCapture, InmemoryHookEventsTable]
     ) -> None:
         """A caller that cannot tell these apart cannot tell progress from a stall."""
-        handler, _ = chain
-        request = ModelHookEventCaptureRequest.model_validate(gateway_wire_payload())
-        first = handler.handle(request)
-        second = handler.handle(request)
+        handler, table = chain
+        payload = gateway_wire_payload()
+        first = handler.handle(_dispatch_input(payload, table))
+        second = handler.handle(_dispatch_input(payload, table))
 
-        assert first.events_persisted == len(REAL_FAMILIES)
-        assert first.events_already_present == 0
-        assert second.events_persisted == 0
-        assert second.events_already_present == len(REAL_FAMILIES)
+        assert first["events_persisted"] == len(REAL_FAMILIES)
+        assert first["events_already_present"] == 0
+        assert second["events_persisted"] == 0
+        assert second["events_already_present"] == len(REAL_FAMILIES)
 
-    @pytest.mark.asyncio
-    async def test_writer_stamps_the_row_tenant_as_the_rls_guc(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
+    def test_writer_stamps_the_row_tenant(
+        self, chain: tuple[HandlerHookEventCapture, InmemoryHookEventsTable]
     ) -> None:
         handler, table = chain
-        await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
-        assert table.tenant_gucs
-        guc = table.tenant_gucs[0]
-        assert guc is not None
-        assert {r["tenant_id"] for r in table.rows.values()} == {guc}
+        handler.handle(_dispatch_input(gateway_wire_payload(), table))
+        assert {r["tenant_id"] for r in table.rows.values()} == {"omninode"}
 
 
 class TestSeamIsFalsifiable:
@@ -329,15 +304,14 @@ class TestSeamIsFalsifiable:
         with pytest.raises(ValidationError):
             ModelHookEventCaptureRequest.model_validate(payload)
 
-    @pytest.mark.asyncio
-    async def test_missing_principal_is_poison_not_a_silent_default(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
+    def test_missing_principal_is_poison_not_a_silent_default(
+        self, chain: tuple[HandlerHookEventCapture, InmemoryHookEventsTable]
     ) -> None:
         handler, table = chain
         payload = gateway_wire_payload()
         del payload["tenant_principal_id"]
         with pytest.raises(HookEventCaptureError):
-            await handler.project_event(COMMAND_TOPIC, payload, META)
+            handler.handle(_dispatch_input(payload, table))
         assert table.rows == {}
 
     def test_contract_subscribes_to_the_topic_this_chain_drives(self) -> None:
@@ -358,79 +332,3 @@ class TestSeamIsFalsifiable:
         assert contract["terminal_event"] == (
             "onex.evt.omnimarket.hook-events-captured.v1"
         )
-
-
-class TestTerminalEvent:
-    """The batch-completion signal, and its deliberate best-effort posture."""
-
-    @pytest.mark.asyncio
-    async def test_terminal_event_is_published_once_per_batch(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
-    ) -> None:
-        handler, _ = chain
-        published: list[tuple[str, bytes]] = []
-
-        async def _publish(topic: str, value: bytes) -> None:
-            published.append((topic, value))
-
-        handler.publish = _publish
-        await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
-
-        assert len(published) == 1, "one completion event per batch, not per event"
-        topic, raw = published[0]
-        assert topic == "onex.evt.omnimarket.hook-events-captured.v1"
-        body = json.loads(raw)
-        assert body["events_received"] == len(REAL_FAMILIES)
-        assert body["events_persisted"] == len(REAL_FAMILIES)
-        assert body["events_already_present"] == 0
-        assert body["tenant_principal_id"] == PRINCIPAL
-
-    @pytest.mark.asyncio
-    async def test_replay_reports_zero_persisted_and_all_duplicates(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
-    ) -> None:
-        """A replay must be visibly a replay, not indistinguishable from work."""
-        handler, _ = chain
-        published: list[bytes] = []
-
-        async def _publish(topic: str, value: bytes) -> None:
-            published.append(value)
-
-        handler.publish = _publish
-        await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
-        await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
-
-        second = json.loads(published[1])
-        assert second["events_persisted"] == 0
-        assert second["events_already_present"] == len(REAL_FAMILIES)
-
-    @pytest.mark.asyncio
-    async def test_publish_failure_does_not_lose_the_rows(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
-    ) -> None:
-        """The rows are already committed; a transport fault must not stall.
-
-        Re-raising here would re-deliver a batch that is already persisted --
-        harmless for the rows (the unique constraint absorbs it) but it would
-        stall the partition on a transport problem unrelated to the data.
-        """
-        handler, table = chain
-
-        async def _boom(topic: str, value: bytes) -> None:
-            raise RuntimeError("broker down")
-
-        handler.publish = _boom
-        assert await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
-        assert len(table.rows) == len(REAL_FAMILIES)
-
-    @pytest.mark.asyncio
-    async def test_no_broker_configured_is_not_an_error(
-        self, chain: tuple[_Handler, InmemoryHookEventsTable]
-    ) -> None:
-        """Unit/CLI contexts have no transport; capture must still succeed."""
-        handler, table = chain
-        handler.publish = None
-        handler._producer = None
-        handler._kafka_bootstrap_servers = ""
-        assert await handler.project_event(COMMAND_TOPIC, gateway_wire_payload(), META)
-        assert len(table.rows) == len(REAL_FAMILIES)

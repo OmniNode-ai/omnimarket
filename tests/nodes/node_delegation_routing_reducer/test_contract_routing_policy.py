@@ -480,9 +480,17 @@ class TestDeltaContractRouting:
         prev_routing_path = os.environ.get("DELEGATION_ROUTING_TIERS_PATH")
         prev_task_contract_path = os.environ.get("TASK_CLASS_CONTRACT_PATH")
         prev_bifrost_contract_path = os.environ.get("BIFROST_CONTRACT_PATH")
+        # OMN-16149: an ambient BIFROST_OVERLAY_PATH (provisioned on some dev
+        # machines per OMN-12931, e.g. ~/.omninode/delegation/bifrost_overrides.yaml)
+        # merges on top of this test's own bifrost_file fixture and can carry a
+        # complete-path endpoint_url for the same backend_id, silently overriding
+        # the bare-base value this test asserts against. Isolate it like the other
+        # three env vars so the test's outcome depends only on its own fixtures.
+        prev_bifrost_overlay_path = os.environ.get("BIFROST_OVERLAY_PATH")
         os.environ["DELEGATION_ROUTING_TIERS_PATH"] = str(routing_file)
         os.environ["TASK_CLASS_CONTRACT_PATH"] = str(contract_file)
         os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
+        os.environ.pop("BIFROST_OVERLAY_PATH", None)
 
         try:
             decision = delta(self._make_request("test"))
@@ -501,6 +509,10 @@ class TestDeltaContractRouting:
                 os.environ.pop("BIFROST_CONTRACT_PATH", None)
             else:
                 os.environ["BIFROST_CONTRACT_PATH"] = prev_bifrost_contract_path
+            if prev_bifrost_overlay_path is None:
+                os.environ.pop("BIFROST_OVERLAY_PATH", None)
+            else:
+                os.environ["BIFROST_OVERLAY_PATH"] = prev_bifrost_overlay_path
 
     def test_reasoning_tasks_route_to_deepseek(self, tmp_path: Path) -> None:
         """research task_type routes to deepseek-r1 via task_model_overrides."""

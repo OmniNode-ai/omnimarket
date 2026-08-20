@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Verification gate for OMN-8504: Pydantic get_type_hints() resolution.
 
-Confirms no ForwardRef resolution failures across all onex_change_control.overseer
+Confirms no ForwardRef resolution failures across all omnibase_core.models.overseer
 imports after OMN-8502/8503 (ruff TC003/TC001 noqa cleanup) landed.
 """
 
@@ -16,7 +16,7 @@ import pytest
 @pytest.mark.unit
 class TestOmn8504OverseerTypeHintResolution:
     def test_model_worker_contract_type_hints_resolve(self) -> None:
-        from onex_change_control.overseer.model_worker_contract import (
+        from omnibase_core.models.overseer.model_worker_contract import (
             ModelWorkerContract,
         )
 
@@ -25,7 +25,10 @@ class TestOmn8504OverseerTypeHintResolution:
         assert "worker_name" in hints
 
     def test_model_overnight_contract_type_hints_resolve(self) -> None:
-        from onex_change_control.overseer.model_overnight_contract import (
+        # omnimarket-local: not interchangeable with core's ModelSessionContract
+        # family, whose required_outcomes is a closed EnumCompletionOutcome set
+        # rather than the domain outcome names this node's phases carry.
+        from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
             ModelOvernightContract,
         )
 
@@ -33,7 +36,7 @@ class TestOmn8504OverseerTypeHintResolution:
         assert hints
 
     def test_model_session_contract_type_hints_resolve(self) -> None:
-        from onex_change_control.overseer.model_session_contract import (
+        from omnibase_core.models.overseer import (
             ModelSessionContract,
         )
 
@@ -41,13 +44,13 @@ class TestOmn8504OverseerTypeHintResolution:
         assert hints
 
     def test_model_dispatch_item_type_hints_resolve(self) -> None:
-        from onex_change_control.overseer.model_dispatch_item import ModelDispatchItem
+        from omnibase_core.models.overseer.model_dispatch_item import ModelDispatchItem
 
         hints = typing.get_type_hints(ModelDispatchItem)
         assert hints
 
     def test_model_verifier_output_type_hints_resolve(self) -> None:
-        from onex_change_control.overseer.model_verifier_output import (
+        from omnibase_core.models.overseer.model_verifier_output import (
             ModelVerifierOutput,
         )
 
@@ -55,7 +58,7 @@ class TestOmn8504OverseerTypeHintResolution:
         assert hints
 
     def test_model_task_state_envelope_type_hints_resolve(self) -> None:
-        from onex_change_control.overseer.model_task_state_envelope import (
+        from omnibase_core.models.overseer.model_task_state_envelope import (
             ModelTaskStateEnvelope,
         )
 
@@ -63,7 +66,7 @@ class TestOmn8504OverseerTypeHintResolution:
         assert hints
 
     def test_model_completion_report_type_hints_resolve(self) -> None:
-        from onex_change_control.overseer.model_completion_report import (
+        from omnibase_core.models.overseer.model_completion_report import (
             ModelCompletionReport,
         )
 
@@ -71,13 +74,15 @@ class TestOmn8504OverseerTypeHintResolution:
         assert hints
 
     def test_model_context_bundle_importable(self) -> None:
-        from onex_change_control.overseer.model_context_bundle import ModelContextBundle
+        from omnibase_core.models.overseer.model_context_bundle import (
+            ModelContextBundle,
+        )
 
         # ModelContextBundle is a Union type alias — not a class, get_type_hints() N/A
         assert ModelContextBundle is not None
 
     def test_model_worker_contract_model_fields_accessible(self) -> None:
-        from onex_change_control.overseer import ModelWorkerContract
+        from omnibase_core.models.overseer import ModelWorkerContract
 
         fields = ModelWorkerContract.model_fields
         assert "worker_name" in fields

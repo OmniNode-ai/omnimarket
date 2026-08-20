@@ -171,7 +171,7 @@ def _run(
 # NOT routable off-network — so every off-LAN run failed to reach any database and
 # (pre-fix) silently reported tables_empty=0. The Tailscale MagicDNS name resolves
 # both on-LAN and remotely, so the sweep works from anywhere. Still env-overridable.
-_DEFAULT_RUNTIME_HOST = "omninode-pc.tail75df5e.ts.net"
+_DEFAULT_RUNTIME_HOST = "omninode-pc.tail75df5e.ts.net"  # onex-allow-internal-ip OMN-16156 reason="env-overridable runtime-host default, already documented above (OMN-14526)"
 _DEFAULT_PG_CONTAINER = "omnibase-infra-postgres"
 _DEFAULT_PG_USER = "postgres"
 _DEFAULT_SSH_USER = "jonah"

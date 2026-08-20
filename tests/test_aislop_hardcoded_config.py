@@ -31,7 +31,9 @@ def _run_check(py_content: str, checks: list[str] | None = None) -> list:
 
 class TestHardcodedIp:
     def test_detects_192_168_address(self) -> None:
-        findings = _run_check('BASE_URL = "http://192.168.1.10:8080/api"\n')
+        findings = _run_check(
+            'BASE_URL = "http://192.168.1.10:8080/api"\n'  # onex-allow-test-fixture OMN-16156 reason="planted canary the hardcoded-ip detector under test must catch"
+        )
         assert len(findings) == 1
         assert findings[0].check == "hardcoded-config"
         assert findings[0].severity == "ERROR"

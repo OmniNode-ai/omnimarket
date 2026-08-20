@@ -187,16 +187,6 @@
       "finding_type": "UNTESTED_HANDLER",
       "severity": "MAJOR",
       "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_doc_freshness_sweep/handlers/handler_doc_freshness_sweep.py",
-      "symbol": "handler_doc_freshness_sweep",
-      "detail": "Contract-referenced handler 'handler_doc_freshness_sweep' has no test file and no golden-chain fixture coverage.",
-      "rule_id": "UNTESTED_HANDLER",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "UNTESTED_HANDLER",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_contract_sweep/handlers/handler_contract_sweep.py",
       "symbol": "handler_contract_sweep",
       "detail": "Contract-referenced handler 'handler_contract_sweep' has no test file and no golden-chain fixture coverage.",
@@ -3710,16 +3700,6 @@
       "file_path": "src/omnimarket/nodes/node_dispatch_worker_execution_effect/contract.yaml",
       "symbol": "onex.evt.omnimarket.dispatch-worker-execution-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.dispatch-worker-execution-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_doc_freshness_sweep/contract.yaml",
-      "symbol": "onex.evt.omnimarket.doc-freshness-sweep-completed.v1",
-      "detail": "Topic 'onex.evt.omnimarket.doc-freshness-sweep-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },
