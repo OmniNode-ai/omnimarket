@@ -149,30 +149,39 @@ def test_retained_live_census_gap_fails_closed() -> None:
         "blocked_pending_live_catalog_and_activity_evidence"
     )
     assert census["observed_base_tables"] == 86
-    # 58 as of OMN-16316: +1 for the new node-owned
-    # node_projection_tenant_credentials/0000_create_tenant_inference_credentials.sql
-    # CREATE TABLE (the BYOK credential-ref projection table). Previously 57
-    # as of OMN-16146 (node_projection_registration / projection_watermarks).
-    assert census["source_created_tables"] == 58
-    # 62 as of OMN-16293: +2 for the two new omnibase_infra#2818 catalog
+    # 59 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 57 as of
+    # OMN-16146 (node_projection_registration / projection_watermarks), +1
+    # for OMN-16316's node-owned node_projection_tenant_credentials
+    # /0000_create_tenant_inference_credentials.sql CREATE TABLE (the BYOK
+    # credential-ref projection table) = 58, +1 for this change's new
+    # node-owned node_delegation_routing_reducer
+    # /0001_create_delegation_routing_tenant_overlay.sql CREATE TABLE (the
+    # v1(a) per-tenant delegation routing overlay table) = 59.
+    assert census["source_created_tables"] == 59
+    # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
+    # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
     # in scripts/application-relation-ownership.yaml, satisfying the OMN-15361
     # SQL ownership gate for node_savings_estimation_compute's schema-qualified
     # CREATE TABLE (that node has no omnimarket-side contract.yaml db_io
     # declaration of its own -- it lives entirely in omnibase_infra -- so
     # these are catalog-only entries, same shape as live_events/log_entries/
-    # projection_watermarks above). Previously 60 as of OMN-16316
-    # (tenant_inference_credentials).
-    assert census["source_declared_tables"] == 62
-    # 28 as of OMN-16316. This figure is arithmetic, not an observation:
-    # the generator computes max(0, 86 - source_created_tables), so adding one
-    # source-created table (tenant_inference_credentials) necessarily drops it
-    # by one. It does NOT assert that tenant_inference_credentials exists in
-    # the live catalog -- the census was observed 2026-07-29 and
-    # tenant_inference_credentials had not been created then. The bound is a
-    # LOWER bound on unreconciled live tables and stays honest either way;
-    # parity_status is still "blocked".
-    assert census["minimum_unreconciled_live_base_tables"] == 28
+    # projection_watermarks above) = 61, +1 for OMN-16316's
+    # tenant_inference_credentials db_io declaration = 62, +1 for this
+    # change's new node-owned db_io declaration
+    # (delegation_routing_tenant_overlay), required by the shadow gate
+    # (application sources must not create tables with no db_io declaration)
+    # = 63.
+    assert census["source_declared_tables"] == 63
+    # 27 as of OMN-15631. This figure is arithmetic, not an observation:
+    # the generator computes max(0, 86 - source_created_tables), so each
+    # newly source-created table (tenant_inference_credentials, then
+    # delegation_routing_tenant_overlay) necessarily drops it by one from the
+    # prior 29. It does NOT assert that either table exists in the live
+    # catalog -- the census was observed 2026-07-29 and neither table had
+    # been created then. The bound is a LOWER bound on unreconciled live
+    # tables and stays honest either way; parity_status is still "blocked".
+    assert census["minimum_unreconciled_live_base_tables"] == 27
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

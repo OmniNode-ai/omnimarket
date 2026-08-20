@@ -1,6 +1,24 @@
 {
   "blocked_relations": [
     {
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
+      ],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
+      "name": "delegation_routing_tenant_overlay",
+      "reason": "schema 'unresolved' does not resolve through deployment topology"
+    },
+    {
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
+      ],
+      "current_database": "omnidash_analytics",
+      "kind": "sequence",
+      "name": "delegation_routing_tenant_overlay_id_seq",
+      "reason": "schema 'unresolved' does not resolve through deployment topology"
+    },
+    {
       "authoritative_sources": [],
       "current_database": "omnidash_analytics",
       "kind": "table",
@@ -70,8 +88,8 @@
   "relation_counts": {
     "extension": 1,
     "function": 15,
-    "sequence": 14,
-    "table": 62,
+    "sequence": 15,
+    "table": 63,
     "view": 10
   },
   "relations": [
@@ -899,6 +917,52 @@
       "target_schema": "omninode_internal",
       "writers": [
         "node_contract_registry"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_delegation_routing_reducer"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
+      ],
+      "blocked_reasons": [
+        "schema 'unresolved' does not resolve through deployment topology"
+      ],
+      "classification_evidence": "implicit BIGSERIAL sequence for delegation_routing_tenant_overlay",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [
+        "delegation_routing_tenant_overlay"
+      ],
+      "dependent_objects": [
+        "table:delegation_routing_tenant_overlay"
+      ],
+      "domain": null,
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "keys": [],
+      "kind": "sequence",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_delegation_routing_reducer",
+      "name": "delegation_routing_tenant_overlay_id_seq",
+      "owner_declaration": "node_delegation_routing_reducer",
+      "partitioning": [],
+      "producer": "node_delegation_routing_reducer",
+      "readers": [],
+      "target_schema": "unresolved",
+      "writers": [
+        "node_delegation_routing_reducer"
       ]
     },
     {
@@ -2169,6 +2233,60 @@
       "target_schema": "tenant",
       "writers": [
         "node_projection_delegation"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_delegation_routing_reducer"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
+      ],
+      "blocked_reasons": [
+        "schema 'unresolved' does not resolve through deployment topology"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [
+        "delegation_routing_tenant_overlay_tenant_task_uq"
+      ],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "sequence:delegation_routing_tenant_overlay_id_seq"
+      ],
+      "domain": null,
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [
+        "idx_delegation_routing_tenant_overlay_tenant_id"
+      ],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (id)",
+        "UNIQUE (tenant_id, task_type)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_delegation_routing_reducer",
+      "name": "delegation_routing_tenant_overlay",
+      "owner_declaration": "node_delegation_routing_reducer",
+      "partitioning": [],
+      "producer": "node_delegation_routing_reducer",
+      "readers": [
+        "node_delegation_routing_reducer"
+      ],
+      "target_schema": "unresolved",
+      "writers": [
+        "node_delegation_routing_reducer"
       ]
     },
     {
@@ -5170,15 +5288,15 @@
   ],
   "retained_live_census": {
     "evidence_source": "omni_home/docs/plans/2026-07-29-two-database-tenant-vs-internal-split-plan.md",
-    "minimum_unreconciled_live_base_tables": 28,
+    "minimum_unreconciled_live_base_tables": 27,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 58,
-    "source_declared_tables": 62
+    "source_created_tables": 59,
+    "source_declared_tables": 63
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -5194,7 +5312,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 58 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-28-table gap require an authorized catalog read",
+      "reason": "repository sources contain 59 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-27-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
