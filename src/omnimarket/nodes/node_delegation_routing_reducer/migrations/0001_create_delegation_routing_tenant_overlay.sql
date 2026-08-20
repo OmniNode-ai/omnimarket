@@ -46,8 +46,38 @@
 -- (HOUSE_TENANT_SLUG = 'omninode'). No FK to a `tenant` schema table: that
 -- schema/RLS foundation is exactly what OMN-14894/OMN-15356 build, and this
 -- table must not preempt or collide with OMN-15354's schema classification.
+--
+-- WHY SCHEMA-QUALIFIED tenant.delegation_routing_tenant_overlay, NOT BARE
+--   This is a first physical creation (no prior CREATE TABLE for it anywhere
+--   in this corpus), not a cutover, so there is no legacy unqualified row set
+--   to reconcile against. scripts/ci/check_application_database_sql.py
+--   (OMN-15361/OMN-15423 domain enforcement, application_database_sql_gate)
+--   requires every NEW deployable SQL target to be schema-qualified against a
+--   declared topology domain -- `tenant` matches this node's own
+--   db_io.db_tables[].schema declaration in contract.yaml. The existing bare
+--   `delegation_events` (migration 0022, same `tenant` domain) is grandfathered
+--   under the gate's frozen shrink-only baseline; grandfathering is
+--   shrink-only, so a NEW table cannot join it -- it must comply directly.
+--   Follows the identical precedent as
+--   node_projection_registration/0005_create_projection_watermarks.sql
+--   (OMN-16146, `omninode_internal` domain).
+--
+-- WHY NO CREATE SCHEMA / DO $$ ... $$ BLOCK -- same hazard as 0005 above:
+--   CREATE SCHEMA requires CREATE on the DATABASE, which the migration role
+--   does not hold on the deployed lane (fails even with IF NOT EXISTS,
+--   because Postgres checks the privilege before it checks existence), and
+--   the dynamic-SQL rejection rule refuses any DO $$ ... $$ block in a newly
+--   linted file. So this file ASSERTS the schema exists (via the
+--   statically-provable divide-by-zero precondition against
+--   pg_catalog.pg_namespace, which needs no schema-level privilege) rather
+--   than creating it -- schema provisioning is a prerequisite this migration
+--   does not perform.
 
-CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
+SELECT 1 / count(*) AS tenant_schema_exists_precondition
+  FROM pg_catalog.pg_namespace
+ WHERE nspname = 'tenant';
+
+CREATE TABLE IF NOT EXISTS tenant.delegation_routing_tenant_overlay (
     id BIGSERIAL PRIMARY KEY,
     tenant_id TEXT NOT NULL,
     task_type TEXT NOT NULL,
@@ -64,4 +94,4 @@ CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
 );
 
 CREATE INDEX IF NOT EXISTS idx_delegation_routing_tenant_overlay_tenant_id
-    ON delegation_routing_tenant_overlay (tenant_id);
+    ON tenant.delegation_routing_tenant_overlay (tenant_id);
