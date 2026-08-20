@@ -3,10 +3,21 @@
 
 The load-bearing property is the one the ticket's acceptance criterion names:
 persisting N events from a batch and then REDELIVERING the same batch must
-leave the row count unchanged. That is proven here against a fake DB that
-implements the real ``ON CONFLICT (tenant_id, event_sha) DO NOTHING`` semantics
-the migration declares — not against a mock that returns whatever the test
-wants, which would prove nothing about the conflict target.
+leave the row count unchanged. That is proven here through ``handle()`` — the
+ONLY entrypoint the real runtime dispatch (projection auto-wiring) ever calls
+for a ``db_io`` node — against a fake ``DatabaseAdapter`` that implements the
+real single-row ``upsert``/``query`` protocol the injected production adapter
+exposes, with the handler's own query-before-upsert guard providing the
+``DO NOTHING``-equivalent behavior (see the handler module docstring for why
+the injected adapter cannot do this via SQL alone). A mock returning whatever
+the test wants would prove nothing about that guard.
+
+The dispatch shape driven here (``handle(dict-with-injected-metadata)``) is
+exactly what ``omnibase_infra.runtime.auto_wiring.handler_wiring
+._make_projection_dispatch_callback`` builds and calls in production; the
+REAL end-to-end wiring proof (constructing that callback for real and driving
+it through a ``ModelEventEnvelope``) lives in
+``test_omn16090_real_dispatch_path.py``.
 """
 
 from __future__ import annotations
@@ -22,6 +33,7 @@ from pydantic import ValidationError
 
 from omnimarket.config.settings import get_settings
 from omnimarket.nodes.node_hook_event_capture.handlers.handler_hook_event_capture import (
+    CONFLICT_KEY,
     TABLE,
     HandlerHookEventCapture,
     HookEventCaptureError,
@@ -31,7 +43,6 @@ from omnimarket.nodes.node_hook_event_capture.models.model_hook_event_capture_re
     ModelCapturedHookEvent,
     ModelHookEventCaptureRequest,
 )
-from omnimarket.projection.runner import MessageMeta
 
 pytestmark = pytest.mark.unit
 
@@ -54,6 +65,7 @@ MIGRATION_RLS = (
 ).read_text()
 
 PRINCIPAL = "t-" + "0" * 32
+COMMAND_TOPIC = "onex.cmd.omnimarket.hook-event-capture-requested.v1"
 
 
 def _sha(seed: str) -> str:
@@ -102,89 +114,62 @@ def _batch(
 
 
 class FakeConflictAwareDB:
-    """Minimal DB double implementing the migration's conflict target.
+    """``DatabaseAdapter`` double: single-row ``upsert``/``query``, no DO-NOTHING.
 
-    It is deliberately NOT a MagicMock. The property under test is that a
-    replay is a no-op *because the unique key is (tenant_id, event_sha)*; a
-    mock returning a canned row count would pass no matter what conflict target
-    the SQL actually named, which is the failure mode this double exists to
-    prevent. Rows are keyed exactly as the UNIQUE constraint keys them.
+    Deliberately NOT a MagicMock. It mirrors exactly what the injected
+    production adapter offers (one row at a time, no SQL-level DO NOTHING),
+    so the property under test — that a replay is a no-op — has to come from
+    the HANDLER's own query-before-upsert guard, not from a mock returning a
+    canned answer.
     """
 
     def __init__(self) -> None:
         self.rows: dict[tuple[str, str], dict[str, Any]] = {}
-        self.tenants_seen: list[str | None] = []
-        self.statements: list[str] = []
+        self.upsert_calls: list[dict[str, Any]] = []
+        self.query_calls: list[dict[str, Any]] = []
 
-    async def execute(
-        self, query: str, *params: Any, tenant: str | None = None
+    def upsert(self, table: str, conflict_key: str, row: dict[str, Any]) -> bool:
+        assert table == TABLE
+        assert conflict_key == CONFLICT_KEY
+        self.upsert_calls.append(dict(row))
+        key = (str(row["tenant_id"]), str(row["event_sha"]))
+        self.rows[key] = dict(row)
+        return True
+
+    def query(
+        self, table: str, filters: dict[str, Any] | None = None
     ) -> list[dict[str, Any]]:
-        self.statements.append(query)
-        self.tenants_seen.append(tenant)
-        tenant_id: str = params[0]
-        source: str = params[1]
-        batch_sha: str = params[2]
-        (
-            shas,
-            types,
-            occurred,
-            payloads,
-            event_ids,
-            corr_ids,
-            run_ids,
-            spooled,
-            reasons,
-        ) = params[3:12]
-        inserted: list[dict[str, Any]] = []
-        for i, sha in enumerate(shas):
-            key = (tenant_id, sha)
-            if key in self.rows:  # ON CONFLICT ... DO NOTHING
-                continue
-            self.rows[key] = {
-                "tenant_id": tenant_id,
-                "event_sha": sha,
-                "event_type": types[i],
-                "occurred_at": occurred[i],
-                "payload": json.loads(payloads[i]),
-                "event_id": event_ids[i],
-                "correlation_id": corr_ids[i],
-                "run_id": run_ids[i],
-                "source": source,
-                "batch_sha": batch_sha,
-                "spooled_at": spooled[i],
-                "spool_reason": reasons[i],
-            }
-            inserted.append({"id": f"row-{sha[:8]}"})
-        return inserted
+        assert table == TABLE
+        self.query_calls.append(dict(filters or {}))
+        applied = filters or {}
+        return [
+            dict(row)
+            for row in self.rows.values()
+            if all(row.get(k) == v for k, v in applied.items())
+        ]
 
 
-class _Runner(HandlerHookEventCapture):
-    """Handler with its two outbound seams substituted, nothing else.
+def _dispatch_input(
+    batch_payload: dict[str, Any], db: FakeConflictAwareDB
+) -> dict[str, Any]:
+    """Reproduce EXACTLY what the projection dispatch arm hands to handle().
 
-    Both are overridden at the PUBLIC seams the base class exposes (``db``,
-    ``get_publish_fn``), never by assigning private attributes, so the
-    production call path is what runs. ``get_publish_fn`` returning None is the
-    real no-broker case: capture must succeed without a transport.
+    ``_make_projection_dispatch_callback`` builds ``input_data`` as the event
+    payload plus injected ``_db``/``_event_type``/``_topic`` — see
+    ``handler_wiring._callback`` (omnibase_infra).
     """
-
-    def __init__(self, db: FakeConflictAwareDB) -> None:
-        self._fake_db = db
-
-    @property
-    def db(self) -> Any:
-        return self._fake_db
-
-    async def get_publish_fn(self) -> Any:
-        return None
+    return {
+        **batch_payload,
+        "_db": db,
+        "_event_type": "hook-event-capture-requested",
+        "_topic": COMMAND_TOPIC,
+    }
 
 
 @pytest.fixture
-def runner() -> tuple[_Runner, FakeConflictAwareDB]:
+def runner() -> tuple[HandlerHookEventCapture, FakeConflictAwareDB]:
     db = FakeConflictAwareDB()
-    return _Runner(db), db
-
-
-META = MessageMeta(partition=0, offset=1, fallback_id="f", topic="t")
+    return HandlerHookEventCapture(), db
 
 
 # ---------------------------------------------------------------------------
@@ -193,43 +178,65 @@ META = MessageMeta(partition=0, offset=1, fallback_id="f", topic="t")
 
 
 class TestIdempotency:
-    @pytest.mark.asyncio
-    async def test_batch_persists_every_distinct_event(
-        self, runner: tuple[_Runner, FakeConflictAwareDB]
+    def test_batch_persists_every_distinct_event(
+        self, runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB]
     ) -> None:
         r, db = runner
         batch = _batch([_event(f"e{i}") for i in range(5)])
-        assert await r.project_event("t", batch, META) is True
+        result = r.handle(_dispatch_input(batch, db))
+        assert result["events_persisted"] == 5
+        assert result["events_already_present"] == 0
+        assert result["rows_upserted"] == 5
         assert len(db.rows) == 5
 
-    @pytest.mark.asyncio
-    async def test_redelivering_the_same_batch_changes_nothing(
-        self, runner: tuple[_Runner, FakeConflictAwareDB]
+    def test_redelivering_the_same_batch_changes_nothing(
+        self, runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB]
     ) -> None:
         """The AC: a Kafka replay must not duplicate a single row."""
         r, db = runner
         batch = _batch([_event(f"e{i}") for i in range(5)])
-        await r.project_event("t", batch, META)
+        r.handle(_dispatch_input(batch, db))
         before = dict(db.rows)
-        await r.project_event("t", batch, META)
-        await r.project_event("t", batch, META)
+        second = r.handle(_dispatch_input(batch, db))
+        third = r.handle(_dispatch_input(batch, db))
         assert db.rows == before, "replay duplicated or mutated rows"
         assert len(db.rows) == 5
+        assert second["events_persisted"] == 0
+        assert second["events_already_present"] == 5
+        assert third["events_persisted"] == 0
 
-    @pytest.mark.asyncio
-    async def test_partial_overlap_inserts_only_the_new_events(
-        self, runner: tuple[_Runner, FakeConflictAwareDB]
+    def test_redelivery_does_not_touch_updated_at(
+        self, runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB]
+    ) -> None:
+        """A replay must not look like new activity (immutable-history intent)."""
+        r, db = runner
+        batch = _batch([_event("e0")])
+        r.handle(_dispatch_input(batch, db))
+        upserts_after_first = len(db.upsert_calls)
+        r.handle(_dispatch_input(batch, db))
+        assert len(db.upsert_calls) == upserts_after_first, (
+            "a replayed event must not reach upsert() at all -- the "
+            "query-before-upsert guard exists precisely because the "
+            "injected adapter's upsert() has no DO NOTHING mode and would "
+            "otherwise bump updated_at on every redelivery"
+        )
+
+    def test_partial_overlap_inserts_only_the_new_events(
+        self, runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB]
     ) -> None:
         """A resumed drain re-sends some already-shipped events."""
         r, db = runner
-        await r.project_event("t", _batch([_event(f"e{i}") for i in range(3)]), META)
-        await r.project_event("t", _batch([_event(f"e{i}") for i in range(1, 6)]), META)
+        r.handle(_dispatch_input(_batch([_event(f"e{i}") for i in range(3)]), db))
+        result = r.handle(
+            _dispatch_input(_batch([_event(f"e{i}") for i in range(1, 6)]), db)
+        )
         assert len(db.rows) == 6
+        assert result["events_persisted"] == 3
+        assert result["events_already_present"] == 2
 
-    @pytest.mark.asyncio
-    async def test_same_event_sha_under_a_different_tenant_is_a_separate_row(
+    def test_same_event_sha_under_a_different_tenant_is_a_separate_row(
         self,
-        runner: tuple[_Runner, FakeConflictAwareDB],
+        runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         """The key is (tenant_id, event_sha), not event_sha alone.
@@ -243,59 +250,47 @@ class TestIdempotency:
         """
         r, db = runner
         _pin_interim_tenant_settings(monkeypatch)
-        await r.project_event("t", _batch([_event("shared")]), META)
+        r.handle(_dispatch_input(_batch([_event("shared")]), db))
         monkeypatch.setattr(
             get_settings(), "onex_tenant_id", "other-tenant", raising=True
         )
-        await r.project_event("t", _batch([_event("shared")]), META)
+        r.handle(_dispatch_input(_batch([_event("shared")]), db))
         assert len(db.rows) == 2
         assert {tenant for tenant, _ in db.rows} == {"omninode", "other-tenant"}
 
-    @pytest.mark.asyncio
-    async def test_writer_stamps_the_rls_guc_explicitly(
+    def test_writer_stamps_the_row_tenant_explicitly(
         self,
-        runner: tuple[_Runner, FakeConflictAwareDB],
+        runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        """OMN-15919: never let the adapter re-derive a tenant of its own.
-
-        The resolved tenant is pinned via monkeypatch (not left to whatever
-        the running lane's real env happens to carry) so this test fails for
-        a code reason, never because CI exports ``ONEX_TENANT_ID`` or
-        ``ENFORCE_TENANT_ISOLATION``.
+        """OMN-15919: the row itself must carry the resolved tenant, not rely
+        on the adapter to infer one -- the injected DatabaseAdapter protocol
+        has no separate tenant-context channel; the row IS the channel.
         """
         r, db = runner
         _pin_interim_tenant_settings(monkeypatch)
-        await r.project_event("t", _batch(), META)
-        assert db.tenants_seen == ["omninode"]
-        assert db.tenants_seen[0] is not None
+        r.handle(_dispatch_input(_batch(), db))
+        assert db.upsert_calls
+        assert db.upsert_calls[0]["tenant_id"] == "omninode"
 
-    @pytest.mark.asyncio
-    async def test_whole_batch_is_one_statement(
-        self, runner: tuple[_Runner, FakeConflictAwareDB]
+    def test_conflict_target_matches_the_migration(
+        self, runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB]
     ) -> None:
-        """Atomicity: 250 events must not become 250 transactions."""
-        r, db = runner
-        await r.project_event(
-            "t", _batch([_event(f"e{i}") for i in range(MAX_EVENTS_PER_BATCH)]), META
-        )
-        assert len(db.statements) == 1
-        assert len(db.rows) == MAX_EVENTS_PER_BATCH
-
-    @pytest.mark.asyncio
-    async def test_conflict_target_matches_the_migration(
-        self, runner: tuple[_Runner, FakeConflictAwareDB]
-    ) -> None:
-        """The SQL's conflict target must be the constraint that exists."""
-        r, db = runner
-        await r.project_event("t", _batch(), META)
-        sql = db.statements[0]
-        assert "ON CONFLICT (tenant_id, event_sha) DO NOTHING" in sql
+        """The conflict key this handler uses must be the constraint that exists."""
+        assert CONFLICT_KEY == "tenant_id,event_sha"
         assert "UNIQUE (tenant_id, event_sha)" in MIGRATION
-        assert "DO UPDATE" not in sql, (
-            "captured events are immutable history; DO UPDATE would move "
-            "updated_at and make a pure replay look like new activity"
+
+    def test_full_batch_size_persists(
+        self, runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB]
+    ) -> None:
+        r, db = runner
+        result = r.handle(
+            _dispatch_input(
+                _batch([_event(f"e{i}") for i in range(MAX_EVENTS_PER_BATCH)]), db
+            )
         )
+        assert result["events_persisted"] == MAX_EVENTS_PER_BATCH
+        assert len(db.rows) == MAX_EVENTS_PER_BATCH
 
 
 # ---------------------------------------------------------------------------
@@ -304,7 +299,6 @@ class TestIdempotency:
 
 
 class TestMalformedBatchIsPoison:
-    @pytest.mark.asyncio
     @pytest.mark.parametrize(
         "batch",
         [
@@ -334,22 +328,32 @@ class TestMalformedBatchIsPoison:
             ),
         ],
     )
-    async def test_malformed_batch_raises_rather_than_returning_false(
-        self, runner: tuple[_Runner, FakeConflictAwareDB], batch: dict[str, Any]
+    def test_malformed_batch_raises_rather_than_writing_partial_rows(
+        self,
+        runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB],
+        batch: dict[str, Any],
     ) -> None:
-        """Returning False would spin the consumer forever on one offset."""
         r, db = runner
         with pytest.raises(HookEventCaptureError):
-            await r.project_event("t", batch, META)
+            r.handle(_dispatch_input(batch, db))
         assert db.rows == {}, "a rejected batch must write nothing"
 
-    @pytest.mark.asyncio
-    async def test_caller_supplied_extra_key_is_rejected(
-        self, runner: tuple[_Runner, FakeConflictAwareDB]
+    def test_caller_supplied_extra_key_is_rejected(
+        self, runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB]
     ) -> None:
-        r, _ = runner
+        r, db = runner
         with pytest.raises(HookEventCaptureError):
-            await r.project_event("t", _batch(topic="onex.cmd.attacker.v1"), META)
+            r.handle(_dispatch_input(_batch(topic="onex.cmd.attacker.v1"), db))
+
+    def test_non_mapping_input_is_rejected_loudly(
+        self, runner: tuple[HandlerHookEventCapture, FakeConflictAwareDB]
+    ) -> None:
+        """A caller passing the pre-OMN-16090 typed model must fail loudly,
+        not silently mis-dispatch -- there is no live caller for that shape
+        any more (see the handler module docstring)."""
+        r, _db = runner
+        with pytest.raises(TypeError):
+            r.handle(ModelHookEventCaptureRequest.model_validate(_batch()))
 
 
 # ---------------------------------------------------------------------------
@@ -421,10 +425,7 @@ class TestModelSeam:
 
 class TestContractSeam:
     def test_topics_come_from_the_contract_not_a_literal(self) -> None:
-        db = FakeConflictAwareDB()
-        r = _Runner(db)
-        assert r.topics == CONTRACT["event_bus"]["subscribe_topics"]
-        assert r.topics == ["onex.cmd.omnimarket.hook-event-capture-requested.v1"]
+        assert CONTRACT["event_bus"]["subscribe_topics"] == [COMMAND_TOPIC]
 
     def test_subscribes_to_a_command_topic(self) -> None:
         """It consumes a capture REQUEST, never the event topics themselves."""

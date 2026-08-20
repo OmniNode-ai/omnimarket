@@ -33,10 +33,6 @@ from datetime import UTC, datetime
 from typing import Protocol, cast
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
-from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
-from omnibase_infra.event_bus.models.config.model_kafka_event_bus_config import (
-    ModelKafkaEventBusConfig,
-)
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.config.settings import Settings
@@ -44,6 +40,15 @@ from omnimarket.events.topics import NODE_GENERATION_REQUESTED_TOPIC_V1
 from omnimarket.nodes.node_generation_consumer.models.model_generation import (
     ModelNodeGenerationRequest,
 )
+
+# OMN-15800 AC6: EventBusKafka / ModelKafkaEventBusConfig (both from
+# omnibase_infra) are imported lazily inside _build_event_bus below, not at
+# module scope -- importing anything from omnibase_infra transitively loads
+# asyncpg (that package's own top-level __init__ chain reaches a
+# module-scope ``from asyncpg.exceptions import ...``), and the
+# projection-api process must never load asyncpg. Neither name is used as a
+# type annotation here (the public seam is ProtocolGenerationEventBus), so
+# no TYPE_CHECKING import is needed either.
 
 
 class ProtocolGenerationEventBus(Protocol):
@@ -158,6 +163,12 @@ def _build_event_bus(settings: Settings | None = None) -> ProtocolGenerationEven
     NOT a raw broker client — the imperative-contract guard requires the bus
     abstraction, and the bus owns serialization, idempotence, and acks.
     """
+    # Lazy import (OMN-15800 AC6): see the note above under TYPE_CHECKING.
+    from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
+    from omnibase_infra.event_bus.models.config.model_kafka_event_bus_config import (
+        ModelKafkaEventBusConfig,
+    )
+
     resolved = settings or Settings()
     bootstrap = resolved.get_effective_kafka_bootstrap_servers()
     if not bootstrap:

@@ -17,11 +17,6 @@ from unittest.mock import MagicMock
 
 import pytest
 import yaml
-from onex_change_control.overseer.model_overnight_contract import (
-    ModelOvernightContract,
-    ModelOvernightHaltCondition,
-    ModelOvernightPhaseSpec,
-)
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     EnumOvernightStatus,
@@ -32,6 +27,11 @@ from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
 from omnimarket.nodes.node_overnight.handlers.overseer_tick import (
     OVERSEER_FLAG_PATH,
     OVERSEER_TICK_LOG,
+)
+from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
+    ModelOvernightContract,
+    ModelOvernightHaltCondition,
+    ModelOvernightPhaseSpec,
 )
 
 

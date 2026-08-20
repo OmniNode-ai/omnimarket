@@ -54,6 +54,12 @@ exemptions:
     ticket: OMN-10580
     reason: tracking doc with config examples and lab address as orientation hints
 
+  - file: docs/adr-canary/ground_truth_manifest.yaml
+    type: self_exempt
+    ticket: OMN-16156
+    reason: embeds real merged ADRs' verbatim text as a benchmark fixture; editing
+      embedded ADR text to annotate a literal would corrupt ground-truth fidelity
+
   # ── File-level exemptions (test fixtures) ────────────────────────────────
   - file: tests/test_emergency_bypass_parser.py
     type: file_level
