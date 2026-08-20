@@ -59,7 +59,7 @@ pytestmark = [
     ),
 ]
 
-_DEFAULT_BOLT_URI = "bolt://100.109.203.94:7687"  # lab Memgraph (.201) over Tailscale
+_DEFAULT_BOLT_URI = "bolt://100.109.203.94:7687"  # lab Memgraph (.201) over Tailscale  # onex-allow-test-fixture OMN-16156 reason="env-overridable live-integration test default for the real lab Memgraph"
 _BOLT_URI = os.environ.get("ONEX_E2E_MEMGRAPH_BOLT_URI", _DEFAULT_BOLT_URI)
 
 

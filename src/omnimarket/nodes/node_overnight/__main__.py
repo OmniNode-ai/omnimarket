@@ -52,12 +52,14 @@ import uuid
 from pathlib import Path
 
 import yaml
-from onex_change_control.overseer.model_overnight_contract import ModelOvernightContract
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     EventPublisher,
     HandlerOvernight,
     ModelOvernightCommand,
+)
+from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
+    ModelOvernightContract,
 )
 
 logger = logging.getLogger(__name__)

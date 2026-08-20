@@ -14,11 +14,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-from onex_change_control.overseer.model_overnight_contract import (
-    ModelOvernightContract,
-    ModelOvernightHaltCondition,
-    ModelOvernightPhaseSpec,
-)
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     EnumOvernightStatus,
@@ -29,6 +24,11 @@ from omnimarket.nodes.node_overnight.handlers.overseer_tick import (
     OVERSEER_TICK_TOPIC,
     _pr_blocked_minutes,
     build_tick_snapshot,
+)
+from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
+    ModelOvernightContract,
+    ModelOvernightHaltCondition,
+    ModelOvernightPhaseSpec,
 )
 
 TOPIC_OVERSEER_TICK = OVERSEER_TICK_TOPIC  # same constant, now sourced from handler

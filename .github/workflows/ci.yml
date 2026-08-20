@@ -1923,6 +1923,21 @@ jobs:
           persist-credentials: false
           path: .contract-graph-checkouts/omniintelligence
 
+      # onex_change_control moved from INSTALLED_PACKAGES to CHECKOUT_PACKAGES
+      # when omnimarket dropped its runtime dependency on the governance repo.
+      # Its contracts still matter for census completeness — a topic whose
+      # producer lives in an unscanned package looks like an orphan to every
+      # consumer the graph can see — but reading packaged YAML never justified
+      # a runtime pin, and resolving it by import is what quietly required the
+      # dependency that has now been removed.
+      - name: Checkout onex_change_control (census-only, full topic coverage)
+        uses: actions/checkout@v4
+        with:
+          repository: OmniNode-ai/onex_change_control
+          ref: dev
+          persist-credentials: false
+          path: .contract-graph-checkouts/onex_change_control
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:

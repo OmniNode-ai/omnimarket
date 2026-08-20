@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""TDD-first tests for OMN-8431: omnimarket imports onex_change_control.overseer.
+"""TDD-first tests for OMN-8431: omnimarket imports omnibase_core.models.overseer.
 
 These tests assert the post-migration state. They fail before imports are
 updated, pass after.
@@ -55,7 +55,7 @@ class TestOmnimarketOverseerImportMigration:
         assert NodeSkillOverseerVerifyOrchestrator is not None
 
     def test_verify_with_context_requires_canonical_ticket_id(self) -> None:
-        from onex_change_control.overseer.model_context_bundle import (
+        from omnibase_core.models.overseer.model_context_bundle import (
             ModelContextBundleL0,
         )
 
@@ -77,7 +77,7 @@ class TestOmnimarketOverseerImportMigration:
             )
 
     def test_verify_with_context_uses_context_ticket_id_for_receipts(self) -> None:
-        from onex_change_control.overseer.model_context_bundle import (
+        from omnibase_core.models.overseer.model_context_bundle import (
             ModelContextBundleL1,
         )
 

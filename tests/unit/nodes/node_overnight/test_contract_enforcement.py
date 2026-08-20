@@ -19,16 +19,16 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
-from onex_change_control.overseer.model_overnight_contract import (
-    ModelOvernightContract,
-    ModelOvernightPhaseSpec,
-)
 
 from omnimarket.nodes.node_overnight.handlers.handler_overnight import (
     EnumOvernightStatus,
     EnumPhase,
     HandlerOvernight,
     ModelOvernightCommand,
+)
+from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
+    ModelOvernightContract,
+    ModelOvernightPhaseSpec,
 )
 
 
