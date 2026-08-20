@@ -17,7 +17,7 @@
 #   .201. That runner reaches the dev-lane Redpanda across the bridge network.
 #   The broker is now resolved SECRET-FREE from the checked-in
 #   `config/ci_bus_lanes.yaml` overlay: `dev` declares the concrete external
-#   listener `omninode-pc.tail75df5e.ts.net:19092` directly, so the publisher
+#   listener `omninode-pc.tail75df5e.ts.net:19092` directly, so the publisher  # onex-allow-internal-ip OMN-16156 reason="pre-existing architectural comment describing the real committed dev-lane broker; not a new leak"
 #   publishes to that committed address with NO `KAFKA_BOOTSTRAP_SERVERS` secret
 #   injected (OMN-14813 completes OMN-14801 design point 3 -- no raw broker
 #   address in any GHA secret). Fork PRs fall back to ubuntu-latest and skip

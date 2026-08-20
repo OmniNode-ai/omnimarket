@@ -36,10 +36,6 @@ from enum import StrEnum
 from pathlib import Path
 from time import monotonic
 
-from onex_change_control.overseer.model_overnight_contract import (
-    ModelOvernightContract,
-    ModelOvernightHaltCondition,
-)
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.nodes.contract_topics import (
@@ -56,6 +52,10 @@ from omnimarket.nodes.node_overnight.handlers.overseer_tick import (
     probe_required_outcomes,
     remove_overseer_flag,
     write_overseer_flag,
+)
+from omnimarket.nodes.node_overnight.models.model_overnight_contract import (
+    ModelOvernightContract,
+    ModelOvernightHaltCondition,
 )
 from omnimarket.nodes.node_overnight.protocols.di import DependencyResolutionError
 from omnimarket.nodes.node_overnight.protocols.protocol_phase_handlers import (
@@ -1109,7 +1109,7 @@ def _execute_dispatch_items(
 
     Returns (success, error_message).
     """
-    from onex_change_control.overseer.model_dispatch_item import ModelDispatchItem
+    from omnibase_core.models.overseer.model_dispatch_item import ModelDispatchItem
 
     last_error: str | None = None
 
