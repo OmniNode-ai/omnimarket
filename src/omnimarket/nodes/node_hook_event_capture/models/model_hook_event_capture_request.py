@@ -194,6 +194,13 @@ class ModelHookEventCaptureResult(BaseModel):
     first delivery are BOTH successes and must be distinguishable: a caller
     that cannot tell "250 new rows" from "250 already present" cannot tell
     progress from a stuck loop.
+
+    No ``terminal_event_published`` field (OMN-16090): the projection
+    dispatch arm emits the contract's declared ``terminal_event`` itself,
+    gated on this handler's returned ``rows_upserted`` (== ``events_persisted``)
+    being >= 1 — see the handler module docstring. This handler no longer
+    publishes its own terminal event, so a field claiming it did would be
+    dead weight at best and a lie at worst.
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -202,4 +209,3 @@ class ModelHookEventCaptureResult(BaseModel):
     events_received: int = Field(ge=0)
     events_persisted: int = Field(ge=0)
     events_already_present: int = Field(ge=0)
-    terminal_event_published: bool

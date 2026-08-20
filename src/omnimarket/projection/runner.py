@@ -1022,15 +1022,24 @@ class BaseProjectionRunner(ABC):
             )
 
     async def _update_watermark(self, projection_name: str, offset: int) -> None:
-        """Update projection_watermarks table -- matches omnidash SQL exactly."""
+        """Update omninode_internal.projection_watermarks table (OMN-16146).
+
+        Schema-qualified to match the table's declared topology domain
+        (contract.yaml db_io.db_tables[].schema: omninode_internal) and the
+        migration that creates it
+        (node_projection_registration/migrations/0005_create_projection_watermarks.sql)
+        -- both must stay in lockstep, since this session carries no
+        search_path override and would otherwise resolve to an
+        unqualified-default relation the migration never creates.
+        """
         try:
             await self._db.execute(
                 """
-                INSERT INTO projection_watermarks (projection_name, last_offset, events_projected, updated_at)
+                INSERT INTO omninode_internal.projection_watermarks (projection_name, last_offset, events_projected, updated_at)
                 VALUES ($1, $2, 1, NOW())
                 ON CONFLICT (projection_name) DO UPDATE SET
-                  last_offset = GREATEST(projection_watermarks.last_offset, EXCLUDED.last_offset),
-                  events_projected = projection_watermarks.events_projected + 1,
+                  last_offset = GREATEST(omninode_internal.projection_watermarks.last_offset, EXCLUDED.last_offset),
+                  events_projected = omninode_internal.projection_watermarks.events_projected + 1,
                   last_projected_at = NOW(), updated_at = NOW()
                 """,
                 projection_name,
