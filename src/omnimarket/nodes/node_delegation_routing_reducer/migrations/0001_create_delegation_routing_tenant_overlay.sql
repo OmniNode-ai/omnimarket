@@ -47,37 +47,36 @@
 -- schema/RLS foundation is exactly what OMN-14894/OMN-15356 build, and this
 -- table must not preempt or collide with OMN-15354's schema classification.
 --
--- WHY SCHEMA-QUALIFIED tenant.delegation_routing_tenant_overlay, NOT BARE
---   This is a first physical creation (no prior CREATE TABLE for it anywhere
---   in this corpus), not a cutover, so there is no legacy unqualified row set
---   to reconcile against. scripts/ci/check_application_database_sql.py
---   (OMN-15361/OMN-15423 domain enforcement, application_database_sql_gate)
---   requires every NEW deployable SQL target to be schema-qualified against a
---   declared topology domain -- `tenant` matches this node's own
---   db_io.db_tables[].schema declaration in contract.yaml. The existing bare
---   `delegation_events` (migration 0022, same `tenant` domain) is grandfathered
---   under the gate's frozen shrink-only baseline; grandfathering is
---   shrink-only, so a NEW table cannot join it -- it must comply directly.
---   Follows the identical precedent as
---   node_projection_registration/0005_create_projection_watermarks.sql
---   (OMN-16146, `omninode_internal` domain).
+-- WHY BARE (NOT tenant.-QUALIFIED) -- REVISED, discovered live 2026-08-20:
+--   A first attempt schema-qualified this to `tenant.delegation_routing_
+--   tenant_overlay` (matching contract.yaml's `schema: tenant` db_io
+--   declaration) to satisfy scripts/ci/check_application_database_sql.py's
+--   (OMN-15361/OMN-15423) requirement that new tables be schema-qualified.
+--   That broke tests/scripts/test_node_migration_fence_parity.py's virgin-
+--   database apply: the physical `tenant` Postgres schema DOES NOT YET EXIST
+--   in this repo's bootstrap fixture (docker/migrations/forward/_ledger/
+--   bootstrap.sql) -- unlike `omninode_internal`, which IS asserted/present
+--   there (see node_projection_registration/0005's precedent). Every other
+--   `schema: tenant`-declared table in this corpus (delegation_events 0022,
+--   capability_scores, etc.) is BARE/unqualified, living physically under
+--   `public`, and is grandfathered under the domain-enforcement gate's
+--   frozen shrink-only baseline -- there is no precedent for a NEW table
+--   being schema-qualified into `tenant` today, because the schema itself
+--   is not provisionable yet. This is exactly the gap OMN-15631's own
+--   design-feasibility assessment named: the `tenant`-schema RLS foundation
+--   (OMN-14894/OMN-15356) does not exist yet for this domain -- it turns out
+--   that includes the bare schema object, not only RLS policies on it.
 --
--- WHY NO CREATE SCHEMA / DO $$ ... $$ BLOCK -- same hazard as 0005 above:
---   CREATE SCHEMA requires CREATE on the DATABASE, which the migration role
---   does not hold on the deployed lane (fails even with IF NOT EXISTS,
---   because Postgres checks the privilege before it checks existence), and
---   the dynamic-SQL rejection rule refuses any DO $$ ... $$ block in a newly
---   linted file. So this file ASSERTS the schema exists (via the
---   statically-provable divide-by-zero precondition against
---   pg_catalog.pg_namespace, which needs no schema-level privilege) rather
---   than creating it -- schema provisioning is a prerequisite this migration
---   does not perform.
+--   contract.yaml's db_io.db_tables[].schema is therefore `unresolved`
+--   (tracked residual, see tests/unit/runtime/test_topology_strict_wiring_
+--   omn15655.py's _TRACKED_UNRESOLVED_DECLARATIONS -- entry cites this
+--   ticket + the OMN-16314 follow-on), not `tenant`: the domain is KNOWN
+--   (tenant-attributable workload data) but not yet RESOLVABLE against the
+--   live topology. This table therefore stays bare/public like its
+--   grandfathered siblings, and OMN-16314 promotes it -- schema creation,
+--   qualification, and RLS together -- once the foundation lands.
 
-SELECT 1 / count(*) AS tenant_schema_exists_precondition
-  FROM pg_catalog.pg_namespace
- WHERE nspname = 'tenant';
-
-CREATE TABLE IF NOT EXISTS tenant.delegation_routing_tenant_overlay (
+CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
     id BIGSERIAL PRIMARY KEY,
     tenant_id TEXT NOT NULL,
     task_type TEXT NOT NULL,
@@ -94,4 +93,4 @@ CREATE TABLE IF NOT EXISTS tenant.delegation_routing_tenant_overlay (
 );
 
 CREATE INDEX IF NOT EXISTS idx_delegation_routing_tenant_overlay_tenant_id
-    ON tenant.delegation_routing_tenant_overlay (tenant_id);
+    ON delegation_routing_tenant_overlay (tenant_id);

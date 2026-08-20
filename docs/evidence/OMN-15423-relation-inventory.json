@@ -1,6 +1,24 @@
 {
   "blocked_relations": [
     {
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
+      ],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
+      "name": "delegation_routing_tenant_overlay",
+      "reason": "schema 'unresolved' does not resolve through deployment topology"
+    },
+    {
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
+      ],
+      "current_database": "omnidash_analytics",
+      "kind": "sequence",
+      "name": "delegation_routing_tenant_overlay_id_seq",
+      "reason": "schema 'unresolved' does not resolve through deployment topology"
+    },
+    {
       "authoritative_sources": [],
       "current_database": "omnidash_analytics",
       "kind": "table",
@@ -908,15 +926,17 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
       ],
-      "blocked_reasons": [],
+      "blocked_reasons": [
+        "schema 'unresolved' does not resolve through deployment topology"
+      ],
       "classification_evidence": "implicit BIGSERIAL sequence for delegation_routing_tenant_overlay",
-      "classification_status": "classified",
+      "classification_status": "blocked",
       "constraints": [],
       "contract_sources": [
         "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml"
       ],
       "current_schema": [
-        "tenant"
+        "public"
       ],
       "dependencies": [
         "delegation_routing_tenant_overlay"
@@ -924,7 +944,7 @@
       "dependent_objects": [
         "table:delegation_routing_tenant_overlay"
       ],
-      "domain": "TENANT",
+      "domain": null,
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -940,7 +960,7 @@
       "partitioning": [],
       "producer": "node_delegation_routing_reducer",
       "readers": [],
-      "target_schema": "tenant",
+      "target_schema": "unresolved",
       "writers": [
         "node_delegation_routing_reducer"
       ]
@@ -2222,9 +2242,11 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
       ],
-      "blocked_reasons": [],
+      "blocked_reasons": [
+        "schema 'unresolved' does not resolve through deployment topology"
+      ],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
-      "classification_status": "classified",
+      "classification_status": "blocked",
       "constraints": [
         "delegation_routing_tenant_overlay_tenant_task_uq"
       ],
@@ -2232,13 +2254,13 @@
         "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml"
       ],
       "current_schema": [
-        "tenant"
+        "public"
       ],
       "dependencies": [],
       "dependent_objects": [
         "sequence:delegation_routing_tenant_overlay_id_seq"
       ],
-      "domain": "TENANT",
+      "domain": null,
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -2262,7 +2284,7 @@
       "readers": [
         "node_delegation_routing_reducer"
       ],
-      "target_schema": "tenant",
+      "target_schema": "unresolved",
       "writers": [
         "node_delegation_routing_reducer"
       ]

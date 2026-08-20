@@ -110,32 +110,64 @@ _PROFILES: Final[tuple[str, ...]] = tuple(sorted(SUPPORTED_TOPOLOGY_PROFILES))
 # ---------------------------------------------------------------------------
 _TRACKED_UNRESOLVED_DECLARATIONS: Final[frozenset[tuple[str, str, str, str]]] = (
     frozenset(
-        # RETIRED 2026-08-02 -- the nine relations that used to sit here
-        # (eight `application`.`public` placeholders plus
-        # node_projection_delegation's `unresolved` landmine) are gone from
-        # this ratchet because the operator CLASSIFIED them, which is the
-        # only sanctioned way an entry leaves: "this is all per tenant."
-        # All nine now declare `schema: tenant` and resolve on every
-        # profile. See OMN-15655 / OMN-15423 and the house-tenant ruling.
-        #
-        # CORRECTION to the retired comment, which was FALSE for two of the
-        # ten entries: it claimed "None of them declares a
-        # `descriptor.runtime_profiles`, so ... none is boot-fatal today."
-        # `node_projection_delegation` (delegation_judge_verdict_events) and
-        # `node_dispatch_outcome_bridge_effect` (dispatch_eval_results) BOTH
-        # declare `runtime_profiles: [effects]`, so both were strict-mode
-        # boot-fatal on the deployed effects pod, on the onex-dev green
-        # path. The claim held only for the eight PUBLIC placeholders.
-        #
-        # RETIRED 2026-08-15 (OMN-16077 infra pin bump to 94247acff): the
-        # last residual, node_dispatch_outcome_bridge_effect's
-        # (`omniintelligence`.`public`.`dispatch_eval_results`), left the
-        # ratchet the sanctioned way — the OMN-15668 repair landed in
-        # omnibase_infra (the `omniintelligence` service-owned database is
-        # now DECLARED in the typed topology, per ADR-0027), so the
-        # declaration resolves on every shipped profile. The ratchet is
-        # empty; it stays here so a future bad declaration still fails CI
-        # against an exact (now-empty) expected set.
+        {
+            # RETIRED 2026-08-02 -- the nine relations that used to sit here
+            # (eight `application`.`public` placeholders plus
+            # node_projection_delegation's `unresolved` landmine) are gone from
+            # this ratchet because the operator CLASSIFIED them, which is the
+            # only sanctioned way an entry leaves: "this is all per tenant."
+            # All nine now declare `schema: tenant` and resolve on every
+            # profile. See OMN-15655 / OMN-15423 and the house-tenant ruling.
+            #
+            # CORRECTION to the retired comment, which was FALSE for two of the
+            # ten entries: it claimed "None of them declares a
+            # `descriptor.runtime_profiles`, so ... none is boot-fatal today."
+            # `node_projection_delegation` (delegation_judge_verdict_events) and
+            # `node_dispatch_outcome_bridge_effect` (dispatch_eval_results) BOTH
+            # declare `runtime_profiles: [effects]`, so both were strict-mode
+            # boot-fatal on the deployed effects pod, on the onex-dev green
+            # path. The claim held only for the eight PUBLIC placeholders.
+            #
+            # RETIRED 2026-08-15 (OMN-16077 infra pin bump to 94247acff): the
+            # last residual, node_dispatch_outcome_bridge_effect's
+            # (`omniintelligence`.`public`.`dispatch_eval_results`), left the
+            # ratchet the sanctioned way — the OMN-15668 repair landed in
+            # omnibase_infra (the `omniintelligence` service-owned database is
+            # now DECLARED in the typed topology, per ADR-0027), so the
+            # declaration resolves on every shipped profile. The ratchet was
+            # empty from 2026-08-15 until the entry below.
+            #
+            # ADDED 2026-08-20 (OMN-15631 v1(a), operator-classification
+            # decision per the ticket's own design-feasibility assessment,
+            # comment 41f99997): node_delegation_routing_reducer's new
+            # `delegation_routing_tenant_overlay` (migration 0001). The
+            # intended domain IS `tenant` (tenant-attributable workload data
+            # per the house-tenant ruling 2026-08-02 — NOT
+            # `omninode_internal`), but the physical `tenant` Postgres schema
+            # does not yet exist anywhere in this repo's bootstrap fixture
+            # (discovered live while landing the paired omnibase_infra vendor
+            # PR: a `tenant.`-qualified CREATE TABLE divide-by-zero-asserts
+            # against pg_catalog.pg_namespace and fails on a virgin database).
+            # Every OTHER `schema: tenant`-declared table in this corpus is
+            # bare/`public` and grandfathered under
+            # scripts/ci/check_application_database_sql.py's frozen
+            # shrink-only baseline; a NEW table cannot join that
+            # grandfathering, and there is no way to correctly schema-qualify
+            # a new `tenant.*` object until the schema itself is provisioned.
+            # This is exactly the `tenant`-schema RLS foundation gap
+            # (OMN-14894/OMN-15356) the ticket's own assessment named for
+            # AC2 — it turns out to include the bare schema object too, not
+            # only RLS policies on it. OMN-16314 (the AC2 follow-on) promotes
+            # this table — schema creation, qualification, and RLS together —
+            # once that foundation lands; this entry leaves the ratchet then,
+            # the only sanctioned way an entry leaves.
+            (
+                "node_delegation_routing_reducer",
+                "delegation_routing_tenant_overlay",
+                "application",
+                "unresolved",
+            ),
+        }
     )
 )
 
