@@ -246,27 +246,51 @@ def _pr_binding_asserted_state(value: str, repo: str, pr_number: int) -> str | N
 
     Same-clause-but-not-same-pipe discipline, mirroring
     ``_hardcoded_pr_bindings_in_value``'s same-clause guarantee for bindings:
-    the ``gh pr view <N> --repo <repo>`` reference and the state assertion
-    must sit in one ``&&``/``||``/``;``-delimited pipeline (pipes within that
-    pipeline stay joined — see ``_PIPELINE_SPLIT_RE``), so an assertion
-    belonging to a DIFFERENT PR reference in the same check_value never
-    attaches to this one. ``repo`` must already be normalized (see
-    ``EvidenceCollector._normalize_repo``); the extracted ``--repo`` flag
-    value is normalized the same way before comparison. Pure function — no
-    I/O.
+    the PR reference and the state assertion must sit in one
+    ``&&``/``||``/``;``-delimited pipeline (pipes within that pipeline stay
+    joined — see ``_PIPELINE_SPLIT_RE``), so an assertion belonging to a
+    DIFFERENT PR reference in the same check_value never attaches to this
+    one. ``repo`` must already be normalized (see
+    ``EvidenceCollector._normalize_repo``).
+
+    Recognises two same-clause binding shapes, mirroring
+    ``_hardcoded_pr_bindings_in_value`` (OMN-16087 follow-up: the original cut
+    only recognized the first shape, so a URL-form binding's own state
+    assertion silently fell through to the default merged/green derivation —
+    the exact inversion this ticket exists to fix, just for a binding shape
+    the first cut missed):
+
+    * ``gh pr view <N> --repo <repo>`` — the extracted ``--repo`` flag value
+      is normalized the same way before comparison;
+    * ``repos/<owner>/<repo>/pulls/<N>`` or
+      ``https://github.com/<owner>/<repo>/pull/<N>`` — repo and number are
+      one contiguous path (:data:`_PR_PATH_URL_RE`), so no separate
+      ``--repo`` flag to cross-check.
+
+    Pure function — no I/O.
     """
     for segment in _PIPELINE_SPLIT_RE.split(value):
+        matched = False
+
         num_match = _HARDCODED_PR_NUM_RE.search(segment)
-        if num_match is None or int(num_match.group(1)) != pr_number:
+        if num_match is not None and int(num_match.group(1)) == pr_number:
+            repo_match = _REPO_FLAG_RE.search(segment)
+            if repo_match is not None:
+                extracted_repo = repo_match.group(1).strip()
+                if "/" not in extracted_repo:
+                    extracted_repo = f"{_DEFAULT_GITHUB_ORG}/{extracted_repo}"
+                if extracted_repo == repo:
+                    matched = True
+
+        if not matched:
+            matched = any(
+                str(url_repo) == repo and int(url_num) == pr_number
+                for url_repo, url_num in _PR_PATH_URL_RE.findall(segment)
+            )
+
+        if not matched:
             continue
-        repo_match = _REPO_FLAG_RE.search(segment)
-        if repo_match is None:
-            continue
-        extracted_repo = repo_match.group(1).strip()
-        if "/" not in extracted_repo:
-            extracted_repo = f"{_DEFAULT_GITHUB_ORG}/{extracted_repo}"
-        if extracted_repo != repo:
-            continue
+
         state_match = _PR_STATE_EQUALITY_RE.search(segment) or _PR_STATE_GREP_RE.search(
             segment
         )

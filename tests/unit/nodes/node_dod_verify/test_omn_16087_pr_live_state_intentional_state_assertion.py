@@ -276,6 +276,67 @@ class TestClosedReplacedAssertionIsNotAutoBoundToMergedGreen:
 
 
 @pytest.mark.unit
+class TestUrlFormBindingAssertionIsNotAutoBoundToMergedGreen:
+    """CodeRabbit finding on PR #2091: ``_pr_binding_asserted_state`` only
+    recognised the ``gh pr view <N> --repo <owner>/<repo>`` binding shape,
+    not the URL form (``repos/<owner>/<repo>/pulls/<N>``) that
+    ``_hardcoded_pr_bindings_in_value``/``_resolve_pr_bindings`` already
+    understand (OMN-15465). A URL-bound intentional CLOSED assertion
+    resolved its binding but never had the assertion detected, so it fell
+    through to the default merged/green derivation — the exact inversion
+    this ticket exists to fix, for a different binding-expression shape.
+    """
+
+    _ITEM = {
+        "id": "dod-url-form-pr-42-closed",
+        "description": (
+            "PR #42 was legitimately CLOSED and never merged; asserted via "
+            "the gh-api URL-path binding form, not gh pr view --repo."
+        ),
+        "checks": [
+            {
+                "check_type": "command",
+                "check_value": (
+                    "gh api repos/OmniNode-ai/omnibase_infra/pulls/42 "
+                    "--jq '.state == \"CLOSED\"'"
+                ),
+            }
+        ],
+    }
+
+    def test_resolve_pr_bindings_still_derives_the_url_form_binding(self) -> None:
+        collector = EvidenceCollector()
+        bindings = collector._resolve_pr_bindings(self._ITEM, _TICKET, None)
+        assert bindings == [("OmniNode-ai/omnibase_infra", 42)]
+
+    def test_no_merged_green_binding_is_derived_for_the_url_form_assertion(
+        self,
+    ) -> None:
+        collector = EvidenceCollector()
+        # If the URL form is not recognised, this mock would make the
+        # binding resolve to VERIFIED/FAILED via the default merged/green
+        # derivation instead of SKIPPED — the test must fail loudly on that
+        # path, not pass by accident.
+        _install_fetch_mocks(
+            collector,
+            merge_result=(True, "MERGED"),
+            checks_result=(True, "all checks green"),
+        )
+        results = collector._live_pr_checks_for_item(self._ITEM, _TICKET, None)
+
+        assert len(results) == 1
+        result = results[0]
+        assert result.evidence_id == "dod-url-form-pr-42-closed::pr-live-state"
+        assert result.status == EnumEvidenceCheckStatus.SKIPPED, (
+            "an intentional CLOSED-assertion expressed via the gh-api URL "
+            f"binding form must not be auto-bound to merged/green "
+            f"semantics; got status={result.status!r} message={result.message!r}"
+        )
+        assert "CLOSED" in (result.message or "")
+        assert "42" in (result.message or "")
+
+
+@pytest.mark.unit
 class TestBareUnassertedPrReferenceIsUnaffected:
     """A bare PR reference with no accompanying state predicate keeps the
     pre-existing (correct) behaviour: it still requires MERGED + green.
