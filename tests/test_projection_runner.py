@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
     PROJECTION_RUNNER_HEALTH_PORT_ENV,
     PROJECTION_RUNTIME_BINDING_OVERLAY_ENV,
@@ -443,3 +444,105 @@ class TestReadinessHealthServer:
         assert runner._health_server is None
         runner._stop_health_server()  # must not raise on a second call
         assert runner._health_server is None
+
+
+class _RecordingProducer:
+    """Fake ``AIOKafkaProducer`` capturing ``send_and_wait`` calls.
+
+    Injected directly as ``runner._producer`` so ``_ensure_producer`` returns
+    it without needing a live broker.
+    """
+
+    def __init__(self) -> None:
+        self.sent: list[dict[str, Any]] = []
+
+    async def send_and_wait(
+        self,
+        topic: str,
+        value: bytes | None = None,
+        key: bytes | None = None,
+        headers: list[tuple[str, bytes]] | None = None,
+    ) -> None:
+        self.sent.append(
+            {"topic": topic, "value": value, "key": key, "headers": headers}
+        )
+
+
+def _bus_backed_exposure() -> ProjectionTableConfig:
+    return ProjectionTableConfig(
+        topic="onex.snapshot.test.v1",
+        table="test_table",
+        columns=("id", "name"),
+        bus_backed=True,
+        key_columns=("id",),
+    )
+
+
+class TestPublishSnapshotDeltaDelete:
+    """OMN-16150: a delete/tombstone publish must succeed, not KeyError.
+
+    ``publish_snapshot_delta(op="delete")`` requires ``row=None`` -- there is
+    no row to derive a key from -- but a delete still needs a Kafka message
+    key so the compacted topic can reclaim it. Before this fix, the delete
+    path derived the key from the (necessarily empty) row and always raised
+    KeyError -- no delete could ever succeed.
+    """
+
+    @pytest.mark.asyncio
+    async def test_delete_publishes_a_tombstone_with_a_correct_key(self) -> None:
+        runner = DummyProjectionRunner()
+        producer = _RecordingProducer()
+        runner._producer = producer  # type: ignore[assignment]
+
+        published = await runner.publish_snapshot_delta(
+            _bus_backed_exposure(),
+            op="delete",
+            row=None,
+            key={"id": "abc-123"},
+            source_event_id="evt-1",
+            source_topic="onex.evt.test.v1",
+            source_partition=0,
+            source_offset=7,
+        )
+
+        assert published is True
+        assert len(producer.sent) == 1
+        sent = producer.sent[0]
+        assert sent["topic"] == "onex.snapshot.test.v1"
+        assert sent["value"] is None, (
+            "a delete must publish a genuine tombstone (value=None)"
+        )
+        assert sent["key"] == b"abc-123"
+
+    @pytest.mark.asyncio
+    async def test_delete_without_a_key_raises(self) -> None:
+        runner = DummyProjectionRunner()
+        runner._producer = _RecordingProducer()  # type: ignore[assignment]
+
+        with pytest.raises(RuntimeError, match="requires a key"):
+            await runner.publish_snapshot_delta(
+                _bus_backed_exposure(),
+                op="delete",
+                row=None,
+                source_event_id="evt-1",
+                source_topic="onex.evt.test.v1",
+                source_partition=0,
+                source_offset=7,
+            )
+
+    @pytest.mark.asyncio
+    async def test_upsert_rejects_an_explicit_key(self) -> None:
+        runner = DummyProjectionRunner()
+        runner._producer = _RecordingProducer()  # type: ignore[assignment]
+
+        with pytest.raises(RuntimeError, match="must not carry an explicit key"):
+            await runner.publish_snapshot_delta(
+                _bus_backed_exposure(),
+                op="upsert",
+                row={"id": "abc-123", "name": "n"},
+                key={"id": "abc-123"},
+                source_event_id="evt-1",
+                source_topic="onex.evt.test.v1",
+                source_partition=0,
+                source_offset=7,
+            )
