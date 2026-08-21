@@ -120,17 +120,36 @@ jobs:
       # tags are cut from dev; dev CI + this job already validated it).
       # Promotion PRs to main are retired — main protection now empties
       # required_status_checks on main and restricts pushes to this job's
-      # automation identity, so no separate token/secret is needed: the
-      # same GITHUB_TOKEN persisted by actions/checkout@v6 above already
-      # authenticates this push.
+      # automation identity.
+      #
+      # OMN-16343: the workflow GITHUB_TOKEN is NOT an authorizable identity
+      # for a push-restricted branch — proven live on omnibase_core (GH006,
+      # 2026-08-21): the workflow-token push to main was rejected outright.
+      # Mint a short-lived installation token from the org-owned
+      # onexbot-occ-writer App (org secrets ONEXBOT_OCC_APP_ID /
+      # ONEXBOT_OCC_PRIVATE_KEY, visibility to this repo verified) via the
+      # same canonical `actions/create-github-app-token` pattern already used
+      # by call-occ-attestation-observe.yml / call-occ-companion-author.yml /
+      # pr-arch-review.yml, and push as that App identity instead.
+      - name: Mint sync-main push token (OnexBot-OCC-Writer App)
+        id: sync-main-app-token
+        if: ${{ !contains(steps.tag.outputs.tag, 'rc') }}
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
       - name: Sync main to release tag
         if: ${{ !contains(steps.tag.outputs.tag, 'rc') }}
         env:
           RELEASE_TAG: ${{ steps.tag.outputs.tag }}
+          SYNC_MAIN_TOKEN: ${{ steps.sync-main-app-token.outputs.token }}
         run: |
           set -euo pipefail
           TAG="$RELEASE_TAG"
           TAG_SHA=$(git rev-list -n 1 "$TAG")
           echo "Resolved tag $TAG -> commit $TAG_SHA"
-          git push origin "${TAG_SHA}:refs/heads/main"
+          git push "https://x-access-token:${SYNC_MAIN_TOKEN}@github.com/${{ github.repository }}.git" "${TAG_SHA}:refs/heads/main"
           echo "main fast-forwarded to $TAG_SHA ($TAG)"
