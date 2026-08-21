@@ -4566,7 +4566,8 @@
       "producer": "node_projection_traces",
       "readers": [
         "node_build_loop_orchestrator",
-        "node_generation_consumer"
+        "node_generation_consumer",
+        "node_occ_companion_compute"
       ],
       "target_schema": "omninode_internal",
       "writers": [

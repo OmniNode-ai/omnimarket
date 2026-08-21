@@ -610,6 +610,7 @@ class BaseProjectionRunner(ABC):
         source_partition: int,
         source_offset: int,
         tenant_id: str = "omninode",
+        key: dict[str, Any] | None = None,
     ) -> bool:
         """Publish one keyed row-delta snapshot for a bus_backed exposure.
 
@@ -621,7 +622,12 @@ class BaseProjectionRunner(ABC):
 
         A ``delete`` publishes a genuine Kafka tombstone (``value=None``) so
         the compacted topic reclaims the key; ``row`` must be ``None`` for a
-        delete and non-``None`` for an upsert.
+        delete and non-``None`` for an upsert. An upsert derives its message
+        key from ``row``; a delete has no row, so it derives its key from the
+        ``key`` parameter instead (OMN-16150) -- ``key`` is required for a
+        delete and forbidden for an upsert (row is the single key source
+        there, so an explicit ``key`` alongside it would be a second,
+        possibly-divergent source of truth).
 
         ``source_topic``/``source_partition``/``source_offset`` are the
         caller's own ``MessageMeta`` coordinates for the SOURCE event being
@@ -633,9 +639,10 @@ class BaseProjectionRunner(ABC):
         than a subset of callers silently omitting the ordering token.
 
         Raises ``RuntimeError`` (not silently dropped) when the exposure is
-        misconfigured (``bus_backed`` with no ``key_columns``) or the caller's
-        row is missing a declared key column — both are programming errors in
-        the calling handler, never a runtime/network condition.
+        misconfigured (``bus_backed`` with no ``key_columns``), the caller's
+        key source is missing a declared key column, or ``row``/``key`` is
+        supplied for the wrong ``op`` — all are programming errors in the
+        calling handler, never a runtime/network condition.
         """
         if not exposure.bus_backed:
             return False
@@ -644,18 +651,31 @@ class BaseProjectionRunner(ABC):
                 f"projection_api exposure {exposure.topic!r} is bus_backed "
                 "but declares no key_columns"
             )
-        if op == "upsert" and row is None:
-            raise RuntimeError(
-                f"publish_snapshot_delta({exposure.topic!r}, op='upsert') "
-                "requires a row"
-            )
-        if op == "delete" and row is not None:
-            raise RuntimeError(
-                f"publish_snapshot_delta({exposure.topic!r}, op='delete') "
-                "must not carry a row"
-            )
+        if op == "upsert":
+            if row is None:
+                raise RuntimeError(
+                    f"publish_snapshot_delta({exposure.topic!r}, op='upsert') "
+                    "requires a row"
+                )
+            if key is not None:
+                raise RuntimeError(
+                    f"publish_snapshot_delta({exposure.topic!r}, op='upsert') "
+                    "must not carry an explicit key (row is the key source)"
+                )
+            key_source = row
+        else:  # op == "delete"
+            if row is not None:
+                raise RuntimeError(
+                    f"publish_snapshot_delta({exposure.topic!r}, op='delete') "
+                    "must not carry a row"
+                )
+            if key is None:
+                raise RuntimeError(
+                    f"publish_snapshot_delta({exposure.topic!r}, op='delete') "
+                    "requires a key"
+                )
+            key_source = key
 
-        key_source = row if row is not None else {}
         try:
             key_parts = tuple(
                 str(key_source[column]) for column in exposure.key_columns

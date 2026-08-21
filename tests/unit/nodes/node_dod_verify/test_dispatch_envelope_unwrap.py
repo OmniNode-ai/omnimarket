@@ -71,6 +71,16 @@ class _StubCollectorHandler(HandlerDodVerify):
     @staticmethod
     def _make_collector() -> object:
         class _Collector:
+            # OMN-15454: matches the real EvidenceCollector's provenance
+            # surface (occ_refresh_outcome/occ_resolved_sha attributes,
+            # occ_governance_ref property) — _handle_typed reads these
+            # unconditionally after a None-contract-path collect(). None
+            # here means "OCC auto-resolution never attempted", same as the
+            # real collector when it is never asked to auto-resolve.
+            occ_refresh_outcome = None
+            occ_resolved_sha = None
+            occ_governance_ref = "origin/dev"
+
             def collect(
                 self, ticket_id: str, contract_path: str | None
             ) -> list[ModelEvidenceCheckResult]:
