@@ -7,7 +7,7 @@
 -- ships WITHOUT RLS: it is the v1(a) staging shape, additive so that once the
 -- RLS foundation lands, promoting these rows into the RLS-backed `tenant.*`
 -- home is a data MOVE (INSERT INTO tenant.delegation_routing_overlay SELECT
--- ... FROM tenant.delegation_routing_tenant_overlay), never a redesign. Do not add
+-- ... FROM delegation_routing_tenant_overlay), never a redesign. Do not add
 -- RLS policies to this table directly -- that is explicitly out of scope for
 -- v1(a) and belongs on the follow-on ticket.
 --
@@ -47,26 +47,70 @@
 -- schema/RLS foundation is exactly what OMN-14894/OMN-15356 build, and this
 -- table must not preempt or collide with OMN-15354's schema classification.
 --
--- WHY SCHEMA-QUALIFIED tenant.delegation_routing_tenant_overlay, WITHOUT RLS
---   scripts/ci/check_application_database_sql.py (OMN-15361/OMN-15423)
---   rejects NEW deployable application relations that are bare/public.
---   The historical tenant-domain tables that still live physically in public
---   are grandfathered by the gate's frozen shrink-only baseline; this new
---   table is not grandfathered and must use the topology-declared tenant
---   schema from birth.
+-- WHY BARE delegation_routing_tenant_overlay, LOGICALLY tenant-DOMAIN
+-- (RULING 2026-08-20, resolves the schema-qualification blocker for good)
 --
---   This migration deliberately ASSERTS the tenant schema precondition instead
---   of creating it. Schema provisioning belongs to the topology/application-ACL
---   layer; node-owned migrations fail loudly if their declared application
---   schema is absent on the target lane. OMN-16314 still owns the later RLS
---   promotion/foundation work; this file only stops adding a brand-new
---   tenant-domain table to public.
+--   Two prior attempts on this file both failed, for two DIFFERENT reasons,
+--   and the fix is neither of them -- it is the same bridge every other
+--   tenant-domain table in this corpus already rides:
+--
+--   Attempt 1 (schema-qualify to `tenant.delegation_routing_tenant_overlay`,
+--   with a divide-by-zero precondition asserting the `tenant` schema exists):
+--   FAILS `tests/scripts/test_node_migration_fence_parity.py::
+--   test_virgin_database_applies_the_full_real_vendored_tree` (local repro,
+--   2026-08-20: `ERROR: division by zero` at the precondition line). The
+--   `tenant` Postgres schema is created NOWHERE in this migration corpus --
+--   confirmed by grep across docker/migrations/forward/**/*.sql in the
+--   companion omnibase_infra repo, and by omnibase_infra#2803's (OMN-16239)
+--   live 2026-08-19 readback of the stability-test lane's omnidash_analytics
+--   database: its only non-system schemas are `information_schema`,
+--   `omninode_internal`, `public` -- there is no `tenant` schema anywhere,
+--   on any lane, today. Unlike `omninode_internal` (physically created by
+--   omnibase_infra's docker/migrations/forward/098_create_omninode_internal_
+--   schema.sql, a real `CREATE SCHEMA IF NOT EXISTS omninode_internal`), no
+--   equivalent root migration for `tenant` exists, so an ASSERT-only
+--   precondition against `tenant` can never pass on any lane.
+--
+--   Attempt 2 (bare table, `schema: unresolved` in contract.yaml): fails the
+--   static gate outright -- `scripts/ci/check_application_database_sql.py`
+--   (OMN-15361/OMN-15423) unconditionally rejects any NEW bare/public
+--   application relation with no schema-domain awareness at all. Declaring
+--   `schema: unresolved` also does not reflect reality: the DOMAIN is known
+--   (tenant-attributable workload data, ADR-0027) -- only the PHYSICAL
+--   location was ever in question.
+--
+--   THE ACTUAL RESOLUTION: `delegation_events` -- this table's own sibling,
+--   same tenant domain, same house-tenant ruling 2026-08-02 -- is ALSO bare/
+--   unqualified in `public` today (src/omnimarket/nodes/node_projection_
+--   delegation/migrations/0007_delegation_events.sql), and is enumerated in
+--   omnibase_infra's `TENANT_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359`
+--   (src/omnibase_infra/topology/physical_schema_mapping.py) -- the SAME
+--   allowlist the runtime grants system already trusts via
+--   `physical_grant_schema_for_table()` to resolve a logically-tenant table
+--   to its real physical schema (`public`) until OMN-15359 performs the
+--   governed per-family copy into a real `tenant.*` home. This table takes
+--   the identical bridge: bare/public physically, `schema: tenant` logically
+--   in contract.yaml (unchanged by this fix -- see that file), and
+--   enumerated in the same allowlist (omnibase_infra#2820 companion PR).
+--
+--   The static gate does not consult that allowlist YET -- that is exactly
+--   what omnibase_infra#2802 (OMN-16237, "domain enforcement gate consults
+--   physical-schema allowlist") teaches it to do, importing the same two
+--   frozensets `lint_application_database_sql` currently has no knowledge
+--   of. omnibase_infra#2803 (OMN-16239) is the companion fix that makes the
+--   RUNTIME SQL-emission path (handler_wiring.py's `_execute_upsert`/
+--   `_execute_query`) resolve against the physical schema instead of the
+--   raw declared one -- without it, `schema: tenant` in the contract would
+--   make the runtime emit `INSERT INTO "tenant"."delegation_routing_tenant_
+--   overlay"` against a schema that does not exist. Both PRs are open,
+--   otherwise green, and blocked only by an unrelated systemic CI Summary
+--   outage as of this writing -- this PR's static-gate check goes green
+--   without further edits once #2802 merges and this branch rebases; #2803
+--   is a prerequisite for this table to be safely read/written at runtime.
+--   OMN-16314 still owns the later RLS foundation/promotion work untouched
+--   by any of this.
 
-SELECT 1 / count(*) AS tenant_schema_exists_precondition
-  FROM pg_catalog.pg_namespace
- WHERE nspname = 'tenant';
-
-CREATE TABLE IF NOT EXISTS tenant.delegation_routing_tenant_overlay (
+CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
     id BIGSERIAL PRIMARY KEY,
     tenant_id TEXT NOT NULL,
     task_type TEXT NOT NULL,
@@ -82,5 +126,25 @@ CREATE TABLE IF NOT EXISTS tenant.delegation_routing_tenant_overlay (
         UNIQUE (tenant_id, task_type)
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: delegation_routing_tenant_overlay ----
+-- CREATE TABLE IF NOT EXISTS silently no-ops against a drifted pre-existing
+-- table; the guarded adds below converge such a table onto the shape declared
+-- above (no-ops on the fresh-create path, since every column already exists
+-- there). No DROP, no recreate, no TRUNCATE. Matches capability_scores'
+-- (node_canary_score_reducer/0001) and projection_watermarks'
+-- (node_projection_registration/0005) own precedent.
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS id BIGSERIAL;
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS task_type TEXT;
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS backend_id TEXT;
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS endpoint_url TEXT;
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS model_name TEXT;
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS secret_ref TEXT;
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS timeout_ms INTEGER;
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS max_tokens INTEGER;
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE delegation_routing_tenant_overlay ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+-- ---- END OMN-15376 shape reconciliation: delegation_routing_tenant_overlay ----
+
 CREATE INDEX IF NOT EXISTS idx_delegation_routing_tenant_overlay_tenant_id
-    ON tenant.delegation_routing_tenant_overlay (tenant_id);
+    ON delegation_routing_tenant_overlay (tenant_id);

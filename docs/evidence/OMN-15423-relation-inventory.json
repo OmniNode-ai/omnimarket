@@ -918,7 +918,7 @@
         "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml"
       ],
       "current_schema": [
-        "tenant"
+        "public"
       ],
       "dependencies": [
         "delegation_routing_tenant_overlay"
@@ -2237,7 +2237,7 @@
         "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml"
       ],
       "current_schema": [
-        "tenant"
+        "public"
       ],
       "dependencies": [],
       "dependent_objects": [
