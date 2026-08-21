@@ -98,7 +98,7 @@ jobs:
                 exit 1
                 ;;
             esac
-            echo "tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+            echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           else
             echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
           fi
