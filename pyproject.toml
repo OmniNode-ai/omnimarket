@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "omnimarket"
-version = "0.4.9"
+version = "0.4.10"
 description = "OmniMarket - Portable ONEX workflow package registry"
 authors = [
     {name = "OmniNode.ai", email = "contact@omninode.ai"}
@@ -536,17 +536,25 @@ omnimarket = "omnimarket.nodes"
 # of omnibase_core dev -- an orphaned feature-branch head of exactly the class
 # forbidden by memory reference_never_pin_a_feature_branch_head. Do not
 # reintroduce a git rev here: land the core change, publish, then bump the range.
-# omnibase-infra git rev retained — infra is not in the dep-provenance forbidden set.
-#
-# OMN-16086 re-bump: re-pinned from 94247acf (v0.38.6, pre-#2736) to infra dev
-# HEAD 254c3672 — the omnibase_infra#2736 merge commit (OMN-16022: gateway
-# session expiry enforcement; node_gateway_attach_effect contract 0.3 -> 0.4,
-# ModelGatewayHeartbeatResponse.revoked -> termination_reason). This is the
-# lineage the post-#2736 onex-dev runtime image rebuild and deploy consume.
-# 94247acf remains an ancestor of this tip.
-# REMOVE WHEN RELEASED: once omnibase-infra publishes a version containing this
-# commit, delete this override (the range pin above already covers it) and `uv lock`.
-omnibase-infra = { git = "https://github.com/OmniNode-ai/omnibase_infra.git", rev = "6fdbba6d8b6bcd7cc98a3da7dc8eb510f67a0e6a" }
+# omnibase-infra git-rev override REMOVED (OMN-16375 repin, 2026-08-21): the
+# override pinned rev 6fdbba6d8b6bcd7cc98a3da7dc8eb510f67a0e6a (resolved version
+# 0.38.7, the OMN-16089 post-#2672 lineage). omnibase-infra 0.38.8 is now
+# published on PyPI (tag v0.38.8 == commit 018c64a14c2f80c22819bc3bede45dad8ebb7ca6
+# on omnibase_infra dev) and 6fdbba6d8b is a confirmed ancestor of that tag
+# commit, so the override's own stated removal criterion ("once omnibase-infra
+# publishes a version containing this commit, delete this override") is met.
+# The version-range pin above (omnibase-infra>=0.38.3,<0.39.0) already covers
+# 0.38.8; `uv.lock` regenerated accordingly (omnibase-infra now sources from
+# registry = "https://pypi.org/simple" at 0.38.8, not git). This retires the
+# OMN-16077/16086/16089 git-rev re-bump treadmill for infra; the OMN-12977
+# workspace pin-consistency preflight (check_sibling_lock_pins.py) explicitly
+# tolerates a registry-sourced pin whose sibling clone is forward of the lock
+# (non-fatal "clone_ahead") — the failure mode that keeps recurring for a
+# git-rev pin (fatal when the immutable rev falls behind), so registry
+# resolution is the steady-state fix here, not another rev bump. Reintroduce a
+# git-rev override only for an unreleased fix the onex-dev deploy needs ahead
+# of the next PyPI publish (matching the OMN-16077/16086/16089 pattern), and
+# document the specific unreleased commit's justification in the same edit.
 # omninode-memory git-rev override REMOVED (OMN-16191 repin, 2026-08-20): the
 # override pinned rev 887dc679 (omninode-memory 0.17.0), which silently forced
 # 0.17.0 regardless of the `==0.17.1` specifier declared above -- uv does not
