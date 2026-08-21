@@ -57,7 +57,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 14,
-    "table": 59,
+    "table": 60,
     "view": 10
   },
   "relations": [
@@ -4515,6 +4515,51 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_tenant_credentials"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_tenant_credentials/migrations/0000_create_tenant_inference_credentials.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_tenant_credentials/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "PUBLIC",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [
+        "idx_tenant_inference_credentials_tenant_id"
+      ],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (api_key_ref)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_tenant_credentials",
+      "name": "tenant_inference_credentials",
+      "owner_declaration": "node_projection_tenant_credentials",
+      "partitioning": [],
+      "producer": "node_projection_tenant_credentials",
+      "readers": [],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_tenant_credentials"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_traces"
       ],
       "authoritative_sources": [
@@ -5018,15 +5063,15 @@
   ],
   "retained_live_census": {
     "evidence_source": "omni_home/docs/plans/2026-07-29-two-database-tenant-vs-internal-split-plan.md",
-    "minimum_unreconciled_live_base_tables": 29,
+    "minimum_unreconciled_live_base_tables": 28,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 57,
-    "source_declared_tables": 59
+    "source_created_tables": 58,
+    "source_declared_tables": 60
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -5042,7 +5087,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 57 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-29-table gap require an authorized catalog read",
+      "reason": "repository sources contain 58 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-28-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
