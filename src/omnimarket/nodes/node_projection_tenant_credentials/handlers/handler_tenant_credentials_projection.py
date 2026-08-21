@@ -125,6 +125,7 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
             source_topic=meta.topic,
             source_partition=meta.partition,
             source_offset=meta.offset,
+            tenant_id=str(row["tenant_id"]),
         )
 
     async def _project_registered(

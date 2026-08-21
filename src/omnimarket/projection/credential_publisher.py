@@ -66,7 +66,15 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
     provider: str = Field(
         min_length=1,
         max_length=100,
-        description="Inference provider id (e.g. 'openrouter', 'openai').",
+        pattern=r"^[A-Za-z0-9_-]+$",
+        description=(
+            "Inference provider id (e.g. 'openrouter', 'openai'). Restricted "
+            "to a safe opaque-token charset: provider is interpolated "
+            "unencoded into api_key_ref (mint_api_key_ref), which in turn "
+            "becomes the Infisical secret path segment and the Kafka message "
+            "key -- whitespace, control bytes, or path separators here would "
+            "corrupt or path-traverse those downstream identifiers."
+        ),
     )
     key_value: SecretStr = Field(
         description=(

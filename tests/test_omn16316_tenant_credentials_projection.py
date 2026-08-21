@@ -7,7 +7,7 @@ a real database or broker.
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -116,6 +116,42 @@ class TestCredentialRegistered:
         with pytest.raises(ValueError, match="secret-shaped field"):
             await runner.project_event(TOPIC_REGISTERED, data, _make_meta())
         mock_db.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_credential_registered_snapshot_publish_uses_the_rows_own_tenant_id(
+        self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
+    ) -> None:
+        """``publish_snapshot_delta`` defaults ``tenant_id`` to ``"omninode"``.
+        A credential for another tenant must not publish its snapshot delta
+        under that default -- regression coverage for the CodeRabbit finding
+        on omnimarket#2117."""
+        mock_db.execute = AsyncMock(
+            return_value=[
+                {
+                    "api_key_ref": "cred_acme_openrouter_abc123",
+                    "tenant_id": "acme",
+                    "name": "my-openrouter-key",
+                    "provider": "openrouter",
+                    "created_at": "2026-08-21T00:00:00Z",
+                    "revoked_at": None,
+                }
+            ]
+        )
+        data = {
+            "tenant_id": "acme",
+            "provider": "openrouter",
+            "name": "my-openrouter-key",
+            "api_key_ref": "cred_acme_openrouter_abc123",
+        }
+
+        with patch.object(
+            runner, "publish_snapshot_delta", AsyncMock(return_value=True)
+        ) as mock_publish:
+            result = await runner.project_event(TOPIC_REGISTERED, data, _make_meta())
+
+        assert result is True
+        mock_publish.assert_awaited_once()
+        assert mock_publish.call_args.kwargs["tenant_id"] == "acme"
 
 
 class TestCredentialRevoked:

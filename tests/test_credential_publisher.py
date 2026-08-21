@@ -50,7 +50,7 @@ def _make_request(**overrides: object) -> ModelInferenceCredentialCreateRequest:
         "key_value": _SECRET_VALUE,
     }
     fields.update(overrides)
-    return ModelInferenceCredentialCreateRequest(**fields)  # type: ignore[arg-type]
+    return ModelInferenceCredentialCreateRequest(**fields)
 
 
 def test_topics_are_canonical_evt_shape() -> None:
@@ -83,6 +83,33 @@ def test_create_request_rejects_empty_name_and_provider() -> None:
         _make_request(name="")
     with pytest.raises(ValidationError):
         _make_request(provider="")
+
+
+@pytest.mark.parametrize(
+    "bad_provider",
+    [
+        "open router",  # whitespace
+        "openrouter\n",  # control byte (newline)
+        "openrouter\t",  # control byte (tab)
+        "../openrouter",  # path traversal via mint_api_key_ref -> Infisical path
+        "openrouter/../other-tenant",  # path traversal
+        "openrouter\x00",  # NUL byte
+    ],
+)
+def test_create_request_rejects_unsafe_provider_charset(bad_provider: str) -> None:
+    """``provider`` is interpolated unencoded into ``mint_api_key_ref``'s
+    output, which becomes both the Infisical secret path segment and the
+    Kafka message key -- whitespace, control bytes, or path separators must
+    be rejected at the request boundary, not reach either downstream
+    identifier (CodeRabbit finding, omnimarket#2117)."""
+    with pytest.raises(ValidationError):
+        _make_request(provider=bad_provider)
+
+
+def test_create_request_accepts_hyphen_and_underscore_provider() -> None:
+    """The safe-charset pattern must not regress legitimate provider ids."""
+    req = _make_request(provider="open-router_v2")
+    assert req.provider == "open-router_v2"
 
 
 def test_credential_registered_event_never_carries_a_secret_field() -> None:

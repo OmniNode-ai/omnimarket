@@ -28,6 +28,19 @@ two sequential ``asyncio.run()`` calls is unsafe (asyncpg pools are bound to
 the event loop that created them). ``handle()``'s pure dispatch/param-shape
 behavior (no DB) is covered by a mock-DB unit test in
 ``tests/test_omn16316_tenant_credentials_projection.py`` instead.
+
+CodeRabbit round (omnimarket#2117) note: the same write-path glob is also
+touched by threading ``tenant_id=str(row["tenant_id"])`` into
+``publish_snapshot_delta()`` (previously defaulted to ``"omninode"``, a
+cross-tenant snapshot-header bug). That change is downstream of the SQL
+``RETURNING`` row this file's tests already prove correctly typed
+(``test_registered_inserts_a_correctly_typed_row`` asserts
+``row["tenant_id"] == "omninode"``) -- it does not change any SQL text or
+bound-argument shape itself, only which already-real value gets forwarded to
+a Kafka-facing call this file's harness has no producer to exercise. Covered
+instead by a mock-DB regression test,
+``test_credential_registered_snapshot_publish_uses_the_rows_own_tenant_id``,
+in ``tests/test_omn16316_tenant_credentials_projection.py``.
 """
 
 from __future__ import annotations
