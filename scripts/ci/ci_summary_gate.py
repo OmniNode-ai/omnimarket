@@ -209,6 +209,20 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # here — detection without enforcement is rule-5 noncompliance, and the
     # strict slot IS the enforcement.
     "Merge Hold Gate (OMN-15483)",
+    # OMN-16344: release-identity gate — blocks merging a packaged-source change
+    # onto an already-published version string, the mechanism that keeps dev's
+    # project.version ahead of the last released tag (omnibase_infra OMN-13412,
+    # omnibase_core OMN-13411). Unconditional in ci.yml (no needs/if:), so a
+    # skipped/cancelled conclusion is anomalous and fails closed here.
+    #
+    # The strict slot IS the enforcement, and it is why this gate needs no
+    # branch-protection change: "CI Summary" is already a live required context
+    # on both dev and main, so a PR that aliases two code states under one
+    # version can never be required-green. Detection alone would be rule-5
+    # noncompliance — omnimarket's dev sat at 0.4.8, identical to the published
+    # v0.4.8 tag, through seven commits of src/ changes precisely because no
+    # surface made it RED.
+    "Release Identity Gate",
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.
