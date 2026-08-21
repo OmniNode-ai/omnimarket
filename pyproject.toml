@@ -77,6 +77,9 @@ dependencies = [
     # transitive dep via omnibase-infra>=... (pyjwt>=2.12.0); declared
     # directly so this repo does not depend on that transitivity holding.
     "pyjwt[crypto]>=2.12.0",
+    # OMN-16375: security floor for pyasn1 DoS advisories reported by the
+    # dependency scan against pyasn1 0.6.3 (CVE-2026-59885/CVE-2026-59886).
+    "pyasn1>=0.6.4",
     # OMN-15193: JSON-Schema structural validation for a contract-declared
     # delegation response_contract (handler_quality_gate.py). Already an
     # unconditional transitive dep (dependency-injector / mcp pull in
