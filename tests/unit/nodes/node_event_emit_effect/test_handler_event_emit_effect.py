@@ -132,6 +132,47 @@ def test_unknown_event_type_fails_fast(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Registered event type with an empty fan_out (OMN-16021)
+# ---------------------------------------------------------------------------
+
+
+def test_zero_fan_out_registered_event_type_returns_structured_result(
+    tmp_path: Path,
+) -> None:
+    """``skill.friction_recorded`` is registered with ``fan_out: []``
+
+    ("Side-channel only, no Kafka fan-out" by design -- topics.yaml itself is
+    not changed). Prior to OMN-16021 this crashed ``handle()`` with an
+    unhandled ``UnknownEventTypeError`` instead of returning a typed
+    ``ModelEmitResult`` -- a robustness regression versus the old
+    ``node_emit_daemon``, which returned a graceful structured error for the
+    identical input. This reproduces the exact failure the
+    ``shadow_mode_parity_proof.py`` harness caught (``new_path_errors``:
+    ``["skill.friction_recorded", "UNHANDLED EXCEPTION: UnknownEventTypeError..."]``).
+    """
+    adapter = FakePublishAdapter()
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
+
+    request = ModelEmitRequest(
+        event_type="skill.friction_recorded",
+        payload={"skill": "code-review", "session_id": "sess-1"},
+    )
+
+    # Must not raise -- this is the regression under test.
+    result = handler.handle(request)
+
+    assert result.published is False
+    assert result.topics_published == []
+    assert result.spool_only is False
+    assert result.event_id == request.event_id
+    # Nothing to publish means nothing was spooled, and no publish adapter
+    # call was made -- this is a graceful no-op, not a failed attempt.
+    assert spool.pending_count() == 0
+    assert adapter.calls == []
+
+
+# ---------------------------------------------------------------------------
 # Purity: constructor does no I/O
 # ---------------------------------------------------------------------------
 

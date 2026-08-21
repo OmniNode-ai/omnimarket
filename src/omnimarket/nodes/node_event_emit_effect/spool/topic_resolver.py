@@ -155,16 +155,18 @@ def resolve_event_type(
 ) -> tuple[ResolvedTopic, ...]:
     """Resolve ``event_type`` to its declared fan-out topics + tiers.
 
-    Raises :class:`UnknownEventTypeError` if ``event_type`` is not
-    registered, or is registered with an empty ``fan_out`` list -- no silent
-    default topic.
+    Raises :class:`UnknownEventTypeError` only when ``event_type`` has NO
+    registration at all in the registry -- no silent default topic.
+
+    An event_type that IS registered but declares an explicitly empty
+    ``fan_out`` list (a documented "side-channel only, no Kafka fan-out"
+    registration, e.g. ``skill.friction_recorded``) is a deliberate,
+    legitimate registration, not an unknown one (OMN-16021): this returns an
+    empty tuple rather than raising, so every caller -- present and future --
+    degrades gracefully for a zero-fan-out event instead of having to special
+    -case it.
     """
     registration = _registration(event_type, registry_path=registry_path)
-    if not registration.topics:
-        path = registry_path if registry_path is not None else default_registry_path()
-        raise UnknownEventTypeError(
-            f"event_type '{event_type}' has no fan_out topics declared in {path}."
-        )
     return registration.topics
 
 

@@ -1049,6 +1049,48 @@ jobs:
       - name: Merge-check reason-code fixture-corpus gate (OMN-14765)
         run: python scripts/ci/check_merge_reason_codes.py
 
+  # OMN-16344: release-identity gate — the mechanism that keeps dev's
+  # project.version permanently ahead of the last published tag, matching
+  # omnibase_core (OMN-13411) and omnibase_infra (OMN-13412). omnimarket had no
+  # such gate, which is why dev sat at 0.4.8 — identical to the published
+  # v0.4.8 tag — while carrying seven commits of src/ changes, so one version
+  # string named two distinct code states and a release could not be cut
+  # without a manual hand-bump first.
+  #
+  # fetch-depth: 0 is REQUIRED, not incidental: the gate resolves the latest
+  # published version from `git tag --list`, and a shallow checkout carries no
+  # tags, which would make the gate silently report "no published tag yet" and
+  # pass everything. SYNC with the pre-commit hook `check-release-identity`.
+  release-identity-gate:
+    name: Release Identity Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install packaging
+        # `packaging` is the gate script's only third-party import, so this job
+        # stays a sub-minute pip install instead of a full `uv sync
+        # --all-extras`. The gate's unit tests deliberately run in the MAIN test
+        # job rather than here, matching the other tests/scripts/* suites:
+        # tests/conftest.py imports asyncpg, omnibase_core and omnibase_infra,
+        # so collecting them under this lightweight environment would fail at
+        # import time regardless of what the tests themselves need.
+        run: python -m pip install --quiet "packaging>=24.0"
+      - name: No code merged onto a published version without a bump (OMN-16344)
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || 'dev' }}
+        run: |
+          set -euo pipefail
+          BASE="${BASE_REF}"
+          git fetch --quiet origin "${BASE}" || true
+          python scripts/check_release_identity.py --base "origin/${BASE}"
+
   event-registry-drift:
     needs: occ-preflight
     if: always()
