@@ -35,5 +35,20 @@ CREATE TABLE IF NOT EXISTS tenant_inference_credentials (
     revoked_at TIMESTAMPTZ
 );
 
+-- ---- BEGIN OMN-15376 shape reconciliation: tenant_inference_credentials ----
+-- CREATE TABLE IF NOT EXISTS silently no-ops against a drifted pre-existing
+-- table; the guarded adds below converge such a table onto the shape
+-- declared above (no-ops on the fresh-create path, since every column
+-- already exists there). No DROP, no recreate, no TRUNCATE. Matches
+-- delegation_routing_tenant_overlay's (node_delegation_routing_reducer/0001,
+-- OMN-15631) own precedent.
+ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS api_key_ref TEXT;
+ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS tenant_id TEXT;
+ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS name TEXT;
+ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS provider TEXT;
+ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+-- ---- END OMN-15376 shape reconciliation: tenant_inference_credentials ----
+
 CREATE INDEX IF NOT EXISTS idx_tenant_inference_credentials_tenant_id
     ON tenant_inference_credentials (tenant_id);
