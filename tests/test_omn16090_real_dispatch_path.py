@@ -135,7 +135,7 @@ def _real_table_target() -> ProjectionDatabaseTarget:
         table=table,
         database_ref=table.database_ref,
         physical_database="application",
-        schema=table.schema,
+        physical_schema=table.schema,
         domain=EnumDatabaseSchemaDomain.TENANT,
         read_binding=binding,
         write_binding=binding,
