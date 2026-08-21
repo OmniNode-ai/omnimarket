@@ -37,7 +37,14 @@ name: Projection Exposure Drift Gate
 
 on:
   pull_request:
-    types: [opened, edited, synchronize, reopened]
+    # OMN-16171: `edited` is intentionally absent. This gate reads only source
+    # at the head SHA -- never the PR body or title -- so its verdict on an
+    # unchanged SHA is identical every time, while OCC's evidence-stamp bots
+    # rewrite PR bodies routinely and each such edit re-queued this whole
+    # workflow against an already-saturated fleet. The body/title/base-parsing
+    # gates and every occ-preflight eval-path caller KEEP `edited`; that split
+    # is machine-checked in tests/unit/workflows/test_edited_trigger_scope_omn16171.py.
+    types: [opened, synchronize, reopened]
     branches: [main, dev]
   merge_group:
 
