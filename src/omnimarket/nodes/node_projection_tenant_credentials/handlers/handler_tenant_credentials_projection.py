@@ -72,17 +72,24 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
     def subscribe_topics(self) -> list[str]:
         return list(self._contract.get("event_bus", {}).get("subscribe_topics", []))
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim. Delegates to project_event()."""
+    def handle(self, request: dict[str, Any]) -> dict[str, Any]:
+        """RuntimeLocal def-B handler entrypoint. Delegates to project_event().
+
+        ``request`` is a magic single-positional-param name the shared
+        ``runtime_local_adapter`` recognizes and adapts (OMN-14355 canonical
+        handler shape) -- unlike the prior ``input_data`` name, which the
+        canon-shape ratchet classified as a nonadaptable, non-canonical
+        signature.
+        """
         topics = self.subscribe_topics
-        topic = str(input_data.pop("_topic", topics[0] if topics else ""))
+        topic = str(request.pop("_topic", topics[0] if topics else ""))
         meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
+            partition=int(request.pop("_partition", 0)),
+            offset=int(request.pop("_offset", 0)),
+            fallback_id=str(request.pop("_fallback_id", "")),
             topic=topic,
         )
-        ok = asyncio.run(self.project_event(topic, input_data, meta))
+        ok = asyncio.run(self.project_event(topic, request, meta))
         return {"projected": ok}
 
     @property

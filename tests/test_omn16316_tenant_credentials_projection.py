@@ -168,3 +168,64 @@ class TestUnknownTopic:
 
         assert result is False
         mock_db.execute.assert_not_awaited()
+
+
+class TestHandleDefBEntrypoint:
+    """``handle()`` is the canonical def-B entrypoint the shared
+    ``runtime_local_adapter`` dispatches through (OMN-14355 -- the single
+    positional param is named ``request``, one of the magic names the
+    adapter recognizes). Deliberately a plain sync test, not
+    ``@pytest.mark.asyncio``: ``handle()`` wraps its delegation to
+    ``project_event()`` in its own ``asyncio.run()`` call, which raises if
+    invoked from inside an already-running event loop -- exactly the loop a
+    pytest-asyncio test coroutine would provide.
+    """
+
+    def test_handle_extracts_topic_and_meta_then_delegates_to_project_event(
+        self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
+    ) -> None:
+        result = runner.handle(
+            {
+                "_topic": TOPIC_REGISTERED,
+                "_partition": 3,
+                "_offset": 7,
+                "_fallback_id": "fallback-id-cred-1",
+                "tenant_id": "omninode",
+                "provider": "openrouter",
+                "name": "my-openrouter-key",
+                "api_key_ref": "cred_omninode_openrouter_abc123",
+            }
+        )
+
+        assert result == {"projected": True}
+        mock_db.execute.assert_awaited_once()
+        args = mock_db.execute.call_args[0]
+        assert "INSERT INTO tenant_inference_credentials" in args[0]
+        assert args[1:] == (
+            "cred_omninode_openrouter_abc123",
+            "omninode",
+            "my-openrouter-key",
+            "openrouter",
+        )
+
+    def test_handle_defaults_topic_to_the_first_subscribed_topic(
+        self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
+    ) -> None:
+        """No ``_topic`` key -- ``handle()`` falls back to
+        ``subscribe_topics[0]`` (``credential-registered``), matching the
+        default used when the runtime adapter omits it."""
+        result = runner.handle(
+            {
+                "tenant_id": "omninode",
+                "provider": "openrouter",
+                "name": "my-openrouter-key",
+                "api_key_ref": "cred_omninode_openrouter_abc123",
+            }
+        )
+
+        assert result == {"projected": True}
+        mock_db.execute.assert_awaited_once()
+        assert (
+            "INSERT INTO tenant_inference_credentials"
+            in (mock_db.execute.call_args[0][0])
+        )

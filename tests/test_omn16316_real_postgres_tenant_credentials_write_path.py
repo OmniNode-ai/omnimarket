@@ -13,6 +13,21 @@ OMN-15905 failure class this gate exists to catch).
 Harness mirrors ``tests/test_omn16150_publish_snapshot_delta_delete_real_postgres.py``
 byte-for-byte in spirit: disposable per-run schema, real ``AsyncpgAdapter``,
 SKIPS (never ERRORs) without a reachable database.
+
+OMN-14355 note: ``handler_tenant_credentials_projection.py`` also touches
+this file's write-path glob when ``handle()``'s single positional param is
+renamed to the canonical ``request`` (the shape the shared
+``runtime_local_adapter`` dispatches through). That rename is dispatch-shim
+only -- ``handle()`` still delegates unchanged to ``project_event()``, which
+is what this file's tests drive against real Postgres. A dedicated real-DB
+test of ``handle()`` itself was deliberately NOT added: ``handle()`` wraps
+its delegation in a synchronous ``asyncio.run()`` call, which cannot be
+invoked from inside a pytest-asyncio test coroutine (nested-loop
+``RuntimeError``), and reusing this file's pooled ``AsyncpgAdapter`` across
+two sequential ``asyncio.run()`` calls is unsafe (asyncpg pools are bound to
+the event loop that created them). ``handle()``'s pure dispatch/param-shape
+behavior (no DB) is covered by a mock-DB unit test in
+``tests/test_omn16316_tenant_credentials_projection.py`` instead.
 """
 
 from __future__ import annotations
