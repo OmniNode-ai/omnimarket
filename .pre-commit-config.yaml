@@ -1044,6 +1044,24 @@ repos:
           ^(src/omnimarket/merge_control/reason_code_classifier\.py|scripts/ci/check_merge_reason_codes\.py|tests/merge_control/fixtures/reason_codes/.*\.json)$
         stages: [pre-commit]
 
+      # OMN-16344: release-identity gate. Blocks committing a packaged-source
+      # change onto an already-published version string, which is what keeps
+      # dev's project.version permanently ahead of the last released tag the
+      # way omnibase_core (OMN-13411) and omnibase_infra (OMN-13412) already
+      # are. Without it omnimarket's dev sat at 0.4.8 — the same version as the
+      # published v0.4.8 wheel — while carrying seven commits of src/ changes,
+      # so "omnimarket 0.4.8" named two different code states. The script does
+      # its own diff/tag resolution, so pass_filenames=false: it inspects the
+      # whole worktree, not a per-file list. SYNC with ci.yml job
+      # `release-identity-gate`.
+      - id: check-release-identity
+        name: No code merged onto a published version without a bump (OMN-16344)
+        entry: uv run python scripts/check_release_identity.py
+        language: system
+        files: ^(src/.*\.py|pyproject\.toml)$
+        pass_filenames: false
+        stages: [pre-commit]
+
   # Governed impacted-test selector at PRE-PUSH (OMN-13973 / WS7 fan-out, omnimarket).
   # Runs the fast local IMPACTED SUBSET of the unit suite once per `git push`,
   # via the SAME selector CI uses (scripts/ci/detect_test_paths.py +
