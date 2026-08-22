@@ -13,10 +13,18 @@ guard, but AC5 names the real components explicitly:
 This module is that variant. Nothing between the reducer and the HTTP response is
 a double:
 
-  Seam A: the real ``RegistrationProjectionRunner`` writes through its own real
-  ``AsyncpgAdapter`` pool into real Postgres (the row is then read back on an
-  independent connection, so the assertion does not trust the reducer's own
-  RETURNING output), and publishes through the real ``AIOKafkaProducer`` that
+  Seam A input: the source event is published to the real broker with a real
+  ``AIOKafkaProducer``, and the runner is driven through its own
+  ``BaseProjectionRunner.run()`` entrypoint -- it builds its own real
+  ``AIOKafkaConsumer``, subscribes to its contract topics, unwraps the envelope
+  and dispatches to ``project_event`` itself. The test never calls
+  ``project_event`` directly, so the only way a row can appear is if a real
+  message crossed a real broker and the real consumer picked it up.
+
+  Seam A output: the runner writes through its own real ``AsyncpgAdapter`` pool
+  into real Postgres (the row is then read back on an independent connection, so
+  the assertion does not trust the reducer's own RETURNING output), and publishes
+  the snapshot delta through the real ``AIOKafkaProducer`` that
   ``_ensure_producer()`` builds from the runtime binding.
 
   Seam B: a real ``SnapshotCache`` consumer joins the same broker and applies the
@@ -33,6 +41,7 @@ because the merge-gating job runs ``-m "not kafka"`` and provisions no broker.
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Generator
 from contextlib import contextmanager, suppress
 from typing import Any
@@ -40,15 +49,13 @@ from uuid import uuid4
 
 import asyncpg
 import pytest
+from aiokafka import AIOKafkaProducer
 from fastapi.testclient import TestClient
 
 from omnimarket.nodes.node_projection_registration.handlers.handler_registration import (
     RegistrationProjectionRunner,
 )
-from omnimarket.projection.runner import (
-    PROJECTION_RUNTIME_BINDING_OVERLAY_ENV,
-    MessageMeta,
-)
+from omnimarket.projection.runner import PROJECTION_RUNTIME_BINDING_OVERLAY_ENV
 from omnimarket.projection.snapshot_cache import SnapshotCache
 from scripts.projection_api_server import app, get_snapshot_cache, get_topic_map
 
@@ -83,8 +90,10 @@ CREATE TABLE IF NOT EXISTS node_service_registry (
 # The cache must observe the reducer's message through a real group join,
 # partition assignment and replay; on a cold broker that is seconds, not
 # milliseconds. Bounded so a genuinely broken seam fails instead of hanging.
+_CONSUMER_READY_TIMEOUT_SECONDS = 60.0
+_PROJECTION_TIMEOUT_SECONDS = 90.0
 _CACHE_READBACK_TIMEOUT_SECONDS = 60.0
-_CACHE_POLL_INTERVAL_SECONDS = 0.5
+_POLL_INTERVAL_SECONDS = 0.5
 
 
 @contextmanager
@@ -100,6 +109,66 @@ def _with_cache(
         app.dependency_overrides.clear()
 
 
+def _raise_if_runner_died(runner_task: asyncio.Task[None]) -> None:
+    """Surface a runner crash immediately instead of waiting out a timeout."""
+    if runner_task.done():
+        exc = runner_task.exception()
+        if exc is not None:
+            raise AssertionError(
+                f"BaseProjectionRunner.run() exited before the event was "
+                f"projected: {exc!r}"
+            ) from exc
+        raise AssertionError(
+            "BaseProjectionRunner.run() returned before the event was projected "
+            "-- the consumer gave up (see MAX_RETRY_ATTEMPTS in runner.py)"
+        )
+
+
+async def _await_consumer_ready(
+    runner: RegistrationProjectionRunner, runner_task: asyncio.Task[None]
+) -> None:
+    """Wait until run() has built and started its own consumer.
+
+    Publishing before the group exists would still be replayed (the runner
+    consumes with auto_offset_reset='earliest'), but waiting keeps the test
+    honest about exercising the live path rather than recovery-by-replay.
+    """
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _CONSUMER_READY_TIMEOUT_SECONDS
+    while loop.time() < deadline:
+        _raise_if_runner_died(runner_task)
+        if runner._consumer is not None and runner._consumer.assignment():
+            return
+        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+    raise AssertionError(
+        "BaseProjectionRunner.run() never reached a partition assignment within "
+        f"{_CONSUMER_READY_TIMEOUT_SECONDS}s"
+    )
+
+
+async def _await_db_row(
+    conn: asyncpg.Connection, service_name: str, runner_task: asyncio.Task[None]
+) -> dict[str, Any]:
+    """Poll real Postgres until the runner projects the consumed event."""
+    loop = asyncio.get_running_loop()
+    deadline = loop.time() + _PROJECTION_TIMEOUT_SECONDS
+    while loop.time() < deadline:
+        _raise_if_runner_died(runner_task)
+        row = await conn.fetchrow(
+            "SELECT service_name, service_type, health_status, is_active "
+            "FROM node_service_registry WHERE service_name = $1",
+            service_name,
+        )
+        if row is not None:
+            return dict(row)
+        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
+    raise AssertionError(
+        f"{service_name!r} never reached node_service_registry within "
+        f"{_PROJECTION_TIMEOUT_SECONDS}s -- the event was published but the real "
+        "runner never consumed and projected it (Seam A is broken)"
+    )
+
+
 async def _await_cached_row(
     cache: SnapshotCache, topic: str, service_name: str
 ) -> dict[str, Any]:
@@ -110,7 +179,7 @@ async def _await_cached_row(
         for row in cache.get_rows(topic):
             if row.get("service_name") == service_name:
                 return dict(row)
-        await asyncio.sleep(_CACHE_POLL_INTERVAL_SECONDS)
+        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
     raise AssertionError(
         f"{service_name!r} never reached the SnapshotCache from {topic!r} within "
         f"{_CACHE_READBACK_TIMEOUT_SECONDS}s -- the reducer published but the real "
@@ -169,15 +238,22 @@ class TestRegistrationEventToHttpReadbackRealInfra:
             bootstrap_servers=integration_kafka_bootstrap,
             group_id=f"omn15800-realseam-cache-{run_id}",
         )
+        runner_task: asyncio.Task[None] | None = None
 
         try:
-            # Real pool against real Postgres (Seam A write side).
-            await runner._db.connect()
-
-            # Start the real consumer BEFORE publishing so the message is
-            # observed live rather than only via replay -- the path the deployed
-            # projection-api actually runs.
+            # The snapshot-side consumer starts first so the delta the reducer
+            # publishes is observed live rather than only through replay.
             await cache.start()
+
+            # Seam A input leg: drive the runner through its OWN entrypoint, so
+            # the real BaseProjectionRunner.run() builds the real
+            # AIOKafkaConsumer, subscribes to its contract topics, unwraps the
+            # envelope and dispatches to project_event itself. The test never
+            # calls project_event directly -- the only way the row can appear is
+            # if a real message crossed a real broker and the real consumer
+            # picked it up.
+            runner_task = asyncio.create_task(runner.run())
+            await _await_consumer_ready(runner, runner_task)
 
             payload = {
                 "node_name": service_name,
@@ -186,23 +262,20 @@ class TestRegistrationEventToHttpReadbackRealInfra:
                 "correlation_id": str(uuid4()),
                 "service_url": "http://omn15800-realseam.invalid:9999",
             }
-            meta = MessageMeta(
-                partition=0, offset=0, fallback_id=f"omn15800-realseam-{run_id}"
-            )
+            producer = AIOKafkaProducer(bootstrap_servers=integration_kafka_bootstrap)
+            await producer.start()
+            try:
+                await producer.send_and_wait(
+                    INTROSPECTION_TOPIC, json.dumps(payload).encode("utf-8")
+                )
+            finally:
+                await producer.stop()
 
-            projected = await runner.project_event(INTROSPECTION_TOPIC, payload, meta)
-            assert projected is True
-
-            # Seam A, independently verified: the row really is in Postgres,
-            # read back on a separate connection rather than trusting RETURNING.
-            db_row = await postgres_fixture.fetchrow(
-                "SELECT service_name, service_type, health_status, is_active "
-                "FROM node_service_registry WHERE service_name = $1",
-                service_name,
-            )
-            assert db_row is not None, (
-                "the real reducer reported success but no row exists in Postgres"
-            )
+            # Seam A output, independently verified: the row really is in
+            # Postgres, read on a separate connection rather than trusting the
+            # reducer's own RETURNING output. Reaching this state proves the
+            # published event was consumed off the broker by the runner.
+            db_row = await _await_db_row(postgres_fixture, service_name, runner_task)
             assert db_row["service_type"] == "COMPUTE"
             assert db_row["is_active"] is True
 
@@ -233,7 +306,7 @@ class TestRegistrationEventToHttpReadbackRealInfra:
             assert served["is_active"] is True
         finally:
             # Tombstone the compacted topic so repeated runs do not accumulate
-            # keys, then drop the row and close every real client.
+            # keys, then stop the runner and drop the row.
             with suppress(Exception):
                 await runner.publish_snapshot_delta(
                     exposure,
@@ -247,10 +320,14 @@ class TestRegistrationEventToHttpReadbackRealInfra:
                 )
             with suppress(Exception):
                 await cache.stop()
+            # shutdown() stops the consumer and producer and closes the DB pool
+            # the runner opened for itself in run().
             with suppress(Exception):
-                await runner._stop_producer()
-            with suppress(Exception):
-                await runner._db.close()
+                await runner.shutdown()
+            if runner_task is not None:
+                runner_task.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await runner_task
             with suppress(Exception):
                 await postgres_fixture.execute(
                     "DELETE FROM node_service_registry WHERE service_name = $1",
