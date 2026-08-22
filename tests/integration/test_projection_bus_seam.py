@@ -35,6 +35,13 @@ the identical way), and the DB write is a mocked ``AsyncpgAdapter`` whose
 Every model/handler/cache/route class in between is the real production
 class.
 
+AC5 note (OMN-15800): this module is the fast, always-runnable guard and keeps
+the transport/DB boundary as test doubles by design. The real-component variant
+the AC names -- real reducer against real Postgres, a real message on a real
+broker, and the real SnapshotCache consumer -- lives in
+``test_projection_bus_seam_real_infra.py`` and runs wherever a broker and
+Postgres are provisioned.
+
 RED (documented — this test failed before OMN-15800 with an AttributeError:
 ``BaseProjectionRunner`` had no ``publish_snapshot_delta``, and
 ``omnimarket.projection.snapshot_cache`` did not exist).

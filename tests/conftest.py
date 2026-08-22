@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import os
 import sys
 import time
@@ -367,6 +368,51 @@ def _integration_dsn() -> str:
         f"postgresql://{quote_plus(_POSTGRES_USER)}:{quote_plus(_POSTGRES_PASSWORD)}"
         f"@{_POSTGRES_HOST}:{_POSTGRES_PORT}/{_POSTGRES_DB}"
     )
+
+
+@pytest.fixture
+def integration_postgres_dsn(request: pytest.FixtureRequest) -> str:
+    """DSN for the integration Postgres, for tests that need to build their own
+    pool (e.g. a real ``AsyncpgAdapter``) rather than use ``postgres_fixture``'s
+    single connection.
+
+    Skips under the same conditions as ``postgres_fixture`` and with the same
+    reason strings, so ``scripts/ci/integration_skip_guard.yaml`` classifies
+    both identically (OMN-14172).
+    """
+    if not request.node.get_closest_marker("integration"):
+        pytest.skip("integration_postgres_dsn requires @pytest.mark.integration")
+    if not _POSTGRES_PASSWORD:
+        pytest.skip("POSTGRES_PASSWORD not set — skipping integration postgres fixture")
+    return _integration_dsn()
+
+
+@pytest_asyncio.fixture
+async def integration_kafka_bootstrap(request: pytest.FixtureRequest) -> str:
+    """Bootstrap servers for the integration broker, skipping when unreachable.
+
+    Probes with a real ``AIOKafkaProducer`` handshake (the same convention as
+    tests/integration/test_cost_event_publisher_kafka.py) rather than a bare TCP
+    connect, so a listening-but-not-Kafka port does not pass.
+
+    The skip reason starts with ``Kafka not reachable`` so it matches
+    ``allowed_optional_skip_patterns`` in scripts/ci/integration_skip_guard.yaml
+    -- the merge-gating job deliberately does not provision a broker (it runs
+    ``-m "not kafka"``), so this skip is expected, never a false-green.
+    """
+    if not request.node.get_closest_marker("integration"):
+        pytest.skip("integration_kafka_bootstrap requires @pytest.mark.integration")
+    from aiokafka import AIOKafkaProducer
+
+    probe = AIOKafkaProducer(bootstrap_servers=_KAFKA_BOOTSTRAP)
+    try:
+        await asyncio.wait_for(probe.start(), timeout=5)
+    except Exception as exc:  # any startup failure means no reachable broker
+        pytest.skip(f"Kafka not reachable at {_KAFKA_BOOTSTRAP}: {exc}")
+    finally:
+        with contextlib.suppress(Exception):
+            await probe.stop()
+    return _KAFKA_BOOTSTRAP
 
 
 @pytest_asyncio.fixture
