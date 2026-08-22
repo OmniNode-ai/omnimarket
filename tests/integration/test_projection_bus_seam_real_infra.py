@@ -14,12 +14,20 @@ This module is that variant. Nothing between the reducer and the HTTP response i
 a double:
 
   Seam A input: the source event is published to the real broker with a real
-  ``AIOKafkaProducer``, and the runner is driven through its own
-  ``BaseProjectionRunner.run()`` entrypoint -- it builds its own real
-  ``AIOKafkaConsumer``, subscribes to its contract topics, unwraps the envelope
-  and dispatches to ``project_event`` itself. The test never calls
+  ``AIOKafkaProducer``, read back off it by a real ``AIOKafkaConsumer`` subscribed
+  to the runner's OWN contract topics under the runner's OWN group id, and handed
+  to the real ``BaseProjectionRunner._handle_message`` -- the same method
+  ``run()`` calls for every message, so the envelope unwrap, the ``MessageMeta``
+  built from broker-assigned coordinates, the ``project_event`` dispatch and the
+  offset commit are all the production ones. The test never calls
   ``project_event`` directly, so the only way a row can appear is if a real
-  message crossed a real broker and the real consumer picked it up.
+  message crossed a real broker.
+
+  Out of scope by design: ``run()``'s process-lifecycle wrapper (POSIX signal
+  handlers, health server, consumer-retry loop). ``run()`` installs signal
+  handlers via ``loop.add_signal_handler``, which raises ``NotImplementedError``
+  on Windows, so calling it here would make this test Linux-only for no gain in
+  per-message coverage.
 
   Seam A output: the runner writes through its own real ``AsyncpgAdapter`` pool
   into real Postgres (the row is then read back on an independent connection, so
@@ -49,7 +57,7 @@ from uuid import uuid4
 
 import asyncpg
 import pytest
-from aiokafka import AIOKafkaProducer
+from aiokafka import AIOKafkaConsumer, AIOKafkaProducer
 from fastapi.testclient import TestClient
 
 from omnimarket.nodes.node_projection_registration.handlers.handler_registration import (
@@ -90,7 +98,6 @@ CREATE TABLE IF NOT EXISTS node_service_registry (
 # The cache must observe the reducer's message through a real group join,
 # partition assignment and replay; on a cold broker that is seconds, not
 # milliseconds. Bounded so a genuinely broken seam fails instead of hanging.
-_CONSUMER_READY_TIMEOUT_SECONDS = 60.0
 _PROJECTION_TIMEOUT_SECONDS = 90.0
 _CACHE_READBACK_TIMEOUT_SECONDS = 60.0
 _POLL_INTERVAL_SECONDS = 0.5
@@ -109,64 +116,61 @@ def _with_cache(
         app.dependency_overrides.clear()
 
 
-def _raise_if_runner_died(runner_task: asyncio.Task[None]) -> None:
-    """Surface a runner crash immediately instead of waiting out a timeout."""
-    if runner_task.done():
-        exc = runner_task.exception()
-        if exc is not None:
-            raise AssertionError(
-                f"BaseProjectionRunner.run() exited before the event was "
-                f"projected: {exc!r}"
-            ) from exc
-        raise AssertionError(
-            "BaseProjectionRunner.run() returned before the event was projected "
-            "-- the consumer gave up (see MAX_RETRY_ATTEMPTS in runner.py)"
-        )
+async def _consume_into_runner(
+    runner: RegistrationProjectionRunner,
+    *,
+    bootstrap_servers: str,
+    service_name: str,
+) -> bool:
+    """Read the runner's own topics off the real broker and hand each message to
+    the real ``BaseProjectionRunner._handle_message``.
 
-
-async def _await_consumer_ready(
-    runner: RegistrationProjectionRunner, runner_task: asyncio.Task[None]
-) -> None:
-    """Wait until run() has built and started its own consumer.
-
-    Publishing before the group exists would still be replayed (the runner
-    consumes with auto_offset_reset='earliest'), but waiting keeps the test
-    honest about exercising the live path rather than recovery-by-replay.
+    Returns ``True`` once the message carrying ``service_name`` has been handled.
+    The consumer is built from the runner's own contract topics and group id, so
+    the subscription set is the one ``run()`` would use.
     """
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + _CONSUMER_READY_TIMEOUT_SECONDS
-    while loop.time() < deadline:
-        _raise_if_runner_died(runner_task)
-        if runner._consumer is not None and runner._consumer.assignment():
-            return
-        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-    raise AssertionError(
-        "BaseProjectionRunner.run() never reached a partition assignment within "
-        f"{_CONSUMER_READY_TIMEOUT_SECONDS}s"
+    consumer = AIOKafkaConsumer(
+        *runner.topics,
+        bootstrap_servers=bootstrap_servers,
+        group_id=runner._group_id,
+        client_id=runner._client_id,
+        auto_offset_reset="earliest",
+        enable_auto_commit=False,
     )
+    await consumer.start()
+    try:
+        runner._consumer = consumer
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + _PROJECTION_TIMEOUT_SECONDS
+        while loop.time() < deadline:
+            batches = await consumer.getmany(timeout_ms=1000)
+            for messages in batches.values():
+                for message in messages:
+                    # The real per-message path: envelope unwrap, MessageMeta
+                    # from broker coordinates, project_event dispatch, commit.
+                    await runner._handle_message(message)
+                    if (
+                        message.value is not None
+                        and service_name.encode("utf-8") in message.value
+                    ):
+                        return True
+        return False
+    finally:
+        runner._consumer = None
+        with suppress(Exception):
+            await consumer.stop()
 
 
-async def _await_db_row(
-    conn: asyncpg.Connection, service_name: str, runner_task: asyncio.Task[None]
-) -> dict[str, Any]:
-    """Poll real Postgres until the runner projects the consumed event."""
-    loop = asyncio.get_running_loop()
-    deadline = loop.time() + _PROJECTION_TIMEOUT_SECONDS
-    while loop.time() < deadline:
-        _raise_if_runner_died(runner_task)
-        row = await conn.fetchrow(
-            "SELECT service_name, service_type, health_status, is_active "
-            "FROM node_service_registry WHERE service_name = $1",
-            service_name,
-        )
-        if row is not None:
-            return dict(row)
-        await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-    raise AssertionError(
-        f"{service_name!r} never reached node_service_registry within "
-        f"{_PROJECTION_TIMEOUT_SECONDS}s -- the event was published but the real "
-        "runner never consumed and projected it (Seam A is broken)"
+async def _read_db_row(
+    conn: asyncpg.Connection, service_name: str
+) -> dict[str, Any] | None:
+    """Read the projected row on a connection the runner does not own."""
+    row = await conn.fetchrow(
+        "SELECT service_name, service_type, health_status, is_active "
+        "FROM node_service_registry WHERE service_name = $1",
+        service_name,
     )
+    return dict(row) if row is not None else None
 
 
 async def _await_cached_row(
@@ -238,22 +242,35 @@ class TestRegistrationEventToHttpReadbackRealInfra:
             bootstrap_servers=integration_kafka_bootstrap,
             group_id=f"omn15800-realseam-cache-{run_id}",
         )
-        runner_task: asyncio.Task[None] | None = None
 
         try:
             # The snapshot-side consumer starts first so the delta the reducer
             # publishes is observed live rather than only through replay.
             await cache.start()
 
-            # Seam A input leg: drive the runner through its OWN entrypoint, so
-            # the real BaseProjectionRunner.run() builds the real
-            # AIOKafkaConsumer, subscribes to its contract topics, unwraps the
-            # envelope and dispatches to project_event itself. The test never
-            # calls project_event directly -- the only way the row can appear is
-            # if a real message crossed a real broker and the real consumer
-            # picked it up.
-            runner_task = asyncio.create_task(runner.run())
-            await _await_consumer_ready(runner, runner_task)
+            # The runner opens its own real pool against real Postgres; run()
+            # would do this itself, and the consume path below needs it.
+            await runner._db.connect()
+
+            # Seam A input leg. The source event is published to the real broker
+            # and read back off it by a real AIOKafkaConsumer subscribed to the
+            # runner's OWN contract topics with the runner's OWN group id, then
+            # handed to the real BaseProjectionRunner._handle_message -- the same
+            # method run() calls for every message. That is the real envelope
+            # unwrap, the real MessageMeta construction from broker-assigned
+            # coordinates, the real project_event dispatch and the real offset
+            # commit. The test never calls project_event itself.
+            #
+            # Why not runner.run() directly: run() installs POSIX signal handlers
+            # via loop.add_signal_handler, which raises NotImplementedError on
+            # Windows, so calling it would make this test Linux-only. Its
+            # process-lifecycle wrapper (signal handling, health server, retry
+            # loop) is deliberately out of scope here; everything it does per
+            # message is exercised.
+            assert INTROSPECTION_TOPIC in runner.topics, (
+                "the runner's contract must declare the source topic for this "
+                "test to consume the same subscription set run() would"
+            )
 
             payload = {
                 "node_name": service_name,
@@ -271,11 +288,23 @@ class TestRegistrationEventToHttpReadbackRealInfra:
             finally:
                 await producer.stop()
 
+            consumed = await _consume_into_runner(
+                runner,
+                bootstrap_servers=integration_kafka_bootstrap,
+                service_name=service_name,
+            )
+            assert consumed is True, (
+                "the published event was never delivered to the runner off the "
+                "real broker"
+            )
+
             # Seam A output, independently verified: the row really is in
             # Postgres, read on a separate connection rather than trusting the
-            # reducer's own RETURNING output. Reaching this state proves the
-            # published event was consumed off the broker by the runner.
-            db_row = await _await_db_row(postgres_fixture, service_name, runner_task)
+            # reducer's own RETURNING output.
+            db_row = await _read_db_row(postgres_fixture, service_name)
+            assert db_row is not None, (
+                "the runner consumed the event but no row exists in Postgres"
+            )
             assert db_row["service_type"] == "COMPUTE"
             assert db_row["is_active"] is True
 
@@ -324,10 +353,6 @@ class TestRegistrationEventToHttpReadbackRealInfra:
             # the runner opened for itself in run().
             with suppress(Exception):
                 await runner.shutdown()
-            if runner_task is not None:
-                runner_task.cancel()
-                with suppress(asyncio.CancelledError, Exception):
-                    await runner_task
             with suppress(Exception):
                 await postgres_fixture.execute(
                     "DELETE FROM node_service_registry WHERE service_name = $1",
