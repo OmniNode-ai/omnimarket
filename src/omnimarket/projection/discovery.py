@@ -499,11 +499,9 @@ class MalformedOrderBySpecError(ValueError):
     """
 
 
-def _parse_order_by_spec(
-    order_by: str | None,
+def parse_order_by_clauses(
+    order_by: str,
     columns: tuple[str, ...] | tuple[Literal["*"]],
-    node_name: str,
-    contract_path: Path,
 ) -> OrderBySpec:
     """Parse a free-text ``order_by`` into a typed, multi-column-safe spec.
 
@@ -513,14 +511,17 @@ def _parse_order_by_spec(
     is accepted case-insensitively, matching the SQL clause contracts already
     declare (e.g. ``"ingest_sequence ASC NULLS LAST"``).
 
-    Returns ``()`` when ``order_by`` is absent (ordering undefined) or the
-    parsed spec on success. Raises :class:`MalformedOrderBySpecError` on a
-    malformed clause or unknown column — this is a hard failure, not a
-    caller-catchable "excluded" signal (see the exception's docstring).
+    Context-free core grammar shared by two callers with different failure
+    contracts (OMN-16290): contract-load time (:func:`_parse_order_by_spec`,
+    which wraps :class:`ValueError` in :class:`MalformedOrderBySpecError` with
+    node/contract context, a startup hard-fail) and request time
+    (``GET /projection/{topic}?order_by=...`` in ``api_server.py``, which
+    catches the plain :class:`ValueError` and returns a ``422`` — a bad
+    request must never crash the serving process). ``columns == ("*",)``
+    disables column-membership validation (SELECT * exposures). Raises
+    :class:`ValueError` on a malformed clause or a column not present in
+    ``columns``.
     """
-    if order_by is None:
-        return ()
-
     bare_columns: frozenset[str] | None = (
         None if columns == ("*",) else frozenset(c.strip('"') for c in columns)
     )
@@ -529,10 +530,7 @@ def _parse_order_by_spec(
     for clause in order_by.split(","):
         tokens = clause.split()
         if not tokens:
-            raise MalformedOrderBySpecError(
-                f"Contract {node_name!r} (path: {contract_path}): "
-                f"projection_api.order_by has an empty clause in {order_by!r}"
-            )
+            raise ValueError(f"order_by has an empty clause in {order_by!r}")
         column = tokens[0]
         rest = tokens[1:]
         idx = 0
@@ -548,28 +546,47 @@ def _parse_order_by_spec(
                 nulls = "FIRST" if rest[idx].upper() == "FIRST" else "LAST"
                 idx += 1
             else:
-                raise MalformedOrderBySpecError(
-                    f"Contract {node_name!r} (path: {contract_path}): "
-                    f"projection_api.order_by clause {clause!r} has 'NULLS' "
-                    "not followed by 'FIRST' or 'LAST'"
+                raise ValueError(
+                    f"order_by clause {clause!r} has 'NULLS' not followed by "
+                    "'FIRST' or 'LAST'"
                 )
 
         if idx != len(rest):
-            raise MalformedOrderBySpecError(
-                f"Contract {node_name!r} (path: {contract_path}): "
-                f"projection_api.order_by clause {clause!r} must be "
+            raise ValueError(
+                f"order_by clause {clause!r} must be "
                 "'<column> [ASC|DESC] [NULLS FIRST|LAST]'"
             )
 
         if bare_columns is not None and column.strip('"') not in bare_columns:
-            raise MalformedOrderBySpecError(
-                f"Contract {node_name!r} (path: {contract_path}): "
-                f"projection_api.order_by column {column!r} is not a member "
-                "of projection_api.columns"
+            raise ValueError(
+                f"order_by column {column!r} is not a member of the declared columns"
             )
         spec.append((column, direction, nulls))
 
     return tuple(spec)
+
+
+def _parse_order_by_spec(
+    order_by: str | None,
+    columns: tuple[str, ...] | tuple[Literal["*"]],
+    node_name: str,
+    contract_path: Path,
+) -> OrderBySpec:
+    """Parse a contract's ``projection_api.order_by`` field at startup.
+
+    Returns ``()`` when ``order_by`` is absent (ordering undefined) or the
+    parsed spec on success. Raises :class:`MalformedOrderBySpecError` on a
+    malformed clause or unknown column — this is a hard failure, not a
+    caller-catchable "excluded" signal (see the exception's docstring).
+    """
+    if order_by is None:
+        return ()
+    try:
+        return parse_order_by_clauses(order_by, columns)
+    except ValueError as exc:
+        raise MalformedOrderBySpecError(
+            f"Contract {node_name!r} (path: {contract_path}): projection_api.{exc}"
+        ) from exc
 
 
 def load_projection_exposures_from_contract(
