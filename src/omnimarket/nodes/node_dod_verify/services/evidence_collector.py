@@ -217,6 +217,108 @@ _PR_PATH_URL_RE = re.compile(
 # with this clause's hardcoded number.
 _SHELL_CLAUSE_SPLIT_RE = re.compile(r"&&|\|\||;|\|")
 
+# OMN-16087: pr-live-state binder must not invert an intentional non-merged
+# PR-state assertion.
+#
+# A dod_evidence item's own ``command`` check_value can legitimately assert
+# that a referenced PR is OPEN (a seam guard: "the pinned lineage deliberately
+# predates unmerged PR #N") or CLOSED (a supersession note: "PR #N was closed,
+# replaced by #M"). The auto-appended ``::pr-live-state`` check
+# (``_live_pr_checks_for_item`` / ``_verify_live_pr``) previously derived its
+# usual "must be MERGED and all required checks green" judgement from the bare
+# PR reference regardless of what the item's own predicate asserted —
+# inverting the entry's declared intent the moment live state disagreed with
+# the binder's blanket assumption. Two live discovery cases: OMN-16077's
+# ``dod-pin-is-0386-head-predating-2736`` (OPEN assertion, inverts to a false
+# FAILURE once the referenced PR merges) and OMN-16142's
+# ``occ-self-bind-pr-6624-superseded-note`` (CLOSED assertion, false FAILURE
+# immediately since the referenced PR is never merged by design).
+#
+# ``_PIPELINE_SPLIT_RE`` deliberately does NOT split on a single ``|`` (unlike
+# ``_SHELL_CLAUSE_SPLIT_RE`` above) — a state assertion is almost always piped
+# from the ``gh pr view`` invocation through ``--jq``/``grep`` in the SAME
+# logical pipeline (e.g. ``gh pr view N --repo R --json state --jq '.state' |
+# grep -qx OPEN``), so keeping single pipes joined is required to see the
+# assertion at all. Splitting only at ``&&``/``||``/``;``/``;;`` still keeps
+# two independent ``gh pr view`` invocations in one check_value (the OMN-16142
+# shape: one clause asserts #6624 CLOSED, a second `&&`-joined clause asserts
+# #6626 MERGED) from being confused with each other.
+_PIPELINE_SPLIT_RE = re.compile(r"&&|\|\||;;|;")
+# ``.state == "OPEN"`` / ``.state == 'CLOSED'`` — the inline jq-predicate
+# shape. Generalizes ``_PR_OPEN_STATE_PREDICATE_RE`` above (OMN-14637, which
+# is deliberately OPEN-only and rewrites rather than detects) to also
+# recognise CLOSED, since this detector only needs to recognise an assertion,
+# never rewrite one.
+_PR_STATE_EQUALITY_RE = re.compile(r"""\.state\s*==\s*(["'])(OPEN|CLOSED)\1""")
+# ``grep -qx OPEN`` / ``grep -qx 'CLOSED'`` / ``grep -q "OPEN"`` — the
+# piped-grep shape. Matches any grep-family invocation (arbitrary short
+# flags, e.g. ``-qx``, ``-Eq``) whose literal argument is exactly OPEN or
+# CLOSED, optionally quoted. Deliberately excludes MERGED: an assertion of
+# MERGED already agrees with the binder's default assumption, so that
+# binding must keep receiving the real live derivation (see
+# ``_asserted_non_merged_pr_states_for_item``).
+_PR_STATE_GREP_RE = re.compile(r"""grep\s+(?:-[A-Za-z]+\s+)*(["']?)(OPEN|CLOSED)\b\1""")
+
+
+def _pr_binding_asserted_state(value: str, repo: str, pr_number: int) -> str | None:
+    """Return ``"OPEN"``/``"CLOSED"`` when ``value`` asserts that state for
+    ``(repo, pr_number)`` in the SAME pipeline segment as the PR reference,
+    else ``None``.
+
+    Same-clause-but-not-same-pipe discipline, mirroring
+    ``_hardcoded_pr_bindings_in_value``'s same-clause guarantee for bindings:
+    the PR reference and the state assertion must sit in one
+    ``&&``/``||``/``;``-delimited pipeline (pipes within that pipeline stay
+    joined — see ``_PIPELINE_SPLIT_RE``), so an assertion belonging to a
+    DIFFERENT PR reference in the same check_value never attaches to this
+    one. ``repo`` must already be normalized (see
+    ``EvidenceCollector._normalize_repo``).
+
+    Recognises two same-clause binding shapes, mirroring
+    ``_hardcoded_pr_bindings_in_value`` (OMN-16087 follow-up: the original cut
+    only recognized the first shape, so a URL-form binding's own state
+    assertion silently fell through to the default merged/green derivation —
+    the exact inversion this ticket exists to fix, just for a binding shape
+    the first cut missed):
+
+    * ``gh pr view <N> --repo <repo>`` — the extracted ``--repo`` flag value
+      is normalized the same way before comparison;
+    * ``repos/<owner>/<repo>/pulls/<N>`` or
+      ``https://github.com/<owner>/<repo>/pull/<N>`` — repo and number are
+      one contiguous path (:data:`_PR_PATH_URL_RE`), so no separate
+      ``--repo`` flag to cross-check.
+
+    Pure function — no I/O.
+    """
+    for segment in _PIPELINE_SPLIT_RE.split(value):
+        matched = False
+
+        num_match = _HARDCODED_PR_NUM_RE.search(segment)
+        if num_match is not None and int(num_match.group(1)) == pr_number:
+            repo_match = _REPO_FLAG_RE.search(segment)
+            if repo_match is not None:
+                extracted_repo = repo_match.group(1).strip()
+                if "/" not in extracted_repo:
+                    extracted_repo = f"{_DEFAULT_GITHUB_ORG}/{extracted_repo}"
+                if extracted_repo == repo:
+                    matched = True
+
+        if not matched:
+            matched = any(
+                str(url_repo) == repo and int(url_num) == pr_number
+                for url_repo, url_num in _PR_PATH_URL_RE.findall(segment)
+            )
+
+        if not matched:
+            continue
+
+        state_match = _PR_STATE_EQUALITY_RE.search(segment) or _PR_STATE_GREP_RE.search(
+            segment
+        )
+        if state_match is not None:
+            return state_match.group(2).upper()
+    return None
+
 
 def _hardcoded_pr_bindings_in_value(value: str) -> list[tuple[str, int]]:
     """Return every same-clause literal ``(repo, pr_number)`` pin in ``value``.
@@ -2801,7 +2903,15 @@ class EvidenceCollector:
         Otherwise one result per bound PR: VERIFIED when the PR is MERGED and
         all checks are green; FAILED otherwise, INCLUDING when the live state
         cannot be resolved (fail-closed — a Done-flip must not proceed on
-        unverifiable PR state).
+        unverifiable PR state) — UNLESS the item's own check_value asserts a
+        specific non-merged state (OPEN/CLOSED) for that exact PR reference
+        (OMN-16087), in which case that ONE binding is SKIPPED instead: the
+        item's declared ``command`` check already verifies the assertion
+        directly, so deriving a second, contradictory "must be MERGED"
+        judgement would invert the entry's stated intent rather than
+        corroborate it. Every OTHER binding on the same item (e.g. a second PR
+        reference the item asserts IS merged) is unaffected and still receives
+        the ordinary live derivation.
         """
         bindings = self._resolve_pr_bindings(item, ticket_id, contract_path)
         item_id = str(item.get("id", "unknown"))
@@ -2837,6 +2947,8 @@ class EvidenceCollector:
                 )
             ]
 
+        asserted_states = self._asserted_non_merged_pr_states_for_item(item, bindings)
+
         results: list[ModelEvidenceCheckResult] = []
         multi = len(bindings) > 1
         for repo, pr_number in bindings:
@@ -2845,6 +2957,26 @@ class EvidenceCollector:
                 if multi
                 else f"{item_id}::pr-live-state"
             )
+            asserted = asserted_states.get((repo, pr_number))
+            if asserted is not None:
+                results.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=(
+                            f"Live GitHub state for {repo}#{pr_number} ({item_id})"
+                        ),
+                        status=EnumEvidenceCheckStatus.SKIPPED,
+                        message=(
+                            f"{repo}#{pr_number}: item's own check_value "
+                            f"asserts {asserted} (not MERGED) for this PR — "
+                            "an intentional non-merged assertion (OMN-16087), "
+                            "not auto-bound to merged/green semantics. The "
+                            "item's declared command check verifies this "
+                            "assertion directly."
+                        ),
+                    )
+                )
+                continue
             ok, message = self._verify_live_pr(repo, pr_number)
             results.append(
                 ModelEvidenceCheckResult(
@@ -2859,6 +2991,42 @@ class EvidenceCollector:
                 )
             )
         return results
+
+    @staticmethod
+    def _asserted_non_merged_pr_states_for_item(
+        item: dict[str, Any], bindings: list[tuple[str, int]]
+    ) -> dict[tuple[str, int], str]:
+        """Return ``{(repo, pr_number): "OPEN"|"CLOSED"}`` for every resolved
+        ``binding`` whose exact PR reference is accompanied, in the SAME
+        pipeline of the item's own ``checks[]`` text, by an explicit
+        non-merged state assertion (OMN-16087).
+
+        Scans ``check_value``/``command`` on every check in the item — not
+        only the check(s) that produced the binding — because the binding may
+        have been resolved from a different tier (id convention, receipt)
+        than the check carrying the assertion; the assertion is still
+        authoritative when it names the same (repo, pr_number) pair. Bindings
+        with no matching assertion are simply absent from the returned dict.
+        Pure — no I/O.
+        """
+        checks = item.get("checks")
+        if not isinstance(checks, list) or not bindings:
+            return {}
+        values: list[str] = []
+        for check in checks:
+            if not isinstance(check, dict):
+                continue
+            value = check.get("check_value") or check.get("command")
+            if isinstance(value, str) and value.strip():
+                values.append(value)
+        asserted: dict[tuple[str, int], str] = {}
+        for repo, pr_number in bindings:
+            for value in values:
+                state = _pr_binding_asserted_state(value, repo, pr_number)
+                if state is not None:
+                    asserted[(repo, pr_number)] = state
+                    break
+        return asserted
 
     def _verify_live_pr(self, repo: str, pr_number: int) -> tuple[bool, str]:
         """Return ``(ok, message)`` for the live state of ``repo#pr_number``.
