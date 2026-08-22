@@ -350,6 +350,26 @@ def test_ac5_green_tenant_overlay_inverts_the_red_case() -> None:
     assert widgets_decision.selected_backend_ref != "local-coder"
 
 
+def test_delta_rejects_overlay_bound_to_a_different_request() -> None:
+    """A caller must not be able to route one tenant/task through another overlay."""
+    overlay = ModelTenantRoutingOverlayBackend(
+        tenant_id="acme-corp",
+        task_type="code_generation",
+        backend_id="acme-bedrock",
+        endpoint_url="https://bedrock.acme.example.com/v1/chat/completions",
+        model_name="acme-model",
+    )
+
+    with pytest.raises(ValueError, match="tenant_overlay must match"):
+        delta(_request(tenant_id="widgets-inc"), tenant_overlay=overlay)
+
+    with pytest.raises(ValueError, match="tenant_overlay must match"):
+        delta(
+            _request(tenant_id="acme-corp", task_type="research"),
+            tenant_overlay=overlay,
+        )
+
+
 # --- AC6: cross-boundary seam test, field-by-field -----------------------------
 
 
@@ -425,6 +445,44 @@ def test_ac6_optional_fields_default_when_row_omits_them() -> None:
     )
 
     assert decision.max_tokens == DELEGATION_MAX_TOKENS_HARD_LIMIT
+
+
+def test_migration_reconciles_duplicate_overlay_bindings_without_row_loss() -> None:
+    """Duplicate tenant/task rows are rekeyed explicitly, not silently dropped."""
+    migration = (
+        Path(__file__).parents[3]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_delegation_routing_reducer"
+        / "migrations"
+        / "0001_create_delegation_routing_tenant_overlay.sql"
+    ).read_text(encoding="utf-8")
+
+    assert "row_number() OVER (ORDER BY id, ctid) AS global_duplicate_rank" in migration
+    assert "__reconciled_duplicate_" in migration
+    assert "UPDATE delegation_routing_tenant_overlay AS overlay" in migration
+
+
+def test_migration_enforces_positive_optional_limits() -> None:
+    migration = (
+        Path(__file__).parents[3]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_delegation_routing_reducer"
+        / "migrations"
+        / "0001_create_delegation_routing_tenant_overlay.sql"
+    ).read_text(encoding="utf-8")
+
+    assert (
+        "timeout_ms INTEGER CHECK (timeout_ms IS NULL OR timeout_ms > 0)" in migration
+    )
+    assert (
+        "max_tokens INTEGER CHECK (max_tokens IS NULL OR max_tokens > 0)" in migration
+    )
+    assert "delegation_routing_tenant_overlay_timeout_ms_positive" in migration
+    assert "delegation_routing_tenant_overlay_max_tokens_positive" in migration
 
 
 # --- Missing secret ref fails fast, never falls back to a house key ------------

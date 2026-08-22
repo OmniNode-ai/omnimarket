@@ -1587,6 +1587,13 @@ def delta(
     estimated_tokens = _estimate_prompt_tokens(request.prompt)
 
     if tenant_overlay is not None:
+        if (
+            tenant_overlay.tenant_id != request.tenant_id
+            or tenant_overlay.task_type != task_type
+        ):
+            raise ValueError(
+                "tenant_overlay must match the request tenant_id and task_type"
+            )
         return _decision_from_tenant_overlay(
             request,
             task_type=task_type,

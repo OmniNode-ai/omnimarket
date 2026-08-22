@@ -94,7 +94,9 @@ class ProtocolTenantOverlayReader(Protocol):
 
     def query(
         self, table: str, filters: dict[str, object] | None = None
-    ) -> list[dict[str, object]]: ...
+    ) -> list[dict[str, object]]:
+        """Return rows from ``table`` matching ``filters``."""
+        raise NotImplementedError
 
 
 def resolve_tenant_overlay_db() -> ProtocolTenantOverlayReader | None:

@@ -5272,7 +5272,7 @@
     }
   ],
   "retained_live_census": {
-    "evidence_source": "omni_home/docs/plans/2026-07-29-two-database-tenant-vs-internal-split-plan.md",
+    "evidence_source": "retained two-database split plan, 2026-07-29",
     "minimum_unreconciled_live_base_tables": 27,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
