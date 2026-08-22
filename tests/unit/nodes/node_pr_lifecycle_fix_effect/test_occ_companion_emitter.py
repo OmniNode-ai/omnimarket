@@ -328,16 +328,25 @@ class TestPatchEvidenceSource:
 @pytest.mark.unit
 class TestAlreadyBoundGuard:
     def test_already_bound_pr_is_noop(self) -> None:
+        """A genuine binding — OCC#123's own branch was minted FOR this exact
+        product PR (repo, pr_number) — is still a legitimate no-op (OMN-16386
+        did not touch the true-positive path)."""
         emitter = OccCompanionEmitter()
         bound_body = "context\n\nEvidence-Source: OCC#123\nEvidence-Ticket: OMN-9999\n"
 
         def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
-            return {
-                "body": bound_body,
-                "title": "feat(OMN-9999): x",
-                "head": {"sha": "a" * 40, "ref": "feature"},
-                "state": "open",
-            }
+            if path.endswith("/pulls/5"):
+                return {
+                    "body": bound_body,
+                    "title": "feat(OMN-9999): x",
+                    "head": {"sha": "a" * 40, "ref": "feature"},
+                    "state": "open",
+                }
+            if path.endswith("/pulls/123"):
+                return {
+                    "head": {"ref": "auto/omninode-ai-omnimarket-pr-5-occ-autobind"},
+                }
+            raise AssertionError(f"unexpected call: {method} {path}")
 
         with (
             patch(f"{_MOD}.rest_json", side_effect=fake_rest),
@@ -346,6 +355,112 @@ class TestAlreadyBoundGuard:
             result = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 5, None)
         assert "no-op" in result
         assert "OCC#123" in result
+
+    def test_inherited_evidence_source_mints_fresh_not_noop(self) -> None:
+        """OMN-16386: a cascade-template PR inherits Evidence-Source: OCC#<n>
+        verbatim from its template, but the cited OCC PR's branch was minted
+        for a DIFFERENT product PR (the template's own). The guard must NOT
+        treat this as bound — it must fall through toward a fresh mint.
+
+        Live casualties this reproduces: onex_change_control#6850, #6823,
+        #6636 — each inherited an Evidence-Source pointing at a sibling
+        cascade PR's OCC companion and never got its own occ-self-bind-pr-<n>
+        receipt, stranding at the Receipt Gate with pr_ticket_mismatch.
+        """
+        emitter = OccCompanionEmitter()
+        inherited_body = (
+            "context\n\nEvidence-Source: OCC#6838\nEvidence-Ticket: OMN-16322\n"
+        )
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            if path.endswith("/pulls/6850"):
+                return {
+                    "body": inherited_body,
+                    "title": "chore(OMN-16322): bump omnibase_core to 0.46.11",
+                    "head": {"sha": "a" * 40, "ref": "release/bump"},
+                    "state": "open",
+                }
+            if path.endswith("/pulls/6838"):
+                # Minted for a DIFFERENT product PR (omnibase_core#1575),
+                # never for the PR under test (#6850).
+                return {
+                    "head": {
+                        "ref": ("auto/omninode-ai-omnibase_core-pr-1575-occ-autobind")
+                    },
+                }
+            raise AssertionError(f"unexpected call: {method} {path}")
+
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+            patch(f"{_MOD}.find_open_companions", return_value=()),
+            patch(f"{_MOD}.acquire_occ_companion_lease", return_value=False),
+        ):
+            result = emitter._emit_companion_sync(
+                "OmniNode-ai/onex_change_control", 6850, None
+            )
+        # Must NOT take the old presence-only no-op branch.
+        assert "no-op" not in result
+        assert "already bound" not in result
+        # Proceeds past the guard into the mint flow, which this test stops
+        # at the lease-acquire step (mocked to return False) to avoid driving
+        # the full clone/push pipeline — proving the guard let it through.
+        assert "skip:LEASE_HELD" in result
+
+    def test_occ_binding_matches_this_pr_true_on_matching_branch(self) -> None:
+        emitter = OccCompanionEmitter()
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            assert path.endswith("/pulls/123")
+            return {"head": {"ref": "auto/omninode-ai-omnimarket-pr-5-occ-autobind"}}
+
+        with patch(f"{_MOD}.rest_json", side_effect=fake_rest):
+            matches = emitter._occ_binding_matches_this_pr(
+                occ_pr_number=123,
+                repo="OmniNode-ai/omnimarket",
+                pr_number=5,
+                token="fake-token",
+            )
+        assert matches is True
+
+    def test_occ_binding_matches_this_pr_false_on_foreign_branch(self) -> None:
+        emitter = OccCompanionEmitter()
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            assert path.endswith("/pulls/6838")
+            return {
+                "head": {"ref": "auto/omninode-ai-omnibase_core-pr-1575-occ-autobind"}
+            }
+
+        with patch(f"{_MOD}.rest_json", side_effect=fake_rest):
+            matches = emitter._occ_binding_matches_this_pr(
+                occ_pr_number=6838,
+                repo="OmniNode-ai/onex_change_control",
+                pr_number=6850,
+                token="fake-token",
+            )
+        assert matches is False
+
+    def test_occ_binding_matches_this_pr_fails_open_on_unresolvable_occ_pr(
+        self,
+    ) -> None:
+        """A 404/deleted OCC PR cannot be verified — fail OPEN toward minting
+        a fresh companion rather than silently trusting the citation."""
+        from omnimarket.github_api import GitHubApiError
+
+        emitter = OccCompanionEmitter()
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            raise GitHubApiError("not found", status_code=404)
+
+        with patch(f"{_MOD}.rest_json", side_effect=fake_rest):
+            matches = emitter._occ_binding_matches_this_pr(
+                occ_pr_number=999999,
+                repo="OmniNode-ai/omnimarket",
+                pr_number=5,
+                token="fake-token",
+            )
+        assert matches is False
 
 
 # ---------------------------------------------------------------------------

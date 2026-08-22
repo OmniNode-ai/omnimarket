@@ -493,14 +493,42 @@ class OccCompanionEmitter:
 
         # Idempotency guard: already bound to an OCC source — nothing to do.
         # Read the canonical stamp via the Piece-2 parser, not a local regex.
+        #
+        # OMN-16386: presence of a resolvable ``Evidence-Source: OCC#<n>`` line
+        # is NOT proof this PR was ever bound — a cascade-template PR (e.g. a
+        # release-cascade dependency bump opened from a template body) inherits
+        # the template's Evidence-Source verbatim, naming a real OCC companion
+        # PR that was minted for a DIFFERENT product PR. The old presence-only
+        # check treated that as "nothing to do" and the cascade PR never got
+        # its own ``occ-self-bind-pr-<n>`` receipt, stranding it at the Receipt
+        # Gate (live: onex_change_control#6850, #6823, #6636 — all
+        # pr_ticket_mismatch against a self-bind receipt scoped to a sibling
+        # PR's number, never this one's). ``_occ_binding_matches_this_pr``
+        # verifies the cited OCC PR's own branch was actually minted for THIS
+        # (repo, pr_number) before trusting the no-op.
         already_bound = product_pr_occ_binding(body)
-        if already_bound is not None:
+        if already_bound is not None and self._occ_binding_matches_this_pr(
+            occ_pr_number=already_bound,
+            repo=repo,
+            pr_number=pr_number,
+            token=token,
+        ):
             action = (
                 f"no-op: {repo}#{pr_number} already bound to "
                 f"OCC#{already_bound} (Evidence-Source already an OCC source)"
             )
             logger.info("occ_companion_emitter: %s", action)
             return action
+        if already_bound is not None:
+            logger.warning(
+                "occ_companion_emitter: %s#%s cites Evidence-Source OCC#%s but "
+                "that companion's branch was not minted for this PR (inherited "
+                "Evidence-Source, cascade-template class) — minting a fresh "
+                "companion instead of no-op'ing (OMN-16386)",
+                repo,
+                pr_number,
+                already_bound,
+            )
 
         # 2. Validator-parity ticket extraction (OMN-13990 D3): the gate owns
         #    tickets via closing-keyword-exclusive-else-all-title-tokens; author a
@@ -518,7 +546,7 @@ class OccCompanionEmitter:
         repo_slug = repo.replace("/", "-")
         # One OCC branch/PR per product PR (ticket-count agnostic) so a single
         # Evidence-Source: OCC#<n> covers every cited ticket and re-fires sync.
-        branch = f"auto/{repo_slug.lower()}-pr-{pr_number}-occ-autobind"
+        branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
         evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
         ci_evidence_id = ci_check_evidence_id(evidence_id)
 
@@ -1207,6 +1235,66 @@ class OccCompanionEmitter:
         authors a companion for exactly the tickets the gate will check.
         """
         return _extract_ticket_ids(body, title)
+
+    @staticmethod
+    def _occ_branch_name(*, repo: str, pr_number: int) -> str:
+        """The deterministic OCC companion branch name for one product PR.
+
+        Single definition shared by the fresh-mint path (``branch`` at the top
+        of :meth:`_emit_companion_sync`) and the OMN-16386 binding-identity
+        check below — the two must never diverge on this format.
+        """
+        repo_slug = repo.replace("/", "-")
+        return f"auto/{repo_slug.lower()}-pr-{pr_number}-occ-autobind"
+
+    def _occ_binding_matches_this_pr(
+        self, *, occ_pr_number: int, repo: str, pr_number: int, token: str
+    ) -> bool:
+        """True when OCC#``occ_pr_number`` was actually minted for THIS product PR.
+
+        OMN-16386: a resolvable ``Evidence-Source: OCC#<n>`` line is not proof
+        of a genuine binding — it may be inherited verbatim from a template PR
+        body (the release-cascade dependency-bump class), naming a companion
+        that was minted for a *different* product PR. That companion's
+        ``occ-self-bind-pr-<n>`` receipt binds only the template PR's head SHA
+        and its branch encodes the template PR's own (repo, pr_number), never
+        this one's — so a presence-only check silently strands the cascade PR
+        at the Receipt Gate (live: onex_change_control#6850, #6823, #6636).
+
+        The OCC companion branch is deterministic
+        (:meth:`_occ_branch_name`) and embeds the exact (repo, pr_number) the
+        companion was minted for. Comparing OCC#``occ_pr_number``'s actual
+        head branch against the branch THIS run would use for its own
+        (repo, pr_number) is a genuine identity check, not a presence check.
+
+        An unresolvable OCC PR (404, deleted, network error) fails OPEN toward
+        minting a fresh companion — a redundant mint is self-healing (the
+        idempotency guard on the fresh companion's own branch handles it),
+        while silently trusting an unverifiable citation is exactly the
+        defect this check exists to close.
+        """
+        expected_branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            occ_pr_data = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+        except GitHubApiError as exc:
+            logger.warning(
+                "occ_companion_emitter: could not resolve OCC#%s to verify "
+                "the Evidence-Source binding for %s#%s (%s); treating as "
+                "unbound and proceeding to mint (OMN-16386 fail-open)",
+                occ_pr_number,
+                repo,
+                pr_number,
+                exc,
+            )
+            return False
+        head = occ_pr_data.get("head") if isinstance(occ_pr_data, dict) else None
+        actual_branch = head.get("ref") if isinstance(head, dict) else None
+        return actual_branch == expected_branch
 
     @staticmethod
     def _is_private_repo(pr_data: dict[str, object]) -> bool:
