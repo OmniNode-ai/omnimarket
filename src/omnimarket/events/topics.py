@@ -18,6 +18,13 @@ NODE_GENERATION_REQUESTED_TOPIC_V1 = "onex.cmd.omnimarket.node-generation-reques
 NODE_GENERATION_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.node-generation-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_generation_consumer contract.yaml publish_topics + node_projection_delegation subscribe_topics (OMN-13468)
 NODE_GENERATION_FAILED_TOPIC_V1 = "onex.evt.omnimarket.node-generation-failed.v1"  # onex-topic-allow: canonical topic registry; declared in node_generation_consumer contract.yaml publish_topics + node_projection_delegation subscribe_topics (OMN-13468)
 
+# OMN-16316: BYOK inference-credential intake. The gateway's value->ref
+# exchange (POST /v1/tenants/me/inference-credentials) publishes ONLY these
+# two events -- never the secret value -- for node_projection_tenant_credentials
+# to consume into the tenant_inference_credentials ref catalog.
+CREDENTIAL_REGISTERED_TOPIC_V1 = "onex.evt.omnimarket.credential-registered.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_tenant_credentials contract.yaml subscribe_topics (OMN-16316)
+CREDENTIAL_REVOKED_TOPIC_V1 = "onex.evt.omnimarket.credential-revoked.v1"  # onex-topic-allow: canonical topic registry; declared in node_projection_tenant_credentials contract.yaml subscribe_topics (OMN-16316)
+
 # OMN-13629 (WS-F Phase 1): the legacy compat task-delegated.v1 event is no
 # longer published by node_delegation_orchestrator nor subscribed by the
 # delegation/savings projections — the terminal collapsed to the single
