@@ -120,6 +120,8 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring 
     render_product_pr_body_with_occ_source,
 )
 from omnimarket.occ_content_probe import (
+    LOCK_FILE_SUFFIXES,
+    extract_lock_line_candidates,
     extract_symbol_candidates,
     resolve_red_ref,
     select_asserted_check,
@@ -1722,6 +1724,33 @@ class OccCompanionEmitter:
 
         def _fetch(path: str, ref: str) -> str | None:
             return self._content_at_ref(owner, repo_name, path, ref, token)
+
+        # OMN-16410 — lockfile-line candidates. A pure ``uv.lock`` bump (the
+        # OMN-13902 sibling-lock-refresh bot's whole output shape) has zero
+        # Python declarations, so ``extract_symbol_candidates`` alone always
+        # returns empty for it and this producer used to decline every such
+        # PR outright ("no changed-file candidate could be proven RED"),
+        # forcing hand-authored evidence for a mechanically-provable fact.
+        # Content, not ``patch``, is the input here on purpose — GitHub omits
+        # ``patch`` once a file's diff crosses an undocumented per-file size
+        # threshold, and a full ``uv.lock`` relock is exactly that shape
+        # (MEASURED live against omnibase_infra#2848: 4396 changed lines,
+        # `patch` absent from the files listing) — see
+        # ``extract_lock_line_candidates``'s docstring. Appended, never
+        # replacing the Python candidates, so a PR touching both keeps trying
+        # the Python grammar first.
+        for f in files:
+            path = str(f.get("filename", ""))
+            status = f.get("status")
+            if status not in ("added", "modified") or not path.endswith(
+                LOCK_FILE_SUFFIXES
+            ):
+                continue
+            head_content = _fetch(path, evidence_ref)
+            base_content = _fetch(path, red_ref)
+            candidates = candidates + extract_lock_line_candidates(
+                path=path, head_content=head_content, base_content=base_content
+            )
 
         # OMN-15247 foldproof follow-up: no ``accept=`` filter here anymore.
         # Pre-fix, this candidate was rejected outright whenever its rendered
