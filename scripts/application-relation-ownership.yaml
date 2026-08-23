@@ -74,6 +74,31 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_registration/migrations/0005_create_projection_watermarks.sql
       access: write
       role: projection_watermarks
+    # OMN-16293: node_savings_estimation_compute lives entirely in
+    # omnibase_infra (contract.yaml + migration both there) -- unlike the
+    # log_entries/projection_watermarks precedents above, there is no
+    # omnimarket-side node contract.yaml db_io.db_tables declaration to
+    # register; HandlerSavingsCorrelation ingests these signals via direct
+    # wiring in service_kernel.py, not auto-wired event_bus.subscribe_topics
+    # (see the node's own contract.yaml OMN-16293 comment). These two
+    # entries register this repository as the CATALOG owner of both
+    # physical relations created by
+    # docker/migrations/forward/nodes/node_savings_estimation_compute/0001_create_savings_signal_tables.sql,
+    # satisfying the OMN-15361 SQL ownership gate for omnibase_infra#2818's
+    # schema-qualified CREATE TABLE, matching the live_events/log_entries/
+    # projection_watermarks precedent pattern above.
+    - name: savings_injection_signals
+      database_ref: application
+      schema: omninode_internal
+      migration: docker/migrations/forward/nodes/node_savings_estimation_compute/0001_create_savings_signal_tables.sql
+      access: write
+      role: savings_injection_signals
+    - name: savings_validator_catch_signals
+      database_ref: application
+      schema: omninode_internal
+      migration: docker/migrations/forward/nodes/node_savings_estimation_compute/0001_create_savings_signal_tables.sql
+      access: write
+      role: savings_validator_catch_signals
 
 relation_evidence:
   - name: omnimarket_schema_migrations
