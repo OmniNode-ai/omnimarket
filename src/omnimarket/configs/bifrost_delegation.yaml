@@ -33,12 +33,12 @@ backends:
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
     # OMN-16419: was "Qwen3.6-35B-A3B" — stale since the 2026-08-23 .201 reboot.
-    # Live readback (`GET http://192.168.86.201:8000/v1/models`, this ticket)
-    # confirms the SGLang-served id is "qwen3.8". A backend whose model_name
-    # does not match this endpoint's served id is now caught at dispatch by the
-    # fail-closed guard in HandlerLlmDelegationCall (transport.get_served_model_ids
-    # + the OMN-16419 mismatch check) instead of silently attributing to a model
-    # that isn't running.
+    # Live readback (GET .201:8000's /v1/models, this ticket) confirms the
+    # SGLang-served id is "qwen3.8". A backend whose model_name does not
+    # match this endpoint's served id is now caught at dispatch by the
+    # fail-closed guard in HandlerLlmDelegationCall (transport.
+    # probe_served_models + the OMN-16419 mismatch check) instead of silently
+    # attributing to a model that isn't running.
     model_name: qwen3.8
     tier: local
     # OMN-13170: timeout_ms is sized to the 65536-token output budget below — a
