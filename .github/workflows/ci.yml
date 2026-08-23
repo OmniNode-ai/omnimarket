@@ -1569,7 +1569,7 @@ jobs:
     # --all-extras` runs against onex_change_control's OWN uv.lock (checked
     # out fresh above), whose per-package `source = { registry = "..." }`
     # entries are baked in at lock-generation time to the internal-only
-    # `.201` Tailscale PyPI mirror (http://omninode-pc.tail75df5e.ts.net:3141/...).
+    # `.201` Tailscale PyPI mirror (http://omninode-pc.tail75df5e.ts.net:3141/...). # onex-allow-internal-ip OMN-16428 reason="doc comment naming the exact unreachable-from-hosted-runner host this job's fix routes around; not a runnable reference"
     # `uv sync --locked` fetches from the registry URL recorded IN THE
     # LOCKFILE regardless of any ambient index config, so `ubuntu-latest`
     # (no tailnet route) fails deterministically on whichever package isn't
