@@ -112,8 +112,20 @@ def test_guard_has_a_visible_degraded_host_override() -> None:
 def test_guard_refuses_full_suite_escalation_on_non_200_host() -> None:
     """Behavioral proof: force the full-suite escalation and a
     guaranteed-non-matching host; the hook must exit non-zero and must NEVER
-    reach the actual pytest invocation."""
+    reach the actual pytest invocation.
+
+    ``PREPUSH_ALLOW_LOCAL_FULL_SUITE`` must be popped from the copied
+    environment before invoking the hook: it is the documented
+    "DEGRADED-HOST OVERRIDE" escape hatch (see the assertions above), and an
+    ambient value inherited from whoever is running THIS test suite (e.g. a
+    developer who set it to push past a loaded-host refusal moments earlier)
+    would route the hook through the override branch instead of the refusal
+    this test asserts -- a false negative on the exact guard this test exists
+    to prove. Mirrors the leaky-var pop already applied in ``_run_hook``
+    below for the identical reason.
+    """
     env = dict(os.environ)
+    env.pop("PREPUSH_ALLOW_LOCAL_FULL_SUITE", None)
     env["PREPUSH_FULL_SUITE"] = "1"
     env["PREPUSH_200_HOSTNAME"] = _GUARANTEED_NON_MATCHING_HOSTNAME
     result = subprocess.run(

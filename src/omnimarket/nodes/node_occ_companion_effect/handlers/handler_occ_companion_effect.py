@@ -33,6 +33,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 import shlex
 import shutil
 import socket
@@ -40,6 +41,15 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import Literal
+
+import yaml
+
+# OMN-16356: the SAME canonical judgment the hosted OCC Append-Only Gate makes
+# about a contract diff — imported, never re-implemented. See
+# ``OccCompanionEmitter._assert_append_only`` (node_pr_lifecycle_fix_effect)
+# for the full rationale; this is the sibling fix for this node's own
+# independently-ported copy of the same guard.
+from omnibase_core.validation.validator_occ_append_only import evaluate_append_only
 
 from omnimarket.events.occ_autoauthor import OCC_AUTHOR_TIME_LABELS
 from omnimarket.events.occ_companion import (
@@ -104,6 +114,12 @@ _LEASE_TTL_SECONDS = 900
 # privilege escalation, not evidence.
 _FORBIDDEN_PATH_PREFIXES = ("grants/", "allowlists/")
 _ALLOWED_ROOT_PREFIXES = ("contracts/", "drift/")
+
+# OMN-16356: matches ONLY the ticket-contract path shape the compute plan
+# renders (`contracts/<ticket>.yaml`), never a receipt path — the
+# content-verified append exception in `_assert_append_only` is scoped to
+# this pattern exclusively.
+_CONTRACT_YAML_PATH_RE = re.compile(r"^contracts/[^/]+\.yaml$")
 
 
 # OMN-14893: same auth-mode switch as OccCompanionEmitter (the two producers
@@ -527,11 +543,29 @@ class HandlerOccCompanionEffect:
         (OMN-15485) existing precisely to prevent the compute plan from ever
         emitting such a file. This is the belt to that mechanism's suspenders:
         even if a future/legacy caller's plan-level guard has a gap, this
-        final pre-push assertion now independently refuses any status other
-        than ``A`` (added), matching the hosted OCC Append-Only Gate's own
-        semantics (which flags any M/D/R/C status and requires corrections
-        to be net-new ``.supersede.<NNNN>.yaml`` files) directly against the
-        git status letter rather than trusting path membership alone.
+        final pre-push assertion now independently refuses any RECEIPT status
+        other than ``A`` (added), matching the hosted OCC Append-Only Gate's
+        own receipt semantics (``evaluate_append_only``'s ``receipt_diff``
+        leg, which flags any M/D/R/C status there and requires corrections to
+        be net-new ``.supersede.<NNNN>.yaml`` files) directly against the git
+        status letter rather than trusting path membership alone.
+
+        (e) OMN-16356: the CONTRACT file is a DIFFERENT case, not covered by
+        (d)'s blanket rule. ``contracts/<ticket>.yaml`` is intentionally,
+        structurally append-only at the content level across companions for
+        the same ticket (RSD-1's self-bind append is one such write), so its
+        own git status is legitimately ``M`` on a second-or-later companion.
+        The hosted gate's OWN semantics for the contract are per-ENTRY
+        (``evaluate_append_only``'s ``base_contract``/``head_contract`` legs:
+        an existing id must survive, unchanged; a NEW id is always allowed),
+        not per-file — a blanket per-file ``A``-only rule was stricter than
+        the gate itself here and rejected every legitimate second companion
+        for an already-companioned ticket (this ticket's own original filing;
+        live 2026-08-23T18:38:55Z: onex_change_control#6926/OMN-16413,
+        dispatcher ``HandlerOccCompanionEffect.author_occ_companion``). A
+        contract-path ``M`` is now independently re-verified against the SAME
+        canonical judgment the hosted gate makes before being allowed; it
+        still fails closed if that judgment finds a removed or altered entry.
         """
         diff = run_git(
             ["git", "diff", "--no-renames", "--name-status", base_sha, "HEAD"],
@@ -561,8 +595,17 @@ class HandlerOccCompanionEffect:
                     "roots — never machine-mintable, OMN-14941)"
                 )
             elif not status.startswith("A"):
-                # OMN-16071: unconditional — a path in allowed_paths is only
-                # a claim of intent, never proof the path is new.
+                # OMN-16071: unconditional for receipts — a path in
+                # allowed_paths is only a claim of intent, never proof the
+                # path is new. OMN-16356: the ticket contract gets a narrow,
+                # content-verified exception (e) instead of the blanket deny.
+                if (
+                    status.startswith("M")
+                    and path in allowed_paths
+                    and _CONTRACT_YAML_PATH_RE.match(path)
+                    and self._is_sanctioned_contract_growth(clone_dir, base_sha, path)
+                ):
+                    continue
                 violations.append(
                     f"{status} {path} (not a net-new add — a receipt or "
                     "contract may never be opened for write once it exists "
@@ -580,6 +623,41 @@ class HandlerOccCompanionEffect:
                 + ". Allowed: "
                 + ", ".join(sorted(allowed_paths))
             )
+
+    def _is_sanctioned_contract_growth(
+        self, clone_dir: str, base_sha: str, path: str
+    ) -> bool:
+        """True when a status-``M`` ticket contract change is a pure append.
+
+        Re-derives the SAME judgment the hosted OCC Append-Only Gate makes
+        (:func:`evaluate_append_only`) directly against the base/head contract
+        bytes, rather than trusting the coarser git status letter. Fails
+        CLOSED (returns ``False``) on any read/parse error or non-dict YAML,
+        or when the gate's own per-entry evaluation finds a removed or
+        content-altered ``dod_evidence`` id — a purely additive change (only
+        new entries) is the only shape that returns ``True``.
+        """
+        try:
+            base_text = run_git(
+                ["git", "show", f"{base_sha}:{path}"],
+                cwd=clone_dir,
+                timeout=_GIT_TIMEOUT_SECONDS,
+            )
+            head_text = run_git(
+                ["git", "show", f"HEAD:{path}"],
+                cwd=clone_dir,
+                timeout=_GIT_TIMEOUT_SECONDS,
+            )
+            base_contract = yaml.safe_load(base_text)
+            head_contract = yaml.safe_load(head_text)
+        except Exception:
+            return False
+        if not isinstance(base_contract, dict) or not isinstance(head_contract, dict):
+            return False
+        result = evaluate_append_only(
+            base_contract=base_contract, head_contract=head_contract
+        )
+        return result.ok
 
     def _assert_contracts_yamlfmt_stable(
         self, clone_dir: str, files: tuple[ModelCompanionFile, ...]
