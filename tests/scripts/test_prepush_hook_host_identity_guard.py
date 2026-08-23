@@ -128,6 +128,17 @@ def test_guard_refuses_full_suite_escalation_on_non_200_host() -> None:
     env.pop("PREPUSH_ALLOW_LOCAL_FULL_SUITE", None)
     env["PREPUSH_FULL_SUITE"] = "1"
     env["PREPUSH_200_HOSTNAME"] = _GUARANTEED_NON_MATCHING_HOSTNAME
+    # OMN-16428: this test proves the guard REFUSES without an override in
+    # effect. If the ambient shell that invoked pytest itself had
+    # PREPUSH_ALLOW_LOCAL_FULL_SUITE=1 set (the sanctioned degraded-capacity
+    # escape hatch a few lines up in this same guard, used for real during a
+    # sustained .200/.201 fleet-load incident), `dict(os.environ)` inherits
+    # it into the subprocess under test and the guard legitimately takes the
+    # override branch instead of refusing -- a false failure of this test,
+    # not a guard defect. Pop it so this specific negative-path proof stays
+    # isolated from whatever override state the outer pytest process was
+    # invoked under.
+    env.pop("PREPUSH_ALLOW_LOCAL_FULL_SUITE", None)
     result = subprocess.run(
         ["bash", str(HOOK_SCRIPT)],
         cwd=REPO_ROOT,
