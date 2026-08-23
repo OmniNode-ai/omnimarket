@@ -66,6 +66,9 @@ from omnimarket.inference.delegation_config_provenance import (
     resolve_path_config,
 )
 from omnimarket.inference.secret_store_resolver import api_key_ref_available
+from omnimarket.models.delegation.wire.model_token_limits import (
+    DELEGATION_MAX_TOKENS_HARD_LIMIT,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
 )
@@ -84,6 +87,9 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model im
 )
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
 from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
+from omnimarket.routing.tenant_overlay_resolver import (
+    ModelTenantRoutingOverlayBackend,
+)
 
 _logger = logging.getLogger(__name__)
 
@@ -1415,12 +1421,84 @@ def tier_max_retries(tier_name: str) -> int:
     )
 
 
+# OMN-15631 v1(a): synthetic tier_name stamped on a decision resolved from a
+# tenant overlay row. Routing STRUCTURE (tier order, escalation policy) is
+# platform-fixed in v1(a) — a tenant-overlay decision never came from any
+# entry in routing_tiers.yaml, so it is not a real tier name; this constant
+# gives downstream cost/tier accounting a stable, greppable value instead of
+# an empty string or a borrowed platform tier name that would misattribute
+# the decision's provenance.
+TENANT_OVERLAY_TIER_NAME = "tenant_overlay"
+
+
+def _decision_from_tenant_overlay(
+    request: ModelDelegationRequest,
+    *,
+    task_type: str,
+    overlay: ModelTenantRoutingOverlayBackend,
+    estimated_tokens: int,
+) -> ModelRoutingDecision:
+    """Build a ``ModelRoutingDecision`` directly from a tenant overlay row.
+
+    OMN-15631 v1(a) AC6: a matching (tenant_id, task_type) overlay row
+    WHOLESALE-REPLACES the platform-resolved backend for that pair — tier
+    iteration, task-class contract policy, and ROI suppression are not
+    consulted (those govern platform routing STRUCTURE, which stays
+    platform-fixed in v1(a); see ``tenant_overlay_resolver`` module docstring
+    for the full precedence writeup). ``max_context_tokens`` uses the
+    platform's shared hard-limit constant — the overlay table does not carry
+    a per-backend context window in v1(a).
+    """
+    system_prompt = _SYSTEM_PROMPTS.get(
+        task_type,
+        f"You are a helpful assistant completing a {task_type} task.",
+    )
+    rationale = (
+        f"Task '{task_type}' (~{estimated_tokens} tokens) routed to tenant "
+        f"{overlay.tenant_id!r}'s overlay backend '{overlay.backend_id}' "
+        "(OMN-15631 v1(a) tenant-scoped resolution — platform tier ladder "
+        "not consulted)."
+    )
+    return ModelRoutingDecision(
+        correlation_id=request.correlation_id,
+        task_type=task_type,
+        selected_model=overlay.model_name,
+        # Namespaced by tenant_id so two tenants' overlay rows that happen to
+        # name the same backend_id string never collide on the derived UUID
+        # (_backend_id_for_model is a bare uuid5 of the model_id/backend_id
+        # string alone).
+        selected_backend_id=_backend_id_for_model(
+            f"{overlay.tenant_id}:{overlay.backend_id}"
+        ),
+        endpoint_url=overlay.endpoint_url,
+        # No api_key_env / house env-var fallback is ever threaded for a
+        # tenant-overlay backend — see secret_store_resolver
+        # .resolve_tenant_scoped_api_key_async, the effect-boundary resolver
+        # for this api_key_ref.
+        api_key_ref=overlay.secret_ref,
+        extra_headers=None,
+        cost_tier="tenant_byok",
+        max_context_tokens=DELEGATION_MAX_TOKENS_HARD_LIMIT,
+        timeout_ms=overlay.timeout_ms if overlay.timeout_ms is not None else 30000,
+        max_tokens=(
+            overlay.max_tokens
+            if overlay.max_tokens is not None
+            else DELEGATION_MAX_TOKENS_HARD_LIMIT
+        ),
+        system_prompt=system_prompt,
+        rationale=rationale,
+        tier_name=TENANT_OVERLAY_TIER_NAME,
+        selected_backend_ref=overlay.backend_id,
+    )
+
+
 def delta(
     request: ModelDelegationRequest,
     *,
     min_tier_name: str | None = None,
     roi_overlay: ModelRoutingRoiOverlay | None = None,
     excluded_backend_refs: frozenset[str] = frozenset(),
+    tenant_overlay: ModelTenantRoutingOverlayBackend | None = None,
 ) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
@@ -1471,6 +1549,22 @@ def delta(
 
     Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
 
+    When ``tenant_overlay`` is set (OMN-15631 v1(a) — per-tenant delegation
+    routing), it WHOLESALE-REPLACES the platform-resolved backend for this
+    exact ``(request.tenant_id, request.task_type)`` pair: tier iteration,
+    task-class contract policy, and ROI suppression are skipped entirely, and
+    the decision is built directly from the overlay row (see
+    ``_decision_from_tenant_overlay``). ``tenant_overlay`` is a pure INPUT —
+    resolved by the caller at its own I/O boundary via
+    ``omnimarket.routing.tenant_overlay_resolver.resolve_tenant_overlay``,
+    mirroring how ``roi_overlay`` is threaded in — ``delta`` itself never
+    touches the database (REDUCER_GENERIC purity, ``requires_network:
+    false``). ``tenant_overlay=None`` (the default, and the ONLY value ever
+    passed for tenant-zero / no-overlay requests) is byte-identical to the
+    pre-OMN-15631 platform-default resolution below — this is what keeps AC4
+    (tenant-zero equivalence) and AC3's "no overlay -> platform default" half
+    true by construction.
+
     Args:
         request: The delegation request to route.
         min_tier_name: When set, skip all tiers before this tier name in the
@@ -1479,6 +1573,9 @@ def delta(
             proven-failing tiers before the static order.
         excluded_backend_refs: Backend refs to skip in every tier's selection
             (OMN-14402 same-tier backend fallback).
+        tenant_overlay: When set, the resolved tenant-scoped backend override
+            for ``request.task_type`` — short-circuits platform tier/contract
+            resolution entirely (OMN-15631 v1(a)).
 
     Returns:
         A routing decision with selected model, endpoint, and config.
@@ -1486,10 +1583,26 @@ def delta(
     Raises:
         ProtocolConfigurationError: If no tier has a configured endpoint for the task type.
     """
-    config = _get_config()
-    bifrost_backends = _load_bifrost_endpoints()
     task_type = request.task_type
     estimated_tokens = _estimate_prompt_tokens(request.prompt)
+
+    if tenant_overlay is not None:
+        if (
+            tenant_overlay.tenant_id != request.tenant_id
+            or tenant_overlay.task_type != task_type
+        ):
+            raise ValueError(
+                "tenant_overlay must match the request tenant_id and task_type"
+            )
+        return _decision_from_tenant_overlay(
+            request,
+            task_type=task_type,
+            overlay=tenant_overlay,
+            estimated_tokens=estimated_tokens,
+        )
+
+    config = _get_config()
+    bifrost_backends = _load_bifrost_endpoints()
 
     contract = _get_task_class_contract()
     entry = _task_class_entry(contract, task_type)
@@ -1697,11 +1810,13 @@ def delta(
 
 __all__: list[str] = [
     "NO_HIGHER_TIER_REASON_TOKEN",
+    "TENANT_OVERLAY_TIER_NAME",
     # OMN-13356: re-exported as the routing-authority surface. Consumers (e.g.
     # node_generation_consumer) annotate against the type ``delta`` returns by
     # importing it from this authority handler module — not by reaching into the
     # reducer's private models package (cross-node model reach-in guard).
     "ModelRoutingDecision",
+    "_decision_from_tenant_overlay",
     "_get_contract_model_ref",
     "_is_explicit_task_model_override",
     "backend_id_for_tier",

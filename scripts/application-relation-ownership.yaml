@@ -99,6 +99,17 @@ db_io:
       migration: docker/migrations/forward/nodes/node_savings_estimation_compute/0001_create_savings_signal_tables.sql
       access: write
       role: savings_validator_catch_signals
+    # OMN-15631: node_delegation_routing_reducer's own contract.yaml declares
+    # this tenant-domain table; the physical migration is vendored into
+    # omnibase_infra#2820 so that the application migration stream can create
+    # it. This entry registers omnimarket as the catalog owner for
+    # scripts/ci/check_application_database_sql.py's cross-repo ownership gate.
+    - name: delegation_routing_tenant_overlay
+      database_ref: application
+      schema: tenant
+      migration: src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql
+      access: read_write
+      role: tenant_routing_overlay
 
 relation_evidence:
   - name: omnimarket_schema_migrations
