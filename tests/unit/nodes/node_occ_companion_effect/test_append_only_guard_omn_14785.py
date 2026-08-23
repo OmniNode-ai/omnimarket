@@ -146,3 +146,96 @@ class TestAppendOnlyGuard:
             HandlerOccCompanionEffect()._assert_append_only(
                 str(tmp_path), base, {merged_rel}
             )
+
+
+@pytest.mark.unit
+class TestContractGrowthParity:
+    """OMN-16356: the ticket CONTRACT file is a different case from a receipt.
+
+    ``contracts/<ticket>.yaml`` is intentionally, structurally append-only at
+    the content level across companions for the same ticket (RSD-1's self-bind
+    append), so its own git status is legitimately ``M`` on a second-or-later
+    companion. Live 2026-08-23T18:38:55Z: onex_change_control#6926/OMN-16413
+    hit this exact regression — OMN-16071's PR #2086 hardened the guard to a
+    blanket per-file ``A``-only rule, which was stricter than the hosted OCC
+    Append-Only Gate itself (``evaluate_append_only``, per-ENTRY: a new
+    ``dod_evidence`` id is always allowed; only a removed or content-altered
+    existing id is a violation).
+    """
+
+    _CONTRACT_REL = "contracts/OMN-9999.yaml"
+    _BASE_CONTRACT = (
+        "dod_evidence:\n"
+        '  - id: "dod-earlier-pr-1"\n'
+        '    description: "earlier PR row."\n'
+        "    checks:\n"
+        '      - check_type: "command"\n'
+        '        check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"\n'
+    )
+
+    def _seed_contract(self, tmp_path: Path) -> str:
+        _git(tmp_path, "init", "-q")
+        _git(tmp_path, "config", "user.name", "test")
+        _git(tmp_path, "config", "user.email", "test@omninode.ai")
+        contract = tmp_path / self._CONTRACT_REL
+        contract.parent.mkdir(parents=True, exist_ok=True)
+        contract.write_text(self._BASE_CONTRACT, encoding="utf-8")
+        _git(tmp_path, "add", "-A")
+        _git(tmp_path, "commit", "-q", "-m", "base contract")
+        return _git(tmp_path, "rev-parse", "HEAD")
+
+    def test_appending_a_new_dod_evidence_entry_to_an_existing_contract_passes(
+        self, tmp_path: Path
+    ) -> None:
+        base = self._seed_contract(tmp_path)
+        contract = tmp_path / self._CONTRACT_REL
+        contract.write_text(
+            self._BASE_CONTRACT
+            + '  - id: "occ-self-bind-pr-6926"\n'
+            + '    description: "self-bind."\n'
+            + "    checks:\n"
+            + '      - check_type: "command"\n'
+            + '        check_value: "gh api repos/x/pulls/6926/files"\n',
+            encoding="utf-8",
+        )
+        _git(tmp_path, "add", "-A")
+        _git(tmp_path, "commit", "-q", "-m", "self-bind append")
+        # No raise — a pure content-level append to the ticket contract.
+        HandlerOccCompanionEffect()._assert_append_only(
+            str(tmp_path), base, {self._CONTRACT_REL}
+        )
+
+    def test_removing_an_existing_dod_evidence_entry_is_still_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        base = self._seed_contract(tmp_path)
+        contract = tmp_path / self._CONTRACT_REL
+        contract.write_text("dod_evidence: []\n", encoding="utf-8")
+        _git(tmp_path, "add", "-A")
+        _git(tmp_path, "commit", "-q", "-m", "remove entry")
+        with pytest.raises(RuntimeError, match="append-only violation"):
+            HandlerOccCompanionEffect()._assert_append_only(
+                str(tmp_path), base, {self._CONTRACT_REL}
+            )
+
+    def test_editing_an_existing_dod_evidence_entry_is_still_rejected(
+        self, tmp_path: Path
+    ) -> None:
+        base = self._seed_contract(tmp_path)
+        contract = tmp_path / self._CONTRACT_REL
+        contract.write_text(
+            "dod_evidence:\n"
+            '  - id: "dod-earlier-pr-1"\n'
+            '    description: "earlier PR row."\n'
+            "    checks:\n"
+            '      - check_type: "command"\n'
+            '        check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} --json'
+            ' files,statusCheckRollup"\n',
+            encoding="utf-8",
+        )
+        _git(tmp_path, "add", "-A")
+        _git(tmp_path, "commit", "-q", "-m", "edit entry in place")
+        with pytest.raises(RuntimeError, match="append-only violation"):
+            HandlerOccCompanionEffect()._assert_append_only(
+                str(tmp_path), base, {self._CONTRACT_REL}
+            )

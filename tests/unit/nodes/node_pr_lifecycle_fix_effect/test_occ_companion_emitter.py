@@ -32,6 +32,8 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitte
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+    ci_check_evidence_id,
+    render_ci_check_receipt,
     render_companion_contract,
     render_downstream_receipt,
 )
@@ -1011,6 +1013,184 @@ class TestAdmissibilityReceiptNetNewFileOnly:
             in (receipt_path.read_text())
         )
         assert "PENDING" not in receipt_path.read_text()
+
+
+# ---------------------------------------------------------------------------
+# OMN-16356 (case 2) — the PR-scoped downstream/CI receipts must also be
+# minted net-new-file-only. Live incident: omnibase_infra#2766,
+# 2026-08-23T18:32:07Z. Unlike the ticket-shared admissibility receipt above,
+# these ids embed the product PR number and were assumed unique-per-run by
+# construction — an assumption that breaks when a PRIOR companion for this
+# EXACT repo#pr already merged under an Evidence-Source stamp this PR's body
+# no longer carries (the OMN-16386 inherited/stale-stamp class): the
+# idempotency guard correctly decides to mint a fresh companion, but these
+# exact paths already exist at the clone base, so unconditionally reopening
+# them for write trips the append-only guard on a genuine incident rather
+# than a bug in the guard.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestDownstreamCiReceiptNetNewFileOnly:
+    """OMN-16356: a re-mint for a PR whose OWN downstream/CI receipts already
+    merged (stale/inherited Evidence-Source class, OMN-16386) must never
+    reopen those receipts for write.
+    """
+
+    _EVIDENCE_ID = "dod-OmniNode-ai-omnimarket-pr-321"
+
+    @classmethod
+    def _seed_prior_mint(cls, clone_dir: Path) -> tuple[str, str]:
+        """Write a merged-looking prior companion for THIS EXACT product PR —
+        the state a stale-Evidence-Source re-mint observes after cloning
+        `dev`.
+        """
+        ci_evidence_id = ci_check_evidence_id(cls._EVIDENCE_ID)
+        contract_path = clone_dir / "contracts" / "OMN-9999.yaml"
+        contract_path.parent.mkdir(parents=True, exist_ok=True)
+        contract_path.write_text(
+            render_companion_contract(
+                ticket_id="OMN-9999",
+                repo="OmniNode-ai/omnimarket",
+                pr_number=321,
+                evidence_id=cls._EVIDENCE_ID,
+            ),
+            encoding="utf-8",
+        )
+        common_kwargs: dict[str, object] = {
+            "ticket_id": "OMN-9999",
+            "pr_number": 321,
+            "repo": "OmniNode-ai/omnimarket",
+            "run_timestamp": "2026-08-20T00:00:00Z",
+            "commit_sha": "a" * 40,
+            "branch": "auto/omninode-ai-omnimarket-pr-321-occ-autobind",
+            "exit_code": 0,
+            "runner": "node_pr_lifecycle_fix_effect",
+            "verifier": "occ-evidence-source-autobind",
+        }
+        downstream_text = render_downstream_receipt(
+            evidence_id=cls._EVIDENCE_ID,
+            probe_command=(
+                "gh pr view 321 --repo OmniNode-ai/omnimarket "
+                "--json number,state,headRefName"
+            ),
+            probe_stdout='{"number":321,"state":"OPEN"}',
+            **common_kwargs,
+        )
+        downstream_dir = (
+            clone_dir / "drift" / "dod_receipts" / "OMN-9999" / cls._EVIDENCE_ID
+        )
+        downstream_dir.mkdir(parents=True, exist_ok=True)
+        (downstream_dir / "command.yaml").write_text(downstream_text, encoding="utf-8")
+
+        ci_text = render_ci_check_receipt(
+            evidence_id=ci_evidence_id,
+            probe_command="gh pr view 321 --repo OmniNode-ai/omnimarket --json files",
+            probe_stdout='{"number":321}',
+            **common_kwargs,
+        )
+        ci_dir = clone_dir / "drift" / "dod_receipts" / "OMN-9999" / ci_evidence_id
+        ci_dir.mkdir(parents=True, exist_ok=True)
+        (ci_dir / "command.yaml").write_text(ci_text, encoding="utf-8")
+        return downstream_text, ci_text
+
+    def test_prior_merged_downstream_and_ci_receipts_are_not_mutated(
+        self, tmp_path: Path
+    ) -> None:
+        emitter = OccCompanionEmitter()
+        clone_root = tmp_path / "onex_change_control"
+        seeded: dict[str, str] = {}
+
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            if path.endswith("/pulls/321"):
+                # No Evidence-Source in the body — the OMN-16386 stale/
+                # inherited-stamp class this incident reproduces (the body
+                # carries no stamp at all, or a stamp for a different PR, so
+                # the idempotency guard's no-op branch never fires and a
+                # fresh mint proceeds against receipts that already exist).
+                return {
+                    "body": "Implements the thing.",
+                    "title": "feat(OMN-9999): the thing",
+                    "head": {"sha": "b" * 40, "ref": "feature-branch"},
+                    "state": "open",
+                }
+            if "/pulls/55" in path:
+                return {"number": 55, "state": "open"}
+            return {}
+
+        def fake_run_git(argv: list[str], *, cwd: str) -> str:
+            if "rev-parse" in argv:
+                return "c" * 40
+            if "ls-remote" in argv:
+                return "0" * 40 + "\tHEAD\n"
+            return ""
+
+        def seed_clone(cd: Path, *_a: object) -> str:
+            cd.mkdir(parents=True)
+            downstream_text, ci_text = self._seed_prior_mint(cd)
+            seeded["downstream"] = downstream_text
+            seeded["ci"] = ci_text
+            return "0" * 40
+
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+            patch(f"{_MOD}.acquire_occ_companion_lease", return_value=True),
+            patch(f"{_MOD}.release_occ_companion_lease"),
+            patch.object(emitter, "_run_git", side_effect=fake_run_git),
+            patch.object(emitter, "_clone_and_branch", side_effect=seed_clone),
+            patch.object(emitter, "_open_or_sync_occ_pr", return_value=55),
+            patch.object(emitter, "_observe_pr_probe", return_value=("{}", 0)),
+            patch.object(emitter, "_patch_evidence_source"),
+            patch(
+                f"{_MOD}.tempfile.TemporaryDirectory",
+                return_value=_FakeTempDir(tmp_path),
+            ),
+        ):
+            # Must complete without raising the append-only violation the
+            # live incident hit — the prior assertion here IS the regression
+            # test; the byte-identity checks below are the belt-and-suspenders.
+            action = emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+
+        assert "authored OCC companion" in action
+
+        downstream_path = (
+            clone_root
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / self._EVIDENCE_ID
+            / "command.yaml"
+        )
+        assert downstream_path.read_text() == seeded["downstream"], (
+            "OMN-16356: a re-mint for the SAME product PR rewrote its own "
+            "already-merged downstream receipt instead of leaving it "
+            "byte-for-byte untouched (omnibase_infra#2766 incident shape)."
+        )
+        ci_path = (
+            clone_root
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / ci_check_evidence_id(self._EVIDENCE_ID)
+            / "command.yaml"
+        )
+        assert ci_path.read_text() == seeded["ci"], (
+            "OMN-16356: a re-mint for the SAME product PR rewrote its own "
+            "already-merged CI receipt instead of leaving it byte-for-byte "
+            "untouched."
+        )
+        # The self-bind receipt (keyed on the NEW occ_pr_number) still mints
+        # — the guard suppresses only the already-merged collision.
+        self_bind_path = (
+            clone_root
+            / "drift"
+            / "dod_receipts"
+            / "OMN-9999"
+            / "occ-self-bind-pr-55"
+            / "command.yaml"
+        )
+        assert self_bind_path.is_file()
 
 
 # ---------------------------------------------------------------------------
