@@ -154,11 +154,16 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # CREATE TABLE (the BYOK credential-ref projection table). Previously 57
     # as of OMN-16146 (node_projection_registration / projection_watermarks).
     assert census["source_created_tables"] == 58
-    # 60 as of OMN-16316: +1 for node_projection_tenant_credentials's new
-    # db_io declaration (tenant_inference_credentials), required by the
-    # shadow gate (application sources must not create tables with no db_io
-    # declaration). Previously 59 as of OMN-16146 (projection_watermarks).
-    assert census["source_declared_tables"] == 60
+    # 62 as of OMN-16293: +2 for the two new omnibase_infra#2818 catalog
+    # declarations (savings_injection_signals, savings_validator_catch_signals)
+    # in scripts/application-relation-ownership.yaml, satisfying the OMN-15361
+    # SQL ownership gate for node_savings_estimation_compute's schema-qualified
+    # CREATE TABLE (that node has no omnimarket-side contract.yaml db_io
+    # declaration of its own -- it lives entirely in omnibase_infra -- so
+    # these are catalog-only entries, same shape as live_events/log_entries/
+    # projection_watermarks above). Previously 60 as of OMN-16316
+    # (tenant_inference_credentials).
+    assert census["source_declared_tables"] == 62
     # 28 as of OMN-16316. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so adding one
     # source-created table (tenant_inference_credentials) necessarily drops it
