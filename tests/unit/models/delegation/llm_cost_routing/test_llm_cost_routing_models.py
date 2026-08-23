@@ -41,9 +41,12 @@ class TestEnumDelegationFailureClass:
         assert "pricing_unknown" in values
         assert "provider_auth_failed" in values
         assert "unknown" in values
+        # OMN-16419: the fail-closed model-attribution guard's failure class.
+        assert "model_attribution_mismatch" in values
 
     def test_exactly_nine_values(self) -> None:
-        assert len(EnumDelegationFailureClass) == 9
+        # OMN-16419: was 9 — model_attribution_mismatch added.
+        assert len(EnumDelegationFailureClass) == 10
 
     def test_is_str_enum(self) -> None:
         assert isinstance(EnumDelegationFailureClass.TIMEOUT, str)

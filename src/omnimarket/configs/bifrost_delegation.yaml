@@ -32,7 +32,14 @@ backends:
   - backend_id: local-coder
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
-    model_name: Qwen3.6-35B-A3B
+    # OMN-16419: was "Qwen3.6-35B-A3B" — stale since the 2026-08-23 .201 reboot.
+    # Live readback (GET .201:8000's /v1/models, this ticket) confirms the
+    # SGLang-served id is "qwen3.8". A backend whose model_name does not
+    # match this endpoint's served id is now caught at dispatch by the
+    # fail-closed guard in HandlerLlmDelegationCall (transport.
+    # probe_served_models + the OMN-16419 mismatch check) instead of silently
+    # attributing to a model that isn't running.
+    model_name: qwen3.8
     tier: local
     # OMN-13170: timeout_ms is sized to the 65536-token output budget below — a
     # 64k-token code-generation artifact at local vLLM throughput exceeds 60s and
@@ -40,14 +47,25 @@ backends:
     # deleted the hardcoded 120s transport cap. 300000 ms (5 min) gives the model
     # room to finish a full module + tests. Overlay-overridable per deploy lane.
     timeout_ms: 300000
-    # OMN-13161: per-backend output-token ceiling. Qwen3.6-35B-A3B serves a 128k
-    # (max_model_len=131072) context window, so a 64k output budget is well within
-    # range for code-generation artifacts.
+    # OMN-13161: per-backend output-token ceiling. The served model (qwen3.8,
+    # OMN-16419) reports max_model_len=122880; a 64k output budget stays well
+    # within range for code-generation artifacts.
     max_tokens: 65536
     capabilities:
       - code_generation
       - refactoring
       - documentation
+  # OMN-16419: local-reasoner targets .201:8001, the removed GPU1 slot (curl to
+  # /v1/models fails to connect — verified live this ticket, 2026-08-23). The
+  # entry is left wired (not deleted) because routing_rules.research still lists
+  # it as a fallback tier and removing the backend definition would strand that
+  # rule reference — a routing-table change is out of this ticket's bounded
+  # scope. It is dead-safe today: the health probe in HandlerLlmDelegationCall
+  # already marks an unreachable endpoint unhealthy and skips it before any
+  # chat-completion call is attempted, so it cannot silently mis-attribute like
+  # the local-coder/local-heavy-reasoning defect this ticket fixes. Re-point or
+  # remove when the reasoner slot is re-provisioned or the routing table is
+  # next revised.
   - backend_id: local-reasoner
     endpoint_url_env: BIFROST_LOCAL_REASONER_ENDPOINT_URL
     endpoint_url: null
@@ -65,12 +83,14 @@ backends:
   - backend_id: local-heavy-reasoning
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
-    model_name: Qwen3.6-35B-A3B
+    # OMN-16419: was "Qwen3.6-35B-A3B" — same stale label as local-coder above
+    # (same .201:8000 SGLang endpoint, live-verified served id "qwen3.8").
+    model_name: qwen3.8
     tier: local
     # OMN-13170: same 65536-token budget as local-coder → same 300000 ms ceiling so
     # large deep-reasoning/research outputs are not killed at 60s.
     timeout_ms: 300000
-    # OMN-13161: same Qwen3.6-35B-A3B 128k model as local-coder → 64k output budget.
+    # OMN-13161: same qwen3.8 model as local-coder (OMN-16419) → 64k output budget.
     max_tokens: 65536
     capabilities:
       - deep_reasoning

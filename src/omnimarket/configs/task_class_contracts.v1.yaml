@@ -55,7 +55,12 @@
 #   - OMN-15196: Migrate task classes to declared response contracts; retire
 #     the keyword heuristics those classes made obsolete
 version: "1.0"
-default_task_model_ref: "Qwen3.6-35B-A3B"
+# OMN-16419: default_task_model_ref and every "Qwen3.6-35B-A3B" task_model_overrides
+# entry below were repointed to "qwen3.8" — the live-verified SGLang served id at
+# .201:8000 (the stale label was never running post-reboot; see bifrost_delegation.yaml
+# local-coder/local-heavy-reasoning and routing_tiers.yaml for the matching backend
+# model ids this id-match escape hatch resolves against).
+default_task_model_ref: "qwen3.8"
 task_model_overrides:
   # OMN-13380/OMN-13599: Direct z.ai GLM-5.2 was the cloud fallback for code/test/
   # refactor (preferred inside the cheap_cloud tier, backend cloud-glm,
@@ -74,10 +79,10 @@ task_model_overrides:
   code_generation: "gemini-2.5-flash"
   test: "gemini-2.5-flash"
   refactor: "gemini-2.5-flash"
-  reasoning: "Qwen3.6-35B-A3B"
-  complex_reasoning: "Qwen3.6-35B-A3B"
-  planning: "Qwen3.6-35B-A3B"
-  review: "Qwen3.6-35B-A3B"
+  reasoning: "qwen3.8"
+  complex_reasoning: "qwen3.8"
+  planning: "qwen3.8"
+  review: "qwen3.8"
   # OMN-15961: the OMN-15503 agent_delegation override REMOVED. It pinned
   # agent_delegation to local-reasoner via this EXPLICIT override map, which
   # (per _select_model_for_task's id-match escape hatch) bypasses use_for
@@ -92,8 +97,8 @@ task_model_overrides:
   # wired (WS-4/C6).
   # OMN-13541: code_review is its own task class (distinct from the generic
   # `review`); the local Qwen coder serves it, with cheap_cloud fallback.
-  code_review: "Qwen3.6-35B-A3B"
-  research: "Qwen3.6-35B-A3B"
+  code_review: "qwen3.8"
+  research: "qwen3.8"
 task_classes:
   code_generation:
     gateway_exposure: public

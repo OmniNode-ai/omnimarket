@@ -48,7 +48,13 @@ tiers:
     cost:
       cost_type: free_local
     models:
-      - id: Qwen3.6-35B-A3B
+      # OMN-16419: was "Qwen3.6-35B-A3B" — repointed to match the corrected
+      # bifrost_delegation.yaml local-coder model_name (live-verified served id
+      # "qwen3.8" at .201:8000). Keeping this id in sync with the backend's
+      # model_name is required for the task_model_overrides id-match escape
+      # hatch in task_class_contracts.v1.yaml to resolve (see that file's
+      # header comment) — a mismatch here would strand routing.
+      - id: qwen3.8
         backend_id: local-coder
         max_context_tokens: 65536
         # OMN-13599: local-coder is the CODE backend only. `test` and `research`
@@ -105,7 +111,9 @@ tiers:
           - documentation
           - summarization
         fast_path_threshold_tokens: 24576
-      - id: Qwen3.6-35B-A3B
+      # OMN-16419: was "Qwen3.6-35B-A3B" — same repoint as local-coder above
+      # (same .201:8000 SGLang endpoint, live-verified served id "qwen3.8").
+      - id: qwen3.8
         backend_id: local-heavy-reasoning
         max_context_tokens: 8192
         use_for:

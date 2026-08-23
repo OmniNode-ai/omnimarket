@@ -50,3 +50,14 @@ class ModelLlmDelegationCallResult(BaseModel):
 
     # Health probe outcome (informational)
     endpoint_healthy: bool = True
+
+    # OMN-16419: the model id CONFIRMED served by the endpoint's own
+    # GET /v1/models at call time, populated only when that probe succeeded and
+    # matched ``request.model_id`` (the fail-closed guard in
+    # HandlerLlmDelegationCall rejects the call before reaching here on a
+    # mismatch). ``None`` means the probe found no evidence either way (e.g. a
+    # cloud backend that doesn't expose this path) — callers fall back to the
+    # configured name in that case, preserving OMN-8022's behavior. When set,
+    # this is MORE TRUSTWORTHY attribution than the configured name alone and
+    # should be preferred for event/receipt attribution.
+    served_model_id: str | None = None

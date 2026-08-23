@@ -795,6 +795,15 @@ class LocalDelegationDispatchPort:
                 best_content_score = gate_result.quality_score
 
             if quality_passed:
+                # OMN-16419: prefer the LIVE-CONFIRMED served model id (set by
+                # the fail-closed guard in HandlerLlmDelegationCall against a
+                # real GET /v1/models read) over the configured backend.model_id
+                # for attribution — the same OMN-8022-adjusted preference the
+                # effect handler applies to the bus event. Falls back to
+                # backend.model_id when the endpoint offered no /v1/models
+                # evidence (e.g. a cloud backend), which is unchanged pre-ticket
+                # behavior.
+                attributed_model_id = result.served_model_id or backend.model_id
                 # 5. PROJECTION — materialize the local evidence row from the
                 #    terminal, carrying the REAL gate verdict and the CUMULATIVE
                 #    metered cost across every attempt (never a hardcoded PASS,
@@ -803,7 +812,7 @@ class LocalDelegationDispatchPort:
                     correlation_id=correlation_id,
                     task_type=task_type,
                     endpoint_ref=backend.endpoint_ref,
-                    model_id=backend.model_id,
+                    model_id=attributed_model_id,
                     result=result,
                     prompt=prompt,
                     source_session_id=source_session_id,
@@ -818,7 +827,7 @@ class LocalDelegationDispatchPort:
                     "status": "completed",
                     "content": result.content or "",
                     "delegated_to": backend.endpoint_ref,
-                    "model_name": backend.model_id,
+                    "model_name": attributed_model_id,
                     "quality_gate_passed": True,
                     "quality_score": gate_result.quality_score,
                     "quality_gates_failed": list(gate_result.failure_reasons),
