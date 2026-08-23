@@ -36,7 +36,8 @@ _BASE_SHA = "0" * 40
 
 # Miniature stand-ins for real uv.lock package blocks, shaped like the live
 # omnibase_infra#2848 case (registry-mirror URL rewrite; sha256 hash and
-# package name/version unchanged).
+# package name/version unchanged). The mirror host below is a synthetic
+# placeholder, not the real internal hostname the live PR carries.
 _BASE_BLOCK = (
     "[[package]]\n"
     'name = "omnibase-core"\n'
@@ -48,8 +49,8 @@ _HEAD_BLOCK = (
     "[[package]]\n"
     'name = "omnibase-core"\n'
     'version = "0.46.9"\n'
-    'source = { registry = "http://omninode-pc.tail75df5e.ts.net:3141/root/pypi/+simple/" }\n'
-    'sdist = { url = "http://omninode-pc.tail75df5e.ts.net:3141/root/pypi/+f/f5f/omnibase_core-0.46.9.tar.gz", hash = "sha256:f5f6c3fde204e29b8bb327faa66190cf482d357581b25e242ad3dcd0400f4a7b" }\n'
+    'source = { registry = "http://mirror.example.test:3141/root/pypi/+simple/" }\n'
+    'sdist = { url = "http://mirror.example.test:3141/root/pypi/+f/f5f/omnibase_core-0.46.9.tar.gz", hash = "sha256:f5f6c3fde204e29b8bb327faa66190cf482d357581b25e242ad3dcd0400f4a7b" }\n'
 )
 
 
@@ -60,7 +61,7 @@ class TestExtractLockLineCandidates:
         )
         assert candidates
         symbols = {c.symbol for c in candidates}
-        assert "http://omninode-pc.tail75df5e.ts.net:3141/root/pypi/+simple/" in symbols
+        assert "http://mirror.example.test:3141/root/pypi/+simple/" in symbols
         assert all(c.kind == "lock_line" and c.path == "uv.lock" for c in candidates)
 
     def test_ignores_a_quoted_run_unchanged_between_refs(self) -> None:
@@ -148,7 +149,7 @@ class TestDeclarationCountLockLine:
 
 class TestBuildContentReadCheckLockLine:
     def test_uses_fixed_string_grep_and_the_needle_verbatim(self) -> None:
-        needle = "http://omninode-pc.tail75df5e.ts.net:3141/root/pypi/+simple/"
+        needle = "http://mirror.example.test:3141/root/pypi/+simple/"
         check = build_content_read_check(
             repo="OmniNode-ai/omnibase_infra",
             path="uv.lock",
@@ -183,7 +184,7 @@ class TestSelectAssertedCheckWithLockLineCandidates:
             fetch_content=fetch,
         )
         assert check is not None
-        assert "omninode-pc.tail75df5e.ts.net" in check
+        assert "mirror.example.test" in check
         assert _HEAD_SHA in check
 
     def test_a_pure_mirror_rewrite_with_no_actual_line_delta_yields_no_check(
