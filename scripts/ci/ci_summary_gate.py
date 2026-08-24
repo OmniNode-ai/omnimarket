@@ -160,6 +160,15 @@ DETECT_CHANGES_JOB = "Detect Changes"
 # never legitimately reports ``skipped`` on a valid PR, so a skip = anomaly =
 # fail-closed. Names are the ``name:`` display strings the Actions jobs API
 # returns (verified against a live run 29799112037 on 2026-07-21).
+#
+# ONE deliberate exception (OMN-16217, 2026-08-18): ``Coverage Sweep Gate``
+# now carries a job-level ``if:`` that legitimately skips it on a DRAFT
+# dev-targeting PR (the org-wide draft-state CI admission gate fan-out of
+# onex_change_control#6686 / OMN-15731 — see the job's own comment in
+# ci.yml). This is intentional and does NOT weaken this module: the job stays
+# in STRICT_GATE_JOBS (not SKIPPABLE_GATE_JOBS), so a ``skipped`` conclusion
+# — draft-induced or otherwise — still fails ``CI Summary`` closed. The "no
+# legitimate if:" derivation above is otherwise unchanged for every other row.
 STRICT_GATE_JOBS: tuple[str, ...] = (
     # OCC preflight dependency — step short-circuits to exit 0 on non-PR events;
     # no ``if:``, so the job is always present + completed.
@@ -181,7 +190,7 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     "Dependency Health Gate",  # dep-health — needs occ-preflight, no if:
     "uv.lock Pin Reachability",  # uv-lock-pin-reachability — needs occ-preflight, no if:
     "Aislop Sweep (strict, PR diff)",  # aislop-sweep — needs occ-preflight, no if:
-    "Coverage Sweep Gate",  # coverage-sweep-gate — needs occ-preflight, no if: (also strict per OMN-14645)
+    "Coverage Sweep Gate",  # coverage-sweep-gate — needs occ-preflight; strict per OMN-14645; OMN-16217 draft-gated on dev only (see block comment above)
     "Workflow Module Resolution",  # workflow-module-refs — needs occ-preflight, no if:
     "no-noncanonical-lifecycle-classes",  # unconditional (OMN-14350), no needs/if:
     "Event Registry Drift",  # event-registry-drift — needs occ-preflight, no if: (strict per OMN-14590)
