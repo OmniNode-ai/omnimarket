@@ -154,49 +154,74 @@ def _ensure_omni_home(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
 
 @pytest.fixture(autouse=True)
 def _ensure_delegation_routing_tiers_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Bind DELEGATION_ROUTING_TIERS_PATH to the canonical packaged file by
-    default (OMN-15628).
+    """Bind DELEGATION_ROUTING_TIERS_PATH to the canonical packaged file,
+    UNCONDITIONALLY (OMN-16435, tightening OMN-15628).
 
     ``node_delegation_routing_reducer``'s config loader now fails fast (no
     packaged-default fallback, CLAUDE.md rule 8) when this key is unbound.
     Mirrors the ``_ensure_omni_home`` pattern above (OMN-10646): most tests
     exercise the ROUTING behavior, not the binding itself, so this fixture
     supplies the explicit binding the suite otherwise relied on implicitly.
-    Tests that specifically prove the RED refusal path unset it via
-    ``monkeypatch.delenv`` inside the test body, which runs after fixture
-    setup and therefore wins.
-    """
-    if not os.environ.get("DELEGATION_ROUTING_TIERS_PATH"):
-        from omnimarket.routing.routing_tiers_path import (
-            ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
-        )
 
-        monkeypatch.setenv(
-            "DELEGATION_ROUTING_TIERS_PATH", str(ROUTING_TIERS_PACKAGED_DEFAULT_PATH)
-        )
+    OMN-16435: this used to be conditional (``if not os.environ.get(...)``),
+    which meant a developer machine's REAL delegation-dispatch binding (e.g.
+    ``~/.omnibase/.env`` exporting ``DELEGATION_ROUTING_TIERS_PATH`` at a
+    canonical-clone path for live ``onex delegate`` runs) silently WON over
+    this fixture whenever already present in the ambient shell — defeating
+    the "tests run against the committed file" guarantee every real-dispatch
+    delegation test relies on (see ``TestSameTierBackendFallbackRealDispatchChain``
+    / ``TestRefusalRealDispatchPath``). If that canonical clone's local branch
+    is even one commit stale, the routing reducer silently resolves against
+    DIFFERENT model ids than the worktree's own committed
+    ``routing_tiers.yaml`` — observed live: OMN-16419 renamed a shared model
+    id in this worktree's file while an ambiently-pinned, unpulled canonical
+    clone still held the pre-rename id, breaking the OMN-14396 id-collision
+    disambiguation's id-match entirely and silently falling through to the
+    wrong backend (a dead one, in that incident) with no test-visible cause.
+    Same failure shape and same fix philosophy as ``_scrub_inherited_git_env``
+    (OMN-14746) below: an ambient value from OUTSIDE the test process must
+    never silently override what a hermetic suite is meant to exercise.
+    Unconditional ``monkeypatch.setenv`` still loses to a MORE SPECIFIC
+    fixture or an in-body ``monkeypatch.setenv``/``delenv`` call (pytest
+    fixture teardown/setup ordering — narrower scope wins), so the documented
+    RED-refusal-path tests that ``delenv`` this key inside the test body are
+    unaffected.
+    """
+    from omnimarket.routing.routing_tiers_path import (
+        ROUTING_TIERS_PACKAGED_DEFAULT_PATH,
+    )
+
+    monkeypatch.setenv(
+        "DELEGATION_ROUTING_TIERS_PATH", str(ROUTING_TIERS_PACKAGED_DEFAULT_PATH)
+    )
 
 
 @pytest.fixture(autouse=True)
 def _ensure_bifrost_contract_path(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Bind BIFROST_CONTRACT_PATH to the canonical packaged file by default
-    (OMN-15628).
+    """Bind BIFROST_CONTRACT_PATH to the canonical packaged file and clear
+    BIFROST_OVERLAY_PATH, UNCONDITIONALLY (OMN-16435, tightening OMN-15628).
 
     ``_load_bifrost_endpoints()`` now refuses to boot (no packaged-default
     fallback, CLAUDE.md rule 8) when NEITHER BIFROST_CONTRACT_PATH nor
     BIFROST_OVERLAY_PATH is bound. Mirrors ``_ensure_delegation_routing_tiers_path``
-    above. Tests that specifically prove the RED refusal path (or that set
-    BIFROST_OVERLAY_PATH/BIFROST_CONTRACT_PATH themselves) unset/override this
-    via ``monkeypatch`` inside the test body or a more specific fixture, which
-    runs after this autouse fixture's setup and therefore wins.
+    above, including the OMN-16435 fix: this was previously conditional (only
+    binding when NEITHER var was ambiently set), so a developer machine's real
+    delegation-dispatch bindings (``~/.omnibase/.env`` -> BIFROST_CONTRACT_PATH
+    at a canonical-clone path, BIFROST_OVERLAY_PATH at a personal
+    ``~/.omninode/delegation/bifrost_overrides.yaml``) silently won over this
+    fixture's packaged default, the same ambient-leak shape
+    ``_ensure_delegation_routing_tiers_path`` documents above. Tests that
+    specifically prove the RED refusal path (or that need a specific overlay
+    shape) unset/override this via ``monkeypatch`` inside the test body or a
+    more specific fixture (e.g. ``frontier_unconfigured_bifrost``), which runs
+    after this autouse fixture's setup and therefore wins.
     """
-    if not os.environ.get("BIFROST_CONTRACT_PATH") and not os.environ.get(
-        "BIFROST_OVERLAY_PATH"
-    ):
-        from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
-            _DEFAULT_CONFIG_PATH as _BIFROST_DEFAULT_CONFIG_PATH,
-        )
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        _DEFAULT_CONFIG_PATH as _BIFROST_DEFAULT_CONFIG_PATH,
+    )
 
-        monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(_BIFROST_DEFAULT_CONFIG_PATH))
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(_BIFROST_DEFAULT_CONFIG_PATH))
+    monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
 
 
 @pytest.fixture(autouse=True)

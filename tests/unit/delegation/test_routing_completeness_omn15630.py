@@ -679,3 +679,104 @@ class TestProductionCallSitesRouteTheRepairedClassesCorrectly:
         )
         assert selected is not None
         assert "refactor" in selected.use_for
+
+
+@pytest.mark.unit
+class TestThreeWayModelIdCollisionDisambiguation:
+    """OMN-16435 AC4: the id-match disambiguation must stay correct when a
+    THIRD backend in the tier shares the pinned model id — not just the
+    two-way collision ``TestImplicitDefaultPinCannotOverrideCapability``
+    above already covers.
+
+    OMN-16435's actual root cause turned out to be test-hermeticity (an
+    ambient ``DELEGATION_ROUTING_TIERS_PATH``/``BIFROST_CONTRACT_PATH`` from
+    a developer's real delegation-dispatch environment silently overriding
+    the packaged config a "real dispatch chain" test is supposed to exercise
+    — fixed in ``tests/conftest.py``'s ``_ensure_delegation_routing_tiers_path``
+    / ``_ensure_bifrost_contract_path``), not a defect in
+    ``_select_model_for_task`` itself. This class still adds the coverage the
+    ticket's AC4 asked for: the OMN-14396 id-match-then-use_for-scan loop
+    (``for model in id_matches: if task_type in model.use_for: return model``)
+    must find the ONE declaring candidate among 3+ id-colliding candidates
+    regardless of its position in tier declaration order — a pure
+    "return the first id match" bug would only surface once the declaring
+    backend is NOT first, so position is varied deliberately below.
+    """
+
+    def _three_way_models(self, declaring_position: int) -> tuple[ModelTierModel, ...]:
+        """Three backends sharing ``MODEL_QWEN3_35B_A3B`` as their id; only
+        the one at ``declaring_position`` (0, 1, or 2) declares "research"."""
+        use_for_by_position = [
+            ("code_generation", "code_review"),
+            ("code_generation", "code_review"),
+            ("code_generation", "code_review"),
+        ]
+        use_for_by_position[declaring_position] = ("research", "reasoning")
+        backend_refs = ("backend-alpha", "backend-beta", "backend-gamma")
+        return tuple(
+            ModelTierModel(
+                id=MODEL_QWEN3_35B_A3B,
+                backend_ref=backend_refs[i],
+                max_context_tokens=65536,
+                use_for=use_for_by_position[i],
+                fast_path_threshold_tokens=None,
+            )
+            for i in range(3)
+        )
+
+    def _three_way_backends(self) -> dict[str, routing.BifrostBackendRef]:
+        return {
+            ref: routing.BifrostBackendRef(
+                endpoint_url=f"https://{ref}.contract.test/v1/chat/completions",
+                model_name=MODEL_QWEN3_35B_A3B,
+                timeout_ms=30000,
+                max_tokens=65536,
+            )
+            for ref in ("backend-alpha", "backend-beta", "backend-gamma")
+        }
+
+    @pytest.mark.parametrize(
+        ("declaring_position", "expected_backend_ref"),
+        [
+            (0, "backend-alpha"),
+            (1, "backend-beta"),
+            (2, "backend-gamma"),
+        ],
+    )
+    def test_declaring_backend_wins_regardless_of_position(
+        self, declaring_position: int, expected_backend_ref: str
+    ) -> None:
+        selected = routing._select_model_for_task(
+            self._three_way_models(declaring_position),
+            "research",
+            estimated_tokens=25,
+            bifrost_backends=self._three_way_backends(),
+            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref_is_explicit_override=True,
+        )
+
+        assert selected is not None
+        assert selected.backend_ref == expected_backend_ref, (
+            "a 3-way id collision must resolve to whichever candidate "
+            "actually declares the task type, regardless of its position "
+            f"among the id matches; got {selected.backend_ref!r}, expected "
+            f"{expected_backend_ref!r}"
+        )
+        assert "research" in selected.use_for
+
+    def test_three_way_collision_falls_through_when_none_declare_it(
+        self,
+    ) -> None:
+        """None of the 3 colliding backends declare "planning" — an implicit
+        pin must return None rather than silently binding an off-capability
+        backend just because it shares the pinned id."""
+        selected = routing._select_model_for_task(
+            self._three_way_models(declaring_position=0),
+            "planning",
+            estimated_tokens=25,
+            bifrost_backends=self._three_way_backends(),
+            contract_model_ref=MODEL_QWEN3_35B_A3B,
+            contract_model_ref_is_explicit_override=False,
+        )
+
+        assert selected is None
