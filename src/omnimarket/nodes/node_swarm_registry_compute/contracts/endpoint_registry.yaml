@@ -1,23 +1,18 @@
 registry_schema_version: "1.0.0"
 endpoints:
+  # OMN-16492: id kept as the stable registry key; model_id/provider/context
+  # reflect the live endpoint (probed 2026-08-23, OMN-16419: GET /v1/models ->
+  # {"id": "qwen3.8", "owned_by": "sglang", "max_model_len": 122880}). Carries
+  # the reasoning/math capabilities of the retired .201:8001 entry (GPU1
+  # llama.cpp decommissioned, connection refused — OMN-16442): qwen3.8 on :8000
+  # is the local endpoint now serving those task classes.
   - id: "qwen3.6-35b-a3b"
     base_url: "http://192.168.86.201:8000/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
-    model_id: "Qwen3.6-35B-A3B"  # onex-allow-model-id OMN-11959 reason="operator registry must pin exact vLLM-served model ID"
+    model_id: "qwen3.8"  # onex-allow-model-id OMN-11959 reason="operator registry must pin exact served model ID"
     endpoint_ref: "LLM_LOCAL_PRIMARY_URL"
-    provider: "vllm"
-    capabilities: [code_generation, structured_output, refactoring, analysis, general]
-    context_window: 131072
-    context_window_source: "probe"
-    cost_basis: "local"
-    health_check_path: "/health"
-    declared_by: "operator"
-  - id: "qwen3.6-27b-mtp-iq4xs"
-    base_url: "http://192.168.86.201:8001/v1"  # onex-allow-internal-ip OMN-11811 reason="lab LAN endpoint declared in operator registry contract"
-    model_id: "Qwen3.6-27B-MTP-IQ4_XS.gguf"  # onex-allow-model-id OMN-11959 reason="operator registry must pin exact vLLM-served model ID"
-    endpoint_ref: "LLM_CODER_FAST_URL"
-    provider: "vllm"
-    capabilities: [reasoning, analysis, math, general]
-    context_window: 98304
+    provider: "sglang"
+    capabilities: [code_generation, structured_output, refactoring, analysis, reasoning, math, general]
+    context_window: 122880
     context_window_source: "probe"
     cost_basis: "local"
     health_check_path: "/health"

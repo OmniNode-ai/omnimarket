@@ -24,17 +24,19 @@ models:
     model_id: "qwen3-coder-30b"
     provider: "local"
     endpoint_env: "LLM_CODER_URL"
-    model_name: "Qwen3.6-35B-A3B"
-    context_window: 131072
+    model_name: "qwen3.8"
+    context_window: 122880
     pricing_per_1m_input: "0.00"
     pricing_per_1m_output: "0.00"
     cost_basis: "zero_marginal_api_cost"
-    observed_at: "2026-05-30T00:00:00Z"
+    observed_at: "2026-08-23T00:00:00Z"
     source: "manual benchmark"
     notes: >
       Routing key retained for downstream contract stability; actual served model
-      is Qwen3.6-35B-A3B (GPTQ-Int4) on .201:8000 via vLLM. Live-probed 2026-05-30.
-      Zero marginal API cost. context_window=131072 (131K GPTQ config).
+      is qwen3.8 on .201:8000 via SGLang. Live-probed 2026-08-23 (OMN-16419/OMN-16492):
+      GET /v1/models -> {"id": "qwen3.8", "owned_by": "sglang", "max_model_len": 122880}.
+      Replaced Qwen3.6-35B-A3B/vLLM after the 2026-08-23 .201 reboot. Zero marginal
+      API cost. context_window=122880 (live max_model_len).
 
   deepseek-r1-14b:
     model_id: "deepseek-r1-14b"
@@ -48,9 +50,11 @@ models:
     observed_at: "2026-05-30T00:00:00Z"
     source: "manual benchmark"
     notes: >
-      Routing key retained for downstream contract stability; actual served model
-      is Qwen3.6-27B-MTP-IQ4_XS.gguf on .201:8001 via llama.cpp. Live-probed 2026-05-30.
-      env var LLM_CODER_FAST_URL is legacy-named but correct. context_window=114688.
+      Stale slot — the .201:8001 endpoint (llama.cpp GPU1) is DEAD: connection
+      refused on live probe 2026-08-23 (OMN-16419/OMN-16442, GPU1 decommissioned).
+      Superseded by qwen3-coder-30b (qwen3.8 via SGLang on .201:8000). Key retained
+      for routing contract stability; downstream contracts should migrate to
+      qwen3-coder-30b. model_name/context_window record the last-served model.
 
   deepseek-r1-32b:
     model_id: "deepseek-r1-32b"
