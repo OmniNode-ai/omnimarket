@@ -982,6 +982,77 @@ class TestContentBoundChecks:
 
 
 @pytest.mark.unit
+class TestLockfileOnlyPrsMintUnderOmn16410:
+    """OMN-16410: a uv.lock-only PR now mints instead of declining.
+
+    Pre-fix, ``extract_symbol_candidates`` only ever proposed Python
+    ``class``/``def`` candidates, so any PR whose diff touched nothing but
+    ``uv.lock`` (the OMN-13902 sibling-lock-refresh bot's entire output shape)
+    hit ``skip:NO_RED_DERIVABLE_CHECK`` unconditionally — live-reproduced on
+    omnibase_infra#2848 with the bot's own decline comment: "no changed-file
+    candidate could be proven RED against the merge base... Hand-authored
+    evidence is required (OMN-15247)."
+    """
+
+    _LOCK_HEAD = (
+        "[[package]]\n"
+        'name = "omnibase-core"\n'
+        'version = "0.46.9"\n'
+        'source = { registry = "http://mirror.internal:3141/root/pypi/+simple/" }\n'
+    )
+    _LOCK_BASE = (
+        "[[package]]\n"
+        'name = "omnibase-core"\n'
+        'version = "0.46.9"\n'
+        'source = { registry = "https://pypi.org/simple" }\n'
+    )
+
+    def _lockfile_fixture(self) -> dict[str, object]:
+        return {
+            "pr_files": [{"filename": "uv.lock", "status": "modified", "patch": None}],
+            "content_at_ref": lambda _path, ref: (
+                self._LOCK_HEAD if ref == _HEAD_SHA else self._LOCK_BASE
+            ),
+            "probe_exits": {_HEAD_SHA: 0, _MERGE_BASE_SHA: 1},
+        }
+
+    def test_uv_lock_only_diff_now_mints_a_content_bound_check(
+        self, tmp_path: Path
+    ) -> None:
+        emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
+        action, clone_root, rec = _run_emit(
+            emitter,
+            tmp_path,
+            product_repo=_STABLE_REPO,
+            **self._lockfile_fixture(),  # type: ignore[arg-type]
+        )
+        assert not action.startswith("skip:"), action
+        assert rec.lease_calls, "a real mint must still take the lease"
+        values = _contract_check_values(clone_root / "contracts" / "OMN-9999.yaml")
+        assert values, "no content-bound check landed in the contract"
+        assert "mirror.internal:3141" in values[0]
+        assert "grep -cF" in values[0]
+
+    def test_uv_lock_diff_with_no_actual_content_delta_still_fails_closed(
+        self, tmp_path: Path
+    ) -> None:
+        """No fabricated fallback: a lockfile PR whose content is byte-identical
+        at head and base (e.g. a metadata-only touch) still declines."""
+        emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
+        fixture = self._lockfile_fixture()
+        fixture["content_at_ref"] = lambda _path, _ref: self._LOCK_BASE
+        action, clone_root, rec = _run_emit(
+            emitter,
+            tmp_path,
+            product_repo=_STABLE_REPO,
+            **fixture,  # type: ignore[arg-type]
+        )
+        assert action.startswith("skip:NO_RED_DERIVABLE_CHECK")
+        assert not clone_root.exists()
+        assert rec.lease_calls == []
+
+
+@pytest.mark.unit
 class TestContentBoundRenderingSeam:
     """The rendering + consumer-gate wiring the emitter's guard currently gates off.
 
