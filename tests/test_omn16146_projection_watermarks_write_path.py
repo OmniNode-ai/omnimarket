@@ -143,6 +143,27 @@ async def test_real_postgres_update_watermark_upserts_with_monotonic_offset() ->
         "END IF; "
         "END $$;"
     )
+    # OMN-16249: the same precondition-replication argument as the role above,
+    # now for the SCHEMA. The migration used to run
+    # `CREATE SCHEMA IF NOT EXISTS omninode_internal`, which made it
+    # self-sufficient on a bare CI Postgres -- but that statement fails on the
+    # deployed onex-dev lane with `permission denied for database
+    # omnidash_analytics`, because CREATE SCHEMA needs CREATE on the DATABASE
+    # and the migration role does not hold it (IF NOT EXISTS does not help:
+    # Postgres checks the privilege before it checks existence). That failure
+    # took out the whole staging deploy, since every post-migration step --
+    # including the runtime image pin -- is skipped when the migrate Job fails.
+    #
+    # So the migration now ASSERTS the schema instead of creating it, following
+    # node_projection_live_events/0002's "THE SCHEMA TRAP THIS FILE ASSERTS,
+    # NOT WORKS AROUND" precedent, and fails loudly by integer division when it
+    # is absent. Schema provisioning is therefore a precondition, exactly like
+    # the omninode_runtime role directly above -- something a real deploy has
+    # already done at the provisioning seam before any node-owned migration
+    # runs. This test replicates that precondition rather than relying on
+    # migration-side defensiveness; without it the assert correctly fires
+    # `DivisionByZeroError` against CI's bare database.
+    await conn.execute(f"CREATE SCHEMA IF NOT EXISTS {_SCHEMA};")
     test_projection_name = "omn16146-test-topic:0"
     await conn.execute(_MIGRATION_SQL.read_text(encoding="utf-8"))
     await conn.execute(

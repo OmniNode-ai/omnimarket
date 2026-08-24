@@ -26,12 +26,14 @@ def test_local_delegation_backends_declare_renderable_endpoint_envs() -> None:
     assert backends["local-coder"]["endpoint_url_env"] == (
         "BIFROST_LOCAL_CODER_ENDPOINT_URL"
     )
-    assert backends["local-coder"]["model_name"] == "Qwen3.6-35B-A3B"
+    # OMN-16419: was "Qwen3.6-35B-A3B" — repointed to the live-verified SGLang
+    # served id at .201:8000 ("qwen3.8"); see bifrost_delegation.yaml.
+    assert backends["local-coder"]["model_name"] == "qwen3.8"
 
     assert backends["local-heavy-reasoning"]["endpoint_url_env"] == (
         "BIFROST_LOCAL_CODER_ENDPOINT_URL"
     )
-    assert backends["local-heavy-reasoning"]["model_name"] == "Qwen3.6-35B-A3B"
+    assert backends["local-heavy-reasoning"]["model_name"] == "qwen3.8"
 
     assert backends["local-reasoner"]["endpoint_url_env"] == (
         "BIFROST_LOCAL_REASONER_ENDPOINT_URL"

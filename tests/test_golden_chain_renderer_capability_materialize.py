@@ -70,7 +70,7 @@ def _projection_target(handler_wiring: Any) -> object:
         "table": table,
         "database_ref": "application",
         "physical_database": "omnidash_analytics",
-        "schema": "omninode_internal",
+        "physical_schema": "omninode_internal",
         "domain": EnumDatabaseSchemaDomain.OMNINODE_INTERNAL,
     }
     if hasattr(handler_wiring, "ProjectionDatabaseBindingTarget"):

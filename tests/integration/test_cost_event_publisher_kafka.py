@@ -116,11 +116,17 @@ async def test_publishes_real_event_to_kafka(tmp_path: Path) -> None:
         await consumer.stop()
 
     assert received is not None
-    assert received["idempotency_key"] == expected_idempotency_key
-    assert received["source_file_sha256"] == file_sha256
-    assert "emitted_at" in received
-    assert received["session_id"] == payload["session_id"]
-    assert received["model_id"] == payload["model_id"]
+    # OMN-16417: the wire record is now ModelEventEnvelope-shaped (required by
+    # the gateway forwarder's outbound decode path); enrichment fields live
+    # under the envelope's payload, not top-level.
+    assert received["event_type"] == TOPIC
+    published = received["payload"]
+    assert isinstance(published, dict)
+    assert published["idempotency_key"] == expected_idempotency_key
+    assert published["source_file_sha256"] == file_sha256
+    assert "emitted_at" in published
+    assert published["session_id"] == payload["session_id"]
+    assert published["model_id"] == payload["model_id"]
 
 
 @pytest.mark.kafka
@@ -223,8 +229,9 @@ if __name__ == "__main__":
             await consumer.stop()
 
             received = json.loads(msg.value)
-            assert received["idempotency_key"] == expected_key
-            assert received["source_file_sha256"] == file_sha256
+            published = received["payload"]
+            assert published["idempotency_key"] == expected_key
+            assert published["source_file_sha256"] == file_sha256
             assert msg.key == expected_key.encode()
             print("PASS: test_publishes_real_event_to_kafka")
 

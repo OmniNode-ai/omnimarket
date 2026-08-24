@@ -706,6 +706,16 @@ accepted:
 - ORPHANED_PRODUCER::version_skew_detector::onex.evt.omniclaude.version-skew-detected.v1
 - ORPHANED_PRODUCER::version_skew_detector::onex.evt.omniclaude.version-skew-healthy.v1
 external_producers:
+  # OMN-16316: BYOK inference-credential value->ref exchange. The gateway
+  # handler (POST/DELETE /v1/tenants/me/inference-credentials, route wiring
+  # pending OMN-16319) calls omnimarket.projection.credential_publisher
+  # directly -- a thin publisher module, not a node contract -- to publish
+  # these two events after the ProtocolSecretStore.set_secret effect-boundary
+  # call. node_projection_tenant_credentials is the REPORT-ONLY consumer;
+  # same external-producer shape as node-generation-requested.v1 via
+  # generation_publisher.py's /api/generate route.
+  onex.evt.omnimarket.credential-registered.v1: "gateway value->ref exchange (omnimarket.projection.credential_publisher.register_inference_credential), not a node contract — OMN-16316"
+  onex.evt.omnimarket.credential-revoked.v1: "gateway value->ref exchange (omnimarket.projection.credential_publisher.revoke_inference_credential), not a node contract — OMN-16316"
   # OMN-14648 / WS6 merge-state telemetry. Merge-flow state-transition events are
   # published by external merge-flow instrumentation (a GHA workflow / publisher
   # script in the pr-merged-publisher class, not a node contract), the same way

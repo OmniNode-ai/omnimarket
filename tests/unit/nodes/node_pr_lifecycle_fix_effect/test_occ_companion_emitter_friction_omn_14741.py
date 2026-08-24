@@ -652,6 +652,110 @@ class TestF01AppendOnly:
         with pytest.raises(RuntimeError, match="append-only violation"):
             self._guard(f"M\tdrift/dod_receipts/OMN-9999/{self._EID}/command.yaml")
 
+    # -- OMN-16356: contract-growth parity with the hosted OCC gate ---------
+    #
+    # Live 2026-08-23: three DIFFERENT product PRs (omnimarket#2124/OMN-15800,
+    # omnibase_infra#2790/OMN-15468, and a parallel node_occ_companion_effect
+    # failure onex_change_control#6926/OMN-16413) all hit the SAME regression
+    # from OMN-16071's PR #2086: a status-``M`` write to a ticket's OWN
+    # contract — the doctrinally sanctioned F-04/self-bind growth path — was
+    # rejected by the blanket per-file ``A``-only rule, even though the
+    # hosted gate (``evaluate_append_only``) is per-ENTRY and would have
+    # passed the exact same diff. These tests exercise the real content-level
+    # check against realistic base/head contract bytes (not the coarse
+    # name-status mock the tests above use).
+
+    _CONTRACT_PATH = "contracts/OMN-9999.yaml"
+
+    _BASE_CONTRACT = (
+        "---\n"
+        'schema_version: "1.0.0"\n'
+        'ticket_id: "OMN-9999"\n'
+        "dod_evidence:\n"
+        '  - id: "dod-earlier-pr-1"\n'
+        '    description: "earlier PR row."\n'
+        '    source: "generated"\n'
+        "    checks:\n"
+        '      - check_type: "command"\n'
+        '        check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"\n'
+    )
+
+    def _guard_contract_diff(self, *, head_contract: str, status: str = "M") -> None:
+        emitter = OccCompanionEmitter()
+        allowed = emitter._allowed_paths(["OMN-9999"], set())
+
+        def fake_run_git(argv: list[str], *, cwd: str) -> str:
+            if argv[:3] == ["git", "diff", "--name-status"]:
+                return f"{status}\t{self._CONTRACT_PATH}"
+            if argv[:2] == ["git", "show"] and argv[2].startswith("0" * 40 + ":"):
+                return self._BASE_CONTRACT
+            if argv[:2] == ["git", "show"] and argv[2] == f"HEAD:{self._CONTRACT_PATH}":
+                return head_contract
+            raise AssertionError(f"unexpected git call: {argv}")
+
+        with patch.object(emitter, "_run_git", side_effect=fake_run_git):
+            emitter._assert_append_only(Path("/tmp/occ"), "0" * 40, allowed)
+
+    def test_append_only_guard_accepts_pure_contract_growth(self) -> None:
+        """A second companion appending a NEW dod_evidence id must pass —
+        the exact shape OMN-16071's #2086 over-hardened into a rejection."""
+        head = self._BASE_CONTRACT + (
+            '  - id: "dod-omnimarket-pr-2124"\n'
+            '    description: "this PR row."\n'
+            '    source: "generated"\n'
+            "    checks:\n"
+            '      - check_type: "command"\n'
+            '        check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"\n'
+        )
+        self._guard_contract_diff(head_contract=head)  # must not raise
+
+    def test_append_only_guard_rejects_contract_entry_removed(self) -> None:
+        head = '---\nschema_version: "1.0.0"\nticket_id: "OMN-9999"\ndod_evidence: []\n'
+        with pytest.raises(RuntimeError, match="append-only violation"):
+            self._guard_contract_diff(head_contract=head)
+
+    def test_append_only_guard_rejects_contract_entry_edited(self) -> None:
+        head = (
+            "---\n"
+            'schema_version: "1.0.0"\n'
+            'ticket_id: "OMN-9999"\n'
+            "dod_evidence:\n"
+            '  - id: "dod-earlier-pr-1"\n'
+            '    description: "earlier PR row."\n'
+            '    source: "generated"\n'
+            "    checks:\n"
+            '      - check_type: "command"\n'
+            '        check_value: "gh pr view ${PR_NUMBER} --repo ${REPO} --json'
+            ' files,statusCheckRollup"\n'
+        )
+        with pytest.raises(RuntimeError, match="append-only violation"):
+            self._guard_contract_diff(head_contract=head)
+
+    def test_append_only_guard_contract_growth_exception_is_receipt_scoped(
+        self,
+    ) -> None:
+        """The content-verified exception applies ONLY to the contract path
+        pattern (`contracts/<ticket>.yaml`) — a receipt path with status M
+        must still be rejected unconditionally, even if its bytes happen to
+        be a pure textual append (receipts are point-in-time attestations,
+        never growable)."""
+        emitter = OccCompanionEmitter()
+        allowed = emitter._allowed_paths(["OMN-9999"], {self._EID})
+        receipt_path = f"drift/dod_receipts/OMN-9999/{self._EID}/command.yaml"
+
+        def fake_run_git(argv: list[str], *, cwd: str) -> str:
+            if argv[:3] == ["git", "diff", "--name-status"]:
+                return f"M\t{receipt_path}"
+            raise AssertionError(
+                f"a receipt-path M must never trigger a content read: {argv}"
+            )
+
+        with (
+            patch.object(emitter, "_run_git", side_effect=fake_run_git),
+            pytest.raises(RuntimeError, match="append-only violation"),
+        ):
+            emitter._assert_append_only(Path("/tmp/occ"), "0" * 40, allowed)
+
 
 # ---------------------------------------------------------------------------
 # F-06 — runtime probe is the GraphQL `gh pr view --json files` (OMN-14766)

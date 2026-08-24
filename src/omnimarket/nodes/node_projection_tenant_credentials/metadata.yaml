@@ -1,0 +1,40 @@
+name: projection_tenant_credentials
+version: "1.0.0"
+description: >
+  Ingress+projection for BYOK inference-credential refs. Consumes
+  credential-registered / credential-revoked events and materializes
+  tenant_inference_credentials, the credential ref catalog OMN-15631's
+  delegation-routing tenant overlay copies secret_ref values from.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: false
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - byok
+  - credentials
+  - reducer
+ownership:
+  tenant_inference_credentials:
+    ddl_owner: omnimarket.nodes.node_projection_tenant_credentials
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_tenant_inference_credentials.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      tenant_inference_credentials is the BYOK credential ref catalog fed by
+      this node's projection. It is a new, parallel table -- NOT merged into
+      omnimarket.nodes.node_delegation_routing_reducer's
+      delegation_routing_tenant_overlay (OMN-15631) -- per the seam decision
+      recorded on OMN-16316/OMN-15631: every overlay row is a full backend
+      binding, a bare credential is not.
+pack: "data"
+display_name: "Projection: Tenant Inference Credentials"
+node_role: "effect"

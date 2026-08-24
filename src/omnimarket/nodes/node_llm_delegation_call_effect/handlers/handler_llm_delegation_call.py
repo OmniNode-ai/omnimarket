@@ -113,6 +113,34 @@ _HEALTH_CACHE_TTL_SECONDS = 60
 # (endpoint_url, timestamp_of_check, is_healthy)
 _health_cache: dict[str, tuple[float, bool]] = {}
 
+# OMN-16419: cache of GET /v1/models results, same TTL/shape as the health
+# cache — avoids hitting the served-models endpoint on every single call. A
+# ``None`` served-id set is cached too (means "no evidence either way", e.g. a
+# cloud backend without this path), so a backend that never exposes
+# /v1/models is not re-probed every call either.
+_served_models_cache: dict[str, tuple[float, frozenset[str] | None]] = {}
+
+
+def _get_served_model_ids(endpoint_url: str) -> frozenset[str] | None:
+    """Return cached (or freshly probed) served model ids for ``endpoint_url``.
+
+    OMN-16419: backs the fail-closed model-attribution guard in
+    ``_execute_call``. See ``transport.probe_served_models`` for why this reads
+    ``/v1/models`` rather than trusting the chat-completion response's echoed
+    ``model`` field.
+    """
+    now = time.monotonic()
+    cached = _served_models_cache.get(endpoint_url)
+    if cached is not None:
+        ts, served_ids = cached
+        if now - ts < _HEALTH_CACHE_TTL_SECONDS:
+            return served_ids
+
+    served_ids = transport.probe_served_models(endpoint_url)
+    _served_models_cache[endpoint_url] = (now, served_ids)
+    return served_ids
+
+
 # Pricing is expressed as cost per 1M tokens in USD.
 # These are FALLBACK values used when the tier is unknown or the routing
 # registry is unavailable. Registry-sourced pricing from routing_tiers.yaml
@@ -384,6 +412,33 @@ class HandlerLlmDelegationCall:
         if request.response_format is not None:
             payload["response_format"] = request.response_format
 
+        # OMN-16419: fail-closed model-attribution guard. A live GET
+        # /v1/models reconciliation runs BEFORE the chat-completion POST —
+        # never after — because the response body's echoed ``model`` field is
+        # not trustworthy evidence (SGLang echoes whatever was requested,
+        # served or not; see transport.probe_served_models). ``served_ids`` is
+        # None when the endpoint offers no evidence either way (most cloud
+        # backends don't expose this path), in which case the guard is a
+        # no-op and behavior is unchanged from before this ticket. When
+        # ``served_ids`` IS available and does not contain the configured
+        # model_id, the call never reaches the network — this repo's own
+        # config no longer silently attributes to a model that isn't running.
+        served_ids = _get_served_model_ids(endpoint_url)
+        served_model_id: str | None = None
+        if served_ids is not None:
+            if request.model_id not in served_ids:
+                return self._failure_result(
+                    request,
+                    EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH,
+                    f"model_attribution_mismatch: configured model_name="
+                    f"{request.model_id!r} is not in the served ids "
+                    f"{sorted(served_ids)!r} reported by "
+                    f"{transport.served_models_url(endpoint_url)} (OMN-16419 "
+                    "fail-closed guard — refusing to silently attribute this "
+                    "call to a model that is not running)",
+                )
+            served_model_id = request.model_id
+
         try:
             # OMN-13861: resolve the backend's API key from ``secret_ref`` and merge
             # ``Authorization: Bearer <key>`` into the outbound headers BEFORE the
@@ -452,6 +507,7 @@ class HandlerLlmDelegationCall:
             cost_basis=cost_basis,
             quality_gate_passed=True,
             endpoint_healthy=True,
+            served_model_id=served_model_id,
         )
 
         self._publish(
@@ -468,14 +524,25 @@ class HandlerLlmDelegationCall:
         result: ModelLlmDelegationCallResult,
     ) -> ModelLlmDelegationCompletedEvent:
         """Build the call-completed event from the request + successful result."""
+        # OMN-8022 preferred the caller-configured name over the server's
+        # response-echoed ``model`` field (that field was, and remains,
+        # untrustworthy — see transport.probe_served_models). OMN-16419 adjusts
+        # that preference one step further: when the fail-closed guard above
+        # has LIVE-CONFIRMED the configured name against GET /v1/models,
+        # ``result.served_model_id`` carries that confirmed value and is used
+        # here; when no such confirmation exists (guard was a no-op — no
+        # /v1/models evidence for this backend), attribution falls back to the
+        # configured name exactly as OMN-8022 left it. Either way this is
+        # never the raw response-echoed string.
+        attributed_model_id = result.served_model_id or request.model_id
         return ModelLlmDelegationCompletedEvent(
             correlation_id=request.correlation_id,
             causation_id=request.causation_id,
             request_id=request.request_id,
             task_type=request.task_type,
             task_id=request.task_id,
-            selected_model=request.model_id,
-            model_id=request.model_id,
+            selected_model=attributed_model_id,
+            model_id=attributed_model_id,
             model_tier=request.model_tier,
             provider=request.provider,
             endpoint_ref=request.endpoint_ref,

@@ -46,6 +46,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup im
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
+    EnumOccRefRefreshOutcome,
     ModelEvidenceCheckResult,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
@@ -89,6 +90,26 @@ _DEFAULT_EXECUTION_SCOPE = cast(
 # collect() with no recovery (CodeRabbit — Stability). Kept generous because a
 # fetch of the OCC repo may transfer real objects.
 _GIT_OP_TIMEOUT_S = 60
+
+# OMN-15454: a failed OCC ref refresh (git fetch) used to be swallowed at
+# logger.info and the collector proceeded against whatever the local
+# remote-tracking ref already had, while still logging that the run resolved
+# "dev-first" — a fail-open on the ONLY sanctioned Done-flip tool's evidence
+# source. Default behaviour is now fail-closed: FETCH_FAILED refuses the
+# whole collect() rather than silently grounding a verdict in a possibly-stale
+# clone. This named, logged override is the sole documented escape hatch (per
+# the ticket's fix-item 2b) — proceeding under it marks every returned check
+# result un-attributable to a verified-fresh origin/dev rather than pretending
+# nothing happened.
+_ALLOW_STALE_OCC_REF_ENV = "DOD_VERIFY_ALLOW_STALE_OCC_REF"
+
+# Substring git prints for the specific ref-lock race this ticket's fix-item 4
+# calls out: "cannot lock ref 'refs/remotes/origin/dev': is at X but expected
+# Y" under a concurrent fetch/push into the SAME OCC clone (the ordinary state
+# of this repo while the merge controller runs — i.e. precisely when
+# dod_verify is invoked for a Done-flip). Retriable; distinct from an offline
+# host or an absent remote, which a retry cannot fix.
+_REF_LOCK_ERROR_MARKER = "cannot lock ref"
 
 # OMN-14207: live GitHub PR-state verification.
 #
@@ -195,6 +216,108 @@ _PR_PATH_URL_RE = re.compile(
 # belonging to a DIFFERENT gh pr invocation in the same string never pairs
 # with this clause's hardcoded number.
 _SHELL_CLAUSE_SPLIT_RE = re.compile(r"&&|\|\||;|\|")
+
+# OMN-16087: pr-live-state binder must not invert an intentional non-merged
+# PR-state assertion.
+#
+# A dod_evidence item's own ``command`` check_value can legitimately assert
+# that a referenced PR is OPEN (a seam guard: "the pinned lineage deliberately
+# predates unmerged PR #N") or CLOSED (a supersession note: "PR #N was closed,
+# replaced by #M"). The auto-appended ``::pr-live-state`` check
+# (``_live_pr_checks_for_item`` / ``_verify_live_pr``) previously derived its
+# usual "must be MERGED and all required checks green" judgement from the bare
+# PR reference regardless of what the item's own predicate asserted —
+# inverting the entry's declared intent the moment live state disagreed with
+# the binder's blanket assumption. Two live discovery cases: OMN-16077's
+# ``dod-pin-is-0386-head-predating-2736`` (OPEN assertion, inverts to a false
+# FAILURE once the referenced PR merges) and OMN-16142's
+# ``occ-self-bind-pr-6624-superseded-note`` (CLOSED assertion, false FAILURE
+# immediately since the referenced PR is never merged by design).
+#
+# ``_PIPELINE_SPLIT_RE`` deliberately does NOT split on a single ``|`` (unlike
+# ``_SHELL_CLAUSE_SPLIT_RE`` above) — a state assertion is almost always piped
+# from the ``gh pr view`` invocation through ``--jq``/``grep`` in the SAME
+# logical pipeline (e.g. ``gh pr view N --repo R --json state --jq '.state' |
+# grep -qx OPEN``), so keeping single pipes joined is required to see the
+# assertion at all. Splitting only at ``&&``/``||``/``;``/``;;`` still keeps
+# two independent ``gh pr view`` invocations in one check_value (the OMN-16142
+# shape: one clause asserts #6624 CLOSED, a second `&&`-joined clause asserts
+# #6626 MERGED) from being confused with each other.
+_PIPELINE_SPLIT_RE = re.compile(r"&&|\|\||;;|;")
+# ``.state == "OPEN"`` / ``.state == 'CLOSED'`` — the inline jq-predicate
+# shape. Generalizes ``_PR_OPEN_STATE_PREDICATE_RE`` above (OMN-14637, which
+# is deliberately OPEN-only and rewrites rather than detects) to also
+# recognise CLOSED, since this detector only needs to recognise an assertion,
+# never rewrite one.
+_PR_STATE_EQUALITY_RE = re.compile(r"""\.state\s*==\s*(["'])(OPEN|CLOSED)\1""")
+# ``grep -qx OPEN`` / ``grep -qx 'CLOSED'`` / ``grep -q "OPEN"`` — the
+# piped-grep shape. Matches any grep-family invocation (arbitrary short
+# flags, e.g. ``-qx``, ``-Eq``) whose literal argument is exactly OPEN or
+# CLOSED, optionally quoted. Deliberately excludes MERGED: an assertion of
+# MERGED already agrees with the binder's default assumption, so that
+# binding must keep receiving the real live derivation (see
+# ``_asserted_non_merged_pr_states_for_item``).
+_PR_STATE_GREP_RE = re.compile(r"""grep\s+(?:-[A-Za-z]+\s+)*(["']?)(OPEN|CLOSED)\b\1""")
+
+
+def _pr_binding_asserted_state(value: str, repo: str, pr_number: int) -> str | None:
+    """Return ``"OPEN"``/``"CLOSED"`` when ``value`` asserts that state for
+    ``(repo, pr_number)`` in the SAME pipeline segment as the PR reference,
+    else ``None``.
+
+    Same-clause-but-not-same-pipe discipline, mirroring
+    ``_hardcoded_pr_bindings_in_value``'s same-clause guarantee for bindings:
+    the PR reference and the state assertion must sit in one
+    ``&&``/``||``/``;``-delimited pipeline (pipes within that pipeline stay
+    joined — see ``_PIPELINE_SPLIT_RE``), so an assertion belonging to a
+    DIFFERENT PR reference in the same check_value never attaches to this
+    one. ``repo`` must already be normalized (see
+    ``EvidenceCollector._normalize_repo``).
+
+    Recognises two same-clause binding shapes, mirroring
+    ``_hardcoded_pr_bindings_in_value`` (OMN-16087 follow-up: the original cut
+    only recognized the first shape, so a URL-form binding's own state
+    assertion silently fell through to the default merged/green derivation —
+    the exact inversion this ticket exists to fix, just for a binding shape
+    the first cut missed):
+
+    * ``gh pr view <N> --repo <repo>`` — the extracted ``--repo`` flag value
+      is normalized the same way before comparison;
+    * ``repos/<owner>/<repo>/pulls/<N>`` or
+      ``https://github.com/<owner>/<repo>/pull/<N>`` — repo and number are
+      one contiguous path (:data:`_PR_PATH_URL_RE`), so no separate
+      ``--repo`` flag to cross-check.
+
+    Pure function — no I/O.
+    """
+    for segment in _PIPELINE_SPLIT_RE.split(value):
+        matched = False
+
+        num_match = _HARDCODED_PR_NUM_RE.search(segment)
+        if num_match is not None and int(num_match.group(1)) == pr_number:
+            repo_match = _REPO_FLAG_RE.search(segment)
+            if repo_match is not None:
+                extracted_repo = repo_match.group(1).strip()
+                if "/" not in extracted_repo:
+                    extracted_repo = f"{_DEFAULT_GITHUB_ORG}/{extracted_repo}"
+                if extracted_repo == repo:
+                    matched = True
+
+        if not matched:
+            matched = any(
+                str(url_repo) == repo and int(url_num) == pr_number
+                for url_repo, url_num in _PR_PATH_URL_RE.findall(segment)
+            )
+
+        if not matched:
+            continue
+
+        state_match = _PR_STATE_EQUALITY_RE.search(segment) or _PR_STATE_GREP_RE.search(
+            segment
+        )
+        if state_match is not None:
+            return state_match.group(2).upper()
+    return None
 
 
 def _hardcoded_pr_bindings_in_value(value: str) -> list[tuple[str, int]]:
@@ -1056,6 +1179,18 @@ class EvidenceCollector:
         # visible SKIPPED note instead of silently omitting the live-state
         # check. Reset per item (mirrors ``_current_evidence_item_id``).
         self._last_binding_note: str | None = None
+        # OMN-15454 AC2: provenance of the OCC governance ref actually read by
+        # the most recent auto-resolved collect() call. Populated by
+        # ``collect()`` before it returns; read by ``handler_dod_verify`` to
+        # stamp ``ModelDodVerifyState``. None when collect() was called with
+        # an explicit contract_path (no OCC auto-resolution happened at all).
+        self.occ_refresh_outcome: EnumOccRefRefreshOutcome | None = None
+        self.occ_resolved_sha: str | None = None
+
+    @property
+    def occ_governance_ref(self) -> str:
+        """The OCC governance ref this collector resolves against (e.g. ``origin/dev``)."""
+        return self._occ_governance_ref
 
     @staticmethod
     def _github_lookup_result(
@@ -1094,7 +1229,56 @@ class EvidenceCollector:
 
         created_worktree: Path | None = None
         try:
-            dev_root, created_worktree = self._materialize_occ_dev_worktree()
+            dev_root, created_worktree, refresh_outcome, resolved_sha = (
+                self._materialize_occ_dev_worktree()
+            )
+            self.occ_refresh_outcome = refresh_outcome
+            self.occ_resolved_sha = resolved_sha
+
+            # OMN-15454: fail-closed by default. A failed refresh must not
+            # silently yield an "origin/dev-resolved" verdict — the local
+            # clone content at that point is UNKNOWN freshness, and UNKNOWN
+            # must never read as fresh. The only sanctioned continuation is
+            # the named, logged override below, which marks every returned
+            # result un-attributable rather than pretending nothing happened.
+            allow_stale = os.environ.get(
+                _ALLOW_STALE_OCC_REF_ENV, ""
+            ).strip().lower() in (
+                "1",
+                "true",
+                "yes",
+            )
+            if (
+                refresh_outcome is EnumOccRefRefreshOutcome.FETCH_FAILED
+                and not allow_stale
+            ):
+                logger.error(
+                    "Refusing to resolve %s for %s: OCC ref refresh failed and "
+                    "%s is not set. Set %s=1 to proceed anyway (results will be "
+                    "marked un-attributable to a verified-fresh origin/dev).",
+                    self._occ_governance_ref,
+                    ticket_id,
+                    _ALLOW_STALE_OCC_REF_ENV,
+                    _ALLOW_STALE_OCC_REF_ENV,
+                )
+                return [
+                    ModelEvidenceCheckResult(
+                        evidence_id="occ_ref_refresh",
+                        description=(
+                            f"OCC ref refresh failed for {self._occ_governance_ref}"
+                        ),
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=(
+                            "OCC_REF_REFRESH_FAILED: git fetch of "
+                            f"{self._occ_governance_ref} failed (after retrying "
+                            "the ref-lock race once) — the local clone's "
+                            "freshness is UNKNOWN, so this run refuses rather "
+                            f"than resolving evidence against it. Set "
+                            f"{_ALLOW_STALE_OCC_REF_ENV}=1 to override."
+                        ),
+                    )
+                ]
+
             if dev_root is not None:
                 dev_candidate = Path(dev_root) / "contracts" / f"{ticket_id}.yaml"
                 if dev_candidate.exists():
@@ -1102,10 +1286,13 @@ class EvidenceCollector:
                     self._occ_dev_root = dev_root
                     logger.info(
                         "Resolved OCC contract for %s from %s worktree at %s "
-                        "(dev-first, overrides any main working-tree copy)",
+                        "(dev-first, overrides any main working-tree copy; "
+                        "refresh=%s, resolved_sha=%s)",
                         ticket_id,
                         self._occ_governance_ref,
                         dev_root,
+                        refresh_outcome.value if refresh_outcome else None,
+                        resolved_sha,
                     )
                 elif self._find_contract(ticket_id) is None:
                     logger.info(
@@ -1114,7 +1301,39 @@ class EvidenceCollector:
                         ticket_id,
                         self._occ_governance_ref,
                     )
-            return self._collect_impl(ticket_id, contract_path)
+            results = self._collect_impl(ticket_id, contract_path)
+            if refresh_outcome is EnumOccRefRefreshOutcome.FETCH_FAILED:
+                # allow_stale is True here (the refusal branch above already
+                # returned otherwise). Disclosed, not buried: every result
+                # this run produced is marked un-attributable, plus a
+                # standalone item names the override explicitly.
+                results = [
+                    result.model_copy(
+                        update={
+                            "message": (
+                                f"{result.message or ''} "
+                                "[OMN-15454: UNATTRIBUTABLE — OCC ref refresh "
+                                f"failed; {_ALLOW_STALE_OCC_REF_ENV} override "
+                                "active, verdict not grounded in a verified-"
+                                "fresh origin/dev]"
+                            ).strip()
+                        }
+                    )
+                    for result in results
+                ]
+                results.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id="occ_ref_refresh_override",
+                        description="OCC ref refresh failure — override active",
+                        status=EnumEvidenceCheckStatus.SKIPPED,
+                        message=(
+                            f"{_ALLOW_STALE_OCC_REF_ENV} was set; every check "
+                            "result above is un-attributable to a verified-"
+                            f"fresh {self._occ_governance_ref}."
+                        ),
+                    )
+                )
+            return results
         finally:
             self._occ_dev_root = None
             if created_worktree is not None:
@@ -1132,28 +1351,43 @@ class EvidenceCollector:
                 return occ
         return None
 
-    def _materialize_occ_dev_worktree(self) -> tuple[str | None, Path | None]:
-        """Add a detached ``origin/dev`` worktree of the OCC repo.
+    def _materialize_occ_dev_worktree(
+        self,
+    ) -> tuple[str | None, Path | None, EnumOccRefRefreshOutcome | None, str | None]:
+        """Add a detached worktree of the OCC repo at ``self._occ_governance_ref``.
 
-        Returns ``(worktree_path_str, worktree_path)`` on success, else
-        ``(None, None)``. The worktree is placed under ``OMNI_HOME`` (when set) so
-        relative ``file_exists`` checks stay inside the containment boundary.
+        Returns ``(worktree_path_str, worktree_path, refresh_outcome,
+        resolved_sha)``. ``refresh_outcome`` is ``None`` only when no fetch
+        was even attempted — no OCC root resolvable at all (a legitimate,
+        pre-existing case: the caller falls back to the working-tree contract
+        search) — never as a stand-in for a failed attempt; a real attempt
+        always yields ``FETCHED`` / ``FETCH_FAILED`` / ``NOT_APPLICABLE``. The
+        first two return values are ``(None, None)`` when the worktree could
+        not be materialised at all (the ``git worktree add`` itself
+        failed/timed out) — a different failure class from a refresh outcome
+        of ``FETCH_FAILED``, where the worktree DOES materialise, just against
+        whatever the local remote-tracking ref already had. ``resolved_sha``
+        is the worktree HEAD's 40-char commit SHA (OMN-15454 AC2 provenance)
+        when a worktree was created, else ``None``. The worktree is placed
+        under ``OMNI_HOME`` (when set) so relative ``file_exists`` checks stay
+        inside the containment boundary.
         """
         occ = self._resolve_occ_root()
         if occ is None:
-            return None, None
+            return None, None, None, None
         # Refresh the remote-tracking ref first so a long-lived OMNI_HOME clone
         # does not materialise a STALE origin/dev and miss the very contract this
-        # rider exists to pick up (CodeRabbit — Data Integrity). Best-effort: a
-        # fetch failure (offline, no remote — e.g. the local-branch test ref)
-        # falls through to whatever the local clone already has.
-        self._refresh_occ_ref(occ)
+        # rider exists to pick up (CodeRabbit — Data Integrity). The outcome is
+        # now consumed by the caller (OMN-15454) rather than discarded — a
+        # failed refresh no longer silently grounds a verdict in the local
+        # clone as if it were fresh.
+        refresh_outcome = self._refresh_occ_ref(occ)
         omni_home = os.environ.get("OMNI_HOME", "").strip()
         parent = Path(omni_home) if omni_home and Path(omni_home).is_dir() else None
         try:
             tmp = Path(tempfile.mkdtemp(prefix=".occ-dev-wt-", dir=parent))
         except OSError:
-            return None, None
+            return None, None, refresh_outcome, None
         try:
             proc = subprocess.run(
                 [
@@ -1179,7 +1413,7 @@ class EvidenceCollector:
                 _GIT_OP_TIMEOUT_S,
             )
             shutil.rmtree(tmp, ignore_errors=True)
-            return None, None
+            return None, None, refresh_outcome, None
         if proc.returncode != 0:
             logger.warning(
                 "Could not materialise %s worktree of OCC: %s",
@@ -1187,20 +1421,37 @@ class EvidenceCollector:
                 proc.stderr.strip(),
             )
             shutil.rmtree(tmp, ignore_errors=True)
-            return None, None
-        return str(tmp), tmp
+            return None, None, refresh_outcome, None
+        resolved_sha = self._resolve_worktree_head_sha(tmp)
+        return str(tmp), tmp, refresh_outcome, resolved_sha
 
-    def _refresh_occ_ref(self, occ: Path) -> None:
-        """Best-effort ``git fetch`` of the OCC governance ref's remote branch.
+    def _resolve_worktree_head_sha(self, worktree: Path) -> str | None:
+        """Return the 40-char commit SHA the worktree actually checked out.
 
-        Only fires for a ``<remote>/<branch>`` ref (e.g. ``origin/dev``); a bare
-        local-branch ref (test override) is left untouched. Failures are logged
-        and swallowed — the worktree add proceeds against the local clone.
+        OMN-15454 AC2: "attribution must name what was actually read, not
+        what was intended." Best-effort — a failure here does not roll back
+        the worktree add; it only means provenance is unavailable, which the
+        caller surfaces as ``None`` rather than fabricating a value.
         """
-        ref = self._occ_governance_ref
-        if "/" not in ref:
-            return
-        remote, branch = ref.split("/", 1)
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(worktree), "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_GIT_OP_TIMEOUT_S,
+            )
+        except subprocess.TimeoutExpired:
+            return None
+        if proc.returncode != 0:
+            return None
+        sha = proc.stdout.strip()
+        return sha or None
+
+    def _run_occ_fetch(
+        self, occ: Path, remote: str, branch: str
+    ) -> tuple[EnumOccRefRefreshOutcome, str]:
+        """Run one ``git fetch`` attempt. Pure I/O helper, no retry logic."""
         try:
             proc = subprocess.run(
                 ["git", "-C", str(occ), "fetch", "--quiet", remote, branch],
@@ -1210,15 +1461,57 @@ class EvidenceCollector:
                 timeout=_GIT_OP_TIMEOUT_S,
             )
         except subprocess.TimeoutExpired:
-            logger.warning("Timed out fetching %s for OCC worktree refresh", ref)
-            return
-        if proc.returncode != 0:
+            return EnumOccRefRefreshOutcome.FETCH_FAILED, "timed out"
+        if proc.returncode == 0:
+            return EnumOccRefRefreshOutcome.FETCHED, ""
+        return EnumOccRefRefreshOutcome.FETCH_FAILED, proc.stderr.strip()
+
+    def _refresh_occ_ref(self, occ: Path) -> EnumOccRefRefreshOutcome:
+        """``git fetch`` the OCC governance ref's remote branch — typed outcome.
+
+        OMN-15454: previously logged a failure at ``logger.info`` and returned
+        ``None`` unconditionally, which every caller discarded — the worktree
+        add proceeded against the local clone regardless, while ``collect()``
+        still logged that the run resolved "dev-first". Callers now consume
+        this typed outcome and decide explicitly rather than continuing on a
+        swallowed failure.
+
+        Only fires for a ``<remote>/<branch>`` ref (e.g. ``origin/dev``); a bare
+        local-branch ref (test override, AC4) has no remote and is
+        ``NOT_APPLICABLE`` — that path is unchanged.
+
+        The specific ``cannot lock ref ... is at X but expected Y`` race
+        (fix-item 4) is a symptom of concurrent mutation of the SAME OCC
+        clone — the *normal* state of this repo while the merge controller
+        runs, i.e. precisely when a Done-flip is attempted — and is retried
+        once. Any other failure (offline, no remote) is not retried; a second
+        attempt cannot fix those.
+        """
+        ref = self._occ_governance_ref
+        if "/" not in ref:
+            return EnumOccRefRefreshOutcome.NOT_APPLICABLE
+        remote, branch = ref.split("/", 1)
+        outcome, stderr = self._run_occ_fetch(occ, remote, branch)
+        if outcome is EnumOccRefRefreshOutcome.FETCHED:
+            return outcome
+        if _REF_LOCK_ERROR_MARKER in stderr:
             logger.info(
-                "OCC ref refresh (git fetch %s %s) failed; using local clone: %s",
+                "OCC ref refresh (git fetch %s %s) hit a ref-lock race; "
+                "retrying once: %s",
                 remote,
                 branch,
-                proc.stderr.strip(),
+                stderr,
             )
+            outcome, stderr = self._run_occ_fetch(occ, remote, branch)
+            if outcome is EnumOccRefRefreshOutcome.FETCHED:
+                return outcome
+        logger.warning(
+            "OCC ref refresh (git fetch %s %s) failed: %s",
+            remote,
+            branch,
+            stderr,
+        )
+        return EnumOccRefRefreshOutcome.FETCH_FAILED
 
     def _remove_occ_dev_worktree(self, worktree: Path) -> None:
         occ = self._resolve_occ_root()
@@ -2610,7 +2903,15 @@ class EvidenceCollector:
         Otherwise one result per bound PR: VERIFIED when the PR is MERGED and
         all checks are green; FAILED otherwise, INCLUDING when the live state
         cannot be resolved (fail-closed — a Done-flip must not proceed on
-        unverifiable PR state).
+        unverifiable PR state) — UNLESS the item's own check_value asserts a
+        specific non-merged state (OPEN/CLOSED) for that exact PR reference
+        (OMN-16087), in which case that ONE binding is SKIPPED instead: the
+        item's declared ``command`` check already verifies the assertion
+        directly, so deriving a second, contradictory "must be MERGED"
+        judgement would invert the entry's stated intent rather than
+        corroborate it. Every OTHER binding on the same item (e.g. a second PR
+        reference the item asserts IS merged) is unaffected and still receives
+        the ordinary live derivation.
         """
         bindings = self._resolve_pr_bindings(item, ticket_id, contract_path)
         item_id = str(item.get("id", "unknown"))
@@ -2646,6 +2947,8 @@ class EvidenceCollector:
                 )
             ]
 
+        asserted_states = self._asserted_non_merged_pr_states_for_item(item, bindings)
+
         results: list[ModelEvidenceCheckResult] = []
         multi = len(bindings) > 1
         for repo, pr_number in bindings:
@@ -2654,6 +2957,26 @@ class EvidenceCollector:
                 if multi
                 else f"{item_id}::pr-live-state"
             )
+            asserted = asserted_states.get((repo, pr_number))
+            if asserted is not None:
+                results.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=(
+                            f"Live GitHub state for {repo}#{pr_number} ({item_id})"
+                        ),
+                        status=EnumEvidenceCheckStatus.SKIPPED,
+                        message=(
+                            f"{repo}#{pr_number}: item's own check_value "
+                            f"asserts {asserted} (not MERGED) for this PR — "
+                            "an intentional non-merged assertion (OMN-16087), "
+                            "not auto-bound to merged/green semantics. The "
+                            "item's declared command check verifies this "
+                            "assertion directly."
+                        ),
+                    )
+                )
+                continue
             ok, message = self._verify_live_pr(repo, pr_number)
             results.append(
                 ModelEvidenceCheckResult(
@@ -2668,6 +2991,42 @@ class EvidenceCollector:
                 )
             )
         return results
+
+    @staticmethod
+    def _asserted_non_merged_pr_states_for_item(
+        item: dict[str, Any], bindings: list[tuple[str, int]]
+    ) -> dict[tuple[str, int], str]:
+        """Return ``{(repo, pr_number): "OPEN"|"CLOSED"}`` for every resolved
+        ``binding`` whose exact PR reference is accompanied, in the SAME
+        pipeline of the item's own ``checks[]`` text, by an explicit
+        non-merged state assertion (OMN-16087).
+
+        Scans ``check_value``/``command`` on every check in the item — not
+        only the check(s) that produced the binding — because the binding may
+        have been resolved from a different tier (id convention, receipt)
+        than the check carrying the assertion; the assertion is still
+        authoritative when it names the same (repo, pr_number) pair. Bindings
+        with no matching assertion are simply absent from the returned dict.
+        Pure — no I/O.
+        """
+        checks = item.get("checks")
+        if not isinstance(checks, list) or not bindings:
+            return {}
+        values: list[str] = []
+        for check in checks:
+            if not isinstance(check, dict):
+                continue
+            value = check.get("check_value") or check.get("command")
+            if isinstance(value, str) and value.strip():
+                values.append(value)
+        asserted: dict[tuple[str, int], str] = {}
+        for repo, pr_number in bindings:
+            for value in values:
+                state = _pr_binding_asserted_state(value, repo, pr_number)
+                if state is not None:
+                    asserted[(repo, pr_number)] = state
+                    break
+        return asserted
 
     def _verify_live_pr(self, repo: str, pr_number: int) -> tuple[bool, str]:
         """Return ``(ok, message)`` for the live state of ``repo#pr_number``.

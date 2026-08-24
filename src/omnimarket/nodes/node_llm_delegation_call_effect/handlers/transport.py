@@ -138,6 +138,99 @@ def probe_health(
     return healthy
 
 
+def served_models_url(endpoint_url: str) -> str:
+    """Return ``scheme://host[:port]/v1/models`` for the COMPLETE endpoint URL.
+
+    OMN-16419: mirrors ``health_probe_url`` — the POST URL stays ``endpoint_url``
+    verbatim; this derives only the auxiliary OpenAI-compatible model-list URL
+    used by the fail-closed model-attribution guard.
+    """
+    parts = urlsplit(endpoint_url)
+    return f"{parts.scheme}://{parts.netloc}/v1/models"
+
+
+def probe_served_models(
+    endpoint_url: str,
+    *,
+    runtime_profile: str | None = None,
+    timeout_seconds: float = 5.0,
+) -> frozenset[str] | None:
+    """Return the set of model ids served at ``endpoint_url``'s ``/v1/models``.
+
+    OMN-16419: this is the fail-closed model-attribution guard's evidence
+    source — the ONLY signal in this module that reflects what the endpoint
+    actually has loaded, as opposed to what a caller asked for. It is
+    deliberately NOT derived from the chat-completions response body: SGLang
+    (and some other OpenAI-compat servers) echo the REQUESTED ``model`` string
+    back in the response verbatim regardless of what is actually serving the
+    request, so that field cannot detect a mismatch — only a separate read of
+    ``/v1/models`` can.
+
+    Returns ``None`` (never raises) when the model list cannot be determined —
+    unreachable host, non-2xx status, or a response that doesn't parse as the
+    OpenAI ``{"data": [{"id": ...}, ...]}`` shape. A ``None`` result means "no
+    evidence either way" and the caller must NOT treat it as a mismatch — most
+    non-local/cloud backends do not expose this path at
+    ``scheme://netloc/v1/models`` (their OpenAI-compat surface lives at a
+    different, provider-specific path), so probing them here fails closed on
+    the probe itself, not on a genuine attribution mismatch. Only a
+    successfully retrieved, non-empty id set is authoritative evidence.
+    """
+    _require_http_url(endpoint_url)
+    models_url = served_models_url(endpoint_url)
+    try:
+        if uses_lan_curl_transport(runtime_profile):
+            body = _curl_get_json(models_url, timeout_seconds=timeout_seconds)
+        else:
+            body = _httpx_get_json(models_url, timeout_seconds=timeout_seconds)
+    except Exception:
+        logger.debug(
+            "served-model probe failed for %s — treating as no evidence",
+            models_url,
+            exc_info=True,
+        )
+        return None
+    if body is None:
+        return None
+    data = body.get("data")
+    if not isinstance(data, list):
+        return None
+    ids = {
+        entry["id"]
+        for entry in data
+        if isinstance(entry, dict) and isinstance(entry.get("id"), str)
+    }
+    return frozenset(ids) if ids else None
+
+
+def _httpx_get_json(url: str, *, timeout_seconds: float) -> dict[str, Any] | None:
+    with httpx.Client(timeout=timeout_seconds) as client:
+        resp = client.get(url, timeout=timeout_seconds)
+    if resp.status_code >= 400:
+        return None
+    body = resp.json()
+    return body if isinstance(body, dict) else None
+
+
+def _curl_get_json(url: str, *, timeout_seconds: float) -> dict[str, Any] | None:
+    proc = subprocess.run(
+        [
+            "curl",
+            "-sS",
+            "--max-time",
+            str(int(timeout_seconds)),
+            url,
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    body = json.loads(proc.stdout)
+    return body if isinstance(body, dict) else None
+
+
 def post_chat_completion(
     *,
     endpoint_url: str,
@@ -293,6 +386,8 @@ __all__ = [
     "health_probe_url",
     "post_chat_completion",
     "probe_health",
+    "probe_served_models",
     "resolve_runtime_profile",
+    "served_models_url",
     "uses_lan_curl_transport",
 ]
