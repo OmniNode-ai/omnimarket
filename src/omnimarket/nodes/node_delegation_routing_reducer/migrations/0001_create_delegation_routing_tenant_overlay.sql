@@ -118,8 +118,12 @@ CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
     endpoint_url TEXT NOT NULL,
     model_name TEXT NOT NULL,
     secret_ref TEXT,
-    timeout_ms INTEGER CHECK (timeout_ms IS NULL OR timeout_ms > 0),
-    max_tokens INTEGER CHECK (max_tokens IS NULL OR max_tokens > 0),
+    timeout_ms INTEGER
+        CONSTRAINT delegation_routing_tenant_overlay_timeout_ms_positive
+        CHECK (timeout_ms IS NULL OR timeout_ms > 0),
+    max_tokens INTEGER
+        CONSTRAINT delegation_routing_tenant_overlay_max_tokens_positive
+        CHECK (max_tokens IS NULL OR max_tokens > 0),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT delegation_routing_tenant_overlay_tenant_task_uq
