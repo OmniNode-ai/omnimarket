@@ -590,6 +590,74 @@ class TestProjectionQueryLimitOrderParams:
             resp = client.get(f"/projection/{self._TOPIC}?order=sideways")
         assert resp.status_code == 422
 
+    def test_order_by_column_reaches_cache_as_override(self) -> None:
+        """OMN-16290: a requested ``order_by`` column must reach the ACTUAL
+        row order via get_rows(order_by_override=...), replacing the
+        contract default entirely -- not merely direction-flip it."""
+        cache = _make_cache([self._row()])
+        with _with_cache(cache) as client:
+            resp = client.get(f"/projection/{self._TOPIC}?order_by=model_id")
+        assert resp.status_code == 200
+        assert resp.json()["ordering"] == "model_id ASC"
+        _args, kwargs = cache.get_rows.call_args
+        assert kwargs["order_by_override"] == (("model_id", "ASC", None),)
+
+    def test_order_by_with_explicit_direction(self) -> None:
+        cache = _make_cache([self._row()])
+        with _with_cache(cache) as client:
+            resp = client.get(f"/projection/{self._TOPIC}?order_by=model_id+DESC")
+        assert resp.status_code == 200
+        assert resp.json()["ordering"] == "model_id DESC"
+        _args, kwargs = cache.get_rows.call_args
+        assert kwargs["order_by_override"] == (("model_id", "DESC", None),)
+
+    def test_order_by_composes_with_order_direction_flip(self) -> None:
+        """``order_by`` selects the column; ``order`` still flips ITS
+        direction (composability, not a competing/ignored knob)."""
+        cache = _make_cache([self._row()])
+        with _with_cache(cache) as client:
+            resp = client.get(
+                f"/projection/{self._TOPIC}?order_by=model_id+ASC&order=desc"
+            )
+        assert resp.status_code == 200
+        assert resp.json()["ordering"] == "model_id DESC"
+        _args, kwargs = cache.get_rows.call_args
+        assert kwargs["order_by_override"] == (("model_id", "DESC", None),)
+
+    def test_order_by_unknown_column_rejected_with_422_not_silently_ignored(
+        self,
+    ) -> None:
+        """no-defensive-defaults: an order_by naming a column this topic does
+        not declare is REJECTED, never silently dropped back to the contract
+        default ordering."""
+        cache = _make_cache([self._row()])
+        with _with_cache(cache) as client:
+            resp = client.get(f"/projection/{self._TOPIC}?order_by=not_a_column")
+        assert resp.status_code == 422
+        body = resp.json()
+        assert body["error"] == "invalid_order_by"
+        assert body["topic"] == self._TOPIC
+        # The contract default must never have been reached for row order.
+        cache.get_rows.assert_not_called()
+
+    def test_order_by_malformed_clause_rejected_with_422(self) -> None:
+        cache = _make_cache([self._row()])
+        with _with_cache(cache) as client:
+            resp = client.get(
+                f"/projection/{self._TOPIC}?order_by=model_id+GARBAGE+TOKENS"
+            )
+        assert resp.status_code == 422
+        assert resp.json()["error"] == "invalid_order_by"
+
+    def test_absent_order_by_preserves_contract_default(self) -> None:
+        cache = _make_cache([self._row()])
+        with _with_cache(cache) as client:
+            resp = client.get(f"/projection/{self._TOPIC}")
+        assert resp.status_code == 200
+        assert resp.json()["ordering"] == "created_at DESC"
+        _args, kwargs = cache.get_rows.call_args
+        assert kwargs["order_by_override"] == (("created_at", "DESC", None),)
+
     def test_zero_limit_rejected_with_422(self) -> None:
         cache = _make_cache([self._row()])
         with _with_cache(cache) as client:

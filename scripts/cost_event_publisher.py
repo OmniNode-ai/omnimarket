@@ -30,6 +30,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from aiokafka import AIOKafkaProducer
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 
 _topics_path = (
@@ -66,6 +67,42 @@ DEFAULT_RETRY_BACKOFF_SECONDS = 2.0
 
 def compute_source_file_sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def build_envelope_bytes(enriched: dict[str, object]) -> bytes:
+    """Wrap an enriched cost-event payload in the platform canonical envelope.
+
+    OMN-16417: this daemon publishes directly via a raw ``AIOKafkaProducer``
+    (bypassing ``AdapterProtocolEventPublisherKafka``, which normally performs
+    this wrap for contract-native publishers), so it must build the envelope
+    itself. Every bus leg on ``onex.evt.*`` is ``ModelEventEnvelope``-shaped
+    (see ``node_bus_forwarder_effect/services/service_gateway_forwarder.py``
+    module docstring: "The wire on both broker legs is the platform canonical
+    ``ModelEventEnvelope``"). Publishing the bare domain dict directly (the
+    pre-fix behavior) made every record on this topic fail
+    ``ModelEventEnvelope.model_validate_json`` at the gateway-forwarder
+    trust boundary -- a 100% outbound quarantine, since the envelope's
+    ``payload`` field is required with no default.
+
+    ``event_type`` is set to the topic itself (matching
+    ``AdapterProtocolEventPublisherKafka``'s convention for callers that pass
+    an explicit ``topic`` override) so the gateway forwarder's
+    ``ModelGatewayEnvelope.event_type`` (non-empty, required) is always
+    populated.
+    """
+    correlation_id: uuid.UUID | None
+    try:
+        correlation_id = uuid.UUID(str(enriched["correlation_id"]))
+    except (KeyError, ValueError):
+        correlation_id = None
+
+    envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
+        payload=enriched,
+        correlation_id=correlation_id,
+        source_tool="omnimarket-cost-event-publisher",
+        event_type=TOPIC,
+    )
+    return envelope.model_dump_json().encode()
 
 
 def compute_idempotency_key(
@@ -173,7 +210,7 @@ class CostEventPublisher:
             "emitted_at": datetime.now(UTC).isoformat(),
         }
 
-        value = json.dumps(enriched).encode()
+        value = build_envelope_bytes(enriched)
         key = idempotency_key.encode()
 
         # Publish with retry

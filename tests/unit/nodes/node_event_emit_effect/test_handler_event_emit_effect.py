@@ -132,6 +132,47 @@ def test_unknown_event_type_fails_fast(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Registered event type with an empty fan_out (OMN-16021)
+# ---------------------------------------------------------------------------
+
+
+def test_zero_fan_out_registered_event_type_returns_structured_result(
+    tmp_path: Path,
+) -> None:
+    """``skill.friction_recorded`` is registered with ``fan_out: []``
+
+    ("Side-channel only, no Kafka fan-out" by design -- topics.yaml itself is
+    not changed). Prior to OMN-16021 this crashed ``handle()`` with an
+    unhandled ``UnknownEventTypeError`` instead of returning a typed
+    ``ModelEmitResult`` -- a robustness regression versus the old
+    ``node_emit_daemon``, which returned a graceful structured error for the
+    identical input. This reproduces the exact failure the
+    ``shadow_mode_parity_proof.py`` harness caught (``new_path_errors``:
+    ``["skill.friction_recorded", "UNHANDLED EXCEPTION: UnknownEventTypeError..."]``).
+    """
+    adapter = FakePublishAdapter()
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
+
+    request = ModelEmitRequest(
+        event_type="skill.friction_recorded",
+        payload={"skill": "code-review", "session_id": "sess-1"},
+    )
+
+    # Must not raise -- this is the regression under test.
+    result = handler.handle(request)
+
+    assert result.published is False
+    assert result.topics_published == []
+    assert result.spool_only is False
+    assert result.event_id == request.event_id
+    # Nothing to publish means nothing was spooled, and no publish adapter
+    # call was made -- this is a graceful no-op, not a failed attempt.
+    assert spool.pending_count() == 0
+    assert adapter.calls == []
+
+
+# ---------------------------------------------------------------------------
 # Purity: constructor does no I/O
 # ---------------------------------------------------------------------------
 
@@ -155,10 +196,15 @@ def test_handler_constructor_performs_no_io(
 # ---------------------------------------------------------------------------
 
 
-def test_spool_only_mode_when_kafka_unconfigured(
+def test_spool_only_mode_when_kafka_unconfigured_and_opted_out(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """The legitimate "intentionally no Kafka target yet" case (OMN-16167):
+    ONEX_EMIT_EFFECT_SPOOL_ONLY is the explicit, contract-declared opt-out --
+    absence of KAFKA_BOOTSTRAP_SERVERS no longer silently selects this mode
+    on its own (see test_kafka_unconfigured_without_opt_out_fails_loudly)."""
     monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.setenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", "true")
     spool = SpoolOutbox(tmp_path / "spool")
     handler = HandlerEventEmitEffect(spool=spool)  # no publish_adapter injected
 
@@ -168,9 +214,50 @@ def test_spool_only_mode_when_kafka_unconfigured(
     result = handler.handle(request)
 
     assert result.published is False
+    assert result.spool_only is True
     assert result.topics_published == []
     assert result.drained_count == 0
     assert spool.pending_count() == 1  # accumulates until Kafka is configured
+
+
+def test_kafka_unconfigured_without_opt_out_fails_loudly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-16167: a genuinely unconfigured Kafka target (no opt-out declared)
+    must fail loudly at adapter construction -- not silently degrade to
+    spool-only the way a bare ``os.environ.get("KAFKA_BOOTSTRAP_SERVERS")``
+    read used to. The event must still be durably spooled first, so the
+    loud failure does not also lose data (no durability regression)."""
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.delenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", raising=False)
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool)  # no publish_adapter injected
+
+    request = ModelEmitRequest(
+        event_type="session.started", payload={"session_id": "x"}
+    )
+
+    with pytest.raises(KeyError, match="KAFKA_BOOTSTRAP_SERVERS"):
+        handler.handle(request)
+
+    # Durability preserved: the event was appended to the spool outbox
+    # before adapter resolution raised.
+    assert spool.pending_count() == 1
+
+
+def test_kafka_unconfigured_spool_only_opt_out_accepts_common_truthy_spellings(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.setenv("ONEX_EMIT_EFFECT_SPOOL_ONLY", "1")
+    spool = SpoolOutbox(tmp_path / "spool")
+    handler = HandlerEventEmitEffect(spool=spool)
+
+    result = handler.handle(
+        ModelEmitRequest(event_type="session.started", payload={"session_id": "x"})
+    )
+    assert result.published is False
+    assert result.spool_only is True
 
 
 def test_oversized_current_event_is_dropped_but_backlog_still_drains(

@@ -27,6 +27,11 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
+from omnimarket.routing.tenant_overlay_resolver import (
+    ProtocolTenantOverlayReader,
+    resolve_tenant_overlay,
+    resolve_tenant_overlay_db,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +76,24 @@ class HandlerRoutingIntent:
     handle/handle_async, never __call__).
     """
 
+    def __init__(
+        self,
+        *,
+        tenant_overlay_db: ProtocolTenantOverlayReader | None = None,
+    ) -> None:
+        # OMN-15631 v1(a): resolved lazily (once, at construction — not per
+        # request) via resolve_tenant_overlay_db(), which is itself gated on
+        # OMNIDASH_ANALYTICS_DB_URL and fails OPEN to None when unset/
+        # unreachable — a request from a tenant with no overlay row, or from
+        # a lane with no overlay DB wired at all, resolves the unchanged
+        # platform default (see delta()'s tenant_overlay=None docstring).
+        # Tests inject a fake reader here instead of setting the env var.
+        self._tenant_overlay_db = (
+            tenant_overlay_db
+            if tenant_overlay_db is not None
+            else resolve_tenant_overlay_db()
+        )
+
     def handle(self, intent: ModelRoutingIntent) -> ModelRoutingDecision:
         # OMN-14402: getattr-guarded so this consumer degrades gracefully
         # against a core pin that predates the excluded_backend_refs field
@@ -79,10 +102,23 @@ class HandlerRoutingIntent:
         excluded_backend_refs = frozenset(
             getattr(intent, "excluded_backend_refs", ()) or ()
         )
+        # OMN-15631 v1(a): resolve the tenant overlay ONCE per request, as a
+        # pure input threaded into delta() — mirrors the roi_overlay pattern.
+        # getattr-guarded the same way excluded_backend_refs is above, for a
+        # payload built against a core pin that predates ModelDelegationRequest
+        # carrying tenant_id (there is none known today, but the pattern is
+        # cheap insurance against the identical rollout-skew failure mode).
+        tenant_id = getattr(intent.payload, "tenant_id", None)
+        tenant_overlay = resolve_tenant_overlay(
+            self._tenant_overlay_db,
+            tenant_id=tenant_id,
+            task_type=intent.payload.task_type,
+        )
         decision = routing_delta(
             intent.payload,
             min_tier_name=intent.min_tier_name,
             excluded_backend_refs=excluded_backend_refs,
+            tenant_overlay=tenant_overlay,
         )
         logger.info(
             "HandlerRoutingIntent resolved: model=%s endpoint=%s tier=%s correlation_id=%s",

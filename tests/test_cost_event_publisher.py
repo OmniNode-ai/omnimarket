@@ -20,10 +20,13 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from pydantic import ValidationError
 
 from scripts.cost_event_publisher import (
     TOPIC,
     CostEventPublisher,
+    build_envelope_bytes,
     compute_idempotency_key,
     compute_source_file_sha256,
     validate_event,
@@ -186,6 +189,81 @@ class TestValidateEvent:
 
 
 # ---------------------------------------------------------------------------
+# build_envelope_bytes — OMN-16417 gateway-forwarder outbound quarantine fix
+#
+# The gateway forwarder (omnibase_infra node_bus_forwarder_effect) decodes
+# every outbound record as ModelEventEnvelope[dict[str, object]] before it
+# will wrap and mirror it to cloud. Pre-fix, this daemon published the bare
+# enriched dict directly, which has no `payload` field (required, no
+# default) — every record failed ModelEventEnvelope.model_validate_json and
+# was quarantined. This section proves both halves: (1) the field set below
+# is the REAL on-wire schema observed via a read-only probe of a live
+# quarantined record on .201 (keys only pulled, no payload values — see
+# OMN-16417), so the golden case is not a fabricated shape; (2) the fixed
+# wire bytes now decode cleanly through the exact model the forwarder uses.
+# ---------------------------------------------------------------------------
+
+
+# Field set matches the live schema pulled from a real quarantined record on
+# onex.evt.omniintelligence.llm-call-completed.v1 (.201 dev lane, 2026-08-23):
+# {"correlation_id", "emitted_at", "idempotency_key", "input_tokens",
+#  "model_id", "output_tokens", "reporting_source", "session_id",
+#  "source_file_sha256", "total_cost_usd", "usage_source"} — only key names
+# were read off the live bus; no field values were captured or reused here.
+_GOLDEN_ENRICHED_PAYLOAD: dict[str, Any] = {
+    "correlation_id": str(uuid.uuid4()),
+    "emitted_at": "2026-08-23T14:00:00+00:00",
+    "idempotency_key": "a" * 64,
+    "input_tokens": 512,
+    "model_id": "qwen3.8",
+    "output_tokens": 128,
+    "reporting_source": "build-loop",
+    "session_id": "sess-golden",
+    "source_file_sha256": "b" * 64,
+    "total_cost_usd": 0.0031,
+    "usage_source": "MEASURED",
+}
+
+
+class TestBuildEnvelopeBytesGoldenCase:
+    def test_golden_record_shape_decodes_as_model_event_envelope(self) -> None:
+        """The exact real on-wire field set must decode via the same model
+        (and same required-field semantics) the gateway forwarder's
+        ``_decode_message`` uses."""
+        value = build_envelope_bytes(dict(_GOLDEN_ENRICHED_PAYLOAD))
+
+        envelope = ModelEventEnvelope[dict[str, object]].model_validate_json(value)
+
+        assert envelope.payload == _GOLDEN_ENRICHED_PAYLOAD
+        assert envelope.event_type == TOPIC
+        assert (
+            str(envelope.correlation_id) == _GOLDEN_ENRICHED_PAYLOAD["correlation_id"]
+        )
+
+    def test_pre_fix_bare_dict_fails_the_same_decode(self) -> None:
+        """Regression guard: publishing the bare enriched dict (the pre-fix
+        behavior) must fail the forwarder's decode, proving the wrap is load
+        bearing and not merely cosmetic."""
+        bare_value = json.dumps(_GOLDEN_ENRICHED_PAYLOAD).encode()
+
+        with pytest.raises(ValidationError, match="payload"):
+            ModelEventEnvelope[dict[str, object]].model_validate_json(bare_value)
+
+    def test_missing_correlation_id_does_not_raise(self) -> None:
+        """A payload without a parseable correlation_id degrades gracefully
+        (envelope.correlation_id=None) rather than raising -- publish must
+        stay best-effort per the daemon's existing retry/quarantine model."""
+        payload = dict(_GOLDEN_ENRICHED_PAYLOAD)
+        payload["correlation_id"] = "not-a-uuid"
+
+        value = build_envelope_bytes(payload)
+        envelope = ModelEventEnvelope[dict[str, object]].model_validate_json(value)
+
+        assert envelope.correlation_id is None
+        assert envelope.payload["correlation_id"] == "not-a-uuid"
+
+
+# ---------------------------------------------------------------------------
 # CostEventPublisher — quarantine behavior
 # ---------------------------------------------------------------------------
 
@@ -333,7 +411,10 @@ class TestCostEventPublisherHappyPath:
             await publisher.process_file(f)
 
         assert published_value is not None
-        published = json.loads(published_value)
+        envelope = json.loads(published_value)
+        # OMN-16417: the wire record is now ModelEventEnvelope-shaped;
+        # enrichment fields live under the envelope's payload, not top-level.
+        published = envelope["payload"]
         assert "idempotency_key" in published
         assert len(published["idempotency_key"]) == 64
         assert "source_file_sha256" in published
@@ -393,8 +474,8 @@ class TestCostEventPublisherHappyPath:
             await publisher.process_file(f)
 
         assert captured_value is not None
-        published = json.loads(captured_value)
-        assert captured_key == published["idempotency_key"].encode()
+        envelope = json.loads(captured_value)
+        assert captured_key == envelope["payload"]["idempotency_key"].encode()
 
     @pytest.mark.asyncio
     async def test_retry_succeeds_on_second_attempt(self, tmp_spool: Path) -> None:

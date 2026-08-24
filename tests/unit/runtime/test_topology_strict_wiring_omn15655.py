@@ -110,32 +110,39 @@ _PROFILES: Final[tuple[str, ...]] = tuple(sorted(SUPPORTED_TOPOLOGY_PROFILES))
 # ---------------------------------------------------------------------------
 _TRACKED_UNRESOLVED_DECLARATIONS: Final[frozenset[tuple[str, str, str, str]]] = (
     frozenset(
-        # RETIRED 2026-08-02 -- the nine relations that used to sit here
-        # (eight `application`.`public` placeholders plus
-        # node_projection_delegation's `unresolved` landmine) are gone from
-        # this ratchet because the operator CLASSIFIED them, which is the
-        # only sanctioned way an entry leaves: "this is all per tenant."
-        # All nine now declare `schema: tenant` and resolve on every
-        # profile. See OMN-15655 / OMN-15423 and the house-tenant ruling.
-        #
-        # CORRECTION to the retired comment, which was FALSE for two of the
-        # ten entries: it claimed "None of them declares a
-        # `descriptor.runtime_profiles`, so ... none is boot-fatal today."
-        # `node_projection_delegation` (delegation_judge_verdict_events) and
-        # `node_dispatch_outcome_bridge_effect` (dispatch_eval_results) BOTH
-        # declare `runtime_profiles: [effects]`, so both were strict-mode
-        # boot-fatal on the deployed effects pod, on the onex-dev green
-        # path. The claim held only for the eight PUBLIC placeholders.
-        #
-        # RETIRED 2026-08-15 (OMN-16077 infra pin bump to 94247acff): the
-        # last residual, node_dispatch_outcome_bridge_effect's
-        # (`omniintelligence`.`public`.`dispatch_eval_results`), left the
-        # ratchet the sanctioned way — the OMN-15668 repair landed in
-        # omnibase_infra (the `omniintelligence` service-owned database is
-        # now DECLARED in the typed topology, per ADR-0027), so the
-        # declaration resolves on every shipped profile. The ratchet is
-        # empty; it stays here so a future bad declaration still fails CI
-        # against an exact (now-empty) expected set.
+        {
+            # RETIRED 2026-08-02 -- the nine relations that used to sit here
+            # (eight `application`.`public` placeholders plus
+            # node_projection_delegation's `unresolved` landmine) are gone from
+            # this ratchet because the operator CLASSIFIED them, which is the
+            # only sanctioned way an entry leaves: "this is all per tenant."
+            # All nine now declare `schema: tenant` and resolve on every
+            # profile. See OMN-15655 / OMN-15423 and the house-tenant ruling.
+            #
+            # CORRECTION to the retired comment, which was FALSE for two of the
+            # ten entries: it claimed "None of them declares a
+            # `descriptor.runtime_profiles`, so ... none is boot-fatal today."
+            # `node_projection_delegation` (delegation_judge_verdict_events) and
+            # `node_dispatch_outcome_bridge_effect` (dispatch_eval_results) BOTH
+            # declare `runtime_profiles: [effects]`, so both were strict-mode
+            # boot-fatal on the deployed effects pod, on the onex-dev green
+            # path. The claim held only for the eight PUBLIC placeholders.
+            #
+            # RETIRED 2026-08-15 (OMN-16077 infra pin bump to 94247acff): the
+            # last residual, node_dispatch_outcome_bridge_effect's
+            # (`omniintelligence`.`public`.`dispatch_eval_results`), left the
+            # ratchet the sanctioned way — the OMN-15668 repair landed in
+            # omnibase_infra (the `omniintelligence` service-owned database is
+            # now DECLARED in the typed topology, per ADR-0027), so the
+            # declaration resolves on every shipped profile. The ratchet was
+            # empty from 2026-08-15 until the entry below.
+            #
+            # RETIRED 2026-08-20 (OMN-15631 merge-sweep repair): the
+            # node_delegation_routing_reducer tenant-overlay table now declares
+            # `schema: tenant` and resolves against the shipped topology. The
+            # v1(a) table remains no-RLS; OMN-16314 still owns the later tenant
+            # isolation policy/foundation work.
+        }
     )
 )
 

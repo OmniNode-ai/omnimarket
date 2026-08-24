@@ -400,6 +400,65 @@ def resolve_api_key_loop_safe(
         )
 
 
+async def resolve_tenant_scoped_api_key_async(
+    api_key_ref: str | None,
+    *,
+    tenant_id: str,
+    store: ProtocolSecretStore | None = None,
+) -> SecretStr | None:
+    """Resolve a TENANT-OVERLAY backend's secret VALUE — fail-fast, no house fallback.
+
+    OMN-15631 v1(a). A backend resolved from a tenant's
+    ``delegation_routing_tenant_overlay`` row must never silently fall back to
+    an OmniNode house key when its own ``secret_ref`` is missing or unresolved
+    — that would route a tenant's traffic (and cost) through the platform's
+    own provider account without either party's knowledge. This wrapper is a
+    thin, INTENTIONALLY-narrower call of :func:`resolve_api_key_async`:
+    ``required`` is always ``True`` (fail-fast on a miss) and
+    ``env_var_fallback`` is always omitted — the house ``api_key_env``
+    convention (``BifrostBackendRef.api_key_env`` / the bifrost contract's
+    ``api_key_env`` field) has no tenant-overlay equivalent by construction
+    (migration 0001 carries no ``api_key_env`` column), so there is nothing to
+    thread here even by accident.
+
+    Args:
+        api_key_ref: The tenant-scoped secret reference name, or ``None`` for
+            an explicitly unauthenticated tenant backend.
+        tenant_id: The tenant this resolution is scoped to — carried for
+            structured logging/error attribution only; the actual store
+            lookup key is still ``api_key_ref`` (the store is not itself
+            tenant-partitioned in v1(a) — see OMN-13236's ``ProtocolSecretStore``
+            contract, which this reuses unchanged).
+        store: The ``ProtocolSecretStore`` to resolve through. Defaults to the
+            same env-backed store :func:`resolve_api_key_async` uses.
+
+    Returns:
+        The resolved secret wrapped in ``SecretStr``, or ``None`` only when
+        ``api_key_ref`` is ``None`` (an explicitly unauthenticated backend).
+
+    Raises:
+        SecretResolutionError: When ``api_key_ref`` is declared but the
+            secret store has no value for it. No further fallback exists.
+    """
+    if not api_key_ref:
+        return None
+    try:
+        return await resolve_api_key_async(
+            api_key_ref,
+            store=store,
+            required=True,
+            env_var_fallback=None,
+        )
+    except SecretResolutionError as exc:
+        raise SecretResolutionError(
+            f"Tenant {tenant_id!r} overlay backend declared secret_ref "
+            f"{api_key_ref!r} which could not be resolved from the secret "
+            "store. Tenant-overlay backends never fall back to a house key — "
+            "the tenant must register this ref in the secret store before "
+            "this backend is routable."
+        ) from exc
+
+
 def api_key_ref_available(
     api_key_ref: str | None,
     *,
@@ -437,4 +496,5 @@ __all__: list[str] = [
     "resolve_api_key",
     "resolve_api_key_async",
     "resolve_api_key_loop_safe",
+    "resolve_tenant_scoped_api_key_async",
 ]

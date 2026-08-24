@@ -37,9 +37,7 @@ DEFAULT_OUTPUT = REPO_ROOT / "docs" / "evidence" / "OMN-15423-relation-inventory
 SERVICE_MANIFEST = REPO_ROOT / "scripts" / "application-relation-ownership.yaml"
 SERVICE_SOURCE = REPO_ROOT / "scripts" / "run-projection-migrations.py"
 SERVICE_OWNER = "service:omnimarket_projection_migration_runner"
-RETAINED_LIVE_CENSUS_SOURCE = (
-    "omni_home/docs/plans/2026-07-29-two-database-tenant-vs-internal-split-plan.md"
-)
+RETAINED_LIVE_CENSUS_SOURCE = "retained two-database split plan, 2026-07-29"
 
 DOMAIN_BY_SCHEMA = {
     "public": "PUBLIC",

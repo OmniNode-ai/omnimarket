@@ -12,7 +12,7 @@ on:
         required: true
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: release-${{ github.repository }}-${{ github.ref_name }}
@@ -21,8 +21,11 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.tag.outputs.tag }}
+      tag_sha: ${{ steps.tag.outputs.tag_sha }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -36,9 +39,11 @@ jobs:
           test -z "$(git ls-files --others --exclude-standard)"
 
       - name: Validate tag matches pyproject.toml version
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
+            TAG="$RELEASE_TAG"
           else
             TAG="${GITHUB_REF_NAME}"
           fi
@@ -84,12 +89,26 @@ jobs:
 
       - name: Set release tag
         id: tag
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >> $GITHUB_OUTPUT
+            # A newline in the dispatch input would forge extra GITHUB_OUTPUT
+            # entries, so constrain it to the tag charset before writing it.
+            case "$RELEASE_TAG" in
+              ''|*[!A-Za-z0-9.+_-]*)
+                echo "::error::release tag contains unsupported characters"
+                exit 1
+                ;;
+            esac
+            TAG="$RELEASE_TAG"
+            echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "tag=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+            TAG="${GITHUB_REF_NAME}"
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
           fi
+          TAG_SHA=$(git rev-list -n 1 "$TAG")
+          echo "tag_sha=$TAG_SHA" >> "$GITHUB_OUTPUT"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -101,3 +120,70 @@ jobs:
             dist/SHA256SUMS.txt
           generate_release_notes: true
           prerelease: ${{ contains(steps.tag.outputs.tag, 'rc') }}
+
+  sync-main:
+    needs: release
+    if: ${{ !contains(needs.release.outputs.version, 'rc') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      # OMN-16289: main = the last release. Once a release publishes
+      # successfully, fast-forward main to the released tag's commit SHA.
+      # This job intentionally does not check out or execute repository code:
+      # it receives only the validated tag and commit SHA from the release job,
+      # then updates refs/heads/main through the GitHub API.
+      #
+      # OMN-16343: the workflow GITHUB_TOKEN is NOT an authorizable identity
+      # for a push-restricted branch — proven live on omnibase_core (GH006,
+      # 2026-08-21): the workflow-token push to main was rejected outright.
+      # Mint a short-lived installation token from the org-owned
+      # onexbot-occ-writer App (org secrets ONEXBOT_OCC_APP_ID /
+      # ONEXBOT_OCC_PRIVATE_KEY, visibility to this repo verified) via the
+      # same canonical `actions/create-github-app-token` pattern already used
+      # by call-occ-attestation-observe.yml / call-occ-companion-author.yml /
+      # pr-arch-review.yml, and push as that App identity instead.
+      - name: Mint sync-main push token (OnexBot-OCC-Writer App)
+        id: sync-main-app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      - name: Sync main to release tag
+        env:
+          RELEASE_TAG: ${{ needs.release.outputs.version }}
+          TAG_SHA: ${{ needs.release.outputs.tag_sha }}
+          SYNC_MAIN_TOKEN: ${{ steps.sync-main-app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in
+            ''|*[!A-Za-z0-9.+_-]*)
+              echo "::error::release tag contains unsupported characters"
+              exit 1
+              ;;
+          esac
+          case "$TAG_SHA" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *)
+              echo "::error::release SHA is not a full commit SHA"
+              exit 1
+              ;;
+          esac
+          python3 - <<'PY' > update-main-ref.json
+          import json
+          import os
+
+          print(json.dumps({"sha": os.environ["TAG_SHA"], "force": False}))
+          PY
+          curl -fsS \
+            -X PATCH \
+            -H "Authorization: Bearer ${SYNC_MAIN_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs/heads/main" \
+            --data @update-main-ref.json
+          echo "main fast-forwarded to $TAG_SHA ($RELEASE_TAG)"
