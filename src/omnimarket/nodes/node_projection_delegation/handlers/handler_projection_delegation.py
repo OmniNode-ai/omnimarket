@@ -60,7 +60,10 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
 )
 from omnimarket.pricing import recompute_actual_cost_and_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
-from omnimarket.projection.tenant_isolation import require_tenant_id
+from omnimarket.projection.tenant_isolation import (
+    require_tenant_id,
+    resolve_tenant_uuid_or_none,
+)
 
 TABLE = "delegation_events"
 CONFLICT_KEY = "correlation_id"
@@ -413,10 +416,17 @@ class HandlerProjectionDelegation:
         require_tenant_id(event.tenant_id, table=TABLE)
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
         # source event carried one — omitting the key (rather than writing
-        # None) lets the delegation_events column DEFAULT 'omninode' apply on
-        # INSERT and leaves an already-known tenant untouched on UPDATE.
-        if event.tenant_id:
-            row["tenant_id"] = event.tenant_id
+        # None) lets the delegation_events column DEFAULT apply on INSERT and
+        # leaves an already-known tenant untouched on UPDATE.
+        # OMN-15683: delegation_events.tenant_id is UUID (migration 0031) —
+        # event.tenant_id is the verified SLUG (stamp_verified_tenant_slug);
+        # resolve it to the canonical UUID before it reaches the row/column.
+        # Stamping the raw slug here would either fail the INSERT (unmapped
+        # value) or, worse, silently key the row under a representation the
+        # gateway's UUID-keyed reader can never join against again.
+        resolved_tenant_uuid = resolve_tenant_uuid_or_none(event.tenant_id)
+        if resolved_tenant_uuid is not None:
+            row["tenant_id"] = resolved_tenant_uuid
         evidence = extract_quality_bar_evidence(row)
         evidence.update(
             extract_quality_bar_evidence(
@@ -545,10 +555,13 @@ class HandlerProjectionDelegation:
         # ENFORCE_TENANT_ISOLATION is set.
         require_tenant_id(row_model.tenant_id, table=TABLE)
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when
-        # present — omitting the key lets the column DEFAULT 'omninode' apply
-        # on INSERT and leaves an already-known tenant untouched on UPDATE.
-        if row_model.tenant_id:
-            row["tenant_id"] = row_model.tenant_id
+        # present — omitting the key lets the column DEFAULT apply on INSERT
+        # and leaves an already-known tenant untouched on UPDATE.
+        # OMN-15683: same UUID resolution as project() above — see that
+        # call site's comment for why the raw slug must never reach the row.
+        resolved_tenant_uuid = resolve_tenant_uuid_or_none(row_model.tenant_id)
+        if resolved_tenant_uuid is not None:
+            row["tenant_id"] = resolved_tenant_uuid
         # OMN-13596: preserve an already-correct response_text when this
         # delegate-skill terminal event carries None/empty response_text.
         # Without this guard, a late-arriving timeout terminal (status="timeout",

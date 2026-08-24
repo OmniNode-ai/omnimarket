@@ -153,17 +153,29 @@ INTERIM_DEFAULT_TENANT = HOUSE_TENANT_SLUG
 #
 # A closed, explicit mapping table -- NOT a hash/uuid5 re-derivation of
 # whatever string shows up. The only legacy value any landed migration or
-# writer has ever produced is HOUSE_TENANT_SLUG (every DEFAULT, every
-# backfill, every handler constant agrees -- see
-# ``test_house_tenant_identity.py``). Re-deriving a UUID from an arbitrary
-# input string would let any unreviewed value silently mint a new tenant
-# identity with no registry entry and no RLS policy; this table can only ever
-# resolve values this codebase already knows about, and everything else is
-# refused. Extend this dict, never fall through to a computed default, when a
-# second legacy value is discovered.
-# ---------------------------------------------------------------------------
+# writer had produced at the time this module was first written was
+# HOUSE_TENANT_SLUG (every DEFAULT, every backfill, every handler constant
+# agreed -- see ``test_house_tenant_identity.py``). Re-deriving a UUID from an
+# arbitrary input string would let any unreviewed value silently mint a new
+# tenant identity with no registry entry and no RLS policy; this table can
+# only ever resolve values this codebase already knows about, and everything
+# else is refused. Extend this dict, never fall through to a computed
+# default, when a second legacy value is discovered.
+#
+# OMN-15683: the two provisioned beta tenants. Live-verified against
+# ``omninode_cloud.public.tenants`` on onex-dev (2026-08-03 probe recorded on
+# the ticket, re-confirmed 2026-08-18): the gateway side
+# (``gateway_workflows.tenant_id``, already UUID) and this table's read/write
+# boundary must resolve the SAME identity for a receipt to be visible to its
+# owning tenant. ``delegation_events.tenant_id`` (this table's TEXT slug
+# column, migration 0022) stores these exact slugs today, stamped by
+# ``stamp_verified_tenant_slug`` (omnibase_infra) from the gateway's
+# config-bound ``ModelGatewayTenantIdentity`` -- the slug is not a guess, it
+# is the wire value this codebase already writes.
 _LEGACY_TENANT_UUID_MAP: dict[str, UUID] = {
     HOUSE_TENANT_SLUG: HOUSE_TENANT_UUID,
+    "beta-business-proof": UUID("91c74442-1233-4c97-b191-911a10346fdf"),
+    "beta-gateway-canary-79afa7263852": UUID("79afa726-3852-464f-b7a4-d4b8b9c75ee7"),
 }
 
 
@@ -195,12 +207,58 @@ def resolve_tenant_uuid(tenant_value: str | None) -> UUID:
     )
 
 
+def resolve_tenant_uuid_or_none(tenant_value: str | None) -> str | None:
+    """Null-safe wrapper around :func:`resolve_tenant_uuid` for writer sites
+    that stamp a UUID-typed ``tenant_id`` column (OMN-15683).
+
+    Writers on this projection surface follow the OMN-14058 interim pattern:
+    "only stamp the key when the source event carried a value -- omitting it
+    lets the column DEFAULT apply on INSERT and leaves an already-known
+    tenant untouched on UPDATE." That pattern needs a resolver that returns
+    ``None`` (not a raise, not an invented value) for the blank/absent case,
+    while still failing loudly on a PRESENT-but-unrecognized slug --
+    :func:`resolve_tenant_uuid` already does the latter, so this only adds
+    the former. A relation whose ``tenant_id`` column is still TEXT (e.g.
+    ``delegation_budget_state``, ``delegation_judge_verdict_events``) must
+    NOT route through this function -- it would coerce a valid TEXT-column
+    slug into a UUID string the column was never migrated to accept.
+    """
+    if not tenant_value:
+        return None
+    return str(resolve_tenant_uuid(tenant_value))
+
+
+# OMN-15683: relations whose tenant_id column has been converted from the
+# legacy TEXT slug to the canonical UUID (OMN-15356's classified-TENANT
+# sweep). The interim-default GUC fallback below must equal whichever
+# representation the table's OWN column DEFAULT/RLS cast now expects --
+# see resolve_write_tenant's "the GUC must equal what the database will
+# actually store" rule, which this set exists to keep true after a
+# conversion. Extend only when a relation's own migration converts its
+# column (never speculatively): delegation_budget_state,
+# delegation_judge_verdict_events, and every other tenant_id column on this
+# surface remain TEXT today and must NOT be added here.
+_UUID_CONVERTED_TABLES: frozenset[str] = frozenset({"delegation_events"})
+
+
+def _house_tenant_interim_default(table: str | None) -> str:
+    """The house-tenant fallback value, in whichever representation
+    ``table``'s own column currently expects."""
+    if table in _UUID_CONVERTED_TABLES:
+        return str(HOUSE_TENANT_UUID)
+    return INTERIM_DEFAULT_TENANT
+
+
 def resolve_write_tenant(tenant_value: object, *, table: str) -> str:
     """Resolve the tenant a projection WRITE runs under.
 
     The GUC must equal what the database will actually store, so the only
     authorities are the row itself and, when the row omits ``tenant_id``, the
-    column DEFAULT that Postgres then applies.
+    column DEFAULT that Postgres then applies -- which is why the fallback
+    below is table-aware (:data:`_UUID_CONVERTED_TABLES`): for a converted
+    relation the column DEFAULT is now the house tenant UUID, not the slug,
+    and the RLS policy casts the GUC to ``::uuid`` -- setting it to the slug
+    would fail that cast outright (OMN-15683).
 
     Deliberately does NOT consult ``Settings.onex_tenant_id``: resolving a
     tenant from configuration is the HANDLER's job (it stamps
@@ -215,7 +273,7 @@ def resolve_write_tenant(tenant_value: object, *, table: str) -> str:
     if isinstance(tenant_value, str) and tenant_value.strip():
         return tenant_value.strip()
     require_tenant_id(None, table=table)
-    return INTERIM_DEFAULT_TENANT
+    return _house_tenant_interim_default(table)
 
 
 def house_tenant_write_stamp(*, table: str) -> dict[str, str]:
@@ -254,7 +312,7 @@ def house_tenant_write_stamp(*, table: str) -> dict[str, str]:
     return {}
 
 
-def resolve_read_tenant(tenant_value: object) -> str:
+def resolve_read_tenant(tenant_value: object, *, table: str | None = None) -> str:
     """Resolve the tenant a projection READ runs under.
 
     Mirrors the HANDLER's resolution order (explicit value, then the lane's
@@ -262,13 +320,22 @@ def resolve_read_tenant(tenant_value: object) -> str:
     column-default rule: where a lane configures a tenant, the handler stamped
     it onto the rows, so that is where existing-row probes must look.
 
+    ``table`` is OPTIONAL (unlike :func:`resolve_write_tenant`, where it is
+    required): this function is also called from the generic
+    ``AsyncpgAdapter._set_tenant_context`` fallback, which has no table in
+    scope at all. Passing it (as ``PostgresSyncProjectionAdapter.query()``
+    does) makes the interim-default fallback table-aware
+    (:data:`_UUID_CONVERTED_TABLES`, OMN-15683) so it matches whichever
+    representation that table's column now expects; omitting it preserves
+    the pre-OMN-15683 slug fallback for every other caller.
+
     Never raises. An unresolvable read tenant already fails closed at the policy
     (zero rows visible, no leak), and raising here would break the probes that
     guard against clobbering already-written evidence.
     """
     if isinstance(tenant_value, str) and tenant_value.strip():
         return tenant_value.strip()
-    return get_settings().onex_tenant_id.strip() or INTERIM_DEFAULT_TENANT
+    return get_settings().onex_tenant_id.strip() or _house_tenant_interim_default(table)
 
 
 def resolve_rls_read_tenant(tenant_value: object, *, table: str) -> str:
@@ -339,5 +406,6 @@ __all__: list[str] = [
     "resolve_read_tenant",
     "resolve_rls_read_tenant",
     "resolve_tenant_uuid",
+    "resolve_tenant_uuid_or_none",
     "resolve_write_tenant",
 ]

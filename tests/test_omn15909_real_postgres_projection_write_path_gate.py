@@ -49,7 +49,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import quote, quote_plus
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import asyncpg
 import pytest
@@ -299,8 +299,11 @@ class TestOmn15800LazyAsyncpgImportStillConnects:
             # fixture performs on top of it.
             assert isinstance(runner.db, AsyncpgAdapter)
             correlation_id = str(uuid4())
+            # OMN-15683: delegation_events.tenant_id is now UUID; "acme-corp"
+            # has no canonical mapping and would raise UnmappedTenantIdentityError
+            # before this write ever reaches Postgres. Use a mapped tenant.
             data = _real_delegation_completed_payload(
-                correlation_id=correlation_id, tenant_id="acme-corp"
+                correlation_id=correlation_id, tenant_id="beta-business-proof"
             )
             meta = MessageMeta(partition=0, offset=0, fallback_id=correlation_id)
 
@@ -335,8 +338,11 @@ class TestRealPostgresEndToEndWritePath:
         """
         async with _provisioned_runner() as (runner, admin_conn, _schema):
             correlation_id = str(uuid4())
+            # OMN-15683: delegation_events.tenant_id is now UUID -- "acme-corp"
+            # has no canonical mapping, so use a mapped tenant and assert the
+            # resolved UUID rather than the raw slug.
             data = _real_delegation_completed_payload(
-                correlation_id=correlation_id, tenant_id="acme-corp"
+                correlation_id=correlation_id, tenant_id="beta-business-proof"
             )
             meta = MessageMeta(partition=0, offset=0, fallback_id=correlation_id)
 
@@ -350,7 +356,7 @@ class TestRealPostgresEndToEndWritePath:
                 correlation_id,
             )
             assert row is not None, "the write must have landed a real row"
-            assert row["tenant_id"] == "acme-corp"
+            assert row["tenant_id"] == UUID("91c74442-1233-4c97-b191-911a10346fdf")
             assert row["quality_gate_passed"] is True
             assert row["cost_tier_name"] == "cheap_cloud"
             assert float(row["cost_usd"]) > 0
@@ -467,7 +473,11 @@ class TestRedProofFixtures:
             correlation_id = str(uuid4())
             bad_row: dict[str, object] = {
                 "correlation_id": correlation_id,
-                "tenant_id": "acme-corp",
+                # OMN-15683: _dynamic_upsert bypasses handler-level slug->UUID
+                # resolution entirely, so tenant_id here must already be a
+                # raw UUID string -- this test's defect under proof is the
+                # TIMESTAMP typing, not tenant resolution.
+                "tenant_id": str(uuid4()),
                 "task_type": "code-review",
                 "delegated_to": "local-runtime",
                 "timestamp": datetime.now(tz=UTC).isoformat(),
@@ -492,7 +502,8 @@ class TestRedProofFixtures:
             correlation_id = str(uuid4())
             good_row: dict[str, object] = {
                 "correlation_id": correlation_id,
-                "tenant_id": "acme-corp",
+                # OMN-15683: see the RED test above -- raw UUID string.
+                "tenant_id": str(uuid4()),
                 "task_type": "code-review",
                 "delegated_to": "local-runtime",
                 "timestamp": datetime.now(tz=UTC),
@@ -567,8 +578,9 @@ class TestRedProofFixtures:
                 lambda: Settings(enforce_tenant_isolation=True),
             ):
                 correlation_id = str(uuid4())
+                # OMN-15683: "acme-corp" has no canonical UUID mapping.
                 data = _real_delegation_completed_payload(
-                    correlation_id=correlation_id, tenant_id="acme-corp"
+                    correlation_id=correlation_id, tenant_id="beta-business-proof"
                 )
                 meta = MessageMeta(partition=0, offset=3, fallback_id=correlation_id)
 
@@ -582,7 +594,7 @@ class TestRedProofFixtures:
                 correlation_id,
             )
             assert row is not None
-            assert row["tenant_id"] == "acme-corp"
+            assert row["tenant_id"] == UUID("91c74442-1233-4c97-b191-911a10346fdf")
 
     # -- (c) undefined/renamed column ---------------------------------------
 
@@ -767,16 +779,28 @@ class TestRlsWriteContextResolver:
         writer role. If a future call site regresses by omitting the
         ``tenant`` kwarg for a real-tenant row, this is the mechanism that
         catches it.
+
+        OMN-15683 UPDATE: delegation_events.tenant_id is now UUID, and
+        ``AsyncpgAdapter._set_tenant_context``'s no-``tenant``-kwarg fallback
+        (``resolve_read_tenant(None)``, no table in scope) still returns the
+        SLUG house-tenant default -- it is deliberately not made table-aware
+        (that would require threading ``table`` through every
+        ``AsyncpgAdapter`` public method). So for THIS table the rejection
+        now happens one step earlier than before: the GUC itself fails the
+        RLS policy's ``::uuid`` cast (``InvalidTextRepresentationError``,
+        SQLSTATE 22P02) rather than the WITH CHECK permission clause
+        (``InsufficientPrivilegeError``) -- the write is still rejected
+        either way, which is what this sentinel actually guards.
         """
         async with _provisioned_rls_writer() as (_runner, adapter, admin_conn, _schema):
             correlation_id = str(uuid4())
-            with pytest.raises(asyncpg.exceptions.InsufficientPrivilegeError):
+            with pytest.raises(asyncpg.exceptions.InvalidTextRepresentationError):
                 await adapter.execute(
                     "INSERT INTO delegation_events "
                     "(correlation_id, tenant_id, task_type, delegated_to, timestamp) "
                     "VALUES ($1, $2, $3, $4, $5)",
                     correlation_id,
-                    "beta-business-proof",
+                    "91c74442-1233-4c97-b191-911a10346fdf",
                     "code-review",
                     "local-runtime",
                     datetime.now(tz=UTC),
@@ -802,29 +826,35 @@ class TestRlsWriteContextResolver:
             _schema,
         ):
             correlation_id = str(uuid4())
+            # OMN-15683: delegation_events.tenant_id is UUID -- both the row
+            # value and the tenant= GUC kwarg must be the canonical UUID, not
+            # the slug.
+            beta_uuid = "91c74442-1233-4c97-b191-911a10346fdf"
+            house_uuid = "820272f9-4aaf-5add-a2df-0af942852ab2"
             await adapter.execute(
                 "INSERT INTO delegation_events "
                 "(correlation_id, tenant_id, task_type, delegated_to, timestamp) "
                 "VALUES ($1, $2, $3, $4, $5)",
                 correlation_id,
-                "beta-business-proof",
+                beta_uuid,
                 "code-review",
                 "local-runtime",
                 datetime.now(tz=UTC),
-                tenant="beta-business-proof",
+                tenant=beta_uuid,
             )
             same_tenant = await adapter.execute(
                 "SELECT tenant_id FROM delegation_events WHERE correlation_id = $1",
                 correlation_id,
-                tenant="beta-business-proof",
+                tenant=beta_uuid,
             )
-            assert [dict(r) for r in same_tenant] == [
-                {"tenant_id": "beta-business-proof"}
-            ]
+            assert [dict(r) for r in same_tenant] == [{"tenant_id": UUID(beta_uuid)}]
+            # A DIFFERENT valid UUID (not the slug -- that would fail the
+            # policy's ::uuid cast outright rather than returning empty) must
+            # see zero rows: real isolation, not a bypassed no-op.
             other_tenant = await adapter.execute(
                 "SELECT tenant_id FROM delegation_events WHERE correlation_id = $1",
                 correlation_id,
-                tenant="omninode",
+                tenant=house_uuid,
             )
             assert other_tenant == [], (
                 "the row must be invisible outside its own tenant's RLS scope"
@@ -863,7 +893,9 @@ class TestRlsWriteContextResolver:
                 correlation_id,
             )
             assert row is not None, "the write must have landed a real row"
-            assert row["tenant_id"] == "beta-business-proof"
+            # OMN-15683: the handler resolves the verified slug to its
+            # canonical UUID before the row ever reaches Postgres.
+            assert row["tenant_id"] == UUID("91c74442-1233-4c97-b191-911a10346fdf")
 
     async def test_missing_envelope_tenant_falls_back_consistently_on_both_sides(
         self,
@@ -894,4 +926,11 @@ class TestRlsWriteContextResolver:
                 "SELECT tenant_id FROM delegation_events WHERE correlation_id = $1",
                 correlation_id,
             )
-            assert [dict(r) for r in landed] == [{"tenant_id": "omninode"}]
+            # OMN-15683: resolve_write_tenant's interim-default fallback is
+            # now table-aware -- for this UUID-converted table it returns the
+            # house tenant's UUID (matching the column's own new UUID
+            # DEFAULT), not the slug, so the GUC and the stored value still
+            # agree by construction, just in the new representation.
+            assert [dict(r) for r in landed] == [
+                {"tenant_id": UUID("820272f9-4aaf-5add-a2df-0af942852ab2")}
+            ]

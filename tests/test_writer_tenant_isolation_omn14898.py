@@ -193,11 +193,17 @@ def test_writer_accepts_valid_tenant_and_stamps_the_row(
 
     db = InmemoryDatabaseAdapter()
     handler = HandlerProjectionDelegation()
+    # OMN-15683: delegation_events.tenant_id is now UUID -- the handler
+    # resolves the event's verified slug to its canonical UUID unconditionally
+    # (regardless of DB backend), so an UNMAPPED slug like "acme-corp" now
+    # raises UnmappedTenantIdentityError rather than stamping the raw string.
+    # This test is about the OMN-14898 enforcement gate accepting a
+    # WELL-FORMED tenant, not about UUID mapping, so use a mapped tenant.
     event = ModelTaskDelegatedEvent(
         correlation_id=str(uuid4()),
         task_type="test",
         delegated_to="local-runtime",
-        tenant_id="acme-corp",
+        tenant_id="beta-business-proof",
     )
 
     result = handler.project(event, db)
@@ -205,7 +211,7 @@ def test_writer_accepts_valid_tenant_and_stamps_the_row(
     assert result.rows_upserted == 1
     rows = db.query(DELEGATION_TABLE)
     assert len(rows) == 1
-    assert rows[0]["tenant_id"] == "acme-corp"
+    assert rows[0]["tenant_id"] == "91c74442-1233-4c97-b191-911a10346fdf"
 
 
 @pytest.mark.unit

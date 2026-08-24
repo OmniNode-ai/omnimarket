@@ -23,7 +23,7 @@ db_io:
     - name: delegation_events
       database_ref: application
       schema: tenant
-      migration: src/omnimarket/nodes/node_projection_delegation/migrations/0029_delegation_terminal_failure_cause.sql
+      migration: src/omnimarket/nodes/node_projection_delegation/migrations/0031_delegation_events_tenant_id_to_uuid.sql
       access: read_write
       role: tenant_projection_table
     # OMN-15359: the physical CREATE TABLE for this node's already-declared
@@ -144,12 +144,16 @@ relation_evidence:
     writers:
       - src/omnimarket/nodes/node_projection_delegation/handlers/handler_projection_delegation.py
     authoritative_sources:
-      - src/omnimarket/nodes/node_projection_delegation/migrations/0029_delegation_terminal_failure_cause.sql
+      - src/omnimarket/nodes/node_projection_delegation/migrations/0031_delegation_events_tenant_id_to_uuid.sql
     tenant_identity_column: tenant_id
     canonical_policy_name: tenant_isolation
     deduplication_key_columns: [correlation_id]
     authorization_dependency_columns: [tenant_id]
     write_eligibility_dependency_columns: [tenant_id]
     classification_evidence: >-
-      node_projection_delegation tenant projection table; OMN-15503 appends
-      typed terminal outcome columns without changing tenant authority.
+      node_projection_delegation tenant projection table; OMN-15683 converts
+      tenant_id from the legacy TEXT slug to the canonical UUID identity so
+      RLS-covered reads keyed on the gateway's UUID tenant claim (Keycloak,
+      OMN-16143) resolve against the same identity the row was written
+      under. OMN-15503's typed terminal outcome columns (0029) are unchanged
+      by this conversion.

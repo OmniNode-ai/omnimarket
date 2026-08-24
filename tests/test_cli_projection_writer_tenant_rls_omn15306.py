@@ -57,8 +57,14 @@ CONFLICT_KEY = "correlation_id"
 OWNER_ROLE = "postgres"
 WRITER_ROLE = "role_omnidash_test"
 WRITER_PASSWORD = "rls_proof_only_pw"  # pragma: allowlist secret
-TENANT_A = "tenant-a"
-TENANT_B = "tenant-b"
+# OMN-15683: delegation_events.tenant_id is UUID as of migration 0031 (see
+# _MIGRATION_FILES below, which now includes it) -- these are arbitrary but
+# syntactically valid UUIDs. This module proves ADAPTER-level RLS/GUC
+# mechanics generically; it writes through PostgresSyncProjectionAdapter
+# directly (bypassing the handler's slug->UUID resolution), so these need to
+# already be UUID-shaped rather than routed through the closed slug mapping.
+TENANT_A = "11111111-1111-1111-1111-111111111111"
+TENANT_B = "22222222-2222-2222-2222-222222222222"
 
 _MIGRATIONS_DIR = (
     Path(__file__).resolve().parents[1]
@@ -73,6 +79,11 @@ _MIGRATION_FILES = (
     "0019_delegation_budget_state.sql",
     "0022_delegation_events_tenant_id.sql",
     "0023_delegation_rls_tenant_isolation.sql",
+    # OMN-15683: converts tenant_id TEXT -> UUID and recreates the policy
+    # with the ::uuid cast. Without this, the schema this module builds is
+    # stale relative to the real deployed table -- the same "unwired
+    # migration" foot-gun class flagged elsewhere in this same ticket.
+    "0031_delegation_events_tenant_id_to_uuid.sql",
 )
 
 # 0023 refuses to run without app_dashboard (its guard against granting RLS
@@ -321,9 +332,16 @@ class TestAdapterWritesUnderTenantContext:
     def test_tenantless_event_lands_under_the_column_default(
         self, writer_adapter: PostgresSyncProjectionAdapter, owner_dsn: str
     ) -> None:
-        """The 0022 DEFAULT applies, and the GUC must agree with it."""
+        """The column DEFAULT applies, and the GUC must agree with it.
+
+        OMN-15683: the DEFAULT is now the house tenant's UUID (migration
+        0031), not the 'omninode' slug -- resolve_write_tenant's fallback is
+        table-aware so it stamps the matching representation.
+        """
         assert writer_adapter.upsert(TABLE, CONFLICT_KEY, _row("cid-default"))
-        assert _rows(owner_dsn) == [("cid-default", "omninode")]
+        assert _rows(owner_dsn) == [
+            ("cid-default", "820272f9-4aaf-5add-a2df-0af942852ab2")
+        ]
 
     def test_query_runs_under_tenant_context(
         self, writer_adapter: PostgresSyncProjectionAdapter
@@ -343,7 +361,8 @@ class TestAdapterWritesUnderTenantContext:
         assert _rows(owner_dsn) == [
             ("cid-a", TENANT_A),
             ("cid-b", TENANT_B),
-            ("cid-default", "omninode"),
+            # OMN-15683: house-tenant UUID default, see the test above.
+            ("cid-default", "820272f9-4aaf-5add-a2df-0af942852ab2"),
         ]
 
 

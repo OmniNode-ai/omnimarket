@@ -179,7 +179,10 @@ class TestDelegationCompletedTerminalWriterParity:
         assert by_column["correlation_id"] == _CORRELATION_ID
         # The seam this ticket closes: tenant_id must reach the write. The
         # pre-port async converter never read tenant_id off the wire at all.
-        assert by_column["tenant_id"] == _TENANT
+        # OMN-15683: delegation_events.tenant_id is now UUID -- the handler
+        # resolves the verified slug (_TENANT) to its canonical UUID before
+        # the row is built, so the written value is the UUID, not the slug.
+        assert by_column["tenant_id"] == "91c74442-1233-4c97-b191-911a10346fdf"
         assert by_column["quality_gate_passed"] is True
         # OMN-13408: cost_usd resolves from cumulative_attempt_cost via the
         # measured-cost re-pricing path, not a hardcoded 0.0.
