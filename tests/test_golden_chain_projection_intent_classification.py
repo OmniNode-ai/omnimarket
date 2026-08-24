@@ -259,3 +259,148 @@ class TestIntentClassificationProjectionQuery:
         results = db.query(TABLE, {"intent_class": "bugfix"})
         assert len(results) == 1
         assert results[0]["correlation_id"] == "q-002"
+
+
+class TestAgentSourceSeam:
+    """OMN-14751 (B3): agent_source read-mapping + live wire-shape acceptance."""
+
+    # The exact shape node_claude_hook_event_effect publishes (verified live,
+    # C3 runtime receipt on omnicursor PR #12): field is named intent_category,
+    # and agent_source distinguishes the dispatcher frontend.
+    WIRE_EVENT: dict[str, object] = {
+        "event_type": "IntentClassified",
+        "session_id": "c3-proof-865bb00d",
+        "correlation_id": "865bb00d-5f40-406c-b9fa-198a0b5d1c6a",
+        "intent_category": "code_generation",
+        "confidence": 1.0,
+        "keywords": ["one"],
+        "timestamp": "2026-07-27T22:47:37.634933+00:00",
+        "success": True,
+        "agent_source": "cursor",
+        "provenance": {
+            "source_system": "omniintelligence",
+            "source_node": "cursor_hook_event_effect",
+        },
+    }
+
+    def test_live_wire_shape_validates(self) -> None:
+        """The published event names the field intent_category — it must parse.
+
+        Regression guard: requiring intent_class only made every real wire
+        event fail validation, so the projection stayed empty (the
+        intent-classification.v1=404 the dashboard probe recorded).
+        """
+        event = ModelIntentClassifiedEvent(**self.WIRE_EVENT)  # type: ignore[arg-type]
+        assert event.intent_class == "code_generation"
+        assert event.agent_source == "cursor"
+
+    def test_live_wire_shape_projects_with_agent_source(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelIntentClassifiedEvent(**self.WIRE_EVENT)  # type: ignore[arg-type]
+        result = HANDLER.project(event, db)
+        assert result.rows_upserted == 1
+        rows = db.query(TABLE)
+        assert rows[0]["agent_source"] == "cursor"
+        assert rows[0]["intent_class"] == "code_generation"
+
+    def test_live_wire_timestamp_is_the_projected_emitted_at(self) -> None:
+        """The publisher names the emission time ``timestamp``, not ``emitted_at``.
+
+        Without that alias the field was dropped by ``extra="ignore"`` and
+        ``project()`` substituted ``now``, so every projected row reported its
+        ingestion time as its emission time and ``emitted_at``/``ingested_at``
+        were identical for the entire live corpus.
+        """
+        db = InmemoryDatabaseAdapter()
+        event = ModelIntentClassifiedEvent(**self.WIRE_EVENT)  # type: ignore[arg-type]
+        assert event.emitted_at == self.WIRE_EVENT["timestamp"]
+
+        HANDLER.project(event, db)
+        rows = db.query(TABLE)
+        assert rows[0]["emitted_at"] == self.WIRE_EVENT["timestamp"]
+        assert rows[0]["emitted_at"] != rows[0]["ingested_at"], (
+            "emitted_at must carry the wire timestamp, not collapse onto ingested_at"
+        )
+
+    def test_camel_case_wire_keys_persist_through_handle(self) -> None:
+        """``handle()`` must accept every key form the live runner accepts.
+
+        ``IntentClassificationProjectionRunner.project_event`` reads
+        ``intentClass``/``agentSource``/``sessionId``/``correlationId``. Before
+        the aliases, this path raised ValidationError on ``intentClass`` and
+        silently NULLed ``agentSource`` -- a same-node, same-table divergence.
+        """
+        db = InmemoryDatabaseAdapter()
+        camel_event: dict[str, object] = {
+            "_db": db,
+            "correlationId": "corr-b3-camel",
+            "sessionId": "sess-b3-camel",
+            "intentClass": "code_generation",
+            "confidence": 0.75,
+            "keywords": ["camel"],
+            "emittedAt": "2026-07-27T22:47:37.634933+00:00",
+            "agentSource": "cursor",
+        }
+        assert HANDLER.handle(camel_event)["rows_upserted"] == 1
+
+        rows = db.query(TABLE, {"correlation_id": "corr-b3-camel"})
+        assert len(rows) == 1
+        assert rows[0]["agent_source"] == "cursor"
+        assert rows[0]["intent_class"] == "code_generation"
+        assert rows[0]["session_id"] == "sess-b3-camel"
+        assert rows[0]["emitted_at"] == "2026-07-27T22:47:37.634933+00:00"
+
+    def test_intent_class_name_still_accepted(self) -> None:
+        """Events (and tests) using the column name keep working."""
+        event = ModelIntentClassifiedEvent(
+            correlation_id="corr-b3-01",
+            session_id="sess-b3-01",
+            intent_class="feature",
+            confidence=0.9,
+            agent_source="claude",
+        )
+        assert event.intent_class == "feature"
+
+    def test_agent_source_defaults_to_none_for_legacy_events(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        event = ModelIntentClassifiedEvent(
+            correlation_id="corr-b3-02",
+            session_id="sess-b3-02",
+            intent_class="analysis",
+            confidence=0.4,
+        )
+        HANDLER.project(event, db)
+        assert db.query(TABLE)[0]["agent_source"] is None
+
+    def test_contract_exposes_agent_source(self) -> None:
+        contract = yaml.safe_load((NODE_DIR / "contract.yaml").read_text())
+        exposures = contract["projection_api"]["exposures"]
+        snapshot = next(e for e in exposures if e["topic"] == SNAPSHOT_TOPIC)
+        assert "agent_source" in snapshot["columns"]
+
+    def test_migration_adds_agent_source(self) -> None:
+        """agent_source arrives as its own forward migration, not a 0000 edit.
+
+        0000's content SHA-256 is pinned in omnibase_infra's
+        docker/migrations/forward/_ledger/application-migrations.tsv. Editing it
+        in place fails the forward runner's checksum gate on any database that
+        already applied it, so the column ships as 0001.
+        """
+        migrations = NODE_DIR / "migrations"
+        base_sql = (
+            migrations / "0000_create_intent_classification_events.sql"
+        ).read_text()
+        assert "agent_source" not in base_sql, (
+            "0000 is checksum-pinned in the infra ledger and must stay untouched"
+        )
+
+        add_sql = (
+            migrations / "0001_intent_classification_agent_source.sql"
+        ).read_text()
+        assert "ADD COLUMN IF NOT EXISTS agent_source TEXT" in add_sql, (
+            "the column must be added idempotently so warm volumes reconcile"
+        )
+        assert "NOT NULL" not in add_sql.split("ALTER TABLE")[1], (
+            "agent_source must stay nullable -- rows projected before the column "
+            "existed legitimately have no source"
+        )

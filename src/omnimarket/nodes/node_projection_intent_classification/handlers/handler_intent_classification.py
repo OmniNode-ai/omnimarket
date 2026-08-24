@@ -107,14 +107,16 @@ class IntentClassificationProjectionRunner(BaseProjectionRunner):
         emitted_at = safe_parse_date(
             data.get("emitted_at") or data.get("emittedAt") or data.get("timestamp")
         )
+        agent_source_raw = data.get("agent_source") or data.get("agentSource")
+        agent_source = str(agent_source_raw) if agent_source_raw else None
 
         await self.db.execute(
             f"""
             INSERT INTO {self._table_events} (
                 correlation_id, session_id, intent_class, confidence,
-                keywords, emitted_at, ingested_at
+                keywords, emitted_at, ingested_at, agent_source
             )
-            VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            VALUES ($1, $2, $3, $4, $5, $6, NOW(), $7)
             ON CONFLICT (correlation_id) DO UPDATE SET
               session_id   = EXCLUDED.session_id,
               intent_class = EXCLUDED.intent_class,
@@ -122,6 +124,7 @@ class IntentClassificationProjectionRunner(BaseProjectionRunner):
               keywords     = EXCLUDED.keywords,
               emitted_at   = EXCLUDED.emitted_at,
               ingested_at  = NOW(),
+              agent_source = EXCLUDED.agent_source,
               updated_at   = NOW()
             """,
             correlation_id,
@@ -130,6 +133,7 @@ class IntentClassificationProjectionRunner(BaseProjectionRunner):
             confidence,
             keywords,
             emitted_at,
+            agent_source,
         )
         return True
 
