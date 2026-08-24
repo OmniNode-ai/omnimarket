@@ -48,6 +48,52 @@ ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS name TEXT;
 ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS provider TEXT;
 ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
 ALTER TABLE tenant_inference_credentials ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ;
+
+WITH missing_api_key_refs AS (
+    SELECT
+        ctid,
+        row_number() OVER (ORDER BY ctid) AS reconciled_rank
+    FROM tenant_inference_credentials
+    WHERE api_key_ref IS NULL OR api_key_ref = ''
+)
+UPDATE tenant_inference_credentials AS credentials
+SET api_key_ref = '__reconciled_missing_api_key_ref_' || missing_api_key_refs.reconciled_rank::TEXT
+FROM missing_api_key_refs
+WHERE credentials.ctid = missing_api_key_refs.ctid;
+
+WITH duplicate_api_key_refs AS (
+    SELECT
+        ctid,
+        api_key_ref,
+        row_number() OVER (PARTITION BY api_key_ref ORDER BY ctid) AS duplicate_rank,
+        row_number() OVER (ORDER BY api_key_ref, ctid) AS global_duplicate_rank
+    FROM tenant_inference_credentials
+)
+UPDATE tenant_inference_credentials AS credentials
+SET api_key_ref = credentials.api_key_ref || '__reconciled_duplicate_' || duplicate_api_key_refs.global_duplicate_rank::TEXT
+FROM duplicate_api_key_refs
+WHERE credentials.ctid = duplicate_api_key_refs.ctid
+  AND duplicate_api_key_refs.duplicate_rank > 1;
+
+UPDATE tenant_inference_credentials
+SET
+    tenant_id = COALESCE(NULLIF(tenant_id, ''), '__reconciled_missing_tenant_' || api_key_ref),
+    name = COALESCE(NULLIF(name, ''), '__reconciled_missing_name_' || api_key_ref),
+    provider = COALESCE(NULLIF(provider, ''), '__reconciled_missing_provider_' || api_key_ref),
+    created_at = COALESCE(created_at, NOW());
+
+ALTER TABLE tenant_inference_credentials
+    ALTER COLUMN api_key_ref SET NOT NULL,
+    ALTER COLUMN tenant_id SET NOT NULL,
+    ALTER COLUMN name SET NOT NULL,
+    ALTER COLUMN provider SET NOT NULL,
+    ALTER COLUMN created_at SET DEFAULT NOW(),
+    ALTER COLUMN created_at SET NOT NULL;
+
+ALTER TABLE tenant_inference_credentials
+    DROP CONSTRAINT IF EXISTS tenant_inference_credentials_pkey;
+ALTER TABLE tenant_inference_credentials
+    ADD CONSTRAINT tenant_inference_credentials_pkey PRIMARY KEY (api_key_ref);
 -- ---- END OMN-15376 shape reconciliation: tenant_inference_credentials ----
 
 CREATE INDEX IF NOT EXISTS idx_tenant_inference_credentials_tenant_id

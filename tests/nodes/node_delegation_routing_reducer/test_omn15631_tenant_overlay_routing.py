@@ -475,14 +475,10 @@ def test_migration_enforces_positive_optional_limits() -> None:
         / "0001_create_delegation_routing_tenant_overlay.sql"
     ).read_text(encoding="utf-8")
 
-    assert (
-        "timeout_ms INTEGER CHECK (timeout_ms IS NULL OR timeout_ms > 0)" in migration
-    )
-    assert (
-        "max_tokens INTEGER CHECK (max_tokens IS NULL OR max_tokens > 0)" in migration
-    )
     assert "delegation_routing_tenant_overlay_timeout_ms_positive" in migration
     assert "delegation_routing_tenant_overlay_max_tokens_positive" in migration
+    assert "CHECK (timeout_ms IS NULL OR timeout_ms > 0)" in migration
+    assert "CHECK (max_tokens IS NULL OR max_tokens > 0)" in migration
 
 
 # --- Missing secret ref fails fast, never falls back to a house key ------------
