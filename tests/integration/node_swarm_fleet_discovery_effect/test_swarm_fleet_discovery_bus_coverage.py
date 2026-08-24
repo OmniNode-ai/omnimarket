@@ -78,9 +78,11 @@ def _local_health_url(host_octet: str, port: int) -> str:
     return f"http://{host}:{port}/v1/health"
 
 
+# OMN-16492: .201:8001 removed — the endpoint is dead (GPU1 decommissioned,
+# OMN-16442) and its registry entry was retired; qwen3.8 on :8000 carries its
+# capabilities.
 _LOCAL_HEALTH_URLS = [
     _local_health_url("201", 8000),
-    _local_health_url("201", 8001),
     _local_health_url("201", 8002),
     _local_health_url("200", 8101),
 ]

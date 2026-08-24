@@ -19,6 +19,17 @@ schema_version: "1.0.0"
 price_unit: USD_PER_TOKEN
 entries:
   # --- Local / owned-GPU backends (zero marginal API cost) -----------------
+  # OMN-16492: live served id at .201:8000 since the 2026-08-23 reboot (SGLang,
+  # per OMN-16419 live probe). The Qwen3.6-35B-A3B row below is retained — cost
+  # keys are historical and pre-repoint events still resolve against it.
+  - provider: local
+    model_id: qwen3.8
+    input_token_price: "0"
+    output_token_price: "0"
+    currency: USD
+    provenance: "Local SGLang on owned GPU (.201:8000); zero marginal api cost means marginal API cost only, not total infra cost."
+    usage_source: estimated
+    cost_basis: zero_marginal_api_cost
   - provider: local
     model_id: Qwen3.6-35B-A3B
     input_token_price: "0"

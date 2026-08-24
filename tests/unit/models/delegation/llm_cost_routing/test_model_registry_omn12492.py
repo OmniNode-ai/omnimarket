@@ -45,14 +45,19 @@ class TestOmn12492LocalModelFacts:
     """Local model entries carry correct live-probed facts after OMN-12492 refresh."""
 
     def test_qwen3_coder_30b_model_name_updated(self, registry) -> None:  # type: ignore[no-untyped-def]
-        """qwen3-coder-30b routing key now reflects Qwen3.6-35B-A3B served at .201:8000."""
+        """qwen3-coder-30b routing key reflects qwen3.8 served at .201:8000 (OMN-16492).
+
+        Live probe 2026-08-23 (OMN-16419): GET /v1/models -> id "qwen3.8",
+        owned_by "sglang", max_model_len 122880.
+        """
         model = registry.get_model("qwen3-coder-30b")
-        assert model.model_name == "Qwen3.6-35B-A3B"
+        assert model.model_name == "qwen3.8"
         assert model.endpoint_env == "LLM_CODER_URL"
-        assert model.context_window == 131072
+        assert model.context_window == 122880
 
     def test_deepseek_r1_14b_model_name_updated(self, registry) -> None:  # type: ignore[no-untyped-def]
-        """deepseek-r1-14b routing key now reflects Qwen3.6-27B-MTP served at .201:8001."""
+        """deepseek-r1-14b is a stale slot: .201:8001 is dead (OMN-16442), the
+        entry records the last-served model for routing-key stability."""
         model = registry.get_model("deepseek-r1-14b")
         assert model.model_name == "Qwen3.6-27B-MTP-IQ4_XS.gguf"
         assert model.endpoint_env == "LLM_CODER_FAST_URL"

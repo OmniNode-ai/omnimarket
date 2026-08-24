@@ -204,7 +204,13 @@ model_routing:
   # multiple providers (vLLM/Gemini/OpenRouter have distinct URLs), so there is
   # no endpoint_env / endpoint_mode indirection.
   provider: local
-  served_model_id: Qwen3.6-35B-A3B
+  # OMN-16492: must match the routing authority's model_name for endpoint_ref
+  # (bifrost_delegation.yaml local-coder, live-verified "qwen3.8" at .201:8000
+  # per OMN-16419). The generation path posts this value to the wire verbatim
+  # and does NOT traverse the delegation-path attribution guard, so drift here
+  # ships false model attribution silently — bound by
+  # tests/unit/delegation/test_generation_contract_model_attribution_omn16492.py.
+  served_model_id: qwen3.8
   endpoint_ref: local-coder
   routing_source: contract
   # OMN-12829 (C1): task class driving the routing-authority escalation ladder
