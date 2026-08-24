@@ -2230,7 +2230,9 @@
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
       "classification_status": "classified",
       "constraints": [
-        "delegation_routing_tenant_overlay_tenant_task_uq"
+        "delegation_routing_tenant_overlay_max_tokens_positive",
+        "delegation_routing_tenant_overlay_tenant_task_uq",
+        "delegation_routing_tenant_overlay_timeout_ms_positive"
       ],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
