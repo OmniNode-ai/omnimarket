@@ -35,7 +35,10 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from omnimarket.projection.discovery import build_projection_topic_map
+from omnimarket.projection.discovery import (
+    build_projection_topic_map,
+    parse_order_by_clauses,
+)
 from omnimarket.projection.generation_publisher import (
     ModelGenerateRequest,
     ModelGenerateResponse,
@@ -135,10 +138,47 @@ def resolve_effective_limit(requested: int | None, contract_limit: int) -> int:
     return min(requested, contract_limit)
 
 
-def _effective_order_by_spec(
-    cfg: ProjectionTableConfig, order: str | None
+class InvalidOrderByError(ValueError):
+    """A request-time ``order_by`` query value failed to parse or validate.
+
+    Distinct from :class:`~omnimarket.projection.discovery.MalformedOrderBySpecError`
+    (OMN-16290): that one is a contract-authoring defect and hard-fails
+    startup; this one is untrusted caller input on a live request and must
+    map to a ``422``, never crash the process or silently fall back to the
+    contract default (no-defensive-defaults).
+    """
+
+
+def _base_order_by_spec(
+    cfg: ProjectionTableConfig, order_by: str | None
 ) -> tuple[tuple[str, str, str | None], ...]:
-    """Apply a caller-requested direction flip to the FIRST sort column.
+    """Resolve the order_by spec a request should sort by, BEFORE the
+    ``order`` direction flip is applied.
+
+    ``order_by=None`` (the common case) yields the contract-declared default
+    (``cfg.order_by_spec``), preserving prior behavior exactly. A caller-
+    supplied ``order_by`` (OMN-16290 -- previously accepted by FastAPI as an
+    unrecognised query param and silently dropped, so every request served
+    the fixed contract ordering regardless of what was requested) REPLACES
+    the default entirely with the parsed, column-validated request spec.
+    Raises :class:`InvalidOrderByError` on a malformed clause or a column not
+    declared on this topic -- rejected outright, never silently ignored or
+    coerced to the default (no-defensive-defaults).
+    """
+    if order_by is None:
+        return cfg.order_by_spec
+    try:
+        return parse_order_by_clauses(order_by, cfg.columns)
+    except ValueError as exc:
+        raise InvalidOrderByError(str(exc)) from exc
+
+
+def _effective_order_by_spec(
+    order_by_spec: tuple[tuple[str, str, str | None], ...], order: str | None
+) -> tuple[tuple[str, str, str | None], ...]:
+    """Apply a caller-requested direction flip to the FIRST sort column of
+    ``order_by_spec`` (the contract default, or a caller-requested
+    ``order_by`` override -- see :func:`_base_order_by_spec`).
 
     Single source of truth for both the actual row order (fed to
     ``SnapshotCache.get_rows(order_by_override=...)``) and the reported
@@ -148,18 +188,18 @@ def _effective_order_by_spec(
     Every sort key beyond the first is preserved verbatim (OMN-15799), the
     NULLS placement included (OMN-15800 defect A corrective round) -- a
     caller-requested direction flip changes ASC/DESC only, never the
-    contract-declared NULLS FIRST|LAST for that column.
+    declared NULLS FIRST|LAST for that column.
     """
-    if not cfg.order_by_spec:
+    if not order_by_spec:
         return ()
-    first_column, first_direction, first_nulls = cfg.order_by_spec[0]
+    first_column, first_direction, first_nulls = order_by_spec[0]
     if order is not None:
         normalised = order.strip().lower()
         if normalised == "asc":
             first_direction = "ASC"
         elif normalised == "desc":
             first_direction = "DESC"
-    return ((first_column, first_direction, first_nulls), *cfg.order_by_spec[1:])
+    return ((first_column, first_direction, first_nulls), *order_by_spec[1:])
 
 
 def _reported_ordering(order_by_spec: tuple[tuple[str, str, str | None], ...]) -> str:
@@ -444,6 +484,7 @@ async def projection_query(
     since: str | None = Query(default=None),
     limit: int | None = Query(default=None, ge=1),
     order: str | None = Query(default=None, pattern="^(?i:asc|desc)$"),
+    order_by: str | None = Query(default=None),
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
     cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
 ) -> JSONResponse:
@@ -516,10 +557,22 @@ async def projection_query(
             },
         )
 
+    try:
+        base_order_by_spec = _base_order_by_spec(cfg, order_by)
+    except InvalidOrderByError as exc:
+        return JSONResponse(
+            status_code=422,
+            content={
+                "error": "invalid_order_by",
+                "topic": topic,
+                "detail": str(exc),
+            },
+        )
+
     effective_limit = resolve_effective_limit(limit, cfg.limit)
     generated_at = datetime.now(UTC).isoformat()
 
-    order_by_spec = _effective_order_by_spec(cfg, order)
+    order_by_spec = _effective_order_by_spec(base_order_by_spec, order)
     all_rows = cache.get_rows(topic, limit=None, order_by_override=order_by_spec)
     filtered_rows = _filter_rows(
         all_rows,

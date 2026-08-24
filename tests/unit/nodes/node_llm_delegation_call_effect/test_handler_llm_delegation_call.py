@@ -42,6 +42,7 @@ from omnimarket.nodes.node_llm_delegation_call_effect.handlers.handler_llm_deleg
     HandlerLlmDelegationCall,
     _health_cache,
     _is_endpoint_healthy,
+    _served_models_cache,
 )
 from omnimarket.nodes.node_llm_delegation_call_effect.models.model_llm_delegation_call_request import (
     ModelLlmDelegationCallRequest,
@@ -129,6 +130,25 @@ def _patch_post(
 
     monkeypatch.setattr(transport, "post_chat_completion", fake_post)
     return captured
+
+
+@pytest.fixture(autouse=True)
+def _no_served_models_evidence_by_default(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OMN-16419: default the served-models guard to "no evidence" (None).
+
+    Without this, every test in this module that doesn't care about the
+    guard would make a REAL network GET to ``<endpoint>/v1/models`` (some of
+    which are live internet hosts, e.g. the Gemini endpoint in
+    ``test_complete_chat_completions_endpoint_is_not_double_appended``) —
+    slow, non-deterministic, and out of scope for those tests. ``None`` means
+    "no evidence either way", which is the guard's own documented no-op case
+    (unchanged pre-ticket behavior). Tests that exercise the guard itself
+    override this within their own body via a second ``monkeypatch.setattr``.
+    """
+    _served_models_cache.clear()
+    monkeypatch.setattr(
+        transport, "probe_served_models", lambda *_args, **_kwargs: None
+    )
 
 
 class TestHealthProbeCache:
@@ -708,3 +728,158 @@ class TestHandlerHandleRuntimeEntrypoint:
         assert isinstance(result, ModelLlmDelegationCallResult)
         assert result.success is False
         assert result.failure_class == EnumDelegationFailureClass.INVALID_JSON
+
+
+class TestModelAttributionMismatchGuard:
+    """OMN-16419: the fail-closed model-attribution guard.
+
+    Reproduces the exact defect this ticket fixes: an OpenAI-compat server
+    (SGLang, live-observed at .201:8000) accepts ANY ``model`` string in a
+    chat-completion request and echoes it back verbatim at HTTP 200 — served
+    by whatever model is actually loaded. The response body's ``model`` field
+    is therefore not trustworthy evidence of what actually served the
+    request; only a live ``GET /v1/models`` read is. These tests stub that
+    read (``transport.probe_served_models``) directly, never the
+    chat-completions response, to prove the guard consults the right source.
+    """
+
+    def setup_method(self) -> None:
+        _health_cache.clear()
+        _served_models_cache.clear()
+
+    @pytest.mark.unit
+    def test_configured_model_absent_from_served_ids_fails_closed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A stale configured model_name never reaches the network.
+
+        Stubs ``transport.post_chat_completion`` to explode if called at all —
+        the guard must reject BEFORE any chat-completion POST, since an
+        SGLang-style server would return HTTP 200 for the stale name anyway
+        (that HTTP 200 is exactly the silent-fail-open defect being closed).
+        """
+        monkeypatch.setattr(
+            transport,
+            "probe_served_models",
+            lambda *_args, **_kwargs: frozenset({"qwen3.8"}),
+        )
+        _patch_post(
+            monkeypatch,
+            side_effect=AssertionError(
+                "chat-completion POST must not be reached on a served-model mismatch"
+            ),
+        )
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            result = handler(_make_request(model_id="Qwen3.6-35B-A3B"))
+
+        assert result.success is False
+        assert (
+            result.failure_class
+            == EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH
+        )
+        assert result.error_message is not None
+        assert "Qwen3.6-35B-A3B" in result.error_message
+        assert "qwen3.8" in result.error_message
+        assert result.served_model_id is None
+
+    @pytest.mark.unit
+    def test_configured_model_matches_served_ids_records_served_model_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A configured name confirmed by GET /v1/models is recorded as such."""
+        monkeypatch.setattr(
+            transport,
+            "probe_served_models",
+            lambda *_args, **_kwargs: frozenset({"qwen3.8"}),
+        )
+        api_resp = _make_api_response("ok", tokens_in=3, tokens_out=2)
+        _patch_post(monkeypatch, json_body=api_resp)
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            result = handler(_make_request(model_id="qwen3.8"))
+
+        assert result.success is True
+        assert result.served_model_id == "qwen3.8"
+
+    @pytest.mark.unit
+    def test_no_served_models_evidence_is_a_guard_no_op(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """No /v1/models evidence (e.g. a cloud backend) must not block the call.
+
+        This is the bounded-scope case: most non-local backends do not expose
+        an OpenAI-compat model list at ``scheme://netloc/v1/models`` (their
+        real surface lives at a provider-specific path), so the guard must be
+        a no-op rather than fail-closed on the absence of evidence — only a
+        confirmed MISMATCH fails closed.
+        """
+        monkeypatch.setattr(
+            transport, "probe_served_models", lambda *_args, **_kwargs: None
+        )
+        api_resp = _make_api_response("ok", tokens_in=3, tokens_out=2)
+        _patch_post(monkeypatch, json_body=api_resp)
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            result = handler(_make_request(model_id="gemini-2.5-flash"))
+
+        assert result.success is True
+        assert result.served_model_id is None
+
+    @pytest.mark.unit
+    def test_mismatch_event_attribution_carries_server_confirmed_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-16419 adjusts OMN-8022: prefer the server-confirmed id over the
+        configured name in the emitted ``ModelLlmDelegationCompletedEvent``
+        when the guard has live-confirmed it, so the ``llm-call-completed``
+        event never carries a name the endpoint disputes."""
+        monkeypatch.setattr(
+            transport,
+            "probe_served_models",
+            lambda *_args, **_kwargs: frozenset({"qwen3.8"}),
+        )
+        api_resp = _make_api_response("ok", tokens_in=3, tokens_out=2)
+        _patch_post(monkeypatch, json_body=api_resp)
+        publisher = MagicMock()  # transport-mock-ok: event_publisher typed Any
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            handler(_make_request(model_id="qwen3.8"), event_publisher=publisher)
+
+        publisher.publish.assert_called_once()
+        _topic, event = publisher.publish.call_args[0]
+        assert event.model_id == "qwen3.8"
+        assert event.selected_model == "qwen3.8"
+
+    @pytest.mark.unit
+    def test_handle_mismatch_returns_plain_failure_result_no_event(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Via the runtime ``handle()`` entrypoint: a mismatch returns the
+        plain failure result (mirrors timeout/http-error/invalid-json) — it
+        must NOT publish a ``ModelLlmDelegationCompletedEvent`` carrying the
+        unserved name."""
+        monkeypatch.setattr(
+            transport,
+            "probe_served_models",
+            lambda *_args, **_kwargs: frozenset({"qwen3.8"}),
+        )
+        _patch_post(
+            monkeypatch,
+            side_effect=AssertionError("must not POST on a served-model mismatch"),
+        )
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            result = handler.handle(_make_request(model_id="Qwen3.6-35B-A3B"))
+
+        assert isinstance(result, ModelLlmDelegationCallResult)
+        assert result.success is False
+        assert (
+            result.failure_class
+            == EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH
+        )

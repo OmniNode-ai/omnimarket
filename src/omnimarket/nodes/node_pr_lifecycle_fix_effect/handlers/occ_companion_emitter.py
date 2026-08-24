@@ -57,6 +57,15 @@ from typing import Literal
 
 import yaml
 
+# OMN-16356: the SAME canonical judgment the hosted OCC Append-Only Gate makes
+# about a contract diff — imported, never re-implemented, so this pre-push
+# local guard can never be STRICTER than the gate it exists to pre-empt (the
+# regression this ticket fixes: OMN-16071's PR #2086 hardened the local guard
+# to a per-FILE git-status check, but the hosted gate's own semantics are
+# per-ENTRY — a new dod_evidence id is always allowed; only a removed or
+# content-altered existing id is a violation).
+from omnibase_core.validation.validator_occ_append_only import evaluate_append_only
+
 # OMN-13990 (D3, validator-parity ticket extraction): the emitter uses the SAME
 # ticket-extraction the occ-preflight eligibility validator uses so the two can
 # never cite a different ticket set. This is the gate's own private helper —
@@ -111,6 +120,8 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_stamp_authoring 
     render_product_pr_body_with_occ_source,
 )
 from omnimarket.occ_content_probe import (
+    LOCK_FILE_SUFFIXES,
+    extract_lock_line_candidates,
     extract_symbol_candidates,
     resolve_red_ref,
     select_asserted_check,
@@ -138,6 +149,12 @@ from omnimarket.occ_git_transport import (
 
 logger = logging.getLogger(__name__)
 _CONTRACT_PATH = Path(__file__).resolve().parents[1] / "contract.yaml"
+
+# OMN-16356: matches ONLY the ticket-contract path shape `_allowed_paths`
+# renders (`contracts/<ticket>.yaml`), never a receipt path — the
+# content-verified append exception in `_assert_append_only` is scoped to
+# this pattern exclusively.
+_CONTRACT_YAML_PATH_RE = re.compile(r"^contracts/[^/]+\.yaml$")
 
 # OMN-14031: bound every git subprocess so a stalled network git call (push /
 # fetch under egress saturation) fails fast instead of wedging the fix-effect
@@ -493,14 +510,42 @@ class OccCompanionEmitter:
 
         # Idempotency guard: already bound to an OCC source — nothing to do.
         # Read the canonical stamp via the Piece-2 parser, not a local regex.
+        #
+        # OMN-16386: presence of a resolvable ``Evidence-Source: OCC#<n>`` line
+        # is NOT proof this PR was ever bound — a cascade-template PR (e.g. a
+        # release-cascade dependency bump opened from a template body) inherits
+        # the template's Evidence-Source verbatim, naming a real OCC companion
+        # PR that was minted for a DIFFERENT product PR. The old presence-only
+        # check treated that as "nothing to do" and the cascade PR never got
+        # its own ``occ-self-bind-pr-<n>`` receipt, stranding it at the Receipt
+        # Gate (live: onex_change_control#6850, #6823, #6636 — all
+        # pr_ticket_mismatch against a self-bind receipt scoped to a sibling
+        # PR's number, never this one's). ``_occ_binding_matches_this_pr``
+        # verifies the cited OCC PR's own branch was actually minted for THIS
+        # (repo, pr_number) before trusting the no-op.
         already_bound = product_pr_occ_binding(body)
-        if already_bound is not None:
+        if already_bound is not None and self._occ_binding_matches_this_pr(
+            occ_pr_number=already_bound,
+            repo=repo,
+            pr_number=pr_number,
+            token=token,
+        ):
             action = (
                 f"no-op: {repo}#{pr_number} already bound to "
                 f"OCC#{already_bound} (Evidence-Source already an OCC source)"
             )
             logger.info("occ_companion_emitter: %s", action)
             return action
+        if already_bound is not None:
+            logger.warning(
+                "occ_companion_emitter: %s#%s cites Evidence-Source OCC#%s but "
+                "that companion's branch was not minted for this PR (inherited "
+                "Evidence-Source, cascade-template class) — minting a fresh "
+                "companion instead of no-op'ing (OMN-16386)",
+                repo,
+                pr_number,
+                already_bound,
+            )
 
         # 2. Validator-parity ticket extraction (OMN-13990 D3): the gate owns
         #    tickets via closing-keyword-exclusive-else-all-title-tokens; author a
@@ -518,7 +563,7 @@ class OccCompanionEmitter:
         repo_slug = repo.replace("/", "-")
         # One OCC branch/PR per product PR (ticket-count agnostic) so a single
         # Evidence-Source: OCC#<n> covers every cited ticket and re-fires sync.
-        branch = f"auto/{repo_slug.lower()}-pr-{pr_number}-occ-autobind"
+        branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
         evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
         ci_evidence_id = ci_check_evidence_id(evidence_id)
 
@@ -779,6 +824,11 @@ class OccCompanionEmitter:
                 # the OCC Append-Only Gate (hand-repaired,
                 # onex_change_control@6240bf817, 2026-08-09).
                 contract_already_had_companion: dict[str, bool] = {}
+                # OMN-16356: per-ticket downstream/CI skip flags, populated in
+                # this loop and read again by the pass-2 self-bind rebind below
+                # — see the net-new-file-only guard at the receipt writes.
+                downstream_already_merged_by_ticket: dict[str, bool] = {}
+                ci_already_merged_by_ticket: dict[str, bool] = {}
                 for ticket in tickets:
                     downstream_check_value, ci_check_value = _hosted_safe_check_values(
                         ticket
@@ -820,55 +870,101 @@ class OccCompanionEmitter:
                     # Stage 1: downstream receipt stamped with the actual landed
                     # commit — the squash mergeCommit.oid post-merge, else the
                     # reviewed head SHA pre-merge (OMN-14255).
+                    #
+                    # OMN-16356 NET-NEW-FILE-ONLY GUARD (case 2 of the shared
+                    # regression this ticket also covers): unlike the
+                    # ticket-shared admissibility-validator id below, these two
+                    # ids embed the product PR number and were assumed to be
+                    # unique-per-run by construction. That assumption breaks
+                    # when a PRIOR companion for this EXACT repo#pr already
+                    # merged under an Evidence-Source stamp this PR's body no
+                    # longer carries (the OMN-16386 inherited/stale-stamp
+                    # class) — the idempotency guard above correctly decides to
+                    # mint a fresh companion, but these paths already exist at
+                    # the clone base, so unconditionally opening them for write
+                    # trips the append-only guard on a genuine live incident
+                    # (omnibase_infra#2766, 2026-08-23T18:32:07Z). Never
+                    # reopen an already-merged receipt for write — skip,
+                    # exactly like the admissibility-validator guard just below.
                     downstream_dir = (
                         clone_dir / "drift" / "dod_receipts" / ticket / evidence_id
                     )
                     downstream_dir.mkdir(parents=True, exist_ok=True)
-                    (downstream_dir / "command.yaml").write_text(
-                        render_downstream_receipt(
-                            ticket_id=ticket,
-                            evidence_id=evidence_id,
-                            pr_number=pr_number,
-                            repo=repo,
-                            run_timestamp=run_timestamp,
-                            commit_sha=receipt_commit_sha,
-                            branch=branch,
-                            probe_command=downstream_probe_command,
-                            probe_stdout=downstream_stdout,
-                            exit_code=downstream_exit,
-                            actual_output=downstream_actual_output,
-                            runner=self._runner,
-                            verifier=self._verifier,
-                            check_value=downstream_check_value,
-                        ),
-                        encoding="utf-8",
+                    downstream_receipt_path = downstream_dir / "command.yaml"
+                    downstream_already_merged = downstream_receipt_path.is_file()
+                    downstream_already_merged_by_ticket[ticket] = (
+                        downstream_already_merged
                     )
+                    if downstream_already_merged:
+                        logger.info(
+                            "occ_companion_emitter: skipping downstream receipt "
+                            "%s for %s#%s — a companion for this exact PR already "
+                            "merged it (OMN-16356 net-new-file-only guard, never "
+                            "overwrite).",
+                            evidence_id,
+                            repo,
+                            pr_number,
+                        )
+                    else:
+                        downstream_receipt_path.write_text(
+                            render_downstream_receipt(
+                                ticket_id=ticket,
+                                evidence_id=evidence_id,
+                                pr_number=pr_number,
+                                repo=repo,
+                                run_timestamp=run_timestamp,
+                                commit_sha=receipt_commit_sha,
+                                branch=branch,
+                                probe_command=downstream_probe_command,
+                                probe_stdout=downstream_stdout,
+                                exit_code=downstream_exit,
+                                actual_output=downstream_actual_output,
+                                runner=self._runner,
+                                verifier=self._verifier,
+                                check_value=downstream_check_value,
+                            ),
+                            encoding="utf-8",
+                        )
 
                     # Stage 1b: CI-outcome receipt (OMN-14425) — backs the second,
                     # substantive dod_evidence item declared alongside the existence
-                    # probe above.
+                    # probe above. Same OMN-16356 net-new-file-only guard as above.
                     ci_dir = (
                         clone_dir / "drift" / "dod_receipts" / ticket / ci_evidence_id
                     )
                     ci_dir.mkdir(parents=True, exist_ok=True)
-                    (ci_dir / "command.yaml").write_text(
-                        render_ci_check_receipt(
-                            ticket_id=ticket,
-                            evidence_id=ci_evidence_id,
-                            pr_number=pr_number,
-                            repo=repo,
-                            run_timestamp=run_timestamp,
-                            commit_sha=receipt_commit_sha,
-                            branch=branch,
-                            probe_command=ci_probe_command,
-                            probe_stdout=ci_stdout,
-                            exit_code=ci_exit,
-                            runner=self._runner,
-                            verifier=self._verifier,
-                            check_value=ci_check_value,
-                        ),
-                        encoding="utf-8",
-                    )
+                    ci_receipt_path = ci_dir / "command.yaml"
+                    ci_already_merged = ci_receipt_path.is_file()
+                    ci_already_merged_by_ticket[ticket] = ci_already_merged
+                    if ci_already_merged:
+                        logger.info(
+                            "occ_companion_emitter: skipping CI receipt %s for "
+                            "%s#%s — a companion for this exact PR already merged "
+                            "it (OMN-16356 net-new-file-only guard, never "
+                            "overwrite).",
+                            ci_evidence_id,
+                            repo,
+                            pr_number,
+                        )
+                    else:
+                        ci_receipt_path.write_text(
+                            render_ci_check_receipt(
+                                ticket_id=ticket,
+                                evidence_id=ci_evidence_id,
+                                pr_number=pr_number,
+                                repo=repo,
+                                run_timestamp=run_timestamp,
+                                commit_sha=receipt_commit_sha,
+                                branch=branch,
+                                probe_command=ci_probe_command,
+                                probe_stdout=ci_stdout,
+                                exit_code=ci_exit,
+                                runner=self._runner,
+                                verifier=self._verifier,
+                                check_value=ci_check_value,
+                            ),
+                            encoding="utf-8",
+                        )
                     # OMN-15247 R21b: receipt backing the minted
                     # admissibility-validator item. REQUIRED on a ticket's
                     # FIRST companion -- validator_occ_merge_eligibility
@@ -956,7 +1052,17 @@ class OccCompanionEmitter:
                     # rebound either, or the "skip the write" guard above would
                     # be defeated by this rebind pass mutating the same merged
                     # file's contract_sha256/contract_entry_sha256 fields.
-                    rebind_evidence_ids = {evidence_id, ci_evidence_id}
+                    #
+                    # OMN-16356: same exclusion for the downstream/CI ids when
+                    # THIS run skipped writing them (already-merged-elsewhere,
+                    # see the net-new-file-only guard above) — rebinding a
+                    # receipt this run never opened is itself the mutation the
+                    # guard exists to prevent.
+                    rebind_evidence_ids: set[str] = set()
+                    if not downstream_already_merged:
+                        rebind_evidence_ids.add(evidence_id)
+                    if not ci_already_merged:
+                        rebind_evidence_ids.add(ci_evidence_id)
                     if not contract_already_had_companion[ticket]:
                         rebind_evidence_ids.add(ADMISSIBILITY_VALIDATOR_EVIDENCE_ID)
                     self._rebind_receipts(
@@ -1099,11 +1205,16 @@ class OccCompanionEmitter:
                     # already-merged companion bound it to (the eligibility
                     # gate grandfathers that value — see the F-01 note two
                     # blocks up).
-                    pass2_rebind_evidence_ids = {
-                        evidence_id,
-                        ci_evidence_id,
-                        self_bind_evidence_id,
-                    }
+                    #
+                    # OMN-16356: same exclusion for downstream/CI when THIS
+                    # run skipped writing them in pass 1 (a companion for this
+                    # exact PR already merged them — the net-new-file-only
+                    # guard above).
+                    pass2_rebind_evidence_ids = {self_bind_evidence_id}
+                    if not downstream_already_merged_by_ticket[ticket]:
+                        pass2_rebind_evidence_ids.add(evidence_id)
+                    if not ci_already_merged_by_ticket[ticket]:
+                        pass2_rebind_evidence_ids.add(ci_evidence_id)
                     if not contract_already_had_companion[ticket]:
                         # OMN-15247 R21b: pass 2 re-renders the contract with
                         # the self-bind entry appended, so its whole-file
@@ -1207,6 +1318,66 @@ class OccCompanionEmitter:
         authors a companion for exactly the tickets the gate will check.
         """
         return _extract_ticket_ids(body, title)
+
+    @staticmethod
+    def _occ_branch_name(*, repo: str, pr_number: int) -> str:
+        """The deterministic OCC companion branch name for one product PR.
+
+        Single definition shared by the fresh-mint path (``branch`` at the top
+        of :meth:`_emit_companion_sync`) and the OMN-16386 binding-identity
+        check below — the two must never diverge on this format.
+        """
+        repo_slug = repo.replace("/", "-")
+        return f"auto/{repo_slug.lower()}-pr-{pr_number}-occ-autobind"
+
+    def _occ_binding_matches_this_pr(
+        self, *, occ_pr_number: int, repo: str, pr_number: int, token: str
+    ) -> bool:
+        """True when OCC#``occ_pr_number`` was actually minted for THIS product PR.
+
+        OMN-16386: a resolvable ``Evidence-Source: OCC#<n>`` line is not proof
+        of a genuine binding — it may be inherited verbatim from a template PR
+        body (the release-cascade dependency-bump class), naming a companion
+        that was minted for a *different* product PR. That companion's
+        ``occ-self-bind-pr-<n>`` receipt binds only the template PR's head SHA
+        and its branch encodes the template PR's own (repo, pr_number), never
+        this one's — so a presence-only check silently strands the cascade PR
+        at the Receipt Gate (live: onex_change_control#6850, #6823, #6636).
+
+        The OCC companion branch is deterministic
+        (:meth:`_occ_branch_name`) and embeds the exact (repo, pr_number) the
+        companion was minted for. Comparing OCC#``occ_pr_number``'s actual
+        head branch against the branch THIS run would use for its own
+        (repo, pr_number) is a genuine identity check, not a presence check.
+
+        An unresolvable OCC PR (404, deleted, network error) fails OPEN toward
+        minting a fresh companion — a redundant mint is self-healing (the
+        idempotency guard on the fresh companion's own branch handles it),
+        while silently trusting an unverifiable citation is exactly the
+        defect this check exists to close.
+        """
+        expected_branch = self._occ_branch_name(repo=repo, pr_number=pr_number)
+        occ_owner, occ_repo_name = split_repo(self._occ_repo)
+        try:
+            occ_pr_data = rest_json(
+                "GET",
+                f"/repos/{occ_owner}/{occ_repo_name}/pulls/{occ_pr_number}",
+                token=token,
+            )
+        except GitHubApiError as exc:
+            logger.warning(
+                "occ_companion_emitter: could not resolve OCC#%s to verify "
+                "the Evidence-Source binding for %s#%s (%s); treating as "
+                "unbound and proceeding to mint (OMN-16386 fail-open)",
+                occ_pr_number,
+                repo,
+                pr_number,
+                exc,
+            )
+            return False
+        head = occ_pr_data.get("head") if isinstance(occ_pr_data, dict) else None
+        actual_branch = head.get("ref") if isinstance(head, dict) else None
+        return actual_branch == expected_branch
 
     @staticmethod
     def _is_private_repo(pr_data: dict[str, object]) -> bool:
@@ -1553,6 +1724,33 @@ class OccCompanionEmitter:
 
         def _fetch(path: str, ref: str) -> str | None:
             return self._content_at_ref(owner, repo_name, path, ref, token)
+
+        # OMN-16410 — lockfile-line candidates. A pure ``uv.lock`` bump (the
+        # OMN-13902 sibling-lock-refresh bot's whole output shape) has zero
+        # Python declarations, so ``extract_symbol_candidates`` alone always
+        # returns empty for it and this producer used to decline every such
+        # PR outright ("no changed-file candidate could be proven RED"),
+        # forcing hand-authored evidence for a mechanically-provable fact.
+        # Content, not ``patch``, is the input here on purpose — GitHub omits
+        # ``patch`` once a file's diff crosses an undocumented per-file size
+        # threshold, and a full ``uv.lock`` relock is exactly that shape
+        # (MEASURED live against omnibase_infra#2848: 4396 changed lines,
+        # `patch` absent from the files listing) — see
+        # ``extract_lock_line_candidates``'s docstring. Appended, never
+        # replacing the Python candidates, so a PR touching both keeps trying
+        # the Python grammar first.
+        for f in files:
+            path = str(f.get("filename", ""))
+            status = f.get("status")
+            if status not in ("added", "modified") or not path.endswith(
+                LOCK_FILE_SUFFIXES
+            ):
+                continue
+            head_content = _fetch(path, evidence_ref)
+            base_content = _fetch(path, red_ref)
+            candidates = candidates + extract_lock_line_candidates(
+                path=path, head_content=head_content, base_content=base_content
+            )
 
         # OMN-15247 foldproof follow-up: no ``accept=`` filter here anymore.
         # Pre-fix, this candidate was rejected outright whenever its rendered
@@ -1914,12 +2112,34 @@ class OccCompanionEmitter:
         writer renders the same deterministic path every time), so a status-
         ``M`` change there previously sailed through this guard silently —
         the mutate-in-place defect named in the ticket title. The git status
-        letter is now checked directly, matching the hosted OCC Append-Only
-        Gate's own semantics (``omnibase_core.validation.
-        validator_occ_append_only.evaluate_append_only``, which flags any
-        M/D/R/C status and requires corrections to be net-new
-        ``.supersede.<NNNN>.yaml`` files): only ``A`` (added) ever passes,
-        unconditionally, regardless of whether the path is nominally allowed.
+        letter is now checked directly for RECEIPTS: any status other than
+        ``A`` (added) is an unconditional violation, matching the hosted OCC
+        Append-Only Gate's own receipt semantics (``omnibase_core.validation.
+        validator_occ_append_only.evaluate_append_only``'s ``receipt_diff``
+        leg, which flags any M/D/R/C status there and requires corrections to
+        be net-new ``.supersede.<NNNN>.yaml`` files).
+
+        OMN-16356: the CONTRACT file (``contracts/<ticket>.yaml``) is a
+        DIFFERENT case. It is intentionally, structurally append-only at the
+        content level across companions for the same ticket — every writer
+        (``_ensure_base_dod_evidence`` F-04, ``_append_self_bind_evidence``)
+        only ever splices new ``dod_evidence`` blocks in, never rewrites
+        existing bytes — so its own git status is legitimately ``M`` on a
+        second-or-later companion. The hosted gate's OWN semantics for the
+        contract are per-ENTRY (``evaluate_append_only``'s ``base_contract``/
+        ``head_contract`` legs: an existing id must survive, unchanged; a NEW
+        id is always allowed), not per-file. A blanket per-file ``A``-only
+        rule — introduced by OMN-16071's PR #2086 to close the receipt-mutate
+        gap — was stricter than the gate itself for this one path and
+        rejected every legitimate second companion for an already-companioned
+        ticket (live 2026-08-23: omnimarket#2124/OMN-15800,
+        omnibase_infra#2790/OMN-15468, onex_change_control#6926/OMN-16413; a
+        parallel report against the sibling ``node_occ_companion_effect``
+        writer is OMN-16356's own original filing). A contract-path ``M`` is
+        now independently re-verified against the SAME canonical judgment the
+        hosted gate makes (:func:`evaluate_append_only`) before being allowed;
+        it still fails closed if that judgment finds a removed or altered
+        entry.
         """
         diff = self._run_git(
             ["git", "diff", "--name-status", base_sha, "HEAD"], cwd=str(clone_dir)
@@ -1935,6 +2155,13 @@ class OccCompanionEmitter:
             if status.startswith("D"):
                 violations.append(f"deletes {path}")
             elif not status.startswith("A"):
+                if (
+                    status.startswith("M")
+                    and path in allowed_paths
+                    and _CONTRACT_YAML_PATH_RE.match(path)
+                    and self._is_sanctioned_contract_growth(clone_dir, base_sha, path)
+                ):
+                    continue
                 violations.append(
                     f"{status} {path} (not a net-new add — a receipt or "
                     "contract may never be opened for write once it exists "
@@ -1952,6 +2179,37 @@ class OccCompanionEmitter:
                 + ". Allowed: "
                 + ", ".join(sorted(allowed_paths))
             )
+
+    def _is_sanctioned_contract_growth(
+        self, clone_dir: Path, base_sha: str, path: str
+    ) -> bool:
+        """True when a status-``M`` ticket contract change is a pure append.
+
+        Re-derives the SAME judgment the hosted OCC Append-Only Gate makes
+        (:func:`evaluate_append_only`) directly against the base/head contract
+        bytes, rather than trusting the coarser git status letter. Fails
+        CLOSED (returns ``False``) on any read/parse error or non-dict YAML,
+        or when the gate's own per-entry evaluation finds a removed or
+        content-altered ``dod_evidence`` id — a purely additive change (only
+        new entries) is the only shape that returns ``True``.
+        """
+        try:
+            base_text = self._run_git(
+                ["git", "show", f"{base_sha}:{path}"], cwd=str(clone_dir)
+            )
+            head_text = self._run_git(
+                ["git", "show", f"HEAD:{path}"], cwd=str(clone_dir)
+            )
+            base_contract = yaml.safe_load(base_text)
+            head_contract = yaml.safe_load(head_text)
+        except Exception:
+            return False
+        if not isinstance(base_contract, dict) or not isinstance(head_contract, dict):
+            return False
+        result = evaluate_append_only(
+            base_contract=base_contract, head_contract=head_contract
+        )
+        return result.ok
 
     def _run_git(self, argv: list[str], *, cwd: str) -> str:
         # Delegates to the shared transport, which redacts any embedded

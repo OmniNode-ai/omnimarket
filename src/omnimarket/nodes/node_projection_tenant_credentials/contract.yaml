@@ -1,0 +1,95 @@
+---
+name: projection_tenant_credentials
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.projection.credential_publisher.ModelCredentialRegisteredEvent
+description: >
+  Ingress+projection for BYOK inference-credential refs (OMN-16316). Consumes
+  credential-registered / credential-revoked events published by the gateway
+  value->ref thin-publisher (omnimarket.projection.credential_publisher) and
+  materializes tenant_inference_credentials. The gateway handler never writes
+  this table directly (OMN-15800) -- only this projection touches the
+  database.
+
+handler:
+  module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
+  class: HandlerTenantCredentialsProjectionRunner
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: credential_registered
+      handler:
+        name: HandlerTenantCredentialsProjectionRunner
+        module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
+      handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
+      event_model: omnimarket.projection.credential_publisher.ModelCredentialRegisteredEvent
+    - operation: credential_revoked
+      handler:
+        name: HandlerTenantCredentialsProjectionRunner
+        module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
+      handler_module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
+      event_model: omnimarket.projection.credential_publisher.ModelCredentialRevokedEvent
+
+terminal_event: onex.evt.omnimarket.tenant-credential-projection-applied.v1
+
+golden_path:
+  - "Gateway value->ref exchange calls ProtocolSecretStore.set_secret, then publishes credential-registered to onex.evt.omnimarket.credential-registered.v1"
+  - "This node consumes credential-registered, INSERTs into tenant_inference_credentials"
+  - "Gateway revoke publishes credential-revoked to onex.evt.omnimarket.credential-revoked.v1"
+  - "This node consumes credential-revoked, sets revoked_at on the matching row"
+  - "GET /v1/tenants/me/inference-credentials renders from this table's bus-backed snapshot, excluding revoked_at IS NOT NULL rows by default"
+
+dod_evidence:
+  - test: tests/test_omn16316_tenant_credentials_projection.py::test_credential_registered_inserts_row
+    description: credential-registered event upserts a tenant_inference_credentials row with no value/key_value field
+  - test: tests/test_omn16316_tenant_credentials_projection.py::test_credential_revoked_sets_revoked_at
+    description: credential-revoked event sets revoked_at on the matching api_key_ref, does not delete the row
+  - test: tests/test_omn16316_tenant_credentials_projection.py::test_unknown_api_key_ref_revoke_is_a_noop
+    description: revoking a ref this projection never saw is a no-op, not an error
+
+db_io:
+  db_tables:
+    - name: tenant_inference_credentials
+      database_ref: application
+      schema: public
+      migration: "0000_create_tenant_inference_credentials.sql"
+      access: write
+      role: credentials
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.credential-registered.v1
+    - onex.evt.omnimarket.credential-revoked.v1
+  publish_topics:
+    - onex.evt.omnimarket.tenant-credential-projection-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.tenant-credential-projection-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.tenant-credential-projection-applied.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.tenant-credentials.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "tenant_inference_credentials"
+  schema: "public"
+  columns:
+    - "api_key_ref"
+    - "tenant_id"
+    - "name"
+    - "provider"
+    - "created_at"
+    - "revoked_at"
+  order_by: "created_at DESC"
+  freshness_column: "created_at"
+  limit: 200
+  # OMN-15800: served from the bus-fed SnapshotCache, never from Postgres
+  # directly -- same posture as node_projection_registration.
+  bus_backed: true
+  key_columns:
+    - "api_key_ref"
+
+metadata:
+  transport_type: kafka

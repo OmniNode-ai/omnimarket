@@ -5,6 +5,11 @@ on:
     branches: [main, 'hotfix/**']
   pull_request:
     branches: [main, dev]
+    # OMN-16217: default types (opened/synchronize/reopened) don't retrigger
+    # on a draft->ready flip. `ready_for_review` is added so undrafting a PR
+    # re-evaluates the draft-state admission gate on the current head without
+    # requiring a new push — see coverage-sweep-gate's `if:` below.
+    types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
 
 # OMN-14645: single-flight per ref, QUEUE — never cancel — an older candidate.
@@ -1049,6 +1054,48 @@ jobs:
       - name: Merge-check reason-code fixture-corpus gate (OMN-14765)
         run: python scripts/ci/check_merge_reason_codes.py
 
+  # OMN-16344: release-identity gate — the mechanism that keeps dev's
+  # project.version permanently ahead of the last published tag, matching
+  # omnibase_core (OMN-13411) and omnibase_infra (OMN-13412). omnimarket had no
+  # such gate, which is why dev sat at 0.4.8 — identical to the published
+  # v0.4.8 tag — while carrying seven commits of src/ changes, so one version
+  # string named two distinct code states and a release could not be cut
+  # without a manual hand-bump first.
+  #
+  # fetch-depth: 0 is REQUIRED, not incidental: the gate resolves the latest
+  # published version from `git tag --list`, and a shallow checkout carries no
+  # tags, which would make the gate silently report "no published tag yet" and
+  # pass everything. SYNC with the pre-commit hook `check-release-identity`.
+  release-identity-gate:
+    name: Release Identity Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install packaging
+        # `packaging` is the gate script's only third-party import, so this job
+        # stays a sub-minute pip install instead of a full `uv sync
+        # --all-extras`. The gate's unit tests deliberately run in the MAIN test
+        # job rather than here, matching the other tests/scripts/* suites:
+        # tests/conftest.py imports asyncpg, omnibase_core and omnibase_infra,
+        # so collecting them under this lightweight environment would fail at
+        # import time regardless of what the tests themselves need.
+        run: python -m pip install --quiet "packaging>=24.0"
+      - name: No code merged onto a published version without a bump (OMN-16344)
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref || 'dev' }}
+        run: |
+          set -euo pipefail
+          BASE="${BASE_REF}"
+          git fetch --quiet origin "${BASE}" || true
+          python scripts/check_release_identity.py --base "origin/${BASE}"
+
   event-registry-drift:
     needs: occ-preflight
     if: always()
@@ -1523,7 +1570,36 @@ jobs:
   contract-compliance:
     needs: occ-preflight
     name: Contract Compliance Check
-    runs-on: ubuntu-latest
+    # OMNI_RUNNER_SELECTOR_V1 (OMN-16428): this job's `uv sync --locked
+    # --all-extras` runs against onex_change_control's OWN uv.lock (checked
+    # out fresh above), whose per-package `source = { registry = "..." }`
+    # entries are baked in at lock-generation time to the internal-only
+    # `.201` Tailscale PyPI mirror (http://omninode-pc.tail75df5e.ts.net:3141/...). # onex-allow-internal-ip OMN-16428 reason="doc comment naming the exact unreachable-from-hosted-runner host this job's fix routes around; not a runnable reference"
+    # `uv sync --locked` fetches from the registry URL recorded IN THE
+    # LOCKFILE regardless of any ambient index config, so `ubuntu-latest`
+    # (no tailnet route) fails deterministically on whichever package isn't
+    # already cache-warm -- confirmed on PR #2116 (3 consecutive reruns,
+    # jobs 97230042624/97233406093/97233774190, three different failing
+    # packages, identical DNS-failure shape each time). omnimarket's OWN
+    # uv.lock resolves against public pypi.org (verified: zero
+    # tail75df5e.ts.net entries), so every other `uv sync` job in this repo
+    # is unaffected -- this is the one job that installs a DIFFERENT repo's
+    # mirror-pinned lockfile. Same defect class as OMN-16413
+    # (omnibase_core#1579, merged d61fdc938a): adopts the identical
+    # OMN-15699 fork-aware selector already used by
+    # deploy-gate-reusable.yml / main-target-guard.yml -- only an ACTUAL
+    # fork PR (head repo != base repo) routes to the public ubuntu-latest
+    # runner; every same-repo pull_request, push, and merge_group gets the
+    # tailnet-connected self-hosted omnibase-ci fleet, which CAN reach the
+    # .201 mirror. This does NOT widen the trust boundary: untrusted fork
+    # code still never reaches the self-hosted fleet.
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
     if: needs.occ-preflight.result == 'success' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push')
     steps:
       - uses: actions/checkout@v6
@@ -1687,7 +1763,35 @@ jobs:
   # ============================================================================
   coverage-sweep-gate:
     needs: occ-preflight
-    if: always()
+    # OMN-16217: draft-state CI admission gate (org-wide fan-out of the
+    # mechanism proven on onex_change_control#6686 / OMN-15731) — GATED here,
+    # and ONLY for dev-targeting PRs; push/merge_group/main-or-hotfix-
+    # targeting PRs are unaffected (`always()` still holds for them),
+    # preserving the dev->main promotion-boundary guarantee (root CLAUDE.md
+    # rule #4) exactly as before. `coverage-sweep-gate` is the target: this
+    # file's own concurrency-group comment above already documents it as "the
+    # longest-pole job (3 fresh sibling clones + uv sync --all-extras + full
+    # pytest --cov)" — the single most expensive unconditional job in this
+    # workflow, and the closest omnimarket analog to OCC's `pre-commit`
+    # target. omnimarket has no `ci:ready`-style merge-intent label pilot
+    # (unlike OCC), so this is a PURE draft gate — no dual-accept fallback
+    # arm.
+    #
+    # Fail-closed proof is structural, not a new code path: `Coverage Sweep
+    # Gate` stays in STRICT_GATE_JOBS in scripts/ci/ci_summary_gate.py (it is
+    # not, and must not become, a member of SKIPPABLE_GATE_JOBS) — a
+    # `skipped` conclusion (draft or otherwise) already fails `CI Summary`
+    # closed for a dev-targeting PR, so a draft PR's gate context reads red
+    # (never green-by-skip). Undrafting fires `ready_for_review` (added to
+    # this workflow's `pull_request.types` above), which re-evaluates this
+    # `if:` on the current head and runs the job for real. This job is
+    # currently NOT a directly-required branch-protection context (removed
+    # from .github/required-checks.yaml 2026-07-25 per that file's header —
+    # verified live against `gh api .../branches/{dev,main}/protection/
+    # required_status_checks`), so the required-check skip-vector guard does
+    # not analyze it directly; it is enforced transitively, only through `CI
+    # Summary`'s STRICT_GATE_JOBS membership, exactly as documented there.
+    if: always() && (github.event_name != 'pull_request' || github.base_ref != 'dev' || !github.event.pull_request.draft)
     name: Coverage Sweep Gate
     runs-on: ubuntu-latest
     # OMN-14645: bound the longest-pole job explicitly. The generation step caps

@@ -24,7 +24,7 @@ node_version:
   patch: 0
 node_type: "REDUCER_GENERIC"
 description: >
-  Deterministic routing reducer for the delegation pipeline. Maps task type and prompt token count to a routing decision: which model, endpoint, cost tier, and system prompt to use. Performs read-only configuration I/O to load on-disk contracts (overrideable via BIFROST_CONTRACT_PATH, BIFROST_OVERLAY_PATH, and TASK_CLASS_CONTRACT_PATH). Resolves endpoint URLs by deep-merging the repo default bifrost contract with the user endpoint overlay — not from endpoint environment variables (OMN-10657, OMN-10717). Loads task-class contracts from configs/task_class_contracts.v1.yaml (overrideable via TASK_CLASS_CONTRACT_PATH) and enforces per-task-class cloud_routing_policy, pricing_ceiling_per_1k_tokens, and escalation_policy.tier_order constraints (OMN-10615).
+  Deterministic routing reducer for the delegation pipeline. Maps task type and prompt token count to a routing decision: which model, endpoint, cost tier, and system prompt to use. Performs read-only configuration I/O to load on-disk contracts (overrideable via BIFROST_CONTRACT_PATH, BIFROST_OVERLAY_PATH, and TASK_CLASS_CONTRACT_PATH). Resolves endpoint URLs by deep-merging the repo default bifrost contract with the user endpoint overlay — not from endpoint environment variables (OMN-10657, OMN-10717). Loads task-class contracts from configs/task_class_contracts.v1.yaml (overrideable via TASK_CLASS_CONTRACT_PATH) and enforces per-task-class cloud_routing_policy, pricing_ceiling_per_1k_tokens, and escalation_policy.tier_order constraints (OMN-10615). OMN-15631 v1(a): when the request's tenant carries a matching row in the delegation_routing_tenant_overlay table (migrations/0001, gated on OMNIDASH_ANALYTICS_DB_URL — resolved by the bus/local dispatch boundary as a pure input, never read inside delta() itself), that tenant-scoped backend binding WHOLESALE-replaces the platform-resolved backend for the request's task_type; tenant-zero and any tenant with no matching overlay row resolve the unchanged platform-default path above. No RLS on the overlay table in v1(a) — AC2 (DB-enforced cross-tenant denial) is a follow-on ticket blocked on the tenant-schema RLS foundation.
 
 input_model:
   name: "ModelDelegationRequest"
@@ -94,6 +94,9 @@ config_dependencies:
   - key: "BIFROST_OVERLAY_PATH"
     description: "Override path for the user endpoint overlay file (default: ~/.omninode/delegation/bifrost_overrides.yaml)."
     required: false
+  - key: "OMNIDASH_ANALYTICS_DB_URL"
+    description: "OMN-15631 v1(a): Postgres DSN for the delegation_routing_tenant_overlay table (per-tenant backend-binding overrides) and the sibling context_roi_scores ROI overlay. Unset means tenant-overlay resolution is disabled — every tenant resolves the platform-default path unchanged (fail-open, not fail-closed)."
+    required: false
 error_handling:
   retry_policy:
     max_retries: 0
@@ -131,6 +134,22 @@ metadata:
     - "OMN-7040"
     - "OMN-10615"
     - "OMN-10657"
+
+db_io:
+  db_tables:
+    # OMN-15631 v1(a): the rows are tenant-attributable workload data (a
+    # tenant's own routing config), not attribution-meaningless infra state
+    # -- the house-tenant ruling 2026-08-02 reserves `omninode_internal` for
+    # the latter. The domain/schema is `tenant`, matching ADR-0027's
+    # classification for tenant-attributable workload data. The table remains
+    # v1(a) / no-RLS in this PR; OMN-16314 owns the later tenant-isolation
+    # policy/foundation work.
+    - name: delegation_routing_tenant_overlay
+      database_ref: application
+      schema: tenant
+      migration: "0001_create_delegation_routing_tenant_overlay.sql"
+      access: read_write
+      role: tenant_routing_overlay
 
 config:
   BIFROST_CONTRACT_PATH:

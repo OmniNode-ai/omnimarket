@@ -25,6 +25,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command impo
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     EnumEvidenceCheckStatus,
+    EnumOccRefRefreshOutcome,
     ModelDodVerifyState,
     ModelEvidenceCheckResult,
 )
@@ -93,12 +94,22 @@ class HandlerDodVerify:
         pre-collected evidence results. When evidence_results is None,
         loads the contract and collects evidence automatically.
         """
+        occ_governance_ref: str | None = None
+        occ_refresh_outcome: EnumOccRefRefreshOutcome | None = None
+        occ_resolved_sha: str | None = None
         if evidence_results is None:
             collector = self._make_collector()
             evidence_results = collector.collect(
                 ticket_id=command.ticket_id,
                 contract_path=command.contract_path,
             )
+            # OMN-15454 AC2: provenance of the OCC ref actually read this run,
+            # not merely the ref requested. None when collect() never
+            # attempted OCC auto-resolution (an explicit contract_path).
+            if collector.occ_refresh_outcome is not None:
+                occ_governance_ref = collector.occ_governance_ref
+                occ_refresh_outcome = collector.occ_refresh_outcome
+                occ_resolved_sha = collector.occ_resolved_sha
 
         checks = evidence_results
 
@@ -191,6 +202,9 @@ class HandlerDodVerify:
             skipped_count=skipped,
             error_message=error_message,
             superseded_count=superseded,
+            occ_governance_ref=occ_governance_ref,
+            occ_refresh_outcome=occ_refresh_outcome,
+            occ_resolved_sha=occ_resolved_sha,
         )
 
         return state

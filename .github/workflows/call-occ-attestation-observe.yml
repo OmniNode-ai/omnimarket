@@ -91,19 +91,46 @@ name: OCC Attestation Observe (report-only)
 on:
   pull_request:
     branches: [main, dev, "hotfix/**"]
-    types: [opened, synchronize, reopened, ready_for_review, edited]
+    # OMN-16171: `edited` REMOVED. This workflow is a write effect, not a
+    # read/eligibility check -- it force-pushes the shared
+    # `auto/occ-observation-*` branch against onex_change_control, and every
+    # such force-push detonates a full ~19-job onex_change_control CI wave.
+    # OCC's own evidence-stamp bots rewrite product-PR bodies with a minted
+    # App token, which DOES emit `pull_request: edited` (GitHub's recursion
+    # guard only suppresses edits authored by the ambient GITHUB_TOKEN), so
+    # the observation pipeline's own output re-triggered the observation
+    # pipeline. Measured 2026-08-18: one observation branch took 114 CI runs
+    # across 10 force-push waves in a 45-minute window. Unlike
+    # `call-occ-preflight.yml` -- which keeps `edited` because a post-open
+    # `Evidence-Source:` stamp must re-clear a stale FAILURE (OMN-14241) --
+    # this workflow has no self-heal requirement: a missed observation is
+    # re-emitted by the next push, and the record alone can never merge a PR.
+    # Accepted residual: a PR whose title gains its `OMN-` reference only via
+    # a later title edit (see the `if:` below) will not emit an observation
+    # until its next push; the branch-name arm of that same condition already
+    # covers the repo's `jonah/omn-XXXX-...` convention.
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # OMN-15300: one observation per (PR, head sha), not one per event.
-# `types:` includes `edited`, which fires on every title/body change — and the
-# OCC evidence-stamp bots rewrite PR bodies. omnimarket#1922 therefore produced
-# three runs for head sha cac88675 inside 32 seconds (runs 30328534324 /
-# 30328537148 / 30328560931), each writing its own attempt-scoped observation
-# file and opening its own OCC PR (#5245/#5246/#5247). The observations were
-# byte-identical and collapse to ONE qualifying observation in the N=10 window,
-# so the extra runs bought nothing and burned a full CI cycle each.
+#
+# HISTORICAL — the `edited` trigger this paragraph describes was removed by
+# OMN-16171 (see the `types:` block above). Kept because the measurement is
+# still the reason this concurrency group exists, and because it is the
+# evidence for the remaining work: when `types:` still included `edited`, every
+# title/body change fired a run, and the OCC evidence-stamp bots rewrite PR
+# bodies. omnimarket#1922 produced three runs for head sha cac88675 inside 32
+# seconds (runs 30328534324 / 30328537148 / 30328560931), each writing its own
+# attempt-scoped observation file and opening its own OCC PR (#5245/#5246/
+# #5247). The observations were BYTE-IDENTICAL and collapse to ONE qualifying
+# observation in the N=10 window, so the extra runs bought nothing and burned a
+# full CI cycle each.
+#
+# That byte-identical finding outlives the trigger fix: pushes still produce
+# redundant same-content observations, and the handler has no content no-op
+# guard, so it commits and force-pushes regardless. Tracked on OMN-16171.
 #
 # Keyed on the head sha, not just the PR: a genuine new push is a genuine new
-# observation and must not be cancelled by an unrelated body edit. Cancelling a
+# observation and must not be cancelled by an unrelated event. Cancelling a
 # same-sha predecessor is safe because the record it would write is identical.
 concurrency:
   group: occ-attestation-observe-${{ github.event.pull_request.number }}-${{ github.event.pull_request.head.sha }}

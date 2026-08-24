@@ -409,6 +409,13 @@ def _inference_error_failure_class(error_message: str) -> EnumDelegationFailureC
     ModelLlmDelegationEscalationTriggeredEvent carries an honest failure_class.
     """
     normalized = error_message.lower()
+    # OMN-16419: matched first — the fail-closed model-attribution guard's
+    # error text embeds this literal marker (HandlerLlmDelegationCall,
+    # node_llm_delegation_call_effect) — before the generic markers below,
+    # since a served-ids mismatch message could otherwise false-match
+    # "unavailable"/"connection" style substrings.
+    if "model_attribution_mismatch" in normalized:
+        return EnumDelegationFailureClass.MODEL_ATTRIBUTION_MISMATCH
     if "finish_reason=length" in normalized or "truncat" in normalized:
         return EnumDelegationFailureClass.CONTEXT_TOO_LARGE
     if "timed out" in normalized or "timeout" in normalized:
