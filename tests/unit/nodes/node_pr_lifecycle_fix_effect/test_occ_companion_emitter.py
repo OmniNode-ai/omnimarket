@@ -730,25 +730,93 @@ class TestFullEmitFlow:
         assert result.reason is EnumOccEligibilityReason.ELIGIBLE
         assert "OMN-9999:occ-self-bind-pr-55:command" in result.receipt_ids
 
-    def test_absent_self_bind_declaration_is_ineligible_red_case(
+    def test_neutralized_self_bind_append_fails_loud_omn_16403(
         self, tmp_path: Path
     ) -> None:
-        """RED against exists-but-wrong (OMN-14650): with the self-bind receipt
-        WRITTEN but its id NOT appended to the contract's dod_evidence — the
-        exact pre-fix behavior — the validator never inspects the only receipt
-        bound to the OCC companion PR and the companion is INELIGIBLE with
-        pr_ticket_mismatch. This asserts against the wrong-but-present tree
-        (receipt file exists on disk) so it fails on pre-fix code and proves the
-        GREEN case above is non-vacuous.
+        """OMN-16403: a self-bind pass that silently no-ops must fail LOUD.
+
+        Reproduces the defect class behind the onex_change_control#6636
+        incident (OMN-16145): the self-bind pass's contract-declaration append
+        (``_append_self_bind_evidence``) returns without ever writing the
+        entry — live, an unexplained no-op/crash in that specific sub-step;
+        here, forced via a no-op patch so the failure is deterministic.
+        Everything else in the run (the self-bind RECEIPT write, the rebind,
+        the force-push) still executes, reproducing the exact
+        "exists-but-wrong" companion #6636 shipped: Evidence-Source correctly
+        patched onto the product PR, but the ``occ-self-bind-pr-<n>``
+        dod_evidence entry never landed in the contract — silently, with no
+        error, stranding the companion at
+        ``validator_occ_merge_eligibility`` for 4 days with no signal.
+
+        Before the OMN-16403 mint-verify, this scenario would sail through to
+        ``_patch_evidence_source`` and report success. The fix must raise
+        BEFORE the product PR is ever touched — this asserts both halves:
+        the raise, and that ``_patch_evidence_source`` was never called.
         """
         emitter = OccCompanionEmitter()
-        # Neutralize ONLY the OMN-14650 fix (the contract-declaration append);
-        # everything else — the self-bind RECEIPT write, the rebind — still runs,
-        # reproducing the exact born-broken auto/* companion.
-        with patch.object(emitter, "_append_self_bind_evidence"):
-            _action, clone_root = self._run(emitter, tmp_path)
+        clone_root = tmp_path / "onex_change_control"
+        patch_calls: list[dict] = []
 
-        # The self-bind receipt file IS present (exists-but-wrong)...
+        def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            if path.endswith("/pulls/321"):
+                return {
+                    "body": "Implements the thing.",
+                    "title": "feat(OMN-9999): the thing",
+                    "head": {"sha": "b" * 40, "ref": "feature-branch"},
+                    "state": "open",
+                }
+            if "/pulls/55" in path:
+                return {"number": 55, "state": "open"}
+            return {}
+
+        def fake_run_git(argv: list[str], *, cwd: str) -> str:
+            if "rev-parse" in argv:
+                return "c" * 40
+            if "ls-remote" in argv:
+                return "0" * 40 + "\tHEAD\n"
+            return ""
+
+        def fake_clone_and_branch(cd: Path, *_a: object) -> str:
+            cd.mkdir(parents=True)
+            return "0" * 40
+
+        with (
+            patch(f"{_MOD}.rest_json", side_effect=fake_rest),
+            patch(f"{_MOD}._resolve_github_token", return_value="fake-token"),
+            patch(f"{_MOD}.acquire_occ_companion_lease", return_value=True),
+            patch(f"{_MOD}.release_occ_companion_lease"),
+            patch.object(emitter, "_run_git", side_effect=fake_run_git),
+            patch.object(
+                emitter, "_clone_and_branch", side_effect=fake_clone_and_branch
+            ),
+            patch.object(emitter, "_open_or_sync_occ_pr", return_value=55),
+            patch.object(emitter, "_observe_pr_probe", return_value=("{}", 0)),
+            # Neutralize ONLY the contract-declaration append; everything
+            # else — the self-bind RECEIPT write, the rebind — still runs.
+            patch.object(emitter, "_append_self_bind_evidence"),
+            patch.object(
+                emitter,
+                "_patch_evidence_source",
+                side_effect=lambda **kw: patch_calls.append(kw),
+            ),
+            patch(
+                f"{_MOD}.tempfile.TemporaryDirectory",
+                return_value=_FakeTempDir(tmp_path),
+            ),
+            pytest.raises(RuntimeError, match="OMN-16403"),
+        ):
+            emitter._emit_companion_sync("OmniNode-ai/omnimarket", 321, None)
+
+        # The half-companion state must never reach the product PR.
+        assert patch_calls == [], (
+            "Evidence-Source must never be patched onto the product PR while "
+            "the OCC companion is missing its own self-bind entry"
+        )
+
+        # The self-bind RECEIPT file is still written (unconditional, ahead
+        # of the contract-declaration append this test neutralizes) —
+        # confirming the mint-verify step, not the receipt write, is what
+        # catches the gap.
         self_bind = (
             clone_root
             / "drift"
@@ -758,38 +826,11 @@ class TestFullEmitFlow:
             / "command.yaml"
         )
         assert self_bind.is_file(), "self-bind receipt must still be written"
-        # ...but its id is absent from the contract's dod_evidence, so the
-        # validator cannot reach it.
         contract_data = yaml.safe_load(
             (clone_root / "contracts" / "OMN-9999.yaml").read_text()
         )
         declared = {item["id"] for item in contract_data["dod_evidence"]}
         assert "occ-self-bind-pr-55" not in declared
-
-        snapshot = ModelOccEligibilityInput(
-            repo="onex_change_control",
-            pr_number=55,
-            pr_title=(
-                "evidence(OMN-9999): OCC Evidence-Source autobind for "
-                "OmniNode-ai/omnimarket#321"
-            ),
-            pr_body="Autobind OCC evidence.\n\nEvidence-Ticket: OMN-9999\n",
-            pr_branch="auto/omninode-ai-omnimarket-pr-321-occ-autobind",
-            pr_commit_shas=("c" * 40,),
-            pr_commit_texts=(
-                "evidence(OMN-9999): autobind OmniNode-ai/omnimarket#321",
-            ),
-            occ_commit_sha="c" * 40,
-            contracts_dir=clone_root / "contracts",
-            receipts_dir=clone_root / "drift" / "dod_receipts",
-        )
-
-        result = validate_occ_merge_eligibility(snapshot)
-
-        assert result.eligible is False
-        assert result.reason is EnumOccEligibilityReason.PR_TICKET_MISMATCH, (
-            result.detail
-        )
 
     def test_create_and_autobind_route_same_core(self, tmp_path: Path) -> None:
         """Both public entry points drive the identical authoring core."""
