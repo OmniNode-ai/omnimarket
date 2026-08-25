@@ -124,16 +124,19 @@ backends:
   # secret-dead ceiling is functionally absent, so both Anthropic backends are
   # removed from the active ladder rather than left as zombie entries. The new
   # ceiling is `cloud-gemini-pro` below (secret_ref `llm.gemini.api_key`, which
-  # DOES resolve).
+  # DOES resolve IN-CLUSTER — see the OMN-16530 correction on the line below
+  # before trusting this off an unconfigured off-box machine).
   - backend_id: cloud-gemini-pro
     # OMN-13351: resolvable Gemini frontier ceiling backend. Replaces the dead
     # Anthropic `cloud-sonnet` ceiling. COMPLETE endpoint URL incl. the full chat
     # path, posted VERBATIM (OMN-12815) — the AI Studio OpenAI-compatibility
     # endpoint, identical host to cloud-gemini-flash.
     #
-    # model_name verification (live, this ticket, in `omninode-stability-test-runtime`):
-    # the resolved `llm.gemini.api_key` AUTHENTICATES (1-token probes return HTTP
-    # 200/429, never 401/403). `gemini-2.5-pro` was the first-preference ceiling but
+    # model_name verification (live, in `omninode-stability-test-runtime` —
+    # IN-CLUSTER, where Infisical resolves `llm.gemini.api_key`; see OMN-16530
+    # below for why this does not generalize to every caller): the resolved
+    # `llm.gemini.api_key` AUTHENTICATES (1-token probes return HTTP 200/429,
+    # never 401/403). `gemini-2.5-pro` was the first-preference ceiling but
     # is quota-zero on the only resolvable Gemini key (HTTP 429 "exceeded current
     # quota" — the same AI Studio free-tier failure mode OMN-12890 documented for
     # gemini-2.0-flash). `gemini-2.5-flash` returns HTTP 200 (echo
@@ -142,6 +145,39 @@ backends:
     # than the cheap_cloud `gemini-2.5-flash-lite`, and a real escalation step above
     # the cheap_cloud glm-5.2 tier. A wrong/quota-blocked id fails closed, so the
     # exact verified-200 id is pinned.
+    #
+    # OMN-16530 (2026-08-25): the "AUTHENTICATES" claim above was verified
+    # IN-CLUSTER only and does NOT unconditionally hold for every caller — it
+    # was live-reproduced FALSE from an off-box LAN Mac (400 "Please pass a
+    # valid API key"). Root cause is a stale/wrong local VALUE, not a broken
+    # resolution mechanism: `resolve_api_key_async("llm.gemini.api_key", ...)`
+    # already resolves off-box, through the SAME fallback chain other local
+    # tooling uses — `_ConventionFallbackSecretStore`
+    # (omnimarket/src/omnimarket/inference/secret_store_resolver.py) checks,
+    # in order, (1) a literal env match, (2) the dotted-ref -> `LLM_*_API_KEY`
+    # convention, (3) the OMN-13960 provider-native alias
+    # (`llm.gemini.api_key` -> `GEMINI_API_KEY`), which is exactly the name
+    # the local bootstrap file `~/.omnibase/.env` defines and other local
+    # tooling already relies on. That chain resolved a real value on the
+    # off-box repro — the VALUE it found was simply not the same working
+    # secret the in-cluster Infisical store holds, so the provider rejected
+    # it. There is no sanctioned off-box path to the in-cluster Infisical
+    # value itself (memory `reference_onexdev_infisical_is_in_cluster_sync_identity_writable.md`);
+    # keeping `~/.omnibase/.env`'s `GEMINI_API_KEY` current is an operator
+    # bootstrap-hygiene task, not a code defect, and no raw-env-key shortcut
+    # was added to paper over it (secret-ref discipline: this file still
+    # carries only the reference, never a literal key). A rejected-but-
+    # resolved secret now fails with the provider's own diagnostic
+    # (`HandlerLlmDelegationCall._execute_call`'s `httpx.HTTPStatusError`
+    # branch appends `response.text`) instead of a bare status code — see
+    # `transport._curl_post`, which previously ran `curl -f` and silently
+    # discarded the response body on any >=400, the actual source of the
+    # "bare 400" this ticket fixed. The ARCHITECTURALLY PREFERRED path
+    # remains the bus (OMN-16529): once a caller's health probe clears and
+    # escalation routes through `RuntimeDelegationDispatchPort` to the
+    # deployed dev-lane consumer, `llm.gemini.api_key` resolves the SAME way
+    # the in-cluster verification above did — this off-box local-mode path
+    # exists for callers running the bus-less `LocalDelegationDispatchPort`.
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     model_name: "gemini-2.5-flash"
     secret_ref: llm.gemini.api_key

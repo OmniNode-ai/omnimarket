@@ -317,6 +317,9 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
         # First call is the health probe (curl ... /health); the POST follows.
         if "-X" in args and "POST" in args:
             captured["post_args"] = args
+            # OMN-16530: append the -w status-code marker curl now emits after
+            # the response body (see transport._CURL_HTTP_STATUS_MARKER) — the
+            # fake must mirror the real curl invocation shape.
             return _FakeProc(
                 json.dumps(
                     {
@@ -329,6 +332,8 @@ def test_local_dispatch_reaches_lan_endpoint_via_curl_on_macos_profile(
                         },
                     }
                 )
+                + transport._CURL_HTTP_STATUS_MARKER
+                + "200"
             )
         return _FakeProc("200")
 

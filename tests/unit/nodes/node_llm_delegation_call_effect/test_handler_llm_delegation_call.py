@@ -361,6 +361,56 @@ class TestHandlerLlmDelegationCall:
         assert result.failure_class == EnumDelegationFailureClass.RATE_LIMITED
 
     @pytest.mark.unit
+    def test_http_status_error_error_message_includes_provider_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-16530: the diagnostic names the provider's own error detail —
+        never a bare status code. Live-reproduced failure mode: a resolved
+        secret VALUE the provider rejects (Gemini 400 "Please pass a valid
+        API key" for a stale/off-box GEMINI_API_KEY)."""
+        real_response = httpx.Response(
+            400,
+            request=httpx.Request("POST", "https://example.test/v1/chat/completions"),
+            text='{"error": {"message": "Please pass a valid API key"}}',
+        )
+        http_error = httpx.HTTPStatusError(
+            "Client error '400 Bad Request' for url 'https://example.test'",
+            request=real_response.request,
+            response=real_response,
+        )
+        _patch_post(monkeypatch, side_effect=http_error)
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            result = handler(_make_request())
+
+        assert result.success is False
+        assert result.failure_class == EnumDelegationFailureClass.MODEL_UNAVAILABLE
+        assert "Please pass a valid API key" in result.error_message
+
+    @pytest.mark.unit
+    def test_http_status_error_without_body_falls_back_to_bare_message(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A mocked response whose ``.text`` isn't a real string (e.g. a bare
+        MagicMock, as other tests in this file construct) degrades gracefully
+        to the pre-fix bare message instead of raising or embedding a mock
+        repr."""
+        mock_resp = MagicMock()
+        mock_resp.status_code = 500
+        http_error = httpx.HTTPStatusError(
+            "500 Internal Server Error", request=MagicMock(), response=mock_resp
+        )
+        _patch_post(monkeypatch, side_effect=http_error)
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            handler = HandlerLlmDelegationCall()
+            result = handler(_make_request())
+
+        assert result.success is False
+        assert result.error_message == "500 Internal Server Error"
+
+    @pytest.mark.unit
     def test_empty_choices_returns_invalid_json_failure(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:

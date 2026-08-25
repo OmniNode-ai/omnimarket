@@ -32,20 +32,29 @@ _MACOS_PROFILE = "local_macos_claude_hooks"
 
 
 class _FakeCompletedProcess:
-    """Minimal stand-in for ``subprocess.CompletedProcess``."""
+    """Minimal stand-in for ``subprocess.CompletedProcess``.
+
+    OMN-16530: ``stdout`` carries the ``-w`` status-code marker curl now
+    appends after the response body (see ``transport._CURL_HTTP_STATUS_MARKER``)
+    so these fakes match the real invocation shape.
+    """
 
     returncode = 0
     stderr = ""
-    stdout = json.dumps(
-        {
-            "choices": [{"message": {"content": "ok"}}],
-            "model": "Qwen3.6-35B-A3B",
-            "usage": {
-                "prompt_tokens": 1,
-                "completion_tokens": 1,
-                "total_tokens": 2,
-            },
-        }
+    stdout = (
+        json.dumps(
+            {
+                "choices": [{"message": {"content": "ok"}}],
+                "model": "Qwen3.6-35B-A3B",
+                "usage": {
+                    "prompt_tokens": 1,
+                    "completion_tokens": 1,
+                    "total_tokens": 2,
+                },
+            }
+        )
+        + transport._CURL_HTTP_STATUS_MARKER
+        + "200"
     )
 
 
@@ -214,3 +223,92 @@ def test_non_macos_profile_uses_httpx_not_curl(
 
     assert response.status_code == 200
     assert captured["url"] == endpoint
+
+
+class _FakeErrorCompletedProcess:
+    """``subprocess.CompletedProcess`` stand-in for a >=400 curl response.
+
+    OMN-16530 regression coverage: curl returns rc=0 (it reached the server
+    and got a real HTTP response) with the provider's error body followed by
+    the ``-w`` status marker — mirroring exactly what a rejected secret value
+    produces against a real cloud provider (live-reproduced: Gemini returns
+    400 "Please pass a valid API key" for a resolved-but-invalid key).
+    """
+
+    def __init__(self, status_code: int, body: str) -> None:
+        self.returncode = 0
+        self.stderr = ""
+        self.stdout = body + transport._CURL_HTTP_STATUS_MARKER + str(status_code)
+
+
+@pytest.mark.unit
+def test_curl_post_preserves_response_body_on_http_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-16530: a >=400 curl response raises HTTPStatusError with the body
+    intact — never a bare status code with the provider's diagnostic
+    discarded (the pre-fix behavior: "-f" made curl swallow the body and
+    raise an undiagnostic RuntimeError like "curl: (22) ... error: 400")."""
+    error_body = '{"error": {"code": 400, "message": "Please pass a valid API key", "status": "INVALID_ARGUMENT"}}'
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_a, **_k: _FakeErrorCompletedProcess(400, error_body),
+    )
+
+    with pytest.raises(transport.httpx.HTTPStatusError) as exc_info:
+        transport.post_chat_completion(
+            endpoint_url="http://inference.example:8000/v1/chat/completions",
+            payload={"model": "gemini-2.5-flash", "messages": []},
+            timeout_seconds=30.0,
+            runtime_profile=_MACOS_PROFILE,
+        )
+
+    assert exc_info.value.response.status_code == 400
+    assert "Please pass a valid API key" in exc_info.value.response.text
+
+
+@pytest.mark.unit
+def test_curl_post_reports_status_from_response_not_hardcoded_200(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful curl response reports the REAL status curl saw (via -w),
+    not a hardcoded 200 (the pre-fix behavior masked, e.g., a 201/202)."""
+    ok_body = json.dumps({"choices": [{"message": {"content": "ok"}}]})
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *_a, **_k: _FakeErrorCompletedProcess(201, ok_body),
+    )
+
+    response = transport.post_chat_completion(
+        endpoint_url="http://inference.example:8000/v1/chat/completions",
+        payload={"model": "Qwen3.6-35B-A3B", "messages": []},
+        timeout_seconds=30.0,
+        runtime_profile=_MACOS_PROFILE,
+    )
+
+    assert response.status_code == 201
+
+
+@pytest.mark.unit
+def test_curl_post_missing_status_marker_raises_diagnostic_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Malformed/unexpected curl output (no -w marker) fails with a named
+    diagnostic — never a silent misparse of the status code."""
+
+    class _MalformedProcess:
+        returncode = 0
+        stderr = ""
+        stdout = "not what curl -w should have produced"
+
+    monkeypatch.setattr(subprocess, "run", lambda *_a, **_k: _MalformedProcess())
+
+    with pytest.raises(RuntimeError, match="status-code marker was not found"):
+        transport.post_chat_completion(
+            endpoint_url="http://inference.example:8000/v1/chat/completions",
+            payload={"model": "Qwen3.6-35B-A3B", "messages": []},
+            timeout_seconds=30.0,
+            runtime_profile=_MACOS_PROFILE,
+        )
