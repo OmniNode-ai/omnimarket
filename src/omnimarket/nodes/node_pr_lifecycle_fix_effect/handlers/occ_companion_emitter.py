@@ -1276,6 +1276,37 @@ class OccCompanionEmitter:
                     ["git", "push", "--force", "origin", branch], cwd=str(clone_dir)
                 )
 
+                # OMN-16403 falsifiable mint-verify: re-parse each ticket's
+                # just-pushed contract and confirm the self-bind dod_evidence
+                # entry actually landed before this method goes on to PATCH
+                # Evidence-Source onto the product PR and declare success.
+                #
+                # ``_append_self_bind_evidence``'s own idempotency guard (an
+                # id-presence check, by design so a `synchronize` re-fire does
+                # not double-append) returns silently whenever it believes the
+                # item is already declared. That silent-return path is
+                # indistinguishable, from the caller's side, between a
+                # genuine re-fire and a bug/race that made the guard true
+                # without the item ever having been written — and nothing
+                # downstream previously re-checked the WRITTEN file before
+                # patching the product PR. That is the exact half-companion
+                # state the OMN-16403 incident produced on
+                # onex_change_control#6636: pass 1 landed, Evidence-Source
+                # was correctly patched onto the product PR, but the
+                # ``occ-self-bind-pr-6636`` dod_evidence entry never made it
+                # into ``contracts/OMN-16145.yaml`` — silently, with no error
+                # and no retry, stranding the companion at
+                # ``validator_occ_merge_eligibility`` for 4 days. Fail loudly
+                # here instead: never patch the product PR (and never report
+                # this run as having authored a companion) while any ticket's
+                # contract is missing its own self-bind entry.
+                self._assert_self_bind_landed(
+                    contract_paths=contract_paths,
+                    tickets=tickets,
+                    self_bind_evidence_id=self_bind_evidence_id,
+                    occ_pr_number=occ_pr_number,
+                )
+
             # 5. PATCH Evidence-Source: OCC#<n> back onto the product PR via REST.
             self._patch_evidence_source(
                 repo=repo,
@@ -2044,6 +2075,43 @@ class OccCompanionEmitter:
             if isinstance(item, dict) and item.get("id") == evidence_id:
                 return True
         return False
+
+    def _assert_self_bind_landed(
+        self,
+        *,
+        contract_paths: dict[str, Path],
+        tickets: Sequence[str],
+        self_bind_evidence_id: str,
+        occ_pr_number: int,
+    ) -> None:
+        """Fail loudly (OMN-16403) unless every ticket's self-bind item landed.
+
+        Re-reads each ticket's just-written contract file off disk — the
+        SAME bytes that were just committed and force-pushed to the OCC
+        companion branch, not a re-derived assumption — and parses it with
+        the canonical :meth:`_declares_dod_evidence_id` check. Raising here,
+        before :meth:`_patch_evidence_source` runs, guarantees a caller can
+        never observe a product PR whose ``Evidence-Source`` was patched to
+        an OCC companion that is missing its own self-bind receipt entry —
+        the "half-companion" state that stranded ``onex_change_control#6636``
+        for 4 days with no signal.
+        """
+        missing = [
+            ticket
+            for ticket in tickets
+            if not self._declares_dod_evidence_id(
+                contract_paths[ticket].read_text(encoding="utf-8"),
+                self_bind_evidence_id,
+            )
+        ]
+        if missing:
+            raise RuntimeError(
+                f"OCC self-bind mint-verify failed (OMN-16403): "
+                f"{self_bind_evidence_id!r} is not a declared dod_evidence "
+                f"item for ticket(s) {', '.join(missing)} after the "
+                f"self-bind pass for OCC#{occ_pr_number} — refusing to "
+                "patch Evidence-Source onto a half-companioned product PR."
+            )
 
     @staticmethod
     def _insert_dod_evidence_items(contract_text: str, blocks: Sequence[str]) -> str:
