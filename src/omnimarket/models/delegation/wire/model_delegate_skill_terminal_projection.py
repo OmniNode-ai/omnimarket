@@ -254,6 +254,31 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
     machine_id: UUID | None = None
     # string-id-ok: tenant_id is a named tenant identifier, not a UUID
     tenant_id: str | None = None
+    # OMN-15533: the task CLASS and the served token counts. Both constructors
+    # below already had these in hand — from_terminal_event from the terminal's
+    # metrics, from_task_delegated_event from the token basis the counterfactual
+    # was computed over — and dropped them, leaving savings_estimates with no
+    # column the read view could select. projection_delegation_savings filled the
+    # hole with `model_local AS task_type` and a hardcoded 0/0, so a task class of
+    # "escalation" rendered as "gemini-2.5-flash". Carried through to the row now
+    # (migration 082); None means "not recorded", never a substituted value.
+    task_type: str = Field(
+        default="",
+        description=(
+            "Task class from the source terminal (e.g. 'escalation', 'document'). "
+            "Never a model identifier."
+        ),
+    )
+    prompt_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Served input tokens. None = not recorded by the source.",
+    )
+    completion_tokens: int | None = Field(
+        default=None,
+        ge=0,
+        description="Served output tokens. None = not recorded by the source.",
+    )
 
     @model_validator(mode="after")
     def _amounts_match(self) -> Self:
@@ -286,6 +311,12 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
             repo_name=event.repo_name,
             machine_id=event.machine_id,
             tenant_id=event.tenant_id,
+            # OMN-15533: the terminal's own task class and served tokens — the
+            # same values ModelDelegationEventProjectionRow.from_terminal_event
+            # already writes to delegation_events.
+            task_type=event.task_type,
+            prompt_tokens=event.metrics.input_tokens,
+            completion_tokens=event.metrics.output_tokens,
         )
 
     @classmethod
@@ -336,6 +367,15 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
             repo_name=event.repo,
             machine_id=None,
             tenant_id=event.tenant_id,
+            # OMN-15533: task_type is a REQUIRED field on the source event, and
+            # the counterfactual pins the exact token counts its cost was derived
+            # from (ModelPremiumCounterfactual.tokens_in/tokens_out). Reading the
+            # tokens back off the counterfactual keeps the row self-consistent:
+            # the persisted counts are provably the ones cloud_cost_usd was
+            # computed over, so a verifier can recompute the saving from the row.
+            task_type=event.task_type,
+            prompt_tokens=counterfactual.tokens_in,
+            completion_tokens=counterfactual.tokens_out,
         )
 
 

@@ -276,6 +276,18 @@ class SavingsProjectionRunner(BaseProjectionRunner):
 
         repo_name = _str_or_none(data.get("repo_name") or data.get("repoName"))
         machine_id = _str_or_none(data.get("machine_id") or data.get("machineId"))
+        # OMN-15533: ModelSavingsEstimate (the real savings-estimated.v1 producer)
+        # carries no task class or token counts, so these are normally None here —
+        # which persists as NULL and is rendered by the view as an absent class
+        # with estimated/unknown provenance. Read them anyway when a producer does
+        # supply them rather than discarding a value that was actually sent.
+        task_type = _str_or_none(data.get("task_type") or data.get("taskType"))
+        prompt_tokens = _optional_non_negative_int(
+            _first_present(data, "prompt_tokens", "promptTokens")
+        )
+        completion_tokens = _optional_non_negative_int(
+            _first_present(data, "completion_tokens", "completionTokens")
+        )
 
         if savings_usd != cloud_cost_usd - local_cost_usd:
             return await self._route_malformed_to_dlq(
@@ -296,6 +308,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             repo_name=repo_name,
             machine_id=machine_id,
             meta=meta,
+            task_type=task_type,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
         )
         logger.info(
             "Projected savings-estimated for session %s (total_savings=$%s)",
@@ -363,6 +378,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             ),
             meta=meta,
             source_event_id=str(source.correlation_id),
+            task_type=projection.task_type or None,
+            prompt_tokens=projection.prompt_tokens,
+            completion_tokens=projection.completion_tokens,
         )
         logger.info(
             "Projected canonical delegation savings for %s (savings=$%s)",
@@ -406,6 +424,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             ),
             meta=meta,
             source_event_id=str(terminal.correlation_id),
+            task_type=projection.task_type or None,
+            prompt_tokens=projection.prompt_tokens,
+            completion_tokens=projection.completion_tokens,
         )
         logger.info(
             "Projected delegate-skill savings for %s (savings=$%s)",
@@ -428,17 +449,28 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         machine_id: str | None,
         meta: MessageMeta,
         source_event_id: str | None = None,
+        task_type: str | None = None,
+        prompt_tokens: int | None = None,
+        completion_tokens: int | None = None,
     ) -> None:
+        # OMN-15533: task_type and the served token counts are persisted so the
+        # read views stop substituting model_local for the task class and stop
+        # hardcoding 0/0. COALESCE on UPDATE means a later event that does not
+        # carry them cannot erase a value an earlier one established — but a NULL
+        # is never replaced by a manufactured default, so "not recorded" survives
+        # as NULL and the view labels such a row estimated/unknown.
         rows = await self.db.execute(
             f"""
             INSERT INTO {self._table_estimates} (
               event_timestamp, session_id, model_local, model_cloud_baseline,
               local_cost_usd, cloud_cost_usd, savings_usd,
-              repo_name, machine_id
+              repo_name, machine_id,
+              task_type, prompt_tokens, completion_tokens
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
-              $8, $9
+              $8, $9,
+              $10, $11, $12
             )
             ON CONFLICT (
               session_id, event_timestamp, model_local, model_cloud_baseline
@@ -448,10 +480,18 @@ class SavingsProjectionRunner(BaseProjectionRunner):
               savings_usd = EXCLUDED.savings_usd,
               repo_name = EXCLUDED.repo_name,
               machine_id = EXCLUDED.machine_id,
+              task_type = COALESCE(EXCLUDED.task_type, {self._table_estimates}.task_type),
+              prompt_tokens = COALESCE(
+                EXCLUDED.prompt_tokens, {self._table_estimates}.prompt_tokens
+              ),
+              completion_tokens = COALESCE(
+                EXCLUDED.completion_tokens, {self._table_estimates}.completion_tokens
+              ),
               updated_at = NOW()
             RETURNING id, session_id, event_timestamp, model_local,
               model_cloud_baseline, local_cost_usd, cloud_cost_usd,
-              savings_usd, repo_name, machine_id, created_at, updated_at
+              savings_usd, repo_name, machine_id, task_type, prompt_tokens,
+              completion_tokens, created_at, updated_at
             """,
             event_timestamp,
             session_id,
@@ -462,6 +502,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             savings_usd,
             repo_name,
             machine_id,
+            task_type,
+            prompt_tokens,
+            completion_tokens,
         )
         row = rows[0] if rows else None
         if self._snapshot_exposure is None or row is None:
@@ -567,6 +610,30 @@ def _required_decimal(
             session_id,
         )
         return None
+
+
+def _optional_non_negative_int(value: Any) -> int | None:
+    """Coerce a token count, returning None for anything not a real count.
+
+    OMN-15533: None means "the source did not record this", and is persisted as
+    NULL. A malformed or negative count is discarded the same way rather than
+    being clamped to 0 — a 0 token count is a claim the view reads as provenance
+    ("no served tokens, so this saving is not measured"), so it must never stand
+    in for an unparseable value.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    if isinstance(value, float):
+        return int(value) if value.is_integer() and value >= 0 else None
+    if isinstance(value, str):
+        try:
+            parsed = int(value.strip())
+        except ValueError:
+            return None
+        return parsed if parsed >= 0 else None
+    return None
 
 
 def _str_or_none(value: Any) -> str | None:

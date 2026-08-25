@@ -44,6 +44,11 @@ _CANONICAL_SAVINGS_FIELDS: frozenset[str] = frozenset(
         "savings_usd",
         "repo_name",
         "machine_id",
+        # OMN-15533: pass through the task class and served token counts when the
+        # producer supplies them, instead of dropping them at this filter.
+        "task_type",
+        "prompt_tokens",
+        "completion_tokens",
     }
 )
 
@@ -64,6 +69,20 @@ class ModelSavingsEstimatedEvent(BaseModel):
     savings_usd: Decimal
     repo_name: str | None = Field(default=None)
     machine_id: str | None = Field(default=None)
+    # OMN-15533: optional because the real producer (ModelSavingsEstimate) carries
+    # neither. None persists as NULL — "not recorded" — which the read view renders
+    # as an absent task class with estimated/unknown provenance, never as a model
+    # name and never as a measured 0.
+    task_type: str | None = Field(
+        default=None,
+        description="Task class from the source terminal. Never a model identifier.",
+    )
+    prompt_tokens: int | None = Field(
+        default=None, ge=0, description="Served input tokens; None if not recorded."
+    )
+    completion_tokens: int | None = Field(
+        default=None, ge=0, description="Served output tokens; None if not recorded."
+    )
 
     @field_validator("event_timestamp")
     @classmethod
@@ -208,6 +227,18 @@ class HandlerProjectionSavings:
             "created_at": now,
             "updated_at": now,
         }
+        # OMN-15533: only stamp the task class / token counts the producer actually
+        # sent. Omitting the key leaves the savings_estimates column NULL on INSERT
+        # and leaves an already-known value untouched on UPDATE — the same
+        # convention project_delegate_skill_savings uses for tenant_id, and the
+        # reason a savings-estimated event cannot blank out counts a richer
+        # terminal already established for the same row.
+        if event.task_type:
+            row["task_type"] = event.task_type
+        if event.prompt_tokens is not None:
+            row["prompt_tokens"] = event.prompt_tokens
+        if event.completion_tokens is not None:
+            row["completion_tokens"] = event.completion_tokens
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
@@ -234,6 +265,12 @@ class HandlerProjectionSavings:
             ),
             "created_at": now,
             "updated_at": now,
+            # OMN-15533: a delegation terminal always knows its task class and the
+            # tokens it served — that is precisely the data the view was
+            # substituting model_local and a hardcoded 0 for.
+            "task_type": projection.task_type,
+            "prompt_tokens": projection.prompt_tokens,
+            "completion_tokens": projection.completion_tokens,
         }
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
         # source projection carried one — omitting the key lets the
