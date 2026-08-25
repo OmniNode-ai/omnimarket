@@ -471,7 +471,23 @@ class HandlerLlmDelegationCall:
                 if exc.response.status_code == 429
                 else EnumDelegationFailureClass.MODEL_UNAVAILABLE
             )
-            return self._failure_result(request, failure_class, str(exc))
+            # OMN-16530: ``str(exc)`` alone is a bare "Client error '400 ...'"
+            # — httpx's default HTTPStatusError message never includes the
+            # response body, and the curl transport used to discard it
+            # entirely (see transport._curl_post). Append the provider's own
+            # body text when one was captured, so an authenticated-but-
+            # rejected call (e.g. a resolved secret whose VALUE the provider
+            # rejects — "Please pass a valid API key", live-reproduced
+            # off-box on this exact call path) names the real problem instead
+            # of a bare status code. ``response.text`` on a real httpx/curl
+            # response is always a str; the isinstance guard only protects
+            # unit tests that pass a bare MagicMock() as the response.
+            response_text = exc.response.text
+            detail = response_text.strip() if isinstance(response_text, str) else ""
+            error_message = str(exc)
+            if detail:
+                error_message = f"{error_message} | provider response: {detail[:2000]}"
+            return self._failure_result(request, failure_class, error_message)
         except Exception as exc:
             return self._failure_result(
                 request, EnumDelegationFailureClass.UNKNOWN, str(exc)

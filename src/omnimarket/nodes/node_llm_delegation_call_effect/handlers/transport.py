@@ -336,6 +336,17 @@ def _httpx_post(
     )
 
 
+# OMN-16530: out-of-band marker curl appends (via -w) after the response body so
+# the HTTP status can be recovered WITHOUT the "-f" flag, which silently
+# discards the response body on any >=400 status. Before this, a rejected
+# secret (e.g. a resolved-but-invalid GEMINI_API_KEY) surfaced as a bare
+# "curl: (22) The requested URL returned error: 400" with the provider's own
+# diagnostic ("Please pass a valid API key", etc.) permanently unreadable —
+# live-reproduced on an off-box LAN Mac, the exact curl transport this
+# constant serves. Unlikely-to-collide with a JSON response body by design.
+_CURL_HTTP_STATUS_MARKER = "\x1e__ONEX_CURL_HTTP_STATUS__\x1e"
+
+
 def _curl_post(
     *,
     endpoint_url: str,
@@ -351,7 +362,11 @@ def _curl_post(
     proc = subprocess.run(
         [
             "curl",
-            "-fsS",
+            # OMN-16530: "-f" was removed deliberately — see
+            # ``_CURL_HTTP_STATUS_MARKER`` above for why. "-sS" is unchanged
+            # (silent progress meter, but errors still go to stderr for the
+            # genuine-transport-failure branch below).
+            "-sS",
             "--max-time",
             str(int(timeout_seconds)),
             *header_args,
@@ -362,6 +377,8 @@ def _curl_post(
             endpoint_url,
             "-d",
             json.dumps(payload),
+            "-w",
+            f"{_CURL_HTTP_STATUS_MARKER}%{{http_code}}",
         ],
         capture_output=True,
         text=True,
@@ -370,13 +387,37 @@ def _curl_post(
     latency_ms = (time.monotonic_ns() - t0) // 1_000_000
 
     if proc.returncode != 0:
+        # A genuine transport failure (DNS, connection refused, curl's own
+        # --max-time deadline, TLS error, ...) — curl never reached an HTTP
+        # response to classify, so there is no status/body to preserve.
         raise RuntimeError(
             f"curl LLM call failed (rc={proc.returncode}): {proc.stderr.strip()}"
         )
 
+    body, marker_sep, status_text = proc.stdout.rpartition(_CURL_HTTP_STATUS_MARKER)
+    if not marker_sep:
+        raise RuntimeError(
+            "curl LLM call succeeded (rc=0) but its -w status-code marker was "
+            f"not found in stdout (malformed curl output): {proc.stdout[:500]!r}"
+        )
+    status_code = int(status_text.strip())
+
+    if status_code >= 400:
+        # OMN-16530: raise the SAME exception type the httpx transport raises
+        # (below) on a non-2xx response, so the handler's failure
+        # classification and diagnostic-enrichment logic
+        # (HandlerLlmDelegationCall._execute_call) is transport-agnostic —
+        # curl and httpx now report an HTTP-level failure identically, body
+        # included, never a bare status code.
+        raise httpx.HTTPStatusError(
+            f"Client error '{status_code}' for url {endpoint_url!r}",
+            request=httpx.Request("POST", endpoint_url),
+            response=httpx.Response(status_code, text=body),
+        )
+
     return ModelTransportResponse(
-        status_code=200,
-        json_body=json.loads(proc.stdout),
+        status_code=status_code,
+        json_body=json.loads(body),
         latency_ms=int(latency_ms),
     )
 
