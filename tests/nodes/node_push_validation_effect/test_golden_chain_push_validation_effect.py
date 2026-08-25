@@ -165,12 +165,30 @@ class TestContractYaml:
                 "failure": FAILURE_TOPIC,
             },
         }
+        # OMN-16524 rung R1 adds run_suite_evaluation's PUBLISH topics
+        # additively to event_bus — run_push_validation's own
+        # runtime_dispatch block (asserted above), terminal_event, and
+        # subscribe_topics are byte-for-byte unchanged. R1 has no submission
+        # path (plan §3.3e.4): there is deliberately no
+        # suite-evaluation-requested.v1 subscribe entry (see the contract's
+        # own NOTE above this block) — the contract-topic-graph gate
+        # (OMN-14591) fails closed on an orphaned subscribe topic with no
+        # producer and no matching runtime_dispatch.command_topic.
         assert data["event_bus"] == {
             "subscribe_topics": [COMMAND_TOPIC],
-            "publish_topics": [SUCCESS_TOPIC, FAILURE_TOPIC],
-            "dlq_topics": [DLQ_TOPIC],
+            "publish_topics": [
+                SUCCESS_TOPIC,
+                FAILURE_TOPIC,
+                "onex.evt.omnimarket.suite-evaluation-completed.v1",
+                "onex.evt.omnimarket.suite-evaluation-failed.v1",
+            ],
+            "dlq_topics": [DLQ_TOPIC, "onex.dlq.omnimarket.suite-evaluation.v1"],
         }
         assert data["terminal_event"] == SUCCESS_TOPIC
+        assert data["externally_consumed_topics"] == [
+            "onex.evt.omnimarket.suite-evaluation-completed.v1",
+            "onex.evt.omnimarket.suite-evaluation-failed.v1",
+        ]
 
     def test_contract_declares_idempotency_key(self, contract_path: Path) -> None:
         """At-least-once redelivery must not double-push (OMN-14920 semantics #5)."""
@@ -199,7 +217,17 @@ class TestContractYaml:
                         "handlers.handler_push_validation_effect"
                     ),
                 },
-            }
+            },
+            {
+                "operation": "run_suite_evaluation",
+                "handler": {
+                    "name": "HandlerSuiteEvaluationEffect",
+                    "module": (
+                        "omnimarket.nodes.node_push_validation_effect."
+                        "handlers.handler_suite_evaluation_effect"
+                    ),
+                },
+            },
         ]
 
     def test_declared_handler_is_boot_resolvable_def_b(
@@ -271,6 +299,49 @@ class TestContractYaml:
         assert contract_publish_topics(contract_path) == (
             SUCCESS_TOPIC,
             FAILURE_TOPIC,
+            "onex.evt.omnimarket.suite-evaluation-completed.v1",
+            "onex.evt.omnimarket.suite-evaluation-failed.v1",
+        )
+
+    def test_declared_second_handler_is_boot_resolvable_def_b(
+        self, contract_path: Path
+    ) -> None:
+        """OMN-16524 rung R1: run_suite_evaluation's handler passes the same
+        canonical-architecture check as run_push_validation's (OMN-14355
+        canon-shape ratchet) — boot-resolvable, def-B `handle(request) ->
+        receipt`, no envelope reference."""
+        import importlib
+        import inspect
+
+        from pydantic import BaseModel
+
+        data = yaml.safe_load(contract_path.read_text())
+        spec = data["handler_routing"]["handlers"][1]["handler"]
+        assert spec["name"] == "HandlerSuiteEvaluationEffect"
+        module = importlib.import_module(spec["module"])
+        handler_cls = getattr(module, spec["name"])
+        for name, param in inspect.signature(handler_cls.__init__).parameters.items():
+            if name == "self":
+                continue
+            assert param.default is not inspect.Parameter.empty
+        signature = inspect.signature(handler_cls.handle, eval_str=True)
+        positional = [
+            p
+            for n, p in signature.parameters.items()
+            if n != "self"
+            and p.kind
+            in (
+                inspect.Parameter.POSITIONAL_ONLY,
+                inspect.Parameter.POSITIONAL_OR_KEYWORD,
+            )
+        ]
+        assert len(positional) == 1
+        assert positional[0].name == "request"
+        assert issubclass(positional[0].annotation, BaseModel)
+        source = inspect.getsource(module)
+        assert "ModelEventEnvelope" not in source
+        assert not any(
+            base.__name__.startswith("Plugin") for base in handler_cls.__mro__
         )
 
 

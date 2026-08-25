@@ -107,6 +107,32 @@
 #       principal and both the request model and the handler require it to
 #       match. The supporting IAM negative control is the deliberate absence
 #       of s3:ListBucket, so the worker cannot enumerate other tenants' keys.
+# CONTRACT v3 (OMN-16524, additive) — contract_version DELIBERATELY NOT
+#   BUMPED, still 1.1.0. Same judgement call as the OMN-14979 bundle-transfer
+#   leg above: contract_version tracks the FULL two-repo GATEWAY agreement
+#   (the run_push_validation wire payload the omninode_infra gateway pins its
+#   own contract_id tag against — asserted byte-for-byte in
+#   TestWireFixture::test_contract_id_tag_binds_to_this_contract). This
+#   revision changes NONE of that: run_push_validation's request/receipt
+#   models, topics, and semantics are byte-for-byte unchanged. Bumping the
+#   shared contract_version for an addition the gateway seam never sees would
+#   invalidate the vendored wire fixture's pinned contract_id for zero
+#   reason. node_version IS bumped (package-level, no cross-repo pin).
+#
+#   Adds a SECOND handler_routing operation, "run_suite_evaluation"
+#   (HandlerSuiteEvaluationEffect), for Architecture-3 rung R1 (plan
+#   docs/plans/2026-08-23-cloud-ci-offload-plan.md §3.3e.4): evaluate one
+#   caller-named, ALREADY-MERGED, historical commit's suite inside the
+#   bounded gate-runner container (OMN-16295) and emit a content-addressed
+#   attestation receipt (evaluated_tree_digest / selector_policy_digest /
+#   suite_scope / verdict). This operation NEVER pushes, NEVER installs
+#   hooks, and NEVER compares against a branch's live head — it is a
+#   read-only evaluation of a single commit, deliberately NOT layered onto
+#   run_push_validation's push-safety invariants (see the extend-vs-net-new
+#   reasoning in handler_suite_evaluation_effect.py's module docstring,
+#   recorded per OMN-16524's mandatory prior-art precheck). The existing
+#   run_push_validation operation, its models, and its wire contract are
+#   COMPLETELY UNCHANGED by this revision.
 name: "node_push_validation_effect"
 lifecycle: experimental
 node_type: "EFFECT_GENERIC"
@@ -115,7 +141,7 @@ contract_version:
   major: 1
   minor: 1
   patch: 0
-node_version: "1.1.0"
+node_version: "1.2.0"
 description: >-
   Push-validation EFFECT (gateway P2 tenant #1, OMN-14920): clone the target
   repo, verify the installed pre-push hook, run the governed suite, and push a
@@ -157,23 +183,75 @@ handler_routing:
       handler:
         name: "HandlerPushValidationEffect"
         module: "omnimarket.nodes.node_push_validation_effect.handlers.handler_push_validation_effect"
+    - operation: "run_suite_evaluation"
+      handler:
+        name: "HandlerSuiteEvaluationEffect"
+        module: "omnimarket.nodes.node_push_validation_effect.handlers.handler_suite_evaluation_effect"
 
+# NOTE: runtime_dispatch below documents ONLY the original gateway-facing
+# operation (run_push_validation) — see the GATEWAY SEAM comment at the top
+# of this file. run_suite_evaluation has no gateway leg (R1 has no
+# submission path, plan §3.3e.4); its command/terminal topics are declared
+# in event_bus below, which is what the generic runtime consumes.
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.push-validation-requested.v1"
   terminal_events:
     success: "onex.evt.omnimarket.push-validation-completed.v1"
     failure: "onex.evt.omnimarket.push-validation-failed.v1"
 
+# NOTE on run_suite_evaluation and the command side: R1 (plan §3.3e.4)
+# explicitly excludes a submission path ("nothing calls this node from a
+# live pre-push") — there is deliberately NO
+# onex.cmd.omnimarket.suite-evaluation-requested.v1 subscribe_topics entry.
+# runtime_dispatch.command_topic is a single scalar already pinned to the
+# gateway's run_push_validation seam (see the GATEWAY SEAM comment at the
+# top of this file) and cannot serve a second, unrelated command topic
+# without breaking that pin — and the contract-topic-graph gate (OMN-14591)
+# fails CLOSED on a subscribe topic with no producer and no
+# runtime_dispatch.command_topic match (the baseline that would otherwise
+# suppress it is FROZEN pre-existing debt, not a route for new work). R1's
+# own scope makes this the honest shape, not a workaround: this operation is
+# invoked directly (matching node_occ_observation_projection's own
+# "Directly-invoked only ... declares no event_bus topics" precedent), never
+# via live command-topic dispatch. The two publish topics below ARE real:
+# the handler's return value still lands on the real Kafka log via the
+# published_events router below, which is what R1's durable-projection AC
+# needs — only the SUBMISSION side is direct-invoke-only.
 event_bus:
   subscribe_topics:
     - "onex.cmd.omnimarket.push-validation-requested.v1"
   publish_topics:
     - "onex.evt.omnimarket.push-validation-completed.v1"
     - "onex.evt.omnimarket.push-validation-failed.v1"
+    - "onex.evt.omnimarket.suite-evaluation-completed.v1"
+    - "onex.evt.omnimarket.suite-evaluation-failed.v1"
   dlq_topics:
     - "onex.dlq.omnimarket.push-validation.v1"
+    - "onex.dlq.omnimarket.suite-evaluation.v1"
+
+# run_suite_evaluation's two publish topics have no in-repo consumer by
+# design (R1 defers a dedicated projection-consumer node/catalog service as
+# an R2+ enhancement, plan §3.3e.5 open question 3 — the durable-projection
+# surface R1 actually ships is the retained Kafka log itself, read back by a
+# fresh consumer group). Declared here, never assumed (contract-topic-graph
+# ORPHANED_PRODUCER check, OMN-14591).
+externally_consumed_topics:
+  - "onex.evt.omnimarket.suite-evaluation-completed.v1"
+  - "onex.evt.omnimarket.suite-evaluation-failed.v1"
 
 terminal_event: "onex.evt.omnimarket.push-validation-completed.v1"
+
+# Per-return-type topic routing (build_topic_router_from_contract, OMN-4881):
+# without this, EVERY def-B return value falls back to the single
+# terminal_event above. run_push_validation's ModelPushValidationReceipt
+# already resolves correctly via that fallback (unchanged); this entry is
+# what routes run_suite_evaluation's DIFFERENT return type
+# (ModelSuiteEvaluationReceipt) to its OWN completed topic instead of
+# silently landing on push-validation-completed.v1.
+published_events:
+  - event_type: "SuiteEvaluationReceipt"
+    topic: "onex.evt.omnimarket.suite-evaluation-completed.v1"
+    description: "run_suite_evaluation's receipt (OMN-16524 rung R1)."
 
 # NOTE: no contract-declared secrets in this phase. The interim pushing
 # credential is the host-resident interactive `gh` login on the worker host
@@ -231,5 +309,8 @@ metadata:
     - "gateway"
     - "push-farm"
     - "OMN-14920"
+    - "suite-evaluation"
+    - "OMN-16524"
   related_tickets:
     - "OMN-14920"
+    - "OMN-16524"
