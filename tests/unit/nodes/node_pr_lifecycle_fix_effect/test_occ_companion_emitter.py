@@ -23,6 +23,7 @@ from omnibase_core.validation.validator_occ_merge_eligibility import (
     validate_occ_merge_eligibility,
 )
 from omnibase_core.validation.validator_receipt_gate import (
+    _extract_ticket_ids,
     compute_contract_entry_sha256,
 )
 
@@ -114,6 +115,67 @@ class TestRunGit:
                 ["git", "rev-parse", "--verify", "refs/heads/nonexistent-xyz"],
                 cwd=str(tmp_path),
             )
+
+
+# ---------------------------------------------------------------------------
+# _extract_tickets — PR-TITLE only (OMN-16376)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestExtractTicketsIsTitleOnly:
+    """OMN-16376: a companion must key to the PR TITLE's ticket, never the body.
+
+    The Receipt Gate's own identity check (``_verify_ticket_identity`` Axis 1)
+    requires the PR title to reference whatever ticket the Evidence-Ticket
+    line names, so a companion keyed to a body-only ticket can never pass it.
+    ``_extract_tickets`` no longer takes a ``body`` argument at all — the
+    signature itself makes the body structurally unable to influence which
+    ticket a companion is minted for.
+    """
+
+    def test_single_title_ticket(self) -> None:
+        assert OccCompanionEmitter._extract_tickets("feat(OMN-9999): the thing") == [
+            "OMN-9999"
+        ]
+
+    def test_no_title_ticket_returns_empty(self) -> None:
+        assert OccCompanionEmitter._extract_tickets("chore: bump a dependency") == []
+
+    def test_omn_16368_958_reproduction_shape(self) -> None:
+        """Byte-for-byte reproduction of the incident this ticket fixes.
+
+        omninode_infra PR #958: title cited OMN-16368 (the ticket the work was
+        actually for); the body separately cited OMN-15757 as related context
+        via a closing keyword. The live autobind companion was wrongly keyed
+        to OMN-15757 and could never satisfy OMN-16368's Receipt Gate run.
+        """
+        title = "wire the unified topic resolver into onex-api call sites (OMN-16368)"
+        assert OccCompanionEmitter._extract_tickets(title) == ["OMN-16368"]
+
+    def test_title_ticket_wins_even_when_body_would_have_closed_a_different_ticket(
+        self,
+    ) -> None:
+        """Title=A, body=closing-keyword-B → keys to A (the ticket's exact ask).
+
+        Proves the fix is real, not incidental to a body that happens to have
+        no closing keyword: this body, if passed through as the ``pr_body``
+        argument, would make ``_extract_ticket_ids`` resolve its
+        closing-keyword branch to OMN-15757 EXCLUSIVELY (asserted below via
+        the raw shared helper) — exactly the OMN-16368/#958 mis-key. Because
+        ``_extract_tickets`` no longer accepts a body argument at all, that
+        branch can never fire for the emitter.
+        """
+        title = "feat(OMN-16368): the actual work"
+        body = "Related: OMN-15757.\n\nCloses OMN-15757 (unrelated prior work)."
+
+        # Positive control: the shared helper, given the real body, WOULD
+        # mis-key to the body's closing-keyword ticket — this is the exact
+        # defect mechanism, not a hypothetical.
+        assert _extract_ticket_ids(body, title) == ["OMN-15757"]
+
+        # The fix: the emitter's own extraction never sees the body.
+        assert OccCompanionEmitter._extract_tickets(title) == ["OMN-16368"]
 
 
 # ---------------------------------------------------------------------------
@@ -472,12 +534,23 @@ class TestAlreadyBoundGuard:
 
 @pytest.mark.unit
 class TestFullEmitFlow:
-    def _run(self, emitter: OccCompanionEmitter, tmp_path: Path) -> tuple[str, Path]:
+    def _run(
+        self,
+        emitter: OccCompanionEmitter,
+        tmp_path: Path,
+        *,
+        pr_title: str = "feat(OMN-9999): the thing",
+        pr_body: str = "Implements the thing.",
+    ) -> tuple[str, Path]:
         """Drive _emit_companion_sync with a REAL temp clone dir and mocked I/O.
 
         git + the OCC-PR-open + product-PR-patch + probe are mocked; the contract
         + receipt rendering, file writes, and contract_sha256 rebind run for real
         so the emitted companion byte-shape is exercised end-to-end.
+
+        ``pr_title``/``pr_body`` default to the byte-shape every existing test
+        in this class asserts against; override them to drive a different
+        product-PR shape (e.g. the OMN-16376 title-vs-body reproduction).
         """
         clone_root = tmp_path / "onex_change_control"
         git_calls: list[list[str]] = []
@@ -486,8 +559,8 @@ class TestFullEmitFlow:
         def fake_rest(method: str, path: str, *, body=None, token=None) -> dict:
             if path.endswith("/pulls/321"):  # product PR GET
                 return {
-                    "body": "Implements the thing.",
-                    "title": "feat(OMN-9999): the thing",
+                    "body": pr_body,
+                    "title": pr_title,
                     "head": {"sha": "b" * 40, "ref": "feature-branch"},
                     "state": "open",
                 }
@@ -693,6 +766,41 @@ class TestFullEmitFlow:
         # Action reports the single-producer companion bind.
         assert "OCC#55" in action
         assert "OMN-9999" in action
+
+    def test_mints_for_title_ticket_not_a_body_mentioned_ticket(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-16376 end-to-end: title=A, body cites unrelated B → companion is A.
+
+        Reproduces the omninode_infra PR #958 shape: PR title cites OMN-16368
+        (the ticket the work is actually for); the body separately cites
+        OMN-15757 as related context via a closing keyword — exactly the
+        shape that made ``_extract_ticket_ids``' body-closing-keyword-first
+        branch resolve to the WRONG ticket before this fix. Asserts the
+        minted contract + receipts key to OMN-16368 and that NO
+        ``contracts/OMN-15757.yaml`` or ``OMN-15757`` receipt tree is
+        authored at all.
+        """
+        emitter = OccCompanionEmitter()
+        action, clone_root = self._run(
+            emitter,
+            tmp_path,
+            pr_title=(
+                "wire the unified topic resolver into onex-api call sites (OMN-16368)"
+            ),
+            pr_body="Related work: OMN-15757.\n\nCloses OMN-15757 (prior, unrelated fix).",
+        )
+
+        contract = clone_root / "contracts" / "OMN-16368.yaml"
+        assert contract.is_file()
+        assert 'ticket_id: "OMN-16368"' in contract.read_text()
+        assert (clone_root / "drift" / "dod_receipts" / "OMN-16368").is_dir()
+
+        assert not (clone_root / "contracts" / "OMN-15757.yaml").exists()
+        assert not (clone_root / "drift" / "dod_receipts" / "OMN-15757").exists()
+
+        assert "OMN-16368" in action
+        assert "OMN-15757" not in action
 
     def test_emitted_companion_is_occ_merge_eligible(self, tmp_path: Path) -> None:
         """Golden proof: emitted files satisfy the real OCC eligibility validator.

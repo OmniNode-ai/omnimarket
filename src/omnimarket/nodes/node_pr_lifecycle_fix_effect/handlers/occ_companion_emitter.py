@@ -66,11 +66,12 @@ import yaml
 # content-altered existing id is a violation).
 from omnibase_core.validation.validator_occ_append_only import evaluate_append_only
 
-# OMN-13990 (D3, validator-parity ticket extraction): the emitter uses the SAME
-# ticket-extraction the occ-preflight eligibility validator uses so the two can
-# never cite a different ticket set. This is the gate's own private helper —
-# importing it (rather than re-deriving the regex) binds the emitter to the gate
-# exactly. omnibase-core is a declared omnimarket dependency.
+# OMN-13990 (D3, validator-parity ticket extraction) / OMN-16376 (title-only
+# revision): the emitter's ``_extract_tickets`` calls this SAME gate-private
+# helper (rather than re-deriving the ``OMN-\d+`` regex) so the two can never
+# diverge on the token pattern — but only over the PR TITLE (empty body), since
+# the gate's own identity check is title-anchored (see ``_extract_tickets``'
+# docstring). omnibase-core is a declared omnimarket dependency.
 #
 # OMN-14418 residual 3: compute_contract_entry_sha256 is the SAME canonical
 # per-entry hasher the consumer-side gates (check_receipt_contract_binding,
@@ -547,11 +548,12 @@ class OccCompanionEmitter:
                 already_bound,
             )
 
-        # 2. Validator-parity ticket extraction (OMN-13990 D3): the gate owns
-        #    tickets via closing-keyword-exclusive-else-all-title-tokens; author a
-        #    companion for EVERY cited ticket. Fall back to the caller-supplied
-        #    ticket only when the PR cites none.
-        tickets = self._extract_tickets(title, body)
+        # 2. PR-TITLE ticket extraction (OMN-16376, revising OMN-13990 D3): the
+        #    gate's own identity axis is title-anchored (see _extract_tickets'
+        #    docstring), so the companion is authored for every ticket cited in
+        #    the PR TITLE — never the body. Fall back to the caller-supplied
+        #    ticket only when the title cites none.
+        tickets = self._extract_tickets(title)
         if not tickets and ticket_id:
             tickets = [ticket_id]
         if not tickets:
@@ -1310,14 +1312,29 @@ class OccCompanionEmitter:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _extract_tickets(title: str, body: str) -> list[str]:
-        """Return the gate-identical cited ticket set (OMN-13990 D3).
+    def _extract_tickets(title: str) -> list[str]:
+        """Return the PR-TITLE-cited ticket set (OMN-16376).
 
-        Delegates to the occ-preflight eligibility validator's ``_extract_ticket_ids``
-        (body closing-keywords exclusive, else all title tokens) so the emitter
-        authors a companion for exactly the tickets the gate will check.
+        A companion must key to the ticket the PR **title** cites, not one
+        merely mentioned in the body. The Receipt Gate's own identity check
+        (``_verify_ticket_identity`` Axis 1, ``validator_receipt_gate.py``)
+        requires the PR title — not the body — to reference whatever ticket
+        the Evidence-Ticket line names; the ``pr-title / check-title`` CI job
+        enforces the same title-only extraction. A body commonly cites OTHER
+        tickets as related context (e.g. a "related: OMN-<n>" line, or a
+        closing keyword pointed at a different, unrelated ticket) — keying
+        the companion to a body-cited ticket the title never mentions is
+        therefore structurally unable to satisfy the gate it exists to serve
+        (live incident: omninode_infra PR #958, title cited OMN-16368, body
+        cited OMN-15757 as related context; the autobind companion was
+        wrongly keyed to OMN-15757 and could never pass Axis 1 for
+        OMN-16368's Receipt Gate run).
+
+        Delegates to ``_extract_ticket_ids`` with an EMPTY body so the
+        SAME title-token regex (``TICKET_PATTERN``) the gate itself falls
+        back to is reused byte-for-byte, never re-derived here.
         """
-        return _extract_ticket_ids(body, title)
+        return _extract_ticket_ids("", title)
 
     @staticmethod
     def _occ_branch_name(*, repo: str, pr_number: int) -> str:
