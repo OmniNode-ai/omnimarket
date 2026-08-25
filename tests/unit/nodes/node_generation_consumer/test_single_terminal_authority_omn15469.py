@@ -456,6 +456,179 @@ async def test_tool_reuse_returns_benchmark_and_only_publishes_match_request() -
 
 
 @pytest.mark.unit
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("llm_response", "terminal_key"),
+    [
+        pytest.param(_VALID_LLM_RESPONSE, "success", id="completed"),
+        pytest.param(_INVALID_LLM_RESPONSE, "failure", id="failed"),
+    ],
+)
+async def test_real_dispatch_seam_emits_exactly_one_terminal_record(
+    llm_response: str,
+    terminal_key: str,
+) -> None:
+    """OMN-15469 AC-3/AC-5: a fresh accepted command through the REAL dispatch
+    seam yields exactly one terminal record, counted across BOTH historical
+    producer surfaces at once.
+
+    Every prior regression test in this file calls either the handler alone
+    (``handler.handle()`` + a hand-built ``event_publisher`` spy) or the
+    applier alone (``DispatchResultApplier.apply()`` fed a hand-built
+    ``ModelDispatchResult``) -- per the ticket's own AC-5, "a unit test on
+    either producer alone does not satisfy this." This test instead drives:
+
+        MessageDispatchEngine.dispatch()
+            -> the registered dispatcher, which IS
+               ``omnibase_infra.runtime.auto_wiring.handler_wiring
+               ._make_dispatch_callback()`` -- the exact production adapter
+               ``_prepare_handler_wiring``/``_commit_handler_wiring`` builds
+               and registers for this contract's ``operation_match`` entry
+               (verified against the live ``contract.yaml`` below, not
+               invented) -- which calls the REAL
+               ``HandlerGenerationConsumer.handle()`` and normalizes its
+               return via the REAL ``_normalize_handler_result``
+            -> the REAL ``DispatchResultApplier.apply()`` (the same class
+               ``event_bus_subcontract_wiring.py`` injects in production),
+               resolving the output topic through the REAL
+               ``load_published_events_map()``.
+
+    A single recording sink is wired into BOTH the handler's injected
+    ``event_publisher`` (Producer 1, the removed self-publish surface) and
+    the applier's event bus (Producer 2, the def-B publish-from-return
+    surface), so a regression in EITHER original producer is caught by ONE
+    assertion: the originally-reproduced defect was 3 durable terminal
+    records from exactly these two surfaces (2 raw self-published + 1
+    enveloped def-B publish) for a single accepted command.
+    """
+    from uuid import uuid4
+
+    from omnibase_core.enums.enum_node_kind import EnumNodeKind
+    from omnibase_core.models.dispatch.model_dispatch_route import ModelDispatchRoute
+    from omnibase_core.models.dispatch.model_handler_ref import ModelHandlerRef
+    from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+    from omnibase_infra.enums import EnumDispatchStatus, EnumMessageCategory
+    from omnibase_infra.protocols import ProtocolEventBusLike
+    from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+        _make_dispatch_callback,
+    )
+    from omnibase_infra.runtime.event_bus_subcontract_wiring import (
+        load_published_events_map,
+    )
+    from omnibase_infra.runtime.message_dispatch_engine import MessageDispatchEngine
+    from omnibase_infra.runtime.service_dispatch_result_applier import (
+        DispatchResultApplier,
+    )
+
+    contract_path = (
+        Path(generation_module.__file__).resolve().parent.parent / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text())
+    handler_entry = next(
+        entry
+        for entry in contract["handler_routing"]["handlers"]
+        if entry["operation"] == "generation_consumer"
+    )
+    assert contract["handler_routing"]["routing_strategy"] == "operation_match", (
+        "this test's dispatcher-registration shape assumes operation_match; "
+        "re-derive it against _prepare_handler_wiring if the contract changes"
+    )
+
+    all_publishes: list[tuple[str, object]] = []
+
+    def _record_ancillary(topic: str, _payload: object) -> None:
+        all_publishes.append((topic, _payload))
+
+    handler = HandlerGenerationConsumer(
+        effect_handler=_CountingEffect(llm_response),
+        event_publisher=_record_ancillary,
+    )
+
+    # The exact production adapter for an operation_match def-B handler
+    # entry (handler_wiring.py:_prepare_handler_wiring, non-db_io/state_io
+    # branch) -- not a hand-rolled substitute.
+    dispatcher = _make_dispatch_callback(
+        handler,
+        ModelHandlerRef(
+            name=handler_entry["event_model"]["name"],
+            module=handler_entry["event_model"]["module"],
+        ),
+        handler_node_kind=EnumNodeKind.ORCHESTRATOR,
+        published_event_names=frozenset(load_published_events_map(contract_path)),
+    )
+
+    command_topic = contract["runtime_dispatch"]["command_topic"]
+    dispatcher_id = "node_generation_consumer.generation_consumer"
+    engine = MessageDispatchEngine()
+    engine.register_dispatcher(
+        dispatcher_id=dispatcher_id,
+        dispatcher=dispatcher,
+        category=EnumMessageCategory.COMMAND,
+        message_types={
+            handler_entry["event_model"]["name"],
+            handler_entry["event_type"],
+        },
+    )
+    engine.register_route(
+        ModelDispatchRoute(
+            route_id="node_generation_consumer.generation_consumer.route",
+            topic_pattern=command_topic,
+            message_category=EnumMessageCategory.COMMAND,
+            handler_id=dispatcher_id,
+        )
+    )
+    engine.freeze()
+
+    correlation_id = uuid4()
+    command = ModelNodeGenerationRequest(
+        task_description="Build a real-dispatch-seam stub node",
+        correlation_id=str(correlation_id),
+        max_attempts=1,
+    )
+    envelope: ModelEventEnvelope[object] = ModelEventEnvelope(
+        payload=command,
+        correlation_id=correlation_id,
+        event_type=handler_entry["event_type"],
+    )
+
+    dispatch_result = await engine.dispatch(topic=command_topic, envelope=envelope)
+    assert dispatch_result.status == EnumDispatchStatus.SUCCESS, (
+        f"real-seam dispatch did not succeed: {dispatch_result.error_message!r}"
+    )
+
+    class _RecordingBus:
+        async def publish_envelope(
+            self,
+            *,
+            envelope: object,
+            topic: str,
+            key: bytes | None = None,
+        ) -> None:
+            del key
+            all_publishes.append((topic, envelope))
+
+    applier = DispatchResultApplier(
+        event_bus=cast("ProtocolEventBusLike", _RecordingBus()),
+        output_topic=contract["terminal_event"],
+        output_topic_map=load_published_events_map(contract_path),
+        allowed_output_topics=contract["event_bus"]["publish_topics"],
+    )
+    await applier.apply(dispatch_result, correlation_id)
+
+    expected_topic = contract["runtime_dispatch"]["terminal_events"][terminal_key]
+    terminal_publishes = _terminal_topics([topic for topic, _ in all_publishes])
+    assert terminal_publishes == [expected_topic], (
+        "the real dispatch seam (engine.dispatch -> the production "
+        "_make_dispatch_callback adapter -> handler.handle -> "
+        "applier.apply) must emit exactly one terminal record, counted "
+        "across BOTH producer surfaces combined "
+        f"(all_publishes={all_publishes!r}); OMN-15469's live-reproduced "
+        "defect was 3 terminal records across these same two surfaces for "
+        "one accepted command"
+    )
+
+
+@pytest.mark.unit
 def test_terminal_publication_is_structurally_absent_from_handler() -> None:
     """Prevent a dead self-publish helper from becoming a second producer again."""
     source = inspect.getsource(HandlerGenerationConsumer)
