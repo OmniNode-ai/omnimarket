@@ -167,6 +167,20 @@ _OCC_REPO = OCC_REPO
 _DEFAULT_RUNNER = "node_pr_lifecycle_fix_effect"
 _DEFAULT_VERIFIER = "occ-evidence-source-autobind"
 
+# OMN-16339: a policy decline (the OMN-15247 RED-derivability gate refusing to
+# mint) was previously visible ONLY as a PR comment — indistinguishable, from
+# the checks rollup / workflow-run status / OCC PR list, from a stalled or
+# broken pipeline (two independent false-stall diagnoses were filed against a
+# correctly-functioning gate because of this). This NEUTRAL (never failing)
+# check-run makes the decline visible on the surface an observer looks at
+# first. Purely additive observability — it changes zero OMN-15247 gate
+# behavior; the mint decision itself is untouched.
+_MINT_STATUS_CHECK_NAME = "occ-autobind / mint status"
+# Human-facing display permalink embedded in check-run output text — same
+# class as a VCS display permalink; never dereferenced by code, no connection
+# target, no routing-authority concern.
+_MINT_STATUS_HAND_AUTHORING_URL = "https://linear.app/omninode/issue/OMN-15247"  # url-authority-ok: human-facing display permalink in check-run output text, never dereferenced by code
+
 # OMN-14793 (OMN-14783 rec #2): the single-producer lease TTL. Floor is the
 # worst-case mint duration (clone + double force-push + PR open) with margin; the
 # per-git-op bound is ``_GIT_TIMEOUT_SECONDS`` (120s) x several network git ops,
@@ -712,6 +726,21 @@ class OccCompanionEmitter:
             )
             logger.warning("occ_companion_emitter: %s", action)
             self._comment_no_red_derivable(repo=repo, pr_number=pr_number, token=token)
+            self._post_mint_status_check_run(
+                repo=repo,
+                pr_number=pr_number,
+                head_sha=head_sha,
+                token=token,
+                reason="no-red-derivable",
+                summary=(
+                    "OCC autobind did not mint a companion for this PR: no "
+                    "changed-file candidate could be proven RED against the "
+                    "merge base, and emitting a PR-existence probe instead "
+                    "would be non-falsifiable evidence (OMN-15247). "
+                    "Hand-authored evidence is required — see "
+                    f"{_MINT_STATUS_HAND_AUTHORING_URL}."
+                ),
+            )
             return action
 
         # §B3.7 — record the RED derivation in the receipt's EXISTING free-text
@@ -1635,6 +1664,54 @@ class OccCompanionEmitter:
         except (GitHubApiError, OSError) as exc:  # fallback-ok: courtesy comment
             logger.warning(
                 "occ_companion_emitter: could not post no-red-derivable note on "
+                "%s#%s: %s",
+                repo,
+                pr_number,
+                exc,
+            )
+
+    def _post_mint_status_check_run(
+        self,
+        *,
+        repo: str,
+        pr_number: int,
+        head_sha: str,
+        token: str,
+        reason: str,
+        summary: str,
+    ) -> None:
+        """Report a mint decision on the check surface, not just a PR comment.
+
+        OMN-16339: from the checks rollup / workflow-run status / OCC PR list,
+        a policy decline is indistinguishable from a stalled or broken
+        pipeline — the ambiguity that produced two independent false-stall
+        diagnoses against a correctly-functioning OMN-15247 gate in one
+        night. ``conclusion`` is always ``"neutral"``, never ``"failure"``:
+        this check-run can never newly block a merge, and no OMN-15247 gate
+        behavior changes — this is purely additive observability. Re-posts
+        (not deduplicated) on every decline, including a manual replay, so a
+        second silent decline is also visible rather than only the first.
+        """
+        owner, repo_name = split_repo(repo)
+        try:
+            rest_json(
+                "POST",
+                f"/repos/{owner}/{repo_name}/check-runs",
+                token=token,
+                body={
+                    "name": _MINT_STATUS_CHECK_NAME,
+                    "head_sha": head_sha,
+                    "status": "completed",
+                    "conclusion": "neutral",
+                    "output": {
+                        "title": f"declined: {reason}",
+                        "summary": summary,
+                    },
+                },
+            )
+        except (GitHubApiError, OSError) as exc:  # fallback-ok: courtesy check-run
+            logger.warning(
+                "occ_companion_emitter: could not post mint-status check-run on "
                 "%s#%s: %s",
                 repo,
                 pr_number,
