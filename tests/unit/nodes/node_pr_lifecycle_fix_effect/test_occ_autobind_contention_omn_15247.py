@@ -47,6 +47,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from omnimarket.github_api import GitHubApiError
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_companion_emitter import (
     OccCompanionEmitter,
 )
@@ -134,6 +135,7 @@ class _Recorder:
         self.pr_open_calls: int = 0
         self.patch_evidence_calls: int = 0
         self.posted_comments: list[tuple[str, str]] = []
+        self.posted_check_runs: list[tuple[str, dict[str, object]]] = []
 
 
 def _run_emit(
@@ -181,6 +183,9 @@ def _run_emit(
             }
         if path.endswith("/comments") and method == "POST":
             rec.posted_comments.append((path, str((body or {}).get("body", ""))))
+            return {"id": 1}
+        if path.endswith("/check-runs") and method == "POST":
+            rec.posted_check_runs.append((path, dict(body or {})))
             return {"id": 1}
         if "/pulls/55" in path:
             return {"number": 55, "state": "open"}
@@ -883,6 +888,65 @@ class TestContentBoundChecks:
         path, body = rec.posted_comments[0]
         assert "/repos/o/r/issues/321/comments" in path
         assert "<!-- occ-autobind-no-red-derivable:321 -->" in body
+
+    def test_no_red_derivable_posts_a_neutral_check_run_declining_the_mint(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-16339: the decline must be visible without reading PR comments.
+
+        A NEUTRAL (non-failing) check-run at the product PR's head SHA names
+        the decline reason and points at the hand-authored-evidence path, so
+        the checks rollup — not just a PR comment — shows why no companion
+        minted. ``conclusion`` must be ``"neutral"``: this can never newly
+        block a merge, and the OMN-15247 gate's mint decision is unchanged
+        (the action returned is still the same ``skip:NO_RED_DERIVABLE_CHECK``
+        this check-run is reporting on).
+        """
+        emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
+        action, _clone, rec = _run_emit(
+            emitter,
+            tmp_path,
+            product_repo=_STABLE_REPO,
+            pr_files=[{"filename": "README.md", "status": "modified", "patch": "+hi"}],
+        )
+        assert action.startswith("skip:NO_RED_DERIVABLE_CHECK")
+        assert len(rec.posted_check_runs) == 1
+        path, body = rec.posted_check_runs[0]
+        assert "/repos/o/r/check-runs" in path
+        assert body["name"] == "occ-autobind / mint status"
+        assert body["head_sha"] == _HEAD_SHA
+        assert body["status"] == "completed"
+        assert body["conclusion"] == "neutral"
+        output = body["output"]
+        assert isinstance(output, dict)
+        assert "no-red-derivable" in str(output["title"])
+        assert "OMN-15247" in str(output["summary"])
+
+    def test_mint_status_check_run_failure_is_swallowed_as_a_courtesy(
+        self,
+    ) -> None:
+        """A GitHub outage on the check-run POST must not raise.
+
+        Mirrors the existing courtesy posture of ``_comment_no_red_derivable``
+        (same try/except shape): this is additive observability, so a failed
+        POST degrades to a logged warning, never an exception that would
+        propagate into the caller's decline path.
+        """
+        emitter = OccCompanionEmitter(check_binding=EnumCheckBinding.CONTENT_BOUND)
+
+        def exploding_rest(method: str, path: str, *, body=None, token=None) -> dict:
+            raise GitHubApiError("GitHub 503")
+
+        with patch(f"{_MOD}.rest_json", side_effect=exploding_rest):
+            emitter._post_mint_status_check_run(
+                repo=_STABLE_REPO,
+                pr_number=321,
+                head_sha=_HEAD_SHA,
+                token="fake-token",
+                reason="no-red-derivable",
+                summary="test summary",
+            )
+        # No exception raised is the assertion.
 
     def test_private_product_repo_never_pins_the_private_repo_or_its_own_receipts(
         self, tmp_path: Path
