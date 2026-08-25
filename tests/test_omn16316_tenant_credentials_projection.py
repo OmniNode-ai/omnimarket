@@ -159,6 +159,21 @@ class TestCredentialRevoked:
     async def test_credential_revoked_sets_revoked_at(
         self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
     ) -> None:
+        """Normal order (register already landed): the UPSERT's ON CONFLICT
+        branch fires, setting revoked_at without touching tenant_id/name/
+        provider."""
+        mock_db.execute = AsyncMock(
+            return_value=[
+                {
+                    "api_key_ref": "cred_omninode_openrouter_abc123",
+                    "tenant_id": "omninode",
+                    "name": "my-openrouter-key",
+                    "provider": "openrouter",
+                    "created_at": "2026-08-21T00:00:00Z",
+                    "revoked_at": "2026-08-21T00:05:00Z",
+                }
+            ]
+        )
         data = {
             "tenant_id": "omninode",
             "api_key_ref": "cred_omninode_openrouter_abc123",
@@ -169,27 +184,65 @@ class TestCredentialRevoked:
         assert result is True
         mock_db.execute.assert_awaited_once()
         args = mock_db.execute.call_args[0]
-        assert "UPDATE tenant_inference_credentials" in args[0]
-        assert "SET revoked_at = NOW()" in args[0]
-        assert "revoked_at IS NULL" in args[0]
-        assert args[1] == "cred_omninode_openrouter_abc123"
+        assert "INSERT INTO tenant_inference_credentials" in args[0]
+        assert "ON CONFLICT (api_key_ref) DO UPDATE" in args[0]
+        assert "revoked_at = COALESCE(" in args[0]
+        assert args[1:] == ("cred_omninode_openrouter_abc123", "omninode")
 
     @pytest.mark.asyncio
-    async def test_unknown_api_key_ref_revoke_is_a_noop(
+    async def test_revoke_of_unknown_ref_inserts_a_tombstone_row(
         self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
     ) -> None:
-        mock_db.execute = AsyncMock(return_value=[])  # zero rows matched
+        """OMN-16324 regression: a revoke for a ref this projection has not
+        yet seen a register for must NOT be a bare no-op -- it must persist a
+        tombstone row (name/provider NULL, revoked_at set) so a later,
+        out-of-order register cannot silently un-revoke it. See the real-
+        Postgres companion test for the end-to-end proof that the UPSERT's
+        ON CONFLICT branch actually preserves this across the two calls."""
+        mock_db.execute = AsyncMock(
+            return_value=[
+                {
+                    "api_key_ref": "cred_never_seen",
+                    "tenant_id": "omninode",
+                    "name": None,
+                    "provider": None,
+                    "created_at": "2026-08-21T00:00:00Z",
+                    "revoked_at": "2026-08-21T00:00:00Z",
+                }
+            ]
+        )
         data = {"tenant_id": "omninode", "api_key_ref": "cred_never_seen"}
 
         result = await runner.project_event(TOPIC_REVOKED, data, _make_meta())
 
-        assert result is True  # revocation is idempotent, not an error
+        assert result is True
+        mock_db.execute.assert_awaited_once()
+        args = mock_db.execute.call_args[0]
+        assert "INSERT INTO tenant_inference_credentials" in args[0]
+        assert "ON CONFLICT (api_key_ref) DO UPDATE" in args[0]
+        assert args[1:] == ("cred_never_seen", "omninode")
 
     @pytest.mark.asyncio
     async def test_revoke_missing_ref_is_a_noop(
         self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
     ) -> None:
-        result = await runner.project_event(TOPIC_REVOKED, {}, _make_meta())
+        result = await runner.project_event(
+            TOPIC_REVOKED, {"tenant_id": "omninode"}, _make_meta()
+        )
+
+        assert result is True
+        mock_db.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_revoke_missing_tenant_id_is_a_noop(
+        self, runner: HandlerTenantCredentialsProjectionRunner, mock_db: AsyncMock
+    ) -> None:
+        """tenant_id is now required to build the tombstone INSERT's bound
+        args (the table's tenant_id column is NOT NULL) -- a malformed event
+        missing it must be a soft skip, not a constraint-violation crash."""
+        result = await runner.project_event(
+            TOPIC_REVOKED, {"api_key_ref": "cred_x"}, _make_meta()
+        )
 
         assert result is True
         mock_db.execute.assert_not_awaited()

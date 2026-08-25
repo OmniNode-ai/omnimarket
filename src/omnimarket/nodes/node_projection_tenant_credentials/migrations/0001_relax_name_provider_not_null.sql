@@ -1,0 +1,21 @@
+-- OMN-16324: revoke-before-register cross-topic ordering fix.
+--
+-- credential-registered and credential-revoked are published to two separate
+-- Kafka topics with no cross-topic ordering guarantee. When a revoke lands
+-- before its matching register, handler_tenant_credentials_projection now
+-- persists a tombstone row (api_key_ref + tenant_id + revoked_at only --
+-- name/provider are not yet known) so the later register's
+-- "INSERT ... ON CONFLICT DO UPDATE" fills in name/provider onto that row
+-- instead of creating a fresh one with revoked_at = NULL (which would
+-- silently un-revoke the credential). See
+-- handler_tenant_credentials_projection.py::_project_revoked.
+--
+-- name/provider must therefore be nullable: a tombstone-only row has
+-- neither until its register event eventually arrives (which may be never,
+-- if the customer revoked a ref the gateway never actually registered).
+--
+-- ALTER COLUMN ... DROP NOT NULL is a no-op when the column is already
+-- nullable, so this is safe to run repeatedly and safe against a database
+-- that has never seen the 0000 migration's NOT NULL constraints applied.
+ALTER TABLE tenant_inference_credentials ALTER COLUMN name DROP NOT NULL;
+ALTER TABLE tenant_inference_credentials ALTER COLUMN provider DROP NOT NULL;

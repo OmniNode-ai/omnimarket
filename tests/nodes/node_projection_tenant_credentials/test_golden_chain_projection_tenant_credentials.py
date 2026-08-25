@@ -93,6 +93,10 @@ async def test_registered_then_revoked_round_trip_projects_correctly() -> None:
         _make_meta(offset=1),
     )
     assert revoked is True
-    update_sql = db.execute.call_args[0][0]
-    assert "UPDATE tenant_inference_credentials" in update_sql
-    assert "DELETE" not in update_sql.upper()
+    revoke_sql = db.execute.call_args[0][0]
+    # OMN-16324: revoke is an UPSERT (never a bare UPDATE) so an out-of-order
+    # revoke that arrives before its register can still persist a tombstone
+    # row -- see handler_tenant_credentials_projection.py::_project_revoked.
+    assert "INSERT INTO tenant_inference_credentials" in revoke_sql
+    assert "ON CONFLICT (api_key_ref) DO UPDATE" in revoke_sql
+    assert "DELETE" not in revoke_sql.upper()
