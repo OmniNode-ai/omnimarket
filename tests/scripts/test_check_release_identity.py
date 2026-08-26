@@ -165,12 +165,29 @@ def _isolated_checkout(tmp_path: Path, *, published_tag: str) -> Path:
         _SCRIPT.resolve().parents[1] / "pyproject.toml", root / "pyproject.toml"
     )
 
+    # The identity and signing overrides are pinned per-command for the same
+    # reason the env is scrubbed: the throwaway repo must not inherit the
+    # developer's global git config. `_scrub_git_location_env` only clears
+    # LOCATION variables, so a developer with `tag.gpgsign = true` set globally
+    # would have this lightweight tag demand a message and die with
+    # "fatal: no tag message?" (exit 128) -- a failure that never reproduces in
+    # CI, which signs nothing.
     scrubbed_git_env = _scrub_git_location_env()
     for args in (
         ["init", "-q"],
         ["add", "-A"],
-        ["-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "smoke"],
-        ["tag", published_tag],
+        [
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@t",
+            "-c",
+            "commit.gpgsign=false",
+            "commit",
+            "-qm",
+            "smoke",
+        ],
+        ["-c", "tag.gpgsign=false", "tag", published_tag],
     ):
         subprocess.run(["git", *args], cwd=root, check=True, env=scrubbed_git_env)
     return root
