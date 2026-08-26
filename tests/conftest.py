@@ -241,6 +241,20 @@ def _scrub_inherited_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
     no-op there — safe and correct. This is a function-scoped autouse fixture, so
     it runs before the function-scoped ``git_repo`` / ``clone`` fixtures that build
     tmp repos, scrubbing the env before any git subprocess fires.
+
+    OMN-16584: also blinds every git subprocess a test shells out to against the
+    developer's REAL user-level git config, not just leaked location overrides.
+    With no override, git falls back to its default global-config resolution and
+    reads the caller's actual ``~/.gitconfig``. A contractor's legitimate personal
+    config (``[tag] gpgsign = true``) forces any bare ``git tag <name>`` (no
+    ``-a``/``-m``) in these tests to upgrade to an annotated tag -- GPG can only
+    sign annotated tag objects -- which then has no message and opens
+    ``$GIT_EDITOR``/``$VISUAL``/``$EDITOR``/``core.editor`` (default ``vi``) for
+    ``TAG_EDITMSG``, hanging or failing under a non-interactive test runner.
+    ``GIT_CONFIG_GLOBAL=/dev/null`` + ``GIT_CONFIG_NOSYSTEM=1`` make git ignore
+    the real global/system config files entirely (not merely override one key);
+    ``GIT_EDITOR=true`` is a second line of defense against any OTHER config path
+    that still tries to launch an interactive editor.
     """
     for var in (
         "GIT_DIR",
@@ -251,6 +265,9 @@ def _scrub_inherited_git_env(monkeypatch: pytest.MonkeyPatch) -> None:
         "GIT_COMMON_DIR",
     ):
         monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    monkeypatch.setenv("GIT_EDITOR", "true")
 
 
 @pytest.fixture(autouse=True)
