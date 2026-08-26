@@ -44,16 +44,12 @@ ALTER TABLE public.savings_estimates
 ALTER TABLE public.savings_estimates
     ADD CONSTRAINT savings_estimates_prompt_tokens_check
     CHECK (prompt_tokens IS NULL OR prompt_tokens >= 0) NOT VALID;
-ALTER TABLE public.savings_estimates
-    VALIDATE CONSTRAINT savings_estimates_prompt_tokens_check;
 
 ALTER TABLE public.savings_estimates
     DROP CONSTRAINT IF EXISTS savings_estimates_completion_tokens_check;
 ALTER TABLE public.savings_estimates
     ADD CONSTRAINT savings_estimates_completion_tokens_check
     CHECK (completion_tokens IS NULL OR completion_tokens >= 0) NOT VALID;
-ALTER TABLE public.savings_estimates
-    VALIDATE CONSTRAINT savings_estimates_completion_tokens_check;
 
 -- task_type is a class label, never a model identifier. An empty string is the
 -- writer's "no class supplied" signal and stays distinct from NULL ("column
