@@ -792,6 +792,13 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "cutover explicitly gated on a zero-disagreement window + "
         "maintainer approval."
     ),
+    ("kb-doc-gate.yml", "kb-doc-gate"): (
+        "OMN-16589 P1 pilot: thin uses: caller of the omniclaude-hosted "
+        "kb-doc-gate-reusable.yml (transition mode). NOT wired as a "
+        "required status check yet — the required-check flip is explicit "
+        "follow-up scope, tracked on OMN-16589, once the pilot "
+        "(omnibase_core + omnimarket) proves green on real PRs."
+    ),
     # --- path-filtered validators, explicitly out of this wave's scope (not
     # named in the enforce-everything build-order plan for omnimarket).
     # Promotion requires the two-step order-of-operations sequence (convert
