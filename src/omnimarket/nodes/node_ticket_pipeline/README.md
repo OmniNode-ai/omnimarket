@@ -13,22 +13,34 @@ The current bounded market-owned slice wires:
 Later side-effect phases stop explicitly as `blocked/not_implemented` until they are wired.
 
 ## Integration
-1. **Initiation**: Send a `PipelineStartCommand` to begin processing
-2. **Event Handling**: Subscribe to `PipelinePhaseEvent` for phase-by-phase updates
-3. **Completion**: Listen for `PipelineCompletedEvent` to finalize processing
-4. **State Management**: Query `PipelineState` for current processing status
+1. **Initiation**: Send a `ModelPipelineStartCommand` to begin processing
+2. **Event Handling**: Subscribe to `ModelPipelinePhaseEvent` for phase-by-phase updates
+3. **Completion**: Listen for `ModelPipelineCompletedEvent` to finalize processing
+4. **State Management**: Query `ModelPipelineState` for current processing status
 
 ## Key Components
-- `PipelineStartCommand`: Initiates the ticket processing pipeline
-- `PipelinePhaseEvent`: Emitted during each processing phase
-- `PipelineCompletedEvent`: Signals successful pipeline completion
-- `PipelineState`: Maintains current pipeline status
+- `ModelPipelineStartCommand`: Initiates the ticket processing pipeline.
+  Fields: `correlation_id` (required), `ticket_id` (required — must match an
+  uppercase Linear key such as `OMN-1234`), `skip_test_iterate`, `dry_run`,
+  `skip_to`, `requested_at` (required). `model_config` sets `extra="forbid"`
+  — unknown fields raise a validation error.
+- `ModelPipelinePhaseEvent`: Emitted during each processing phase
+- `ModelPipelineCompletedEvent`: Signals successful pipeline completion
+- `ModelPipelineState`: Maintains current pipeline status
 
 ## Usage Example
 ```python
-from omnimarket.nodes.node_ticket_pipeline.models import PipelineStartCommand
+from datetime import UTC, datetime
+from uuid import uuid4
 
-# Initialize pipeline
-command = PipelineStartCommand(ticket_id="T12345", payload={...})
-# Send command to pipeline handler
+from omnimarket.nodes.node_ticket_pipeline.models import ModelPipelineStartCommand
+
+# correlation_id and requested_at are required; extra="forbid" rejects any
+# field not declared on the model (e.g. a free-form `payload`).
+command = ModelPipelineStartCommand(
+    correlation_id=uuid4(),
+    ticket_id="OMN-1234",
+    requested_at=datetime.now(UTC),
+)
+# Send command to HandlerTicketPipeline.run_executable_pipeline()
 ```

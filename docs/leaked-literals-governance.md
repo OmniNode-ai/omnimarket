@@ -75,16 +75,28 @@ This skips the entire file. Use sparingly — prefer per-line annotations for so
 The following files are unconditionally exempt (listed in `SELF_EXEMPT_FILES` in the script):
 
 - `scripts/validation/check_leaked_literals.sh` — pattern catalog (self-referential)
+- `scripts/audit/raw_env_usage_audit.py` — the audit-only companion scanner (exit 0
+  always; CSV is the deliverable, not a gate); its own regex catalog would otherwise
+  self-trigger the blocking gate
 - `.github/workflows/reject-leaked-literals.yml` — CI workflow referencing the gate
 - `docs/leaked-literals-governance.md` — this document
+- `.leaked-literals-allowlist.yaml` — the allowlist file itself, which necessarily
+  lists the literals it exempts
 - `docs/audits/2026-05-05-*.csv` / `docs/audits/2026-05-05-*.md` — generated audit reports
 - `docs/tracking/delegation-cost-projection-lane.md` — tracking doc with config examples
 - `docs/adr-canary/ground_truth_manifest.yaml` — embeds real merged ADRs' verbatim
   text as a benchmark fixture; editing embedded ADR text to annotate a literal would
   corrupt the ground-truth fidelity the file exists to provide (OMN-16156)
 
-To add a new self-exempt file, update `SELF_EXEMPT_FILES` in the script and document the
-reason here.
+Two path patterns are exempted outside `SELF_EXEMPT_FILES`, matched by glob directly
+in the script: `docs/audits/*-raw-env-usage.csv` (any dated raw-env-usage report, not
+just the 2026-05-05 one), and `docs/evidence/*/*.generation.json` (durable
+generation-evidence JSON that must record the live endpoint verbatim as proof; JSON
+cannot carry a `# onex-allow-file` comment marker, so this evidence-file class is
+path-exempt on the same precedent as the raw-env-usage CSVs, OMN-13294).
+
+To add a new self-exempt file, update `SELF_EXEMPT_FILES` (or the glob checks) in the
+script and document the reason here.
 
 ## Adding new literal patterns
 
