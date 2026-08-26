@@ -95,10 +95,11 @@ _SERIES_VIEW = _migration("078")
 _SERIES_TIER_VIEW = _migration("079")
 _TOKEN_COLUMNS = _migration("082")
 _VIEW_RECONCILE = _migration("083")
+_CONSTRAINT_VALIDATION = _migration("084")
 
-# The two migrations this ticket adds. Everything else in the chain is the
-# pre-fix world, which is what the RED phase applies.
-_FIX_MIGRATIONS = (_TOKEN_COLUMNS, _VIEW_RECONCILE)
+# The migrations this ticket adds. Everything else in the chain is the pre-fix
+# world, which is what the RED phase applies.
+_FIX_MIGRATIONS = (_TOKEN_COLUMNS, _VIEW_RECONCILE, _CONSTRAINT_VALIDATION)
 
 # Migrations that shipped the defect. run-projection-migrations.py records a
 # sha256 per applied file and refuses to continue when one changes, so these stay
