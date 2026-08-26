@@ -10,6 +10,10 @@ Consumes the two events the gateway value->ref thin-publisher
   * ``credential-revoked`` -- sets ``revoked_at`` on the matching
     ``api_key_ref``. Never deletes the row (a revoked credential stays in the
     catalog for audit; "revoked" means no longer resolvable by delegation).
+    Registered and revoked land on two separate Kafka topics with no
+    cross-topic ordering guarantee; a revoke that arrives before its
+    matching register persists a tombstone row (OMN-16324) so the later
+    register cannot silently un-revoke it -- see ``_project_revoked``.
 
 Only this projection writes ``tenant_inference_credentials`` -- the gateway
 handler that publishes these events never touches the database (OMN-15800).
@@ -177,22 +181,53 @@ class HandlerTenantCredentialsProjectionRunner(BaseProjectionRunner):
 
     async def _project_revoked(self, data: dict[str, Any], meta: MessageMeta) -> bool:
         api_key_ref = data.get("api_key_ref")
-        if not api_key_ref:
-            logger.warning("credential-revoked missing api_key_ref -- skipping")
+        tenant_id = data.get("tenant_id")
+        if not api_key_ref or not tenant_id:
+            logger.warning(
+                "credential-revoked missing api_key_ref/tenant_id -- skipping"
+            )
             return True
 
+        # OMN-16324: credential-registered and credential-revoked are
+        # published to two separate Kafka topics with no cross-topic
+        # ordering guarantee (e.g. register-then-immediately-revoke racing
+        # different consumer lag on different partitions/topics). A plain
+        # "UPDATE ... WHERE revoked_at IS NULL" matches zero rows when the
+        # revoke arrives first; the eventual register's own
+        # "INSERT ... ON CONFLICT DO UPDATE" would then create the row fresh
+        # with revoked_at = NULL, silently un-revoking a credential the
+        # customer already revoked.
+        #
+        # Fix: an UPSERT instead of a bare UPDATE.
+        #   * Row already exists (normal order, or a repeat revoke): only
+        #     revoked_at changes. COALESCE keeps the earliest revocation
+        #     timestamp (idempotent) and this statement never touches
+        #     tenant_id/name/provider.
+        #   * Row does not exist yet (out-of-order): INSERTs a tombstone row
+        #     (name/provider NULL -- not yet known) with revoked_at already
+        #     set. _project_registered's own ON CONFLICT DO UPDATE never
+        #     touches revoked_at, so when the register event later arrives it
+        #     fills in name/provider onto this tombstone without reviving the
+        #     credential. created_at on that tombstone records when the
+        #     out-of-order revoke was first seen, not the eventual real
+        #     registration time -- an acceptable audit-trail tradeoff for a
+        #     credential this projection has not been told about yet.
         rows = await self.db.execute(
             f"""
-            UPDATE {self._table_credentials}
-            SET revoked_at = NOW()
-            WHERE api_key_ref = $1 AND revoked_at IS NULL
+            INSERT INTO {self._table_credentials} (
+              api_key_ref, tenant_id, name, provider, created_at, revoked_at
+            ) VALUES (
+              $1, $2, NULL, NULL, NOW(), NOW()
+            )
+            ON CONFLICT (api_key_ref) DO UPDATE SET
+              revoked_at = COALESCE(
+                {self._table_credentials}.revoked_at, EXCLUDED.revoked_at
+              )
             RETURNING api_key_ref, tenant_id, name, provider, created_at, revoked_at
             """,
             str(api_key_ref),
+            str(tenant_id),
         )
-        # A revoke for a ref this projection never inserted (or already
-        # revoked) matches zero rows -- a no-op, not an error: revocation is
-        # idempotent and the gateway never reads this table before publishing.
         await self._publish_snapshot_if_available(rows[0] if rows else None, meta, data)
         return True
 

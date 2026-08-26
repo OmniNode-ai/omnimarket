@@ -46,8 +46,10 @@ dod_evidence:
     description: credential-registered event upserts a tenant_inference_credentials row with no value/key_value field
   - test: tests/test_omn16316_tenant_credentials_projection.py::test_credential_revoked_sets_revoked_at
     description: credential-revoked event sets revoked_at on the matching api_key_ref, does not delete the row
-  - test: tests/test_omn16316_tenant_credentials_projection.py::test_unknown_api_key_ref_revoke_is_a_noop
-    description: revoking a ref this projection never saw is a no-op, not an error
+  - test: tests/test_omn16316_tenant_credentials_projection.py::test_revoke_of_unknown_ref_inserts_a_tombstone_row
+    description: revoking a ref this projection never saw persists a tombstone row instead of silently doing nothing
+  - test: tests/test_omn16316_real_postgres_tenant_credentials_write_path.py::TestRealPostgresWritePath::test_revoke_before_register_out_of_order_keeps_credential_revoked
+    description: "OMN-16324 -- real-Postgres proof that a credential-revoked event landing before its matching credential-registered event (two separate Kafka topics, no cross-topic ordering guarantee) leaves the credential revoked instead of being silently un-revoked"
 
 db_io:
   db_tables:
