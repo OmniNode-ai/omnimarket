@@ -145,6 +145,7 @@ def build_payload(
     repo: str,
     pr_number: int,
     correlation_id: str,
+    allow_merged_replay: bool = False,
 ) -> dict[str, object]:
     """Return a companion-effect command payload shaped as ModelOccCompanionEffectRequest.
 
@@ -163,15 +164,26 @@ def build_payload(
     * ``pr_number`` is an ``int`` (cast from the GHA string env by the caller).
     * ``occ_repo``/``runner``/``verifier`` are omitted so the model defaults
       apply (runner != verifier, OMN-12791).
+    * ``allow_merged_replay`` (OMN-16665) is emitted ONLY when True. It is the
+      deliberately-scoped F-17 override that authors the companion for a PR
+      which MERGED without one — the merge/queue-latency race in which this
+      publisher's job is held long enough that the PR merges before the command
+      reaches compute (live: omnimemory#447, published ~90s after the merge).
+      Emitting the key unconditionally would be harmless to the model but would
+      put a False in every born-path payload; omitting it keeps the born-path
+      wire shape byte-identical to pre-16665.
     * NO legacy occ-autobind fields (block_reason/ticket_id/requested_at/
       pr_head_sha/event_id/topic) — ``extra='forbid'`` rejects every one.
     """
-    return {
+    payload: dict[str, object] = {
         "repo": repo,
         "pr_number": pr_number,
         "mode": _MODE_MUTATE,
         "correlation_id": correlation_id,
     }
+    if allow_merged_replay:
+        payload["allow_merged_replay"] = True
+    return payload
 
 
 def publish_occ_companion_effect_command(
@@ -253,13 +265,20 @@ def main(dry_run: bool, lane: str | None) -> None:
     """Publish onex.cmd.omnimarket.occ-companion-effect-requested.v1 for a product PR.
 
     All inputs are read from environment variables injected by the GHA workflow:
-    PR_REPO, PR_NUMBER, PR_HEAD_SHA, PR_BODY (optional, idempotency skip). The
-    bus target is resolved from ``--lane`` against config/ci_bus_lanes.yaml.
+    PR_REPO, PR_NUMBER, PR_HEAD_SHA, PR_BODY (optional, idempotency skip),
+    ALLOW_MERGED_REPLAY (optional, OMN-16665 merged-PR recovery). The bus target
+    is resolved from ``--lane`` against config/ci_bus_lanes.yaml.
     """
     repo = os.environ.get("PR_REPO", "")
     pr_number_str = os.environ.get("PR_NUMBER", "")
     pr_head_sha = os.environ.get("PR_HEAD_SHA", "")
     pr_body = os.environ.get("PR_BODY", "")
+    # OMN-16665: only the exact literal "true" enables the override. A loose
+    # truthiness read ("false" is a non-empty string) would silently arm the
+    # F-17 override on every born-path publish that set the variable at all.
+    allow_merged_replay = (
+        os.environ.get("ALLOW_MERGED_REPLAY", "").strip().lower() == "true"
+    )
 
     if not repo or not pr_number_str or not pr_head_sha:
         click.echo(
@@ -294,11 +313,13 @@ def main(dry_run: bool, lane: str | None) -> None:
         repo=repo,
         pr_number=pr_number,
         correlation_id=correlation_id,
+        allow_merged_replay=allow_merged_replay,
     )
 
     click.echo(
         f"occ-companion-effect command: repo={repo} pr={pr_number} "
-        f"head={pr_head_sha} lane={lane!r}"
+        f"head={pr_head_sha} lane={lane!r} "
+        f"allow_merged_replay={allow_merged_replay}"
     )
 
     if dry_run:

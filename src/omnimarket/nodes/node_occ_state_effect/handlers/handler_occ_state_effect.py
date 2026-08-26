@@ -178,6 +178,13 @@ class HandlerOccStateEffect:
         title = str(pr.get("title") or "")
         body = str(pr.get("body") or "")
         pr_state = str(pr.get("state") or "open")
+        # OMN-16665: REST returns state=="closed" for a merged PR AND for an
+        # abandoned one, so state alone cannot tell a dead target from a
+        # permanent evidence hole. ``merged`` is the authoritative discriminator
+        # on the pulls payload; ``merged_at`` is its non-null sibling and is read
+        # as a fallback so an unexpectedly-absent boolean does not silently
+        # downgrade a merged PR to "closed, nothing lost".
+        pr_merged = bool(pr.get("merged")) or bool(pr.get("merged_at"))
         pr_is_draft = bool(pr.get("draft"))
         head_ref = str(head.get("ref") or "")
         # F-17 parity (OMN-14785): carry PR label names so the pure COMPUTE can
@@ -255,6 +262,8 @@ class HandlerOccStateEffect:
             pr_title=title,
             pr_body=body,
             pr_state=pr_state,
+            pr_merged=pr_merged,
+            allow_merged_replay=request.allow_merged_replay,
             pr_is_draft=pr_is_draft,
             pr_head_ref=head_ref,
             pr_labels=pr_labels,
