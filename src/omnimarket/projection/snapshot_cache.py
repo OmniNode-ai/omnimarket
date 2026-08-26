@@ -339,6 +339,8 @@ class SnapshotCache:
         *,
         limit: int | None = None,
         order_by_override: tuple[tuple[str, str, str | None], ...] | None = None,
+        tenant_column: str | None = None,
+        tenant_id: str | None = None,
     ) -> list[dict[str, Any]]:
         """Return cached rows for ``topic``, ordered per the exposure's order_by_spec.
 
@@ -346,6 +348,19 @@ class SnapshotCache:
         flip (the ``?order=asc|desc`` query param) to the ACTUAL returned rows
         -- not just to the response envelope's ``ordering`` string, which
         would otherwise silently diverge from the real row order.
+
+        ``tenant_column``/``tenant_id`` (OMN-15797 AC2) scope the result to one
+        tenant using the ROW's own stored tenant value -- the same column the
+        writer's RLS policy compares ``app.tenant_id`` against -- never
+        :attr:`CachedRow.tenant_id`, which is read off a Kafka header no
+        producer sets today and is the house tenant for every row. Scoping
+        happens BEFORE ordering and BEFORE ``limit``: truncating first and
+        filtering after would hand a tenant an empty page whenever another
+        tenant's rows fill the window.
+
+        Passing ``tenant_column`` without ``tenant_id`` raises rather than
+        returning every tenant's rows: the whole point of this ticket is that
+        an unscoped answer must never be reachable by omission.
         """
         state = self._state.get(topic)
         if state is None:
@@ -356,7 +371,18 @@ class SnapshotCache:
             if order_by_override is not None
             else exposure.order_by_spec
         )
-        ordered = _sort_rows(list(state.rows.items()), spec)
+        items = list(state.rows.items())
+        if tenant_column is not None:
+            if tenant_id is None:
+                raise ValueError(
+                    f"get_rows({topic!r}) was given tenant_column="
+                    f"{tenant_column!r} with no tenant_id; refusing to fall "
+                    "back to an unscoped read (OMN-15797)"
+                )
+            items = [
+                item for item in items if item[1].row.get(tenant_column) == tenant_id
+            ]
+        ordered = _sort_rows(items, spec)
         rows = [cached.row for _key, cached in ordered]
         effective_limit = limit if limit is not None else exposure.limit
         return rows[:effective_limit]

@@ -695,6 +695,22 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-15797 AC3 rule 2: Postgres RLS fails OPEN from the caller's side --
+      # with app.tenant_id unset the policy predicate is NULL, so an RLS-covered
+      # statement silently matches ZERO rows and raises nothing. Any module that
+      # imports a Postgres driver, issues statements, and names an RLS-covered
+      # relation must set TENANT_GUC. The relation set is derived from this
+      # repo's own ENABLE ROW LEVEL SECURITY migrations, so a new policy widens
+      # the gate on the same commit. SYNC with ci.yml step "RLS tenant-seam gate
+      # (OMN-15797)".
+      - id: rls-read-tenant-seam
+        name: RLS tenant-seam gate
+        language: system
+        entry: uv run python scripts/ci/check_rls_read_tenant_seam.py
+        files: ^src/omnimarket/.*\.(py|sql)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-12959: FSM terminal-state invariant — watchdog topic literals may
       # only live in the canonical omnimarket.events.topics registry (the source
       # of truth; omnimarket.events.watchdog imports them and exposes the typed

@@ -9,6 +9,20 @@ contract change, not a code change.
 ONEX node type: EFFECT — performs database writes (side effects).
 
 In dry-run mode, estimates rows to delete without executing DELETE statements.
+
+Tenant seam (OMN-15797 AC3): ``agent_routing_decisions`` is RLS-covered
+(``node_projection_routing_decision`` migration
+``0022_agent_routing_decisions_tenant_id_and_rls.sql``). With ``app.tenant_id``
+unset, the policy predicate is NULL and every ``DELETE`` matches zero rows and
+every dry-run ``COUNT(*)`` reports zero — retention would report "OK, deleted
+0 rows" forever while the table grew without bound. The GUC is therefore set
+as the first statement of the same transaction the targets run in.
+
+Setting it is safe for the identity retention actually runs as today: an
+owner/superuser connection bypasses RLS entirely and is unaffected, while a
+non-superuser connection goes from deleting nothing to deleting its tenant's
+aged rows. There is no configuration under which this narrows a delete that
+was previously working.
 """
 
 from __future__ import annotations
@@ -20,6 +34,11 @@ from typing import Any
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
+
+from omnimarket.projection.tenant_isolation import (
+    TENANT_GUC,
+    resolve_rls_read_tenant,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -180,11 +199,19 @@ class NodeRetentionCleanup:
         table_results: list[RetentionTableResult] = []
         total_deleted = 0
 
+        # Resolved before connecting so a refused run issues no SQL at all.
+        tenant = resolve_rls_read_tenant(None, table="retention_cleanup")
+
         try:
             conn = psycopg2.connect(request.db_url)
             conn.autocommit = False
             try:
                 with conn.cursor() as cur:
+                    # First statement of this transaction: set_config's
+                    # is_local=true scopes the GUC to it, and every target
+                    # below runs inside the same transaction (commit/rollback
+                    # happens after the loop), so one call covers them all.
+                    cur.execute("SELECT set_config(%s, %s, true)", (TENANT_GUC, tenant))
                     for target in _RETENTION_TARGETS:
                         result = self._run_target(
                             cur,

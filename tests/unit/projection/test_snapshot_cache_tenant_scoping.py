@@ -16,6 +16,18 @@ independent, pre-existing proof that the broader tenant-authority path
 (``bind_projection_tenant_authority`` / ``verify_signed_projection_tenant_authority``)
 has zero non-test call sites in shipped ``omnibase_infra`` today.
 
+OMN-15797 AC2 update (2026-08-26): ``get_rows`` now accepts an OPT-IN
+``tenant_column``/``tenant_id`` pair and scopes on the ROW's own stored tenant
+value. That does not resolve the gap this test pins, and this test still holds
+verbatim: an exposure that declares no ``projection_api.tenant_column`` is
+still served unscoped, and a call with no tenant arguments -- which is what
+``get_rows(_TOPIC)`` below is -- is still unscoped by construction. What
+changed is that an exposure CAN now opt in (and, having opted in, is refused
+rather than served when no tenant resolves; see
+``test_omn15797_serving_tenant_context.py``). The general case for
+``savings.v1`` -- scoping every exposure off a per-event envelope tenant
+identity rather than a declared row column -- remains OMN-14208.
+
 The fix taken instead (test_projection_discovery.py::TestOmn15800TenantScopingFallback)
 is contract-level: ``savings.v1`` -- the one exposure with real multi-tenant
 data (18 rows / 3 tenants) -- is kept OFF ``bus_backed``, so this cache-level

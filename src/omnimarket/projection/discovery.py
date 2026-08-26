@@ -382,6 +382,18 @@ def _parse_projection_api_section(
         )
         return None
 
+    # OMN-15797 AC2: the row column carrying this exposure's per-row tenant
+    # identity. Absent (the default) means the exposure is not tenant-scoped.
+    # Validation that it is servable — bus_backed, and among the declared
+    # columns — lives on the model, where it HARD-FAILS contract load rather
+    # than quietly excluding the exposure: a broken scoping declaration must
+    # not degrade into "this exposure just disappeared".
+    tenant_column = _optional_string_field(
+        section, "tenant_column", node_name, contract_path
+    )
+    if tenant_column is _INVALID_OPTIONAL_FIELD:
+        return None
+
     raw_freshness = section.get("freshness_column")
     if raw_freshness is not None and not isinstance(raw_freshness, str):
         logger.error(
@@ -478,6 +490,7 @@ def _parse_projection_api_section(
         degraded_reason="",
         bus_backed=bus_backed,
         key_columns=key_columns,
+        tenant_column=tenant_column,
     )
 
 

@@ -95,6 +95,26 @@ class ProjectionTableConfig(BaseModel):
     # in-memory row map.
     bus_backed: bool = False
     key_columns: tuple[str, ...] = ()
+    # OMN-15797 AC2: the ROW column carrying this exposure's per-row tenant
+    # identity. ``None`` (the default, and the state of every exposure that
+    # predates this field) means the exposure is not tenant-scoped and is
+    # served unscoped exactly as before.
+    #
+    # Declaring it is a binding statement with two consequences in the serving
+    # path, both fail-loud: a request whose tenant context cannot be resolved
+    # is REFUSED (never a bare 200 with an empty or unscoped row list), and a
+    # request that does resolve one is scoped inside
+    # ``SnapshotCache.get_rows`` before the limit is applied.
+    #
+    # This is the ROW's own stored tenant value -- the same column the RLS
+    # policy compares ``app.tenant_id`` against on the writer's side -- NOT
+    # ``CachedRow.tenant_id``, which is read off a Kafka header that no
+    # producer sets today and therefore defaults to the house tenant for every
+    # row. Scoping on the header would be theater; scoping on the row column
+    # is the value the reducer actually wrote. Per-envelope tenant identity
+    # (and with it the general case for exposures that carry no tenant column)
+    # remains OMN-14208.
+    tenant_column: str | None = None
 
     @model_validator(mode="after")
     def _bus_backed_requires_key_columns(self) -> ProjectionTableConfig:
@@ -104,6 +124,39 @@ class ProjectionTableConfig(BaseModel):
                 "true but no key_columns"
             )
         return self
+
+    @model_validator(mode="after")
+    def _tenant_column_must_be_servable(self) -> ProjectionTableConfig:
+        """Reject a tenant_column the serving path could not honour.
+
+        Hard-fails contract load (like ``order_by``, unlike the fields that
+        merely exclude an exposure): a typo'd or unservable tenant_column is a
+        scoping declaration that would either silently not apply or scope on a
+        column that is never present in the row -- returning an empty page the
+        caller reads as "no data". A scoping mistake must never be a quiet one.
+        """
+        if self.tenant_column is None:
+            return self
+        if not self.bus_backed:
+            raise ValueError(
+                f"projection_api exposure {self.topic!r} declares "
+                f"tenant_column {self.tenant_column!r} but is not bus_backed; "
+                "only the bus-fed serving path can scope rows"
+            )
+        if self.columns != ("*",) and self.tenant_column not in {
+            column.strip('"') for column in self.columns
+        }:
+            raise ValueError(
+                f"projection_api exposure {self.topic!r} declares "
+                f"tenant_column {self.tenant_column!r}, which is not among its "
+                f"declared columns {list(self.columns)!r}"
+            )
+        return self
+
+    @property
+    def tenant_scoped(self) -> bool:
+        """True when this exposure must be served under a resolved tenant."""
+        return self.tenant_column is not None
 
 
 class ModelProjectionSnapshotDelta(BaseModel):
