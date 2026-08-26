@@ -17,6 +17,11 @@ on:
 
 jobs:
   kb-doc-gate:
-    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@main
+    # Pinned by immutable SHA, not @main: main is release-synced and does not
+    # carry this gate yet (promotion deferred by policy). This commit includes
+    # the reusable workflow and the validator-ref input that keeps the script
+    # checkout on the same immutable omniclaude source.
+    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@3b3f5e6966df2beebfb1435d15948394f92771de
     with:
       mode: transition
+      validator_ref: 3b3f5e6966df2beebfb1435d15948394f92771de
