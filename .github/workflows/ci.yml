@@ -133,6 +133,49 @@ jobs:
     with:
       python-version: "3.12"
 
+  # OMN-16662: DOCS-ONLY MARKER.
+  #
+  # This job carries exactly one bit — "zone-filter classified every changed
+  # path as DOCS" — into a place the `ci-summary` poller can actually see it.
+  #
+  # Why it has to exist at all: `ci-summary` is a NO-`needs` poller by design
+  # (OMN-14127 — a `needs`-gated job gets no check-run until its needs
+  # terminalize, which is exactly how the old gate went ABSENT under fleet
+  # saturation and wedged PRs BLOCKED with 0 failing / 0 pending). It reads
+  # `actions/runs/{id}/jobs`, and job OUTPUTS are not in that payload. So it
+  # cannot consume `needs.zone-filter.outputs.docs_only` the way omnibase_core's
+  # `quality-gate` does (OMN-16625). A JOB, however, is in that payload — hence
+  # this marker.
+  #
+  # FAIL-CLOSED BY CONSTRUCTION: `ci_summary_gate.py` treats ONLY
+  # completed+success here as docs_only=true. On any ordinary code PR this `if:`
+  # is false, the job reports `skipped`, and every gate stays strict. Absent,
+  # in_progress, skipped, cancelled and failure all mean "not docs-only".
+  #
+  # Deliberately NOT a `mode: REQUIRED` row in .github/required-checks.yaml: it
+  # is a conditional job by nature, and registering it would make the
+  # required-check skip-vector guard analyse it as a required context (vector 2)
+  # for no benefit — its verdict is only ever read by the poller.
+  docs-only-marker:
+    needs: [occ-preflight, zone-filter]
+    if: always() && needs.zone-filter.outputs.docs_only == 'true'
+    name: Docs-Only Marker (OMN-16662)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Record docs-only classification
+        run: |
+          echo "zone-filter classified every changed path as EnumFileZone.DOCS."
+          echo "The docs-only skip tier in scripts/ci/ci_summary_gate.py is ACTIVE for this run."
+          {
+            echo "### Docs-only diff detected"
+            echo ""
+            echo "Every changed path classified \`EnumFileZone.DOCS\`. The heavy"
+            echo "code-verification tier (see \`DOCS_ONLY_SKIPPABLE_GATE_JOBS\`)"
+            echo "is allowed to skip; the contract, doc-content and evidence"
+            echo "gates still run and must still be green."
+          } >> "$GITHUB_STEP_SUMMARY"
+
   lint:
     needs: occ-preflight
     if: always()
@@ -1733,7 +1776,7 @@ jobs:
   # new-vs-existing-debt precedent above.
   # ============================================================================
   coverage-sweep-gate:
-    needs: occ-preflight
+    needs: [occ-preflight, zone-filter]
     # OMN-16217: draft-state CI admission gate (org-wide fan-out of the
     # mechanism proven on onex_change_control#6686 / OMN-15731) — GATED here,
     # and ONLY for dev-targeting PRs; push/merge_group/main-or-hotfix-
@@ -1762,7 +1805,24 @@ jobs:
     # required_status_checks`), so the required-check skip-vector guard does
     # not analyze it directly; it is enforced transitively, only through `CI
     # Summary`'s STRICT_GATE_JOBS membership, exactly as documented there.
-    if: always() && (github.event_name != 'pull_request' || github.base_ref != 'dev' || !github.event.pull_request.draft)
+    #
+    # OMN-16662 adds the second clause: a docs-only diff also skips this job.
+    # Measured on the docs-only PR #2148 (head 67d49549) this job burned 22 of
+    # ci.yml's 55 runner-minutes — the single largest line-item — re-running a
+    # full `pytest --cov` for a diff that touched only Markdown. A coverage
+    # census cannot move when no `src/` file changed.
+    #
+    # The fail-closed proof is NOT weakened, and specifically NOT by moving this
+    # name into SKIPPABLE_GATE_JOBS (which would delete the OMN-16217 property
+    # above). `Coverage Sweep Gate` STAYS in STRICT_GATE_JOBS; a new
+    # DOCS_ONLY_SKIPPABLE_GATE_JOBS tier in scripts/ci/ci_summary_gate.py widens
+    # it to success|skipped ONLY while the in-run `docs-only-marker` job is
+    # present+completed+success — i.e. only when zone-filter actually proved the
+    # diff docs-only. A DRAFT dev-targeting PR (not docs-only) has no successful
+    # marker, so this job's `skipped` still fails CI Summary closed exactly as
+    # before; pinned by
+    # tests/unit/scripts/ci/test_ci_summary_gate.py::test_draft_gate_still_fails_closed_without_marker.
+    if: always() && (github.event_name != 'pull_request' || github.base_ref != 'dev' || !github.event.pull_request.draft) && needs.zone-filter.outputs.docs_only != 'true'
     name: Coverage Sweep Gate
     runs-on: ubuntu-latest
     # OMN-14645: bound the longest-pole job explicitly. The generation step caps
