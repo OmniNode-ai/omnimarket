@@ -21,7 +21,7 @@ jobs:
     # carry this gate yet (promotion deferred by policy). This commit includes
     # the reusable workflow and the validator-ref input that keeps the script
     # checkout on the same immutable omniclaude source.
-    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@162ab4b2dee7c0a0367139308661cd59a598865f
+    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@3b3f5e6966df2beebfb1435d15948394f92771de
     with:
       mode: transition
-      validator_ref: 162ab4b2dee7c0a0367139308661cd59a598865f
+      validator_ref: 3b3f5e6966df2beebfb1435d15948394f92771de
