@@ -1570,36 +1570,7 @@ jobs:
   contract-compliance:
     needs: occ-preflight
     name: Contract Compliance Check
-    # OMNI_RUNNER_SELECTOR_V1 (OMN-16428): this job's `uv sync --locked
-    # --all-extras` runs against onex_change_control's OWN uv.lock (checked
-    # out fresh above), whose per-package `source = { registry = "..." }`
-    # entries are baked in at lock-generation time to the internal-only
-    # `.201` Tailscale PyPI mirror (http://omninode-pc.tail75df5e.ts.net:3141/...). # onex-allow-internal-ip OMN-16428 reason="doc comment naming the exact unreachable-from-hosted-runner host this job's fix routes around; not a runnable reference"
-    # `uv sync --locked` fetches from the registry URL recorded IN THE
-    # LOCKFILE regardless of any ambient index config, so `ubuntu-latest`
-    # (no tailnet route) fails deterministically on whichever package isn't
-    # already cache-warm -- confirmed on PR #2116 (3 consecutive reruns,
-    # jobs 97230042624/97233406093/97233774190, three different failing
-    # packages, identical DNS-failure shape each time). omnimarket's OWN
-    # uv.lock resolves against public pypi.org (verified: zero
-    # tail75df5e.ts.net entries), so every other `uv sync` job in this repo
-    # is unaffected -- this is the one job that installs a DIFFERENT repo's
-    # mirror-pinned lockfile. Same defect class as OMN-16413
-    # (omnibase_core#1579, merged d61fdc938a): adopts the identical
-    # OMN-15699 fork-aware selector already used by
-    # deploy-gate-reusable.yml / main-target-guard.yml -- only an ACTUAL
-    # fork PR (head repo != base repo) routes to the public ubuntu-latest
-    # runner; every same-repo pull_request, push, and merge_group gets the
-    # tailnet-connected self-hosted omnibase-ci fleet, which CAN reach the
-    # .201 mirror. This does NOT widen the trust boundary: untrusted fork
-    # code still never reaches the self-hosted fleet.
-    runs-on: >-
-      ${{
-        (github.event_name == 'pull_request' &&
-         github.event.pull_request.head.repo.full_name != github.repository)
-        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
-      }}
+    runs-on: ubuntu-latest
     if: needs.occ-preflight.result == 'success' && (github.event_name == 'pull_request' || github.event_name == 'merge_group' || github.event_name == 'push')
     steps:
       - uses: actions/checkout@v6
