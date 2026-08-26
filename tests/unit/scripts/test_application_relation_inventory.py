@@ -172,7 +172,7 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # (delegation_routing_tenant_overlay), required by the shadow gate
     # (application sources must not create tables with no db_io declaration)
     # = 63.
-    assert census["source_declared_tables"] == 63
+    assert census["source_declared_tables"] == 65
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

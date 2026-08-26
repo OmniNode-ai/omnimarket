@@ -35,6 +35,20 @@
       "authoritative_sources": [],
       "current_database": "omnidash_analytics",
       "kind": "table",
+      "name": "projection_delegation_savings",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
+      "name": "projection_delegation_savings_series",
+      "reason": "no authoritative CREATE TABLE migration found"
+    },
+    {
+      "authoritative_sources": [],
+      "current_database": "omnidash_analytics",
+      "kind": "table",
       "name": "savings_injection_signals",
       "reason": "no authoritative CREATE TABLE migration found"
     },
@@ -71,7 +85,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 15,
-    "table": 63,
+    "table": 65,
     "view": 10
   },
   "relations": [
@@ -4128,6 +4142,92 @@
     },
     {
       "accessor_nodes": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "view:projection_delegation_savings"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "projection_delegation_savings",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "tenant",
+      "writers": []
+    },
+    {
+      "accessor_nodes": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "authoritative_sources": [],
+      "blocked_reasons": [
+        "no authoritative CREATE TABLE migration found"
+      ],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "blocked",
+      "constraints": [],
+      "contract_sources": [
+        "scripts/application-relation-ownership.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [
+        "view:projection_delegation_savings_series"
+      ],
+      "domain": "TENANT",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [],
+      "internal_tenant_column_transform": null,
+      "keys": [],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": null,
+      "name": "projection_delegation_savings_series",
+      "owner_declaration": null,
+      "partitioning": [],
+      "producer": null,
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
+      "target_schema": "tenant",
+      "writers": []
+    },
+    {
+      "accessor_nodes": [
         "node_projection_registration",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -4348,7 +4448,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_savings"
+        "node_projection_savings",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_savings/migrations/074_create_savings_estimates.sql"
@@ -4360,6 +4461,7 @@
         "savings_estimates_amounts_match"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_savings/contract.yaml"
       ],
       "current_schema": [
@@ -4402,11 +4504,13 @@
         "node_projection_pattern_learning",
         "node_projection_registration",
         "node_projection_routing_decision",
-        "node_projection_session_outcome"
+        "node_projection_session_outcome",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "tenant",
       "writers": [
-        "node_projection_savings"
+        "node_projection_savings",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -5056,9 +5160,12 @@
       ],
       "dependencies": [
         "delegation_events",
+        "projection_delegation_savings",
         "savings_estimates"
       ],
-      "dependent_objects": [],
+      "dependent_objects": [
+        "view:projection_delegation_savings"
+      ],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
@@ -5096,9 +5203,12 @@
       ],
       "dependencies": [
         "delegation_events",
+        "projection_delegation_savings_series",
         "savings_estimates"
       ],
-      "dependent_objects": [],
+      "dependent_objects": [
+        "view:projection_delegation_savings_series"
+      ],
       "domain": "TENANT",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
@@ -5283,7 +5393,7 @@
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
     "source_created_tables": 59,
-    "source_declared_tables": 63
+    "source_declared_tables": 65
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
