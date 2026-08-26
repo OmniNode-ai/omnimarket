@@ -26,6 +26,24 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_delegation/migrations/0031_delegation_events_tenant_id_to_uuid.sql
       access: read_write
       role: tenant_projection_table
+    - name: savings_estimates
+      database_ref: application
+      schema: tenant
+      migration: src/omnimarket/nodes/node_projection_savings/migrations/074_create_savings_estimates.sql
+      access: read_write
+      role: savings_estimates_projection_table
+    - name: projection_delegation_savings
+      database_ref: application
+      schema: tenant
+      migration: src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql
+      access: read
+      role: delegation_savings_projection_view
+    - name: projection_delegation_savings_series
+      database_ref: application
+      schema: tenant
+      migration: src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql
+      access: read
+      role: delegation_savings_series_projection_view
     # OMN-15359: the physical CREATE TABLE for this node's already-declared
     # db_io.db_tables[0] (schema: omninode_internal, in this node's own
     # contract.yaml) lives in the omnibase_infra repo, not here -- the
@@ -157,3 +175,58 @@ relation_evidence:
       OMN-16143) resolve against the same identity the row was written
       under. OMN-15503's typed terminal outcome columns (0029) are unchanged
       by this conversion.
+  - name: savings_estimates
+    kind: table
+    database_ref: application
+    schema: tenant
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py
+    readers:
+      - src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py
+    writers:
+      - src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_savings/migrations/074_create_savings_estimates.sql
+      - src/omnimarket/nodes/node_projection_savings/migrations/082_savings_estimates_task_type_and_tokens.sql
+    tenant_identity_column: tenant_id
+    canonical_policy_name: tenant_isolation
+    deduplication_key_columns: [session_id, event_timestamp, model_local, model_cloud_baseline]
+    authorization_dependency_columns: [tenant_id]
+    write_eligibility_dependency_columns: [tenant_id]
+    classification_evidence: >-
+      node_projection_savings tenant projection table for local-vs-counterfactual
+      savings estimates; OMN-15533 persists the task class and served token
+      counts used by the delegation-savings read views.
+  - name: projection_delegation_savings
+    kind: view
+    database_ref: application
+    schema: tenant
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql
+    readers:
+      - src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py
+    writers: []
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql
+    classification_evidence: >-
+      tenant read view over savings_estimates and delegation_events that exposes
+      the delegation-savings summary without fabricating task_type, token counts,
+      or measured-savings provenance.
+  - name: projection_delegation_savings_series
+    kind: view
+    database_ref: application
+    schema: tenant
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql
+    readers:
+      - src/omnimarket/nodes/node_projection_savings/handlers/handler_savings.py
+    writers: []
+    authoritative_sources:
+      - src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql
+    classification_evidence: >-
+      tenant read view over savings_estimates and delegation_events that exposes
+      daily delegation-savings series rows and preserves tier-mix semantics while
+      deriving provenance from persisted served-token evidence.
