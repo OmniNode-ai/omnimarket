@@ -132,6 +132,13 @@ projection_api:
         - captured_at
         - provisioned
         - latest_projection_updated_at
+        # OMN-15533 (AC4): cumulative_cloud_cost_usd above does NOT hold cloud
+        # spend — it holds the pinned premium counterfactual (what the baseline
+        # model WOULD have cost). Migration 083 appends this correctly-named
+        # column carrying the same value; the legacy name is retained only
+        # because CREATE OR REPLACE VIEW cannot rename a column in place and
+        # omnidash still reads it.
+        - cumulative_counterfactual_baseline_usd
       json_columns:
         - sessions
       freshness_column: latest_projection_updated_at

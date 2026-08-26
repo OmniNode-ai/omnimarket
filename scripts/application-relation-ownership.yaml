@@ -32,18 +32,6 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_savings/migrations/074_create_savings_estimates.sql
       access: read_write
       role: savings_estimates_projection_table
-    - name: projection_delegation_savings
-      database_ref: application
-      schema: tenant
-      migration: src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql
-      access: read
-      role: delegation_savings_projection_view
-    - name: projection_delegation_savings_series
-      database_ref: application
-      schema: tenant
-      migration: src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql
-      access: read
-      role: delegation_savings_series_projection_view
     # OMN-15359: the physical CREATE TABLE for this node's already-declared
     # db_io.db_tables[0] (schema: omninode_internal, in this node's own
     # contract.yaml) lives in the omnibase_infra repo, not here -- the

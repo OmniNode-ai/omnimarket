@@ -171,8 +171,10 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # change's new node-owned db_io declaration
     # (delegation_routing_tenant_overlay), required by the shadow gate
     # (application sources must not create tables with no db_io declaration)
-    # = 63.
-    assert census["source_declared_tables"] == 65
+    # = 63. OMN-15533 keeps projection_delegation_savings and
+    # projection_delegation_savings_series in the relation inventory as views,
+    # not db_io.db_tables entries, so they do not raise this table count.
+    assert census["source_declared_tables"] == 63
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
