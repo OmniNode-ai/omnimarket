@@ -125,6 +125,7 @@ _EVENT_TIMESTAMP = datetime(2026, 7, 30, 18, 46, tzinfo=UTC)
 # index is built plainly here. The rewrite is deliberately narrow: it changes how
 # the index is built, never whether it exists or what it covers.
 _CONCURRENT_INDEX = re.compile(r"\bCREATE\s+INDEX\s+CONCURRENTLY\b", re.IGNORECASE)
+_PUBLIC_SCHEMA = re.compile(r"\bpublic\.", re.IGNORECASE)
 
 # The RLS migrations GRANT to this role, which omnibase_infra's forward migration
 # 094 owns. It lives in a different repository, so the role is created here rather
@@ -484,9 +485,12 @@ class TestWritePathCarriesTaskTypeAndTokens:
 async def _apply(conn: asyncpg.Connection, migrations: tuple[Path, ...]) -> None:
     """Apply real migration files. Any failure raises -- nothing is skipped."""
     for migration in migrations:
-        sql = _CONCURRENT_INDEX.sub(
-            "CREATE INDEX", migration.read_text(encoding="utf-8")
-        )
+        sql = migration.read_text(encoding="utf-8")
+        sql = _CONCURRENT_INDEX.sub("CREATE INDEX", sql)
+        # Production migrations target public explicitly; the test executes the
+        # same SQL in a throwaway schema so it can prove the chain without
+        # mutating other integration tests that share the database.
+        sql = _PUBLIC_SCHEMA.sub("", sql)
         try:
             await conn.execute(sql)
         except Exception as exc:
