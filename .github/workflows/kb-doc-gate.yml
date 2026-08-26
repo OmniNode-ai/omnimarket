@@ -17,12 +17,11 @@ on:
 
 jobs:
   kb-doc-gate:
-    # Pinned by immutable SHA, not @main: the reusable workflow file exists
-    # only on omniclaude dev (this is dev's 2026-08-26 merge commit that
-    # introduced it, OMN-16589 #2047); main is release-synced and does not
-    # carry it yet (promotion deferred by policy), so @main fails with
-    # "reusable workflow not found" on every PR. Advance this pin via a
-    # normal PR when the gate is updated or main promotion lands.
-    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@82a3394c1af183d8aed36fdb7b0fee011d39372a
+    # Pinned by immutable SHA, not @main: main is release-synced and does not
+    # carry this gate yet (promotion deferred by policy). This commit includes
+    # the reusable workflow and the validator-ref input that keeps the script
+    # checkout on the same immutable omniclaude source.
+    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@162ab4b2dee7c0a0367139308661cd59a598865f
     with:
       mode: transition
+      validator_ref: 162ab4b2dee7c0a0367139308661cd59a598865f
