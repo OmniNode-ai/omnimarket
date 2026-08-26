@@ -180,12 +180,12 @@ def _savings_view_body(body: str) -> str:
     so a renamed view reports what it could not find — the same convention
     ``_migration`` uses for an unresolvable prefix.
     """
-    marker = "CREATE OR REPLACE VIEW projection_delegation_savings AS"
+    marker = "CREATE OR REPLACE VIEW public.projection_delegation_savings AS"
     parts = body.split(marker, 1)
     if len(parts) != 2:
         raise AssertionError(f"{_VIEW_RECONCILE.name} does not declare {marker!r}")
     return parts[1].split(
-        "CREATE OR REPLACE VIEW projection_delegation_savings_series AS", 1
+        "CREATE OR REPLACE VIEW public.projection_delegation_savings_series AS", 1
     )[0]
 
 
@@ -257,8 +257,11 @@ class TestProjectionViewReconciliation:
         # 078/079 (projection_delegation_savings_series). Fixing only the first
         # leaves the series view fabricating.
         body = _sql_body(_VIEW_RECONCILE)
-        assert "CREATE OR REPLACE VIEW projection_delegation_savings AS" in body
-        assert "CREATE OR REPLACE VIEW projection_delegation_savings_series AS" in body
+        assert "CREATE OR REPLACE VIEW public.projection_delegation_savings AS" in body
+        assert (
+            "CREATE OR REPLACE VIEW public.projection_delegation_savings_series AS"
+            in body
+        )
 
     def test_task_type_is_never_aliased_from_the_model_name(self) -> None:
         # AC1 -- the whole ticket.

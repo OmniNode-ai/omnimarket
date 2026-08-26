@@ -55,7 +55,7 @@
 -- delegation_events -- empty on the dev lane and out of scope on this ticket -- so
 -- it is deliberately NOT synthesised here rather than invented.
 
-CREATE OR REPLACE VIEW projection_delegation_savings AS
+CREATE OR REPLACE VIEW public.projection_delegation_savings AS
 WITH savings_sessions AS (
     SELECT
         session_id,
@@ -87,7 +87,7 @@ WITH savings_sessions AS (
         created_at,
         NULL::text AS prompt_text,
         NULL::text AS response_text
-    FROM savings_estimates
+    FROM public.savings_estimates
 ),
 event_sessions AS (
     SELECT
@@ -118,7 +118,7 @@ event_sessions AS (
         COALESCE(created_at, timestamp) AS created_at,
         prompt_text,
         response_text
-    FROM delegation_events
+    FROM public.delegation_events
 ),
 combined_sessions AS (
     SELECT * FROM savings_sessions
@@ -189,7 +189,7 @@ LEFT JOIN latest ON TRUE;
 -- The tier-mix machinery from 079 (event_tiers, classified_sessions, the
 -- local/cheap/premium mapping and the tier-routed denominator) is preserved
 -- verbatim -- this migration does not re-litigate OMN-13661.
-CREATE OR REPLACE VIEW projection_delegation_savings_series AS
+CREATE OR REPLACE VIEW public.projection_delegation_savings_series AS
 WITH savings_sessions AS (
     SELECT
         session_id,
@@ -213,7 +213,7 @@ WITH savings_sessions AS (
         NULL::text AS response_text,
         -- savings_estimates rows are not LLM-tier-routed: no serving tier.
         NULL::text AS cost_tier_name
-    FROM savings_estimates
+    FROM public.savings_estimates
 ),
 event_sessions AS (
     SELECT
@@ -241,7 +241,7 @@ event_sessions AS (
         response_text,
         -- OMN-13649: authoritative serving tier. Empty string -> not tier-routed.
         NULLIF(cost_tier_name, '') AS cost_tier_name
-    FROM delegation_events
+    FROM public.delegation_events
 ),
 event_tiers AS (
     SELECT

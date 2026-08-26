@@ -33,48 +33,33 @@
 -- the dev lane (node_projection_delegation has no live consumer group — OMN-14153)
 -- and is explicitly out of scope on OMN-15533.
 
-ALTER TABLE savings_estimates ADD COLUMN IF NOT EXISTS task_type TEXT;
-ALTER TABLE savings_estimates ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER;
-ALTER TABLE savings_estimates ADD COLUMN IF NOT EXISTS completion_tokens INTEGER;
+ALTER TABLE public.savings_estimates ADD COLUMN IF NOT EXISTS task_type TEXT;
+ALTER TABLE public.savings_estimates ADD COLUMN IF NOT EXISTS prompt_tokens INTEGER;
+ALTER TABLE public.savings_estimates ADD COLUMN IF NOT EXISTS completion_tokens INTEGER;
 
 -- Token counts are physical quantities: negative is always a write-path bug, and
--- NULL ("not recorded") stays permitted. Guarded so a re-apply against a database
--- that already carries the constraint is a no-op rather than a hard failure.
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'savings_estimates'::regclass
-          AND conname = 'savings_estimates_prompt_tokens_check'
-    ) THEN
-        ALTER TABLE savings_estimates
-            ADD CONSTRAINT savings_estimates_prompt_tokens_check
-            CHECK (prompt_tokens IS NULL OR prompt_tokens >= 0);
-    END IF;
-END$$;
+-- NULL ("not recorded") stays permitted.
+ALTER TABLE public.savings_estimates
+    DROP CONSTRAINT IF EXISTS savings_estimates_prompt_tokens_check;
+ALTER TABLE public.savings_estimates
+    ADD CONSTRAINT savings_estimates_prompt_tokens_check
+    CHECK (prompt_tokens IS NULL OR prompt_tokens >= 0);
 
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint
-        WHERE conrelid = 'savings_estimates'::regclass
-          AND conname = 'savings_estimates_completion_tokens_check'
-    ) THEN
-        ALTER TABLE savings_estimates
-            ADD CONSTRAINT savings_estimates_completion_tokens_check
-            CHECK (completion_tokens IS NULL OR completion_tokens >= 0);
-    END IF;
-END$$;
+ALTER TABLE public.savings_estimates
+    DROP CONSTRAINT IF EXISTS savings_estimates_completion_tokens_check;
+ALTER TABLE public.savings_estimates
+    ADD CONSTRAINT savings_estimates_completion_tokens_check
+    CHECK (completion_tokens IS NULL OR completion_tokens >= 0);
 
 -- task_type is a class label, never a model identifier. An empty string is the
 -- writer's "no class supplied" signal and stays distinct from NULL ("column
 -- predates the row"); neither is allowed to be a model name by construction,
 -- because the writer now sources task_type from the terminal's own task_type
 -- field rather than from model_local.
-COMMENT ON COLUMN savings_estimates.task_type IS
+COMMENT ON COLUMN public.savings_estimates.task_type IS
     'OMN-15533: task class from the source delegation terminal (e.g. escalation, '
     'document). NULL = not recorded (row predates this column). Never a model name.';
-COMMENT ON COLUMN savings_estimates.prompt_tokens IS
+COMMENT ON COLUMN public.savings_estimates.prompt_tokens IS
     'OMN-15533: served input tokens from the source terminal. NULL = not recorded.';
-COMMENT ON COLUMN savings_estimates.completion_tokens IS
+COMMENT ON COLUMN public.savings_estimates.completion_tokens IS
     'OMN-15533: served output tokens from the source terminal. NULL = not recorded.';
