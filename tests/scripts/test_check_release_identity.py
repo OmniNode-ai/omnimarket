@@ -43,13 +43,29 @@ _GIT_DISCOVERY_ENV_VARS: tuple[str, ...] = ("GIT_CEILING_DIRECTORIES",)
 
 
 def _scrub_git_location_env() -> dict[str, str]:
-    """Return a copy of the process env with git-location overrides removed."""
+    """Return a copy of the process env with git-location overrides removed.
+
+    OMN-16584: after stripping any ambient ``GIT_CONFIG*`` override, re-add a
+    NEUTRAL one unconditionally so a real user-level git config (e.g. a
+    developer's ``~/.gitconfig`` carrying ``[tag] gpgsign = true``) is excluded
+    from the subprocess `git` calls below, exactly like the deletions above
+    exclude leaked location overrides. Without this, `git tag <name>` (no
+    ``-a``/``-m``) in `_isolated_checkout` gets forced-annotated by a poisoned
+    ``tag.gpgsign=true`` and opens ``$GIT_EDITOR`` for `TAG_EDITMSG` — hanging
+    or failing ("fatal: no tag message?") under a non-interactive test runner.
+    ``GIT_CONFIG_NOSYSTEM=1`` covers the system config the same way;
+    ``GIT_EDITOR=true`` is a second line of defense for any other config path
+    that still tries to launch an interactive editor.
+    """
     env = dict(os.environ)
     for key in tuple(env):
         if key.startswith("GIT_CONFIG"):
             del env[key]
     for key in (*_GIT_LOCATION_ENV_VARS, *_GIT_DISCOVERY_ENV_VARS):
         env.pop(key, None)
+    env["GIT_CONFIG_GLOBAL"] = os.devnull
+    env["GIT_CONFIG_NOSYSTEM"] = "1"
+    env["GIT_EDITOR"] = "true"
     return env
 
 
@@ -228,3 +244,37 @@ def test_live_invocation_fails_when_version_is_not_ahead(tmp_path):
 
     assert result.returncode == 1, result.stdout
     assert "is NOT ahead of the latest published version" in result.stderr
+
+
+@pytest.mark.unit
+def test_isolated_checkout_hermetic_against_poisoned_tag_gpgsign(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """OMN-16584 regression: a global ``[tag] gpgsign = true`` must not hang or
+    fail ``_isolated_checkout``'s tag creation.
+
+    A contractor reported 2 tests failing on his machine with this exact
+    config: his real ``~/.gitconfig`` sets ``tag.gpgsign=true``, which forces
+    the bare ``git tag <name>`` call in ``_isolated_checkout`` (no ``-a``/
+    ``-m``) to upgrade to an annotated tag and open ``$GIT_EDITOR`` for
+    ``TAG_EDITMSG`` -- failing non-interactively with "fatal: no tag
+    message?".
+
+    ``_scrub_git_location_env`` is what is supposed to prevent this
+    (``GIT_CONFIG_GLOBAL=/dev/null`` + ``GIT_CONFIG_NOSYSTEM=1`` blind the
+    subprocess to the real user-level config). Prove it actually works by
+    simulating the contractor's exact machine state -- point ``HOME`` at a
+    directory whose ``.gitconfig`` carries ``tag.gpgsign=true`` -- and confirm
+    the live gate invocation still passes.
+    """
+    poisoned_home = tmp_path / "poisoned_home"
+    poisoned_home.mkdir()
+    (poisoned_home / ".gitconfig").write_text("[tag]\n\tgpgsign = true\n")
+    monkeypatch.setenv("HOME", str(poisoned_home))
+    monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
+
+    root = _isolated_checkout(tmp_path, published_tag="v0.0.1")
+    result = _run_gate(root)
+
+    assert result.returncode == 0, result.stderr
+    assert "ahead of latest published" in result.stdout
