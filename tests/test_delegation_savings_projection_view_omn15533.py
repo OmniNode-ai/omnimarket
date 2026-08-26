@@ -25,6 +25,14 @@ RED->GREEN proof runs on the repo's shared ``postgres_fixture`` under
 ``@pytest.mark.integration``, so it is gated by the same integration job (and the
 same OMN-14172 silent-skip guard) as every other real-database test here rather
 than by a bespoke environment variable that would skip unnoticed.
+
+That fixture connects to a REAL Postgres built from ``INTEGRATION_POSTGRES_HOST``
+/ ``INTEGRATION_POSTGRES_PORT`` / ``INTEGRATION_POSTGRES_USER`` /
+``INTEGRATION_POSTGRES_DB`` plus ``POSTGRES_PASSWORD`` (see tests/conftest.py).
+Naming the DSN source here is deliberate: these projection changes touch a
+write-path file, and OMN-15909 requires such a diff to carry real-database
+coverage rather than mocked adapters, because only a live connection catches the
+schema/adapter mismatches (OMN-15905) that an AsyncMock will happily accept.
 """
 
 from __future__ import annotations
