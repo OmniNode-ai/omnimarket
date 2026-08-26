@@ -22,6 +22,8 @@ import yaml
 
 from scripts.ci.ci_summary_gate import (
     ACTOR_CONDITIONAL_CONTEXTS,
+    DOCS_ONLY_MARKER_JOB,
+    DOCS_ONLY_SKIPPABLE_GATE_JOBS,
     EXIT_FAILURE,
     EXIT_PENDING,
     EXIT_SUCCESS,
@@ -848,6 +850,15 @@ _CI_YML_STRUCTURALLY_COVERED_KEYS: frozenset[str] = frozenset(
         "test",  # dynamic "Tests (Split N/M)" matrix — see the matrix rule.
         "merge-hold-gate",  # reusable caller; covered by the L3 default-deny sweep.
         "ci-summary",  # the poller's own job (SELF_JOB_NAME).
+        # OMN-16662: `docs-only-marker` is a SIGNAL job, not a gate. It asserts
+        # nothing and can never fail — its whole body is an echo. The poller
+        # reads its *conclusion* to derive docs_only (see
+        # DOCS_ONLY_MARKER_JOB), so it is structurally covered by that
+        # mechanism, and the L3 default-deny sweep still catches it if it were
+        # ever to conclude `failure`/`cancelled`. Adding it to a gate tuple
+        # would be wrong: it legitimately reports `skipped` on every non-docs
+        # PR, which is exactly the state the gates are built to reject.
+        "docs-only-marker",
     }
 )
 
@@ -1010,3 +1021,232 @@ def test_no_asserted_external_workflow_has_a_pull_request_paths_filter() -> None
         "to always-fire + in-job short-circuit before asserting:\n  "
         + "\n  ".join(offenders)
     )
+
+
+# --------------------------------------------------------------------------- #
+# OMN-16662: docs-only skip tier.
+#
+# The operator ruling for this family is that a Markdown/badge/README PR must
+# not pay for the heavy code-verification suite, while the doc gates keep
+# running. `Coverage Sweep Gate` is omnimarket's single largest docs-only cost
+# (22 of the 55 ci.yml runner-minutes measured on the docs-only PR #2148,
+# head 67d49549) and is a full `pytest --cov` over `src/` — it cannot change
+# verdict when only Markdown moved.
+#
+# It is a STRICT_GATE_JOBS member, and that is deliberately load-bearing: the
+# OMN-16217 draft gate depends on "a `skipped` conclusion -- draft-induced or
+# otherwise -- still fails CI Summary closed". So the relaxation must be
+# CONDITIONAL, never a move into SKIPPABLE_GATE_JOBS.
+#
+# `ci-summary` is a NO-`needs` poller (that property is what stopped it going
+# absent under fleet saturation, OMN-14127) and job OUTPUTS are absent from the
+# actions/runs/{id}/jobs payload it reads, so it cannot consume
+# `needs.zone-filter.outputs.docs_only` the way omnibase_core's `quality-gate`
+# does (OMN-16625). Instead a tiny in-run marker job carries the bit: the
+# poller derives docs_only from a job it can already see, and only a marker
+# that actually RAN and SUCCEEDED relaxes anything -- absent/pending/skipped/
+# cancelled/failed all mean "not docs-only", so the mechanism is fail-closed by
+# construction, not by an added guard.
+# --------------------------------------------------------------------------- #
+
+
+def test_docs_only_tier_is_subset_of_strict_gates() -> None:
+    """A tier member must stay STRICT so it is only ever CONDITIONALLY relaxed.
+
+    If a name were dropped from STRICT_GATE_JOBS while staying in the tier it
+    would become permanently skippable on every diff — the exact silent-bypass
+    shape this design exists to avoid.
+    """
+
+    assert set(DOCS_ONLY_SKIPPABLE_GATE_JOBS) <= set(STRICT_GATE_JOBS)
+    assert not (set(DOCS_ONLY_SKIPPABLE_GATE_JOBS) & set(SKIPPABLE_GATE_JOBS))
+
+
+def test_docs_only_marker_success_admits_tier_skip() -> None:
+    """Marker ran and succeeded => a tier gate's `skipped` is legitimate."""
+
+    jobs = _healthy_jobs()
+    jobs = [
+        _job(j["name"], conclusion="skipped")  # type: ignore[arg-type]
+        if j["name"] in DOCS_ONLY_SKIPPABLE_GATE_JOBS
+        else j
+        for j in jobs
+    ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, conclusion="success"))
+    code, report = evaluate(jobs)
+    assert code == EXIT_SUCCESS, report
+
+
+def test_docs_only_marker_absent_keeps_tier_strict() -> None:
+    """No marker at all => the tier is strict, a `skipped` fails closed.
+
+    This is the default on every ordinary code PR: the marker job's own `if:`
+    evaluates false, GitHub records it `skipped` or omits it, and nothing is
+    relaxed.
+    """
+
+    jobs = _healthy_jobs()
+    jobs = [
+        _job(j["name"], conclusion="skipped")  # type: ignore[arg-type]
+        if j["name"] in DOCS_ONLY_SKIPPABLE_GATE_JOBS
+        else j
+        for j in jobs
+    ]
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+
+
+def test_docs_only_marker_skipped_keeps_tier_strict() -> None:
+    """A `skipped` marker is NOT the docs-only signal — only `success` is."""
+
+    jobs = _healthy_jobs()
+    jobs = [
+        _job(j["name"], conclusion="skipped")  # type: ignore[arg-type]
+        if j["name"] in DOCS_ONLY_SKIPPABLE_GATE_JOBS
+        else j
+        for j in jobs
+    ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, conclusion="skipped"))
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+
+
+def test_docs_only_marker_pending_keeps_tier_strict() -> None:
+    """A marker still in flight must not relax anything mid-poll."""
+
+    jobs = _healthy_jobs()
+    jobs = [
+        _job(j["name"], conclusion="skipped")  # type: ignore[arg-type]
+        if j["name"] in DOCS_ONLY_SKIPPABLE_GATE_JOBS
+        else j
+        for j in jobs
+    ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, status="in_progress", conclusion=None))
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+
+
+def test_docs_only_marker_does_not_relax_non_tier_strict_gate() -> None:
+    """The relaxation is per-name, not a blanket `|| skipped` (cf. OMN-15315).
+
+    A docs-only diff still requires every gate outside the tier to be exactly
+    `success` — that is what keeps the doc/contract/evidence gates running,
+    which is the half of the operator ruling that is NOT about saving minutes.
+    """
+
+    non_tier = next(
+        g for g in STRICT_GATE_JOBS if g not in DOCS_ONLY_SKIPPABLE_GATE_JOBS
+    )
+    jobs = _healthy_jobs()
+    jobs = [
+        _job(non_tier, conclusion="skipped") if j["name"] == non_tier else j
+        for j in jobs
+    ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, conclusion="success"))
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+    assert non_tier in report
+
+
+def test_docs_only_marker_never_admits_tier_failure() -> None:
+    """Docs-only widens the accepted set to {success, skipped} — never further.
+
+    A tier job that RAN and FAILED on a docs-only diff is a real signal (e.g.
+    the sweep script itself broke) and must still fail the gate.
+    """
+
+    tier = DOCS_ONLY_SKIPPABLE_GATE_JOBS[0]
+    jobs = _healthy_jobs()
+    jobs = [_job(tier, conclusion="failure") if j["name"] == tier else j for j in jobs]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, conclusion="success"))
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+
+
+def test_docs_only_marker_cancelled_never_admits_tier_skip() -> None:
+    """A cancelled marker (timeout / runner loss) is not a docs-only proof."""
+
+    jobs = _healthy_jobs()
+    jobs = [
+        _job(j["name"], conclusion="skipped")  # type: ignore[arg-type]
+        if j["name"] in DOCS_ONLY_SKIPPABLE_GATE_JOBS
+        else j
+        for j in jobs
+    ]
+    jobs.append(_job(DOCS_ONLY_MARKER_JOB, conclusion="cancelled"))
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+
+
+def test_docs_only_marker_job_exists_and_is_zone_filter_gated() -> None:
+    """The marker's authority is `zone-filter`, nothing else.
+
+    Pinning the `if:` here is what stops the marker degrading into a
+    hand-settable bit: it may only succeed when the reusable zone-filter
+    classified every changed path as DOCS.
+    """
+
+    jobs = _ci_jobs()
+    assert "docs-only-marker" in jobs, sorted(jobs)
+    marker = jobs["docs-only-marker"]
+    assert str(marker.get("name")) == DOCS_ONLY_MARKER_JOB
+    needs = marker.get("needs")
+    needs_list = [needs] if isinstance(needs, str) else list(needs or [])
+    assert "zone-filter" in needs_list, needs_list
+    if_expr = str(marker.get("if", ""))
+    assert "needs.zone-filter.outputs.docs_only" in if_expr, if_expr
+    assert "== 'true'" in if_expr, if_expr
+
+
+def test_docs_only_tier_jobs_are_zone_filter_gated_in_ci_yml() -> None:
+    """Every tier member must actually be able to skip, or the tier is a lie."""
+
+    jobs = _ci_jobs()
+    by_display = {
+        str(defn.get("name", key)): (key, defn)
+        for key, defn in jobs.items()
+        if isinstance(defn, dict)
+    }
+    for display in DOCS_ONLY_SKIPPABLE_GATE_JOBS:
+        assert display in by_display, f"{display!r} not found in ci.yml"
+        key, defn = by_display[display]
+        if_expr = str(defn.get("if", ""))
+        assert "needs.zone-filter.outputs.docs_only != 'true'" in if_expr, (
+            f"{key} is in the docs-only tier but its `if:` does not gate on "
+            f"docs_only: {if_expr!r}"
+        )
+        needs = defn.get("needs")
+        needs_list = [needs] if isinstance(needs, str) else list(needs or [])
+        assert "zone-filter" in needs_list, f"{key} needs: {needs_list}"
+
+
+def test_ci_summary_job_still_has_no_needs() -> None:
+    """OMN-14127's load-bearing property must survive this change.
+
+    A `needs`-gated poller gets no check-run until its needs terminalize, which
+    is exactly how the pre-OMN-14127 gate went ABSENT under fleet saturation and
+    wedged PRs BLOCKED with 0 failing / 0 pending. The marker-job design exists
+    precisely so this stays true.
+    """
+
+    assert not _ci_jobs()["ci-summary"].get("needs")
+
+
+def test_draft_gate_still_fails_closed_without_marker() -> None:
+    """OMN-16217 regression guard.
+
+    A DRAFT dev-targeting PR skips `Coverage Sweep Gate` via its draft clause.
+    That PR is not docs-only, so no marker succeeds, and CI Summary must still
+    read RED — never green-by-skip.
+    """
+
+    jobs = _healthy_jobs()
+    jobs = [
+        _job("Coverage Sweep Gate", conclusion="skipped")
+        if j["name"] == "Coverage Sweep Gate"
+        else j
+        for j in jobs
+    ]
+    code, report = evaluate(jobs)
+    assert code == EXIT_FAILURE, report
+    assert "Coverage Sweep Gate" in report

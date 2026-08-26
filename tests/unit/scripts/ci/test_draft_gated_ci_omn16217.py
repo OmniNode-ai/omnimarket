@@ -125,9 +125,22 @@ class TestDraftGateWorkflowShape:
         )
 
     def test_needs_occ_preflight_unchanged(self) -> None:
-        """The gate migration must not touch the job's `needs:` edge — this
-        is purely a draft-state `if:` addition, not a dependency change."""
-        assert _job()["needs"] == "occ-preflight"
+        """The `occ-preflight` dependency must survive every later edit.
+
+        OMN-16217 itself added no `needs:` edge — it was purely a draft-state
+        `if:` addition, and this test originally pinned the edge as the exact
+        string ``"occ-preflight"``.
+
+        OMN-16662 later added ``zone-filter`` so the job can also skip on a
+        docs-only diff (a Markdown PR cannot move a coverage census). That is a
+        deliberate second dependency, not drift, so the assertion is widened
+        from equality to containment — the property OMN-16217 actually cares
+        about is that `occ-preflight` is still upstream of this job, which is
+        what makes its `if:` reachable only for an OCC-eligible PR.
+        """
+        needs = _job()["needs"]
+        needs_list = [needs] if isinstance(needs, str) else list(needs)
+        assert "occ-preflight" in needs_list, needs_list
 
     def test_red_control_pre_migration_shape_had_no_draft_arm(self) -> None:
         """RED-before control: the job's original condition was a bare
