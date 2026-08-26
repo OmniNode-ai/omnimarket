@@ -174,9 +174,17 @@ def _sql_body(path: Path) -> str:
 
 
 def _savings_view_body(body: str) -> str:
-    """The ``projection_delegation_savings`` half of migration 083."""
-    after = body.split("CREATE OR REPLACE VIEW projection_delegation_savings AS", 1)[1]
-    return after.split(
+    """The ``projection_delegation_savings`` half of migration 083.
+
+    Fails loudly when the marker is absent rather than raising a bare IndexError,
+    so a renamed view reports what it could not find — the same convention
+    ``_migration`` uses for an unresolvable prefix.
+    """
+    marker = "CREATE OR REPLACE VIEW projection_delegation_savings AS"
+    parts = body.split(marker, 1)
+    if len(parts) != 2:
+        raise AssertionError(f"{_VIEW_RECONCILE.name} does not declare {marker!r}")
+    return parts[1].split(
         "CREATE OR REPLACE VIEW projection_delegation_savings_series AS", 1
     )[0]
 
@@ -190,11 +198,15 @@ class TestMigrationOrdering:
         for defective in _FROZEN_DEFECTIVE_MIGRATIONS:
             assert defective.name < _TOKEN_COLUMNS.name
 
-    def test_fix_migrations_are_last_in_the_chain(self) -> None:
+    def test_view_rebuild_immediately_follows_the_column_add(self) -> None:
         # Nothing may be inserted between the column add and the view that reads
         # the columns, or a fresh-database apply fails on a missing column.
+        # Asserted as RELATIVE order, not chain position: a later 084+ migration
+        # is expected and must not fail this, since the ordering guarantee still
+        # holds.
         savings_chain = [p for p in _migration_chain() if p.parent == _MIGRATIONS]
-        assert savings_chain[-2:] == list(_FIX_MIGRATIONS)
+        columns_index = savings_chain.index(_TOKEN_COLUMNS)
+        assert savings_chain[columns_index + 1] == _VIEW_RECONCILE
 
     def test_applied_migrations_are_not_edited_in_place(self) -> None:
         # Changing an applied migration raises "Checksum mismatch for
