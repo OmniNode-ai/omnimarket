@@ -1,5 +1,9 @@
 # OmniMarket
 
+[![CI](https://github.com/OmniNode-ai/omnimarket/actions/workflows/ci.yml/badge.svg)](https://github.com/OmniNode-ai/omnimarket/actions/workflows/ci.yml)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 OmniMarket is the portable ONEX (OmniNode eXecution) workflow package registry — the consolidation
 target for all OmniNode automation logic. It ships 384 contract-backed node
 entry points (as of v0.4.11) covering build loops, PR lifecycle management, sweeps, projections,
