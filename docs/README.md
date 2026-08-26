@@ -11,19 +11,17 @@ the repo-level ownership boundary.
   - what belongs in wrapper repos versus OmniMarket.
 - [Dependency boundary](architecture/dependency-boundary.md) - root dependency
   scope, node metadata dependencies, and current isolation limits.
-- [Delegation dispatch](architecture/delegation-dispatch.md) - canonical
-  delegation dispatch path, endpoint_url verbatim rule, and escalation gate
-  sequence.
+- [Delegation dispatch](architecture/delegation-dispatch.md) - migrated to the
+  OmniNode knowledge base; this file is a pointer.
 - [Delegation routing contract](architecture/delegation-routing-contract.md) -
-  per-backend max_tokens, task-class tier escalation order, and codegen
-  fallback.
+  migrated to the OmniNode knowledge base; this file is a pointer.
 - [Event registry](architecture/event-registry.md) - canonical event registry,
   drift gate, and contributor compliance path.
 
 ## Reference
 
-- [Node catalog](reference/node-catalog.md) - node families, entry-point
-  source of truth, and discovery commands.
+- [Node catalog](reference/node-catalog.md) - migrated to the OmniNode
+  knowledge base; this file is a pointer.
 - [Node metadata reference](reference/node-metadata.md) - required metadata
   fields and package capability conventions.
 - [Node testing](node-testing.md) - skill-to-node dispatch parity and
@@ -53,6 +51,12 @@ design and tracking files are not public entrypoints.
 
 ## Historical Context
 
-Historical execution tracking, evidence notes, and one-off post-mortems are not
-kept in this public docs tree. Current repo facts from those files have been
-promoted into stable docs where they still apply.
+Dated point-in-time artifacts — execution-tracking logs, evidence bundles,
+audit snapshots, and the ADR-canary ground-truth corpus — are kept in-repo
+under `docs/evidence/`, `docs/audits/`, `docs/tracking/`, and
+`docs/adr-canary/`. Under the org's docs taxonomy these are Bucket-D
+snapshots: they stay put rather than migrating to the knowledge base, because
+their value is recording a specific moment, and updating them would destroy
+that. They are still subject to the same hygiene scrubbing as any other
+tracked file. Current, durable repo facts drawn from those snapshots are
+promoted into the stable docs above rather than left only in the snapshot.

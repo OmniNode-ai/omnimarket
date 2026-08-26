@@ -38,5 +38,9 @@ node you touched.
 - `docs/README.md` is the docs map.
 - Current architecture belongs under `docs/architecture/`.
 - Durable migration context belongs under `docs/migrations/`.
-- Historical tracking, evidence notes, and one-off operational records should
-  not be added as public docs.
+- Dated point-in-time artifacts (evidence bundles, audit snapshots, execution
+  tracking) belong under `docs/evidence/`, `docs/audits/`, or
+  `docs/tracking/` — the org's docs taxonomy classifies these as Bucket-D
+  snapshots that stay in-repo rather than migrating. Scrub them the same as
+  any other tracked file, and promote durable, current facts into the
+  architecture docs above rather than leaving them only in the snapshot.
