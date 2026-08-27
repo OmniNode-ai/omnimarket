@@ -26,6 +26,9 @@ from pathlib import Path
 import pytest
 import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
+from omnibase_infra.runtime.models import (
+    model_bifrost_lane_backend_binding as _binding,
+)
 from omnibase_infra.runtime.render_bifrost_delegation_contract import (
     render_bifrost_delegation_contract,
 )
@@ -37,7 +40,25 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
 pytestmark = pytest.mark.integration
 
 _SEAM_ENDPOINT_ENV = "OMN15628_SEAM_TEST_LOCAL_CODER_ENDPOINT_URL"
-_SEAM_ENDPOINT_URL = "https://seam-test.local/v1/chat/completions"
+
+# OMN-16794: the seam endpoint can no longer be an arbitrary test URL.
+# omnibase-infra 0.38.10 routes rendering through the v2 lane overlay, and
+# ModelBifrostLaneBackendBinding is an AUTHORIZATION contract, not a shape
+# check: it hard-rejects any endpoint that is not the single authorized lab
+# endpoint, any served_model_id but one, and fixed parameter_count/context_window.
+#
+# These are read from the installed model's own constants rather than retyped.
+# Two reasons, both deliberate: retyping would bake a lab IP literal into this
+# repo, and a hardcoded copy would silently rot the day upstream re-pins the
+# authorized binding — this way the test tracks the contract it is exercising.
+# The leading-underscore access is the price of that, and is preferable to a
+# stale duplicate of a security-relevant allowlist.
+_SEAM_ENDPOINT_URL = (
+    f"http://{_binding._LAB_HOST}:{_binding._LAB_PORT}{_binding._CHAT_COMPLETIONS_PATH}"
+)
+_SEAM_SERVED_MODEL_ID = _binding._SERVED_MODEL_NAME
+_SEAM_PARAMETER_COUNT = _binding._PARAMETER_COUNT
+_SEAM_CONTEXT_WINDOW = _binding._CONTEXT_WINDOW
 
 _SOURCE_CONTRACT = textwrap.dedent(
     f"""\
@@ -47,9 +68,20 @@ _SOURCE_CONTRACT = textwrap.dedent(
       - backend_id: local-coder
         endpoint_url_env: {_SEAM_ENDPOINT_ENV}
         endpoint_url: null
-        model_name: seam-test-model
+        model_name: {_SEAM_SERVED_MODEL_ID}
         tier: local
         timeout_ms: 30000
+        capabilities: [code_generation]
+      # OMN-16794: the v2 lane overlay declares EXACTLY the two active local
+      # backends, and the renderer rejects an overlay naming a backend the base
+      # does not carry. So the base must declare both, even though only
+      # local-coder is asserted on below.
+      - backend_id: local-heavy-reasoning
+        endpoint_url_env: {_SEAM_ENDPOINT_ENV}
+        endpoint_url: null
+        model_name: {_SEAM_SERVED_MODEL_ID}
+        tier: local
+        timeout_ms: 60000
         capabilities: [code_generation]
     routing_rules:
       - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
@@ -97,6 +129,53 @@ def _render_source(tmp_path: Path) -> Path:
     return source_path
 
 
+# OMN-16794: omnibase-infra 0.38.10 reshaped the renderer. It no longer takes
+# `force_reseed`, and it no longer resolves a backend's endpoint from that
+# backend's `endpoint_url_env`. It now renders BASE + a required typed LANE
+# OVERLAY, and the overlay is the sole authority for endpoint, model, and local
+# operational bindings (OMN-15807). With no `overlay_path` it falls back to the
+# DEPLOYED default `/app/config/delegation/dev.bifrost.yaml`, which does not
+# exist in a test environment — so the overlay has to be supplied explicitly.
+#
+# The seam this file guards is unchanged and is still what is asserted: the
+# renderer writes to a path it resolves ITSELF from BIFROST_CONTRACT_PATH, and
+# the reducer reads from that same path. Only the source of the endpoint value
+# moved, from env var to overlay.
+#
+# ModelBifrostLaneOverlay is strict: schema_version is pinned, and `backends`
+# must declare EXACTLY the active local backend ids (local-coder and
+# local-heavy-reasoning), so both appear here even though only local-coder is
+# asserted on.
+_OVERLAY_SCHEMA_VERSION = "bifrost_lane_overlay.v2"
+
+
+def _render_overlay(tmp_path: Path, *, coder_endpoint_url: str) -> Path:
+    overlay_path = tmp_path / "overlay" / "dev.bifrost.yaml"
+    overlay_path.parent.mkdir(parents=True, exist_ok=True)
+    overlay_path.write_text(
+        yaml.safe_dump(
+            {
+                "schema_version": _OVERLAY_SCHEMA_VERSION,
+                "lane": "seam-test",
+                "backends": [
+                    {
+                        "backend_id": backend_key,
+                        "endpoint_url": coder_endpoint_url,
+                        "served_model_id": _SEAM_SERVED_MODEL_ID,
+                        "parameter_count": _SEAM_PARAMETER_COUNT,
+                        "context_window": _SEAM_CONTEXT_WINDOW,
+                        "max_tokens": 4096,
+                        "timeout_ms": 30000,
+                    }
+                    for backend_key in ("local-coder", "local-heavy-reasoning")
+                ],
+            },
+            sort_keys=False,
+        )
+    )
+    return overlay_path
+
+
 class TestRendererReducerSeamMatched:
     """The renderer's real output resolves through the reducer's real loader
     when both sides are bound to the SAME path — the deployed shape after this
@@ -118,13 +197,15 @@ class TestRendererReducerSeamMatched:
         # consumer side was actually driving the seam.)
         rendered_path = render_bifrost_delegation_contract(
             source_path=source_path,
+            overlay_path=_render_overlay(
+                tmp_path, coder_endpoint_url=_SEAM_ENDPOINT_URL
+            ),
             target_path=None,
             environ={
                 _SEAM_ENDPOINT_ENV: _SEAM_ENDPOINT_URL,
                 "BIFROST_CONTRACT_PATH": str(shared_path),
             },
             verify_endpoints=False,
-            force_reseed=True,
         )
         assert rendered_path == shared_path
         assert shared_path.exists()
@@ -168,13 +249,15 @@ class TestRendererReducerSeamMismatched:
         # this must drive the real env resolution on both sides).
         render_bifrost_delegation_contract(
             source_path=source_path,
+            overlay_path=_render_overlay(
+                tmp_path, coder_endpoint_url=_SEAM_ENDPOINT_URL
+            ),
             target_path=None,
             environ={
                 _SEAM_ENDPOINT_ENV: _SEAM_ENDPOINT_URL,
                 "BIFROST_CONTRACT_PATH": str(renderer_target),
             },
             verify_endpoints=False,
-            force_reseed=True,
         )
         assert renderer_target.exists()
 
