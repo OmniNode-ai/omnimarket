@@ -16,6 +16,7 @@ import logging
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
+from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
 )
@@ -142,6 +143,23 @@ class HandlerDodVerify:
         # never folded into ``verified``.
         non_probative = sum(
             1 for r in checks if r.status == EnumEvidenceCheckStatus.NON_PROBATIVE
+        )
+        # OMN-15911: how many of the passing checks actually executed the
+        # claimed behavior. The orthogonal question to ``non_probative``:
+        # that one asks whether a check's exit status CAN depend on the
+        # product change, this one asks what a check that PASSED bound.
+        #
+        # Both conjuncts are load-bearing. VERIFIED alone counts a merge-state
+        # read; BEHAVIOR alone counts a test run that FAILED. Only their
+        # conjunction is a proof, and a consuming lane that flips a ticket Done
+        # on this tally needs it to be >= 1 — a green run whose every check is
+        # an asserted `gh pr view … | grep -q MERGED` is probative under
+        # OMN-15391 and still a statement about GitHub, not about the system.
+        behavior_proving = sum(
+            1
+            for r in checks
+            if r.status == EnumEvidenceCheckStatus.VERIFIED
+            and r.proof_class == EnumCheckProofClass.BEHAVIOR
         )
 
         # OMN-15390: ``total_checks`` is the VERDICT-BEARING denominator, so a
@@ -292,6 +310,7 @@ class HandlerDodVerify:
             error_message=error_message,
             superseded_count=superseded,
             non_probative_count=non_probative,
+            behavior_proving_count=behavior_proving,
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,
             occ_resolved_sha=occ_resolved_sha,
@@ -333,6 +352,7 @@ class HandlerDodVerify:
             skipped_count=state.skipped_count,
             superseded_count=state.superseded_count,
             non_probative_count=state.non_probative_count,
+            behavior_proving_count=state.behavior_proving_count,
             error_message=state.error_message,
         )
 

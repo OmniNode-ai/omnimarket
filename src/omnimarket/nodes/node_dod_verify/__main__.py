@@ -98,6 +98,11 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
             "id": check.evidence_id,
             "description": check.description,
             "status": str(check.status),
+            # OMN-15911: the receipt must record what each green check PROVED,
+            # not only that it was green. A receipt corpus that carries status
+            # alone cannot be re-read later to tell a merge-state-only PASS
+            # from a behavior-proving one.
+            "proof_class": str(check.proof_class),
             "message": _elide_message(check.message or "", _DETAIL_MESSAGE_MAX_CHARS),
         }
         for check in state.checks
@@ -118,6 +123,11 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
         # shows the shortfall (2/14, not 2/2) rather than a denominator quietly
         # shrunk to match whatever passed.
         "non_probative": state.non_probative_count,
+        # OMN-15911: never elided (it lives in the header, not in ``details``),
+        # so the discrimination survives a payload that had to drop detail
+        # entries to fit the cap. Zero on a fully-green run means no check in
+        # this receipt executed the claimed behavior.
+        "behavior_proving": state.behavior_proving_count,
     }
 
     def render(kept: int) -> str:

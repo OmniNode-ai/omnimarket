@@ -78,6 +78,14 @@ outputs:
   superseded_count:
     type: int
     description: "Items retired by a later supersedes_dod_evidence marker"
+  # OMN-15911: `verified_count == total_checks` can be satisfied entirely by
+  # merge-state reads, so a green tally alone does not say the system does the
+  # thing. This names how many passing checks executed the claimed behavior;
+  # zero on a green run is the merge-state-only case a consuming lane must
+  # treat as a gap, not a completion.
+  behavior_proving_count:
+    type: int
+    description: "Checks that both passed AND executed the claimed behavior"
 
 terminal_event: onex.evt.omnimarket.dod-verify-completed.v1
 

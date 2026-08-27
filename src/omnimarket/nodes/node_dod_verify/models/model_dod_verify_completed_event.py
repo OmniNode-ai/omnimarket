@@ -32,6 +32,10 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     # OMN-15391: executed, exited 0, but exit-status-invariant over the product
     # change. Provenance, never completion — see ModelDodVerifyState.
     non_probative_count: int = Field(default=0, ge=0)
+    # OMN-15911: verdict-bearing checks that PASSED *and* executed the claimed
+    # behavior. Carried on the terminal event so a bus consumer sees the same
+    # discrimination the state does, without re-deriving it from `checks`.
+    behavior_proving_count: int = Field(default=0, ge=0)
     error_message: str | None = Field(default=None)
 
 

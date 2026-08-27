@@ -8,6 +8,8 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+
 
 class EnumDodVerifyStatus(StrEnum):
     """Status values for DoD verification."""
@@ -120,6 +122,19 @@ class ModelEvidenceCheckResult(BaseModel):
         ),
     )
 
+    # OMN-15911: `status` says whether the check passed; `proof_class` says
+    # what passing it PROVED. Without this axis a merge-state read and an
+    # executed test suite are the same `verified`, and a downstream tally of
+    # "N/N verified" reads as completion when it may be merge-state only.
+    # Derived from the executed command, never from the contract's prose
+    # (OMN-15391: the two are allowed to disagree). Defaults to INDETERMINATE
+    # so a caller-supplied result that never classified anything cannot be
+    # counted as behavior-proving.
+    proof_class: EnumCheckProofClass = Field(
+        default=EnumCheckProofClass.INDETERMINATE,
+        description="What this check binds: behavior / merge-state / surrogate.",
+    )
+
     @model_validator(mode="after")
     def _cause_requires_skipped(self) -> Self:
         """A cause asserts "this check did not run" — it may not contradict a
@@ -158,6 +173,19 @@ class ModelDodVerifyState(BaseModel):
     # These entries STAY in ``total_checks`` so the shortfall is visible
     # (a contract reads 2/14, not 2/2).
     non_probative_count: int = Field(default=0, ge=0)
+    # OMN-15911: verdict-bearing checks that both PASSED and executed the
+    # claimed behavior. The orthogonal axis to ``non_probative_count``:
+    # OMN-15391 asks whether a check's exit status CAN depend on the product
+    # change at all, this asks what a check that passed actually BOUND. They
+    # do not subsume each other — an asserted merge probe
+    # (`gh pr view … | grep -q MERGED`) is probative by OMN-15391's definition
+    # and still proves only that a merge happened, which is the residual that
+    # module records as deliberately out of its scope.
+    #
+    # Restricted to VERIFIED ∧ BEHAVIOR: a FAILED behavior check is not proof,
+    # and a NON_PROBATIVE one never was. Zero means "green, and nothing here
+    # proves the system does the thing."
+    behavior_proving_count: int = Field(default=0, ge=0)
     error_message: str | None = Field(default=None)
     # OMN-15454 AC2: provenance of the OCC governance ref actually read this
     # run — "attribution must name what was actually read, not what was
@@ -176,6 +204,7 @@ class ModelDodVerifyState(BaseModel):
 
 
 __all__: list[str] = [
+    "EnumCheckProofClass",
     "EnumDodVerifyStatus",
     "EnumEvidenceCheckStatus",
     "EnumEvidenceUnverifiableCause",
