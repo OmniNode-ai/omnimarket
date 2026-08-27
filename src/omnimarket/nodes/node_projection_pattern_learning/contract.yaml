@@ -51,7 +51,12 @@ db_io:
       # are the house tenant's rows. ADR-0027 classification, not a rename.
       schema: tenant
       migration: "0000_create_pattern_learning_artifacts.sql"
-      access: write
+      # OMN-16690: this handler QUERIES this table (idempotency / lookup)
+      # before writing. `access: write` is refused fail-closed at the
+      # runtime read seam (ProjectionTableOperation._assert_read_declared),
+      # which quarantines every event while the caller still sees a 202.
+      # The declaration must cover what the handler actually does.
+      access: read_write
       role: artifacts
 
 event_bus:
