@@ -58,7 +58,14 @@
 # future base-branch filtering must be IN-JOB with a logged skip, never at the
 # trigger.
 #
-# Ticket: OMN-13990, OMN-14451, OMN-14801, OMN-14813, OMN-14989
+# RUNNER CARVE-OUT (OMN-16691, OMN-16682 constraint 8): the trusted branch of
+# this job's `runs-on:` selector reads the DEDICATED
+# `OMNI_OCC_AUTOBIND_RUNS_ON_JSON` variable rather than the shared
+# `OMNI_TRUSTED_CI_RUNS_ON_JSON` seam, so a hosted-runner migration of general
+# CI cannot silently relocate this tailnet-broker-dependent publisher. See the
+# long note on `runs-on:` below.
+#
+# Ticket: OMN-13990, OMN-14451, OMN-14801, OMN-14813, OMN-14989, OMN-16691
 
 name: OCC Autobind Publisher
 
@@ -89,15 +96,39 @@ jobs:
       github.actor != 'renovate[bot]' &&
       (contains(github.event.pull_request.title, 'OMN-') ||
        contains(github.event.pull_request.head.ref, 'OMN-'))
-    # OMNI_RUNNER_SELECTOR_V1 — trusted (non-fork) PRs run on the self-hosted
-    # omnibase-ci runner so the publisher reaches the local lane broker; fork
-    # PRs fall back to ubuntu-latest (publisher skips gracefully, no broker).
+    # RUNNER CARVE-OUT (OMN-16691, OMN-16682 constraint 8) — the trusted branch
+    # reads a DEDICATED variable, `OMNI_OCC_AUTOBIND_RUNS_ON_JSON`, and NOT the
+    # shared `OMNI_TRUSTED_CI_RUNS_ON_JSON` seam that governs lint/test/build.
+    # This mirrors the carve-out landed in omniclaude's
+    # call-occ-autobind-reusable.yml / call-occ-companion-effect-reusable.yml;
+    # omnimarket runs this publisher INLINE rather than through that reusable, so
+    # it is a second home for the same job and needs the same pin.
+    #
+    # WHY: this job publishes to the TAILNET-ONLY dev-lane broker declared in
+    # config/ci_bus_lanes.yaml. Only the self-hosted `omnibase-ci` fleet on .201
+    # is on that tailnet; a GitHub-hosted runner cannot resolve the name at all. The
+    # OMN-14451/OMN-14639 fail-loud contract below then correctly refuses to exit
+    # 0, so NO OCC companion is minted, so no `Evidence-Source: OCC#<n>` is
+    # stamped, so the receipt gate (OMN-10419) hard-fails every PR in this repo.
+    # That is not a degraded-CI seam; it is a merge-wide outage seam. It ran live
+    # for 45 minutes on 2026-08-26 (22:46:41Z -> 23:32:03Z) when the OMN-16682
+    # Step-1 migration flipped `OMNI_TRUSTED_CI_RUNS_ON_JSON` to
+    # `["ubuntu-latest"]`; incident OMN-16691.
+    #
+    # HOW: the literal `["self-hosted","omnibase-ci"]` fallback IS the operating
+    # value. `OMNI_OCC_AUTOBIND_RUNS_ON_JSON` is deliberately left UNSET at org
+    # and repo scope, so this job pins to the fleet no matter what the shared
+    # seam is flipped to, while still leaving one explicit, single-purpose knob
+    # for the day the lane broker is reachable from another runner class.
+    #
+    # Fork PRs keep the `OMNI_PUBLIC_PR_RUNS_ON_JSON` path — the publisher skips
+    # gracefully there (no broker), and fork isolation (OMN-16683) is untouched.
     runs-on: >-
       ${{
         (github.event_name == 'pull_request' &&
          github.event.pull_request.head.repo.full_name != github.repository)
         && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
-        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+        || fromJSON(vars.OMNI_OCC_AUTOBIND_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
       }}
     # OMN-14451: same fork/non-fork test as `runs-on:` above, threaded into the
     # publish step so the script can fail loudly (not silently exit 0) when the
