@@ -118,12 +118,8 @@ CREATE TABLE IF NOT EXISTS delegation_routing_tenant_overlay (
     endpoint_url TEXT NOT NULL,
     model_name TEXT NOT NULL,
     secret_ref TEXT,
-    timeout_ms INTEGER
-        CONSTRAINT delegation_routing_tenant_overlay_timeout_ms_positive
-        CHECK (timeout_ms IS NULL OR timeout_ms > 0),
-    max_tokens INTEGER
-        CONSTRAINT delegation_routing_tenant_overlay_max_tokens_positive
-        CHECK (max_tokens IS NULL OR max_tokens > 0),
+    timeout_ms INTEGER,
+    max_tokens INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     CONSTRAINT delegation_routing_tenant_overlay_tenant_task_uq
@@ -163,15 +159,11 @@ FROM next_overlay_ids
 WHERE overlay.ctid = next_overlay_ids.ctid;
 
 WITH duplicate_ids AS (
-    SELECT
-        ctid,
-        row_number() OVER (PARTITION BY id ORDER BY ctid) AS duplicate_rank,
-        row_number() OVER (ORDER BY id, ctid) AS global_duplicate_rank
+    SELECT ctid, row_number() OVER (PARTITION BY id ORDER BY ctid) AS duplicate_rank
     FROM delegation_routing_tenant_overlay
 )
 UPDATE delegation_routing_tenant_overlay AS overlay
-SET id = COALESCE((SELECT max(id) FROM delegation_routing_tenant_overlay), 0)
-    + duplicate_ids.global_duplicate_rank
+SET id = COALESCE((SELECT max(id) FROM delegation_routing_tenant_overlay), 0) + duplicate_ids.duplicate_rank
 FROM duplicate_ids
 WHERE overlay.ctid = duplicate_ids.ctid
   AND duplicate_ids.duplicate_rank > 1;
@@ -186,14 +178,6 @@ SET
     created_at = COALESCE(created_at, NOW()),
     updated_at = COALESCE(updated_at, NOW());
 
-UPDATE delegation_routing_tenant_overlay
-SET timeout_ms = NULL
-WHERE timeout_ms IS NOT NULL AND timeout_ms <= 0;
-
-UPDATE delegation_routing_tenant_overlay
-SET max_tokens = NULL
-WHERE max_tokens IS NOT NULL AND max_tokens <= 0;
-
 WITH duplicate_overlay_keys AS (
     SELECT
         ctid,
@@ -206,18 +190,6 @@ SET task_type = overlay.task_type || '__reconciled_duplicate_' || duplicate_over
 FROM duplicate_overlay_keys
 WHERE overlay.ctid = duplicate_overlay_keys.ctid
   AND duplicate_overlay_keys.duplicate_rank > 1;
-
-ALTER TABLE delegation_routing_tenant_overlay
-    DROP CONSTRAINT IF EXISTS delegation_routing_tenant_overlay_timeout_ms_positive;
-ALTER TABLE delegation_routing_tenant_overlay
-    ADD CONSTRAINT delegation_routing_tenant_overlay_timeout_ms_positive
-        CHECK (timeout_ms IS NULL OR timeout_ms > 0);
-
-ALTER TABLE delegation_routing_tenant_overlay
-    DROP CONSTRAINT IF EXISTS delegation_routing_tenant_overlay_max_tokens_positive;
-ALTER TABLE delegation_routing_tenant_overlay
-    ADD CONSTRAINT delegation_routing_tenant_overlay_max_tokens_positive
-        CHECK (max_tokens IS NULL OR max_tokens > 0);
 
 ALTER TABLE delegation_routing_tenant_overlay
     ALTER COLUMN id SET NOT NULL,

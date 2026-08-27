@@ -447,38 +447,74 @@ def test_ac6_optional_fields_default_when_row_omits_them() -> None:
     assert decision.max_tokens == DELEGATION_MAX_TOKENS_HARD_LIMIT
 
 
-def test_migration_reconciles_duplicate_overlay_bindings_without_row_loss() -> None:
-    """Duplicate tenant/task rows are rekeyed explicitly, not silently dropped."""
-    migration = (
+def _overlay_migration_set() -> str:
+    """Every migration this node ships, concatenated in the order they apply.
+
+    Asserting against a single file was wrong: a database receives the whole
+    directory in lexical order, so a property is satisfied by the SET, not by
+    one member of it. Pinning file 0001 in particular pushed the previous
+    repair to edit 0001 in place after it had already been applied, which is
+    the OMN-16705 defect -- bootstrap.sql then refused every subsequent
+    forward-migration run on the .201 dev lane.
+    """
+    directory = (
         Path(__file__).parents[3]
         / "src"
         / "omnimarket"
         / "nodes"
         / "node_delegation_routing_reducer"
         / "migrations"
-        / "0001_create_delegation_routing_tenant_overlay.sql"
-    ).read_text(encoding="utf-8")
+    )
+    files = sorted(directory.glob("*.sql"))
+    assert files, f"no migrations found under {directory}"
+    return "\n".join(path.read_text(encoding="utf-8") for path in files)
 
-    assert "row_number() OVER (ORDER BY id, ctid) AS global_duplicate_rank" in migration
-    assert "__reconciled_duplicate_" in migration
-    assert "UPDATE delegation_routing_tenant_overlay AS overlay" in migration
+
+def _overlay_migration_statements() -> str:
+    """The same set with ``--`` comment lines removed.
+
+    Every one of these files documents what it deliberately does NOT do
+    ("No DROP, no recreate, no TRUNCATE"), so a bare substring search over the
+    raw text finds the prohibition rather than a violation of it.
+    """
+    return "\n".join(
+        line
+        for line in _overlay_migration_set().splitlines()
+        if not line.lstrip().startswith("--")
+    )
+
+
+def test_migration_reconciles_duplicate_overlay_bindings_without_row_loss() -> None:
+    """Duplicate tenant/task rows are rekeyed explicitly, not silently dropped."""
+    migrations = _overlay_migration_set()
+
+    assert "__reconciled_duplicate_" in migrations
+    assert "UPDATE delegation_routing_tenant_overlay AS overlay" in migrations
+    # The load-bearing half: reconciliation may rename, never remove.
+    statements = _overlay_migration_statements()
+    assert "DELETE FROM" not in statements.upper()
+    assert "TRUNCATE" not in statements.upper()
+
+    # RESIDUAL, recorded rather than papered over (OMN-16705). 0001 de-duplicates
+    # ids with `row_number() OVER (PARTITION BY id ...)`, which can hand the same
+    # replacement id to rows from two different partitions. A later commit
+    # changed it to a global rank -- but 0001 was already applied, so that edit
+    # is exactly what bricked the dev lane and has been reverted. The condition
+    # is unreachable on every path that matters (a fresh table's id is BIGSERIAL;
+    # a database carrying 0001 in its ledger provably has no duplicates, because
+    # 0001 ends by adding a PRIMARY KEY on id) and it fails LOUDLY rather than
+    # silently when it is reachable, so it cannot be repaired additively: nothing
+    # can run before 0001's own PRIMARY KEY step.
+    assert "row_number() OVER (PARTITION BY id ORDER BY ctid)" in migrations
 
 
 def test_migration_enforces_positive_optional_limits() -> None:
-    migration = (
-        Path(__file__).parents[3]
-        / "src"
-        / "omnimarket"
-        / "nodes"
-        / "node_delegation_routing_reducer"
-        / "migrations"
-        / "0001_create_delegation_routing_tenant_overlay.sql"
-    ).read_text(encoding="utf-8")
+    migrations = _overlay_migration_set()
 
-    assert "delegation_routing_tenant_overlay_timeout_ms_positive" in migration
-    assert "delegation_routing_tenant_overlay_max_tokens_positive" in migration
-    assert "CHECK (timeout_ms IS NULL OR timeout_ms > 0)" in migration
-    assert "CHECK (max_tokens IS NULL OR max_tokens > 0)" in migration
+    assert "delegation_routing_tenant_overlay_timeout_ms_positive" in migrations
+    assert "delegation_routing_tenant_overlay_max_tokens_positive" in migrations
+    assert "CHECK (timeout_ms IS NULL OR timeout_ms > 0)" in migrations
+    assert "CHECK (max_tokens IS NULL OR max_tokens > 0)" in migrations
 
 
 # --- Missing secret ref fails fast, never falls back to a house key ------------
