@@ -223,7 +223,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # value->ref thin-publisher's credential-registered/credential-revoked
     # events and materializes tenant_inference_credentials, the only writer
     # to that table per OMN-15800): 386 -> 387.
-    assert summary["node_dirs"] == 387
+    # OMN-16777 adds node_projection_consumer_flow (REDUCER; Phase 1 of the
+    # platform-observability epic OMN-16776 — consumes the flow_window the
+    # runtime heartbeat now carries and derives FLOWING/STALLED/STARVED/IDLE/
+    # UNKNOWN per (consumer_group, topic, window). It is the first surface that
+    # measures throughput across a seam rather than connectedness, which is why
+    # a consumer at LAG 0 with 15,750 in and 0 out read as healthy): 387 -> 388.
+    assert summary["node_dirs"] == 388
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -272,7 +278,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-16316 adds the node_projection_tenant_credentials entry point (see
     # node_dirs comment above; routable via its command_topic
     # onex.evt.omnimarket.credential-registered.v1): 383 -> 384.
-    assert summary["entry_points"] == 384
+    # OMN-16777 adds the node_projection_consumer_flow entry point (see
+    # node_dirs comment above; routable via its subscribe topic
+    # onex.evt.platform.node-heartbeat.v1): 384 -> 385.
+    assert summary["entry_points"] == 385
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

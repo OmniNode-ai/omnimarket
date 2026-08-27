@@ -71,7 +71,7 @@
     "extension": 1,
     "function": 15,
     "sequence": 15,
-    "table": 63,
+    "table": 65,
     "view": 10
   },
   "relations": [
@@ -1869,6 +1869,54 @@
       "writers": [
         "node_capsule_effectiveness_feedback_reducer",
         "node_projection_capsule_store"
+      ]
+    },
+    {
+      "accessor_nodes": [
+        "node_projection_consumer_flow"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_consumer_flow/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "PUBLIC",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [
+        "idx_consumer_flow_windows_group_time",
+        "idx_consumer_flow_windows_state_time"
+      ],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (consumer_group, topic, window_start)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_consumer_flow",
+      "name": "consumer_flow_windows",
+      "owner_declaration": "node_projection_consumer_flow",
+      "partitioning": [],
+      "producer": "node_projection_consumer_flow",
+      "readers": [
+        "node_projection_consumer_flow"
+      ],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_consumer_flow"
       ]
     },
     {
@@ -4793,6 +4841,53 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_consumer_flow"
+      ],
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql"
+      ],
+      "blocked_reasons": [],
+      "classification_evidence": "contract.yaml -> db_io.db_tables schema",
+      "classification_status": "classified",
+      "constraints": [],
+      "contract_sources": [
+        "src/omnimarket/nodes/node_projection_consumer_flow/contract.yaml"
+      ],
+      "current_schema": [
+        "public"
+      ],
+      "dependencies": [],
+      "dependent_objects": [],
+      "domain": "PUBLIC",
+      "dsn_consumers": [
+        "OMNIDASH_ANALYTICS_DB_URL"
+      ],
+      "foreign_keys": [],
+      "grants": [],
+      "indexes": [
+        "idx_topic_produce_windows_topic_time"
+      ],
+      "internal_tenant_column_transform": null,
+      "keys": [
+        "PRIMARY KEY (topic, window_start)"
+      ],
+      "kind": "table",
+      "migration_root": "src/omnimarket/nodes",
+      "migration_stream": "node:node_projection_consumer_flow",
+      "name": "topic_produce_windows",
+      "owner_declaration": "node_projection_consumer_flow",
+      "partitioning": [],
+      "producer": "node_projection_consumer_flow",
+      "readers": [
+        "node_projection_consumer_flow"
+      ],
+      "target_schema": "public",
+      "writers": [
+        "node_projection_consumer_flow"
+      ]
+    },
+    {
+      "accessor_nodes": [
         "node_projection_traces"
       ],
       "authoritative_sources": [
@@ -5302,15 +5397,15 @@
   ],
   "retained_live_census": {
     "evidence_source": "retained two-database split plan, 2026-07-29",
-    "minimum_unreconciled_live_base_tables": 27,
+    "minimum_unreconciled_live_base_tables": 25,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 59,
-    "source_declared_tables": 63
+    "source_created_tables": 61,
+    "source_declared_tables": 65
   },
   "runtime_evidence": {
     "dsn_key_provenance": {
@@ -5326,7 +5421,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 59 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-27-table gap require an authorized catalog read",
+      "reason": "repository sources contain 61 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-25-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },

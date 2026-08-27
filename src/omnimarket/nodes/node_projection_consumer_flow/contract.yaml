@@ -71,13 +71,13 @@ db_io:
     # before writing, so the declaration must cover what it actually does.
     - name: consumer_flow_windows
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "0000_create_consumer_flow_windows.sql"
       access: read_write
       role: consumer_flow
     - name: topic_produce_windows
       database_ref: application
-      schema: omninode_internal
+      schema: public
       migration: "0000_create_consumer_flow_windows.sql"
       access: read_write
       role: topic_produce
@@ -110,12 +110,10 @@ projection_api:
   expose: true
   topic: "onex.snapshot.projection.consumer-flow.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   table: "consumer_flow_windows"
-  # "public" is what the exposure loader's ALLOWED_SCHEMAS permits, and on a
-  # bus_backed exposure this pair is only the writer-side / pre-conversion
-  # record — the serving path reads bus_backed + key_columns and nothing else
-  # (OMN-15800). The PHYSICAL write target is omninode_internal, declared
-  # accurately in db_io above and created by this node's migration, matching
-  # node_projection_registration and node_projection_live_events.
+  # The same schema db_io declares and the migration creates: ONE physical
+  # relation, so the reader and the write path cannot resolve to different
+  # tables (the public/omninode_internal split OMN-15819 had to reconcile for
+  # live_events).
   schema: "public"
   columns:
     - "consumer_group"

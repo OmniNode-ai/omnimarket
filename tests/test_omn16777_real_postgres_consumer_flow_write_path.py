@@ -27,8 +27,7 @@ Two things here need real Postgres specifically and cannot be faked:
    redelivery arrives.
 
 Harness: a DISPOSABLE DATABASE (not a disposable schema) so this node's
-migration applies BYTE-VERBATIM, including its ``omninode_internal`` schema
-qualification, rather than through a rewrite that would weaken the evidence.
+migration applies BYTE-VERBATIM rather than through a rewrite that would weaken the evidence.
 SKIPS (never ERRORs) without a reachable Postgres, mirroring
 ``tests/test_omn15909_real_postgres_projection_write_path_gate.py``.
 """
@@ -247,7 +246,7 @@ async def test_unknown_row_stores_null_counters_because_the_columns_allow_it() -
                 """
                 SELECT column_name, is_nullable
                 FROM information_schema.columns
-                WHERE table_schema = 'omninode_internal'
+                WHERE table_schema = 'public'
                   AND table_name = 'consumer_flow_windows'
                 """
             )
@@ -302,7 +301,7 @@ async def test_a_replayed_older_window_is_refused_by_the_conflict_predicate() ->
         stored = await conn.fetchrow(
             """
             SELECT messages_in, ingest_sequence, flow_state
-            FROM omninode_internal.consumer_flow_windows
+            FROM consumer_flow_windows
             WHERE consumer_group = $1 AND topic = $2 AND window_start = $3
             """,
             _GROUP,

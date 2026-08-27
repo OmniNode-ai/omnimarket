@@ -39,8 +39,8 @@ from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
 
 logger = logging.getLogger(__name__)
 
-TABLE_FLOW = "omninode_internal.consumer_flow_windows"
-TABLE_PRODUCE = "omninode_internal.topic_produce_windows"
+TABLE_FLOW = "consumer_flow_windows"
+TABLE_PRODUCE = "topic_produce_windows"
 
 _UPSERT_PRODUCE = f"""
     INSERT INTO {TABLE_PRODUCE} (
