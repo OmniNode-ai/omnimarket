@@ -112,7 +112,14 @@ def test_contract_declares_db_io_write_so_runtime_wires_materialization() -> Non
     tables = [t for t in db_io["db_tables"] if t["name"] == TABLE]
     assert len(tables) == 1, "db_io must declare the event_chain table"
     table = tables[0]
-    assert table["access"] == "write"
+    # OMN-16690: the access class widened to "read_write" because the
+    # projection genuinely reads this table as well as writing it. What this
+    # test pins is the WRITE-side capability the materialization path needs;
+    # runtime auto-wiring keys off db_io.db_tables being non-empty
+    # (handler_wiring._contract_declares_db_io) and never inspects the access
+    # class, so "read_write" wires identically. Pinning the bare literal
+    # "write" would forbid a strictly more accurate declaration.
+    assert table["access"] in {"write", "read_write"}
     assert table["database_ref"] == "application"
     assert table["schema"] == "omninode_internal"
     assert table["migration"] == "0001_create_event_chain.sql"
