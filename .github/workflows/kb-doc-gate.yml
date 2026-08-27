@@ -29,9 +29,9 @@ jobs:
     # found for SHA" — so GitHub could not resolve the reusable workflow and
     # every run here failed with zero jobs.
     #
-    # 17a6a47b (omniclaude#2050) also fixes the gate's INNER validator checkout
-    # to default to `github.job_workflow_sha`, so this one `uses:` pin now
-    # covers the validator source too and `validator_ref` is no longer needed.
-    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@17a6a47bfe2af626de5cf59d1f0ed43bddcb5002
+    # 96dd1896 (omniclaude#2052) keeps the validator checkout pinned to
+    # `github.job_workflow_sha` and fetches full caller history, so the gate's
+    # `origin/dev...HEAD` diff has the merge base it requires.
+    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@96dd18962cc7b02f9ae7beb43c13a1ed9df7b559
     with:
       mode: transition
