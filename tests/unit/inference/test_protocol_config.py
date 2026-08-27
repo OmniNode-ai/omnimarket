@@ -66,6 +66,21 @@ def test_default_protocol_config_adds_qwen_provider_non_thinking_options() -> No
     assert request_options == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
+def test_qwen38_test_profile_requests_visible_completion() -> None:
+    """The live qwen3.8 delegation route suppresses hidden reasoning for tests."""
+    system_prompt, prompt, request_options = apply_inference_protocol(
+        system_prompt="Return only the requested token.",
+        prompt="Reply with exactly: RSD_DELEGATION_OK",
+        model="qwen3.8",
+        task_type="test",
+        backend_id="local-coder",
+    )
+
+    assert system_prompt == "Return only the requested token."
+    assert prompt.startswith("/no_think\n")
+    assert request_options == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
 def test_default_protocol_config_does_not_no_think_qwen_summarization_task_type() -> (
     None
 ):

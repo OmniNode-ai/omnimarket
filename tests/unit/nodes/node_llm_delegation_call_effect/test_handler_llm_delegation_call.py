@@ -424,6 +424,55 @@ class TestHandlerLlmDelegationCall:
         assert result.failure_class == EnumDelegationFailureClass.INVALID_JSON
 
     @pytest.mark.unit
+    def test_empty_message_content_returns_invalid_json_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A 200 response without visible completion is never delegation success."""
+        _patch_post(monkeypatch, json_body=_make_api_response(content=""))
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(_make_request())
+
+        assert result.success is False
+        assert result.failure_class == EnumDelegationFailureClass.INVALID_JSON
+        assert result.content is None
+        assert result.error_message == "API returned empty message content"
+
+    @pytest.mark.unit
+    def test_qwen_reasoning_only_shape_returns_invalid_json_failure(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Hidden Qwen reasoning is not substituted for the visible artifact.
+
+        Qwen/SGLang may return a populated reasoning field with an empty
+        ``message.content`` when thinking consumes the completion budget. The
+        canonical delegation effect must fail closed; response shaping upstream
+        is responsible for requesting a visible completion.
+        """
+        _patch_post(
+            monkeypatch,
+            json_body={
+                "choices": [
+                    {
+                        "message": {
+                            "content": "",
+                            "reasoning_content": "hidden reasoning",
+                        }
+                    }
+                ],
+                "usage": {"prompt_tokens": 3, "completion_tokens": 16},
+            },
+        )
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(_make_request(model_id="qwen3.8"))
+
+        assert result.success is False
+        assert result.failure_class == EnumDelegationFailureClass.INVALID_JSON
+        assert result.content is None
+        assert result.error_message == "API returned empty message content"
+
+    @pytest.mark.unit
     def test_no_publisher_does_not_raise(self, monkeypatch: pytest.MonkeyPatch) -> None:
         api_resp = _make_api_response("ok", tokens_in=5, tokens_out=5)
         _patch_post(monkeypatch, json_body=api_resp)

@@ -502,6 +502,20 @@ class HandlerLlmDelegationCall:
             )
 
         content: str = choices[0].get("message", {}).get("content") or ""
+        if not content.strip():
+            # A successful HTTP response is not a successful delegation when the
+            # OpenAI-compatible message carries no visible completion. In
+            # particular, reasoning-capable servers can return hidden reasoning
+            # fields while ``content`` is blank when thinking consumed the output
+            # budget. Those fields are not a user-facing artifact and must never
+            # be promoted to one by this effect. Upstream protocol shaping owns
+            # thinking suppression; this boundary fails closed on an invalid
+            # visible-completion shape so the caller can record/escalate it.
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.INVALID_JSON,
+                "API returned empty message content",
+            )
         output_hash = _sha256(content)
         tokens_in, tokens_out = _extract_usage(response_json)
         actual_cost, opus_cost, savings, cost_basis = _compute_cost(
