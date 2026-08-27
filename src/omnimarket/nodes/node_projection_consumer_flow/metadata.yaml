@@ -1,0 +1,46 @@
+name: projection_consumer_flow
+version: "1.0.0"
+description: >
+  Materializes per-(consumer_group, topic) throughput windows from the runtime
+  heartbeat and derives FLOWING / STALLED / STARVED / IDLE / UNKNOWN.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - observability
+  - flow
+  - reducer
+ownership:
+  consumer_flow_windows:
+    ddl_owner: omnimarket.nodes.node_projection_consumer_flow
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_consumer_flow_windows.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      omnibase_infra EMITS the counters on the heartbeat it already publishes;
+      it does not own the read model. The materialized flow table is an
+      omnimarket projection, like every other node_projection_* read model.
+  topic_produce_windows:
+    ddl_owner: omnimarket.nodes.node_projection_consumer_flow
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_consumer_flow_windows.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      The per-topic production tally is the upstream-production evidence this
+      same projection reads to separate STARVED from IDLE. It is written and
+      read by exactly one node and has no other consumer.
+pack: "data"
+display_name: "Projection: Consumer Flow"
+node_role: "effect"
