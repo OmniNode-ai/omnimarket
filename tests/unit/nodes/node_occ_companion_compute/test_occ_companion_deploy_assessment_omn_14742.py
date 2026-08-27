@@ -332,7 +332,11 @@ class TestDeployItemGateCompliance:
         on the OCC runner — never to the product PR this item is about.
         """
         value = deploy_assessment_check_value(pr_number=_PR, repo=_REPO)
-        assert f"gh pr diff {_PR} --repo {_REPO} " in value
+        # OMN-15988: transport is ``gh api .../pulls/<n>/files``, not the
+        # pre-fix ``gh pr diff <n> --repo <repo> --name-only`` — see
+        # test_occ_companion_deploy_assessment_falsifiability_omn_15988.py for
+        # why the transport changed.
+        assert f"gh api repos/{_REPO}/pulls/{_PR}/files " in value
         assert "${PR_NUMBER}" not in value
         assert "${REPO}" not in value
 

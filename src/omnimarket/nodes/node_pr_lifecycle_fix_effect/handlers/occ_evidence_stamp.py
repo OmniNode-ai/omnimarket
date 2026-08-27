@@ -740,25 +740,24 @@ _COMPUTE_SELF_BIND_ENTRY_HEAD_TEMPLATE = (
 # double-quoted ``check_value`` scalar (verified), so the >100-char line stays a
 # formatter fixpoint and does not restale ``contract_sha256`` (F-03 / OMN-14684).
 #
-# OMN-15247 R21b — this value is the PRE-R21 form, RESTORED. An intermediate
-# revision of this ticket rewrote it to
+# OMN-15247 R21b (HISTORICAL — see OMN-15988 below for why this reasoning no
+# longer applies) — this value was once reverted to the PRE-R21 ``gh pr diff``
+# form. An intermediate revision of R21b had rewritten it to
 # ``gh api repos/${REPO}/pulls/${PR_NUMBER}/files ... | grep -qiE '...|deploy'``
 # on the theory that ``gh api`` is in deploy-gate's LIVE_PROBE_COMMANDS while
-# ``{gh, grep}`` is not. That reasoning about deploy-gate is correct and the
-# resulting value was still WRONG, for a reason measured on the surface it
-# actually runs on: ``${REPO}`` / ``${PR_NUMBER}`` are pre-substituted by the OCC
-# runner with the OCC COMPANION's own repo/number (see the vocabulary note at the
-# top of this module), so in OCC CI that value greps the COMPANION's filenames --
-# ``contracts/OMN-*.yaml`` plus ``drift/dod_receipts/...`` -- for runtime paths.
-# EXECUTED against OCC#5418's real file list it exits 1: born RED. And on any
-# companion that DOES emit this item the producer also writes
+# ``{gh, grep}`` is not. That reasoning about deploy-gate was correct and the
+# resulting value was still WRONG AT THE TIME, for a reason measured on the
+# surface it actually ran on: ``${REPO}`` / ``${PR_NUMBER}`` are pre-substituted
+# by the OCC runner with the OCC COMPANION's own repo/number (see the vocabulary
+# note at the top of this module), so in OCC CI that value greped the
+# COMPANION's filenames -- ``contracts/OMN-*.yaml`` plus
+# ``drift/dod_receipts/...`` -- for runtime paths. EXECUTED against OCC#5418's
+# real file list it exited 1: born RED. And on any companion that DOES emit this
+# item the producer also writes
 # ``drift/dod_receipts/<ticket>/dod-deploy-assessment/command.yaml``, whose path
-# contains the substring ``deploy``, so it would instead pass BECAUSE the producer
-# created a directory named after the item. Born-red or circular, no third
-# outcome. Restoring the ``gh pr diff`` form returns the item to its known
-# pre-ticket state; the deploy-gate falsifiability gap it was trying to close is
-# real, pre-existing, and out of scope here rather than papered over with a value
-# that is wrong on the runner it executes on.
+# contains the substring ``deploy``, so it would instead have passed BECAUSE the
+# producer created a directory named after the item. Born-red or circular, no
+# third outcome AT THE TIME.
 #
 # OMN-15407 — TWO CHANGES, both forced by live failures, both on this one value.
 #
@@ -778,15 +777,18 @@ _COMPUTE_SELF_BIND_ENTRY_HEAD_TEMPLATE = (
 #     writer), so the literal costs nothing and cannot drift: it is derived from
 #     the same values the enclosing companion is built from.
 #
-#     This ALSO fixes the value on the OCC runner, where the placeholder form was
-#     wrong for the reason the R21b note below records -- ``${REPO}``/
-#     ``${PR_NUMBER}`` resolve to the COMPANION, so the check greps the
-#     companion's own filenames. The literal names the product PR on every
-#     surface. Cost, disclosed: on a PRIVATE product repo the hosted OCC token
-#     gets 404 and this check BLOCKS. That is strictly better than the two
-#     pre-fix outcomes the R21b note measured (born-red, or circular-pass because
-#     the producer created a directory named ``dod-deploy-assessment``) -- it
-#     fails loudly instead of passing for the wrong reason.
+#     This is the fact that RETIRES the R21b concern above: R21b's failure mode
+#     was specifically the RUNNER SUBSTITUTING ``${REPO}``/``${PR_NUMBER}`` with
+#     the COMPANION's own identity. A literal ``gh api repos/<product-repo>/pulls/
+#     <product-pr>/files`` has no placeholder for the runner to mis-substitute --
+#     it names the product PR on every surface, unconditionally. The born-red /
+#     circular-pass dilemma R21b measured is a property of the PLACEHOLDER form,
+#     not of the ``gh api`` transport; it does not recur once the value is a
+#     literal pin. Cost, disclosed: on a PRIVATE product repo the hosted OCC token
+#     gets 404 and this check BLOCKS. That is strictly better than the two R21b
+#     placeholder-era outcomes (born-red, or circular-pass because the producer
+#     created a directory named ``dod-deploy-assessment``) -- it fails loudly
+#     instead of passing for the wrong reason.
 #
 # (2) ``grep -c`` REPLACES ``grep -q`` (OMN-15411). These must land together.
 #     While the binding was broken the check never ran, so its terminal
@@ -805,10 +807,37 @@ _COMPUTE_SELF_BIND_ENTRY_HEAD_TEMPLATE = (
 #     assertion, not the OMN-15391 Rule D ``grep -c ... | grep -qx 0`` absence
 #     shape -- that one is fail-OPEN and remains prohibited.
 #
-# The ``gh pr diff`` transport is deliberately UNCHANGED. R21b restored it on
-# purpose (see the note below) and this ticket changes one axis at a time;
-# swapping it for the GraphQL ``gh pr view --json files`` form is a separate
-# decision with its own consumer-gate consequences.
+# OMN-15988 — TRANSPORT CHANGES from ``gh pr diff`` to ``gh api .../pulls/<n>/
+# files``, retiring the R21b restoration above.
+#
+# THE DEFECT, measured live on omnimarket#2058 (run 31617976140, job
+# 94185423251), 2026-08-12: OMN-14443's falsifiability ratchet
+# (``omniclaude/.github/actions/deploy-gate/validate_pr_deploy_required.py::
+# classify_check_value``) accepts a live-surface probe ONLY when one of its
+# shell-lexed commands is in ``LIVE_PROBE_COMMANDS`` -- and that set admits the
+# COMPOUND token ``gh-api`` (``gh`` immediately followed by ``api``), never bare
+# ``gh``. ``gh pr diff <n> --repo <r> --name-only | grep -ciE '<pattern>'``
+# lexes to commands ``{gh, grep}``, neither of which is in the accepted set, so
+# every OMN-14443-ratcheted ticket (i.e. every ticket ID higher than the frozen
+# ``deploy_gate_legacy_grandfather.yaml`` cutoff, OMN-14855) is REJECTED with
+# ``no live-surface probe in command position`` regardless of what the check
+# actually reads -- this is the OMN-15988 vacuous-probe defect.
+#
+# THE FIX: emit ``gh api repos/<repo>/pulls/<pr_number>/files --paginate --jq
+# '.[].filename'`` instead of ``gh pr diff <pr_number> --repo <repo>
+# --name-only``. Both read the identical fact (the product PR's changed-file
+# list) from the identical live surface (the GitHub REST API against the
+# product PR); only the CLI verb differs, and ``gh api`` is the verb
+# ``classify_check_value`` recognizes (see the ``LIVE_PROBE_COMMANDS`` comment
+# in that module: ``gh api`` reads real content from a *different* repo at CI
+# time and is deliberately admitted for exactly this class of check, while bare
+# ``gh pr view/diff/checks`` is excluded because it would retroactively
+# reclassify every trivially-true PR-existence probe in the corpus as
+# falsifiable). ``--paginate`` avoids the OMN-14442 truncated-at-page-1 class.
+# The R21b concern this retires (``${REPO}``/``${PR_NUMBER}`` runner
+# substitution corrupting a placeholder ``gh api`` call) does not apply: this
+# value has carried the OMN-15407 LITERAL pin since that ticket landed, so there
+# is no placeholder left for the runner to mis-substitute.
 DEPLOY_ASSESSMENT_EVIDENCE_ID = "dod-deploy-assessment"
 
 #: The deploy-scope grep alternation. Split out from the command so the item
@@ -822,50 +851,74 @@ _DEPLOY_ASSESSMENT_PATH_PATTERN = (
 def deploy_assessment_check_value(
     *, pr_number: int, repo: str, content_bound_check_value: str | None = None
 ) -> str:
-    """Return the literal, SIGPIPE-safe deploy-scope ``check_value``.
+    """Return the literal, SIGPIPE-safe, falsifiable deploy-scope ``check_value``.
 
-    See the two-part note above this function for why both the literal pin and
-    the ``grep -c`` counting form are required, and why they must land together.
+    See the module-level OMN-15988 note above :data:`DEPLOY_ASSESSMENT_EVIDENCE_ID`
+    for why the transport is ``gh api .../pulls/<n>/files``, not ``gh pr diff``,
+    and the two-part OMN-15407/OMN-15411 note above that for why both the
+    literal pin and the ``grep -c`` counting form are required together.
 
-    OMN-16160: the literal-pin form below (bare ``gh pr diff`` in command
-    position) is refused by the OMN-14443 deploy-gate falsifiability ratchet
-    -- live-observed on omnimarket#2093 / OMN-16148.yaml: "commands found:
-    ['gh', 'grep']; expected one of: [...'gh-api'...]". ``content_bound_
-    check_value`` lets a caller supply an already-derived, admissible
+    OMN-16160 (PREFERRED value, unchanged by OMN-15988): ``content_bound_
+    check_value`` lets a caller supply an already-derived, RED-controlled
     content-bound probe (``gh api .../contents/<path>?ref=<sha> | base64 -d |
     grep ...``, see ``omnimarket.occ_content_probe.build_content_read_check``)
-    to render instead. ``None`` (the default) preserves the pre-OMN-16160
-    literal form byte-for-byte -- callers that cannot derive a content-bound
-    candidate (e.g. a deploy-sensitive PR touching zero Python declarations)
-    keep the same disclosed, pre-existing gap the R21b note above already
-    names: the literal form still satisfies the LEGACY substring rule
-    (``"deploy"`` in the value) so it does not regress, it just does not
-    (yet) clear the newer falsifiability ratchet on that narrow path.
+    to render instead. That form is strictly stronger than the fallback below --
+    it is pinned to an immutable ref and was proven RED at the PR's merge base
+    before it was minted -- so it stays first choice whenever the read-EFFECT
+    could derive one.
 
-    Consumer properties preserved by construction (all three are load-bearing):
+    OMN-15988 closes the DISCLOSED RESIDUAL on the other branch. Pre-fix, a
+    caller that could NOT derive a content-bound candidate (measured: a
+    deploy-sensitive PR adding zero Python declarations -- omnibase_infra#2852
+    is seven YAML files and no ``.py`` at all) fell back to a
+    ``gh pr diff ... | grep -ciE ...`` literal whose command-position tokens
+    lex to ``{gh, grep}``. The OMN-14443 ratchet admits only the COMPOUND token
+    ``gh api`` from the ``gh`` family, so that fallback was rejected BY
+    CONSTRUCTION on every non-grandfathered ticket -- it could never pass, no
+    matter what it read. The fallback now uses the ``gh api`` transport for the
+    identical fact, so it asserts the same thing through the verb the ratchet
+    recognizes. It is still the weaker of the two values; it is no longer a
+    value the producer knows is inadmissible at the moment it mints it.
 
+    Consumer properties preserved by construction (all four are load-bearing):
+
+    * a live-surface probe in COMMAND POSITION recognized by the deploy-gate
+      falsifiability ratchet (OMN-14443,
+      ``omniclaude/.github/actions/deploy-gate/validate_pr_deploy_required.py::
+      classify_check_value``) -- the command opens with the COMPOUND token
+      ``gh api``, which is the ONE ``gh`` sub-form that classifier's
+      ``LIVE_PROBE_COMMANDS`` admits (bare ``gh pr diff``/``gh pr view`` do
+      not qualify; see the OMN-15988 note above). Without this, every ticket
+      not in the frozen grandfather snapshot is REJECTED with "no live-surface
+      probe in command position" regardless of what the check actually reads
+      -- reproduced live on omnimarket#2058 (run 31617976140, job
+      94185423251);
     * the literal ``deploy`` keyword, which the product repo's required
       ``deploy-gate`` greps for in the cited ticket's OCC contract (F-05,
       OMN-14742) -- without it a runtime-touching product PR is blocked after
       Evidence-Source binds;
     * a ``| grep`` stage, which clears the OMN-14409 substance floor so the
-      contract is not all-L0. Recorded precisely because the older comments here
+      contract is not all-L0. Recorded precisely because older comments here
       overstated it: MEASURED against the live floor, this value derives **L2**,
       not the L1 the static-assert family would give. The cause is an accidental
       match, not a real runtime probe -- the floor anchors its runtime verbs to
       command position with ``(?:^|[|;&]\\s*|...)`` and the literal ``docker``
       inside the grep alternation is preceded by a ``|``, so a pattern token
-      reads as a command. Pre-existing (the placeholder form matched identically)
-      and out of scope here; the property relied on is only that the floor is
-      cleared, which the paired test asserts via the floor's own ``satisfies``;
+      reads as a command. Pre-existing (both the ``gh pr diff`` and the ``gh
+      api`` transport carry the identical grep alternation) and out of scope
+      here; the property relied on is only that the floor is cleared, which
+      the paired test asserts via the floor's own ``satisfies``;
     * no ``drift/dod_receipts`` self-reference, which the OMN-15309
       admissibility predicate refuses unconditionally as INSIDE_OWN_DIFF.
 
-    Lint standing: the value opens with ``gh pr diff <N>`` carrying a literal
-    ``--repo`` and no ``${PR_NUMBER}`` anywhere, which is the SANCTIONED
-    standalone cross-PR form under ``lint_contract_check_values``' Rule A
-    (``_check_legacy_gh_pr`` / OMN-14431) -- executable exactly as written, with
-    no runner-side substitution required.
+    Lint standing: the value opens with ``gh`` (in
+    ``lint_contract_check_values``' Rule A ``_COMMAND_HEAD_ALLOWLIST``) and pins
+    the product PR/repo literally with no ``${PR_NUMBER}``/``${REPO}`` anywhere,
+    so Rule B (per-item PR binding) is vacuously satisfied -- this item's id,
+    ``dod-deploy-assessment``, embeds no ``pr-<N>`` token, so Rule B does not
+    even apply to it. The ``gh api repos/<o>/<r>/pulls/<n>/files --paginate
+    --jq '.[].filename'`` shape is the form Rule C's own module docstring names
+    as the SANCTIONED fail-closed replacement for a tautological self-check.
 
     Pure function of its inputs. Line-fold safety is NOT this function's
     concern: :func:`render_check_value_field` measures the rendered line and
@@ -875,8 +928,8 @@ def deploy_assessment_check_value(
     if content_bound_check_value:
         return content_bound_check_value
     return (
-        f"gh pr diff {pr_number} --repo {repo} --name-only | "
-        f"grep -ciE '{_DEPLOY_ASSESSMENT_PATH_PATTERN}'"
+        f"gh api repos/{repo}/pulls/{pr_number}/files --paginate "
+        f"--jq '.[].filename' | grep -ciE '{_DEPLOY_ASSESSMENT_PATH_PATTERN}'"
     )
 
 

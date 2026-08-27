@@ -141,6 +141,18 @@ _INERT_TAIL_RE = re.compile(r"\|\|\s*(?:true|exit\s+0)|2>\s*/dev/null\s*$")
 # from the validator item that explicitly SUPERSEDES it. A vacuous value reports
 # PASS while proving nothing -- that is laundering, and it is what this list now
 # rejects by name.
+# OMN-15988: the current deploy-scope item shape — see the comment above its
+# entry in ``_ALLOWLISTED_RE`` below for the full rationale. Defined ahead of
+# that tuple (rather than only inline) so ``classify_check`` can also use it to
+# exempt this exact, substantively-filtered ``.../files`` read from the
+# ``_VACUOUS_PR_FILES_RE`` rejection, which targets the DIFFERENT, genuinely
+# vacuous ``.../files`` shapes (bare SHA-format / status assertions that are
+# true for every PR in existence).
+_DEPLOY_SCOPE_FILES_RE = re.compile(
+    r"^gh api repos/[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+/pulls/\d+/files "
+    r"--paginate --jq '\.\[\]\.filename' \| grep -ciE '[^']*deploy[^']*'$"
+)
+
 _ALLOWLISTED_RE = (
     # Binding provenance (pre-R21, restored). NOT_EXECUTED under the predicate;
     # reported INERT/WARN by the OCC runner, superseded by the validator item.
@@ -178,10 +190,25 @@ _ALLOWLISTED_RE = (
     # command actually ran, a still-writing ``gh`` would die with SIGPIPE and
     # report a FALSE RED under the pipefail runner. ``grep -c`` reads to EOF and
     # still exits 1 on a zero count, so falsifiability is unchanged.
-    re.compile(
-        r"^gh pr diff \d+ --repo [A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+ --name-only \| "
-        r"grep -ciE '[^']*deploy[^']*'$"
-    ),
+    #
+    # OMN-15988: transport changed from ``gh pr diff ... --name-only`` to ``gh
+    # api .../pulls/<n>/files --paginate --jq '.[].filename'``. The prior ``gh
+    # pr diff`` form lexes to bare commands ``{gh, grep}``, and OMN-14443's
+    # deploy-gate falsifiability ratchet (``omniclaude/.github/actions/
+    # deploy-gate/validate_pr_deploy_required.py::classify_check_value``)
+    # admits only the COMPOUND token ``gh api`` from the ``gh`` family — bare
+    # ``gh pr diff``/``gh pr view`` is not in its ``LIVE_PROBE_COMMANDS``. Every
+    # ticket not in the frozen ``deploy_gate_legacy_grandfather.yaml`` snapshot
+    # was therefore REJECTED with "no live-surface probe in command position"
+    # regardless of what the check actually read — reproduced live on
+    # omnimarket#2058 (run 31617976140, job 94185423251). This shape is
+    # deliberately distinct from the vacuous ``.../files`` reads
+    # ``_VACUOUS_PR_FILES_RE`` rejects below: it pipes into a substantive
+    # ``grep -ciE`` over real deploy-sensitive path keywords rather than
+    # asserting the file list is merely well-formed/non-empty, so
+    # ``classify_check`` exempts this exact shape from that rejection (see the
+    # ``_DEPLOY_SCOPE_FILES_RE`` guard at its call site).
+    _DEPLOY_SCOPE_FILES_RE,
 )
 
 # The minted admissible check -- the byte-identical shape Codex's accepted
@@ -205,6 +232,17 @@ _SELF_REFERENTIAL_RE = re.compile(r"dod_receipts|\$\{?CONTRACT_REPO_DIR\b", re.I
 # ``/pulls/<n>/files`` read, in EITHER placeholder or literal form, asserting only
 # that the list is non-empty / well-formed. Green for every PR in existence, and
 # self-referential on the OCC runner where the tokens resolve to the companion.
+#
+# OMN-15988: this is a SUBSTRING search, so it would also catch the new
+# ``gh api .../pulls/<n>/files`` deploy-scope shape (:data:`_DEPLOY_SCOPE_FILES_RE`)
+# even though that shape pipes into a substantive ``grep -ciE`` over real
+# deploy-sensitive path keywords rather than asserting mere well-formedness —
+# it is falsifiable (a docs-only PR's file list yields a zero count and exit
+# 1), unlike the R21b shapes this rule targets. The call site therefore checks
+# ``_DEPLOY_SCOPE_FILES_RE`` FIRST and exempts an exact match; every other
+# ``.../pulls/<n>/files`` read (including the R21b-era bare-SHA/status forms,
+# and any FUTURE shape that merely re-spells non-emptiness) still falls
+# through to this rejection unchanged.
 _VACUOUS_PR_FILES_RE = re.compile(
     r"gh api repos/\S+/pulls/(?:\$\{PR_NUMBER\}|\d+)/files\b"
 )
@@ -275,7 +313,7 @@ def classify_check(check_value: str) -> tuple[str, str | None]:
             "provenance form and let the admissibility-validator item supersede "
             "it"
         )
-    if _VACUOUS_PR_FILES_RE.search(value):
+    if _VACUOUS_PR_FILES_RE.search(value) and not _DEPLOY_SCOPE_FILES_RE.match(value):
         return "unknown", (
             "check_value reads `.../pulls/<n>/files` and asserts only that the "
             "list is non-empty or well-formed. MEASURED: that exits 0 for every "
