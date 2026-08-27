@@ -52,6 +52,11 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
 )
+from omnimarket.occ_evidence_probative_class import (
+    EnumEvidenceProbativeClass,
+    classify_check_value,
+    surrogate_refusal_reason,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -2011,7 +2016,7 @@ class EvidenceCollector:
             results = [self._check_evidence_item(item, ticket_id, path)]
             if isinstance(item, dict):
                 results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
-            return results
+            return self._demote_non_probative(item, results)
         except Exception as exc:
             item_id = item.get("id") if isinstance(item, dict) else None
             label = item_id if isinstance(item_id, str) and item_id else None
@@ -2033,6 +2038,96 @@ class EvidenceCollector:
                     ),
                 )
             ]
+
+    @staticmethod
+    def _non_probative_reason(item: Any) -> str | None:
+        """Reason this item cannot bear a verdict, or ``None`` if it can.
+
+        OMN-15391. An item is non-probative only when EVERY check it declares
+        is a command whose exit status is invariant over the product diff (see
+        ``omnimarket.occ_evidence_probative_class``). One probative check makes
+        the whole item probative: an item whose checks must ALL pass carries a
+        real verdict as soon as one of them can go red for a product reason.
+
+        ``file_exists`` is always probative — a file is present or it is not,
+        and that is a fact about the tree under test. An item declaring no
+        checks at all is not classified here; ``_check_evidence_item`` already
+        SKIPs it, and a SKIP is not a green that needs demoting.
+        """
+        if not isinstance(item, dict):
+            return None
+        checks = item.get("checks")
+        if not isinstance(checks, list) or not checks:
+            return None
+
+        reasons: list[str] = []
+        for check in checks:
+            if not isinstance(check, dict):
+                return None
+            if check.get("check_type") not in ("command", "test_passes"):
+                return None
+            # The EFFECTIVE command, resolved exactly as ``_run_command_check``
+            # resolves it (``command`` first, ``check_value`` as fallback).
+            # Reading only ``check_value`` would let a check spelled with the
+            # ``command`` key execute as a surrogate while classifying as
+            # probative — a complete bypass of this refusal, since its green
+            # would still count. Found by CodeRabbit on omnimarket#2168.
+            check_value = check.get("command") or check.get("check_value")
+            probative_class = classify_check_value(
+                check_value if isinstance(check_value, str) else None
+            )
+            if probative_class is EnumEvidenceProbativeClass.PROBATIVE:
+                return None
+            reasons.append(surrogate_refusal_reason(probative_class, str(check_value)))
+        return " ".join(reasons)
+
+    def _demote_non_probative(
+        self, item: Any, results: list[ModelEvidenceCheckResult]
+    ) -> list[ModelEvidenceCheckResult]:
+        """Reclassify an item's GREENS when the item cannot bear a verdict.
+
+        OMN-15391 — the load-bearing refusal, and the reason it is applied here
+        rather than before execution.
+
+        **Only a VERIFIED result is demoted.** A FAILED one is left exactly as
+        it was, and the checks are still EXECUTED rather than short-circuited.
+        That is deliberate: it makes this change monotone toward refusal — it
+        can subtract a green and it can never manufacture one, so no contract
+        that is red today can go green because of it. Skipping execution would
+        have been cheaper, but it would silently convert a genuine red (a PR
+        the token cannot see, a foreign suite that is actually broken) into a
+        non-verdict, which is a loosening in the one direction that matters.
+
+        The item's OMN-14207 ``::pr-live-state`` legs are demoted with it.
+        Those legs assert the bound PR is merged with green CI — provenance
+        about the very PR the surrogate names, not about the behaviour claimed.
+        Leaving them VERIFIED would defeat the whole refusal: an all-surrogate
+        contract would still read green on its live-state legs alone (measured
+        on ``contracts/OMN-16667.yaml``: 5 declared surrogate checks plus 4
+        passing live-state legs). Their anti-laundering force is untouched —
+        a live-state leg that goes RED still fails the contract.
+        """
+        reason = self._non_probative_reason(item)
+        if reason is None:
+            return results
+        return [
+            result.model_copy(
+                update={
+                    "status": EnumEvidenceCheckStatus.NON_PROBATIVE,
+                    "message": (
+                        f"{reason}"
+                        + (
+                            f" (check output: {result.message})"
+                            if result.message
+                            else ""
+                        )
+                    ),
+                }
+            )
+            if result.status is EnumEvidenceCheckStatus.VERIFIED
+            else result
+            for result in results
+        ]
 
     @staticmethod
     def _carrier_label(index: int, id_at: dict[int, str | None]) -> str:

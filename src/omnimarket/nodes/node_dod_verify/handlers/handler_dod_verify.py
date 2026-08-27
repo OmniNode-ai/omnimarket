@@ -124,6 +124,14 @@ class HandlerDodVerify:
         superseded = sum(
             1 for r in checks if r.status == EnumEvidenceCheckStatus.SUPERSEDED
         )
+        # OMN-15391: executed, exited 0, and its exit status cannot depend on
+        # the product change — a bare ``gh pr view`` (green for every PR on
+        # GitHub) or a ticket-independent foreign suite. It is provenance, and
+        # provenance is not completion, so it is counted on its own axis and
+        # never folded into ``verified``.
+        non_probative = sum(
+            1 for r in checks if r.status == EnumEvidenceCheckStatus.NON_PROBATIVE
+        )
 
         # OMN-15390: ``total_checks`` is the VERDICT-BEARING denominator, so a
         # fully-repaired contract reads N/N rather than N/(N+superseded). A
@@ -136,6 +144,21 @@ class HandlerDodVerify:
         non_superseded_total = len(checks) - superseded
         if failed > 0:
             overall = EnumDodVerifyStatus.FAILED
+        elif verified == 0 and non_probative > 0:
+            # OMN-15391 — the refusal, and the reason it is SKIPPED rather than
+            # FAILED. Nothing went wrong: every check ran and exited 0. What is
+            # missing is a check whose exit status could have gone the other
+            # way for a product reason, so the run has no evidence to report,
+            # not a red to report. SKIPPED is the gap-comment lane — the CLI
+            # still exits 1 and ``_build_receipt`` still writes ``FAIL``, so a
+            # Done flip is refused either way; the distinction is what an
+            # operator is told to do about it.
+            #
+            # Ordered ahead of the supersession backstop below on purpose: a
+            # supersession whose carrier turned out to be provenance lands here
+            # with the specific diagnosis rather than the generic one. Both are
+            # non-flip, so the ordering trades no strictness for legibility.
+            overall = EnumDodVerifyStatus.SKIPPED
         elif superseded > 0 and verified == 0:
             # OMN-15390 anti-laundering BACKSTOP, and the reason it is FAILED
             # rather than SKIPPED: supersession may remove a FALSE red, never
@@ -184,6 +207,25 @@ class HandlerDodVerify:
                     f"CONTRACT_MISSING: no DoD contract found for "
                     f"{command.ticket_id}; zero checks were verified"
                 )
+            elif verified == 0 and non_probative > 0:
+                # OMN-15391: its own reason code, because the remedy is
+                # specific and different from every other SKIP. The contract
+                # is not missing and nothing was skipped — it declares checks
+                # that all passed and none of which could have failed for a
+                # product reason. The fix is to BIND a probative check, not to
+                # re-run anything.
+                error_message = (
+                    f"NO_PROBATIVE_EVIDENCE: {non_probative}/{len(checks)} "
+                    f"evidence checks for {command.ticket_id} executed and "
+                    "passed, but every one of them is exit-status-invariant "
+                    "over the product change (PR-existence probes, or a "
+                    "ticket-independent foreign suite) — they are provenance, "
+                    "not proof, and none of them counts toward completion. "
+                    "Zero checks proved anything about this ticket. Bind a "
+                    "check whose exit status depends on the product change "
+                    "(a content read at a pinned ref, or a test this ticket's "
+                    "diff makes pass) before claiming completion."
+                )
             else:
                 error_message = (
                     f"NO_CHECKS_VERIFIED: 0/{len(checks)} evidence checks "
@@ -202,6 +244,7 @@ class HandlerDodVerify:
             skipped_count=skipped,
             error_message=error_message,
             superseded_count=superseded,
+            non_probative_count=non_probative,
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,
             occ_resolved_sha=occ_resolved_sha,
@@ -242,6 +285,7 @@ class HandlerDodVerify:
             failed_count=state.failed_count,
             skipped_count=state.skipped_count,
             superseded_count=state.superseded_count,
+            non_probative_count=state.non_probative_count,
             error_message=state.error_message,
         )
 

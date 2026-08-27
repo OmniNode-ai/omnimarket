@@ -112,6 +112,12 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
         # denominator), but named here so the receipt shows the repair
         # rather than hiding it.
         "superseded": state.superseded_count,
+        # OMN-15391: executed and exited 0, but exit-status-invariant over the
+        # product change — provenance, never completion. UNLIKE ``superseded``
+        # these stay INSIDE ``total``: the whole point is that the receipt
+        # shows the shortfall (2/14, not 2/2) rather than a denominator quietly
+        # shrunk to match whatever passed.
+        "non_probative": state.non_probative_count,
     }
 
     def render(kept: int) -> str:

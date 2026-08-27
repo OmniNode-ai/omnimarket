@@ -30,6 +30,15 @@ class EnumEvidenceCheckStatus(StrEnum):
     # failure; the superseding item's own checks carry the verdict. See
     # ``EvidenceCollector._resolve_supersessions``.
     SUPERSEDED = "superseded"
+    # OMN-15391: the check RAN and EXITED 0, but its exit status is invariant
+    # over the product change, so the green it produced is not evidence about
+    # this ticket. A bare ``gh pr view`` is green for every PR on GitHub; OCC's
+    # own admissibility suite is green with the ticket's entire fix reverted.
+    # Distinct from VERIFIED (it proved nothing about the product), from FAILED
+    # (nothing went wrong), and from SKIPPED (it was not skipped — it executed).
+    # Admitted and reported as provenance; never counted toward completion.
+    # See ``omnimarket.occ_evidence_probative_class``.
+    NON_PROBATIVE = "non_probative"
 
 
 class EnumOccRefRefreshOutcome(StrEnum):
@@ -78,6 +87,13 @@ class ModelDodVerifyState(BaseModel):
     failed_count: int = Field(default=0, ge=0)
     skipped_count: int = Field(default=0, ge=0)
     superseded_count: int = Field(default=0, ge=0)
+    # OMN-15391: checks that executed and exited 0 but whose exit status cannot
+    # depend on the product change. Counted separately and NEVER folded into
+    # ``verified_count`` — that field is the completion tally an operator reads
+    # to decide whether a ticket is closeable, and provenance is not completion.
+    # These entries STAY in ``total_checks`` so the shortfall is visible
+    # (a contract reads 2/14, not 2/2).
+    non_probative_count: int = Field(default=0, ge=0)
     error_message: str | None = Field(default=None)
     # OMN-15454 AC2: provenance of the OCC governance ref actually read this
     # run — "attribution must name what was actually read, not what was
