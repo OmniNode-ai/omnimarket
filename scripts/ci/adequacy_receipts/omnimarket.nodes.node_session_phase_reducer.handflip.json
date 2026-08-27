@@ -1,0 +1,25 @@
+{
+  "node_id": "omnimarket.nodes.node_session_phase_reducer",
+  "receipt_schema": "handflip_proof.v1",
+  "canonical_handler_module": "omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer",
+  "legacy_handler_module": "omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer",
+  "base_ref": "6a485f597b9db85b4010fad36a1c05180aa55770",
+  "preserved_symbols": [
+    "_write_state",
+    "delta",
+    "handler_category",
+    "handler_type"
+  ],
+  "parity": {
+    "status": "pass",
+    "test_ids": [
+      "tests/integration/node_session_phase_reducer/test_omn16790_wire_dispatch.py::test_live_session_started_payload_dispatches_without_keyerror",
+      "tests/integration/node_session_phase_reducer/test_omn16790_wire_dispatch.py::test_session_started_then_ended_folds_across_two_wire_messages",
+      "tests/integration/node_session_phase_reducer/test_omn16790_wire_dispatch.py::test_dispatch_arg_is_the_declared_input_model_not_the_raw_envelope"
+    ],
+    "selected_input_hashes": [
+      "sha256:a1e5764d67b56ff7207f9895b1a4e0d769edabaf531478e46798705f88dcdf3e",
+      "sha256:98d516ac590f26c054c1e5f9bcb97988996e603b0964fcc230a78ac3d36aaeb3"
+    ]
+  }
+}

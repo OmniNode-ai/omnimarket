@@ -1,0 +1,22 @@
+{
+  "branch_coverage_pct": 68.0,
+  "candidate_count": 2,
+  "coverage_target": 80.0,
+  "handler_module": "omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer",
+  "handler_module_sha256": "sha256:476798638d6d65861ad71667bd886fe0a731aeac0147dc1a07ccfd0512af7aae",
+  "meets_target": false,
+  "node_id": "omnimarket.nodes.node_session_phase_reducer",
+  "receipt_schema": "adequacy_receipt.v1",
+  "recorded_at": "2026-08-27T22:49:32.018131+00:00",
+  "recorder_schema": "adequacy_receipt.v1",
+  "selected_count": 2,
+  "selected_input_hashes": [
+    "sha256:a1e5764d67b56ff7207f9895b1a4e0d769edabaf531478e46798705f88dcdf3e",
+    "sha256:98d516ac590f26c054c1e5f9bcb97988996e603b0964fcc230a78ac3d36aaeb3"
+  ],
+  "uncovered_waiver": {
+    "reason": "OMN-16790 hand-flips node_session_phase_reducer to canonical def-B at the ADAPTER BOUNDARY only: handle() stops indexing a hand-built {state, event} envelope (a shape carried by no wire schema on any subscribed topic) and instead accepts the declared ModelSessionPhaseReducerInput, with state_path made keyword-only so the def-B arity check resolves. The reduce core is UNCHANGED and re-derived from git verbatim by the canonical-shape ratchet (see the .handflip.json preserved_symbols): delta and every phase-transition helper are byte-identical base_ref<->HEAD. Equivalence therefore rests on that git-verified preservation plus parity tests executed through the REAL _make_dispatch_callback seam over the wire payloads captured verbatim off the .201 stability lane \u2014 not on a broad branch-coverage claim. The selected corpus drives the two live wire shapes that actually reach this node in production (session-started, session-ended); the phase-state fold arcs and the session-mismatch rejection branch are covered by the unit and state-coverage suites against the same unchanged delta core, not by this corpus.",
+    "uncovered_branch_count": 0
+  },
+  "volatile_mask": []
+}
