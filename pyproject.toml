@@ -239,6 +239,8 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_metering_summary_compute = "omnimarket.nodes.node_metering_summary_compute"
+node_board_truth_compute = "omnimarket.nodes.node_board_truth_compute"
+node_board_truth_reconcile_effect = "omnimarket.nodes.node_board_truth_reconcile_effect"
 node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge_context_assembler_orchestrator"
 node_hook_chain_probe_effect = "omnimarket.nodes.node_hook_chain_probe_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"

@@ -350,7 +350,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_delegated_test_control_compute (both COMPUTE; the delegated test
     # loop's prompt builder and must-fail control grader, pure, no I/O):
     # 411 -> 413.
-    assert summary["node_dirs"] == 413
+    # OMN-16731 adds node_board_truth_compute (COMPUTE; the pure, replayable
+    # derivation of each ticket's non-Done board state from ledger, PR, branch
+    # and board facts) and node_board_truth_reconcile_effect (EFFECT; the
+    # dry-run reconciler that reads the ledger, runs the projection and renders
+    # the diff table, with no write path): 413 -> 415.
+    assert summary["node_dirs"] == 415
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -467,7 +472,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node_projection_* family: 401 -> 402.
     # OMN-19361 adds the two delegated test loop compute entry points (see
     # the node_dirs comment above): 402 -> 404.
-    assert summary["entry_points"] == 404
+    # OMN-16731 adds the node_board_truth_compute and
+    # node_board_truth_reconcile_effect entry points (see the node_dirs comment
+    # above), both routable via their runtime_dispatch.command_topic: 404 -> 406.
+    assert summary["entry_points"] == 406
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
