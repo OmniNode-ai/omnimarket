@@ -36,8 +36,6 @@ are ``None``, never 0 (AC5).
 
 from __future__ import annotations
 
-import logging
-
 from omnimarket.nodes.node_projection_consumer_flow.models import (
     EnumConsumerFlowState,
     EnumUpstreamEvidence,
@@ -46,8 +44,6 @@ from omnimarket.nodes.node_projection_consumer_flow.models import (
     ModelConsumerFlowProjectionResult,
     ModelConsumerFlowRow,
 )
-
-logger = logging.getLogger(__name__)
 
 TABLE_FLOW = "consumer_flow_windows"
 TABLE_PRODUCE = "topic_produce_windows"

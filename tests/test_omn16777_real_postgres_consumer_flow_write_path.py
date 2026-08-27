@@ -91,11 +91,13 @@ async def _connect_or_skip(database: str | None = None) -> asyncpg.Connection:
             "INTEGRATION_POSTGRES_PASSWORD / POSTGRES_PASSWORD not set — "
             "skipping the OMN-16777 real-Postgres write-path gate"
         )
+        raise AssertionError("pytest.skip did not raise")
     target = database or os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
     try:
         return await asyncpg.connect(_dsn(target))
     except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover - infra
         pytest.skip(f"no reachable Postgres for the OMN-16777 gate: {exc}")
+        raise AssertionError("pytest.skip did not raise") from None
 
 
 @asynccontextmanager
