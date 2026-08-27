@@ -45,7 +45,7 @@ golden_path:
   - "This reducer upserts topic_produce_windows (the upstream-production evidence) first"
   - "A window_sequence gap for a node materializes UNKNOWN rows with NULL counters — never zero"
   - "Each consumer delta upserts consumer_flow_windows with the derived flow_state"
-  - "Each written row is published as a snapshot delta to onex.snapshot.projection.consumer-flow.v1"
+  - "Each written row is published as a snapshot delta to onex.snapshot.projection.consumer-flow.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention, not onex.{cmd|evt|dlq}.*
   - "Emit projection-applied event to onex.evt.omnimarket.projection-consumer-flow-applied.v1"
 
 dod_evidence:
