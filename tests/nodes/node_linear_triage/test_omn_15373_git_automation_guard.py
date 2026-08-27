@@ -333,8 +333,8 @@ def test_probe_failure_fails_closed() -> None:
     assert "probe failed" in report.failure_reason
 
 
-def test_empty_automation_set_fails_closed() -> None:
-    """Zero automations proves nothing and must not read as clean.
+def test_empty_automation_set_fails_closed_when_no_team_was_enumerated() -> None:
+    """Zero automations AND zero teams proves nothing and must not read as clean.
 
     This is the difference between "checked and found nothing wrong" and
     "checked nothing". A revoked token, a renamed field, or a schema change all
@@ -345,6 +345,57 @@ def test_empty_automation_set_fails_closed() -> None:
     ).handle(now=_NOW)
     assert report.passed is False
     assert "ZERO automations" in report.failure_reason
+
+
+def test_empty_automation_set_passes_when_teams_were_enumerated() -> None:
+    """The post-OMN-16536-AC#1 steady state: teams still enumerable, every one
+    carrying zero automations.
+
+    On 2026-08-27 AC#1 deleted all ten mappings across OMN, CON and JON, making
+    zero automations the *target* configuration. The original unconditional
+    empty-set failure would have pinned this guard permanently red for the one
+    reason that is not drift — so the scepticism moved to a positive control
+    (at least one team enumerated) rather than being dropped.
+
+    Verbatim live shape from the 2026-08-27 readback.
+    """
+    live_post_ac1 = {
+        "data": {
+            "teams": {
+                "nodes": [
+                    {
+                        "id": "ef2198a9-350e-4a7a-adcf-fffe7ff6072a",
+                        "name": "Contractors",
+                        "key": "CON",
+                        "gitAutomationStates": {"nodes": []},
+                    },
+                    {
+                        "id": "12081a78-cec9-40c4-9d4c-027186ac205f",
+                        "name": "JonahPrivate",
+                        "key": "JON",
+                        "gitAutomationStates": {"nodes": []},
+                    },
+                    {
+                        "id": "9bdff6a3-f4ef-4ff7-b29a-6c4cf44371e6",
+                        "name": "Omninode",
+                        "key": "OMN",
+                        "gitAutomationStates": {"nodes": []},
+                    },
+                ]
+            }
+        }
+    }
+    report = HandlerGitAutomationGuard(probe=_StubProbe(live_post_ac1)).handle(now=_NOW)
+    assert report.passed is True
+    assert report.drift_count == 0
+
+
+def test_probe_failure_still_fails_even_with_teams_enumerated() -> None:
+    """The positive control relaxes ONLY the empty-set rule. A probe that raised
+    still fails regardless — teams_enumerated is never reachable there."""
+    report = HandlerGitAutomationGuard(probe=_FailingProbe()).handle(now=_NOW)
+    assert report.passed is False
+    assert "probe failed" in report.failure_reason
 
 
 def test_unreadable_target_state_fails_closed() -> None:

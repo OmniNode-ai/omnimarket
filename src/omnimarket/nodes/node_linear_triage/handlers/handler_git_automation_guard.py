@@ -13,8 +13,14 @@ pure and unit-testable against recorded live shapes, and so the guard is
 runnable headless on a schedule with no human in the loop.
 
 Fail-closed at every boundary: a transport error, a GraphQL error, an
-unparseable response, or an EMPTY automation set all produce ``passed=False``.
-A probe that read nothing has proven nothing.
+unparseable response, or an empty automation set from a probe that enumerated
+zero teams all produce ``passed=False``. A probe that read nothing has proven
+nothing.
+
+An empty automation set from a probe that DID enumerate teams passes: since
+OMN-16536 AC#1 deleted all ten mappings on 2026-08-27, zero automations is the
+target configuration rather than a symptom. ``parse_team_count`` supplies that
+positive control — see the ``audit_git_automations`` docstring.
 """
 
 from __future__ import annotations
@@ -97,6 +103,19 @@ class LinearGitAutomationProbe:
         if data.get("errors"):
             raise RuntimeError(f"Linear GraphQL error: {data['errors']}")
         return data
+
+
+def parse_team_count(response: dict[str, Any]) -> int:
+    """Count the teams the probe actually enumerated.
+
+    This is the guard's positive control. The nested query returns a team node
+    even when that team carries zero automations (verified live 2026-08-27: three
+    teams, every ``gitAutomationStates`` empty), so a non-zero team count proves
+    the token is live and scoped to the workspace — which is what makes an empty
+    automation set believable rather than indistinguishable from a broken probe.
+    """
+    teams = ((response.get("data") or {}).get("teams") or {}).get("nodes") or []
+    return sum(1 for t in teams if isinstance(t, dict))
 
 
 def parse_automations(response: dict[str, Any]) -> list[ModelGitAutomationState]:
@@ -190,7 +209,12 @@ class HandlerGitAutomationGuard:
             )
 
         automations = parse_automations(response)
-        return audit_git_automations(automations, exceptions=exceptions, now=now)
+        return audit_git_automations(
+            automations,
+            exceptions=exceptions,
+            now=now,
+            teams_enumerated=parse_team_count(response),
+        )
 
 
 __all__ = [
@@ -198,4 +222,5 @@ __all__ = [
     "HandlerGitAutomationGuard",
     "LinearGitAutomationProbe",
     "parse_automations",
+    "parse_team_count",
 ]

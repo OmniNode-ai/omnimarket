@@ -24,9 +24,20 @@ Fail-closed rules
 2. An unresolvable target state is UNREADABLE, which FAILS. An unreadable check
    is not a passing check — the "optional check that silently skips == no
    check" class this guard exists to prevent.
-3. An EMPTY automation set FAILS. A probe that returns nothing has proven
-   nothing; it is indistinguishable from a broken query or a revoked token, and
-   must never read as "no drift found".
+3. An EMPTY automation set fails UNLESS the probe is independently proven to
+   have read the workspace — i.e. it enumerated at least one team. A probe that
+   returns nothing has otherwise proven nothing; it is indistinguishable from a
+   broken query or a revoked token, and must never read as "no drift found".
+
+   This rule was originally an unconditional failure. That was correct while a
+   populated automation set was the expected shape, and became wrong on
+   2026-08-27 when OMN-16536 AC#1 deleted all ten mappings across teams OMN, CON
+   and JON — zero automations is now the *target* configuration, so an
+   unconditional failure would have pinned this guard permanently red for the
+   one reason that is not drift. The scepticism is not dropped, it is relocated:
+   prove the probe (teams enumerated), then believe the emptiness. The mirror
+   assertion lives in :mod:`git_automation_demotion_guard` (OMN-16536 AC#2),
+   whose steady green is exactly this empty set.
 4. An accepted exception must name an owner, a reason, and an ABSOLUTE expiry.
    A lapsed exception stops suppressing and the finding re-fails. There is no
    permanent suppression.
@@ -160,13 +171,20 @@ def audit_git_automations(
     now: datetime,
     probe_ok: bool = True,
     probe_error: str = "",
+    teams_enumerated: int = 0,
 ) -> ModelGitAutomationAuditReport:
     """Audit every automation and return the fail-closed aggregate report.
 
-    ``passed`` is True ONLY when the probe succeeded, returned at least one
-    automation, and no finding is DRIFT or UNREADABLE. A failed probe or an
-    empty result set FAILS: a probe that read nothing has proven nothing, and
-    must never be reported as "no drift found".
+    ``passed`` is True ONLY when the probe succeeded, the probe is proven to
+    have read the workspace, and no finding is DRIFT or UNREADABLE.
+
+    ``teams_enumerated`` is that proof. An empty automation set passes only when
+    at least one team was enumerated — which is the post-OMN-16536-AC#1 steady
+    state (all ten mappings deleted, three teams still enumerable). Zero teams
+    enumerated is indistinguishable from a revoked token or a renamed field and
+    still FAILS, as does a failed probe. It defaults to ``0`` so that any caller
+    that has not been taught to supply the control keeps the old, strictly
+    fail-closed behaviour rather than silently gaining a pass.
 
     Pure function — no I/O.
     """
@@ -179,13 +197,15 @@ def audit_git_automations(
             ),
         )
 
-    if not automations:
+    if not automations and teams_enumerated <= 0:
         return ModelGitAutomationAuditReport(
             passed=False,
             failure_reason=(
-                "the Linear git-automation probe returned ZERO automations. That is "
-                "indistinguishable from a broken query or a revoked token, so it is "
-                "never read as 'no drift found'. Failing closed (OMN-15373)."
+                "the Linear git-automation probe returned ZERO automations AND "
+                "enumerated ZERO teams, so it cannot be shown to have read the "
+                "workspace at all. That is indistinguishable from a broken query or a "
+                "revoked token, so it is never read as 'no drift found'. Failing "
+                "closed (OMN-15373)."
             ),
         )
 
