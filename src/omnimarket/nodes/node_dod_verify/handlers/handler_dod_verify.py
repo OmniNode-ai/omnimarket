@@ -124,6 +124,17 @@ class HandlerDodVerify:
         superseded = sum(
             1 for r in checks if r.status == EnumEvidenceCheckStatus.SUPERSEDED
         )
+        # OMN-16788: skips that are credential-reachability facts, not
+        # deliberate ones. These carry a typed ``unverifiable_cause`` and are
+        # the reason the SKIPPED branch below had to grow a new arm: an
+        # ORDINARY skip is intentionally non-blocking (OMN-16087's
+        # non-merged assertion; a disabled live-PR check), so degrading an
+        # unreadable check from FAILED to a plain SKIPPED would have turned
+        # OMN-15715's fail-closed refusal into a fail-OPEN pass the moment
+        # any sibling check verified. Counted separately so the failure count
+        # stays clean (the check did not fail) while the verdict stays
+        # blocked (the check was never proven).
+        unverifiable = [r for r in checks if r.unverifiable_cause is not None]
         # OMN-15391: executed, exited 0, and its exit status cannot depend on
         # the product change — a bare ``gh pr view`` (green for every PR on
         # GitHub) or a ticket-independent foreign suite. It is provenance, and
@@ -182,6 +193,14 @@ class HandlerDodVerify:
             # fails closed here rather than receipting a PASS built purely out
             # of supersessions.
             overall = EnumDodVerifyStatus.FAILED
+        elif unverifiable:
+            # OMN-16788: at least one check could not be EVALUATED — the
+            # verifying credential was not permitted to read its evidence.
+            # Not FAILED (nothing was found wanting) and emphatically not
+            # VERIFIED (nothing was proven). This is the arm that preserves
+            # OMN-15715 D1's fail-closed intent through the degrade: the
+            # ticket cannot flip on evidence no one read.
+            overall = EnumDodVerifyStatus.SKIPPED
         elif non_superseded_total == 0 or skipped == non_superseded_total:
             # Either nothing but superseded entries remain, or every
             # non-superseded check was skipped — do not claim VERIFIED.
@@ -225,6 +244,34 @@ class HandlerDodVerify:
                     "check whose exit status depends on the product change "
                     "(a content read at a pinned ref, or a test this ticket's "
                     "diff makes pass) before claiming completion."
+                )
+            elif unverifiable:
+                # OMN-16788: distinct reason code so a caller (and a human
+                # reading the receipt) can tell "we were not permitted to read
+                # this" apart from "nothing verified". NO_CHECKS_VERIFIED
+                # would additionally be a lie here whenever a sibling check did
+                # verify. The causes are named so the remedy — a scope grant,
+                # or adding a repo to the App installation — is legible without
+                # re-running the sweep under instrumentation.
+                #
+                # Positioned to MIRROR the verdict precedence above: the
+                # OMN-15391 non-probative arm is evaluated first there, so its
+                # message must be reachable first here, or a run decided by
+                # that arm would be reported under this one's reason code.
+                causes = sorted(
+                    {
+                        r.unverifiable_cause.value
+                        for r in unverifiable
+                        if r.unverifiable_cause is not None
+                    }
+                )
+                error_message = (
+                    f"EVIDENCE_UNVERIFIABLE: {len(unverifiable)}/"
+                    f"{non_superseded_total} evidence check(s) for "
+                    f"{command.ticket_id} could not be evaluated "
+                    f"({', '.join(causes)}); {verified} verified, {failed} "
+                    f"failed. An unread check is not a passed check — no "
+                    f"Done-flip on evidence the verifier could not reach."
                 )
             else:
                 error_message = (

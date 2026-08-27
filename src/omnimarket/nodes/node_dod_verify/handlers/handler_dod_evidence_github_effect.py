@@ -64,6 +64,9 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup im
     ModelDodEvidenceGithubLookupCommand,
     ModelDodEvidenceGithubLookupResultEvent,
 )
+from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
+    EnumEvidenceUnverifiableCause,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -210,6 +213,14 @@ def _gh_json_lines(
 _BASE_BRANCH_NOT_FOUND_TOKENS = ("404", "branch not found")
 _BASE_BRANCH_NOT_PROTECTED_TOKENS = ("404", "branch not protected")
 
+# OMN-16788: the two CREDENTIAL renderings of the same probe. Neither says
+# anything about the base branch — they say the caller was not permitted to
+# ask. Matched only AFTER the two branch-scoped signals above have been ruled
+# out, because "branch not found" also contains "404"/"not found" and means
+# something entirely different (see _classify_protection_probe_unreachable).
+_PROTECTION_FORBIDDEN_TOKENS = ("http 403",)
+_PROTECTION_REPO_NOT_FOUND_TOKENS = ("http 404", "not found")
+
 
 def _detail_matches_all(detail: str, tokens: tuple[str, ...]) -> bool:
     """True iff every token in ``tokens`` appears in ``detail``, case-
@@ -217,6 +228,59 @@ def _detail_matches_all(detail: str, tokens: tuple[str, ...]) -> bool:
     narrowest available signal for classifying a ``gh api`` error detail."""
     lowered = detail.lower()
     return all(token in lowered for token in tokens)
+
+
+def _classify_protection_probe_unreachable(
+    detail: str,
+) -> EnumEvidenceUnverifiableCause | None:
+    """Classify a failed branch-protection probe as a CREDENTIAL fact, or not.
+
+    OMN-16788. Returns a cause ONLY when the probe's rendered error positively
+    identifies the caller's own permissions as the obstacle. Order matters and
+    is load-bearing: the two branch-scoped 404s are checked FIRST and return
+    ``None``, because "Branch not found (HTTP 404)" and "Branch not protected
+    (HTTP 404)" both satisfy the generic ``("http 404", "not found")`` shape
+    while meaning something substantive about the base branch — the former
+    feeds OMN-15715's deleted-base carve-out, the latter its D2 honest
+    fail-closed. Only a residual bare ``Not Found`` is the repo-invisibility
+    case.
+
+    Everything unmatched — timeout, OSError, 5xx, unparseable JSON — returns
+    ``None`` and keeps its existing substantive fail-closed treatment. A
+    transient transport fault says nothing about a credential, and treating it
+    as unverifiable would open a laundering channel for a flaky network.
+    """
+    if _detail_matches_all(detail, _BASE_BRANCH_NOT_FOUND_TOKENS):
+        return None
+    if _detail_matches_all(detail, _BASE_BRANCH_NOT_PROTECTED_TOKENS):
+        return None
+    if _detail_matches_all(detail, _PROTECTION_FORBIDDEN_TOKENS):
+        return EnumEvidenceUnverifiableCause.CREDENTIAL_CANNOT_READ_BRANCH_PROTECTION
+    if _detail_matches_all(detail, _PROTECTION_REPO_NOT_FOUND_TOKENS):
+        return EnumEvidenceUnverifiableCause.REPO_NOT_ACCESSIBLE_TO_CREDENTIAL
+    return None
+
+
+def _unreachable_remedy_text(cause: EnumEvidenceUnverifiableCause) -> str:
+    """The operator-facing remedy for an unreadable-protection cause.
+
+    Kept next to the classifier so the receipt names the specific missing
+    grant rather than a generic "permission denied" — the divergence this
+    ticket closes cost a full instrumented CI dispatch to attribute precisely
+    because the recorded message named neither the endpoint nor the scope.
+    """
+    if cause is EnumEvidenceUnverifiableCause.CREDENTIAL_CANNOT_READ_BRANCH_PROTECTION:
+        return (
+            "the verifying credential cannot read branch protection for this "
+            "repository (the branch-protection endpoint requires the "
+            "'administration: read' scope, which reading pull requests does "
+            "not imply) — the required-context set was never observed"
+        )
+    return (
+        "the verifying credential cannot see this repository at all (GitHub "
+        "returns a bare 404 for a repo absent from the App installation) — "
+        "the required-context set was never observed"
+    )
 
 
 def _is_green_check_run(run: dict[str, object]) -> bool:
@@ -716,12 +780,23 @@ class HandlerDodEvidenceGithubEffect:
             f"classic={classic_detail or 'no names'}; "
             f"rules={rules_detail or 'no names'}"
         )
+        # OMN-16788: classify WHY the probe produced no names, once, for both
+        # of the fail-closed exits below. ``None`` for every substantive cause.
+        protection_unreachable = _classify_protection_probe_unreachable(classic_detail)
         if not required_names and not is_merged:
             # Fail-closed, unchanged from pre-OMN-15715 behavior: an OPEN (or
             # otherwise not-yet-MERGED) PR whose base branch protection is
             # unresolvable has no merge-time-durable evidence to fall back
             # on — a Done-flip must not proceed on unverifiable live state.
-            return self._checks_not_green(command, base_protection_detail)
+            # OMN-16788 attaches the cause here too: this is the SECOND exit
+            # from the same unreadable probe, and leaving it unclassified
+            # would keep recording an OPEN PR's unreadable protection as a
+            # substantive failure. The caller still fails the item on the
+            # not-merged fact — that one is read off a reachable API and is
+            # nobody's credential problem.
+            return self._checks_not_green(
+                command, base_protection_detail, protection_unreachable
+            )
 
         suites, suites_detail = _gh_json_lines(
             [
@@ -862,6 +937,17 @@ class HandlerDodEvidenceGithubEffect:
             # of the two cases above): base-branch protection state is
             # simply unverifiable right now. Fail closed rather than
             # guessing which case this is (OMN-15715 D1).
+            #
+            # OMN-16788 subdivides "unverifiable": when the probe's own error
+            # positively identifies the CALLER's permissions as the obstacle
+            # (403, or a bare 404 for a repo outside the App installation),
+            # the caller records this block as SKIPPED-with-named-cause
+            # rather than as a substantive failure. The gate direction is
+            # unchanged — ``checks_green`` is False on both paths and the
+            # item still cannot reach VERIFIED — only the honesty of the
+            # record changes. ``_checks_not_green`` prepends the remedy text
+            # so the receipt names the missing grant instead of leaving an
+            # operator to re-derive it from a raw gh error.
             return self._checks_not_green(
                 command,
                 f"{base_protection_detail}; could not positively confirm "
@@ -869,6 +955,7 @@ class HandlerDodEvidenceGithubEffect:
                 f"not found' qualifies for the deleted-base carve-out) — "
                 f"failing closed on unverifiable base-branch protection "
                 f"state (OMN-15715 D1)",
+                protection_unreachable,
             )
 
         missing: list[str] = []
@@ -1184,13 +1271,32 @@ class HandlerDodEvidenceGithubEffect:
 
     @staticmethod
     def _checks_not_green(
-        command: ModelDodEvidenceGithubLookupCommand, detail: str
+        command: ModelDodEvidenceGithubLookupCommand,
+        detail: str,
+        unreachable_cause: EnumEvidenceUnverifiableCause | None = None,
     ) -> ModelDodEvidenceGithubLookupResultEvent:
+        """Fail-closed result for FETCH_PR_CHECKS_GREEN.
+
+        ``unreachable_cause`` (OMN-16788) never changes ``checks_green`` — it
+        is always ``False`` here — it only tells the caller that the reason is
+        a credential fact, so the caller can record the block as SKIPPED with
+        a named cause instead of as a substantive failure.
+
+        When a cause is present its remedy text is PREPENDED, not appended:
+        ``detail`` is truncated to 400 chars, and the raw
+        ``could not resolve required status checks for <repo>@<base>: ...``
+        diagnostic alone already runs to roughly that length, so a trailing
+        remedy is exactly the part that gets cut. The remedy is the operative
+        fact for whoever reads the receipt; the gh error is the corroboration.
+        """
+        if unreachable_cause is not None:
+            detail = f"{_unreachable_remedy_text(unreachable_cause)}; {detail}"
         return ModelDodEvidenceGithubLookupResultEvent(
             correlation_id=command.correlation_id,
             operation=command.operation,
             checks_green=False,
             detail=detail[:400],
+            unreachable_cause=unreachable_cause,
         )
 
 

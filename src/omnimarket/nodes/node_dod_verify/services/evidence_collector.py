@@ -46,6 +46,7 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup im
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
+    EnumEvidenceUnverifiableCause,
     EnumOccRefRefreshOutcome,
     ModelEvidenceCheckResult,
 )
@@ -1261,6 +1262,19 @@ class EvidenceCollector:
         # visible SKIPPED note instead of silently omitting the live-state
         # check. Reset per item (mirrors ``_current_evidence_item_id``).
         self._last_binding_note: str | None = None
+        # OMN-16788: set by ``_fetch_pr_checks_green`` from the EFFECT
+        # handler's classification of WHY the required-context set was
+        # unreadable, when that reason is a credential fact (HTTP 403 on the
+        # branch-protection endpoint, or a bare HTTP 404 for a repo outside
+        # the App installation) rather than a substantive one. Read by
+        # ``_verify_live_pr``, which resets it before each fetch.
+        #
+        # A side channel rather than a wider return type because the two
+        # fetch wrappers are the documented seam a dozen existing suites
+        # monkeypatch with two-tuple stubs; a stub that never sets this
+        # attribute leaves it None and therefore keeps its pre-OMN-16788
+        # semantics exactly. Mirrors ``_last_binding_note`` above.
+        self._last_checks_unreachable_cause: EnumEvidenceUnverifiableCause | None = None
         # OMN-15454 AC2: provenance of the OCC governance ref actually read by
         # the most recent auto-resolved collect() call. Populated by
         # ``collect()`` before it returns; read by ``handler_dod_verify`` to
@@ -3168,7 +3182,11 @@ class EvidenceCollector:
         Otherwise one result per bound PR: VERIFIED when the PR is MERGED and
         all checks are green; FAILED otherwise, INCLUDING when the live state
         cannot be resolved (fail-closed — a Done-flip must not proceed on
-        unverifiable PR state) — UNLESS the item's own check_value asserts a
+        unverifiable PR state) — EXCEPT for the one shape OMN-16788 carves
+        out, a MERGED PR whose required-context set the credential was not
+        PERMITTED to read, which is SKIPPED with a named
+        ``unverifiable_cause`` (still not verified, so still blocking; see
+        :meth:`_verify_live_pr`) — and UNLESS the item's own check_value asserts a
         specific non-merged state (OPEN/CLOSED) for that exact PR reference
         (OMN-16087), in which case that ONE binding is SKIPPED instead: the
         item's declared ``command`` check already verifies the assertion
@@ -3242,17 +3260,14 @@ class EvidenceCollector:
                     )
                 )
                 continue
-            ok, message = self._verify_live_pr(repo, pr_number)
+            status, message, cause = self._verify_live_pr(repo, pr_number)
             results.append(
                 ModelEvidenceCheckResult(
                     evidence_id=evidence_id,
                     description=f"Live GitHub state for {repo}#{pr_number} ({item_id})",
-                    status=(
-                        EnumEvidenceCheckStatus.VERIFIED
-                        if ok
-                        else EnumEvidenceCheckStatus.FAILED
-                    ),
+                    status=status,
                     message=message,
+                    unverifiable_cause=cause,
                 )
             )
         return results
@@ -3293,31 +3308,82 @@ class EvidenceCollector:
                     break
         return asserted
 
-    def _verify_live_pr(self, repo: str, pr_number: int) -> tuple[bool, str]:
-        """Return ``(ok, message)`` for the live state of ``repo#pr_number``.
+    def _verify_live_pr(
+        self, repo: str, pr_number: int
+    ) -> tuple[EnumEvidenceCheckStatus, str, EnumEvidenceUnverifiableCause | None]:
+        """Return ``(status, message, cause)`` for the live state of
+        ``repo#pr_number``.
 
-        ``ok`` is True only when the PR is MERGED AND every REQUIRED status check
-        is green (OMN-14390) — a red non-required/informational check does not
-        block. A failure to resolve the merge state (gh missing/auth/network/not-found)
-        fails closed.
+        VERIFIED only when the PR is MERGED AND every REQUIRED status check is
+        green (OMN-14390) — a red non-required/informational check does not
+        block. A failure to resolve the merge state (gh
+        missing/auth/network/not-found) fails closed as FAILED.
+
+        SKIPPED (OMN-16788) in exactly one shape: the PR is CONFIRMED MERGED
+        and the ONLY thing left unproven is a required-context set the
+        verifying credential was not permitted to read. That is not a check
+        that ran and found the evidence wanting, and recording it as a
+        substantive failure is what made the scheduled CI sweep disagree with
+        every local run. The caller keeps the check out of the failure count
+        AND out of the verified count: ``HandlerDodVerify`` refuses to reach
+        VERIFIED while any ``cause`` is present, so OMN-15715's fail-closed
+        intent is preserved exactly — only its bookkeeping changes.
+
+        Everything else stays FAILED, deliberately:
+
+        * a PR that is genuinely not merged — read off a reachable API, a
+          substantive fact that a credential gap elsewhere does not excuse;
+        * a required context that actually ran RED;
+        * a timeout / 5xx / OSError on the protection probe, which says
+          nothing about a credential and must not become a laundering route.
         """
+        self._last_checks_unreachable_cause = None
         merge = self._fetch_pr_merge_state(repo, pr_number)
         if merge is None:
-            return False, (
-                f"{repo}#{pr_number}: could not resolve live PR state via gh "
-                "(missing/auth/network/not-found). Failing closed — a Done-flip "
-                "must not proceed on unverifiable PR state."
+            return (
+                EnumEvidenceCheckStatus.FAILED,
+                (
+                    f"{repo}#{pr_number}: could not resolve live PR state via gh "
+                    "(missing/auth/network/not-found). Failing closed — a Done-flip "
+                    "must not proceed on unverifiable PR state."
+                ),
+                None,
             )
         merged, state = merge
         reasons: list[str] = []
         if not merged:
             reasons.append(f"PR not merged (state={state})")
+        self._last_checks_unreachable_cause = None
         checks_green, checks_detail = self._fetch_pr_checks_green(repo, pr_number)
+        checks_cause = self._last_checks_unreachable_cause
         if not checks_green:
             reasons.append(f"required checks not green ({checks_detail})")
-        if reasons:
-            return False, f"{repo}#{pr_number}: " + "; ".join(reasons)
-        return True, f"{repo}#{pr_number}: MERGED (state={state}); {checks_detail}"
+        if not reasons:
+            return (
+                EnumEvidenceCheckStatus.VERIFIED,
+                f"{repo}#{pr_number}: MERGED (state={state}); {checks_detail}",
+                None,
+            )
+        if merged and checks_cause is not None:
+            # Sole outstanding reason is an unread required-context set. The
+            # ``merged`` guard is load-bearing: without it an OPEN PR in a
+            # repo the credential cannot fully read would launder its
+            # not-merged failure into a skip.
+            return (
+                EnumEvidenceCheckStatus.SKIPPED,
+                (
+                    f"{repo}#{pr_number}: MERGED (state={state}), but this "
+                    f"check could not be evaluated — {checks_detail}. Recorded "
+                    f"SKIPPED with cause '{checks_cause.value}', NOT verified: "
+                    f"unread evidence never satisfies a Done-flip."
+                ),
+                checks_cause,
+            )
+        return (
+            EnumEvidenceCheckStatus.FAILED,
+            f"{repo}#{pr_number}: " + "; ".join(reasons),
+            None,
+        )
 
     def _fetch_pr_merge_state(
         self,
@@ -3370,6 +3436,11 @@ class EvidenceCollector:
         )
         output = HandlerDodEvidenceGithubEffect().handle(command)
         result = self._github_lookup_result(output)
+        # OMN-16788: publish the handler's credential-reachability
+        # classification on the side channel for ``_verify_live_pr``. Always
+        # assigned (including to None) so a previous item's cause can never
+        # leak into this one.
+        self._last_checks_unreachable_cause = result.unreachable_cause
         return bool(result.checks_green), result.detail or ""
 
     # ------------------------------------------------------------------

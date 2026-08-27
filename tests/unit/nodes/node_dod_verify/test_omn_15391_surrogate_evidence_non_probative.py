@@ -382,10 +382,18 @@ def _stub_exit_zero(monkeypatch: pytest.MonkeyPatch) -> None:
     # strictly harder case, and the one that matters: a passing live-state leg
     # is exactly what would otherwise keep an all-surrogate contract reading
     # VERIFIED after its declared checks were demoted.
+    # OMN-16788 widened the return to ``(status, message, unverifiable_cause)``
+    # so an unreadable required-context set can be recorded SKIPPED-with-cause
+    # instead of FAILED; the stub tracks that shape. VERIFIED + no cause keeps
+    # this fixture's intent exactly — a green live-state leg.
     monkeypatch.setattr(
         evidence_collector.EvidenceCollector,
         "_verify_live_pr",
-        lambda _self, repo, pr_number: (True, f"{repo}#{pr_number}: MERGED (stub)"),
+        lambda _self, repo, pr_number: (
+            EnumEvidenceCheckStatus.VERIFIED,
+            f"{repo}#{pr_number}: MERGED (stub)",
+            None,
+        ),
     )
 
 
