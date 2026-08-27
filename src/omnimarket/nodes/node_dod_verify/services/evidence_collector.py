@@ -979,6 +979,37 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
     if first.endswith(":"):
         return f"first token {first!r} looks like prose, not a command (ends with ':')"
     if first in _SHELL_KEYWORD_ALLOWLIST:
+        # OMN-16752 — `[[` is admitted ONLY when its conditional is actually
+        # closed. Every other name in the allowlist earns its place because a
+        # prose-shaped invocation is a syntax error (exit 2) on every bash we
+        # run, which is the admission rule stated above the frozenset. `[[` was
+        # admitted on that same "structural keywords -> syntax error 2" premise,
+        # and the premise is FALSE on bash 5.2:
+        #
+        #   bash 5.3.9 (macOS `.200`):     [[ the evidence was recorded  -> 2
+        #   bash 5.2.15 (Linux .201 gate-  [[ the evidence was recorded  -> 0
+        #     runner container)             (prints "conditional binary
+        #                                    operator expected", exits 0 anyway)
+        #
+        # Measured on both hosts 2026-08-27; `[`, `{`, `if`, `for` and `case`
+        # exit 2 on BOTH, so `[[` is the only affected name. Because
+        # ``_run_command_check`` execs a PATH-resolved bare ``bash``, that made
+        # ``[[ <prose>`` a real vacuous-GREEN path on any host whose bash is
+        # 5.2.x — the exact false-GREEN class this guard exists to close, just
+        # reachable only on some hosts, which is why it survived review.
+        #
+        # Requiring the closing ``]]`` is version-INDEPENDENT (it never consults
+        # the running bash) and strictly stronger than the old behavior: a real
+        # conditional such as ``[[ -f out.txt ]] && grep -q marker out.txt``
+        # still resolves, while an unterminated ``[[`` — which is malformed
+        # shell on every bash, whatever it exits — is judged as the prose it is.
+        if first == "[[" and "]]" not in tokens[idx:]:
+            return (
+                "first token '[[' opens a conditional that is never closed "
+                "with ']]' — this looks like prose, not a command (an "
+                "unterminated '[[' exits 0 under bash 5.2, so accepting it "
+                "would be a vacuous GREEN)"
+            )
         return None
     if os.sep in first or (os.altsep and os.altsep in first):
         base = Path(cwd) if cwd else Path.cwd()
