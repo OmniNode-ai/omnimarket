@@ -1873,7 +1873,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_consumer_flow"
+        "node_projection_consumer_flow",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql"
@@ -1883,14 +1884,15 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_consumer_flow/contract.yaml"
       ],
       "current_schema": [
-        "public"
+        "omninode_internal"
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "OMNINODE_INTERNAL",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -1900,7 +1902,12 @@
         "idx_consumer_flow_windows_group_time",
         "idx_consumer_flow_windows_state_time"
       ],
-      "internal_tenant_column_transform": null,
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
       "keys": [
         "PRIMARY KEY (consumer_group, topic, window_start)"
       ],
@@ -1912,11 +1919,13 @@
       "partitioning": [],
       "producer": "node_projection_consumer_flow",
       "readers": [
-        "node_projection_consumer_flow"
+        "node_projection_consumer_flow",
+        "service:omnimarket_projection_migration_runner"
       ],
-      "target_schema": "public",
+      "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_consumer_flow"
+        "node_projection_consumer_flow",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -4841,7 +4850,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_consumer_flow"
+        "node_projection_consumer_flow",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql"
@@ -4851,14 +4861,15 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_consumer_flow/contract.yaml"
       ],
       "current_schema": [
-        "public"
+        "omninode_internal"
       ],
       "dependencies": [],
       "dependent_objects": [],
-      "domain": "PUBLIC",
+      "domain": "OMNINODE_INTERNAL",
       "dsn_consumers": [
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
@@ -4867,7 +4878,12 @@
       "indexes": [
         "idx_topic_produce_windows_topic_time"
       ],
-      "internal_tenant_column_transform": null,
+      "internal_tenant_column_transform": {
+        "key_fk_index_partition_dependencies": [],
+        "runtime_collision_scan": "not_applicable",
+        "source_occurrences": [],
+        "status": "not_applicable_no_source_tenant_id"
+      },
       "keys": [
         "PRIMARY KEY (topic, window_start)"
       ],
@@ -4879,11 +4895,13 @@
       "partitioning": [],
       "producer": "node_projection_consumer_flow",
       "readers": [
-        "node_projection_consumer_flow"
+        "node_projection_consumer_flow",
+        "service:omnimarket_projection_migration_runner"
       ],
-      "target_schema": "public",
+      "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_consumer_flow"
+        "node_projection_consumer_flow",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {

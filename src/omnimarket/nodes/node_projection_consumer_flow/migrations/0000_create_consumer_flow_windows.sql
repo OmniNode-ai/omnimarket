@@ -40,21 +40,32 @@
 --   last-writer-wins; it is possible and vanishingly unlikely, and no data is
 --   summed incorrectly in the normal case.
 --
--- WHY ONE TABLE IN public, NOT A public/omninode_internal PAIR
---   node_projection_live_events carries the same read model in BOTH schemas
---   (0000 public + 0002 omninode_internal) because its write path drifted to
---   omninode_internal after public.live_events already existed, and OMN-15819
---   had to reconcile the two. These tables have never existed anywhere, so
---   there is nothing to reconcile and no reason to inherit that split: ONE
---   physical table, in the schema the projection-API read model requires
---   (tests/unit/projection/test_projection_table_migration_coverage.py marks a
---   topic DEGRADED at startup when its declared table is not created here),
---   with db_io declaring the same schema so the runtime write path resolves to
---   the same relation the reader serves. Unqualified CREATE (-> public)
---   matches node_projection_registration's 0000.
+-- WHY omninode_internal, EXPLICITLY QUALIFIED
+--   omnibase_infra's scripts/ci/check_application_database_sql.py (OMN-15361)
+--   settles this twice over: an UNQUALIFIED application relation target is
+--   rejected (a bare CREATE resolves against whatever search_path the runner
+--   carries, which is how a table lands in a schema nobody declared), and
+--   `public` is prohibited outright for application relations. Older node
+--   migrations that are bare or public predate that gate; a new one does not
+--   get to inherit them.
+--
+--   ONE physical relation, not the public/omninode_internal pair
+--   node_projection_live_events carries (0000 public + 0002
+--   omninode_internal). That pair exists only because its write path drifted
+--   after public.live_events already existed and OMN-15819 had to reconcile
+--   the two. These tables have never existed anywhere, so there is nothing to
+--   reconcile: db_io declares omninode_internal, the writer SQL qualifies
+--   omninode_internal, and this migration creates omninode_internal — the
+--   reader and the write path cannot resolve to different relations.
+--
+--   No CREATE SCHEMA here: the node-owned migration loop connects to the
+--   application database, where omninode_internal already exists and holds
+--   every other node-owned table. The flat loop's CREATE SCHEMA is exactly
+--   what failed with "permission denied for database omnibase_infra" in
+--   OMN-16759 and blocked every staging deploy.
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS consumer_flow_windows (
+CREATE TABLE IF NOT EXISTS omninode_internal.consumer_flow_windows (
     consumer_group     TEXT        NOT NULL,
     topic              TEXT        NOT NULL,
     window_start       TIMESTAMPTZ NOT NULL,
@@ -88,12 +99,12 @@ CREATE TABLE IF NOT EXISTS consumer_flow_windows (
 -- The two queries this table exists to answer: "what is not flowing right now"
 -- and "what did consumer X do in the last hour".
 CREATE INDEX IF NOT EXISTS idx_consumer_flow_windows_state_time
-    ON consumer_flow_windows (flow_state, window_end DESC);
+    ON omninode_internal.consumer_flow_windows (flow_state, window_end DESC);
 
 CREATE INDEX IF NOT EXISTS idx_consumer_flow_windows_group_time
-    ON consumer_flow_windows (consumer_group, window_end DESC);
+    ON omninode_internal.consumer_flow_windows (consumer_group, window_end DESC);
 
-CREATE TABLE IF NOT EXISTS topic_produce_windows (
+CREATE TABLE IF NOT EXISTS omninode_internal.topic_produce_windows (
     topic              TEXT        NOT NULL,
     window_start       TIMESTAMPTZ NOT NULL,
     window_end         TIMESTAMPTZ NOT NULL,
@@ -106,4 +117,4 @@ CREATE TABLE IF NOT EXISTS topic_produce_windows (
 );
 
 CREATE INDEX IF NOT EXISTS idx_topic_produce_windows_topic_time
-    ON topic_produce_windows (topic, window_end DESC);
+    ON omninode_internal.topic_produce_windows (topic, window_end DESC);

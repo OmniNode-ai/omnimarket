@@ -113,6 +113,11 @@ async def _migrated_database() -> AsyncIterator[asyncpg.Connection]:
     conn: asyncpg.Connection | None = None
     try:
         conn = await asyncpg.connect(_dsn(name))
+        # The node-owned migration loop connects to a database where
+        # omninode_internal already exists; a throwaway database does not, so
+        # the harness provides it rather than the migration (which deliberately
+        # carries no CREATE SCHEMA — see its header, and OMN-16759).
+        await conn.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
         await conn.execute(_MIGRATION.read_text(encoding="utf-8"))
         yield conn
     finally:
@@ -248,7 +253,7 @@ async def test_unknown_row_stores_null_counters_because_the_columns_allow_it() -
                 """
                 SELECT column_name, is_nullable
                 FROM information_schema.columns
-                WHERE table_schema = 'public'
+                WHERE table_schema = 'omninode_internal'
                   AND table_name = 'consumer_flow_windows'
                 """
             )
@@ -303,7 +308,7 @@ async def test_a_replayed_older_window_is_refused_by_the_conflict_predicate() ->
         stored = await conn.fetchrow(
             """
             SELECT messages_in, ingest_sequence, flow_state
-            FROM consumer_flow_windows
+            FROM omninode_internal.consumer_flow_windows
             WHERE consumer_group = $1 AND topic = $2 AND window_start = $3
             """,
             _GROUP,

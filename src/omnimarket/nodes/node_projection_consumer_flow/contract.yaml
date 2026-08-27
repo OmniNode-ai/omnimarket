@@ -71,13 +71,13 @@ db_io:
     # before writing, so the declaration must cover what it actually does.
     - name: consumer_flow_windows
       database_ref: application
-      schema: public
+      schema: omninode_internal
       migration: "0000_create_consumer_flow_windows.sql"
       access: read_write
       role: consumer_flow
     - name: topic_produce_windows
       database_ref: application
-      schema: public
+      schema: omninode_internal
       migration: "0000_create_consumer_flow_windows.sql"
       access: read_write
       role: topic_produce
@@ -110,11 +110,15 @@ projection_api:
   expose: true
   topic: "onex.snapshot.projection.consumer-flow.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   table: "consumer_flow_windows"
-  # The same schema db_io declares and the migration creates: ONE physical
-  # relation, so the reader and the write path cannot resolve to different
-  # tables (the public/omninode_internal split OMN-15819 had to reconcile for
-  # live_events).
-  schema: "public"
+  # The exposure loader's ALLOWED_SCHEMAS is {omnidash_analytics, public}, and
+  # `public` is prohibited for application relations by OMN-15361 — so this
+  # field records the DATABASE the read model lives in. The physical relation
+  # is omninode_internal.consumer_flow_windows inside that database, declared
+  # exactly that way in db_io above, in the migration, and in the writer's SQL.
+  # On a bus_backed exposure the serving path reads bus_backed + key_columns
+  # and never this pair (OMN-15800), so nothing resolves against it; it is a
+  # record, and it is an accurate one at the granularity this field allows.
+  schema: "omnidash_analytics"
   columns:
     - "consumer_group"
     - "topic"

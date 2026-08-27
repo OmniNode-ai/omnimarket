@@ -144,18 +144,12 @@ def evaluate(changed_files: list[str], repo_root: Path) -> GateResult:
     if not targets:
         return GateResult()
     covering = sorted(
-        {
-            f
-            for f in changed_files
-            if is_real_db_integration_test_change(f, repo_root)
-        }
+        {f for f in changed_files if is_real_db_integration_test_change(f, repo_root)}
     )
     return GateResult(write_path_targets=targets, covering_tests=covering)
 
 
-def run(
-    *, changed_files: list[str], repo_root: Path, output_json: bool
-) -> int:
+def run(*, changed_files: list[str], repo_root: Path, output_json: bool) -> int:
     result = evaluate(changed_files, repo_root)
 
     if output_json:
@@ -234,8 +228,7 @@ def selftest() -> int:
         noncovering_test_rel = "tests/test_fake_mock_only_selftest.py"
         noncovering_test_path = repo_root / noncovering_test_rel
         noncovering_test_path.write_text(
-            "from unittest.mock import AsyncMock\n\n"
-            "def test_x():\n    AsyncMock()\n",
+            "from unittest.mock import AsyncMock\n\ndef test_x():\n    AsyncMock()\n",
             encoding="utf-8",
         )
 
@@ -291,7 +284,9 @@ def selftest() -> int:
         r = evaluate([write_path_file, "tests/test_deleted_selftest.py"], repo_root)
         if r.passed:
             ok = False
-            print("SELFTEST FAIL (case f should be RED): nonexistent file satisfied gate")
+            print(
+                "SELFTEST FAIL (case f should be RED): nonexistent file satisfied gate"
+            )
         else:
             print("SELFTEST ok: case (f) nonexistent/deleted test file -> RED")
 
