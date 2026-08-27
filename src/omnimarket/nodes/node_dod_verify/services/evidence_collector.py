@@ -94,7 +94,53 @@ _DEFAULT_EXECUTION_SCOPE = cast(
 # stall on the network; without a timeout a stuck git op would block the whole
 # collect() with no recovery (CodeRabbit — Stability). Kept generous because a
 # fetch of the OCC repo may transfer real objects.
-_GIT_OP_TIMEOUT_S = 60
+#
+# OMN-16787: raised from 60 s on a measurement, not a guess. `git worktree add
+# --detach origin/dev` on the live OCC repo checks out 32,382 files and takes
+# ~34.5 s single-threaded; the beta sweep runs dod_verify 5-way parallel
+# against the SAME clone. A 60 s ceiling therefore tripped on ordinary load,
+# and — before the fail-closed rule below — that trip degraded silently into a
+# stale-working-tree read reported as CONTRACT_MISSING. The ceiling has to sit
+# far enough above a real cold checkout that hitting it means something is
+# genuinely wrong, because hitting it now REFUSES rather than degrades.
+_DEFAULT_GIT_OP_TIMEOUT_S = 300
+
+# Operator override for the ceiling above, for hosts whose OCC clone or disk
+# is slower (or faster) than the machine the default was measured on.
+_GIT_OP_TIMEOUT_ENV = "DOD_VERIFY_GIT_OP_TIMEOUT_S"
+
+
+def _git_op_timeout_s() -> float:
+    """Resolve the git-subprocess ceiling, honouring the operator override.
+
+    Read per call rather than captured at import so a test or an operator can
+    set it without reloading the module. A malformed or negative value falls
+    back to the default rather than disabling the timeout — an unbounded git
+    op is the failure mode the ceiling exists to prevent.
+    """
+    raw = os.environ.get(_GIT_OP_TIMEOUT_ENV, "").strip()
+    if not raw:
+        return float(_DEFAULT_GIT_OP_TIMEOUT_S)
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "%s=%r is not a number; using the %ss default.",
+            _GIT_OP_TIMEOUT_ENV,
+            raw,
+            _DEFAULT_GIT_OP_TIMEOUT_S,
+        )
+        return float(_DEFAULT_GIT_OP_TIMEOUT_S)
+    if value < 0:
+        logger.warning(
+            "%s=%r is negative; using the %ss default.",
+            _GIT_OP_TIMEOUT_ENV,
+            raw,
+            _DEFAULT_GIT_OP_TIMEOUT_S,
+        )
+        return float(_DEFAULT_GIT_OP_TIMEOUT_S)
+    return value
+
 
 # OMN-15454: a failed OCC ref refresh (git fetch) used to be swallowed at
 # logger.info and the collector proceeded against whatever the local
@@ -1256,9 +1302,19 @@ class EvidenceCollector:
         exists on the ``main``-tracking working tree. This closes the round-1
         residual edge where a stale ``main`` copy was used as-is because the
         contract was merely *present* on the working tree so the rider never
-        fired. The working tree is used only as a fallback (dev worktree cannot be
-        materialised, or the contract is absent on dev). The worktree is removed
-        before returning.
+        fired. The working tree is used only as a fallback when the contract is
+        ABSENT on dev — never when dev could not be READ. The worktree is
+        removed before returning.
+
+        OMN-16787: "could not be read" and "is not there" are different facts
+        and must not share an outcome. ``_materialize_occ_dev_worktree`` has
+        two failure classes; OMN-15454 closed only the fetch one. A failed or
+        timed-out ``git worktree add`` used to fall through to the
+        ``main``-tracking working tree while the run still stamped
+        ``occ_governance_ref: origin/dev`` — and because OCC ``dev`` runs
+        thousands of commits ahead of ``main``, a dev-only contract was then
+        invisible and the run reported ``CONTRACT_MISSING``. Both classes now
+        refuse by default, under the same named override.
         """
         if contract_path is not None:
             return self._collect_impl(ticket_id, contract_path)
@@ -1315,6 +1371,55 @@ class EvidenceCollector:
                     )
                 ]
 
+            # OMN-16787: the second failure class, on the same terms. An OCC
+            # root WAS resolvable (a fetch was attempted, so refresh_outcome is
+            # not None) but the worktree could not be materialised — the
+            # `git worktree add` failed or, in production, timed out. Falling
+            # through here reads the `main`-tracking working tree while the
+            # run reports `occ_governance_ref: origin/dev`, which is the lie
+            # this refusal exists to stop.
+            #
+            # The `refresh_outcome is not None` guard is load-bearing: when no
+            # OCC root resolves at all no fetch is attempted, and that is a
+            # legitimate pre-existing shape (the caller's working-tree search)
+            # rather than a fault. It keeps its existing reporting.
+            worktree_unavailable = dev_root is None and refresh_outcome is not None
+            if worktree_unavailable and not allow_stale:
+                logger.error(
+                    "Refusing to resolve %s for %s: the %s worktree could not "
+                    "be materialised (git worktree add failed or timed out at "
+                    "%ss) and %s is not set. Falling back to the working tree "
+                    "would ground the verdict in a clone that tracks main.",
+                    self._occ_governance_ref,
+                    ticket_id,
+                    self._occ_governance_ref,
+                    _git_op_timeout_s(),
+                    _ALLOW_STALE_OCC_REF_ENV,
+                )
+                return [
+                    ModelEvidenceCheckResult(
+                        evidence_id="occ_worktree_unavailable",
+                        description=(
+                            "OCC worktree could not be materialised at "
+                            f"{self._occ_governance_ref}"
+                        ),
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=(
+                            "OCC_WORKTREE_UNAVAILABLE: git worktree add of "
+                            f"{self._occ_governance_ref} failed or timed out "
+                            f"(ceiling {_git_op_timeout_s()}s, override with "
+                            f"{_GIT_OP_TIMEOUT_ENV}). The only remaining "
+                            "source is the working tree, which tracks main and "
+                            "is therefore NOT the ref this run reports — so "
+                            "this run refuses instead of silently reporting "
+                            "the contract missing. Set "
+                            f"{_ALLOW_STALE_OCC_REF_ENV}=1 to proceed against "
+                            "the working tree anyway (every result is then "
+                            "marked un-attributable)."
+                        ),
+                    )
+                ]
+
             if dev_root is not None:
                 dev_candidate = Path(dev_root) / "contracts" / f"{ticket_id}.yaml"
                 if dev_candidate.exists():
@@ -1366,6 +1471,40 @@ class EvidenceCollector:
                             f"{_ALLOW_STALE_OCC_REF_ENV} was set; every check "
                             "result above is un-attributable to a verified-"
                             f"fresh {self._occ_governance_ref}."
+                        ),
+                    )
+                )
+            elif worktree_unavailable:
+                # OMN-16787, same disclosure contract as the fetch-failure
+                # override above: proceeding is allowed, pretending is not.
+                # These results came from the working tree, which tracks main.
+                results = [
+                    result.model_copy(
+                        update={
+                            "message": (
+                                f"{result.message or ''} "
+                                "[OMN-16787: UNATTRIBUTABLE — the "
+                                f"{self._occ_governance_ref} worktree could "
+                                "not be materialised; "
+                                f"{_ALLOW_STALE_OCC_REF_ENV} override active, "
+                                "this result was read from the working tree, "
+                                "which tracks main]"
+                            ).strip()
+                        }
+                    )
+                    for result in results
+                ]
+                results.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id="occ_worktree_unavailable_override",
+                        description=(
+                            "OCC worktree materialisation failure — override active"
+                        ),
+                        status=EnumEvidenceCheckStatus.SKIPPED,
+                        message=(
+                            f"{_ALLOW_STALE_OCC_REF_ENV} was set; every check "
+                            "result above was resolved from the working tree, "
+                            f"not from {self._occ_governance_ref}."
                         ),
                     )
                 )
@@ -1440,13 +1579,13 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_GIT_OP_TIMEOUT_S,
+                timeout=_git_op_timeout_s(),
             )
         except subprocess.TimeoutExpired:
             logger.warning(
                 "Timed out materialising %s worktree of OCC after %ss",
                 self._occ_governance_ref,
-                _GIT_OP_TIMEOUT_S,
+                _git_op_timeout_s(),
             )
             shutil.rmtree(tmp, ignore_errors=True)
             return None, None, refresh_outcome, None
@@ -1475,7 +1614,7 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_GIT_OP_TIMEOUT_S,
+                timeout=_git_op_timeout_s(),
             )
         except subprocess.TimeoutExpired:
             return None
@@ -1494,7 +1633,7 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_GIT_OP_TIMEOUT_S,
+                timeout=_git_op_timeout_s(),
             )
         except subprocess.TimeoutExpired:
             return EnumOccRefRefreshOutcome.FETCH_FAILED, "timed out"
@@ -1566,13 +1705,13 @@ class EvidenceCollector:
                     capture_output=True,
                     text=True,
                     check=False,
-                    timeout=_GIT_OP_TIMEOUT_S,
+                    timeout=_git_op_timeout_s(),
                 )
             except subprocess.TimeoutExpired:
                 logger.warning(
                     "Timed out removing OCC worktree %s after %ss",
                     worktree,
-                    _GIT_OP_TIMEOUT_S,
+                    _git_op_timeout_s(),
                 )
                 proc = None
             # A failed/timed-out `worktree remove` leaves a stale registration
@@ -1597,7 +1736,7 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_GIT_OP_TIMEOUT_S,
+                timeout=_git_op_timeout_s(),
             )
         except subprocess.TimeoutExpired:
             logger.warning("Timed out pruning OCC worktrees under %s", occ)
