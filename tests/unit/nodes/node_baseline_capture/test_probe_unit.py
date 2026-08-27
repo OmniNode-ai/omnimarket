@@ -434,7 +434,7 @@ class TestProbeDbRowCounts:
         mock_conn.fetchrow = AsyncMock(side_effect=[make_row(c) for c in range(7)])
         mock_conn.close = AsyncMock()
         mock_conn.execute = AsyncMock()
-        mock_conn.transaction = MagicMock(side_effect=lambda: _NullTransaction())
+        mock_conn.transaction = MagicMock(side_effect=_NullTransaction)
 
         mock_asyncpg = MagicMock()
         mock_asyncpg.connect = AsyncMock(return_value=mock_conn)
@@ -500,7 +500,7 @@ class TestProbeDbRowCounts:
         mock_conn.fetchrow = AsyncMock(side_effect=fetchrow_side_effect)
         mock_conn.close = AsyncMock()
         mock_conn.execute = AsyncMock()
-        mock_conn.transaction = MagicMock(side_effect=lambda: _NullTransaction())
+        mock_conn.transaction = MagicMock(side_effect=_NullTransaction)
 
         mock_asyncpg = MagicMock()
         mock_asyncpg.connect = AsyncMock(return_value=mock_conn)

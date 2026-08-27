@@ -313,7 +313,7 @@ def resolve_tenant_scope(
 
     try:
         return resolve_serving_tenant(requested_tenant, topic=topic), None
-    except TenantContextMissingError as exc:
+    except TenantContextMissingError:
         return None, JSONResponse(
             status_code=422,
             content={
@@ -321,7 +321,7 @@ def resolve_tenant_scope(
                 "error": "tenant_context_unresolved",
                 "topic": topic,
                 "tenant_column": cfg.tenant_column,
-                "degraded_reason": str(exc),
+                "degraded_reason": "tenant context could not be resolved",
                 "migration_ticket": _TENANT_CONTEXT_TICKET,
             },
         )
