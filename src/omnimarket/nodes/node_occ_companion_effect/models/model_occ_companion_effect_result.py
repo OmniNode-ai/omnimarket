@@ -30,6 +30,17 @@ class ModelOccCompanionEffectResult(BaseModel):
         default=False, description="True when the plan had nothing to author."
     )
     no_op_reason: str = Field(default="", description="Why nothing was authored.")
+    suppression_code: str = Field(
+        default="",
+        description="Machine-readable declining-branch identity from the compute "
+        "plan (OMN-16665), empty when the plan authored something.",
+    )
+    suppression_surfaced: bool = Field(
+        default=False,
+        description="True when the decline was surfaced back onto the product PR "
+        "(idempotent comment + mint-status check-run). False on a re-trigger whose "
+        "identical decline was already surfaced, and in dry_run.",
+    )
     fast_path: bool = Field(
         default=False, description="True when the trivial-infra fast-path skipped it."
     )

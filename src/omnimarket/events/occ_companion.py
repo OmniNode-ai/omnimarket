@@ -49,6 +49,72 @@ class ModelCompanionWedge(BaseModel):
     alternative: str = Field(..., description="What to do instead.")
 
 
+class EnumCompanionSuppressionCode(StrEnum):
+    """Why a companion was NOT authored — one code per declining branch.
+
+    OMN-16665: every declining branch of ``compute_companion_plan`` previously
+    collapsed into a free-text ``no_op_reason`` that the write-EFFECT logged and
+    discarded. A machine-readable code is what lets the EFFECT decide the
+    SEVERITY of the decline (courtesy note vs. hard failure) instead of treating
+    every decline as an indistinguishable success.
+    """
+
+    ALREADY_BOUND = "already_bound"
+    NO_TICKET = "no_ticket"
+    PR_CLOSED_UNMERGED = "pr_closed_unmerged"
+    PR_DRAFT = "pr_draft"
+    HOLD_LABEL = "hold_label"
+    HOLD_MARKER_TEXT = "hold_marker_text"
+    EVIDENCE_LOST_PR_MERGED = "evidence_lost_pr_merged"
+
+
+class ModelOccCompanionSuppression(BaseModel):
+    """The structured, surfaceable reason a companion was declined (OMN-16665).
+
+    ``matched_text``/``matched_location``/``matched_line`` exist because
+    OMN-16665 AC2 requires the surfaced message to quote the ACTUAL matched
+    substring: "suppressed by F-17" is not actionable, "suppressed because the
+    body contains ``do not merge`` at line 12" is. They are empty/zero for the
+    branches that have no textual trigger (no ticket, already bound, PR state).
+
+    ``evidence_lost`` is the load-bearing field. False means the decline is
+    correct AND recoverable — the PR is a draft, is held, or is not merging, so
+    re-triggering after the condition clears mints normally. True means the
+    companion can NEVER be minted by the born path for this PR: the product PR
+    has already merged unbound, so the evidence record is permanently absent
+    unless a human acts. Only the True case is a failure.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    code: EnumCompanionSuppressionCode = Field(
+        ..., description="Machine-readable declining-branch identity."
+    )
+    summary: str = Field(..., description="One-line human-readable decline reason.")
+    matched_text: str = Field(
+        default="",
+        description="The literal substring that triggered the decline (AC2), or "
+        "empty when the branch has no textual trigger.",
+    )
+    matched_location: str = Field(
+        default="",
+        description="Where matched_text was found: 'title', 'body', 'label', or "
+        "'state'. Empty when there is no textual trigger.",
+    )
+    matched_line: int = Field(
+        default=0,
+        description="1-indexed line of matched_text within matched_location, or 0.",
+    )
+    remediation: str = Field(
+        ..., description="What the PR author must do to clear the decline."
+    )
+    evidence_lost: bool = Field(
+        default=False,
+        description="True when the companion is permanently lost for this PR and "
+        "the decline must be reported as a FAILURE, not a success.",
+    )
+
+
 class ModelCompanionFile(BaseModel):
     """One net-new OCC companion file the plan emits (byte-exact content)."""
 
@@ -91,6 +157,12 @@ class ModelOccCompanionPlan(BaseModel):
         description="True when nothing should be authored (already bound, or no ticket).",
     )
     no_op_reason: str = Field(default="", description="Why the plan is a no-op.")
+    suppression: ModelOccCompanionSuppression | None = Field(
+        default=None,
+        description="Structured decline record (OMN-16665). Non-None on EVERY "
+        "no_op plan; the write-EFFECT surfaces it on the product PR and escalates "
+        "to a hard failure when suppression.evidence_lost is True.",
+    )
 
     fast_path: bool = Field(
         default=False,
@@ -156,6 +228,15 @@ class ModelOccCompanionRequest(BaseModel):
     pr_title: str = Field(default="", description="Product PR title.")
     pr_body: str = Field(default="", description="Product PR body.")
     pr_state: str = Field(default="open", description="Product PR state.")
+    pr_merged: bool = Field(
+        default=False,
+        description="Did the product PR MERGE? GitHub's REST ``state`` is "
+        "``closed`` for a merged PR and for an abandoned one alike, so state "
+        "cannot discriminate them (OMN-16665). A closed-unmerged PR is a dead "
+        "target and declining its companion is correct forever; a MERGED PR that "
+        "never got one has a permanent evidence hole. Read from ``merged``/"
+        "``merged_at`` by the read-EFFECT.",
+    )
     pr_is_draft: bool = Field(
         default=False,
         description="Is the product PR a draft? Carried on the seam so the pure "
@@ -168,6 +249,19 @@ class ModelOccCompanionRequest(BaseModel):
         "COMPUTE can suppress companions for do-not-merge/WIP-LABELLED PRs (F-17) "
         "without a probe — the emitter checks title + labels; parity requires the "
         "canonical producer to check labels too.",
+    )
+
+    allow_merged_replay: bool = Field(
+        default=False,
+        description="Deliberately-scoped F-17 override (OMN-16665): when True AND "
+        "the product PR MERGED, author the companion anyway instead of declining. "
+        "This is the recovery path for a companion permanently lost to the "
+        "merge/queue-latency race — the born path publishes while the PR is open, "
+        "the runner fleet holds the job, and the PR merges before compute runs. It "
+        "does NOT relax the decline for a closed-UNMERGED PR (occ#4333's dead "
+        "target stays declined) and defaults False, so no born-path behavior "
+        "changes. Named as the override the OMN-14993 precheck docstring says this "
+        "recovery would require.",
     )
 
     runner: str = Field(
@@ -273,16 +367,23 @@ class ModelOccStateRequest(BaseModel):
         default="occ-evidence-source-autobind",
         description="Receipt verifier identity (must differ from runner).",
     )
+    allow_merged_replay: bool = Field(
+        default=False,
+        description="Carried through to ModelOccCompanionRequest — the OMN-16665 "
+        "merged-PR recovery override. See that field for the full rationale.",
+    )
     correlation_id: UUID = Field(default_factory=uuid4)
 
 
 __all__ = [
     "EnumCompanionFileKind",
+    "EnumCompanionSuppressionCode",
     "ModelCompanionFile",
     "ModelCompanionWedge",
     "ModelObservedProbe",
     "ModelOccCompanionPlan",
     "ModelOccCompanionRequest",
+    "ModelOccCompanionSuppression",
     "ModelOccContractState",
     "ModelOccStateRequest",
 ]

@@ -46,6 +46,15 @@ class ModelOccCompanionEffectRequest(BaseModel):
         description="'dry_run' reads+computes the plan only; 'mutate' clones, pushes, "
         "opens the OCC PR, and stamps the product body.",
     )
+    allow_merged_replay: bool = Field(
+        default=False,
+        description="OMN-16665 merged-PR recovery override. Default False: the "
+        "born path never authors a companion for a PR that is no longer open. Set "
+        "True ONLY on a deliberate manual replay for a PR that MERGED without a "
+        "companion (the merge/queue-latency race), to author the evidence record "
+        "the race destroyed. It has no effect on a closed-UNMERGED PR — that "
+        "decline (occ#4333) stands regardless.",
+    )
     correlation_id: UUID = Field(default_factory=uuid4)
 
 

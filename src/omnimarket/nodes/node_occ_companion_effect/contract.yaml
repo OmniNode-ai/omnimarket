@@ -48,6 +48,20 @@ handler_routing:
         name: "HandlerOccCompanionEffect"
         module: "omnimarket.nodes.node_occ_companion_effect.handlers.handler_occ_companion_effect"
 
+# OMN-16665: a mint DECLINE is no longer uniformly a success. The handler
+# surfaces every decline onto the product PR (idempotent comment + the
+# `occ-companion-effect / mint status` check-run) and RAISES
+# OccCompanionEvidenceLostError when the compute plan reports
+# `suppression.evidence_lost` — a product PR that MERGED unbound, whose evidence
+# record the born path can never author. That raise is what routes the terminal
+# event to `-failed.v1` below. Before it, a lost companion was published on the
+# `-completed.v1` SUCCESS topic, so every projection and every "did the mint
+# work" probe read green over a permanently missing record (live: omnimemory#447
+# / OMN-16669, where the PR merged ~90s before the held publisher job reached
+# the broker). Recoverable declines (draft, hold marker/label, no ticket,
+# already bound, closed-unmerged) stay on the success topic and post a `neutral`
+# check-run — they are correct and retriable, and observability must not newly
+# block a PR that policy only paused.
 runtime_dispatch:
   command_topic: "onex.cmd.omnimarket.occ-companion-effect-requested.v1"
   terminal_events:

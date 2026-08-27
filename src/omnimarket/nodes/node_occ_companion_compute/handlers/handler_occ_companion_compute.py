@@ -51,6 +51,10 @@ from omnibase_core.validation.validator_receipt_gate import (
     compute_contract_entry_sha256,
 )
 
+from omnimarket.events.occ_companion import (
+    EnumCompanionSuppressionCode,
+    ModelOccCompanionSuppression,
+)
 from omnimarket.merge_control.hold_marker import HOLD_MARKER_RE
 from omnimarket.nodes.node_occ_companion_compute.models.enum_companion_file_kind import (
     EnumCompanionFileKind,
@@ -727,6 +731,29 @@ def assert_supersession_checks_are_item_bound(
     )
 
 
+def _first_hold_marker_hit(pr_title: str, pr_body: str) -> tuple[str, str, int] | None:
+    """Locate the first F-17 hold marker, returning (matched_text, where, line).
+
+    OMN-16665 AC2: the surfaced message must quote the ACTUAL matched substring
+    and where it is, not just the rule name. ``HOLD_MARKER_RE`` matches things as
+    varied as ``do not merge``, ``WIP`` and ``[draft``, and the live trap is a
+    CONDITIONAL hold ("do not merge until CI is confirmed green post-outage",
+    omnibase_compat#193 / omnidash#292) which reads to a human as temporary and
+    to the regex as absolute. Naming the exact phrase and its line is what turns
+    a mystified author into one who can act.
+
+    Title is searched before body, matching the original branch's evaluation
+    order. Line numbers are 1-indexed within the searched field.
+    """
+    for value, location in ((pr_title, "title"), (pr_body, "body")):
+        match = HOLD_MARKER_RE.search(value)
+        if match is None:
+            continue
+        line_no = value.count("\n", 0, match.start()) + 1
+        return match.group(0), location, line_no
+    return None
+
+
 def _stamp_product_body(
     existing_body: str, *, occ_pr_number: int, tickets: tuple[str, ...]
 ) -> str:
@@ -793,41 +820,131 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     # do-not-merge LABEL as well as the title, so parity requires the canonical
     # producer to honour labels too (a label is the un-editable-by-body marker a
     # reviewer applies to hold a PR).
+    #
+    # OMN-16665 restructures the ORDER of these branches without loosening any of
+    # them. Pre-16665 the state branch fired FIRST and returned an
+    # indistinguishable ``no_op`` for two structurally different situations:
+    #
+    #   * a closed-UNMERGED PR — a dead target, correctly declined forever; and
+    #   * a MERGED PR that never got a companion — a PERMANENT evidence hole.
+    #
+    # GitHub's REST ``state`` is ``closed`` for both, so the old code could not
+    # tell them apart, and the write-EFFECT reported both on the SUCCESS topic.
+    # That is how omnimemory#447 (OMN-16669) lost its companion in silence: the
+    # born path published while the PR was open, the self-hosted runner fleet
+    # held the publisher job ~12m30s, the PR merged first, and compute — doing a
+    # correct live read — declined a PR that genuinely needed the record.
     pr_state_norm = request.pr_state.strip().lower()
-    if pr_state_norm in _SUPPRESS_PR_STATES:
+    state_suppressed = pr_state_norm in _SUPPRESS_PR_STATES
+
+    if state_suppressed and not request.pr_merged:
         return _plan(
             no_op=True,
             no_op_reason=(
                 f"product PR state is {pr_state_norm!r}; not authoring a companion "
                 "for a non-open PR (F-17)"
             ),
-        )
-    if request.pr_is_draft:
-        return _plan(
-            no_op=True,
-            no_op_reason="product PR is a draft; suppressing companion (F-17)",
-        )
-    dnm_label = next(
-        (lbl for lbl in request.pr_labels if HOLD_MARKER_RE.search(lbl)), None
-    )
-    if dnm_label is not None:
-        return _plan(
-            no_op=True,
-            no_op_reason=(
-                f"product PR carries a do-not-merge/WIP label ({dnm_label!r}); "
-                "suppressing companion (F-17)"
+            suppression=ModelOccCompanionSuppression(
+                code=EnumCompanionSuppressionCode.PR_CLOSED_UNMERGED,
+                summary=(
+                    f"product PR state is {pr_state_norm!r} and it did not merge — "
+                    "no companion is authored for a dead target (F-17, occ#4333)"
+                ),
+                matched_location="state",
+                matched_text=pr_state_norm,
+                remediation=(
+                    "Nothing to do. If this PR is reopened and merged, re-trigger "
+                    "the born path and the companion mints normally."
+                ),
             ),
         )
-    if HOLD_MARKER_RE.search(request.pr_title) or HOLD_MARKER_RE.search(
-        request.pr_body
-    ):
-        return _plan(
-            no_op=True,
-            no_op_reason=(
-                "product PR title/body is marked do-not-merge/WIP/draft; "
-                "suppressing companion (F-17)"
+
+    # A MERGED PR is NOT automatically a benign decline, so it falls THROUGH to
+    # the benign exits below (already-bound, no-ticket, fast-path) and is only
+    # declared lost if none of them apply. ``allow_merged_replay`` is the
+    # deliberately-scoped F-17 override (OMN-16665) that lets the recovery path
+    # author the record the race destroyed; it never applies to closed-unmerged.
+    merged_recovery = state_suppressed and request.pr_merged
+    author_merged = merged_recovery and request.allow_merged_replay
+
+    # Draft / hold markers are live-state holds on an OPEN PR. On a merged PR
+    # they are stale text — reporting "held" for a PR that already merged would
+    # bury the real finding (the evidence hole) under a moot one.
+    if not merged_recovery:
+        if request.pr_is_draft:
+            return _plan(
+                no_op=True,
+                no_op_reason="product PR is a draft; suppressing companion (F-17)",
+                suppression=ModelOccCompanionSuppression(
+                    code=EnumCompanionSuppressionCode.PR_DRAFT,
+                    summary="product PR is a draft; companion suppressed (F-17)",
+                    matched_location="state",
+                    matched_text="draft",
+                    remediation=(
+                        "Mark the PR ready for review. The ready_for_review trigger "
+                        "re-fires the born path and the companion mints then."
+                    ),
+                ),
+            )
+        dnm_label_match = next(
+            (
+                (lbl, HOLD_MARKER_RE.search(lbl))
+                for lbl in request.pr_labels
+                if HOLD_MARKER_RE.search(lbl)
             ),
+            None,
         )
+        if dnm_label_match is not None:
+            dnm_label, label_hit = dnm_label_match
+            return _plan(
+                no_op=True,
+                no_op_reason=(
+                    f"product PR carries a do-not-merge/WIP label ({dnm_label!r}); "
+                    "suppressing companion (F-17)"
+                ),
+                suppression=ModelOccCompanionSuppression(
+                    code=EnumCompanionSuppressionCode.HOLD_LABEL,
+                    summary=(
+                        f"product PR carries the hold label {dnm_label!r}; companion "
+                        "suppressed (F-17)"
+                    ),
+                    matched_location="label",
+                    matched_text=label_hit.group(0) if label_hit else dnm_label,
+                    remediation=(
+                        f"Remove the {dnm_label!r} label, then re-run the OCC "
+                        "Companion Effect Publisher workflow_dispatch for this PR."
+                    ),
+                ),
+            )
+        hold_hit = _first_hold_marker_hit(request.pr_title, request.pr_body)
+        if hold_hit is not None:
+            matched_text, location, line_no = hold_hit
+            return _plan(
+                no_op=True,
+                no_op_reason=(
+                    "product PR title/body is marked do-not-merge/WIP/draft; "
+                    "suppressing companion (F-17)"
+                ),
+                suppression=ModelOccCompanionSuppression(
+                    code=EnumCompanionSuppressionCode.HOLD_MARKER_TEXT,
+                    summary=(
+                        f"the PR {location} contains {matched_text!r} at line "
+                        f"{line_no}, which the F-17 hold-marker rule reads as a "
+                        "do-not-merge/WIP hold; companion suppressed"
+                    ),
+                    matched_location=location,
+                    matched_text=matched_text,
+                    matched_line=line_no,
+                    remediation=(
+                        f"The hold is honoured exactly as written. Reword or remove "
+                        f"{matched_text!r} in the PR {location} — note that a "
+                        "CONDITIONAL hold ('do not merge until CI is green') is "
+                        "indistinguishable from an unconditional one to this rule — "
+                        "then re-run the OCC Companion Effect Publisher "
+                        "workflow_dispatch for this PR."
+                    ),
+                ),
+            )
 
     # Idempotency: already bound to an OCC source — nothing to author.
     already = _already_bound_occ(request.pr_body)
@@ -835,6 +952,14 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         return _plan(
             no_op=True,
             no_op_reason=f"already bound to OCC#{already} (Evidence-Source is an OCC source)",
+            suppression=ModelOccCompanionSuppression(
+                code=EnumCompanionSuppressionCode.ALREADY_BOUND,
+                summary=(
+                    f"this PR is already bound to OCC#{already}; its evidence "
+                    "companion exists and nothing needs authoring"
+                ),
+                remediation="Nothing to do — the companion already exists.",
+            ),
         )
 
     # Gate-parity ticket extraction; no ticket → no-op (pr-title gate is the feedback).
@@ -843,6 +968,19 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         return _plan(
             no_op=True,
             no_op_reason="no OMN-XXXX ticket cited in title/body; nothing to author",
+            suppression=ModelOccCompanionSuppression(
+                code=EnumCompanionSuppressionCode.NO_TICKET,
+                summary=(
+                    "no OMN-XXXX ticket is cited in the PR title or body, so there "
+                    "is no ticket to author an evidence contract against"
+                ),
+                remediation=(
+                    "Add the OMN-XXXX ticket reference to the PR title and body "
+                    "(the pr-title and Receipt-Gate checks require it anyway), then "
+                    "push or re-run the OCC Companion Effect Publisher "
+                    "workflow_dispatch for this PR."
+                ),
+            ),
         )
 
     # Trivial-infra fast-path — a non-runtime infra edit skips the companion.
@@ -851,6 +989,39 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     )
     if fast_ok:
         return _plan(tickets=tickets, fast_path=True, fast_path_reason=fast_reason)
+
+    # OMN-16665: every benign exit above declined to fire. A merged PR reaching
+    # here cites a ticket, is unbound, and is not fast-path-exempt — so it NEEDED
+    # a companion and will never get one from the born path. This is the defect,
+    # not a no-op, and the write-EFFECT reports it on the FAILURE topic.
+    if merged_recovery and not author_merged:
+        return _plan(
+            tickets=tickets,
+            no_op=True,
+            no_op_reason=(
+                f"product PR merged unbound: {', '.join(tickets)} has no OCC "
+                "evidence companion and the born path can no longer author one"
+            ),
+            suppression=ModelOccCompanionSuppression(
+                code=EnumCompanionSuppressionCode.EVIDENCE_LOST_PR_MERGED,
+                summary=(
+                    f"this PR MERGED without an OCC evidence companion for "
+                    f"{', '.join(tickets)}. The companion was not suppressed by "
+                    "policy — the PR merged before the mint request reached "
+                    "compute, so the evidence record is permanently missing."
+                ),
+                matched_location="state",
+                matched_text="merged",
+                remediation=(
+                    "Re-run the OCC Companion Effect Publisher workflow_dispatch "
+                    "for this PR with allow_merged_replay=true. That is the "
+                    "deliberately-scoped F-17 override for exactly this recovery; "
+                    "it authors the missing contract + receipt against the merged "
+                    "PR and does not apply to closed-unmerged PRs."
+                ),
+                evidence_lost=True,
+            ),
+        )
 
     evidence_id = f"dod-{repo_slug}-pr-{pr_number}"
     # OMN-14619: prefer the read-EFFECT's content-read check (a symbol the PR
