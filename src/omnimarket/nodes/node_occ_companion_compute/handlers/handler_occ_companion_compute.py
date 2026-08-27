@@ -1074,8 +1074,23 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     # item -- it is the same product PR, so one derived candidate backs all
     # three generated contract items, exactly mirroring how the born-path
     # emitter (occ_companion_emitter.py) reuses one derived value for its two
-    # items. Falls back to deploy_assessment_check_value's own (disclosed,
-    # pre-existing) literal default when no content-bound candidate exists.
+    # items. Falls back to deploy_assessment_check_value's own literal default
+    # when no content-bound candidate exists.
+    #
+    # OMN-15988: that fallback is no longer a value this producer knows is
+    # inadmissible at the moment it mints it. It used to render
+    # ``gh pr diff <n> --repo <r> --name-only | grep -ciE ...``, whose
+    # command-position tokens lex to ``{gh, grep}`` -- and OMN-14443's
+    # deploy-gate falsifiability ratchet admits only the COMPOUND token
+    # ``gh api`` from the ``gh`` family, so every companion minted for a
+    # deploy-sensitive PR with no derivable content-bound candidate was born
+    # FAILING the product repo's required deploy-gate and had to be repaired by
+    # hand (measured: 7 of the 26 auto-minted contracts on OCC dev between
+    # 2026-08-15 and 2026-08-26 carry a hand-authored
+    # ``dod-deploy-assessment-falsifiable`` supersession for exactly this).
+    # The fallback now reads the identical fact through the ``gh api`` verb.
+    # The content-bound value above is still strictly preferred: it is pinned to
+    # an immutable ref and was proven RED at the merge base before minting.
     deploy_assessment_final_check_value = (
         deploy_assessment_check_value(
             pr_number=pr_number, repo=repo, content_bound_check_value=_content_bound

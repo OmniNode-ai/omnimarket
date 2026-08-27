@@ -335,16 +335,28 @@ def files_outside_cited_namespace(
 
 # --- F-05 deploy-scope ---------------------------------------------------------
 _RUNTIME_TOUCHING_RE = re.compile(r"(^|/)(nodes/|migrations/)|\.py$", re.IGNORECASE)
-# OMN-15247 R21b: back to `gh pr diff`. R21 moved this to
-# `gh api .../pulls/<n>/files` because deploy-gate's falsifiability classifier
-# (LIVE-probe vocabulary only) rejects `gh pr diff ... | grep`. That is true and
-# the replacement was still wrong: the OCC runner pre-substitutes
-# ${REPO}/${PR_NUMBER} with the OCC COMPANION's own repo/number, so in OCC CI the
-# value grepped the COMPANION's filenames for runtime paths -- exit 1 against
-# OCC#5418's real file list (born RED), or exit 0 only because the producer had
-# just created a receipt directory literally named `dod-deploy-assessment`
-# (circular). The deploy-gate gap is real, pre-existing and tracked separately.
-_DIFF_SCOPE_RE = re.compile(r"\bgh pr diff\b")
+# OMN-15247 R21b (HISTORICAL): moved back to `gh pr diff` from `gh api
+# .../pulls/<n>/files` because — at the time — the LATTER was placeholder-form
+# (`${REPO}`/`${PR_NUMBER}`), and the OCC runner pre-substitutes those tokens
+# with the OCC COMPANION's own repo/number, so in OCC CI the value grepped the
+# COMPANION's filenames for runtime paths -- exit 1 against OCC#5418's real
+# file list (born RED), or exit 0 only because the producer had just created a
+# receipt directory literally named `dod-deploy-assessment` (circular).
+#
+# OMN-15988: moved BACK to `gh api .../pulls/<n>/files`, this time for good.
+# OMN-15407 (landed after R21b) made this check_value's PR/repo LITERAL, not
+# placeholder -- so the R21b failure mode (runner substitution re-targeting the
+# companion) cannot recur; see the OMN-15988 note above
+# `occ_evidence_stamp.DEPLOY_ASSESSMENT_EVIDENCE_ID`. The `gh pr diff` form
+# R21b restored lexes to bare commands `{gh, grep}`, which OMN-14443's deploy-
+# gate falsifiability ratchet (`validate_pr_deploy_required.classify_check_value`)
+# rejects outright -- it recognizes only the compound `gh api` token from the
+# `gh` family -- so every ticket past the ratchet's frozen grandfather snapshot
+# (OMN-14855) was born failing deploy-gate with zero possible auto-repair
+# (live: omnimarket#2058, run 31617976140, job 94185423251). The regex below
+# recognizes EITHER historical transport so a fixture pinned to either shape
+# still passes; the producer itself emits only the `gh api` form now.
+_DIFF_SCOPE_RE = re.compile(r"\bgh pr diff\b|\bgh api repos/\S+/pulls/\d+/files\b")
 
 
 def is_runtime_touching(changed_files: tuple[str, ...]) -> bool:

@@ -80,6 +80,17 @@ jobs:
       - name: Clone onex_change_control (consumer-gate parity)
         run: git clone --depth=1 https://github.com/OmniNode-ai/onex_change_control.git ../onex_change_control
 
+      # OMN-15988: the deploy-gate falsifiability suite imports the REAL
+      # omniclaude gate script (validate_pr_deploy_required.py) and drives the
+      # emitted deploy-scope check_value through the actual
+      # classify_check_value / has_deploy_evidence the product repos' required
+      # deploy-gate calls. Without this checkout that suite SKIPS, and a
+      # producer whose deploy item the ratchet rejects would ship unnoticed —
+      # which is exactly the OMN-15988 defect (CLAUDE.md rule 5: a detector
+      # that is not wired as a gate is advisory and gets ignored).
+      - name: Clone omniclaude (deploy-gate ratchet parity)
+        run: git clone --depth=1 https://github.com/OmniNode-ai/omniclaude.git ../omniclaude
+
       - name: Install uv
         uses: astral-sh/setup-uv@v4
         with:
@@ -111,11 +122,13 @@ jobs:
             tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247.py \
             tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py \
             tests/unit/nodes/node_occ_companion_compute/test_occ_companion_deploy_assessment_omn_14742.py \
+            tests/unit/nodes/node_occ_companion_compute/test_occ_companion_deploy_assessment_falsifiability_omn_15988.py \
             tests/unit/test_occ_contention_omn_15247.py \
             tests/unit/scripts/test_check_generated_checks_red_derivable.py \
             -q -p no:randomly
         env:
           OCC_REPO_DIR: ${{ github.workspace }}/../onex_change_control
+          OMNICLAUDE_REPO_DIR: ${{ github.workspace }}/../omniclaude
 
       # OMN-15317: the RED-derivability CHECKER, executed. Until this ticket the
       # only reference to scripts/ci/check_generated_checks_red_derivable.py in

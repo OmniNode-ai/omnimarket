@@ -95,14 +95,21 @@ def _admissibility_module() -> ModuleType | None:
     )
 
 
+# OMN-15988: ``deploy_assessment_check_value`` is NO LONGER a member of this
+# set. Its no-override default used to render ``gh pr diff ... | grep -ciE``,
+# whose command-position tokens lex to ``{gh, grep}`` -- rejected by
+# deploy-gate's OMN-14443 ratchet by construction, on every non-grandfathered
+# ticket, no matter what the check read. OMN-15988 switched that default's
+# transport to ``gh api .../pulls/<n>/files --paginate --jq '.[].filename' |
+# grep -ciE ...`` (same live fact, the ``gh api`` verb the ratchet recognizes),
+# so it is now ADMITTED by deploy-gate and belongs in
+# :data:`_DEPLOY_GATE_ADMISSIBLE_DEFAULT_FUNCS` below instead. The remaining
+# four are still bare ``gh pr view`` PR-metadata reads and stay legacy.
 _LEGACY_FUNCS = {
     "downstream_dod_evidence_check_value": lambda: downstream_dod_evidence_check_value(
         pr_number=_PR, repo=_REPO
     ),
     "ci_dod_evidence_check_value": lambda: ci_dod_evidence_check_value(
-        pr_number=_PR, repo=_REPO
-    ),
-    "deploy_assessment_check_value": lambda: deploy_assessment_check_value(
         pr_number=_PR, repo=_REPO
     ),
     "downstream_receipt_public_check_value": lambda: (
@@ -143,24 +150,41 @@ class TestLegacyShapeIsRejectedByBothLiveGates:
         )
         assert verdict.admissible is False, (name, verdict.reason)
 
-    def test_deploy_assessment_legacy_shape_is_a_deploy_gate_only_defect(self) -> None:
-        """MEASURED asymmetry, not assumed: ``deploy_assessment_check_value``'s
-        pre-fix ``gh pr diff ... | grep -ciE '...'`` default is inadmissible
-        under deploy-gate (bare ``gh``/``grep`` are not in ``LIVE_PROBE_
-        COMMANDS``) but IS admissible under OCC's ``evidence_admissibility``
-        predicate when driven with the runner's real hermetic vocabulary:
-        ``grep`` alone is in ``EXECUTED_HERMETIC_COMMANDS``, and the check has
-        no path-shaped operand for the OUTSIDE-ITS-OWN-DIFF rule to catch (the
-        grep pattern is a `|`-joined alternation, which never matches the
-        predicate's path-operand regex). So the LIVE OMN-16148/omnimarket#2093
-        rejection this ticket cites is a deploy-gate-only failure for this
-        specific function, not a dual-gate one -- the fix still needs to close
-        it because deploy-gate is a REQUIRED merge gate on its own."""
+
+@pytest.mark.unit
+class TestDeployAssessmentDefaultClearsBothLiveGates:
+    """OMN-15988: ``deploy_assessment_check_value``'s NO-OVERRIDE default is the
+    one generated shape that must clear deploy-gate even when no content-bound
+    candidate is derivable, because it is the item the product repo's REQUIRED
+    deploy-gate reads for a runtime-touching PR.
+
+    Pre-OMN-15988 it could not: the OMN-16160 revision of this suite recorded
+    the asymmetry (deploy-gate REJECTS, OCC admissibility ACCEPTS) as an open,
+    deploy-gate-only defect. These two tests are the same measurement after the
+    transport fix, and they are the regression lock: a revert to any bare-``gh``
+    transport turns the first one RED.
+    """
+
+    def test_default_is_admitted_by_deploy_gate(self) -> None:
+        module = _deploy_gate_module()
+        if module is None:
+            pytest.skip("omniclaude checkout not available")
+        verdict = module.classify_check_value(
+            deploy_assessment_check_value(pr_number=_PR, repo=_REPO)
+        )
+        assert verdict.falsifiable is True, verdict.reason
+        # Traceable to the compound token, not to a widened probe list.
+        assert "gh-api" in verdict.reason
+
+    def test_default_is_still_admitted_by_occ_admissibility(self) -> None:
+        """The OCC-side verdict was already ACCEPT pre-fix; prove the transport
+        change did not cost it (a fix that traded one gate for the other would
+        be no fix at all)."""
         module = _admissibility_module()
         if module is None:
             pytest.skip("onex_change_control checkout not available")
         verdict = module.classify_evidence(
-            _LEGACY_FUNCS["deploy_assessment_check_value"](),
+            deploy_assessment_check_value(pr_number=_PR, repo=_REPO),
             admissible_probes=module.LIVE_PROBE_COMMANDS
             | module.EXECUTED_HERMETIC_COMMANDS,
             changed_paths=frozenset({"contracts/OMN-16160.yaml"}),
@@ -240,8 +264,12 @@ class TestContentBoundOverrideIsAdmissibleUnderBothLiveGates:
         assert ci_dod_evidence_check_value(pr_number=_PR, repo=_REPO) == (
             f"gh pr view {_PR} --repo {_REPO} --json files"
         )
+        # OMN-15988 changed THIS one default's transport (gh pr diff -> gh api
+        # .../pulls/<n>/files) so it clears the OMN-14443 deploy-gate ratchet.
+        # The other four are unchanged.
         assert deploy_assessment_check_value(pr_number=_PR, repo=_REPO) == (
-            f"gh pr diff {_PR} --repo {_REPO} --name-only | "
+            f"gh api repos/{_REPO}/pulls/{_PR}/files --paginate "
+            "--jq '.[].filename' | "
             "grep -ciE 'nodes/|handlers/|runtime/|services/|docker|monitor_logs|deploy'"
         )
         assert downstream_receipt_public_check_value(pr_number=_PR, repo=_REPO) == (
