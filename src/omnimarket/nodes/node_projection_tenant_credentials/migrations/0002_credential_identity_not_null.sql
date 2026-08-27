@@ -84,37 +84,17 @@ ALTER TABLE tenant_inference_credentials
     ALTER COLUMN created_at SET DEFAULT NOW(),
     ALTER COLUMN created_at SET NOT NULL;
 
-DO $$
-DECLARE
-    existing_pk_name TEXT;
-    existing_pk_columns TEXT[];
-BEGIN
-    SELECT constraints.conname,
-           array_agg(columns.attname ORDER BY key_position.ordinality)
-      INTO existing_pk_name, existing_pk_columns
-    FROM pg_constraint AS constraints
-    CROSS JOIN LATERAL unnest(constraints.conkey)
-        WITH ORDINALITY AS key_position(attnum, ordinality)
-    JOIN pg_attribute AS columns
-      ON columns.attrelid = constraints.conrelid
-     AND columns.attnum = key_position.attnum
-    WHERE constraints.conrelid = 'tenant_inference_credentials'::regclass
-      AND constraints.contype = 'p'
-    GROUP BY constraints.conname;
-
-    IF existing_pk_name IS NOT NULL
-       AND (existing_pk_name <> 'tenant_inference_credentials_pkey'
-            OR existing_pk_columns <> ARRAY['api_key_ref']::TEXT[]) THEN
-        EXECUTE format(
-            'ALTER TABLE tenant_inference_credentials DROP CONSTRAINT %I',
-            existing_pk_name
-        );
-        existing_pk_name := NULL;
-    END IF;
-
-    IF existing_pk_name IS NULL THEN
-        ALTER TABLE tenant_inference_credentials
-            ADD CONSTRAINT tenant_inference_credentials_pkey PRIMARY KEY (api_key_ref);
-    END IF;
-END
-$$;
+-- Static DROP-then-ADD rather than a conditional rebuild. A DO block that
+-- discovers the existing constraint name and drops it with EXECUTE format()
+-- is dynamic SQL, and check_application_database_sql.py rejects dynamic SQL in
+-- a procedural block because its relation targets cannot be proven statically
+-- -- correctly, since that is the shape a schema-qualification bypass takes.
+-- The pair below is the pattern every sibling reconciliation in this corpus
+-- already uses (delegation_routing_tenant_overlay 0001, capability_scores
+-- 0001): DROP ... IF EXISTS is a no-op when the constraint is absent, and the
+-- ADD is safe because the reconciliation above has already made api_key_ref
+-- non-null and unique.
+ALTER TABLE tenant_inference_credentials
+    DROP CONSTRAINT IF EXISTS tenant_inference_credentials_pkey;
+ALTER TABLE tenant_inference_credentials
+    ADD CONSTRAINT tenant_inference_credentials_pkey PRIMARY KEY (api_key_ref);
