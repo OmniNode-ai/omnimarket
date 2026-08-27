@@ -92,7 +92,7 @@ def _make_request(**overrides: object) -> ModelLlmDelegationCallRequest:
 
 
 def _make_api_response(
-    content: str = "hello world", tokens_in: int = 10, tokens_out: int = 20
+    content: object = "hello world", tokens_in: int = 10, tokens_out: int = 20
 ) -> dict[str, Any]:
     return {
         "choices": [{"message": {"content": content}}],
@@ -437,6 +437,40 @@ class TestHandlerLlmDelegationCall:
         assert result.failure_class == EnumDelegationFailureClass.INVALID_JSON
         assert result.content is None
         assert result.error_message == "API returned empty message content"
+
+    @pytest.mark.unit
+    @pytest.mark.parametrize(
+        ("content", "error_message"),
+        [
+            (
+                [{"type": "text", "text": "RSD_DELEGATION_OK"}],
+                "API returned non-string message content",
+            ),
+            (
+                {"type": "text", "text": "RSD_DELEGATION_OK"},
+                "API returned non-string message content",
+            ),
+            (None, "API returned non-string message content"),
+            (" \t\n", "API returned empty message content"),
+        ],
+        ids=("multipart-list", "mapping", "null", "whitespace"),
+    )
+    def test_non_text_or_blank_message_content_returns_invalid_json_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        content: object,
+        error_message: str,
+    ) -> None:
+        """Only a non-blank text completion may become a delegation artifact."""
+        _patch_post(monkeypatch, json_body=_make_api_response(content=content))
+
+        with patch(f"{_HANDLER_MODULE}._is_endpoint_healthy", return_value=True):
+            result = HandlerLlmDelegationCall()(_make_request())
+
+        assert result.success is False
+        assert result.failure_class == EnumDelegationFailureClass.INVALID_JSON
+        assert result.content is None
+        assert result.error_message == error_message
 
     @pytest.mark.unit
     def test_qwen_reasoning_only_shape_returns_invalid_json_failure(

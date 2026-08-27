@@ -66,13 +66,15 @@ def test_default_protocol_config_adds_qwen_provider_non_thinking_options() -> No
     assert request_options == {"chat_template_kwargs": {"enable_thinking": False}}
 
 
-def test_qwen38_test_profile_requests_visible_completion() -> None:
-    """The live qwen3.8 delegation route suppresses hidden reasoning for tests."""
+def test_qwen38_local_coder_code_generation_profile_requests_visible_completion() -> (
+    None
+):
+    """The routed qwen3.8 local-coder code path suppresses hidden reasoning."""
     system_prompt, prompt, request_options = apply_inference_protocol(
         system_prompt="Return only the requested token.",
         prompt="Reply with exactly: RSD_DELEGATION_OK",
         model="qwen3.8",
-        task_type="test",
+        task_type="code_generation",
         backend_id="local-coder",
     )
 

@@ -501,7 +501,19 @@ class HandlerLlmDelegationCall:
                 "API returned empty choices array",
             )
 
-        content: str = choices[0].get("message", {}).get("content") or ""
+        content = choices[0].get("message", {}).get("content")
+        if not isinstance(content, str):
+            # The OpenAI-compatible schema permits newer providers to use a
+            # multipart content array. This effect owns a text artifact,
+            # however, and must not stringify/promote a structured payload or
+            # a reasoning field into a visible completion. Fail closed instead
+            # of allowing ``.strip()`` below to raise on a list, mapping, or
+            # null content value.
+            return self._failure_result(
+                request,
+                EnumDelegationFailureClass.INVALID_JSON,
+                "API returned non-string message content",
+            )
         if not content.strip():
             # A successful HTTP response is not a successful delegation when the
             # OpenAI-compatible message carries no visible completion. In
