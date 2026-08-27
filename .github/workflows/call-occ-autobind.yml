@@ -104,10 +104,9 @@ jobs:
     # omnimarket runs this publisher INLINE rather than through that reusable, so
     # it is a second home for the same job and needs the same pin.
     #
-    # WHY: this job publishes to the TAILNET-ONLY dev-lane broker
-    # `omninode-pc.tail75df5e.ts.net:19092` (config/ci_bus_lanes.yaml, in this
-    # repo). Only the self-hosted `omnibase-ci` fleet on .201 is on that tailnet;
-    # a GitHub-hosted runner cannot resolve the name at all. The
+    # WHY: this job publishes to the TAILNET-ONLY dev-lane broker declared in
+    # config/ci_bus_lanes.yaml. Only the self-hosted `omnibase-ci` fleet on .201
+    # is on that tailnet; a GitHub-hosted runner cannot resolve the name at all. The
     # OMN-14451/OMN-14639 fail-loud contract below then correctly refuses to exit
     # 0, so NO OCC companion is minted, so no `Evidence-Source: OCC#<n>` is
     # stamped, so the receipt gate (OMN-10419) hard-fails every PR in this repo.

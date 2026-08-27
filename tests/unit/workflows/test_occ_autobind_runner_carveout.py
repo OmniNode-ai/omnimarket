@@ -8,9 +8,9 @@ omnimarket runs ``publish-occ-autobind`` INLINE in
 carries its own copy of the runner carve-out.
 
 Context (OMN-16682 constraint 8). The publisher targets the TAILNET-ONLY
-dev-lane broker ``omninode-pc.tail75df5e.ts.net:19092`` declared in this repo's
-``config/ci_bus_lanes.yaml``. Only the self-hosted ``omnibase-ci`` fleet on .201
-is on that tailnet. Until 2026-08-26 the job selected its runner from the SHARED
+dev-lane broker declared in this repo's ``config/ci_bus_lanes.yaml``. Only the
+self-hosted ``omnibase-ci`` fleet on .201 is on that tailnet. Until 2026-08-26
+the job selected its runner from the SHARED
 ``OMNI_TRUSTED_CI_RUNS_ON_JSON`` variable — the same seam that governs every
 lint/test/build job in the org, and the seam the OMN-16682 hosted-runner
 migration exists to flip.
@@ -33,7 +33,7 @@ consistency tidy-up in review; it fails here instead.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 import yaml
@@ -53,8 +53,10 @@ FLEET_LITERAL = '\'["self-hosted","omnibase-ci"]\''
 def _runs_on() -> str:
     loaded = yaml.safe_load(_WORKFLOW.read_text(encoding="utf-8"))
     assert isinstance(loaded, dict)
-    workflow = cast("dict[str, Any]", loaded)
-    runs_on = workflow["jobs"]["publish-occ-autobind"]["runs-on"]
+    workflow = cast("dict[str, object]", loaded)
+    jobs = cast("dict[str, object]", workflow["jobs"])
+    publish = cast("dict[str, object]", jobs["publish-occ-autobind"])
+    runs_on = publish["runs-on"]
     assert isinstance(runs_on, str), (
         "publish-occ-autobind must set `runs-on` to a selector expression"
     )
@@ -76,8 +78,8 @@ def test_publisher_is_not_governed_by_the_shared_seam() -> None:
         f"publish-occ-autobind must NOT read `{SHARED_SEAM_VAR}`. That variable "
         "governs ~475 unrelated lint/test/build jobs and exists to be flipped to "
         "ubuntu-latest by the OMN-16682 migration. A hosted runner cannot "
-        "resolve omninode-pc.tail75df5e.ts.net:19092, so binding this publisher "
-        "to that seam makes a CI migration a merge-wide outage (incident "
+        "resolve the tailnet-only dev-lane broker, so binding this publisher to "
+        "that seam makes a CI migration a merge-wide outage (incident "
         "OMN-16691, 2026-08-26 22:46:41Z-23:32:03Z)."
     )
 
@@ -114,7 +116,8 @@ def test_carveout_rationale_is_documented_inline() -> None:
         "call-occ-autobind.yml must cite OMN-16691 inline so the carve-out is "
         "not read as an arbitrary variable rename"
     )
-    assert "tail75df5e.ts.net" in raw, (
-        "call-occ-autobind.yml must name the tailnet broker dependency inline — "
-        "it is the entire reason this job cannot follow the shared seam"
+    assert "TAILNET-ONLY dev-lane broker" in raw
+    assert "config/ci_bus_lanes.yaml" in raw, (
+        "call-occ-autobind.yml must cite the lane broker authority inline — it "
+        "is the entire reason this job cannot follow the shared seam"
     )
