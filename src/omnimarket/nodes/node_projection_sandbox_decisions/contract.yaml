@@ -53,7 +53,12 @@ db_io:
       database_ref: application
       schema: omninode_internal
       migration: "0001_create_sandbox_decisions.sql"
-      access: write
+      # OMN-16690: this handler QUERIES this table (idempotency / lookup)
+      # before writing. `access: write` is refused fail-closed at the
+      # runtime read seam (ProjectionTableOperation._assert_read_declared),
+      # which quarantines every event while the caller still sees a 202.
+      # The declaration must cover what the handler actually does.
+      access: read_write
       role: decisions
 
 event_bus:
