@@ -50,6 +50,39 @@ HOOK_SCRIPT = REPO_ROOT / "scripts" / "hooks" / "prepush_smart_tests.sh"
 
 _GUARANTEED_NON_MATCHING_HOSTNAME = "definitely-not-the-200-host-omn15059"
 
+
+def _force_undesignated_host(env: dict[str, str]) -> None:
+    """Make the ambient host un-designated for BOTH gate identities (OMN-16752).
+
+    The guard admits a host if `hostname -s` matches EITHER designated
+    identity: `.200` (``PREPUSH_200_HOSTNAME``) or the `.201` gate-runner
+    container (``PREPUSH_201_GATE_RUNNER_HOSTNAME``, default
+    ``gate-runner-201``). Every "the guard must REFUSE" proof below therefore
+    has to neutralise both; overriding only the `.200` name leaves the `.201`
+    arm live, and on a host whose real hostname matches it the guard correctly
+    ALLOWS and the assertion inverts.
+
+    That is not hypothetical, and the cost was not a cosmetic red. The `.201`
+    gate-runner is the host the OMN-16295 capacity guard routes to when `.200`
+    is over threshold — i.e. the one host where the full suite is MOST likely
+    to run — and its container sets ``hostname: gate-runner-201`` precisely so
+    the guard recognises it. Running this file there on 2026-08-27 turned
+    ``test_guard_refuses_full_suite_escalation_on_non_200_host`` (which drives
+    the REAL hook, with no stubbed pytest) from a refusal proof into a live
+    RECURSIVE FULL-SUITE FORK BOMB: the guard allowed, the hook ran the whole
+    suite, that suite re-reached this test, popped the recursion sentinel
+    (documented below as deliberate first-entry behavior) and re-entered —
+    measured four nested full suites deep, one new level per minute, on the
+    shared `.201` host that also carries the runner fleet and every runtime
+    lane.
+
+    So this override is a correctness AND a containment requirement. Neutralise
+    both identities; do not narrow this to one.
+    """
+    env["PREPUSH_200_HOSTNAME"] = _GUARANTEED_NON_MATCHING_HOSTNAME
+    env["PREPUSH_201_GATE_RUNNER_HOSTNAME"] = _GUARANTEED_NON_MATCHING_HOSTNAME
+
+
 _FULL_SUITE_BRANCH_RE = re.compile(
     r'if \[ "\$IS_FULL" = "True" \].*?\n(.*?\n)(?=elif|else|fi)',
     re.DOTALL,
@@ -137,7 +170,7 @@ def test_guard_refuses_full_suite_escalation_on_non_200_host() -> None:
     # recursion sentinel an outer hook run exports must not leak in.
     env.pop("ONEX_PREPUSH_HOOK_ACTIVE", None)
     env["PREPUSH_FULL_SUITE"] = "1"
-    env["PREPUSH_200_HOSTNAME"] = _GUARANTEED_NON_MATCHING_HOSTNAME
+    _force_undesignated_host(env)
     # OMN-16428: this test proves the guard REFUSES without an override in
     # effect. If the ambient shell that invoked pytest itself had
     # PREPUSH_ALLOW_LOCAL_FULL_SUITE=1 set (the sanctioned degraded-capacity
@@ -302,7 +335,7 @@ def _run_hook_with_stubbed_selection(
     env["PATH"] = f"{stub_bin}{os.pathsep}{env['PATH']}"
     env["PREPUSH_TEST_SELECTION_JSON"] = str(selection_file)
     env["PREPUSH_BASE_REF"] = "HEAD"
-    env["PREPUSH_200_HOSTNAME"] = _GUARANTEED_NON_MATCHING_HOSTNAME
+    _force_undesignated_host(env)
     for leaky in (
         "PREPUSH_FULL_SUITE",
         "PREPUSH_ALLOW_LOCAL_FULL_SUITE",
