@@ -156,11 +156,39 @@ class TestTheLoopbackIsRealAndContained:
         # The deliberate OMN-15570 G3 local mirror, pinned so that a future
         # change to the dual-publish shape surfaces here instead of silently
         # widening the baseline this test subtracts.
+        #
+        # Identity, not just arity: a bare count would also be satisfied by
+        # publish_heartbeat emitting some UNRELATED event to the local bus,
+        # which would then be silently subtracted from the loopback assertion
+        # below and hide a real republish. So the mirror is pinned to the
+        # CANONICAL topic (not the tenant-prefixed cloud wire topic) and to the
+        # cloud leg's envelope IDENTITY — the whole point of OMN-15570 G3 is
+        # that one envelope goes both places, so envelope_id/correlation_id
+        # stay identical rather than two being minted for one liveness tick.
         published_by_the_heartbeat_itself = list(local_bus.published)
         assert len(published_by_the_heartbeat_itself) == 1, (
             "expected exactly one deliberate local mirror from publish_heartbeat "
             f"(OMN-15570 G3), got {len(published_by_the_heartbeat_itself)}"
         )
+        local_mirror = local_bus.only()
+        assert local_mirror.topic == _HEARTBEAT_TOPIC, (
+            "the local mirror must land on the CANONICAL topic the in-cluster "
+            f"projection subscribes to, not {local_mirror.topic!r}"
+        )
+        # Identity, not bytes. The two legs are deliberately NOT byte-identical:
+        # the cloud leg carries the ``gateway_direction: local-to-cloud`` tag
+        # (asserted in test_published_heartbeat_is_tagged_local_to_cloud above),
+        # and that tag is the very thing the loopback guard reads. What
+        # OMN-15570 G3 guarantees is that ONE envelope goes both places, so its
+        # identity is stable across the legs rather than two envelopes being
+        # minted for a single liveness tick — that is what is pinned here, and
+        # an unrelated event could not satisfy it.
+        assert local_mirror.envelope().envelope_id == emitted.envelope().envelope_id, (
+            "the local mirror must be the SAME envelope as the cloud leg, not a second one"
+        )
+        assert (
+            local_mirror.envelope().correlation_id == emitted.envelope().correlation_id
+        ), "the local mirror must preserve the cloud leg's correlation_id"
 
         # The heartbeat the gateway just published arrives on the very topic
         # mirror_topics.inbound tells it to subscribe to.

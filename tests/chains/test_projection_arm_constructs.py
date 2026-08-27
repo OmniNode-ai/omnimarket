@@ -72,6 +72,17 @@ _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "omnimarket" / "nodes"
 
 _CONTRACT = _SRC_ROOT / "node_delegation_routing_reducer" / "contract.yaml"
 
+# The OMN-15631 tenant-overlay table whose physical-schema resolution is the
+# whole subject of this suite.
+_OVERLAY_TABLE = "delegation_routing_tenant_overlay"
+
+# The projection arm's callback is a closure minted by
+# _make_projection_dispatch_callback, so its __qualname__ is how the SELECTED
+# ARM is identified. Asserting only that some dispatcher_id exists would be
+# satisfied by the typed def-B fallback arm too — which is exactly the
+# wrong-arm outcome OMN-16767 shipped and this suite exists to catch.
+_PROJECTION_CALLBACK_QUALNAME = "_make_projection_dispatch_callback.<locals>._callback"
+
 # Every topology profile checked into omnibase_infra. The original report was
 # "unconstructible under ALL SEVEN", so all seven are asserted, not a sample.
 _PROFILES = (
@@ -98,11 +109,23 @@ def test_overlay_table_resolves_to_its_physical_grant_schema() -> None:
 
     0.38.9 -> 'tenant' (no profile grants there, so the arm cannot build)
     0.38.10+ -> 'public' (matches the TABLE grant all seven profiles declare)
+
+    The schema and table are read off the PARSED contract rather than typed in.
+    With hard-coded values this assertion would keep passing after the contract
+    moved its logical schema or renamed the table — i.e. it would still be green
+    while no longer testing the declared ``db_io`` binding at all.
     """
-    assert (
-        physical_grant_schema_for_table("tenant", "delegation_routing_tenant_overlay")
-        == "public"
-    ), (
+    contract = _load_contract()
+    assert contract.db_io is not None, "contract no longer declares db_io"
+    table = next(
+        (t for t in contract.db_io.db_tables if t.name == _OVERLAY_TABLE), None
+    )
+    assert table is not None, (
+        f"contract no longer declares the {_OVERLAY_TABLE!r} table; this suite "
+        f"is testing a binding that does not exist"
+    )
+
+    assert physical_grant_schema_for_table(table.schema, table.name) == "public", (
         "delegation_routing_tenant_overlay is missing from "
         "TENANT_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 in the INSTALLED "
         "omnibase-infra. That set entry first shipped in v0.38.10 — the lock has "
@@ -120,7 +143,7 @@ def test_contract_still_declares_the_db_io_block() -> None:
         "non-empty"
     )
     names = [t.name for t in contract.db_io.db_tables]
-    assert "delegation_routing_tenant_overlay" in names, names
+    assert _OVERLAY_TABLE in names, names
 
 
 # The projection binding's DSN env var. `_make_projection_dispatch_callback`
@@ -167,4 +190,16 @@ def test_projection_arm_constructs_under_every_topology_profile(
     assert prepared.dispatcher_id, (
         f"[{profile_name}] wiring produced no dispatcher for a contract that "
         f"declares db_io"
+    )
+
+    # THE ARM, not just "a dispatcher". A contract whose db_tables came back
+    # empty (stale core, unpopulated db_io) still yields a perfectly valid
+    # dispatcher_id — it is just wired to the typed def-B arm instead. That
+    # silent fallback IS the OMN-16796 defect class, so identity is asserted.
+    selected = getattr(prepared.dispatcher, "__qualname__", "")
+    assert selected == _PROJECTION_CALLBACK_QUALNAME, (
+        f"[{profile_name}] expected the PROJECTION arm "
+        f"({_PROJECTION_CALLBACK_QUALNAME}), got {selected!r} — the contract "
+        f"declares db_io, so a different arm means db_tables resolved empty or "
+        f"the binding fell through"
     )
