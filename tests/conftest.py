@@ -510,9 +510,8 @@ async def kafka_integration_bus(
     Defaults to localhost:9092. Skips automatically when not under
     @pytest.mark.integration.
 
-    Topic auto-creation is handled by the e2e compose redpanda-topic-manager
-    service. For ad-hoc topics used in tests, callers should publish with
-    auto.create.topics.enable (Redpanda default: on).
+    Consumer-only topics must be explicitly provisioned by the test fixture
+    before subscription. Tests must not rely on broker auto-creation.
     """
     if not request.node.get_closest_marker("integration"):
         pytest.skip("kafka_integration_bus requires @pytest.mark.integration")
