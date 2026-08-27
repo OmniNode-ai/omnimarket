@@ -2066,7 +2066,13 @@ class EvidenceCollector:
                 return None
             if check.get("check_type") not in ("command", "test_passes"):
                 return None
-            check_value = check.get("check_value")
+            # The EFFECTIVE command, resolved exactly as ``_run_command_check``
+            # resolves it (``command`` first, ``check_value`` as fallback).
+            # Reading only ``check_value`` would let a check spelled with the
+            # ``command`` key execute as a surrogate while classifying as
+            # probative — a complete bypass of this refusal, since its green
+            # would still count. Found by CodeRabbit on omnimarket#2168.
+            check_value = check.get("command") or check.get("check_value")
             probative_class = classify_check_value(
                 check_value if isinstance(check_value, str) else None
             )

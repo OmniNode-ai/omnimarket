@@ -102,6 +102,13 @@ class TestNoAllSurrogateCompanion:
         ``negative/pr_existence_revert`` is the OMN-15317 fixture for a producer
         reverted to the ``pr_existence`` binding. Every check in it is
         exit-status-invariant, which is exactly the class this ticket names.
+
+        The fixture must STAY all-surrogate or this test stops exercising the
+        negative path. That is enforced rather than hoped for: if the fixture
+        gained a probative check the gate would return no failures and the
+        ``len(failures) == 1`` assertion below would go RED, and the two
+        per-class assertions pin that BOTH surrogate classes are still present.
+        A fixture edit cannot quietly make this test vacuous.
         """
         contract = (
             _FIXTURES
@@ -152,6 +159,42 @@ class TestNoAllSurrogateCompanion:
             )
         )
         assert GATE.check_contract_has_probative_evidence(contract) == []
+
+    def test_a_check_spelled_with_the_command_key_is_still_classified(
+        self, tmp_path: Path
+    ) -> None:
+        """CodeRabbit (PR #2168): classify the EFFECTIVE command, not one key.
+
+        ``EvidenceCollector._run_command_check`` resolves ``command`` first and
+        falls back to ``check_value``. A gate that read only ``check_value``
+        would pass a check spelled with the ``command`` key while the runner
+        executed it as a surrogate — a complete bypass. Zero live instances of
+        this spelling exist in the OCC corpus today (measured at the pinned
+        SHA), so this closes a latent hole rather than an active one.
+        """
+        contract = tmp_path / "OMN-15391.yaml"
+        contract.write_text(
+            yaml.safe_dump(
+                {
+                    "dod_evidence": [
+                        {
+                            "id": "command-key-surrogate",
+                            "checks": [
+                                {
+                                    "check_type": "command",
+                                    "command": (
+                                        "gh pr view 1 --repo o/r --json number,state"
+                                    ),
+                                }
+                            ],
+                        }
+                    ]
+                }
+            )
+        )
+        failures = GATE.check_contract_has_probative_evidence(contract)
+        assert len(failures) == 1
+        assert "ALL_SURROGATE" in failures[0]
 
     def test_a_contract_with_no_evidence_at_all_is_rejected(
         self, tmp_path: Path

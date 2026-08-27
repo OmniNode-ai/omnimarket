@@ -545,6 +545,57 @@ class TestThroughTheRealCollector:
         assert result.non_probative_count == 7
         assert result.total_checks == 8
 
+    def test_a_surrogate_spelled_with_the_command_key_is_still_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """CodeRabbit (PR #2168): classify the EFFECTIVE command, not one key.
+
+        ``_run_command_check`` resolves ``check.get("command") or
+        check.get("check_value")``. Classifying only ``check_value`` would let a
+        check spelled with the ``command`` key EXECUTE as a surrogate while
+        being counted as probative — its green would still reach
+        ``verified_count``, which is a complete bypass of this refusal. Zero
+        live instances of this spelling exist in the OCC corpus at the pinned
+        SHA, so this closes a latent hole rather than an active one.
+        """
+        _stub_exit_zero(monkeypatch)
+        contract = {
+            "schema_version": "1.0.0",
+            "ticket_id": "OMN-15391",
+            "title": "command-key spelling",
+            "dod_evidence": [
+                {
+                    "id": "command-key-surrogate",
+                    "description": "spelled with the command key",
+                    "source": "generated",
+                    "checks": [
+                        {
+                            "check_type": "command",
+                            "command": (
+                                "gh pr view 1 --repo OmniNode-ai/omnimarket "
+                                "--json number,state"
+                            ),
+                        }
+                    ],
+                }
+            ],
+        }
+        path = tmp_path / "OMN-15391.yaml"
+        path.write_text(yaml.safe_dump(contract))
+
+        command = ModelDodVerifyStartCommand(
+            correlation_id=uuid.uuid4(),
+            ticket_id="OMN-15391",
+            contract_path=str(path),
+            requested_at=datetime.now(tz=UTC),
+        )
+        result = HandlerDodVerify()._handle_typed(command)
+        assert isinstance(result, ModelDodVerifyState)
+
+        assert result.verified_count == 0
+        assert result.non_probative_count >= 1
+        assert result.status is EnumDodVerifyStatus.SKIPPED
+
     def test_a_surrogate_that_actually_goes_red_still_fails_the_contract(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:

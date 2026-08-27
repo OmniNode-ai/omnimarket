@@ -155,7 +155,12 @@ def check_contract_has_probative_evidence(path: Path) -> list[str]:
         for check in item.get("checks") or []:
             if not isinstance(check, dict):
                 continue
-            check_value = check.get("check_value")
+            # The EFFECTIVE command, resolved the way the runner resolves it
+            # (``EvidenceCollector._run_command_check``: ``command`` first,
+            # ``check_value`` as fallback). Reading only ``check_value`` would
+            # let a check spelled with the ``command`` key pass this gate while
+            # executing as a surrogate. Found by CodeRabbit on omnimarket#2168.
+            check_value = check.get("command") or check.get("check_value")
             if not isinstance(check_value, str):
                 continue
             if is_surrogate_check_value(check_value):
