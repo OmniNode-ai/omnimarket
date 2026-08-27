@@ -167,6 +167,22 @@ def check_contract_has_probative_evidence(path: Path) -> list[str]:
                 # verdict, and the surrogates beside it are additive provenance.
                 return []
 
+    if not surrogates:
+        # Items exist but not one of them yielded a classifiable command: every
+        # item declared no ``checks``, or every ``check_value`` was absent or
+        # not a string. Reporting ALL_SURROGATE here would name a class that
+        # was never observed and print an empty list as its evidence — the
+        # unfalsifiable-diagnosis shape this ticket exists to remove. It is
+        # still a failure: a contract with no runnable check cannot prove
+        # completion either. It just gets the accurate reason.
+        return [
+            f"NO_CLASSIFIABLE_CHECK [{path}]: the contract declares "
+            f"{len(items)} dod_evidence item(s) but not one of them carries a "
+            "string check_value, so nothing can be executed and nothing can "
+            "prove completion. Declare a check whose exit status depends on "
+            "the product change."
+        ]
+
     return [
         f"ALL_SURROGATE [{path}]: every check in this contract is "
         "exit-status-invariant over the product change, so the contract is "

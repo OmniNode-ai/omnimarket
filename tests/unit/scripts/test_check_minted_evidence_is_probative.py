@@ -162,6 +162,32 @@ class TestNoAllSurrogateCompanion:
         assert len(failures) == 1
         assert "NO_EVIDENCE" in failures[0]
 
+    @pytest.mark.parametrize(
+        "items",
+        [
+            [{"id": "no-checks-key"}],
+            [{"id": "empty-checks", "checks": []}],
+            [{"id": "no-check-value", "checks": [{"check_type": "command"}]}],
+            [{"id": "non-string", "checks": [{"check_value": 17}]}],
+        ],
+    )
+    def test_items_with_no_classifiable_check_get_the_accurate_reason(
+        self, tmp_path: Path, items: list[dict[str, Any]]
+    ) -> None:
+        """CodeRabbit (PR #2168): do not report a class that was never observed.
+
+        These contracts still fail — a contract with no runnable check cannot
+        prove completion either — but calling them ALL_SURROGATE would name a
+        class nothing matched and print an empty list as its evidence, which is
+        the unfalsifiable-diagnosis shape this ticket exists to remove.
+        """
+        contract = tmp_path / "OMN-15391.yaml"
+        contract.write_text(yaml.safe_dump({"dod_evidence": items}))
+        failures = GATE.check_contract_has_probative_evidence(contract)
+        assert len(failures) == 1
+        assert "NO_CLASSIFIABLE_CHECK" in failures[0]
+        assert "ALL_SURROGATE" not in failures[0]
+
 
 class TestTheGateRefusesAVacuousRun:
     """A gate that inspected nothing must fail, not pass."""

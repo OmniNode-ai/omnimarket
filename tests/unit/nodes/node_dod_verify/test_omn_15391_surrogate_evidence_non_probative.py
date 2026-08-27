@@ -87,6 +87,25 @@ pytestmark = pytest.mark.unit
 # --------------------------------------------------------------------------
 
 
+# Long verbatim commands are bound to names rather than written as implicit
+# adjacent-string concatenation inside the parametrize lists below: CodeQL flags
+# that shape as a possible missing comma, and in a list of commands a silently
+# joined pair would change what is under test without any test going red.
+_PR_VIEW_MULTI_FIELD = (
+    "gh pr view 6931 --repo OmniNode-ai/onex_change_control "
+    "--json number,state,headRefName"
+)
+_CONTENT_BOUND_READ = (
+    "gh api repos/OmniNode-ai/omnibase_infra/contents/src/x.py"
+    "?ref=bfa0b093646471667a265e4d884af53857fa2e10 --jq '.content' "
+    "| base64 -d | grep -c 'def _require_str'"
+)
+_ASSERTED_PR_STATE = (
+    "gh pr view 6931 --repo OmniNode-ai/onex_change_control --json state "
+    "--jq '.state' | grep -q MERGED"
+)
+
+
 class TestTheSurrogatePredicate:
     """``classify_check_value`` over the shapes that motivated the ticket."""
 
@@ -95,8 +114,7 @@ class TestTheSurrogatePredicate:
         [
             "gh pr view 324 --repo OmniNode-ai/omniweb --json number,state",
             "gh pr view 1015 --repo OmniNode-ai/omninode_infra --json files",
-            "gh pr view 6931 --repo OmniNode-ai/onex_change_control "
-            "--json number,state,headRefName",
+            _PR_VIEW_MULTI_FIELD,
             # The runner substitutes ``${PR_NUMBER}``/``${REPO}`` before
             # execution; a value placeholder is not an assertion, so the
             # template classifies exactly as its resolved form does.
@@ -129,9 +147,7 @@ class TestTheSurrogatePredicate:
         [
             # A content read pinned at an immutable ref — RED at the merge base,
             # GREEN at the head. The one generated shape that observes the product.
-            "gh api repos/OmniNode-ai/omnibase_infra/contents/src/x.py"
-            "?ref=bfa0b093646471667a265e4d884af53857fa2e10 --jq '.content' "
-            "| base64 -d | grep -c 'def _require_str'",
+            _CONTENT_BOUND_READ,
             # AC4's negative control, stated as the ticket words it: a
             # legitimately generic repo-wide invariant suite that a ticket
             # actually changed must NOT be flagged.
@@ -142,8 +158,7 @@ class TestTheSurrogatePredicate:
             # red, and for a ticket whose DoD genuinely is "the PR merged" it is
             # the correct evidence. Separating those readings needs the ticket's
             # own bar (OMN-14409), not this predicate.
-            "gh pr view 6931 --repo OmniNode-ai/onex_change_control --json state "
-            "--jq '.state' | grep -q MERGED",
+            _ASSERTED_PR_STATE,
             'test "$(gh pr view 12 --repo o/r --json state --jq .state)" = MERGED',
         ],
     )
