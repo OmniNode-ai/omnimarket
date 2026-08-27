@@ -29,6 +29,9 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     failed_count: int = Field(default=0, ge=0)
     skipped_count: int = Field(default=0, ge=0)
     superseded_count: int = Field(default=0, ge=0)
+    # OMN-15391: executed, exited 0, but exit-status-invariant over the product
+    # change. Provenance, never completion — see ModelDodVerifyState.
+    non_probative_count: int = Field(default=0, ge=0)
     error_message: str | None = Field(default=None)
 
 
