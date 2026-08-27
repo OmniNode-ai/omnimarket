@@ -5,8 +5,14 @@
 TDD: tests written before implementation was complete. Each test asserts the
 pure delta function and the YAML projection side effect.
 
+OMN-16790: the ``handle()`` cases below used to pass ``input_data={"event": ...}``
+— an envelope shape no producer emits — and so could not observe the live
+``KeyError: 'event'``. They now build the declared def-B input model, which is
+the same object the runtime validates the wire payload into.
+
 Related:
     - OMN-11230: Task 6: Create node_session_phase_reducer (REDUCER)
+    - OMN-16790: fold the WIRE payload, not a hand-built local envelope
 """
 
 from __future__ import annotations
@@ -20,6 +26,7 @@ import yaml
 from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer import (
     HandlerSessionPhaseReducer,
     ModelSessionPhaseEvent,
+    ModelSessionPhaseReducerInput,
     ModelSessionPhaseState,
 )
 
@@ -284,13 +291,11 @@ class TestSessionPhaseReducerWritesStateFile:
         state_file = tmp_path / "phase_state.yaml"
 
         handler.handle(
-            input_data={
-                "event": {
-                    "event_type": "session.started",
-                    "session_id": _SESSION_ID,
-                    "timestamp": _NOW.isoformat(),
-                }
-            },
+            ModelSessionPhaseReducerInput(
+                event_type="session.started",
+                session_id=_SESSION_ID,
+                timestamp=_NOW,
+            ),
             state_path=str(state_file),
         )
 
@@ -305,16 +310,14 @@ class TestSessionPhaseReducerWritesStateFile:
         state_file = tmp_path / "phase_state.yaml"
 
         handler.handle(
-            input_data={
-                "event": {
-                    "event_type": "session.started",
-                    "session_id": _SESSION_ID,
-                    "timestamp": _NOW.isoformat(),
-                    "phase": "health_gate",
-                    "budget_elapsed_pct": 10,
-                    "active_worker_count": 2,
-                }
-            },
+            ModelSessionPhaseReducerInput(
+                event_type="session.started",
+                session_id=_SESSION_ID,
+                timestamp=_NOW,
+                phase="health_gate",
+                budget_elapsed_pct=10,
+                active_worker_count=2,
+            ),
             state_path=str(state_file),
         )
 
@@ -332,36 +335,35 @@ class TestSessionPhaseReducerWritesStateFile:
         assert required_fields.issubset(data.keys())
 
     def test_state_file_is_overwritten_on_second_event(self, tmp_path: Path) -> None:
-        """Each event overwrites the previous state file (latest-state-wins)."""
+        """Each event folds onto the previous state file (latest-state-wins).
+
+        OMN-16790: the second call passes NO prior state, because a bus message
+        never carries one. The fold must pick the session up from the projection
+        file the first call wrote — if it did not, ``session.phase.state`` would
+        hit the ``state is None`` branch of ``delta`` and yield ``"unknown"``.
+        """
         handler = HandlerSessionPhaseReducer()
         state_file = tmp_path / "phase_state.yaml"
 
         # First event: session started
-        result = handler.handle(
-            input_data={
-                "event": {
-                    "event_type": "session.started",
-                    "session_id": _SESSION_ID,
-                    "timestamp": _NOW.isoformat(),
-                }
-            },
+        handler.handle(
+            ModelSessionPhaseReducerInput(
+                event_type="session.started",
+                session_id=_SESSION_ID,
+                timestamp=_NOW,
+            ),
             state_path=str(state_file),
         )
 
-        current_state = result["projections"][0]
-
-        # Second event: phase transition
+        # Second event: phase transition, prior state read from the file
         handler.handle(
-            input_data={
-                "state": current_state,
-                "event": {
-                    "event_type": "session.phase.state",
-                    "session_id": _SESSION_ID,
-                    "timestamp": _LATER.isoformat(),
-                    "phase": "rsd_scoring",
-                    "phase_index": 1,
-                },
-            },
+            ModelSessionPhaseReducerInput(
+                event_type="session.phase.state",
+                session_id=_SESSION_ID,
+                timestamp=_LATER,
+                phase="rsd_scoring",
+                phase_index=1,
+            ),
             state_path=str(state_file),
         )
 
@@ -375,13 +377,11 @@ class TestSessionPhaseReducerWritesStateFile:
         state_file = tmp_path / "nested" / "deep" / "phase_state.yaml"
 
         handler.handle(
-            input_data={
-                "event": {
-                    "event_type": "session.started",
-                    "session_id": _SESSION_ID,
-                    "timestamp": _NOW.isoformat(),
-                }
-            },
+            ModelSessionPhaseReducerInput(
+                event_type="session.started",
+                session_id=_SESSION_ID,
+                timestamp=_NOW,
+            ),
             state_path=str(state_file),
         )
 
@@ -393,13 +393,11 @@ class TestSessionPhaseReducerWritesStateFile:
         state_file = tmp_path / "phase_state.yaml"
 
         result = handler.handle(
-            input_data={
-                "event": {
-                    "event_type": "session.started",
-                    "session_id": _SESSION_ID,
-                    "timestamp": _NOW.isoformat(),
-                }
-            },
+            ModelSessionPhaseReducerInput(
+                event_type="session.started",
+                session_id=_SESSION_ID,
+                timestamp=_NOW,
+            ),
             state_path=str(state_file),
         )
 

@@ -2,13 +2,18 @@
 # SPDX-License-Identifier: MIT
 """Declared-state coverage for node_session_phase_reducer (OMN-13674).
 
-REDUCER archetype -> Variant B: the pure ``delta(state, event) -> new_state``
-fold is registered on the canonical in-memory bus (``EventBusInmemory`` via
-``integration_event_bus``) through ``LocalRuntimeBusAdapter``
-(``drive_round_trip``). One reduce envelope (prior state + incoming event) is
+REDUCER archetype -> Variant B: the reducer's real def-B ``handle`` is registered
+on the canonical in-memory bus (``EventBusInmemory`` via ``integration_event_bus``)
+through ``LocalRuntimeBusAdapter`` (``drive_round_trip``). One WIRE payload is
 published on the reducer subscribe topic and the materialized
 ``ModelSessionPhaseState`` projection republished on the reduced-state topic is
 asserted.
+
+OMN-16790: this suite previously published a ``{"state": ..., "event": ...}``
+envelope — a shape that appears in no wire schema for any subscribed topic — and
+called ``delta`` directly. It therefore passed for the entire live outage in which
+every real message raised ``KeyError: 'event'``. Prior state now comes from the
+projection file, which is where the reducer's state of record actually lives.
 
 The contract's ``state_machine`` declares three states — ``idle`` (no session),
 ``active`` (session materialized), ``ended`` (terminal) — with transitions
@@ -34,6 +39,7 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -55,19 +61,36 @@ _T1 = datetime(2026, 6, 19, 2, 45, 0, tzinfo=UTC)
 
 
 class _ReducerBusHandler:
-    """Bus-facing shim: reconstructs (state, event) from the envelope and returns
-    the ``delta`` projection so the adapter republishes it to the output topic.
+    """Bus-facing shim that drives the REAL def-B ``handle`` over a wire payload.
 
-    ``delta`` is the pure reduce core (no file I/O); the projection-file write
-    side effect is covered separately by the unit suite.
+    Prior state is read from ``state_path`` — the projection file the handler
+    itself writes — exactly as the runtime path does.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, state_path: Path) -> None:
         self._handler = HandlerSessionPhaseReducer()
+        self._state_path = state_path
 
     async def handle(self, **payload: Any) -> ModelSessionPhaseState:
-        envelope = ModelSessionPhaseReducerInput.model_validate(payload)
-        return self._handler.delta(envelope.state, envelope.event)
+        request = ModelSessionPhaseReducerInput.model_validate(payload)
+        result = self._handler.handle(request, state_path=str(self._state_path))
+        return ModelSessionPhaseState(**result["projections"][0])
+
+
+def _wire_payload(event: ModelSessionPhaseEvent) -> ModelSessionPhaseReducerInput:
+    """Project an internal fold event onto the wire shape a producer emits."""
+    return ModelSessionPhaseReducerInput(
+        event_type=event.event_type,
+        session_id=event.session_id,
+        timestamp=event.timestamp,
+        phase=event.phase,
+        phase_index=event.phase_index,
+        budget_elapsed_pct=event.budget_elapsed_pct,
+        active_worker_count=event.active_worker_count,
+        exit_conditions_met=event.exit_conditions_met,
+        exit_conditions_pending=event.exit_conditions_pending,
+        last_evaluation=event.last_evaluation,
+    )
 
 
 def _started_event(
@@ -95,16 +118,24 @@ def _active_state(*, phase: str = "health_gate") -> ModelSessionPhaseState:
 
 
 async def _projection(
-    envelope: ModelSessionPhaseReducerInput, bus: Any, *, group: str
+    event: ModelSessionPhaseEvent,
+    bus: Any,
+    *,
+    group: str,
+    tmp_path: Path,
+    prior_state: ModelSessionPhaseState | None = None,
 ) -> dict[str, Any]:
+    state_file = tmp_path / f"{group}-phase_state.yaml"
+    if prior_state is not None:
+        HandlerSessionPhaseReducer()._write_state(prior_state, state_file)
     history = await drive_round_trip(
         bus,
-        handler=_ReducerBusHandler(),
+        handler=_ReducerBusHandler(state_file),
         handler_name="session-phase-reducer",
         input_model_cls=None,
         start_topic=f"{_START_TOPIC}.{group}",
         output_topic=f"{_RESULT_TOPIC}.{group}",
-        payload_bytes=envelope.model_dump_json().encode("utf-8"),
+        payload_bytes=_wire_payload(event).model_dump_json().encode("utf-8"),
         group_id=group,
     )
     assert len(history) == 1, "expected exactly one reduced projection"
@@ -121,12 +152,14 @@ async def _projection(
 @pytest.mark.asyncio
 class TestReducerDeclaredStateCoverage:
     async def test_idle_to_active_on_session_started(
-        self, integration_event_bus: Any
+        self, integration_event_bus: Any, tmp_path: Path
     ) -> None:
         """idle -> active: session.started materialises a fresh projection."""
-        envelope = ModelSessionPhaseReducerInput(state=None, event=_started_event())
         projection = await _projection(
-            envelope, integration_event_bus, group="reducer-start"
+            _started_event(),
+            integration_event_bus,
+            group="reducer-start",
+            tmp_path=tmp_path,
         )
         assert projection["session_id"] == _SESSION
         assert projection["current_phase"] == "health_gate"
@@ -134,7 +167,7 @@ class TestReducerDeclaredStateCoverage:
         assert projection["active_worker_count"] == 2
 
     async def test_active_to_active_on_phase_state_fold(
-        self, integration_event_bus: Any
+        self, integration_event_bus: Any, tmp_path: Path
     ) -> None:
         """active -> active: a phase-state event folds a partial update."""
         event = ModelSessionPhaseEvent(
@@ -149,9 +182,12 @@ class TestReducerDeclaredStateCoverage:
             exit_conditions_pending=("ci_green",),
             last_evaluation="budget_warning",
         )
-        envelope = ModelSessionPhaseReducerInput(state=_active_state(), event=event)
         projection = await _projection(
-            envelope, integration_event_bus, group="reducer-fold"
+            event,
+            integration_event_bus,
+            group="reducer-fold",
+            tmp_path=tmp_path,
+            prior_state=_active_state(),
         )
         assert projection["current_phase"] == "merge"
         assert projection["phase_index"] == 3
@@ -162,7 +198,7 @@ class TestReducerDeclaredStateCoverage:
         assert projection["last_evaluation"] == "budget_warning"
 
     async def test_active_to_ended_on_session_ended(
-        self, integration_event_bus: Any
+        self, integration_event_bus: Any, tmp_path: Path
     ) -> None:
         """active -> ended (terminal): session.ended marks current_phase ended."""
         event = ModelSessionPhaseEvent(
@@ -170,9 +206,12 @@ class TestReducerDeclaredStateCoverage:
             session_id=_SESSION,
             timestamp=_T1,
         )
-        envelope = ModelSessionPhaseReducerInput(state=_active_state(), event=event)
         projection = await _projection(
-            envelope, integration_event_bus, group="reducer-end"
+            event,
+            integration_event_bus,
+            group="reducer-end",
+            tmp_path=tmp_path,
+            prior_state=_active_state(),
         )
         assert projection["current_phase"] == "ended"
         assert projection["session_id"] == _SESSION
@@ -187,20 +226,25 @@ class TestReducerDeclaredStateCoverage:
 @pytest.mark.asyncio
 class TestReducerDimensions:
     async def test_reapplying_session_started_is_deterministic(
-        self, integration_event_bus: Any
+        self, integration_event_bus: Any, tmp_path: Path
     ) -> None:
         """Re-folding the same session.started yields an identical projection."""
-        envelope = ModelSessionPhaseReducerInput(state=None, event=_started_event())
         first = await _projection(
-            envelope, integration_event_bus, group="reducer-idem-1"
+            _started_event(),
+            integration_event_bus,
+            group="reducer-idem-1",
+            tmp_path=tmp_path,
         )
         second = await _projection(
-            envelope, integration_event_bus, group="reducer-idem-2"
+            _started_event(),
+            integration_event_bus,
+            group="reducer-idem-2",
+            tmp_path=tmp_path,
         )
         assert first == second
 
     async def test_out_of_order_event_for_other_session_is_rejected(
-        self, integration_event_bus: Any
+        self, integration_event_bus: Any, tmp_path: Path
     ) -> None:
         """An event whose session_id != the state's session_id leaves state as-is."""
         foreign = ModelSessionPhaseEvent(
@@ -210,11 +254,12 @@ class TestReducerDimensions:
             phase="merge",
             budget_elapsed_pct=99,
         )
-        envelope = ModelSessionPhaseReducerInput(
-            state=_active_state(phase="health_gate"), event=foreign
-        )
         projection = await _projection(
-            envelope, integration_event_bus, group="reducer-mismatch"
+            foreign,
+            integration_event_bus,
+            group="reducer-mismatch",
+            tmp_path=tmp_path,
+            prior_state=_active_state(phase="health_gate"),
         )
         # Unchanged: the foreign event did not overwrite phase or budget.
         assert projection["current_phase"] == "health_gate"
@@ -222,7 +267,7 @@ class TestReducerDimensions:
         assert projection["session_id"] == _SESSION
 
     async def test_idle_reject_non_start_event_yields_unknown(
-        self, integration_event_bus: Any
+        self, integration_event_bus: Any, tmp_path: Path
     ) -> None:
         """NEGATIVE CONTROL: a non-start event with NO prior state (idle) must
         yield the sentinel ``current_phase == "unknown"`` rather than fabricate
@@ -234,9 +279,11 @@ class TestReducerDimensions:
             phase="merge",
             budget_elapsed_pct=50,
         )
-        envelope = ModelSessionPhaseReducerInput(state=None, event=event)
         projection = await _projection(
-            envelope, integration_event_bus, group="reducer-idle-reject"
+            event,
+            integration_event_bus,
+            group="reducer-idle-reject",
+            tmp_path=tmp_path,
         )
         assert projection["current_phase"] == "unknown"
         assert projection["session_id"] == _SESSION
