@@ -788,7 +788,47 @@ external_producers:
   # real, declared producer that simply lives outside the checked repo. The
   # gateway entry lands FENCED, so no traffic flows until it is un-fenced.
   onex.cmd.omnimarket.hook-event-capture-requested.v1: "published by the onex-api Secure Workflow Gateway ingress (private omninode_infra) from the hook-event-capture catalog entry — OMN-16090"
+  # OMN-16794: surfaced by the omnibase-infra 0.38.9 -> 0.38.10 lock bump, which
+  # brought four additional PINNED infra contracts into this graph. None is a new
+  # defect and none is baseline debt — each has a real producer that simply is not
+  # a contract publish, which is precisely what external_producers declares. Each
+  # reason below was checked against omnibase_infra's own long-standing
+  # subscribe-wiring allowlist AND re-verified in source this session; they are not
+  # copied on faith. Same class as the pr-state-upsert / validation-ledger-append
+  # intent-routing entries already above.
+  #
+  # Verified imperative publisher: ServiceGatewayForwarder.publish_heartbeat now
+  # publishes the heartbeat envelope to the LOCAL canonical topic as well as the
+  # cloud wire topic (OMN-15570 G3, added in 0.38.10 — read directly out of the
+  # 0.38.9-vs-0.38.10 diff of service_gateway_forwarder.py). That publish is an
+  # imperative call, not a contract-declared publish_topics entry, so the graph
+  # cannot see it. This is what makes node_gateway_link_health_projection_compute
+  # reachable at all.
+  onex.evt.omnibase-infra.gateway-heartbeat.v1: "published imperatively by ServiceGatewayForwarder.publish_heartbeat's local-bus mirror, not via contract publish_topics — OMN-15570 G3, verified in the 0.38.10 source"
+  # Intent-routed, identical mechanism to onex.cmd.omnibase-infra.pr-state-upsert.v1
+  # above: the projection compute routes an intent to the write effect in-process
+  # via the IntentEffectDispatchBridge; the command topic exists on the effect's
+  # contract for introspection / independent invocation only.
+  onex.cmd.omnibase-infra.gateway-link-health-upsert.v1: "produced in-process by intent routing from node_gateway_link_health_projection_compute, not a literal Kafka publish — OMN-15570"
+  # Driven only by an operator/regression harness per the fixture's own runbook
+  # (omnibase_infra docs/runbooks/fault-inject-fixture-dlq-offset-withholding.md,
+  # which documents publishing ModelFaultInjectFixtureCommand to this topic by
+  # hand). No node contract publishes it, by design — it is a fault-injection
+  # entry point, not a production flow.
+  onex.cmd.omnibase-infra.fault-inject-fixture.v1: "published by an external fault-injection caller (manual run or regression script per the fixture's runbook), not a contract-declared node — OMN-16265"
+  # Never published over Kafka at all: an in-process periodic asyncio loop in
+  # service_kernel.py (HandlerSavingsCorrelation.run_correlation_batch) invokes the
+  # handler directly. The subscribe declaration exists so operation_match auto-wiring
+  # resolves a real handler.
+  onex.cmd.omnibase-infra.savings-correlation-batch-compute.v1: "triggered directly by an in-process periodic asyncio loop in service_kernel.py (HandlerSavingsCorrelation), never published over Kafka — OMN-16293"
 external_consumers:
+  # OMN-16794: the produce-side half of the same 0.38.10 lock bump. The fixture's
+  # completion event is the observable OUTCOME the fault-injection runbook reads;
+  # its consumer is the operator or regression harness driving that runbook, which
+  # is outside the checked contract corpus. The producing contract is PINNED (a
+  # wheel), so its own externally_consumed_topics cannot be amended from this repo
+  # — exactly the case this block exists for.
+  onex.evt.omnibase-infra.fault-inject-fixture-completed.v1: "consumed by the operator/regression harness driving docs/runbooks/fault-inject-fixture-dlq-offset-withholding.md, outside the contract corpus — OMN-16265"
   # OMN-16077: session lifecycle events from node_gateway_attach_effect are
   # consumed by the onex-api gateway_sessions projection (private
   # omninode_infra — the tolerant-window consumer shipped in its PR #907),
