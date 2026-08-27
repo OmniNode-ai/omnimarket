@@ -30,10 +30,14 @@
 # apply (runner=node_occ_companion_compute != verifier=occ-evidence-source-
 # autobind, OMN-12791).
 #
-# PUBLISHER-SIDE IDEMPOTENCY (OMN-14941): when the product PR body already
-# carries "Evidence-Source: OCC#", the companion is already bound — publishing
-# would only burn a lease + a full read/compute cycle to reach the handler's
-# own already-bound no-op. The publisher skips LOUDLY (exit 0) instead.
+# PUBLISHER-SIDE IDEMPOTENCY (OMN-14941, line-anchored per OMN-16710): when the
+# product PR body already carries a real "Evidence-Source: OCC#<n>" LINE, the
+# companion is already bound — publishing would only burn a lease + a full
+# read/compute cycle to reach the handler's own already-bound no-op. The
+# publisher skips LOUDLY (exit 0) instead. The check is a line-anchored mirror
+# of the canonical compat parser, NOT a substring scan: a substring scan let a
+# PR body that merely *mentions* the stamp in prose suppress its own companion
+# and still report SUCCESS. See product_pr_occ_binding below.
 #
 # BROKER / LANE RESOLUTION: identical to publish_occ_autobind_command.py
 # (OMN-14801 overlay-driven lane resolution, OMN-14813 secret-free concrete dev
@@ -52,9 +56,11 @@
 #                                re-resolves live state)
 #
 # Optional:
-#   PR_BODY                   -- product PR body; when it already contains
-#                                "Evidence-Source: OCC#" the publish is skipped
-#                                loudly (already bound)
+#   PR_BODY                   -- product PR body; when it already carries a
+#                                line-anchored "Evidence-Source: OCC#<n>" stamp
+#                                the publish is skipped loudly (already bound).
+#                                A prose mention of that literal is NOT a stamp
+#                                and does NOT skip (OMN-16710).
 #   KAFKA_BOOTSTRAP_SERVERS   -- injected broker (fail-loud-checked against the
 #                                overlay-declared lane broker when both exist)
 #   KAFKA_SASL_USERNAME       -- SASL username / API key (cloud broker only)
@@ -68,6 +74,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import re
 import sys
 import uuid
 from pathlib import Path
@@ -130,9 +137,67 @@ _TOPICS_SPEC.loader.exec_module(_TOPICS_MODULE)
 
 TOPIC = _TOPICS_MODULE.OCC_COMPANION_EFFECT_COMMAND_TOPIC_V1
 
-# The marker the canonical producer stamps onto a bound product PR body. When
-# present, the companion already exists — publishing again is pure waste.
-_EVIDENCE_SOURCE_MARKER = "Evidence-Source: OCC#"
+# The stamp the canonical producer writes onto a bound product PR body. When a
+# real stamp LINE is present, the companion already exists — publishing again is
+# pure waste.
+#
+# OMN-16710: this used to be a bare substring test —
+# ``"Evidence-Source: OCC#" in pr_body`` — which matched the literal ANYWHERE,
+# including prose that merely discusses OCC evidence. Tripping it is silent
+# green on a merge-gating path: nothing is published, no companion is minted,
+# no stamp lands, and the job still exits 0. The product PR then hard-fails the
+# `verify / verify` receipt gate (OMN-10419) for a stamp that was never minted,
+# while the job responsible for minting it reports SUCCESS. Observed live on
+# omnimemory#450 during the OMN-16708 canary — a docs PR *about* OCC publisher
+# routing suppressed its own companion. Same silent-green shape OMN-14639 /
+# OMN-14451 hardened the OTHER branch of this publisher against (the flush
+# branch, which now refuses to report success on an undelivered command).
+#
+# The predicate below is a deliberate line-for-line MIRROR of the authoritative
+# parser, ``omnibase_compat.contracts.pr_occ_stamp.pr_occ_metadata_stamp``
+# (``_parse_evidence_source`` + ``occ_stamp_authoring.product_pr_occ_binding``)
+# — same regex, same IGNORECASE, same per-line ``strip()``/``fullmatch``, same
+# "first Evidence-Source line decides" rule. It is copied rather than imported
+# because this thin GHA script must not pull in the package dependency graph
+# (see ``_load_sibling``). The copy is pinned against the real parser by
+# tests/unit/nodes/node_occ_companion_effect/
+# test_publish_occ_companion_effect_command.py::
+# TestIdempotencyAgreesWithCanonicalParser — a publisher that decides
+# "already bound" on different evidence than the handler that does the minting
+# is the same defect class as the substring match itself.
+_EVIDENCE_SOURCE_PREFIX = "evidence-source:"
+_EVIDENCE_SOURCE_OCC_PR_RE = re.compile(
+    r"^Evidence-Source:\s+OCC#(\d+)\s*$",
+    re.IGNORECASE,
+)
+
+
+def product_pr_occ_binding(pr_body: str) -> int | None:
+    """Return the bound OCC PR number, or ``None`` when the PR is not bound.
+
+    Mirrors the canonical compat parser exactly:
+
+    * only a LINE whose stripped form is entirely ``Evidence-Source: OCC#<n>``
+      counts — a mid-line mention, a ``> ``-quoted line, a list item, or a
+      ``OCC#<n>`` placeholder with no digits does not;
+    * the FIRST line beginning ``Evidence-Source:`` decides. If it is a bare
+      commit SHA (the unbound state this effect exists to repair) the answer is
+      ``None`` even when a later line names an OCC PR.
+
+    Residual, stated rather than silently inherited: a stamp-shaped line inside
+    a fenced code block still counts as a binding. That is a property of the
+    canonical parser, not of this copy — diverging here would put the publisher
+    and the handler on different evidence, which is strictly worse than the
+    shared blind spot.
+    """
+    for line in pr_body.splitlines():
+        stripped = line.strip()
+        if not stripped.lower().startswith(_EVIDENCE_SOURCE_PREFIX):
+            continue
+        match = _EVIDENCE_SOURCE_OCC_PR_RE.fullmatch(stripped)
+        return int(match.group(1)) if match is not None else None
+    return None
+
 
 # Wire literal for the command mode. MUST equal the "mutate" member of
 # ModelOccCompanionEffectRequest.mode — asserted by the seam test rather than
@@ -145,6 +210,7 @@ def build_payload(
     repo: str,
     pr_number: int,
     correlation_id: str,
+    allow_merged_replay: bool = False,
 ) -> dict[str, object]:
     """Return a companion-effect command payload shaped as ModelOccCompanionEffectRequest.
 
@@ -163,15 +229,26 @@ def build_payload(
     * ``pr_number`` is an ``int`` (cast from the GHA string env by the caller).
     * ``occ_repo``/``runner``/``verifier`` are omitted so the model defaults
       apply (runner != verifier, OMN-12791).
+    * ``allow_merged_replay`` (OMN-16665) is emitted ONLY when True. It is the
+      deliberately-scoped F-17 override that authors the companion for a PR
+      which MERGED without one — the merge/queue-latency race in which this
+      publisher's job is held long enough that the PR merges before the command
+      reaches compute (live: omnimemory#447, published ~90s after the merge).
+      Emitting the key unconditionally would be harmless to the model but would
+      put a False in every born-path payload; omitting it keeps the born-path
+      wire shape byte-identical to pre-16665.
     * NO legacy occ-autobind fields (block_reason/ticket_id/requested_at/
       pr_head_sha/event_id/topic) — ``extra='forbid'`` rejects every one.
     """
-    return {
+    payload: dict[str, object] = {
         "repo": repo,
         "pr_number": pr_number,
         "mode": _MODE_MUTATE,
         "correlation_id": correlation_id,
     }
+    if allow_merged_replay:
+        payload["allow_merged_replay"] = True
+    return payload
 
 
 def publish_occ_companion_effect_command(
@@ -253,13 +330,20 @@ def main(dry_run: bool, lane: str | None) -> None:
     """Publish onex.cmd.omnimarket.occ-companion-effect-requested.v1 for a product PR.
 
     All inputs are read from environment variables injected by the GHA workflow:
-    PR_REPO, PR_NUMBER, PR_HEAD_SHA, PR_BODY (optional, idempotency skip). The
-    bus target is resolved from ``--lane`` against config/ci_bus_lanes.yaml.
+    PR_REPO, PR_NUMBER, PR_HEAD_SHA, PR_BODY (optional, idempotency skip),
+    ALLOW_MERGED_REPLAY (optional, OMN-16665 merged-PR recovery). The bus target
+    is resolved from ``--lane`` against config/ci_bus_lanes.yaml.
     """
     repo = os.environ.get("PR_REPO", "")
     pr_number_str = os.environ.get("PR_NUMBER", "")
     pr_head_sha = os.environ.get("PR_HEAD_SHA", "")
     pr_body = os.environ.get("PR_BODY", "")
+    # OMN-16665: only the exact literal "true" enables the override. A loose
+    # truthiness read ("false" is a non-empty string) would silently arm the
+    # F-17 override on every born-path publish that set the variable at all.
+    allow_merged_replay = (
+        os.environ.get("ALLOW_MERGED_REPLAY", "").strip().lower() == "true"
+    )
 
     if not repo or not pr_number_str or not pr_head_sha:
         click.echo(
@@ -280,12 +364,16 @@ def main(dry_run: bool, lane: str | None) -> None:
     # Publisher-side idempotency (OMN-14941): an already-bound product PR needs
     # no companion — skip loudly, exit 0. This is a cheap pre-filter; the
     # handler's compute no-ops on the same condition as the authoritative check.
-    if _EVIDENCE_SOURCE_MARKER in pr_body:
+    # OMN-16710: keyed on a real line-anchored stamp, never a substring hit —
+    # see product_pr_occ_binding.
+    bound_occ_pr = product_pr_occ_binding(pr_body)
+    if bound_occ_pr is not None:
         click.echo(
-            f"SKIP: {repo}#{pr_number} body already carries "
-            f"{_EVIDENCE_SOURCE_MARKER!r} — companion already bound; not "
-            "publishing a redundant occ-companion-effect command "
-            "(publisher-side idempotency, OMN-14941). Exiting 0."
+            f"SKIP: {repo}#{pr_number} body already carries an "
+            f"'Evidence-Source: OCC#{bound_occ_pr}' line — companion already "
+            "bound; not publishing a redundant occ-companion-effect command "
+            "(publisher-side idempotency, OMN-14941; line-anchored per "
+            "OMN-16710). Exiting 0."
         )
         sys.exit(0)
 
@@ -294,11 +382,13 @@ def main(dry_run: bool, lane: str | None) -> None:
         repo=repo,
         pr_number=pr_number,
         correlation_id=correlation_id,
+        allow_merged_replay=allow_merged_replay,
     )
 
     click.echo(
         f"occ-companion-effect command: repo={repo} pr={pr_number} "
-        f"head={pr_head_sha} lane={lane!r}"
+        f"head={pr_head_sha} lane={lane!r} "
+        f"allow_merged_replay={allow_merged_replay}"
     )
 
     if dry_run:

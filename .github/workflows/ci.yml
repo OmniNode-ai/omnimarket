@@ -397,6 +397,19 @@ jobs:
             base="$(git rev-parse HEAD^ 2>/dev/null || git rev-parse HEAD)"
           fi
           uv run python scripts/ci/check_projection_write_path_db_gate.py --changed-ref "$base"
+      # OMN-15797 AC3 rule 2 -- the complement to OMN-15801's no-db-outside-
+      # runtime gate: that one enforces WHO may open a connection, this one
+      # enforces that a surface legitimately holding one did not forget the
+      # tenant seam on a statement against an RLS-covered relation. Postgres
+      # RLS fails OPEN from the caller's side (unset app.tenant_id -> NULL
+      # predicate -> zero rows, no error), which is how the original OMN-15797
+      # blinding survived undetected and how OMN-16092's fail-open ROI read was
+      # only found months later by hand. --selftest runs first so a gate that
+      # can no longer fire fails the build instead of reporting clean.
+      - name: RLS tenant-seam gate (OMN-15797)
+        run: |
+          uv run python scripts/ci/check_rls_read_tenant_seam.py --selftest
+          uv run python scripts/ci/check_rls_read_tenant_seam.py
       # Canonical handler-shape GROWTH RATCHET fan-out (OMN-14355/OMN-14368/OMN-14372).
       # compliance_sweep checks handler hygiene but is blind to handler SHAPE, so a
       # non-canonical handler passes green CI. This classifies each omnimarket node's

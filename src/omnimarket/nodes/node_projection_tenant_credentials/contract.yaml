@@ -92,6 +92,14 @@ projection_api:
   bus_backed: true
   key_columns:
     - "api_key_ref"
+  # OMN-15797 AC2: every row in this exposure belongs to exactly one tenant
+  # (tenant_id is NOT NULL, stamped by credential_publisher from the gateway's
+  # verified tenant identity), and the rows are BYOK credential references.
+  # Before this declaration the serving path returned every tenant's rows to
+  # any unscoped caller with a plain 200 -- this table carries no RLS in v1
+  # (see migration 0000), so nothing else was scoping it either. Declaring the
+  # tenant column makes the serving path refuse rather than answer unscoped.
+  tenant_column: "tenant_id"
 
 metadata:
   transport_type: kafka

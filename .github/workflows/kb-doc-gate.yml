@@ -17,11 +17,21 @@ on:
 
 jobs:
   kb-doc-gate:
-    # Pinned by immutable SHA, not @main: main is release-synced and does not
-    # carry this gate yet (promotion deferred by policy). This commit includes
-    # the reusable workflow and the validator-ref input that keeps the script
-    # checkout on the same immutable omniclaude source.
-    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@3b3f5e6966df2beebfb1435d15948394f92771de
+    # Pinned by immutable SHA, not @main: omniclaude main is release-synced and
+    # carries neither this reusable workflow nor scripts/kb_doc_gate.py
+    # (verified: `git cat-file -e origin/main:scripts/kb_doc_gate.py` fails).
+    #
+    # This pin MUST be a real omniclaude commit on `dev` that contains BOTH the
+    # reusable workflow and the validator script. The previous pin
+    # (3b3f5e6966df2beebfb1435d15948394f92771de, landed by #2153) is not a
+    # commit in omniclaude at all —
+    # `GET /repos/OmniNode-ai/omniclaude/commits/<sha>` returns 422 "No commit
+    # found for SHA" — so GitHub could not resolve the reusable workflow and
+    # every run here failed with zero jobs.
+    #
+    # 96dd1896 (omniclaude#2052) keeps the validator checkout pinned to
+    # `github.job_workflow_sha` and fetches full caller history, so the gate's
+    # `origin/dev...HEAD` diff has the merge base it requires.
+    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@96dd18962cc7b02f9ae7beb43c13a1ed9df7b559
     with:
       mode: transition
-      validator_ref: 3b3f5e6966df2beebfb1435d15948394f92771de

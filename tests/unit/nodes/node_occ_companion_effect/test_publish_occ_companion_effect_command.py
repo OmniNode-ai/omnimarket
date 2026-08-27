@@ -215,6 +215,158 @@ class TestPublisherSideIdempotency:
         assert "SKIP" in result.output
         assert "{" not in result.output  # no payload emitted
 
+
+# Bodies whose ONLY occurrence of the literal is prose. Every one of these
+# used to trip the substring skip, so the publisher reported SUCCESS having
+# published nothing and the product PR then hard-failed `verify / verify` for
+# a stamp that was never minted (OMN-16710, observed live on omnimemory#450
+# during the OMN-16708 canary).
+_PROSE_ONLY_BODIES: tuple[tuple[str, str], ...] = (
+    (
+        "mid_line_backticked",
+        "Closes OMN-16710\n\nDocuments how the receipt gate hard-fails when the "
+        "body has no `Evidence-Source: OCC#<n>` line.\n",
+    ),
+    (
+        "mid_line_prose",
+        "This PR explains what Evidence-Source: OCC#7259 means for reviewers.\n",
+    ),
+    (
+        "blockquoted_log_line",
+        "Observed output:\n\n> Evidence-Source: OCC#7259\n\nCloses OMN-16710\n",
+    ),
+    (
+        "list_item",
+        "- the publisher stamps Evidence-Source: OCC#<n> back onto the product PR\n",
+    ),
+    (
+        "no_digits_placeholder_at_line_start",
+        "Evidence-Source: OCC#<n>\n",
+    ),
+    (
+        "trailing_prose_on_the_stamp_line",
+        "Evidence-Source: OCC#7259 is what the gate looks for.\n",
+    ),
+)
+
+
+@pytest.mark.unit
+class TestIdempotencyIsLineAnchored:
+    """OMN-16710: the skip must key on a REAL stamp line, not a substring hit.
+
+    The pre-fix gate was ``"Evidence-Source: OCC#" in pr_body``, which matched
+    the literal anywhere — including prose that merely discusses OCC evidence.
+    Tripping it is silent-green on a merge-gating path: nothing is published,
+    no companion is minted, no stamp lands, and the job still exits 0. Same
+    shape OMN-14639 hardened the *other* branch of this publisher against.
+    """
+
+    @pytest.mark.parametrize(("label", "body"), _PROSE_ONLY_BODIES, ids=lambda v: v)
+    def test_prose_only_mention_still_publishes(self, label: str, body: str) -> None:
+        module = _load_publisher()
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(PR_BODY=body, RUNNER_IS_TRUSTED="true")
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "SKIP" not in result.output, (
+            f"{label}: prose-only mention suppressed the publish — this is the "
+            "OMN-16710 silent-green defect"
+        )
+        assert recorder.brokers != [], f"{label}: nothing was published"
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "Evidence-Source: OCC#4242",
+            "Closes OMN-14941\n\nEvidence-Source: OCC#4242\n",
+            "  Evidence-Source: OCC#4242  ",  # canonical parser strips the line
+            "evidence-source: occ#4242",  # canonical parser is IGNORECASE
+            "Evidence-Source:   OCC#4242\r\n",  # CRLF + padded separator
+        ],
+        ids=[
+            "bare",
+            "with_surrounding_body",
+            "indented",
+            "lowercased",
+            "crlf_padded",
+        ],
+    )
+    def test_real_stamp_line_still_skips(self, body: str) -> None:
+        """AC2 — the OMN-14941 behavior the gate exists for is preserved."""
+        module = _load_publisher()
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(PR_BODY=body, RUNNER_IS_TRUSTED="true")
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "SKIP" in result.output
+        assert recorder.brokers == []
+
+    def test_bare_sha_evidence_source_is_not_a_binding(self) -> None:
+        """A commit-SHA Evidence-Source is exactly the unbound state the
+        companion effect exists to repair — it must NOT suppress the publish."""
+        module = _load_publisher()
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_BODY=f"Evidence-Source: {'b' * 40}\n", RUNNER_IS_TRUSTED="true"
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "SKIP" not in result.output
+        assert recorder.brokers != []
+
+
+@pytest.mark.unit
+class TestIdempotencyAgreesWithCanonicalParser:
+    """AC3 — pin the thin publisher against the authoritative compat parser.
+
+    The publisher is a thin GHA-runner script and deliberately does not import
+    the node package, so it carries its own copy of the binding predicate. A
+    copy that drifts from ``omnibase_compat.contracts.pr_occ_stamp`` is the
+    same class of defect as the substring match itself: the publisher would
+    decide "already bound" on different evidence than the handler that does
+    the minting. This test is the only thing keeping the two in agreement.
+    """
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "",
+            "Closes OMN-16710",
+            "Evidence-Source: OCC#4242",
+            "Closes OMN-14941\n\nEvidence-Source: OCC#4242\n",
+            "  Evidence-Source: OCC#4242  ",
+            "evidence-source: occ#4242",
+            "Evidence-Source:   OCC#4242\r\n",
+            f"Evidence-Source: {'b' * 40}\n",
+            "> Evidence-Source: OCC#7259\n",
+            "- stamps Evidence-Source: OCC#<n> onto the product PR\n",
+            "Evidence-Source: OCC#<n>\n",
+            "Evidence-Source: OCC#7259 is what the gate looks for.\n",
+            "See `Evidence-Source: OCC#7259` above.\n",
+            "Evidence-Source: not-a-source\nEvidence-Source: OCC#77\n",
+        ],
+    )
+    def test_publisher_binding_matches_compat_parser(self, body: str) -> None:
+        from omnibase_compat.contracts.pr_occ_stamp import (
+            EnumPrEvidenceSourceKind,
+            parse_pr_occ_metadata_stamp,
+        )
+
+        module = _load_publisher()
+        source = parse_pr_occ_metadata_stamp(body).evidence_source
+        expected = (
+            source.occ_pr_number
+            if source is not None and source.kind is EnumPrEvidenceSourceKind.OCC_PR
+            else None
+        )
+        assert module.product_pr_occ_binding(body) == expected, body  # type: ignore[attr-defined]
+
     def test_unbound_body_publishes_secret_free_on_shipped_dev_lane(self) -> None:
         """E2 acceptance shape: against the REAL shipped config/ci_bus_lanes.yaml,
         a trusted runner with NO KAFKA_BOOTSTRAP_SERVERS injected and --lane dev

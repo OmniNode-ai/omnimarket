@@ -58,6 +58,7 @@ from omnimarket.events.occ_companion import (
     ModelObservedProbe,
     ModelOccCompanionPlan,
     ModelOccCompanionRequest,
+    ModelOccCompanionSuppression,
     ModelOccStateRequest,
 )
 from omnimarket.github_api import (
@@ -149,6 +150,32 @@ _GITHUB_AUTH_MODE_ENV_VAR = "OMNI_OCC_GITHUB_AUTH_MODE"
 # back to the OCC credential, which preserves the single-PAT bus-runtime path
 # (the .201 effects runtime authenticates both halves with one cross-repo PAT).
 _PRODUCT_TOKEN_ENV_VAR = "OMNI_OCC_PRODUCT_TOKEN"
+
+# OMN-16665: the check-run this node reports every mint DECLINE on. Named as a
+# sibling of the born-path emitter's ``occ-autobind / mint status`` (OMN-16339)
+# rather than reusing it, so the checks rollup shows WHICH producer declined.
+# Neither is a required status check.
+_MINT_STATUS_CHECK_NAME = "occ-companion-effect / mint status"
+
+# Marker prefix keying the idempotent decline comment. The SUPPRESSION CODE is
+# part of the key (OMN-16665 AC1/AC4): a re-trigger with the identical decline
+# must not re-post, but a decline that CHANGED (a draft PR that is now merged
+# unbound) is new information and must post. Keying on the PR alone would hide
+# the escalation; keying on nothing would spam a synchronize storm.
+_SUPPRESSION_COMMENT_MARKER = "<!-- occ-companion-effect-suppressed"
+
+
+class OccCompanionEvidenceLostError(RuntimeError):
+    """The companion for this product PR is permanently lost (OMN-16665).
+
+    Raised — never returned — so the runtime routes the terminal event to
+    ``onex.evt.omnimarket.occ-companion-effect-failed.v1``. The pre-16665 code
+    returned a ``no_op`` result here, which the runtime published on the
+    ``-completed.v1`` SUCCESS topic; every projection and every "did the mint
+    work" probe therefore read green over a missing evidence record. A decline
+    the born path can never retry is a failure, and reporting it as anything
+    else is the warn-only posture ``feedback_gates_block_no_bypass`` forbids.
+    """
 
 
 def _resolve_product_token(occ_token: str) -> tuple[str, bool]:
@@ -257,12 +284,33 @@ class HandlerOccCompanionEffect:
             occ_repo=request.occ_repo,
             runner=request.runner,
             verifier=request.verifier,
+            allow_merged_replay=request.allow_merged_replay,
         )
         companion_request = await self._state_handler.handle(state_request)
         plan = compute_companion_plan(companion_request)
 
         if plan.no_op:
-            return self._result(request, plan, action=f"no-op: {plan.no_op_reason}")
+            # OMN-16665: a decline is no longer written only to the log. It is
+            # surfaced onto the product PR (idempotent comment + mint-status
+            # check-run), and when the compute says the evidence is PERMANENTLY
+            # lost the handler RAISES so the runtime routes the terminal event to
+            # occ-companion-effect-failed.v1 instead of the -completed.v1 success
+            # topic. Reporting a lost companion on the success topic is what made
+            # omnimemory#447's hole invisible to every projection and probe.
+            surfaced = await asyncio.to_thread(
+                self._surface_suppression, request, companion_request, plan
+            )
+            if plan.suppression is not None and plan.suppression.evidence_lost:
+                raise OccCompanionEvidenceLostError(
+                    f"{request.repo}#{request.pr_number}: {plan.suppression.summary} "
+                    f"{plan.suppression.remediation}"
+                )
+            return self._result(
+                request,
+                plan,
+                action=f"no-op: {plan.no_op_reason}",
+                suppression_surfaced=surfaced,
+            )
         if plan.fast_path:
             return self._result(
                 request, plan, action=f"fast-path skip: {plan.fast_path_reason}"
@@ -294,6 +342,7 @@ class HandlerOccCompanionEffect:
         occ_pr_number: int | None = None,
         occ_pr_url: str = "",
         product_body_stamped: bool = False,
+        suppression_surfaced: bool = False,
     ) -> ModelOccCompanionEffectResult:
         return ModelOccCompanionEffectResult(
             repo=request.repo,
@@ -302,6 +351,10 @@ class HandlerOccCompanionEffect:
             action=action,
             no_op=plan.no_op,
             no_op_reason=plan.no_op_reason,
+            suppression_code=(
+                plan.suppression.code.value if plan.suppression is not None else ""
+            ),
+            suppression_surfaced=suppression_surfaced,
             fast_path=plan.fast_path,
             tickets=plan.tickets,
             occ_branch=plan.branch,
@@ -312,6 +365,150 @@ class HandlerOccCompanionEffect:
             deterministic_digest=plan.deterministic_digest,
             wedges=tuple(w.code for w in plan.wedges),
         )
+
+    # -- decline surfacing (OMN-16665) --------------------------------------
+
+    def _surface_suppression(
+        self,
+        request: ModelOccCompanionEffectRequest,
+        companion_request: ModelOccCompanionRequest,
+        plan: ModelOccCompanionPlan,
+    ) -> bool:
+        """Report a mint DECLINE on the product PR. Returns True if newly posted.
+
+        Two surfaces, because they answer two different questions:
+
+        * an idempotent PR **comment** answers "why did nothing happen?" for the
+          author reading the PR, quoting the matched text and how to clear it
+          (OMN-16665 AC1/AC2); and
+        * a mint-status **check-run** answers the same question from the checks
+          rollup, where a policy decline was previously indistinguishable from a
+          stalled pipeline — the ambiguity that produced a false "the OCC
+          consumer is dead" diagnosis while the consumer was minting normally.
+
+        The check-run conclusion is ``failure`` ONLY for an ``evidence_lost``
+        decline (a merged-unbound PR, where the record is gone for good) and
+        ``neutral`` for every recoverable one, so a draft or held PR is never
+        newly blocked by observability. The merged PR the failure lands on has
+        already merged, so this cannot block a merge either — it makes a hole
+        that was previously invisible impossible to miss.
+
+        Comment/check-run failures are logged and swallowed: for a recoverable
+        decline the surface is courtesy, and for a lost one the load-bearing
+        signal is the raise in :meth:`handle`, which is not reached through this
+        method. A GitHub hiccup must not convert a decline into a crash that
+        hides the decline.
+        """
+        suppression = plan.suppression
+        if suppression is None or request.mode != "mutate":
+            return False
+
+        occ_token = _resolve_github_token()
+        token, _dedicated = _resolve_product_token(occ_token)
+        owner, repo_name = split_repo(request.repo)
+        marker = f"{_SUPPRESSION_COMMENT_MARKER}:{suppression.code.value} -->"
+        body = self._render_suppression_comment(suppression, marker)
+
+        posted = False
+        try:
+            existing = rest_json_array(
+                "GET",
+                f"/repos/{owner}/{repo_name}/issues/{request.pr_number}"
+                "/comments?per_page=100",
+                token=token,
+            )
+            if not any(marker in str(c.get("body") or "") for c in existing):
+                rest_json(
+                    "POST",
+                    f"/repos/{owner}/{repo_name}/issues/{request.pr_number}/comments",
+                    token=token,
+                    body={"body": body},
+                )
+                posted = True
+        except (GitHubApiError, OSError) as exc:  # fallback-ok: courtesy comment
+            logger.warning(
+                "occ_companion_effect: could not surface decline comment on %s#%s: %s",
+                request.repo,
+                request.pr_number,
+                exc,
+            )
+
+        head_sha = companion_request.pr_head_sha
+        if head_sha:
+            try:
+                rest_json(
+                    "POST",
+                    f"/repos/{owner}/{repo_name}/check-runs",
+                    token=token,
+                    body={
+                        "name": _MINT_STATUS_CHECK_NAME,
+                        "head_sha": head_sha,
+                        "status": "completed",
+                        "conclusion": (
+                            "failure" if suppression.evidence_lost else "neutral"
+                        ),
+                        "output": {
+                            "title": f"declined: {suppression.code.value}",
+                            "summary": body,
+                        },
+                    },
+                )
+            except (GitHubApiError, OSError) as exc:  # fallback-ok: courtesy check-run
+                logger.warning(
+                    "occ_companion_effect: could not post mint-status check-run on "
+                    "%s#%s: %s",
+                    request.repo,
+                    request.pr_number,
+                    exc,
+                )
+
+        logger.warning(
+            "occ_companion_effect: DECLINED mint for %s#%s code=%s evidence_lost=%s "
+            "matched=%r reason=%s",
+            request.repo,
+            request.pr_number,
+            suppression.code.value,
+            suppression.evidence_lost,
+            suppression.matched_text,
+            suppression.summary,
+        )
+        return posted
+
+    @staticmethod
+    def _render_suppression_comment(
+        suppression: ModelOccCompanionSuppression,
+        marker: str,
+    ) -> str:
+        """Render the decline note. Quotes the matched text verbatim (AC2)."""
+        headline = (
+            "**No OCC evidence companion was minted for this PR — and the born "
+            "path can no longer mint one.**"
+            if suppression.evidence_lost
+            else "**No OCC evidence companion was minted for this PR.**"
+        )
+        lines = [marker, headline, "", suppression.summary, ""]
+        if suppression.matched_text:
+            where = suppression.matched_location or "PR"
+            location = (
+                f"{where} line {suppression.matched_line}"
+                if suppression.matched_line
+                else where
+            )
+            lines.extend(
+                [f"Matched in the {location}: `{suppression.matched_text}`", ""]
+            )
+        lines.extend(
+            [
+                f"**To clear this:** {suppression.remediation}",
+                "",
+                f"_Reported by `node_occ_companion_effect` "
+                f"(decline code `{suppression.code.value}`, OMN-16665). This "
+                f"decision was made against the PR's LIVE state at compute time, "
+                f"not at publish time — a green publisher job only means the "
+                f"command reached the broker._",
+            ]
+        )
+        return "\n".join(lines)
 
     # -- write (mutate) -----------------------------------------------------
 

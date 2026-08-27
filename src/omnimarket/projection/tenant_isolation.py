@@ -373,6 +373,48 @@ def resolve_rls_read_tenant(tenant_value: object, *, table: str) -> str:
     return INTERIM_DEFAULT_TENANT
 
 
+def resolve_serving_tenant(tenant_value: object, *, topic: str) -> str:
+    """Resolve the tenant an HTTP projection READ is served under (OMN-15797 AC2).
+
+    Resolution order: the caller's explicit value, then the lane's configured
+    ``Settings.onex_tenant_id``. There is deliberately **no third step**.
+
+    Every other resolver in this module ends in a house-tenant fallback, and
+    each is right to: :func:`resolve_read_tenant` serves the writer's own
+    existing-row probe, and :func:`resolve_rls_read_tenant` serves an
+    in-process runtime read whose tenant the lane itself owns. This one serves
+    an EXTERNAL caller over HTTP. Falling back to the house tenant there would
+    answer ``200`` with the house tenant's rows to a caller who supplied no
+    tenant at all -- a plausible-looking result indistinguishable from a
+    correctly-scoped one, which is precisely the silent-answer property
+    OMN-15797 exists to make unrepresentable. So this raises instead, and the
+    serving path maps the raise to a typed refusal.
+
+    Unlike :func:`resolve_rls_read_tenant`, the refusal is NOT gated on
+    ``ENFORCE_TENANT_ISOLATION``: that ratchet exists to avoid rejecting real
+    single-tenant traffic in lanes with no tenant configured, and it applies to
+    surfaces that are reached whether or not anyone opted into scoping. This
+    one is reached only for an exposure whose contract explicitly declares a
+    ``tenant_column`` -- the opt-in IS the contract declaration, so a second
+    env-var ratchet in front of it would only make the declaration a no-op.
+
+    Raises:
+        TenantContextMissingError: no tenant could be resolved.
+    """
+    if isinstance(tenant_value, str) and tenant_value.strip():
+        return tenant_value.strip()
+    configured = get_settings().onex_tenant_id.strip()
+    if configured:
+        return configured
+    raise TenantContextMissingError(
+        f"{topic} refused: no tenant context resolved (OMN-15797) -- the "
+        "exposure declares a tenant_column, so serving it unscoped would "
+        "return either another tenant's rows or an empty page the caller "
+        "cannot distinguish from real emptiness. Supply ?tenant=<id> or "
+        "configure ONEX_TENANT_ID for this lane."
+    )
+
+
 def require_tenant_id(tenant_id: str | None, *, table: str) -> None:
     """Raise :class:`TenantRequiredError` when isolation is enforced and blank.
 
@@ -405,6 +447,7 @@ __all__: list[str] = [
     "require_tenant_id",
     "resolve_read_tenant",
     "resolve_rls_read_tenant",
+    "resolve_serving_tenant",
     "resolve_tenant_uuid",
     "resolve_tenant_uuid_or_none",
     "resolve_write_tenant",
