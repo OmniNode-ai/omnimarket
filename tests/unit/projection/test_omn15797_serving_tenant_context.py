@@ -39,6 +39,7 @@ from pydantic import ValidationError
 
 import omnimarket
 from omnimarket.config.settings import get_settings
+from omnimarket.projection import api_server
 from omnimarket.projection.api_server import (
     app,
     get_snapshot_cache,
@@ -176,9 +177,34 @@ def test_scoped_exposure_without_tenant_context_returns_typed_error() -> None:
     body = response.json()
     assert body["error"] == "tenant_context_unresolved"
     assert body["topic"] == _SCOPED_TOPIC
-    # The refusal must carry an explicit reason, not a bare status code.
-    assert body["degraded_reason"]
+    # The refusal must carry an explicit, ACTIONABLE reason, not a bare status
+    # code: a caller who cannot tell what would make the request succeed is
+    # back to guessing, which is what the silent 200 forced.
+    assert "?tenant=" in body["degraded_reason"]
     assert "rows" not in body
+
+
+def test_refusal_does_not_echo_internal_exception_text() -> None:
+    """The 422 body is a fixed remediation string, not ``str(exc)``.
+
+    This endpoint is reachable by an external caller; echoing internal
+    exception detail over HTTP is a leak channel (security review, PR #2155).
+    Pinned here so a future "make the error more helpful" edit cannot quietly
+    reintroduce interpolated exception text.
+    """
+    cfg = _scoped_cfg()
+    topic_map = {_SCOPED_TOPIC: cfg}
+    cache = _cache(topic_map)
+
+    with _client(topic_map, cache) as client:
+        response = client.get(f"/projection/{_SCOPED_TOPIC}")
+
+    reason = response.json()["degraded_reason"]
+    assert reason == api_server._TENANT_CONTEXT_DEGRADED_REASON
+    # The resolver's own message names the lane env var and the topic; neither
+    # may reach the wire.
+    assert "ONEX_TENANT_ID" not in reason
+    assert _SCOPED_TOPIC not in reason
 
 
 def test_scoped_exposure_with_tenant_returns_only_that_tenants_rows() -> None:

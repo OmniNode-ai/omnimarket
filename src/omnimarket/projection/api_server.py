@@ -71,6 +71,15 @@ _FRESH_THRESHOLD = timedelta(minutes=5)
 _STALE_THRESHOLD = timedelta(minutes=60)
 _NOT_YET_BUS_BACKED_TICKET = "OMN-15800"
 _TENANT_CONTEXT_TICKET = "OMN-15797"
+# A FIXED string, never the exception's own text (security review, PR #2155):
+# this endpoint is reachable by an external caller, and echoing internal
+# exception detail back over HTTP is a leak channel. It is still the caller's
+# remediation, not a bare status: a refusal that does not say what would make
+# the request succeed just relocates the guessing the silent 200 caused.
+_TENANT_CONTEXT_DEGRADED_REASON = (
+    "this exposure is tenant-scoped and no tenant context was resolved for the "
+    "request; supply ?tenant=<id>"
+)
 
 
 def topic_supports_correlation_id_filter(cfg: ProjectionTableConfig) -> bool:
@@ -321,7 +330,7 @@ def resolve_tenant_scope(
                 "error": "tenant_context_unresolved",
                 "topic": topic,
                 "tenant_column": cfg.tenant_column,
-                "degraded_reason": "tenant context could not be resolved",
+                "degraded_reason": _TENANT_CONTEXT_DEGRADED_REASON,
                 "migration_ticket": _TENANT_CONTEXT_TICKET,
             },
         )
