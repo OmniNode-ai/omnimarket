@@ -36,6 +36,7 @@ import sys
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Final
 
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
@@ -54,6 +55,90 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
 _log = logging.getLogger(__name__)
 
 _FALLBACK_SHA = "0000000"
+
+# OMN-15602: the receipt's ``probe_stdout`` carries the per-check evidence as a
+# serialized JSON string. The cap below bounds that string, but it is applied to
+# the *payload* (whole ``details`` entries are dropped, over-long messages are
+# elided) and never to the serialized document — a slice of the document cuts
+# mid-token and leaves JSON that no consumer can re-parse, which is exactly the
+# "unfalsifiable head count with no inspectable body" the receipt exists to
+# prevent. ModelDodReceipt allows up to 1_000_000 chars; 64 KiB comfortably
+# holds a few hundred checks while still bounding a pathological run.
+_PROBE_STDOUT_MAX_CHARS: Final[int] = 65_536
+
+# Per-check message budget, also applied to the payload rather than the
+# document, so one pathological message cannot consume the whole cap.
+_DETAIL_MESSAGE_MAX_CHARS: Final[int] = 4_096
+
+
+def _elide_message(message: str, max_chars: int) -> str:
+    """Return ``message`` bounded to ``max_chars``, self-describing when cut.
+
+    The marker is appended in the *payload*, before serialization, so the
+    resulting JSON document is always well-formed and a consumer can tell an
+    elided message from a complete one without guessing.
+    """
+    if len(message) <= max_chars:
+        return message
+    dropped = len(message) - max_chars
+    return f"{message[:max_chars]}… [truncated {dropped} chars]"
+
+
+def _build_probe_stdout(state: ModelDodVerifyState) -> str:
+    """Serialize the per-check evidence payload, bounded but always parseable.
+
+    OMN-15602. The returned string is guaranteed to satisfy ``json.loads``. The
+    verdict counters are never elided — only ``details`` entries are dropped,
+    from the tail, and the payload names exactly how many via
+    ``details_elided`` (0 when the payload is complete) alongside
+    ``details_total``.
+    """
+    details: list[dict[str, object]] = [
+        {
+            "id": check.evidence_id,
+            "description": check.description,
+            "status": str(check.status),
+            "message": _elide_message(check.message or "", _DETAIL_MESSAGE_MAX_CHARS),
+        }
+        for check in state.checks
+    ]
+    header: dict[str, object] = {
+        "total": state.total_checks,
+        "verified": state.verified_count,
+        "failed": state.failed_count,
+        "skipped": state.skipped_count,
+        # OMN-15390: retired by a later append-only supersedes marker; not
+        # executed, and excluded from ``total`` (the verdict-bearing
+        # denominator), but named here so the receipt shows the repair
+        # rather than hiding it.
+        "superseded": state.superseded_count,
+    }
+
+    def render(kept: int) -> str:
+        return json.dumps(
+            {
+                **header,
+                "details_total": len(details),
+                "details_elided": len(details) - kept,
+                "details": details[:kept],
+            },
+            default=str,
+        )
+
+    rendered = render(len(details))
+    if len(rendered) <= _PROBE_STDOUT_MAX_CHARS:
+        return rendered
+
+    # Largest prefix of ``details`` that still fits. ``render(0)`` is a handful
+    # of integer counters and always fits, so the search has a floor.
+    low, high = 0, len(details)
+    while low < high:
+        mid = (low + high + 1) // 2
+        if len(render(mid)) <= _PROBE_STDOUT_MAX_CHARS:
+            low = mid
+        else:
+            high = mid - 1
+    return render(low)
 
 
 def _git_info(working_dir: Path) -> tuple[str, str]:
@@ -111,29 +196,9 @@ def _build_receipt(
         else EnumReceiptStatus.FAIL
     )
 
-    probe_stdout = json.dumps(
-        {
-            "total": state.total_checks,
-            "verified": state.verified_count,
-            "failed": state.failed_count,
-            "skipped": state.skipped_count,
-            # OMN-15390: retired by a later append-only supersedes marker; not
-            # executed, and excluded from ``total`` (the verdict-bearing
-            # denominator), but named here so the receipt shows the repair
-            # rather than hiding it.
-            "superseded": state.superseded_count,
-            "details": [
-                {
-                    "id": check.evidence_id,
-                    "description": check.description,
-                    "status": str(check.status),
-                    "message": check.message or "",
-                }
-                for check in state.checks
-            ],
-        },
-        default=str,
-    )[:4096]
+    # OMN-15602: payload-level bounding — the serialized document is never
+    # sliced, so ``json.loads(probe_stdout)`` always succeeds.
+    probe_stdout = _build_probe_stdout(state)
 
     receipt = ModelDodReceipt(
         schema_version="1.0.0",
