@@ -1999,6 +1999,58 @@ jobs:
             src/omnimarket
 
   # ============================================================================
+  # EVENT CHAIN GATE (OMN-16774)
+  # ---------------------------------------------------------------------------
+  # OMN-16767 killed the whole delegation chain on the .201 dev lane and every
+  # repo's CI stayed green. The TRIGGER lived in THIS repo:
+  # node_delegation_routing_reducer's contract.yaml gained a db_io.db_tables
+  # block for its tenant-overlay table (OMN-15631), and that YAML edit silently
+  # flipped the runtime's wiring arm underneath an unchanged, canonical def-B
+  # handler — which was then handed a raw dict and quarantined every routing
+  # request. No Python in this repo changed shape; a contract did, and nothing
+  # in CI drove the seam that the contract controls.
+  #
+  # This job drives whole chains from the REAL contract.yaml on disk, through
+  # the REAL handler, the REAL _prepare_handler_wiring arm selection and the
+  # REAL MessageDispatchEngine, on the in-memory bus. It asserts the terminal
+  # event lands AND that nothing reaches the quarantine sink.
+  #
+  # ZERO INFRASTRUCTURE by construction — no broker, no database. Note the suite
+  # lives at tests/chains/, NOT tests/integration/: in this repo `integration`
+  # means a real Kafka bus (tests/conftest.py's OMN-8726 guard rejects
+  # EventBusInmemory there, correctly), and a per-PR chain gate must not need a
+  # broker. Do not move it under tests/integration/.
+  #
+  # Unconditional (no needs/if) so it is always present, and registered in
+  # scripts/ci/ci_summary_gate.py::STRICT_GATE_JOBS so a skipped/absent
+  # conclusion fails "CI Summary" closed as well as a failing one.
+  # ============================================================================
+  event-chain-gate:
+    name: Event Chain Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+        with:
+          version: "0.8.3"
+      - name: Run event chain gate
+        run: |
+          echo "================================================================"
+          echo "Event Chain Gate (OMN-16774)"
+          echo "Real contracts + real handlers through the real dispatch seam."
+          echo "In-memory bus only: no broker, no database."
+          echo "A chain that dies into the quarantine sink FAILS here."
+          echo "================================================================"
+          uv run pytest tests/chains/ -v --tb=short
+
+  # ============================================================================
   # CONTRACT TOPIC GRAPH (OMN-14527 / OMN-14568 / OMN-14582)
   # Static producer/consumer oracle over EVERY topic-declaring package. Moved
   # here from the standalone contract-topic-graph.yml (retired) because GHA

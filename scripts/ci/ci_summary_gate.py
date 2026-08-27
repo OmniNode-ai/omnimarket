@@ -193,6 +193,18 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     "Coverage Sweep Gate",  # coverage-sweep-gate — needs occ-preflight; strict per OMN-14645; OMN-16217 draft-gated on dev only (see block comment above)
     "Workflow Module Resolution",  # workflow-module-refs — needs occ-preflight, no if:
     "no-noncanonical-lifecycle-classes",  # unconditional (OMN-14350), no needs/if:
+    # OMN-16774: whole event chains driven from the REAL contract.yaml through
+    # the REAL handler and the REAL dispatch seam on the in-memory bus
+    # (tests/chains/). THIS LINE IS HALF THE MECHANISM. The default-deny sweep
+    # already fails CI Summary when the job FAILS, but an unregistered job that
+    # is `skipped` or absent yields SUCCESS — so without this entry, deleting or
+    # skipping the job would silently retire the only per-PR proof that a chain
+    # still terminalizes. Unconditional in ci.yml (no needs/if), so a skip is
+    # anomalous and never a legitimate opt-out. Registered because OMN-16767
+    # proved the failure mode is SILENT: a contract edit in THIS repo took the
+    # delegation chain to zero behind fully green CI, with every request landing
+    # in the quarantine sink.
+    "Event Chain Gate",  # event-chain-gate
     "Event Registry Drift",  # event-registry-drift — needs occ-preflight, no if: (strict per OMN-14590)
     "Topic Drift Check",  # topic-drift-check — needs occ-preflight, no if: (strict per OMN-14590)
     "Topic Enum Drift Check",  # topic-enum-drift — needs occ-preflight, no if: (strict per OMN-14590)
