@@ -123,12 +123,33 @@ def test_contract_still_declares_the_db_io_block() -> None:
     assert "delegation_routing_tenant_overlay" in names, names
 
 
+# The projection binding's DSN env var. `_make_projection_dispatch_callback`
+# refuses to build a projection callback without it, which is a LATER check than
+# the privilege resolution this suite exists to pin.
+#
+# This constant is why the suite is hermetic. The first version of this test had
+# no `monkeypatch.setenv` and passed locally while failing all seven profiles in
+# CI — because a developer shell exports a real `OMNIDASH_ANALYTICS_DB_URL` and
+# the CI runner does not. That is precisely the OMN-16796 defect class (behaviour
+# as a function of ambient environment rather than of the contract), reproduced
+# by accident in the test written to guard against it. The value below is a
+# throwaway that is never connected to: construction is what is under test, not
+# connectivity.
+_DSN_ENV_VAR = "OMNIDASH_ANALYTICS_DB_URL"
+_DUMMY_DSN = "postgresql://arm-probe:arm-probe@127.0.0.1:5432/arm_probe"
+
+
 @pytest.mark.parametrize("profile_name", _PROFILES)
 def test_projection_arm_constructs_under_every_topology_profile(
     profile_name: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """All seven profiles must build the arm. Under 0.38.9 all seven raised."""
     contract = _load_contract()
+
+    # Pin the DSN rather than inheriting it, so this asserts the same thing on a
+    # laptop with a populated env and on a bare CI runner.
+    monkeypatch.setenv(_DSN_ENV_VAR, _DUMMY_DSN)
 
     prepared = _prepare_handler_wiring(
         contract=contract,
