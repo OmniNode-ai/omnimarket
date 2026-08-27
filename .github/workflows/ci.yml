@@ -237,6 +237,14 @@ jobs:
       # silently. SYNC with pre-commit hook 'projection-dlq-path'.
       - name: Projection-DLQ path gate
         run: uv run python scripts/ci/check_projection_dlq_path.py
+      # OMN-16690: a db_io contract's declared table `access` must cover the
+      # operations its handler performs. A handler that reads for idempotency
+      # under `access: write` is refused fail-closed by the runtime and every
+      # event is quarantined while the caller still sees a 202 — invisible to
+      # isolation tests, which inject fakes with no access enforcement. SYNC
+      # with pre-commit hook 'projection-contract-access'.
+      - name: Projection contract-access gate
+        run: uv run python scripts/ci/check_projection_contract_access.py
       # OMN-14285 (WI-1 / S1d): exactly one OCC companion producer. Fails if a
       # second writer surface (inline receipt/contract template outside the
       # occ_evidence_stamp seam, duplicate OccCompanionEmitter, or a resurrected

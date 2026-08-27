@@ -532,6 +532,25 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-16690: a db_io contract's declared table `access` must cover the
+      # operations its handler actually performs. Thirteen nodes declared
+      # `access: write` on a table their handler queries for idempotency; the
+      # runtime refuses the read fail-closed and quarantines every event while
+      # the gateway still answers 202 — zero rows, no visible error. Isolation
+      # tests could not catch it (they inject fakes with no access
+      # enforcement), so detection has to be static. Scoped to ANY node
+      # contract or handler, not just node_projection_*: the two live
+      # instances were node_hook_event_capture and
+      # node_renderer_capability_projection, neither of which matches that
+      # prefix. SYNC with ci.yml step "Projection contract-access gate".
+      - id: projection-contract-access
+        name: Projection contract-access gate (OMN-16690)
+        language: system
+        entry: uv run python scripts/ci/check_projection_contract_access.py
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|.*\.py)|scripts/ci/check_projection_contract_access\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-14768 / F-11: renaming an OPEN PR's head branch closes the PR. Scan
       # the whole merge-controller tree whenever any of its files (or the gate
       # itself) changes. SYNC with the ci.yml `lint` job step

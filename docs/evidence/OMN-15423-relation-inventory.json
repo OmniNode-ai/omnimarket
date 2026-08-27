@@ -1389,6 +1389,7 @@
       "readers": [
         "node_data_flow_sweep",
         "node_database_sweep",
+        "node_projection_routing_decision",
         "node_retention_cleanup",
         "node_session_orchestrator"
       ],
@@ -1861,7 +1862,8 @@
       "partitioning": [],
       "producer": "node_projection_capsule_store",
       "readers": [
-        "node_capsule_effectiveness_feedback_reducer"
+        "node_capsule_effectiveness_feedback_reducer",
+        "node_projection_capsule_store"
       ],
       "target_schema": "omninode_internal",
       "writers": [
@@ -2079,6 +2081,7 @@
       "partitioning": [],
       "producer": "node_projection_delegation",
       "readers": [
+        "node_projection_delegation",
         "node_projection_delegation_inference_response"
       ],
       "target_schema": "tenant",
@@ -2151,6 +2154,7 @@
         "node_delegate_skill_orchestrator",
         "node_projection_baselines",
         "node_projection_cost_by_repo",
+        "node_projection_delegation",
         "node_projection_delegation_inference_response",
         "node_projection_live_events",
         "node_projection_pattern_learning",
@@ -2531,7 +2535,9 @@
       "owner_declaration": "node_projection_event_chain",
       "partitioning": [],
       "producer": "node_projection_event_chain",
-      "readers": [],
+      "readers": [
+        "node_projection_event_chain"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_projection_event_chain"
@@ -2691,7 +2697,9 @@
       "owner_declaration": "node_evidence_dashboard_reducer",
       "partitioning": [],
       "producer": "node_evidence_dashboard_reducer",
-      "readers": [],
+      "readers": [
+        "node_evidence_dashboard_reducer"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_evidence_dashboard_reducer"
@@ -2913,7 +2921,9 @@
       "owner_declaration": "node_hook_event_capture",
       "partitioning": [],
       "producer": "node_hook_event_capture",
-      "readers": [],
+      "readers": [
+        "node_hook_event_capture"
+      ],
       "target_schema": "public",
       "writers": [
         "node_hook_event_capture"
@@ -3282,7 +3292,9 @@
       "owner_declaration": "node_llm_delegation_projection",
       "partitioning": [],
       "producer": "node_llm_delegation_projection",
-      "readers": [],
+      "readers": [
+        "node_llm_delegation_projection"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_llm_delegation_projection"
@@ -3729,6 +3741,7 @@
         "node_projection_delegation",
         "node_projection_live_events",
         "node_projection_pattern_learning",
+        "node_projection_registration",
         "node_projection_routing_decision",
         "node_projection_savings",
         "node_projection_session_outcome"
@@ -3960,6 +3973,7 @@
       "producer": "node_projection_pattern_learning",
       "readers": [
         "node_data_flow_sweep",
+        "node_projection_pattern_learning",
         "node_session_orchestrator"
       ],
       "target_schema": "tenant",
@@ -4288,7 +4302,9 @@
       "owner_declaration": "node_renderer_capability_projection",
       "partitioning": [],
       "producer": "node_renderer_capability_projection",
-      "readers": [],
+      "readers": [
+        "node_renderer_capability_projection"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_renderer_capability_projection"
@@ -4340,7 +4356,9 @@
       "owner_declaration": "node_projection_sandbox_decisions",
       "partitioning": [],
       "producer": "node_projection_sandbox_decisions",
-      "readers": [],
+      "readers": [
+        "node_projection_sandbox_decisions"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_projection_sandbox_decisions"
@@ -4827,7 +4845,8 @@
       "readers": [
         "node_build_loop_orchestrator",
         "node_generation_consumer",
-        "node_occ_companion_compute"
+        "node_occ_companion_compute",
+        "node_projection_traces"
       ],
       "target_schema": "omninode_internal",
       "writers": [
@@ -4880,7 +4899,9 @@
       "owner_declaration": "node_projection_voice_sessions",
       "partitioning": [],
       "producer": "node_projection_voice_sessions",
-      "readers": [],
+      "readers": [
+        "node_projection_voice_sessions"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_projection_voice_sessions"
