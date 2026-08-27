@@ -375,6 +375,25 @@ class TestProbeKafkaTopics:
 
 
 @pytest.mark.unit
+class _NullTransaction:
+    """Stand-in for ``asyncpg.Connection.transaction()`` (OMN-15797).
+
+    A bare ``AsyncMock`` returns a coroutine here, not an async context
+    manager, so ``async with conn.transaction():`` raises ``TypeError`` against
+    it. The probe now opens one transaction per table so the tenant GUC
+    (``set_config(..., is_local => true)``) is scoped to the same transaction as
+    the ``COUNT(*)`` — an RLS-covered count issued outside it silently returns
+    zero. The double has to model that, or these tests would pass against a
+    probe that lost the seam.
+    """
+
+    async def __aenter__(self) -> None:
+        return None
+
+    async def __aexit__(self, *_exc: object) -> None:
+        return None
+
+
 class TestProbeDbRowCounts:
     """Unit tests for ProbeDbRowCounts — patches asyncpg."""
 
@@ -414,6 +433,8 @@ class TestProbeDbRowCounts:
 
         mock_conn.fetchrow = AsyncMock(side_effect=[make_row(c) for c in range(7)])
         mock_conn.close = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_conn.transaction = MagicMock(side_effect=_NullTransaction)
 
         mock_asyncpg = MagicMock()
         mock_asyncpg.connect = AsyncMock(return_value=mock_conn)
@@ -429,6 +450,13 @@ class TestProbeDbRowCounts:
         assert result[0].row_count == 0  # type: ignore[union-attr]
         # Connection must be closed even on success
         mock_conn.close.assert_called_once()
+        # OMN-15797 AC3: the tenant GUC is set once per table, inside that
+        # table's own transaction. delegation_events is RLS-covered; without
+        # this the COUNT(*) returns 0 and the baseline records an empty table.
+        assert mock_conn.execute.await_count == len(probe_db_row_counts._KEY_TABLES)
+        guc_statement, guc_name, _tenant = mock_conn.execute.await_args_list[0].args
+        assert "set_config" in guc_statement
+        assert guc_name == "app.tenant_id"
 
     async def test_returns_empty_on_connection_failure(
         self, monkeypatch: pytest.MonkeyPatch
@@ -471,6 +499,8 @@ class TestProbeDbRowCounts:
 
         mock_conn.fetchrow = AsyncMock(side_effect=fetchrow_side_effect)
         mock_conn.close = AsyncMock()
+        mock_conn.execute = AsyncMock()
+        mock_conn.transaction = MagicMock(side_effect=_NullTransaction)
 
         mock_asyncpg = MagicMock()
         mock_asyncpg.connect = AsyncMock(return_value=mock_conn)

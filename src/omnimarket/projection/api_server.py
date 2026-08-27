@@ -18,6 +18,15 @@ side reducer publishes to its snapshot topic). A family that has not
 converted yet returns an explicit ``503 not_yet_bus_backed`` — never a stale
 DB read, never a silent empty ``200`` (the failure mode OMN-15797 hid behind).
 
+OMN-15797 AC2: an exposure whose contract declares ``projection_api.
+tenant_column`` is served ONLY under a resolved tenant. A request whose tenant
+context cannot be resolved returns ``422 tenant_context_unresolved``, and a
+``?tenant=`` on an exposure with no tenant column returns ``422
+unsupported_filter`` rather than being silently dropped. Between those two,
+the serving path has no way to answer ``200`` with rows it could not honestly
+scope — the property that let the original OMN-15797 defect survive
+undetected.
+
 There is no hardcoded topic whitelist. The single source of truth is the
 contract.yaml files discovered via ``onex.nodes`` entry points.
 """
@@ -50,6 +59,10 @@ from omnimarket.projection.runner import (
     projection_runtime_binding_from_overlay_env,
 )
 from omnimarket.projection.snapshot_cache import SnapshotCache
+from omnimarket.projection.tenant_isolation import (
+    TenantContextMissingError,
+    resolve_serving_tenant,
+)
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +70,7 @@ _PROJECTION_VERSION = "1.0.0"
 _FRESH_THRESHOLD = timedelta(minutes=5)
 _STALE_THRESHOLD = timedelta(minutes=60)
 _NOT_YET_BUS_BACKED_TICKET = "OMN-15800"
+_TENANT_CONTEXT_TICKET = "OMN-15797"
 
 
 def topic_supports_correlation_id_filter(cfg: ProjectionTableConfig) -> bool:
@@ -258,6 +272,59 @@ def _filter_rows(
     if pr_number is not None:
         result = [r for r in result if r.get("pr_number") == pr_number]
     return result
+
+
+def resolve_tenant_scope(
+    cfg: ProjectionTableConfig, topic: str, requested_tenant: str | None
+) -> tuple[str | None, JSONResponse | None]:
+    """Resolve the tenant this request is served under, or the refusal to send.
+
+    OMN-15797 AC2. Returns ``(tenant, None)`` when the request may proceed
+    (``tenant`` is ``None`` for an exposure that declares no ``tenant_column``
+    -- unchanged, unscoped serving), or ``(None, response)`` with the typed
+    refusal to return instead. There is no third outcome: an exposure that
+    declares a tenant column is either scoped to a resolved tenant or refused.
+
+    Both refusals are ``422``, not ``503``: the caller can fix either one by
+    changing the request (supply ``?tenant=``, or drop a ``tenant`` the
+    exposure cannot honour). The ``503``s this module already emits
+    (``not_yet_bus_backed``, ``snapshot_bootstrap_incomplete``) describe server
+    state the caller cannot influence, which is the distinction being kept.
+    """
+    if not cfg.tenant_scoped:
+        if requested_tenant is not None:
+            # Never silently drop a scoping parameter: the caller would read
+            # the resulting unscoped 200 as scoped. Same defect class as
+            # OMN-16290's silently-ignored order_by, with a security edge.
+            return None, JSONResponse(
+                status_code=422,
+                content={
+                    "error": "unsupported_filter",
+                    "filter": "tenant",
+                    "topic": topic,
+                    "detail": (
+                        f"Topic '{topic}' declares no 'tenant_column' and "
+                        "cannot be scoped by tenant; its rows are not "
+                        "tenant-partitioned."
+                    ),
+                },
+            )
+        return None, None
+
+    try:
+        return resolve_serving_tenant(requested_tenant, topic=topic), None
+    except TenantContextMissingError:
+        return None, JSONResponse(
+            status_code=422,
+            content={
+                "status": "degraded",
+                "error": "tenant_context_unresolved",
+                "topic": topic,
+                "tenant_column": cfg.tenant_column,
+                "degraded_reason": "tenant context could not be resolved",
+                "migration_ticket": _TENANT_CONTEXT_TICKET,
+            },
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -471,6 +538,11 @@ async def list_projections(
             "bus_backed": cfg.bus_backed,
             "key_columns": list(cfg.key_columns),
             "backing": "bus" if cfg.bus_backed else "not_yet_bus_backed",
+            # OMN-15797 AC2: a client must be able to discover that an
+            # exposure needs ?tenant= from the catalogue, not from a 422 in
+            # production.
+            "tenant_column": cfg.tenant_column,
+            "tenant_scoped": cfg.tenant_scoped,
         }
         for cfg in topic_map.values()
     ]
@@ -485,6 +557,7 @@ async def projection_query(
     limit: int | None = Query(default=None, ge=1),
     order: str | None = Query(default=None, pattern="^(?i:asc|desc)$"),
     order_by: str | None = Query(default=None),
+    tenant: str | None = Query(default=None),
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
     cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
 ) -> JSONResponse:
@@ -528,6 +601,10 @@ async def projection_query(
                 "topic": topic,
             },
         )
+
+    scope_tenant, tenant_refusal = resolve_tenant_scope(cfg, topic, tenant)
+    if tenant_refusal is not None:
+        return tenant_refusal
 
     if correlation_id is not None and not topic_supports_correlation_id_filter(cfg):
         return JSONResponse(
@@ -573,7 +650,13 @@ async def projection_query(
     generated_at = datetime.now(UTC).isoformat()
 
     order_by_spec = _effective_order_by_spec(base_order_by_spec, order)
-    all_rows = cache.get_rows(topic, limit=None, order_by_override=order_by_spec)
+    all_rows = cache.get_rows(
+        topic,
+        limit=None,
+        order_by_override=order_by_spec,
+        tenant_column=cfg.tenant_column,
+        tenant_id=scope_tenant,
+    )
     filtered_rows = _filter_rows(
         all_rows,
         cursor_column=cfg.cursor_column,
@@ -613,6 +696,10 @@ async def projection_query(
             "next_cursor": next_cursor,
             "rows": serialisable_rows,
             "backing": "bus",
+            # The tenant these rows are scoped to, or None for an exposure
+            # that declares no tenant_column. Stated on the response so a
+            # caller never has to assume which of the two it received.
+            "tenant": scope_tenant,
         }
     )
 
@@ -786,6 +873,17 @@ def _evidence_projection_response(
             },
         )
 
+    # OMN-15797 AC2: these routes expose no ``tenant`` query parameter, so an
+    # exposure that declared a tenant_column could only be served here
+    # unscoped. Run the same resolver with no caller-supplied value: a lane
+    # with a configured tenant scopes to it, and a lane without one is refused
+    # rather than answered unscoped. No evidence-pipeline exposure declares a
+    # tenant_column today, so this is inert until one does -- which is the
+    # point: it cannot be flipped on and quietly bypass the guard here.
+    scope_tenant, tenant_refusal = resolve_tenant_scope(cfg, topic, None)
+    if tenant_refusal is not None:
+        return tenant_refusal
+
     effective_limit = min(limit or cfg.limit, cfg.limit)
     generated_at = datetime.now(UTC).isoformat()
 
@@ -793,7 +891,12 @@ def _evidence_projection_response(
         v is not None for v in (correlation_id, ticket_id, repo, pr_number)
     )
 
-    all_rows = cache.get_rows(topic, limit=None)
+    all_rows = cache.get_rows(
+        topic,
+        limit=None,
+        tenant_column=cfg.tenant_column,
+        tenant_id=scope_tenant,
+    )
     filtered_rows = _filter_rows(
         all_rows,
         cursor_column=cfg.cursor_column,
