@@ -53,7 +53,9 @@ from datetime import UTC, datetime
 import pytest
 
 from omnimarket.nodes.node_linear_triage.handlers.handler_git_automation_demotion_guard import (
+    TEAM_PAGE_SIZE,
     HandlerGitAutomationDemotionGuard,
+    LinearGraphQLPerTeamTransport,
     LinearPerTeamTransport,
 )
 from omnimarket.nodes.node_linear_triage.models.model_git_automation_demotion_guard import (
@@ -584,3 +586,93 @@ class TestRenderDemotionReport:
         assert "FAIL" in text
         assert "merge" in text
         assert "In Review" in text
+
+
+# ---------------------------------------------------------------------------
+# Team-page truncation (CodeRabbit finding on PR #2162)
+# ---------------------------------------------------------------------------
+
+
+class _RecordedTransport(LinearGraphQLPerTeamTransport):
+    """Drives the real parse + validation path against a recorded response body.
+
+    Subclassing the live transport (rather than patching its internals) keeps
+    the exact code path CI exercises under test: only the network hop is
+    replaced.
+    """
+
+    def __init__(self, body: dict[str, object]) -> None:
+        super().__init__("test-token")
+        self._body = body
+
+    def _post(
+        self, query: str, variables: dict[str, object] | None = None
+    ) -> dict[str, object]:
+        return self._body
+
+
+class TestTeamPageTruncationFailsClosed:
+    """An unenumerated team is never probed, so its automations read as clean.
+
+    This was the one fail-open path in the original design: the automation page
+    was checked for truncation but the team page was not, so a workspace holding
+    more than TEAM_PAGE_SIZE teams would have reported passed=True with the
+    positive control satisfied, while never looking at the teams beyond page one.
+    """
+
+    @pytest.mark.unit
+    def test_has_next_page_on_teams_fails_closed(self) -> None:
+        transport = _RecordedTransport(
+            {
+                "data": {
+                    "teams": {
+                        "nodes": [{"id": "t1", "key": "OMN", "name": "Omninode"}],
+                        "pageInfo": {"hasNextPage": True},
+                    }
+                }
+            }
+        )
+        with pytest.raises(RuntimeError, match="truncation"):
+            transport.enumerate_teams()
+
+    @pytest.mark.unit
+    def test_exactly_full_team_page_fails_closed_without_page_info(self) -> None:
+        """pageInfo going missing must not re-open the hole."""
+        transport = _RecordedTransport(
+            {
+                "data": {
+                    "teams": {
+                        "nodes": [
+                            {"id": f"t{i}", "key": f"T{i}", "name": f"Team {i}"}
+                            for i in range(TEAM_PAGE_SIZE)
+                        ]
+                    }
+                }
+            }
+        )
+        with pytest.raises(RuntimeError, match="truncation"):
+            transport.enumerate_teams()
+
+    @pytest.mark.unit
+    def test_missing_nodes_list_fails_closed(self) -> None:
+        transport = _RecordedTransport({"data": {"teams": {"pageInfo": {}}}})
+        with pytest.raises(RuntimeError, match=r"teams\.nodes"):
+            transport.enumerate_teams()
+
+    @pytest.mark.unit
+    def test_short_team_page_is_accepted(self) -> None:
+        """The live 2026-08-27 shape: 3 teams, well inside the page."""
+        transport = _RecordedTransport(
+            {
+                "data": {
+                    "teams": {
+                        "nodes": [
+                            {"id": _TEAM_IDS[k], "key": k, "name": k}
+                            for k in ("OMN", "CON", "JON")
+                        ],
+                        "pageInfo": {"hasNextPage": False},
+                    }
+                }
+            }
+        )
+        assert [t["key"] for t in transport.enumerate_teams()] == ["OMN", "CON", "JON"]

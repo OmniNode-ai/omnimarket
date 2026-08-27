@@ -551,3 +551,96 @@ def test_branch_scoped_completed_target_is_still_drift() -> None:
     assert finding.verdict is EnumGitAutomationVerdict.DRIFT
     assert finding.all_branches is False
     assert "branch pattern 'main'" in finding.reason
+
+
+# ---------------------------------------------------------------------------
+# Enumeration completeness (CodeRabbit finding on PR #2162)
+# ---------------------------------------------------------------------------
+#
+# Once an empty automation set passes behind a positive team count, an
+# unenumerated or unread team becomes a fail-open: it contributes zero
+# automations while the run still reports a clean bill. These lock that shut.
+
+
+def test_truncated_team_page_fails_closed() -> None:
+    """hasNextPage on the outer page means teams were never looked at."""
+    body = {
+        "data": {
+            "teams": {
+                "nodes": [
+                    {
+                        "id": "t1",
+                        "key": "OMN",
+                        "name": "Omninode",
+                        "gitAutomationStates": {"nodes": []},
+                    }
+                ],
+                "pageInfo": {"hasNextPage": True},
+            }
+        }
+    }
+    report = HandlerGitAutomationGuard(probe=_StubProbe(body)).handle(now=_NOW)
+    assert report.passed is False
+    assert "truncation" in report.failure_reason
+
+
+def test_team_with_unreadable_automation_connection_fails_closed() -> None:
+    """A team whose gitAutomationStates.nodes is missing contributed zero
+    automations for a reason that is NOT 'it has none'. It must not prop up the
+    positive control."""
+    body = {
+        "data": {
+            "teams": {
+                "nodes": [
+                    {
+                        "id": "t1",
+                        "key": "OMN",
+                        "name": "Omninode",
+                        "gitAutomationStates": {"nodes": []},
+                    },
+                    {"id": "t2", "key": "CON", "name": "Contractors"},
+                ],
+                "pageInfo": {"hasNextPage": False},
+            }
+        }
+    }
+    report = HandlerGitAutomationGuard(probe=_StubProbe(body)).handle(now=_NOW)
+    assert report.passed is False
+    assert "CON" in report.failure_reason
+
+
+def test_truncated_automation_page_fails_closed() -> None:
+    """A full automation page cannot prove it was the last one."""
+    body = {
+        "data": {
+            "teams": {
+                "nodes": [
+                    {
+                        "id": "t1",
+                        "key": "OMN",
+                        "name": "Omninode",
+                        "gitAutomationStates": {
+                            "nodes": [
+                                {
+                                    "id": f"a{i}",
+                                    "event": "merge",
+                                    "state": {
+                                        "id": "s",
+                                        "name": "In Review",
+                                        "type": "started",
+                                    },
+                                    "targetBranch": None,
+                                }
+                                for i in range(10)
+                            ],
+                            "pageInfo": {"hasNextPage": True},
+                        },
+                    }
+                ],
+                "pageInfo": {"hasNextPage": False},
+            }
+        }
+    }
+    report = HandlerGitAutomationGuard(probe=_StubProbe(body)).handle(now=_NOW)
+    assert report.passed is False
+    assert "truncation" in report.failure_reason

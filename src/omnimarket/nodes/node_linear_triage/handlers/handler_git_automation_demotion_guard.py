@@ -77,10 +77,17 @@ __all__ = [
 AUTOMATION_PAGE_SIZE = 50
 TEAM_PAGE_SIZE = 100
 
+# `pageInfo` is not decoration. Without it a workspace holding more than
+# TEAM_PAGE_SIZE teams would enumerate only the first page, and the teams beyond
+# it would never be probed — while the report still read passed=True with the
+# positive control satisfied. That is the one fail-open path this design cannot
+# tolerate, and it is the same truncation hazard already rejected for the
+# automation page.
 _TEAMS_QUERY = f"""
 {{
   teams(first: {TEAM_PAGE_SIZE}) {{
     nodes {{ id key name }}
+    pageInfo {{ hasNextPage }}
   }}
 }}
 """
@@ -120,12 +127,15 @@ class LinearPerTeamTransport(Protocol):
     """Injectable probe boundary — the two phases, decoupled from transport."""
 
     def enumerate_teams(self) -> list[dict[str, str]]:
-        """Return ``[{id, key, name}, ...]`` for every team in the workspace."""
-        ...
+        """Return ``[{id, key, name}, ...]`` for every team in the workspace.
+
+        Implementations MUST fail closed rather than return a truncated page —
+        an unenumerated team is never probed, so its automations would read as
+        clean.
+        """
 
     def fetch_team_automations(self, team_id: str) -> list[dict[str, object]]:
         """Return one team's raw ``gitAutomationStates`` nodes."""
-        ...
 
 
 class LinearGraphQLPerTeamTransport:
@@ -163,12 +173,29 @@ class LinearGraphQLPerTeamTransport:
 
     def enumerate_teams(self) -> list[dict[str, str]]:
         body = self._post(_TEAMS_QUERY)
-        nodes = ((body.get("data") or {}).get("teams") or {}).get("nodes")
+        teams_block = (body.get("data") or {}).get("teams") or {}
+        nodes = teams_block.get("nodes")
         if not isinstance(nodes, list):
             raise RuntimeError(
                 "Linear team enumeration returned no 'teams.nodes' list — the query "
                 "shape may have changed. Failing closed rather than reading it as "
                 "zero teams."
+            )
+
+        # A team beyond the page boundary would never be probed, yet the report
+        # would still read passed=True. Fail closed on both signals: the
+        # authoritative cursor, and a page that came back exactly full (which
+        # cannot prove it was the last page even if pageInfo went missing).
+        page_info = teams_block.get("pageInfo")
+        has_next = (
+            bool(page_info.get("hasNextPage")) if isinstance(page_info, dict) else False
+        )
+        if has_next or len(nodes) >= TEAM_PAGE_SIZE:
+            raise RuntimeError(
+                f"Linear returned {len(nodes)} team(s) at first: {TEAM_PAGE_SIZE} with "
+                f"hasNextPage={has_next}. Teams beyond the page would be invisible to "
+                "this audit, so a demoting automation on one of them would read as "
+                "clean. Failing closed on possible team-page truncation."
             )
         out: list[dict[str, str]] = []
         for n in nodes:

@@ -46,8 +46,6 @@ from omnimarket.nodes.node_linear_triage.services.git_automation_demotion_guard 
     render_demotion_report,
 )
 
-_log = logging.getLogger(__name__)
-
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
