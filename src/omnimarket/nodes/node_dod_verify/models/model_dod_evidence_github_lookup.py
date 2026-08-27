@@ -19,6 +19,10 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
+    EnumEvidenceUnverifiableCause,
+)
+
 
 class EnumDodEvidenceGithubOperation(StrEnum):
     """The 4 gh-CLI lookups this EFFECT handler performs."""
@@ -89,6 +93,23 @@ class ModelDodEvidenceGithubLookupResultEvent(BaseModel):
     # FETCH_PR_CHECKS_GREEN
     checks_green: bool | None = Field(default=None)
     detail: str | None = Field(default=None)
+
+    # FETCH_PR_CHECKS_GREEN credential-reachability classification (OMN-16788).
+    # Set ONLY alongside ``checks_green=False``, and only when the reason the
+    # required-context set could not be resolved is a POSITIVELY-identified
+    # credential fact (HTTP 403 on the branch-protection endpoint, or a bare
+    # HTTP 404 meaning the repo is invisible to the credential). ``None`` for
+    # every substantive outcome — including a genuinely red required check, a
+    # confirmed-unprotected base, and any transport failure. ``checks_green``
+    # stays ``False`` either way: this field changes how the caller RECORDS
+    # the fail-closed outcome, never whether it fails closed.
+    unreachable_cause: EnumEvidenceUnverifiableCause | None = Field(
+        default=None,
+        description=(
+            "Why the required-status-check set was unreadable, when the cause "
+            "is a credential fact rather than a substantive one."
+        ),
+    )
 
     # LOOKUP_PR_FOR_TICKET / LOOKUP_REPO_FOR_TICKET failure classification
     # (OMN-15382). Set only when ``text_value`` is empty; ``None`` on success

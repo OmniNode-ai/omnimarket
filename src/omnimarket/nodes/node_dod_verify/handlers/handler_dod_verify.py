@@ -124,6 +124,25 @@ class HandlerDodVerify:
         superseded = sum(
             1 for r in checks if r.status == EnumEvidenceCheckStatus.SUPERSEDED
         )
+        # OMN-16788: skips that are credential-reachability facts, not
+        # deliberate ones. These carry a typed ``unverifiable_cause`` and are
+        # the reason the SKIPPED branch below had to grow a new arm: an
+        # ORDINARY skip is intentionally non-blocking (OMN-16087's
+        # non-merged assertion; a disabled live-PR check), so degrading an
+        # unreadable check from FAILED to a plain SKIPPED would have turned
+        # OMN-15715's fail-closed refusal into a fail-OPEN pass the moment
+        # any sibling check verified. Counted separately so the failure count
+        # stays clean (the check did not fail) while the verdict stays
+        # blocked (the check was never proven).
+        unverifiable = [r for r in checks if r.unverifiable_cause is not None]
+        # OMN-15391: executed, exited 0, and its exit status cannot depend on
+        # the product change — a bare ``gh pr view`` (green for every PR on
+        # GitHub) or a ticket-independent foreign suite. It is provenance, and
+        # provenance is not completion, so it is counted on its own axis and
+        # never folded into ``verified``.
+        non_probative = sum(
+            1 for r in checks if r.status == EnumEvidenceCheckStatus.NON_PROBATIVE
+        )
 
         # OMN-15390: ``total_checks`` is the VERDICT-BEARING denominator, so a
         # fully-repaired contract reads N/N rather than N/(N+superseded). A
@@ -136,6 +155,21 @@ class HandlerDodVerify:
         non_superseded_total = len(checks) - superseded
         if failed > 0:
             overall = EnumDodVerifyStatus.FAILED
+        elif verified == 0 and non_probative > 0:
+            # OMN-15391 — the refusal, and the reason it is SKIPPED rather than
+            # FAILED. Nothing went wrong: every check ran and exited 0. What is
+            # missing is a check whose exit status could have gone the other
+            # way for a product reason, so the run has no evidence to report,
+            # not a red to report. SKIPPED is the gap-comment lane — the CLI
+            # still exits 1 and ``_build_receipt`` still writes ``FAIL``, so a
+            # Done flip is refused either way; the distinction is what an
+            # operator is told to do about it.
+            #
+            # Ordered ahead of the supersession backstop below on purpose: a
+            # supersession whose carrier turned out to be provenance lands here
+            # with the specific diagnosis rather than the generic one. Both are
+            # non-flip, so the ordering trades no strictness for legibility.
+            overall = EnumDodVerifyStatus.SKIPPED
         elif superseded > 0 and verified == 0:
             # OMN-15390 anti-laundering BACKSTOP, and the reason it is FAILED
             # rather than SKIPPED: supersession may remove a FALSE red, never
@@ -159,6 +193,14 @@ class HandlerDodVerify:
             # fails closed here rather than receipting a PASS built purely out
             # of supersessions.
             overall = EnumDodVerifyStatus.FAILED
+        elif unverifiable:
+            # OMN-16788: at least one check could not be EVALUATED — the
+            # verifying credential was not permitted to read its evidence.
+            # Not FAILED (nothing was found wanting) and emphatically not
+            # VERIFIED (nothing was proven). This is the arm that preserves
+            # OMN-15715 D1's fail-closed intent through the degrade: the
+            # ticket cannot flip on evidence no one read.
+            overall = EnumDodVerifyStatus.SKIPPED
         elif non_superseded_total == 0 or skipped == non_superseded_total:
             # Either nothing but superseded entries remain, or every
             # non-superseded check was skipped — do not claim VERIFIED.
@@ -184,6 +226,53 @@ class HandlerDodVerify:
                     f"CONTRACT_MISSING: no DoD contract found for "
                     f"{command.ticket_id}; zero checks were verified"
                 )
+            elif verified == 0 and non_probative > 0:
+                # OMN-15391: its own reason code, because the remedy is
+                # specific and different from every other SKIP. The contract
+                # is not missing and nothing was skipped — it declares checks
+                # that all passed and none of which could have failed for a
+                # product reason. The fix is to BIND a probative check, not to
+                # re-run anything.
+                error_message = (
+                    f"NO_PROBATIVE_EVIDENCE: {non_probative}/{len(checks)} "
+                    f"evidence checks for {command.ticket_id} executed and "
+                    "passed, but every one of them is exit-status-invariant "
+                    "over the product change (PR-existence probes, or a "
+                    "ticket-independent foreign suite) — they are provenance, "
+                    "not proof, and none of them counts toward completion. "
+                    "Zero checks proved anything about this ticket. Bind a "
+                    "check whose exit status depends on the product change "
+                    "(a content read at a pinned ref, or a test this ticket's "
+                    "diff makes pass) before claiming completion."
+                )
+            elif unverifiable:
+                # OMN-16788: distinct reason code so a caller (and a human
+                # reading the receipt) can tell "we were not permitted to read
+                # this" apart from "nothing verified". NO_CHECKS_VERIFIED
+                # would additionally be a lie here whenever a sibling check did
+                # verify. The causes are named so the remedy — a scope grant,
+                # or adding a repo to the App installation — is legible without
+                # re-running the sweep under instrumentation.
+                #
+                # Positioned to MIRROR the verdict precedence above: the
+                # OMN-15391 non-probative arm is evaluated first there, so its
+                # message must be reachable first here, or a run decided by
+                # that arm would be reported under this one's reason code.
+                causes = sorted(
+                    {
+                        r.unverifiable_cause.value
+                        for r in unverifiable
+                        if r.unverifiable_cause is not None
+                    }
+                )
+                error_message = (
+                    f"EVIDENCE_UNVERIFIABLE: {len(unverifiable)}/"
+                    f"{non_superseded_total} evidence check(s) for "
+                    f"{command.ticket_id} could not be evaluated "
+                    f"({', '.join(causes)}); {verified} verified, {failed} "
+                    f"failed. An unread check is not a passed check — no "
+                    f"Done-flip on evidence the verifier could not reach."
+                )
             else:
                 error_message = (
                     f"NO_CHECKS_VERIFIED: 0/{len(checks)} evidence checks "
@@ -202,6 +291,7 @@ class HandlerDodVerify:
             skipped_count=skipped,
             error_message=error_message,
             superseded_count=superseded,
+            non_probative_count=non_probative,
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,
             occ_resolved_sha=occ_resolved_sha,
@@ -242,6 +332,7 @@ class HandlerDodVerify:
             failed_count=state.failed_count,
             skipped_count=state.skipped_count,
             superseded_count=state.superseded_count,
+            non_probative_count=state.non_probative_count,
             error_message=state.error_message,
         )
 

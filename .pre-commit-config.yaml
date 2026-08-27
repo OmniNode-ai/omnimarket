@@ -347,6 +347,34 @@ repos:
           )$
         stages: [pre-commit]
 
+      # OMN-15391: the mint side of the vacuous-evidence class. The verify side
+      # (node_dod_verify's NON_PROBATIVE status) refuses to count a surrogate
+      # toward completion, which neutralises the merged corpus; this hook stops
+      # the producer minting NEW ones silently. Two assertions: the producer's
+      # own is_product_observing_check_value and the shared
+      # occ_evidence_probative_class predicate must be exact complements over
+      # every shape the producer can mint, and no rendered companion may consist
+      # entirely of exit-status-invariant checks. Offline and fast — the
+      # agreement leg needs no corpus at all. BLOCKING.
+      - id: occ-minted-evidence-probative
+        name: OCC minted evidence must be probative (OMN-15391)
+        entry: >-
+          uv run python scripts/ci/check_minted_evidence_is_probative.py
+          tests/fixtures/occ_red_derivable/companion/contracts/
+        language: system
+        pass_filenames: false
+        files: >-
+          (?x)^(
+            scripts/ci/check_minted_evidence_is_probative\.py
+            |tests/unit/scripts/test_check_minted_evidence_is_probative\.py
+            |src/omnimarket/occ_evidence_probative_class\.py
+            |src/omnimarket/nodes/node_pr_lifecycle_fix_effect/handlers/occ_evidence_stamp\.py
+            |src/omnimarket/nodes/node_dod_verify/services/evidence_collector\.py
+            |src/omnimarket/nodes/node_dod_verify/handlers/handler_dod_verify\.py
+            |tests/fixtures/occ_red_derivable/.*
+          )$
+        stages: [pre-commit]
+
       - id: topic-naming-lint
         name: Topic Naming Lint
         language: system

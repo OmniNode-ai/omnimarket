@@ -102,7 +102,6 @@ NON_CANONICAL: tuple[str, ...] = (
     "omnimarket.nodes.node_regression_test_orchestrator",
     "omnimarket.nodes.node_renderer_capability_projection",
     "omnimarket.nodes.node_runtime_closeout_orchestrator",
-    "omnimarket.nodes.node_session_phase_reducer",
     "omnimarket.nodes.node_state_persist_effect",
     "omnimarket.nodes.node_swarm_dispatch_orchestrator",
     "omnimarket.nodes.node_swarm_subtask_state_reducer",

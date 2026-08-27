@@ -5,9 +5,16 @@
 Verifies the canonical reducer path from session-start event to materialized
 phase projection.
 
+OMN-16790: this suite used to hand-build ``{"event": {...}}`` — a LOCAL
+invocation envelope carried by no wire schema on any subscribed topic — so it
+stayed green through the entire live outage in which every real message raised
+``KeyError: 'event'``. It now drives the canonical def-B signature with the
+wire payload shape a producer actually emits.
+
 Related:
     - OMN-11230: session phase reducer
     - OMN-13283: canonical node-purity validator rollout
+    - OMN-16790: fold the WIRE payload, not a hand-built local envelope
 """
 
 from __future__ import annotations
@@ -20,6 +27,7 @@ import yaml
 
 from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer import (
     HandlerSessionPhaseReducer,
+    ModelSessionPhaseReducerInput,
 )
 
 
@@ -31,16 +39,14 @@ def test_session_phase_reducer_golden_chain_start_projection(tmp_path: Path) -> 
     timestamp = datetime(2026, 6, 19, 2, 30, 0, tzinfo=UTC)
 
     result = handler.handle(
-        input_data={
-            "event": {
-                "event_type": "session.started",
-                "session_id": "session-golden-chain",
-                "timestamp": timestamp.isoformat(),
-                "phase": "health_gate",
-                "budget_elapsed_pct": 10,
-                "active_worker_count": 2,
-            }
-        },
+        ModelSessionPhaseReducerInput(
+            event_type="session.started",
+            session_id="session-golden-chain",
+            timestamp=timestamp,
+            phase="health_gate",
+            budget_elapsed_pct=10,
+            active_worker_count=2,
+        ),
         state_path=str(state_path),
     )
     serialized_timestamp = "2026-06-19T02:30:00Z"

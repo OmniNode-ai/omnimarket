@@ -46,11 +46,17 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup im
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
+    EnumEvidenceUnverifiableCause,
     EnumOccRefRefreshOutcome,
     ModelEvidenceCheckResult,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
+)
+from omnimarket.occ_evidence_probative_class import (
+    EnumEvidenceProbativeClass,
+    classify_check_value,
+    surrogate_refusal_reason,
 )
 
 logger = logging.getLogger(__name__)
@@ -89,7 +95,53 @@ _DEFAULT_EXECUTION_SCOPE = cast(
 # stall on the network; without a timeout a stuck git op would block the whole
 # collect() with no recovery (CodeRabbit — Stability). Kept generous because a
 # fetch of the OCC repo may transfer real objects.
-_GIT_OP_TIMEOUT_S = 60
+#
+# OMN-16787: raised from 60 s on a measurement, not a guess. `git worktree add
+# --detach origin/dev` on the live OCC repo checks out 32,382 files and takes
+# ~34.5 s single-threaded; the beta sweep runs dod_verify 5-way parallel
+# against the SAME clone. A 60 s ceiling therefore tripped on ordinary load,
+# and — before the fail-closed rule below — that trip degraded silently into a
+# stale-working-tree read reported as CONTRACT_MISSING. The ceiling has to sit
+# far enough above a real cold checkout that hitting it means something is
+# genuinely wrong, because hitting it now REFUSES rather than degrades.
+_DEFAULT_GIT_OP_TIMEOUT_S = 300
+
+# Operator override for the ceiling above, for hosts whose OCC clone or disk
+# is slower (or faster) than the machine the default was measured on.
+_GIT_OP_TIMEOUT_ENV = "DOD_VERIFY_GIT_OP_TIMEOUT_S"
+
+
+def _git_op_timeout_s() -> float:
+    """Resolve the git-subprocess ceiling, honouring the operator override.
+
+    Read per call rather than captured at import so a test or an operator can
+    set it without reloading the module. A malformed or negative value falls
+    back to the default rather than disabling the timeout — an unbounded git
+    op is the failure mode the ceiling exists to prevent.
+    """
+    raw = os.environ.get(_GIT_OP_TIMEOUT_ENV, "").strip()
+    if not raw:
+        return float(_DEFAULT_GIT_OP_TIMEOUT_S)
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "%s=%r is not a number; using the %ss default.",
+            _GIT_OP_TIMEOUT_ENV,
+            raw,
+            _DEFAULT_GIT_OP_TIMEOUT_S,
+        )
+        return float(_DEFAULT_GIT_OP_TIMEOUT_S)
+    if value < 0:
+        logger.warning(
+            "%s=%r is negative; using the %ss default.",
+            _GIT_OP_TIMEOUT_ENV,
+            raw,
+            _DEFAULT_GIT_OP_TIMEOUT_S,
+        )
+        return float(_DEFAULT_GIT_OP_TIMEOUT_S)
+    return value
+
 
 # OMN-15454: a failed OCC ref refresh (git fetch) used to be swallowed at
 # logger.info and the collector proceeded against whatever the local
@@ -1210,6 +1262,19 @@ class EvidenceCollector:
         # visible SKIPPED note instead of silently omitting the live-state
         # check. Reset per item (mirrors ``_current_evidence_item_id``).
         self._last_binding_note: str | None = None
+        # OMN-16788: set by ``_fetch_pr_checks_green`` from the EFFECT
+        # handler's classification of WHY the required-context set was
+        # unreadable, when that reason is a credential fact (HTTP 403 on the
+        # branch-protection endpoint, or a bare HTTP 404 for a repo outside
+        # the App installation) rather than a substantive one. Read by
+        # ``_verify_live_pr``, which resets it before each fetch.
+        #
+        # A side channel rather than a wider return type because the two
+        # fetch wrappers are the documented seam a dozen existing suites
+        # monkeypatch with two-tuple stubs; a stub that never sets this
+        # attribute leaves it None and therefore keeps its pre-OMN-16788
+        # semantics exactly. Mirrors ``_last_binding_note`` above.
+        self._last_checks_unreachable_cause: EnumEvidenceUnverifiableCause | None = None
         # OMN-15454 AC2: provenance of the OCC governance ref actually read by
         # the most recent auto-resolved collect() call. Populated by
         # ``collect()`` before it returns; read by ``handler_dod_verify`` to
@@ -1251,9 +1316,19 @@ class EvidenceCollector:
         exists on the ``main``-tracking working tree. This closes the round-1
         residual edge where a stale ``main`` copy was used as-is because the
         contract was merely *present* on the working tree so the rider never
-        fired. The working tree is used only as a fallback (dev worktree cannot be
-        materialised, or the contract is absent on dev). The worktree is removed
-        before returning.
+        fired. The working tree is used only as a fallback when the contract is
+        ABSENT on dev — never when dev could not be READ. The worktree is
+        removed before returning.
+
+        OMN-16787: "could not be read" and "is not there" are different facts
+        and must not share an outcome. ``_materialize_occ_dev_worktree`` has
+        two failure classes; OMN-15454 closed only the fetch one. A failed or
+        timed-out ``git worktree add`` used to fall through to the
+        ``main``-tracking working tree while the run still stamped
+        ``occ_governance_ref: origin/dev`` — and because OCC ``dev`` runs
+        thousands of commits ahead of ``main``, a dev-only contract was then
+        invisible and the run reported ``CONTRACT_MISSING``. Both classes now
+        refuse by default, under the same named override.
         """
         if contract_path is not None:
             return self._collect_impl(ticket_id, contract_path)
@@ -1310,6 +1385,55 @@ class EvidenceCollector:
                     )
                 ]
 
+            # OMN-16787: the second failure class, on the same terms. An OCC
+            # root WAS resolvable (a fetch was attempted, so refresh_outcome is
+            # not None) but the worktree could not be materialised — the
+            # `git worktree add` failed or, in production, timed out. Falling
+            # through here reads the `main`-tracking working tree while the
+            # run reports `occ_governance_ref: origin/dev`, which is the lie
+            # this refusal exists to stop.
+            #
+            # The `refresh_outcome is not None` guard is load-bearing: when no
+            # OCC root resolves at all no fetch is attempted, and that is a
+            # legitimate pre-existing shape (the caller's working-tree search)
+            # rather than a fault. It keeps its existing reporting.
+            worktree_unavailable = dev_root is None and refresh_outcome is not None
+            if worktree_unavailable and not allow_stale:
+                logger.error(
+                    "Refusing to resolve %s for %s: the %s worktree could not "
+                    "be materialised (git worktree add failed or timed out at "
+                    "%ss) and %s is not set. Falling back to the working tree "
+                    "would ground the verdict in a clone that tracks main.",
+                    self._occ_governance_ref,
+                    ticket_id,
+                    self._occ_governance_ref,
+                    _git_op_timeout_s(),
+                    _ALLOW_STALE_OCC_REF_ENV,
+                )
+                return [
+                    ModelEvidenceCheckResult(
+                        evidence_id="occ_worktree_unavailable",
+                        description=(
+                            "OCC worktree could not be materialised at "
+                            f"{self._occ_governance_ref}"
+                        ),
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=(
+                            "OCC_WORKTREE_UNAVAILABLE: git worktree add of "
+                            f"{self._occ_governance_ref} failed or timed out "
+                            f"(ceiling {_git_op_timeout_s()}s, override with "
+                            f"{_GIT_OP_TIMEOUT_ENV}). The only remaining "
+                            "source is the working tree, which tracks main and "
+                            "is therefore NOT the ref this run reports — so "
+                            "this run refuses instead of silently reporting "
+                            "the contract missing. Set "
+                            f"{_ALLOW_STALE_OCC_REF_ENV}=1 to proceed against "
+                            "the working tree anyway (every result is then "
+                            "marked un-attributable)."
+                        ),
+                    )
+                ]
+
             if dev_root is not None:
                 dev_candidate = Path(dev_root) / "contracts" / f"{ticket_id}.yaml"
                 if dev_candidate.exists():
@@ -1361,6 +1485,40 @@ class EvidenceCollector:
                             f"{_ALLOW_STALE_OCC_REF_ENV} was set; every check "
                             "result above is un-attributable to a verified-"
                             f"fresh {self._occ_governance_ref}."
+                        ),
+                    )
+                )
+            elif worktree_unavailable:
+                # OMN-16787, same disclosure contract as the fetch-failure
+                # override above: proceeding is allowed, pretending is not.
+                # These results came from the working tree, which tracks main.
+                results = [
+                    result.model_copy(
+                        update={
+                            "message": (
+                                f"{result.message or ''} "
+                                "[OMN-16787: UNATTRIBUTABLE — the "
+                                f"{self._occ_governance_ref} worktree could "
+                                "not be materialised; "
+                                f"{_ALLOW_STALE_OCC_REF_ENV} override active, "
+                                "this result was read from the working tree, "
+                                "which tracks main]"
+                            ).strip()
+                        }
+                    )
+                    for result in results
+                ]
+                results.append(
+                    ModelEvidenceCheckResult(
+                        evidence_id="occ_worktree_unavailable_override",
+                        description=(
+                            "OCC worktree materialisation failure — override active"
+                        ),
+                        status=EnumEvidenceCheckStatus.SKIPPED,
+                        message=(
+                            f"{_ALLOW_STALE_OCC_REF_ENV} was set; every check "
+                            "result above was resolved from the working tree, "
+                            f"not from {self._occ_governance_ref}."
                         ),
                     )
                 )
@@ -1435,13 +1593,13 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_GIT_OP_TIMEOUT_S,
+                timeout=_git_op_timeout_s(),
             )
         except subprocess.TimeoutExpired:
             logger.warning(
                 "Timed out materialising %s worktree of OCC after %ss",
                 self._occ_governance_ref,
-                _GIT_OP_TIMEOUT_S,
+                _git_op_timeout_s(),
             )
             shutil.rmtree(tmp, ignore_errors=True)
             return None, None, refresh_outcome, None
@@ -1470,7 +1628,7 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_GIT_OP_TIMEOUT_S,
+                timeout=_git_op_timeout_s(),
             )
         except subprocess.TimeoutExpired:
             return None
@@ -1489,7 +1647,7 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_GIT_OP_TIMEOUT_S,
+                timeout=_git_op_timeout_s(),
             )
         except subprocess.TimeoutExpired:
             return EnumOccRefRefreshOutcome.FETCH_FAILED, "timed out"
@@ -1561,13 +1719,13 @@ class EvidenceCollector:
                     capture_output=True,
                     text=True,
                     check=False,
-                    timeout=_GIT_OP_TIMEOUT_S,
+                    timeout=_git_op_timeout_s(),
                 )
             except subprocess.TimeoutExpired:
                 logger.warning(
                     "Timed out removing OCC worktree %s after %ss",
                     worktree,
-                    _GIT_OP_TIMEOUT_S,
+                    _git_op_timeout_s(),
                 )
                 proc = None
             # A failed/timed-out `worktree remove` leaves a stale registration
@@ -1592,7 +1750,7 @@ class EvidenceCollector:
                 capture_output=True,
                 text=True,
                 check=False,
-                timeout=_GIT_OP_TIMEOUT_S,
+                timeout=_git_op_timeout_s(),
             )
         except subprocess.TimeoutExpired:
             logger.warning("Timed out pruning OCC worktrees under %s", occ)
@@ -2011,7 +2169,7 @@ class EvidenceCollector:
             results = [self._check_evidence_item(item, ticket_id, path)]
             if isinstance(item, dict):
                 results.extend(self._live_pr_checks_for_item(item, ticket_id, path))
-            return results
+            return self._demote_non_probative(item, results)
         except Exception as exc:
             item_id = item.get("id") if isinstance(item, dict) else None
             label = item_id if isinstance(item_id, str) and item_id else None
@@ -2033,6 +2191,96 @@ class EvidenceCollector:
                     ),
                 )
             ]
+
+    @staticmethod
+    def _non_probative_reason(item: Any) -> str | None:
+        """Reason this item cannot bear a verdict, or ``None`` if it can.
+
+        OMN-15391. An item is non-probative only when EVERY check it declares
+        is a command whose exit status is invariant over the product diff (see
+        ``omnimarket.occ_evidence_probative_class``). One probative check makes
+        the whole item probative: an item whose checks must ALL pass carries a
+        real verdict as soon as one of them can go red for a product reason.
+
+        ``file_exists`` is always probative — a file is present or it is not,
+        and that is a fact about the tree under test. An item declaring no
+        checks at all is not classified here; ``_check_evidence_item`` already
+        SKIPs it, and a SKIP is not a green that needs demoting.
+        """
+        if not isinstance(item, dict):
+            return None
+        checks = item.get("checks")
+        if not isinstance(checks, list) or not checks:
+            return None
+
+        reasons: list[str] = []
+        for check in checks:
+            if not isinstance(check, dict):
+                return None
+            if check.get("check_type") not in ("command", "test_passes"):
+                return None
+            # The EFFECTIVE command, resolved exactly as ``_run_command_check``
+            # resolves it (``command`` first, ``check_value`` as fallback).
+            # Reading only ``check_value`` would let a check spelled with the
+            # ``command`` key execute as a surrogate while classifying as
+            # probative — a complete bypass of this refusal, since its green
+            # would still count. Found by CodeRabbit on omnimarket#2168.
+            check_value = check.get("command") or check.get("check_value")
+            probative_class = classify_check_value(
+                check_value if isinstance(check_value, str) else None
+            )
+            if probative_class is EnumEvidenceProbativeClass.PROBATIVE:
+                return None
+            reasons.append(surrogate_refusal_reason(probative_class, str(check_value)))
+        return " ".join(reasons)
+
+    def _demote_non_probative(
+        self, item: Any, results: list[ModelEvidenceCheckResult]
+    ) -> list[ModelEvidenceCheckResult]:
+        """Reclassify an item's GREENS when the item cannot bear a verdict.
+
+        OMN-15391 — the load-bearing refusal, and the reason it is applied here
+        rather than before execution.
+
+        **Only a VERIFIED result is demoted.** A FAILED one is left exactly as
+        it was, and the checks are still EXECUTED rather than short-circuited.
+        That is deliberate: it makes this change monotone toward refusal — it
+        can subtract a green and it can never manufacture one, so no contract
+        that is red today can go green because of it. Skipping execution would
+        have been cheaper, but it would silently convert a genuine red (a PR
+        the token cannot see, a foreign suite that is actually broken) into a
+        non-verdict, which is a loosening in the one direction that matters.
+
+        The item's OMN-14207 ``::pr-live-state`` legs are demoted with it.
+        Those legs assert the bound PR is merged with green CI — provenance
+        about the very PR the surrogate names, not about the behaviour claimed.
+        Leaving them VERIFIED would defeat the whole refusal: an all-surrogate
+        contract would still read green on its live-state legs alone (measured
+        on ``contracts/OMN-16667.yaml``: 5 declared surrogate checks plus 4
+        passing live-state legs). Their anti-laundering force is untouched —
+        a live-state leg that goes RED still fails the contract.
+        """
+        reason = self._non_probative_reason(item)
+        if reason is None:
+            return results
+        return [
+            result.model_copy(
+                update={
+                    "status": EnumEvidenceCheckStatus.NON_PROBATIVE,
+                    "message": (
+                        f"{reason}"
+                        + (
+                            f" (check output: {result.message})"
+                            if result.message
+                            else ""
+                        )
+                    ),
+                }
+            )
+            if result.status is EnumEvidenceCheckStatus.VERIFIED
+            else result
+            for result in results
+        ]
 
     @staticmethod
     def _carrier_label(index: int, id_at: dict[int, str | None]) -> str:
@@ -2934,7 +3182,11 @@ class EvidenceCollector:
         Otherwise one result per bound PR: VERIFIED when the PR is MERGED and
         all checks are green; FAILED otherwise, INCLUDING when the live state
         cannot be resolved (fail-closed — a Done-flip must not proceed on
-        unverifiable PR state) — UNLESS the item's own check_value asserts a
+        unverifiable PR state) — EXCEPT for the one shape OMN-16788 carves
+        out, a MERGED PR whose required-context set the credential was not
+        PERMITTED to read, which is SKIPPED with a named
+        ``unverifiable_cause`` (still not verified, so still blocking; see
+        :meth:`_verify_live_pr`) — and UNLESS the item's own check_value asserts a
         specific non-merged state (OPEN/CLOSED) for that exact PR reference
         (OMN-16087), in which case that ONE binding is SKIPPED instead: the
         item's declared ``command`` check already verifies the assertion
@@ -3008,17 +3260,14 @@ class EvidenceCollector:
                     )
                 )
                 continue
-            ok, message = self._verify_live_pr(repo, pr_number)
+            status, message, cause = self._verify_live_pr(repo, pr_number)
             results.append(
                 ModelEvidenceCheckResult(
                     evidence_id=evidence_id,
                     description=f"Live GitHub state for {repo}#{pr_number} ({item_id})",
-                    status=(
-                        EnumEvidenceCheckStatus.VERIFIED
-                        if ok
-                        else EnumEvidenceCheckStatus.FAILED
-                    ),
+                    status=status,
                     message=message,
+                    unverifiable_cause=cause,
                 )
             )
         return results
@@ -3059,31 +3308,82 @@ class EvidenceCollector:
                     break
         return asserted
 
-    def _verify_live_pr(self, repo: str, pr_number: int) -> tuple[bool, str]:
-        """Return ``(ok, message)`` for the live state of ``repo#pr_number``.
+    def _verify_live_pr(
+        self, repo: str, pr_number: int
+    ) -> tuple[EnumEvidenceCheckStatus, str, EnumEvidenceUnverifiableCause | None]:
+        """Return ``(status, message, cause)`` for the live state of
+        ``repo#pr_number``.
 
-        ``ok`` is True only when the PR is MERGED AND every REQUIRED status check
-        is green (OMN-14390) — a red non-required/informational check does not
-        block. A failure to resolve the merge state (gh missing/auth/network/not-found)
-        fails closed.
+        VERIFIED only when the PR is MERGED AND every REQUIRED status check is
+        green (OMN-14390) — a red non-required/informational check does not
+        block. A failure to resolve the merge state (gh
+        missing/auth/network/not-found) fails closed as FAILED.
+
+        SKIPPED (OMN-16788) in exactly one shape: the PR is CONFIRMED MERGED
+        and the ONLY thing left unproven is a required-context set the
+        verifying credential was not permitted to read. That is not a check
+        that ran and found the evidence wanting, and recording it as a
+        substantive failure is what made the scheduled CI sweep disagree with
+        every local run. The caller keeps the check out of the failure count
+        AND out of the verified count: ``HandlerDodVerify`` refuses to reach
+        VERIFIED while any ``cause`` is present, so OMN-15715's fail-closed
+        intent is preserved exactly — only its bookkeeping changes.
+
+        Everything else stays FAILED, deliberately:
+
+        * a PR that is genuinely not merged — read off a reachable API, a
+          substantive fact that a credential gap elsewhere does not excuse;
+        * a required context that actually ran RED;
+        * a timeout / 5xx / OSError on the protection probe, which says
+          nothing about a credential and must not become a laundering route.
         """
+        self._last_checks_unreachable_cause = None
         merge = self._fetch_pr_merge_state(repo, pr_number)
         if merge is None:
-            return False, (
-                f"{repo}#{pr_number}: could not resolve live PR state via gh "
-                "(missing/auth/network/not-found). Failing closed — a Done-flip "
-                "must not proceed on unverifiable PR state."
+            return (
+                EnumEvidenceCheckStatus.FAILED,
+                (
+                    f"{repo}#{pr_number}: could not resolve live PR state via gh "
+                    "(missing/auth/network/not-found). Failing closed — a Done-flip "
+                    "must not proceed on unverifiable PR state."
+                ),
+                None,
             )
         merged, state = merge
         reasons: list[str] = []
         if not merged:
             reasons.append(f"PR not merged (state={state})")
+        self._last_checks_unreachable_cause = None
         checks_green, checks_detail = self._fetch_pr_checks_green(repo, pr_number)
+        checks_cause = self._last_checks_unreachable_cause
         if not checks_green:
             reasons.append(f"required checks not green ({checks_detail})")
-        if reasons:
-            return False, f"{repo}#{pr_number}: " + "; ".join(reasons)
-        return True, f"{repo}#{pr_number}: MERGED (state={state}); {checks_detail}"
+        if not reasons:
+            return (
+                EnumEvidenceCheckStatus.VERIFIED,
+                f"{repo}#{pr_number}: MERGED (state={state}); {checks_detail}",
+                None,
+            )
+        if merged and checks_cause is not None:
+            # Sole outstanding reason is an unread required-context set. The
+            # ``merged`` guard is load-bearing: without it an OPEN PR in a
+            # repo the credential cannot fully read would launder its
+            # not-merged failure into a skip.
+            return (
+                EnumEvidenceCheckStatus.SKIPPED,
+                (
+                    f"{repo}#{pr_number}: MERGED (state={state}), but this "
+                    f"check could not be evaluated — {checks_detail}. Recorded "
+                    f"SKIPPED with cause '{checks_cause.value}', NOT verified: "
+                    f"unread evidence never satisfies a Done-flip."
+                ),
+                checks_cause,
+            )
+        return (
+            EnumEvidenceCheckStatus.FAILED,
+            f"{repo}#{pr_number}: " + "; ".join(reasons),
+            None,
+        )
 
     def _fetch_pr_merge_state(
         self,
@@ -3136,6 +3436,11 @@ class EvidenceCollector:
         )
         output = HandlerDodEvidenceGithubEffect().handle(command)
         result = self._github_lookup_result(output)
+        # OMN-16788: publish the handler's credential-reachability
+        # classification on the side channel for ``_verify_live_pr``. Always
+        # assigned (including to None) so a previous item's cause can never
+        # leak into this one.
+        self._last_checks_unreachable_cause = result.unreachable_cause
         return bool(result.checks_green), result.detail or ""
 
     # ------------------------------------------------------------------

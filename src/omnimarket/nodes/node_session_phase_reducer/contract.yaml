@@ -23,7 +23,11 @@ description: >
 input_model:
   name: ModelSessionPhaseReducerInput
   module: omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer
-  description: "Envelope containing current state + incoming event."
+  # OMN-16790: this is the WIRE payload of ONE subscribed message. It is NOT a
+  # {state, event} envelope — no wire schema on any subscribe topic carries a
+  # `state` field, and the reducer reads its prior state from the projection file
+  # it itself writes (.onex_state/session/phase_state.yaml).
+  description: "The wire payload of one subscribed session event."
 
 output_model:
   name: ModelSessionPhaseState

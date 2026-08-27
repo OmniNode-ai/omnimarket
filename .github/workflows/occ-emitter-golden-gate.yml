@@ -125,6 +125,8 @@ jobs:
             tests/unit/nodes/node_occ_companion_compute/test_occ_companion_deploy_assessment_falsifiability_omn_15988.py \
             tests/unit/test_occ_contention_omn_15247.py \
             tests/unit/scripts/test_check_generated_checks_red_derivable.py \
+            tests/unit/scripts/test_check_minted_evidence_is_probative.py \
+            tests/unit/nodes/node_dod_verify/test_omn_15391_surrogate_evidence_non_probative.py \
             -q -p no:randomly
         env:
           OCC_REPO_DIR: ${{ github.workspace }}/../onex_change_control
@@ -148,6 +150,24 @@ jobs:
           uv run python scripts/ci/check_generated_checks_red_derivable.py \
             --min-checks 2 --min-content-bound 1 \
             tests/fixtures/occ_red_derivable/companion/contracts/*.yaml
+
+      # OMN-15391: the mint side of the vacuous-evidence class, EXECUTED (not
+      # only its unit test above). A dod_evidence check whose exit status is
+      # invariant over the product diff — a bare `gh pr view`, or a
+      # ticket-independent foreign suite — is green before the fix, after it,
+      # and with it reverted. node_dod_verify now refuses to count one toward
+      # completion, which neutralises the 8,194-contract merged corpus without
+      # editing it; this step stops the producer minting new ones silently.
+      # It asserts the producer's own is_product_observing_check_value and the
+      # shared occ_evidence_probative_class predicate are exact complements
+      # over every mintable shape, and that no rendered companion consists
+      # entirely of such checks. Proven able to go RED against
+      # tests/fixtures/occ_red_derivable/negative/pr_existence_revert (see
+      # TestNoAllSurrogateCompanion). BLOCKING.
+      - name: Minted evidence must be probative (OMN-15391, BLOCKING)
+        run: |
+          uv run python scripts/ci/check_minted_evidence_is_probative.py \
+            tests/fixtures/occ_red_derivable/companion/contracts/
 
       # Layer 3, executed against the live GitHub API on real public omnimarket
       # refs: each content-bound check must exit 0 at the ref it pins AND

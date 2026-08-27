@@ -165,25 +165,45 @@ def test_ref_lock_race_is_retried_once_ac3(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """A first fetch failing with the ref-lock race, second succeeding, must
-    resolve FETCHED and materialise the worktree at the post-fetch tip."""
+    resolve FETCHED and materialise the worktree at the post-fetch tip.
+
+    OMN-16787 fixture repair. This test previously built a repo with a LOCAL
+    ``dev`` branch and no remote at all, then asked the collector to resolve
+    ``origin/dev``. ``git worktree add --detach origin/dev`` therefore failed
+    with ``invalid reference``, and the assertion below only passed because
+    the collector silently fell back to the working tree — which carried the
+    same contract, since ``main`` was branched off ``dev``. In other words the
+    test asserted "materialised at the post-fetch tip" while the worktree was
+    never materialised at all; the fail-open it was blind to is exactly the
+    defect OMN-16787 closes. The fixture now creates a real remote so
+    ``origin/dev`` genuinely exists and the assertion means what it says.
+    """
+    remote = tmp_path / "remote.git"
+    remote.mkdir()
+    _git(remote, "init", "-q", "--bare")
+
+    seed = tmp_path / "seed"
+    seed.mkdir()
+    _git(seed, "init", "-q")
+    _git(seed, "config", "user.email", "t@t.co")
+    _git(seed, "config", "user.name", "t")
+    _git(seed, "checkout", "-q", "-b", "dev")
+    _write_contract(seed, _TICKET, "dod-post-fetch-tip")
+    _git(seed, "add", "-A")
+    _git(seed, "commit", "-q", "-m", "dev contract")
+    _git(seed, "remote", "add", "origin", str(remote))
+    _git(seed, "push", "-q", "origin", "dev")
+
     occ = tmp_path / "onex_change_control"
-    occ.mkdir()
-    _git(occ, "init", "-q")
-    _git(occ, "config", "user.email", "t@t.co")
-    _git(occ, "config", "user.name", "t")
-    _git(occ, "checkout", "-q", "-b", "dev")
-    _write_contract(occ, _TICKET, "dod-post-fetch-tip")
-    _git(occ, "add", "-A")
-    _git(occ, "commit", "-q", "-m", "dev contract")
+    _git(tmp_path, "clone", "-q", str(remote), str(occ))
     _git(occ, "checkout", "-q", "-b", "main")
 
     monkeypatch.setenv("ONEX_CC_REPO_PATH", str(occ))
-    # A bare local branch is normally NOT_APPLICABLE (no remote); force the
-    # <remote>/<branch> shape so _refresh_occ_ref actually attempts a fetch,
-    # then stub the fetch attempts themselves (a real concurrent git
+    # The fetch attempts themselves are stubbed: a real concurrent git
     # ref-lock race is not reproducible hermetically without genuine
-    # concurrency — this drives the SAME retry code path with a controlled
-    # sequence of outcomes instead of mocking away the code under test).
+    # concurrency, so this drives the SAME retry code path with a controlled
+    # sequence of outcomes instead of mocking away the code under test. The
+    # worktree add that follows is real, against a real origin/dev.
     monkeypatch.setenv("OCC_GOVERNANCE_REF", "origin/dev")
     monkeypatch.delenv("OMNI_HOME", raising=False)
 
