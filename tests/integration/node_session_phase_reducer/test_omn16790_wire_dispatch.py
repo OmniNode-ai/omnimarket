@@ -113,14 +113,31 @@ def _materialized_wire_envelope(topic: str, payload: dict[str, Any]) -> dict[str
     }
 
 
-async def _dispatch(topic: str, payload: dict[str, Any]) -> Any:
+async def _dispatch(
+    topic: str, payload: dict[str, Any]
+) -> tuple[Any, BaseException | None]:
+    """Drive the real dispatch callback, returning ``(result, raised_or_None)``.
+
+    The exception is CAPTURED rather than allowed to propagate so that a broken
+    seam fails these tests on their own ``assert`` — a bare ``KeyError`` escaping
+    the test body is a ``RED_EXCEPTION``, which the OMN-15340 parity gate treats
+    as no evidence at all (a test that errors out cannot be shown to discriminate
+    the flip; see ``scripts/ci/parity_replay.py``). Asserting on the captured
+    outcome also states the expectation in the failure message instead of leaving
+    a reader to infer it from a traceback.
+    """
     callback = _make_dispatch_callback(
         HandlerSessionPhaseReducer(),  # type: ignore[arg-type]
         None,
         EnumNodeKind.REDUCER,
         None,
     )
-    return await callback(_materialized_wire_envelope(topic, payload))  # type: ignore[arg-type]
+    try:
+        result = await callback(_materialized_wire_envelope(topic, payload))  # type: ignore[arg-type]
+    except Exception as exc:
+        # The captured outcome IS the assertion subject; see the docstring.
+        return None, exc
+    return result, None
 
 
 @pytest.mark.integration
@@ -130,13 +147,20 @@ async def test_live_session_started_payload_dispatches_without_keyerror(
 ) -> None:
     """The verbatim stability-lane payload must fold, not raise KeyError: 'event'.
 
-    RED before the fix: ``KeyError: 'event'`` from
-    ``handler_session_phase_reducer.py`` line 100.
+    RED before the fix: the dispatch raises ``KeyError: 'event'`` from
+    ``handler_session_phase_reducer.py`` line 100, which this test reports as a
+    failed assertion on the captured outcome.
     """
     monkeypatch.chdir(tmp_path)
 
-    result = await _dispatch(_TOPIC_SESSION_STARTED, _LIVE_SESSION_STARTED_PAYLOAD)
+    result, error = await _dispatch(
+        _TOPIC_SESSION_STARTED, _LIVE_SESSION_STARTED_PAYLOAD
+    )
 
+    assert error is None, (
+        f"the real dispatch seam raised {type(error).__name__}: {error} — the "
+        "runtime handed the handler something other than its declared input model"
+    )
     assert result is not None, "dispatch produced no ModelDispatchResult"
 
     state_file = tmp_path / ".onex_state" / "session" / "phase_state.yaml"
@@ -161,8 +185,17 @@ async def test_session_started_then_ended_folds_across_two_wire_messages(
     """
     monkeypatch.chdir(tmp_path)
 
-    await _dispatch(_TOPIC_SESSION_STARTED, _LIVE_SESSION_STARTED_PAYLOAD)
-    await _dispatch(_TOPIC_SESSION_ENDED, _SESSION_ENDED_PAYLOAD)
+    _, started_error = await _dispatch(
+        _TOPIC_SESSION_STARTED, _LIVE_SESSION_STARTED_PAYLOAD
+    )
+    assert started_error is None, (
+        f"session.started dispatch raised {type(started_error).__name__}: "
+        f"{started_error}"
+    )
+    _, ended_error = await _dispatch(_TOPIC_SESSION_ENDED, _SESSION_ENDED_PAYLOAD)
+    assert ended_error is None, (
+        f"session.ended dispatch raised {type(ended_error).__name__}: {ended_error}"
+    )
 
     state = yaml.safe_load(
         (tmp_path / ".onex_state" / "session" / "phase_state.yaml").read_text()

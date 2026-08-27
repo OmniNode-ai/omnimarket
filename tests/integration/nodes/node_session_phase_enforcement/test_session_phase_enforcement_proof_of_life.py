@@ -44,6 +44,7 @@ from omnimarket.nodes.node_session_phase_orchestrator.models.model_orchestrator_
 )
 from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer import (
     HandlerSessionPhaseReducer,
+    ModelSessionPhaseReducerInput,
 )
 
 _SESSION_ID = "sess-omn-11283-proof-of-life"
@@ -98,20 +99,17 @@ def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
     now = datetime(2026, 5, 21, 9, 2, 0, tzinfo=UTC)  # 2 minutes later
 
     reducer = HandlerSessionPhaseReducer()
-    init_result = reducer.handle(
-        input_data={
-            "event": {
-                "event_type": "session.started",
-                "session_id": _SESSION_ID,
-                "timestamp": started_at.isoformat(),
-                "phase": _PHASE_1_NAME,
-                "phase_index": 0,
-            }
-        },
+    reducer.handle(
+        ModelSessionPhaseReducerInput(
+            event_type="session.started",
+            session_id=_SESSION_ID,
+            timestamp=started_at,
+            phase=_PHASE_1_NAME,
+            phase_index=0,
+        ),
         state_path=str(state_file),
     )
     assert state_file.exists(), "Reducer must write phase_state.yaml on session.started"
-    initial_state_data = init_result["projections"][0]
 
     # Step 3: Run evaluator — elapsed 2 min vs budget 1 min => transition_required.
     # halt_threshold_pct=110 so budget-exhausted (100%) triggers transition_required
@@ -183,19 +181,18 @@ def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
     phase_state_payload = phase_state_events[0].payload
 
     # Step 6: Feed phase-state event to reducer -> update phase_state.yaml to phase 2.
+    # OMN-16790: the wire event alone; prior state comes from the projection file
+    # the reducer wrote in step 2, which is where its state of record lives.
     reducer.handle(
-        input_data={
-            "state": initial_state_data,
-            "event": {
-                "event_type": "session.phase.state",
-                "session_id": phase_state_payload["session_id"],
-                "timestamp": now.isoformat(),
-                "phase": transition_payload["next_phase"],
-                "phase_index": 1,
-                "last_evaluation": "transition_required",
-                "budget_elapsed_pct": evaluation.budget_elapsed_pct,
-            },
-        },
+        ModelSessionPhaseReducerInput(
+            event_type="session.phase.state",
+            session_id=phase_state_payload["session_id"],
+            timestamp=now,
+            phase=transition_payload["next_phase"],
+            phase_index=1,
+            last_evaluation="transition_required",
+            budget_elapsed_pct=evaluation.budget_elapsed_pct,
+        ),
         state_path=str(state_file),
     )
 
@@ -255,16 +252,14 @@ def test_reducer_state_reflects_transition_at_every_step(tmp_path: Path) -> None
     ts_tick = datetime(2026, 5, 21, 9, 2, 0, tzinfo=UTC)
 
     # After session.started
-    result = reducer.handle(
-        input_data={
-            "event": {
-                "event_type": "session.started",
-                "session_id": _SESSION_ID,
-                "timestamp": ts_start.isoformat(),
-                "phase": _PHASE_1_NAME,
-                "phase_index": 0,
-            }
-        },
+    reducer.handle(
+        ModelSessionPhaseReducerInput(
+            event_type="session.started",
+            session_id=_SESSION_ID,
+            timestamp=ts_start,
+            phase=_PHASE_1_NAME,
+            phase_index=0,
+        ),
         state_path=str(state_file),
     )
     state_1 = yaml.safe_load(state_file.read_text())
@@ -272,19 +267,18 @@ def test_reducer_state_reflects_transition_at_every_step(tmp_path: Path) -> None
     assert state_1["phase_index"] == 0
 
     # After transition to phase_2
+    # OMN-16790: no prior state is passed — a bus message never carries one. The
+    # fold picks the session up from the projection file written above.
     reducer.handle(
-        input_data={
-            "state": result["projections"][0],
-            "event": {
-                "event_type": "session.phase.state",
-                "session_id": _SESSION_ID,
-                "timestamp": ts_tick.isoformat(),
-                "phase": _PHASE_2_NAME,
-                "phase_index": 1,
-                "last_evaluation": "transition_required",
-                "budget_elapsed_pct": 100,
-            },
-        },
+        ModelSessionPhaseReducerInput(
+            event_type="session.phase.state",
+            session_id=_SESSION_ID,
+            timestamp=ts_tick,
+            phase=_PHASE_2_NAME,
+            phase_index=1,
+            last_evaluation="transition_required",
+            budget_elapsed_pct=100,
+        ),
         state_path=str(state_file),
     )
     state_2 = yaml.safe_load(state_file.read_text())
