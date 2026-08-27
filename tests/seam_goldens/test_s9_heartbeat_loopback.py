@@ -122,8 +122,24 @@ class TestTheLoopbackIsRealAndContained:
         the ONLY thing preventing an infinite republish loop is the
         ``gateway_direction`` tag check inside ``_consume_inbound_message``,
         not the topic sets being disjoint. This asserts the loop is suppressed
-        (no local publish) while the topic overlap that causes it still exists,
-        which is the precise shape of the MISMATCH.
+        while the topic overlap that causes it still exists, which is the
+        precise shape of the MISMATCH.
+
+        Why this no longer asserts ``local_bus.published == []`` (OMN-16794).
+        The 0.38.9 -> 0.38.10 bump made ``publish_heartbeat`` mirror the SAME
+        envelope onto the local canonical topic as well as the cloud wire topic
+        (OMN-15570 G3): ``NodeGatewayLinkHealthProjectionCompute`` subscribes on
+        the LOCAL bus, so before that fix heartbeats only ever reached the cloud
+        leg and the projection never saw a live event. So one local publish is
+        now correct and deliberate, and an empty-list assertion would fail on
+        the FIX rather than on the defect.
+
+        The guard was re-verified directly rather than assumed: local publishes
+        are 1 after ``publish_heartbeat`` and still 1 after
+        ``consume_inbound_message``. The assertion below is therefore the
+        sharper form of the original question — does re-consuming its own
+        heartbeat make the gateway publish AGAIN — and it stays red if the
+        ``gateway_direction`` check is ever removed.
         """
 
         local_bus = RecordingPublisher()
@@ -137,6 +153,15 @@ class TestTheLoopbackIsRealAndContained:
         await forwarder.publish_heartbeat()
         emitted = cloud_bus.only()
 
+        # The deliberate OMN-15570 G3 local mirror, pinned so that a future
+        # change to the dual-publish shape surfaces here instead of silently
+        # widening the baseline this test subtracts.
+        published_by_the_heartbeat_itself = list(local_bus.published)
+        assert len(published_by_the_heartbeat_itself) == 1, (
+            "expected exactly one deliberate local mirror from publish_heartbeat "
+            f"(OMN-15570 G3), got {len(published_by_the_heartbeat_itself)}"
+        )
+
         # The heartbeat the gateway just published arrives on the very topic
         # mirror_topics.inbound tells it to subscribe to.
         assert emitted.topic == _HEARTBEAT_WIRE
@@ -144,7 +169,7 @@ class TestTheLoopbackIsRealAndContained:
             BusMessage(topic=emitted.topic, value=emitted.value)
         )
 
-        assert local_bus.published == [], (
+        assert local_bus.published == published_by_the_heartbeat_itself, (
             "gateway re-consumed and republished its own heartbeat; the "
             "loopback guard is gone while the topic overlap remains"
         )

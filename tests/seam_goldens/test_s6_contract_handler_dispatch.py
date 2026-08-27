@@ -116,7 +116,18 @@ _S6_DECLARED_MODEL = (
 )
 # 0.1.0 -> 0.1.1: the packaged contract gained the contract-declared canary
 # probe block (OMN-15741) in the 0.38.6 wheel this repo pins as of OMN-16077.
-_EXPECTED_CONTRACT_VERSION = "0.1.1"
+# 0.1.1 -> 0.1.2: moved by the 0.38.9 -> 0.38.10 bump (OMN-16794). Diffed the
+# packaged contract rather than accepting the version move on faith; exactly two
+# things changed, both deliberate and both upstream-documented:
+#   * OMN-16204 widened `mirror_topics.outbound` with the bare omniclaude
+#     session-started/session-ended.v1 pair (content-free, per the operator OD-9
+#     ruling). Contract-armed ONLY — actual cloud delivery stays gated behind
+#     OMN-14323 gate 1, and every other omniclaude topic remains denied.
+#   * OMN-16557 raised `produce_deadline_seconds` 8 -> 15, off a measured .201
+#     run where the cold-start OAUTHBEARER handshake landed on ~8.1s and lost
+#     the race against the old deadline.
+# Neither touches the S6 envelope shape this file's goldens drive.
+_EXPECTED_CONTRACT_VERSION = "0.1.2"
 
 
 def _contract_declared_input_model() -> type[object]:
