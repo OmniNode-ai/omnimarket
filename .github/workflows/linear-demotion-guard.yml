@@ -1,0 +1,154 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# linear-demotion-guard.yml — OMN-16536 AC#2.
+#
+# WHAT IT ASSERTS
+#   No Linear GitAutomationState, on any team, resolves a `completed`-type
+#   ticket to a NON-`completed` state.
+#
+#   A GitAutomationState carries no source-state predicate: it names one target
+#   state per git event and moves every linked issue there unconditionally. So
+#   the assertion is a property of the target alone, and the ratchet is cheap:
+#
+#       per team:  len(gitAutomationStates) == 0
+#                  OR every automation targets a completed-type state
+#
+#   Anything else fails. On 2026-08-27 AC#1 deleted all ten mappings across
+#   teams OMN, CON and JON, so the steady green is three teams with zero
+#   automations each.
+#
+# MIRROR OF linear-done-guard.yml
+#   linear-done-guard (OMN-15373) asserts the opposite polarity — no automation
+#   may TARGET a completed state, because that mints Done with no evidence. The
+#   conjunction of the two is `len(gitAutomationStates) == 0`, which is exactly
+#   what AC#1 established. They are kept separate because they are owned by
+#   different tickets and a future decision to accept one polarity must not
+#   silently relax the other.
+#
+# WHY SCHEDULED RATHER THAN PRE-MERGE
+#   What is asserted here is live Linear workspace configuration, not repository
+#   content. No PR can change it and no PR event can detect it drifting back — a
+#   single UI click re-arms the defect. A PR-triggered job would also fail an
+#   unrelated author's PR because, say, the Contractors team drifted; that is
+#   the over-broad-matcher anti-pattern, and a gate that fails for reasons
+#   outside the author's control is a gate that gets bypassed.
+#
+#   The half of this defect that IS repository content is already pre-merge, in
+#   the normal pytest suite on every PR:
+#   tests/nodes/node_linear_triage/test_omn_16536_demotion_ratchet.py — 28 tests
+#   including mock-transport red/green over the recorded live shapes and every
+#   positive-control failure mode.
+#
+# GUARDING THE GUARD
+#   The passing state of this ratchet is an empty result, and four failure modes
+#   produce an identical empty result: a revoked token, a renamed GraphQL field,
+#   a complexity-capped query, and a silently truncated page. So emptiness is
+#   never trusted on its own — the job fails closed unless the probe first
+#   proves it read the workspace (teams enumerated > 0, every enumerated team
+#   actually probed, no per-team error, no possibly-truncated page). An API
+#   error FAILS the check; it never passes silently.
+#
+#   Enumeration is per-team by requirement, not preference. The nested
+#   `teams { gitAutomationStates }` query's complexity is the PRODUCT of both
+#   page sizes and breaches Linear's 10000 budget at 50x50 (measured 11565 on
+#   2026-08-27), forcing the nested form down to `first: 10` on automations —
+#   which silently truncates any team carrying 11.
+#
+# ARMING (the honest constraint, verified 2026-08-27 via `gh secret list`)
+#   `LINEAR_API_KEY` is NOT provisioned as an omnimarket repo secret, and NOT as
+#   an OmniNode-ai org secret. It IS provisioned as an `omnibase_infra` repo
+#   secret. No Linear credential was minted for this workflow.
+#
+#   Until omnimarket is armed, the scheduled trigger below fails with exit 2 and
+#   the message in the "Fail loudly when the guard is unarmed" step. That is
+#   deliberate: an unarmed guard reporting green would be the exact false
+#   assurance OMN-16536 is about.
+#
+#   The `workflow_call` trigger is the bridge: any repo that already holds the
+#   credential calls this workflow and passes it in as a secret, so the
+#   assertion runs armed without copying the credential into a second repo.
+
+name: Linear Demotion Guard
+
+on:
+  schedule:
+    # Every 6h, offset from linear-done-guard's :17 so the two mirrors do not
+    # hit the Linear API in the same minute. Drift here is a config flip rather
+    # than a gradual process, so bounded time-to-detection matters more than
+    # frequency.
+    - cron: '43 */6 * * *'
+  workflow_dispatch:
+  workflow_call:
+    secrets:
+      LINEAR_API_KEY:
+        description: >-
+          Linear API key with read access to team settings. Read-only scope is
+          sufficient: this workflow never mutates a Linear setting.
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: linear-demotion-guard-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  assert-no-demoting-automation:
+    name: No git automation may demote a Done ticket
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Set up Python
+        run: uv python install 3.12
+
+      - name: Sync dependencies
+        run: uv sync --all-extras
+
+      - name: Fail loudly when the guard is unarmed
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -z "${LINEAR_API_KEY:-}" ]; then
+            echo "::error title=Linear Demotion Guard is unarmed::LINEAR_API_KEY is not provisioned."
+            echo ""
+            echo "The guard cannot read Linear's git-automation settings, so it can"
+            echo "make NO assertion about whether a verified-Done ticket can currently"
+            echo "be silently reverted by a bare 'Refs:' mention. An unarmed guard is"
+            echo "not a passing guard - failing closed."
+            echo ""
+            echo "To arm: provision LINEAR_API_KEY (read access to team settings is"
+            echo "sufficient) as an OmniNode-ai org secret or an omnimarket repo"
+            echo "secret, OR call this workflow via workflow_call from a repo that"
+            echo "already holds the credential and pass it through as a secret."
+            exit 2
+          fi
+
+      # ONE probe: the readable summary goes to the log and the machine-readable
+      # report to an artifact from the same read. Probing twice would produce a
+      # log and an artifact describing two different moments.
+      - name: Assert no demoting git automation
+        env:
+          LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
+        run: |
+          uv run python -m omnimarket.nodes.node_linear_triage.demotion_guard_cli \
+            --report-json linear-demotion-guard-report.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: linear-demotion-guard-report
+          path: linear-demotion-guard-report.json
+          if-no-files-found: ignore
