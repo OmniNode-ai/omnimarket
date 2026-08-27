@@ -36,6 +36,7 @@ from omnibase_core.enums.ticket.enum_dod_evidence_execution_scope import (
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.ticket.model_contract_dod_item import ModelContractDodItem
 
+from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDodEvidenceGithubEffect,
 )
@@ -49,6 +50,9 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceUnverifiableCause,
     EnumOccRefRefreshOutcome,
     ModelEvidenceCheckResult,
+)
+from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
+    classify_item_checks,
 )
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
@@ -2540,12 +2544,21 @@ class EvidenceCollector:
                 message="checks must be a list of mappings.",
             )
 
+        # OMN-15911: what this item BINDS, decided from the commands it
+        # declares rather than from its prose or its exit code. Resolved once,
+        # before execution, and stamped on whichever verdict this item reaches
+        # — a FAILED behavior check is still a behavior check, and the
+        # ``behavior_proving_count`` roll-up (which requires VERIFIED) is what
+        # keeps a failure from releasing a flip.
+        item_proof_class = classify_item_checks(checks)
+
         if not checks:
             return ModelEvidenceCheckResult(
                 evidence_id=evidence_id,
                 description=description,
                 status=EnumEvidenceCheckStatus.SKIPPED,
                 message="No checks defined for this evidence item.",
+                proof_class=item_proof_class,
             )
 
         # OMN-14637: when this evidence item is authoritatively bound to a PR that
@@ -2582,6 +2595,7 @@ class EvidenceCollector:
                         description=description,
                         status=EnumEvidenceCheckStatus.FAILED,
                         message=msg,
+                        proof_class=item_proof_class,
                     )
                 messages.append(msg)
             elif check_type == "file_exists":
@@ -2592,6 +2606,7 @@ class EvidenceCollector:
                         description=description,
                         status=EnumEvidenceCheckStatus.FAILED,
                         message=msg,
+                        proof_class=item_proof_class,
                     )
                 messages.append(msg)
             else:
@@ -2608,6 +2623,7 @@ class EvidenceCollector:
                         f"Unknown check_type: {label!r}. "
                         "Supported: command, test_passes, file_exists."
                     ),
+                    proof_class=item_proof_class,
                 )
 
         return ModelEvidenceCheckResult(
@@ -2615,6 +2631,7 @@ class EvidenceCollector:
             description=description,
             status=EnumEvidenceCheckStatus.VERIFIED,
             message="; ".join(messages) if messages else None,
+            proof_class=item_proof_class,
         )
 
     def _resolve_cwd(
@@ -3207,6 +3224,7 @@ class EvidenceCollector:
                         description=f"Live PR state for {description}",
                         status=EnumEvidenceCheckStatus.SKIPPED,
                         message=self._last_binding_note,
+                        proof_class=EnumCheckProofClass.MERGE_STATE,
                     )
                 ]
             return []
@@ -3227,6 +3245,7 @@ class EvidenceCollector:
                         f"Live PR check disabled via {_LIVE_PR_CHECK_ENV}; "
                         f"bindings not verified: {bindings}"
                     ),
+                    proof_class=EnumCheckProofClass.MERGE_STATE,
                 )
             ]
 
@@ -3257,6 +3276,7 @@ class EvidenceCollector:
                             "item's declared command check verifies this "
                             "assertion directly."
                         ),
+                        proof_class=EnumCheckProofClass.MERGE_STATE,
                     )
                 )
                 continue
@@ -3268,6 +3288,7 @@ class EvidenceCollector:
                     status=status,
                     message=message,
                     unverifiable_cause=cause,
+                    proof_class=EnumCheckProofClass.MERGE_STATE,
                 )
             )
         return results
