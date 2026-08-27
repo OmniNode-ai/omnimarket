@@ -47,7 +47,7 @@ import pytest
 
 from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_consumer_flow_runner import (
     _INSERT_UNKNOWN,
-    _SELECT_LAST_SEQUENCE,
+    _SELECT_PRIOR_STATE,
     _SELECT_UPSTREAM,
     _UPSERT_FLOW,
     _UPSERT_PRODUCE,
@@ -217,18 +217,20 @@ async def test_unknown_row_stores_null_counters_because_the_columns_allow_it() -
             messages_in=10,
             messages_out=10,
         )
-        last = await conn.fetch(_SELECT_LAST_SEQUENCE, node_id)
+        last = await conn.fetch(_SELECT_PRIOR_STATE, node_id)
         assert last[0]["last_sequence"] == 1
 
         gap = await conn.fetch(
             _INSERT_UNKNOWN,
-            1,
+            _GROUP,
+            _TOPIC,
             w1_end,
             w3_start,
             node_id,
             2,
             EnumUpstreamEvidence.NONE.value,
             EnumConsumerFlowState.UNKNOWN.value,
+            w3_start,
         )
         assert len(gap) == 1, "the gap statement wrote no row for the lost window"
         assert gap[0]["flow_state"] == EnumConsumerFlowState.UNKNOWN.value

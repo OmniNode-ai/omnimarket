@@ -26,11 +26,11 @@ from typing import Any
 import yaml
 
 from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_projection_consumer_flow import (
-    derive_flow_state,
+    HandlerProjectionConsumerFlow,
 )
 from omnimarket.nodes.node_projection_consumer_flow.models import (
-    EnumConsumerFlowState,
-    EnumUpstreamEvidence,
+    ModelConsumerFlowProjectionRequest,
+    ModelConsumerFlowRow,
     ModelNodeFlowWindowWire,
 )
 from omnimarket.projection.discovery import load_projection_exposures_from_contract
@@ -99,9 +99,7 @@ _INSERT_UNKNOWN = f"""
         consumer_group, topic, window_start, window_end, node_id,
         ingest_sequence, upstream_evidence, flow_state, evaluated_at
     )
-    SELECT consumer_group, topic, $2, $3, $4, $5, $6, $7, $3
-    FROM {TABLE_FLOW}
-    WHERE node_id = $4 AND ingest_sequence = $1
+    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
     ON CONFLICT (consumer_group, topic, window_start) DO NOTHING
     RETURNING consumer_group, topic, window_start, window_end, node_id,
               ingest_sequence, messages_in, messages_out, messages_dlq,
@@ -109,10 +107,16 @@ _INSERT_UNKNOWN = f"""
               flow_state, evaluated_at
 """
 
-_SELECT_LAST_SEQUENCE = f"""
+_SELECT_PRIOR_STATE = f"""
     SELECT MAX(ingest_sequence) AS last_sequence
     FROM {TABLE_FLOW}
     WHERE node_id = $1
+"""
+
+_SELECT_KEYS_AT_SEQUENCE = f"""
+    SELECT DISTINCT consumer_group, topic
+    FROM {TABLE_FLOW}
+    WHERE node_id = $1 AND ingest_sequence = $2
 """
 
 
@@ -175,6 +179,13 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
+        """Resolve the facts the derivation cannot see, then persist its output.
+
+        The verdict logic is NOT duplicated here: this reads the database,
+        hands the facts to the pure def-B handler, and writes what it returns.
+        A second copy of the derivation is how a SQL writer and an in-memory
+        writer drift into disagreeing about what STALLED means.
+        """
         raw_window = data.get("flow_window")
         if raw_window is None:
             # No window on this heartbeat: the priming tick, or another node in
@@ -195,38 +206,89 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
                 produce.window_end,
             )
 
-        await self._materialize_missing_windows(window, meta, data)
-
+        upstream: dict[str, int] = {}
         for delta in window.consumer_deltas:
-            upstream = await self._upstream_produced(
+            produced = await self._upstream_produced(
                 delta.topic, delta.window_start, delta.window_end
             )
-            state, evidence = derive_flow_state(
-                messages_in=delta.messages_in,
-                messages_out=delta.messages_out,
-                upstream_produced=upstream,
+            if produced is not None:
+                upstream[delta.topic] = produced
+
+        last_sequence, known_keys = await self._prior_state(str(window.node_id))
+        result = HandlerProjectionConsumerFlow().handle(
+            ModelConsumerFlowProjectionRequest(
+                flow_window=window,
+                upstream_produced_by_topic=upstream,
+                last_observed_sequence=last_sequence,
+                known_keys=known_keys,
             )
-            rows = await self.db.execute(
-                _UPSERT_FLOW,
-                delta.consumer_group,
-                delta.topic,
-                delta.window_start,
-                delta.window_end,
-                str(delta.node_id),
-                delta.window_sequence,
-                delta.messages_in,
-                delta.messages_out,
-                delta.messages_dlq,
-                delta.handler_errors,
-                upstream,
-                evidence.value,
-                state.value,
-                delta.window_end,
+        )
+
+        for unknown in result.unknown_rows:
+            gap_rows = await self.db.execute(
+                _INSERT_UNKNOWN,
+                unknown.consumer_group,
+                unknown.topic,
+                unknown.window_start,
+                unknown.window_end,
+                str(unknown.node_id),
+                unknown.ingest_sequence,
+                unknown.upstream_evidence.value,
+                unknown.flow_state.value,
+                unknown.evaluated_at,
             )
-            await self._publish_snapshot_if_available(
-                rows[0] if rows else None, meta, data
-            )
+            for gap_row in gap_rows or []:
+                await self._publish_snapshot_if_available(gap_row, meta, data)
+
+        for row in result.flow_rows:
+            written = await self._upsert_flow_row(row)
+            await self._publish_snapshot_if_available(written, meta, data)
         return True
+
+    async def _upsert_flow_row(
+        self, row: ModelConsumerFlowRow
+    ) -> dict[str, Any] | None:
+        rows = await self.db.execute(
+            _UPSERT_FLOW,
+            row.consumer_group,
+            row.topic,
+            row.window_start,
+            row.window_end,
+            str(row.node_id),
+            row.ingest_sequence,
+            row.messages_in,
+            row.messages_out,
+            row.messages_dlq,
+            row.handler_errors,
+            row.upstream_produced,
+            row.upstream_evidence.value,
+            row.flow_state.value,
+            row.evaluated_at,
+        )
+        return rows[0] if rows else None
+
+    async def _prior_state(
+        self, node_id: str
+    ) -> tuple[int | None, tuple[tuple[str, str], ...]]:
+        """The highest window this node already delivered, and its keys.
+
+        Both are handed to the pure derivation rather than looked up inside it:
+        a gap is only detectable against what was already materialized, and
+        that is a database fact, not a property of the event.
+        """
+        rows = await self.db.execute(_SELECT_PRIOR_STATE, node_id)
+        if not rows:
+            return None, ()
+        last_raw = rows[0].get("last_sequence")
+        if last_raw is None:
+            return None, ()
+        key_rows = await self.db.execute(
+            _SELECT_KEYS_AT_SEQUENCE, node_id, int(last_raw)
+        )
+        keys = tuple(
+            (str(r["consumer_group"]), str(r["topic"])) for r in (key_rows or [])
+        )
+        return int(last_raw), keys
 
     async def _upstream_produced(
         self, topic: str, window_start: Any, window_end: Any
@@ -245,43 +307,6 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         if not int(row.get("window_count") or 0):
             return None
         return int(row.get("produced") or 0)
-
-    async def _materialize_missing_windows(
-        self, window: ModelNodeFlowWindowWire, meta: MessageMeta, data: dict[str, Any]
-    ) -> None:
-        """Write UNKNOWN rows for windows this node never delivered.
-
-        Detected purely from the producer's monotonic ``window_sequence``: a
-        jump from N to N+2 means window N+1 existed and was lost in transit. The
-        gap interval is materialized with NULL counters, because a dropped
-        window that reads as zero traffic is the false-green this epic exists to
-        close (AC5).
-        """
-        node_id = str(window.node_id)
-        rows = await self.db.execute(_SELECT_LAST_SEQUENCE, node_id)
-        if not rows:
-            return
-        last_raw = rows[0].get("last_sequence")
-        if last_raw is None:
-            return
-        last_sequence = int(last_raw)
-        if window.window_sequence <= last_sequence + 1:
-            return
-
-        gap_rows = await self.db.execute(
-            _INSERT_UNKNOWN,
-            last_sequence,
-            # The lost window starts where the last observed one ended and runs
-            # to the start of the one that did arrive.
-            window.window_start,
-            window.window_start,
-            node_id,
-            last_sequence + 1,
-            EnumUpstreamEvidence.NONE.value,
-            EnumConsumerFlowState.UNKNOWN.value,
-        )
-        for gap_row in gap_rows or []:
-            await self._publish_snapshot_if_available(gap_row, meta, data)
 
     async def _publish_snapshot_if_available(
         self, row: dict[str, Any] | None, meta: MessageMeta, data: dict[str, Any]

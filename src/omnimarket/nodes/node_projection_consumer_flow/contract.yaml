@@ -3,7 +3,7 @@ name: projection_consumer_flow
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
 node_version: {major: 1, minor: 0, patch: 0}
-input_model: omnimarket.nodes.node_projection_consumer_flow.models.model_node_flow_window_wire.ModelNodeFlowWindowWire
+input_model: omnimarket.nodes.node_projection_consumer_flow.models.model_consumer_flow_projection_request.ModelConsumerFlowProjectionRequest
 description: >
   OMN-16777 (Phase 1 of epic OMN-16776). Materializes the per-(consumer_group,
   topic) throughput window that the runtime heartbeat
@@ -55,11 +55,11 @@ dod_evidence:
     description: "AC4 — a genuinely idle consumer reports IDLE, not STALLED"
   - test: tests/test_omn16777_consumer_flow_state_derivation.py::test_zero_in_while_upstream_produced_is_starved
     description: "STARVED requires upstream-production evidence"
-  - test: tests/test_omn16777_consumer_flow_projection_windows.py::test_missed_window_materializes_unknown_with_null_counters
+  - test: tests/test_omn16777_consumer_flow_projection_rows.py::test_missed_window_derives_unknown_with_none_counters
     description: "AC5 — a dropped heartbeat window is UNKNOWN with NULL counters, never 0"
-  - test: tests/test_omn16777_consumer_flow_projection_windows.py::test_replaying_the_same_window_reproduces_identical_rows
+  - test: tests/test_omn16777_consumer_flow_projection_rows.py::test_replaying_the_same_request_derives_identical_rows
     description: "AC6 — replay determinism"
-  - test: tests/test_omn16777_consumer_flow_projection_windows.py::test_two_legs_are_separate_rows
+  - test: tests/test_omn16777_consumer_flow_projection_rows.py::test_two_legs_are_separate_rows
     description: "AC3 — the two legs of a bridge are separate rows, never averaged"
 
 db_io:

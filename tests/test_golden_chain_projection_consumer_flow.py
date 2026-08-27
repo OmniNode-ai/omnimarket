@@ -27,12 +27,12 @@ import pytest
 import yaml
 
 from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_projection_consumer_flow import (
-    TABLE_FLOW,
-    TABLE_PRODUCE,
     HandlerProjectionConsumerFlow,
 )
-from omnimarket.nodes.node_projection_consumer_flow.models import EnumConsumerFlowState
-from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.nodes.node_projection_consumer_flow.models import (
+    EnumConsumerFlowState,
+    ModelConsumerFlowProjectionRequest,
+)
 
 _CONTRACT_PATH = (
     Path(__file__).resolve().parents[1]
@@ -89,18 +89,14 @@ def test_golden_chain_end_to_end_separates_stalled_from_flowing() -> None:
     both processed every message handed to them. Before this node the platform
     had no surface on which they differed at all.
     """
-    db = InmemoryDatabaseAdapter()
     node_id = str(uuid4())
     end = _T0 + timedelta(seconds=60)
-    heartbeat_topic = _contract()["event_bus"]["subscribe_topics"][0]
     out_topic = "onex.cmd.omnibase-infra.gateway-link-health-upsert.v1"  # onex-topic-allow: the incident's own output topic
 
-    def _delta(
-        group: str, in_: int, out: int, topic: str = _HEARTBEAT_TOPIC
-    ) -> dict[str, Any]:
+    def _delta(group: str, in_: int, out: int) -> dict[str, Any]:
         return {
             "consumer_group": group,
-            "topic": topic,
+            "topic": _HEARTBEAT_TOPIC,
             "node_id": node_id,
             "window_start": _T0.isoformat(),
             "window_end": end.isoformat(),
@@ -111,61 +107,86 @@ def test_golden_chain_end_to_end_separates_stalled_from_flowing() -> None:
             "handler_errors": 0,
         }
 
-    payload: dict[str, object] = {
-        "_db": db,
-        "_event_type": "heartbeat",
-        "_topic": heartbeat_topic,
-        "node_id": node_id,
-        "flow_window": {
+    # The heartbeat payload EXACTLY as it arrives on the wire — every field the
+    # runtime puts on ModelNodeHeartbeatEvent, not a hand-trimmed subset, so the
+    # request model's extra="ignore" is exercised rather than assumed.
+    request = ModelConsumerFlowProjectionRequest.model_validate(
+        {
             "node_id": node_id,
-            "window_start": _T0.isoformat(),
-            "window_end": end.isoformat(),
-            "window_sequence": 1,
-            "consumer_deltas": [
-                _delta(_STALLED_GROUP, 15750, 0),
-                _delta("onex-dev.omnimarket.live-events-writer.consume", 15750, 15750),
-            ],
-            "produce_deltas": [
-                {
-                    "topic": out_topic,
-                    "node_id": node_id,
-                    "window_start": _T0.isoformat(),
-                    "window_end": end.isoformat(),
-                    "window_sequence": 1,
-                    "messages_produced": 15750,
-                }
-            ],
-        },
-    }
+            "node_type": "COMPUTE",
+            "uptime_seconds": 3600.0,
+            "active_operations_count": 0,
+            "timestamp": end.isoformat(),
+            "flow_window": {
+                "node_id": node_id,
+                "window_start": _T0.isoformat(),
+                "window_end": end.isoformat(),
+                "window_sequence": 1,
+                "consumer_deltas": [
+                    _delta(_STALLED_GROUP, 15750, 0),
+                    _delta(
+                        "onex-dev.omnimarket.live-events-writer.consume", 15750, 15750
+                    ),
+                ],
+                "produce_deltas": [
+                    {
+                        "topic": out_topic,
+                        "node_id": node_id,
+                        "window_start": _T0.isoformat(),
+                        "window_end": end.isoformat(),
+                        "window_sequence": 1,
+                        "messages_produced": 15750,
+                    }
+                ],
+            },
+            # The two database-resolved facts the writer hands in.
+            "upstream_produced_by_topic": {out_topic: 15750},
+            "last_observed_sequence": 0,
+            "known_keys": [],
+        }
+    )
 
-    result = HandlerProjectionConsumerFlow().handle(payload)
+    result = HandlerProjectionConsumerFlow().handle(request)
 
-    # Hop 1: the upstream-production evidence lands first, so the consumer rows
-    # are derived on everything that was knowable at the time.
-    produced = db.query(TABLE_PRODUCE)
-    assert [row["topic"] for row in produced] == [out_topic]
-    assert produced[0]["messages_produced"] == 15750
+    # Hop 1: the produce tally rides through as the upstream-production
+    # evidence the next hop's verdict is allowed to consult.
+    assert [row.topic for row in result.produce_rows] == [out_topic]
+    assert result.produce_rows[0].messages_produced == 15750
 
     # Hop 2: two rows, two verdicts, from one event.
-    assert result["rows_upserted"] == 3
-    rows = {row["consumer_group"]: row for row in db.query(TABLE_FLOW)}
-    assert rows[_STALLED_GROUP]["flow_state"] == EnumConsumerFlowState.STALLED.value, (
+    rows = {row.consumer_group: row for row in result.flow_rows}
+    assert len(rows) == 2
+    assert rows[_STALLED_GROUP].flow_state is EnumConsumerFlowState.STALLED, (
         "the 15,750-in / 0-out consumer did not surface as STALLED — this is "
         "the OMN-16755 case and the entire reason the chain exists"
     )
     assert (
-        rows["onex-dev.omnimarket.live-events-writer.consume"]["flow_state"]
-        == EnumConsumerFlowState.FLOWING.value
+        rows["onex-dev.omnimarket.live-events-writer.consume"].flow_state
+        is EnumConsumerFlowState.FLOWING
     )
 
-    # Hop 3: the row carries everything the snapshot exposure declares, so the
-    # bus-backed publish has a complete row to send.
-    exposed = _contract()["projection_api"]["columns"]
-    for column in exposed:
-        assert column in rows[_STALLED_GROUP], (
-            f"exposure declares column {column!r} that the writer never sets — "
-            "the served row would carry a hole"
+    # Hop 3: the derived row carries every column the snapshot exposure
+    # declares, so the bus-backed publish has a complete row to send.
+    serialized = rows[_STALLED_GROUP].model_dump(mode="json")
+    for column in _contract()["projection_api"]["columns"]:
+        assert column in serialized, (
+            f"exposure declares column {column!r} that the derivation never "
+            "sets — the served row would carry a hole"
         )
 
     # Hop 4: the terminal the contract declares is the one this chain ends on.
     assert _contract()["terminal_event"] == _TERMINAL_TOPIC
+
+
+@pytest.mark.unit
+def test_a_heartbeat_without_a_window_implies_no_rows() -> None:
+    """The priming tick and the non-carrier node both send a heartbeat with no
+    window. Absence is not zero traffic, so it must imply nothing at all."""
+    result = HandlerProjectionConsumerFlow().handle(
+        ModelConsumerFlowProjectionRequest.model_validate(
+            {"node_id": str(uuid4()), "uptime_seconds": 1.0}
+        )
+    )
+    assert result.flow_rows == ()
+    assert result.produce_rows == ()
+    assert result.unknown_rows == ()

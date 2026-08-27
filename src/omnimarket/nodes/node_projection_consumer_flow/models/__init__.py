@@ -11,6 +11,15 @@ from omnimarket.nodes.node_projection_consumer_flow.models.enum_upstream_evidenc
 from omnimarket.nodes.node_projection_consumer_flow.models.model_consumer_flow_delta_wire import (
     ModelConsumerFlowDeltaWire,
 )
+from omnimarket.nodes.node_projection_consumer_flow.models.model_consumer_flow_projection_request import (
+    ModelConsumerFlowProjectionRequest,
+)
+from omnimarket.nodes.node_projection_consumer_flow.models.model_consumer_flow_projection_result import (
+    ModelConsumerFlowProjectionResult,
+)
+from omnimarket.nodes.node_projection_consumer_flow.models.model_consumer_flow_row import (
+    ModelConsumerFlowRow,
+)
 from omnimarket.nodes.node_projection_consumer_flow.models.model_node_flow_window_wire import (
     ModelNodeFlowWindowWire,
 )
@@ -22,6 +31,9 @@ __all__ = [
     "EnumConsumerFlowState",
     "EnumUpstreamEvidence",
     "ModelConsumerFlowDeltaWire",
+    "ModelConsumerFlowProjectionRequest",
+    "ModelConsumerFlowProjectionResult",
+    "ModelConsumerFlowRow",
     "ModelNodeFlowWindowWire",
     "ModelTopicProduceDeltaWire",
 ]
