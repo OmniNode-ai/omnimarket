@@ -52,6 +52,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
+from omnibase_core.models.ticket.model_contract_dod_item import ModelContractDodItem
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
 from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
@@ -458,3 +459,54 @@ class TestEmitterWiresTheDiffIntoTheContract:
         )
         assert not action.startswith("skip:"), action
         assert "append-only" not in action.lower()
+
+
+def _contract_dod_item_id_max_length() -> int:
+    """Read the live schema cap instead of restating it as a literal.
+
+    A hardcoded 50 here would keep passing after the schema moved, which is the
+    failure mode this pin exists to prevent.
+    """
+    for constraint in ModelContractDodItem.model_fields["id"].metadata:
+        cap = getattr(constraint, "max_length", None)
+        if isinstance(cap, int):
+            return cap
+    raise AssertionError(
+        "ModelContractDodItem.id declares no max_length constraint; the cap "
+        "this pin defends was removed or moved -- re-derive it."
+    )
+
+
+class TestMintedEvidenceIdFitsTheContractSchemaCap:
+    """OMN-16434's un-landed residual, folded in per its closing comment.
+
+    ``ModelContractDodItem.id`` is ``max_length=50`` and pydantic rejects the
+    WHOLE contract when one id exceeds it — measured live when OCC#7384's first
+    hand-authored id was refused. ``BEHAVIOR_PROOF_EVIDENCE_ID`` is a module
+    constant now written by BOTH producers, so a rename past that cap would not
+    fail one contract; it would make every companion either producer mints
+    unvalidatable, silently, at the next mint. One assertion converts that into
+    a failing unit test.
+    """
+
+    def test_the_behavior_proof_evidence_id_fits_the_contract_schema_cap(
+        self,
+    ) -> None:
+        cap = _contract_dod_item_id_max_length()
+        assert cap == 50, (
+            "the cap this pin defends moved; re-derive it rather than "
+            f"loosening the assertion (now {cap})"
+        )
+        assert len(BEHAVIOR_PROOF_EVIDENCE_ID) <= cap, (
+            f"{BEHAVIOR_PROOF_EVIDENCE_ID!r} is "
+            f"{len(BEHAVIOR_PROOF_EVIDENCE_ID)} chars; ModelContractDodItem "
+            f"rejects an id over {cap}, which would make every companion "
+            "either producer mints unvalidatable"
+        )
+
+    def test_the_admissibility_evidence_id_fits_the_same_cap(self) -> None:
+        """The OWED branch's id travels the identical path and same schema."""
+        assert (
+            len(ADMISSIBILITY_VALIDATOR_EVIDENCE_ID)
+            <= _contract_dod_item_id_max_length()
+        )
