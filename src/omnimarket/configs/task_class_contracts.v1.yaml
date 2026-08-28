@@ -638,6 +638,29 @@ task_classes:
     gateway_exposure: internal
     required_capabilities:
       - agent_orchestration
+    # OMN-16811: the OMN-15961 fail-closed decision, promoted from a test-local
+    # exception dict to a contract-declared, machine-readable fact. No tier in
+    # routing_tiers.yaml is anything but a plain HTTP chat-completion backend,
+    # so none can satisfy ``agent_orchestration``; wiring this class onto one
+    # would be the false capability claim OMN-15961 removed and
+    # ``test_no_use_for_entry_claims_a_capability_its_tier_cannot_serve``
+    # mechanically forbids. Until the real coding-agent producer lands the
+    # class resolves NO backend on any of its declared tiers and a live
+    # delegation raises ONEX_CORE_041_INVALID_CONFIGURATION. Declaring it here
+    # is what lets a consumer (dashboard menu, gateway admission) refuse the
+    # class up front instead of offering it and hanging for the full ingress
+    # budget, and what lets the OMN-16811 drift gate fail in BOTH directions —
+    # an undeclared class that stops routing, and a stale declaration on a
+    # class that has become routable. Delete this block in the same change
+    # that wires the producer.
+    routing_availability:
+      status: pending_capability
+      missing_capability: agent_orchestration
+      tracking: "OMN-15961 WS-4/C6"
+      reason: >-
+        No routing tier can execute agentic/tool-using work; every tier is an
+        HTTP chat-completion backend. A text completion returned for this class
+        would be a dispatch report nobody executed.
     pricing_ceiling_per_1k_tokens: 0.015
     latency_sla_p99_ms: 120000
     cloud_routing_policy: opt_in
@@ -708,7 +731,18 @@ task_classes:
       rubric_hash: "sha256:321240472e3b52d21fd8cb9b9b7639bb73161a2945adf580948e86275ce20681"
       event_topic_ref: delegation_judge_verdict_v1
       terminology: controlled_reproducible_auditable
+    # OMN-16811: ``local`` prepended. This class's tier_order was ``[claude]``
+    # alone — the ONLY admitted task class whose entire ladder was a single
+    # credentialed cloud backend (``cloud-gemini-pro``). A read-only probe run
+    # inside the dev-lane runtime container resolved escalation to exactly
+    # ``[('claude', 'cloud-gemini-pro')]`` while all eleven terminating classes
+    # kept a free local rung, which is why a quota-exhausted / unreachable
+    # Gemini stranded this class specifically. Cheapest-first doctrine: the
+    # zero-cost owned-GPU tier is tried first and the metered ceiling stays the
+    # ceiling. max_escalations is unchanged at 1 — local -> claude is exactly
+    # one escalation.
     escalation_policy:
       max_escalations: 1
       tier_order:
+        - local
         - claude

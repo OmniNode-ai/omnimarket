@@ -175,9 +175,26 @@ def test_every_declared_tier_is_structurally_routable_for_all_fifteen_classes(
     # which this ticket removed. agent_delegation stays in its declared
     # tier_order (WS-4/C6 will make the tiers real, not remove them from the
     # order) but is correctly unroutable on all three until that lands.
+    #
+    # OMN-16811: the exception is no longer written out here. It is read from
+    # the task-class contract's own ``routing_availability`` declaration, so a
+    # class can only be excused by a machine-readable statement the dashboard
+    # and gateway read too — not by an edit to this dict. The admissibility of
+    # such a declaration (genuinely unserveable capability, cited follow-on) is
+    # enforced in ``test_tier_endpoint_completeness_omn16811``.
     known_unroutable_pending_agent_wiring = {
-        "agent_delegation": ["local", "cheap_cloud", "claude"],
+        task_type: [tier.name for tier in routing._tier_order_from_contract(config, e)]
+        for task_type, e in (
+            (task_type, routing._task_class_entry(contract, task_type))
+            for task_type in _allowed_task_types()
+        )
+        if isinstance(e, dict)
+        and isinstance(e.get("routing_availability"), dict)
+        and e["routing_availability"].get("status") == "pending_capability"  # type: ignore[union-attr]
     }
+    assert known_unroutable_pending_agent_wiring, (
+        "the contract must still declare the pending agent_orchestration gap"
+    )
     assert unroutable == known_unroutable_pending_agent_wiring, (
         f"declared tiers without task capacity: {unroutable}"
     )
