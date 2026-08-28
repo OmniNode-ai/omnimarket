@@ -10,6 +10,10 @@ evidence_requirements:
   - kind: "ci"
     description: "PR #1922 product diff scope present"
     command: "gh pr view ${PR_NUMBER} --repo ${REPO} --json files"
+  - kind: "tests"
+    description: |-
+      OWED, not claimed. PR #1922 on OmniNode-ai/omnimarket changes no pytest target, so this producer cannot derive a behavior-class check from its diff and mints none - the changed surface (none reported) is unproven by this contract. A behavior proof must be hand-authored as a `source: manual` dod_evidence item before OMN-15911's flip conjunct can be satisfied. Recorded here rather than papered over with a ticket-independent suite that would read as proof (OMN-16434).
+    command: "uv run pytest <hand-authored target> -q"
 emergency_bypass:
   enabled: false
   justification: ""

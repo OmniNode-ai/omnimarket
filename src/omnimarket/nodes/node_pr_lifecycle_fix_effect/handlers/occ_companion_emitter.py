@@ -97,9 +97,13 @@ from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+    BEHAVIOR_PROOF_EVIDENCE_ID,
     SHA_RE,
+    behavior_proof_check_value,
+    changed_files_from_diff_scope_probe,
     ci_check_evidence_id,
     compute_contract_sha256,
+    derive_behavior_test_paths,
     extract_evidence_item_id,
     rebind_contract_entry_sha256_in_text,
     rebind_contract_sha256_in_text,
@@ -675,6 +679,64 @@ class OccCompanionEmitter:
             fallback={"number": pr_number, "note": "diff not observed"},
         )
 
+        # OMN-16892: the product PR's changed-file list, read out of the probe
+        # this producer ALREADY ran one line above. It decides whether the
+        # companion can carry a diff-derived BEHAVIOR check or must instead
+        # state what proof is OWED — see render_companion_contract.
+        #
+        # Sourced from that probe rather than a fresh `/pulls/<n>/files` fetch on
+        # purpose: this is the exact payload the CI receipt records, so the
+        # diff the contract is derived FROM and the diff the receipt ATTESTS TO
+        # are one observation. A second fetch could disagree with the first
+        # (a push between the two calls) and nothing would notice.
+        #
+        # Fail-closed: `_observe_pr_probe` returns its `{"number":..,"note":..}`
+        # fallback whenever `gh` is unavailable or errors, which carries no
+        # `files` key and so parses to (), which takes the OWED branch. An
+        # unobservable diff yields an honest "unproven" statement, never a
+        # surrogate that reads as proof.
+        changed_files = changed_files_from_diff_scope_probe(ci_stdout)
+        behavior_test_paths = derive_behavior_test_paths(changed_files)
+
+        # The final (admissibility) dod_evidence slot: WHICH item fills it, what
+        # it declares, and — load-bearing — the receipt FILENAME that backs it.
+        # A PR-level fact, not a per-ticket one: every cited ticket's companion
+        # is derived from the same diff, so deriving it once here keeps the
+        # contract renderer, the receipt writer, the rebind pass and the
+        # append-only allowed-path set reading one answer. A second derivation
+        # would be a second thing to drift.
+        if behavior_test_paths:
+            slot_evidence_id = BEHAVIOR_PROOF_EVIDENCE_ID
+            slot_check_type = "test_passes"
+            slot_check_value = behavior_proof_check_value(behavior_test_paths)
+            # HONESTY, since this is the field most easily faked: the declared
+            # check runs in the PRODUCT repo at `cwd`, and this emitter runs
+            # inside that repo's CI against the GitHub API, never a checkout of
+            # it. So probe_command / probe_stdout / exit_code stay the live PR
+            # read that ACTUALLY ran, and actual_output names which surface
+            # executes the declared check. Writing a fabricated "N passed" here
+            # is precisely the false-evidence class the Receipt Honesty Gate
+            # exists to catch.
+            slot_actual_output = (
+                "PASS: product-repo test run executes the declared check; "
+                "probe is the live PR read."
+            )
+        else:
+            slot_evidence_id = ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+            slot_check_type = "command"
+            slot_check_value = ADMISSIBILITY_VALIDATOR_CHECK_VALUE
+            slot_actual_output = (
+                "PASS: OCC runner executes the declared check; "
+                "probe is the live PR read."
+            )
+        logger.info(
+            "occ_companion_emitter behavior-proof: %s#%s changed=%d targets=%s",
+            repo,
+            pr_number,
+            len(changed_files),
+            list(behavior_test_paths) or "none (OWED branch)",
+        )
+
         # OMN-14766 F-16: for a private product repo the DECLARED check_value the
         # hosted OCC runner re-runs is a receipt-local grep (computed per ticket
         # below, since the receipt path is ticket-scoped) instead of a
@@ -876,6 +938,7 @@ class OccCompanionEmitter:
                                 evidence_id=evidence_id,
                                 downstream_check_value=downstream_check_value,
                                 ci_check_value=ci_check_value,
+                                changed_files=changed_files,
                             ),
                             encoding="utf-8",
                         )
@@ -1025,6 +1088,20 @@ class OccCompanionEmitter:
                     # cannot run `uv run pytest tests/test_evidence_admissibility
                     # .py` -- and fabricating an "N passed" probe_stdout is the
                     # false-evidence class this ticket removes.
+                    #
+                    # OMN-16892: WHICH item occupies that slot now depends on the
+                    # PR's diff, so the receipt minted here follows the SAME branch
+                    # `render_companion_contract` took above. Exactly ONE receipt is
+                    # minted either way -- minting the other would declare a receipt
+                    # for an item the contract does not carry, which
+                    # `check_receipt_hardening` reports as an orphan.
+                    #
+                    # The receipt FILENAME is the declared `check_type`, not a fixed
+                    # `command.yaml`: eligibility resolves an item's receipt at
+                    # `<evidence_id>/<check_type>.yaml`, and the behavior item
+                    # declares `test_passes`. Hardcoding `command.yaml` here is
+                    # exactly the OMN-16859 defect on the sibling compute producer,
+                    # whose behavior receipts have had to be hand-authored.
                     if contract_already_had_companion[ticket]:
                         logger.info(
                             "occ_companion_emitter: skipping "
@@ -1032,7 +1109,7 @@ class OccCompanionEmitter:
                             "companion; the item is ticket-shared and "
                             "already-merged/already-generated (OMN-15785 "
                             "net-new-file-only guard, never overwrite).",
-                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                            slot_evidence_id,
                             ticket,
                         )
                     else:
@@ -1041,13 +1118,13 @@ class OccCompanionEmitter:
                             / "drift"
                             / "dod_receipts"
                             / ticket
-                            / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+                            / slot_evidence_id
                         )
                         validator_dir.mkdir(parents=True, exist_ok=True)
-                        (validator_dir / "command.yaml").write_text(
+                        (validator_dir / f"{slot_check_type}.yaml").write_text(
                             render_downstream_receipt(
                                 ticket_id=ticket,
-                                evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+                                evidence_id=slot_evidence_id,
                                 pr_number=pr_number,
                                 repo=repo,
                                 run_timestamp=run_timestamp,
@@ -1059,13 +1136,11 @@ class OccCompanionEmitter:
                                 # SHORT deliberately -- yamlfmt folds a long plain
                                 # scalar at column 100 and restales the hash
                                 # (F-03 / OMN-14684).
-                                actual_output=(
-                                    "PASS: OCC runner executes the declared check; "
-                                    "probe is the live PR read."
-                                ),
+                                actual_output=slot_actual_output,
                                 runner=self._runner,
                                 verifier=self._verifier,
-                                check_value=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+                                check_value=slot_check_value,
+                                check_type=slot_check_type,
                             ),
                             encoding="utf-8",
                         )
@@ -1095,7 +1170,7 @@ class OccCompanionEmitter:
                     if not ci_already_merged:
                         rebind_evidence_ids.add(ci_evidence_id)
                     if not contract_already_had_companion[ticket]:
-                        rebind_evidence_ids.add(ADMISSIBILITY_VALIDATOR_EVIDENCE_ID)
+                        rebind_evidence_ids.add(slot_evidence_id)
                     self._rebind_receipts(
                         clone_dir,
                         ticket,
@@ -1135,7 +1210,8 @@ class OccCompanionEmitter:
                     self._allowed_paths(tickets, {evidence_id, ci_evidence_id})
                     | self._allowed_paths(
                         [t for t in tickets if not contract_already_had_companion[t]],
-                        {ADMISSIBILITY_VALIDATOR_EVIDENCE_ID},
+                        {slot_evidence_id},
+                        filename=f"{slot_check_type}.yaml",
                     ),
                 )
                 # Force-push: the auto/* bot branch is fully REGENERATED each run
@@ -1253,9 +1329,7 @@ class OccCompanionEmitter:
                         # minted must be rebound -- the validator's included,
                         # or it ships a stale contract_sha256 and fails the
                         # receipt gate.
-                        pass2_rebind_evidence_ids.add(
-                            ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
-                        )
+                        pass2_rebind_evidence_ids.add(slot_evidence_id)
                     self._rebind_receipts(
                         clone_dir,
                         ticket,
@@ -1291,7 +1365,8 @@ class OccCompanionEmitter:
                     )
                     | self._allowed_paths(
                         [t for t in tickets if not contract_already_had_companion[t]],
-                        {ADMISSIBILITY_VALIDATOR_EVIDENCE_ID},
+                        {slot_evidence_id},
+                        filename=f"{slot_check_type}.yaml",
                     ),
                 )
                 # Force-push (see rationale above): deterministic all-adds regeneration.
@@ -2244,14 +2319,28 @@ class OccCompanionEmitter:
         return "".join(lines[:end]) + "".join(blocks) + "".join(lines[end:])
 
     @staticmethod
-    def _allowed_paths(tickets: Iterable[str], evidence_ids: Iterable[str]) -> set[str]:
-        """Repo-relative paths this run is permitted to add/modify (F-01)."""
+    def _allowed_paths(
+        tickets: Iterable[str],
+        evidence_ids: Iterable[str],
+        *,
+        filename: str = "command.yaml",
+    ) -> set[str]:
+        """Repo-relative paths this run is permitted to add/modify (F-01).
+
+        OMN-16892: ``filename`` exists because a receipt's basename is the
+        contract item's ``check_type``, not a constant. The diff-derived
+        behavior item declares ``test_passes``, so its receipt lands at
+        ``test_passes.yaml``; with this hardcoded to ``command.yaml`` the
+        fail-closed guard rejected the producer's own write and aborted the
+        entire mint. Kept a keyword with the old default so every existing
+        caller — all of which mint ``command`` items — is unchanged.
+        """
         eids = list(evidence_ids)
         allowed: set[str] = set()
         for ticket in tickets:
             allowed.add(f"contracts/{ticket}.yaml")
             for eid in eids:
-                allowed.add(f"drift/dod_receipts/{ticket}/{eid}/command.yaml")
+                allowed.add(f"drift/dod_receipts/{ticket}/{eid}/{filename}")
         return allowed
 
     def _assert_append_only(
