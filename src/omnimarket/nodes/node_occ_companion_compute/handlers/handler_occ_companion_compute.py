@@ -816,6 +816,52 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         kw.setdefault("wedges", wedges)
         return ModelOccCompanionPlan(**kw)
 
+    # OMN-16440: an OCC-internal PR never gets its own OCC companion.
+    #
+    # This branch is FIRST — ahead of every F-17 state/hold check and ahead of
+    # the OMN-16665 ``allow_merged_replay`` recovery path — because it is not a
+    # hold that can clear. A companion for a companion is a recursion trap: the
+    # target's whole diff is ``contracts/*.yaml`` + ``drift/dod_receipts/**``,
+    # so there is no code or test surface to bind a check to, and the plan falls
+    # back to a bare existence probe (``gh pr view <n> --json number,state``)
+    # that passes whether or not the evidence it claims to prove exists. Live
+    # specimens OCC#6927 and OCC#6958 were both minted this way and both closed
+    # as moot by hand.
+    #
+    # OMN-16434's producer fix (omnimarket#2180) does NOT rescue this class: its
+    # behaviour-class derivation reads the PR's changed pytest targets, an OCC
+    # evidence PR has zero ``.py`` files, so the derivation returns empty and
+    # the bare form renders anyway. Better check derivation cannot make a
+    # companion-for-a-companion meaningful, so the mint is declined outright.
+    #
+    # Keyed on ``request.occ_repo`` rather than a literal so a deployment that
+    # points the seam at a different OCC repo suppresses ITS own PRs, not this
+    # one's. Compared case-insensitively: GitHub repo slugs are, and the seam
+    # carries whatever the caller wrote.
+    if repo.strip().casefold() == request.occ_repo.strip().casefold():
+        return _plan(
+            no_op=True,
+            no_op_reason=(
+                f"product PR is inside the OCC repo itself ({repo}); a companion "
+                "for a companion is a recursion trap, not authoring (OMN-16440)"
+            ),
+            suppression=ModelOccCompanionSuppression(
+                code=EnumCompanionSuppressionCode.OCC_SELF_COMPANION,
+                summary=(
+                    f"the product repo {repo!r} IS the OCC repo, so this PR is "
+                    "itself an OCC evidence record; no companion is authored for "
+                    "one (OMN-16440, specimens OCC#6927/#6958)"
+                ),
+                matched_location="repo",
+                matched_text=repo.strip(),
+                remediation=(
+                    "Nothing to do. An OCC evidence PR carries its own evidence "
+                    "in its own diff; the companion it was declined would have "
+                    "carried only a bare existence probe."
+                ),
+            ),
+        )
+
     # F-17: suppress companion authoring for closed/merged, draft, or explicitly
     # do-not-merge/WIP product PRs. Authoring one yields queue noise + a failing
     # obsolete companion for a dead target (occ#4333). A do-not-merge marker is
