@@ -128,7 +128,9 @@ jobs:
 
       - name: Upload JUnit report
         if: always()
-        uses: actions/upload-artifact@v4
+        # SHA-pinned to v4 — the pin this repo already uses at 10 other call
+        # sites, and the majority convention for this action here.
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: delegation-regression-junit
           path: delegation_regression_junit.xml
