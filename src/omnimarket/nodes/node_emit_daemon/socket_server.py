@@ -10,9 +10,32 @@ the Kafka publisher loop -- that is a separate component.
 Protocol:
     Emit:  {"event_type": "...", "payload": {...}}\\n
     Reply: {"status": "queued", "event_id": "..."}\\n
+    Reply: {"status": "error", "reason": "..."}\\n
 
     Ping:  {"command": "ping"}\\n
     Reply: {"status": "ok", "queue_size": N, "spool_size": N}\\n
+
+Emit ACK semantics (OMN-16599)
+------------------------------
+``{"status": "queued"}`` means EVERY fan-out leg declared for the event type was
+accepted by the queue. If any leg was discarded -- unserializable payload,
+payload over ``max_payload_bytes``, or the queue refusing the event -- the reply
+is ``{"status": "error", ...}`` whose reason names the topics that landed and
+the topics that did not.
+
+This is not cosmetic. ``emit_client.send_event`` returns True on, and only on,
+``status == "queued"``. The previous code derived the reply from the last
+SUCCESSFUL leg, so a two-topic event ACKed True while one leg was thrown away
+with nothing but a warning in the daemon log -- reported as
+``onex.cmd.omniintelligence.*`` topics sitting at zero while their sibling
+``onex.evt.*`` topics from the same emit received traffic. Acknowledging a
+discarded publish violates fail-fast doctrine whether or not the drop itself is
+policy-correct.
+
+``queued`` remains an acceptance ACK, not a delivery receipt: it says the event
+is durable in the queue, not that Kafka has it. Post-queue publish outcomes are
+the publisher loop's ledger (``events_published`` / ``events_dropped`` /
+``events_unconfirmed`` on the health response).
 """
 
 from __future__ import annotations
@@ -367,8 +390,21 @@ class EmitSocketServer:
             correlation_id = None
         enriched_payload = self._inject_metadata(payload, correlation_id)
 
-        # Fan-out: enqueue one event per fan-out rule
+        # Fan-out: enqueue one event per fan-out rule.
+        #
+        # OMN-16599: every declared leg must be queued, or the reply must be an
+        # error naming the legs that were not. The loop used to `continue` past
+        # a discarded leg and derive the reply from `last_event_id` -- set only
+        # by a SUCCESSFUL leg -- so a two-topic event replied "queued" (which
+        # `emit_client.send_event` maps to True) as long as one leg made it.
+        # The loss was biased toward the `cmd` leg, because the registries give
+        # `cmd` the full passthrough payload while `evt` gets a `strip_prompt`
+        # reduction, so the size check below can only ever fire on `cmd`.
+        # Acknowledging a discarded publish is a fail-fast violation whether or
+        # not the drop itself is policy-correct.
         last_event_id: str | None = None
+        dropped_legs: list[str] = []
+        queued_topics: list[str] = []
 
         for rule in registration.fan_out:
             transformed = rule.apply_transform(enriched_payload)
@@ -381,11 +417,17 @@ class EmitSocketServer:
                 logger.warning(
                     f"Payload serialization failed for {event_type} -> {topic}: {e}"
                 )
+                dropped_legs.append(f"{topic} (payload not serializable: {e})")
                 continue
 
-            if len(transformed_json.encode("utf-8")) > self._max_payload_bytes:
+            payload_bytes = len(transformed_json.encode("utf-8"))
+            if payload_bytes > self._max_payload_bytes:
                 logger.warning(
                     f"Payload exceeds max size for {event_type} -> {topic}, skipping"
+                )
+                dropped_legs.append(
+                    f"{topic} (payload {payload_bytes} bytes exceeds "
+                    f"max_payload_bytes {self._max_payload_bytes})"
                 )
                 continue
 
@@ -432,12 +474,36 @@ class EmitSocketServer:
                     extra={"event_type": event_type, "topic": topic},
                 )
                 last_event_id = event_id
+                queued_topics.append(topic)
             else:
                 logger.warning(f"Failed to queue event for {event_type} -> {topic}")
+                dropped_legs.append(f"{topic} (queue refused the event)")
 
         if last_event_id is None:
             return ModelDaemonErrorResponse(
                 reason=f"Failed to queue any events for {event_type}"
+            ).model_dump_json()
+
+        if dropped_legs:
+            # Partial fan-out. The queued legs are NOT rolled back -- they are
+            # already durable -- so the reason states exactly which topics
+            # landed and which did not, rather than implying a total rejection.
+            # The caller sees a non-"queued" status and therefore a False from
+            # `send_event`: never True over a discarded leg.
+            logger.error(
+                "Partial fan-out for %s: %d of %d legs discarded (%s)",
+                event_type,
+                len(dropped_legs),
+                len(registration.fan_out),
+                "; ".join(dropped_legs),
+                extra={"event_type": event_type},
+            )
+            return ModelDaemonErrorResponse(
+                reason=(
+                    f"partial fan-out for {event_type}: "
+                    f"queued [{', '.join(queued_topics)}]; "
+                    f"discarded [{'; '.join(dropped_legs)}]"
+                )
             ).model_dump_json()
 
         return ModelDaemonQueuedResponse(event_id=last_event_id).model_dump_json()
