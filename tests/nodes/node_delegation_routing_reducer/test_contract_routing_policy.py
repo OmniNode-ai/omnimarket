@@ -50,7 +50,7 @@ _MINIMAL_BIFROST = textwrap.dedent("""\
         timeout_ms: 30000
         capabilities: []
       # OMN-16442: was `local-reasoner` at .201:8001 with model_name
-      # Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ. That backend is RETIRED --
+      # Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ. That backend is RETIRED --  # onex-allow-model-id OMN-16442 reason="comment records the retired model id this fixture no longer routes to"
       # .201:8001 is the RTX 4090 slot physically removed for RMA (OMN-16407;
       # re-probed 2026-08-28, curl exit 7 "Couldn't connect to server"). This
       # fixture is paired with the REAL routing_tiers.yaml, so its backend_ids
