@@ -311,7 +311,13 @@ def _receipt(
     actual_output: str,
     branch: str,
     pr_number: int | None = None,
+    check_type: str = "command",
 ) -> str:
+    # ``check_type`` (OMN-16859) is the receipt's KEY, not decoration: the
+    # caller must write this content at ``<evidence_id>/<check_type>.yaml``
+    # because that is where ``validator_occ_merge_eligibility`` looks for the
+    # receipt backing an item declaring that type. Defaults to ``"command"``
+    # so every caller minting a ``command`` item is byte-unchanged.
     # ``pr_number`` defaults to the PRODUCT PR (the common case for the downstream
     # and supersede receipts, which prove the product PR). The OCC self-bind
     # receipt MUST override it with the OCC companion PR number: its evidence item
@@ -323,6 +329,7 @@ def _receipt(
     content = render_compute_receipt(
         ticket_id=ticket_id,
         evidence_id=evidence_id,
+        check_type=check_type,
         check_value=check_value,
         contract_sha256=contract_sha256,
         contract_entry_sha256=contract_entry_sha256,
@@ -346,6 +353,7 @@ def _supersede_file(
     request: ModelOccCompanionRequest,
     ticket_id: str,
     prior_entry: str,
+    check_type: str,
     check_value: str,
     contract_sha256: str,
     contract_entry_sha256: str,
@@ -366,11 +374,23 @@ def _supersede_file(
     construction declared in the merged contract, so its per-entry hash always
     resolves — a supersession ``replacement`` with a whole-file-only binding is
     rejected by :class:`ModelReceiptSupersession`.
+
+    ``check_type`` (OMN-16859) is the SUPERSEDED ITEM'S OWN declared type, read
+    off the merged contract by :func:`declared_check_for` — never a constant.
+    ``resolve_supersession`` globs ``<check_type>.supersede.*.yaml`` and then
+    key-validates the record's own ``check_type`` field against the key it is
+    filed under, so a record hardcoded to ``command`` for a ``test_passes``
+    item is not "wrongly named": it is INVISIBLE to resolution, and the rebind
+    to the 2nd consumer PR silently never applies. Measured live on OCC#7465
+    (``.../OMN-16442/dod-occ-diff-derived-behavior-proof/command.supersede.2192.yaml``
+    against a contract entry declaring ``test_passes``), minted AFTER
+    OMN-16892 fixed the mint path — this half was untouched there.
     """
     replacement_yaml = _receipt(
         request=request,
         ticket_id=ticket_id,
         evidence_id=prior_entry,
+        check_type=check_type,
         check_value=check_value,
         contract_sha256=contract_sha256,
         contract_entry_sha256=contract_entry_sha256,
@@ -387,8 +407,8 @@ def _supersede_file(
         schema_version="1.0.0",
         ticket_id=ticket_id,
         evidence_item_id=prior_entry,
-        check_type="command",
-        supersedes=f"drift/dod_receipts/{ticket_id}/{prior_entry}/command.yaml",
+        check_type=check_type,
+        supersedes=(f"drift/dod_receipts/{ticket_id}/{prior_entry}/{check_type}.yaml"),
         reason=(
             f"2nd consumer {request.repo}#{request.pr_number} re-binds prior entry "
             f"{prior_entry} to this product PR without editing the merged base "
@@ -558,6 +578,172 @@ def assert_append_only_emissions(
                 )
 
 
+class ReceiptKeyMismatchError(ValueError):
+    """A minted receipt is filed under a key its contract item does not declare.
+
+    OMN-16859. Subclasses :class:`ValueError` for the same reason
+    :class:`AppendOnlyEmissionError` does — the loud-failure contract
+    :func:`compute_companion_plan` already documents.
+    """
+
+
+def assert_receipt_keys_match_declarations(
+    files: Sequence[ModelCompanionFile], request: ModelOccCompanionRequest
+) -> None:
+    """Refuse a plan whose receipts do not resolve at their declared keys.
+
+    THE MECHANISM (OMN-16859), placed beside
+    :func:`assert_append_only_emissions` for the same reason: fixing the two
+    emission sites that were wrong today is a point fix, and this producer grew
+    a new emission site in each of OMN-14742, OMN-15247, OMN-16434 and
+    OMN-16892. The invariant makes the CLASS unreachable from any present or
+    future site.
+
+    Semantics are matched to the CONSUMERS rather than invented here:
+
+    * **Agreement.** ``validator_occ_merge_eligibility`` reads an item's receipt
+      at ``drift/dod_receipts/<ticket>/<item>/<check_type>.yaml`` and
+      ``validator_receipt_supersession`` globs
+      ``<check_type>.supersede.*.yaml`` and then key-validates the record's own
+      ``check_type`` field against the key it is filed under. So a receipt's
+      basename, its recorded ``check_type``, and the contract entry's declared
+      ``check_type`` are ONE value at three sites; any disagreement is either
+      unreachable (wrong filename) or self-contradictory (right filename, wrong
+      field), and both read downstream as ``missing_receipt``.
+    * **Completeness.** Eligibility iterates the contract's ``dod_evidence`` and
+      demands a receipt at EACH item's declared key, excusing only an item a
+      later item honestly supersedes (``evidence_artifact:
+      "supersedes_dod_evidence:<id>"``). Asking that of the plan turns the
+      generator/consumer mismatch into a producer-side failure naming the
+      generator, instead of an occ-preflight ``missing_receipt`` that four
+      separate lanes re-diagnosed from scratch on 2026-08-28.
+
+    Completeness is asserted ONLY for a ticket whose contract this plan authored
+    fresh (absent, or exists-but-open → full regeneration). On the merged path
+    the plan is deliberately NOT the whole truth: the 1st consumer's receipts
+    are already merged and immutable, this plan re-binds them with net-new
+    supersessions and mints nothing at their base keys, and demanding an
+    emission there would refuse every legitimate 2nd-consumer companion.
+    Agreement, by contrast, holds on every path — it constrains only what the
+    plan does emit.
+
+    Purity is preserved: the contract and receipts are read out of ``files``
+    itself and the fresh/merged split out of ``ModelOccContractState``, which
+    the read-EFFECT already populates. No I/O and no new seam.
+
+    Raises:
+        ReceiptKeyMismatchError: on the first violation, naming the emitted
+            path, the declared type, and which of the two invariants failed.
+    """
+    contracts: dict[str, object] = {}
+    # {(ticket, evidence item) -> {basename, ...}} over every receipt emission.
+    emitted: dict[tuple[str, str], set[str]] = {}
+    for companion in files:
+        if companion.kind is EnumCompanionFileKind.CONTRACT:
+            contracts[companion.ticket_id] = yaml.safe_load(companion.content)
+            continue
+        parts = companion.path.split("/")
+        if len(parts) < 2:
+            continue
+        emitted.setdefault((companion.ticket_id, parts[-2]), set()).add(parts[-1])
+
+    for companion in files:
+        if companion.kind is EnumCompanionFileKind.CONTRACT:
+            continue
+        parts = companion.path.split("/")
+        item_id, basename = parts[-2], parts[-1]
+        body = yaml.safe_load(companion.content)
+        recorded = str(body.get("check_type") or "")
+        expected_plain = f"{recorded}.yaml"
+        supersede_prefix = f"{recorded}.supersede."
+        if not (
+            basename == expected_plain
+            or (basename.startswith(supersede_prefix) and basename.endswith(".yaml"))
+        ):
+            raise ReceiptKeyMismatchError(
+                f"refusing to author {companion.path!r}: it records "
+                f"check_type {recorded!r} but is filed under {basename!r}. "
+                f"Eligibility resolves this item's receipt at "
+                f"{expected_plain!r} and supersessions at "
+                f"'{supersede_prefix}<NNNN>.yaml', so this file is unreachable "
+                "and occ-preflight reports missing_receipt (OMN-16859)."
+            )
+        declared = declared_check_for(contracts.get(companion.ticket_id), item_id)
+        if declared is not None and declared[0] != recorded:
+            raise ReceiptKeyMismatchError(
+                f"refusing to author {companion.path!r}: the contract entry "
+                f"{item_id!r} declares check_type {declared[0]!r} but this "
+                f"receipt records {recorded!r}. The receipt must follow the "
+                "declaration, not the other way round (OMN-16859)."
+            )
+
+    merged_tickets = {
+        state.ticket_id
+        for state in request.occ_contract_states
+        if state.exists and state.merged
+    }
+    # KNOWN RESIDUAL, exempted narrowly and named rather than silently allowed.
+    # The self-bind item is DECLARED whenever ``occ_pr_number`` is known but its
+    # receipt is minted only when ``occ_probe`` is also supplied, so a caller
+    # passing one without the other produces a declared item with no receipt.
+    # That is the same defect FAMILY as this ticket and it is pre-existing, but
+    # it is a caller-shape gap rather than a producer key mismatch, and failing
+    # the whole mint closed on it would refuse a plan this producer has always
+    # emitted. Narrowed to exactly that one id under exactly that one condition,
+    # so nothing else slips through with it.
+    probeless_self_bind = (
+        f"occ-self-bind-pr-{request.occ_pr_number}"
+        if request.occ_pr_number is not None and request.occ_probe is None
+        else None
+    )
+    for ticket_id, parsed in contracts.items():
+        if ticket_id in merged_tickets or not isinstance(parsed, dict):
+            continue
+        items = parsed.get("dod_evidence")
+        if not isinstance(items, list):
+            continue
+        honestly_superseded = {
+            str(marker)[len(_SUPERSEDES_DOD_EVIDENCE_PREFIX) :]
+            for item in items
+            if isinstance(item, dict)
+            for marker in [item.get("evidence_artifact") or ""]
+            if str(marker).startswith(_SUPERSEDES_DOD_EVIDENCE_PREFIX)
+        }
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id") or "")
+            if (
+                not item_id
+                or item_id in honestly_superseded
+                or item_id == probeless_self_bind
+            ):
+                continue
+            declared = declared_check_for(parsed, item_id)
+            if declared is None:
+                continue
+            check_type = declared[0]
+            names = emitted.get((ticket_id, item_id), set())
+            if any(
+                name == f"{check_type}.yaml"
+                or (
+                    name.startswith(f"{check_type}.supersede.")
+                    and name.endswith(".yaml")
+                )
+                for name in names
+            ):
+                continue
+            raise ReceiptKeyMismatchError(
+                f"refusing to emit {ticket_id}'s companion: the contract "
+                f"declares dod_evidence item {item_id!r} with check_type "
+                f"{check_type!r}, but this plan mints no receipt at "
+                f"'drift/dod_receipts/{ticket_id}/{item_id}/{check_type}.yaml' "
+                f"(emitted here: {sorted(names) or 'nothing'}). occ-preflight "
+                f"reports this as missing_receipt on "
+                f"{ticket_id}:{item_id}:{check_type} (OMN-16859)."
+            )
+
+
 class SupersessionCheckBindingError(ValueError):
     """A supersession would carry a check that is not the superseded item's own.
 
@@ -567,15 +753,27 @@ class SupersessionCheckBindingError(ValueError):
     """
 
 
-def declared_check_value_for(parsed_contract: object, evidence_id: str) -> str | None:
-    """Return the ``check_value`` the CONTRACT declares for one dod_evidence item.
+def declared_check_for(
+    parsed_contract: object, evidence_id: str
+) -> tuple[str, str] | None:
+    """Return ``(check_type, check_value)`` the CONTRACT declares for one item.
 
-    This is the authority for what a supersession of that item must attest. The
-    receipt schema carries exactly one ``check_type``/``check_value`` pair, so an
-    item declaring several checks (the downstream item declares two: the binding
-    probe and the diff-scope assertion) resolves to its first ``command`` check —
+    This is the authority for what a supersession of that item must attest AND
+    for the receipt KEY it must be filed under. The receipt schema carries
+    exactly one ``check_type``/``check_value`` pair, so an item declaring
+    several checks (the downstream item declares two: the binding probe and the
+    diff-scope assertion) resolves to its first ``command`` check —
     deterministic, and admissible under the OMN-15459 S2 family-binding rule,
-    whose anchors are derived from ALL of the item's declared checks.
+    whose anchors are derived from ALL of the item's declared checks. An item
+    whose only check is another type (the OMN-16434 diff-derived behavior
+    proof, ``test_passes``) resolves to that check.
+
+    OMN-16859: the type and the value are returned TOGETHER, from the same
+    selected check, because they are two halves of one fact. Returning only the
+    value (the pre-OMN-16859 shape) left the caller to supply a type, and the
+    only type it could supply without re-deriving the selection was the
+    constant ``"command"`` — which is how a ``test_passes`` item's supersession
+    came to be filed at a key ``resolve_supersession`` does not glob.
 
     Whitespace is collapsed exactly as the enforcing gate normalises it
     (``check_receipt_hardening._normalize_check``), which also guarantees the
@@ -596,20 +794,33 @@ def declared_check_value_for(parsed_contract: object, evidence_id: str) -> str |
         checks = item.get("checks")
         if not isinstance(checks, list):
             return None
-        fallback: str | None = None
+        fallback: tuple[str, str] | None = None
         for check in checks:
             if not isinstance(check, dict):
                 continue
             value = check.get("check_value")
             if not isinstance(value, str) or not value.strip():
                 continue
+            raw_type = check.get("check_type")
+            # The receipt schema has no "untyped" state; core's own readers
+            # default a missing check_type to "command", so mirror that rather
+            # than inventing an empty key no consumer resolves.
+            check_type = (
+                raw_type if isinstance(raw_type, str) and raw_type else "command"
+            )
             normalized = " ".join(value.split())
-            if check.get("check_type") == "command":
-                return normalized
+            if check_type == "command":
+                return check_type, normalized
             if fallback is None:
-                fallback = normalized
+                fallback = (check_type, normalized)
         return fallback
     return None
+
+
+def declared_check_value_for(parsed_contract: object, evidence_id: str) -> str | None:
+    """The ``check_value`` half of :func:`declared_check_for` (OMN-15459 API)."""
+    declared = declared_check_for(parsed_contract, evidence_id)
+    return None if declared is None else declared[1]
 
 
 _SUPERSEDES_DOD_EVIDENCE_PREFIX = "supersedes_dod_evidence:"
@@ -1305,8 +1516,17 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 # The supersession still re-binds the item to this product PR
                 # (pr_number / commit_sha / branch / probe provenance on the
                 # replacement); only the attested BAR reverts to the item's own.
-                prior_check = declared_check_value_for(parsed_contract, prior_entry)
-                if prior_check is None:
+                #
+                # OMN-16859: the item's declared check_TYPE comes back with its
+                # check_value from the same selected check, and is what the
+                # supersession is filed under. Substituting the constant
+                # "command" here is the OCC#7465 defect: resolve_supersession
+                # globs `<check_type>.supersede.*.yaml`, so a record filed under
+                # `command.` for a `test_passes` item is not merely misnamed --
+                # it is never a candidate, and the rebind silently never applies.
+                declared = declared_check_for(parsed_contract, prior_entry)
+                prior_check = None if declared is None else declared[1]
+                if declared is None or prior_check is None:
                     raise SupersessionCheckBindingError(
                         f"refusing to supersede {prior_entry!r} in {ticket}: its "
                         "merged contract entry declares no non-empty check_value, "
@@ -1315,11 +1535,13 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                         "OMN-15459 wrong-item rebind; declare the item's own check "
                         "in the contract instead."
                     )
+                prior_check_type = declared[0]
                 supersede_checks[prior_entry] = prior_check
                 content = _supersede_file(
                     request=request,
                     ticket_id=ticket,
                     prior_entry=prior_entry,
+                    check_type=prior_check_type,
                     check_value=prior_check,
                     contract_sha256=contract_hash,
                     contract_entry_sha256=entry_hash,
@@ -1329,7 +1551,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                     ModelCompanionFile(
                         path=(
                             f"drift/dod_receipts/{ticket}/{prior_entry}/"
-                            f"command.supersede.{pr_number}.yaml"
+                            f"{prior_check_type}.supersede.{pr_number}.yaml"
                         ),
                         content=content,
                         kind=EnumCompanionFileKind.SUPERSEDE_RECEIPT,
@@ -1461,6 +1683,24 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         if not (state.exists and state.merged):
             if behavior_test_paths:
                 slot_evidence_id = BEHAVIOR_PROOF_EVIDENCE_ID
+                # OMN-16859: the contract renderer declares this item as
+                # `check_type: test_passes`, so the receipt's recorded type and
+                # its FILENAME must both be `test_passes` -- eligibility keys
+                # receipts `<ticket>:<item>:<check_type>` and reads
+                # `<item>/<check_type>.yaml`. Minting `command.yaml` for this
+                # item is why occ-preflight returned `missing_receipt` on
+                # OMN-16838 / OMN-16842 / OMN-16844 / OMN-16901, each of which
+                # hand-authored the file the producer should have written.
+                #
+                # Declaring `command` to match the old filename was the
+                # alternative and is wrong at the consumer: since OMN-16824
+                # `contract_compliance_check._check_test_passes` EXECUTES
+                # check_value exactly like `command` (and node_dod_verify always
+                # did), so `test_passes` is an honest statement about a check
+                # the OCC runner really runs, and
+                # `check_contract_substance_floor.derive_proof_tier` keys that
+                # type to tier L1. The receipt follows the declaration.
+                slot_check_type = "test_passes"
                 slot_check_value = behavior_proof_check_value(behavior_test_paths)
                 # The declared check runs in the PRODUCT repo (`cwd`), which
                 # this producer does not have: it runs inside the product
@@ -1476,6 +1716,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 )
             else:
                 slot_evidence_id = ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+                slot_check_type = "command"
                 slot_check_value = ADMISSIBILITY_VALIDATOR_CHECK_VALUE
                 slot_actual_output = (
                     "PASS: OCC runner executes the declared check; "
@@ -1486,6 +1727,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 request=request,
                 ticket_id=ticket,
                 evidence_id=slot_evidence_id,
+                check_type=slot_check_type,
                 check_value=slot_check_value,
                 contract_sha256=contract_hash,
                 contract_entry_sha256=validator_entry_hash,
@@ -1501,7 +1743,8 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
             files.append(
                 ModelCompanionFile(
                     path=(
-                        f"drift/dod_receipts/{ticket}/{slot_evidence_id}/command.yaml"
+                        f"drift/dod_receipts/{ticket}/{slot_evidence_id}/"
+                        f"{slot_check_type}.yaml"
                     ),
                     content=validator_content,
                     kind=EnumCompanionFileKind.DOWNSTREAM_RECEIPT,
@@ -1628,6 +1871,11 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     # emission site above is covered, including any added later — an in-place
     # rewrite of a merged receipt can no longer leave this function.
     assert_append_only_emissions(files, request)
+    # OMN-16859 MECHANISM, same placement and same reason: the last gate before
+    # the plan escapes the pure core. A receipt filed under a key its contract
+    # item does not declare can no longer leave this function, from this or any
+    # future emission site.
+    assert_receipt_keys_match_declarations(files, request)
 
     companion_files = tuple(files)
     product_body = ""
