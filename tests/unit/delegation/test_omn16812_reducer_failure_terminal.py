@@ -421,6 +421,7 @@ async def _drive_one_failing_record(
 def _local_only_bifrost(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     import omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing as routing
 
+    original_config = routing._config
     routing._config = None
     routing._load_bifrost_endpoints.cache_clear()
     contract_path = tmp_path / "bifrost_delegation.yaml"
@@ -432,7 +433,7 @@ def _local_only_bifrost(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Any:
     # branch, so the lane's setting is the one to reproduce.
     monkeypatch.setenv("ONEX_BOUNDARY_DLQ_ENABLED", "true")
     yield
-    routing._config = None
+    routing._config = original_config
     routing._load_bifrost_endpoints.cache_clear()
 
 
