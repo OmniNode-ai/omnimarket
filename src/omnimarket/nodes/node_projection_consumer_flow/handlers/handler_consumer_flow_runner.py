@@ -19,8 +19,11 @@ under concurrent consumers and let an older redelivery win.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import yaml
 
@@ -117,6 +120,31 @@ _SELECT_KEYS_AT_SEQUENCE = f"""
 """
 
 
+def _wire_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Render one accepted database row in a form the event bus can carry.
+
+    The row travels onward as the applied event's payload, so it is reduced to
+    JSON primitives here rather than at the transport, where a value the
+    encoder cannot handle would take the whole terminal event — and with it the
+    downstream alert's only trigger — down with it.
+
+    Counters are NOT coerced: an ``UNKNOWN`` window carries ``None``, never
+    ``0``. Collapsing that to zero would let an unobserved window read as
+    observed-and-idle, which is the false-green this projection exists to close.
+    """
+    wired: dict[str, Any] = {}
+    for key, value in row.items():
+        if isinstance(value, datetime):
+            wired[key] = value.isoformat()
+        elif isinstance(value, UUID):
+            wired[key] = str(value)
+        elif isinstance(value, Enum):
+            wired[key] = value.value
+        else:
+            wired[key] = value
+    return wired
+
+
 class ConsumerFlowProjectionWriter(BaseProjectionRunner):
     """Projects heartbeat flow windows into ``consumer_flow_windows``.
 
@@ -129,7 +157,29 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
     import path for every consumer of the pure handler. ``Writer`` is also just
     the accurate word: this is the projection writer, the same role the
     deployed ``*-writer`` services already carry.
+
+    That naming choice used to decide, silently, which of the runtime's two
+    projection dispatch branches this class landed on: the auto-wiring tested
+    ``type(handler).__name__.endswith("ProjectionRunner")``. Satisfying the
+    type-word ratchet therefore moved this node onto the DB-injection branch,
+    where the runtime pre-connected this class's asyncpg pool on a throwaway
+    event loop and every message afterwards died with ``Event loop is closed``.
+    Dispatch shape is now declared below instead of inferred from a spelling,
+    and the declaration carries an obligation this class has to keep.
     """
+
+    #: This class is dispatched IN-PROCESS by the runtime auto-wiring, once per
+    #: consumed message, rather than driven by its own ``run()`` consume loop
+    #: the way the ``*ProjectionRunner`` siblings are. The runtime reads this
+    #: attribute by name; it is a plain class attribute rather than an import so
+    #: this module keeps no import-time dependency on the runtime package.
+    #:
+    #: Declaring it is a promise. ``handle()`` opens one event loop per message,
+    #: so every loop-bound resource this class touches — the asyncpg pool and
+    #: the snapshot producer both — is opened and closed inside that loop. The
+    #: runtime cannot scope the lifetime of a pool it did not create, and no
+    #: longer tries to.
+    onex_runtime_inprocess_dispatch = True
 
     def __init__(self, contract_path: Path | None = None) -> None:
         super().__init__()
@@ -161,7 +211,7 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
         return self.subscribe_topics
 
     def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """RuntimeLocal handler protocol shim."""
+        """RuntimeLocal handler protocol shim: one message, one loop, one pool."""
         topics = self.subscribe_topics
         topic = str(input_data.pop("_topic", topics[0] if topics else ""))
         meta = MessageMeta(
@@ -170,25 +220,71 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
             fallback_id=str(input_data.pop("_fallback_id", "")),
             topic=topic,
         )
-        projected = asyncio.run(self.project_event(topic, input_data, meta))
-        return {"projected": projected}
+        return asyncio.run(self._project_one_message(topic, input_data, meta))
+
+    async def _project_one_message(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> dict[str, Any]:
+        """Project one runtime-dispatched message and report what was written.
+
+        Everything loop-bound is opened and closed here, inside the single loop
+        ``handle()`` opened for this message. That is not tidiness, it is the
+        correctness requirement: ``asyncio.run`` closes its loop on return, and
+        an asyncpg pool (or an ``AIOKafkaProducer``) is bound to the loop that
+        created it, so anything cached across calls belongs to a loop that no
+        longer exists. Reaching for it raises ``RuntimeError: Event loop is
+        closed`` — 34 of them on the dev lane, zero rows written, DLQ climbing.
+        The same pattern is documented on the decision-store adapter's one-shot
+        ``AsyncpgPoolResource``.
+
+        The standalone ``run()`` path does NOT come through here: it owns one
+        long-lived loop, connects once, and reuses both resources for the life
+        of the process.
+
+        The returned mapping is the applied event's payload — ``handler_wiring``
+        publishes it to ``projection-consumer-flow-applied.v1`` — so it carries
+        the window facts a downstream consumer needs, not a bare ack.
+        """
+        await self.db.connect()
+        try:
+            written = await self._project_window(topic, data, meta)
+        finally:
+            await self._stop_producer()
+            await self.db.close()
+        return {"rows_upserted": len(written), "flow_rows": written}
 
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
+        """Standalone-runner entrypoint: project one message, report success.
+
+        Kept boolean because :class:`BaseProjectionRunner`'s consume loop is its
+        caller and commits offsets on that answer. The in-process dispatch path
+        uses :meth:`_project_one_message`, which reports the rows themselves.
+        """
+        await self._project_window(topic, data, meta)
+        return True
+
+    async def _project_window(
+        self, topic: str, data: dict[str, Any], meta: MessageMeta
+    ) -> list[dict[str, Any]]:
         """Resolve the facts the derivation cannot see, then persist its output.
 
         The verdict logic is NOT duplicated here: this reads the database,
         hands the facts to the pure def-B handler, and writes what it returns.
         A second copy of the derivation is how a SQL writer and an in-memory
         writer drift into disagreeing about what STALLED means.
+
+        Returns the rows the database actually accepted, in wire-safe form. An
+        empty list means nothing was written — which is a real answer, not a
+        failure, and is reported as such rather than as a truthy ack.
         """
         raw_window = data.get("flow_window")
         if raw_window is None:
             # No window on this heartbeat: the priming tick, or another node in
             # the process carries the window. Absence is not zero traffic, so
             # nothing is written.
-            return True
+            return []
         window = ModelNodeFlowWindowWire.model_validate(raw_window)
 
         for produce in window.produce_deltas:
@@ -221,6 +317,7 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
             )
         )
 
+        accepted: list[dict[str, Any]] = []
         for unknown in result.unknown_rows:
             gap_rows = await self.db.execute(
                 _INSERT_UNKNOWN,
@@ -236,11 +333,14 @@ class ConsumerFlowProjectionWriter(BaseProjectionRunner):
             )
             for gap_row in gap_rows or []:
                 await self._publish_snapshot_if_available(gap_row, meta, data)
+                accepted.append(_wire_row(gap_row))
 
         for row in result.flow_rows:
             written = await self._upsert_flow_row(row)
             await self._publish_snapshot_if_available(written, meta, data)
-        return True
+            if written is not None:
+                accepted.append(_wire_row(written))
+        return accepted
 
     async def _upsert_flow_row(
         self, row: ModelConsumerFlowRow
