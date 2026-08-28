@@ -168,13 +168,17 @@ CHAIN_CASES: tuple[ChainCase, ...] = (
             "excluded_backend_refs": [],
         },
         terminal_type_name="ModelRoutingDecision",
-        # Dead today. This node's contract declares db_io.db_tables (the
-        # OMN-15631 tenant-overlay table) while its handler is canonical def-B
-        # (`handle(self, intent: ModelRoutingIntent) -> ModelRoutingDecision`),
-        # so the installed omnibase-infra wires it to the PROJECTION arm and
-        # hands it a raw dict. Fix in flight: omnibase_infra#2937. This row
-        # turns RED the moment the pin picks that up.
-        broken_by="OMN-16767",
+        # LIVE as of the omnibase-infra 0.38.11 pin (OMN-16815). This row was
+        # xfail(strict=True) on OMN-16767: the node's contract declares
+        # db_io.db_tables (the OMN-15631 tenant-overlay table) while its handler
+        # is canonical def-B (`handle(self, intent: ModelRoutingIntent) ->
+        # ModelRoutingDecision`), and pre-0.38.11 wiring selected the PROJECTION
+        # arm on db_tables alone, handing the typed handler a raw dict. The fix
+        # (omnibase_infra#2937, plus #2943/#2949/#2951) first shipped in
+        # v0.38.11; the row XPASSed the moment the lock resolved it, which is
+        # exactly the signal the marker was written to produce, so the marker is
+        # gone. It is now an ordinary passing row: if this chain dies again, this
+        # goes RED with no marker to hide behind.
     ),
 )
 
