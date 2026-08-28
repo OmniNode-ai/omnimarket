@@ -415,27 +415,55 @@ class TestComputeOracleWiresContentBoundIntoTheContract:
             if f.kind == EnumCompanionFileKind.CONTRACT
         )
 
-    def test_downstream_and_ci_items_declare_the_content_bound_value(self) -> None:
+    # OMN-16434 SUPERSEDES the "reuse one derived value across every item" half
+    # of OMN-16160. The two assertions replaced here required the SAME derived
+    # string to appear on the binding item, the diff-scope item and the
+    # deploy-assessment item -- and the producer obeyed, so live contracts
+    # carried three byte-identical greps (measured on contracts/OMN-16037.yaml
+    # and contracts/OMN-16798.yaml). Three copies of one string is one check
+    # that looks like three, and it made each item's declared check disagree
+    # with its own description: an item captioned "product diff scope check"
+    # read one symbol in one file, and one captioned "deploy assessment" read
+    # the same. What OMN-16160 was actually FOR -- the contract declaring the
+    # derived content-bound probe at all, rather than falling through to an
+    # inadmissible literal -- is preserved and still asserted below, on the
+    # binding item, which is the item whose supersession decision is keyed on
+    # ``is_product_observing_check_value``.
+    def test_the_binding_item_declares_the_content_bound_value(self) -> None:
         contract = self._plan_contract()
         values = _contract_check_values(contract)
-        assert values.count(_CONTENT_BOUND) >= 2, values
+        assert _CONTENT_BOUND in values, values
 
-    def test_deploy_assessment_item_reuses_the_same_content_bound_value(self) -> None:
+    def test_the_derived_value_is_not_duplicated_across_items(self) -> None:
+        contract = self._plan_contract(
+            changed_files=("src/omnimarket/nodes/node_x/handlers/handler_x.py",)
+        )
+        values = _contract_check_values(contract)
+        assert values.count(_CONTENT_BOUND) == 1, values
+
+    def test_deploy_assessment_item_reads_deploy_scope_not_the_binding_symbol(
+        self,
+    ) -> None:
         contract = self._plan_contract(
             changed_files=("src/omnimarket/nodes/node_x/handlers/handler_x.py",)
         )
         assert "dod-deploy-assessment" in _dod_ids(contract)
-        values = _contract_check_values(contract)
-        assert _CONTENT_BOUND in values
-        # The deploy-assessment item's own check_value must be the content-bound
-        # form, not the inadmissible `gh pr diff` default.
         import yaml
 
         data = yaml.safe_load(contract)
         deploy_item = next(
             i for i in data["dod_evidence"] if i["id"] == "dod-deploy-assessment"
         )
-        assert deploy_item["checks"][0]["check_value"] == _CONTENT_BOUND
+        value = deploy_item["checks"][0]["check_value"]
+        assert value != _CONTENT_BOUND
+        # Still the OMN-15988 shape, so nothing that fix bought is given back:
+        # `gh api` in command position (the deploy-gate ratchet's only admitted
+        # `gh` form), the literal `deploy` keyword it greps for, and falsifiable
+        # -- a docs-only PR's file list yields a zero count and exit 1.
+        assert value.startswith("gh api repos/")
+        assert "/files" in value
+        assert "grep -ciE" in value
+        assert "deploy" in value
 
     def test_content_bound_contract_items_pass_both_live_gates(self) -> None:
         contract = self._plan_contract(

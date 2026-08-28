@@ -72,8 +72,11 @@ from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_requ
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+    BEHAVIOR_PROOF_EVIDENCE_ID,
     DEPLOY_ASSESSMENT_EVIDENCE_ID,
+    behavior_proof_check_value,
     deploy_assessment_check_value,
+    derive_behavior_test_paths,
     downstream_receipt_public_check_value,
     find_deploy_sensitive_paths,
     is_product_observing_check_value,
@@ -1059,7 +1062,17 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         else None
     )
     contract_binding_check: str | None = _content_bound
-    contract_diff_scope_check: str | None = _content_bound
+    # OMN-16434: the diff-scope item no longer re-declares the SAME derived
+    # string. One candidate rendered verbatim into three items produced three
+    # byte-identical checks on one contract (measured on contracts/OMN-16037.yaml
+    # and OMN-16798.yaml), which reads as three proofs and is one. It also made
+    # each item's declared check disagree with its own description: an item that
+    # says "product diff scope check" read a single symbol in a single file. The
+    # binding item keeps the content-bound pin -- it is the item whose
+    # supersession decision is keyed on `is_product_observing_check_value` -- and
+    # the diff-scope item falls back to its own distinct default, which reads the
+    # fact it actually claims.
+    contract_diff_scope_check: str | None = None
 
     # F-05 (OMN-14742): does the product PR touch runtime/deploy-sensitive paths
     # that would trip the product repo's required deploy-gate? If so, the OCC
@@ -1068,6 +1081,11 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     # PR omnimarket#1791 needed a manual deploy-scope receipt, OCC#4289). This is
     # PR-level (the same changed_files apply to every cited ticket); the
     # classifier mirrors the canonical deploy-gate runtime-path predicate.
+    # OMN-16434: derived ONCE here so the contract renderer, the
+    # ``evidence_requirements`` declaration and the backing-receipt branch below
+    # all read the same answer; a second derivation is a second thing to drift.
+    behavior_test_paths = derive_behavior_test_paths(request.changed_files)
+
     deploy_hits = find_deploy_sensitive_paths(request.changed_files)
     emit_deploy_assessment = bool(deploy_hits)
     # OMN-16160: reuse the SAME content-bound value for the deploy-assessment
@@ -1091,10 +1109,17 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     # The fallback now reads the identical fact through the ``gh api`` verb.
     # The content-bound value above is still strictly preferred: it is pinned to
     # an immutable ref and was proven RED at the merge base before minting.
+    #
+    # OMN-16434: this item no longer re-declares the binding item's derived
+    # string either (see the diff-scope note above). Its own default is the
+    # OMN-15988 `gh api .../pulls/<n>/files --jq '.[].filename' | grep -ciE
+    # 'deploy'` read, which is falsifiable (a docs-only PR's file list yields a
+    # zero count and exit 1), carries the `deploy` keyword the deploy-gate
+    # ratchet greps for, and is in `gh api` command position -- so nothing the
+    # OMN-15988 fix bought is given back, and the item now reads the deploy
+    # scope it says it reads instead of an unrelated symbol.
     deploy_assessment_final_check_value = (
-        deploy_assessment_check_value(
-            pr_number=pr_number, repo=repo, content_bound_check_value=_content_bound
-        )
+        deploy_assessment_check_value(pr_number=pr_number, repo=repo)
         if emit_deploy_assessment
         else None
     )
@@ -1292,6 +1317,12 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 binding_check_value=contract_binding_check,
                 diff_scope_check_value=contract_diff_scope_check,
                 deploy_check_value=deploy_assessment_final_check_value,
+                # OMN-16434: the diff is what the behavior proof is derived
+                # FROM. Passed only on the fresh/all-adds path; the merged path
+                # above renders twice and subtracts the suffix to isolate the
+                # self-bind entry, and that property holds only while both of
+                # its renders are byte-identical apart from that entry.
+                changed_files=request.changed_files,
             )
             contract_hash = _sha256_hex(contract_content)
             # Parse the just-rendered contract so the downstream receipt's
@@ -1375,15 +1406,41 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         # fabricated "N passed" into probe_stdout is exactly the false-evidence
         # class this ticket exists to remove, and `actual_output` says plainly
         # which surface executes the declared check instead.
+        #
+        # OMN-16434: WHICH item occupies that admissibility slot now depends on
+        # the PR's diff, so the receipt minted here follows the same branch the
+        # contract renderer took. Both branches mint EXACTLY ONE receipt --
+        # minting the other would declare a receipt for an item the contract
+        # does not carry, which `check_receipt_hardening` reports as an orphan.
         if not (state.exists and state.merged):
-            validator_entry_hash = _entry_hash_for(
-                parsed_contract, ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
-            )
+            if behavior_test_paths:
+                slot_evidence_id = BEHAVIOR_PROOF_EVIDENCE_ID
+                slot_check_value = behavior_proof_check_value(behavior_test_paths)
+                # The declared check runs in the PRODUCT repo (`cwd`), which
+                # this producer does not have: it runs inside the product
+                # repo's CI against the GitHub API, never a checkout. So the
+                # honesty rule above applies unchanged -- probe_command /
+                # probe_stdout stay the live PR read that ACTUALLY ran, and
+                # actual_output names which surface executes the declared
+                # check. Writing a fabricated "N passed" here is exactly the
+                # false-evidence class the Receipt Honesty Gate exists to catch.
+                slot_actual_output = (
+                    "PASS: product-repo test run executes the declared check; "
+                    "probe is the live PR read."
+                )
+            else:
+                slot_evidence_id = ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
+                slot_check_value = ADMISSIBILITY_VALIDATOR_CHECK_VALUE
+                slot_actual_output = (
+                    "PASS: OCC runner executes the declared check; "
+                    "probe is the live PR read."
+                )
+            validator_entry_hash = _entry_hash_for(parsed_contract, slot_evidence_id)
             validator_content = _receipt(
                 request=request,
                 ticket_id=ticket,
-                evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
-                check_value=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+                evidence_id=slot_evidence_id,
+                check_value=slot_check_value,
                 contract_sha256=contract_hash,
                 contract_entry_sha256=validator_entry_hash,
                 commit_sha=request.pr_head_sha,
@@ -1392,17 +1449,13 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 # long plain double-quoted scalar, which rewrites the committed
                 # receipt and restales its hash (F-03 / OMN-14684). Measured, not
                 # guessed.
-                actual_output=(
-                    "PASS: OCC runner executes the declared check; "
-                    "probe is the live PR read."
-                ),
+                actual_output=slot_actual_output,
                 branch=branch,
             )
             files.append(
                 ModelCompanionFile(
                     path=(
-                        f"drift/dod_receipts/{ticket}/"
-                        f"{ADMISSIBILITY_VALIDATOR_EVIDENCE_ID}/command.yaml"
+                        f"drift/dod_receipts/{ticket}/{slot_evidence_id}/command.yaml"
                     ),
                     content=validator_content,
                     kind=EnumCompanionFileKind.DOWNSTREAM_RECEIPT,

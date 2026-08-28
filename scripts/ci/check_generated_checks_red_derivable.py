@@ -220,6 +220,17 @@ _ADMISSIBILITY_VALIDATOR_RE = re.compile(
     r"^uv run pytest tests/test_evidence_admissibility\.py -q$"
 )
 
+# OMN-16434: the DIFF-DERIVED behavior proof — the producer's other admissible
+# form, and the only generated one that is BEHAVIOR rather than merely
+# admissible. Its targets are pytest collection targets taken from the product
+# PR's own ``changed_files`` (``occ_evidence_stamp.derive_behavior_test_paths``),
+# so unlike the fixed validator above it goes RED when the change under test is
+# reverted. Matched AFTER the validator pattern so the ticket-independent suite
+# keeps its own, narrower classification and is never counted as behavior proof.
+_BEHAVIOR_PROOF_RE = re.compile(
+    r"^uv run pytest (?:[A-Za-z0-9_][A-Za-z0-9_./-]*\.py(?:::[A-Za-z0-9_:]+)? )+-q$"
+)
+
 # --- Named anti-regression rules (OMN-15247 R21 / R21b) ----------------------
 #
 # The allowlist is exact-match, so these are strictly redundant for a conforming
@@ -346,6 +357,9 @@ def classify_check(check_value: str) -> tuple[str, str | None]:
     if _ADMISSIBILITY_VALIDATOR_RE.match(value):
         return "admissibility_validator", None
 
+    if _BEHAVIOR_PROOF_RE.match(value):
+        return "behavior_proof", None
+
     for pattern in _ALLOWLISTED_RE:
         if pattern.match(value):
             return "allowlisted", None
@@ -398,7 +412,15 @@ def inspect_contract(
             )
         elif classification == "content_bound":
             content_bound.append((item_id, value.strip()))
-        elif classification == "admissibility_validator":
+        elif classification in ("admissibility_validator", "behavior_proof"):
+            # OMN-16434: EITHER form satisfies the floor below. The property the
+            # floor protects is "at least one generated check is admissible
+            # under OMN-15309, so the companion is not born BLOCKED" — the
+            # diff-derived behavior proof satisfies that strictly more than the
+            # fixed validator does, because it is also the only generated form
+            # that classifies BEHAVIOR under OMN-15911. Requiring the validator
+            # BY NAME would have forced the producer to keep minting a
+            # denylisted foreign suite forever.
             has_validator = True
 
     # OMN-15247 R21b -- the load-bearing assertion of this gate, and the one that
@@ -418,9 +440,12 @@ def inspect_contract(
                 "item": "<contract>",
                 "check_value": "",
                 "reason": (
-                    "generated contract declares no admissibility-validator item "
-                    "(check_value 'uv run pytest tests/test_evidence_admissibility"
-                    ".py -q'). Without it every generated check here is inert or "
+                    "generated contract declares neither a diff-derived "
+                    "behavior-proof item (check_value 'uv run pytest <target "
+                    "from the PR's own diff> -q', OMN-16434) nor the fallback "
+                    "admissibility-validator item (check_value 'uv run pytest "
+                    "tests/test_evidence_admissibility.py -q'). Without one of "
+                    "them every generated check here is inert or "
                     "provenance-only, OCC's _has_effective_check finds nothing "
                     "admissible, and the companion is born BLOCKED -- the exact "
                     "three-for-three failure OMN-15247 was filed for"

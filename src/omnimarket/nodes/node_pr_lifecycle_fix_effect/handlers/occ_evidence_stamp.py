@@ -51,6 +51,7 @@ from __future__ import annotations
 import hashlib
 import re
 import textwrap
+from collections.abc import Sequence
 
 from omnimarket.occ_content_probe import render_check_value_field
 
@@ -373,6 +374,221 @@ _ADMISSIBILITY_VALIDATOR_ITEM_SUPERSEDING_HEAD_TEMPLATE = (
 )
 
 
+# --- The diff-derived behavior proof (OMN-16434) -----------------------------
+#
+# WHAT WAS WRONG. Everything above this block is PROVENANCE: a ``gh pr view``
+# PR-state read, a ``--json files`` diff-scope read, a content-bound
+# ``?ref=`` grep, and the fixed :data:`ADMISSIBILITY_VALIDATOR_CHECK_VALUE`
+# above. Under the merged OMN-15911 classifier
+# (``node_dod_verify.services.check_proof_class``) NOT ONE of them is BEHAVIOR:
+# the first three are MERGE_STATE/SURROGATE by command head, and the fourth is
+# SURROGATE by name because ``tests/test_evidence_admissibility.py`` is on
+# ``occ_evidence_probative_class.FOREIGN_SUITE_DENYLIST``. So every autobound
+# contract was born at ``behavior_proving_count == 0`` and could never satisfy
+# the OMN-15911 flip conjunct. MEASURED across ten contracts in the OMN-16434
+# wave-2 comment; the hand-repair treadmill lost the race at least once
+# (OCC#7357 auto-merged before its lane could correct it).
+#
+# WHAT THIS MINTS INSTEAD. The one thing on a product PR that is behavior proof
+# by construction is the test the PR itself adds or changes. It is derived from
+# ``changed_files`` — never a fixed corpus, never a symbol picked without
+# reference to the diff — and it is bound to the PRODUCT repo via ``cwd``,
+# because the OCC checkout does not contain the product's tests and a check
+# that cannot resolve its target proves nothing wherever it runs.
+#
+# WHY ``check_type: test_passes`` AND NOT ``command``. This is the shape the
+# ACCEPTED hand-authored repairs used (contracts/OMN-16759.yaml,
+# contracts/OMN-16037.yaml on OCC dev), and the choice is load-bearing rather
+# than cosmetic. ``contract_compliance_check._CHECK_RUNNERS['test_passes']``
+# ignores ``check_value`` entirely and asserts the PR's own CI is green, so the
+# hosted OCC compliance run can never BLOCK on a path its checkout lacks —
+# a ``command`` check would fail closed there and wedge the product PR behind an
+# unmergeable companion. The declared ``check_value`` is still the real,
+# executable statement: ``_is_inert_check`` reads it (so the item is ADMISSIBLE
+# and satisfies ``_has_effective_check``), the local Done gate executes it at
+# ``cwd``, and ``check_proof_class.classify_check`` reads it and returns
+# BEHAVIOR. One string, three consumers, no drift.
+BEHAVIOR_PROOF_EVIDENCE_ID = "dod-occ-diff-derived-behavior-proof"
+
+# Bound on how many test targets one minted command names. A behavior check
+# whose command grows without limit is a check nobody can read and a fold risk
+# on the contract line; four is enough to carry a normal PR's test surface and
+# small enough to stay legible.
+MAX_BEHAVIOR_TEST_PATHS = 4
+
+_TEST_FILE_PREFIX = "test_"
+_TEST_FILE_SUFFIX = "_test.py"
+
+
+def derive_behavior_test_paths(changed_files: Sequence[str]) -> tuple[str, ...]:
+    """Pure: the pytest targets THIS PR's diff carries, sorted and bounded.
+
+    A path qualifies only when it is a Python file whose BASENAME is a pytest
+    collection target (``test_*.py`` or ``*_test.py``). Living under ``tests/``
+    is deliberately not enough: ``tests/conftest.py`` and ``tests/fixtures/*``
+    are not runnable targets, and naming them would mint a command that
+    collects nothing and passes vacuously — the exact class of check this
+    ticket exists to remove.
+
+    Sorted so the mint is deterministic (the compute handler is an attestation
+    oracle: the gate re-invokes it and byte-diffs the result, so a set-ordered
+    command would make every companion unverifiable), and capped at
+    :data:`MAX_BEHAVIOR_TEST_PATHS`.
+    """
+    targets = {
+        path
+        for path in changed_files
+        if path.endswith(".py")
+        and (
+            path.rsplit("/", 1)[-1].startswith(_TEST_FILE_PREFIX)
+            or path.endswith(_TEST_FILE_SUFFIX)
+        )
+    }
+    return tuple(sorted(targets)[:MAX_BEHAVIOR_TEST_PATHS])
+
+
+def behavior_proof_check_value(test_paths: Sequence[str]) -> str:
+    """The BEHAVIOR-class command for the derived targets.
+
+    ``pytest`` is an allowlisted command head in
+    ``check_proof_class._BEHAVIOR_WORDS`` and ``uv`` is a stripped wrapper, so
+    this classifies BEHAVIOR. It is falsifiable for the reason that matters:
+    revert the PR's change and the test the PR added goes red.
+    """
+    return f"uv run pytest {' '.join(test_paths)} -q"
+
+
+def behavior_proof_cwd(repo: str) -> str:
+    """The product repo's working directory token for the minted check.
+
+    ``${OMNI_HOME}`` is one of the four tokens ``ModelDodEvidenceCheck.cwd``
+    documents as substitutable, and the repo DIRECTORY name (not the
+    ``owner/repo`` slug) is what ``$OMNI_HOME`` contains.
+    """
+    return "${OMNI_HOME}/" + repo.split("/", 1)[-1]
+
+
+_BEHAVIOR_PROOF_ITEM_HEAD_TEMPLATE = (
+    '  - id: "{evidence_id}"\n'
+    '    description: "PR #{pr_number} on {repo} — diff-derived behavior proof '
+    '(OMN-16434)."\n'
+    '    source: "generated"\n'
+    "    checks:\n"
+    '      - check_type: "test_passes"\n'
+)
+
+_BEHAVIOR_PROOF_ITEM_SUPERSEDING_HEAD_TEMPLATE = (
+    '  - id: "{evidence_id}"\n'
+    '    description: "PR #{pr_number} on {repo} — diff-derived behavior proof '
+    '(OMN-16434)."\n'
+    '    source: "generated"\n'
+    '    evidence_artifact: "supersedes_dod_evidence:{superseded_evidence_id}"\n'
+    "    checks:\n"
+    '      - check_type: "test_passes"\n'
+)
+
+
+def render_behavior_proof_dod_evidence_item(
+    *,
+    repo: str,
+    pr_number: int,
+    test_paths: Sequence[str],
+    superseded_evidence_id: str | None = None,
+) -> str:
+    """Render the diff-derived behavior-proof dod_evidence item (OMN-16434).
+
+    ``superseded_evidence_id`` carries the SAME semantics it carries on
+    :func:`render_admissibility_validator_dod_evidence_item`, which this item
+    replaces whenever it is minted: when the binding item's own check is not
+    product-observing, this item explicitly supersedes it so the inadmissible
+    binding probe is VISIBLY demoted rather than left standing as though it
+    proved something. Ordering is the caller's job — ``_superseded_dod_ids``
+    only honours a marker that appears after the item it names.
+    """
+    if superseded_evidence_id is not None:
+        head = _BEHAVIOR_PROOF_ITEM_SUPERSEDING_HEAD_TEMPLATE.format(
+            evidence_id=BEHAVIOR_PROOF_EVIDENCE_ID,
+            repo=repo,
+            pr_number=pr_number,
+            superseded_evidence_id=superseded_evidence_id,
+        )
+    else:
+        head = _BEHAVIOR_PROOF_ITEM_HEAD_TEMPLATE.format(
+            evidence_id=BEHAVIOR_PROOF_EVIDENCE_ID,
+            repo=repo,
+            pr_number=pr_number,
+        )
+    return (
+        head
+        + render_check_value_field(
+            "check_value", behavior_proof_check_value(test_paths)
+        )
+        + render_check_value_field("cwd", behavior_proof_cwd(repo))
+    )
+
+
+# Bound on how many changed paths the OWED requirement names. The point is to
+# say WHAT is unproven, not to reprint the diff.
+_MAX_OWED_PATHS = 4
+
+# F-03 (OMN-14684) applies to prose exactly as it applies to a ``check_value``:
+# a folded (``>-``) scalar longer than the OCC ``.yamlfmt``'s column-100 budget
+# is RE-WRAPPED by the hosted formatter, which rewrites the committed contract
+# and restales its ``contract_sha256``. MEASURED here, not assumed — the first
+# revision of this block used ``>-`` and failed
+# ``TestF03FormatterClean::test_every_companion_file_is_yamlfmt_clean``. A
+# literal block (``|-``) is never refolded at any length, which is the same
+# property :func:`render_check_value_field` relies on for long commands.
+_EVIDENCE_REQUIREMENT_TESTS_HEAD = '  - kind: "tests"\n    description: |-\n'
+_EVIDENCE_REQUIREMENT_DESCRIPTION_INDENT = "      "
+
+
+def render_behavior_evidence_requirement(
+    *, repo: str, pr_number: int, changed_files: Sequence[str]
+) -> str:
+    """Render the ``evidence_requirements`` entry for the behavior proof.
+
+    Two branches, and the honest one is the second:
+
+    * A derivable behavior proof — restate the exact command the dod_evidence
+      item declares, so the contract's stated requirement and its executed
+      check are one string.
+    * No derivable behavior proof (the PR changes no pytest target) — record
+      what is OWED, naming the changed paths whose behavior is unproven, and
+      mint NO behavior dod_evidence item. ``evidence_requirements`` is
+      declaration, not a gate: it is never executed and can never launder a
+      green, which is exactly why it is the right home for an unmet bar. The
+      alternative this replaces was minting a fixed surrogate that READ as
+      proof.
+    """
+    test_paths = derive_behavior_test_paths(changed_files)
+    if test_paths:
+        description = (
+            f"Behavior proof for PR #{pr_number} on {repo}, derived from the PR's "
+            f"own diff: the test target(s) it adds or changes. Bound as "
+            f"dod_evidence item `{BEHAVIOR_PROOF_EVIDENCE_ID}`, executed at cwd "
+            f"`{behavior_proof_cwd(repo)}`."
+        )
+        command = behavior_proof_check_value(test_paths)
+    else:
+        named = ", ".join(sorted(changed_files)[:_MAX_OWED_PATHS]) or "none reported"
+        description = (
+            f"OWED, not claimed. PR #{pr_number} on {repo} changes no pytest "
+            f"target, so this producer cannot derive a behavior-class check from "
+            f"its diff and mints none - the changed surface ({named}) is unproven "
+            f"by this contract. A behavior proof must be hand-authored as a "
+            f"`source: manual` dod_evidence item before OMN-15911's flip conjunct "
+            f"can be satisfied. Recorded here rather than papered over with a "
+            f"ticket-independent suite that would read as proof (OMN-16434)."
+        )
+        command = "uv run pytest <hand-authored target> -q"
+    return (
+        _EVIDENCE_REQUIREMENT_TESTS_HEAD
+        + f"{_EVIDENCE_REQUIREMENT_DESCRIPTION_INDENT}{description}\n"
+        + render_check_value_field("command", command, indent=4)
+    )
+
+
 def is_product_observing_check_value(check_value: str | None) -> bool:
     """True when a binding ``check_value`` actually observes the product change.
 
@@ -660,7 +876,7 @@ _COMPUTE_CONTRACT_HEAD_TEMPLATE = textwrap.dedent("""\
       - kind: "ci"
         description: "PR #{pr_number} CI checks green"
         command: "gh pr checks ${{PR_NUMBER}} --repo ${{REPO}}"
-    emergency_bypass:
+    {behavior_evidence_requirement}emergency_bypass:
       enabled: false
       justification: ""
       follow_up_ticket_id: ""
@@ -1562,6 +1778,7 @@ def render_compute_companion_contract(
     binding_check_value: str | None = None,
     diff_scope_check_value: str | None = None,
     deploy_check_value: str | None = None,
+    changed_files: Sequence[str] = (),
 ) -> str:
     """Render the RSD compute-oracle companion contract YAML.
 
@@ -1601,12 +1818,19 @@ def render_compute_companion_contract(
     :func:`deploy_assessment_check_value`'s inadmissible literal default.
     Ignored when ``emit_deploy_assessment`` is False.
     """
+    # OMN-16434: the ONE derivation, computed once and used by both the
+    # ``evidence_requirements`` declaration and the dod_evidence item, so the
+    # contract's stated requirement and its executed check cannot disagree.
+    behavior_test_paths = derive_behavior_test_paths(changed_files)
     parts = [
         _COMPUTE_CONTRACT_HEAD_TEMPLATE.format(
             ticket_id=ticket_id,
             repo=repo,
             pr_number=pr_number,
             evidence_id=evidence_id,
+            behavior_evidence_requirement=render_behavior_evidence_requirement(
+                repo=repo, pr_number=pr_number, changed_files=changed_files
+            ),
         ),
         render_check_value_field(
             "check_value",
@@ -1633,15 +1857,39 @@ def render_compute_companion_contract(
     # self-bind would appear in both renders and destroy that suffix property.
     # Ordering it here also satisfies ``_superseded_dod_ids``, which only honours
     # a supersession marker that appears after the item it names.
-    parts.append(
-        render_admissibility_validator_dod_evidence_item(
-            superseded_evidence_id=(
-                None
-                if is_product_observing_check_value(binding_check_value)
-                else evidence_id
+    #
+    # OMN-16434: WHICH item fills that slot is now decided by the diff. When the
+    # PR carries a pytest target, the diff-derived BEHAVIOR item takes the slot
+    # and the ticket-independent foreign suite is NOT minted at all — it is on
+    # ``FOREIGN_SUITE_DENYLIST``, classifies SURROGATE, and its only remaining
+    # job (keeping OCC's ``_has_effective_check`` from finding zero admissible
+    # checks) is done strictly better by a check that also classifies BEHAVIOR.
+    # When the PR carries no pytest target the foreign suite is RETAINED as the
+    # admissibility floor and the unmet bar is stated in
+    # ``evidence_requirements`` instead. That retention is deliberate and is the
+    # known residual of this fix, not an oversight: dropping it there would
+    # leave the contract with only ``gh pr view`` provenance, and
+    # ``contract_compliance_check`` exits 1 with "no hosted-and-local effective
+    # check exists" — a companion born BLOCKED wedges the product PR behind it,
+    # which is a worse failure than a visibly-labelled surrogate.
+    superseded = (
+        None if is_product_observing_check_value(binding_check_value) else evidence_id
+    )
+    if behavior_test_paths:
+        parts.append(
+            render_behavior_proof_dod_evidence_item(
+                repo=repo,
+                pr_number=pr_number,
+                test_paths=behavior_test_paths,
+                superseded_evidence_id=superseded,
             )
         )
-    )
+    else:
+        parts.append(
+            render_admissibility_validator_dod_evidence_item(
+                superseded_evidence_id=superseded
+            )
+        )
     if self_bind_evidence_id is not None:
         if occ_pr_number is None or occ_repo is None:
             raise ValueError(
@@ -1985,20 +2233,25 @@ def find_deploy_sensitive_paths(changed_files: tuple[str, ...]) -> tuple[str, ..
 __all__ = [
     "ADMISSIBILITY_VALIDATOR_CHECK_VALUE",
     "ADMISSIBILITY_VALIDATOR_EVIDENCE_ID",
+    "BEHAVIOR_PROOF_EVIDENCE_ID",
     "CONTRACT_ENTRY_SHA_LINE_RE",
     "CONTRACT_SHA_LINE_RE",
     "DEFAULT_RUNNER",
     "DEFAULT_VERIFIER",
     "DEPLOY_ASSESSMENT_EVIDENCE_ID",
     "EVIDENCE_ITEM_ID_LINE_RE",
+    "MAX_BEHAVIOR_TEST_PATHS",
     "SHA_RE",
     "TICKET_RE",
+    "behavior_proof_check_value",
+    "behavior_proof_cwd",
     "build_idempotency_key",
     "ci_check_evidence_id",
     "ci_dod_evidence_check_value",
     "classify_trivial_infra_fastpath",
     "compute_contract_sha256",
     "deploy_assessment_check_value",
+    "derive_behavior_test_paths",
     "downstream_dod_evidence_check_value",
     "extract_evidence_item_id",
     "find_deploy_sensitive_paths",
@@ -2006,6 +2259,8 @@ __all__ = [
     "rebind_contract_entry_sha256_in_text",
     "rebind_contract_sha256_in_text",
     "render_admissibility_validator_dod_evidence_item",
+    "render_behavior_evidence_requirement",
+    "render_behavior_proof_dod_evidence_item",
     "render_ci_check_receipt",
     "render_ci_dod_evidence_item",
     "render_companion_contract",

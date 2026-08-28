@@ -645,3 +645,63 @@ class TestTheGateIsActuallyInvoked:
             check=False,
         )
         assert good.returncode == 0, good.stdout + good.stderr
+
+
+@pytest.mark.unit
+class TestDiffDerivedBehaviorProofIsAcceptedOmn16434:
+    """OMN-16434: the gate's admissibility floor is a PROPERTY, not one string.
+
+    Before this ticket the floor asserted the fixed
+    ``uv run pytest tests/test_evidence_admissibility.py -q`` item BY NAME.
+    That string is on ``occ_evidence_probative_class.FOREIGN_SUITE_DENYLIST``
+    and classifies SURROGATE under OMN-15911, so a gate that demanded it by
+    name required the producer to keep minting a surrogate on every companion
+    forever. The floor now accepts either that fallback OR the diff-derived
+    behavior proof, which satisfies the same property (at least one generated
+    check is admissible, so the companion is not born BLOCKED) and is the only
+    generated form that ALSO classifies BEHAVIOR.
+    """
+
+    _BEHAVIOR = "uv run pytest tests/unit/services/test_thing_omn16434.py -q"
+
+    def test_the_behavior_proof_is_classified_not_rejected(self) -> None:
+        classification, reason = _GATE.classify_check(self._BEHAVIOR)
+        assert reason is None
+        assert classification == "behavior_proof"
+
+    def test_the_foreign_suite_keeps_its_own_narrower_classification(self) -> None:
+        classification, reason = _GATE.classify_check(
+            "uv run pytest tests/test_evidence_admissibility.py -q"
+        )
+        assert reason is None
+        assert classification == "admissibility_validator"
+
+    def test_a_behavior_proof_alone_satisfies_the_floor(self, tmp_path: Path) -> None:
+        contract = tmp_path / "OMN-16434.yaml"
+        contract.write_text(
+            "---\n"
+            'schema_version: "1.0.0"\n'
+            "dod_evidence:\n"
+            '  - id: "dod-occ-diff-derived-behavior-proof"\n'
+            '    source: "generated"\n'
+            "    checks:\n"
+            '      - check_type: "test_passes"\n'
+            f'        check_value: "{self._BEHAVIOR}"\n'
+            '        cwd: "${OMNI_HOME}/omnibase_infra"\n'
+        )
+        assert _GATE.check_contract(contract) == []
+
+    def test_a_contract_with_neither_still_fails_closed(self, tmp_path: Path) -> None:
+        contract = tmp_path / "OMN-16434.yaml"
+        contract.write_text(
+            "---\n"
+            'schema_version: "1.0.0"\n'
+            "dod_evidence:\n"
+            '  - id: "dod-binding-only"\n'
+            '    source: "generated"\n'
+            "    checks:\n"
+            '      - check_type: "command"\n'
+            '        check_value: "gh pr view 1 --repo o/r --json number,state"\n'
+        )
+        reasons = [v["reason"] for v in _GATE.check_contract(contract)]
+        assert any("behavior-proof item" in r for r in reasons)
