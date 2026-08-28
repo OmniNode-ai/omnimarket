@@ -49,9 +49,16 @@ _MINIMAL_BIFROST = textwrap.dedent("""\
         tier: local
         timeout_ms: 30000
         capabilities: []
-      - backend_id: local-reasoner
-        endpoint_url: "http://192.168.86.201:8001"  # onex-allow-internal-ip OMN-10942 reason="test fixture for contract-driven routing to lab AIPC endpoint"
-        model_name: Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ  # onex-allow-model-id OMN-10942 reason="test fixture verifying contract-driven routing to lab AIPC model"
+      # OMN-16442: was `local-reasoner` at .201:8001 with model_name
+      # Corianas/DeepSeek-R1-Distill-Qwen-14B-AWQ. That backend is RETIRED --
+      # .201:8001 is the RTX 4090 slot physically removed for RMA (OMN-16407;
+      # re-probed 2026-08-28, curl exit 7 "Couldn't connect to server"). This
+      # fixture is paired with the REAL routing_tiers.yaml, so its backend_ids
+      # must be ones the real local tier still declares. local-heavy-reasoning
+      # is the surviving research/reasoning rung (.201:8000, served id qwen3.8).
+      - backend_id: local-heavy-reasoning
+        endpoint_url: "http://192.168.86.201:8000"  # onex-allow-internal-ip OMN-16442 reason="test fixture for contract-driven routing to the live lab .201 endpoint"
+        model_name: qwen3.8
         tier: local
         timeout_ms: 30000
         capabilities: []
@@ -63,7 +70,7 @@ _MINIMAL_BIFROST = textwrap.dedent("""\
         backend_policy_version: "2.0.0"
         match_operation_types: [chat_completion]
         match_capabilities: [code_generation]
-        backend_ids: [local-coder, local-reasoner]
+        backend_ids: [local-coder, local-heavy-reasoning]
         fallback_policy:
           action: escalate_to_next_tier
           max_retries: 1
@@ -331,8 +338,11 @@ class TestDeltaContractRouting:
         try:
             # "test" has no matching local override in this fixture, so it
             # falls back to the first local served model for test tasks.
+            # OMN-16442: that model was Qwen3.6-27B-MTP on the retired
+            # local-reasoner; `test` is now served in the local tier by
+            # local-coder (live-probed served id "qwen3.8" at .201:8000).
             decision = delta(self._make_request("test"))
-            assert decision.selected_model == MODEL_QWEN3_27B_MTP
+            assert decision.selected_model == MODEL_QWEN3_35B_A3B
             assert "deepseek" not in decision.selected_model.lower(), (
                 f"Did not expect deepseek for test task, got: {decision.selected_model!r}"
             )
@@ -527,9 +537,11 @@ class TestDeltaContractRouting:
         os.environ["BIFROST_CONTRACT_PATH"] = str(bifrost_file)
 
         try:
-            # "research" resolves to the live served .201:8001 model id.
+            # OMN-16442: "research" resolved to the .201:8001 served id until
+            # that GPU slot was removed for RMA. It now resolves through
+            # local-heavy-reasoning to the live .201:8000 served id "qwen3.8".
             decision = delta(self._make_request("research"))
-            assert decision.selected_model == MODEL_QWEN3_27B_MTP
+            assert decision.selected_model == MODEL_QWEN3_35B_A3B
             assert "coder" not in decision.selected_model.lower(), (
                 f"Did not expect qwen3-coder for research task, got: {decision.selected_model!r}"
             )
@@ -561,16 +573,27 @@ class TestDeltaContractRouting:
             f"Expected default qwen3-coder-30b for unknown task, got: {result!r}"
         )
 
-    def test_local_coder_use_for_is_code_only(self) -> None:
-        """OMN-13599 recurrence guard: local-coder is a CODE backend only.
+    def test_local_coder_does_not_hijack_research(self) -> None:
+        """OMN-13599 recurrence guard, NARROWED by OMN-16442.
 
-        Its ``fast_path_threshold_tokens`` makes it win the fast-path for every
-        task type in its ``use_for``. If ``test`` or ``research`` are ever added
-        back, local-coder bleeds into task types the reasoner owns and
-        research/test regress off Qwen3.6-27B-MTP (see
-        ``test_reasoning_tasks_route_to_deepseek`` /
-        ``test_code_tasks_route_to_qwen3_coder``). Keep local-coder scoped to
-        code-writing task types.
+        OMN-13599 kept ``test`` AND ``research`` off local-coder because its
+        ``fast_path_threshold_tokens`` makes it win the fast-path for every task
+        type in its ``use_for``, which would have hijacked both away from the
+        local-reasoner rung that owned them.
+
+        OMN-16442 retired that rung — .201:8001 is the RTX 4090 slot physically
+        removed for RMA (OMN-16407) — so there is no longer a reasoner for
+        ``test`` to be hijacked FROM. Leaving ``test`` off local-coder would not
+        protect anything; it would simply demote every test-generation task to
+        the metered cheap_cloud tier. ``test`` was therefore rehomed onto
+        local-coder, which also makes routing_tiers.yaml agree with
+        bifrost_delegation.yaml's long-standing ``test`` routing_rule
+        (``backend_ids: [local-coder, cloud-gemini-pro]``).
+
+        ``research`` is a different case and the guard still holds for it: two
+        LIVE local rungs (local-heavy-reasoning, local-ds-v4-flash) serve it, so
+        adding it to local-coder would genuinely hijack it away from the
+        reasoning-shaped backends. That half is asserted unchanged.
         """
         import yaml
 
@@ -581,9 +604,10 @@ class TestDeltaContractRouting:
         coder = next(
             m for m in local_tier["models"] if m["backend_id"] == "local-coder"
         )
-        assert "test" not in coder["use_for"], (
-            "local-coder must not declare 'test' — with its fast_path_threshold "
-            "that hijacks test tasks from the reasoner (OMN-13599)"
+        assert "test" in coder["use_for"], (
+            "local-coder must declare 'test' — it is the only LOCAL backend "
+            "serving test generation since local-reasoner was retired "
+            "(OMN-16442); without it, test tasks fall to metered cheap_cloud"
         )
         assert "research" not in coder["use_for"], (
             "local-coder must not declare 'research' — with its fast_path_threshold "

@@ -20,8 +20,8 @@
 #
 # See routing_tiers.yaml for tier escalation ladder.
 #
-# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155
-config_version: "2.4.0"
+# Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155, OMN-16442
+config_version: "2.5.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 # model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
@@ -55,31 +55,20 @@ backends:
       - code_generation
       - refactoring
       - documentation
-  # OMN-16419: local-reasoner targets .201:8001, the removed GPU1 slot (curl to
-  # /v1/models fails to connect — verified live this ticket, 2026-08-23). The
-  # entry is left wired (not deleted) because routing_rules.research still lists
-  # it as a fallback tier and removing the backend definition would strand that
-  # rule reference — a routing-table change is out of this ticket's bounded
-  # scope. It is dead-safe today: the health probe in HandlerLlmDelegationCall
-  # already marks an unreachable endpoint unhealthy and skips it before any
-  # chat-completion call is attempted, so it cannot silently mis-attribute like
-  # the local-coder/local-heavy-reasoning defect this ticket fixes. Re-point or
-  # remove when the reasoner slot is re-provisioned or the routing table is
-  # next revised.
-  - backend_id: local-reasoner
-    endpoint_url_env: BIFROST_LOCAL_REASONER_ENDPOINT_URL
-    endpoint_url: null
-    model_name: Qwen3.6-27B-MTP-IQ4_XS.gguf
-    tier: local
-    timeout_ms: 60000
-    # OMN-13161: the 27B reasoner runs a smaller 24576-token context window
-    # (routing_tiers.yaml max_context_tokens), so the output budget is capped at
-    # 16384 to leave room for the prompt rather than blanket-65536.
-    max_tokens: 16384
-    capabilities:
-      - deep_reasoning
-      - research
-      - classification
+  # OMN-16442: the `local-reasoner` backend (model_name
+  # Qwen3.6-27B-MTP-IQ4_XS.gguf, endpoint_url_env
+  # BIFROST_LOCAL_REASONER_ENDPOINT_URL → .201:8001) was DELETED. OMN-16419
+  # left it wired ONLY because routing_rules.research still referenced it and
+  # a routing-table change was out of that ticket's bounded scope; this ticket
+  # IS that routing-table change, so the reference is removed below and the
+  # definition goes with it. The endpoint is the RTX 4090 slot physically
+  # removed from .201 for RMA (OMN-16407) — re-probed 2026-08-28, `curl
+  # .201:8001/v1/models` returns exit 7 "Couldn't connect to
+  # server", and the canonical inventory
+  # (omni_home/docs/reference/AI_LAB_HARDWARE.md, verified 2026-08-28) marks
+  # the slot DEAD / RETIRED. Restore a reasoner rung by REGISTERING the
+  # replacement hardware, never by reviving this backend_id against a slot
+  # that no longer exists.
   - backend_id: local-heavy-reasoning
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
@@ -98,10 +87,21 @@ backends:
       - research
       - classification
       - documentation
+  # OMN-16442: model_name was the literal string "local-embedding" — the
+  # backend_id echoed into the served-model field, not a served id at all.
+  # Live readback 2026-08-28, GET .201:8002/v1/models:
+  #   id "text-embedding-qwen3", owned_by vllm,
+  #   root /data/inference/hf-cache/qwen3-embedding-0.6b, max_model_len 8192.
+  # Artifact is Qwen/Qwen3-Embedding-0.6B (BF16); its config.json reports
+  # hidden_size 1024, i.e. the endpoint emits 1,024-DIMENSIONAL vectors. That
+  # dimension is a HARD placement constraint (canonical inventory
+  # omni_home/docs/reference/AI_LAB_HARDWARE.md → Routing Intent #2): any
+  # consumer collection sized for a different embedding width cannot be served
+  # by this endpoint.
   - backend_id: local-embedding
     endpoint_url_env: BIFROST_LOCAL_EMBEDDING_ENDPOINT_URL
     endpoint_url: null
-    model_name: local-embedding
+    model_name: text-embedding-qwen3
     tier: local
     timeout_ms: 30000
     # OMN-13161: embedding backend produces vectors, not chat completions — it never
@@ -355,25 +355,19 @@ backends:
       - reasoning
       - research
       - code_generation
-  # Local Coder-MLX backend — Qwen3.6-35B-A3B-8bit served via mlx_lm.server on
-  # .200 port 8401 (OMN-15155, steel-node-dispatch plan P0). Unauthenticated
-  # (verified 2026-07-26): no secret_ref/api_key_env.
-  - backend_id: local-coder-mlx
-    endpoint_url_env: BIFROST_LOCAL_CODER_MLX_ENDPOINT_URL
-    endpoint_url: null
-    # endpoint_url null in repo default; overlay/store sets .200:8401  # onex-allow-internal-ip OMN-15155 reason="repo-default comment documenting local overlay target for Coder-MLX"
-    model_name: mlx-community/Qwen3.6-35B-A3B-8bit
-    tier: local
-    # Same 65536-token output budget as local-coder (same base Qwen3.6-35B-A3B
-    # model family, MLX 8bit quantization does not shrink the context window) →
-    # same 300000 ms ceiling so a full module/test-suite generation is not
-    # capped by transport timeout (OMN-13170 pattern). Overlay-overridable.
-    timeout_ms: 300000
-    max_tokens: 65536
-    capabilities:
-      - code_generation
-      - refactoring
-      - documentation
+  # OMN-16442: the `local-coder-mlx` backend (model_name
+  # mlx-community/Qwen3.6-35B-A3B-8bit, endpoint_url_env
+  # BIFROST_LOCAL_CODER_MLX_ENDPOINT_URL → .200:8401, registered by OMN-15155)
+  # was DELETED. Live probe 2026-08-28: `curl
+  # .200:8401/v1/models` → exit 7 "Couldn't connect to
+  # server", and the named artifact is served nowhere on the fleet. The Mac
+  # Studio's MLX server now serves `Qwen3.8-27B-8bit` on 127.0.0.1:8099, bound
+  # LOCALHOST-ONLY (canonical inventory
+  # omni_home/docs/reference/AI_LAB_HARDWARE.md, verified 2026-08-28) — not
+  # reachable from the .201 runtime, so it is NOT registered here. Registering
+  # it needs explicit availability semantics + a health check first, the same
+  # gate the inventory places on the mini/laptop/Gemma-canary endpoints;
+  # tracked as the scoped follow-on on OMN-16442.
   # OpenRouter backends (OMN-7980) — route authority carries logical secret refs
   # (secret_ref). OMN-13943: api_key_env is a genuine ADDITIONAL fallback the
   # effect boundary resolves when secret_ref's dotted convention mapping (→
@@ -563,9 +557,13 @@ routing_rules:
       - reasoning
     match_capabilities:
       - deep_reasoning
+    # OMN-16442: `local-reasoner` removed from this list — see the deletion
+    # note on the backends block above. This rule referencing it was the sole
+    # reason OMN-16419 could not delete the backend definition. `research`
+    # keeps two live local rungs via routing_tiers.yaml
+    # (local-heavy-reasoning, local-ds-v4-flash) plus the Gemini ceiling here.
     backend_ids:
       - local-heavy-reasoning
-      - local-reasoner
       - cloud-gemini-pro
     fallback_policy:
       action: escalate_to_next_tier

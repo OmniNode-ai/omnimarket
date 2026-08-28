@@ -155,6 +155,16 @@ def test_named_timeout_regression_backends_are_tuned() -> None:
 
 @pytest.mark.unit
 def test_research_route_prefers_capability_named_backends() -> None:
+    """OMN-12006: the research rule leads with CAPABILITY-named local backends.
+
+    OMN-16442: ``local-reasoner`` was dropped from both the backends block and
+    this rule. Its endpoint (.201:8001) is the RTX 4090 slot physically removed
+    for RMA (OMN-16407; re-probed 2026-08-28, curl exit 7 "Couldn't connect to
+    server"), and it was the sole reason OMN-16419 could not delete the backend
+    definition. The property under test is unchanged — research still LEADS with
+    a capability-named LOCAL backend before any cloud backend — the ladder is
+    just one (dead) hop shorter.
+    """
     path = Path("src/omnimarket/configs/bifrost_delegation.yaml")
     data = yaml.safe_load(path.read_text())
 
@@ -164,11 +174,14 @@ def test_research_route_prefers_capability_named_backends() -> None:
     )
 
     assert "local-heavy-reasoning" in by_id
-    assert "local-reasoner" in by_id
-    assert research_rule["backend_ids"][:2] == [
-        "local-heavy-reasoning",
-        "local-reasoner",
-    ]
+    assert "local-reasoner" not in by_id, (
+        "local-reasoner points at a removed GPU slot and must stay deleted (OMN-16442)"
+    )
+    assert research_rule["backend_ids"][0] == "local-heavy-reasoning", (
+        "research must still lead with a capability-named LOCAL backend"
+    )
+    assert "local-reasoner" not in research_rule["backend_ids"]
+    assert by_id[research_rule["backend_ids"][0]]["tier"] == "local"
 
 
 @pytest.mark.unit
