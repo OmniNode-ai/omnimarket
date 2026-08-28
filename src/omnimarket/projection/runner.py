@@ -509,6 +509,30 @@ class BaseProjectionRunner(ABC):
     def db(self) -> AsyncpgAdapter:
         return self._db
 
+    def bind_projection_database_url(self, dsn: str) -> None:
+        """Accept the workload DSN the runtime resolved for this node.
+
+        OMN-16911. The DSN this runner builds for itself comes from
+        ``ModelProjectionRuntimeBinding``, whose legacy settings fallback
+        prefers ``OMNIDASH_ANALYTICS_DB_URL``. That is the dashboard-facing
+        ``role_omnidash`` login, and it holds no USAGE on ``omninode_internal``
+        -- so ``ConsumerFlowProjectionWriter``, whose contract declares both of
+        its tables in that schema, had every statement denied on the .201 dev
+        lane while ``consumer_flow_windows`` stayed at 0 rows and the DLQ
+        climbed ~6/min.
+
+        The deployment topology, not this class, is where a schema's workload
+        identity is declared, and the runtime resolves it and proves its grants
+        before wiring the handler. A runner dispatched in-process therefore
+        takes the DSN the runtime hands it. The standalone ``run()`` path is
+        never bound this way -- the runtime does not dispatch it, so it does not
+        configure it either, and the binding/overlay it was given stands.
+
+        Called at wiring time, before any pool is opened; the adapter refuses a
+        rebind after that (see :meth:`AsyncpgAdapter.rebind`).
+        """
+        self._db.rebind(dsn)
+
     @property
     def kafka_bootstrap_servers(self) -> str:
         if self._runtime_binding is not None:

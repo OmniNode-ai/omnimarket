@@ -71,6 +71,14 @@ dod_evidence:
     description: "OMN-16875 AC1 — the applied event carries the window facts, not a bare ack"
   - test: tests/test_omn16874_consumer_flow_writer_dispatch.py::test_a_heartbeat_with_no_window_reports_zero_rows
     description: "OMN-16874 — a windowless heartbeat reports zero rows instead of a truthy ack the runtime reads as one row"
+  - test: tests/test_omn16911_consumer_flow_dsn_binding.py::test_declaring_in_process_dispatch_obliges_the_bind_seam
+    description: "OMN-16911 AC5 — declaring in-process dispatch obliges the runtime bind seam; a handler-owned pool cannot keep an unproven role"
+  - test: tests/test_omn16911_consumer_flow_dsn_binding.py::test_binding_replaces_the_settings_derived_dsn
+    description: "OMN-16911 AC1/AC2 — the runtime-resolved omninode_runtime DSN replaces the role_omnidash one construction found"
+  - test: tests/test_omn16911_consumer_flow_dsn_binding.py::test_a_bound_writer_connects_to_the_bound_dsn
+    description: "OMN-16911 — the bind reaches the pool the message path actually opens, not a copy of it"
+  - test: tests/test_omn16911_consumer_flow_dsn_binding.py::test_rebinding_a_connected_pool_is_refused
+    description: "OMN-16911 — a live pool is already authenticated as the old role; rebinding it is refused"
 
 db_io:
   db_tables:

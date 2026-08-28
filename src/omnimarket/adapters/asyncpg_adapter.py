@@ -31,6 +31,40 @@ class AsyncpgAdapter:
         self._command_timeout = command_timeout
         self._pool: asyncpg.Pool | None = None
 
+    @property
+    def dsn(self) -> str:
+        """Return the DSN this adapter will dial (or is dialling)."""
+        return self._dsn
+
+    @property
+    def is_connected(self) -> bool:
+        """Whether a pool is open. A rebind is only honest before this is True."""
+        return self._pool is not None
+
+    def rebind(self, dsn: str) -> None:
+        """Replace the DSN before the pool opens.
+
+        OMN-16911. This adapter's default DSN is ``OMNIDASH_ANALYTICS_DB_URL``,
+        the dashboard-facing login. A projection whose SQL names
+        ``omninode_internal`` needs the workload identity the deployment
+        topology binds for that schema instead, and only the runtime knows
+        which that is -- it resolves the binding and proves its grants before
+        wiring. This is the seam it hands the resolved DSN through.
+
+        Refused once a pool exists: the open connections are already
+        authenticated as the old role, so swapping the string underneath them
+        would make ``self.dsn`` describe an identity the pool is not using.
+        """
+        candidate = dsn.strip()
+        if not candidate:
+            raise ValueError("projection database DSN must be non-empty")
+        if self._pool is not None:
+            raise RuntimeError(
+                "cannot rebind the DSN of a connected adapter; its pool is "
+                "already authenticated as the previous role"
+            )
+        self._dsn = candidate
+
     async def connect(self) -> None:
         if not self._dsn:
             raise RuntimeError(f"{DB_URL_ENV} not set and no DSN provided")
