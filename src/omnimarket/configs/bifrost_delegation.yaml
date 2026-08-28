@@ -325,15 +325,30 @@ backends:
     endpoint_url_env: BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL
     endpoint_url: null
     # endpoint_url null in repo default; overlay sets .200:8101  # onex-allow-internal-ip OMN-12492 reason="repo-default comment documenting local overlay target for DS-V4-Flash"
-    model_name: ds-v4-flash
+    # OMN-16833: was "ds-v4-flash" — that is the ROUTING CATALOG KEY
+    # (model_registry_v1.yaml `ds-v4-flash:` / routing_tiers.yaml `id:`), not the
+    # SERVED id.  `model_name` is the wire field POSTed as "model", and the
+    # registry entry for this same backend already declares
+    # `model_name: "deepseek-v4-flash"` — the bifrost contract had simply drifted
+    # from it.  Live readback 2026-08-28: GET .200:8101/v1/models lists exactly
+    # {"deepseek-v4-flash", "deepseek-v4-pro"}, so the old value was rejected by
+    # the OMN-16419 served-model guard in HandlerLlmDelegationCall
+    # (transport.probe_served_models) — the same silent-misattribution class that
+    # ticket closed for local-coder.  The catalog key stays `ds-v4-flash`
+    # everywhere (routing_tiers `id`, generated_llm_routing_constants,
+    # telemetry); only the wire name is corrected here.
+    model_name: deepseek-v4-flash
     tier: local
     # OMN-13170: DS-V4-Flash is a 284B MoE serving code_generation; full
     # module/test-suite generation at its throughput well exceeds 60s and was
     # failing with error="timed out" on the dev runtime. Size the timeout to the
     # 65536-token budget below (300000 ms). Overlay-overridable per deploy lane.
     timeout_ms: 300000
-    # OMN-13161: DS-V4-Flash serves a 65536-token context window
-    # (routing_tiers.yaml max_context_tokens); 64k output budget fits.
+    # OMN-13161: 64k output budget. OMN-16833 correction: the SERVER's context
+    # window is 131072 (live: /v1/models context_length=131072; ds4-server is
+    # launched with --ctx 131072), not 65536. 65536 is the ROUTING budget
+    # (routing_tiers.yaml max_context_tokens) — a deliberate conservative cap,
+    # kept as-is here. The 64k output budget fits either way.
     max_tokens: 65536
     capabilities:
       - deep_reasoning
