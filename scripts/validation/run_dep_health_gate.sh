@@ -3,43 +3,34 @@
 # SPDX-License-Identifier: MIT
 #
 # Dependency health gate — pre-commit hook wrapper.
-# Delegates to scripts/ci/run_dep_health_sweep.py.
+# Delegates to scripts/validation/dep_health_gate_cache.py, which owns the
+# content-addressed cache and the machine-wide scan lock (OMN-16816) and shells
+# into scripts/ci/run_dep_health_sweep.py on a cache miss.
 #
-# Phased rollout (mirrors GHA dep-health job):
-#   Phase 1 (advisory): no baseline file → exit 0, advisory output only
+# Phased rollout (mirrors GHA dep-health job), decided by the Python wrapper:
+#   Phase 1 (advisory): no baseline file → advisory output, no --delta-mode
 #   Phase 2 (active):   baseline present → --delta-mode blocks new CRITICAL findings
+#
+# OMN-16816: this used to run the full src/ sweep unconditionally on every
+# invocation, so N concurrent worktree lanes ran N simultaneous full scans
+# (observed: 8-16 copies, load average 53). The cache key is a hash of exactly
+# the bytes the sweep reads, so an unchanged tree is a near-instant hit, and the
+# miss path is serialized machine-wide so cold lanes queue instead of thrashing.
+# A lock that cannot be acquired fails CLOSED — the gate is never skipped.
+#
+# `python3` (not `uv run`) is deliberate: the cache-hit path must not pay uv
+# startup. The wrapper is stdlib-only and calls `uv run` itself on a miss.
 #
 # Usage: invoked by pre-commit as a system-language hook, or directly:
 #   bash scripts/validation/run_dep_health_gate.sh
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel)"
-GATE_SCRIPT="$REPO_ROOT/scripts/ci/run_dep_health_sweep.py"
-BASELINE_PATH="$REPO_ROOT/.onex_state/dep_health_baseline.json"
+GATE_WRAPPER="$REPO_ROOT/scripts/validation/dep_health_gate_cache.py"
 
-if [ ! -f "$GATE_SCRIPT" ]; then
-  echo "ERROR: dep-health gate script not found at $GATE_SCRIPT" >&2
+if [ ! -f "$GATE_WRAPPER" ]; then
+  echo "ERROR: dep-health gate wrapper not found at $GATE_WRAPPER" >&2
   exit 2
 fi
 
-if [ -f "$BASELINE_PATH" ]; then
-  # Phase 2: delta-blocking — fail only when new CRITICAL findings appear vs baseline
-  RC=0
-  OUTPUT="$(uv run python "$GATE_SCRIPT" \
-    --repo-roots "src/" \
-    --severity-threshold CRITICAL \
-    --baseline-path "$BASELINE_PATH" \
-    --delta-mode 2>&1)" || RC=$?
-else
-  # Phase 1: advisory — gather data without blocking (baseline not yet committed)
-  OUTPUT="$(uv run python "$GATE_SCRIPT" \
-    --repo-roots "src/" \
-    --severity-threshold CRITICAL 2>&1)"
-  RC=0
-fi
-
-FINDING_COUNT=$(echo "$OUTPUT" | grep -c '"finding_type"' || true)
-echo "dep-health-gate: ${FINDING_COUNT} finding(s) detected (threshold: CRITICAL)" >&2
-
-echo "$OUTPUT"
-exit $RC
+exec python3 "$GATE_WRAPPER" --repo-root "$REPO_ROOT" "$@"

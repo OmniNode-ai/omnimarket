@@ -259,7 +259,19 @@ def _enable_enforcement(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _rows(owner_dsn: str) -> list[tuple[str, str]]:
-    """Read as the OWNER, bypassing the policy, to assert ground truth."""
+    """Read as the OWNER, bypassing the policy, to assert ground truth.
+
+    ``tenant_id`` is normalised to ``str`` because psycopg2's UUID typecaster is
+    PROCESS-GLOBAL and something else in a full-suite run turns it on:
+    ``omnibase_infra.runtime.auto_wiring.handler_wiring._build_projection_db_adapter``
+    calls the global ``psycopg2.extras.register_uuid()`` (site-packages line
+    3227). Once any test builds a projection adapter through that path, every
+    later ``SELECT`` of a ``uuid`` column in the same process yields
+    ``uuid.UUID`` instead of ``str`` — so these assertions passed standalone and
+    failed under the full suite purely on test order. This module's subject is
+    the RLS policy and the ``app.tenant_id`` GUC, not psycopg2's type mapping,
+    so it compares tenant identity rather than wire representation.
+    """
     conn = psycopg2.connect(owner_dsn)
     conn.autocommit = True
     try:
@@ -267,7 +279,7 @@ def _rows(owner_dsn: str) -> list[tuple[str, str]]:
             cur.execute(
                 "SELECT correlation_id, tenant_id FROM delegation_events ORDER BY 1"
             )
-            return [(r[0], r[1]) for r in cur.fetchall()]
+            return [(r[0], str(r[1])) for r in cur.fetchall()]
     finally:
         conn.close()
 

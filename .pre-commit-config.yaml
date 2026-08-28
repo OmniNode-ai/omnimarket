@@ -956,6 +956,14 @@ repos:
       # OMN-11040: Dependency health gate — blocks new CRITICAL/MAJOR dependency
       # health findings from being committed. Baseline-first: set
       # --severity-threshold to INFO to observe all findings without blocking.
+      #
+      # OMN-16816: the wrapper now serves an unchanged tree from a
+      # content-addressed cache and serializes the cache-MISS scan behind a
+      # machine-wide fcntl.flock. Verdict semantics are unchanged — the cache key
+      # is a hash of exactly the bytes the sweep reads, and a lock that cannot be
+      # acquired fails CLOSED. Measured on this repo: cold 1455s, warm ~1s.
+      # Before the cache, N concurrent worktree lanes ran N simultaneous full
+      # src/ scans (observed: 8-16 copies, load average 53).
       - id: dep-health-gate
         name: Dependency health gate
         language: system

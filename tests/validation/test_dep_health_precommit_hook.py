@@ -4,13 +4,31 @@
 
 from __future__ import annotations
 
+import importlib.util
 import subprocess
+import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
 REPO_ROOT = Path(__file__).parent.parent.parent
 HOOK_SCRIPT = REPO_ROOT / "scripts" / "validation" / "run_dep_health_gate.sh"
+# OMN-16816: the shell hook is now a thin delegator. The sweep arguments, the
+# content-addressed cache and the machine-wide scan lock live in this module.
+GATE_WRAPPER = REPO_ROOT / "scripts" / "validation" / "dep_health_gate_cache.py"
+
+
+def _load_gate_wrapper() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "dep_health_gate_cache_hooktest", GATE_WRAPPER
+    )
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
 
 
 @pytest.mark.unit
@@ -37,18 +55,35 @@ class TestDepHealthPrecommitHook:
             "Hook script must start with 'set -euo pipefail'"
         )
 
-    def test_hook_invokes_ci_script(self) -> None:
-        """The hook must delegate to run_dep_health_sweep.py."""
+    def test_hook_delegates_to_the_cached_gate_wrapper(self) -> None:
+        """The hook must hand off to the OMN-16816 cache/lock wrapper."""
         content = HOOK_SCRIPT.read_text()
-        assert "run_dep_health_sweep.py" in content, (
-            "Hook must invoke scripts/ci/run_dep_health_sweep.py"
+        assert "dep_health_gate_cache.py" in content, (
+            "Hook must invoke scripts/validation/dep_health_gate_cache.py"
         )
 
-    def test_hook_uses_delta_mode(self) -> None:
-        """The hook must use --delta-mode for baseline-relative blocking."""
-        content = HOOK_SCRIPT.read_text()
-        assert "--delta-mode" in content, "Hook must pass --delta-mode to the CI script"
-        assert "--baseline-path" in content, "Hook must pass the baseline path"
+    def test_wrapper_invokes_ci_script(self) -> None:
+        """The gate must still run scripts/ci/run_dep_health_sweep.py on a miss."""
+        gate = _load_gate_wrapper()
+        assert gate.SWEEP_RELPATH.as_posix() == "scripts/ci/run_dep_health_sweep.py"
+
+    def test_gate_uses_delta_mode_when_a_baseline_is_present(self) -> None:
+        """Delta-blocking is the committed posture — assert the real argv."""
+        gate = _load_gate_wrapper()
+        assert (REPO_ROOT / gate.BASELINE_RELPATH).is_file(), (
+            "this repo commits .onex_state/dep_health_baseline.json (Phase 2)"
+        )
+        args = gate.build_sweep_args(REPO_ROOT)
+        assert "--delta-mode" in args, "Gate must pass --delta-mode to the CI script"
+        assert "--baseline-path" in args, "Gate must pass the baseline path"
+        assert gate.BASELINE_RELPATH.as_posix() in args
+
+    def test_gate_is_advisory_when_no_baseline_is_present(self, tmp_path: Path) -> None:
+        """Phase 1 must not pass --delta-mode, which requires a baseline file."""
+        gate = _load_gate_wrapper()
+        args = gate.build_sweep_args(tmp_path)
+        assert "--delta-mode" not in args
+        assert "--baseline-path" not in args
 
     def test_no_hardcoded_absolute_paths_in_hook(self) -> None:
         """Hook must not contain hardcoded workstation path prefixes."""
