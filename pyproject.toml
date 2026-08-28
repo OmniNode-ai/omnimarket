@@ -41,7 +41,15 @@ dependencies = [
     # ModelDelegationResult.validate_structured_terminal_evidence. The lower
     # bound is raised to 0.46.8 so the resolver cannot silently pick a release
     # that lacks the delegation wire contracts this repo now depends on.
-    "omnibase-core>=0.46.8,<0.47.0",
+    # OMN-16858: floor raised 0.46.8 -> 0.46.13. omnibase_infra 0.38.11's
+    # receipt_mode.py constructs RuntimeLocal(..., run_id=...); that kwarg
+    # landed in omnibase_core commit f2c5219b (OMN-15449, core#1561), first
+    # tagged release v0.46.9. This repo's >=0.46.8 range let uv.lock
+    # floor-resolve to 0.46.8 (pre-run_id), TypeErroring every receipt-mode
+    # dispatch (OCC autobind write-EFFECT). omnibase_infra pins core==0.46.13
+    # exactly; the floor here is raised to that same proven version so the
+    # combination cannot be resolved again.
+    "omnibase-core>=0.46.13,<0.47.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -588,7 +596,12 @@ omnimarket = "omnimarket.nodes"
 override-dependencies = [
     # OMN-14280 / OMN-15539: the tenant_id inference-wire feature and the
     # delegation wire contracts both need core 0.46.8, now published on PyPI.
-    "omnibase-core>=0.46.8,<0.47.0",
+    # OMN-16858: floor raised 0.46.8 -> 0.46.13 in lockstep with the
+    # dependencies-list pin above -- this override determines the version
+    # uv actually resolves for transitive consumers (e.g. omninode-memory's
+    # stale hard-pins), so leaving it at 0.46.8 would still floor-resolve
+    # uv.lock to the pre-run_id release even after the direct pin was raised.
+    "omnibase-core>=0.46.13,<0.47.0",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
     "omnibase-compat==0.5.6",
