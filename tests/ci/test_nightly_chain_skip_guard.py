@@ -58,7 +58,9 @@ _REASON_LIVE_FLAG_UNSET = (
 # Verbatim from test_layer2_live_runner.py:218-221 — the inner pytest.skip reason.
 _REASON_LANE_PASSWORD_UNSET = (
     "ONEX_E2E_POSTGRES_PASSWORD / POSTGRES_PASSWORD not set — "
-    "cannot connect to Postgres at 192.168.86.201:15436"
+    # Host/port are placeholders: the guard matches the reason PREFIX, never the
+    # address, so no real lane literal belongs in a synthetic fixture.
+    "cannot connect to Postgres at lane-postgres.invalid:5432"
 )
 
 # The shape of the 7 silent nights: every live case skipped, nothing executed.
