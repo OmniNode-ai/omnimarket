@@ -49,6 +49,7 @@ companion failed eligibility with ``pr_ticket_mismatch``.
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import textwrap
 from collections.abc import Sequence
@@ -120,7 +121,7 @@ _CONTRACT_HEAD_TEMPLATE = textwrap.dedent("""\
       - kind: "ci"
         description: "PR #{pr_number} product diff scope present"
         command: "gh pr view ${{PR_NUMBER}} --repo ${{REPO}} --json files"
-    emergency_bypass:
+    {behavior_evidence_requirement}emergency_bypass:
       enabled: false
       justification: ""
       follow_up_ticket_id: ""
@@ -447,6 +448,46 @@ def derive_behavior_test_paths(changed_files: Sequence[str]) -> tuple[str, ...]:
     return tuple(sorted(targets)[:MAX_BEHAVIOR_TEST_PATHS])
 
 
+def changed_files_from_diff_scope_probe(probe_stdout: str) -> tuple[str, ...]:
+    """Pure: the changed paths carried by a ``gh pr view --json files`` payload.
+
+    OMN-16892. The born-path emitter already observes this exact probe once per
+    mint (``ci_probe_command``) and records it in every receipt, so the diff is
+    available with no additional API call and no new failure mode — the point of
+    reading it here rather than adding a second ``/pulls/<n>/files`` fetch.
+
+    The GraphQL form ``gh pr view`` returns keys each file's entry under
+    ``path``; the REST form (``gh api .../files``) uses ``filename``. Both are
+    accepted because the producer's own fallbacks have historically rendered
+    either, and a shape mismatch that silently yielded ``()`` would degrade to
+    the OWED branch invisibly.
+
+    Fail-closed by construction: an unparseable payload, a payload with no
+    ``files`` key (which is exactly what ``_observe_pr_probe``'s fallback
+    renders when ``gh`` is unavailable), or an entry with no usable path all
+    yield fewer paths rather than a fabricated one. Fewer paths means the OWED
+    branch, which states the gap; it can never manufacture a behavior check for
+    a file the PR did not touch.
+    """
+    try:
+        parsed = json.loads(probe_stdout)
+    except (TypeError, ValueError):
+        return ()
+    if not isinstance(parsed, dict):
+        return ()
+    entries = parsed.get("files")
+    if not isinstance(entries, list):
+        return ()
+    paths: list[str] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        raw = entry.get("path") or entry.get("filename")
+        if isinstance(raw, str) and raw:
+            paths.append(raw)
+    return tuple(paths)
+
+
 def behavior_proof_check_value(test_paths: Sequence[str]) -> str:
     """The BEHAVIOR-class command for the derived targets.
 
@@ -658,12 +699,22 @@ _CI_DOD_ITEM_HEAD_TEMPLATE = (
 # already-block-scalar ``probe_stdout`` field (unaffected — see
 # ``_represent_str_block`` precedent in ``handler_occ_companion_compute.py``)
 # is unchanged, in the MID2 fragment.
+# OMN-16892: ``check_type`` is a SUBSTITUTED VALUE, not a literal.
+# ``validator_occ_merge_eligibility`` resolves an item's backing receipt at
+# ``drift/dod_receipts/<ticket>/<item>/<check_type>.yaml``, so a receipt whose
+# recorded ``check_type`` disagrees with the contract item it backs is either
+# unreachable (wrong filename) or self-contradictory (right filename, wrong
+# field). Both read as MISSING_RECEIPT. One parameter feeds the field and the
+# caller's filename so they cannot drift — the defect OMN-16859 records on the
+# sibling compute producer, which declares ``test_passes`` and mints only
+# ``command.yaml``. Defaults to ``"command"``, so every pre-existing caller
+# renders byte-for-byte what it rendered before.
 _DOWNSTREAM_RECEIPT_HEAD_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
-    check_type: "command"
+    check_type: "{check_type}"
     """)
 
 _DOWNSTREAM_RECEIPT_MID1_TEMPLATE = textwrap.dedent("""\
@@ -1519,6 +1570,7 @@ def render_companion_contract(
     evidence_id: str,
     downstream_check_value: str | None = None,
     ci_check_value: str | None = None,
+    changed_files: Sequence[str] = (),
 ) -> str:
     """Render the ``contracts/<ticket>.yaml`` companion contract YAML.
 
@@ -1535,9 +1587,74 @@ def render_companion_contract(
     effect writer can reuse them to repair a pre-existing contract (F-04). A private
     product repo passes hosted-safe ``downstream_check_value`` / ``ci_check_value``
     (OMN-14766 F-16); public repos leave both ``None`` to keep the OMN-14741 shape.
+
+    OMN-16892: ``changed_files`` is the product PR's diff, and it decides WHICH
+    item fills the final (admissibility) slot — exactly the branch
+    :func:`render_compute_companion_contract` has taken since OMN-16434. Before
+    this parameter existed, this renderer could not reach
+    :func:`derive_behavior_test_paths` at all, so every born-path companion was
+    minted at ``behavior_proving_count == 0`` and could never satisfy the
+    OMN-16821 autoclose flip conjunct. Measured on the live corpus: of the 22
+    OCC contracts created in the 8 hours after OMN-16434 landed, the 8 authored
+    by this producer carried zero BEHAVIOR-class checks — structurally, not via
+    the honest OWED branch. ``contracts/OMN-16599.yaml`` is the sharpest case:
+    the product diff ADDS a pytest target and this producer minted a ``?ref=``
+    pinned ``grep -c`` content READ of that very file instead of running it.
+
+    Defaults to ``()`` — the empty diff takes the OWED branch, so a caller that
+    cannot observe the file list degrades to the honest "unproven" statement
+    rather than to a surrogate that reads as proof.
     """
+    behavior_test_paths = derive_behavior_test_paths(changed_files)
+    # OMN-15247 R21b: the final slot is ALWAYS filled, and minted LAST of the
+    # base items so the supersession marker resolves (``_superseded_dod_ids``
+    # only honours a marker that appears after the item it names). That is what
+    # makes a companion born GREEN instead of born BLOCKED at 0-of-N admissible.
+    #
+    # OMN-16892: WHICH item fills it is decided by the diff, mirroring the
+    # compute producer. When the PR carries a pytest target the diff-derived
+    # BEHAVIOR item takes the slot and the ticket-independent foreign suite is
+    # NOT minted at all — it is on ``FOREIGN_SUITE_DENYLIST``, classifies
+    # SURROGATE, and its only remaining job (keeping ``_has_effective_check``
+    # from finding zero admissible checks) is done strictly better by a check
+    # that also classifies BEHAVIOR. Minting both would put a surrogate beside a
+    # behavior proof on one contract, which reads as two proofs and is one.
+    #
+    # When the PR carries no pytest target the foreign suite is RETAINED as the
+    # admissibility floor and the unmet bar is stated in
+    # ``evidence_requirements`` instead. That retention is deliberate and is the
+    # known residual, not an oversight: dropping it there would leave the
+    # contract with only ``gh pr view`` provenance, and
+    # ``contract_compliance_check`` exits 1 with "no hosted-and-local effective
+    # check exists" — a companion born BLOCKED wedges the product PR behind it,
+    # which is a worse failure than a visibly-labelled surrogate.
+    superseded = (
+        None
+        if is_product_observing_check_value(downstream_check_value)
+        else evidence_id
+    )
+    if behavior_test_paths:
+        slot_item = render_behavior_proof_dod_evidence_item(
+            repo=repo,
+            pr_number=pr_number,
+            test_paths=behavior_test_paths,
+            superseded_evidence_id=superseded,
+        )
+    else:
+        slot_item = render_admissibility_validator_dod_evidence_item(
+            superseded_evidence_id=superseded
+        )
     return (
-        _CONTRACT_HEAD_TEMPLATE.format(ticket_id=ticket_id, pr_number=pr_number)
+        _CONTRACT_HEAD_TEMPLATE.format(
+            ticket_id=ticket_id,
+            pr_number=pr_number,
+            # The ONE derivation, computed once above and consumed by both the
+            # declaration and the executed item, so the contract's stated
+            # requirement and its executed check cannot disagree.
+            behavior_evidence_requirement=render_behavior_evidence_requirement(
+                repo=repo, pr_number=pr_number, changed_files=changed_files
+            ),
+        )
         + render_downstream_dod_evidence_item(
             evidence_id=evidence_id,
             repo=repo,
@@ -1550,17 +1667,7 @@ def render_companion_contract(
             pr_number=pr_number,
             check_value=ci_check_value,
         )
-        # OMN-15247 R21b: ALWAYS minted, and minted LAST of the base items so the
-        # supersession marker resolves (``_superseded_dod_ids`` only honours a
-        # marker that appears after the item it names). This is what makes a
-        # companion born GREEN instead of born BLOCKED at 0-of-N admissible.
-        + render_admissibility_validator_dod_evidence_item(
-            superseded_evidence_id=(
-                None
-                if is_product_observing_check_value(downstream_check_value)
-                else evidence_id
-            )
-        )
+        + slot_item
     )
 
 
@@ -1580,8 +1687,15 @@ def render_downstream_receipt(
     verifier: str = DEFAULT_VERIFIER,
     check_value: str | None = None,
     actual_output: str | None = None,
+    check_type: str = "command",
 ) -> str:
     """Render the downstream (product-PR-bound) DoD receipt YAML.
+
+    ``check_type`` (OMN-16892) MUST equal the ``check_type`` declared by the
+    contract item this receipt backs, and the caller MUST write the file at
+    ``<evidence_id>/<check_type>.yaml`` — that is the path
+    ``validator_occ_merge_eligibility`` resolves. The default keeps every
+    pre-OMN-16892 caller byte-identical.
 
     ``check_value`` is the assertion the OCC contract-compliance runner re-runs; it
     defaults to the public-repo ``gh pr view --json`` binding probe and is set to the
@@ -1606,7 +1720,7 @@ def render_downstream_receipt(
     """
     return (
         _DOWNSTREAM_RECEIPT_HEAD_TEMPLATE.format(
-            ticket_id=ticket_id, evidence_id=evidence_id
+            ticket_id=ticket_id, evidence_id=evidence_id, check_type=check_type
         )
         + render_check_value_field(
             "check_value",
@@ -2246,6 +2360,7 @@ __all__ = [
     "behavior_proof_check_value",
     "behavior_proof_cwd",
     "build_idempotency_key",
+    "changed_files_from_diff_scope_probe",
     "ci_check_evidence_id",
     "ci_dod_evidence_check_value",
     "classify_trivial_infra_fastpath",
