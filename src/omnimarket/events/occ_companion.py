@@ -66,6 +66,7 @@ class EnumCompanionSuppressionCode(StrEnum):
     HOLD_LABEL = "hold_label"
     HOLD_MARKER_TEXT = "hold_marker_text"
     EVIDENCE_LOST_PR_MERGED = "evidence_lost_pr_merged"
+    OCC_SELF_COMPANION = "occ_self_companion"
 
 
 class ModelOccCompanionSuppression(BaseModel):
