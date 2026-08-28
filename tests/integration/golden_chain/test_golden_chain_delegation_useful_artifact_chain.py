@@ -20,8 +20,21 @@ What runs LIVE on replay (everything except the model response bytes):
 
 Only the model's HTTP response bytes come from the provenance-stamped fixture
 ``tests/fixtures/golden_chain/delegation_test_artifact_chain.json`` — recorded
-once from the real request the live path constructs (concrete model
-``Qwen3.6-35B-A3B`` at the resolved endpoint), pinned by ``request_hash``.
+from the real request the live path constructs (concrete model ``qwen3.8`` at
+the resolved endpoint), pinned by ``request_hash``.
+
+OMN-16442 re-derived that provenance. The reference bifrost contract used to
+declare backend_id ``local-reasoner`` (``.201:8001``, model
+``Qwen3.6-27B-MTP-IQ4_XS.gguf``); that backend is retired — the RTX 4090 was
+physically removed for RMA (OMN-16407) — and ``test``'s local membership in the
+REAL ``routing_tiers.yaml`` moved to ``local-coder``. Only the bifrost side of
+this chain is a fixture; the tier ladder is the live contract, so a fixture
+backend_id the live local tier no longer declares makes routing resolve nothing
+(``ONEX_CORE_041``: "No tier has a configured endpoint for task_type='test'").
+The fixture was therefore re-recorded against the live path, not hand-patched:
+``endpoint``, ``endpoint_ref``, ``model_id``, ``request_hash``, ``prompt_hash``
+and ``routing_contract_hash`` all come from the real constructed request. Only
+the model's recorded RESPONSE bytes are unchanged.
 
 REPLAY IS EVIDENCE, NOT AUTHORITY — the planted routing-failure test below proves
 a chain that resolves the WRONG model FAILS the replay (REQUEST_HASH_MISMATCH)

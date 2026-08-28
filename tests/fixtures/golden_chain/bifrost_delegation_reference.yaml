@@ -1,14 +1,26 @@
+# OMN-16442: was backend_id `local-reasoner` at `http://test-reasoner:8001`.
+# That backend is RETIRED — .201:8001 was the RTX 4090 slot physically removed
+# for RMA (OMN-16407; re-probed 2026-08-28, curl exit 7) — and `test`'s local
+# membership in routing_tiers.yaml moved to `local-coder`. This reference
+# contract is paired with the REAL routing_tiers.yaml (only the bifrost side is
+# a fixture), so its backend_id must be one the live local tier still declares:
+# otherwise routing resolves nothing and every test in the paired golden chain
+# fails ONEX_CORE_041 "No tier has a configured endpoint for task_type='test'".
+# The synthetic host/port were renamed with it so this file stops advertising a
+# dead port. Provenance in delegation_test_artifact_chain.json was re-derived
+# from the live path against this file (endpoint, endpoint_ref, model_id,
+# request_hash, prompt_hash, routing_contract_hash all recomputed).
 config_version: '2.0.0'
 schema_version: bifrost_delegation.v1
 backends:
-  - backend_id: local-reasoner
-    endpoint_url: "http://test-reasoner:8001"
-    model_name: "test-local-reasoner"
+  - backend_id: local-coder
+    endpoint_url: "http://test-local-coder:8000"
+    model_name: "test-local-coder"
     tier: local
     timeout_ms: 30000
     capabilities: [code_completion, context_window_large]
 default_backends:
-  - local-reasoner
+  - local-coder
 routing_rules:
   - rule_id: "55555555-5555-4555-8555-555555555555"
     priority: 10
@@ -17,7 +29,7 @@ routing_rules:
     backend_policy_version: "2.0.0"
     match_operation_types: [chat_completion]
     match_capabilities: [code_completion]
-    backend_ids: [local-reasoner]
+    backend_ids: [local-coder]
     fallback_policy:
       action: return_error
       max_retries: 0
