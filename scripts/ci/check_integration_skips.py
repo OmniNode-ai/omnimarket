@@ -35,6 +35,13 @@ Exit codes: 0 = gate passed; 1 = false-green detected / gate failed; 2 = usage
 or input error (fail-closed — a missing/unparsable report is a failure).
 
 SYNC: ci.yml job `integration-guard` + pre-commit hook `integration-skip-guard`.
+
+Two configs use this same script, with opposite provisioning assumptions
+(OMN-16809). `integration_skip_guard.yaml` guards the PR job, which provisions no
+lane, so live-opt-in skips are legitimately optional there.
+`nightly_chain_skip_guard.yaml` guards `delegation-regression-nightly.yml`, which
+supplies its own lane and live-probe flag — on that job the same skip reason means
+the env broke, and nothing is optional. Pass `--config` to select one.
 """
 
 from __future__ import annotations
@@ -158,7 +165,7 @@ def evaluate(stats: ReportStats, cfg: GuardConfig, strict: bool) -> list[str]:
             violations.append(
                 f"FALSE-GREEN: integration test {rec.testid!r} SKIPPED because "
                 f"provisioned service {offending!r} looked absent — reason: "
-                f"{rec.reason!r}. The merge-gating job provisions {offending}; this "
+                f"{rec.reason!r}. This job provisions {offending}; this "
                 f"test SHOULD have run. Wire the service env or fix the skip guard."
             )
         elif strict and not is_allowed:

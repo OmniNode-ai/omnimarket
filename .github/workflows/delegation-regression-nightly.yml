@@ -109,7 +109,31 @@ jobs:
         if: always()
         run: |
           uv run pytest tests/delegation_golden/test_layer2_live_runner.py \
-            -v -m e2e --no-header
+            -v -m e2e --no-header \
+            --junitxml=delegation_regression_junit.xml
+
+      # OMN-16809: the step above CANNOT fail for absence of coverage. The live
+      # class self-skips (no lane flag, no lane password) and an all-skipped
+      # pytest session exits 0 — which is how this job reported a green pytest
+      # step for seven consecutive nights while executing zero live cases. The
+      # guard reads the JUnit report and turns silence into a failure. Its config
+      # is nightly-scoped on purpose: the merge-gating one treats the live-opt-in
+      # skip as legitimate, which is right on a PR and wrong here.
+      - name: Guard — zero executed live cases is a failure, not a pass (OMN-16809)
+        if: always()
+        run: |
+          uv run python scripts/ci/check_integration_skips.py \
+            --junit delegation_regression_junit.xml \
+            --config scripts/ci/nightly_chain_skip_guard.yaml
+
+      - name: Upload JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: delegation-regression-junit
+          path: delegation_regression_junit.xml
+          if-no-files-found: warn
+          retention-days: 30
 
       - name: Upload scoreboard artifact
         if: always()
