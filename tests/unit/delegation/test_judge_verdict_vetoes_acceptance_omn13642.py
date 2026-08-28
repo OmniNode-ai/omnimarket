@@ -276,21 +276,27 @@ class TestJudgeVerdictThreadsThroughHandleAsync:
 # Self-contained bifrost contract: ``test`` routes (tier_order [local, ...]) to a
 # local backend declaring the ``test`` capability + a COMPLETE verbatim endpoint
 # URL, so routing resolves host-independently (CI has no ~/.omninode overlay).
-# OMN-13599: ``test`` now routes to the local REASONER (Qwen3.6-27B-MTP), not the
-# code-only local-coder, so this contract declares local-reasoner. The JUDGE
-# backend (cloud-glm) is resolved separately by the judge adapter, not from this
-# delegation contract.
+# OMN-13599 / OMN-16442: ``test`` routed to the local REASONER
+# (Qwen3.6-27B-MTP) under OMN-13599, so this fixture declared local-reasoner.
+# OMN-16442 RETIRED that backend — its endpoint (.201:8001) is the RTX 4090
+# slot physically removed for RMA (OMN-16407; re-probed 2026-08-28, curl exit 7)
+# — and rehomed ``test`` onto local-coder, which the real routing_tiers.yaml
+# now declares for it. This fixture follows that rehoming: it pairs a
+# self-contained bifrost contract with the REAL routing_tiers.yaml, so its
+# backend_id MUST be one the real local tier declares for ``test`` or routing
+# resolves no endpoint. The JUDGE backend (cloud-glm) is resolved separately by
+# the judge adapter, not from this delegation contract.
 _BIFROST_TEST = (
     "config_version: '2.0.0'\n"
     "schema_version: bifrost_delegation.v1\n"
     "backends:\n"
-    "  - backend_id: local-reasoner\n"
-    '    endpoint_url: "http://test-testclass:8001/v1/chat/completions"\n'
-    '    model_name: "Qwen3.6-27B-MTP-IQ4_XS.gguf"\n'
+    "  - backend_id: local-coder\n"
+    '    endpoint_url: "http://test-testclass:8000/v1/chat/completions"\n'
+    '    model_name: "qwen3.8"\n'
     "    tier: local\n"
     "    timeout_ms: 30000\n"
     "    max_tokens: 8192\n"
-    "    capabilities: [test, research, reasoning, planning, review, document]\n"
+    "    capabilities: [code_generation, test, refactoring, documentation]\n"
     "routing_rules:\n"
     '  - rule_id: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"\n'
     "    priority: 10\n"
@@ -299,14 +305,14 @@ _BIFROST_TEST = (
     '    backend_policy_version: "2.0.0"\n'
     "    match_operation_types: [chat_completion]\n"
     "    match_capabilities: [test]\n"
-    "    backend_ids: [local-reasoner]\n"
+    "    backend_ids: [local-coder]\n"
     "    fallback_policy:\n"
     "      action: escalate_to_next_tier\n"
     "      max_retries: 1\n"
     "      on_exhaust: return_error\n"
     '    shadow_policy_id: "ffffffff-ffff-4fff-8fff-ffffffffffff"\n'
     "default_backends:\n"
-    "  - local-reasoner\n"
+    "  - local-coder\n"
     "circuit_breaker:\n"
     "  failure_threshold: 5\n"
     "  window_seconds: 30\n"

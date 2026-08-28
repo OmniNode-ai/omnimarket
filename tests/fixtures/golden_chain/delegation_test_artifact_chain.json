@@ -1,15 +1,15 @@
 {
   "fixture_version": "golden_chain_fixture.v1",
   "provenance": {
-    "endpoint": "http://test-reasoner:8001",
-    "endpoint_ref": "local-reasoner",
+    "endpoint": "http://test-local-coder:8000",
+    "endpoint_ref": "local-coder",
     "fixture_version": "golden_chain_fixture.v1",
-    "model_id": "Qwen3.6-27B-MTP-IQ4_XS.gguf",
+    "model_id": "qwen3.8",
     "prompt_hash": "sha256:c55ac789d2bd23e418ce700191cc03edb60c53d5a990a45ee385714e0b2939b2",
     "provider": "vllm",
-    "recorded_at": "2026-07-04T05:45:54.532460+00:00",
-    "request_hash": "sha256:7ad4d9d0c57600f7362e19e0f3397c0d6af6b3b4eae88b30b054b2a37481959a",
-    "routing_contract_hash": "sha256:022ca089d69aae28a633ed04b2e2d90569583f9c9656ee58f2f8a15758273491",
+    "recorded_at": "2026-08-28T22:05:24.989956+00:00",
+    "request_hash": "sha256:ff28944e125af361f05ef68539606bb714bab399c4f85a5e8c1addbf1220fb35",
+    "routing_contract_hash": "sha256:e994843c5b34b00c25aa1c1de03bb7985f1da710605715dc5b274b8b99fe9ac3",
     "routing_overlay_hash": "none"
   },
   "raw_response": {

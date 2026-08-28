@@ -94,13 +94,23 @@ QUARANTINE_TOPIC = "onex.dlq.omnibase-infra.quarantine.v1"
 
 _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "omnimarket" / "nodes"
 
-# The tier `summarization` routes to first: `local-reasoner`
-# (src/omnimarket/configs/routing_tiers.yaml, model Qwen3.6-27B-MTP, OMN-15630).
+# The tier `summarization` routes to first: `local-heavy-reasoning`
+# (src/omnimarket/configs/routing_tiers.yaml, served id qwen3.8 on .201:8000).
 # Its repo-default `endpoint_url` is null — a site-specific local address the
 # overlay is required to supply (OMN-12815/OMN-15807) — so with no overlay the
 # routing authority reports NO configured endpoint for this task type and the
 # reducer raises before it can emit a decision.
-_LOCAL_TIER_BACKEND_ID = "local-reasoner"
+#
+# OMN-16442: was `local-reasoner`. That backend was RETIRED — .201:8001 is the
+# RTX 4090 slot physically removed for RMA (OMN-16407; re-probed 2026-08-28,
+# curl exit 7) — and its `summarization` membership moved to
+# `local-heavy-reasoning`. The overlay below merges BY backend_id onto the
+# committed contract, so a backend_id the committed contract no longer declares
+# does not just fail to route: it is appended as a partial entry and fails the
+# whole `ModelBifrostDelegationConfig` schema validation (missing `tier`),
+# taking every task type down with it. Keeping this id in sync with the local
+# tier's real first pick is therefore load-bearing, not cosmetic.
+_LOCAL_TIER_BACKEND_ID = "local-heavy-reasoning"
 
 # The discard port. Syntactically a COMPLETE chat-completions URL (a bare base is
 # rejected, OMN-12815) and deliberately unreachable: the node under gate is a

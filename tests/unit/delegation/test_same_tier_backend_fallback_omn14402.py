@@ -6,12 +6,17 @@ There was NO same-tier fallback. If the selected local backend's endpoint
 failed (a TRANSPORT/inference error, not a quality-gate rejection), the
 router escalated the ENTIRE ``local`` tier straight to ``cheap_cloud`` without
 ever trying a sibling local backend that also declares the task type.
-``routing_tiers.yaml``'s ``local`` tier carries THREE backends for
-``research`` (``local-heavy-reasoning``, ``local-reasoner``,
-``local-ds-v4-flash``) — before this fix, a failure on whichever one
-``delta()`` picked first (``local-heavy-reasoning``, per the OMN-14396
-id-collision fix) escalated straight past the other two healthy local
-siblings.
+``routing_tiers.yaml``'s ``local`` tier carries TWO backends for
+``research`` (``local-heavy-reasoning``, ``local-ds-v4-flash``) — before this
+fix, a failure on whichever one ``delta()`` picked first
+(``local-heavy-reasoning``, per the OMN-14396 id-collision fix) escalated
+straight past the healthy local sibling.
+
+OMN-16442: this chain was THREE backends until ``local-reasoner`` (.201:8001)
+was retired — that endpoint is the RTX 4090 slot physically removed from .201
+for RMA (OMN-16407; re-probed 2026-08-28, curl exit 7 "Couldn't connect to
+server"). The chain is one hop shorter but every remaining hop now reaches a
+LIVE endpoint, which is the property these tests actually protect.
 
 This is acute right now: z.ai is 429-exhausted until 2026-07-16, so a single
 local-backend transport failure used to fail the delegation outright while a
@@ -232,10 +237,10 @@ class TestSelectModelForTaskExcludesBackends:
 _LADDER_NEXT: dict[str, str] = {"local": "cheap_cloud", "cheap_cloud": "claude"}
 # Deterministic, config-declared ordering (routing_tiers.yaml declaration
 # order for "research"): local-heavy-reasoning is selected first (OMN-14396
-# id-collision pin), then local-reasoner, then local-ds-v4-flash.
+# id-collision pin), then local-ds-v4-flash.
+# OMN-16442: local-reasoner removed from this order — retired dead endpoint.
 _LOCAL_RESEARCH_BACKEND_ORDER: tuple[str, ...] = (
     "local-heavy-reasoning",
-    "local-reasoner",
     "local-ds-v4-flash",
 )
 
@@ -648,7 +653,9 @@ class TestSameTierBackendFallbackRealDispatchChain:
             "the sibling resolution must stay on 'local', never jump to a "
             "cloud tier -- this is the live regression proof"
         )
-        assert sibling_decision.selected_backend_ref == "local-reasoner"
+        # OMN-16442: was "local-reasoner" (retired, dead endpoint); the next
+        # live sibling for "research" is local-ds-v4-flash (.200:8101).
+        assert sibling_decision.selected_backend_ref == "local-ds-v4-flash"
         assert sibling_decision.endpoint_url != decision.endpoint_url
 
     def test_all_local_siblings_exhausted_then_escalates_to_cheap_cloud(
@@ -667,7 +674,10 @@ class TestSameTierBackendFallbackRealDispatchChain:
         workflow.handle_routing_decision(decision)
 
         # Failure 1: local-heavy-reasoning -> retry excludes it, lands on
-        # local-reasoner.
+        # local-ds-v4-flash.
+        # OMN-16442: this used to land on local-reasoner first; that backend
+        # was retired with the removed .201 GPU1, so local-ds-v4-flash is now
+        # the second and LAST local rung for "research".
         events = workflow.handle_inference_response(
             _error_response(cid, "Connection refused")
         )
@@ -675,22 +685,10 @@ class TestSameTierBackendFallbackRealDispatchChain:
         assert retry_1.min_tier_name == "local"
         decision_2 = routing_handler.handle(retry_1)
         assert decision_2.tier_name == "local"
-        assert decision_2.selected_backend_ref == "local-reasoner"
+        assert decision_2.selected_backend_ref == "local-ds-v4-flash"
         workflow.handle_routing_decision(decision_2)
 
-        # Failure 2: local-reasoner -> retry excludes both, lands on
-        # local-ds-v4-flash.
-        events = workflow.handle_inference_response(
-            _error_response(cid, "Connection refused")
-        )
-        retry_2 = _routing_intents(events)[0]
-        assert retry_2.min_tier_name == "local"
-        decision_3 = routing_handler.handle(retry_2)
-        assert decision_3.tier_name == "local"
-        assert decision_3.selected_backend_ref == "local-ds-v4-flash"
-        workflow.handle_routing_decision(decision_3)
-
-        # Failure 3: local-ds-v4-flash -- every local sibling for "research"
+        # Failure 2: local-ds-v4-flash -- every local sibling for "research"
         # has now failed. THIS is where cross-tier escalation must fire.
         events = workflow.handle_inference_response(
             _error_response(cid, "Connection refused")

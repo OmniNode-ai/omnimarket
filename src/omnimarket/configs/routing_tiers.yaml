@@ -57,12 +57,21 @@ tiers:
       - id: qwen3.8
         backend_id: local-coder
         max_context_tokens: 65536
-        # OMN-13599: local-coder is the CODE backend only. `test` and `research`
-        # were removed here so the code-only fast_path_threshold below does not
-        # bleed local-coder into task types the reasoner owns — the routing
-        # contract keeps test/research on local-reasoner (Qwen3.6-27B-MTP); see
-        # test_contract_routing_policy. code_review/refactor stay: they are
-        # code-writing tasks and the reasoner does not declare them.
+        # OMN-13599 (SUPERSEDED by OMN-16442 for `test`): local-coder was the
+        # CODE backend only; `test` and `research` were removed here so the
+        # code-only fast_path_threshold did not bleed local-coder into task
+        # types the local-reasoner rung owned. That rung is GONE — OMN-16442
+        # deleted the local-reasoner entry because its endpoint (.201:8001) is
+        # the RTX 4090 slot physically removed for RMA (OMN-16407; re-probed
+        # 2026-08-28: `curl .201:8001/v1/models` → exit 7
+        # "Couldn't connect to server"). `test` was left with ZERO local rung
+        # by that deletion, so it is restored here rather than demoted to the
+        # metered cheap_cloud tier. This is not a reversal of OMN-13599's
+        # reasoning: bifrost_delegation.yaml's `test` routing_rule ALREADY
+        # declares backend_ids [local-coder, cloud-gemini-pro], so the two
+        # surfaces now agree instead of contradicting each other. `research`
+        # is deliberately NOT restored here — it keeps two live local rungs
+        # (local-heavy-reasoning, local-ds-v4-flash) without local-coder.
         #
         # OMN-15630: validator_generation added — its DoD (compiles_without_errors,
         # final_artifact_only, passes_existing_tests) is an exact match for
@@ -76,43 +85,39 @@ tiers:
           - code_review
           - refactor
           - validator_generation
+          # OMN-16442: restored — see the block comment above.
+          - test
         # OMN-13599: AI-PC local-coder is the preferred local code backend when
         # its Tailscale hostname overlay is present. Without a threshold, the
         # fast-path selector can prefer later local models that also declare
         # code_generation.
         fast_path_threshold_tokens: 65536
-      - id: Qwen3.6-27B-MTP-IQ4_XS.gguf
-        backend_id: local-reasoner
-        max_context_tokens: 24576
-        use_for:
-          - test
-          - research
-          - reasoning
-          - planning
-          - review
-          - document
-          # OMN-15961: agent_delegation REMOVED (was OMN-15503's stopgap
-          # after cli_agents was retired in OMN-13215). agent_delegation's
-          # task class requires the agent_orchestration capability
-          # (task_class_contracts.v1.yaml), which this plain HTTP
-          # chat-completion tier cannot genuinely provide — the OMN-15503
-          # entry was a false capability claim (text completion masquerading
-          # as agentic execution), not a real routable rung. agent_delegation
-          # now correctly fails closed (no_routable_backend_for_task) until
-          # the real coding-agent producer is wired (OMN-15961 WS-4/C6);
-          # restoring this entry is that follow-on's job, not a revert of
-          # this one.
-          # OMN-15630: documentation and summarization added. Both are
-          # natural_language_generation prose classes with no dedicated local
-          # server before this — documentation is `document`'s docstring-flavored
-          # sibling (same required_capabilities, same 0.002/20000ms pricing/
-          # latency profile) and summarization is the same prose family; both
-          # mirror `document`'s existing placement on this backend.
-          - documentation
-          - summarization
-        fast_path_threshold_tokens: 24576
+      # OMN-16442: the `local-reasoner` rung (id Qwen3.6-27B-MTP-IQ4_XS.gguf,
+      # .201:8001) was DELETED here. That endpoint is the RTX 4090 slot
+      # physically removed from .201 for RMA (OMN-16407); re-probed 2026-08-28
+      # against the canonical inventory (omni_home/docs/reference/
+      # AI_LAB_HARDWARE.md, "Last verified: 2026-08-28"), `curl
+      # .201:8001/v1/models` returns exit 7 "Couldn't connect
+      # to server" and the inventory marks the slot DEAD / RETIRED. It was the
+      # FIRST unpinned pick for test/research/reasoning/planning/review/
+      # document/documentation/summarization (OMN-16442's defect report), so
+      # every one of those requests paid a health-probe-then-fallback round
+      # trip to reach a live backend. Its task types are rehomed, not dropped:
+      # `test` -> local-coder above; documentation + summarization ->
+      # local-heavy-reasoning below; research/reasoning/planning/review/
+      # document were already served by local-heavy-reasoning and/or
+      # local-ds-v4-flash. Proof that no task_type lost its last backend is the
+      # before/after resolution table on OMN-16442 and
+      # test_no_task_type_loses_its_last_local_backend_omn16442.
       # OMN-16419: was "Qwen3.6-35B-A3B" — same repoint as local-coder above
       # (same .201:8000 SGLang endpoint, live-verified served id "qwen3.8").
+      # OMN-16442 re-probe 2026-08-28: GET .201:8000/v1/models still reports
+      # id "qwen3.8" with max_model_len 122880. The endpoint currently permits
+      # ONE running generation request, so concurrency must be queued ABOVE
+      # the model server — a second concurrent delegation to this backend
+      # queues rather than parallelizes. local-coder and local-heavy-reasoning
+      # are the SAME physical endpoint, so that single-slot budget is shared
+      # across both rungs.
       - id: qwen3.8
         backend_id: local-heavy-reasoning
         max_context_tokens: 8192
@@ -137,7 +142,37 @@ tiers:
           # from selection for any prompt that does not fit, which escalates to
           # the large-window rungs below / the ceiling instead.
           - escalation
+          # OMN-16442: documentation and summarization rehomed here from the
+          # deleted local-reasoner rung. Both are the prose family OMN-15630
+          # placed alongside `document`, which this backend already serves with
+          # the identical required_capabilities/pricing/latency profile — so
+          # this inherits an existing placement rather than making a new
+          # capability claim. Without it both classes would have had NO local
+          # rung at all, which the OMN-15630 routing-completeness gate rejects:
+          # both declare `local` in their escalation_policy.tier_order, and a
+          # declared tier that serves none of a class's capabilities is exactly
+          # the decorative/unreachable rung that gate exists to forbid.
+          #
+          # Known consequence, made explicit because it flips a behaviour that
+          # only ever held by accident: `documentation` becomes genuinely
+          # local-routable for the first time. OMN-16868's
+          # test_documentation_is_not_a_substitute_for_document asserted
+          # `first_eligible_tier("documentation") != "local"` — but that was
+          # never a contract, it was the observable effect of `documentation`'s
+          # ONLY local declarant (local-reasoner, added by OMN-15630) pointing
+          # at .201:8001, which was already dead. The class was declared local
+          # and un-routable at the same time. Repairing the endpoint side of
+          # that makes the declared contract true; the OMN-16868 assertion is
+          # rewritten to guard the exact-token trap it actually cares about
+          # (`document` and `documentation` are DISTINCT classes with distinct
+          # contracts) rather than a tier accident.
+          - documentation
+          - summarization
         fast_path_threshold_tokens: 8192
+      # OMN-16442: `id` here is the routing CATALOG KEY, not the served id —
+      # the served ids at .200:8101 are {deepseek-v4-flash, deepseek-v4-pro}
+      # (live readback 2026-08-28), and bifrost_delegation.yaml's
+      # local-ds-v4-flash.model_name carries the served id per OMN-16833.
       - id: ds-v4-flash
         backend_id: local-ds-v4-flash
         max_context_tokens: 65536
@@ -155,32 +190,24 @@ tiers:
           # one that carries escalation today.
           - escalation
         fast_path_threshold_tokens: 8192
-      # OMN-15180: local-coder-mlx (registered as a bifrost_delegation.yaml
-      # backend by OMN-15155, .200:8401 MLX endpoint) was reachable ONLY via an
-      # explicit resolve_delegation_backend(task_type, backend_id="local-coder-mlx")
-      # pin. Declared AFTER local-coder (same Qwen3.6-35B-A3B family, MLX 8bit
-      # quantization) so unpinned FIRST-CHOICE selection is UNCHANGED —
-      # local-coder still wins by file order (identical to the pre-existing
-      # local-ds-v4-flash entry, which never wins over local-coder for
-      # code_generation either). The reachability this registration adds is
-      # the OMN-14402 same-tier backend FALLBACK
-      # (sibling_backend_available_in_tier, wired into
-      # HandlerDelegationWorkflow.handle_inference_response on the deployed bus
-      # path): once local-coder (and, for code_generation, local-ds-v4-flash)
-      # fails with a transport error, the orchestrator retries this sibling in
-      # the SAME tier before escalating to cheap_cloud — proven end to end in
-      # test_local_coder_mlx_same_tier_fallback_omn15180.py. The deterministic
-      # "reach this exact backend on demand" path is the wire-level backend_id
-      # pin (this ticket's ModelDelegateSkillRequest.backend_id field), not
-      # unpinned tier selection.
-      - id: mlx-community/Qwen3.6-35B-A3B-8bit
-        backend_id: local-coder-mlx
-        max_context_tokens: 65536
-        use_for:
-          - code_generation
-          - refactor
-          - document
-        fast_path_threshold_tokens: 65536
+      # OMN-16442: the `local-coder-mlx` rung (id
+      # mlx-community/Qwen3.6-35B-A3B-8bit, .200:8401) was DELETED here for the
+      # same reason as local-reasoner above — the endpoint is dead and the
+      # named artifact is served nowhere on the fleet. Live probe 2026-08-28:
+      # `curl .200:8401/v1/models` → exit 7 "Couldn't connect
+      # to server". The Mac Studio's MLX server was replaced (canonical
+      # inventory omni_home/docs/reference/AI_LAB_HARDWARE.md, verified
+      # 2026-08-28): it now serves `Qwen3.8-27B-8bit` on 127.0.0.1:8099 and is
+      # bound LOCALHOST-ONLY, so it is not reachable from the .201 runtime and
+      # must NOT be re-registered as a routable rung until it has explicit
+      # availability semantics + a health check — the same gate the inventory
+      # places on the mini/laptop/Gemma-canary endpoints. That re-registration
+      # is the scoped follow-on recorded on OMN-16442, not this pass.
+      #
+      # OMN-15180's same-tier fallback (sibling_backend_available_in_tier) is
+      # NOT lost: code_generation keeps two local siblings (local-coder,
+      # local-ds-v4-flash), so a transport failure on the first still retries
+      # inside `local` before escalating to cheap_cloud.
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 2

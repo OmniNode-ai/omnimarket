@@ -53,10 +53,23 @@ def test_local_delegation_backends_declare_renderable_endpoint_envs() -> None:
     )
     assert backends["local-heavy-reasoning"]["model_name"] == "qwen3.8"
 
-    assert backends["local-reasoner"]["endpoint_url_env"] == (
-        "BIFROST_LOCAL_REASONER_ENDPOINT_URL"
-    )
-    assert backends["local-reasoner"]["model_name"] == "Qwen3.6-27B-MTP-IQ4_XS.gguf"
+    # OMN-16442: `local-reasoner` and `local-coder-mlx` were DELETED from the
+    # contract — their endpoints (.201:8001 and .200:8401) were both re-probed
+    # 2026-08-28 and return curl exit 7 "Couldn't connect to server", and the
+    # canonical inventory (omni_home/docs/reference/AI_LAB_HARDWARE.md,
+    # verified 2026-08-28) records .201:8001 as DEAD / RETIRED (RTX 4090 pulled
+    # for RMA, OMN-16407). The assertions that pinned their model_names are
+    # inverted into absence checks so a revival is caught here.
+    for retired in ("local-reasoner", "local-coder-mlx"):
+        assert retired not in backends, (
+            f"{retired} points at a dead endpoint and must stay deleted; "
+            "register the replacement hardware under a new backend_id instead"
+        )
+
+    # OMN-16442: model_name was the literal backend_id "local-embedding", not a
+    # served id. Live readback 2026-08-28, GET .201:8002/v1/models -> id
+    # "text-embedding-qwen3" (vLLM, Qwen/Qwen3-Embedding-0.6B, 1024-dim).
+    assert backends["local-embedding"]["model_name"] == "text-embedding-qwen3"
 
     assert backends["local-ds-v4-flash"]["endpoint_url_env"] == (
         "BIFROST_LOCAL_DS_V4_FLASH_ENDPOINT_URL"
@@ -73,12 +86,4 @@ def test_local_delegation_backends_declare_renderable_endpoint_envs() -> None:
     assert (
         backends["local-ds-v4-flash"]["model_name"]
         == _model_registry()["models"]["ds-v4-flash"]["model_name"]
-    )
-
-    assert backends["local-coder-mlx"]["endpoint_url_env"] == (
-        "BIFROST_LOCAL_CODER_MLX_ENDPOINT_URL"
-    )
-    assert (
-        backends["local-coder-mlx"]["model_name"]
-        == "mlx-community/Qwen3.6-35B-A3B-8bit"
     )
