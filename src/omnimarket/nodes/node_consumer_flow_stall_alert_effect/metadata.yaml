@@ -1,0 +1,24 @@
+name: consumer_flow_stall_alert_effect
+version: "1.0.0"
+description: >
+  Reads the consumer-flow projection and publishes a Slack alert when a
+  consumer holds STALLED or STARVED for the contract-declared number of
+  consecutive windows.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - effect
+  - observability
+  - alerting
+  - flow
+pack: "data"
+display_name: "Effect: Consumer Flow Stall Alert"
+node_role: "effect"

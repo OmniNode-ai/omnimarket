@@ -1,0 +1,140 @@
+---
+name: consumer_flow_stall_alert_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_consumer_flow_stall_alert_effect.models.model_stall_alert_request.ModelConsumerFlowStallAlertRequest
+description: >
+  OMN-16778 (Phase 1 of epic OMN-16776). Reads the consumer-flow projection
+  (OMN-16777) and fires a Slack alert when one (consumer_group, topic) holds
+  STALLED or STARVED for N consecutive windows.
+
+  A projection nobody reads is not observability. OMN-14440 is the precedent: a
+  job fired every 30 minutes for three months, failed every time, and wrote
+  348KB of errors nobody read. On 2026-08-27 the delegation chain died and
+  produced 16 quarantined commands in about a minute; nothing fired, and the
+  outage was found by hand by someone doing unrelated work.
+
+  Delivery rides the canonical node_slack_publish_effect
+  (onex.cmd.omnimarket.slack-publish.v1) -- Slack Web API chat.postMessage with
+  a bot token resolved from a contract secret ref. There is no second alerting
+  path here, and SLACK_WEBHOOK_URL is deliberately not used: it is dead
+  (HTTP 404 / no_service, re-probed 2026-08-27 on both hosts) and is being
+  retired under OMN-15600.
+
+handler:
+  module: omnimarket.nodes.node_consumer_flow_stall_alert_effect.handlers.handler_consumer_flow_stall_alert
+  class: HandlerConsumerFlowStallAlert
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: consumer_flow_stall_alert
+      handler:
+        name: HandlerConsumerFlowStallAlert
+        module: omnimarket.nodes.node_consumer_flow_stall_alert_effect.handlers.handler_consumer_flow_stall_alert
+      handler_module: omnimarket.nodes.node_consumer_flow_stall_alert_effect.handlers.handler_consumer_flow_stall_alert
+
+terminal_event: onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1
+
+golden_path:
+  - "node_projection_consumer_flow materializes consumer_flow_windows and publishes onex.evt.omnimarket.projection-consumer-flow-applied.v1"
+  - "This node reads the trailing window history for the affected (consumer_group, topic)"
+  - "The pure handler classifies the trailing run against the contract-declared alert_policy"
+  - "A confirmed FAIL publishes onex.cmd.omnimarket.slack-publish.v1 carrying consumer_group, topic, in/out/dlq counts and the consecutive-window count"
+  - "node_slack_publish_effect posts it via https://slack.com/api/chat.postMessage and its idempotency ledger collapses a repeat inside the renotify window"
+  - "Emit the evaluation outcome to onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1"
+
+# ---------------------------------------------------------------------------
+# THRESHOLDS ARE CONTRACT DATA (OMN-16778 AC2).
+#
+# Every number the firing decision depends on lives here and nowhere else.
+# There is no Python default anywhere in this node: the loader fails closed on
+# a missing or malformed block rather than silently substituting a constant,
+# because a threshold that can be satisfied by a code default is a threshold
+# nobody can change without a deploy.
+#
+# The shape mirrors the anti-flap damping already proven in production for the
+# .201 host reporter (OMN-16789): confirm before firing, clear slowly, and
+# renotify on a long period rather than every tick.
+# ---------------------------------------------------------------------------
+alert_policy:
+  # CONFIRM: consecutive alerting windows required before a FAIL is published.
+  # 1 would fire on a single window and reproduce the flap that made the host
+  # reporter's own alerts unreadable.
+  confirm_windows: 2
+  # CLEAR: consecutive non-alerting windows required before the condition is
+  # considered recovered. Deliberately larger than confirm_windows -- a stall
+  # that blips healthy for one window has not recovered.
+  clear_windows: 8
+  # Re-post the same still-firing condition at most once per this many seconds.
+  # 6h. The key is bucketed by window_start, so this is enforced by the
+  # existing node_slack_publish_effect idempotency ledger, not a state file.
+  renotify_after_seconds: 21600
+  # The states that count as a stall for alerting purposes.
+  alerting_states:
+    - STALLED
+    - STARVED
+  # UNKNOWN is NOT in alerting_states and must never be: a missed heartbeat is
+  # the absence of an observation, not evidence of a stall (OMN-16777 AC5).
+  # It surfaces as its own degraded outcome instead.
+  unknown_warn_windows: 1
+  # WARN is surfaced in the decision and the terminal event but is not pushed
+  # to Slack by default. FAIL and WARN are different facts and the ticket
+  # forbids conflating them; delivering both by default is how a channel gets
+  # muted.
+  deliver_warnings: false
+
+secrets:
+  SLACK_CHANNEL_ID:
+    description: >
+      Slack channel id the stall alert is posted to (#omninode-notifications,
+      C08PRL6BRQE). Resolved at the effect boundary through the canonical
+      secret-store resolver -- never an env read in a handler, never a literal.
+    required: true
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.omnimarket.projection-consumer-flow-applied.v1
+  publish_topics:
+    - onex.cmd.omnimarket.slack-publish.v1
+    - onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1
+  # A window history this node cannot classify is routed, not logged and
+  # dropped. This node exists because a silent failure went unseen for months;
+  # it must not become a new silent-loss site.
+  dlq_topics:
+    - onex.dlq.omnimarket.consumer-flow-stall-alert-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1
+
+dod_evidence:
+  - test: tests/test_omn16778_stall_alert_decision.py::test_confirmed_stall_run_fires_a_fail_alert
+    description: "AC1 — a STALLED run at or past confirm_windows publishes an alert naming the consumer"
+  - test: tests/test_omn16778_stall_alert_decision.py::test_idle_consumer_on_a_quiet_topic_never_alerts
+    description: "AC3 — a genuinely idle consumer does not alert"
+  - test: tests/test_omn16778_stall_alert_decision.py::test_unknown_window_warns_and_does_not_fire_a_stall_alert
+    description: "AC5 — UNKNOWN is a distinct degraded outcome, neither healthy nor stalled"
+  - test: tests/test_omn16778_stall_alert_decision.py::test_alert_payload_names_consumer_topic_counts_and_run_length
+    description: "AC4 — the payload carries consumer_group, topic, in/out/dlq, consecutive windows and correlation context"
+  - test: tests/test_omn16778_stall_alert_thresholds_from_contract.py::test_raising_the_declared_confirm_window_suppresses_the_same_history
+    description: "AC2 — changing the declared threshold changes the decision with no code edit"
+  - test: tests/test_omn16778_stall_alert_thresholds_from_contract.py::test_no_threshold_literal_lives_in_python
+    description: "AC2 — mechanically asserts the node's .py files carry no threshold literal"
+  - test: tests/test_golden_chain_consumer_flow_stall_alert.py::test_golden_chain_reaches_slack_publish
+    description: "AC1 — the declared chain reaches node_slack_publish_effect hop by hop"
+
+metadata:
+  transport_type: kafka
+  description: "Flow-derived stall alert effect"
+  author: "OmniNode Platform Team"
+  tags:
+    - effect
+    - observability
+    - alerting
+    - flow
+  related_tickets:
+    - "OMN-16778"
+    - "OMN-16776"
+    - "OMN-16777"
+    - "OMN-13733"
