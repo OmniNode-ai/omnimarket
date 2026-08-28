@@ -2583,6 +2583,20 @@ class EvidenceCollector:
                 # can declare intent (running tests) distinct from generic
                 # commands without forcing every shell-based check into the same
                 # bucket. Regression for OMN-10046.
+                #
+                # OMN-16824: this is now the ONLY reading of ``test_passes``
+                # anywhere. The hosted Contract Compliance Check used to ignore
+                # ``check_value`` here and report whether the PR's own CI was
+                # green, so one contract entry was a behaviour proof to this
+                # runner and a PR-status proxy to that one; it now executes the
+                # command exactly as this branch does. The agreement is held by
+                # an executed case table shared byte-for-byte between the two
+                # repos -- ``tests/fixtures/check_type_runner_semantics.yaml``,
+                # run here by
+                # ``tests/unit/nodes/node_dod_verify/test_omn16824_test_passes_semantics.py``
+                # and against the hosted gate by the same-named module in
+                # onex_change_control. Do not give this branch a meaning the
+                # table does not state.
                 ok, msg = self._run_command_check(
                     check,
                     ticket_id,
