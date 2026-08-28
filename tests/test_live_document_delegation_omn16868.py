@@ -7,12 +7,24 @@ Opt-in only; CI never runs this. The hermetic suite
 adapter boundary, which proves the routing/telemetry wiring but CANNOT prove
 that the task type the contract names actually lands on a free local model.
 
-That distinction is load-bearing here. ``task_type="documentation"`` resolves
-to ``cheap_cloud``/``cloud-gemini-flash`` — a PAID backend. Only the contract's
-exact ``"document"`` resolves to ``local``/``local-heavy-reasoning``. A silent
-drift in ``routing_tiers.yaml`` or ``task_class_contracts.v1.yaml`` would move
-every merge-sweep docstring fix onto metered cloud inference without any test
-failing, so this module pins the live resolution.
+The property this module pins is that the contract's exact ``"document"``
+resolves to ``local``/``local-heavy-reasoning``. A silent drift in
+``routing_tiers.yaml`` or ``task_class_contracts.v1.yaml`` would move every
+merge-sweep docstring fix onto metered cloud inference without any test
+failing, so this module reads the live resolution back.
+
+OMN-16442 correction: this docstring used to add "``task_type="documentation"``
+resolves to ``cheap_cloud``/``cloud-gemini-flash`` — a PAID backend", and the
+test below asserted it. That was an observation of a BREAKAGE, not a contract.
+``documentation`` declares ``local`` first in its
+``escalation_policy.tier_order``, and OMN-15630 gave it a local declarant so
+that rung would not be decorative — but the declarant was ``local-reasoner`` on
+.201:8001, hardware physically removed for RMA (OMN-16407). The class was
+declared local and unroutable at once. OMN-16442 retired that backend and
+rehomed the class onto the live ``local-heavy-reasoning`` rung, so
+``documentation`` is now local-routable and the old claim is false. What still
+matters — that ``document`` and ``documentation`` are DISTINCT classes resolved
+through their own ladders — is asserted directly instead.
 
 Enable with::
 
@@ -105,8 +117,40 @@ class TestDocumentTaskTypeResolvesLocal:
         assert backend_id != "local-reasoner"
 
     def test_documentation_is_not_a_substitute_for_document(self) -> None:
-        """Guards the exact-token trap: 'documentation' is a PAID route."""
-        assert first_eligible_tier("documentation") != "local"
+        """Guards the exact-token trap: ``documentation`` != ``document``.
+
+        OMN-16442 rewrote this assertion. It used to read
+        ``first_eligible_tier("documentation") != "local"`` — "documentation is
+        a PAID route" — which was never a contract. ``documentation`` DECLARES
+        ``local`` first in its ``escalation_policy.tier_order`` and OMN-15630
+        gave it a local declarant precisely so that declared rung would not be
+        decorative. The assertion passed only because that declarant was
+        ``local-reasoner`` on .201:8001, an endpoint that was already dead
+        (RTX 4090 pulled for RMA, OMN-16407) — so the class was simultaneously
+        declared local and unroutable, and the test was reading the breakage.
+        OMN-16442 retired that backend and rehomed the class onto the live
+        ``local-heavy-reasoning`` rung, which makes the DECLARED contract true
+        and this old assertion false.
+
+        The trap actually worth guarding is the token confusion: passing
+        ``documentation`` when you meant ``document``. That is guarded by the
+        two being SEPARATE task classes with independently declared ladders —
+        so this asserts they are distinct and each resolves on its own terms,
+        not that one of them is expensive.
+        """
+        assert DOCUMENT_TASK_TYPE != "documentation"
+
+        documentation_tier = first_eligible_tier("documentation")
+        assert documentation_tier is not None, (
+            "'documentation' resolves to no tier at all; it declares "
+            "local -> cheap_cloud and both must stay reachable"
+        )
+        # Each class resolves through its OWN declared ladder — reaching a
+        # backend that declares THAT task type, never the sibling's.
+        documentation_backend = backend_id_for_tier(documentation_tier, "documentation")
+        assert documentation_backend, (
+            "'documentation' resolved a tier but no backend within it"
+        )
 
 
 @pytest.mark.live_model

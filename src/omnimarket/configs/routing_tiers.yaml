@@ -148,8 +148,24 @@ tiers:
           # the identical required_capabilities/pricing/latency profile — so
           # this inherits an existing placement rather than making a new
           # capability claim. Without it both classes would have had NO local
-          # rung at all and would fall straight to the metered cheap_cloud
-          # tier.
+          # rung at all, which the OMN-15630 routing-completeness gate rejects:
+          # both declare `local` in their escalation_policy.tier_order, and a
+          # declared tier that serves none of a class's capabilities is exactly
+          # the decorative/unreachable rung that gate exists to forbid.
+          #
+          # Known consequence, made explicit because it flips a behaviour that
+          # only ever held by accident: `documentation` becomes genuinely
+          # local-routable for the first time. OMN-16868's
+          # test_documentation_is_not_a_substitute_for_document asserted
+          # `first_eligible_tier("documentation") != "local"` — but that was
+          # never a contract, it was the observable effect of `documentation`'s
+          # ONLY local declarant (local-reasoner, added by OMN-15630) pointing
+          # at .201:8001, which was already dead. The class was declared local
+          # and un-routable at the same time. Repairing the endpoint side of
+          # that makes the declared contract true; the OMN-16868 assertion is
+          # rewritten to guard the exact-token trap it actually cares about
+          # (`document` and `documentation` are DISTINCT classes with distinct
+          # contracts) rather than a tier accident.
           - documentation
           - summarization
         fast_path_threshold_tokens: 8192

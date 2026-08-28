@@ -91,36 +91,45 @@ def test_local_tier_keeps_a_same_tier_sibling_for_code_generation() -> None:
     config = _load_config()
 
     local_tier = next(tier for tier in config.tiers if tier.name == "local")
-    code_gen_backends = [
+    # DISTINCT backends, not model entries: two entries pointing at the same
+    # backend_ref give `sibling_backend_available_in_tier` nothing to retry
+    # after a transport failure, so counting entries would pass while the
+    # property this test exists to protect is violated (CodeRabbit, OMN-16442).
+    code_gen_backends = {
         model.backend_ref
         for model in local_tier.models
         if "code_generation" in model.use_for
-    ]
+    }
 
     assert len(code_gen_backends) >= 2, (
-        "the local tier must keep >=2 code_generation backends so OMN-14402's "
-        "same-tier fallback has a sibling to retry before escalating to the "
-        f"metered cheap_cloud tier; got {code_gen_backends}"
+        "the local tier must keep >=2 DISTINCT code_generation backends so "
+        "OMN-14402's same-tier fallback has a sibling to retry before "
+        f"escalating to the metered cheap_cloud tier; got {sorted(code_gen_backends)}"
     )
-    assert not (set(code_gen_backends) & _RETIRED_BACKEND_REFS)
+    assert not (code_gen_backends & _RETIRED_BACKEND_REFS)
 
 
 def test_prose_classes_kept_a_local_rung_after_reasoner_retirement() -> None:
     """OMN-16442: ``test``, ``documentation`` and ``summarization`` were served
     in the local tier ONLY by the retired ``local-reasoner``. Deleting that rung
     without rehoming them would have demoted all three to the metered
-    cheap_cloud tier. Assert each still has a local declarant.
+    cheap_cloud tier.
+
+    All three declare ``local`` in their ``escalation_policy.tier_order``, so a
+    local declarant is not merely nice to have — the OMN-15630
+    routing-completeness gate rejects a declared tier that serves none of a
+    class's capabilities.
     """
     config = _load_config()
 
     local_tier = next(tier for tier in config.tiers if tier.name == "local")
 
     for task_type in ("test", "documentation", "summarization"):
-        declarants = [
+        declarants = {
             model.backend_ref
             for model in local_tier.models
             if task_type in model.use_for
-        ]
+        }
         assert declarants, (
             f"task_type {task_type!r} lost its last LOCAL backend when "
             "local-reasoner was retired — it would fall straight to the "

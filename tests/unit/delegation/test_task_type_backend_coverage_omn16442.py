@@ -139,7 +139,9 @@ class TestTaskTypeBackendCoverage:
         All three were served in the ``local`` tier ONLY by the retired
         ``local-reasoner``. Coverage alone would be satisfied by the metered
         cheap_cloud tier, so assert the stronger property the rehoming exists
-        for: each keeps a zero-marginal-cost LOCAL declarant.
+        for: each keeps a zero-marginal-cost LOCAL declarant. All three also
+        declare ``local`` in their tier_order, so dropping the rung would fail
+        the OMN-15630 routing-completeness gate outright.
         """
         for task_type in ("test", "documentation", "summarization"):
             serving = _serving_backends(task_type)
