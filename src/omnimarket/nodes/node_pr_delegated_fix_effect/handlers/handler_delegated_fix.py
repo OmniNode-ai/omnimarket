@@ -40,6 +40,20 @@ from omnimarket.events.pr_delegated_fix import (
     ModelDelegatedFixCommand,
     ModelDelegatedFixResult,
 )
+from omnimarket.nodes.node_pr_delegated_fix_effect.handlers.adapter_acceptance_telemetry import (
+    JsonlAcceptanceTelemetryRecorder,
+    ModelDelegatedFixAttemptRecord,
+    ProtocolAcceptanceRecorder,
+)
+from omnimarket.nodes.node_pr_delegated_fix_effect.handlers.adapter_document_delegation import (
+    DOCUMENT_TASK_TYPE,
+    DocumentDelegationOutcome,
+    LiveDocumentDelegation,
+)
+from omnimarket.nodes.node_pr_delegated_fix_effect.handlers.diff_classifier import (
+    DocstringCommentDiffClassifier,
+    ProtocolDiffClassifier,
+)
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.delegation_eligibility import (
     MAX_DELEGATION_FILES,
     MAX_DELEGATION_LINES,
@@ -50,7 +64,23 @@ logger = logging.getLogger(__name__)
 
 _PR_POLISH_DONE_PHASE = "done"
 
+# Slice 0 (OMN-13940) tool identity, still used verbatim on the deterministic
+# path. Slice 1 (OMN-16868) overrides it with the real model identity returned
+# by the delegation response when the document path runs.
 _DELEGATION_MODEL_NAME = "ruff-deterministic"
+
+
+class _Unset:
+    """Sentinel distinguishing "not configured" from an explicit opt-out.
+
+    ``document_delegation_runner=None`` means "Slice 1 disabled, behave exactly
+    as Slice 0". Omitting the argument entirely means "wire the live runner
+    lazily" — lazily because constructing ``HandlerDelegateSkill`` performs
+    dispatch-port selection that a caller on the deterministic path never needs.
+    """
+
+
+_UNSET = _Unset()
 
 
 # ---------------------------------------------------------------------------
@@ -80,6 +110,21 @@ class ProtocolRuffFixRunner(Protocol):
 
     def run(self, worktree: Path) -> None:
         """Run ``ruff format`` + ``ruff check --fix``. Raises on tool failure."""
+        ...
+
+
+@runtime_checkable
+class ProtocolDocumentDelegationRunner(Protocol):
+    """Slice 1 (OMN-16868): the real ``task_type="document"`` delegation call.
+
+    Async because the delegation handler is async all the way down to the
+    transport; the deterministic ruff runner stays sync because it shells out.
+    """
+
+    async def run(
+        self, worktree: Path, *, changed_files: list[str]
+    ) -> DocumentDelegationOutcome:
+        """Rewrite docstrings/comments in place. Raises on delegation failure."""
         ...
 
 
@@ -350,8 +395,29 @@ def _parse_shortstat_lines(shortstat: str) -> int:
 # ---------------------------------------------------------------------------
 
 
+class _AttemptContext(NamedTuple):
+    """Which fix authority ran, for the result stamp and the telemetry row.
+
+    Defaults are the Slice 0 identity, so a deterministic run produces exactly
+    the pre-OMN-16868 result.
+    """
+
+    delegation_model: str = _DELEGATION_MODEL_NAME
+    cost_usd: float = 0.0
+    task_type: str | None = None
+    backend_id: str | None = None
+    tier: str | None = None
+
+
 class HandlerDelegatedFix:
-    """Runs the Slice 0 deterministic delegated fix end-to-end."""
+    """Runs the delegated fix end-to-end.
+
+    Slice 0 (OMN-13940): deterministic ruff. Slice 1 (OMN-16868): a
+    docstring/comment-only diff is routed instead to a real
+    ``HandlerDelegateSkill(task_type="document")`` call, which resolves to the
+    free local tier through the routing authority. The command/result shape is
+    identical across both paths, per the node contract.
+    """
 
     def __init__(
         self,
@@ -360,6 +426,11 @@ class HandlerDelegatedFix:
         ruff_runner: ProtocolRuffFixRunner | None = None,
         git_diff_adapter: ProtocolGitDiffAdapter | None = None,
         pr_polish_runner: ProtocolPrPolishRunner | None = None,
+        document_delegation_runner: ProtocolDocumentDelegationRunner
+        | None
+        | _Unset = _UNSET,
+        diff_classifier: ProtocolDiffClassifier | None = None,
+        acceptance_recorder: ProtocolAcceptanceRecorder | None = None,
     ) -> None:
         self._worktree_resolver: ProtocolWorktreeResolver = (
             worktree_resolver or GitWorktreeResolver()
@@ -369,10 +440,36 @@ class HandlerDelegatedFix:
         self._pr_polish: ProtocolPrPolishRunner = (
             pr_polish_runner or LivePrPolishRunner()
         )
+        # Explicit None = Slice 1 disabled (behave exactly as Slice 0). Omitted
+        # = wire the live runner. See _Unset.
+        self._document: ProtocolDocumentDelegationRunner | None = (
+            LiveDocumentDelegation()
+            if isinstance(document_delegation_runner, _Unset)
+            else document_delegation_runner
+        )
+        self._classifier: ProtocolDiffClassifier = (
+            diff_classifier or DocstringCommentDiffClassifier()
+        )
+        self._acceptance: ProtocolAcceptanceRecorder | None = acceptance_recorder
+        if self._acceptance is None:
+            # Best-effort: a missing ONEX_STATE_DIR/OMNI_HOME must not make the
+            # node unconstructable — telemetry is observability, not a gate.
+            try:
+                self._acceptance = JsonlAcceptanceTelemetryRecorder()
+            except RuntimeError as exc:
+                logger.warning(
+                    "delegated_fix: acceptance telemetry disabled (%s); the "
+                    "OMN-13940 >=70%%/>=20-sample bar will not accumulate samples",
+                    exc,
+                )
 
     async def handle(
         self, command: ModelDelegatedFixCommand
     ) -> ModelDelegatedFixResult:
+        # Slice 1 attempt context. Defaults to the Slice 0 deterministic
+        # identity and is overwritten only if the document path actually runs,
+        # so a ruff-path result is byte-identical to Slice 0's.
+        self._attempt = _AttemptContext()
         try:
             worktree = self._worktree_resolver.resolve(
                 repo=command.repo,
@@ -400,23 +497,56 @@ class HandlerDelegatedFix:
                 worktree_path=str(worktree),
             )
 
-        try:
-            self._ruff.run(worktree)
-        except Exception as exc:
-            return self._result(
-                command,
-                outcome=EnumDelegatedFixOutcome.ERROR,
-                detail=f"ruff fix failed: {exc}",
-                error=str(exc),
-                worktree_path=str(worktree),
+        # ── Slice 1 (OMN-16868): the swap ────────────────────────────────
+        # A docstring/comment-only diff goes to a real
+        # HandlerDelegateSkill(task_type="document") call INSTEAD OF ruff;
+        # everything else keeps the Slice 0 deterministic path untouched.
+        # Classification refuses by default, so any doubt falls back to ruff.
+        use_document_path = self._document is not None and self._is_document_class(
+            worktree, command
+        )
+
+        if use_document_path:
+            assert self._document is not None  # narrowed by use_document_path
+            try:
+                outcome = await self._document.run(
+                    worktree, changed_files=list(command.changed_files)
+                )
+            except Exception as exc:
+                return self._result(
+                    command,
+                    outcome=EnumDelegatedFixOutcome.ERROR,
+                    detail=f"document delegation failed: {exc}",
+                    error=str(exc),
+                    worktree_path=str(worktree),
+                )
+            self._attempt = _AttemptContext(
+                delegation_model=outcome.delegation_model,
+                cost_usd=outcome.cost_usd,
+                task_type=DOCUMENT_TASK_TYPE,
+                backend_id=outcome.backend_id,
+                tier=outcome.tier,
             )
+            fix_label = "document delegation"
+        else:
+            try:
+                self._ruff.run(worktree)
+            except Exception as exc:
+                return self._result(
+                    command,
+                    outcome=EnumDelegatedFixOutcome.ERROR,
+                    detail=f"ruff fix failed: {exc}",
+                    error=str(exc),
+                    worktree_path=str(worktree),
+                )
+            fix_label = "ruff format/check --fix"
 
         changed = self._git.changed_files(worktree)
         if not changed:
             return self._result(
                 command,
                 outcome=EnumDelegatedFixOutcome.NO_CHANGES,
-                detail="ruff format/check --fix produced no changes",
+                detail=f"{fix_label} produced no changes",
                 worktree_path=str(worktree),
             )
 
@@ -432,7 +562,7 @@ class HandlerDelegatedFix:
                 command,
                 outcome=EnumDelegatedFixOutcome.REFUSED_SIZE_GATE,
                 detail=(
-                    f"actual ruff diff too large: {len(changed)} files, "
+                    f"actual {fix_label} diff too large: {len(changed)} files, "
                     f"{lines_changed} lines"
                 ),
                 worktree_path=str(worktree),
@@ -451,15 +581,20 @@ class HandlerDelegatedFix:
             return self._result(
                 command,
                 outcome=EnumDelegatedFixOutcome.REFUSED_DENYLIST,
-                detail=f"actual ruff diff denylisted: {reason}",
+                detail=f"actual {fix_label} diff denylisted: {reason}",
                 worktree_path=str(worktree),
                 files_changed=len(changed),
                 lines_changed=lines_changed,
             )
 
-        trailer = f"delegated-by: {_DELEGATION_MODEL_NAME} run: {command.run_id}"
+        # The trailer attributes the model that ACTUALLY authored the diff —
+        # "ruff-deterministic" on the Slice 0 path, the resolved local model
+        # (e.g. qwen3.8) on the Slice 1 document path.
+        trailer = (
+            f"delegated-by: {self._attempt.delegation_model} run: {command.run_id}"
+        )
         commit_message = (
-            f"fix({command.ticket_id or command.repo}): deterministic ruff fix "
+            f"fix({command.ticket_id or command.repo}): {fix_label} "
             f"for {command.block_reason}\n\n{trailer}"
         )
         try:
@@ -502,15 +637,34 @@ class HandlerDelegatedFix:
         return self._result(
             command,
             outcome=EnumDelegatedFixOutcome.ACCEPTED,
-            detail=f"ruff fix committed {commit_sha[:8] if commit_sha else ''} and passed pr_polish gates",
+            detail=(
+                f"{fix_label} committed {commit_sha[:8] if commit_sha else ''} "
+                "and passed pr_polish gates"
+            ),
             worktree_path=str(worktree),
             commit_sha=commit_sha,
             files_changed=len(changed),
             lines_changed=lines_changed,
         )
 
-    @staticmethod
+    def _is_document_class(
+        self, worktree: Path, command: ModelDelegatedFixCommand
+    ) -> bool:
+        """Classify, never raise — a classifier failure falls back to ruff."""
+        try:
+            return self._classifier.is_document_class(
+                worktree, changed_files=list(command.changed_files)
+            )
+        except Exception as exc:
+            logger.warning(
+                "delegated_fix: diff classification failed (%s); falling back to "
+                "the deterministic ruff path",
+                exc,
+            )
+            return False
+
     def _result(
+        self,
         command: ModelDelegatedFixCommand,
         *,
         outcome: EnumDelegatedFixOutcome,
@@ -521,13 +675,14 @@ class HandlerDelegatedFix:
         files_changed: int = 0,
         lines_changed: int = 0,
     ) -> ModelDelegatedFixResult:
-        return ModelDelegatedFixResult(
+        attempt = getattr(self, "_attempt", None) or _AttemptContext()
+        result = ModelDelegatedFixResult(
             correlation_id=command.correlation_id,
             repo=command.repo,
             pr_number=command.pr_number,
             outcome=outcome,
-            delegation_model=_DELEGATION_MODEL_NAME,
-            cost_usd=0.0,
+            delegation_model=attempt.delegation_model,
+            cost_usd=attempt.cost_usd,
             worktree_path=worktree_path,
             commit_sha=commit_sha,
             files_changed=files_changed,
@@ -536,6 +691,41 @@ class HandlerDelegatedFix:
             error=error,
             completed_at=datetime.now(tz=UTC),
         )
+        # Single funnel: every terminal outcome — accepted, refused, gate-
+        # failed, errored — records exactly one acceptance-telemetry sample, so
+        # the OMN-13940 >=70%/>=20 bar has an honest denominator.
+        self._record_attempt(command, result, attempt)
+        return result
+
+    def _record_attempt(
+        self,
+        command: ModelDelegatedFixCommand,
+        result: ModelDelegatedFixResult,
+        attempt: _AttemptContext,
+    ) -> None:
+        if self._acceptance is None:
+            return
+        try:
+            self._acceptance.record(
+                ModelDelegatedFixAttemptRecord(
+                    correlation_id=command.correlation_id,
+                    repo=command.repo,
+                    pr_number=command.pr_number,
+                    block_reason=command.block_reason,
+                    task_type=attempt.task_type,
+                    delegation_model=attempt.delegation_model,
+                    backend_id=attempt.backend_id,
+                    tier=attempt.tier,
+                    outcome=result.outcome.value,
+                    accepted=result.outcome == EnumDelegatedFixOutcome.ACCEPTED,
+                    cost_usd=result.cost_usd,
+                    files_changed=result.files_changed,
+                    lines_changed=result.lines_changed,
+                    recorded_at=result.completed_at,
+                )
+            )
+        except Exception as exc:
+            logger.warning("delegated_fix: acceptance telemetry write failed: %s", exc)
 
     # RuntimeLocal handler shim
     def handle_sync(self, command: ModelDelegatedFixCommand) -> ModelDelegatedFixResult:
@@ -553,11 +743,15 @@ class HandlerDelegatedFix:
 
 
 __all__: list[str] = [
+    "DocumentDelegationOutcome",
     "GitDiffAdapter",
     "GitWorktreeResolver",
     "HandlerDelegatedFix",
+    "LiveDocumentDelegation",
     "LivePrPolishRunner",
     "PrPolishRunOutcome",
+    "ProtocolDiffClassifier",
+    "ProtocolDocumentDelegationRunner",
     "ProtocolGitDiffAdapter",
     "ProtocolPrPolishRunner",
     "ProtocolRuffFixRunner",
