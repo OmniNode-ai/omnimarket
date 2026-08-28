@@ -1,0 +1,77 @@
+# OMN-16809 — silent-skip false-green prevention for the SCHEDULED live chain job.
+#
+# WHY THIS IS A SEPARATE CONFIG FROM integration_skip_guard.yaml
+# --------------------------------------------------------------
+# Same gate script, opposite provisioning assumptions.
+#
+# `integration_skip_guard.yaml` (OMN-14172) guards a PR job that deliberately
+# provisions NO lane. There, a skip citing `OMN_ALLOW_LIVE_E2E_PROBE` is exactly
+# right — the flag is meant to be off — so that pattern sits in
+# `allowed_optional_skip_patterns` and is never a false-green.
+#
+# `delegation-regression-nightly.yml` inverts every one of those premises. It runs
+# on a self-hosted runner with .201 lane access, it SETS
+# `OMN_ALLOW_LIVE_E2E_PROBE: 'true'` in its own job env, and it exports the lane
+# Postgres connection. On that job the same skip reason means the opposite thing:
+# the env the workflow itself supplies did not arrive. Reusing the merge-gating
+# config here would classify the precise skip that produced seven silent nights
+# as legitimately optional (pinned by
+# `tests/ci/test_nightly_chain_skip_guard.py::test_merge_gating_config_would_not_have_caught_the_class_level_skip`).
+#
+# WHAT WENT WRONG
+# ---------------
+# The nightly is the platform's only scheduled live delegation-chain check. For
+# seven consecutive nights (2026-08-21 .. 2026-08-27) its pytest step reported
+# `success` while executing ZERO live cases: `TestDelegationGoldenTasksLive`
+# self-skips and an all-skipped pytest session exits 0. One red step (preflight),
+# one skipped step (runner), one green step (pytest) — and the green step is the
+# one that claims chain coverage.
+#
+# A scheduled job that cannot fail is worse than no scheduled job: it occupies
+# the slot a working check would hold. Under this config, silence is a failure.
+silent_skip_allowed: false
+
+# Marker selector the nightly pytest step runs (`-m e2e` against the Layer-2
+# module). Recorded for humans; the gate itself reads the JUnit report.
+marker_selector: "e2e"
+
+# At least one live case must actually EXECUTE. This is the whole point: it is
+# the assertion the seven silent nights could not make. Zero collected and
+# all-skipped both land here.
+require_executed_min: 1
+
+# Everything this job needs is supplied BY this job. A skip citing any of it
+# absent means the workflow env broke, not that the test was optional.
+required_services:
+  lane_postgres:
+    provisioned_by: >-
+      delegation-regression-nightly.yml job env (ONEX_E2E_POSTGRES_* from repo
+      vars + the STABILITY_TEST_POSTGRES_PASSWORD / POSTGRES_PASSWORD secret),
+      reachable from the self-hosted `omnibase-ci` runner on the .201 network
+    missing_skip_patterns:
+      - "ONEX_E2E_POSTGRES_PASSWORD / POSTGRES_PASSWORD not set"
+      - "POSTGRES_PASSWORD not set"
+      - "cannot connect to Postgres"
+      - "no reachable Postgres"
+      - 'could not connect.*postgres'
+  live_probe_flag:
+    provisioned_by: >-
+      delegation-regression-nightly.yml sets OMN_ALLOW_LIVE_E2E_PROBE='true' in
+      the job env, so on THIS job the flag is never legitimately absent
+    missing_skip_patterns:
+      - "OMN_ALLOW_LIVE_E2E_PROBE"
+  lane_bus:
+    provisioned_by: >-
+      the stability-test Redpanda reachable from the `omnibase-ci` runner
+      (ONEX_E2E_KAFKA_BOOTSTRAP)
+    missing_skip_patterns:
+      - "Redpanda broker not reachable"
+      - "Kafka not reachable"
+      - "no reachable bus"
+
+# Deliberately EMPTY, and load-bearing. On the merge-gating job this list carries
+# the live-opt-in flags; here there is no such thing as a legitimately-optional
+# skip, because the nightly provisions every resource it probes. An entry added
+# here re-opens the exact hole this file closes — if a new skip reason appears,
+# classify it under `required_services` or fix the skip, do not exempt it.
+allowed_optional_skip_patterns: []
