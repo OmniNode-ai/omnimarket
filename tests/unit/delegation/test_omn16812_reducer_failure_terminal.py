@@ -125,7 +125,7 @@ schema_version: bifrost_delegation.v1
 backends:
   - backend_id: local-coder
     endpoint_url: "http://test-coder:8000"
-    model_name: "cyankiwi/Qwen3-Coder-30B-A3B-Instruct-AWQ-4bit"
+    model_name: "local/routing-test-model"
     tier: local
     timeout_ms: 30000
     capabilities: [research]
