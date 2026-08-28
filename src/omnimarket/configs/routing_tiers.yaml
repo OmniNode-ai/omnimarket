@@ -123,6 +123,20 @@ tiers:
           - planning
           - review
           - document
+          # OMN-16811: escalation added. Before this the escalation class's
+          # ENTIRE ladder was one rung — claude/cloud-gemini-pro — the only
+          # admitted class with no credential-free fallback, so a
+          # quota-exhausted or unreachable Gemini stranded it while every
+          # other class kept routing on the owned GPUs (dev-lane matrix: 11 of
+          # 13 classes terminated, escalation did not). This backend already
+          # serves ``complex_reasoning``, the hardest reasoning class in the
+          # taxonomy, so serving escalation's declared ``reasoning`` capability
+          # is not a new claim. escalation's other declared capability,
+          # ``context_window_large``, stays mechanically honoured rather than
+          # asserted: ``max_context_tokens`` (8192 here) excludes this model
+          # from selection for any prompt that does not fit, which escalates to
+          # the large-window rungs below / the ceiling instead.
+          - escalation
         fast_path_threshold_tokens: 8192
       - id: ds-v4-flash
         backend_id: local-ds-v4-flash
@@ -132,6 +146,14 @@ tiers:
           - reasoning
           - complex_reasoning
           - code_generation
+          # OMN-16811: escalation added here too — this is the LARGE-window
+          # local rung (65536 vs local-heavy-reasoning's 8192), so an
+          # escalation prompt too big for the entry above binds here instead of
+          # jumping straight to the metered ceiling. Live-lane caveat recorded
+          # on the ticket: this backend's endpoint_url is null in the deployed
+          # dev-lane bifrost contract, so on that lane the rung above is the
+          # one that carries escalation today.
+          - escalation
         fast_path_threshold_tokens: 8192
       # OMN-15180: local-coder-mlx (registered as a bifrost_delegation.yaml
       # backend by OMN-15155, .200:8401 MLX endpoint) was reachable ONLY via an
