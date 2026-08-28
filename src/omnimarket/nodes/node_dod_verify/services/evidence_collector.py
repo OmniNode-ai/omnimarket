@@ -1605,7 +1605,7 @@ class EvidenceCollector:
                 self._occ_governance_ref,
                 _git_op_timeout_s(),
             )
-            shutil.rmtree(tmp, ignore_errors=True)
+            self._cleanup_failed_occ_worktree_add(occ, tmp)
             return None, None, refresh_outcome, None
         if proc.returncode != 0:
             logger.warning(
@@ -1613,7 +1613,7 @@ class EvidenceCollector:
                 self._occ_governance_ref,
                 proc.stderr.strip(),
             )
-            shutil.rmtree(tmp, ignore_errors=True)
+            self._cleanup_failed_occ_worktree_add(occ, tmp)
             return None, None, refresh_outcome, None
         resolved_sha = self._resolve_worktree_head_sha(tmp)
         return str(tmp), tmp, refresh_outcome, resolved_sha
@@ -1734,30 +1734,84 @@ class EvidenceCollector:
                 proc = None
             # A failed/timed-out `worktree remove` leaves a stale registration
             # under .git/worktrees/ even after rmtree deletes the directory;
-            # prune it so the shared OCC clone does not accumulate dead entries
+            # clear it so the shared OCC clone does not accumulate dead entries
             # (CodeRabbit — Stability).
+            #
+            # OMN-16826: this used to fall back to a bare `worktree prune`, which
+            # is a SILENT NO-OP on a locked entry — and `worktree remove` refuses
+            # a locked worktree even with `--force`, so the commonest way to
+            # reach this branch was precisely the case the fallback could not
+            # fix. Routed through the shared cleanup, which unlocks first.
             if proc is None or proc.returncode != 0:
                 if proc is not None:
                     logger.warning(
-                        "git worktree remove failed for %s: %s; pruning registration",
+                        "git worktree remove failed for %s: %s; unlocking + pruning "
+                        "registration",
                         worktree,
                         proc.stderr.strip(),
                     )
-                self._prune_occ_worktrees(occ)
+                self._cleanup_failed_occ_worktree_add(occ, worktree)
+                return
         shutil.rmtree(worktree, ignore_errors=True)
 
-    def _prune_occ_worktrees(self, occ: Path) -> None:
-        """Best-effort ``git worktree prune`` to clear stale registrations."""
+    def _cleanup_failed_occ_worktree_add(self, occ: Path, worktree: Path) -> None:
+        """Clear the debris a failed or aborted ``git worktree add`` leaves.
+
+        OMN-16826 AC(b). ``git worktree add`` holds a ``locked`` marker with the
+        reason ``initializing`` for the duration of the checkout and releases it
+        on success. A killed or failed add leaves that lock set, and a locked
+        registration is unreachable by every reaping command:
+
+        * ``git worktree prune`` **skips locked entries silently** — it exits 0
+          having done nothing, which is why 414 registrations accumulated behind
+          a command that looked like it worked;
+        * ``git worktree remove`` refuses, because a half-initialised directory
+          with no ``.git`` file is not a valid worktree.
+
+        Deleting the directory alone (what both failure paths did before) is
+        therefore the worst option: it destroys the only evidence of what the
+        registration pointed at while leaving the registration itself immortal.
+
+        Order is load-bearing. ``unlock`` resolves its argument against the
+        registered path, so it must run BEFORE the directory is removed; ``prune``
+        only reaps registrations whose directory is already gone, so it must run
+        after. Every step is best-effort: this is cleanup on an error path and
+        must never raise over the failure that brought us here.
+        """
+        self._run_git_best_effort(occ, "worktree", "unlock", str(worktree))
+        shutil.rmtree(worktree, ignore_errors=True)
+        self._prune_occ_worktrees(occ)
+
+    def _run_git_best_effort(self, occ: Path, *args: str) -> None:
+        """Run one git command against ``occ``, swallowing failure and timeout.
+
+        Used only by cleanup paths, where a non-zero exit is an ordinary outcome
+        (``worktree unlock`` on an entry that was never locked, or that git can
+        no longer resolve) rather than something a caller can act on.
+        """
         try:
-            subprocess.run(
-                ["git", "-C", str(occ), "worktree", "prune"],
+            proc = subprocess.run(
+                ["git", "-C", str(occ), *args],
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=_git_op_timeout_s(),
             )
         except subprocess.TimeoutExpired:
-            logger.warning("Timed out pruning OCC worktrees under %s", occ)
+            logger.warning("Timed out running `git %s` under %s", " ".join(args), occ)
+            return
+        if proc.returncode != 0:
+            logger.debug(
+                "`git %s` under %s exited %s: %s",
+                " ".join(args),
+                occ,
+                proc.returncode,
+                proc.stderr.strip(),
+            )
+
+    def _prune_occ_worktrees(self, occ: Path) -> None:
+        """Best-effort ``git worktree prune`` to clear stale registrations."""
+        self._run_git_best_effort(occ, "worktree", "prune")
 
     def _collect_impl(
         self,
