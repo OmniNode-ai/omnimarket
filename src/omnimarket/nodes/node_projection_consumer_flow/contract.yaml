@@ -61,6 +61,16 @@ dod_evidence:
     description: "AC6 — replay determinism"
   - test: tests/test_omn16777_consumer_flow_projection_rows.py::test_two_legs_are_separate_rows
     description: "AC3 — the two legs of a bridge are separate rows, never averaged"
+  - test: tests/test_omn16874_consumer_flow_writer_dispatch.py::test_two_consecutive_messages_both_write
+    description: "OMN-16874 AC5 — two consecutive messages both write; a loop-scoped pool defect is invisible to a single-message test"
+  - test: tests/test_omn16874_consumer_flow_writer_dispatch.py::test_writer_declares_the_in_process_dispatch_capability
+    description: "OMN-16874 AC4 — dispatch branch is a declared capability, not a class-name suffix"
+  - test: tests/test_omn16874_consumer_flow_writer_dispatch.py::test_no_sibling_projection_runner_claims_in_process_dispatch
+    description: "OMN-16874 — no sibling projection runner changes dispatch branch; walked from the real contracts"
+  - test: tests/test_omn16874_consumer_flow_writer_dispatch.py::test_applied_payload_carries_the_window_facts_not_a_bare_ack
+    description: "OMN-16875 AC1 — the applied event carries the window facts, not a bare ack"
+  - test: tests/test_omn16874_consumer_flow_writer_dispatch.py::test_a_heartbeat_with_no_window_reports_zero_rows
+    description: "OMN-16874 — a windowless heartbeat reports zero rows instead of a truthy ack the runtime reads as one row"
 
 db_io:
   db_tables:

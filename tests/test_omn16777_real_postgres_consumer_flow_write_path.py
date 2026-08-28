@@ -34,6 +34,7 @@ SKIPS (never ERRORs) without a reachable Postgres, mirroring
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -355,3 +356,134 @@ async def test_upstream_lookup_returns_no_windows_rather_than_zero() -> None:
         )
         assert rows[0]["window_count"] == 0
         assert rows[0]["produced"] == 0
+
+
+# ---------------------------------------------------------------------------
+# OMN-16874 — the write path through the real handler, against real Postgres.
+#
+# Everything above drives the node's SQL directly. That proves the statements
+# and the schema agree, and it is exactly the coverage that stayed green while
+# zero rows reached the live table: the defect was not in the SQL, it was in the
+# LIFETIME of the pool the SQL ran on. `handle()` opens one event loop per
+# message with `asyncio.run`, and an asyncpg pool is bound to the loop that
+# created it, so a pool surviving into a second message belongs to a loop that
+# no longer exists. A mock adapter has no loop affinity and cannot show this; a
+# single-message test cannot show it either.
+#
+# So this drives the REAL handler, twice, over a real pool.
+# ---------------------------------------------------------------------------
+
+
+def _heartbeat_payload(*, node_id: str, sequence: int) -> dict[str, object]:
+    start = _T0 + timedelta(seconds=60 * sequence)
+    end = start + timedelta(seconds=60)
+    return {
+        "flow_window": {
+            "node_id": node_id,
+            "window_start": start.isoformat(),
+            "window_end": end.isoformat(),
+            "window_sequence": sequence,
+            "consumer_deltas": [
+                {
+                    "consumer_group": _GROUP,
+                    "topic": _TOPIC,
+                    "node_id": node_id,
+                    "window_start": start.isoformat(),
+                    "window_end": end.isoformat(),
+                    "window_sequence": sequence,
+                    "messages_in": 15750,
+                    "messages_out": 0,
+                    "messages_dlq": 0,
+                    "handler_errors": 0,
+                }
+            ],
+            "produce_deltas": [],
+        },
+        "_topic": _TOPIC,
+    }
+
+
+@pytest.mark.integration
+def test_two_consecutive_messages_both_land_rows_through_the_real_handler(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Both messages write. This is OMN-16874 AC1/AC5 against a real database.
+
+    Deliberately a SYNC test: ``handle()`` calls ``asyncio.run`` itself, which
+    refuses to run inside an already-running loop. Driving it from a sync test is
+    therefore the only way to exercise the production dispatch shape — and the
+    per-message loop it opens is the thing under test, so it must not be
+    replaced with a test-owned loop.
+
+    Before the fix, the first message would have been the only one with a live
+    pool and the second would have raised ``RuntimeError: Event loop is closed``.
+    """
+    from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
+    from omnimarket.nodes.node_projection_consumer_flow.handlers.handler_consumer_flow_runner import (
+        ConsumerFlowProjectionWriter,
+    )
+
+    database = f"omn16874_{uuid4().hex[:16]}"
+    node_id = str(uuid4())
+
+    async def _create() -> None:
+        admin = await _connect_or_skip()
+        try:
+            await admin.execute(f'CREATE DATABASE "{database}"')
+        finally:
+            await admin.close()
+        conn = await asyncpg.connect(_dsn(database))
+        try:
+            await conn.execute("CREATE SCHEMA IF NOT EXISTS omninode_internal")
+            await conn.execute(_MIGRATION.read_text(encoding="utf-8"))
+        finally:
+            await conn.close()
+
+    async def _count_rows() -> int:
+        conn = await asyncpg.connect(_dsn(database))
+        try:
+            return int(
+                await conn.fetchval(
+                    "SELECT count(*) FROM omninode_internal.consumer_flow_windows"
+                )
+            )
+        finally:
+            await conn.close()
+
+    async def _drop() -> None:
+        admin = await _connect_or_skip()
+        try:
+            await admin.execute(f'DROP DATABASE IF EXISTS "{database}" WITH (FORCE)')
+        finally:
+            await admin.close()
+
+    asyncio.run(_create())
+    try:
+        monkeypatch.setenv("OMNIDASH_ANALYTICS_DB_URL", _dsn(database))
+        writer = ConsumerFlowProjectionWriter()
+        # The real adapter, the real pool — sized like the documented one-shot
+        # pool resource, because it is opened and closed once per message.
+        writer._db = AsyncpgAdapter(dsn=_dsn(database), min_size=1, max_size=2)
+        # The snapshot delta is a separate transport seam; this gate is the DB
+        # write path, and a broker is not part of what it proves.
+        writer._snapshot_exposure = None
+
+        first = writer.handle(_heartbeat_payload(node_id=node_id, sequence=1))
+        second = writer.handle(_heartbeat_payload(node_id=node_id, sequence=2))
+
+        assert first["rows_upserted"] >= 1
+        assert second["rows_upserted"] >= 1, (
+            "the second message wrote nothing — the pool did not survive into "
+            "the loop that used it"
+        )
+        assert asyncio.run(_count_rows()) == 2
+
+        # OMN-16875: what the runtime publishes as the applied event.
+        row = second["flow_rows"][0]
+        assert row["consumer_group"] == _GROUP
+        assert row["topic"] == _TOPIC
+        assert row["messages_in"] == 15750
+        assert row["messages_out"] == 0
+        assert row["flow_state"] == EnumConsumerFlowState.STALLED.value
+    finally:
+        asyncio.run(_drop())
