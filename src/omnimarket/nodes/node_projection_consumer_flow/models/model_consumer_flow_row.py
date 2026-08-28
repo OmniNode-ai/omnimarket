@@ -9,9 +9,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_projection_consumer_flow.models.enum_consumer_flow_state import (
-    EnumConsumerFlowState,
-)
+from omnimarket.models.enum_consumer_flow_state import EnumConsumerFlowState
 from omnimarket.nodes.node_projection_consumer_flow.models.enum_upstream_evidence import (
     EnumUpstreamEvidence,
 )
