@@ -13,7 +13,8 @@ eligibility.validate_occ_merge_eligibility``, the exact function
 RED and GREEN come from the SAME handler run, at the two commits it makes:
 
   * commit A (record only) is byte-identical to what the pre-OMN-15323 producer
-    emitted — the gate returns ``pr_ticket_mismatch``.
+    emitted — the gate returns ``missing_occ_self_bind`` (``pr_ticket_mismatch``
+    pre-OMN-16353; omnibase_core >=0.46.9 sharpens the reason, same verdict).
   * commit B (contract entry + PASS receipt) — the gate returns
     ``eligible=True``.
 
@@ -212,11 +213,17 @@ class TestProducerOutputAgainstTheRealGate:
         Pins the RED arm to executed bytes rather than to a remembered
         symptom: if a future change makes the record commit self-sufficient,
         this test must be re-derived, not silently kept green.
+
+        OMN-16353 (omnibase_core >=0.46.9): everything else here verifies and
+        ``onex_change_control`` is the OCC evidence repo itself, so the
+        reason is the precise ``MISSING_OCC_SELF_BIND`` (not the generic
+        ``PR_TICKET_MISMATCH`` this test asserted pre-16353) — same verdict
+        (ineligible), more actionable remediation.
         """
         run = await _run_producer(tmp_path, monkeypatch)
         result = _eligibility(run, snapshot_index=0)
         assert result.eligible is False
-        assert result.reason is EnumOccEligibilityReason.PR_TICKET_MISMATCH
+        assert result.reason is EnumOccEligibilityReason.MISSING_OCC_SELF_BIND
         assert OCC_OBSERVATION_EVIDENCE_TICKET in result.detail
 
     async def test_green_self_bind_commit_is_eligible(
@@ -264,6 +271,12 @@ class TestProducerOutputAgainstTheRealGate:
         Withholding the record commit's sha from the PR's commit set leaves the
         receipt on disk and the entry declared, yet the gate must reject: this
         is the RED-against-exists-but-wrong arm.
+
+        OMN-16353 (omnibase_core >=0.46.9): everything else here verifies and
+        ``onex_change_control`` is the OCC evidence repo itself, so the
+        reason is the precise ``MISSING_OCC_SELF_BIND`` (not the generic
+        ``PR_TICKET_MISMATCH`` this test asserted pre-16353) — same verdict
+        (ineligible), more actionable remediation.
         """
         run = await _run_producer(tmp_path, monkeypatch)
         tree = run.snapshots[1]
@@ -283,7 +296,7 @@ class TestProducerOutputAgainstTheRealGate:
         )
         result = validate_occ_merge_eligibility(snapshot)
         assert result.eligible is False
-        assert result.reason is EnumOccEligibilityReason.PR_TICKET_MISMATCH
+        assert result.reason is EnumOccEligibilityReason.MISSING_OCC_SELF_BIND
 
 
 @pytest.mark.unit
