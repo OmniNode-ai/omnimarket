@@ -16,7 +16,7 @@ contract_name: "node_delegation_routing_reducer"
 node_name: "node_delegation_routing_reducer"
 contract_version:
   major: 0
-  minor: 3
+  minor: 4
   patch: 0
 node_version:
   major: 0
@@ -44,6 +44,48 @@ event_bus:
   publish_topics:
     - "onex.evt.omnibase-infra.routing-decision.v1"
     - "onex.cmd.omnibase-infra.invocation.v1"
+    # OMN-16812: the address the consume boundary answers at when
+    # HandlerRoutingIntent RAISES. A raise produces no return value, so the
+    # dispatch-result applier has nothing to route and this node publishes
+    # nothing here itself -- omnibase_infra's auto-wired boundary does, at the
+    # single moment it is about to commit an offset over the failure.
+    - "onex.evt.omnibase-infra.routing-decision-failed.v1"
+
+# OMN-16812 -- WHY THIS DECLARATION EXISTS AND WHY IT IS HERE.
+#
+# omnibase_infra#2962 terminalizes a handler failure the auto-wired consume
+# boundary is about to ACK, but it refuses to guess an address: it emits only
+# onto the failing contract's OWN declared failure terminal, and only when
+# `_declared_failure_terminal_topics` resolves EXACTLY ONE. This contract
+# declared no terminal events at all, so that gate resolved zero and the fix
+# was inert for the very node that produced the incident: on the .201 dev lane
+# (correlation 7a300827-1000-...-000000000012, twice, on two revisions) the
+# record was DLQ'd in milliseconds with
+# `ProtocolConfigurationError: [ONEX_CORE_041_INVALID_CONFIGURATION]` and the
+# caller still waited out 120.0 s to be told `dispatch_timeout` /
+# `retryable: true` -- a failure class the runtime already had in hand,
+# discarded, and then replaced with a retry instruction that is false.
+#
+# Declared under `runtime_dispatch` (not as a top-level `terminal_events`)
+# because these are the results the LOCAL INGRESS awaits:
+# `runtime_local_ingress._extract_terminal_events` builds the Pattern B
+# broker's subscription set from exactly this site, so declaring here is what
+# gives the terminal an addressee rather than making it a second silent drop.
+# Both sites feed the one reader (`extract_terminal_event_topics`), so the
+# broker's view and the boundary's view cannot drift apart.
+#
+# The failure terminal is this REDUCER's own, not the delegation FSM's
+# `delegation-failed.v1`. Publishing the FSM's terminal from here would put a
+# non-`ModelDelegationResult` payload in front of node_projection_delegation /
+# node_projection_savings / node_projection_live_events, and would race the
+# orchestrator -- which still owns that correlation -- into emitting a SECOND
+# terminal for it. Propagating this terminal through the delegation FSM to
+# `delegation-failed.v1` is the remaining half of OMN-16812 AC1 and is
+# deliberately not smuggled in here.
+runtime_dispatch:
+  terminal_events:
+    success: "onex.evt.omnibase-infra.routing-decision.v1"
+    failure: "onex.evt.omnibase-infra.routing-decision-failed.v1"
 # Maps the handler's returned model to its publish topic so the runtime
 # dispatch-result applier routes ModelRoutingDecision to routing-decision.v1
 # (and not the legacy invocation.v1). event_type is the Model-prefix-stripped
