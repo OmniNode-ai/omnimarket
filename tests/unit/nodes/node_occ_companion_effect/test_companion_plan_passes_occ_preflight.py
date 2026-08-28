@@ -123,9 +123,16 @@ def test_red_control_without_self_bind_entry_occ_pr_audience_fails(
 ) -> None:
     """RED control (feedback_prove_red_against_exists_but_wrong): strip the
     self-bind ENTRY back out of the contract (and drop the self-bind receipt) —
-    the EXISTS-but-WRONG pre-14622 shape — and the OCC-PR audience must go RED
-    with pr_ticket_mismatch. Proves the self-bind entry is what makes it pass,
-    not some unrelated artifact.
+    the EXISTS-but-WRONG pre-14622 shape — and the OCC-PR audience must go RED.
+    Proves the self-bind entry is what makes it pass, not some unrelated
+    artifact.
+
+    OMN-16353 (omnibase_core >=0.46.9): everything else here verifies
+    (contract resolves, other receipts PASS and hash-bound) and the repo is
+    the OCC evidence repo itself, so the reason is the precise
+    ``missing_occ_self_bind`` (not the generic ``pr_ticket_mismatch`` this
+    test asserted pre-16353) — same verdict (ineligible), more actionable
+    remediation.
     """
     plan = _pass2_plan()
     _materialize(plan, tmp_path)
@@ -152,4 +159,4 @@ def test_red_control_without_self_bind_entry_occ_pr_audience_fails(
 
     result = validate_occ_merge_eligibility(_occ_pr_audience(tmp_path))
     assert not result.eligible
-    assert result.reason.value == "pr_ticket_mismatch", result.detail
+    assert result.reason.value == "missing_occ_self_bind", result.detail

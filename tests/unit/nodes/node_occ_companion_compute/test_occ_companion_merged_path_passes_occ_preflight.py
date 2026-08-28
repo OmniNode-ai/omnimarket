@@ -49,6 +49,8 @@ from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_requ
     ModelOccContractState,
 )
 from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp import (
+    ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+    ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
     compute_contract_sha256,
     render_compute_companion_contract,
     render_compute_receipt,
@@ -247,26 +249,41 @@ def test_merged_supersede_file_is_a_valid_receipt_supersession(tmp_path: Path) -
 
 @pytest.mark.unit
 def test_red_control_plain_receipt_supersede_fails_schema(tmp_path: Path) -> None:
-    """RED control for defect (b): revert the supersede to the pre-14623 plain
+    """RED control for defect (b): revert a supersede to the pre-14623 plain
     ModelDodReceipt shape and the product-PR audience must go RED — the
-    supersession record is schema-rejected -> nonpass_receipt."""
+    supersession record is schema-rejected -> nonpass_receipt.
+
+    OMN-15664 AC5 (omnibase_core >=0.46.9): the merged contract's admissibility
+    item declares ``evidence_artifact: supersedes_dod_evidence:<FIRST_ENTRY>``
+    with its own non-empty checks, so ``_FIRST_ENTRY``'s OWN receipt is now
+    honestly contract-superseded and excused from the walk entirely — a
+    corrupt ``_FIRST_ENTRY`` supersede file is never reached, let alone
+    schema-checked. That is intended AC5 behavior, not a regression; it is
+    covered by ``TestSelfBindEligibility``'s honest-supersession tests
+    elsewhere. To keep testing the ORIGINAL invariant this RED control exists
+    for -- a malformed supersede file must be schema-rejected -- target the
+    admissibility item's OWN supersede instead: it supersedes something, but
+    nothing supersedes IT, so its receipt requirement is never excused and the
+    corrupt file is still reached.
+    """
     plan = _merged_pass2_plan()
     _materialize(plan, tmp_path)
 
-    # Overwrite each supersede with the buggy plain-receipt render.
+    # Overwrite the admissibility item's supersede with the buggy plain-receipt
+    # render (not _FIRST_ENTRY's -- see docstring).
     parsed = yaml.safe_load(_merged_contract())
     plain = render_compute_receipt(
         ticket_id=_TICKET,
-        evidence_id=_FIRST_ENTRY,
-        check_value=f"gh pr view {_PRODUCT_PR} --repo {_REPO} --json number,state",
+        evidence_id=ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
+        check_value=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
         contract_sha256=compute_contract_sha256(_merged_contract()),
         contract_entry_sha256=compute_contract_entry_sha256(parsed, _FIRST_ENTRY),
         run_timestamp="2026-07-16T12:00:00Z",
         commit_sha=_PRODUCT_HEAD,
         runner="node_occ_companion_compute",
         verifier="occ-evidence-source-autobind",
-        probe_command=f"gh pr view {_PRODUCT_PR}",
-        probe_stdout=f'{{"number":{_PRODUCT_PR},"state":"OPEN"}}',
+        probe_command=ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
+        probe_stdout="1 passed",
         actual_output="PASS: plain-receipt supersede (buggy pre-14623 shape)",
         exit_code=0,
         pr_number=_PRODUCT_PR,
@@ -277,7 +294,7 @@ def test_red_control_plain_receipt_supersede_fails_schema(tmp_path: Path) -> Non
         / "drift"
         / "dod_receipts"
         / _TICKET
-        / _FIRST_ENTRY
+        / ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
         / f"command.supersede.{_PRODUCT_PR}.yaml"
     )
     assert supersede_path.is_file(), "fixture must have produced a supersede file"
@@ -294,8 +311,15 @@ def test_red_control_without_self_bind_entry_occ_pr_audience_fails(
 ) -> None:
     """RED control for defect (a): strip the self-bind ENTRY back out of the
     (re-emitted) contract — the pre-14623 frozen-contract shape — and the OCC-PR
-    audience must go RED with pr_ticket_mismatch, proving the appended self-bind
-    entry is what makes the OCC PR bind."""
+    audience must go RED, proving the appended self-bind entry is what makes
+    the OCC PR bind.
+
+    OMN-16353 (omnibase_core >=0.46.9): everything else here verifies and the
+    repo is the OCC evidence repo itself, so the reason is the precise
+    ``missing_occ_self_bind`` (not the generic ``pr_ticket_mismatch`` this
+    test asserted pre-16353) — same verdict (ineligible), more actionable
+    remediation.
+    """
     plan = _merged_pass2_plan()
     _materialize(plan, tmp_path)
 
@@ -315,7 +339,7 @@ def test_red_control_without_self_bind_entry_occ_pr_audience_fails(
 
     result = validate_occ_merge_eligibility(_occ_pr_audience(tmp_path))
     assert not result.eligible
-    assert result.reason.value == "pr_ticket_mismatch", result.detail
+    assert result.reason.value == "missing_occ_self_bind", result.detail
 
 
 # ---------------------------------------------------------------------------
