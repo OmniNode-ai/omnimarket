@@ -918,12 +918,17 @@ class TestOmn15800ExposureParity:
     and live_events.v1 vanished with only a logger.error line as evidence.
     """
 
-    def test_live_topic_count_is_58(self) -> None:
-        # 58 as of OMN-16316: +1 for node_projection_tenant_credentials's
-        # onex.snapshot.projection.tenant-credentials.v1 exposure. Previously
-        # 57 as of the evidence-pipeline exposure fix documented above.
+    def test_live_topic_count_is_59(self) -> None:
+        # 59 as of OMN-16777: +1 for node_projection_consumer_flow's
+        # onex.snapshot.projection.consumer-flow.v1 exposure. 58 as of
+        # OMN-16316 (+1 for tenant-credentials.v1); 57 as of the
+        # evidence-pipeline exposure fix documented above.
+        #
+        # The count is asserted rather than derived on purpose: the defect this
+        # class guards silently EXCLUDED exposures, so a computed expectation
+        # would have moved with the bug and proven nothing.
         topic_map = build_projection_topic_map()
-        assert len(topic_map) == 58
+        assert len(topic_map) == 59
 
     def test_all_four_evidence_pipeline_exposures_present(self) -> None:
         topic_map = build_projection_topic_map()

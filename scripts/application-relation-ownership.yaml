@@ -116,8 +116,75 @@ db_io:
       migration: src/omnimarket/nodes/node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql
       access: read_write
       role: tenant_routing_overlay
+    # OMN-16777: the per-(consumer_group, topic) throughput read model and the
+    # per-topic production tally that separates STARVED from IDLE. Platform
+    # operational facts about consumer groups and topics — no customer-owned
+    # rows, hence OMNINODE_INTERNAL rather than TENANT.
+    - name: consumer_flow_windows
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql
+      access: read_write
+      role: consumer_flow_projection_table
+    - name: topic_produce_windows
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql
+      access: read_write
+      role: topic_produce_projection_table
 
 relation_evidence:
+  - name: consumer_flow_windows
+    kind: table
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql
+    readers: [src/omnimarket/nodes/node_projection_consumer_flow/handlers/handler_consumer_flow_runner.py]
+    writers: [src/omnimarket/nodes/node_projection_consumer_flow/handlers/handler_consumer_flow_runner.py]
+    authoritative_sources: [src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql]
+    dependent_objects: []
+    keys:
+      - PRIMARY KEY (consumer_group, topic, window_start)
+    foreign_keys: []
+    indexes:
+      - idx_consumer_flow_windows_state_time
+      - idx_consumer_flow_windows_group_time
+    partitioning: none
+    grants: []
+    dsn_consumers: [OMNIDASH_ANALYTICS_DB_URL]
+    classification_evidence: >-
+      per-(consumer_group, topic) throughput windows for the platform's own
+      consumers, with the derived FLOWING/STALLED/STARVED/IDLE/UNKNOWN verdict.
+      Rows name Kafka consumer groups and topics — platform operational facts,
+      no customer-owned data, so the counter columns are deliberately nullable
+      to keep an unobserved window distinguishable from an idle one (OMN-16777).
+  - name: topic_produce_windows
+    kind: table
+    database_ref: application
+    schema: omninode_internal
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    producer: src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql
+    readers: [src/omnimarket/nodes/node_projection_consumer_flow/handlers/handler_consumer_flow_runner.py]
+    writers: [src/omnimarket/nodes/node_projection_consumer_flow/handlers/handler_consumer_flow_runner.py]
+    authoritative_sources: [src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql]
+    dependent_objects: []
+    keys:
+      - PRIMARY KEY (topic, window_start)
+    foreign_keys: []
+    indexes:
+      - idx_topic_produce_windows_topic_time
+    partitioning: none
+    grants: []
+    dsn_consumers: [OMNIDASH_ANALYTICS_DB_URL]
+    classification_evidence: >-
+      count of envelopes this platform published to each topic per window, taken
+      from the runtime's own publish seam rather than a broker query. It is the
+      upstream-production evidence that lets a zero-in consumer be called
+      STARVED instead of IDLE, and its absence for a topic is itself meaningful
+      (OMN-16777).
   - name: omnimarket_schema_migrations
     kind: table
     domain: OMNINODE_INTERNAL

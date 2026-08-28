@@ -156,8 +156,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # credential-ref projection table) = 58, +1 for this change's new
     # node-owned node_delegation_routing_reducer
     # /0001_create_delegation_routing_tenant_overlay.sql CREATE TABLE (the
-    # v1(a) per-tenant delegation routing overlay table) = 59.
-    assert census["source_created_tables"] == 59
+    # v1(a) per-tenant delegation routing overlay table) = 59, +2 for
+    # OMN-16777's node-owned node_projection_consumer_flow
+    # /0000_create_consumer_flow_windows.sql, which creates BOTH
+    # consumer_flow_windows (the per-(consumer_group, topic) throughput read
+    # model) and topic_produce_windows (the upstream-production evidence that
+    # separates STARVED from IDLE without polling the broker) = 61.
+    assert census["source_created_tables"] == 61
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -174,7 +179,10 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # = 63. OMN-15533 keeps projection_delegation_savings and
     # projection_delegation_savings_series in the relation inventory as views,
     # not db_io.db_tables entries, so they do not raise this table count.
-    assert census["source_declared_tables"] == 63
+    # +2 for OMN-16777's node_projection_consumer_flow db_io declarations
+    # (consumer_flow_windows + topic_produce_windows), both required by the
+    # shadow gate since its migration creates both = 65.
+    assert census["source_declared_tables"] == 65
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -183,7 +191,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # catalog -- the census was observed 2026-07-29 and neither table had
     # been created then. The bound is a LOWER bound on unreconciled live
     # tables and stays honest either way; parity_status is still "blocked".
-    assert census["minimum_unreconciled_live_base_tables"] == 27
+    # 25 as of OMN-16777: consumer_flow_windows and topic_produce_windows are
+    # two more source-created tables, so the same arithmetic drops the bound by
+    # two. Same caveat -- neither exists in the 2026-07-29 live catalog, and
+    # this remains a lower bound, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 25
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

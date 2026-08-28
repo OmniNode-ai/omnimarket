@@ -1,0 +1,157 @@
+---
+name: projection_consumer_flow
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_projection_consumer_flow.models.model_consumer_flow_projection_request.ModelConsumerFlowProjectionRequest
+description: >
+  OMN-16777 (Phase 1 of epic OMN-16776). Materializes the per-(consumer_group,
+  topic) throughput window that the runtime heartbeat
+  (onex.evt.platform.node-heartbeat.v1) now carries, and DERIVES the flow
+  verdict FLOWING / STALLED / STARVED / IDLE / UNKNOWN from the raw counters.
+  The verdict is computed here and never stamped on the producing event
+  (envelope purity): a node that grades its own health can be wrong about
+  itself in exactly the way that hides an outage.
+
+  This closes the measurement gap behind OMN-16755 / OMN-16754 / OMN-16690 /
+  OMN-16767: every liveness signal the platform had measured connectedness
+  (group membership, process liveness, container health, LAG) and none measured
+  throughput, so a consumer that was Stable at LAG 0 with 15,750 messages in
+  and 0 out reported green.
+
+handler:
+  module: omnimarket.nodes.node_projection_consumer_flow.handlers.handler_projection_consumer_flow
+  class: HandlerProjectionConsumerFlow
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: projection_consumer_flow
+      handler:
+        name: HandlerProjectionConsumerFlow
+        module: omnimarket.nodes.node_projection_consumer_flow.handlers.handler_projection_consumer_flow
+      handler_module: omnimarket.nodes.node_projection_consumer_flow.handlers.handler_projection_consumer_flow
+    - operation: consumer_flow_projection_runner
+      handler:
+        name: ConsumerFlowProjectionWriter
+        module: omnimarket.nodes.node_projection_consumer_flow.handlers.handler_consumer_flow_runner
+      handler_module: omnimarket.nodes.node_projection_consumer_flow.handlers.handler_consumer_flow_runner
+
+terminal_event: onex.evt.omnimarket.projection-consumer-flow-applied.v1
+
+golden_path:
+  - "Runtime dispatch boundary counts messages_in / messages_out / messages_dlq / handler_errors per (consumer_group, topic)"
+  - "The existing heartbeat tick drains the window onto onex.evt.platform.node-heartbeat.v1 as flow_window"
+  - "This reducer upserts topic_produce_windows (the upstream-production evidence) first"
+  - "A window_sequence gap for a node materializes UNKNOWN rows with NULL counters — never zero"
+  - "Each consumer delta upserts consumer_flow_windows with the derived flow_state"
+  - "Each written row is published as a snapshot delta to onex.snapshot.projection.consumer-flow.v1" # onex-topic-allow: projection snapshot topics use the onex.snapshot.* prefix by convention, not onex.{cmd|evt|dlq}.*
+  - "Emit projection-applied event to onex.evt.omnimarket.projection-consumer-flow-applied.v1"
+
+dod_evidence:
+  - test: tests/test_omn16777_consumer_flow_state_derivation.py::test_consumed_everything_produced_nothing_is_stalled
+    description: "AC2 — 15,750 in / 0 out surfaces as STALLED, not healthy-idle"
+  - test: tests/test_omn16777_consumer_flow_state_derivation.py::test_quiet_consumer_on_a_provably_silent_topic_is_idle
+    description: "AC4 — a genuinely idle consumer reports IDLE, not STALLED"
+  - test: tests/test_omn16777_consumer_flow_state_derivation.py::test_zero_in_while_upstream_produced_is_starved
+    description: "STARVED requires upstream-production evidence"
+  - test: tests/test_omn16777_consumer_flow_projection_rows.py::test_missed_window_derives_unknown_with_none_counters
+    description: "AC5 — a dropped heartbeat window is UNKNOWN with NULL counters, never 0"
+  - test: tests/test_omn16777_consumer_flow_projection_rows.py::test_replaying_the_same_request_derives_identical_rows
+    description: "AC6 — replay determinism"
+  - test: tests/test_omn16777_consumer_flow_projection_rows.py::test_two_legs_are_separate_rows
+    description: "AC3 — the two legs of a bridge are separate rows, never averaged"
+
+db_io:
+  db_tables:
+    # OMN-13083 / OMN-16690: without this block the consumer advances offsets
+    # while handle() is never invoked. And `access: write` alone is refused
+    # fail-closed at the runtime read seam — this handler QUERIES both tables
+    # (upstream-production lookup, sequence-gap detection, stale-write guard)
+    # before writing, so the declaration must cover what it actually does.
+    - name: consumer_flow_windows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_consumer_flow_windows.sql"
+      access: read_write
+      role: consumer_flow
+    - name: topic_produce_windows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_consumer_flow_windows.sql"
+      access: read_write
+      role: topic_produce
+
+  # Idempotency, declared rather than assumed. window_start is producer-assigned
+  # event time; ingest_sequence is the producer's monotonic per-process window
+  # counter and is the ordering tie-breaker. NEVER an ingest/created_at clock —
+  # a redelivered older window would otherwise overwrite a newer one.
+  dedupe_key:
+    - consumer_group
+    - topic
+    - window_start
+  ordering_key: ingest_sequence
+
+event_bus:
+  subscribe_topics:
+    - onex.evt.platform.node-heartbeat.v1
+  publish_topics:
+    - onex.evt.omnimarket.projection-consumer-flow-applied.v1
+  # A malformed or unparseable flow window is routed here, not logged and
+  # dropped. This node exists to make silent loss visible; it must not create a
+  # new silent-loss site of its own.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-consumer-flow-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-consumer-flow-applied.v1
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.consumer-flow.v1" # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "consumer_flow_windows"
+  # The exposure loader's ALLOWED_SCHEMAS is {omnidash_analytics, public}, and
+  # `public` is prohibited for application relations by OMN-15361 — so this
+  # field records the DATABASE the read model lives in. The physical relation
+  # is omninode_internal.consumer_flow_windows inside that database, declared
+  # exactly that way in db_io above, in the migration, and in the writer's SQL.
+  # On a bus_backed exposure the serving path reads bus_backed + key_columns
+  # and never this pair (OMN-15800), so nothing resolves against it; it is a
+  # record, and it is an accurate one at the granularity this field allows.
+  schema: "omnidash_analytics"
+  columns:
+    - "consumer_group"
+    - "topic"
+    - "window_start"
+    - "window_end"
+    - "node_id"
+    - "ingest_sequence"
+    - "messages_in"
+    - "messages_out"
+    - "messages_dlq"
+    - "handler_errors"
+    - "upstream_produced"
+    - "upstream_evidence"
+    - "flow_state"
+    - "evaluated_at"
+  order_by: "window_end DESC"
+  freshness_column: "window_end"
+  limit: 500
+  # Declared bus_backed from day one WITH its writer in the same change —
+  # ConsumerFlowProjectionWriter publishes a snapshot delta for every row it
+  # writes. The epic's ordering constraint is explicit that bus_backed must not
+  # be flipped on a topic whose writer is not deployed and producing: flipping
+  # ahead of the writer converts an honest error into a confident zero
+  # (OMN-15864 enforces this mechanically).
+  #
+  # No tenant_column: these rows are platform-internal operational facts about
+  # consumer groups and topics, carrying no tenant-scoped data, so
+  # publish_snapshot_delta's default tenant_id leaks nothing.
+  bus_backed: true
+  key_columns:
+    - "consumer_group"
+    - "topic"
+    - "window_start"
+
+metadata:
+  transport_type: kafka
