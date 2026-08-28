@@ -36,13 +36,29 @@ arm selection as a function of the installed patch release rather than of the
 contract. This test pins the outcome, so a future resolution below 0.38.10 fails
 here with a named cause instead of resurfacing as a dead chain.
 
-Deliberately NOT asserted here: that the chain terminalizes. It does not yet —
-the constructed arm is the PROJECTION arm, which hands the typed def-B handler a
-raw dict (OMN-16767). That fix is omnibase_infra#2937, merged 2026-08-27 but cut
-AFTER v0.38.10, so it is not in any release this repo can pin. The chain-gate row
-in ``test_event_chain_gate.py`` stays ``xfail(strict=True)`` on OMN-16767 until a
-release carries it, at which point that row XPASSes and forces the marker's
-removal. This suite covers the strictly earlier question: can the arm be built.
+What changed at the 0.38.11 pin (OMN-16815) — read before editing an assertion.
+
+This suite originally asserted that wiring SELECTS the projection arm, because
+under 0.38.10 it did: ``db_io.db_tables`` alone chose the arm, which is precisely
+the OMN-16767 defect (a typed def-B handler handed a raw ``input_data`` dict, and
+the delegation chain died on the first attribute access). omnibase_infra#2937,
+first released in **v0.38.11**, clears ``db_tables`` for a handler that declares a
+concrete BaseModel input, so the correct arm for this contract is now the TYPED
+DEF-B arm. Asserting the projection arm here after that fix would be asserting the
+defect, so the selection assertion is INVERTED, not deleted — arm IDENTITY is
+still pinned, so a silent regression back to the projection arm (the OMN-16767
+signature) fails here by name.
+
+That inversion means wiring no longer reaches ``_resolve_projection_database_target``
+for this contract, so it can no longer carry the OMN-16794 constructibility claim.
+That claim did not move to a comment: it is asserted DIRECTLY against the resolver
+in ``test_projection_binding_resolves_under_every_topology_profile`` below, which
+is the exact call that raised under 0.38.9, plus the resolver-level pin in
+``test_overlay_table_resolves_to_its_physical_grant_schema``. Both survive a
+future arm-selection change, because neither goes through wiring at all.
+
+Terminalization is asserted by the chain-gate row in ``test_event_chain_gate.py``,
+which stopped being ``xfail(strict=True)`` at this same pin.
 """
 
 from __future__ import annotations
@@ -56,7 +72,10 @@ from omnibase_core.services.service_local_handler_ownership_query import (
 )
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
-from omnibase_infra.runtime.auto_wiring.handler_wiring import _prepare_handler_wiring
+from omnibase_infra.runtime.auto_wiring.handler_wiring import (
+    _prepare_handler_wiring,
+    _resolve_projection_database_target,
+)
 from omnibase_infra.runtime.auto_wiring.models.model_discovered_contract import (
     ModelDiscoveredContract,
 )
@@ -76,12 +95,14 @@ _CONTRACT = _SRC_ROOT / "node_delegation_routing_reducer" / "contract.yaml"
 # whole subject of this suite.
 _OVERLAY_TABLE = "delegation_routing_tenant_overlay"
 
-# The projection arm's callback is a closure minted by
-# _make_projection_dispatch_callback, so its __qualname__ is how the SELECTED
+# Both arms mint their callback as a closure, so __qualname__ is how the SELECTED
 # ARM is identified. Asserting only that some dispatcher_id exists would be
-# satisfied by the typed def-B fallback arm too — which is exactly the
-# wrong-arm outcome OMN-16767 shipped and this suite exists to catch.
+# satisfied by EITHER arm, and which one is the whole question: the projection arm
+# is the wrong-arm outcome OMN-16767 shipped, and the typed def-B arm is what
+# omnibase_infra#2937 (v0.38.11) restored for a handler with a concrete BaseModel
+# input.
 _PROJECTION_CALLBACK_QUALNAME = "_make_projection_dispatch_callback.<locals>._callback"
+_TYPED_DEF_B_CALLBACK_QUALNAME = "_make_dispatch_callback.<locals>._callback"
 
 # Every topology profile checked into omnibase_infra. The original report was
 # "unconstructible under ALL SEVEN", so all seven are asserted, not a sample.
@@ -163,11 +184,46 @@ _DUMMY_DSN = "postgresql://arm-probe:arm-probe@127.0.0.1:5432/arm_probe"
 
 
 @pytest.mark.parametrize("profile_name", _PROFILES)
-def test_projection_arm_constructs_under_every_topology_profile(
+def test_projection_binding_resolves_under_every_topology_profile(
+    profile_name: str,
+) -> None:
+    """The OMN-16794 claim, asserted against the resolver that actually raised.
+
+    ``_resolve_projection_database_target`` is the exact call that produced::
+
+        Projection binding 'tenant_projection' principal 'tenant_projection_writer'
+        lacks declared read privileges: SELECT on table
+        tenant.delegation_routing_tenant_overlay
+
+    under all seven profiles on omnibase-infra 0.38.9. Since 0.38.11 wiring no
+    longer routes this contract through that resolver (omnibase_infra#2937 clears
+    ``db_tables`` for a typed def-B handler), the constructibility claim is made
+    here directly rather than as a side effect of wiring — otherwise the OMN-16794
+    coverage would have silently evaporated with the arm change.
+    """
+    contract = _load_contract()
+    assert contract.db_io is not None
+
+    # No assertion on the return value: the claim under test is that resolution
+    # SUCCEEDS. Under 0.38.9 this raised for every profile; a privilege or
+    # physical-schema regression makes it raise again, by name, here.
+    _resolve_projection_database_target(
+        tuple(contract.db_io.db_tables),
+        load_topology_profile(profile_name),
+    )
+
+
+@pytest.mark.parametrize("profile_name", _PROFILES)
+def test_wiring_selects_the_typed_def_b_arm_under_every_topology_profile(
     profile_name: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """All seven profiles must build the arm. Under 0.38.9 all seven raised."""
+    """All seven profiles must wire, and all seven must pick the TYPED arm.
+
+    Under 0.38.9 all seven raised (unconstructible). Under 0.38.10 all seven
+    built the PROJECTION arm, which is the OMN-16767 defect. Under 0.38.11 all
+    seven must build the typed def-B arm.
+    """
     contract = _load_contract()
 
     # Pin the DSN rather than inheriting it, so this asserts the same thing on a
@@ -192,14 +248,19 @@ def test_projection_arm_constructs_under_every_topology_profile(
         f"declares db_io"
     )
 
-    # THE ARM, not just "a dispatcher". A contract whose db_tables came back
-    # empty (stale core, unpopulated db_io) still yields a perfectly valid
-    # dispatcher_id — it is just wired to the typed def-B arm instead. That
-    # silent fallback IS the OMN-16796 defect class, so identity is asserted.
+    # THE ARM, not just "a dispatcher". Both arms yield a valid dispatcher_id,
+    # so which one was selected is the entire assertion. The projection arm is
+    # called out by name because that specific value is the OMN-16767 outage
+    # signature, not merely "some other arm".
     selected = getattr(prepared.dispatcher, "__qualname__", "")
-    assert selected == _PROJECTION_CALLBACK_QUALNAME, (
-        f"[{profile_name}] expected the PROJECTION arm "
-        f"({_PROJECTION_CALLBACK_QUALNAME}), got {selected!r} — the contract "
-        f"declares db_io, so a different arm means db_tables resolved empty or "
-        f"the binding fell through"
+    assert selected != _PROJECTION_CALLBACK_QUALNAME, (
+        f"[{profile_name}] wiring selected the PROJECTION arm for a handler whose "
+        f"input is a concrete BaseModel — this is the OMN-16767 regression: the "
+        f"handler receives a raw input_data dict and dies on its first attribute "
+        f"access. The installed omnibase-infra has regressed below v0.38.11 "
+        f"(omnibase_infra#2937)."
+    )
+    assert selected == _TYPED_DEF_B_CALLBACK_QUALNAME, (
+        f"[{profile_name}] expected the TYPED def-B arm "
+        f"({_TYPED_DEF_B_CALLBACK_QUALNAME}), got {selected!r}"
     )

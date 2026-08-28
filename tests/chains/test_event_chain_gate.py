@@ -94,6 +94,60 @@ QUARANTINE_TOPIC = "onex.dlq.omnibase-infra.quarantine.v1"
 
 _SRC_ROOT = Path(__file__).resolve().parents[2] / "src" / "omnimarket" / "nodes"
 
+# The tier `summarization` routes to first: `local-reasoner`
+# (src/omnimarket/configs/routing_tiers.yaml, model Qwen3.6-27B-MTP, OMN-15630).
+# Its repo-default `endpoint_url` is null — a site-specific local address the
+# overlay is required to supply (OMN-12815/OMN-15807) — so with no overlay the
+# routing authority reports NO configured endpoint for this task type and the
+# reducer raises before it can emit a decision.
+_LOCAL_TIER_BACKEND_ID = "local-reasoner"
+
+# The discard port. Syntactically a COMPLETE chat-completions URL (a bare base is
+# rejected, OMN-12815) and deliberately unreachable: the node under gate is a
+# routing REDUCER — it decides which backend to use and emits ModelRoutingDecision.
+# It never opens a connection, so a live address here would buy nothing and would
+# make this gate depend on a running server.
+_UNREACHABLE_ENDPOINT_URL = "http://127.0.0.1:9/v1/chat/completions"
+
+
+@pytest.fixture(autouse=True)
+def _hermetic_routing_config(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Make tier routability a fact about the repo, not about the machine.
+
+    This gate ran GREEN on a developer laptop and RED on the CI runner at the
+    omnibase-infra 0.38.11 pin (OMN-16815), with::
+
+        ProtocolConfigurationError: [ONEX_CORE_041_INVALID_CONFIGURATION]
+        No tier has a configured endpoint for task_type='summarization'.
+
+    Nothing about the chain differed. The laptop's shell carried live cloud
+    credentials (``GEMINI_API_KEY``, ``LLM_GLM_API_KEY``, ``OPEN_ROUTER_API_KEY``),
+    which made the cheap_cloud rung routable and let routing succeed there; the
+    runner has none, and the local rung was unroutable on both because its
+    ``endpoint_url`` is null in the repo default. So the gate's verdict was a
+    function of the ambient environment — the OMN-16796 defect class, in the
+    suite written to catch chains dying silently.
+
+    Binding a minimal overlay makes the LOCAL rung routable everywhere, with no
+    credential and no server. ``tests/conftest.py::_ensure_bifrost_contract_path``
+    unconditionally clears ``BIFROST_OVERLAY_PATH``; this module-level autouse
+    fixture runs after it and therefore wins, which is the documented override
+    path.
+    """
+    overlay = tmp_path / "bifrost_overlay_chain_gate.yaml"
+    overlay.write_text(
+        "config_version: '2.4.0'\n"
+        "schema_version: 'bifrost_delegation.v1'\n"
+        "backends:\n"
+        f"  - backend_id: {_LOCAL_TIER_BACKEND_ID}\n"
+        f"    endpoint_url: '{_UNREACHABLE_ENDPOINT_URL}'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("BIFROST_OVERLAY_PATH", str(overlay))
+
 
 @dataclass(frozen=True)
 class ChainCase:
@@ -168,13 +222,17 @@ CHAIN_CASES: tuple[ChainCase, ...] = (
             "excluded_backend_refs": [],
         },
         terminal_type_name="ModelRoutingDecision",
-        # Dead today. This node's contract declares db_io.db_tables (the
-        # OMN-15631 tenant-overlay table) while its handler is canonical def-B
-        # (`handle(self, intent: ModelRoutingIntent) -> ModelRoutingDecision`),
-        # so the installed omnibase-infra wires it to the PROJECTION arm and
-        # hands it a raw dict. Fix in flight: omnibase_infra#2937. This row
-        # turns RED the moment the pin picks that up.
-        broken_by="OMN-16767",
+        # LIVE as of the omnibase-infra 0.38.11 pin (OMN-16815). This row was
+        # xfail(strict=True) on OMN-16767: the node's contract declares
+        # db_io.db_tables (the OMN-15631 tenant-overlay table) while its handler
+        # is canonical def-B (`handle(self, intent: ModelRoutingIntent) ->
+        # ModelRoutingDecision`), and pre-0.38.11 wiring selected the PROJECTION
+        # arm on db_tables alone, handing the typed handler a raw dict. The fix
+        # (omnibase_infra#2937, plus #2943/#2949/#2951) first shipped in
+        # v0.38.11; the row XPASSed the moment the lock resolved it, which is
+        # exactly the signal the marker was written to produce, so the marker is
+        # gone. It is now an ordinary passing row: if this chain dies again, this
+        # goes RED with no marker to hide behind.
     ),
 )
 
