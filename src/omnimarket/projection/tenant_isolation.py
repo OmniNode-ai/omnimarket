@@ -277,7 +277,7 @@ def resolve_write_tenant(tenant_value: object, *, table: str) -> str:
 
 
 def house_tenant_write_stamp(*, table: str) -> dict[str, str]:
-    """Return the ``tenant_id`` key a projection write should carry, or ``{}``.
+    """Return the ``tenant_id`` key a projection write MUST carry. Never ``{}``.
 
     The one canonical implementation of the writer half of the house-tenant
     ruling (2026-08-02), so the eight relations classified TENANT by OMN-15655
@@ -285,23 +285,47 @@ def house_tenant_write_stamp(*, table: str) -> dict[str, str]:
 
     Resolution order, and why it is this order:
 
-    1. ``Settings.onex_tenant_id`` when a lane configures one -- stamped
-       explicitly, so the stored row carries the real tenant and the RLS GUC
+    1. ``Settings.onex_tenant_id`` when a lane configures one -- the real
+       tenant, stamped explicitly, so the stored row carries it and the RLS GUC
        (which must equal what the database actually stored, per OMN-15301) has
        something true to be set to.
-    2. Otherwise the key is OMITTED and Postgres' ``DEFAULT 'omninode'``
-       supplies the HOUSE TENANT. Omitted, never ``None``: writing the key as
-       NULL would violate ``NOT NULL`` and defeat the default -- the exact
-       OMN-14058 writer-erasure shape.
+    2. Otherwise the HOUSE TENANT is stamped explicitly, in whichever
+       representation this table's own column expects
+       (:func:`_house_tenant_interim_default`).
 
-    Step 2 is the "house-tenant default ONLY until customer ingress exists"
-    half of the ruling. The "then missing attribution fails closed" half is
-    :func:`require_tenant_id`, which this calls on the omit path: it is a no-op
-    today and raises :class:`TenantRequiredError` the moment
+    OMN-16831 (operator ruling 2026-08-28, option D) changed step 2, and this
+    is the whole point of the change. It previously OMITTED the key so that
+    Postgres' ``DEFAULT 'omninode'`` supplied the value. The stored byte is
+    identical either way -- what changes is WHO recorded it. Three reasons the
+    writer must be the author:
+
+    * **The database default is not always reachable.** Under schema-per-tenant
+      (OMN-15359) the tenant identity IS the physical write target; there is no
+      column default to fall through to, because a writer that does not know
+      its tenant cannot choose a schema at all. An omit path is a write that
+      only works while one specific isolation mechanism is in force -- exactly
+      the mechanism the ruling defers.
+    * **An omitted key records nothing to replay.** OMN-15359 populates
+      per-tenant targets by REPLAYING this log. A row whose attribution was
+      invented by a column default at insert time carries no evidence of who it
+      belonged to, so the replay cannot route it. The event log is immutable:
+      that is not recoverable later.
+    * **Absence stops being distinguishable from a decision.** With the value
+      recorded, "this row is house-tenant" is a statement the writer made; with
+      it omitted, it is an accident that looks the same.
+
+    Nothing is invented here that was not already being invented -- the value
+    stamped is precisely the one Postgres would have supplied (OMN-16804 AC3 is
+    about the runtime not CONJURING an identity, and the house tenant under the
+    2026-08-02 ruling is not conjured, it is ruled). The difference is that it
+    is now visible in the write path instead of implicit in the DDL.
+
+    :func:`require_tenant_id` still runs on the house-tenant path: it is a
+    no-op today and raises :class:`TenantRequiredError` the moment
     ``ENFORCE_TENANT_ISOLATION`` flips. The flip is a ratchet with a named
     condition, not a comment -- see
     ``tests/unit/projection/test_house_tenant_default_ratchet.py``, which pins
-    the default-allowed state and states what has to become true to flip it.
+    the current state and states what has to become true to flip it.
 
     Called BEFORE the row is upserted so a refused write produces zero rows.
     """
@@ -309,7 +333,7 @@ def house_tenant_write_stamp(*, table: str) -> dict[str, str]:
     if configured:
         return {"tenant_id": configured}
     require_tenant_id(None, table=table)
-    return {}
+    return {"tenant_id": _house_tenant_interim_default(table)}
 
 
 def resolve_read_tenant(tenant_value: object, *, table: str | None = None) -> str:

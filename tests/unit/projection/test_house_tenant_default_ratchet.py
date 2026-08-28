@@ -69,6 +69,8 @@ import pytest
 from omnimarket.config.settings import get_settings
 from omnimarket.projection.tenant_isolation import (
     HOUSE_TENANT_SLUG,
+    HOUSE_TENANT_UUID,
+    INTERIM_DEFAULT_TENANT,
     TenantRequiredError,
     house_tenant_write_stamp,
     require_tenant_id,
@@ -138,8 +140,27 @@ def test_customer_ingress_does_not_exist_yet() -> None:
     )
 
 
-def test_the_omit_path_is_currently_allowed() -> None:
-    """Pin the interim: no configured tenant -> omit the key, do not raise."""
+def test_the_house_tenant_is_recorded_not_left_to_the_column_default() -> None:
+    """Pin the interim: no configured tenant -> RECORD the house tenant.
+
+    OMN-16831 (operator ruling 2026-08-28, option D) inverted what this pins.
+    It previously asserted the writer OMITS ``tenant_id`` so that Postgres'
+    ``DEFAULT 'omninode'`` supplies it. The stored byte is unchanged; the
+    author of it is not, and that is the whole ruling:
+
+    * the ruled principle is *defer the mechanism, never the dimension* -- an
+      omit path only works while one specific isolation mechanism is in force,
+      because under schema-per-tenant (OMN-15359) the tenant IS the physical
+      write target and there is no column default to fall through to;
+    * OMN-15359 populates per-tenant targets by REPLAYING this log, and a row
+      whose attribution was invented at insert time carries nothing to replay.
+      The event log is immutable, so that is not recoverable later.
+
+    The half of the ratchet that still matters is unchanged and asserted here:
+    :func:`require_tenant_id` still runs on the house-tenant path, so the flip
+    to fail-closed is still wired rather than aspirational (see
+    :func:`test_enforcement_makes_the_omit_path_fail_closed`).
+    """
     settings = get_settings()
     assert settings.onex_tenant_id.strip() == "", (
         "this ratchet measures the unattributed path; a lane that configures "
@@ -149,11 +170,35 @@ def test_the_omit_path_is_currently_allowed() -> None:
         "ENFORCE_TENANT_ISOLATION is on, so the interim default-allowed state "
         "this test pins no longer holds -- see this module's docstring"
     )
-    assert house_tenant_write_stamp(table="capability_scores") == {}, (
-        "the writer must OMIT tenant_id so the column DEFAULT supplies the "
-        "house tenant; writing the key as NULL is the OMN-14058 erasure shape"
+    stamp = house_tenant_write_stamp(table="capability_scores")
+    assert stamp == {"tenant_id": INTERIM_DEFAULT_TENANT}, (
+        "the writer must RECORD the house tenant explicitly (OMN-16831 ruling "
+        "item 4). Returning {} hands authorship of the dimension to the column "
+        "DEFAULT, which does not survive a schema-per-tenant cutover and leaves "
+        "the OMN-15359 replay nothing to route. Writing the key as NULL remains "
+        "forbidden -- that is the OMN-14058 erasure shape."
     )
     require_tenant_id(None, table="capability_scores")
+
+
+def test_a_uuid_converted_relation_records_the_house_tenant_in_its_own_representation() -> (
+    None
+):
+    """The recorded value must match what the table's own column expects.
+
+    ``delegation_events`` is the one relation whose ``tenant_id`` column has
+    been converted from the legacy TEXT slug to the canonical UUID
+    (``_UUID_CONVERTED_TABLES``, OMN-15683). Recording the slug there would
+    fail the RLS policy's ``::uuid`` cast outright, so making the stamp
+    explicit must not flatten the representation the omit path used to get for
+    free from each column's own DEFAULT.
+    """
+    assert house_tenant_write_stamp(table="delegation_events") == {
+        "tenant_id": str(HOUSE_TENANT_UUID)
+    }
+    assert house_tenant_write_stamp(table="capability_scores") == {
+        "tenant_id": INTERIM_DEFAULT_TENANT
+    }
 
 
 def test_enforcement_makes_the_omit_path_fail_closed(
