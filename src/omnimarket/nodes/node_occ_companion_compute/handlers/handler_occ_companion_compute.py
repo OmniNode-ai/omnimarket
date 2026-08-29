@@ -491,6 +491,55 @@ def _supersede_file(
     return content
 
 
+def _next_supersede_path(
+    *,
+    ticket: str,
+    prior_entry: str,
+    check_type: str,
+    pr_number: int,
+    occ_pr_number: int | None,
+    merged_receipt_paths: Sequence[str],
+) -> str | None:
+    """The supersede path this pass may ADD, or ``None`` when none is derivable.
+
+    OMN-16071. The natural name is ``<check_type>.supersede.<pr_number>.yaml``,
+    keyed to the PRODUCT PR — deliberately, because that is the consumer the
+    rebind targets. It is also constant across every authoring pass for that
+    same product PR, so the 2nd pass renders a path the 1st pass already merged.
+    Live: OCC#6616 re-rendered eight ``.supersede.925.yaml`` files an earlier
+    pass for PR#925 had merged, bumping ``created_at`` in place.
+
+    When the natural name is free this returns it unchanged, so no shape in the
+    merged corpus moves. When it is taken, a fresh generation is keyed to the
+    OCC companion PR authoring the rebind. That suffix stays a SINGLE integer
+    on purpose: both ``_SUPERSEDE_FILENAME_RE`` here and
+    ``validator_receipt_supersession``'s ``_SUPERSEDE_SUFFIX_RE`` parse
+    ``.supersede.<NNNN>.yaml`` strictly, so a compound suffix such as
+    ``.supersede.925.6616.yaml`` would be filed where nothing resolves it. The
+    record's ``replacement.pr_number`` still names the PRODUCT PR, which is what
+    ``resolve_supersession``'s tier-1 selection actually keys on — the filename
+    generation is provenance, never the binding.
+
+    ``None`` means the natural path is taken and no OCC PR number is known yet
+    (pass 1). The caller omits the emission rather than opening merged bytes for
+    write; the merged record already binds this same product PR.
+    """
+    directory = f"{_RECEIPT_DIR_PREFIX}/{ticket}/{prior_entry}"
+    merged = frozenset(merged_receipt_paths)
+    natural = f"{directory}/{check_type}.supersede.{pr_number}.yaml"
+    if natural not in merged:
+        return natural
+    if occ_pr_number is None:
+        return None
+    regenerated = f"{directory}/{check_type}.supersede.{occ_pr_number}.yaml"
+    if regenerated in merged:
+        # Both generations already merged: this key has nothing left to say
+        # that is not already on the ref, and inventing a third integer that
+        # names no real artifact would be provenance theatre.
+        return None
+    return regenerated
+
+
 class AppendOnlyEmissionError(ValueError):
     """The producer would rewrite an already-merged OCC artifact (OMN-15485).
 
@@ -521,6 +570,25 @@ def assert_append_only_emissions(
       receipt directory IS that ``M`` unless it is a supersede add. Enforced per
       merged entry directory, not just the exact ``command.yaml``, so a future
       emitter using a different ``check_type`` filename cannot slip through.
+    * **Already-merged paths (OMN-16071).** The supersede exemption above used
+      to be unconditional, which asked *"is this filename shaped like a
+      correction?"* rather than *"is this path already merged?"* — and filename
+      shape is not evidence of novelty. The merged path files every rebind at
+      ``<check_type>.supersede.<pr_number>.yaml``, keyed to the PRODUCT PR
+      number, which is CONSTANT across every authoring pass for that same
+      product PR; so the 2nd, 3rd ... pass renders the identical paths and this
+      mechanism waved every one of them through while they were already merged
+      bytes on ``dev``. Live: OCC#6616 (companion for ``omninode_infra#925``)
+      re-rendered eight ``.supersede.925.yaml`` files minted by an earlier pass
+      for that same PR, bumping their ``created_at`` in place. An emission at
+      any path in ``state.merged_receipt_paths`` is now refused regardless of
+      its filename — the same judgment the gate makes off git status.
+
+    ``merged_receipt_paths`` defaults to ``()``, in which case this reduces
+    exactly to the pre-OMN-16071 semantics: a read-EFFECT that cannot list the
+    receipt tree degrades to the shipped behavior rather than to a refusal, and
+    the write-EFFECT's own pre-push ``_assert_append_only`` remains fail-closed
+    on git status behind it.
     * **Contracts.** The gate flags a merged ``dod_evidence`` entry that is
       removed or edited (per-entry hash change) and allows appends. The merged
       path is append-only BY CONSTRUCTION today (``merged_text +
@@ -540,6 +608,24 @@ def assert_append_only_emissions(
             # Fresh / exists-but-open: nothing is frozen. Every emission on this
             # path is an add relative to the merge base, which the gate allows.
             continue
+
+        # OMN-16071: file-level truth, checked BEFORE the directory rule so a
+        # supersede-shaped filename can never buy an exemption for bytes that
+        # are already on the governance ref.
+        merged_paths = frozenset(state.merged_receipt_paths)
+        for companion in files:
+            if companion.path not in merged_paths:
+                continue
+            raise AppendOnlyEmissionError(
+                f"refusing to author {companion.path!r}: that path is ALREADY "
+                f"MERGED on the OCC governance ref for {state.ticket_id}, so "
+                "writing it is an in-place rewrite the required OCC "
+                "Append-Only Gate rejects as 'receipt_file_mutated' "
+                "(OMN-16071). A '.supersede.<NNNN>.yaml' filename does not "
+                "make an emission an add — only a path nothing has merged "
+                "does. Express this correction as a NEW supersession "
+                "generation keyed to the OCC companion PR authoring it."
+            )
 
         frozen_dirs = {
             f"{_RECEIPT_DIR_PREFIX}/{state.ticket_id}/{entry}": entry
@@ -1568,6 +1654,54 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                         "in the contract instead."
                     )
                 prior_check_type = declared[0]
+                # OMN-16071: the natural supersede name is keyed to the PRODUCT
+                # PR, which is constant across every authoring pass for that
+                # same PR — so a 2nd pass renders the path a 1st pass already
+                # merged. Allocate a fresh generation keyed to the OCC
+                # companion PR doing the rebind (still a single integer, so the
+                # strict ``.supersede.<NNNN>.yaml`` shape both this producer's
+                # guard and ``resolve_supersession``'s glob require still
+                # holds), and only for the keys that actually collide.
+                supersede_path = _next_supersede_path(
+                    ticket=ticket,
+                    prior_entry=prior_entry,
+                    check_type=prior_check_type,
+                    pr_number=pr_number,
+                    occ_pr_number=request.occ_pr_number,
+                    merged_receipt_paths=state.merged_receipt_paths,
+                )
+                if supersede_path is None:
+                    # No fresh generation is derivable. Emitting nothing is the
+                    # honest answer, not a silent one: the already-merged record
+                    # for this SAME product PR carries the same pr_number /
+                    # branch / commit_sha / probe provenance, so suppressing the
+                    # re-mint loses no evidence — whereas opening it for write
+                    # is the exact defect.
+                    #
+                    # ``_next_supersede_path`` returns ``None`` for two distinct
+                    # reasons and they call for different operator responses, so
+                    # the log names which one fired rather than asserting the
+                    # first unconditionally: claiming "no OCC PR number yet" when
+                    # one IS set would send a reader hunting for a number that
+                    # exists, and would promise a pass 2 that will never emit.
+                    skip_cause = (
+                        "no OCC PR number is available yet to key a fresh "
+                        "generation, so pass 2 of this same mint files it"
+                        if request.occ_pr_number is None
+                        else "both the product-PR-keyed and the OCC-PR-keyed "
+                        "generations are ALREADY merged, so this key has "
+                        "nothing left to add and no later pass will emit it"
+                    )
+                    logger.info(
+                        "occ_companion_compute: skipping supersession for "
+                        "%s/%s — its product-PR-keyed path is already merged "
+                        "and %s; the merged record already binds this product "
+                        "PR (OMN-16071 add-only writer).",
+                        ticket,
+                        prior_entry,
+                        skip_cause,
+                    )
+                    continue
                 supersede_checks[prior_entry] = prior_check
                 content = _supersede_file(
                     request=request,
@@ -1581,10 +1715,7 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 )
                 files.append(
                     ModelCompanionFile(
-                        path=(
-                            f"drift/dod_receipts/{ticket}/{prior_entry}/"
-                            f"{prior_check_type}.supersede.{pr_number}.yaml"
-                        ),
+                        path=supersede_path,
                         content=content,
                         kind=EnumCompanionFileKind.SUPERSEDE_RECEIPT,
                         ticket_id=ticket,

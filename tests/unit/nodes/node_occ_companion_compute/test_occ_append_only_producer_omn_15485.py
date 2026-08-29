@@ -304,7 +304,18 @@ def test_append_only_invariant_is_a_typed_named_error() -> None:
 
 
 def test_invariant_falsifier_supersede_allowed_plain_refused() -> None:
-    """Direct falsifier on the invariant: filename shape is what decides."""
+    """Direct falsifier on the DIRECTORY rule: filename shape decides here.
+
+    Scope correction (OMN-16071): filename shape is what decides *within this
+    rule*, which is all this test ever exercised — every state below carries an
+    empty ``merged_receipt_paths``. Read as a statement about the whole
+    invariant it was false, and that reading is exactly how the supersede
+    exemption went unexamined: a ``.supersede.<NNNN>.yaml`` name is keyed to the
+    PRODUCT PR and so repeats on every authoring pass for that PR, which makes
+    it a claim of intent, never proof the path is net-new. The path rule that
+    now runs first is pinned in
+    ``test_occ_supersede_generation_omn_16071.py``.
+    """
     from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
         AppendOnlyEmissionError,
         assert_append_only_emissions,

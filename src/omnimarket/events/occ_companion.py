@@ -216,6 +216,20 @@ class ModelOccContractState(BaseModel):
         default="",
         description="The current committed contract YAML (empty if absent).",
     )
+    merged_receipt_paths: tuple[str, ...] = Field(
+        default=(),
+        description="Repo-relative receipt paths under "
+        "``drift/dod_receipts/<ticket>/`` that ALREADY EXIST on the OCC "
+        "governance ref — i.e. bytes the Append-Only Gate treats as immutable "
+        "(OMN-16071). Without this the pure producer knows only which "
+        "dod_evidence ids exist (``existing_entry_ids``, a set of "
+        "DIRECTORIES) and has no way to tell a first correction from a re-mint "
+        "of an already-merged one, which is exactly how the supersede-shaped "
+        "filename became an unconditional exemption in "
+        "``assert_append_only_emissions``. Defaults to ``()``, which reproduces "
+        "the prior semantics byte-for-byte, so a read-EFFECT that cannot list "
+        "the tree degrades to the shipped behavior rather than to a refusal.",
+    )
 
 
 class ModelOccCompanionRequest(BaseModel):
