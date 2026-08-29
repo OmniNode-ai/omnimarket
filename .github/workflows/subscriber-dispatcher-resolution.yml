@@ -1,0 +1,82 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# subscriber-dispatcher-resolution.yml — OMN-16939
+#
+# CI gate: every declared event_bus.subscribe_topic in omnimarket must resolve to a
+# REGISTERED DISPATCHER for that topic's own (category, message type).
+#
+# A topic that does not resolve is consumed, DLQ'd and COMMITTED on every message. The
+# offset advances after DLQ-routing, so LAG can never rise — the consumer group reads
+# Stable / MEMBERS 1 / LAG 0 forever while 100% of the traffic is lost. Group membership,
+# process liveness, container health and LAG are all green. Live-proven on the .201 dev
+# lane 2026-08-29: node_pr_lifecycle_state_reducer took 174 messages in and DLQ'd 174 over
+# six hours.
+#
+# Why this is not covered by the gates omnimarket already runs:
+#   * dispatcher-route-coverage.yml (OMN-13333) only inspects onex.cmd.* topics, and only
+#     asserts SOME handler_routing block exists — not which category the route registered
+#     under. Both live victims passed it.
+#   * mixed-category-routing (OMN-14605) catches the derivation defect but is scanned over
+#     src/omnibase_infra ONLY. Its baseline header defers the other repos to "Lane B",
+#     which never landed — so omnimarket, where both victims live, had no gate at all.
+#     This workflow closes that Lane B gap for the dispatcher-resolution invariant.
+#
+# The checker lives in omnibase_infra because it imports the REAL production wiring
+# helpers, so it cannot drift from the runtime it mirrors. omnimarket's installed
+# omnibase-infra pin does not yet carry it, so infra's source tree is checked out and put
+# on PYTHONPATH by scripts/ci/check_subscriber_dispatcher_resolution.sh.
+#
+# [OMN-16939]
+
+name: Subscriber Dispatcher Resolution
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  subscriber-dispatcher-resolution:
+    name: subscriber-dispatcher-resolution
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@v4
+
+      - name: Checkout omnibase_infra (validator source)
+        uses: actions/checkout@v4
+        with:
+          repository: OmniNode-ai/omnibase_infra
+          # dev, not main: main is release-synced, so a validator that has landed on the
+          # integration branch would otherwise not be visible here until the next release.
+          ref: dev
+          path: omnibase_infra
+          token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
+          sparse-checkout: |
+            src/omnibase_infra
+          sparse-checkout-cone-mode: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync omnimarket environment
+        run: uv sync --all-extras
+
+      # Fail-closed: the shim exits non-zero when no omnibase_infra source tree carrying
+      # the validator resolves, so a broken checkout cannot silently no-op the gate.
+      - name: Run subscriber-dispatcher-resolution gate
+        run: bash scripts/ci/check_subscriber_dispatcher_resolution.sh

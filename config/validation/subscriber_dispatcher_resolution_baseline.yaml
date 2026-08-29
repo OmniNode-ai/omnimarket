@@ -1,0 +1,278 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-16939 — frozen burn-down baseline for the subscriber-dispatcher-resolution ratchet.
+#
+# INVARIANT (omnibase_infra.validators.subscriber_dispatcher_resolution):
+#   every declared event_bus.subscribe_topic MUST resolve to a REGISTERED DISPATCHER for
+#   that topic's own real (category, message type). A topic that does not resolve is
+#   consumed, DLQ'd and COMMITTED on every message — the consumer group reads Stable /
+#   MEMBERS 1 / LAG 0 forever while 100% of the traffic is lost, because the offset
+#   advances after DLQ-routing so lag can never rise.
+#
+#   Live-proven 2026-08-29 on the .201 dev lane: node_pr_lifecycle_state_reducer took
+#   174 messages in and DLQ'd 174 over six hours on pr-lifecycle-fix-completed, and
+#   delegation-escalation-triggered was DLQ'ing at 128 per 40 minutes.
+#
+# REASON CODES
+#   no_route                 no handler_routing entry is assigned the topic by
+#                            _topics_for_handler_entry, so zero routes exist for it.
+#   category_mismatch        a route exists but was stamped with a category that differs
+#                            from the topic's real one (the OMN-14605 mechanism: the
+#                            category is derived ONCE per entry, falling back to
+#                            subscribe_topics[0], then stamped on every route).
+#   message_type_unindexed   category agrees but the dispatcher is not indexed under the
+#                            topic's message type.
+#
+# THIS IS A RATCHET, NOT AN EXEMPTION. It is SHRINK-ONLY:
+#   * a (contract, topic) NOT listed here that fails to resolve   -> FAIL (no new
+#     instances, ever);
+#   * a (contract, topic) listed here that now resolves           -> FAIL until removed
+#     (a fixed entry still listed is STALE = FAIL, so the list cannot rot).
+#
+# FIX SHAPE: give the topic a per-topic `topic_match` entry carrying an explicit
+# `message_category:` (plus an `event_model:` where several topics share one handler).
+# Setting `topic:` ALONE IS NOT ENOUGH — the category still falls back to
+# subscribe_topics[0]. node_swarm_subtask_state_reducer had the full per-topic split with
+# per-topic event_models and was still 100% NO_DISPATCHER on all four of its event topics
+# until the category was declared. `topic:` picks WHICH topic an entry owns;
+# `message_category:` picks which category it registers under. They are independent.
+#
+# SCOPE: omnimarket (src/omnimarket). The checker itself lives in omnibase_infra
+# (omnibase_infra.validators.subscriber_dispatcher_resolution) and is invoked here through
+# the installed omnibase-infra dependency, so this gate cannot drift from the runtime
+# wiring it mirrors.
+#
+# node_swarm_fanout_orchestrator's three delegation topics stay listed: OMN-14605 recorded
+# that its fix is a REARCHITECTURE, not a mechanical split (OMN-14606 / OMN-14607). It is
+# the remaining live source of delegation-escalation-triggered DLQ traffic.
+#
+# Burn-down under OMN-16939. End state is an empty list.
+known_unresolved_subscriptions:
+  - contract: build_loop_orchestrator
+    topic: onex.evt.omnimarket.overseer-verifier-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: data_flow_sweep
+    topic: onex.evt.omniintelligence.pattern-learned.v1
+    category: event
+    reason: category_mismatch
+  - contract: golden_chain_sweep
+    topic: onex.evt.omniclaude.session-outcome.v1
+    category: event
+    reason: category_mismatch
+  - contract: golden_chain_sweep
+    topic: onex.evt.omniintelligence.pattern-stored.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_content_ingestion_effect
+    topic: onex.evt.omnimarket.content-discovered.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_evidence_dashboard_effect
+    topic: onex.evt.omnimarket.evidence-collected.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_evidence_dashboard_effect
+    topic: onex.evt.omnimarket.evidence-extracted.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_evidence_dashboard_effect
+    topic: onex.evt.omnimarket.evidence-pipeline-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_evidence_dashboard_effect
+    topic: onex.evt.omnimarket.evidence-validated.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_evidence_dashboard_effect
+    topic: onex.evt.omnimarket.occ-pr-created.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_evidence_dashboard_effect
+    topic: onex.evt.omnimarket.readiness-gate-blocked.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_evidence_dashboard_effect
+    topic: onex.evt.omnimarket.readiness-gate-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_intelligence_reducer
+    topic: onex.evt.omnimarket.intent-outcome-labeled.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_readiness_gate_orchestrator
+    topic: onex.evt.omnimarket.readiness-scored.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_redeploy_deploy_effect
+    topic: onex.evt.deploy.rebuild-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_redeploy_orchestrator
+    topic: onex.evt.omnibase-infra.runtime-booted.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_redeploy_orchestrator
+    topic: onex.evt.omnibase-infra.runtime-manifest-published.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_redeploy_orchestrator
+    topic: onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_redeploy_orchestrator
+    topic: onex.evt.omnimarket.prod-promotion-grant-resolved.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_redeploy_orchestrator
+    topic: onex.evt.omnimarket.readiness-gate-blocked.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_redeploy_orchestrator
+    topic: onex.evt.omnimarket.readiness-gate-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_redeploy_orchestrator
+    topic: onex.evt.omnimarket.redeploy-rolled-back.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_redeploy_orchestrator
+    topic: onex.evt.omnimarket.runtime-image-built.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_runtime_closeout_orchestrator
+    topic: onex.evt.omnimarket.closeout-fitness-gated.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_runtime_closeout_orchestrator
+    topic: onex.evt.omnimarket.closeout-preflight-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_runtime_closeout_orchestrator
+    topic: onex.evt.omnimarket.closeout-proof-matrix-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_runtime_closeout_orchestrator
+    topic: onex.evt.omnimarket.redeploy-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_swarm_fanout_orchestrator
+    topic: onex.evt.omnimarket.delegation-all-tiers-failed.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_swarm_fanout_orchestrator
+    topic: onex.evt.omnimarket.delegation-call-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_swarm_fanout_orchestrator
+    topic: onex.evt.omnimarket.delegation-escalation-triggered.v1
+    category: event
+    reason: category_mismatch
+  - contract: platform_readiness
+    topic: onex.evt.baselines.computation-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: platform_readiness
+    topic: onex.evt.model-router.routing-decision.v1
+    category: event
+    reason: category_mismatch
+  - contract: platform_readiness
+    topic: onex.evt.omnimarket.build-loop-dod-checked.v1
+    category: event
+    reason: category_mismatch
+  - contract: platform_readiness
+    topic: onex.evt.savings.estimation-completed.v1
+    category: event
+    reason: category_mismatch
+  - contract: projection_live_events
+    topic: onex.cmd.omnibase-infra.delegation-request.v1
+    category: command
+    reason: category_mismatch
+  - contract: projection_live_events
+    topic: onex.cmd.omnimarket.delegate-skill.v1
+    category: command
+    reason: category_mismatch
+  - contract: projection_live_events
+    topic: onex.cmd.omnimarket.node-deploy.v1
+    category: command
+    reason: category_mismatch
+  - contract: projection_live_events
+    topic: onex.cmd.omnimarket.node-generation-requested.v1
+    category: command
+    reason: category_mismatch
+  - contract: projection_live_events
+    topic: onex.cmd.omnimarket.tool-reuse-match-requested.v1
+    category: command
+    reason: category_mismatch
+  - contract: swarm_supervisor_orchestrator
+    topic: onex.evt.omnimarket.worker-heartbeat.v1
+    category: event
+    reason: category_mismatch
+  - contract: node_e2e_orchestrator
+    topic: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
+    category: event
+    reason: no_route
+  - contract: node_e2e_orchestrator
+    topic: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
+    category: event
+    reason: no_route
+  - contract: node_generation_consumer
+    topic: onex.evt.omnimarket.tool-reuse-matched.v1
+    category: event
+    reason: no_route
+  - contract: node_generation_consumer
+    topic: onex.evt.omnimarket.tool-reuse-no-match.v1
+    category: event
+    reason: no_route
+  - contract: node_intelligence_orchestrator
+    topic: onex.cmd.omnimarket.code-analysis.v1
+    category: command
+    reason: no_route
+  - contract: node_intelligence_orchestrator
+    topic: onex.cmd.omnimarket.document-ingestion.v1
+    category: command
+    reason: no_route
+  - contract: node_intelligence_orchestrator
+    topic: onex.cmd.omnimarket.pattern-learning.v1
+    category: command
+    reason: no_route
+  - contract: node_intelligence_orchestrator
+    topic: onex.evt.omnimarket.intent-drift-detected.v1
+    category: event
+    reason: no_route
+  - contract: node_kreuzberg_parse_effect
+    topic: onex.evt.omnimemory.document-changed.v1
+    category: event
+    reason: no_route
+  - contract: node_kreuzberg_parse_effect
+    topic: onex.evt.omnimemory.document-discovered.v1
+    category: event
+    reason: no_route
+  - contract: pattern_b_broker
+    topic: onex.cmd.omniclaude.delegate-task.v1
+    category: command
+    reason: no_route
+  - contract: pattern_b_broker
+    topic: onex.evt.omnimarket.pattern-b-dispatch-completed.v1
+    category: event
+    reason: no_route
+  - contract: projection_overnight
+    topic: onex.evt.omnimarket.overnight-phase-completed.v1
+    category: event
+    reason: no_route
+  - contract: projection_overnight
+    topic: onex.evt.omnimarket.overnight-phase-start.v1
+    category: event
+    reason: no_route
+  - contract: projection_overnight
+    topic: onex.evt.omnimarket.overnight-session-completed.v1
+    category: event
+    reason: no_route
+  - contract: projection_tenant_credentials
+    topic: onex.evt.omnimarket.credential-registered.v1
+    category: event
+    reason: no_route
+  - contract: projection_tenant_credentials
+    topic: onex.evt.omnimarket.credential-revoked.v1
+    category: event
+    reason: no_route
