@@ -63,7 +63,7 @@ class ProtocolAlertChannelProber(Protocol):
 
     def probe(self) -> ModelAlertChannelObservation:
         """Collect the channel's answers without judging them."""
-        ...
+        raise NotImplementedError
 
 
 class SlackAlertChannelProber:
@@ -192,10 +192,10 @@ class SlackAlertChannelProber:
             secret = resolve_api_key_loop_safe(ref, env_var_fallback=ref)
         except Exception as exc:
             logger.warning(
-                "alert-channel liveness: secret ref %r did not resolve (%s); "
+                "alert-channel liveness: configured secret %s did not resolve (%s); "
                 "the channel is reported NOT_CONFIGURED rather than assumed "
                 "healthy",
-                ref,
+                secret_name,
                 type(exc).__name__,
             )
             return None
