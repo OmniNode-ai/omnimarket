@@ -27,6 +27,7 @@ import json
 import logging
 import os
 from datetime import datetime
+from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 from uuid import UUID
@@ -36,6 +37,34 @@ from pydantic import BaseModel, ConfigDict, Field, NonNegativeInt
 logger = logging.getLogger(__name__)
 
 _TELEMETRY_FILENAME = "acceptance_telemetry.jsonl"
+
+
+class EnumPlacementReason(StrEnum):
+    """Why THIS backend carried this attempt (OMN-16891).
+
+    The record already answers *what ran* and *how it went*; without the cause
+    of the placement the acceptance rate cannot be attributed. A 60% rate on a
+    free cloud rung means something different when that rung was chosen for its
+    capability than when it was chosen because the local slot was busy — the
+    first is a quality signal about the model, the second is a capacity signal
+    about the fleet. Collapsing them makes the OMN-13940 widening bar
+    (>=70% over >=20 samples) unattributable, which is how a placement table
+    ends up re-argued instead of tuned.
+
+    A closed enum rather than free text, so rows aggregate.
+    """
+
+    LOCAL_FIRST = "local-first"
+    """Cheapest-first put this on owned GPUs; nothing forced a cloud rung."""
+
+    SATURATION_ESCALATE = "saturation-escalate"
+    """The local slot stayed busy past the contract's bounded wait."""
+
+    CLASS_AFFINITY = "class-affinity"
+    """The task class declares this tier/backend as its preferred placement."""
+
+    FALLBACK = "fallback"
+    """An earlier rung failed (transport, quota, or quality) and this caught it."""
 
 
 class ModelDelegatedFixAttemptRecord(BaseModel):
@@ -61,6 +90,15 @@ class ModelDelegatedFixAttemptRecord(BaseModel):
     delegation_model: str = Field(...)
     backend_id: str | None = Field(default=None)
     tier: str | None = Field(default=None)
+    # OMN-16891: WHY this backend, not just which one. Defaults to None so the
+    # Slice 1 rows written before this field existed still validate on
+    # readback — the model is frozen + extra="forbid", so a required field here
+    # would make every historical sample unreadable and reset the >=20-sample
+    # denominator to zero.
+    placement_reason: EnumPlacementReason | None = Field(
+        default=None,
+        description="Why this backend carried the attempt (OMN-16891).",
+    )
     outcome: str = Field(..., description="EnumDelegatedFixOutcome value.")
     accepted: bool = Field(..., description="Numerator of the >=70% bar.")
     cost_usd: float = Field(default=0.0, ge=0.0)
@@ -153,6 +191,7 @@ class JsonlAcceptanceTelemetryRecorder:
 
 
 __all__: list[str] = [
+    "EnumPlacementReason",
     "JsonlAcceptanceTelemetryRecorder",
     "ModelDelegatedFixAttemptRecord",
     "ProtocolAcceptanceRecorder",

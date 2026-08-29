@@ -380,9 +380,21 @@ task_classes:
         min: 0.6
         max: 1.0
     escalation_policy:
-      max_escalations: 2
+      max_escalations: 3
+      # OMN-16891: `cheap_frontier` INSERTED ahead of every metered tier, per
+      # the operator directive "openrouter can also do work for ... code".
+      # tier_order is a CLOSED set — `_tier_order_from_contract` excludes any
+      # tier absent from it — so this class could not reach the free coder rung
+      # at all before, no matter what routing_tiers.yaml `use_for` declared.
+      # Placement mirrors code_generation/refactor, which have carried this
+      # exact ladder since OMN-13943/OMN-14225 (free before paid: a task that
+      # must escalate off local tries the ZERO-COST frontier rung before any
+      # tier that spends money). max_escalations is raised by one so the ladder
+      # can still be walked to its ceiling now that it is one rung longer —
+      # the same adjustment OMN-13943 made for code_generation.
       tier_order:
         - local
+        - cheap_frontier
         - cheap_cloud
         - claude
   validator_generation:
@@ -412,9 +424,21 @@ task_classes:
       heuristic:
         - no_refusal
     escalation_policy:
-      max_escalations: 2
+      max_escalations: 3
+      # OMN-16891: `cheap_frontier` INSERTED ahead of every metered tier, per
+      # the operator directive "openrouter can also do work for ... code".
+      # tier_order is a CLOSED set — `_tier_order_from_contract` excludes any
+      # tier absent from it — so this class could not reach the free coder rung
+      # at all before, no matter what routing_tiers.yaml `use_for` declared.
+      # Placement mirrors code_generation/refactor, which have carried this
+      # exact ladder since OMN-13943/OMN-14225 (free before paid: a task that
+      # must escalate off local tries the ZERO-COST frontier rung before any
+      # tier that spends money). max_escalations is raised by one so the ladder
+      # can still be walked to its ceiling now that it is one rung longer —
+      # the same adjustment OMN-13943 made for code_generation.
       tier_order:
         - local
+        - cheap_frontier
         - cheap_cloud
         - claude
   reasoning:
@@ -593,9 +617,21 @@ task_classes:
         min: 0.6
         max: 1.0
     escalation_policy:
-      max_escalations: 1
+      max_escalations: 2
+      # OMN-16891: `cheap_frontier` INSERTED ahead of every metered tier, per
+      # the operator directive "openrouter can also do work for ... code".
+      # tier_order is a CLOSED set — `_tier_order_from_contract` excludes any
+      # tier absent from it — so this class could not reach the free coder rung
+      # at all before, no matter what routing_tiers.yaml `use_for` declared.
+      # Placement mirrors code_generation/refactor, which have carried this
+      # exact ladder since OMN-13943/OMN-14225 (free before paid: a task that
+      # must escalate off local tries the ZERO-COST frontier rung before any
+      # tier that spends money). max_escalations is raised by one so the ladder
+      # can still be walked to its ceiling now that it is one rung longer —
+      # the same adjustment OMN-13943 made for code_generation.
       tier_order:
         - local
+        - cheap_frontier
         - cheap_cloud
   summarization:
     gateway_exposure: public

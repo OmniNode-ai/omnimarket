@@ -218,7 +218,13 @@ class TestServedUsageUpstreamOmn13408:
         # mirrors the live escalated-and-failed CID badf851a, which reached the
         # terminal delegation-failed.v1 after escalation_count=2.
         max_escalations = resolve_task_class_max_escalations("test")
-        assert max_escalations == 2
+        # OMN-16891: was ``assert max_escalations == 2``. The `test` class
+        # gained a `cheap_frontier` rung (the free OpenRouter coder now carries
+        # the whole code-class family), so its ladder is one longer and
+        # max_escalations rose 2 -> 3. The literal was a fixture guard, never
+        # the property under test — this asserts the property the test actually
+        # depends on: that the ladder has room to be exhausted.
+        assert max_escalations >= 2
         handler.workflows[cid].escalation_count = max_escalations
 
         # The inference EFFECT produced the truncated-but-usage-bearing response.

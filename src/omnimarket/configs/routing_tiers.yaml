@@ -259,6 +259,51 @@ tiers:
           # served it, another decorative/unreachable rung of the class above.
           - validator_generation
         fast_path_threshold_tokens: 8192
+      # OMN-16891: GLM restored to the cheap_cloud tier as a DECLARED-BUT-
+      # DISABLED rung, per the operator directive "we have subs for GLM, why
+      # not start using it?" — and its follow-up, "i removed the api keys just
+      # in case."
+      #
+      # Both halves of that are load-bearing:
+      #   * DECLARED — the rung is present and ordered, so activation is a
+      #     one-step operator action (seed `llm.glm.api_key`), not a code or
+      #     contract change. A backend that no tier references is dead config;
+      #     seeding a key against it would activate nothing.
+      #   * DISABLED — with no resolvable key, `_backend_secret_available`
+      #     (handler_delegation_routing) reports this backend unavailable, so
+      #     `_select_model_for_task` never picks it and `_tier_can_route_task`
+      #     never advertises the tier for it. No probe is issued and no request
+      #     is attempted. This is the same mechanism that keeps the tier honest
+      #     rather than silently-broken, and it needs no `enabled:` flag.
+      #
+      # OMN-14625 repointed cheap_cloud OFF this backend on the finding that
+      # "the z.ai GLM route is DEAD — resolve_api_key succeeds but every
+      # completion call 401s". That premise is STALE: re-probed 2026-08-28 the
+      # route returned 429 (quota/billing), never 401 — auth resolves and the
+      # route is live. The failure class changed from credential-dead to
+      # plan-entitlement, which is a disable-and-wait condition, not a reason
+      # to delete the rung. cloud-gemini-pro above stays the PRIMARY cheap_cloud
+      # code backend, so this rung adds capacity without displacing a
+      # proven-resolvable one.
+      #
+      # Quota discipline: a flat-rate subscription is near-zero MARGINAL cost
+      # but has a hard periodic ceiling, so GLM is deliberately NOT ranked as
+      # an unconditional primary anywhere — ranking it near-free in
+      # cheapest-first ordering without a guard strands every class pointing at
+      # it the moment the cap trips. The 429 codes are classified by
+      # bifrost_delegation.yaml's provider_quota_policy (1310 -> disable until
+      # the stated reset; 1113 -> disable and alert, never retry).
+      - id: glm-5.3
+        backend_id: cloud-glm
+        # The z.ai standard surface serves a 128k context window.
+        max_context_tokens: 131072
+        use_for:
+          - code_generation
+          - code_review
+          - refactor
+          - reasoning
+          - research
+        fast_path_threshold_tokens: 8192
       - id: gemini-flash
         backend_id: cloud-gemini-flash
         max_context_tokens: 1000000
@@ -294,8 +339,25 @@ tiers:
     max_retries: 1
   # cheap_frontier tier — high-capability free-tier cloud models for the June 5
   # model-experimentation campaign (OMN-12492). Requires OPENROUTER_API_KEY.
-  # Sits between cheap_cloud and claude to offer frontier-quality output at zero
-  # marginal API cost when the key is available.
+  #
+  # OMN-16891: this is now an ACTIVE working tier for the CODE-class family,
+  # per the operator directive "openrouter can also do work for ... code" — not
+  # the last-resort rung it was originally admitted as. The header's "sits
+  # between cheap_cloud and claude" describes the DECLARATION order below; the
+  # order that actually routes is each task class's closed
+  # escalation_policy.tier_order, where cheap_frontier precedes every metered
+  # tier (OMN-14225 free-before-paid). Under this ticket the remaining code
+  # classes (code_review, validator_generation, test) were given the same
+  # placement code_generation and refactor already had, so the free coder rung
+  # carries the whole family rather than two members of it.
+  #
+  # Free-only is ABSOLUTE (OMN-14225 / operator ruling R9-amended): only models
+  # OpenRouter serves at genuinely zero cost may sit here — never a paid model
+  # through the aggregator, and never the paid slug of a model whose free slug
+  # was retired. The live 2026-08-28 probe confirmed the pinned model still
+  # reports `"cost": 0, "is_byok": false` in the provider's OWN usage
+  # accounting, so `cost_type: free_local` below remains TRUE rather than
+  # asserted.
   - name: cheap_frontier
     cost_per_1k_tokens: 0.0
     # OMN-13234: free_local-class cost — the OpenRouter Qwen3-Coder-480B entry is
@@ -308,12 +370,32 @@ tiers:
       - id: openrouter-qwen3-coder-480b
         backend_id: openrouter-qwen3-coder-480b
         max_context_tokens: 262144
+        # OMN-16891: code_review and validator_generation ADDED, completing the
+        # code-class family (code_generation, code_review, refactor,
+        # validator_generation, test) on the free coder rung. Both were already
+        # served by this backend's declared `code_generation` capability in
+        # bifrost_delegation.yaml and share code_generation's DoD family
+        # (OMN-15630 established validator_generation as an exact DoD match;
+        # OMN-13541 established code_review's cheap-tier need), so this
+        # inherits existing placements rather than making a new capability
+        # claim.
+        #
+        # Placement constraint, stated rather than discovered in production:
+        # this rung is a POOR fit for terse or tightly-budgeted structured
+        # output. Live 2026-08-28 probe — asked to "Reply with exactly: ok"
+        # under max_tokens 16, it spent 18 reasoning tokens and returned its
+        # own deliberation ("The user wants me to reply with exactly ok...")
+        # instead of the answer, a live reproduction of OMN-12717. The backend
+        # carries a 65536-token output budget in bifrost_delegation.yaml for
+        # exactly this reason; do not narrow it for this rung.
         use_for:
           - code_generation
+          - code_review
           - reasoning
           - research
           - refactor
           - test
+          - validator_generation
         fast_path_threshold_tokens: 8192
     eval_before_accept: true
     eval_model: qwen3.6-35b

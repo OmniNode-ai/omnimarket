@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
@@ -247,6 +248,99 @@ class ModelDelegationFailoverConfig(BaseModel):
     )
 
 
+# --------------------------------------------------------------------------
+# Provider quota + saturation policy (OMN-16891)
+# --------------------------------------------------------------------------
+
+
+class EnumQuotaDisposition(StrEnum):
+    """What to do with the tier that produced a quota response."""
+
+    RETRYABLE = "retryable"
+    """Transient throttle; the tier may retry, then escalate normally."""
+
+    DISABLE_UNTIL_RESET = "disable_until_reset"
+    """A periodic cap is spent. Disable until the provider's stated reset."""
+
+    DISABLE_UNTIL_BILLING = "disable_until_billing"
+    """No balance/package. No reset is coming — alert, never retry."""
+
+
+class ModelQuotaCodeRule(BaseModel):
+    """One provider error code and the disposition it maps to."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    code: str = Field(..., description="Provider-native error code, as a string.")
+    disposition: EnumQuotaDisposition = Field(...)
+    reset_from: str | None = Field(
+        default=None,
+        description="How to source the reset instant ('message_reset_timestamp').",
+    )
+    fallback_cooldown_seconds: int = Field(
+        default=0,
+        ge=0,
+        description="Cooldown applied when a declared reset cannot be parsed.",
+    )
+    alert: bool = Field(
+        default=False,
+        description="Whether this condition needs an operator, not a retry.",
+    )
+
+
+class ModelQuotaProviderRule(BaseModel):
+    """Quota rules for one provider, matched by endpoint host."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    provider_id: str = Field(...)
+    match_endpoint_host: str = Field(...)
+    codes: tuple[ModelQuotaCodeRule, ...] = Field(default_factory=tuple)
+
+
+class ModelProviderQuotaPolicy(BaseModel):
+    """Contract-declared reading of each provider's 429 responses.
+
+    A 429 is not one failure class: a periodic cap, a billing gap, and an
+    ordinary throttle all share the status line but need opposite handling.
+    Declaring the mapping here keeps it swappable by overlay (OMN-13215).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    schema_version: str = Field(...)
+    default_disposition: EnumQuotaDisposition = Field(
+        default=EnumQuotaDisposition.RETRYABLE,
+        description="Applied when a provider match yields no explicit code entry.",
+    )
+    providers: tuple[ModelQuotaProviderRule, ...] = Field(default_factory=tuple)
+
+
+class ModelTierSaturationRule(BaseModel):
+    """Bounded-wait budget for one tier."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    tier: str = Field(...)
+    max_wait_ms: int = Field(..., ge=0)
+    poll_interval_ms: int = Field(default=1000, ge=1)
+
+
+class ModelSaturationPolicy(BaseModel):
+    """Bounded-wait-then-escalate budgets per tier.
+
+    Never queue on owned capacity indefinitely, and never skip to a metered
+    tier while owned capacity is idle. A tier with no rule escalates
+    immediately — there is no owned capacity worth waiting for.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid", from_attributes=True)
+
+    schema_version: str = Field(...)
+    default_max_wait_ms: int = Field(default=0, ge=0)
+    tiers: tuple[ModelTierSaturationRule, ...] = Field(default_factory=tuple)
+
+
 class ModelBifrostDelegationConfig(BaseModel):
     """Bifrost delegation gateway configuration."""
 
@@ -282,9 +376,22 @@ class ModelBifrostDelegationConfig(BaseModel):
         default_factory=ModelDelegationShadowConfig,
         description="Shadow mode configuration for delegation A/B testing.",
     )
+    # OMN-16891: both blocks are OPTIONAL so an overlay or a test fixture that
+    # omits them still validates, but the loaders that consume them fail loud
+    # when they are absent from the committed contract (Rule 8) rather than
+    # silently defaulting to "every 429 is retryable" / "never wait".
+    provider_quota_policy: ModelProviderQuotaPolicy | None = Field(
+        default=None,
+        description="How each provider's 429 responses are classified.",
+    )
+    saturation_policy: ModelSaturationPolicy | None = Field(
+        default=None,
+        description="Per-tier bounded-wait budgets before escalating.",
+    )
 
 
 __all__: list[str] = [
+    "EnumQuotaDisposition",
     "ModelBifrostDelegationConfig",
     "ModelDelegationBackendConfig",
     "ModelDelegationCircuitBreakerConfig",
@@ -292,4 +399,9 @@ __all__: list[str] = [
     "ModelDelegationFallbackPolicy",
     "ModelDelegationRoutingRule",
     "ModelDelegationShadowConfig",
+    "ModelProviderQuotaPolicy",
+    "ModelQuotaCodeRule",
+    "ModelQuotaProviderRule",
+    "ModelSaturationPolicy",
+    "ModelTierSaturationRule",
 ]

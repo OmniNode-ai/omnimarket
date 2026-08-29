@@ -324,7 +324,13 @@ class TestJudgeResolvesConcreteModelNotTier:
             "code_generation", backend_id="cloud-glm"
         ).model_id
         assert judge_model == "gemini-2.5-flash"
-        assert escalation_model == "glm-5-turbo"
+        # OMN-16891: was pinned to "glm-5-turbo". That id is absent from every
+        # current z.ai doc, so cloud-glm was repointed to the documented
+        # ``glm-5.3`` on the standard (non-coding-plan) surface. The exact id is
+        # incidental to this test — assert that cloud-glm resolves its OWN
+        # model rather than pinning a value this ticket's sibling repoints will
+        # keep invalidating.
+        assert escalation_model == "glm-5.3"
         # The load-bearing invariant: the two are resolved from DIFFERENT backends
         # and are NOT the same model — the judge does not ride the escalation model.
         assert judge_model != escalation_model

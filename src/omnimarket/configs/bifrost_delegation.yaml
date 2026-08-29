@@ -198,18 +198,43 @@ backends:
     extra_headers:
       HTTP-Referer: "https://omninode.ai"
       X-Title: "OmniNode ONEX"
+  # GLM — DIRECT z.ai, never through OpenRouter (paying aggregator markup for a
+  # model we hold a key for is a cost bug). Ships DECLARED-BUT-DISABLED as of
+  # OMN-16891: the entry is complete and correct, and the tier self-enables the
+  # moment `llm.glm.api_key` resolves. See the routing_tiers.yaml cheap_cloud
+  # block for the activation runbook.
   - backend_id: cloud-glm
     # OMN-12819: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
-    endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
-    # OMN-14225: repointed glm-5.2 (flagship) -> glm-5-turbo, the CHEAPER GLM
-    # coding-plan model ("AI Coding Powered by GLM-5.2 & GLM-5-Turbo"), per the
-    # operator's paid policy (paid is ON + metered + logged; use the cheap,
-    # subscription-covered GLM, never the flagship glm-5.2). Live 1-token probe of
-    # the endpoint above with LLM_GLM_API_KEY confirmed glm-5-turbo is accepted and
-    # pins CLEANLY (response echoes model=glm-5-turbo, respects max_tokens) — unlike
-    # glm-4.5-air, which the endpoint substitutes to glm-4.7 and which burns
-    # reasoning tokens. Use the exact verified id — a wrong id fails closed.
-    model_name: "glm-5-turbo"
+    #
+    # OMN-16891: repointed off the CODING-PLAN surface
+    # (https://api.z.ai/api/coding/paas/v4/chat/completions) to the STANDARD
+    # direct-API surface below. These are different z.ai PRODUCTS, not two
+    # spellings of one endpoint:
+    #   * /api/coding/paas/v4/ is the coding-plan product. It is shared with
+    #     ZCode.app, a separate z.ai desktop agent OAuth-configured against the
+    #     SAME account (ledger, 2026-07-14 zai-trace, read-only). Its 429/1310
+    #     "Weekly/Monthly Limit Exhausted" was a CO-TENANT's cap, misread on
+    #     this ticket as our own subscription being exhausted; the operator
+    #     corrected it — "we haven't used glm at all."
+    #   * /api/paas/v4/ is the standard direct-API surface this tier's
+    #     subscription actually addresses. Verbatim from the official docs
+    #     (https://docs.z.ai/api-reference/llm/chat-completion, base
+    #     https://api.z.ai/api/paas/v4).
+    # Known live state, recorded so it is not rediscovered as a bug: probed
+    # 2026-08-28 with the then-present key, this surface returned 429 code 1113
+    # "Insufficient balance or no resource package" — a BILLING/entitlement gap
+    # on the standard product, distinct from 1310. The operator has since
+    # removed the keys, so the tier is credential-disabled regardless; both
+    # codes are classified by the provider_quota_policy block at the bottom of
+    # this file so neither is retried blindly.
+    endpoint_url: "https://api.z.ai/api/paas/v4/chat/completions"
+    # OMN-16891: was "glm-5-turbo" (OMN-14225). That id appears NOWHERE in
+    # current z.ai documentation on either surface — it is a dead pin, and a
+    # wrong id fails closed. Repointed to `glm-5.3`, the current flagship text
+    # model on the documented standard-surface list (glm-5.3, glm-5.2, glm-5.1,
+    # glm-5, glm-4.7*, glm-4.6, glm-4.5*, glm-4-32b-0414-128k). Re-pin via
+    # overlay if the plan's entitlement covers a cheaper documented id.
+    model_name: "glm-5.3"
     secret_ref: llm.glm.api_key
     api_key_env: LLM_GLM_API_KEY
     tier: cheap_cloud
@@ -371,19 +396,29 @@ backends:
   # OpenRouter backends (OMN-7980) — route authority carries logical secret refs
   # (secret_ref). OMN-13943: api_key_env is a genuine ADDITIONAL fallback the
   # effect boundary resolves when secret_ref's dotted convention mapping (→
-  # LLM_OPENROUTER_API_KEY) misses — it must name the REAL canonical env var
-  # (OPEN_ROUTER_API_KEY per ~/.omnibase/.env), not migration metadata.
+  # LLM_OPENROUTER_API_KEY) misses — it must name the REAL canonical env var,
+  # not migration metadata.
+  #
+  # OMN-16891: that canonical name is OPENROUTER_API_KEY (no underscore), the
+  # provider's own documented variable and the only spelling carrying a value
+  # on the .201 runtime host. The deployed lanes resolve this ref through
+  # omnibase_infra's per-lane `secret_resolver_mappings` with
+  # `enable_convention_fallback: false`, so the lane mapping and this field
+  # must name the SAME variable or the rung is credential-dead with no alias
+  # path to rescue it — which is exactly what it was until this ticket.
   - backend_id: openrouter-glm-flash
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "thudm/glm-4-9b-chat:free"
     secret_ref: llm.openrouter.api_key
-    # OMN-13943: canonical ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with
-    # underscore); this was OPENROUTER_API_KEY (no underscore, never resolves
-    # against the real env). api_key_env is now genuinely resolved as a
-    # fallback (see secret_store_resolver.resolve_api_key_async), so this
-    # rename is load-bearing, not just documentation.
-    api_key_env: OPEN_ROUTER_API_KEY
+    # OMN-16891: REVERTS OMN-13943's rename. That ticket changed this field to
+    # OPEN_ROUTER_API_KEY on the stated premise that "canonical
+    # ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with underscore)". Live
+    # probe 2026-08-28 (names + LENGTHS only) falsifies it: the .201 runtime
+    # host exports OPENROUTER_API_KEY (len 73) and defines the underscored form
+    # nowhere. api_key_env IS genuinely resolved as a fallback, so naming a
+    # variable no host defines made this rung silently unauthenticatable.
+    api_key_env: OPENROUTER_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
     # OMN-13161: GLM-4-9B (free OpenRouter tier) — modest 8192 output budget.
@@ -427,12 +462,14 @@ backends:
     # Zero cost is paid for in availability, not dollars.
     model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
     secret_ref: llm.openrouter.api_key
-    # OMN-13943: canonical ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with
-    # underscore); this was OPENROUTER_API_KEY (no underscore, never resolves
-    # against the real env). api_key_env is now genuinely resolved as a
-    # fallback (see secret_store_resolver.resolve_api_key_async), so this
-    # rename is load-bearing, not just documentation.
-    api_key_env: OPEN_ROUTER_API_KEY
+    # OMN-16891: REVERTS OMN-13943's rename. That ticket changed this field to
+    # OPEN_ROUTER_API_KEY on the stated premise that "canonical
+    # ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with underscore)". Live
+    # probe 2026-08-28 (names + LENGTHS only) falsifies it: the .201 runtime
+    # host exports OPENROUTER_API_KEY (len 73) and defines the underscored form
+    # nowhere. api_key_env IS genuinely resolved as a fallback, so naming a
+    # variable no host defines made this rung silently unauthenticatable.
+    api_key_env: OPENROUTER_API_KEY
     tier: cheap_frontier
     # OMN-13170: 64k-output frontier backend — align the timeout to the budget
     # (300000 ms); 120s was short for full 64k generations.
@@ -577,6 +614,89 @@ default_backends:
   # OMN-13351: ceiling fallback is the resolvable Gemini backend, not the dead
   # Anthropic cloud-sonnet (llm.anthropic.api_key resolves to None in every lane).
   - cloud-gemini-pro
+# Provider quota policy (OMN-16891) — how to read a 429 from each provider.
+#
+# A 429 is not one failure class. Retrying the same tier on a quota-exhaustion
+# 429 burns latency for a GUARANTEED failure, and retrying on a billing 429
+# burns it forever. The provider's own error code distinguishes them, so the
+# classification is declared here rather than inferred from the status line.
+#
+# Contract-first: adding a provider or recoding a disposition is an overlay
+# edit, never a code change (OMN-13215).
+#
+# Dispositions:
+#   retryable              — transient throttle; the tier may retry within its
+#                            declared max_retries, then escalate normally.
+#   disable_until_reset    — the plan's periodic cap is spent. Disable the tier
+#                            until the reset instant the provider states in the
+#                            error body, then let it re-enter the ladder.
+#   disable_until_billing  — no balance / no resource package. No reset will
+#                            arrive on its own, so retrying is pure waste;
+#                            disable and raise an operator alert instead.
+provider_quota_policy:
+  schema_version: "provider_quota_policy.v1"
+  # Applied when a provider match yields no explicit code entry.
+  default_disposition: retryable
+  providers:
+    - provider_id: zai
+      # Matched against the backend's endpoint_url host.
+      match_endpoint_host: "api.z.ai"
+      codes:
+        # Live-observed 2026-08-28 on the coding-plan surface, verbatim:
+        #   {"error":{"code":"1310","message":"Weekly/Monthly Limit Exhausted.
+        #    Your limit will reset at 2026-08-30 20:32:52"}}
+        # The reset instant is parsed out of the message; when it cannot be
+        # parsed the fallback cooldown below applies (fail-closed: a cap we
+        # cannot time is still a cap).
+        - code: "1310"
+          disposition: disable_until_reset
+          reset_from: message_reset_timestamp
+          fallback_cooldown_seconds: 3600
+          alert: false
+        # Live-observed 2026-08-28 on the standard surface, verbatim:
+        #   {"error":{"code":"1113","message":"Insufficient balance or no
+        #    resource package. Please recharge."}}
+        # No reset instant exists — this clears only when a human funds the
+        # account, so it alerts instead of retrying.
+        - code: "1113"
+          disposition: disable_until_billing
+          alert: true
+    - provider_id: openrouter
+      match_endpoint_host: "openrouter.ai"
+      # The free tier is rate-limited with no SLA and no structured code; its
+      # 429s are ordinary throttling that clears on its own.
+      codes: []
+
+# Saturation policy (OMN-16891) — bounded-wait-then-escalate.
+#
+# The local backends share ONE physical endpoint (.201:8000 serves both
+# local-coder and local-heavy-reasoning) which permits a SINGLE running
+# generation, so concurrent local delegations queue above the model server.
+# Two failure modes bound the correct behavior:
+#   * never queue on local indefinitely — a saturated local rung must be able
+#     to hand work to a free cloud rung rather than stall the ladder;
+#   * never skip straight to cloud while local is idle — that spends money (or
+#     free-tier goodwill) on capacity we already own.
+# Bounded wait is the resolution: wait up to `max_wait_ms` for the local slot,
+# then escalate and record `saturation-escalate` as the placement_reason.
+#
+# `.201:8000` exposes no queue-depth counters (probed 2026-08-28: no /metrics
+# `queue`, `running_req`, or `num_queue`), so there is no saturation SIGNAL to
+# read — the bound is enforced at dispatch by elapsed wait, which is also what
+# keeps this from becoming a new metrics subsystem.
+saturation_policy:
+  schema_version: "saturation_policy.v1"
+  # Tiers not listed escalate immediately on contention (no owned capacity to
+  # wait for).
+  default_max_wait_ms: 0
+  tiers:
+    - tier: local
+      # Operator-tunable. Sized to the single-slot local endpoint: long enough
+      # that a short in-flight generation is worth waiting out, short enough
+      # that a long one does not stall the ladder.
+      max_wait_ms: 45000
+      poll_interval_ms: 1500
+
 # Gateway-level circuit breaker settings (apply to all backends).
 circuit_breaker:
   failure_threshold: 5

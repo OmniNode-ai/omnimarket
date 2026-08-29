@@ -253,6 +253,31 @@ class TestContractBackendMaxTokens:
         assert second_intents[0].max_tokens != request.max_tokens
 
 
+# OMN-16891: the ceiling tier slot is named ``claude`` as a stable identifier,
+# not a provider claim (see routing_tiers.yaml).
+_CEILING_TIER_NAME = "claude"
+
+
+def _task_class_tier_order(task_type: str) -> tuple[str, ...]:
+    """Read a task class's declared, closed escalation ladder from contract.
+
+    Fixtures that restate the ladder as a literal go stale silently the moment
+    a rung is added; reading it keeps the test honest about what it exercises.
+    """
+    import yaml as _yaml
+
+    contract_path = (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "omnimarket"
+        / "configs"
+        / "task_class_contracts.v1.yaml"
+    )
+    contract = _yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    entry = contract["task_classes"][task_type]
+    return tuple((entry.get("escalation_policy") or {}).get("tier_order") or ())
+
+
 # ---------------------------------------------------------------------------
 # Tests: Happy Path
 # ---------------------------------------------------------------------------
@@ -1282,13 +1307,35 @@ class TestInferenceErrorEscalation:
         handler = HandlerDelegationWorkflow()
         cid = uuid4()
         max_escalations = resolve_task_class_max_escalations("test")
-        assert max_escalations == 2
+        # OMN-16891: was ``assert max_escalations == 2``. The `test` class
+        # gained a `cheap_frontier` rung (the free OpenRouter coder now carries
+        # the whole code-class family), so its ladder is one longer and
+        # max_escalations rose 2 -> 3. The literal was a fixture guard, never
+        # the property under test — this asserts the property the test actually
+        # depends on: that the ladder has room to be exhausted.
+        assert max_escalations >= 2
 
         handler.handle_delegation_request(_make_request(correlation_id=cid))
 
-        # Exhaust max attempts via successive infra errors. `test` tier_order is
-        # [local, cheap_cloud, claude]: local -> cheap_cloud -> claude.
-        tiers_in_order = ("local", "cheap_cloud")
+        # Exhaust max attempts via successive infra errors, walking the class's
+        # OWN declared ladder minus its ceiling (the ceiling is attempted below,
+        # after max_escalations is reached).
+        #
+        # OMN-16891: this was hardcoded ``("local", "cheap_cloud")`` against a
+        # comment asserting `test` tier_order is [local, cheap_cloud, claude].
+        # That class now declares [local, cheap_frontier, cheap_cloud, claude]
+        # — the free OpenRouter coder rung was inserted ahead of every metered
+        # tier — so the literal under-ran the loop by one and IndexError'd.
+        # Reading the ladder from the contract makes the fixture track the
+        # ladder instead of restating a stale copy of it.
+        declared_order = _task_class_tier_order("test")
+        tiers_in_order = tuple(
+            tier for tier in declared_order if tier != _CEILING_TIER_NAME
+        )
+        assert len(tiers_in_order) >= max_escalations, (
+            f"ladder {declared_order} cannot supply {max_escalations} "
+            "non-ceiling attempts"
+        )
         for i in range(max_escalations):
             handler.handle_routing_decision(
                 _make_routing_decision_with_tier(cid, tier_name=tiers_in_order[i])
