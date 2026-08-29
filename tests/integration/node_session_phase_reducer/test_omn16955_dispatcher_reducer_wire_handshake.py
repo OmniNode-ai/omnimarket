@@ -38,7 +38,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 from omnibase_core.enums import EnumNodeKind
 from omnibase_infra.runtime.auto_wiring.handler_wiring import _make_dispatch_callback
 from pydantic import ValidationError
@@ -54,6 +53,7 @@ from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_
     HandlerSessionPhaseReducer,
     ModelSessionPhaseReducerInput,
 )
+from omnimarket.nodes.node_session_phase_reducer.state_codec import get_default_proxy
 
 _TOPIC_PHASE_STATE = "onex.evt.omnimarket.session-phase-state.v1"
 _SESSION_ID = "sess-omn-16955-wire-handshake"
@@ -191,11 +191,10 @@ async def test_dispatcher_actual_payload_validates_and_advances_current_phase(
     )
     assert result is not None, "dispatch produced no ModelDispatchResult"
 
-    state_file = tmp_path / ".onex_state" / "session" / "phase_state.yaml"
-    assert state_file.exists(), "the reducer's projection side effect did not fire"
-    state = yaml.safe_load(state_file.read_text())
-    assert state["session_id"] == _SESSION_ID
-    assert state["current_phase"] == "phase_2", (
+    state = get_default_proxy().get(_SESSION_ID)
+    assert state is not None, "the reducer did not update the state proxy"
+    assert state.session_id == _SESSION_ID
+    assert state.current_phase == "phase_2", (
         "the fold did not advance current_phase — phase_name was not "
         f"transcribed onto the reducer's phase field (state={state!r})"
     )
