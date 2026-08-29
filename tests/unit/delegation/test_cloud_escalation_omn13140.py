@@ -498,14 +498,38 @@ class TestCanonicalCloudTargetCapability:
         assert "summarization" in gemini["use_for"]
 
     def test_vertex_routing_tier_use_for_excludes_code_generation(self) -> None:
-        tiers = {t["name"]: t for t in self._routing_tiers()["tiers"]}
-        cheap_cloud = tiers["cheap_cloud"]
-        vertex = next(
-            m
-            for m in cheap_cloud["models"]
-            if m["backend_id"] == _CANONICAL_VERTEX_BACKEND_ID
-        )
-        assert "code_generation" not in vertex["use_for"]
+        """OMN-13140's property, re-expressed after OMN-16833 unreferenced Vertex.
+
+        The original form did ``next(m for m in cheap_cloud["models"] if ...)``
+        and asserted ``code_generation not in use_for``. That reads as a
+        capability guard but is really a MEMBERSHIP pin: it raises
+        ``StopIteration`` the moment the entry is absent, i.e. it fails hardest
+        in the state where OMN-13140's guarantee ("exactly one canonical Gemini
+        target is live for the escalation path") is MOST strongly satisfied.
+
+        OMN-16833 removed the ``vertex-gemini-flash`` entry from every tier —
+        no lane can bind ``cloud-vertex-gemini`` (endpoint_url null, the render
+        path does not read the env var, and the dev lane's ADC token file is
+        /dev/null), so the rung was declared and unreachable at once. The
+        backend DECLARATION stays parked for the eventual ADC mount.
+
+        Asserted here as the property itself, so it holds in both states: Vertex
+        must not route ``code_generation`` from ANY tier, whether it is absent
+        today or restored later.
+        """
+        vertex_entries = [
+            model
+            for tier in self._routing_tiers()["tiers"]
+            for model in tier.get("models") or ()
+            if model["backend_id"] == _CANONICAL_VERTEX_BACKEND_ID
+        ]
+
+        for entry in vertex_entries:
+            assert "code_generation" not in entry["use_for"], (
+                "cloud-vertex-gemini must never carry code_generation in a tier's "
+                "use_for — OMN-13140 keeps exactly one canonical Gemini target on "
+                "the escalation path"
+            )
 
     def test_canonical_gemini_endpoint_is_ai_studio(self) -> None:
         by_id = {b["backend_id"]: b for b in self._bifrost()["backends"]}

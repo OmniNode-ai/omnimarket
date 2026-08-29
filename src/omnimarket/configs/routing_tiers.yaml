@@ -318,22 +318,44 @@ tiers:
           # (same required_capabilities/pricing/latency profile); mirrors
           # document's existing placement on this backend.
           - documentation
-      # OMN-12971: Vertex-served Gemini (ADC / $500-credit path), ADDITIVE next to
-      # gemini-flash (AI Studio key path). Both routes stay selectable; the Vertex
-      # entry uses backend_id cloud-vertex-gemini, whose secret_ref is
-      # llm.vertex.access_token — a short-lived OAuth bearer token minted from ADC,
-      # resolved fail-closed at the effect boundary and posted as Authorization:
-      # Bearer <token> via the standard api-key path (no token VALUE committed).
-      - id: vertex-gemini-flash
-        backend_id: cloud-vertex-gemini
-        max_context_tokens: 1000000
-        use_for:
-          - summarization
-          - simple_tasks
-          # OMN-15630: mirrors gemini-flash above (same secondary route for
-          # documentation's cheap_cloud rung).
-          - documentation
-          - document
+      # OMN-16833: the `vertex-gemini-flash` rung (backend_id
+      # cloud-vertex-gemini, added by OMN-12971 as the ADDITIVE ADC /
+      # $500-credit path next to gemini-flash) was REMOVED from this tier. The
+      # backend DECLARATION is deliberately kept and parked in
+      # bifrost_delegation.yaml — only the tier reference goes. Reason: no lane
+      # in the fleet can bind it, so it was a rung that is declared and
+      # unreachable at the same time.
+      #
+      #   * `cloud-vertex-gemini` carries `endpoint_url: null` and expects
+      #     BIFROST_VERTEX_GEMINI_ENDPOINT_URL to populate it — but
+      #     omnibase_infra's `render_bifrost_delegation_contract` "never reads
+      #     endpoint or model bindings from the process environment" (its own
+      #     module docstring). The sole binding authority is the typed lane
+      #     overlay, and `ModelBifrostLaneBackendBinding` admits ONLY
+      #     unauthenticated local http:// chat-completions endpoints on an
+      #     authorized host table — a bearer-authenticated cloud backend is
+      #     unrepresentable there by construction.
+      #   * dev lane, live readback 2026-08-29 (`docker exec omninode-runtime`):
+      #     the resolver maps `llm.vertex.access_token` to the FILE
+      #     /run/secrets/vertex_access_token, and that path is a character
+      #     device 1,3 (i.e. /dev/null) — the credential is absent, not stale.
+      #   * onex-dev lane: k8s/onex-dev/runtime/configmap.yaml pins
+      #     `BIFROST_VERTEX_GEMINI_ENDPOINT_URL: ""` with an in-tree comment
+      #     parking the Vertex path "until the ADC token mount is present".
+      #
+      # Consequence on the lane, measured not inferred: `_load_bifrost_endpoints`
+      # drops any backend without a complete endpoint_url SILENTLY, so
+      # cloud-vertex-gemini was already absent from BACKENDS_LOADED while this
+      # tier still pointed at it. Nothing lost a route — `gemini-flash` above
+      # already serves summarization / simple_tasks / documentation / document
+      # on this tier, and every one of those classes keeps a zero-cost local
+      # rung ahead of it.
+      #
+      # RE-ENABLE by mounting a real ADC token at /run/secrets/vertex_access_token
+      # and giving the backend a concrete endpoint_url through the binding
+      # authority — then restore this entry. Do NOT restore it first: the
+      # OMN-16833 ratchet in tests/test_routing_tiers_contract.py fails on a
+      # tier that references a non-local backend with a null endpoint.
     eval_before_accept: true
     eval_model: qwen3.6-35b
     max_retries: 1

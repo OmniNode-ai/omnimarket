@@ -329,6 +329,22 @@ backends:
   # The overlay (bifrost_overrides.yaml) supplies the COMPLETE chat-completions
   # URL via BIFROST_VERTEX_GEMINI_ENDPOINT_URL. A bare base fails closed
   # (OMN-12815) — no in-code path construction.
+  #
+  # OMN-16833 — PARKED AND UNREFERENCED. This declaration is retained on
+  # purpose, but routing_tiers.yaml no longer points any tier at it. Vertex
+  # cannot be bound on any lane today: the deploy-time renderer
+  # (omnibase_infra render_bifrost_delegation_contract) never reads endpoint
+  # bindings from the process environment, and the typed lane overlay that IS
+  # the binding authority admits only unauthenticated local http:// backends —
+  # so BIFROST_VERTEX_GEMINI_ENDPOINT_URL above is inert on the render path.
+  # Live 2026-08-29: the dev lane's llm.vertex.access_token resolves to the FILE
+  # /run/secrets/vertex_access_token, which is a character device 1,3 (/dev/null),
+  # and onex-dev pins BIFROST_VERTEX_GEMINI_ENDPOINT_URL to "" pending the ADC
+  # mount. The declaration stays because Vertex is a SEPARATE quota domain from
+  # the AI Studio key that cloud-gemini-pro / cloud-gemini-flash / cloud-glm-judge
+  # all share, so it remains the cheapest available answer to that coupling once
+  # the ADC token is mounted. Mount the token and give this a concrete
+  # endpoint_url BEFORE restoring the tier reference, not after.
   - backend_id: cloud-vertex-gemini
     endpoint_url_env: BIFROST_VERTEX_GEMINI_ENDPOINT_URL
     endpoint_url: null

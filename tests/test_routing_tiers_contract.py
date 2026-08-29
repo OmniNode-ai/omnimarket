@@ -7,12 +7,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import yaml
+
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     parse_delegation_config_yaml,
 )
 from tests.constants import MODEL_QWEN3_27B_MTP, MODEL_QWEN3_35B_A3B
 
 _ROUTING_TIERS_PATH = Path("src/omnimarket/configs/routing_tiers.yaml")
+_BIFROST_CONTRACT_PATH = Path("src/omnimarket/configs/bifrost_delegation.yaml")
+# The one bifrost ``tier`` value the typed lane overlay is able to bind.
+_LANE_BOUND_TIER = "local"
 
 # OMN-16442: backends whose ENDPOINT no longer exists on the fleet. Both were
 # re-probed 2026-08-28 against the canonical inventory
@@ -135,3 +140,63 @@ def test_prose_classes_kept_a_local_rung_after_reasoner_retirement() -> None:
             "local-reasoner was retired — it would fall straight to the "
             "metered cheap_cloud tier"
         )
+
+
+def test_no_tier_references_a_backend_no_lane_can_bind() -> None:
+    """OMN-16833 AC1/AC3: a referenced backend must be bindable somewhere.
+
+    ``_load_bifrost_endpoints`` drops any backend without a complete
+    ``endpoint_url``, SILENTLY. So a tier can reference a backend that no lane
+    is able to resolve and nothing anywhere says so — the rung is declared and
+    unreachable at the same time, which is exactly the decorative-rung class the
+    OMN-15630 routing-completeness gate exists to forbid.
+
+    Two binding paths exist, and only two:
+
+    * ``tier: local`` backends are legitimately ``endpoint_url: null`` in the
+      committed contract. They are bound per lane by the typed overlay
+      (``omnibase_infra`` ``docker/lane-overlays/<lane>.bifrost.yaml``, validated
+      by ``ModelBifrostLaneBackendBinding``), which admits ONLY unauthenticated
+      local ``http://`` chat-completions endpoints on an authorized host table.
+    * every other backend must therefore carry a concrete ``endpoint_url`` in
+      the committed contract, because the lane overlay cannot represent it and
+      ``render_bifrost_delegation_contract`` "never reads endpoint or model
+      bindings from the process environment" (its own module docstring).
+
+    A non-local backend referenced by a tier with ``endpoint_url: null`` is
+    unbindable by construction on every lane. Live readback 2026-08-29 on the
+    dev lane (``docker exec omninode-runtime``) confirmed the consequence:
+    ``cloud-vertex-gemini`` was declared, referenced by ``cheap_cloud``, and
+    absent from ``BACKENDS_LOADED``.
+
+    Parking such a backend is fine — leaving a tier POINTING at it is not.
+    """
+    config = _load_config()
+
+    declarations = {
+        entry["backend_id"]: entry
+        for entry in yaml.safe_load(_BIFROST_CONTRACT_PATH.read_text(encoding="utf-8"))[
+            "backends"
+        ]
+    }
+    referenced = {model.backend_ref for tier in config.tiers for model in tier.models}
+
+    undeclared = sorted(referenced - set(declarations))
+    assert not undeclared, (
+        "routing_tiers.yaml references backend_ids that bifrost_delegation.yaml "
+        f"does not declare at all: {undeclared}"
+    )
+
+    unbindable = sorted(
+        backend_ref
+        for backend_ref in referenced
+        if declarations[backend_ref].get("tier") != _LANE_BOUND_TIER
+        and not declarations[backend_ref].get("endpoint_url")
+    )
+    assert not unbindable, (
+        "routing_tiers.yaml references non-local backends that carry "
+        f"endpoint_url: null and so no lane can bind: {unbindable}. "
+        "_load_bifrost_endpoints drops them silently, leaving a tier pointing "
+        "at nothing. Either give the backend a concrete endpoint_url, or stop "
+        "referencing it from every tier and leave the declaration parked."
+    )
