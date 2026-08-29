@@ -24,10 +24,22 @@ than deleted with the backend:
      COMPLETE chat-completions URL, never the bare ``/v1`` base — the named
      silent-failure class (OMN-12815).
   3. The committed-file entry is MANDATORY: an overlay-only ``backend_id`` with
-     no matching committed entry is silently dropped by ``_merge_overlay``.
-     This is the property that makes retiring a backend a two-file change, and
-     it is exactly why OMN-16442 removed the retired ids from the committed
-     contract rather than only from the overlay.
+     no matching committed entry never resolves. This is the property that makes
+     retiring a backend a two-file change, and it is exactly why OMN-16442
+     removed the retired ids from the committed contract rather than only from
+     the overlay.
+
+     OMN-16903 RETARGETED property 3 onto a stricter outcome. The property was
+     originally written as "``_merge_overlay`` silently DROPS it", which pinned
+     one half of a live divergence: the sibling merge path in
+     ``adapters/llm/bifrost/config_loader_bifrost_delegation.py`` APPENDED the
+     same row instead, and the appended partial entry then failed whole-config
+     schema validation — so retiring a backend_id took every task type down on
+     that path while merely narrowing the routing table on this one. Both paths
+     now REJECT the row with ``OverlayOnlyBackendIdError``, naming the offending
+     id and the overlay source. The OMN-15155 intent is preserved and
+     strengthened: an overlay-only backend_id still never resolves a phantom
+     backend, and now says so instead of vanishing.
 """
 
 from __future__ import annotations
@@ -38,6 +50,9 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    OverlayOnlyBackendIdError,
+)
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelDelegationBackendConfig,
 )
@@ -99,8 +114,9 @@ def test_committed_contract_declares_local_ds_v4_flash() -> None:
     backends = {backend["backend_id"]: backend for backend in raw["backends"]}
 
     assert "local-ds-v4-flash" in backends, (
-        "local-ds-v4-flash must be a COMMITTED backend_id — _merge_overlay silently "
-        "drops overlay-only backend_ids (OMN-15155)."
+        "local-ds-v4-flash must be a COMMITTED backend_id — both overlay merge "
+        "paths REJECT overlay-only backend_ids (OMN-15155, refusal unified by "
+        "OMN-16903)."
     )
     backend = backends["local-ds-v4-flash"]
 
@@ -228,17 +244,23 @@ def test_resolve_delegation_backend_rejects_bare_v1_base_class_of_failure() -> N
 
 # ---------------------------------------------------------------------------
 # 3. Proof the committed-file entry is mandatory: overlay-only backend_ids are
-#    silently DROPPED by _merge_overlay.
+#    REJECTED attributably by both merge paths (retargeted by OMN-16903 from
+#    "silently DROPPED by _merge_overlay").
 # ---------------------------------------------------------------------------
 
 
 @pytest.mark.unit
-def test_overlay_only_backend_id_is_silently_dropped_without_committed_entry() -> None:
-    """Reproduces the exact failure mode OMN-15155's committed entry avoids:
-    an overlay-only backend_id with no matching committed entry never appears
-    in the merged config, so resolve_delegation_backend(backend_id=...) fails
-    closed with "No delegation backend ... found" rather than silently
-    resolving a phantom backend."""
+def test_overlay_only_backend_id_is_rejected_without_committed_entry() -> None:
+    """An overlay-only backend_id never resolves a phantom backend.
+
+    OMN-15155 asserted this by observing the row silently vanish from the merged
+    config. OMN-16903 replaced that with an explicit refusal that names the
+    offending id and the overlay source, because the sibling merge path handled
+    the identical input by appending it and hard-failing whole-config validation
+    with a pydantic message pointing at a list index. The property being proved
+    is unchanged — the committed entry is MANDATORY — but the failure is now
+    loud and attributable on both paths instead of divergent.
+    """
     store = _MockStore(
         {
             BIFROST_OVERLAY_STORE_KEY: _overlay_yaml(
@@ -253,15 +275,24 @@ def test_overlay_only_backend_id_is_silently_dropped_without_committed_entry() -
         }
     )
 
-    backends = load_bifrost_backends(config_path=_BIFROST_CONFIG_PATH, store=store)
-    ids = {b["backend_id"] for b in backends}
-    assert "local-ds-v4-flash-not-committed" not in ids, (
-        "_merge_overlay must silently drop an overlay-only backend_id that has "
-        "no matching committed entry — this is why local-ds-v4-flash MUST be "
-        "committed in bifrost_delegation.yaml, not overlay-only (OMN-15155)."
+    with pytest.raises(OverlayOnlyBackendIdError) as excinfo:
+        load_bifrost_backends(config_path=_BIFROST_CONFIG_PATH, store=store)
+
+    message = str(excinfo.value)
+    assert "local-ds-v4-flash-not-committed" in message, (
+        "the refusal must NAME the overlay-only backend_id — this is why "
+        "local-ds-v4-flash MUST be committed in bifrost_delegation.yaml, not "
+        "overlay-only (OMN-15155/OMN-16903)."
+    )
+    assert BIFROST_OVERLAY_STORE_KEY in message, (
+        "the refusal must attribute the row to the store overlay it came from "
+        "(OMN-16903)."
     )
 
-    with pytest.raises(RuntimeError, match="local-ds-v4-flash-not-committed"):
+    # The public resolve entrypoint inherits the same refusal — it loads through
+    # the same merge path, so a stale overlay can no longer make one caller fail
+    # closed on a phantom lookup while another hard-fails on schema validation.
+    with pytest.raises(OverlayOnlyBackendIdError):
         resolve_delegation_backend(
             "code_generation",
             backend_id="local-ds-v4-flash-not-committed",

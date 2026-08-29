@@ -42,6 +42,10 @@ import yaml
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    reject_overlay_only_backend_ids,
+)
+
 logger = logging.getLogger(__name__)
 
 _CONFIGS_DIR = Path(__file__).resolve().parent.parent / "configs"
@@ -208,8 +212,23 @@ def _load_store_overlay(store: ProtocolSecretStore) -> list[dict[str, Any]] | No
 def _merge_overlay(
     backends: list[dict[str, Any]],
     overlay_backends: list[dict[str, Any]],
+    *,
+    overlay_source: str,
 ) -> list[dict[str, Any]]:
-    """Merge overlay entries field-by-field onto matching ``backend_id`` entries."""
+    """Merge overlay entries field-by-field onto matching ``backend_id`` entries.
+
+    OMN-16903: an overlay entry naming a ``backend_id`` the committed contract
+    does not declare is REJECTED here, naming the id and ``overlay_source``.
+    This function used to drop such an entry silently (it only ever iterates the
+    committed list), while the sibling merge path in
+    ``adapters/llm/bifrost/config_loader_bifrost_delegation.py`` appended it and
+    hard-failed whole-config validation. Both now share one rule via
+    ``reject_overlay_only_backend_ids``. ``overlay_source`` is keyword-only and
+    required so no call site can merge an overlay it cannot attribute.
+    """
+    reject_overlay_only_backend_ids(
+        backends, overlay_backends, overlay_source=overlay_source
+    )
     overlay_by_id = {b["backend_id"]: b for b in overlay_backends}
     merged = list(backends)
     for i, backend in enumerate(merged):
@@ -241,6 +260,13 @@ def load_bifrost_backends(
     Overlay entries are merged onto matching ``backend_id`` entries field-by-field.
     The overlay supplies COMPLETE endpoint URLs for site-specific local backends
     that are ``null`` in the committed repo default (OMN-12815).
+
+    Raises:
+        OverlayOnlyBackendIdError: if the active overlay (store or file) declares
+            a ``backend_id`` the committed contract does not. Previously such an
+            entry was dropped silently here while the sibling loader appended it
+            and hard-failed the whole config; both paths now refuse identically,
+            naming the offending id and the overlay source (OMN-16903).
     """
     backends: list[dict[str, Any]] = []
     if config_path.is_file():
@@ -251,7 +277,11 @@ def load_bifrost_backends(
     if store is not None:
         store_overlay = _load_store_overlay(store)
         if store_overlay is not None:
-            backends = _merge_overlay(backends, store_overlay)
+            backends = _merge_overlay(
+                backends,
+                store_overlay,
+                overlay_source=f"store key {BIFROST_OVERLAY_STORE_KEY!r}",
+            )
             return backends
         # Store is configured but has no overlay key → fall through to file with
         # a deprecation warning.
@@ -279,7 +309,9 @@ def load_bifrost_backends(
     if overlay_path.is_file():
         overlay = yaml.safe_load(overlay_path.read_text(encoding="utf-8")) or {}
         file_overlay_backends = list(overlay.get("backends", []))
-        backends = _merge_overlay(backends, file_overlay_backends)
+        backends = _merge_overlay(
+            backends, file_overlay_backends, overlay_source=str(overlay_path)
+        )
 
     return backends
 

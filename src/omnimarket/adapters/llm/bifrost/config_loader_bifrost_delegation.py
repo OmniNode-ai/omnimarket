@@ -11,12 +11,16 @@ at load time.
 Related:
     - OMN-10637: Bifrost routing rules for delegation task classes
     - OMN-10717: Default contract + endpoint overlay merge semantics
+    - OMN-16903: overlay-only backend_ids are rejected attributably, and the
+      sibling ``routing/delegation_backend_resolution.py`` merge path shares
+      that rule via ``reject_overlay_only_backend_ids``
 """
 
 from __future__ import annotations
 
 import copy
 import logging
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
 
@@ -37,6 +41,82 @@ _DEFAULT_OVERLAY_PATH = (
 )
 
 _IDENTITY_KEYS = ("backend_id", "rule_id")
+
+_COMMITTED_CONTRACT_RELPATH = "src/omnimarket/configs/bifrost_delegation.yaml"
+
+
+class OverlayOnlyBackendIdError(ValueError):
+    """A site overlay declared a ``backend_id`` the committed contract does not.
+
+    Raised by BOTH overlay merge paths (this loader and the routing authority's
+    ``load_bifrost_backends``) so that one input class produces one outcome
+    regardless of which loader a caller reaches for (OMN-16903).
+
+    Subclasses ``ValueError`` to preserve this module's documented failure
+    contract for existing callers that catch ``ValueError`` around config load.
+    """
+
+
+def reject_overlay_only_backend_ids(
+    committed_backends: Sequence[Any],
+    overlay_backends: Sequence[Any],
+    *,
+    overlay_source: str,
+) -> None:
+    """Raise if ``overlay_backends`` names a ``backend_id`` not in the contract.
+
+    A site overlay exists to OVERRIDE fields on backends the committed contract
+    already declares — typically to supply a COMPLETE site-local ``endpoint_url``
+    for an entry whose repo default is null. It is not a registration surface.
+
+    Overlay rows are hand-written and carry only ``backend_id`` / ``endpoint_url``
+    / ``model_name`` — no ``tier``, ``timeout_ms`` or ``max_tokens``. Before
+    OMN-16903 the two merge paths disagreed about what to do with a row naming a
+    backend the contract no longer declares: this loader APPENDED it, so the
+    partial entry then failed whole-config schema validation with a pydantic
+    message pointing at a list index the operator never wrote, taking every task
+    type down; the routing authority silently DROPPED it, quietly narrowing the
+    routing table. Both now refuse, naming the offending id and its source.
+
+    Args:
+        committed_backends: the ``backends`` entries from the committed contract.
+        overlay_backends: the ``backends`` entries from the overlay.
+        overlay_source: human-readable provenance of the overlay — a filesystem
+            path or a secret-store key. Carried verbatim into the error message
+            so a stale overlay is diagnosable without reproducing the load.
+
+    Raises:
+        OverlayOnlyBackendIdError: if any overlay entry declares a ``backend_id``
+            absent from ``committed_backends``.
+    """
+    committed_ids = {
+        item["backend_id"]
+        for item in committed_backends
+        if isinstance(item, dict) and "backend_id" in item
+    }
+
+    offending: list[str] = []
+    for item in overlay_backends:
+        if not isinstance(item, dict) or "backend_id" not in item:
+            continue
+        backend_id = item["backend_id"]
+        if backend_id not in committed_ids and backend_id not in offending:
+            offending.append(backend_id)
+
+    if not offending:
+        return
+
+    msg = (
+        f"Bifrost delegation overlay {overlay_source} declares backend_id(s) "
+        f"that the committed contract does not: {offending}. A site overlay may "
+        "only override entries the committed contract already declares — it "
+        "cannot introduce new ones, because hand-written overlay rows carry no "
+        "tier/timeout_ms/max_tokens and an introduced entry fails schema "
+        "validation for the WHOLE config, taking every task type down. Either "
+        f"remove the stale row(s) from {overlay_source}, or declare them in "
+        f"{_COMMITTED_CONTRACT_RELPATH} (OMN-16903)."
+    )
+    raise OverlayOnlyBackendIdError(msg)
 
 
 def load_bifrost_delegation_config(
@@ -126,6 +206,17 @@ def load_bifrost_delegation_config(
 
     if overlay is not None and overlay.exists():
         overlay_data = _read_yaml_mapping(overlay)
+        # OMN-16903: refuse an overlay-only backend_id BEFORE merging, so the
+        # operator gets the offending id + this overlay's path instead of the
+        # pydantic ``backends.<index>.tier`` message the appended partial entry
+        # used to produce below. The sibling routing-authority merge path
+        # (``load_bifrost_backends``) calls this same helper, so both paths
+        # now agree on this input class.
+        reject_overlay_only_backend_ids(
+            data.get("backends") or [],
+            overlay_data.get("backends") or [],
+            overlay_source=str(overlay),
+        )
         data = deep_merge_bifrost_delegation_config(data, overlay_data)
 
     try:
@@ -189,6 +280,14 @@ def deep_merge_bifrost_delegation_config(
     and no file system or environment access happens here. Lists of mappings
     keyed by ``backend_id`` or ``rule_id`` merge by identity, preserving default
     ordering and appending overlay-only entries.
+
+    The generic append above is NOT the delegation-config contract for
+    ``backends``: ``load_bifrost_delegation_config`` calls
+    ``reject_overlay_only_backend_ids`` first, so an overlay-only ``backend_id``
+    never reaches this merge (OMN-16903). The append behaviour is retained here
+    because this function is also the generic merge for other config shapes
+    (e.g. ``adk_invoke.yaml`` via ``adapters/adk/adapter_adk_invoke.py``), which
+    declare no ``backends`` at all.
     """
     return cast(dict[str, Any], _deep_merge(default_config, overlay_config))
 
@@ -252,6 +351,8 @@ def _list_identity_key(
 
 
 __all__: list[str] = [
+    "OverlayOnlyBackendIdError",
     "deep_merge_bifrost_delegation_config",
     "load_bifrost_delegation_config",
+    "reject_overlay_only_backend_ids",
 ]
