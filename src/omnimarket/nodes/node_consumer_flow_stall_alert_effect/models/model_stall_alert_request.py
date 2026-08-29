@@ -1,12 +1,21 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Typed def-B input for one stall evaluation (OMN-16778).
+"""One assembled stall evaluation (OMN-16778).
 
-The window history arrives AS INPUT rather than being queried here, for the
-same reason ``node_projection_consumer_flow`` resolves its upstream evidence in
-the writer: it keeps ``handle()`` a pure function of its argument -- no clock,
-no database, no ambient state -- so the same history always produces the same
-decision and the hermetic tests drive the real handler rather than a stand-in.
+This is no longer the node's declared ``input_model`` -- the redesign
+(operator-approved 2026-08-28) made that the minimal
+:class:`~omnimarket.nodes.node_consumer_flow_stall_alert_effect.models.model_stall_alert_trigger.ModelConsumerFlowStallAlertTrigger`,
+because nothing on the platform produces a fully-assembled request and nothing
+could.  The node assembles THIS internally, per key, and hands it to
+:func:`~omnimarket.nodes.node_consumer_flow_stall_alert_effect.handlers.decide_stall_alert.decide_stall_alert`.
+
+The window history still arrives AS INPUT to the decision rather than being
+queried inside it, for the same reason ``node_projection_consumer_flow``
+resolves its upstream evidence in the writer: it keeps the verdict a pure
+function of its argument -- no clock, no database, no ambient state -- so the
+same history always produces the same decision and the hermetic tests drive the
+real decision code rather than a stand-in.  The read itself lives one layer out,
+at the effect's own boundary (``handlers/flow_window_reader.py``).
 """
 
 from __future__ import annotations
@@ -25,12 +34,12 @@ from omnimarket.nodes.node_consumer_flow_stall_alert_effect.models.model_stall_a
 class ModelFlowWindowObservation(BaseModel):
     """One materialized consumer-flow window row, as the alert sees it.
 
-    The table name is deliberately not spelled here. This node never touches
-    the database -- the history arrives as input, resolved by the caller that
-    owns the read -- and ``scripts/generate_application_relation_inventory.py``
-    derives its reader set by scanning node sources for relation-name tokens,
-    so naming the relation in a docstring would record a read that does not
-    happen.
+    The relation these rows come from is named once, in the contract's
+    ``windows_source`` block, and read at the effect boundary. Since the
+    OMN-16778 redesign this node genuinely IS a reader of that relation, and
+    ``scripts/generate_application_relation_inventory.py`` records it as one --
+    which is now an accurate entry rather than the docstring artefact it was
+    before the node did any reading.
 
     The counters are ``int | None`` and stay that way on purpose: an ``UNKNOWN``
     window carries ``None``, never ``0``. Coercing them to zero here would

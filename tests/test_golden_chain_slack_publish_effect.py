@@ -395,3 +395,43 @@ class TestSlackPublishSecretFailClosed:
         assert stub.call_count == 0, (
             "No HTTP POST must be attempted when the secret is unresolved"
         )
+
+    @pytest.mark.asyncio
+    async def test_the_contract_ref_is_also_passed_as_the_env_fallback(self) -> None:
+        """OMN-16778: the deployed lanes map the DOTTED name, not this ref.
+
+        ``ONEX_SECRET_RESOLVER_CONFIG_JSON`` on the .201 lanes sets
+        ``enable_convention_fallback: false`` and maps ``slack.bot_token``
+        (OMN-13726), while this handler resolves the contract's own ref name
+        ``SLACK_BOT_TOKEN``. An unmapped name with convention fallback off gets
+        no source spec at all, so the two never met and the very first stall
+        alert to reach this node would have raised "resolved to None" with the
+        token sitting in the container the whole time.
+
+        The fallback name is contract data (the declared ref), never a literal
+        here, and resolution stays fail-closed when neither resolves.
+        """
+        captured: dict[str, object] = {}
+
+        async def _record(ref: str, **kwargs: object) -> None:
+            captured["ref"] = ref
+            captured.update(kwargs)
+            return
+
+        handler = HandlerSlackPublishEffect(
+            transport=None,
+            ledger_lookup=lambda _k: None,
+            ledger_write=lambda _k, _ts: None,
+        )
+        _mock_target = (
+            "omnimarket.nodes.node_slack_publish_effect"
+            ".handlers.handler_slack_publish_effect.resolve_api_key_async"
+        )
+        with (
+            patch(_mock_target, new=_record),
+            pytest.raises(RuntimeError, match="SLACK_BOT_TOKEN"),
+        ):
+            await handler.handle(_cmd())
+
+        assert captured["ref"] == "SLACK_BOT_TOKEN"
+        assert captured["env_var_fallback"] == "SLACK_BOT_TOKEN"

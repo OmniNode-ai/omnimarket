@@ -23,7 +23,7 @@ import yaml
 
 from omnimarket.models.enum_consumer_flow_state import EnumConsumerFlowState
 from omnimarket.nodes.node_consumer_flow_stall_alert_effect.handlers import (
-    HandlerConsumerFlowStallAlert,
+    decide_stall_alert,
 )
 from omnimarket.nodes.node_consumer_flow_stall_alert_effect.models import (
     EnumStallAlertOutcome,
@@ -56,6 +56,12 @@ _THRESHOLD_FIELDS = frozenset(
         "unknown_warn_windows",
         "deliver_warnings",
         "alerting_states",
+        # OMN-16778 redesign: the node now reads its own window history, so the
+        # depth of that read and the per-trigger key ceiling are thresholds
+        # too. A Python default for either would be a firing behaviour nobody
+        # declared, exactly as a confirm-window default would be.
+        "history_windows",
+        "max_keys_per_trigger",
     }
 )
 
@@ -91,10 +97,8 @@ def test_raising_the_declared_confirm_window_suppresses_the_same_history(
     stricter_path.write_text(yaml.safe_dump(raw), encoding="utf-8")
     stricter = load_stall_alert_policy(stricter_path)
 
-    handler = HandlerConsumerFlowStallAlert()
-
     def _decide(policy: object) -> EnumStallAlertOutcome:
-        return handler.handle(
+        return decide_stall_alert(
             ModelConsumerFlowStallAlertRequest(
                 consumer_group="node_delegation_routing_reducer",
                 topic="onex.cmd.omnimarket.delegate.v1",

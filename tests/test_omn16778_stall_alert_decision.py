@@ -19,8 +19,8 @@ import pytest
 
 from omnimarket.models.enum_consumer_flow_state import EnumConsumerFlowState
 from omnimarket.nodes.node_consumer_flow_stall_alert_effect.handlers import (
-    HandlerConsumerFlowStallAlert,
     build_slack_command,
+    decide_stall_alert,
 )
 from omnimarket.nodes.node_consumer_flow_stall_alert_effect.models import (
     EnumStallAlertOutcome,
@@ -99,7 +99,7 @@ def test_confirmed_stall_run_fires_a_fail_alert(policy: ModelStallAlertPolicy) -
         _window(i, EnumConsumerFlowState.STALLED, messages_in=15750, messages_out=0)
         for i in range(policy.confirm_windows)
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
 
     assert decision.outcome is EnumStallAlertOutcome.FAIL_CONFIRMED_STALL
     assert decision.severity is EnumStallAlertSeverity.FAIL
@@ -118,7 +118,7 @@ def test_starved_run_also_fires(policy: ModelStallAlertPolicy) -> None:
         _window(i, EnumConsumerFlowState.STARVED, messages_in=0, messages_out=0)
         for i in range(policy.confirm_windows)
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.FAIL_CONFIRMED_STALL
     assert decision.alert is not None
     assert decision.alert.flow_state is EnumConsumerFlowState.STARVED
@@ -138,7 +138,7 @@ def test_a_single_stalled_window_does_not_fire(
         _window(0, EnumConsumerFlowState.FLOWING, messages_in=10, messages_out=10),
         _window(1, EnumConsumerFlowState.STALLED, messages_in=10, messages_out=0),
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.PENDING_CONFIRMATION
     assert decision.should_publish is False
     assert decision.alert is None
@@ -157,7 +157,7 @@ def test_idle_consumer_on_a_quiet_topic_never_alerts(
         _window(i, EnumConsumerFlowState.IDLE, messages_in=0, messages_out=0)
         for i in range(policy.clear_windows + policy.confirm_windows)
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
     assert decision.severity is EnumStallAlertSeverity.NONE
     assert decision.should_publish is False
@@ -170,7 +170,7 @@ def test_flowing_consumer_never_alerts(policy: ModelStallAlertPolicy) -> None:
         _window(i, EnumConsumerFlowState.FLOWING, messages_in=7, messages_out=7)
         for i in range(policy.clear_windows + policy.confirm_windows)
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
     assert decision.should_publish is False
 
@@ -188,7 +188,7 @@ def test_unknown_window_warns_and_does_not_fire_a_stall_alert(
         _window(0, EnumConsumerFlowState.FLOWING, messages_in=3, messages_out=3),
         _window(1, EnumConsumerFlowState.UNKNOWN),
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
 
     assert decision.outcome is EnumStallAlertOutcome.WARN_MISSED_WINDOW
     assert decision.severity is EnumStallAlertSeverity.WARN
@@ -214,7 +214,7 @@ def test_an_unknown_window_breaks_a_stall_run_instead_of_extending_it(
         _window(0, EnumConsumerFlowState.STALLED, messages_in=5, messages_out=0),
         _window(1, EnumConsumerFlowState.UNKNOWN),
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.WARN_MISSED_WINDOW
     assert decision.consecutive_alerting_windows == 0
 
@@ -236,7 +236,7 @@ def test_recently_recovered_consumer_is_recovering_not_cleared(
             messages_out=9,
         ),
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.RECOVERING
     assert decision.should_publish is False
 
@@ -258,7 +258,7 @@ def test_alert_payload_names_consumer_topic_counts_and_run_length(
         for i in range(policy.confirm_windows)
     )
     request = _request(windows, policy)
-    decision = HandlerConsumerFlowStallAlert().handle(request)
+    decision = decide_stall_alert(request)
     assert decision.alert is not None
     assert decision.idempotency_key is not None
 
@@ -298,9 +298,8 @@ def test_a_standing_stall_reuses_one_idempotency_key_inside_the_renotify_window(
         _window(i, EnumConsumerFlowState.STALLED, messages_in=1, messages_out=0)
         for i in range(policy.confirm_windows + 3)
     )
-    handler = HandlerConsumerFlowStallAlert()
-    key_first = handler.handle(_request(first, policy)).idempotency_key
-    key_later = handler.handle(_request(later, policy)).idempotency_key
+    key_first = decide_stall_alert(_request(first, policy)).idempotency_key
+    key_later = decide_stall_alert(_request(later, policy)).idempotency_key
     assert key_first == key_later
 
 
@@ -313,8 +312,7 @@ def test_two_legs_of_one_bridge_are_evaluated_independently(
     A single averaged verdict across two legs is what hid the forwarder's dead
     inbound leg behind its healthy outbound one.
     """
-    handler = HandlerConsumerFlowStallAlert()
-    inbound = handler.handle(
+    inbound = decide_stall_alert(
         _request(
             tuple(
                 _window(i, EnumConsumerFlowState.STARVED, messages_in=0, messages_out=0)
@@ -325,7 +323,7 @@ def test_two_legs_of_one_bridge_are_evaluated_independently(
             topic="onex.cmd.gateway.inbound.v1",
         )
     )
-    outbound = handler.handle(
+    outbound = decide_stall_alert(
         _request(
             tuple(
                 _window(
