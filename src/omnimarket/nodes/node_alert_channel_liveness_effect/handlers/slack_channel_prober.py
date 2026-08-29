@@ -192,10 +192,8 @@ class SlackAlertChannelProber:
             secret = resolve_api_key_loop_safe(ref, env_var_fallback=ref)
         except Exception as exc:
             logger.warning(
-                "alert-channel liveness: configured secret %s did not resolve (%s); "
-                "the channel is reported NOT_CONFIGURED rather than assumed "
-                "healthy",
-                secret_name,
+                "alert-channel liveness: configured secret did not resolve (%s); "
+                "the channel is reported NOT_CONFIGURED rather than assumed healthy",
                 type(exc).__name__,
             )
             return None
