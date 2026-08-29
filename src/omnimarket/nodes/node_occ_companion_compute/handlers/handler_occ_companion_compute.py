@@ -1671,22 +1671,35 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                     merged_receipt_paths=state.merged_receipt_paths,
                 )
                 if supersede_path is None:
-                    # No fresh generation is derivable (pass 1 has no OCC PR
-                    # number yet). Emitting nothing is the honest answer, not a
-                    # silent one: the already-merged record for this SAME
-                    # product PR carries the same pr_number / branch /
-                    # commit_sha / probe provenance, so suppressing the re-mint
-                    # loses no evidence — whereas opening it for write is the
-                    # exact defect. Pass 2 of this same mint re-runs with
-                    # ``occ_pr_number`` set and files the generation then.
+                    # No fresh generation is derivable. Emitting nothing is the
+                    # honest answer, not a silent one: the already-merged record
+                    # for this SAME product PR carries the same pr_number /
+                    # branch / commit_sha / probe provenance, so suppressing the
+                    # re-mint loses no evidence — whereas opening it for write
+                    # is the exact defect.
+                    #
+                    # ``_next_supersede_path`` returns ``None`` for two distinct
+                    # reasons and they call for different operator responses, so
+                    # the log names which one fired rather than asserting the
+                    # first unconditionally: claiming "no OCC PR number yet" when
+                    # one IS set would send a reader hunting for a number that
+                    # exists, and would promise a pass 2 that will never emit.
+                    skip_cause = (
+                        "no OCC PR number is available yet to key a fresh "
+                        "generation, so pass 2 of this same mint files it"
+                        if request.occ_pr_number is None
+                        else "both the product-PR-keyed and the OCC-PR-keyed "
+                        "generations are ALREADY merged, so this key has "
+                        "nothing left to add and no later pass will emit it"
+                    )
                     logger.info(
                         "occ_companion_compute: skipping supersession for "
                         "%s/%s — its product-PR-keyed path is already merged "
-                        "and no OCC PR number is available yet to key a fresh "
-                        "generation; the merged record already binds this "
-                        "product PR (OMN-16071 add-only writer).",
+                        "and %s; the merged record already binds this product "
+                        "PR (OMN-16071 add-only writer).",
                         ticket,
                         prior_entry,
+                        skip_cause,
                     )
                     continue
                 supersede_checks[prior_entry] = prior_check

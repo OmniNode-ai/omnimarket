@@ -401,3 +401,50 @@ def test_a_partially_merged_chain_only_regenerates_the_colliding_keys() -> None:
     natural = [p for p in supersedes if p.endswith(f".{_PRODUCT_PR}.yaml")]
     assert len(regenerated) == 1, supersedes
     assert natural, "non-colliding keys must keep their product-PR-keyed name"
+
+
+def test_the_skip_log_names_which_of_the_two_causes_actually_fired(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``_next_supersede_path`` returns ``None`` for two reasons, not one.
+
+    Pass 1 has no OCC PR number to key a fresh generation with, and a later
+    pass WILL file it. Separately, a key whose product-PR-keyed AND
+    OCC-PR-keyed generations are both already merged has nothing left to add,
+    and no later pass will ever emit it. The operator responses differ, so a
+    log that asserts the first cause unconditionally sends a reader hunting for
+    an OCC PR number that is right there, and promises a pass 2 that will never
+    come. Both branches must therefore be distinguishable from the log alone.
+    """
+    first = _first_pass_supersede_paths()
+    second = tuple(
+        sorted(
+            f.path
+            for f in compute_companion_plan(
+                _request(merged_receipt_paths=first)
+            ).companion_files
+            if f.kind is EnumCompanionFileKind.SUPERSEDE_RECEIPT
+        )
+    )
+    assert second, "the regenerated pass must produce paths for this to be a test"
+
+    with caplog.at_level("INFO"):
+        exhausted = compute_companion_plan(
+            _request(
+                merged_receipt_paths=first + second,
+                occ_pr_number=_SECOND_OCC_PR,
+            )
+        )
+    assert not (_paths(exhausted) & set(first + second))
+    exhausted_log = caplog.text
+    assert "ALREADY merged" in exhausted_log, exhausted_log
+    assert "no later pass will emit it" in exhausted_log, exhausted_log
+    assert "no OCC PR number is available yet" not in exhausted_log, exhausted_log
+
+    caplog.clear()
+    with caplog.at_level("INFO"):
+        compute_companion_plan(_request(merged_receipt_paths=first, occ_pr_number=None))
+    pass_one_log = caplog.text
+    assert "no OCC PR number is available yet" in pass_one_log, pass_one_log
+    assert "pass 2 of this same mint files it" in pass_one_log, pass_one_log
+    assert "no later pass will emit it" not in pass_one_log, pass_one_log
