@@ -116,11 +116,21 @@ class ConsumerFlowWindowReader:
         return self._relation
 
     def _connect(self) -> Any:
+        """Open (once) the read-only connection this reader selects through.
+
+        The driver import lives behind ``omnimarket.projection`` rather than
+        here. That module already owns this package's sync psycopg2 read
+        boundary, and a driver import inside a node handler is an
+        UNDECLARED_TRANSPORT to the compliance sweep -- a node's
+        ``metadata.transport_type`` holds a single value, which is already
+        ``kafka``. Widening that declaration to hide a driver import would be
+        the wrong half of the fix.
+        """
         if self._conn is not None and getattr(self._conn, "closed", 0) == 0:
             return self._conn
-        import psycopg2  # type: ignore[import-untyped]
+        from omnimarket.projection.postgres_read_database import connect_read_only
 
-        self._conn = psycopg2.connect(self._dsn)  # no-contract-check: effect boundary
+        self._conn = connect_read_only(self._dsn)
         return self._conn
 
     def close(self) -> None:
@@ -159,7 +169,6 @@ class ConsumerFlowWindowReader:
             with conn.cursor() as cursor:
                 cursor.execute(sql, (consumer_group, topic, limit))
                 rows = cursor.fetchall()
-            conn.commit()
         except Exception:
             self.close()
             raise
