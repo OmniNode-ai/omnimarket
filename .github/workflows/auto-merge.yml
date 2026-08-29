@@ -6,7 +6,7 @@
 # for manual enrollment.
 #
 # OMN-7786: Re-trigger on review and check_suite events so the workflow
-# re-attempts auto-merge after CodeRabbit review finishes and branch
+# re-attempts auto-merge after review finishes and branch
 # protection gates clear. Silent continue-on-error removed; "already
 # enqueued" races are tolerated but real failures surface.
 #
@@ -44,8 +44,8 @@
 # Identical root cause already fixed in omninode_infra under OMN-15769
 # (github.com/OmniNode-ai/omninode_infra/pull/830). Switched the arming
 # token to the org-level `CROSS_REPO_PAT` (already used repo-wide in
-# omnimarket, e.g. cr-thread-gate.yml/cr-thread-gate-caller.yml -- no new
-# credential minted) so the merge is attributed to a real actor and push
+# omnimarket -- no new credential minted) so the merge is attributed to a
+# real actor and push
 # events fire normally.
 name: Auto-Merge
 

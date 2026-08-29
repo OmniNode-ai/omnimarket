@@ -107,11 +107,12 @@ converted to FAILURE at the caller's deadline exactly like layers 1-3. An
 unfetchable check-runs response (``check_runs is None``) is treated as
 *every* L4 context unobserved — never a blind pass.
 
-:data:`ACTOR_CONDITIONAL_CONTEXTS` names the one legitimate producer-side
-absence in this set: ``cr-thread-gate-caller.yml``'s ``gate`` job carries
-``if: github.actor != 'dependabot[bot]'``, so no check-run is ever created for
-a dependabot PR — an applicability rule, not a bypass, scoped to that one
-actor for that one context only.
+:data:`ACTOR_CONDITIONAL_CONTEXTS` names legitimate producer-side absences
+in this set — a context whose producing workflow's own ``if:`` is false for a
+named actor, so no check-run is ever created for that actor's PRs. It is an
+applicability rule, not a bypass: scoped per context, per actor. The registry
+is EMPTY as of OMN-16933; its only entry was the removed CodeRabbit thread
+gate, whose caller carried ``if: github.actor != 'dependabot[bot]'``.
 
 Jobs produced by other workflow files that are NOT in
 :data:`EXPECTED_EXTERNAL_CONTEXTS` are exempt only by explicit, reasoned
@@ -384,7 +385,6 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "deploy-gate / deploy-gate",
     "dispatcher-route-coverage",
     "fsm-handler-drift",
-    "gate / CodeRabbit Thread Check",
     "imperative-contract-guard / Imperative Contract Guard",
     "main-target-guard",
     "node-drift-gate",
@@ -409,10 +409,15 @@ EXTERNAL_GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success"})
 # actor, because the producer's own `if:` skips the job for that actor before
 # any check-run is created. An applicability rule, not a bypass — scoped per
 # context, per actor.
-ACTOR_CONDITIONAL_CONTEXTS: dict[str, frozenset[str]] = {
-    # cr-thread-gate-caller.yml: `if: github.actor != 'dependabot[bot]'`.
-    "gate / CodeRabbit Thread Check": frozenset({"dependabot[bot]"}),
-}
+# EMPTY BY CONSTRUCTION as of OMN-16933, not by omission: the only entry was
+# `gate / CodeRabbit Thread Check`, whose caller carried
+# `if: github.actor != 'dependabot[bot]'`. CodeRabbit was removed entirely
+# (operator ruling 2026-08-29) and cr-thread-gate*.yml are deleted, so no live
+# producer is actor-scoped. The MECHANISM stays — `evaluate_external` still
+# takes `actor_conditional`, ci.yml still passes `--actor`, and the tests
+# still exercise it through an injected synthetic registry — because the next
+# actor-scoped producer needs it and re-deriving it costs a wedged lane.
+ACTOR_CONDITIONAL_CONTEXTS: dict[str, frozenset[str]] = {}
 
 # Conclusions that count as "provably passed".
 GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success", "skipped"})

@@ -396,16 +396,6 @@ gates:
     skip_semantics: never
     rationale: "Live required status check on omnimarket dev branch protection (verified 2026-07-20 via gh api required_status_checks)."
 
-  - name: "gate / CodeRabbit Thread Check"
-    mode: REQUIRED
-    producer_kind: local
-    caller_workflow: cr-thread-gate-caller.yml
-    caller_job: gate
-    reusable_workflow: cr-thread-gate.yml
-    reusable_job: gate
-    skip_semantics: neutral_ok
-    rationale: "KNOWN FINDING (OMN-14857 guard fan-out build): caller job 'gate' in cr-thread-gate-caller.yml has an ungated `if:` (github.actor != 'dependabot[bot]') — vector-3. Same shape as omniclaude's equivalent finding (OMN-14856); believed to be an intentional dependabot exemption (github.actor is not spoofable), not yet human-ratified. skip_semantics: neutral_ok pending triage in OMN-14861."
-
   - name: "call-reject-skip-token / scan / reject-skip-gate-token"
     mode: REQUIRED
     branch: main
