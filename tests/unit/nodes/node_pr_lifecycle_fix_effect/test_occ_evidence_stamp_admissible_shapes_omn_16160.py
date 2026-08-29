@@ -28,9 +28,7 @@ implementation, per CLAUDE.md's verification doctrine.
 from __future__ import annotations
 
 import importlib.util
-import os
 import sys
-from pathlib import Path
 from types import ModuleType
 
 import pytest
@@ -40,14 +38,17 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     ci_dod_evidence_check_value,
     ci_receipt_public_check_value,
     deploy_assessment_check_value,
+    diff_scope_files_check_value,
     downstream_dod_evidence_check_value,
     downstream_receipt_public_check_value,
     render_deploy_assessment_dod_evidence_item,
+    select_diff_scope_path,
     self_bind_check_value,
 )
 from omnimarket.occ_content_probe import build_content_read_check
 from tests.unit.nodes.node_pr_lifecycle_fix_effect.test_occ_emitter_literal_pins_omn_15407 import (
     _load_occ_module,
+    sibling_repo_root,
 )
 
 pytestmark = pytest.mark.unit
@@ -73,7 +74,9 @@ def _deploy_gate_module() -> ModuleType | None:
     package eviction dance is needed (unlike the onex_change_control PACKAGE
     loader below, which has to out-compete an installed wheel).
     """
-    root = Path(os.environ.get("OMNICLAUDE_REPO_DIR", "../omniclaude")).resolve()
+    root = sibling_repo_root("OMNICLAUDE_REPO_DIR", "omniclaude")
+    if root is None:
+        return None
     target = (
         root / ".github" / "actions" / "deploy-gate" / "validate_pr_deploy_required.py"
     )
@@ -378,43 +381,50 @@ def _contract_check_values(contract_yaml: str) -> list[str]:
     return [ck["check_value"] for item in data["dod_evidence"] for ck in item["checks"]]
 
 
+def _plan_compute_contract(*, changed_files: tuple[str, ...] = ()) -> str:
+    """Render the compute oracle's companion CONTRACT for one synthetic PR.
+
+    Module-level (OMN-16894) rather than a method: the OMN-16894 classes below
+    drive the same producer and must not have to instantiate a sibling test
+    class to reach it.
+    """
+    from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
+        compute_companion_plan,
+    )
+    from omnimarket.nodes.node_occ_companion_compute.models.enum_companion_file_kind import (
+        EnumCompanionFileKind,
+    )
+    from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request import (
+        ModelObservedProbe,
+        ModelOccCompanionRequest,
+    )
+
+    request = ModelOccCompanionRequest(
+        repo=_REPO,
+        pr_number=_PR,
+        pr_head_sha=_HEAD_SHA,
+        pr_title="fix(OMN-16160): content-bound wiring",
+        pr_body="Closes OMN-16160",
+        run_timestamp="2026-08-18T00:00:00Z",
+        product_probe=ModelObservedProbe(
+            command=f"gh pr view {_PR} --repo {_REPO} --json number,state",
+            stdout='{"number":2093,"state":"OPEN"}',
+            exit_code=0,
+        ),
+        changed_files=changed_files,
+        diff_total_lines=12,
+        downstream_check_value=_CONTENT_BOUND,
+    )
+    plan = compute_companion_plan(request)
+    return next(
+        f.content
+        for f in plan.companion_files
+        if f.kind == EnumCompanionFileKind.CONTRACT
+    )
+
+
 @pytest.mark.unit
 class TestComputeOracleWiresContentBoundIntoTheContract:
-    def _plan_contract(self, *, changed_files: tuple[str, ...] = ()) -> str:
-        from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
-            compute_companion_plan,
-        )
-        from omnimarket.nodes.node_occ_companion_compute.models.enum_companion_file_kind import (
-            EnumCompanionFileKind,
-        )
-        from omnimarket.nodes.node_occ_companion_compute.models.model_occ_companion_request import (
-            ModelObservedProbe,
-            ModelOccCompanionRequest,
-        )
-
-        request = ModelOccCompanionRequest(
-            repo=_REPO,
-            pr_number=_PR,
-            pr_head_sha=_HEAD_SHA,
-            pr_title="fix(OMN-16160): content-bound wiring",
-            pr_body="Closes OMN-16160",
-            run_timestamp="2026-08-18T00:00:00Z",
-            product_probe=ModelObservedProbe(
-                command=f"gh pr view {_PR} --repo {_REPO} --json number,state",
-                stdout='{"number":2093,"state":"OPEN"}',
-                exit_code=0,
-            ),
-            changed_files=changed_files,
-            diff_total_lines=12,
-            downstream_check_value=_CONTENT_BOUND,
-        )
-        plan = compute_companion_plan(request)
-        return next(
-            f.content
-            for f in plan.companion_files
-            if f.kind == EnumCompanionFileKind.CONTRACT
-        )
-
     # OMN-16434 SUPERSEDES the "reuse one derived value across every item" half
     # of OMN-16160. The two assertions replaced here required the SAME derived
     # string to appear on the binding item, the diff-scope item and the
@@ -430,12 +440,12 @@ class TestComputeOracleWiresContentBoundIntoTheContract:
     # binding item, which is the item whose supersession decision is keyed on
     # ``is_product_observing_check_value``.
     def test_the_binding_item_declares_the_content_bound_value(self) -> None:
-        contract = self._plan_contract()
+        contract = _plan_compute_contract()
         values = _contract_check_values(contract)
         assert _CONTENT_BOUND in values, values
 
     def test_the_derived_value_is_not_duplicated_across_items(self) -> None:
-        contract = self._plan_contract(
+        contract = _plan_compute_contract(
             changed_files=("src/omnimarket/nodes/node_x/handlers/handler_x.py",)
         )
         values = _contract_check_values(contract)
@@ -444,7 +454,7 @@ class TestComputeOracleWiresContentBoundIntoTheContract:
     def test_deploy_assessment_item_reads_deploy_scope_not_the_binding_symbol(
         self,
     ) -> None:
-        contract = self._plan_contract(
+        contract = _plan_compute_contract(
             changed_files=("src/omnimarket/nodes/node_x/handlers/handler_x.py",)
         )
         assert "dod-deploy-assessment" in _dod_ids(contract)
@@ -466,7 +476,7 @@ class TestComputeOracleWiresContentBoundIntoTheContract:
         assert "deploy" in value
 
     def test_content_bound_contract_items_pass_both_live_gates(self) -> None:
-        contract = self._plan_contract(
+        contract = _plan_compute_contract(
             changed_files=("src/omnimarket/nodes/node_x/handlers/handler_x.py",)
         )
         occ_module = _admissibility_module()
@@ -488,3 +498,111 @@ class TestComputeOracleWiresContentBoundIntoTheContract:
                 deploy_verdict.reason,
                 occ_verdict.reason,
             )
+
+
+# ---------------------------------------------------------------------------
+# OMN-16894: the diff-scope check the compute oracle DECLARES.
+#
+# OMN-16434 correctly stopped the diff-scope item re-declaring the binding
+# item's derived content-bound string, and sent it to "its own distinct
+# default" -- ``ci_dod_evidence_check_value``'s ``gh pr view <n> --repo <r>
+# --json files``. That default reads the right fact through a transport BOTH
+# live gates refuse (``TestLegacyShapeIsRejectedByBothLiveGates`` above pins
+# exactly that), so every contract this oracle minted for a PR with changed
+# files carried one item inadmissible by construction. The fix keeps the
+# distinctness and fixes the transport.
+# ---------------------------------------------------------------------------
+
+_CHANGED = "src/omnimarket/nodes/node_x/handlers/handler_x.py"
+_DIFF_SCOPE = diff_scope_files_check_value(pr_number=_PR, repo=_REPO, path=_CHANGED)
+
+
+@pytest.mark.unit
+class TestDiffScopePathSelection:
+    def test_selection_is_independent_of_input_order(self) -> None:
+        """The bytes of a minted contract must not depend on GitHub's
+        ``/pulls/{n}/files`` pagination order."""
+        forward = select_diff_scope_path(("b/second.py", "a/first.py"))
+        reverse = select_diff_scope_path(("a/first.py", "b/second.py"))
+        assert forward == reverse == "a/first.py"
+
+    @pytest.mark.parametrize(
+        "path",
+        [
+            "src/it's_here.py",
+            'src/say"what".py',
+            "src/`cmd`.py",
+            "src/back\\slash.py",
+            "src/$VAR/x.py",
+            "-rf",
+        ],
+    )
+    def test_unquotable_operands_are_refused(self, path: str) -> None:
+        """A path that would break the single-quoted ``grep -cFx '<path>'``
+        needle (or read as a flag) is never selected."""
+        assert select_diff_scope_path((path,)) is None
+
+    def test_no_changed_files_yields_no_path(self) -> None:
+        assert select_diff_scope_path(()) is None
+
+
+@pytest.mark.unit
+class TestDiffScopeCheckValueClearsBothLiveGates:
+    def test_shape_is_gh_api_terminated_by_a_grep(self) -> None:
+        assert (
+            f"gh api repos/{_REPO}/pulls/{_PR}/files --paginate "
+            f"--jq '.[].filename' | grep -cFx '{_CHANGED}'"
+        ) == _DIFF_SCOPE
+
+    def test_admitted_by_deploy_gate(self) -> None:
+        module = _deploy_gate_module()
+        if module is None:
+            pytest.skip("omniclaude checkout not available")
+        verdict = module.classify_check_value(_DIFF_SCOPE)
+        assert verdict.falsifiable is True, verdict.reason
+        # Traceable to the compound token, not to a widened probe list.
+        assert "gh-api" in verdict.reason
+
+    def test_admitted_by_occ_admissibility(self) -> None:
+        module = _admissibility_module()
+        if module is None:
+            pytest.skip("onex_change_control checkout not available")
+        verdict = module.classify_evidence(
+            _DIFF_SCOPE,
+            admissible_probes=module.LIVE_PROBE_COMMANDS
+            | module.EXECUTED_HERMETIC_COMMANDS,
+            changed_paths=frozenset({"contracts/OMN-16894.yaml"}),
+        )
+        assert verdict.admissible is True, verdict.reason
+
+    def test_it_is_not_the_content_bound_value(self) -> None:
+        """OMN-16434's property survives: the diff-scope item reads the diff
+        scope, not the binding item's symbol."""
+        assert _DIFF_SCOPE != _CONTENT_BOUND
+
+
+@pytest.mark.unit
+class TestComputeOracleDeclaresTheAdmissibleDiffScope:
+    def test_the_contract_declares_the_path_pinned_diff_scope(self) -> None:
+        contract = _plan_compute_contract(changed_files=(_CHANGED,))
+        values = _contract_check_values(contract)
+        assert _DIFF_SCOPE in values, values
+
+    def test_the_pre_fix_literal_is_gone(self) -> None:
+        """RED control for this ticket: the exact string the reported failure
+        named must no longer appear anywhere in the rendered contract."""
+        contract = _plan_compute_contract(changed_files=(_CHANGED,))
+        assert ci_dod_evidence_check_value(pr_number=_PR, repo=_REPO) not in (
+            _contract_check_values(contract)
+        )
+
+    def test_no_derivable_path_leaves_the_pre_fix_default(self) -> None:
+        """The documented, narrow residual. With no shell-safe changed path the
+        item falls back to the pre-OMN-16894 literal, which is what the
+        OMN-14783 F-06/F-16 cross-producer parity suite renders and asserts
+        byte-identical across both producers. Pinned here so the residual is a
+        recorded decision rather than an unnoticed hole."""
+        contract = _plan_compute_contract()
+        assert ci_dod_evidence_check_value(pr_number=_PR, repo=_REPO) in (
+            _contract_check_values(contract)
+        )

@@ -282,6 +282,76 @@ def ci_dod_evidence_check_value(
     return f"gh pr view {pr_number} --repo {repo} --json files"
 
 
+#: Characters that make a changed-file path unquotable inside the single-quoted
+#: ``grep -cFx '<path>'`` needle :func:`diff_scope_files_check_value` renders, or
+#: an unstable yamlfmt scalar. Mirrors ``occ_content_probe._FORBIDDEN_CHECK_CHARS``
+#: deliberately rather than importing it: that constant governs the CONTENT-bound
+#: URL shape (which additionally requires exactly one ``?ref=<sha>``), and this one
+#: governs a bare path operand. Same alphabet, different predicate.
+_UNSAFE_PATH_OPERAND_CHARS: tuple[str, ...] = ("'", '"', "`", "\\", "$")
+
+
+def select_diff_scope_path(changed_files: Sequence[str]) -> str | None:
+    """Pure: pick the ONE changed path a diff-scope check may pin, or ``None``.
+
+    ``min`` over the shell-safe subset, not ``changed_files[0]``: the caller's
+    ordering comes from GitHub's ``/pulls/{n}/files`` pagination, and a
+    contract's bytes must not depend on it (deterministic-truth doctrine — the
+    same PR must render the same contract on every re-run). Empty input, or an
+    input whose every entry carries a quote/backtick/backslash/``$``, yields
+    ``None`` and the caller falls back to its own default.
+    """
+    safe = sorted(
+        path
+        for path in changed_files
+        if path
+        and not any(char in path for char in _UNSAFE_PATH_OPERAND_CHARS)
+        and not path.startswith("-")
+    )
+    return safe[0] if safe else None
+
+
+def diff_scope_files_check_value(*, pr_number: int, repo: str, path: str) -> str:
+    """Return an ADMISSIBLE product-diff-scope ``check_value`` pinned to ``path``.
+
+    OMN-16894. The literal default this replaces on the compute-oracle path --
+    :func:`ci_dod_evidence_check_value`'s ``gh pr view <n> --repo <r> --json
+    files`` -- is refused by BOTH live gates, and both are right:
+
+    * deploy-gate's OMN-14443 falsifiability ratchet lexes its command-position
+      tokens to ``{gh}``, and the ``gh`` family is admitted ONLY as the compound
+      token ``gh api`` (bare ``gh pr view`` reports PR metadata, which is
+      trivially true of every PR that exists).
+    * ``evidence_admissibility.classify_evidence`` (OMN-15309) refuses the same
+      shape as ``NOT_EXECUTED`` for the same reason -- ``gh`` is in neither
+      ``LIVE_PROBE_COMMANDS`` nor ``EXECUTED_HERMETIC_COMMANDS``.
+
+    This is the OMN-15988 move applied to the diff-scope item: the SAME fact
+    (which files this PR touches) read through the ``gh api`` verb the ratchet
+    recognises, terminated by a ``grep`` in command position. Unlike
+    :func:`ci_dod_evidence_check_value`'s default it is also RED-controlled
+    rather than merely admissible -- the count is 0 and the exit status 1 when
+    PR ``pr_number`` does not touch ``path``.
+
+    ``-F`` (fixed string) because a repo-relative path carries regex
+    metacharacters (``.``, ``+``) whose literal meaning is what is asserted;
+    ``-x`` (whole line) so ``src/a/b.py`` cannot be satisfied by an unrelated
+    ``src/a/b.pyi`` in the same PR. ``path`` must come from
+    :func:`select_diff_scope_path`, which is what guarantees the single-quoted
+    needle is quotable.
+
+    Deliberately NOT the content-bound ``contents/<path>?ref=<sha>`` shape: that
+    one is already declared by the binding item, and OMN-16434 established that
+    re-declaring one derived string across several items renders three copies of
+    one proof and makes each item's check disagree with its own description.
+    This item says "product diff scope", so it reads the diff scope.
+    """
+    return (
+        f"gh api repos/{repo}/pulls/{pr_number}/files --paginate "
+        f"--jq '.[].filename' | grep -cFx '{path}'"
+    )
+
+
 def self_bind_check_value(*, occ_pr_number: int, occ_repo: str) -> str:
     """Return the literal, Rule-B-compliant self-bind ``check_value``.
 
@@ -2367,6 +2437,7 @@ __all__ = [
     "compute_contract_sha256",
     "deploy_assessment_check_value",
     "derive_behavior_test_paths",
+    "diff_scope_files_check_value",
     "downstream_dod_evidence_check_value",
     "extract_evidence_item_id",
     "find_deploy_sensitive_paths",
@@ -2384,4 +2455,5 @@ __all__ = [
     "render_downstream_receipt",
     "render_self_bind_dod_evidence_item",
     "render_self_bind_receipt",
+    "select_diff_scope_path",
 ]

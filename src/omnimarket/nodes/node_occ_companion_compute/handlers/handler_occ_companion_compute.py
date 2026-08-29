@@ -77,11 +77,13 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     behavior_proof_check_value,
     deploy_assessment_check_value,
     derive_behavior_test_paths,
+    diff_scope_files_check_value,
     downstream_receipt_public_check_value,
     find_deploy_sensitive_paths,
     is_product_observing_check_value,
     render_compute_companion_contract,
     render_compute_receipt,
+    select_diff_scope_path,
 )
 
 logger = logging.getLogger(__name__)
@@ -1118,7 +1120,37 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
     # supersession decision is keyed on `is_product_observing_check_value` -- and
     # the diff-scope item falls back to its own distinct default, which reads the
     # fact it actually claims.
-    contract_diff_scope_check: str | None = None
+    #
+    # OMN-16894: that "own distinct default" -- `ci_dod_evidence_check_value`'s
+    # `gh pr view <n> --repo <r> --json files` -- reads the right fact through a
+    # transport BOTH live gates refuse (deploy-gate's OMN-14443 ratchet admits
+    # the `gh` family only as the compound `gh api` token; OMN-15309's
+    # `classify_evidence` refuses bare `gh` as NOT_EXECUTED). So every contract
+    # this oracle minted for a PR with changed files carried one item that could
+    # not be admitted by construction. `diff_scope_files_check_value` is the
+    # OMN-15988 move applied here: the SAME diff-scope fact, read through
+    # `gh api .../pulls/<n>/files` and terminated by a `grep` in command
+    # position, and pinned to one real changed path so the check is RED when the
+    # PR does not touch it.
+    #
+    # `None` when no shell-safe changed path is derivable (an empty
+    # `changed_files`, or one whose every entry carries a quote/backtick/
+    # backslash/`$`). That leaves the pre-OMN-16894 literal on a degenerate
+    # request, which is a KNOWN, NARROW residual and is deliberate: it is the
+    # exact input shape the OMN-14783 F-06/F-16 cross-producer parity suite
+    # renders (`_compute_plan` supplies no `changed_files`), and that suite
+    # asserts both producers declare the byte-identical diff-scope value. A
+    # fallback that changed those bytes would fork the two producers here rather
+    # than in the born-path emitter, where the same defect still lives and is
+    # not this ticket's scope.
+    _diff_scope_path = select_diff_scope_path(request.changed_files)
+    contract_diff_scope_check: str | None = (
+        diff_scope_files_check_value(
+            pr_number=pr_number, repo=repo, path=_diff_scope_path
+        )
+        if _diff_scope_path is not None
+        else None
+    )
 
     # F-05 (OMN-14742): does the product PR touch runtime/deploy-sensitive paths
     # that would trip the product repo's required deploy-gate? If so, the OCC

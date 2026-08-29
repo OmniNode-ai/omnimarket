@@ -23,6 +23,17 @@
 # yamlfmt v0.21.0 matches the onex_change_control .yamlfmt pin so the F-03
 # idempotence check mirrors the hosted yamlfmt Pre-commit exactly.
 #
+# OMN-16894 adds test_occ_evidence_stamp_admissible_shapes_omn_16160.py to the
+# pytest list below. That suite drives the compute oracle's rendered contract
+# through the REAL sibling gate implementations (onex_change_control's
+# classify_evidence + omniclaude's classify_check_value), both of which this job
+# already clones and exports env vars for -- but no step ran it, so it skipped in
+# CI and could only fail on a developer laptop. It was RED on clean dev for the
+# whole of that window (OMN-16894: the diff-scope item declared a bare
+# `gh pr view --json files` neither gate admits) and no PR could observe it. A
+# checker whose gate structurally cannot observe it is the rule-5 pathology with
+# the polarity flipped: not a false green, a laptop-only red.
+#
 # OMN-15247 adds the contention/content-binding suites to THIS gate rather than
 # creating a new workflow (rule 5 satisfied without a new surface;
 # net-negative-surface preserved). Both new behaviors are default-OFF, so the
@@ -121,6 +132,7 @@ jobs:
             tests/unit/nodes/node_occ_companion_compute/test_occ_emitter_compute_f06_f16_parity_omn_14783.py \
             tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_autobind_contention_omn_15247.py \
             tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_emitter_literal_pins_omn_15407.py \
+            tests/unit/nodes/node_pr_lifecycle_fix_effect/test_occ_evidence_stamp_admissible_shapes_omn_16160.py \
             tests/unit/nodes/node_occ_companion_compute/test_occ_companion_deploy_assessment_omn_14742.py \
             tests/unit/nodes/node_occ_companion_compute/test_occ_companion_deploy_assessment_falsifiability_omn_15988.py \
             tests/unit/test_occ_contention_omn_15247.py \

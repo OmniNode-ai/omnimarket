@@ -372,14 +372,53 @@ def _sibling_occ_package(src: Path) -> Iterator[None]:
         sys.modules.update(saved)
 
 
+def sibling_repo_root(env_var: str, repo: str) -> Path | None:
+    """Resolve a sibling canonical clone, or ``None`` when it is not present.
+
+    Search order, first hit wins:
+
+    1. ``$<env_var>`` — what the golden-gate workflow exports after cloning.
+    2. ``../<repo>`` relative to the CWD — the canonical-clone layout.
+    3. ``$OMNI_HOME/<repo>`` — the SAME canonical clone, reached absolutely.
+
+    OMN-16894 added (3). Rule (2) resolves only when pytest runs from
+    ``$OMNI_HOME/omnimarket``; from a worktree at
+    ``$OMNI_HOME/omni_worktrees/<ticket>/omnimarket`` it points at a sibling
+    directory that never exists, so every cross-boundary suite SKIPPED — and a
+    skip is not a pass. That is the same "the gate structurally cannot observe
+    it" shape as the CI half of OMN-16894, one directory level down: the
+    governed pre-push selector runs from the worktree, which is exactly where
+    the drift needed to be caught.
+    """
+    override = os.environ.get(env_var)
+    candidates = (
+        [Path(override)] if override else [Path("..") / repo, _omni_home_sibling(repo)]
+    )
+    for candidate in candidates:
+        if candidate is None:
+            continue
+        resolved = candidate.resolve()
+        if resolved.is_dir():
+            return resolved
+    return None
+
+
+def _omni_home_sibling(repo: str) -> Path | None:
+    omni_home = os.environ.get("OMNI_HOME")
+    return Path(omni_home) / repo if omni_home else None
+
+
 def _load_occ_module(relpath: str, name: str) -> ModuleType | None:
     """Import an onex_change_control gate script from a sibling checkout.
 
     CLAUDE.md OMN-14208: the seam has to be driven for real, not modelled. The
-    golden-gate workflow clones onex_change_control so this runs in CI; locally
-    it skips when the sibling checkout is absent.
+    golden-gate workflow clones onex_change_control so this runs in CI;
+    :func:`sibling_repo_root` also finds the canonical clone from a worktree
+    (OMN-16894). It skips only when no checkout is reachable at all.
     """
-    root = Path(os.environ.get("OCC_REPO_DIR", "../onex_change_control")).resolve()
+    root = sibling_repo_root("OCC_REPO_DIR", "onex_change_control")
+    if root is None:
+        return None
     target = root / relpath
     if not target.is_file():
         return None
