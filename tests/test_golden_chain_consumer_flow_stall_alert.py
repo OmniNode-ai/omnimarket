@@ -144,6 +144,8 @@ def test_slack_command_is_accepted_by_the_publish_node() -> None:
             flow_state=EnumConsumerFlowState.STALLED,
             messages_in=15750,
             messages_out=0,
+            messages_dlq=16,
+            handler_errors=16,
         )
         for i in range(policy.confirm_windows)
     )

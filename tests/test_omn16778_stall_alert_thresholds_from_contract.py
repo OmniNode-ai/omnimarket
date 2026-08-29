@@ -74,6 +74,12 @@ def _stalled_history(count: int) -> tuple[ModelFlowWindowObservation, ...]:
             flow_state=EnumConsumerFlowState.STALLED,
             messages_in=100,
             messages_out=0,
+            # A STALLED window is only admissible evidence alongside a
+            # dead-letter or handler error (OMN-16778
+            # require_failure_evidence_for); an out-count of zero is the normal
+            # shape of a healthy projection.
+            messages_dlq=100,
+            handler_errors=100,
         )
         for i in range(count)
     )

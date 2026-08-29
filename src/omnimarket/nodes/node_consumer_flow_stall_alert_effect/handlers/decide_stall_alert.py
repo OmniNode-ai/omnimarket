@@ -67,13 +67,37 @@ from omnimarket.nodes.node_consumer_flow_stall_alert_effect.models import (
 )
 
 
+def _counts_toward_run(
+    window: ModelFlowWindowObservation,
+    policy: ModelStallAlertPolicy,
+) -> bool:
+    """Whether one window is admissible evidence of a stall.
+
+    An alerting state is necessary and, for the states the contract lists under
+    ``require_failure_evidence_for``, not sufficient: the window must also carry
+    a dead-letter or a handler error.  See
+    :meth:`ModelStallAlertPolicy.needs_failure_evidence` for the measured reason
+    -- an out-count of zero is the normal, healthy shape for a projection and
+    for any compute that delivers its intent in-process.
+
+    An unobserved counter (``None``) is not evidence of failure and is not
+    treated as one; it is also not evidence of health, which is what the
+    separate ``UNKNOWN`` outcome is for.
+    """
+    if not policy.is_alerting(window.flow_state):
+        return False
+    if not policy.needs_failure_evidence(window.flow_state):
+        return True
+    return bool(window.messages_dlq) or bool(window.handler_errors)
+
+
 def _trailing_run(
     windows: tuple[ModelFlowWindowObservation, ...],
     policy: ModelStallAlertPolicy,
 ) -> int:
     """Length of the alerting run ending at the newest window.
 
-    Stops at the first window that is not an alerting state -- including
+    Stops at the first window that is not admissible evidence -- including
     ``UNKNOWN``, which is deliberately not treated as a continuation.  An
     unobserved window is not evidence that the stall persisted through it, and
     treating it as evidence would let a runtime that stopped heartbeating
@@ -81,7 +105,7 @@ def _trailing_run(
     """
     run = 0
     for window in reversed(windows):
-        if not policy.is_alerting(window.flow_state):
+        if not _counts_toward_run(window, policy):
             break
         run += 1
     return run
@@ -108,7 +132,7 @@ def _windows_since_last_alerting(
     confused with "recovered a very long time ago".
     """
     for offset, window in enumerate(reversed(windows)):
-        if policy.is_alerting(window.flow_state):
+        if _counts_toward_run(window, policy):
             return offset
     return None
 

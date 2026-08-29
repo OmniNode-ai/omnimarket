@@ -60,6 +60,16 @@ class ModelStallAlertPolicy(BaseModel):
         min_length=1,
         description="Flow states that count as a stall for alerting purposes.",
     )
+    require_failure_evidence_for: tuple[EnumConsumerFlowState, ...] = Field(
+        ...,
+        description=(
+            "Alerting states that additionally require independent failure "
+            "evidence -- a dead-letter or a handler error in the same window -- "
+            "before the window counts toward an alerting run. Declared, not "
+            "assumed: see the class docstring for why an out-count of zero is "
+            "not on its own evidence of a dead leg."
+        ),
+    )
     unknown_warn_windows: int = Field(
         ...,
         ge=1,
@@ -79,6 +89,36 @@ class ModelStallAlertPolicy(BaseModel):
     def is_alerting(self, state: EnumConsumerFlowState) -> bool:
         """Whether ``state`` counts as a stall under this policy."""
         return state in self.alerting_states
+
+    def needs_failure_evidence(self, state: EnumConsumerFlowState) -> bool:
+        """Whether ``state`` may only alert alongside a DLQ or handler error.
+
+        ``STALLED`` is declared this way because an out-count of zero is not,
+        by itself, evidence of a dead leg. Two whole classes of healthy node
+        publish nothing at all: a projection writes rows to Postgres, and a
+        compute delivers its intent IN-PROCESS through
+        ``IntentEffectDispatchBridge`` -- which is why
+        ``node_gateway_link_health_projection_compute`` sits at Kafka
+        high-watermark 0 while fully alive (falsified premise, 2026-08-29).
+
+        The platform carries no counter that separates those from a consumer
+        that has genuinely died, so the alert asks for corroboration instead.
+        Measured on the ``.201`` dev lane at 2026-08-29T02:40Z the split is
+        total: every real failure showed ``messages_dlq == messages_in`` and
+        ``handler_errors == messages_in`` (this very node's 8-error validation
+        bug, ``pattern_b_broker``, ``node_pr_lifecycle_state_reducer``), while
+        every non-publishing-but-healthy leg showed ``dlq=0 errors=0``
+        (``projection_consumer_flow``, ``projection_registration``,
+        ``node_registration_orchestrator``, ``projection_live_events``).
+        Without this rule the node's first live dispatch would have posted nine
+        alerts, most of them wrong -- the AC3 alert storm that gets a channel
+        muted inside a day.
+
+        ``STARVED`` is deliberately NOT declared this way: in == 0 while
+        upstream is producing means the consumer is not taking messages at all,
+        which needs no second witness.
+        """
+        return state in self.require_failure_evidence_for
 
 
 class StallAlertPolicyError(RuntimeError):

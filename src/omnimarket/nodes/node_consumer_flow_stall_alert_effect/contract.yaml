@@ -129,6 +129,28 @@ alert_policy:
   alerting_states:
     - STALLED
     - STARVED
+  # An out-count of zero is NOT on its own evidence of a dead leg. Two whole
+  # classes of healthy node publish nothing: a projection writes rows to
+  # Postgres, and a compute delivers its intent IN-PROCESS through
+  # IntentEffectDispatchBridge -- which is why
+  # node_gateway_link_health_projection_compute sits at Kafka high-watermark 0
+  # while fully alive (premise falsified live, 2026-08-29).
+  #
+  # A STALLED window therefore only counts toward an alerting run when the same
+  # window also carries a dead-letter or a handler error. Measured on the .201
+  # dev lane at 2026-08-29T02:40Z the split is total: every real failure had
+  # messages_dlq == messages_in AND handler_errors == messages_in (this node's
+  # own 8-error validation bug, pattern_b_broker,
+  # node_pr_lifecycle_state_reducer), while every healthy non-publishing leg had
+  # dlq=0 errors=0 (projection_consumer_flow, projection_registration,
+  # node_registration_orchestrator, projection_live_events). Without this rule
+  # the first live dispatch posts nine alerts, most of them wrong -- the AC3
+  # storm that gets a channel muted inside a day.
+  #
+  # STARVED is deliberately absent: in == 0 while upstream is producing means
+  # the consumer is not taking messages at all, which needs no second witness.
+  require_failure_evidence_for:
+    - STALLED
   # UNKNOWN is NOT in alerting_states and must never be: a missed heartbeat is
   # the absence of an observation, not evidence of a stall (OMN-16777 AC5).
   # It surfaces as its own degraded outcome instead.
@@ -171,6 +193,10 @@ dod_evidence:
     description: "AC1/AC4 — a confirmed stall reaches onex.cmd.omnimarket.slack-publish.v1 with the counters named"
   - test: tests/test_omn16778_stall_alert_self_assembly.py::test_an_in_process_leg_with_an_empty_out_topic_does_not_alert
     description: "AC3 — an out-topic high-watermark of 0 is not a stall; the verdict comes from the projection window"
+  - test: tests/test_omn16778_stall_alert_decision.py::test_a_stalled_window_without_failure_evidence_is_not_a_stall
+    description: "AC3 — a STALLED window with no dead-letter and no handler error is a healthy non-publishing leg, not a stall"
+  - test: tests/test_omn16778_stall_alert_decision.py::test_the_same_history_alerts_once_the_dead_letters_appear
+    description: "AC1 — the corroboration rule suppresses the noise without suppressing the signal"
   - test: tests/test_omn16778_stall_alert_self_assembly.py::test_the_node_never_reads_a_broker_watermark
     description: "AC3 — mechanically asserts no broker/offset read exists anywhere in this node"
   - test: tests/test_omn16778_stall_alert_windows_source.py::test_history_windows_covers_the_largest_declared_threshold
