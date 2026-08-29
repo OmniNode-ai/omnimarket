@@ -236,7 +236,10 @@ class HandlerConsumerFlowStallAlert:
             )
             decisions.append(decision)
             if decision.should_publish:
-                deliveries.append(self._publish(decision, correlation_id))
+                if decision.alert is None or decision.idempotency_key is None:
+                    deliveries.append(self._missing_publish_payload(decision))
+                else:
+                    deliveries.append(self._publish(decision, correlation_id))
 
         return ModelConsumerFlowStallAlertEvaluation(
             keys_evaluated=len(decisions),
@@ -244,6 +247,36 @@ class HandlerConsumerFlowStallAlert:
             windows_read=windows_read,
             decisions=tuple(decisions),
             deliveries=tuple(deliveries),
+        )
+
+    def _missing_publish_payload(
+        self, decision: ModelConsumerFlowStallAlertDecision
+    ) -> ModelStallAlertDelivery:
+        """Record a publishable decision that lacks the payload/key to publish."""
+        idempotency_key = (
+            f"missing-payload|{decision.consumer_group}|{decision.topic}|"
+            f"{decision.outcome.value}"
+        )
+        error = (
+            "decision requested publish but did not carry both alert payload "
+            f"and idempotency key; alert={decision.alert is not None} "
+            f"key={decision.idempotency_key is not None}"
+        )
+        logger.error(
+            "Stall alert DECIDED but NOT publishable: consumer_group=%s "
+            "topic=%s outcome=%s reason=%s",
+            decision.consumer_group,
+            decision.topic,
+            decision.outcome.value,
+            error,
+        )
+        return ModelStallAlertDelivery(
+            consumer_group=decision.consumer_group,
+            topic=decision.topic,
+            command_topic=self._slack_topic,
+            idempotency_key=idempotency_key,
+            published=False,
+            error=error,
         )
 
     def _publish(

@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 _SOURCE_KEY = "windows_source"
 
@@ -155,7 +155,13 @@ def load_windows_source(contract_path: Path) -> ModelWindowsSource:
             f"{_SOURCE_KEY!r} block; this node reads its own window history "
             "and carries no code default for where to read it from"
         )
-    source = ModelWindowsSource.model_validate(block)
+    try:
+        source = ModelWindowsSource.model_validate(block)
+    except ValidationError as exc:
+        raise WindowsSourceError(
+            f"stall-alert contract at {contract_path} declares an invalid "
+            f"{_SOURCE_KEY!r} block: {exc}"
+        ) from exc
     source.validate_relation()
     if not _ENV_NAME_RE.fullmatch(source.dsn_env):
         raise WindowsSourceError(

@@ -130,6 +130,21 @@ def test_a_contract_without_a_windows_source_fails_closed(tmp_path: Path) -> Non
 
 
 @pytest.mark.unit
+def test_invalid_windows_source_model_errors_are_normalized(tmp_path: Path) -> None:
+    """Malformed required fields raise the documented loader exception."""
+    raw = _contract()
+    raw["windows_source"] = {
+        key: value
+        for key, value in raw["windows_source"].items()  # type: ignore[union-attr]
+        if key != "dsn_env"
+    }
+    path = tmp_path / "contract.yaml"
+    path.write_text(yaml.safe_dump(raw), encoding="utf-8")
+    with pytest.raises(WindowsSourceError, match="invalid 'windows_source' block"):
+        load_windows_source(path)
+
+
+@pytest.mark.unit
 def test_an_unset_dsn_variable_fails_closed(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

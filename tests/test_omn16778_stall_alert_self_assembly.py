@@ -454,6 +454,41 @@ def test_an_unresolvable_channel_is_reported_rather_than_guessed(
 
 
 @pytest.mark.unit
+def test_publishable_warning_without_payload_is_recorded_not_raised(
+    tmp_path: Path,
+) -> None:
+    """deliver_warnings must not turn payload-less warnings into batch aborts."""
+    raw = yaml.safe_load(CONTRACT_PATH.read_text(encoding="utf-8"))
+    raw["alert_policy"]["deliver_warnings"] = True
+    warning_contract = tmp_path / "contract.yaml"
+    warning_contract.write_text(yaml.safe_dump(raw), encoding="utf-8")
+
+    reader = _FakeWindowReader(
+        {("group", "topic"): _windows(EnumConsumerFlowState.UNKNOWN)}
+    )
+    publisher = _CapturingPublisher()
+    handler = HandlerConsumerFlowStallAlert(
+        contract_path=warning_contract,
+        event_publisher=publisher,
+        window_reader=reader,
+    )
+
+    evaluation = handler.handle(
+        ModelConsumerFlowStallAlertTrigger.model_validate(
+            _applied_event_payload(("group", "topic"))
+        )
+    )
+
+    assert publisher.published == []
+    assert evaluation.decisions[0].outcome is EnumStallAlertOutcome.WARN_MISSED_WINDOW
+    assert evaluation.alerts_undelivered == 1
+    assert evaluation.deliveries[0].published is False
+    assert "did not carry both alert payload and idempotency key" in (
+        evaluation.deliveries[0].error or ""
+    )
+
+
+@pytest.mark.unit
 def test_an_idle_consumer_on_a_quiet_topic_is_evaluated_and_stays_silent(
     slack_channel: str,
 ) -> None:

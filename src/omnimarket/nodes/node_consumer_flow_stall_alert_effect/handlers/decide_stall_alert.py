@@ -137,6 +137,23 @@ def _windows_since_last_alerting(
     return None
 
 
+def _last_alerting_run_was_confirmed(
+    windows: tuple[ModelFlowWindowObservation, ...],
+    policy: ModelStallAlertPolicy,
+) -> bool:
+    """Whether the most recent alerting run reached the confirm threshold."""
+    run = 0
+    seen_alerting = False
+    for window in reversed(windows):
+        if _counts_toward_run(window, policy):
+            seen_alerting = True
+            run += 1
+            continue
+        if seen_alerting:
+            break
+    return run >= policy.confirm_windows
+
+
 def _renotify_bucket(window_start_epoch: int, renotify_after_seconds: int) -> int:
     """Bucket index used to collapse repeats of a standing condition.
 
@@ -243,7 +260,11 @@ def decide_stall_alert(
         )
 
     since_alerting = _windows_since_last_alerting(windows, policy)
-    if since_alerting is not None and since_alerting < policy.clear_windows:
+    if (
+        since_alerting is not None
+        and since_alerting < policy.clear_windows
+        and _last_alerting_run_was_confirmed(windows, policy)
+    ):
         return ModelConsumerFlowStallAlertDecision(
             consumer_group=request.consumer_group,
             topic=request.topic,

@@ -255,6 +255,20 @@ def test_recently_recovered_consumer_is_recovering_not_cleared(
 
 
 @pytest.mark.unit
+def test_pending_stall_that_flows_is_not_reported_as_recovering(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """A stall that never confirmed does not enter the recovery branch."""
+    windows = (
+        _window(0, EnumConsumerFlowState.STALLED, messages_in=9, messages_out=0),
+        _window(1, EnumConsumerFlowState.FLOWING, messages_in=9, messages_out=9),
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
+    assert decision.should_publish is False
+
+
+@pytest.mark.unit
 def test_alert_payload_names_consumer_topic_counts_and_run_length(
     policy: ModelStallAlertPolicy,
 ) -> None:
