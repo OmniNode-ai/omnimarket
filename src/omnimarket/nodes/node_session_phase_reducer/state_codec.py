@@ -117,6 +117,12 @@ def _read_active_rows() -> dict[str, tuple[str | None, int]] | None:
     )
 
 
+# Sentinel for "this cache belongs to no dispatch yet". A plain ``None`` cannot
+# serve: ``None`` is the real, meaningful unbound value of ``_read_active_rows``,
+# so a fresh proxy would compare equal to the unbound shape and skip its clear.
+_UNSCOPED: object = object()
+
+
 class SessionPhaseStateProxy(MutableMapping[str, ModelSessionPhaseState]):
     """``MutableMapping`` view over durable per-session phase state.
 
@@ -131,42 +137,75 @@ class SessionPhaseStateProxy(MutableMapping[str, ModelSessionPhaseState]):
     handler that reads twice sees one object. :meth:`flush` re-encodes and
     evicts it for the runtime's post-handle CAS-persist.
 
-    Unbound: there is no prior state and nothing to persist. Reads miss, writes
-    land in the per-dispatch cache and are dropped when it is next flushed.
-    This is the CLI / unit-test shape; see the module docstring for why there is
-    deliberately no fallback store.
+    Unbound (the CLI, a unit test): there is no bound row, so there is no prior
+    state and nothing to persist. Reads miss and writes are DROPPED — see the
+    module docstring for why there is deliberately no fallback store. This
+    mirrors ``node_delegation_orchestrator``'s split between a bound lookup and
+    an unbound path; the difference is that this node has no unbound store to
+    fall back to, by ruling.
 
-    Exception-path staleness: the runtime calls ``codec.flush`` only after
-    ``handle()`` returns, so a raising fold would otherwise leave a
-    partially-mutated object cached across the ContextVar reset. The cache
-    therefore records ``(source_payload_json, decoded_state)`` — the exact bound
-    string this dispatch decoded against — and re-decodes whenever the currently
-    bound row for a session is not (``is``, identity) that same string object.
-    Every dispatch binds a freshly-built string, so an abandoned entry is
-    mechanically invalidated on the next dispatch for that session.
+    Dispatch scoping. ``_cache`` is instance state on a process-wide singleton,
+    so it is explicitly scoped to ONE dispatch on two independent axes:
+
+    * The cache records which bound ``rows`` mapping it belongs to and is
+      cleared whenever a different one (identity, ``is``) is bound. The runtime
+      binds a freshly-built ``{key: (payload_json, version)}`` dict per dispatch
+      (``handler_wiring``: ``CONTEXTVAR_STATE_IO_ROWS.set({...})`` … ``reset``),
+      so a dispatch can never read an entry another dispatch left behind. This
+      is what makes the exception path safe: ``codec.flush`` runs only after
+      ``handle()`` returns, so a raising fold abandons its entry — and the next
+      dispatch discards it rather than folding on top of it. The previous
+      revision guarded only on the payload STRING's identity, which silently
+      failed to invalidate whenever no row existed yet for that session (both
+      sources being ``None`` compared equal), and let an unbound write be read
+      back as prior state by a later dispatch.
+    * Each entry additionally records ``(source_payload_json, decoded_state)``,
+      so within a dispatch a re-read decodes only when the bound row actually
+      changed, and a value THIS dispatch wrote (source ``None``) reads back.
     """
 
     def __init__(self) -> None:
         self._cache: dict[str, tuple[str | None, ModelSessionPhaseState]] = {}
+        # Identity of the bound ``rows`` mapping ``_cache`` currently belongs
+        # to. ``None`` is a real value here (the unbound shape), so it starts
+        # as a sentinel that no ``_read_active_rows()`` result can equal.
+        self._cache_rows: object = _UNSCOPED
+
+    def _scoped_cache(
+        self, rows: dict[str, tuple[str | None, int]] | None
+    ) -> dict[str, tuple[str | None, ModelSessionPhaseState]]:
+        """Return ``_cache``, cleared if it belongs to a different dispatch.
+
+        The runtime binds a freshly-built rows mapping per dispatch, so its
+        object identity IS the dispatch boundary.
+        """
+        if self._cache_rows is not rows:
+            self._cache.clear()
+            self._cache_rows = rows
+        return self._cache
 
     def _lookup(self, session_id: str) -> ModelSessionPhaseState | None:
         """Resolve ``session_id``'s state for the current dispatch, or ``None``.
 
         Single source of truth shared by ``__getitem__`` and ``__contains__`` so
-        the two can never disagree. A cached entry counts only when its recorded
-        source string is identical (``is``) to the row currently bound for this
-        session — including the ``None`` source of a state THIS dispatch just
-        wrote — otherwise the bound raw JSON is decoded and cached.
+        the two can never disagree. Unbound, there is no prior state at all.
+        Bound, a cached entry counts only when it belongs to THIS dispatch and
+        its recorded source string is identical (``is``) to the row currently
+        bound for this session — including the ``None`` source of a state THIS
+        dispatch just wrote — otherwise the bound raw JSON is decoded and cached.
         """
-        rows = _read_active_rows() or {}
+        rows = _read_active_rows()
+        cache = self._scoped_cache(rows)
+        if rows is None:
+            return None
         payload_json, _version = rows.get(session_id, (None, 0))
-        cached = self._cache.get(session_id)
+        cached = cache.get(session_id)
         if cached is not None and cached[0] is payload_json:
             return cached[1]
         if payload_json is None:
             return None
         decoded = decode(payload_json)
-        self._cache[session_id] = (payload_json, decoded)
+        cache[session_id] = (payload_json, decoded)
         return decoded
 
     def __getitem__(self, session_id: str) -> ModelSessionPhaseState:
@@ -176,12 +215,19 @@ class SessionPhaseStateProxy(MutableMapping[str, ModelSessionPhaseState]):
         return state
 
     def __setitem__(self, session_id: str, state: ModelSessionPhaseState) -> None:
-        rows = _read_active_rows() or {}
+        rows = _read_active_rows()
+        cache = self._scoped_cache(rows)
+        if rows is None:
+            # Unbound: nothing will read this back and nothing will persist it,
+            # and there is no fallback store to put it in — keeping it would be
+            # exactly the non-database state of record the OMN-16924 ruling
+            # removes, readable as "prior state" by a later unbound fold.
+            return
         payload_json, _version = rows.get(session_id, (None, 0))
-        self._cache[session_id] = (payload_json, state)
+        cache[session_id] = (payload_json, state)
 
     def __delitem__(self, session_id: str) -> None:
-        del self._cache[session_id]
+        del self._scoped_cache(_read_active_rows())[session_id]
 
     def __contains__(self, session_id: object) -> bool:
         if not isinstance(session_id, str):
@@ -189,18 +235,21 @@ class SessionPhaseStateProxy(MutableMapping[str, ModelSessionPhaseState]):
         return self._lookup(session_id) is not None
 
     def __iter__(self) -> Iterator[str]:
-        return iter(self._cache)
+        return iter(self._scoped_cache(_read_active_rows()))
 
     def __len__(self) -> int:
-        return len(self._cache)
+        return len(self._scoped_cache(_read_active_rows()))
 
     def flush(self, session_id: str) -> bytes:
         """Re-encode and evict ``session_id``'s state for the CAS-persist step.
 
         Raises ``KeyError`` when the session was never read or written on this
-        proxy during the current dispatch — nothing to persist.
+        proxy during the current dispatch — nothing to persist. The runtime
+        calls this INSIDE the ``CONTEXTVAR_STATE_IO_ROWS`` binding
+        (``handler_wiring``: ``codec.flush(...)`` precedes ``reset(token)``), so
+        the dispatch-scoped cache is still the one ``handle()`` populated.
         """
-        _source, state = self._cache.pop(session_id)
+        _source, state = self._scoped_cache(_read_active_rows()).pop(session_id)
         return encode(state)
 
 

@@ -34,7 +34,6 @@ from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_
 from omnimarket.nodes.node_session_phase_reducer.state_codec import (
     StateIoCodec,
     encode,
-    reset_default_proxy,
 )
 
 
@@ -68,8 +67,13 @@ def state_io_dispatch(store: StateIoRowStore, session_id: str) -> Iterator[None]
     a *set* value, ``None`` payload when no row exists — that is how the proxy
     distinguishes "state_io active, no row yet" from "state_io inactive"), run
     the body, then persist whatever ``StateIoCodec.flush`` hands back.
+
+    It deliberately does NOT reset the process-wide proxy per dispatch: the
+    runtime does not either, and doing so here would hide precisely the
+    cross-dispatch cache staleness the proxy's dispatch scoping exists to
+    prevent. A test that wants a clean singleton calls ``reset_default_proxy()``
+    itself, once, before its first dispatch.
     """
-    reset_default_proxy()
     flushed: str | None = None
     payload_json: str | None
     payload_json, version = store.rows.get(session_id, (None, 0))

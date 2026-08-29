@@ -49,7 +49,7 @@ description: >
 # across N rows.
 #
 # Runtime activation is gated on the paired omnibase_infra wiring (contract-
-# declared state_io key + migration 101_create_session_phase_state.sql). On a
+# declared state_io key + migration 102_create_session_phase_state.sql). On a
 # runtime that predates it the key falls back to the previous hardcoded
 # behaviour; on this one it is honoured.
 state_io:

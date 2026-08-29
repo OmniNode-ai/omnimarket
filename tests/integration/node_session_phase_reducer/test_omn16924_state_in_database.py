@@ -56,7 +56,12 @@ from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_
     ModelSessionPhaseReducerInput,
     ModelSessionPhaseState,
 )
-from omnimarket.nodes.node_session_phase_reducer.state_codec import decode, encode
+from omnimarket.nodes.node_session_phase_reducer.state_codec import (
+    decode,
+    encode,
+    get_default_proxy,
+    reset_default_proxy,
+)
 from tests.session_phase_state_io_harness import StateIoRowStore, state_io_dispatch
 
 _SESSION = "omn16162-live-proof-1787064555"
@@ -241,3 +246,77 @@ def test_handle_has_no_state_path_parameter() -> None:
         assert not hasattr(HandlerSessionPhaseReducer, removed), (
             f"HandlerSessionPhaseReducer.{removed} is filesystem I/O and must be gone"
         )
+
+
+@pytest.mark.integration
+def test_unbound_fold_does_not_leak_into_a_later_unbound_fold(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An unbound write must never be readable as prior state (CodeRabbit).
+
+    ``get_default_proxy()`` is a process-wide singleton. Before the fix, an
+    unbound ``__setitem__`` cached ``(None, state)``, and a LATER unbound fold
+    resolved its own source to ``None`` too — so the identity guard
+    ``cached[0] is payload_json`` compared ``None is None``, matched, and handed
+    back the earlier fold's state as prior state. That is a state of record
+    living outside the database, in process memory, across dispatches: exactly
+    what the OMN-16924 ruling removes.
+
+    Two unbound folds of a NON-start event. Each must independently see no prior
+    state and return the idle sentinel; the second must not inherit the first.
+    """
+    monkeypatch.chdir(tmp_path)
+    reset_default_proxy()
+    handler = HandlerSessionPhaseReducer()
+
+    first = handler.handle(_started())
+    assert first["projections"][0]["current_phase"] == "health_gate"
+
+    second = handler.handle(_phase_advance())
+    assert second["projections"][0]["current_phase"] == "unknown", (
+        "the second unbound fold inherited the first fold's state from the "
+        "process-wide proxy — an unbound write must be dropped, not cached"
+    )
+    assert get_default_proxy()._cache == {}, (
+        "an unbound write left an entry in the shared cache"
+    )
+
+
+@pytest.mark.integration
+def test_abandoned_dispatch_state_is_not_folded_onto_by_the_next_dispatch() -> None:
+    """A raising fold must not leave prior state behind for the next dispatch.
+
+    The runtime calls ``codec.flush`` only AFTER ``handle()`` returns, so a
+    dispatch that raises mid-fold leaves its ``__setitem__`` entry in the shared
+    cache. Before the fix the entry survived whenever no row existed yet for
+    that session: both the abandoned entry's source and the next dispatch's
+    source were ``None``, the identity guard matched, and the next dispatch
+    folded onto a state the database never committed.
+
+    Here dispatch 1 writes and then raises before flush; dispatch 2 for the same
+    session, with the row still absent, must see NO prior state.
+    """
+    store = StateIoRowStore()
+    handler = HandlerSessionPhaseReducer()
+    started = _started()
+    session_id = started.session_id
+
+    def abandon_after_write() -> None:
+        """Write inside a bound dispatch, then raise before the runtime flushes."""
+        with state_io_dispatch(store, session_id):
+            handler.handle(started)
+            raise RuntimeError("fold abandoned after the write, before flush")
+
+    reset_default_proxy()
+    with pytest.raises(RuntimeError, match="fold abandoned"):
+        abandon_after_write()
+
+    assert store.load(session_id) is None, "an abandoned dispatch must persist nothing"
+
+    with state_io_dispatch(store, session_id):
+        result = handler.handle(_phase_advance())
+
+    assert result["projections"][0]["current_phase"] == "unknown", (
+        "the retry folded onto state from the abandoned dispatch instead of "
+        "treating the absent row as no prior state"
+    )
