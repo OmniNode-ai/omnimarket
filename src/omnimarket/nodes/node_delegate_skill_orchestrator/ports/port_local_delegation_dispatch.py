@@ -271,13 +271,74 @@ _DISPATCH_TIMEOUT_BUFFER_SECONDS = 10.0
 _EFFECT_PROCESS_POLL_INTERVAL_SECONDS = 0.05
 _EFFECT_PROCESS_TERMINATE_GRACE_SECONDS = 1.0
 
+# OMN-14883: the effect child's INTERPRETER BOOT is bounded separately from the
+# endpoint's transport budget above.
+#
+# A ``spawn`` child (OMN-13842 — mandatory on macOS, where ``fork`` after the
+# objc runtime is live aborts the child) is a fresh interpreter: before it can
+# call the pickled effect handler it must re-import that handler's module and the
+# whole transitive package tree behind it. Measured cost of that import alone:
+# ~18s on macOS and ~80s on the .201 gate-runner container (user CPU ~7.9s on
+# both — the delta is pure I/O off the container's ``/data`` mount). None of it
+# touches the endpoint.
+#
+# Charging that boot to ``timeout_seconds + _DISPATCH_TIMEOUT_BUFFER_SECONDS``
+# (as small as 10.5s for a backend declaring ``timeout_ms: 500``) killed healthy
+# children mid-import and projected a canonical TIMEOUT with
+# ``endpoint_healthy=False`` — a verdict on an endpoint that was never contacted.
+# The boot budget below therefore exists ONLY to bound a wedged interpreter; it
+# is never an endpoint verdict, and a boot overrun raises an infrastructure
+# RuntimeError rather than the TimeoutError the caller projects as a transport
+# failure.
+#
+# The budget is derived from a MEASURED in-run calibration rather than a constant
+# sized for one host: every child that reaches readiness reports how long its own
+# boot took, and subsequent children on the same host scale their budget off that
+# observation. The ceiling applies only until the first observation lands (and as
+# an absolute hang guard thereafter); the floor keeps one fast, warm-cache sample
+# from arming a budget the next cold boot blows.
+_EFFECT_CHILD_BOOT_CEILING_SECONDS = 300.0
+_EFFECT_CHILD_BOOT_FLOOR_SECONDS = 30.0
+_EFFECT_CHILD_BOOT_SAFETY_FACTOR = 4.0
+
+# Slowest child boot observed in THIS process, in seconds. ``None`` until the
+# first child reports readiness.
+_observed_child_boot_seconds: float | None = None
+
 type _EffectHandler = Callable[
     [ModelLlmDelegationCallRequest], ModelLlmDelegationCallResult
 ]
 type _EffectWorkerMessage = (
-    tuple[Literal["ok"], ModelLlmDelegationCallResult]
+    tuple[Literal["ready"]]
+    | tuple[Literal["ok"], ModelLlmDelegationCallResult]
     | tuple[Literal["error"], str, str]
 )
+
+
+def _resolve_child_boot_budget_seconds(*, observed_boot_seconds: float | None) -> float:
+    """Bound the effect child's interpreter boot from a measured observation.
+
+    ``observed_boot_seconds`` is the slowest boot this process has actually seen
+    on this host. ``None`` (nothing measured yet) falls back to the hang-guard
+    ceiling, which is the only un-calibrated value in the path.
+    """
+    if observed_boot_seconds is None:
+        return _EFFECT_CHILD_BOOT_CEILING_SECONDS
+    scaled = observed_boot_seconds * _EFFECT_CHILD_BOOT_SAFETY_FACTOR
+    return min(
+        _EFFECT_CHILD_BOOT_CEILING_SECONDS,
+        max(_EFFECT_CHILD_BOOT_FLOOR_SECONDS, scaled),
+    )
+
+
+def _record_child_boot_observation(boot_seconds: float) -> None:
+    """Feed a measured boot forward as the calibration for the next child."""
+    global _observed_child_boot_seconds
+    if (
+        _observed_child_boot_seconds is None
+        or boot_seconds > _observed_child_boot_seconds
+    ):
+        _observed_child_boot_seconds = boot_seconds
 
 
 def _resolve_effect_process_context() -> Any:
@@ -314,7 +375,16 @@ def _effect_handler_worker(
     request: ModelLlmDelegationCallRequest,
     result_queue: Any,
 ) -> None:
-    """Run the sync effect in a child process and return exactly one message."""
+    """Signal readiness, then run the sync effect and return exactly one result.
+
+    OMN-14883: the ``ready`` message is the child's FIRST act. Reaching this
+    function already proves the ``spawn`` round-trip completed — the interpreter
+    booted, the target module and the pickled handler's module imported, and the
+    handler unpickled. Everything after it is the effect call itself, so the
+    parent can bound the two phases on their own budgets instead of charging a
+    slow package import to the endpoint's transport timeout.
+    """
+    result_queue.put(("ready",))
     try:
         result = effect_handler(request)
         result_queue.put(("ok", result))
@@ -346,7 +416,21 @@ async def _run_effect_handler_with_killable_timeout(
     *,
     timeout_seconds: float,
 ) -> ModelLlmDelegationCallResult:
-    """Run the blocking sync effect behind a process boundary with a hard kill."""
+    """Run the blocking sync effect behind a process boundary with a hard kill.
+
+    OMN-14883: the child runs in two phases on two separate budgets.
+
+    * BOOT — from ``process.start()` until the child's ``ready`` message. This is
+      interpreter startup plus the ``spawn`` re-import of the handler's module
+      tree; it never touches the endpoint. Bounded by
+      ``_resolve_child_boot_budget_seconds`` (calibrated from the slowest boot
+      measured in this process), and an overrun raises an infrastructure
+      ``RuntimeError`` — never the ``TimeoutError`` the caller projects as a
+      transport failure against the endpoint.
+    * CALL — from ``ready`` onward, bounded by ``timeout_seconds``: the
+      contract-resolved transport budget the caller passed in. Unchanged
+      semantics, now measuring only what it claims to measure.
+    """
     context: Any = _resolve_effect_process_context()
     result_queue = context.Queue()
     process = context.Process(
@@ -354,13 +438,32 @@ async def _run_effect_handler_with_killable_timeout(
         args=(effect_handler, request, result_queue),
         daemon=True,
     )
+    boot_started = time.monotonic()
     process.start()
 
-    deadline = time.monotonic() + timeout_seconds
+    boot_budget_seconds = _resolve_child_boot_budget_seconds(
+        observed_boot_seconds=_observed_child_boot_seconds
+    )
+    child_ready = False
+    deadline = boot_started + boot_budget_seconds
     try:
         while True:
             message = _read_effect_worker_message(result_queue)
             if message is not None:
+                if message[0] == "ready":
+                    boot_seconds = time.monotonic() - boot_started
+                    _record_child_boot_observation(boot_seconds)
+                    logger.debug(
+                        "LocalDelegationDispatch: effect child booted in %.2fs "
+                        "(boot budget %.0fs); starting the %.1fs endpoint budget",
+                        boot_seconds,
+                        boot_budget_seconds,
+                        timeout_seconds,
+                    )
+                    child_ready = True
+                    deadline = time.monotonic() + timeout_seconds
+                    continue
+
                 process.join(timeout=_EFFECT_PROCESS_TERMINATE_GRACE_SECONDS)
                 if message[0] == "ok":
                     return message[1]
@@ -368,8 +471,11 @@ async def _run_effect_handler_with_killable_timeout(
 
             if not process.is_alive():
                 process.join(timeout=_EFFECT_PROCESS_TERMINATE_GRACE_SECONDS)
-                message = _read_effect_worker_message(result_queue)
-                if message is not None:
+                while (
+                    message := _read_effect_worker_message(result_queue)
+                ) is not None:
+                    if message[0] == "ready":
+                        continue
                     if message[0] == "ok":
                         return message[1]
                     raise RuntimeError(f"{message[1]}: {message[2]}")
@@ -381,7 +487,17 @@ async def _run_effect_handler_with_killable_timeout(
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 _terminate_effect_process(process)
-                raise TimeoutError
+                if child_ready:
+                    raise TimeoutError
+                # Boot overrun: the child never became ready, so no request ever
+                # left this host. Fail as infrastructure, never as an endpoint
+                # verdict — projecting TIMEOUT here would blame an endpoint that
+                # was never contacted.
+                raise RuntimeError(
+                    "delegation effect process did not become ready within "
+                    f"{boot_budget_seconds:.0f}s (interpreter boot / module "
+                    "import, not an endpoint failure)"
+                )
             await asyncio.sleep(min(_EFFECT_PROCESS_POLL_INTERVAL_SECONDS, remaining))
     finally:
         if process.is_alive():
