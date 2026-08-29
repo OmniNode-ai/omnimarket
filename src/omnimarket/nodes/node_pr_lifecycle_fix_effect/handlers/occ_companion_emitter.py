@@ -917,6 +917,22 @@ class OccCompanionEmitter:
                 # the OCC Append-Only Gate (hand-repaired,
                 # onex_change_control@6240bf817, 2026-08-09).
                 contract_already_had_companion: dict[str, bool] = {}
+                # OMN-16071 Defect 1: the guard above is a question about
+                # ``contracts/<ticket>.yaml`` used to decide whether to open
+                # ``drift/dod_receipts/<ticket>/<slot_evidence_id>/
+                # <slot_check_type>.yaml`` for write. Two different files. Its
+                # sibling emission sites in this same loop ask the DIRECT
+                # question (``downstream_receipt_path.is_file()`` /
+                # ``ci_receipt_path.is_file()``); this one never did, so the
+                # add-only property held only while the two files happened to
+                # co-exist. Where they diverge — a receipt tree that outlived
+                # its contract, or a contract re-keyed to a different ticket
+                # (OMN-16376) — the writer opens an already-merged receipt, and
+                # since PR #2086 the pre-push ``_assert_append_only`` then
+                # aborts the WHOLE mint on git status rather than the product
+                # PR merely losing one file. Captured here, before any write
+                # can change the answer, exactly like its sibling.
+                slot_receipt_already_present: dict[str, bool] = {}
                 # OMN-16356: per-ticket downstream/CI skip flags, populated in
                 # this loop and read again by the pass-2 self-bind rebind below
                 # — see the net-new-file-only guard at the receipt writes.
@@ -929,6 +945,14 @@ class OccCompanionEmitter:
                     contract_path = clone_dir / "contracts" / f"{ticket}.yaml"
                     contract_path.parent.mkdir(parents=True, exist_ok=True)
                     contract_already_had_companion[ticket] = contract_path.is_file()
+                    slot_receipt_already_present[ticket] = (
+                        clone_dir
+                        / "drift"
+                        / "dod_receipts"
+                        / ticket
+                        / slot_evidence_id
+                        / f"{slot_check_type}.yaml"
+                    ).is_file()
                     if not contract_path.is_file():
                         contract_path.write_text(
                             render_companion_contract(
@@ -1102,15 +1126,30 @@ class OccCompanionEmitter:
                     # declares `test_passes`. Hardcoding `command.yaml` here is
                     # exactly the OMN-16859 defect on the sibling compute producer,
                     # whose behavior receipts have had to be hand-authored.
-                    if contract_already_had_companion[ticket]:
+                    #
+                    # OMN-16071: skip on EITHER signal. The receipt-path half
+                    # is the one the ticket's AC names ("never open an existing
+                    # receipt file for write"); the contract half is retained
+                    # deliberately, because minting a slot receipt into a
+                    # pre-existing contract that does not declare that item
+                    # would trade an append-only violation for an orphan
+                    # receipt (``check_receipt_hardening``).
+                    if (
+                        contract_already_had_companion[ticket]
+                        or slot_receipt_already_present[ticket]
+                    ):
                         logger.info(
                             "occ_companion_emitter: skipping "
-                            "%s receipt for %s — ticket already has a prior "
-                            "companion; the item is ticket-shared and "
-                            "already-merged/already-generated (OMN-15785 "
-                            "net-new-file-only guard, never overwrite).",
+                            "%s receipt for %s — prior companion: %s, receipt "
+                            "already at clone base: %s; the item is "
+                            "ticket-shared and already-merged/"
+                            "already-generated (OMN-15785 net-new-file-only "
+                            "guard + OMN-16071 add-only writer, never "
+                            "overwrite).",
                             slot_evidence_id,
                             ticket,
+                            contract_already_had_companion[ticket],
+                            slot_receipt_already_present[ticket],
                         )
                     else:
                         validator_dir = (
@@ -1169,7 +1208,10 @@ class OccCompanionEmitter:
                         rebind_evidence_ids.add(evidence_id)
                     if not ci_already_merged:
                         rebind_evidence_ids.add(ci_evidence_id)
-                    if not contract_already_had_companion[ticket]:
+                    if not (
+                        contract_already_had_companion[ticket]
+                        or slot_receipt_already_present[ticket]
+                    ):
                         rebind_evidence_ids.add(slot_evidence_id)
                     self._rebind_receipts(
                         clone_dir,
@@ -1209,7 +1251,14 @@ class OccCompanionEmitter:
                     base_sha,
                     self._allowed_paths(tickets, {evidence_id, ci_evidence_id})
                     | self._allowed_paths(
-                        [t for t in tickets if not contract_already_had_companion[t]],
+                        [
+                            t
+                            for t in tickets
+                            if not (
+                                contract_already_had_companion[t]
+                                or slot_receipt_already_present[t]
+                            )
+                        ],
                         {slot_evidence_id},
                         filename=f"{slot_check_type}.yaml",
                     ),
@@ -1322,7 +1371,10 @@ class OccCompanionEmitter:
                         pass2_rebind_evidence_ids.add(evidence_id)
                     if not ci_already_merged_by_ticket[ticket]:
                         pass2_rebind_evidence_ids.add(ci_evidence_id)
-                    if not contract_already_had_companion[ticket]:
+                    if not (
+                        contract_already_had_companion[ticket]
+                        or slot_receipt_already_present[ticket]
+                    ):
                         # OMN-15247 R21b: pass 2 re-renders the contract with
                         # the self-bind entry appended, so its whole-file
                         # digest changes and EVERY pass-1 receipt THIS RUN
@@ -1364,7 +1416,14 @@ class OccCompanionEmitter:
                         {evidence_id, ci_evidence_id, self_bind_evidence_id},
                     )
                     | self._allowed_paths(
-                        [t for t in tickets if not contract_already_had_companion[t]],
+                        [
+                            t
+                            for t in tickets
+                            if not (
+                                contract_already_had_companion[t]
+                                or slot_receipt_already_present[t]
+                            )
+                        ],
                         {slot_evidence_id},
                         filename=f"{slot_check_type}.yaml",
                     ),

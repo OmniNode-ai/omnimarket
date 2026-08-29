@@ -334,7 +334,62 @@ class HandlerOccStateEffect:
             existing_entry_ids=entry_ids,
             whole_file_sha256=whole_hash,
             raw_contract_text=content,
+            merged_receipt_paths=self._merged_receipt_paths(
+                occ_repo, ticket_id, entry_ids, token
+            ),
         )
+
+    def _merged_receipt_paths(
+        self,
+        occ_repo: str,
+        ticket_id: str,
+        entry_ids: tuple[str, ...],
+        token: str,
+    ) -> tuple[str, ...]:
+        """List the receipt files ALREADY on the OCC governance ref (OMN-16071).
+
+        The pure producer previously knew only which dod_evidence ids exist —
+        a set of DIRECTORIES — and therefore could not tell a first correction
+        from a re-mint of an already-merged one. That is why
+        ``assert_append_only_emissions`` had to exempt every
+        ``.supersede.<NNNN>.yaml`` filename unconditionally, and why a second
+        authoring pass for the same product PR re-rendered, in place, the exact
+        supersede paths its first pass had merged (live: OCC#6616, eight
+        ``.supersede.925.yaml`` files). Reading the file list here is what lets
+        that exemption become conditional.
+
+        Scoped to ``entry_ids`` — the only directories the guard can freeze —
+        so this is bounded by the merged contract's item count (in practice
+        1-10), not by the ticket's whole receipt tree.
+
+        FAILS SOFT, deliberately: a listing error yields ``()``, which
+        reproduces the pre-OMN-16071 semantics exactly rather than refusing a
+        mint over an unrelated API hiccup. Nothing that was previously caught
+        stops being caught — the write-EFFECT's pre-push ``_assert_append_only``
+        is still fail-closed on git status behind this, and the hosted OCC
+        Append-Only Gate is fail-closed behind that.
+        """
+        owner, repo_name = split_repo(occ_repo)
+        paths: list[str] = []
+        for entry_id in entry_ids:
+            directory = f"drift/dod_receipts/{ticket_id}/{entry_id}"
+            encoded = urllib.parse.quote(directory, safe="/")
+            try:
+                listing = rest_json_array(
+                    "GET",
+                    f"/repos/{owner}/{repo_name}/contents/{encoded}"
+                    f"?ref={_OCC_DEFAULT_TARGET_BRANCH}",
+                    token=token,
+                )
+            except GitHubApiError:
+                continue
+            for item in listing:
+                if item.get("type") != "file":
+                    continue
+                name = item.get("name")
+                if isinstance(name, str) and name.endswith(".yaml"):
+                    paths.append(f"{directory}/{name}")
+        return tuple(sorted(paths))
 
     def _resolve_red_ref_live(
         self, owner: str, repo_name: str, pr: dict[str, object], token: str
