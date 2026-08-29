@@ -111,10 +111,22 @@ class TransportCloudDelegation:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
         self._timeout = timeout_seconds
+        # This module IS the EFFECT boundary for the `onex cloud` slice -- the
+        # single component that opens a socket, exactly as
+        # `omnibase_infra.gateway.client.gateway_transport_httpx` is for the
+        # `onex auth` slice. Confining the client construction to this one line
+        # is what keeps the credential store, the models and the CLI itself
+        # transport-free and driveable by `httpx.MockTransport` with no network.
+        # A customer's CLI calling the gateway over HTTPS has no bus-mediated
+        # transport to route through -- customers never speak Kafka
+        # (`feedback_customers_never_speak_kafka_gateway_only`), the gateway IS
+        # their transport, and this is a client calling out, not a node
+        # emitting. The no-contract-check tag is the scanner's sanctioned
+        # per-line boundary annotation, NOT a path-allowlist broadening.
         self._client = (
             http_client
             if http_client is not None
-            else httpx.Client(timeout=timeout_seconds)
+            else httpx.Client(timeout=timeout_seconds)  # no-contract-check: the seam
         )
         self._owns_client = http_client is None
 
