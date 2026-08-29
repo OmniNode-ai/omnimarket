@@ -1404,12 +1404,23 @@ def render_admissibility_validator_dod_evidence_item(
 # the byte-identical quoted form whenever the line is a yamlfmt fixpoint, and
 # only switches to ``|-`` for one that would fold. So no existing receipt shape
 # moves, and no hash that was stable becomes unstable.
+#
+# OMN-16859: ``check_type`` is a SUBSTITUTED VALUE here for the same reason it
+# became one on the born-path ``_DOWNSTREAM_RECEIPT_HEAD_TEMPLATE`` in
+# OMN-16892 — ``validator_occ_merge_eligibility`` resolves an item's receipt at
+# ``drift/dod_receipts/<ticket>/<item>/<check_type>.yaml`` and
+# ``validator_receipt_supersession`` key-validates a record's own ``check_type``
+# field against the key it is filed under. A hardcoded ``"command"`` here is
+# what made this producer declare ``test_passes`` and mint ``command.yaml``,
+# which occ-preflight reports as ``missing_receipt`` — four separate lanes
+# hand-authored the missing file on 2026-08-28 alone. Defaults to ``"command"``
+# so every pre-existing caller renders byte-for-byte what it rendered before.
 _COMPUTE_RECEIPT_HEAD_TEMPLATE = textwrap.dedent("""\
     ---
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
-    check_type: "command"
+    check_type: "{check_type}"
     check_value: |-
       {check_value}
     contract_sha256: "sha256:{contract_sha256}"
@@ -1432,7 +1443,7 @@ _COMPUTE_RECEIPT_HEAD_TEMPLATE_NO_ENTRY = textwrap.dedent("""\
     schema_version: "1.0.0"
     ticket_id: "{ticket_id}"
     evidence_item_id: "{evidence_id}"
-    check_type: "command"
+    check_type: "{check_type}"
     check_value: |-
       {check_value}
     contract_sha256: "sha256:{contract_sha256}"
@@ -2114,8 +2125,18 @@ def render_compute_receipt(
     exit_code: int,
     pr_number: int,
     branch: str,
+    check_type: str = "command",
 ) -> str:
     """Render the RSD compute-oracle receipt YAML.
+
+    ``check_type`` (OMN-16859) MUST equal the ``check_type`` the contract item
+    this receipt backs declares, and the caller MUST write the file at
+    ``<evidence_id>/<check_type>.yaml`` — that is the path
+    ``validator_occ_merge_eligibility`` resolves and the key
+    ``validator_receipt_supersession`` validates a supersession record against.
+    The default keeps every pre-OMN-16859 caller byte-identical. This is the
+    compute-producer twin of the born-path parameter OMN-16892 added to
+    :func:`render_downstream_receipt`.
 
     ``contract_sha256`` is a bare hex digest (the template prefixes ``sha256:``).
     ``contract_entry_sha256`` is the FULL ``sha256:<hex>`` string as returned by
@@ -2134,6 +2155,7 @@ def render_compute_receipt(
     head_fields = {
         "ticket_id": ticket_id,
         "evidence_id": evidence_id,
+        "check_type": check_type,
         "check_value": check_value,
         "contract_sha256": contract_sha256,
         "run_timestamp": run_timestamp,

@@ -202,12 +202,27 @@ class TestDiffDerivedBehaviorProofIsMinted:
     def test_the_behavior_item_has_a_backing_receipt(self) -> None:
         # validator_occ_merge_eligibility refuses a companion whose contract
         # declares a dod_evidence item with no PASS receipt bound to it.
+        #
+        # OMN-16859: this assertion USED to name `command.yaml`, which is how
+        # the defect shipped green — it asserted a receipt existed without
+        # asking whether the consumer could resolve it. Eligibility reads the
+        # receipt at `<item>/<check_type>.yaml`, and this item declares
+        # `test_passes`, so `command.yaml` is exactly the file that produced
+        # `reason=missing_receipt` on OMN-16838 / OMN-16842 / OMN-16844 /
+        # OMN-16901. The key is now derived from the declaration rather than
+        # restated as a literal, so the pair cannot drift apart again.
         plan = compute_companion_plan(_request())
         paths = {f.path for f in plan.companion_files}
-        assert (
-            f"drift/dod_receipts/{_TICKET}/{BEHAVIOR_PROOF_EVIDENCE_ID}/command.yaml"
-            in paths
+        declared = next(
+            check["check_type"]
+            for item in _items(_contract(plan))
+            if item.get("id") == BEHAVIOR_PROOF_EVIDENCE_ID
+            for check in item.get("checks", [])  # type: ignore[union-attr]
         )
+        assert declared == "test_passes"
+        assert (
+            f"drift/dod_receipts/{_TICKET}/{BEHAVIOR_PROOF_EVIDENCE_ID}/{declared}.yaml"
+        ) in paths
 
 
 # ---------------------------------------------------------------------------
