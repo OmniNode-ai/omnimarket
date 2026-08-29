@@ -1,6 +1,6 @@
 name: node_session_phase_reducer
-version: "1.0.0"
-description: "Session phase state reducer — pure delta(state, event) -> new_state materializing canonical phase state"
+version: "1.1.0"
+description: "Session phase state reducer — pure delta(state, event) -> new_state materializing canonical phase state into the contract-declared state_io table"
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:
   onex.nodes:
@@ -12,9 +12,15 @@ capabilities:
   requires_repo: false
   requires_secrets: false
   requires_docker: false
-  side_effect_class: file_write
+  # OMN-16924: the handler performs NO I/O. Its prior state is loaded and its
+  # fold CAS-persisted by the runtime's state_io dispatch seam, so the node's
+  # own side-effect class is none.
+  side_effect_class: none
 dependencies:
   - "omnibase_core>=0.39.0"
+  # OMN-16924: state_codec bridges omnibase_infra's CONTEXTVAR_STATE_IO_ROWS —
+  # a lazy, ImportError-tolerant import, but a real dependency edge.
+  - "omnibase-infra>=0.38.3"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["reducer", "session", "phase"]

@@ -2,31 +2,47 @@
 # SPDX-License-Identifier: MIT
 """Session phase state reducer — pure delta(state, event) -> new_state.
 
-The reducer is the CANONICAL authority for session phase state.
-The hook reads what the reducer writes to .onex_state/session/phase_state.yaml.
+The reducer is the CANONICAL authority for session phase state, and that state
+lives in the platform DATABASE. The handler itself performs no I/O: the
+runtime's ``state_io`` dispatch seam loads the ``session_id``-keyed row before
+``handle()`` and CAS-persists the fold after it, exactly as it does for
+delegation workflow state. ``contract.yaml``'s ``state_io`` block declares the
+binding, and its ``database`` / ``table`` are ``${env.VAR:default}`` contract
+overlay refs, so an operator rebinds the state of record without a code change.
+
+OMN-16924. The previous state of record was a cwd-relative
+``.onex_state/session/phase_state.yaml``. The runtime container's cwd is
+``/app`` (``root:root 0755``) while the process runs as ``omniinfra``, so every
+bus dispatch of this reducer raised ``PermissionError: [Errno 13] Permission
+denied: '.onex_state'`` and DLQ'd — a 100% failure rate on all three subscribed
+topics, on every lane. Making ``/app`` writable would have been worse, not
+better: three runtime containers auto-wire this node per lane and would each
+have kept their own divergent copy of "the canonical authority".
+
+Operator ruling, verbatim: *"onex_state should be configurable via contract
+overlay right? for our purposes, state should only be kept in the database. if
+you disagree, let's have a conversation."*
 
 Related:
     - OMN-11230: Task 6: Create node_session_phase_reducer (REDUCER)
     - OMN-11224: Session phase control loop epic
     - OMN-16790: fold the WIRE payload, not a hand-built local envelope
+    - OMN-16924: state of record moves to the database; the file path is gone
+    - OMN-14208: the state_io dispatch seam this node now rides
 """
 
 from __future__ import annotations
 
 import logging
 from datetime import datetime
-from pathlib import Path
 from typing import Any, Literal
 
-import yaml
 from pydantic import BaseModel, ConfigDict, model_validator
 
 logger = logging.getLogger(__name__)
 
 HandlerType = Literal["NODE_HANDLER"]
 HandlerCategory = Literal["COMPUTE"]
-
-_DEFAULT_STATE_PATH = ".onex_state/session/phase_state.yaml"
 
 EVENT_TYPE_SESSION_STARTED = "session.started"
 EVENT_TYPE_SESSION_ENDED = "session.ended"
@@ -36,8 +52,9 @@ EVENT_TYPE_SESSION_PHASE_STATE = "session.phase.state"
 class ModelSessionPhaseState(BaseModel):
     """Canonical session phase state materialized by this reducer.
 
-    All fields the evaluator and hook need are present here.
-    Written to .onex_state/session/phase_state.yaml after every event.
+    All fields the evaluator and hook need are present here. Persisted by the
+    runtime into the contract-declared ``state_io`` table, one row per
+    ``session_id`` (OMN-16924).
     """
 
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -210,8 +227,13 @@ class ModelSessionPhaseReducerInput(BaseModel):
 class HandlerSessionPhaseReducer:
     """Pure reducer: delta(state, event) -> new_state.
 
-    The ONE allowed side effect for a reducer: writing the projection file
-    (.onex_state/session/phase_state.yaml). The hook reads this file.
+    Stateless and deterministic — it performs NO I/O. Prior state arrives from
+    the database, put there and read back by the runtime's ``state_io`` dispatch
+    seam; the handler reaches it through a request-scoped ContextVar-backed
+    proxy (``state_codec.SessionPhaseStateProxy``), which is a memory read, not
+    a side effect. ``descriptor.purity: pure`` in ``contract.yaml`` is now
+    literally true; before OMN-16924 it was not, because ``handle()`` wrote a
+    YAML file.
     """
 
     @property
@@ -222,28 +244,46 @@ class HandlerSessionPhaseReducer:
     def handler_category(self) -> HandlerCategory:
         return "COMPUTE"
 
-    def handle(
-        self,
-        request: ModelSessionPhaseReducerInput,
-        *,
-        state_path: str = _DEFAULT_STATE_PATH,
-    ) -> dict[str, Any]:
+    def handle(self, request: ModelSessionPhaseReducerInput) -> dict[str, Any]:
         """Canonical def-B entrypoint: fold ONE wire event into the phase state.
 
         The signature is load-bearing (OMN-16790).
         ``handler_wiring._resolve_def_b_input_model_type`` recognises a def-B
         handler only when ``handle`` exposes exactly ONE positional parameter
         annotated with a concrete ``BaseModel``. It then validates the extracted
-        domain payload into that model at the adapter boundary. The previous
-        signature had TWO positional parameters and a ``dict`` annotation, so the
-        resolver returned ``None`` and the runtime passed the raw materialized
-        wire dict straight through. ``state_path`` is keyword-only for exactly
-        this reason — keyword-only parameters are excluded from the arity check,
-        so the CLI keeps its override without breaking bus dispatch.
+        domain payload into that model at the adapter boundary.
+
+        OMN-16924: the former keyword-only ``state_path`` parameter is gone, with
+        no shim. It was the last reference to the ``.onex_state`` file the
+        operator ruling removed, and a keyword default is invisible to bus
+        dispatch anyway — every message took the unwritable default.
+
+        Prior state comes from the ``session_id``-keyed row the runtime bound
+        before this call, and the folded result is handed back through the same
+        proxy for the runtime to CAS-persist after this call returns. Outside a
+        state_io dispatch (the CLI, a unit test) the proxy holds nothing: the
+        fold sees no prior state and nothing is persisted. That is deliberate —
+        a local fallback store is exactly what this ticket deletes.
+
+        The return stays an untyped ``dict``. Under the state_io wiring branch
+        ``_normalize_handler_result`` classifies a bare ``BaseModel`` return as
+        an output EVENT and a reducer's typed projection return as a
+        ``ModelProjectionIntent`` — and an intent with no registered projector
+        makes ``DispatchResultApplier`` raise. This node's durable output is its
+        row, not an emission, so a dict return is the shape that correctly
+        records a no-op-emission fold.
         """
-        path = Path(state_path)
-        new_state = self.delta(self._read_state(path), request.to_event())
-        self._write_state(new_state, path)
+        # Local import: state_codec imports this module's models, so a
+        # module-level import here would be circular.
+        from omnimarket.nodes.node_session_phase_reducer.state_codec import (
+            get_default_proxy,
+        )
+
+        proxy = get_default_proxy()
+        session_id = request.session_id
+        prior = proxy.get(session_id)
+        new_state = self.delta(prior, request.to_event())
+        proxy[session_id] = new_state
         return {
             "projections": [new_state.model_dump(mode="json")],
         }
@@ -333,35 +373,3 @@ class HandlerSessionPhaseReducer:
         )
 
         return state.model_copy(update=updates)
-
-    def _read_state(self, path: Path) -> ModelSessionPhaseState | None:
-        """Load the prior state this reducer itself materialized.
-
-        A bus message carries ONE event and never the prior state — no wire
-        schema on any subscribed topic declares a ``state`` field. The projection
-        file IS the reducer's state of record (the module docstring: "the
-        reducer is the CANONICAL authority for session phase state"), so it is
-        also where a fold reads from.
-
-        A missing file is the legitimate ``idle`` state and yields ``None``. A
-        file that exists but does not parse is a real defect and raises — the
-        only writer is ``_write_state``, so corruption is never expected traffic.
-        """
-        if not path.exists():
-            return None
-        raw = yaml.safe_load(path.read_text())  # node-purity-ok: OMN-9048
-        if raw is None:
-            return None
-        if not isinstance(raw, dict):
-            raise ValueError(
-                f"phase_state.yaml at {path} is not a mapping (got {type(raw).__name__})"
-            )
-        return ModelSessionPhaseState(**raw)
-
-    def _write_state(self, state: ModelSessionPhaseState, path: Path) -> None:
-        """Write phase state to YAML — the reducer's projection side effect."""
-        path.parent.mkdir(parents=True, exist_ok=True)
-        raw = state.model_dump(mode="json")
-        with path.open("w") as fh:  # node-purity-ok: OMN-9048
-            yaml.safe_dump(raw, fh, default_flow_style=False, sort_keys=True)
-        logger.debug("phase_state.yaml written: %s", path)
