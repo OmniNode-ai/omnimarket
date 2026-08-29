@@ -10,6 +10,7 @@ Topics are read from contract.yaml — never hardcoded.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -117,6 +118,8 @@ class HandlerSessionPhaseDispatcher:
                 event_type=_EVENT_TYPE_PHASE_STATE,
                 payload={
                     "session_id": cmd.session_id,
+                    "timestamp": datetime.now(UTC),
+                    "phase": cmd.phase_name,
                     "phase_name": cmd.phase_name,
                     "transition": cmd.transition,
                     "correlation_id": str(cmd.correlation_id),
