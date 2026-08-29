@@ -49,6 +49,7 @@ from uuid import uuid4
 import asyncpg
 import pytest
 
+from omnimarket.config.settings import get_settings
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     GENERATION_TABLE,
 )
@@ -88,13 +89,21 @@ async def _connect_or_skip() -> asyncpg.Connection:
         pytest.skip(f"Postgres unreachable at {host}:{port}/{db}: {exc}")
 
 
-def test_the_writer_resolves_a_tenant_for_generation_events() -> None:
+def test_the_writer_resolves_a_tenant_for_generation_events(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """The stamp is non-empty for ``generation_events`` -- no omit path left.
 
     Cheap, always-runs half of the proof. ``generation_events`` is not in
     ``_UUID_CONVERTED_TABLES``, so the recorded representation must be the
     legacy slug that its ``text`` column expects, not the canonical UUID.
+
+    Forces the no-configured-tenant precondition: ``house_tenant_write_stamp``
+    returns ``Settings.onex_tenant_id`` first when a lane configures one, so a
+    CI lane that happens to set it would make this assertion fail before it
+    ever exercises the fallback this test is about (CodeRabbit, PR #2199).
     """
+    monkeypatch.setattr(get_settings(), "onex_tenant_id", "", raising=True)
     stamp = house_tenant_write_stamp(table=GENERATION_TABLE)
     assert stamp == {"tenant_id": INTERIM_DEFAULT_TENANT}, (
         "the generation_events writer must RECORD its tenant; an empty stamp "
@@ -104,9 +113,9 @@ def test_the_writer_resolves_a_tenant_for_generation_events() -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_generation_events_row_is_attributed_by_the_writer_not_the_column() -> (
-    None
-):
+async def test_generation_events_row_is_attributed_by_the_writer_not_the_column(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     """Real Postgres: the row lands with the DEFAULT made unreachable.
 
     Falsifiable in exactly the way that matters. With the column DEFAULT
@@ -114,7 +123,13 @@ async def test_generation_events_row_is_attributed_by_the_writer_not_the_column(
     and the assertion fails; the write can only succeed if the value came from
     the writer. Restored in ``finally`` so the fixture database is left as
     found.
+
+    Forces the no-configured-tenant precondition for the same reason as
+    ``test_the_writer_resolves_a_tenant_for_generation_events`` above: a lane
+    that configures ``onex_tenant_id`` would otherwise stamp that value
+    instead of ``INTERIM_DEFAULT_TENANT`` (CodeRabbit, PR #2199).
     """
+    monkeypatch.setattr(get_settings(), "onex_tenant_id", "", raising=True)
     conn = await _connect_or_skip()
     schema = f"omn16831_{uuid4().hex[:12]}"
     try:
