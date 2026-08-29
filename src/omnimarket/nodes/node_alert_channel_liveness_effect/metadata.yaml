@@ -1,0 +1,29 @@
+name: alert_channel_liveness_effect
+version: "1.0.0"
+description: >
+  Proves the alert delivery channel is able to receive an alert, on the
+  runtime's existing heartbeat, and reports a channel that cannot as a
+  classified failure state (LIVE / DEAD / NOT_CONFIGURED / PROBE_ERROR) on a
+  surface independent of that channel. Judged on the Slack response body, never
+  on the HTTP status. Read-only: it never posts into the channel it judges.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: true
+  side_effect_class: publish_event
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+  # Sync HTTP on purpose: the runtime dispatches handle() as a sync def-B
+  # handler, and opening an event loop per message is the OMN-16874 defect.
+  - "httpx>=0.27.0"
+tags:
+  - effect
+  - observability
+  - alerting
+  - liveness
+pack: "data"
+display_name: "Effect: Alert Channel Liveness"
+node_role: "effect"

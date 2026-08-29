@@ -70,9 +70,17 @@ LINEAR_GRAPHQL_URL: str = _require(_cfg, "linear", "graphql_url")
 #: Slack Web API chat.postMessage endpoint (complete, verbatim).
 SLACK_CHAT_POST_MESSAGE_URL: str = _require(_cfg, "slack", "chat_post_message_url")
 
+#: Slack Web API auth.test endpoint — read-only token liveness (OMN-15600).
+SLACK_AUTH_TEST_URL: str = _require(_cfg, "slack", "auth_test_url")
+
+#: Slack Web API conversations.info endpoint — read-only channel liveness.
+SLACK_CONVERSATIONS_INFO_URL: str = _require(_cfg, "slack", "conversations_info_url")
+
 __all__ = [
     "GITHUB_GRAPHQL_URL",
     "GITHUB_REST_URL",
     "LINEAR_GRAPHQL_URL",
+    "SLACK_AUTH_TEST_URL",
     "SLACK_CHAT_POST_MESSAGE_URL",
+    "SLACK_CONVERSATIONS_INFO_URL",
 ]

@@ -1,0 +1,169 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — Alert Channel Liveness Effect (OMN-15600)
+name: alert_channel_liveness_effect
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: effect
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.nodes.node_alert_channel_liveness_effect.models.model_alert_channel_liveness.ModelAlertChannelProbeTrigger
+description: >
+  OMN-15600 (Phase 1 of epic OMN-16776, gate item 5). Proves the alert delivery
+  channel is able to receive an alert, on the runtime's existing heartbeat, and
+  reports a channel that cannot as a classified failure state on a surface
+  independent of that channel.
+
+  The defect: every alert path on this platform branched on whether a
+  credential was SET. SLACK_WEBHOOK_URL was set and dead (HTTP 404 /
+  no_service, re-probed on both hosts 2026-08-27) and every caller's curl
+  returned 0, so alerting delivered nothing for an unknown period and the only
+  thing that would have said so was the alerting.
+
+  The bot-token path that replaced it carries the same trap in a worse shape:
+  Slack answers HTTP 200 with {"ok": false} for channel_not_found,
+  not_in_channel, invalid_auth and token_revoked. A status-code check scores
+  all four as delivered. Every judgement in this node is taken from the
+  response BODY.
+
+  What a delivered alert proves and does not: on 2026-08-29T05:27:22Z a real
+  stall alert was posted and read back out of #omninode-notifications. That
+  proves the channel was alive at 05:27Z. It says nothing about 05:28Z. This
+  node is the part that keeps saying so, between alerts.
+
+handler:
+  module: omnimarket.nodes.node_alert_channel_liveness_effect.handlers.handler_alert_channel_liveness
+  class: HandlerAlertChannelLiveness
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: alert_channel_liveness
+      handler:
+        name: HandlerAlertChannelLiveness
+        module: omnimarket.nodes.node_alert_channel_liveness_effect.handlers.handler_alert_channel_liveness
+      handler_module: omnimarket.nodes.node_alert_channel_liveness_effect.handlers.handler_alert_channel_liveness
+
+terminal_event: onex.evt.omnimarket.alert-channel-liveness-checked.v1
+
+golden_path:
+  - "The runtime emits its existing heartbeat on onex.evt.platform.node-heartbeat.v1"
+  - "This node throttles to the contract-declared probe_interval_seconds; ticks inside a proven interval are skipped"
+  - "The effect boundary resolves SLACK_BOT_TOKEN and SLACK_CHANNEL_ID by reference through the canonical secret store"
+  - "Two read-only Slack Web API calls (auth.test, conversations.info) are judged on their response BODY ok field, never on the HTTP status"
+  - "The pure classifier derives LIVE / DEAD / NOT_CONFIGURED / PROBE_ERROR; nothing falls through to healthy"
+  - "The verdict is emitted on onex.evt.omnimarket.alert-channel-liveness-checked.v1 and, when not LIVE, logged at ERROR"
+
+# ---------------------------------------------------------------------------
+# CADENCE IS CONTRACT DATA.
+#
+# There is no Python default anywhere in this node: the loader fails closed on
+# a missing or malformed block rather than substituting a constant, and
+# test_no_interval_literal_lives_in_python asserts that mechanically. An
+# interval a code default can satisfy is an interval nobody can change without
+# a deploy.
+# ---------------------------------------------------------------------------
+liveness_policy:
+  # 15 minutes. Matches the cadence the .201 host reporter already posts on, so
+  # the window in which a dead channel is undetected is no larger than the
+  # window in which a dead host is. Lower would add Slack API calls that buy
+  # nothing; higher would leave the channel unproven across a whole shift.
+  probe_interval_seconds: 900
+  # A probe that hangs must become PROBE_ERROR on a bounded clock rather than
+  # block the heartbeat consumer it rides on.
+  probe_timeout_seconds: 10.0
+
+secrets:
+  SLACK_BOT_TOKEN:
+    description: >
+      Slack bot token used for the read-only probe. Resolved at the effect
+      boundary through the canonical secret-store resolver -- never an env read
+      in a handler, never a literal, never logged. The same ref the delivery
+      node uses, deliberately: probing a different credential from the one that
+      delivers proves nothing about delivery.
+    required: true
+  SLACK_CHANNEL_ID:
+    description: >
+      The channel alerts are delivered to (#omninode-notifications). Resolved
+      by reference; the value never appears in source, on a model, or in a log
+      line.
+    required: true
+
+endpoints:
+  # Complete, verbatim Slack Web API URLs (all-URLs-from-contracts + the
+  # Bifrost bare-base fail-closed rule). Mirrored by the service_endpoints
+  # authority, which is what the prober imports. BOTH are read-only: this node
+  # must not be able to post a canary into the channel it is judging.
+  slack_auth_test:
+    url: https://slack.com/api/auth.test
+    method: GET
+    description: "Read-only: is the bot token still valid?"
+  slack_conversations_info:
+    url: https://slack.com/api/conversations.info
+    method: GET
+    description: "Read-only: does the channel exist and is the bot a member?"
+
+event_bus:
+  subscribe_topics:
+    # The carrier epic OMN-16776 names. No new transport and no new schedule --
+    # and critically, a heartbeat-carried check dies with the runtime it
+    # measures, whereas a separate poller would keep reporting on a dead one.
+    - onex.evt.platform.node-heartbeat.v1
+  publish_topics:
+    - onex.evt.omnimarket.alert-channel-liveness-checked.v1
+  # Deliberately NOT a Slack command topic. A liveness check that posts into
+  # the channel every interval trains its readers to mute the channel, and a
+  # muted alert channel is the failure this node exists to prevent
+  # (OMN-14440: fired every 30 minutes for three months; nobody read it).
+  dlq_topics:
+    - onex.dlq.omnimarket.alert-channel-liveness-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.alert-channel-liveness-checked.v1
+
+descriptor:
+  node_archetype: effect
+  purity: impure
+  idempotent: true
+  timeout_ms: 30000
+  runtime_profiles:
+    - effects
+
+dod_evidence:
+  - test: tests/test_omn15600_alert_channel_liveness.py::test_http_200_carrying_ok_false_is_dead_never_live
+    description: "AC2 — the transport succeeded and the channel is dead; every ok=false Slack answers with HTTP 200 classifies DEAD"
+  - test: tests/test_omn15600_alert_channel_liveness.py::test_a_probe_that_could_not_run_is_probe_error_and_is_not_healthy
+    description: "AC2 — the detector fails CLOSED; its own failure is never a healthy channel (OMN-15606 regression)"
+  - test: tests/test_omn15600_alert_channel_liveness.py::test_unconfigured_is_its_own_state_and_is_not_dead_and_is_not_live
+    description: "AC5 — set-but-dead is a distinct state from unset; three states where the call sites had two"
+  - test: tests/test_omn15600_alert_channel_liveness.py::test_no_observation_of_any_shape_reports_healthy_unless_every_check_passed
+    description: "AC2 — exhaustive: exactly one of 27 observation shapes is healthy, and nothing falls through to LIVE"
+  - test: tests/test_omn15600_alert_channel_liveness_handler.py::test_a_dead_channel_leaves_the_node_as_a_classified_failure
+    description: "AC3 — the outcome is a classified state on the terminal event, not a discarded status code"
+  - test: tests/test_omn15600_alert_channel_liveness_handler.py::test_two_ticks_inside_one_interval_probe_once
+    description: "AC4 — scheduled on the existing heartbeat and throttled to the declared interval; no timer, no loop"
+  - test: tests/test_omn15600_alert_channel_liveness_handler.py::test_raising_the_declared_interval_suppresses_the_same_second_tick
+    description: "AC4 — changing the declared cadence changes behaviour with no code edit"
+  - test: tests/test_omn15600_alert_channel_liveness_handler.py::test_the_probe_never_posts_to_the_channel_it_is_judging
+    description: "The check is read-only; it structurally cannot canary-post into the alert channel"
+  - test: tests/test_golden_chain_alert_channel_liveness.py::test_golden_chain_rides_the_existing_heartbeat
+    description: "The declared chain rides the heartbeat carrier and reaches the independent terminal surface"
+
+dependencies:
+  packages:
+    - "omnibase_core>=0.46.13"
+    - "httpx>=0.27.0"
+
+metadata:
+  transport_type: kafka
+  description: "Read-only alert-channel liveness effect"
+  author: "OmniNode Platform Team"
+  tags:
+    - effect
+    - observability
+    - alerting
+    - liveness
+  related_tickets:
+    - "OMN-15600"
+    - "OMN-16776"
+    - "OMN-16778"
+    - "OMN-15606"

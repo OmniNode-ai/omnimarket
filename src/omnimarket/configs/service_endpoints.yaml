@@ -21,3 +21,8 @@ linear:
 slack:
   # Complete Slack Web API URL for chat.postMessage (verbatim per contract endpoint).
   chat_post_message_url: "https://slack.com/api/chat.postMessage"
+  # Read-only liveness probes (OMN-15600). Neither posts a message: proving the
+  # alert channel alive must not put a canary into the alert channel every
+  # interval, or the channel gets muted and the alerting is worth nothing.
+  auth_test_url: "https://slack.com/api/auth.test"
+  conversations_info_url: "https://slack.com/api/conversations.info"
