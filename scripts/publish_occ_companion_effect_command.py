@@ -30,14 +30,30 @@
 # apply (runner=node_occ_companion_compute != verifier=occ-evidence-source-
 # autobind, OMN-12791).
 #
-# PUBLISHER-SIDE IDEMPOTENCY (OMN-14941, line-anchored per OMN-16710): when the
-# product PR body already carries a real "Evidence-Source: OCC#<n>" LINE, the
-# companion is already bound — publishing would only burn a lease + a full
-# read/compute cycle to reach the handler's own already-bound no-op. The
-# publisher skips LOUDLY (exit 0) instead. The check is a line-anchored mirror
-# of the canonical compat parser, NOT a substring scan: a substring scan let a
-# PR body that merely *mentions* the stamp in prose suppress its own companion
-# and still report SUCCESS. See product_pr_occ_binding below.
+# PUBLISHER-SIDE IDEMPOTENCY (OMN-14941; line-anchored per OMN-16710;
+# ARTIFACT-RESOLVED per OMN-15615): when the product PR body already carries a
+# real Evidence-Source stamp AND that stamp RESOLVES to a live OCC companion
+# for THIS product PR, the companion is already bound — publishing would only
+# burn a lease + a full read/compute cycle to reach the handler's own
+# already-bound no-op. The publisher skips LOUDLY (exit 0) instead.
+#
+# The decision is a three-step pipeline, not a text test (OMN-15615):
+#
+#   1. strip non-canonical regions (fenced code blocks, blockquotes) — a
+#      stamp-shaped line inside a fence is documentation, never a declaration;
+#   2. parse the FIRST Evidence-Source line into a citation, in BOTH legal
+#      forms (``OCC#<n>`` and a bare 7-40 hex commit SHA);
+#   3. RESOLVE that citation against the live onex_change_control companion set
+#      for this exact product PR. Skip only when it resolves to an OPEN or
+#      MERGED companion on this PR's deterministic ``auto/...-occ-autobind``
+#      branch.
+#
+# Every other outcome PUBLISHES, including every indeterminate one (API error,
+# rate limit, malformed JSON, unparsable stamp, empty PR_BODY). The asymmetry
+# is deliberate and measured: a redundant command is a cheap already-bound
+# no-op at the handler, while a missed mint cost 34 minutes of red on
+# omniclaude#1969 and 54 minutes on omnibase_core#1540. Never skip on an
+# indeterminate result. See product_pr_evidence_citation / resolve_citation.
 #
 # BROKER / LANE RESOLUTION: identical to publish_occ_autobind_command.py
 # (OMN-14801 overlay-driven lane resolution, OMN-14813 secret-free concrete dev
@@ -45,7 +61,15 @@
 # The helpers are REUSED from that script by file path — single source of
 # truth, no second copy of the lane-resolution logic to drift.
 #
-# Ticket: OMN-14941
+# MACHINE-READABLE VERDICT (OMN-15615 AC7): every terminating path prints
+# exactly one verdict marker on stdout — ``skipped_bound_to: OCC#<n>`` when the
+# publish is suppressed, ``published_correlation_id: <uuid>`` when a command
+# reaches the broker, or ``publish_declined: <reason>`` for the lane/broker
+# no-op exits that were already green. A green publisher job carrying NONE of
+# these is the vacuous-SUCCESS shape this ticket exists to retire; the caller
+# workflow greps for a marker and fails the job when none is present.
+#
+# Ticket: OMN-14941 (defect fixed under OMN-15615)
 #
 # Required environment variables (when not --dry-run):
 #   PR_REPO                   -- repository slug, e.g. OmniNode-ai/omnibase_infra
@@ -56,11 +80,20 @@
 #                                re-resolves live state)
 #
 # Optional:
-#   PR_BODY                   -- product PR body; when it already carries a
-#                                line-anchored "Evidence-Source: OCC#<n>" stamp
-#                                the publish is skipped loudly (already bound).
-#                                A prose mention of that literal is NOT a stamp
-#                                and does NOT skip (OMN-16710).
+#   PR_BODY                   -- product PR body; when it carries a canonical
+#                                Evidence-Source stamp that RESOLVES to a live
+#                                companion for this PR the publish is skipped
+#                                loudly (already bound). A prose mention is not
+#                                a stamp (OMN-16710) and a stamp that resolves
+#                                to nothing is not a binding (OMN-15615).
+#   GH_TOKEN / GITHUB_TOKEN   -- optional GitHub token for the citation
+#                                resolution read. onex_change_control is a
+#                                PUBLIC repo so the read works unauthenticated,
+#                                but the shared self-hosted fleet burns the
+#                                60/hr anonymous budget quickly; a token raises
+#                                it. Absent/expired is NOT a failure — the read
+#                                just becomes indeterminate, and indeterminate
+#                                publishes (AC3).
 #   KAFKA_BOOTSTRAP_SERVERS   -- injected broker (fail-loud-checked against the
 #                                overlay-declared lane broker when both exist)
 #   KAFKA_SASL_USERNAME       -- SASL username / API key (cloud broker only)
@@ -71,14 +104,19 @@
 
 from __future__ import annotations
 
+import http.client
 import importlib.util
 import json
 import os
 import re
 import sys
+import urllib.error
+import urllib.request
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from types import ModuleType
+from typing import NamedTuple
 
 import click
 
@@ -170,33 +208,284 @@ _EVIDENCE_SOURCE_OCC_PR_RE = re.compile(
     r"^Evidence-Source:\s+OCC#(\d+)\s*$",
     re.IGNORECASE,
 )
+_EVIDENCE_SOURCE_SHA_RE = re.compile(
+    r"^Evidence-Source:\s+([0-9a-f]{7,40})\s*$",
+    re.IGNORECASE,
+)
+
+# OMN-15615 / OMN-14682: a stamp-shaped line inside a fenced code block or a
+# blockquote is DOCUMENTATION, never a machine-read declaration. This is a
+# line-for-line mirror of the canonical helper
+# ``omnibase_core.validation.validator_receipt_gate.strip_noncanonical_regions``
+# — same fence pattern, same "matching fence char closes", same blank-line
+# substitution (line positions preserved), same fail-closed "an unterminated
+# fence blanks to end-of-body". It is copied rather than imported for the same
+# minimal-deps reason as the parser below, and pinned byte-for-byte against the
+# real helper by
+# tests/unit/nodes/node_occ_companion_effect/
+# test_publish_occ_companion_effect_command.py::
+# TestStripAgreesWithCanonicalHelper. That seam test is what makes this a reuse
+# of the canonical notion of "non-canonical region" rather than a fourth
+# private one.
+_FENCE_LINE_PATTERN = re.compile(r"^\s*(`{3,}|~{3,})")
 
 
-def product_pr_occ_binding(pr_body: str) -> int | None:
-    """Return the bound OCC PR number, or ``None`` when the PR is not bound.
+def strip_noncanonical_regions(pr_body: str) -> str:
+    """Blank out PR-body regions that cannot carry a *canonical* stamp.
 
-    Mirrors the canonical compat parser exactly:
+    Mirror of ``validator_receipt_gate.strip_noncanonical_regions`` (OMN-14682).
+    Excluded lines become empty lines rather than disappearing, so line
+    positions survive and every surviving canonical line parses identically.
+    An unterminated opening fence blanks everything to end-of-body — a stamp
+    after malformed markup is not a trustworthy declaration.
 
-    * only a LINE whose stripped form is entirely ``Evidence-Source: OCC#<n>``
-      counts — a mid-line mention, a ``> ``-quoted line, a list item, or a
-      ``OCC#<n>`` placeholder with no digits does not;
-    * the FIRST line beginning ``Evidence-Source:`` decides. If it is a bare
-      commit SHA (the unbound state this effect exists to repair) the answer is
-      ``None`` even when a later line names an OCC PR.
-
-    Residual, stated rather than silently inherited: a stamp-shaped line inside
-    a fenced code block still counts as a binding. That is a property of the
-    canonical parser, not of this copy — diverging here would put the publisher
-    and the handler on different evidence, which is strictly worse than the
-    shared blind spot.
+    Idempotent: re-stripping an already-stripped body is a no-op.
     """
+    out: list[str] = []
+    in_fence = False
+    fence_char = ""
     for line in pr_body.splitlines():
+        fence = _FENCE_LINE_PATTERN.match(line)
+        if fence is not None:
+            marker_char = fence.group(1)[0]
+            if not in_fence:
+                in_fence = True
+                fence_char = marker_char
+            elif marker_char == fence_char:
+                in_fence = False
+                fence_char = ""
+            out.append("")
+            continue
+        if in_fence:
+            out.append("")
+            continue
+        if line.lstrip().startswith(">"):
+            out.append("")
+            continue
+        out.append(line)
+    return "\n".join(out)
+
+
+class Citation(NamedTuple):
+    """The FIRST canonical ``Evidence-Source`` value on a product PR body.
+
+    ``kind`` is ``"occ_pr"`` (value is the decimal OCC PR number) or ``"sha"``
+    (value is a lowercased 7-40 hex commit SHA). Both are legal canonical forms
+    — ``omnibase_compat.contracts.pr_occ_stamp`` parses both, and
+    ``omniclaude/scripts/ci/check_occ_companion_merged.py`` resolves both.
+    Recognising only the ``OCC#`` form was Mode B of OMN-15615: a PR bound by
+    the SHA form looked unbound, so the publisher re-minted after its own
+    companion had merged (live: omniclaude#1969 -> the duplicate OCC#5795).
+    """
+
+    kind: str
+    value: str
+
+
+def product_pr_evidence_citation(pr_body: str) -> Citation | None:
+    """Parse the canonical Evidence-Source citation, in either legal form.
+
+    Non-canonical regions are stripped FIRST (OMN-15615 AC1), then the
+    canonical rules apply:
+
+    * only a LINE whose stripped form is entirely the stamp counts — a mid-line
+      mention, a ``> ``-quoted line, a list item, or an ``OCC#<n>`` placeholder
+      with no digits does not;
+    * the FIRST surviving line beginning ``Evidence-Source:`` decides; a
+      malformed value there yields ``None`` (unparsable -> publish) even when a
+      later line names a well-formed one.
+    """
+    for line in strip_noncanonical_regions(pr_body).splitlines():
         stripped = line.strip()
         if not stripped.lower().startswith(_EVIDENCE_SOURCE_PREFIX):
             continue
-        match = _EVIDENCE_SOURCE_OCC_PR_RE.fullmatch(stripped)
-        return int(match.group(1)) if match is not None else None
+        if occ_match := _EVIDENCE_SOURCE_OCC_PR_RE.fullmatch(stripped):
+            return Citation(kind="occ_pr", value=occ_match.group(1))
+        if sha_match := _EVIDENCE_SOURCE_SHA_RE.fullmatch(stripped):
+            return Citation(kind="sha", value=sha_match.group(1).lower())
+        return None
     return None
+
+
+def product_pr_occ_binding(pr_body: str) -> int | None:
+    """Return the cited OCC PR number, or ``None`` when none is cited.
+
+    Retained as the narrow ``OCC#``-form view of
+    :func:`product_pr_evidence_citation` for the seam test that pins this thin
+    script against the canonical compat parser. It answers "what does the body
+    SAY", never "is this PR bound" — the second question needs
+    :func:`resolve_citation`, because a citation that resolves to nothing is
+    not a binding (OMN-15615 AC2).
+    """
+    citation = product_pr_evidence_citation(pr_body)
+    if citation is None or citation.kind != "occ_pr":
+        return None
+    return int(citation.value)
+
+
+# --- Citation resolution (OMN-15615 AC2/AC3/AC4) ---------------------------
+#
+# The OCC repository holding every evidence companion. PUBLIC, so the read
+# below needs no privileged credential.
+_OCC_REPO = "OmniNode-ai/onex_change_control"
+_GITHUB_API = "https://api.github.com"  # url-authority-ok: GitHub control-plane host for the onex_change_control companion read; matches node_prod_promotion_grant_resolver's _GITHUB_API_BASE, and this thin GHA script cannot import the routing authority
+_RESOLUTION_TIMEOUT_SECONDS = 20
+
+
+def companion_branch(repo: str, pr_number: int) -> str:
+    """Return the deterministic OCC companion branch for a product PR.
+
+    ``auto/<repo-slug-lower>-pr-<pr_number>-occ-autobind``. Mirrors
+    ``handler_occ_companion_compute`` and ``OccCompanionVerifier._expected_branch``
+    exactly — one OCC branch per product PR. This branch is what makes
+    resolution "for THIS product PR" rather than "some companion exists
+    somewhere".
+    """
+    return f"auto/{repo.replace('/', '-').lower()}-pr-{pr_number}-occ-autobind"
+
+
+class Resolution(NamedTuple):
+    """Outcome of resolving a citation against the live OCC companion set.
+
+    ``bound`` is True ONLY when the citation names an OPEN or MERGED companion
+    on this product PR's deterministic branch. Every other outcome — including
+    every indeterminate one — is ``bound=False`` with a ``reason`` naming why,
+    and every ``bound=False`` publishes.
+    """
+
+    bound: bool
+    reason: str
+    occ_pr_number: int | None
+
+
+class _Companion(NamedTuple):
+    number: int
+    open_or_merged: bool
+    merged: bool
+    shas: tuple[str, ...]
+
+
+def _github_get_json(url: str, token: str) -> object | None:
+    """GET ``url`` as JSON. Returns ``None`` on ANY failure — the caller reads
+    that as INDETERMINATE and publishes (never as "not bound, but confidently").
+    """
+    request = urllib.request.Request(url, method="GET")
+    request.add_header("Accept", "application/vnd.github+json")
+    request.add_header("X-GitHub-Api-Version", "2022-11-28")
+    request.add_header("User-Agent", "occ-companion-effect-publisher")
+    if token:
+        request.add_header("Authorization", f"Bearer {token}")
+    try:
+        with urllib.request.urlopen(
+            request, timeout=_RESOLUTION_TIMEOUT_SECONDS
+        ) as response:
+            if response.status != 200:
+                return None
+            decoded: object = json.loads(response.read().decode("utf-8"))
+            return decoded
+    except (
+        http.client.HTTPException,
+        urllib.error.URLError,
+        OSError,
+        ValueError,
+        TimeoutError,
+    ):
+        return None
+
+
+def _parse_companions(payload: object) -> tuple[_Companion, ...] | None:
+    """Normalise the GitHub pulls payload. ``None`` == malformed (indeterminate)."""
+    if not isinstance(payload, list):
+        return None
+    companions: list[_Companion] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            return None
+        number = item.get("number")
+        state = item.get("state")
+        if not isinstance(number, int) or not isinstance(state, str):
+            return None
+        merged = bool(item.get("merged_at"))
+        head = item.get("head")
+        head_sha = head.get("sha") if isinstance(head, dict) else None
+        merge_sha = item.get("merge_commit_sha")
+        shas = tuple(
+            value.lower()
+            for value in (head_sha, merge_sha)
+            if isinstance(value, str) and value
+        )
+        companions.append(
+            _Companion(
+                number=number,
+                open_or_merged=(state.lower() == "open") or merged,
+                merged=merged,
+                shas=shas,
+            )
+        )
+    return tuple(companions)
+
+
+def resolve_citation(
+    citation: Citation,
+    repo: str,
+    pr_number: int,
+    token: str = "",
+    fetch: Callable[[str, str], object | None] | None = None,
+) -> Resolution:
+    """Resolve ``citation`` against the live OCC companions of this product PR.
+
+    ONE read: the onex_change_control pull requests whose head ref is this
+    product PR's deterministic companion branch, in any state. That single
+    query answers both halves of AC2 at once — "does the cited artifact exist"
+    and "is it this PR's companion" — because a companion for a DIFFERENT
+    product PR is simply not in the returned set. A body that quotes some other
+    PR's ``OCC#<n>`` therefore resolves to nothing and publishes.
+
+    Fail-closed toward publishing (AC3): transport error, non-200, rate limit,
+    malformed payload — every one returns ``bound=False``. The publisher never
+    suppresses a mint on an answer it could not obtain.
+    """
+    fetcher = fetch if fetch is not None else _github_get_json
+    owner = _OCC_REPO.split("/")[0]
+    branch = companion_branch(repo, pr_number)
+    url = (
+        f"{_GITHUB_API}/repos/{_OCC_REPO}/pulls"
+        f"?head={owner}:{branch}&state=all&per_page=100"
+    )
+    payload = fetcher(url, token)
+    if payload is None:
+        return Resolution(False, "resolution_unavailable", None)
+    companions = _parse_companions(payload)
+    if companions is None:
+        return Resolution(False, "resolution_malformed_payload", None)
+    if not companions:
+        return Resolution(False, "no_companion_exists_for_this_pr", None)
+
+    if citation.kind == "occ_pr":
+        cited = int(citation.value)
+        for companion in companions:
+            if companion.number != cited:
+                continue
+            if companion.open_or_merged:
+                return Resolution(True, "cited_companion_open_or_merged", cited)
+            # The OMN-15214 incident state: a companion CLOSED without merging
+            # is destroyed evidence, not a binding. Re-mint.
+            return Resolution(False, "cited_companion_closed_unmerged", None)
+        return Resolution(False, "citation_is_not_a_companion_of_this_pr", None)
+
+    # SHA form. The producer stamps the companion's MERGE commit (live:
+    # omniclaude#1969 carried 64174b87…, the merge_commit_sha of OCC#5793 on
+    # branch auto/omninode-ai-omniclaude-pr-1969-occ-autobind). Head sha is
+    # accepted too; both are compared as prefixes because the canonical stamp
+    # grammar admits 7-40 hex.
+    for companion in companions:
+        if not companion.merged:
+            continue
+        if any(sha.startswith(citation.value) for sha in companion.shas):
+            return Resolution(
+                True, "cited_sha_is_a_merged_companion_of_this_pr", companion.number
+            )
+    return Resolution(False, "sha_is_not_a_merged_companion_of_this_pr", None)
 
 
 # Wire literal for the command mode. MUST equal the "mutate" member of
@@ -364,18 +653,43 @@ def main(dry_run: bool, lane: str | None) -> None:
     # Publisher-side idempotency (OMN-14941): an already-bound product PR needs
     # no companion — skip loudly, exit 0. This is a cheap pre-filter; the
     # handler's compute no-ops on the same condition as the authoritative check.
-    # OMN-16710: keyed on a real line-anchored stamp, never a substring hit —
-    # see product_pr_occ_binding.
-    bound_occ_pr = product_pr_occ_binding(pr_body)
-    if bound_occ_pr is not None:
+    # OMN-16710 made it line-anchored; OMN-15615 makes it artifact-resolved —
+    # a citation that does not resolve to a live companion of THIS PR is not a
+    # binding, and an answer we could not obtain is never a binding.
+    citation = product_pr_evidence_citation(pr_body)
+    if citation is None:
+        resolution = Resolution(False, "no_evidence_source_citation", None)
+    else:
+        resolution = resolve_citation(
+            citation,
+            repo=repo,
+            pr_number=pr_number,
+            token=(
+                os.environ.get("GH_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "")
+            ).strip(),
+        )
+    if resolution.bound:
+        # AC7: the machine-readable verdict names the RESOLVED companion. A
+        # skip that cannot name one is the vacuous-SUCCESS shape itself.
+        click.echo(f"skipped_bound_to: OCC#{resolution.occ_pr_number}")
         click.echo(
-            f"SKIP: {repo}#{pr_number} body already carries an "
-            f"'Evidence-Source: OCC#{bound_occ_pr}' line — companion already "
-            "bound; not publishing a redundant occ-companion-effect command "
-            "(publisher-side idempotency, OMN-14941; line-anchored per "
-            "OMN-16710). Exiting 0."
+            f"SKIP: {repo}#{pr_number} is already bound to "
+            f"OCC#{resolution.occ_pr_number} on branch "
+            f"{companion_branch(repo, pr_number)} "
+            f"({resolution.reason}) — not publishing a redundant "
+            "occ-companion-effect command (publisher-side idempotency, "
+            "OMN-14941; artifact-resolved per OMN-15615). Exiting 0."
         )
         sys.exit(0)
+
+    click.echo(
+        f"publish_reason: {resolution.reason}"
+        + (
+            ""
+            if citation is None
+            else f" (citation {citation.kind}={citation.value} did not resolve)"
+        )
+    )
 
     correlation_id = str(uuid.uuid4())
     payload = build_payload(
@@ -392,6 +706,7 @@ def main(dry_run: bool, lane: str | None) -> None:
     )
 
     if dry_run:
+        click.echo("publish_declined: dry_run")
         click.echo("(dry-run: skipping Kafka publish)")
         click.echo(json.dumps(payload, indent=2))
         sys.exit(0)
@@ -419,6 +734,8 @@ def main(dry_run: bool, lane: str | None) -> None:
         except Exception as exc:
             click.echo(f"Delivery error: {exc}", err=True)
             sys.exit(1)
+        # AC7: the verdict marker a green publish MUST carry.
+        click.echo(f"published_correlation_id: {published_id}")
         click.echo(f"Published {TOPIC} event_id={published_id}")
 
     # --- OMN-14801: overlay-driven lane -> bus-target resolution (same branch
@@ -441,6 +758,7 @@ def main(dry_run: bool, lane: str | None) -> None:
                 err=True,
             )
             sys.exit(1)
+        click.echo(f"publish_declined: no_bus_lane_resolved_mode_{mode}")
         click.echo(
             f"WARNING: no bus lane resolved (mode={mode}, lane={lane!r}) -- "
             "skipping occ-companion-effect publish (expected on a fork/cloud "
@@ -450,6 +768,7 @@ def main(dry_run: bool, lane: str | None) -> None:
         sys.exit(0)
 
     if mode == _MODE_INMEMORY:
+        click.echo("publish_declined: lane_declares_in_memory_bus")
         click.echo(
             f"lane={lane!r} declares the in-memory bus (config-as-data default "
             f"in config/{_LANE_OVERLAY_PATH.name}): no cross-process broker to "
@@ -468,6 +787,7 @@ def main(dry_run: bool, lane: str | None) -> None:
                     err=True,
                 )
                 sys.exit(1)
+            click.echo("publish_declined: no_broker_on_untrusted_runner")
             click.echo(
                 "WARNING: KAFKA_BOOTSTRAP_SERVERS is not set -- skipping "
                 "occ-companion-effect publish (expected on a fork/cloud runner "
@@ -492,6 +812,7 @@ def main(dry_run: bool, lane: str | None) -> None:
             )
             _publish_or_die(declared_broker)
             return
+        click.echo("publish_declined: no_broker_on_untrusted_runner")
         click.echo(
             "WARNING: KAFKA_BOOTSTRAP_SERVERS is not set on a fork/cloud runner "
             f"-- skipping occ-companion-effect publish for lane={lane!r}. "
@@ -513,6 +834,7 @@ def main(dry_run: bool, lane: str | None) -> None:
                 err=True,
             )
             sys.exit(1)
+        click.echo("publish_declined: lane_bus_drift_on_untrusted_runner")
         click.echo(
             "WARNING: injected KAFKA_BOOTSTRAP_SERVERS diverges from the "
             f"overlay-declared broker for lane={lane!r} on a fork/cloud runner "

@@ -61,6 +61,13 @@ _LEGACY_AUTOBIND_FIELDS = (
 )
 
 
+def _poisoned_fetch(url: str, token: str) -> object | None:
+    raise AssertionError(
+        "the publisher attempted a LIVE GitHub read during a unit test; inject "
+        f"the resolution seam with _stub_resolution(module, ...) — url={url!r}"
+    )
+
+
 def _load_publisher() -> object:
     spec = importlib.util.spec_from_file_location(
         "publish_occ_companion_effect_command", _SCRIPT
@@ -69,6 +76,15 @@ def _load_publisher() -> object:
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
+    # OMN-15615: no unit test may reach api.github.com. Opt IN to a stub.
+    # The real resolver is kept reachable so the transport-error test can
+    # exercise the shipped function itself rather than a re-implementation.
+    # getattr, not attribute access: the RED demonstration for OMN-15615 runs
+    # this same harness against the PRE-FIX script, which has no resolver at
+    # all. A harness AttributeError there would fail every test for a reason
+    # unrelated to the defect and make the RED unreadable.
+    module._live_github_get_json = getattr(module, "_github_get_json", _poisoned_fetch)
+    module._github_get_json = _poisoned_fetch
     return module
 
 
@@ -81,6 +97,53 @@ def _required_pr_env(**overrides: str) -> dict[str, str]:
     }
     env.update(overrides)
     return env
+
+
+# --- OMN-15615 citation-resolution seam ------------------------------------
+#
+# The publisher resolves an Evidence-Source citation against the LIVE
+# onex_change_control companion set for the product PR. Every test below
+# injects that read; no test in this file touches the network. A test that
+# forgets to inject would silently make a real API call, so `_load_publisher`
+# installs a poisoned fetcher by default — an un-stubbed resolution raises.
+
+
+class _FetchRecorder:
+    """Stands in for the publisher's GitHub read. Records every URL."""
+
+    def __init__(self, payload: object | None) -> None:
+        self.payload = payload
+        self.urls: list[str] = []
+        self.tokens: list[str] = []
+
+    def __call__(self, url: str, token: str) -> object | None:
+        self.urls.append(url)
+        self.tokens.append(token)
+        return self.payload
+
+
+def _companion_payload(
+    *,
+    number: int,
+    state: str = "open",
+    merged_at: str | None = None,
+    head_sha: str = "d" * 40,
+    merge_commit_sha: str | None = None,
+) -> dict[str, object]:
+    """One element of the GitHub ``GET /repos/{occ}/pulls?head=...`` payload."""
+    return {
+        "number": number,
+        "state": state,
+        "merged_at": merged_at,
+        "head": {"sha": head_sha},
+        "merge_commit_sha": merge_commit_sha,
+    }
+
+
+def _stub_resolution(module: object, payload: object | None) -> _FetchRecorder:
+    fetcher = _FetchRecorder(payload)
+    module._github_get_json = fetcher  # type: ignore[attr-defined]
+    return fetcher
 
 
 class _PublishRecorder:
@@ -191,6 +254,7 @@ class TestPublisherSideIdempotency:
 
     def test_already_bound_body_skips_and_never_publishes(self) -> None:
         module = _load_publisher()
+        _stub_resolution(module, [_companion_payload(number=4242)])
         recorder = _PublishRecorder()
         module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
         runner = CliRunner()
@@ -208,6 +272,7 @@ class TestPublisherSideIdempotency:
         """The skip is a semantic gate, not a transport branch — dry-run output
         must not advertise a payload that the live path would refuse to send."""
         module = _load_publisher()
+        _stub_resolution(module, [_companion_payload(number=9)])
         runner = CliRunner()
         env = _required_pr_env(PR_BODY="Evidence-Source: OCC#9")
         result = runner.invoke(module.main, ["--dry-run"], env=env)  # type: ignore[attr-defined]
@@ -294,8 +359,13 @@ class TestIdempotencyIsLineAnchored:
         ],
     )
     def test_real_stamp_line_still_skips(self, body: str) -> None:
-        """AC2 — the OMN-14941 behavior the gate exists for is preserved."""
+        """AC2 — the OMN-14941 behavior the gate exists for is preserved.
+
+        OMN-15615: the stamp must now also RESOLVE, so the live companion set
+        for this product PR is stubbed to contain the cited companion.
+        """
         module = _load_publisher()
+        _stub_resolution(module, [_companion_payload(number=4242)])
         recorder = _PublishRecorder()
         module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
         runner = CliRunner()
@@ -306,9 +376,12 @@ class TestIdempotencyIsLineAnchored:
         assert recorder.brokers == []
 
     def test_bare_sha_evidence_source_is_not_a_binding(self) -> None:
-        """A commit-SHA Evidence-Source is exactly the unbound state the
-        companion effect exists to repair — it must NOT suppress the publish."""
+        """A commit-SHA Evidence-Source that resolves to NO merged companion is
+        exactly the unbound state the companion effect exists to repair — it
+        must NOT suppress the publish. (When it DOES resolve, it is a binding —
+        see TestModeBShaFormBinding.)"""
         module = _load_publisher()
+        _stub_resolution(module, [])
         recorder = _PublishRecorder()
         module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
         runner = CliRunner()
@@ -465,3 +538,517 @@ class TestKafkaWireShape:
                 repo="OmniNode-ai/omnimarket",
                 pr_number=42,
             )
+
+
+# --------------------------------------------------------------------------
+# OMN-15615 — the idempotency guard must RESOLVE the companion it names.
+#
+# Two opposite failure modes came out of one predicate, and both fired on
+# omniclaude#1969 within 70 minutes:
+#
+#   Mode A  a body that merely CARRIES the token (in prose, then — after
+#           OMN-16710 — still inside a fenced block) suppressed its own mint.
+#           The workflow reported SUCCESS having published nothing: 34 min of
+#           red on #1969, 54 min on omnibase_core#1540.
+#   Mode B  a body bound by the SHA form was invisible to the OCC#-only
+#           predicate, so the publisher re-published AFTER its own companion
+#           merged, producing the duplicate OCC#5795 whose entire diff was
+#           in-place rewrites of OCC#5793's merged receipts.
+#
+# The fix is the same in both directions: parse both legal forms out of the
+# canonical (non-fenced, non-quoted) body, then RESOLVE the citation against
+# the live OCC companion set for THIS product PR. Text is never the answer.
+# --------------------------------------------------------------------------
+
+
+# omniclaude#1969's body at the moment the vacuous SKIP fired (runs
+# 30682490364 / 30683162844, both SUCCESS, neither carrying an
+# `occ-companion-effect command:` publish line). RECONSTRUCTED, and labelled
+# as such: GitHub exposes no PR-body revision history through the REST API, so
+# the verbatim first revision is not retrievable. What IS verbatim is the
+# incident's own description of it (recorded on OMN-15615 and quoted in the
+# surviving #1969 body): the token appeared only inside a quoted example while
+# the PR corrected #1968's prose. The fixture reproduces exactly that shape —
+# the ONLY occurrence of a column-0 stamp line is inside a fence.
+_FENCED_ONLY_BODY = """\
+Closes OMN-15606.
+
+Corrects #1968's prose. The emitter logged:
+
+```
+SKIP: OmniNode-ai/omniclaude#1969 body already carries 'Evidence-Source: OCC#'
+Evidence-Source: OCC#5793
+```
+
+No companion exists for this PR yet.
+"""
+
+_TILDE_FENCED_ONLY_BODY = """\
+Closes OMN-15606.
+
+~~~text
+Evidence-Source: OCC#5793
+~~~
+"""
+
+_UNTERMINATED_FENCE_BODY = """\
+Closes OMN-15606.
+
+```
+Evidence-Source: OCC#5793
+"""
+
+
+@pytest.mark.unit
+class TestModeAFencedStampIsNotABinding:
+    """AC1 — a stamp that exists only inside a fenced block MUST publish.
+
+    RED against the pre-OMN-15615 script: `product_pr_occ_binding` parsed the
+    raw body, so the fenced column-0 line returned 5793 and the publisher
+    exited 0 having published nothing — a green check attesting only that a
+    script ran. This drives the REAL artifact (the shipped CLI), not a
+    re-implementation.
+    """
+
+    @pytest.mark.parametrize(
+        ("label", "body"),
+        [
+            ("backtick_fence", _FENCED_ONLY_BODY),
+            ("tilde_fence", _TILDE_FENCED_ONLY_BODY),
+            ("unterminated_fence", _UNTERMINATED_FENCE_BODY),
+        ],
+        ids=lambda v: v if isinstance(v, str) and len(v) < 30 else "body",
+    )
+    def test_fenced_only_stamp_still_publishes(self, label: str, body: str) -> None:
+        module = _load_publisher()
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(PR_BODY=body, RUNNER_IS_TRUSTED="true")
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "SKIP" not in result.output, (
+            f"{label}: a stamp quoted inside a fence suppressed the mint — this "
+            "is Mode A of OMN-15615 (vacuous SUCCESS, no companion)"
+        )
+        assert recorder.brokers != [], f"{label}: nothing was published"
+
+    def test_fenced_only_stamp_does_not_even_reach_resolution(self) -> None:
+        """The fence is stripped BEFORE resolution, so no citation exists to
+        resolve. The poisoned fetcher proves no read was attempted."""
+        module = _load_publisher()
+        assert module.product_pr_evidence_citation(_FENCED_ONLY_BODY) is None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+class TestStripAgreesWithCanonicalHelper:
+    """AC5 — reuse the canonical notion of a non-canonical region.
+
+    The thin GHA script cannot import omnibase_core (it runs on a sparse
+    checkout with click/pyyaml/confluent-kafka and nothing else), so it carries
+    a mirror. This test is what makes the mirror a REUSE rather than a fourth
+    private parser: it pins the copy byte-for-byte against
+    ``validator_receipt_gate.strip_noncanonical_regions`` (OMN-14682), the
+    helper whose own docstring names this exact trap.
+    """
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            "",
+            "Closes OMN-15615",
+            _FENCED_ONLY_BODY,
+            _TILDE_FENCED_ONLY_BODY,
+            _UNTERMINATED_FENCE_BODY,
+            "> Evidence-Source: OCC#5793\n",
+            "  > quoted with leading space\n",
+            "```\nEvidence-Source: OCC#1\n```\nEvidence-Source: OCC#2\n",
+            "~~~\n```\nstill inside the tilde fence\n~~~\nout\n",
+            "````\nfour backticks\n````\n",
+            "Evidence-Source: OCC#7\n",
+            "text\r\nmore text\r\n",
+        ],
+    )
+    def test_publisher_strip_matches_core_helper(self, body: str) -> None:
+        from omnibase_core.validation.validator_receipt_gate import (
+            strip_noncanonical_regions,
+        )
+
+        module = _load_publisher()
+        assert module.strip_noncanonical_regions(body) == strip_noncanonical_regions(  # type: ignore[attr-defined]
+            body
+        ), body
+
+    def test_strip_is_idempotent(self) -> None:
+        module = _load_publisher()
+        once = module.strip_noncanonical_regions(_FENCED_ONLY_BODY)  # type: ignore[attr-defined]
+        assert module.strip_noncanonical_regions(once) == once  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+class TestSkipRequiresArtifactResolution:
+    """AC2 — the skip is keyed on a companion that RESOLVES, never on text."""
+
+    def test_citation_naming_another_prs_companion_publishes(self) -> None:
+        """A body citing OCC#7259 while THIS PR's companion set is empty is a
+        citation that resolves to nothing. It must publish."""
+        module = _load_publisher()
+        fetcher = _stub_resolution(module, [])
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_BODY="Evidence-Source: OCC#7259\n", RUNNER_IS_TRUSTED="true"
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "SKIP" not in result.output
+        assert "publish_reason: no_companion_exists_for_this_pr" in result.output
+        assert recorder.brokers != []
+        assert fetcher.urls, "resolution was never attempted"
+
+    def test_citation_naming_a_companion_of_a_different_pr_publishes(self) -> None:
+        """This PR HAS a companion (OCC#5810), but the body cites OCC#7259.
+        The cited number is not in this PR's companion set -> publish."""
+        module = _load_publisher()
+        _stub_resolution(module, [_companion_payload(number=5810)])
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_BODY="Evidence-Source: OCC#7259\n", RUNNER_IS_TRUSTED="true"
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "publish_reason: citation_is_not_a_companion_of_this_pr" in result.output
+        assert recorder.brokers != []
+
+    def test_closed_unmerged_companion_publishes(self) -> None:
+        """The OMN-15214 incident state: a companion CLOSED without merging is
+        destroyed evidence, not a binding. Re-mint."""
+        module = _load_publisher()
+        _stub_resolution(
+            module,
+            [_companion_payload(number=5793, state="closed", merged_at=None)],
+        )
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_BODY="Evidence-Source: OCC#5793\n", RUNNER_IS_TRUSTED="true"
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "publish_reason: cited_companion_closed_unmerged" in result.output
+        assert recorder.brokers != []
+
+    def test_resolution_queries_this_prs_deterministic_companion_branch(self) -> None:
+        """The 'for THIS product PR' half of AC2 is carried by the branch
+        filter — mirrors handler_occ_companion_compute's branch construction."""
+        module = _load_publisher()
+        fetcher = _stub_resolution(module, [])
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_REPO="OmniNode-ai/omniclaude",
+            PR_NUMBER="1969",
+            PR_BODY="Evidence-Source: OCC#5793\n",
+            RUNNER_IS_TRUSTED="true",
+        )
+        runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert len(fetcher.urls) == 1
+        url = fetcher.urls[0]
+        assert "OmniNode-ai/onex_change_control/pulls" in url
+        # Live-verified: OCC#5793's headRefName for omniclaude#1969.
+        assert (
+            "head=OmniNode-ai:auto/omninode-ai-omniclaude-pr-1969-occ-autobind" in url
+        )
+        assert "state=all" in url
+
+    def test_companion_branch_mirrors_the_compute_handler(self) -> None:
+        module = _load_publisher()
+        assert (
+            module.companion_branch("OmniNode-ai/omniclaude", 1969)  # type: ignore[attr-defined]
+            == "auto/omninode-ai-omniclaude-pr-1969-occ-autobind"
+        )
+
+
+@pytest.mark.unit
+class TestResolutionFailsClosedByPublishing:
+    """AC3 — never skip on an answer the publisher could not obtain.
+
+    A redundant command is a cheap already-bound no-op at the handler; a missed
+    mint cost 34 minutes of red on omniclaude#1969 and 54 on
+    omnibase_core#1540. The asymmetry is the whole design.
+    """
+
+    def test_api_failure_publishes(self) -> None:
+        """The explicit API-failure path AC3 names: the fetcher returns None
+        for every transport error, non-200, and rate limit."""
+        module = _load_publisher()
+        _stub_resolution(module, None)
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_BODY="Evidence-Source: OCC#5793\n", RUNNER_IS_TRUSTED="true"
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "SKIP" not in result.output
+        assert "publish_reason: resolution_unavailable" in result.output
+        assert recorder.brokers != []
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {"message": "Not Found"},
+            ["not-a-dict"],
+            [{"number": "5793", "state": "open"}],
+            [{"state": "open"}],
+            "",
+        ],
+        ids=["object", "list_of_str", "number_not_int", "no_number", "empty_string"],
+    )
+    def test_malformed_payload_publishes(self, payload: object) -> None:
+        module = _load_publisher()
+        _stub_resolution(module, payload)
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_BODY="Evidence-Source: OCC#5793\n", RUNNER_IS_TRUSTED="true"
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "SKIP" not in result.output
+        assert recorder.brokers != []
+
+    def test_empty_pr_body_publishes_without_resolving(self) -> None:
+        module = _load_publisher()  # fetcher stays poisoned
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(PR_BODY="", RUNNER_IS_TRUSTED="true")
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "publish_reason: no_evidence_source_citation" in result.output
+        assert recorder.brokers != []
+
+    def test_malformed_stamp_value_publishes_without_resolving(self) -> None:
+        """An ambiguous/malformed stamp is indeterminate, not a binding."""
+        module = _load_publisher()  # fetcher stays poisoned
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_BODY="Evidence-Source: OCC#<n>\n", RUNNER_IS_TRUSTED="true"
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "publish_reason: no_evidence_source_citation" in result.output
+        assert recorder.brokers != []
+
+    def test_direct_resolver_returns_none_on_transport_error(self) -> None:
+        """The real ``_github_get_json`` swallows every failure into None."""
+        import http.client
+        import urllib.error
+        import urllib.request
+
+        module = _load_publisher()
+
+        def _url_error(*_args: object, **_kwargs: object) -> object:
+            raise urllib.error.URLError("connection refused")
+
+        def _incomplete_read(*_args: object, **_kwargs: object) -> object:
+            raise http.client.IncompleteRead(b"{")
+
+        original = urllib.request.urlopen
+        try:
+            for boom in (_url_error, _incomplete_read):
+                urllib.request.urlopen = boom  # type: ignore[assignment]
+                assert (
+                    module._live_github_get_json("https://api.github.com/x", "")  # type: ignore[attr-defined]
+                    is None
+                )
+        finally:
+            urllib.request.urlopen = original  # type: ignore[assignment]
+
+
+# Live values, read back 2026-08-29 from the incident artifacts:
+#   gh pr view 5793 --repo OmniNode-ai/onex_change_control
+#     -> headRefName auto/omninode-ai-omniclaude-pr-1969-occ-autobind
+#        mergeCommit.oid 64174b874aba54bf5c171fb4a087717cc1575004
+#        mergedAt 2026-08-01T04:49:37Z
+#   gh pr view 1969 --repo OmniNode-ai/omniclaude --json body
+#     -> "Evidence-Source: 64174b874aba54bf5c171fb4a087717cc1575004"
+_OCC_5793_MERGE_SHA = "64174b874aba54bf5c171fb4a087717cc1575004"
+_OCC_5793_HEAD_SHA = "d4750c8e38ac5121fd770a0edadb65efd18b24a7"
+
+
+@pytest.mark.unit
+class TestModeBShaFormBinding:
+    """AC4 — a SHA-form stamp that resolves to a merged companion is a BINDING.
+
+    This is the assertion that stops the duplicate-companion path. On
+    2026-08-01 the OCC#-only predicate could not see #1969's SHA stamp, so the
+    publisher re-published at 04:51:35Z — two minutes after OCC#5793 merged —
+    and minted OCC#5795 on the same head branch, whose entire diff was in-place
+    rewrites of #5793's merged receipts (four `receipt_file_mutated`
+    violations). Falsifier: narrow the citation parser back to the OCC# form
+    only and this test goes red.
+    """
+
+    def test_sha_stamp_of_a_merged_companion_skips(self) -> None:
+        module = _load_publisher()
+        _stub_resolution(
+            module,
+            [
+                _companion_payload(
+                    number=5793,
+                    state="closed",
+                    merged_at="2026-08-01T04:49:37Z",
+                    head_sha=_OCC_5793_HEAD_SHA,
+                    merge_commit_sha=_OCC_5793_MERGE_SHA,
+                )
+            ],
+        )
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_REPO="OmniNode-ai/omniclaude",
+            PR_NUMBER="1969",
+            PR_BODY=f"Evidence-Source: {_OCC_5793_MERGE_SHA}\n",
+            RUNNER_IS_TRUSTED="true",
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "skipped_bound_to: OCC#5793" in result.output
+        assert recorder.brokers == [], "the duplicate OCC#5795 path is still open"
+
+    def test_head_sha_form_also_binds(self) -> None:
+        module = _load_publisher()
+        _stub_resolution(
+            module,
+            [
+                _companion_payload(
+                    number=5793,
+                    state="closed",
+                    merged_at="2026-08-01T04:49:37Z",
+                    head_sha=_OCC_5793_HEAD_SHA,
+                    merge_commit_sha=_OCC_5793_MERGE_SHA,
+                )
+            ],
+        )
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_BODY=f"Evidence-Source: {_OCC_5793_HEAD_SHA[:12]}\n",
+            RUNNER_IS_TRUSTED="true",
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "skipped_bound_to: OCC#5793" in result.output
+        assert recorder.brokers == []
+
+    def test_sha_of_an_unmerged_companion_publishes(self) -> None:
+        """An OPEN companion's head SHA is not durable evidence — the mint is
+        still owed, so the command still goes out."""
+        module = _load_publisher()
+        _stub_resolution(
+            module,
+            [
+                _companion_payload(
+                    number=5793, state="open", head_sha=_OCC_5793_HEAD_SHA
+                )
+            ],
+        )
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_BODY=f"Evidence-Source: {_OCC_5793_HEAD_SHA}\n",
+            RUNNER_IS_TRUSTED="true",
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert (
+            "publish_reason: sha_is_not_a_merged_companion_of_this_pr" in result.output
+        )
+        assert recorder.brokers != []
+
+    def test_citation_parser_recognises_both_legal_forms(self) -> None:
+        module = _load_publisher()
+        assert module.product_pr_evidence_citation("Evidence-Source: OCC#5793\n") == (  # type: ignore[attr-defined]
+            "occ_pr",
+            "5793",
+        )
+        assert module.product_pr_evidence_citation(  # type: ignore[attr-defined]
+            f"Evidence-Source: {_OCC_5793_MERGE_SHA}\n"
+        ) == ("sha", _OCC_5793_MERGE_SHA)
+
+
+@pytest.mark.unit
+class TestVerdictMarkerIsAlwaysEmitted:
+    """AC7 — SUCCESS stops being vacuous.
+
+    Every exit-0 path prints exactly one machine-readable verdict marker, and a
+    skip marker NAMES the resolved companion. The caller workflow greps for a
+    marker and fails the job when none is present, so "green publisher, nothing
+    happened" is no longer representable.
+    """
+
+    _MARKERS = ("skipped_bound_to:", "published_correlation_id:", "publish_declined:")
+
+    def _markers_in(self, output: str) -> list[str]:
+        return [m for m in self._MARKERS if m in output]
+
+    def test_skip_names_the_resolved_companion(self) -> None:
+        module = _load_publisher()
+        _stub_resolution(module, [_companion_payload(number=4242)])
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(
+            PR_BODY="Evidence-Source: OCC#4242\n", RUNNER_IS_TRUSTED="true"
+        )
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert self._markers_in(result.output) == ["skipped_bound_to:"]
+        assert "skipped_bound_to: OCC#4242" in result.output
+
+    def test_publish_emits_the_correlation_id(self) -> None:
+        module = _load_publisher()
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(RUNNER_IS_TRUSTED="true")
+        result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert "published_correlation_id: cid-42" in result.output
+        assert self._markers_in(result.output) == ["published_correlation_id:"]
+
+    @pytest.mark.parametrize(
+        ("argv", "env_overrides"),
+        [
+            (["--dry-run"], {}),
+            (["--lane", "dev"], {"RUNNER_IS_TRUSTED": "false"}),
+            ([], {"RUNNER_IS_TRUSTED": "false"}),
+            (["--lane", "nope"], {"RUNNER_IS_TRUSTED": "false"}),
+        ],
+        ids=["dry_run", "untrusted_dev", "untrusted_no_lane", "untrusted_unknown_lane"],
+    )
+    def test_every_green_exit_carries_a_marker(
+        self, argv: list[str], env_overrides: dict[str, str]
+    ) -> None:
+        module = _load_publisher()
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        runner = CliRunner()
+        env = _required_pr_env(**env_overrides)
+        env.pop("KAFKA_BOOTSTRAP_SERVERS", None)
+        result = runner.invoke(module.main, argv, env=env)  # type: ignore[attr-defined]
+        assert result.exit_code == 0, result.output
+        assert len(self._markers_in(result.output)) == 1, result.output
