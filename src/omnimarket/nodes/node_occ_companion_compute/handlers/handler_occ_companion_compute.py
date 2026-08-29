@@ -675,6 +675,18 @@ class ReceiptKeyMismatchError(ValueError):
     """
 
 
+def self_bind_evidence_id_for(occ_pr_number: int) -> str:
+    """Return the ``dod_evidence`` id of the OCC self-bind item for one OCC PR.
+
+    OMN-16120: the single derivation of this identifier. It was previously
+    rebuilt as an inline f-string at three sites in this module — the contract
+    declaration, the receipt emission, and the invariant's own exemption — and
+    three derivations of one id is three things to drift apart. The declaration
+    and the emission disagreeing is precisely the defect this ticket closes.
+    """
+    return f"occ-self-bind-pr-{occ_pr_number}"
+
+
 def assert_receipt_keys_match_declarations(
     files: Sequence[ModelCompanionFile], request: ModelOccCompanionRequest
 ) -> None:
@@ -714,6 +726,13 @@ def assert_receipt_keys_match_declarations(
     emission there would refuse every legitimate 2nd-consumer companion.
     Agreement, by contrast, holds on every path — it constrains only what the
     plan does emit.
+
+    OMN-16120 adds exactly ONE carve-in to that scoping, and closes the KNOWN
+    RESIDUAL this function previously exempted by name: the self-bind item.
+    The merged path declares it ITSELF — it appends the freshly rendered entry
+    to the frozen 1st-consumer bytes — so on both paths it is this plan's own
+    declaration and completeness genuinely holds for it. Every other
+    merged-path item still belongs to the 1st consumer and is still exempt.
 
     Purity is preserved: the contract and receipts are read out of ``files``
     itself and the fresh/merged split out of ``ModelOccContractState``, which
@@ -770,25 +789,45 @@ def assert_receipt_keys_match_declarations(
         for state in request.occ_contract_states
         if state.exists and state.merged
     }
-    # KNOWN RESIDUAL, exempted narrowly and named rather than silently allowed.
-    # The self-bind item is DECLARED whenever ``occ_pr_number`` is known but its
-    # receipt is minted only when ``occ_probe`` is also supplied, so a caller
-    # passing one without the other produces a declared item with no receipt.
-    # That is the same defect FAMILY as this ticket and it is pre-existing, but
-    # it is a caller-shape gap rather than a producer key mismatch, and failing
-    # the whole mint closed on it would refuse a plan this producer has always
-    # emitted. Narrowed to exactly that one id under exactly that one condition,
-    # so nothing else slips through with it.
-    probeless_self_bind = (
-        f"occ-self-bind-pr-{request.occ_pr_number}"
-        if request.occ_pr_number is not None and request.occ_probe is None
+    # OMN-16120 closes the KNOWN RESIDUAL OMN-16859 exempted here by name. The
+    # self-bind item is DECLARED whenever ``occ_pr_number`` is known but its
+    # receipt is minted only when ``occ_probe`` is ALSO supplied, so a caller
+    # passing one without the other emitted a contract declaring
+    # ``occ-self-bind-pr-<N>`` with no receipt anywhere — a companion born
+    # INELIGIBLE on its own self-bind with ``missing_receipt``, which is the
+    # born-broken class OMN-16120 names and the last way this producer can
+    # still mint one.
+    #
+    # It is refused, not synthesised: ``probe_command`` / ``probe_stdout`` /
+    # ``exit_code`` are an OBSERVATION of the OCC PR and this function is pure,
+    # so manufacturing one would mint the "surrogate that reads as proof"
+    # OMN-16892 removed from the sibling producer. Both live callers
+    # (``node_occ_companion_effect._observe_occ_probe``,
+    # ``node_occ_attestation_observe._attest_companion``) already observe the
+    # OCC PR behind a total fallback and set ``occ_probe`` in the same
+    # ``model_copy`` that sets ``occ_pr_number``, so this refuses no shape that
+    # exists today — it makes the gap unshippable instead of silent.
+    self_bind_id = (
+        self_bind_evidence_id_for(request.occ_pr_number)
+        if request.occ_pr_number is not None
         else None
     )
     for ticket_id, parsed in contracts.items():
-        if ticket_id in merged_tickets or not isinstance(parsed, dict):
+        if not isinstance(parsed, dict):
             continue
         items = parsed.get("dod_evidence")
         if not isinstance(items, list):
+            continue
+        # COMPLETENESS is fresh-path-only (see the docstring) with ONE carve-in:
+        # the self-bind entry, which the merged path declares ITSELF by
+        # appending the rendered entry to the frozen 1st-consumer bytes. It is
+        # this plan's own declaration on both paths, so completeness genuinely
+        # holds for it on both; every other merged-path item belongs to the 1st
+        # consumer and is re-bound by a net-new supersession, never re-minted.
+        checked_only = (
+            {self_bind_id} if ticket_id in merged_tickets and self_bind_id else None
+        )
+        if ticket_id in merged_tickets and not checked_only:
             continue
         honestly_superseded = {
             str(marker)[len(_SUPERSEDES_DOD_EVIDENCE_PREFIX) :]
@@ -801,11 +840,9 @@ def assert_receipt_keys_match_declarations(
             if not isinstance(item, dict):
                 continue
             item_id = str(item.get("id") or "")
-            if (
-                not item_id
-                or item_id in honestly_superseded
-                or item_id == probeless_self_bind
-            ):
+            if not item_id or item_id in honestly_superseded:
+                continue
+            if checked_only is not None and item_id not in checked_only:
                 continue
             declared = declared_check_for(parsed, item_id)
             if declared is None:
@@ -821,6 +858,19 @@ def assert_receipt_keys_match_declarations(
                 for name in names
             ):
                 continue
+            # The self-bind item has exactly one cause when it is missing, and
+            # naming it here is the difference between a lane fixing the caller
+            # and a lane re-diagnosing the generator from an occ-preflight
+            # ``missing_receipt`` — which is what four separate lanes did on
+            # 2026-08-28 for the sibling defect.
+            cause = (
+                " This producer declares the self-bind item from "
+                "`occ_pr_number` alone but can only mint its receipt from an "
+                "observed `occ_probe`, which it cannot synthesise (it is pure). "
+                "Supply `occ_probe` alongside `occ_pr_number` (OMN-16120)."
+                if item_id == self_bind_id
+                else ""
+            )
             raise ReceiptKeyMismatchError(
                 f"refusing to emit {ticket_id}'s companion: the contract "
                 f"declares dod_evidence item {item_id!r} with check_type "
@@ -828,7 +878,7 @@ def assert_receipt_keys_match_declarations(
                 f"'drift/dod_receipts/{ticket_id}/{item_id}/{check_type}.yaml' "
                 f"(emitted here: {sorted(names) or 'nothing'}). occ-preflight "
                 f"reports this as missing_receipt on "
-                f"{ticket_id}:{item_id}:{check_type} (OMN-16859)."
+                f"{ticket_id}:{item_id}:{check_type} (OMN-16859).{cause}"
             )
 
 
@@ -1509,8 +1559,12 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
         # contract's dod_evidence, so an undeclared self-bind receipt is never
         # read and the OCC companion PR fails its OWN occ-preflight
         # (pr_ticket_mismatch). None on pass 1 / the frozen merged path.
+        #
+        # OMN-16120: the id comes from the ONE derivation
+        # (:func:`self_bind_evidence_id_for`) the emission and the boundary
+        # invariant also use, so the declaration and its receipt cannot drift.
         self_bind_evidence_id = (
-            f"occ-self-bind-pr-{request.occ_pr_number}"
+            self_bind_evidence_id_for(request.occ_pr_number)
             if request.occ_pr_number is not None
             else None
         )

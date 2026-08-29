@@ -131,7 +131,19 @@ class TestT1Determinism:
         assert 'commit_sha: "' + "b" * 40 + '"' in receipt.content
 
     def test_stamped_body_round_trips_when_occ_pr_known(self) -> None:
-        plan = compute_companion_plan(_request(occ_pr_number=55, occ_head_sha="c" * 40))
+        # OMN-16120: a pass-2 request carries the OCC probe alongside the OCC PR
+        # number. Declaring ``occ-self-bind-pr-55`` without one mints a contract
+        # whose self-bind item has no receipt -- a companion born INELIGIBLE with
+        # ``missing_receipt`` -- and the producer now refuses that shape at the
+        # plan boundary. The probe is incidental to what this leg asserts (the
+        # product-body stamp round-trip), so it is supplied, not asserted on.
+        plan = compute_companion_plan(
+            _request(
+                occ_pr_number=55,
+                occ_head_sha="c" * 40,
+                occ_probe=_probe('{"number":55,"state":"OPEN"}'),
+            )
+        )
         assert plan.evidence_source_occ_pr == 55
         parsed = parse_pr_occ_metadata_stamp(plan.product_body_stamped)
         assert parsed.evidence_source is not None
