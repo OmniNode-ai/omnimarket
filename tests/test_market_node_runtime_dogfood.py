@@ -233,7 +233,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # half of the same phase -- a projection nobody reads is not observability,
     # so this node turns a confirmed STALLED/STARVED run into a Slack alert
     # naming the consumer, the topic and the counts): 388 -> 389.
-    assert summary["node_dirs"] == 389
+    # OMN-15600 adds node_alert_channel_liveness_effect (EFFECT; the last open
+    # item on the same phase's gate -- an alert that was delivered at 05:27Z
+    # proves the channel was alive at 05:27Z and nothing about 05:28Z, so this
+    # node re-proves it on the existing heartbeat and classifies a channel that
+    # cannot deliver as DEAD / NOT_CONFIGURED / PROBE_ERROR rather than letting
+    # an HTTP 200 carrying {"ok": false} read as success): 389 -> 390.
+    assert summary["node_dirs"] == 390
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -288,7 +294,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-16778 adds the node_consumer_flow_stall_alert_effect entry point
     # (routable via its subscribe topic
     # onex.evt.omnimarket.projection-consumer-flow-applied.v1): 385 -> 386.
-    assert summary["entry_points"] == 386
+    # OMN-15600 adds the node_alert_channel_liveness_effect entry point
+    # (routable via its subscribe topic onex.evt.platform.node-heartbeat.v1 —
+    # the carrier the observability epic names, so the check dies with the
+    # runtime it measures instead of polling a corpse): 386 -> 387.
+    assert summary["entry_points"] == 387
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
