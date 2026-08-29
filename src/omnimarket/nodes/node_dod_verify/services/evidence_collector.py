@@ -49,7 +49,9 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
     EnumEvidenceUnverifiableCause,
     EnumOccRefRefreshOutcome,
+    EnumProductCloneFreshness,
     ModelEvidenceCheckResult,
+    ModelProductCloneResolution,
 )
 from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
     classify_item_checks,
@@ -166,6 +168,24 @@ _ALLOW_STALE_OCC_REF_ENV = "DOD_VERIFY_ALLOW_STALE_OCC_REF"
 # dod_verify is invoked for a Done-flip). Retriable; distinct from an offline
 # host or an absent remote, which a retry cannot fix.
 _REF_LOCK_ERROR_MARKER = "cannot lock ref"
+
+# OMN-16846 D2: the same fail-closed rule as _ALLOW_STALE_OCC_REF_ENV, applied
+# to the PRODUCT clone a check's declared ``cwd`` names. Named and logged; a
+# run under it records every affected check as unverifiable rather than
+# pretending the tree was current.
+_ALLOW_STALE_PRODUCT_CLONE_ENV = "DOD_VERIFY_ALLOW_STALE_PRODUCT_CLONE"
+
+# OMN-16846 D1: the verbatim banner ``tests/conftest.py`` prints via
+# ``pytest.exit()`` when the OMN-15620 gate refuses the venv at
+# ``pytest_configure`` — i.e. before collection, before any test module is
+# imported, before one line of product code runs. Both fragments are required
+# so an ordinary test failure that merely quotes the ticket number cannot be
+# laundered into a skip. Matched on the gate's own output, never on a bare
+# non-zero exit.
+_VENV_PURITY_REFUSAL_MARKERS = (
+    "OMN-15620 venv-purity gate",
+    "Canonical venv is IMPURE",
+)
 
 # OMN-14207: live GitHub PR-state verification.
 #
@@ -1286,6 +1306,12 @@ class EvidenceCollector:
         # an explicit contract_path (no OCC auto-resolution happened at all).
         self.occ_refresh_outcome: EnumOccRefRefreshOutcome | None = None
         self.occ_resolved_sha: str | None = None
+        # OMN-16846 D2: product-clone freshness, memoised per repository root
+        # for the lifetime of this collector. One ``git fetch`` per repo per
+        # run, not one per check — a contract with a dozen ``test_passes``
+        # entries all pointed at ``${OMNI_HOME}/omnibase_infra`` must not
+        # fetch it a dozen times.
+        self._product_clone_cache: dict[str, ModelProductCloneResolution] = {}
 
     @property
     def occ_governance_ref(self) -> str:
@@ -2627,9 +2653,82 @@ class EvidenceCollector:
 
         # Run each check; all must pass for the item to be VERIFIED
         messages: list[str] = []
+        # OMN-16846 AC5: tree provenance for every distinct product repository
+        # this item's commands executed in, in first-resolution order.
+        clones: list[ModelProductCloneResolution] = []
+        seen_roots: set[str] = set()
         for check in checks:
             check_type = check.get("check_type") or ""
             if check_type in ("command", "test_passes"):
+                # OMN-16846 D2: assert the PRODUCT clone before executing in
+                # it. A check whose declared cwd names a repository that is
+                # behind its upstream runs against a tree that does not
+                # contain the work under adjudication; its verdict is about
+                # the wrong commit, and the receipt recorded nothing that
+                # would let a reader notice. Fail closed with a named cause
+                # (still blocking — see HandlerDodVerify) rather than
+                # recording a substantive FAILED the run never earned.
+                run_cwd, cwd_err, declared = self._resolve_check_cwd(
+                    check, ticket_id, contract_path
+                )
+                if cwd_err is None and declared and run_cwd is not None:
+                    resolution = self._assess_product_clone(run_cwd)
+                    if (
+                        resolution.freshness
+                        is not EnumProductCloneFreshness.NOT_APPLICABLE
+                        and resolution.repo_root not in seen_roots
+                    ):
+                        seen_roots.add(resolution.repo_root)
+                        clones.append(resolution)
+                    cause = self._product_clone_unverifiable_cause(resolution)
+                    if cause is not None:
+                        if self._allow_stale_product_clone():
+                            logger.warning(
+                                "OMN-16846 product-clone gate OVERRIDDEN because "
+                                "%s is set — executing %s against %s (%s). The "
+                                "resulting verdict is NOT attributable to a "
+                                "verified-fresh tree.",
+                                _ALLOW_STALE_PRODUCT_CLONE_ENV,
+                                evidence_id,
+                                resolution.repo_root,
+                                resolution.freshness.value,
+                            )
+                        else:
+                            logger.error(
+                                "Refusing to run %s in %s: clone freshness is %s "
+                                "(head=%s upstream=%s behind=%s). Set %s=1 to "
+                                "execute anyway.",
+                                evidence_id,
+                                resolution.repo_root,
+                                resolution.freshness.value,
+                                resolution.head_sha,
+                                resolution.upstream_ref,
+                                resolution.behind_count,
+                                _ALLOW_STALE_PRODUCT_CLONE_ENV,
+                            )
+                            return ModelEvidenceCheckResult(
+                                evidence_id=evidence_id,
+                                description=description,
+                                status=EnumEvidenceCheckStatus.SKIPPED,
+                                unverifiable_cause=cause,
+                                message=(
+                                    "PRODUCT_CLONE_NOT_FRESH: the check's cwd "
+                                    f"names {resolution.repo_root}, whose "
+                                    f"freshness is {resolution.freshness.value} "
+                                    f"(HEAD {resolution.head_sha or '<unresolved>'}"
+                                    f", upstream {resolution.upstream_ref or '<none>'}"
+                                    f", behind {resolution.behind_count}"
+                                    f"{'; ' + resolution.detail if resolution.detail else ''}"
+                                    "). The command was NOT executed — a verdict "
+                                    "from a tree that does not contain the work "
+                                    "under adjudication is not evidence about it. "
+                                    f"Fast-forward that clone, or set "
+                                    f"{_ALLOW_STALE_PRODUCT_CLONE_ENV}=1 to "
+                                    "execute anyway."
+                                ),
+                                proof_class=item_proof_class,
+                                product_clones=tuple(clones),
+                            )
                 # ``test_passes`` is a semantic alias for ``command`` that signals
                 # the command is a test runner (typically ``uv run pytest ...``).
                 # Both share the same execution path: run the shell command and
@@ -2658,12 +2757,51 @@ class EvidenceCollector:
                     relax_merged_state=relax_merged_state,
                 )
                 if not ok:
+                    # OMN-16846 D1/AC3: the OMN-15620 venv-purity gate fires
+                    # in ``pytest_configure`` — the command exits non-zero
+                    # having collected nothing and imported no test module, so
+                    # it made no statement about the product at all. Recording
+                    # it FAILED asserts a defect nothing looked for, and reads
+                    # in the receipt exactly like a real one; run 33194402437
+                    # recorded all three OMN-16759 behaviour checks that way
+                    # (behavior_proving=0) purely because of a venv shape.
+                    # Still blocking, never counted verified — the change is in
+                    # HOW the block is recorded, not WHETHER it blocks.
+                    if self._is_venv_purity_refusal(msg):
+                        logger.error(
+                            "Recording %s as unverifiable: the OMN-15620 "
+                            "venv-purity gate refused the venv before "
+                            "collection, so the check never executed. %s",
+                            evidence_id,
+                            msg,
+                        )
+                        return ModelEvidenceCheckResult(
+                            evidence_id=evidence_id,
+                            description=description,
+                            status=EnumEvidenceCheckStatus.SKIPPED,
+                            unverifiable_cause=(
+                                EnumEvidenceUnverifiableCause.GATE_VENV_IMPURE
+                            ),
+                            message=(
+                                "GATE_VENV_IMPURE: the OMN-15620 venv-purity "
+                                "gate refused this venv at pytest_configure, "
+                                "before collection — no test module was "
+                                "imported and no product code ran, so this is "
+                                "not a statement about the ticket. Repair the "
+                                "venv separation (OMN-16846) rather than "
+                                "reading this as a failed check. "
+                                f"Runner output: {msg}"
+                            ),
+                            proof_class=item_proof_class,
+                            product_clones=tuple(clones),
+                        )
                     return ModelEvidenceCheckResult(
                         evidence_id=evidence_id,
                         description=description,
                         status=EnumEvidenceCheckStatus.FAILED,
                         message=msg,
                         proof_class=item_proof_class,
+                        product_clones=tuple(clones),
                     )
                 messages.append(msg)
             elif check_type == "file_exists":
@@ -2675,6 +2813,7 @@ class EvidenceCollector:
                         status=EnumEvidenceCheckStatus.FAILED,
                         message=msg,
                         proof_class=item_proof_class,
+                        product_clones=tuple(clones),
                     )
                 messages.append(msg)
             else:
@@ -2692,6 +2831,7 @@ class EvidenceCollector:
                         "Supported: command, test_passes, file_exists."
                     ),
                     proof_class=item_proof_class,
+                    product_clones=tuple(clones),
                 )
 
         return ModelEvidenceCheckResult(
@@ -2700,6 +2840,7 @@ class EvidenceCollector:
             status=EnumEvidenceCheckStatus.VERIFIED,
             message="; ".join(messages) if messages else None,
             proof_class=item_proof_class,
+            product_clones=tuple(clones),
         )
 
     def _resolve_cwd(
@@ -3599,6 +3740,229 @@ class EvidenceCollector:
         )
         return new_cmd, count > 0
 
+    def _resolve_check_cwd(
+        self,
+        check: dict[str, Any],
+        ticket_id: str,
+        contract_path: Path | None,
+    ) -> tuple[str | None, str | None, bool]:
+        """Resolve the working directory a check will execute in.
+
+        Returns ``(run_cwd, error, declared)``. ``declared`` is True only when
+        the check itself carried a ``cwd`` key — the OMN-10476 auto-injected
+        OCC root does not count, because that repository's freshness is
+        already pinned by ``occ_refresh_outcome``/``occ_resolved_sha`` and
+        re-asserting it here would fetch the same clone twice per run.
+
+        Extracted from ``_run_command_check`` (OMN-16846) so the product-clone
+        freshness gate resolves the SAME directory the command will run in,
+        by the same containment rules, rather than re-deriving it.
+        """
+        cwd_template = check.get("cwd")
+        if cwd_template is None:
+            # OMN-10476: auto-inject OCC cwd when no explicit cwd is declared.
+            return self._infer_occ_cwd(contract_path), None, False
+        if not isinstance(cwd_template, str):
+            return (
+                None,
+                f"cwd must be a string, got {type(cwd_template).__name__}",
+                True,
+            )
+        resolved, err = self._resolve_cwd(cwd_template, ticket_id)
+        if err is not None:
+            return None, err, True
+        return resolved, None, True
+
+    def _run_git(self, repo: Path, *args: str) -> tuple[int, str, str]:
+        """Run one git subprocess under the shared ceiling. Pure I/O helper."""
+        try:
+            proc = subprocess.run(
+                ["git", "-C", str(repo), *args],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_git_op_timeout_s(),
+            )
+        except subprocess.TimeoutExpired:
+            return 124, "", f"git {' '.join(args)} timed out"
+        except OSError as exc:  # git absent / unreadable path
+            return 127, "", f"git {' '.join(args)} could not be executed: {exc}"
+        return proc.returncode, proc.stdout.strip(), proc.stderr.strip()
+
+    def _assess_product_clone(self, run_cwd: str) -> ModelProductCloneResolution:
+        """Resolve the tree a behaviour check will execute in, and its freshness.
+
+        OMN-16846 D2. ``node_dod_verify`` refreshes and pins the CONTRACT repo
+        and asserted nothing about the PRODUCT clone the ``test_passes``
+        commands actually run in. Measured 2026-08-28: the canonical
+        ``omnibase_core`` clone was 2 commits behind ``origin/dev`` and missing
+        the merge under adjudication, so the new test file did not exist and
+        ``uv run pytest`` reported "collected 0 items / no tests ran" — which
+        reads exactly like "the tests were never written". 9 of 12 canonical
+        clones were behind that session, so this is the machine's normal state.
+
+        Comparison is against the clone's OWN upstream, not a hard-coded
+        ``origin/dev``: a worktree parked on a feature branch is the legitimate
+        shape for verifying that branch, and it tracks its own remote branch.
+        Only being BEHIND falsifies a verdict; being ahead does not.
+
+        Memoised per repository root — one fetch per repo per run.
+        """
+        cached = self._product_clone_cache.get(run_cwd)
+        if cached is not None:
+            return cached
+        resolution = self._compute_product_clone_resolution(run_cwd)
+        self._product_clone_cache[run_cwd] = resolution
+        return resolution
+
+    def _compute_product_clone_resolution(
+        self, run_cwd: str
+    ) -> ModelProductCloneResolution:
+        """Uncached body of ``_assess_product_clone``."""
+        cwd_path = Path(run_cwd)
+
+        rc, toplevel, stderr = self._run_git(cwd_path, "rev-parse", "--show-toplevel")
+        if rc != 0 or not toplevel:
+            # Not a repository at all. ``_resolve_cwd`` has already proven the
+            # directory exists and is contained, so this is a scratch or
+            # generated directory rather than a typo'd clone path — there is
+            # no tree here to be stale against, and nothing to record.
+            return ModelProductCloneResolution(
+                repo_root=run_cwd,
+                freshness=EnumProductCloneFreshness.NOT_APPLICABLE,
+                detail=(
+                    f"{run_cwd} is not inside a git repository "
+                    f"(git rev-parse --show-toplevel: {stderr or f'exit {rc}'})"
+                ),
+            )
+        repo_root = toplevel
+
+        rc, head_sha, stderr = self._run_git(cwd_path, "rev-parse", "HEAD")
+        if rc != 0 or not head_sha:
+            return ModelProductCloneResolution(
+                repo_root=repo_root,
+                freshness=EnumProductCloneFreshness.UNKNOWN,
+                detail=f"HEAD could not be resolved: {stderr or f'exit {rc}'}",
+            )
+
+        rc, upstream, stderr = self._run_git(
+            cwd_path, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}"
+        )
+        if rc != 0 or not upstream or "/" not in upstream:
+            return ModelProductCloneResolution(
+                repo_root=repo_root,
+                freshness=EnumProductCloneFreshness.UNKNOWN,
+                head_sha=head_sha,
+                detail=(
+                    "no remote-tracking upstream is configured for HEAD, so "
+                    "freshness cannot be established "
+                    f"({stderr or upstream or f'exit {rc}'})"
+                ),
+            )
+        remote, branch = upstream.split("/", 1)
+
+        rc, _out, stderr = self._run_git(cwd_path, "fetch", "--quiet", remote, branch)
+        if rc != 0:
+            return ModelProductCloneResolution(
+                repo_root=repo_root,
+                freshness=EnumProductCloneFreshness.UNKNOWN,
+                head_sha=head_sha,
+                upstream_ref=upstream,
+                detail=(
+                    f"git fetch {remote} {branch} failed, so the local "
+                    f"remote-tracking ref cannot be trusted as a comparison "
+                    f"point: {stderr or f'exit {rc}'}"
+                ),
+            )
+
+        rc, behind_raw, stderr = self._run_git(
+            cwd_path, "rev-list", "--count", f"HEAD..{upstream}"
+        )
+        if rc != 0 or not behind_raw.isdigit():
+            return ModelProductCloneResolution(
+                repo_root=repo_root,
+                freshness=EnumProductCloneFreshness.UNKNOWN,
+                head_sha=head_sha,
+                upstream_ref=upstream,
+                detail=(
+                    f"could not count commits between HEAD and {upstream}: "
+                    f"{stderr or behind_raw or f'exit {rc}'}"
+                ),
+            )
+        behind = int(behind_raw)
+        if behind > 0:
+            return ModelProductCloneResolution(
+                repo_root=repo_root,
+                freshness=EnumProductCloneFreshness.STALE,
+                head_sha=head_sha,
+                upstream_ref=upstream,
+                behind_count=behind,
+            )
+
+        # Tracked-file dirt only: untracked build artefacts and caches are
+        # present in every canonical clone and are not a misattribution risk,
+        # while a modified tracked file means the executed tree is no commit
+        # at all and ``head_sha`` would name something that was not run.
+        rc, porcelain, stderr = self._run_git(
+            cwd_path, "status", "--porcelain", "--untracked-files=no"
+        )
+        if rc != 0:
+            return ModelProductCloneResolution(
+                repo_root=repo_root,
+                freshness=EnumProductCloneFreshness.UNKNOWN,
+                head_sha=head_sha,
+                upstream_ref=upstream,
+                behind_count=behind,
+                detail=f"git status failed: {stderr or f'exit {rc}'}",
+            )
+        if porcelain:
+            return ModelProductCloneResolution(
+                repo_root=repo_root,
+                freshness=EnumProductCloneFreshness.DIRTY,
+                head_sha=head_sha,
+                upstream_ref=upstream,
+                behind_count=behind,
+                detail=f"{len(porcelain.splitlines())} tracked path(s) modified",
+            )
+
+        return ModelProductCloneResolution(
+            repo_root=repo_root,
+            freshness=EnumProductCloneFreshness.FRESH,
+            head_sha=head_sha,
+            upstream_ref=upstream,
+            behind_count=0,
+        )
+
+    @staticmethod
+    def _allow_stale_product_clone() -> bool:
+        """Named, logged override for the D2 gate — the OMN-15454 pattern."""
+        return os.environ.get(_ALLOW_STALE_PRODUCT_CLONE_ENV, "").strip().lower() in (
+            "1",
+            "true",
+            "yes",
+        )
+
+    @staticmethod
+    def _product_clone_unverifiable_cause(
+        resolution: ModelProductCloneResolution,
+    ) -> EnumEvidenceUnverifiableCause | None:
+        """Map a freshness verdict onto the blocking cause it warrants."""
+        if resolution.freshness in (
+            EnumProductCloneFreshness.FRESH,
+            EnumProductCloneFreshness.NOT_APPLICABLE,
+        ):
+            return None
+        if resolution.freshness is EnumProductCloneFreshness.STALE:
+            return EnumEvidenceUnverifiableCause.PRODUCT_CLONE_STALE
+        # DIRTY and UNKNOWN are both "this run cannot say which tree produced
+        # the verdict", which is the same fail-closed fact.
+        return EnumEvidenceUnverifiableCause.PRODUCT_CLONE_FRESHNESS_UNKNOWN
+
+    @staticmethod
+    def _is_venv_purity_refusal(message: str) -> bool:
+        """True only for the OMN-15620 gate's own verbatim refusal banner."""
+        return all(marker in message for marker in _VENV_PURITY_REFUSAL_MARKERS)
+
     def _run_command_check(
         self,
         check: dict[str, Any],
@@ -3649,18 +4013,11 @@ class EvidenceCollector:
         # run before the shape guard below (OMN-15382 verifier finding):
         # a relative script path (e.g. "./verify.sh") is only resolvable
         # against the check's declared cwd, not this process's cwd.
-        run_cwd: str | None = None
-        cwd_template = check.get("cwd")
-        if cwd_template is not None:
-            if not isinstance(cwd_template, str):
-                return False, f"cwd must be a string, got {type(cwd_template).__name__}"
-            resolved, err = self._resolve_cwd(cwd_template, ticket_id)
-            if err is not None:
-                return False, err
-            run_cwd = resolved
-        else:
-            # OMN-10476: auto-inject OCC cwd when no explicit cwd is declared
-            run_cwd = self._infer_occ_cwd(contract_path)
+        run_cwd, cwd_err, _declared = self._resolve_check_cwd(
+            check, ticket_id, contract_path
+        )
+        if cwd_err is not None:
+            return False, cwd_err
 
         # OMN-15382: reject prose masquerading as a command BEFORE ever
         # shelling out (see module-level comment above
