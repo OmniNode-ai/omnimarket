@@ -98,8 +98,10 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     ADMISSIBILITY_VALIDATOR_CHECK_VALUE,
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
     BEHAVIOR_PROOF_EVIDENCE_ID,
+    RECEIPT_RUNNER_NAME,
     SHA_RE,
     behavior_proof_check_value,
+    born_slot_receipt_status,
     changed_files_from_diff_scope_probe,
     ci_check_evidence_id,
     compute_contract_sha256,
@@ -717,14 +719,36 @@ class OccCompanionEmitter:
             # executes the declared check. Writing a fabricated "N passed" here
             # is precisely the false-evidence class the Receipt Honesty Gate
             # exists to catch.
+            # OMN-16859 AC3a — say what is true. The declared check is a pytest
+            # run in the product repo; this producer runs in the effects
+            # runtime against the GitHub API and has no checkout of it. So on a
+            # runner-covered repo the receipt is minted PENDING (the
+            # vocabulary's own word for "allocated, not yet executed") and the
+            # AC3b runner supersedes it with the real run. Where no runner
+            # exists the prior status is preserved unchanged — see
+            # born_slot_receipt_status for why that direction is the fail-safe
+            # one.
+            slot_status = born_slot_receipt_status(
+                repo=repo, check_type=slot_check_type
+            )
             slot_actual_output = (
-                "PASS: product-repo test run executes the declared check; "
-                "probe is the live PR read."
+                f"{slot_status}: the declared test run is owed by "
+                f"{RECEIPT_RUNNER_NAME} in the product repo's CI, which "
+                "executes it in a real checkout and supersedes this receipt "
+                "with the result; probe is the live PR read."
+                if slot_status == "PENDING"
+                else (
+                    "PASS: product-repo test run executes the declared check; "
+                    "probe is the live PR read."
+                )
             )
         else:
             slot_evidence_id = ADMISSIBILITY_VALIDATOR_EVIDENCE_ID
             slot_check_type = "command"
             slot_check_value = ADMISSIBILITY_VALIDATOR_CHECK_VALUE
+            # The OCC contract-compliance runner really does execute this
+            # `command` check, so its PASS is earned, not assumed.
+            slot_status = "PASS"
             slot_actual_output = (
                 "PASS: OCC runner executes the declared check; "
                 "probe is the live PR read."
@@ -1180,6 +1204,10 @@ class OccCompanionEmitter:
                                 verifier=self._verifier,
                                 check_value=slot_check_value,
                                 check_type=slot_check_type,
+                                # OMN-16859 AC3a: PENDING on a runner-covered
+                                # repo for a check this producer cannot run;
+                                # PASS otherwise, unchanged.
+                                status=slot_status,
                             ),
                             encoding="utf-8",
                         )

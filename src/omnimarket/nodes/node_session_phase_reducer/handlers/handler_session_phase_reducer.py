@@ -88,13 +88,27 @@ class ModelSessionPhaseReducerInput(BaseModel):
       ``src/omniclaude/hooks/contracts/wire/session_ended_v1.yaml``. Required:
       the same identity/timing fields plus ``reason``.
     * ``onex.evt.omnimarket.session-phase-state.v1`` — published by
-      ``node_session_phase_dispatcher``; carries the phase fields and an explicit
-      ``event_type``.
+      ``node_session_phase_dispatcher``
+      (``contracts/wire/session_phase_state_v1.yaml``, OMN-16955). Required:
+      ``session_id``, ``phase_name``, ``transition``, ``correlation_id``,
+      ``emitted_at``. There is no ``event_type`` on this wire — the
+      dispatcher never sets one; the fold discriminator falls through to
+      ``EVENT_TYPE_SESSION_PHASE_STATE`` by elimination (see
+      ``resolved_event_type``).
 
     ``extra="ignore"``: each wire schema carries transport/identity fields this
     reducer does not fold (``entity_id``, ``correlation_id``, ``working_directory``,
     ``git_branch``, ``schema_version``, ...). Ignoring them is the omniclaude event
     convention; forbidding them would DLQ every well-formed message.
+
+    OMN-16955: the dispatcher's wire shape is authoritative — this model
+    transcribes ``phase_name`` (not a reducer-invented ``phase``) and carries
+    ``transition`` for completeness, since renaming the field at the producer
+    would ripple into every other consumer of that wire contract. ``to_event()``
+    is where the transcription happens: it prefers an explicit ``phase`` (the
+    shape hand-built tests and any future producer that adopts the reducer's
+    own vocabulary still use) and falls back to ``phase_name`` (the shape the
+    one real producer, ``node_session_phase_dispatcher``, actually emits).
 
     ``resolved_event_type`` keys on fields the wire contracts declare REQUIRED for
     exactly one topic each (``hook_source`` on started, ``reason`` on ended), so
@@ -111,6 +125,8 @@ class ModelSessionPhaseReducerInput(BaseModel):
     hook_source: str | None = None
     reason: str | None = None
     phase: str | None = None
+    phase_name: str | None = None
+    transition: str | None = None
     phase_index: int | None = None
     budget_elapsed_pct: int | None = None
     active_worker_count: int | None = None
@@ -122,17 +138,24 @@ class ModelSessionPhaseReducerInput(BaseModel):
     def _require_an_event_timestamp(self) -> ModelSessionPhaseReducerInput:
         """Fail validation — not dispatch — when no timestamp is on the wire.
 
-        Both omniclaude wire contracts declare ``emitted_at`` required and the
-        omnimarket phase-state event carries ``timestamp``; a message with
-        neither is genuinely malformed and belongs in the DLQ. Rejecting it here
-        keeps that decision at the model boundary with a readable message
-        instead of surfacing as an ``AttributeError`` mid-fold.
+        All three wire contracts declare ``emitted_at`` required: the two
+        omniclaude hook contracts, and — as of OMN-16955 —
+        ``onex.evt.omnimarket.session-phase-state.v1``
+        (``node_session_phase_dispatcher``, an EFFECT node, injects it at
+        emission time). ``timestamp`` remains accepted for any producer that
+        prefers the reducer's own field name; no current producer emits it. A
+        message with neither is genuinely malformed and belongs in the DLQ.
+        Rejecting it here keeps that decision at the model boundary with a
+        readable message instead of surfacing as an ``AttributeError``
+        mid-fold.
         """
         if self.emitted_at is None and self.timestamp is None:
             raise ValueError(
-                "session phase event carries neither 'emitted_at' (omniclaude "
-                "hook wire contract) nor 'timestamp' (omnimarket phase-state "
-                "event); the reducer cannot order a fold without one"
+                "session phase event carries neither 'emitted_at' (every "
+                "current wire producer: the two omniclaude hook contracts and "
+                "the omnimarket phase-state event) nor 'timestamp' (accepted "
+                "but currently unused by any producer); the reducer cannot "
+                "order a fold without one"
             )
         return self
 
@@ -162,12 +185,19 @@ class ModelSessionPhaseReducerInput(BaseModel):
         return stamp
 
     def to_event(self) -> ModelSessionPhaseEvent:
-        """Project the wire payload onto the reducer's internal fold event."""
+        """Project the wire payload onto the reducer's internal fold event.
+
+        OMN-16955: ``phase`` wins when a producer supplies it explicitly;
+        otherwise ``phase_name`` (the field the actual dispatcher wire
+        contract carries) is transcribed onto it. Without this fallback the
+        dispatcher's real payload folds with ``phase=None`` and never
+        advances ``current_phase`` — the silent half of the original defect.
+        """
         return ModelSessionPhaseEvent(
             event_type=self.resolved_event_type,
             session_id=self.session_id,
             timestamp=self.resolved_timestamp,
-            phase=self.phase,
+            phase=self.phase if self.phase is not None else self.phase_name,
             phase_index=self.phase_index,
             budget_elapsed_pct=self.budget_elapsed_pct,
             active_worker_count=self.active_worker_count,
