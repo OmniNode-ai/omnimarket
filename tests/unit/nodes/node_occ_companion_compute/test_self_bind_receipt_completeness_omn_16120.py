@@ -323,9 +323,14 @@ def test_probeful_pass_two_plan_is_eligible_at_the_real_consumer(
     _materialize(plan, tmp_path)
 
     result = _eligibility(tmp_path, occ_head_sha=_OCC_HEAD)
-    assert result.reason is not EnumOccEligibilityReason.MISSING_RECEIPT, (
-        f"machine mint still needs a hand edit: {result.detail}"
+    # CodeRabbit (omnimarket#2203): asserting only "not MISSING_RECEIPT" would
+    # pass while the companion is ineligible for some OTHER reason, which is not
+    # the criterion. The full verdict holds — the plan is hash-bound and PR-bound
+    # too — so assert the criterion itself and carry the reason for diagnosis.
+    assert result.eligible is True, (
+        f"machine mint still needs a hand edit: {result.reason} — {result.detail}"
     )
+    assert result.reason is EnumOccEligibilityReason.ELIGIBLE
 
 
 def test_pass_one_mint_declares_no_self_bind_and_is_not_refused() -> None:
