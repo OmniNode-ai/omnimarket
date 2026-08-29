@@ -10,6 +10,7 @@ Topics are read from contract.yaml — never hardcoded.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -109,6 +110,11 @@ class HandlerSessionPhaseDispatcher:
         events: list[ModelSessionPhaseEvent] = []
         workers_dispatched = 0
         warnings_emitted = 0
+        published_phase = (
+            cmd.next_phase
+            if cmd.transition == "exit" and cmd.next_phase is not None
+            else cmd.phase_name
+        )
 
         # Always publish phase-state event
         events.append(
@@ -116,10 +122,14 @@ class HandlerSessionPhaseDispatcher:
                 topic=_TOPIC_PHASE_STATE,
                 event_type=_EVENT_TYPE_PHASE_STATE,
                 payload={
+                    "event_type": "session.phase.state",
                     "session_id": cmd.session_id,
-                    "phase_name": cmd.phase_name,
+                    "phase_name": published_phase,
                     "transition": cmd.transition,
+                    "next_phase": cmd.next_phase,
+                    "reason": cmd.reason,
                     "correlation_id": str(cmd.correlation_id),
+                    "timestamp": datetime.now(UTC),
                     "elapsed_seconds": cmd.elapsed_seconds,
                     "cost_usd": cmd.cost_usd,
                 },

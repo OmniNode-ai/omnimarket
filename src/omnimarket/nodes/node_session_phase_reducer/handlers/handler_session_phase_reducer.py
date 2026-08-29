@@ -105,7 +105,7 @@ class ModelSessionPhaseReducerInput(BaseModel):
       ``src/omniclaude/hooks/contracts/wire/session_ended_v1.yaml``. Required:
       the same identity/timing fields plus ``reason``.
     * ``onex.evt.omnimarket.session-phase-state.v1`` — published by
-      ``node_session_phase_dispatcher``; carries the phase fields and an explicit
+      ``node_session_phase_dispatcher``; carries ``phase_name`` and an explicit
       ``event_type``.
 
     ``extra="ignore"``: each wire schema carries transport/identity fields this
@@ -129,11 +129,37 @@ class ModelSessionPhaseReducerInput(BaseModel):
     reason: str | None = None
     phase: str | None = None
     phase_index: int | None = None
+    transition: Literal["enter", "exit", "skip", "fail", "budget_warning"] | None = None
     budget_elapsed_pct: int | None = None
     active_worker_count: int | None = None
     exit_conditions_met: tuple[str, ...] | None = None
     exit_conditions_pending: tuple[str, ...] | None = None
     last_evaluation: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_phase_name(cls, data: Any) -> Any:
+        if (
+            isinstance(data, dict)
+            and data.get("phase") is None
+            and data.get("phase_name") is not None
+        ):
+            normalized = dict(data)
+            normalized["phase"] = normalized["phase_name"]
+            return normalized
+        return data
+
+    @property
+    def resolved_last_evaluation(self) -> str | None:
+        if self.last_evaluation is not None:
+            return self.last_evaluation
+        if self.transition == "exit":
+            return "transition_required"
+        if self.transition == "budget_warning":
+            return "budget_warning"
+        if self.transition == "fail":
+            return "halt_required"
+        return None
 
     @model_validator(mode="after")
     def _require_an_event_timestamp(self) -> ModelSessionPhaseReducerInput:
@@ -190,7 +216,7 @@ class ModelSessionPhaseReducerInput(BaseModel):
             active_worker_count=self.active_worker_count,
             exit_conditions_met=self.exit_conditions_met,
             exit_conditions_pending=self.exit_conditions_pending,
-            last_evaluation=self.last_evaluation,
+            last_evaluation=self.resolved_last_evaluation,
         )
 
 
@@ -320,7 +346,11 @@ class HandlerSessionPhaseReducer:
             if event.phase != state.current_phase:
                 updates["current_phase"] = event.phase
                 updates["phase_started_at"] = event.timestamp
-                updates["phase_index"] = event.phase_index or 0
+                updates["phase_index"] = (
+                    event.phase_index
+                    if event.phase_index is not None
+                    else state.phase_index + 1
+                )
             elif event.phase_index is not None:
                 updates["phase_index"] = event.phase_index
 

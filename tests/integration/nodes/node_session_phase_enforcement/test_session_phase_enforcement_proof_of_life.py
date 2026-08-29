@@ -177,6 +177,8 @@ def test_session_phase_enforcement_proof_of_life() -> None:
                     session_id=transition_payload["session_id"],
                     phase_name=transition_payload["phase_name"],
                     transition=transition_payload["transition"],
+                    next_phase=transition_payload["next_phase"],
+                    reason=transition_payload["reason"],
                     elapsed_seconds=transition_payload["elapsed_seconds"],
                     cost_usd=transition_payload["cost_usd"],
                     budget_usd=transition_payload["budget_usd"],
@@ -196,18 +198,10 @@ def test_session_phase_enforcement_proof_of_life() -> None:
     # the runtime loaded, which is where its state of record lives.
     with state_io_dispatch(store, _SESSION_ID):
         reducer.handle(
-            ModelSessionPhaseReducerInput(
-                event_type="session.phase.state",
-                session_id=phase_state_payload["session_id"],
-                timestamp=now,
-                phase=transition_payload["next_phase"],
-                phase_index=1,
-                last_evaluation="transition_required",
-                budget_elapsed_pct=evaluation.budget_elapsed_pct,
-            )
+            ModelSessionPhaseReducerInput.model_validate(phase_state_payload)
         )
 
-    # Step 7: Read the durable row — verify phase_index=1, current_phase=phase_2.
+    # Step 7: Read the durable row — verify the real dispatcher event advanced it.
     persisted = reducer_state = store.load(_SESSION_ID)
     assert persisted is not None, "Reducer must persist a row on phase transition"
     assert persisted.phase_index == 1, (

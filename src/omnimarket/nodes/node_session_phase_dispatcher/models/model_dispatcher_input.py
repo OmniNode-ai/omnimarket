@@ -20,6 +20,8 @@ class ModelSessionPhaseTransitionCommand(BaseModel):
     session_id: str  # string-id-ok: overseer correlation string
     phase_name: str
     transition: Literal["enter", "exit", "skip", "fail"]
+    next_phase: str | None = None
+    reason: str | None = None
     phase_spec: ModelSessionPhaseSpec | None = None
     elapsed_seconds: float = Field(default=0.0, ge=0.0)
     cost_usd: float = Field(default=0.0, ge=0.0)
