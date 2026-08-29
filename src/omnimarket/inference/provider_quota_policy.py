@@ -58,6 +58,14 @@ _RESET_PATTERN = re.compile(
     r"reset\s+at\s+(\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2})", re.IGNORECASE
 )
 
+# Gemini states a relative delay instead: "Please retry in 27.024259969s."
+# (OMN-16932). Same information, different shape, so it needs its own
+# contract-selectable ``reset_from`` mode rather than being crammed into the
+# absolute-instant parser above.
+_RETRY_DELAY_PATTERN = re.compile(
+    r"retry\s+in\s+(\d+(?:\.\d+)?)\s*s(?:econds?)?\b", re.IGNORECASE
+)
+
 
 class ModelQuotaVerdict(BaseModel):
     """The decision for one quota response."""
@@ -209,6 +217,26 @@ def _with_hint(rule: ModelQuotaCodeRule, reason: str) -> str:
     return f"{reason} {rule.alert_hint.strip()}"
 
 
+def _parse_retry_delay(message: str, *, reference: datetime) -> datetime | None:
+    """Parse a provider-stated relative retry delay into an absolute instant.
+
+    Gemini reports "Please retry in 27.024259969s." rather than a wall-clock
+    reset. Reading it against ``reference`` (the moment the 429 was observed)
+    keeps the resulting instant comparable with the absolute-stamp path, so both
+    ``reset_from`` modes produce the same downstream shape.
+    """
+    match = _RETRY_DELAY_PATTERN.search(message)
+    if not match:
+        return None
+    try:
+        seconds = float(match.group(1))
+    except ValueError:  # pragma: no cover - regex already constrains the shape
+        return None
+    if seconds < 0:
+        return None
+    return reference + timedelta(seconds=seconds)
+
+
 def classify_quota_response(
     *,
     status_code: int,
@@ -273,6 +301,10 @@ def classify_quota_response(
         disabled_until = None
         if rule.reset_from == "message_reset_timestamp":
             disabled_until = _parse_reset_instant(_extract_error_message(body))
+        elif rule.reset_from == "message_retry_delay":
+            disabled_until = _parse_retry_delay(
+                _extract_error_message(body), reference=reference
+            )
         if disabled_until is None:
             # Fail CLOSED: a cap we cannot time is still a cap.
             disabled_until = reference + timedelta(

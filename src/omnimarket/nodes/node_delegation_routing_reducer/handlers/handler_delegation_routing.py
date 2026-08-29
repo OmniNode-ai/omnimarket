@@ -45,6 +45,7 @@ from __future__ import annotations
 import importlib
 import logging
 import os
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -65,6 +66,7 @@ from omnimarket.inference.delegation_config_provenance import (
     resolve_optional_path_config,
     resolve_path_config,
 )
+from omnimarket.inference.provider_quota_state import quota_domain_disabled
 from omnimarket.inference.secret_store_resolver import api_key_ref_available
 from omnimarket.models.delegation.wire.model_token_limits import (
     DELEGATION_MAX_TOKENS_HARD_LIMIT,
@@ -249,6 +251,35 @@ def _backend_secret_available(backend: BifrostBackendRef) -> bool:
     )
 
 
+def _backend_routable(
+    backend: BifrostBackendRef, *, now: datetime | None = None
+) -> bool:
+    """Return whether a backend may be selected RIGHT NOW.
+
+    Eligibility used to mean "endpoint resolves and its secret resolves". Both
+    are static properties of the contract, so a backend whose provider had
+    returned a non-retryable 429 minutes earlier still passed and stayed a
+    first-class escalation target forever (OMN-16932).
+
+    That is what made escalate-into-a-corpse the default on the dev lane. Within
+    a single workflow OMN-15503's ``transport_failed_backend_refs`` already
+    excludes a backend after it fails, but every NEW delegation starts with an
+    empty exclusion set, so each one re-spent a metered call to relearn the same
+    exhausted Gemini quota. Provider health is the third eligibility term, and
+    it has to outlive the workflow.
+
+    The quota check reads the ledger the contract-declared quota classifier
+    writes (``provider_quota_state``), keyed by provider quota DOMAIN, so the
+    judge leg's 429 correctly bars every backend sharing that counter. Entries
+    lift themselves at the provider's stated reset, so this can only ever
+    withhold a rung the provider itself declared unusable, and only for as long
+    as the provider said.
+    """
+    if not _backend_secret_available(backend):
+        return False
+    return quota_domain_disabled(backend.endpoint_url, now=now) is None
+
+
 def _select_model_for_task(
     tier_models: tuple[ModelTierModel, ...],
     task_type: str,
@@ -338,7 +369,7 @@ def _select_model_for_task(
             if model.id == contract_model_ref
             and model.backend_ref not in exclude_backend_refs
             and (backend := bifrost_backends.get(model.backend_ref)) is not None
-            and _backend_secret_available(backend)
+            and _backend_routable(backend)
             and estimated_tokens <= model.max_context_tokens
         ]
         for model in id_matches:
@@ -361,7 +392,7 @@ def _select_model_for_task(
             and model.fast_path_threshold_tokens is not None
             and estimated_tokens <= model.fast_path_threshold_tokens
             and backend
-            and _backend_secret_available(backend)
+            and _backend_routable(backend)
         ):
             return model
 
@@ -372,7 +403,7 @@ def _select_model_for_task(
         if (
             task_type in model.use_for
             and backend
-            and _backend_secret_available(backend)
+            and _backend_routable(backend)
             and estimated_tokens <= model.max_context_tokens
         ):
             return model
@@ -1675,7 +1706,7 @@ def delta(
                         and estimated_tokens <= model.max_context_tokens
                         and (pinned_backend := bifrost_backends.get(model.backend_ref))
                         is not None
-                        and _backend_secret_available(pinned_backend)
+                        and _backend_routable(pinned_backend)
                     ),
                     None,
                 )

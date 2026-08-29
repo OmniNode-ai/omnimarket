@@ -327,6 +327,29 @@ def _default_paid_escalation_for_tests(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ONEX_DELEGATION_ALLOW_PAID", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_provider_quota_state() -> Generator[None, None, None]:
+    """OMN-16932: the provider-quota ledger is process-global — isolate it per test.
+
+    ``provider_quota_state`` is deliberately process-local in-memory state: the
+    judge effect and the routing authority run in the same runtime process, and a
+    cap the provider will re-assert on the next call does not need durability. In
+    a test process that same property makes it CROSS-TEST state — the production
+    429 path writes into it (``HandlerLlmDelegationCall``, the judge adapter), so
+    a test that drives a real non-retryable 429 would leave a backend unroutable
+    for every test that followed it in the same xdist worker, and the resulting
+    failure would surface somewhere unrelated to its cause.
+
+    Clearing around every test makes that isolation structural instead of relying
+    on each new quota test remembering to add its own fixture.
+    """
+    from omnimarket.inference.provider_quota_state import clear_provider_quota_state
+
+    clear_provider_quota_state()
+    yield
+    clear_provider_quota_state()
+
+
 _LEGACY_ARM_BEHAVIOR_TESTS = frozenset(
     {
         "tests/integration/test_merge_sweep_triage_orchestrator_route_coverage.py",

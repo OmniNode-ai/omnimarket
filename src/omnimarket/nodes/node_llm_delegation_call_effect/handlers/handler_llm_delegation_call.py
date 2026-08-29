@@ -41,6 +41,7 @@ from omnimarket.inference.provider_quota_policy import (
     ModelQuotaVerdict,
     classify_quota_response,
 )
+from omnimarket.inference.provider_quota_state import record_quota_verdict
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
@@ -500,6 +501,16 @@ class HandlerLlmDelegationCall:
             # usable instead of just "429".
             if exc.response.status_code == 429:
                 verdict = self._classify_quota(exc, endpoint_url)
+                if verdict is not None:
+                    # OMN-16932: OMN-16891 computed this verdict and then dropped
+                    # it into a log line — `disable_until_reset` disabled nothing,
+                    # so the ladder kept escalating into an exhausted provider on
+                    # every subsequent delegation. Recording it makes the verdict
+                    # load-bearing: routing eligibility reads the same ledger, so
+                    # a capped provider stops being a selectable escalation target
+                    # until its stated reset. A `retryable` verdict records
+                    # nothing (see `record_quota_verdict`).
+                    record_quota_verdict(endpoint_url=endpoint_url, verdict=verdict)
                 if verdict is not None and not verdict.retryable:
                     error_message = f"{error_message} | quota: {verdict.reason}"
                     if verdict.alert:

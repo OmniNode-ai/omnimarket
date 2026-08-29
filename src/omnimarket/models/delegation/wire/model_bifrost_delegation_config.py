@@ -275,7 +275,12 @@ class ModelQuotaCodeRule(BaseModel):
     disposition: EnumQuotaDisposition = Field(...)
     reset_from: str | None = Field(
         default=None,
-        description="How to source the reset instant ('message_reset_timestamp').",
+        description=(
+            "How to source the reset instant. 'message_reset_timestamp' reads an "
+            "absolute stamp the provider states inline (z.ai); "
+            "'message_retry_delay' reads a relative 'retry in <N>s' delay "
+            "(Gemini, OMN-16932). Anything else falls back to the cooldown."
+        ),
     )
     fallback_cooldown_seconds: int = Field(
         default=0,

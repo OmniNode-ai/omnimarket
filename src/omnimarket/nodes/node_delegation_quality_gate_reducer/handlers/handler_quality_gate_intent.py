@@ -185,13 +185,24 @@ class HandlerQualityGateIntent:
             judge_verdict=judge_verdict_value,
             response_contract=response_contract,
         )
+        # OMN-16932 (the ticket's AC2): the decision line must say WHY the judge
+        # band is missing. ``judge_score=None`` alone is ambiguous — it covers
+        # "this class does not use a judge", "the judge ran and could not be
+        # parsed", and "the judge's provider is quota-dead", which need opposite
+        # responses. Naming the failure kind makes an escalation past a
+        # SUCCESSFUL local rung legible from this one line instead of having to
+        # be inferred from provider HTTP calls in a different container.
+        judge_status = "not_applicable"
+        if judge_verdict is not None:
+            judge_status = judge_verdict.failure_kind or judge_verdict.verdict.value
         logger.info(
             "HandlerQualityGateIntent resolved: passed=%s score=%.3f "
-            "score_source=%s judge_score=%s correlation_id=%s",
+            "score_source=%s judge_score=%s judge_status=%s correlation_id=%s",
             result.passed,
             result.quality_score,
             result.score_source or "deterministic_graded_score",
             judge_score,
+            judge_status,
             result.correlation_id,
         )
 

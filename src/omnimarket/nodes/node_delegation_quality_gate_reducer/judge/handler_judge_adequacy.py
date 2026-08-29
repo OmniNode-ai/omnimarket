@@ -224,6 +224,22 @@ class HandlerJudgeAdequacy:
         except Exception:  # pragma: no cover - provenance only; never blocks scoring
             return self._judge_model_key
 
+    def _provider_quota_disabled(self) -> bool:
+        """Return whether the bound bridge's provider is a spent quota domain.
+
+        Delegated to the bridge because only the bridge knows which concrete
+        endpoint it will call. An injected replay/test bridge that does not
+        expose ``quota_disabled`` is never skipped — replay must reproduce the
+        recorded call, and a fake has no quota to exhaust.
+        """
+        probe = getattr(self._bridge, "quota_disabled", None)
+        if not callable(probe):
+            return False
+        try:
+            return bool(probe())
+        except Exception:  # pragma: no cover - never block scoring on the probe
+            return False
+
     async def score(
         self,
         *,
@@ -249,6 +265,49 @@ class HandlerJudgeAdequacy:
         # Resolve the CONCRETE model id provenance from the routing authority
         # (e.g. ``glm-5.2``) — never a tier name. Recorded on the verdict event.
         self._judge_model_key = self._resolve_judge_model_key()
+
+        # OMN-16932: do not spend a metered call on a provider that has already
+        # told us its quota is gone. The judge rides ``cloud-glm-judge``, which
+        # OMN-14625 repointed onto Gemini, so it shares the free-tier counter
+        # (limit 20) with the escalation rung. Before this check the judge kept
+        # calling after the cap was spent — 12 guaranteed-429 calls in one 8h
+        # window on the dev lane — and each failure produced ``judge_score=None``,
+        # which is precisely what pushed the deterministic score alone below the
+        # bar and escalated into the same dead provider. The skip is bounded by
+        # the provider's own stated reset, so the judge resumes on its own.
+        if self._provider_quota_disabled():
+            logger.info(
+                "judge-adequacy SKIPPED: provider quota exhausted "
+                "(task_type=%s, cid=%s, model=%s) — no metered call issued; the "
+                "gate proceeds on the deterministic acceptance floor",
+                task_type,
+                correlation_id,
+                self._judge_model_key,
+            )
+            return build_delegation_judge_verdict_event(
+                correlation_id=correlation_id,
+                task_type=task_type,
+                judge_model=self._judge_model_key,
+                judge_model_version=judge_model_version,
+                judge_provider=judge_provider,
+                rubric_id=self._rubric_id,
+                rubric_hash=rubric_hash,
+                prompt=user_prompt,
+                judged_input=candidate_output,
+                temperature=temperature,
+                judge_node_version=judge_node_version,
+                reasoning=(
+                    "judge provider quota exhausted; call skipped rather than "
+                    "issuing a request that cannot succeed"
+                ),
+                verdict=EnumDelegationJudgeVerdict.JUDGE_FAILED,
+                actual_score=None,
+                failure_kind="JUDGE_PROVIDER_QUOTA_EXHAUSTED",
+                failure_message=(
+                    "judge backend's provider quota domain is disabled; the "
+                    "deterministic acceptance floor governs this gate decision"
+                ),
+            )
 
         try:
             raw = await self._bridge.infer(
