@@ -786,6 +786,12 @@ class NodeComplianceSweep:
             transport_type = metadata.get("transport_type")
             if transport_type:
                 declared.add(str(transport_type).upper())
+        endpoints = data.get("endpoints")
+        if isinstance(endpoints, dict) and endpoints:
+            declared.add("HTTP")
+        db_io = data.get("db_io")
+        if isinstance(db_io, dict) and db_io.get("db_tables"):
+            declared.add("DATABASE")
         return declared
 
     def _check_transport_imports(

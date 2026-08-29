@@ -108,6 +108,66 @@ class TestComplianceSweepGoldenChain:
         assert result.status == "compliant"
         assert result.by_type.get("UNDECLARED_TRANSPORT", 0) == 0
 
+    async def test_http_transport_import_not_flagged_when_contract_declares_endpoint(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A handler may import an HTTP client when the sibling contract
+        declares the endpoint it calls."""
+        handler = NodeComplianceSweep()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node_dir = Path(tmpdir) / "src" / "nodes" / "node_test_http_effect"
+            handlers_dir = node_dir / "handlers"
+            handlers_dir.mkdir(parents=True)
+            (handlers_dir / "handler_http.py").write_text("import aiohttp\n\nx = 1\n")
+            (node_dir / "contract.yaml").write_text(
+                "endpoints:\n"
+                "  slack_chat_post_message:\n"
+                "    url: https://slack.com/api/chat.postMessage\n"
+                "    method: POST\n"
+                "metadata:\n"
+                "  transport_type: kafka\n"
+            )
+
+            request = ComplianceSweepRequest(
+                target_dirs=[tmpdir], checks=["undeclared-transport"]
+            )
+            result = handler.handle(request)
+
+        assert result.status == "compliant"
+        assert result.by_type.get("UNDECLARED_TRANSPORT", 0) == 0
+
+    async def test_database_transport_import_not_flagged_when_contract_declares_db_io(
+        self, event_bus: EventBusInmemory
+    ) -> None:
+        """A handler may import a DB client when the sibling contract declares
+        governed database access."""
+        handler = NodeComplianceSweep()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            node_dir = Path(tmpdir) / "src" / "nodes" / "node_test_db_effect"
+            handlers_dir = node_dir / "handlers"
+            handlers_dir.mkdir(parents=True)
+            (handlers_dir / "handler_db.py").write_text("import psycopg2\n\nx = 1\n")
+            (node_dir / "contract.yaml").write_text(
+                "db_io:\n"
+                "  db_tables:\n"
+                "    - name: consumer_flow_windows\n"
+                "      database_ref: application\n"
+                "      schema: omninode_internal\n"
+                "      access: read\n"
+                "metadata:\n"
+                "  transport_type: kafka\n"
+            )
+
+            request = ComplianceSweepRequest(
+                target_dirs=[tmpdir], checks=["undeclared-transport"]
+            )
+            result = handler.handle(request)
+
+        assert result.status == "compliant"
+        assert result.by_type.get("UNDECLARED_TRANSPORT", 0) == 0
+
     async def test_selective_checks(self, event_bus: EventBusInmemory) -> None:
         """Only specified checks should run."""
         handler = NodeComplianceSweep()
