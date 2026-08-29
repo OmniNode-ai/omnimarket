@@ -49,7 +49,14 @@ dependencies = [
     # dispatch (OCC autobind write-EFFECT). omnibase_infra pins core==0.46.13
     # exactly; the floor here is raised to that same proven version so the
     # combination cannot be resolved again.
-    "omnibase-core>=0.46.13,<0.47.0",
+    # OMN-16950: cap widened 0.46.13-<0.47.0 -> 0.47.0-<0.48.0. v0.47.0's
+    # ModelEventEnvelope extra="forbid" tightening (core#1611, OMN-16927) is
+    # fixed at cause -- this repo's own ModelEventEnvelope(...) call sites all
+    # already use the long-declared source_tool= field, zero source= /
+    # source_version= survivors found by AST + grep audit. The other 0.47.0
+    # breaking change (ModelWidgetConfigStatusGrid.status_colors removal) has
+    # no call sites in this repo either.
+    "omnibase-core>=0.47.0,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -602,7 +609,9 @@ override-dependencies = [
     # uv actually resolves for transitive consumers (e.g. omninode-memory's
     # stale hard-pins), so leaving it at 0.46.8 would still floor-resolve
     # uv.lock to the pre-run_id release even after the direct pin was raised.
-    "omnibase-core>=0.46.13,<0.47.0",
+    # OMN-16950: widened to >=0.47.0,<0.48.0 in lockstep with the
+    # dependencies-list pin above.
+    "omnibase-core>=0.47.0,<0.48.0",
     "omnibase-spi>=0.23.0,<0.24.0",
     "omnibase-infra>=0.38.3,<0.39.0",
     "omnibase-compat==0.5.6",
