@@ -3,7 +3,20 @@ name: consumer_flow_stall_alert_effect
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: effect
 node_version: {major: 1, minor: 0, patch: 0}
-input_model: omnimarket.nodes.node_consumer_flow_stall_alert_effect.models.model_stall_alert_request.ModelConsumerFlowStallAlertRequest
+# OMN-16778 redesign, operator-approved 2026-08-28 ("Approve redesign").
+#
+# The declared input is the MINIMAL TRIGGER the platform actually produces --
+# the consumer-flow projection's applied-event batch ack. It was previously
+# ModelConsumerFlowStallAlertRequest, a fully-assembled evaluation (consumer,
+# topic, window history, policy) that NO caller produces and none could: the
+# only publisher of the subscribed topic is the runtime's generic projection
+# emitter. Live on the .201 dev lane, that mismatch read as
+# "ValidationError: 8 validation errors for ModelConsumerFlowStallAlertRequest"
+# on every message -- 94 in two minutes, all DLQ-routed.
+#
+# Assembly now happens INSIDE the node: policy from `alert_policy` below,
+# window history read by the node itself from `windows_source` below.
+input_model: omnimarket.nodes.node_consumer_flow_stall_alert_effect.models.model_stall_alert_trigger.ModelConsumerFlowStallAlertTrigger
 description: >
   OMN-16778 (Phase 1 of epic OMN-16776). Reads the consumer-flow projection
   (OMN-16777) and fires a Slack alert when one (consumer_group, topic) holds
@@ -38,12 +51,53 @@ handler_routing:
 terminal_event: onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1
 
 golden_path:
-  - "node_projection_consumer_flow materializes consumer_flow_windows and publishes onex.evt.omnimarket.projection-consumer-flow-applied.v1"
-  - "This node reads the trailing window history for the affected (consumer_group, topic)"
-  - "The pure handler classifies the trailing run against the contract-declared alert_policy"
+  - "node_projection_consumer_flow materializes consumer_flow_windows and publishes onex.evt.omnimarket.projection-consumer-flow-applied.v1 carrying {rows_upserted, flow_rows[], projected}"
+  - "This node reads the trigger's distinct (consumer_group, topic) keys -- it needs nothing else from the caller"
+  - "For each key the node reads its own trailing window history from windows_source.relation, under windows_source.binding_ref"
+  - "decide_stall_alert classifies the trailing run against the contract-declared alert_policy -- a pure function of (history, policy)"
   - "A confirmed FAIL publishes onex.cmd.omnimarket.slack-publish.v1 carrying consumer_group, topic, in/out/dlq counts and the consecutive-window count"
   - "node_slack_publish_effect posts it via https://slack.com/api/chat.postMessage and its idempotency ledger collapses a repeat inside the renotify window"
-  - "Emit the evaluation outcome to onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1"
+  - "Emit one batch evaluation -- every decision plus every delivery record, including the ones that failed -- to onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1"
+
+# ---------------------------------------------------------------------------
+# WHERE THE NODE READS ITS OWN WINDOW HISTORY (OMN-16778 redesign).
+#
+# Declared here rather than spelled in Python for the same reason the
+# thresholds are: a read target chosen by code convention is a read target
+# nobody declared. OMN-16911 is the fresh precedent -- the sibling projection
+# writer inherited an omnimarket settings default preferring
+# OMNIDASH_ANALYTICS_DB_URL (role_omnidash, no USAGE on omninode_internal) for
+# tables it declares in that schema, and every statement was denied on the .201
+# dev lane while the DLQ climbed ~6/min.
+#
+# history_windows must be >= max(confirm_windows, clear_windows) or the node
+# cannot see far enough back to reach a clear verdict; asserted by
+# tests/test_omn16778_stall_alert_windows_source.py.
+# ---------------------------------------------------------------------------
+windows_source:
+  relation: omninode_internal.consumer_flow_windows
+  binding_ref: omninode_runtime_service
+  dsn_env: OMNINODE_INTERNAL_DB_URL
+  history_windows: 16
+  max_keys_per_trigger: 512
+
+# ---------------------------------------------------------------------------
+# GOVERNED DB ACCESS.
+#
+# This node READS the projection OMN-16777 writes; it never writes it. The
+# declaration is what binds the read to a topology principal that provably
+# holds USAGE on the schema. Note the runtime keeps this node on the TYPED
+# def-B dispatch arm because its handler declares a concrete BaseModel input
+# (OMN-16767): db_io here declares governed access, not a dispatch shape.
+# ---------------------------------------------------------------------------
+db_io:
+  db_tables:
+    - name: consumer_flow_windows
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_consumer_flow_windows.sql"
+      access: read
+      role: consumer_flow
 
 # ---------------------------------------------------------------------------
 # THRESHOLDS ARE CONTRACT DATA (OMN-16778 AC2).
@@ -75,6 +129,28 @@ alert_policy:
   alerting_states:
     - STALLED
     - STARVED
+  # An out-count of zero is NOT on its own evidence of a dead leg. Two whole
+  # classes of healthy node publish nothing: a projection writes rows to
+  # Postgres, and a compute delivers its intent IN-PROCESS through
+  # IntentEffectDispatchBridge -- which is why
+  # node_gateway_link_health_projection_compute sits at Kafka high-watermark 0
+  # while fully alive (premise falsified live, 2026-08-29).
+  #
+  # A STALLED window therefore only counts toward an alerting run when the same
+  # window also carries a dead-letter or a handler error. Measured on the .201
+  # dev lane at 2026-08-29T02:40Z the split is total: every real failure had
+  # messages_dlq == messages_in AND handler_errors == messages_in (this node's
+  # own 8-error validation bug, pattern_b_broker,
+  # node_pr_lifecycle_state_reducer), while every healthy non-publishing leg had
+  # dlq=0 errors=0 (projection_consumer_flow, projection_registration,
+  # node_registration_orchestrator, projection_live_events). Without this rule
+  # the first live dispatch posts nine alerts, most of them wrong -- the AC3
+  # storm that gets a channel muted inside a day.
+  #
+  # STARVED is deliberately absent: in == 0 while upstream is producing means
+  # the consumer is not taking messages at all, which needs no second witness.
+  require_failure_evidence_for:
+    - STALLED
   # UNKNOWN is NOT in alerting_states and must never be: a missed heartbeat is
   # the absence of an observation, not evidence of a stall (OMN-16777 AC5).
   # It surfaces as its own degraded outcome instead.
@@ -109,6 +185,22 @@ externally_consumed_topics:
   - onex.evt.omnimarket.consumer-flow-stall-alert-evaluated.v1
 
 dod_evidence:
+  - test: tests/test_omn16778_stall_alert_self_assembly.py::test_the_applied_event_payload_validates_as_the_declared_input_model
+    description: "AC1 RED->GREEN — the payload the projection actually publishes reaches the handler instead of raising 8 validation errors"
+  - test: tests/test_omn16778_stall_alert_self_assembly.py::test_the_node_self_assembles_policy_and_windows_source_from_its_own_contract
+    description: "AC1/AC2 — no caller supplies policy or window history; the node reads both from its own contract"
+  - test: tests/test_omn16778_stall_alert_self_assembly.py::test_a_confirmed_stall_publishes_the_slack_command_on_the_declared_topic
+    description: "AC1/AC4 — a confirmed stall reaches onex.cmd.omnimarket.slack-publish.v1 with the counters named"
+  - test: tests/test_omn16778_stall_alert_self_assembly.py::test_an_in_process_leg_with_an_empty_out_topic_does_not_alert
+    description: "AC3 — an out-topic high-watermark of 0 is not a stall; the verdict comes from the projection window"
+  - test: tests/test_omn16778_stall_alert_decision.py::test_a_stalled_window_without_failure_evidence_is_not_a_stall
+    description: "AC3 — a STALLED window with no dead-letter and no handler error is a healthy non-publishing leg, not a stall"
+  - test: tests/test_omn16778_stall_alert_decision.py::test_the_same_history_alerts_once_the_dead_letters_appear
+    description: "AC1 — the corroboration rule suppresses the noise without suppressing the signal"
+  - test: tests/test_omn16778_stall_alert_self_assembly.py::test_the_node_never_reads_a_broker_watermark
+    description: "AC3 — mechanically asserts no broker/offset read exists anywhere in this node"
+  - test: tests/test_omn16778_stall_alert_windows_source.py::test_history_windows_covers_the_largest_declared_threshold
+    description: "AC2 — the declared read depth can actually satisfy the declared hysteresis"
   - test: tests/test_omn16778_stall_alert_decision.py::test_confirmed_stall_run_fires_a_fail_alert
     description: "AC1 — a STALLED run at or past confirm_windows publishes an alert naming the consumer"
   - test: tests/test_omn16778_stall_alert_decision.py::test_idle_consumer_on_a_quiet_topic_never_alerts

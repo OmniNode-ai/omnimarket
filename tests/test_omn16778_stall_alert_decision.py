@@ -19,8 +19,8 @@ import pytest
 
 from omnimarket.models.enum_consumer_flow_state import EnumConsumerFlowState
 from omnimarket.nodes.node_consumer_flow_stall_alert_effect.handlers import (
-    HandlerConsumerFlowStallAlert,
     build_slack_command,
+    decide_stall_alert,
 )
 from omnimarket.nodes.node_consumer_flow_stall_alert_effect.models import (
     EnumStallAlertOutcome,
@@ -59,6 +59,19 @@ def _window(
     messages_dlq: int | None = None,
     handler_errors: int | None = None,
 ) -> ModelFlowWindowObservation:
+    """One window. A STALLED window defaults to carrying failure evidence.
+
+    OMN-16778: the contract lists STALLED under ``require_failure_evidence_for``
+    because an out-count of zero is the normal shape of a healthy projection or
+    of a compute that delivers its intent in-process. A STALLED window with no
+    dead-letter and no handler error is therefore NOT admissible evidence, and
+    these fixtures state the failure they are describing rather than relying on
+    a bare state name. ``test_a_stalled_window_without_failure_evidence_is_not_a_stall``
+    pins the other half.
+    """
+    if state is EnumConsumerFlowState.STALLED and messages_dlq is None:
+        messages_dlq = messages_in
+        handler_errors = messages_in if handler_errors is None else handler_errors
     start = _EPOCH + index * _WINDOW
     return ModelFlowWindowObservation(
         window_start=start,
@@ -99,7 +112,7 @@ def test_confirmed_stall_run_fires_a_fail_alert(policy: ModelStallAlertPolicy) -
         _window(i, EnumConsumerFlowState.STALLED, messages_in=15750, messages_out=0)
         for i in range(policy.confirm_windows)
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
 
     assert decision.outcome is EnumStallAlertOutcome.FAIL_CONFIRMED_STALL
     assert decision.severity is EnumStallAlertSeverity.FAIL
@@ -118,7 +131,7 @@ def test_starved_run_also_fires(policy: ModelStallAlertPolicy) -> None:
         _window(i, EnumConsumerFlowState.STARVED, messages_in=0, messages_out=0)
         for i in range(policy.confirm_windows)
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.FAIL_CONFIRMED_STALL
     assert decision.alert is not None
     assert decision.alert.flow_state is EnumConsumerFlowState.STARVED
@@ -138,7 +151,7 @@ def test_a_single_stalled_window_does_not_fire(
         _window(0, EnumConsumerFlowState.FLOWING, messages_in=10, messages_out=10),
         _window(1, EnumConsumerFlowState.STALLED, messages_in=10, messages_out=0),
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.PENDING_CONFIRMATION
     assert decision.should_publish is False
     assert decision.alert is None
@@ -157,7 +170,7 @@ def test_idle_consumer_on_a_quiet_topic_never_alerts(
         _window(i, EnumConsumerFlowState.IDLE, messages_in=0, messages_out=0)
         for i in range(policy.clear_windows + policy.confirm_windows)
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
     assert decision.severity is EnumStallAlertSeverity.NONE
     assert decision.should_publish is False
@@ -170,7 +183,7 @@ def test_flowing_consumer_never_alerts(policy: ModelStallAlertPolicy) -> None:
         _window(i, EnumConsumerFlowState.FLOWING, messages_in=7, messages_out=7)
         for i in range(policy.clear_windows + policy.confirm_windows)
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
     assert decision.should_publish is False
 
@@ -188,7 +201,7 @@ def test_unknown_window_warns_and_does_not_fire_a_stall_alert(
         _window(0, EnumConsumerFlowState.FLOWING, messages_in=3, messages_out=3),
         _window(1, EnumConsumerFlowState.UNKNOWN),
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
 
     assert decision.outcome is EnumStallAlertOutcome.WARN_MISSED_WINDOW
     assert decision.severity is EnumStallAlertSeverity.WARN
@@ -214,7 +227,7 @@ def test_an_unknown_window_breaks_a_stall_run_instead_of_extending_it(
         _window(0, EnumConsumerFlowState.STALLED, messages_in=5, messages_out=0),
         _window(1, EnumConsumerFlowState.UNKNOWN),
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.WARN_MISSED_WINDOW
     assert decision.consecutive_alerting_windows == 0
 
@@ -236,8 +249,22 @@ def test_recently_recovered_consumer_is_recovering_not_cleared(
             messages_out=9,
         ),
     )
-    decision = HandlerConsumerFlowStallAlert().handle(_request(windows, policy))
+    decision = decide_stall_alert(_request(windows, policy))
     assert decision.outcome is EnumStallAlertOutcome.RECOVERING
+    assert decision.should_publish is False
+
+
+@pytest.mark.unit
+def test_pending_stall_that_flows_is_not_reported_as_recovering(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """A stall that never confirmed does not enter the recovery branch."""
+    windows = (
+        _window(0, EnumConsumerFlowState.STALLED, messages_in=9, messages_out=0),
+        _window(1, EnumConsumerFlowState.FLOWING, messages_in=9, messages_out=9),
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
     assert decision.should_publish is False
 
 
@@ -258,7 +285,7 @@ def test_alert_payload_names_consumer_topic_counts_and_run_length(
         for i in range(policy.confirm_windows)
     )
     request = _request(windows, policy)
-    decision = HandlerConsumerFlowStallAlert().handle(request)
+    decision = decide_stall_alert(request)
     assert decision.alert is not None
     assert decision.idempotency_key is not None
 
@@ -298,9 +325,8 @@ def test_a_standing_stall_reuses_one_idempotency_key_inside_the_renotify_window(
         _window(i, EnumConsumerFlowState.STALLED, messages_in=1, messages_out=0)
         for i in range(policy.confirm_windows + 3)
     )
-    handler = HandlerConsumerFlowStallAlert()
-    key_first = handler.handle(_request(first, policy)).idempotency_key
-    key_later = handler.handle(_request(later, policy)).idempotency_key
+    key_first = decide_stall_alert(_request(first, policy)).idempotency_key
+    key_later = decide_stall_alert(_request(later, policy)).idempotency_key
     assert key_first == key_later
 
 
@@ -313,8 +339,7 @@ def test_two_legs_of_one_bridge_are_evaluated_independently(
     A single averaged verdict across two legs is what hid the forwarder's dead
     inbound leg behind its healthy outbound one.
     """
-    handler = HandlerConsumerFlowStallAlert()
-    inbound = handler.handle(
+    inbound = decide_stall_alert(
         _request(
             tuple(
                 _window(i, EnumConsumerFlowState.STARVED, messages_in=0, messages_out=0)
@@ -325,7 +350,7 @@ def test_two_legs_of_one_bridge_are_evaluated_independently(
             topic="onex.cmd.gateway.inbound.v1",
         )
     )
-    outbound = handler.handle(
+    outbound = decide_stall_alert(
         _request(
             tuple(
                 _window(
@@ -343,3 +368,117 @@ def test_two_legs_of_one_bridge_are_evaluated_independently(
     )
     assert inbound.outcome is EnumStallAlertOutcome.FAIL_CONFIRMED_STALL
     assert outbound.outcome is EnumStallAlertOutcome.NO_ALERT
+
+
+@pytest.mark.unit
+def test_a_stalled_window_without_failure_evidence_is_not_a_stall(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """AC3 — an out-count of zero is not, on its own, evidence of a dead leg.
+
+    Two whole classes of healthy node publish nothing at all: a projection
+    writes rows to Postgres, and a compute delivers its intent IN-PROCESS
+    through ``IntentEffectDispatchBridge``, which is why
+    ``node_gateway_link_health_projection_compute`` sits at Kafka
+    high-watermark 0 while fully alive (premise falsified live, 2026-08-29).
+
+    Measured on the .201 dev lane at 2026-08-29T02:40Z, this rule separates the
+    two populations completely — every genuine failure carried
+    ``messages_dlq == messages_in``; every healthy non-publishing leg carried
+    ``dlq=0 errors=0``. Without it the first live dispatch posts nine alerts,
+    most of them wrong.
+    """
+    windows = tuple(
+        _window(
+            index,
+            EnumConsumerFlowState.STALLED,
+            messages_in=3,
+            messages_out=0,
+            messages_dlq=0,
+            handler_errors=0,
+        )
+        for index in range(policy.confirm_windows + policy.clear_windows)
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.NO_ALERT
+    assert decision.should_publish is False
+    assert decision.alert is None
+
+
+@pytest.mark.unit
+def test_the_same_history_alerts_once_the_dead_letters_appear(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """The corroboration rule suppresses noise, it does not suppress the signal.
+
+    Byte-identical history to the test above except that the windows carry the
+    dead-letters a genuinely failing consumer produces — the shape this very
+    node was in on the dev lane while its own dispatches were failing
+    validation (``messages_dlq == messages_in``, 100% DLQ).
+    """
+    windows = tuple(
+        _window(
+            index,
+            EnumConsumerFlowState.STALLED,
+            messages_in=13,
+            messages_out=0,
+            messages_dlq=13,
+            handler_errors=13,
+        )
+        for index in range(policy.confirm_windows)
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.FAIL_CONFIRMED_STALL
+    assert decision.alert is not None
+    assert decision.alert.messages_dlq == 13
+
+
+@pytest.mark.unit
+def test_starved_needs_no_second_witness(policy: ModelStallAlertPolicy) -> None:
+    """STARVED is deliberately not corroboration-gated.
+
+    ``in == 0`` while upstream is producing means the consumer is not taking
+    messages at all. There is no healthy reading of that, so requiring a
+    dead-letter it could not possibly produce would silence the one state that
+    already proves itself.
+    """
+    assert EnumConsumerFlowState.STARVED not in policy.require_failure_evidence_for
+    windows = tuple(
+        _window(
+            index,
+            EnumConsumerFlowState.STARVED,
+            messages_in=0,
+            messages_out=0,
+            messages_dlq=0,
+            handler_errors=0,
+        )
+        for index in range(policy.confirm_windows)
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.FAIL_CONFIRMED_STALL
+
+
+@pytest.mark.unit
+def test_an_unobserved_counter_is_never_read_as_failure_evidence(
+    policy: ModelStallAlertPolicy,
+) -> None:
+    """``None`` is the absence of an observation, not a dead-letter.
+
+    Treating an unobserved counter as corroboration would let a runtime that
+    stopped reporting manufacture a confirmed alert out of nothing — the same
+    error, one layer down, that OMN-16777 AC5 closes for the window itself.
+    """
+    windows = tuple(
+        ModelFlowWindowObservation(
+            window_start=_EPOCH + index * _WINDOW,
+            window_end=_EPOCH + (index + 1) * _WINDOW,
+            flow_state=EnumConsumerFlowState.STALLED,
+            messages_in=5,
+            messages_out=0,
+            messages_dlq=None,
+            handler_errors=None,
+        )
+        for index in range(policy.confirm_windows)
+    )
+    decision = decide_stall_alert(_request(windows, policy))
+    assert decision.outcome is EnumStallAlertOutcome.NO_ALERT

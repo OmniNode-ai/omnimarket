@@ -205,3 +205,37 @@ class PostgresReadDatabaseAdapter:
 
 
 __all__ = ["PostgresReadDatabaseAdapter"]
+
+
+def connect_read_only(
+    dsn: str, *, connect_timeout: int = _CONNECT_TIMEOUT_SECONDS
+) -> psycopg2.extensions.connection:
+    """Open one read-only, autocommit psycopg2 connection for a projection read.
+
+    OMN-16778. Callers that read a projection table which carries no RLS policy
+    need the session posture :class:`PostgresReadDatabaseAdapter` already
+    establishes -- read-only, autocommit, bounded connect timeout -- without its
+    tenant-GUC seam, which is meaningless on a platform-internal relation with no
+    ``tenant_id`` column and would raise ``TenantContextMissingError`` before any
+    SQL ran.
+
+    It lives here rather than in the calling node for a mechanical reason as well
+    as a tidiness one: this module is where this package's sync psycopg2 read
+    boundary is declared, and the compliance sweep flags a driver import inside a
+    node handler as an UNDECLARED_TRANSPORT (a node's ``metadata.transport_type``
+    holds a single value, which is already ``kafka``). Keeping the driver behind
+    this seam keeps that declaration honest instead of widening it.
+
+    Args:
+        dsn: The workload DSN to dial. Resolved by the caller from its own
+            contract, never from an ambient default.
+        connect_timeout: Bounded connect timeout in seconds.
+
+    Returns:
+        An open, read-only, autocommit connection. The caller owns closing it.
+    """
+    conn = psycopg2.connect(  # no-contract-check: read-only projection boundary; DSN-injected
+        dsn, connect_timeout=connect_timeout
+    )
+    conn.set_session(readonly=True, autocommit=True)
+    return conn

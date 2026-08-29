@@ -26,8 +26,8 @@ import yaml
 
 from omnimarket.models.enum_consumer_flow_state import EnumConsumerFlowState
 from omnimarket.nodes.node_consumer_flow_stall_alert_effect.handlers import (
-    HandlerConsumerFlowStallAlert,
     build_slack_command,
+    decide_stall_alert,
 )
 from omnimarket.nodes.node_consumer_flow_stall_alert_effect.models import (
     ModelConsumerFlowStallAlertRequest,
@@ -144,11 +144,13 @@ def test_slack_command_is_accepted_by_the_publish_node() -> None:
             flow_state=EnumConsumerFlowState.STALLED,
             messages_in=15750,
             messages_out=0,
+            messages_dlq=16,
+            handler_errors=16,
         )
         for i in range(policy.confirm_windows)
     )
     correlation_id = uuid4()
-    decision = HandlerConsumerFlowStallAlert().handle(
+    decision = decide_stall_alert(
         ModelConsumerFlowStallAlertRequest(
             consumer_group="node_gateway_link_health_projection_compute",
             topic="onex.cmd.omnibase-infra.gateway-link-health-upsert.v1",

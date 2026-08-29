@@ -3,7 +3,9 @@ version: "1.0.0"
 description: >
   Reads the consumer-flow projection and publishes a Slack alert when a
   consumer holds STALLED or STARVED for the contract-declared number of
-  consecutive windows.
+  consecutive windows. Since the OMN-16778 redesign the node assembles its own
+  evaluation: policy from its contract, window history read at its own effect
+  boundary.
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 capabilities:
   standalone: true
@@ -14,6 +16,10 @@ capabilities:
 dependencies:
   - "omnibase_core>=0.39.0"
   - "pyyaml>=6.0"
+  # The trailing-window read at this effect's boundary. Sync driver on purpose:
+  # the runtime dispatches handle() as a sync def-B handler, and opening an
+  # event loop per message is the OMN-16874 defect.
+  - "psycopg2-binary>=2.9"
 tags:
   - effect
   - observability

@@ -451,11 +451,27 @@ class HandlerSlackPublishEffect:
         )
 
     async def _resolve_transport(self) -> SlackPublishTransport:
-        """Resolve the injected transport or build one from the contract secret."""
+        """Resolve the injected transport or build one from the contract secret.
+
+        OMN-16778: the ref is also passed as ``env_var_fallback``. The deployed
+        lanes wire ``ONEX_SECRET_RESOLVER_CONFIG_JSON`` with
+        ``enable_convention_fallback: false`` and map the DOTTED logical name
+        ``slack.bot_token`` (OMN-13726), while this call site resolves the
+        contract's own ref NAME, ``SLACK_BOT_TOKEN``. Those never met: an
+        unmapped name with convention fallback disabled returns no source spec
+        at all, so on the .201 dev lane this node would have raised
+        "resolved to None" the first time a stall alert reached it, even with
+        the token present in the container.
+
+        This is the OMN-13943 idiom, not a new fallback: the fallback name is
+        contract data (the declared ref), never a literal in this module, and
+        resolution stays fail-closed when neither the store nor that variable
+        holds a value.
+        """
         if self._transport is not None:
             return self._transport
         slack_ref = contract_secret_ref(_CONTRACT_PATH, "SLACK_BOT_TOKEN")
-        secret = await resolve_api_key_async(slack_ref)
+        secret = await resolve_api_key_async(slack_ref, env_var_fallback=slack_ref)
         if secret is None:
             raise RuntimeError(
                 f"api_key_ref {slack_ref!r} resolved to None — "
