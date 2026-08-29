@@ -107,11 +107,12 @@ converted to FAILURE at the caller's deadline exactly like layers 1-3. An
 unfetchable check-runs response (``check_runs is None``) is treated as
 *every* L4 context unobserved — never a blind pass.
 
-:data:`ACTOR_CONDITIONAL_CONTEXTS` names the one legitimate producer-side
-absence in this set: ``cr-thread-gate-caller.yml``'s ``gate`` job carries
-``if: github.actor != 'dependabot[bot]'``, so no check-run is ever created for
-a dependabot PR — an applicability rule, not a bypass, scoped to that one
-actor for that one context only.
+:data:`ACTOR_CONDITIONAL_CONTEXTS` names legitimate producer-side absences
+in this set — a context whose producing workflow's own ``if:`` is false for a
+named actor, so no check-run is ever created for that actor's PRs. It is an
+applicability rule, not a bypass: scoped per context, per actor. The registry
+is EMPTY as of OMN-16933; its only entry was the removed CodeRabbit thread
+gate, whose caller carried ``if: github.actor != 'dependabot[bot]'``.
 
 Jobs produced by other workflow files that are NOT in
 :data:`EXPECTED_EXTERNAL_CONTEXTS` are exempt only by explicit, reasoned
@@ -341,11 +342,11 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
 # stays here (now enforced, not merely disclosed); `reason-graph` was dropped
 # (removed from branch protection 2026-07-25 — product-readiness-shadow.yml is
 # a self-declared non-required Phase-3 canary, see EXEMPT_CONTEXTS in the test
-# file); `receipt-honesty` / `shell-hygiene` were dropped for the same reason
-# (self-declared staged/deferred promotion, see EXEMPT_CONTEXTS); `verify /
-# verify` and `call-reject-skip-token / scan / reject-skip-gate-token` were
-# added (live main-required, missing from the old disclosure list). NEW gap
-# closures (never required anywhere before this gate): `fsm-handler-drift`,
+# file); `shell-hygiene` was dropped for the same reason (self-declared
+# staged/deferred promotion, see EXEMPT_CONTEXTS); `verify / verify` and
+# `call-reject-skip-token / scan / reject-skip-gate-token` were added (live
+# main-required, missing from the old disclosure list). NEW gap closures
+# (never required anywhere before this gate): `fsm-handler-drift`,
 # `skill-mapping-input-coverage-gate`, `node-migration-vendor-parity-gate`,
 # `node-drift-gate` (was main-only), `contract-validation` (was main-only),
 # `deploy-gate / deploy-gate` (was main-only), `validate` (from
@@ -355,6 +356,23 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
 # own `name:` field only, exactly like the sibling bare-name `state-coverage-
 # gate` job — "validate", not workflow-name-prefixed. Corrected in the same
 # PR that adds this assertion.).
+#
+# `receipt-honesty` (OMN-16878 AC3): promoted out of EXEMPT_CONTEXTS, where it
+# sat as "self-declared staged, not yet promoted" — receipt-honesty.yml's own
+# header said only "Required-status-check name (when later flipped)", a
+# deferral with no unmet technical precondition, not a genuine blocker.
+# `contract-validation` was already asserted here; the sibling gap this closes
+# is that omniclaude and omnibase_infra both already carry `receipt-honesty`
+# in their own equivalent tuples (OMN-16878 AC1/AC2) while omnimarket's own
+# CI ran the same producer on every PR and could not block on it — Operating
+# Rule 5 (detection not wired as a pre-merge gate is advisory and gets
+# ignored). Admission: 10/10 recent merged dev PR heads sampled
+# (#2194-#2203, 2026-08-29) present and green, consistent with the ticket's
+# original 16/16 measurement; non-vacuity is the shared
+# `omnibase_core.validation.validator_receipt_honesty` proof already recorded
+# for the sibling repos (OCC#7433 dod-nonvacuity-negative-tests: gamed
+# receipt exits 1, real committed receipt exits 0). Pinned by
+# `tests/unit/scripts/ci/test_omn_16878_omnimarket_receipt_honesty.py`.
 EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Architectural Compliance Lint",
     "Canonical Inference Gate",
@@ -384,7 +402,6 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "deploy-gate / deploy-gate",
     "dispatcher-route-coverage",
     "fsm-handler-drift",
-    "gate / CodeRabbit Thread Check",
     "imperative-contract-guard / Imperative Contract Guard",
     "main-target-guard",
     "node-drift-gate",
@@ -392,6 +409,7 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "non-dev-base-guard",
     "occ-preflight / eligibility",
     "pr-title / check-title",
+    "receipt-honesty",
     "required-check-skip-guard / check-skip-vectors",
     "skill-mapping-input-coverage-gate",
     "state-coverage-gate",
@@ -409,10 +427,15 @@ EXTERNAL_GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success"})
 # actor, because the producer's own `if:` skips the job for that actor before
 # any check-run is created. An applicability rule, not a bypass — scoped per
 # context, per actor.
-ACTOR_CONDITIONAL_CONTEXTS: dict[str, frozenset[str]] = {
-    # cr-thread-gate-caller.yml: `if: github.actor != 'dependabot[bot]'`.
-    "gate / CodeRabbit Thread Check": frozenset({"dependabot[bot]"}),
-}
+# EMPTY BY CONSTRUCTION as of OMN-16933, not by omission: the only entry was
+# `gate / CodeRabbit Thread Check`, whose caller carried
+# `if: github.actor != 'dependabot[bot]'`. CodeRabbit was removed entirely
+# (operator ruling 2026-08-29) and cr-thread-gate*.yml are deleted, so no live
+# producer is actor-scoped. The MECHANISM stays — `evaluate_external` still
+# takes `actor_conditional`, ci.yml still passes `--actor`, and the tests
+# still exercise it through an injected synthetic registry — because the next
+# actor-scoped producer needs it and re-deriving it costs a wedged lane.
+ACTOR_CONDITIONAL_CONTEXTS: dict[str, frozenset[str]] = {}
 
 # Conclusions that count as "provably passed".
 GOOD_CONCLUSIONS: frozenset[str] = frozenset({"success", "skipped"})
