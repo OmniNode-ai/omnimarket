@@ -1,0 +1,46 @@
+name: projection_tenant_registry
+version: "1.0.0"
+description: >
+  Runtime-populated tenant slug -> canonical UUID mirror. Consumes the
+  onex.tenant.events durable-outbox stream and materializes
+  tenant_registry_mirror in omnidash_analytics, so migration-time identity
+  conversions resolve against a live relation instead of a source-compiled
+  map that is incomplete by construction.
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: true
+  requires_secrets: false
+  side_effect_class: write_db
+dependencies:
+  - "omnibase_core>=0.39.0"
+  - "pyyaml>=6.0"
+tags:
+  - projection
+  - tenancy
+  - registry
+  - reducer
+ownership:
+  tenant_registry_mirror:
+    ddl_owner: omnimarket.nodes.node_projection_tenant_registry
+    table_role: projection_read_model
+    create_migration: "migrations/0000_create_tenant_registry_mirror.sql"
+    duplicate_migration_policy: forbid_cross_repo_create_table
+    non_owner_repos:
+      - omnibase_infra
+    rationale: >
+      tenant_registry_mirror is the slug -> UUID correspondence projected from
+      the tenant registry into omnidash_analytics. It is classified
+      omninode_internal and carries NO RLS deliberately: the migrate Job
+      connects as role_omnidash (rolbypassrls=f, not the owner), so an
+      RLS-covered mirror would be invisible to it with app.tenant_id unset --
+      reproducing the blindness that made migration 0031's DELETE a silent
+      no-op and swallowed its diagnostics for a week (OMN-16493). The mirror
+      holds no tenant business data, only the public slug/uuid pair the
+      platform already exposes at signup, so cross-tenant readability is the
+      correct posture for a registry index rather than an isolation
+      regression.
+pack: "data"
+display_name: "Projection: Tenant Registry Mirror"
+node_role: "effect"
