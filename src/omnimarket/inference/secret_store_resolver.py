@@ -78,7 +78,7 @@ class _MappedSecretStore:
 
 
 # OMN-13960: provider-native env-var aliases for delegation secret refs.
-# ~/.omnibase/.env carries PROVIDER-NATIVE secret names (``OPEN_ROUTER_API_KEY``,
+# ~/.omnibase/.env carries PROVIDER-NATIVE secret names (``OPENROUTER_API_KEY``,
 # ``GEMINI_API_KEY``) that do NOT match the dotted-ref → ``LLM_*_API_KEY``
 # convention (``llm.openrouter.api_key`` → ``LLM_OPENROUTER_API_KEY``). OMN-13943
 # threaded these as a per-CALL-SITE ``env_var_fallback`` (each backend's bifrost
@@ -90,8 +90,23 @@ class _MappedSecretStore:
 # this store-level map is the resolver-side safety net, not a second source of
 # truth. Fail-closed is preserved: this is the LAST lookup, so a genuinely-absent
 # secret still resolves to ``None`` (and ``required=True`` callers still raise).
+# OMN-16891: the OpenRouter alias was ``OPEN_ROUTER_API_KEY``. OMN-13943 and
+# OMN-15048 introduced and then propagated that spelling on the stated premise
+# that "canonical ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with
+# underscore)". Live probe 2026-08-28 (names + LENGTHS only, no value read)
+# falsifies it:
+#   .201 host  ~/.omnibase/.env : OPENROUTER_API_KEY len 73, OPEN_ROUTER_* len 0
+#   every deployed runtime lane : BOTH names len 0
+# The lanes came up empty because omnibase_infra's per-lane
+# ``secret_resolver_mappings`` named the underscored form with
+# ``enable_convention_fallback: false`` — the ONLY resolution path on a lane —
+# so the OpenRouter rung has never been able to authenticate anywhere. Both
+# repos now converge on the provider's own documented spelling, the one the
+# host actually exports. The retired name is DELETED rather than kept
+# alongside: an alias naming a variable no surface defines reads as configured
+# while resolving to nothing, which is the exact failure being closed here.
 _PROVIDER_NATIVE_SECRET_ALIASES: dict[str, tuple[str, ...]] = {
-    "llm.openrouter.api_key": ("OPEN_ROUTER_API_KEY",),
+    "llm.openrouter.api_key": ("OPENROUTER_API_KEY",),
     "llm.gemini.api_key": ("GEMINI_API_KEY",),
 }
 

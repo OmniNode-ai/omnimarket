@@ -99,7 +99,7 @@ class TestResolveApiKeyAsync:
         self, tmp_path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-from-lane-overlay")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-from-lane-overlay")
         config_file = tmp_path / "secret_resolver.yaml"
         config_file.write_text(
             textwrap.dedent("""\
@@ -107,7 +107,7 @@ class TestResolveApiKeyAsync:
                   - logical_name: llm.openrouter.api_key
                     source:
                       source_type: env
-                      source_path: OPEN_ROUTER_API_KEY
+                      source_path: OPENROUTER_API_KEY
             """)
         )
         monkeypatch.setenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", str(config_file))
@@ -128,7 +128,7 @@ class TestResolveApiKeyAsync:
         """OMN-13943: a dotted secret_ref whose store lookup misses still
         resolves through the declared literal env_var_fallback name — the
         backend's own contract-declared ``api_key_env`` (e.g. the canonical
-        ``OPEN_ROUTER_API_KEY`` / ``GEMINI_API_KEY`` already defined in
+        ``OPENROUTER_API_KEY`` / ``GEMINI_API_KEY`` already defined in
         ``~/.omnibase/.env``, distinct from the dotted convention's
         ``LLM_*_API_KEY`` mapping)."""
         store = _FakeSecretStore({})  # dotted ref never resolves
@@ -197,7 +197,7 @@ class TestGithubTokenAgainstDeployedLaneSecretResolverConfig:
         - logical_name: llm.openrouter.api_key
           source:
             source_type: env
-            source_path: OPEN_ROUTER_API_KEY
+            source_path: OPENROUTER_API_KEY
         - logical_name: llm.glm.api_key
           source:
             source_type: env
@@ -400,8 +400,11 @@ class TestProviderNativeAliasStoreLevel:
     names as aliases, so OpenRouter/Gemini secrets resolve from ANY call site
     WITHOUT threading the per-backend ``env_var_fallback`` (``api_key_env``).
 
-    ~/.omnibase/.env carries ``OPEN_ROUTER_API_KEY`` / ``GEMINI_API_KEY`` — names
-    that do NOT match the dotted-ref → ``LLM_*_API_KEY`` convention. OMN-13943
+    ~/.omnibase/.env carries ``OPENROUTER_API_KEY`` / ``GEMINI_API_KEY`` — names
+    that do NOT match the dotted-ref → ``LLM_*_API_KEY`` convention. (OMN-16891
+    corrected the OpenRouter spelling: OMN-13943/OMN-15048 recorded it as
+    ``OPEN_ROUTER_API_KEY``, but the .201 runtime host defines only the
+    no-underscore form — live probe 2026-08-28, len 73 vs len 0.) OMN-13943
     only threaded these at two call sites; the LLM-judge adapter did not, so an
     OpenRouter/Gemini-backed judge would fail-closed. These tests exercise the
     DEFAULT store (no injected store, NO ``env_var_fallback``) so the store-level
@@ -423,7 +426,7 @@ class TestProviderNativeAliasStoreLevel:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         self._isolate_default_store(monkeypatch)
-        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-or-provider-native")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-or-provider-native")
 
         resolved = await resolve_api_key_async("llm.openrouter.api_key")
 
@@ -449,7 +452,7 @@ class TestProviderNativeAliasStoreLevel:
         monkeypatch.delenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", raising=False)
         clear_secret_store_resolver_cache()
         monkeypatch.setenv("LLM_OPENROUTER_API_KEY", "sk-convention")
-        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-alias-should-not-win")
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-alias-should-not-win")
 
         resolved = await resolve_api_key_async("llm.openrouter.api_key")
 
@@ -463,7 +466,7 @@ class TestProviderNativeAliasStoreLevel:
         provider-native alias is set, a required lookup still raises — the alias
         is a last-resort accept, never a silent default."""
         self._isolate_default_store(monkeypatch)
-        monkeypatch.delenv("OPEN_ROUTER_API_KEY", raising=False)
+        monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
 
         with pytest.raises(SecretResolutionError, match=r"llm\.openrouter\.api_key"):
             await resolve_api_key_async("llm.openrouter.api_key")

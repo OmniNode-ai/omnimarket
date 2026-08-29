@@ -41,6 +41,7 @@ from omnimarket.events.pr_delegated_fix import (
     ModelDelegatedFixResult,
 )
 from omnimarket.nodes.node_pr_delegated_fix_effect.handlers.adapter_acceptance_telemetry import (
+    EnumPlacementReason,
     JsonlAcceptanceTelemetryRecorder,
     ModelDelegatedFixAttemptRecord,
     ProtocolAcceptanceRecorder,
@@ -407,6 +408,10 @@ class _AttemptContext(NamedTuple):
     task_type: str | None = None
     backend_id: str | None = None
     tier: str | None = None
+    # OMN-16891: WHY this backend carried the attempt. Left None on the
+    # deterministic Slice 0 identity — that path does no routing at all, so
+    # stamping a placement cause on it would invent a decision nobody made.
+    placement_reason: EnumPlacementReason | None = None
 
 
 class HandlerDelegatedFix:
@@ -526,6 +531,18 @@ class HandlerDelegatedFix:
                 task_type=DOCUMENT_TASK_TYPE,
                 backend_id=outcome.backend_id,
                 tier=outcome.tier,
+                # OMN-16891: derive the placement cause from the tier the
+                # routing authority actually returned. `local` means
+                # cheapest-first placed it on owned GPUs with nothing forcing a
+                # cloud rung; any other tier means the ladder escalated past
+                # local to get here. This reads the OUTCOME rather than
+                # re-deciding it, so the recorded cause cannot drift from the
+                # routing that happened.
+                placement_reason=(
+                    EnumPlacementReason.LOCAL_FIRST
+                    if outcome.tier == "local"
+                    else EnumPlacementReason.FALLBACK
+                ),
             )
             fix_label = "document delegation"
         else:
@@ -721,6 +738,7 @@ class HandlerDelegatedFix:
                     cost_usd=result.cost_usd,
                     files_changed=result.files_changed,
                     lines_changed=result.lines_changed,
+                    placement_reason=attempt.placement_reason,
                     recorded_at=result.completed_at,
                 )
             )

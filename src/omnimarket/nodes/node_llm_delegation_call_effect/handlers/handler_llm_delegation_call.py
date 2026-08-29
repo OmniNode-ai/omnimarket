@@ -37,6 +37,10 @@ import yaml
 from omnimarket.enums.enum_cost_basis import EnumCostBasis
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.enums.enum_usage_source import EnumUsageSource
+from omnimarket.inference.provider_quota_policy import (
+    ModelQuotaVerdict,
+    classify_quota_response,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_all_tiers_failed_event import (
     ModelLlmDelegationAllTiersFailedEvent,
@@ -487,6 +491,35 @@ class HandlerLlmDelegationCall:
             error_message = str(exc)
             if detail:
                 error_message = f"{error_message} | provider response: {detail[:2000]}"
+            # OMN-16891: a 429 is not one failure class. Classify it against the
+            # contract-declared provider_quota_policy so a periodic cap
+            # (disable until the provider's stated reset) and a billing gap
+            # (no reset will ever arrive — alert, never retry) are told apart
+            # from an ordinary throttle. The verdict's reason rides the failure
+            # message so the escalation record says WHY the tier stopped being
+            # usable instead of just "429".
+            if exc.response.status_code == 429:
+                verdict = self._classify_quota(exc, endpoint_url)
+                if verdict is not None and not verdict.retryable:
+                    error_message = f"{error_message} | quota: {verdict.reason}"
+                    if verdict.alert:
+                        # An operator must act; retries cannot clear this.
+                        logger.error(
+                            "delegation_quota_alert backend=%s provider=%s code=%s: %s",
+                            request.model_id,
+                            verdict.provider_id,
+                            verdict.provider_code,
+                            verdict.reason,
+                        )
+                    else:
+                        logger.warning(
+                            "delegation_quota_disable backend=%s provider=%s code=%s "
+                            "until=%s",
+                            request.model_id,
+                            verdict.provider_id,
+                            verdict.provider_code,
+                            verdict.disabled_until,
+                        )
             return self._failure_result(request, failure_class, error_message)
         except Exception as exc:
             return self._failure_result(
@@ -714,6 +747,34 @@ class HandlerLlmDelegationCall:
         if api_key is not None:
             headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
         return headers
+
+    @staticmethod
+    def _classify_quota(
+        exc: httpx.HTTPStatusError, endpoint_url: str
+    ) -> ModelQuotaVerdict | None:
+        """Classify a 429 against the contract-declared quota policy.
+
+        Never raises. Classification enriches a failure that has ALREADY
+        happened — a malformed or missing policy must not convert a clean
+        rate-limit result into an unhandled exception on the call path.
+        """
+        try:
+            body = exc.response.json()
+        except Exception:
+            body = None
+        if not isinstance(body, dict):
+            body = None
+        try:
+            return classify_quota_response(
+                status_code=429,
+                endpoint_url=endpoint_url,
+                body=body,
+            )
+        except Exception as policy_exc:
+            logger.warning(
+                "provider_quota_policy classification unavailable: %s", policy_exc
+            )
+            return None
 
     @staticmethod
     def _failure_result(

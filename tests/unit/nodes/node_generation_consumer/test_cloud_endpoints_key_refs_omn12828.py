@@ -47,7 +47,14 @@ _COMMITTED_BIFROST = (
 
 # The COMPLETE verbatim endpoints B3 requires (A1 supplied these).
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-_GLM_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
+# OMN-16891: was the CODING-PLAN surface
+# (https://api.z.ai/api/coding/paas/v4/chat/completions). That is a different
+# z.ai PRODUCT, shared with ZCode.app on the same account — its 429/1310 cap was
+# a co-tenant's, not ours. cloud-glm is repointed to the STANDARD direct-API
+# surface, verbatim from https://docs.z.ai/api-reference/llm/chat-completion.
+# The property this file guards is unchanged: a COMPLETE chat-completions URL,
+# posted verbatim, never constructed.
+_GLM_URL = "https://api.z.ai/api/paas/v4/chat/completions"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # OMN-13351: the Anthropic ceiling backends (cloud-sonnet/cloud-haiku, secret_ref
 # llm.anthropic.api_key) were DELETED — that key resolves to None in every lane.
