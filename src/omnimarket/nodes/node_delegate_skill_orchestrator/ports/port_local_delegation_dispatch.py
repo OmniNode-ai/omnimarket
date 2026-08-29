@@ -143,7 +143,10 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
 )
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
-from omnimarket.projection.tenant_isolation import TenantContextMissingError
+from omnimarket.projection.tenant_isolation import (
+    HOUSE_TENANT_SLUG,
+    TenantContextMissingError,
+)
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
     resolve_delegation_backend,
@@ -156,6 +159,7 @@ from omnimarket.routing.roi_overlay import (
 )
 
 logger = logging.getLogger(__name__)
+
 
 _RESERVED_PROVIDER_REQUEST_KEYS = frozenset(
     # OMN-15482: ``response_format`` joins the reserved set. It is now a
@@ -1552,11 +1556,30 @@ class LocalDelegationDispatchPort:
                     source_session_id,
                 )
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): forward the request-acceptance
-        # tenant_id so the evidence row stamps a real tenant instead of the
-        # 'omninode' column default. None (no ONEX_TENANT_ID configured) omits
-        # the key so the column default still applies.
-        if tenant_id:
-            payload["tenant_id"] = tenant_id
+        # tenant_id so the evidence row stamps a real tenant.
+        #
+        # OMN-16831 (operator ruling 2026-08-28, option D), item 4: this used to
+        # be `if tenant_id:` -- when no tenant resolved, the key was OMITTED so
+        # that the column's `DEFAULT 'omninode'` supplied one. That is a write
+        # that depends on a specific isolation mechanism still being in force,
+        # and it records nothing an OMN-15359 replay could route. The evidence
+        # row now always carries an explicitly recorded value: the resolved
+        # tenant when there is one, otherwise the house tenant slug.
+        #
+        # Deliberately the SLUG, not `house_tenant_write_stamp(table=...)`'s
+        # table-resolved representation: this payload is not the final row.
+        # It becomes `row_model.tenant_id` in
+        # HandlerProjectionDelegation.project_delegate_skill_terminal, which
+        # independently calls `resolve_tenant_uuid_or_none` on it to produce
+        # `delegation_events`' UUID column value -- the same treatment a real
+        # resolved tenant slug already receives there. Pre-resolving to the
+        # UUID string here fed that UUID string back into
+        # `resolve_tenant_uuid_or_none` as if it were a slug, which raises
+        # (`_LEGACY_TENANT_UUID_MAP` keys are slugs, not UUID strings) --
+        # caught by the full suite, not by this ticket's own narrower local
+        # selection (tests/unit/nodes/node_delegate_skill_orchestrator/test_local_dispatch_evidence.py
+        # and siblings, which exercise the no-configured-tenant fallback).
+        payload["tenant_id"] = tenant_id or HOUSE_TENANT_SLUG
         try:
             from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection import (
                 ModelDelegateSkillTerminalProjection,

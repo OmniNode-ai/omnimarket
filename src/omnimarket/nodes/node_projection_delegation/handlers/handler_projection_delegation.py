@@ -61,6 +61,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
 from omnimarket.pricing import recompute_actual_cost_and_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.tenant_isolation import (
+    house_tenant_write_stamp,
     require_tenant_id,
     resolve_tenant_uuid_or_none,
 )
@@ -614,6 +615,16 @@ class HandlerProjectionDelegation:
             "contract_yaml": event.contract_yaml,
             "handler_source": event.handler_source,
             **proof,
+            # OMN-16831 (operator ruling 2026-08-28, option D), item 4:
+            # generation_events is the ONLY delegation relation producing rows
+            # today, and it was producing every one of them UNATTRIBUTED -- the
+            # row dict carried no tenant_id at all, so `text NOT NULL DEFAULT
+            # 'omninode'` (migration 0027) invented one at insert time. The
+            # writer now records the attribution itself. Same stored value, but
+            # authored by the producer at write time instead of by the DDL,
+            # which is what makes it survive both the OMN-15359 replay and a
+            # cutover to a mechanism that has no column default to fall back on.
+            **house_tenant_write_stamp(table=GENERATION_TABLE),
         }
         ok = db.upsert(GENERATION_TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(
