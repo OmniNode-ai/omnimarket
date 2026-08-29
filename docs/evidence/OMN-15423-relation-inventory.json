@@ -4668,7 +4668,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
       "indexes": [
         "idx_session_replay_ingested_at",
         "idx_session_replay_is_checkpoint",
