@@ -575,21 +575,53 @@ def test_external_good_conclusions_is_success_only() -> None:
     assert frozenset({"success"}) == EXTERNAL_GOOD_CONCLUSIONS
 
 
-def test_actor_conditional_context_legitimately_absent_for_named_actor() -> None:
-    """dependabot[bot] never gets a 'gate / CodeRabbit Thread Check' check-run
-    (producer-side `if:` in cr-thread-gate-caller.yml) — this must NOT count
-    as a gap for that one actor, but must still gap for anyone else."""
+def test_live_actor_conditional_registry_is_empty() -> None:
+    """The shipped registry claims no exemption for anyone.
 
-    context = "gate / CodeRabbit Thread Check"
-    assert context in ACTOR_CONDITIONAL_CONTEXTS
+    Its only entry was `gate / CodeRabbit Thread Check`, removed with
+    CodeRabbit itself in OMN-16933.
+    """
+
+    assert ACTOR_CONDITIONAL_CONTEXTS == {}
+
+
+def test_actor_conditional_context_legitimately_absent_for_named_actor() -> None:
+    """A context whose producer skips for one actor must NOT count as a gap
+    for that actor, but must still gap for everyone else.
+
+    Driven off an INJECTED synthetic registry rather than the shipped one,
+    which is empty as of OMN-16933. Asserting only "the registry is empty"
+    would let the mechanism rot until the next actor-scoped producer wedged a
+    lane, so the behaviour is still exercised end to end.
+    """
+
+    context = EXPECTED_EXTERNAL_CONTEXTS[0]
+    synthetic = {context: frozenset({"dependabot[bot]"})}
     runs = [r for r in _healthy_check_runs() if r["name"] != context]
 
-    code, report = evaluate_external(runs, actor="dependabot[bot]")
+    code, report = evaluate_external(
+        runs, actor="dependabot[bot]", actor_conditional=synthetic
+    )
     assert code == EXIT_SUCCESS, report
 
-    code2, report2 = evaluate_external(runs, actor="some-human")
+    code2, report2 = evaluate_external(
+        runs, actor="some-human", actor_conditional=synthetic
+    )
     assert code2 == EXIT_PENDING, report2
     assert context in report2
+
+
+def test_empty_registry_gaps_for_every_actor() -> None:
+    """Falsification control for the test above: with the SHIPPED (empty)
+    registry, the identical payload and the identical actor must block."""
+
+    context = EXPECTED_EXTERNAL_CONTEXTS[0]
+    runs = [r for r in _healthy_check_runs() if r["name"] != context]
+
+    for actor in ("dependabot[bot]", "some-human"):
+        code, report = evaluate_external(runs, actor=actor)
+        assert code == EXIT_PENDING, report
+        assert context in report
 
 
 def test_falsification_control_each_external_entry_is_load_bearing() -> None:
