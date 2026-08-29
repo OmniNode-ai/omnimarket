@@ -42,6 +42,11 @@ from omnibase_infra.secret_stores import AdapterEnvSecretStore
 from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import SecretStr
 
+from omnimarket.tenant_credential_ref import (
+    is_tenant_credential_ref,
+    tenant_hint_from_ref,
+)
+
 
 class SecretResolutionError(RuntimeError):
     """Raised when a declared ``api_key_ref`` cannot be resolved fail-closed."""
@@ -253,6 +258,10 @@ async def resolve_api_key_async(
             var already defined in ``~/.omnibase/.env``. The caller always
             supplies this from config data, never a hardcoded literal in this
             module, so no provider-specific alias lives in code here.
+            **IGNORED for a tenant-minted ref** (OMN-16944): when
+            ``api_key_ref`` carries the tenant-credential shape this argument is
+            dropped, whatever the call site passed, so a tenant's traffic can
+            never be authenticated with a platform (house) key.
 
     Returns:
         The resolved secret wrapped in ``SecretStr``, or ``None`` when
@@ -262,11 +271,62 @@ async def resolve_api_key_async(
     Raises:
         SecretResolutionError: When ``required`` is ``True`` and ``api_key_ref``
             is declared but neither the secret store nor ``env_var_fallback``
-            resolve a non-empty value. Fail-closed; no default.
+            resolve a non-empty value. Fail-closed; no default. For a
+            tenant-minted ref the error is raised by
+            :func:`resolve_tenant_scoped_api_key_async` and names the tenant.
     """
     if not api_key_ref:
         return None
 
+    # OMN-16944 AC2/AC3. A ref carrying the minted tenant-credential shape is a
+    # TENANT's key. It is routed to the tenant-scoped resolver here, at the one
+    # choke point every effect-boundary call site funnels through, so the
+    # guarantee holds no matter what an individual call site passes:
+    # ``env_var_fallback`` is dropped unconditionally, and a required
+    # resolution that misses raises the tenant-attributed error rather than
+    # handing back a platform key. Previously this held only because
+    # ``ModelInferenceIntent`` happens to carry no ``api_key_env`` -- a property
+    # of the current DTO shape, not an enforced one, and
+    # ``resolve_tenant_scoped_api_key_async`` had zero production call sites.
+    if is_tenant_credential_ref(api_key_ref):
+        if not required:
+            # Routing-time availability probe. Still no house fallback -- an
+            # absent tenant value reports unavailable rather than borrowing one.
+            return await _resolve_ref_value(
+                api_key_ref,
+                store=store,
+                required=False,
+                env_var_fallback=None,
+            )
+        return await resolve_tenant_scoped_api_key_async(
+            api_key_ref,
+            tenant_id=tenant_hint_from_ref(api_key_ref),
+            store=store,
+        )
+
+    return await _resolve_ref_value(
+        api_key_ref,
+        store=store,
+        required=required,
+        env_var_fallback=env_var_fallback,
+    )
+
+
+async def _resolve_ref_value(
+    api_key_ref: str,
+    *,
+    store: ProtocolSecretStore | None,
+    required: bool,
+    env_var_fallback: str | None,
+) -> SecretStr | None:
+    """Resolve a declared ref through the store. No tenant/house routing here.
+
+    The single place a secret VALUE is read. :func:`resolve_api_key_async` picks
+    which posture to call it with; :func:`resolve_tenant_scoped_api_key_async`
+    calls it with the narrowed tenant posture. Keeping the read in one function
+    is what makes "a tenant ref never sees ``env_var_fallback``" checkable by
+    reading two call sites instead of auditing every boundary.
+    """
     resolver = store if store is not None else _default_secret_store()
     value = await resolver.get_secret(api_key_ref)
     if not value and env_var_fallback:
@@ -458,7 +518,11 @@ async def resolve_tenant_scoped_api_key_async(
     if not api_key_ref:
         return None
     try:
-        return await resolve_api_key_async(
+        # Calls the shared resolution core directly, NOT resolve_api_key_async:
+        # that function routes tenant-shaped refs back here (OMN-16944), so
+        # going through it would recurse. ``env_var_fallback=None`` is the whole
+        # point of this wrapper and is passed explicitly, never defaulted.
+        return await _resolve_ref_value(
             api_key_ref,
             store=store,
             required=True,
