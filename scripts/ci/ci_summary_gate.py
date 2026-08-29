@@ -395,6 +395,7 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "required-check-skip-guard / check-skip-vectors",
     "skill-mapping-input-coverage-gate",
     "state-coverage-gate",
+    "subscriber-dispatcher-resolution",
     "validate",
     "verify / verify",
 )
