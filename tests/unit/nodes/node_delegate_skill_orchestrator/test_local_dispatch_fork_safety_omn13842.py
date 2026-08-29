@@ -142,6 +142,15 @@ def test_dispatch_returns_typed_receipt_through_process_boundary(
         evidence_db_path=db_path,
     )
 
+    # OMN-14883: this wrapper is a runaway guard on the whole dispatch, and the
+    # dispatch it wraps includes a real ``spawn`` child's interpreter boot —
+    # measured at ~18s on macOS and ~80s on the .201 gate-runner, where the
+    # package tree is imported off the container's ``/data`` mount. A 30s wrapper
+    # made the guard itself host-dependent. Derive it from the port's own boot
+    # ceiling so the two can never drift apart: whatever boot the port is willing
+    # to wait out, this guard must outlast.
+    outer_guard_seconds = port_module._EFFECT_CHILD_BOOT_CEILING_SECONDS + 60.0
+
     async def _run() -> dict[str, object]:
         return await asyncio.wait_for(
             port.dispatch(
@@ -156,7 +165,7 @@ def test_dispatch_returns_typed_receipt_through_process_boundary(
                 acceptance_criteria=(),
                 tenant_id=None,
             ),
-            timeout=30.0,
+            timeout=outer_guard_seconds,
         )
 
     result = asyncio.run(_run())
@@ -166,4 +175,11 @@ def test_dispatch_returns_typed_receipt_through_process_boundary(
     assert isinstance(result, dict)
     assert result["status"] in {"completed", "failed"}
     assert result["content"] == "hello"
+    # OMN-16419 changed this field's source to
+    # ``result.served_model_id or backend.model_id``. This double leaves
+    # ``served_model_id`` unset (it offers no ``GET /v1/models`` evidence, exactly
+    # like a cloud backend), so the configured-id fallback is the branch under
+    # test and the fixture's ``model_name`` is still the correct expectation —
+    # verified, not assumed. Live-confirmed attribution is OMN-16419's own
+    # property and is asserted in its suite, not here.
     assert result["model_name"] == "Qwen3.6-35B-A3B"

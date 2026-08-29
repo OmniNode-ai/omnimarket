@@ -70,6 +70,14 @@ _FAST_BUFFER_SECONDS = 0.2
 # The fake effect blocks longer than (timeout_ms/1000 + buffer) so the killable
 # process deadline — not the transport — is what releases dispatch.
 _EFFECT_BLOCK_SECONDS = 30.0
+# OMN-14883: on a ``spawn`` host the child's interpreter boot (a full re-import of
+# the effect module tree — measured ~18s on macOS, ~80s on the .201 gate-runner)
+# precedes the effect call and is NOT endpoint time. These budgets therefore
+# separate the two: a runaway guard sized off the port's own boot ceiling so a
+# genuine hang still releases the suite, and a tight bound asserted after the run
+# against the boot the port actually measured. A single host-blind wall-clock
+# ceiling is what made this suite red on macOS and red on the gate-runner.
+_BOOT_MEASUREMENT_SLACK_SECONDS = 5.0
 
 
 class NeverReturningEffectHandler:
@@ -151,6 +159,14 @@ def test_unreachable_endpoint_does_not_hang_and_records_failed_evidence(
 
     deadline_ceiling = (_FAST_TIMEOUT_MS / 1000.0) + _FAST_BUFFER_SECONDS
 
+    # Runaway guard only: a genuine hang must still release the suite. The tight
+    # bound is asserted below against the boot the port actually measured.
+    runaway_guard_seconds = (
+        port_module._EFFECT_CHILD_BOOT_CEILING_SECONDS
+        + deadline_ceiling
+        + _BOOT_MEASUREMENT_SLACK_SECONDS
+    )
+
     async def _run() -> dict[str, object]:
         # If the loop were blocked (pre-fix behavior), this outer wait_for would not
         # fire. The process-supervised fix keeps the loop responsive and kills the
@@ -168,7 +184,7 @@ def test_unreachable_endpoint_does_not_hang_and_records_failed_evidence(
                 acceptance_criteria=(),
                 tenant_id=None,
             ),
-            timeout=5.0,
+            timeout=runaway_guard_seconds,
         )
 
     t0 = time.monotonic()
@@ -176,9 +192,19 @@ def test_unreachable_endpoint_does_not_hang_and_records_failed_evidence(
     elapsed = time.monotonic() - t0
 
     # 1. Bounded: dispatch returned at the in-port ceiling, well inside the
-    #    transport block (pre-fix this hung forever).
-    assert elapsed < 5.0
-    assert elapsed < deadline_ceiling + 2.0
+    #    30s transport block (pre-fix this hung forever).
+    #
+    #    OMN-14883: the bound is the ENDPOINT ceiling plus the child boot the
+    #    port measured on this host — boot is spawn-interpreter cost that never
+    #    reaches the endpoint, so folding it into the endpoint ceiling made this
+    #    assertion a host-speed assertion. What it still proves is exact: once the
+    #    child was ready, dispatch was released at ``deadline_ceiling``, nowhere
+    #    near the 30s the effect would have blocked for.
+    observed_boot_seconds = port_module._observed_child_boot_seconds or 0.0
+    assert elapsed < (
+        deadline_ceiling + observed_boot_seconds + _BOOT_MEASUREMENT_SLACK_SECONDS
+    )
+    assert elapsed < _EFFECT_BLOCK_SECONDS + observed_boot_seconds
 
     # 2. Failed terminal status (never a hang, never a PASS).
     assert result["status"] == "failed"
@@ -252,7 +278,15 @@ def test_dispatch_offloads_blocking_call_off_the_event_loop(
             )
         )
         progress_task = asyncio.create_task(_concurrent_progress())
-        result = await asyncio.wait_for(dispatch_task, timeout=15.0)
+        # OMN-14883: runaway guard only — this test's property is loop progress
+        # and a completed terminal, neither of which is a wall-clock claim. A 15s
+        # ceiling made it a claim about how fast the host imports the effect
+        # module tree in the spawn child, which is why it went red under load.
+        result = await asyncio.wait_for(
+            dispatch_task,
+            timeout=port_module._EFFECT_CHILD_BOOT_CEILING_SECONDS
+            + _EFFECT_BLOCK_SECONDS,
+        )
         await progress_task
         return result
 
