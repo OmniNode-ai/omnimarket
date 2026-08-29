@@ -24,6 +24,9 @@ from typing import Any
 import pytest
 import yaml
 
+from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    OverlayOnlyBackendIdError,
+)
 from omnimarket.routing.delegation_backend_resolution import (
     BIFROST_OVERLAY_STORE_KEY,
     load_bifrost_backends,
@@ -147,8 +150,16 @@ def test_store_overlay_model_name_is_merged(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_store_overlay_unmatched_backend_id_is_ignored() -> None:
-    """A store overlay entry whose backend_id does not exist in base is ignored."""
+def test_store_overlay_unmatched_backend_id_is_rejected() -> None:
+    """A store overlay entry whose backend_id does not exist in base is REFUSED.
+
+    Retargeted by OMN-16903 (was ``..._is_ignored``, asserting a silent drop).
+    Ignoring it here diverged from the sibling merge path in
+    ``adapters/llm/bifrost/config_loader_bifrost_delegation.py``, which appended
+    the same row and then hard-failed whole-config schema validation — so the
+    blast radius of a stale overlay row depended on which loader a caller
+    happened to use. Both paths now refuse, naming the id and the store key.
+    """
     overlay_yaml = _overlay_yaml(
         [
             {
@@ -160,12 +171,15 @@ def test_store_overlay_unmatched_backend_id_is_ignored() -> None:
     )
     store = _MockStore({BIFROST_OVERLAY_STORE_KEY: overlay_yaml})
 
-    backends = load_bifrost_backends(
-        config_path=_BIFROST_CONFIG_PATH,
-        store=store,
-    )
-    ids = {b["backend_id"] for b in backends}
-    assert "non-existent-backend" not in ids
+    with pytest.raises(OverlayOnlyBackendIdError) as excinfo:
+        load_bifrost_backends(
+            config_path=_BIFROST_CONFIG_PATH,
+            store=store,
+        )
+
+    message = str(excinfo.value)
+    assert "non-existent-backend" in message
+    assert BIFROST_OVERLAY_STORE_KEY in message
 
 
 # ---------------------------------------------------------------------------
