@@ -32,6 +32,30 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_savings/migrations/074_create_savings_estimates.sql
       access: read_write
       role: savings_estimates_projection_table
+    # OMN-16993: register this repository as the CATALOG owner of the physical
+    # relation `session_replay_snapshots`, mirroring the `live_events` entry
+    # below and for the same reason -- the OMN-15361 SQL ownership gate
+    # (`omnibase_infra/scripts/ci/check_application_database_sql.py`) requires
+    # exactly one ownership declaration for every application relation a
+    # CHANGED deployable SQL file targets, and it resolves declarations from
+    # service manifests only, never from a node's own contract.yaml.
+    #
+    # `node_projection_session_replay/contract.yaml` has declared this table
+    # `schema: omninode_internal, access: write` since OMN-13087; this entry
+    # restates that same schema (a `schema: public` restatement of the physical
+    # location is rejected by scripts/generate_application_relation_inventory.py
+    # as a conflicting-schema declaration). Physically the table still lives
+    # bare in `public` -- it is listed in
+    # `INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359` -- until the
+    # governed OMN-15359 cutover moves it. Zero behavior change here; this only
+    # satisfies the ownership gate so omnibase_infra can vendor OMN-16993's
+    # `0002_grant_omninode_runtime_session_replay_snapshots.sql`.
+    - name: session_replay_snapshots
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_session_replay/migrations/0001_create_session_replay_snapshots.sql
+      access: read_write
+      role: session_replay_projection_table
     # OMN-15359: the physical CREATE TABLE for this node's already-declared
     # db_io.db_tables[0] (schema: omninode_internal, in this node's own
     # contract.yaml) lives in the omnibase_infra repo, not here -- the
