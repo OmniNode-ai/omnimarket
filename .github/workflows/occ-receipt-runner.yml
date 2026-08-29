@@ -1,0 +1,309 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# occ-receipt-runner.yml — OMN-16859 AC3b.
+#
+# THE GAP THIS CLOSES
+# Automatic OCC receipt generation has been blocked for months by a structural
+# gap, not a bug. The two producers that mint receipts (OccCompanionEmitter and
+# node_occ_companion_compute) both run in the .201 dev-lane effects runtime,
+# which holds no product-repo checkout — so neither can execute a `test_passes`
+# check. OCC's own hosted compliance runner DECLINES for the same reason.
+# Meanwhile eligibility requires a PASS receipt BEFORE the companion merges,
+# and the companion merges before the product PR. The result: either a
+# hand-authored receipt (four occurrences on 2026-08-28 alone) or a
+# `status: PASS` minted behind a `gh pr view` PR-existence probe.
+#
+# The one surface that can honestly execute the check is THIS one — the product
+# repo's own CI. It has the checkout, the dependencies and the real test
+# targets. It has never had a write path into the open companion. This workflow
+# is that path.
+#
+# WHY THIS IS SOUND (verified, not assumed)
+# omnibase_core/.github/workflows/occ-preflight.yml resolves an OPEN companion
+# to `headRefOid` — the companion BRANCH TIP, not OCC main. So a receipt pushed
+# to that branch is visible to this PR's very next preflight evaluation. There
+# is no merge-ordering deadlock: the receipt does not need the companion to
+# merge first.
+#
+# WHY IT IS A SEPARATE WORKFLOW, NOT A JOB IN ci.yml
+# Every job in omnimarket's ci.yml carries `needs: occ-preflight`. A post-test
+# job inside ci.yml could therefore never run while preflight is red — it would
+# deadlock on the exact condition it exists to clear.
+#
+# SAFETY — this workflow can never block a merge, and must never be made to:
+#   * `continue-on-error: true`, NOT in required_status_checks, and NOT
+#     referenced by any `needs:` or by ci.yml's CI Summary rollup.
+#   * It is an UNBLOCKER, not a gate. A red check is reported by the FAIL
+#     receipt it writes (which correctly keeps the companion ineligible), never
+#     by failing this job.
+#   * Fork PRs are excluded: no secrets, not trusted.
+#   * It writes ONLY into the open companion's own branch, append-only — a
+#     net-new base receipt where none exists, otherwise a net-new
+#     `<check_type>.supersede.<pr>.yaml` record. No merged file is ever edited.
+#
+# CREDENTIAL — the existing least-privilege OnexBot-OCC-Writer GitHub App
+# (org secrets ONEXBOT_OCC_APP_ID / ONEXBOT_OCC_PRIVATE_KEY), scoped down to
+# OmniNode-ai/onex_change_control ONLY, minted per-run via the canonical
+# actions/create-github-app-token pattern already used by
+# call-occ-companion-author.yml and call-occ-attestation-observe.yml.
+# NO new secret, NO new bot account, and the org-wide CROSS_REPO_PAT is
+# explicitly NOT an acceptable substitute (OMN-15350 / OMN-14955).
+#
+# Ticket: OMN-16859 (AC3b).
+
+name: OCC Receipt Runner
+
+on:
+  pull_request:
+    branches: [main, dev, "hotfix/**"]
+    # `edited` is load-bearing: autobind mints the companion on `opened` and
+    # stamps `Evidence-Source: OCC#<n>` onto the body afterwards. That stamp is
+    # what tells this workflow which companion to write into, so the edit that
+    # carries it must re-trigger the runner.
+    types: [opened, synchronize, reopened, ready_for_review, edited]
+
+concurrency:
+  # Serialized per PR: two runs pushing receipts to the same companion branch
+  # would race on a non-fast-forward. NOT cancel-in-progress — a cancelled run
+  # that already executed the checks would throw away real evidence.
+  group: occ-receipt-runner-${{ github.event.pull_request.number }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  pull-requests: read
+  actions: write # heal step re-runs this head's failed occ-preflight
+
+jobs:
+  occ-receipt-runner:
+    name: execute declared checks and write receipts
+    # Same eligibility filter as call-occ-autobind.yml: skip dependency bots,
+    # ticketless PRs, and fork PRs.
+    if: >-
+      github.actor != 'dependabot[bot]' &&
+      github.actor != 'renovate[bot]' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      (contains(github.event.pull_request.title, 'OMN-') ||
+       contains(github.event.pull_request.head.ref, 'OMN-'))
+    runs-on: >-
+      ${{
+        fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - name: Checkout product repo at PR head
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Resolve the open OCC companion (bounded wait for the autobind race)
+        id: companion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The race is real and is handled, not assumed away: autobind mints
+          # the companion on `opened` and stamps the body a little later. Poll
+          # the LIVE body (never the frozen event payload) for a bounded time,
+          # then exit cleanly. Exiting clean is correct — the `edited` event
+          # that carries the stamp re-triggers this workflow.
+          occ_pr=""
+          for attempt in $(seq 1 10); do
+            body="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json body --jq '.body // ""')"
+            occ_pr="$(printf '%s' "$body" \
+              | grep -iE '^Evidence-Source:[[:space:]]+OCC#[0-9]+[[:space:]]*$' \
+              | head -1 | sed -E 's/^[Ee]vidence-[Ss]ource:[[:space:]]*OCC#//I; s/[[:space:]]*$//' || true)"
+            if [ -n "$occ_pr" ]; then break; fi
+            echo "Attempt ${attempt}/10: no 'Evidence-Source: OCC#<n>' stamp yet; waiting 30s."
+            sleep 30
+          done
+
+          if [ -z "$occ_pr" ]; then
+            echo "::notice::No OCC companion stamped on this PR body yet. Nothing to write into; the body-edit that adds the stamp will re-trigger this workflow."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          occ_json="$(gh pr view "$occ_pr" --repo OmniNode-ai/onex_change_control --json state,headRefName,headRefOid)"
+          occ_state="$(printf '%s' "$occ_json" | jq -r '.state')"
+          occ_branch="$(printf '%s' "$occ_json" | jq -r '.headRefName')"
+
+          if [ "$occ_state" != "OPEN" ]; then
+            # A merged companion is pinned by mergeCommit, not headRefOid, so a
+            # push to its branch would be invisible to preflight. Report rather
+            # than write evidence nothing reads.
+            echo "::notice::OCC#${occ_pr} is ${occ_state}, not OPEN — preflight pins its merge commit, so a branch push would not be read. Skipping."
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Resolved open companion OCC#${occ_pr} on branch ${occ_branch}"
+          {
+            echo "proceed=true"
+            echo "occ_pr=${occ_pr}"
+            echo "occ_branch=${occ_branch}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Collect cited tickets
+        id: tickets
+        if: steps.companion.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          meta="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json title,body)"
+          tickets="$(printf '%s' "$meta" | jq -r '.title + "\n" + (.body // "")' \
+            | grep -oE 'OMN-[0-9]+' | sort -u | tr '\n' ' ')"
+          echo "Cited tickets: ${tickets:-<none>}"
+          echo "tickets=${tickets}" >> "$GITHUB_OUTPUT"
+
+      - name: Mint OCC write token (OnexBot-OCC-Writer App)
+        id: occ-app-token
+        if: steps.companion.outputs.proceed == 'true' && steps.tickets.outputs.tickets != ''
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: OmniNode-ai
+          repositories: onex_change_control
+
+      - name: Clone the companion branch
+        if: steps.occ-app-token.outputs.token != ''
+        env:
+          OCC_TOKEN: ${{ steps.occ-app-token.outputs.token }}
+          OCC_BRANCH: ${{ steps.companion.outputs.occ_branch }}
+        run: |
+          set -euo pipefail
+          # Shallow, single-branch: this job only ever appends to the tip.
+          git clone --depth 1 --branch "$OCC_BRANCH" \
+            "https://x-access-token:${OCC_TOKEN}@github.com/OmniNode-ai/onex_change_control.git" \
+            "${RUNNER_TEMP}/occ"
+          echo "Companion tip: $(git -C "${RUNNER_TEMP}/occ" rev-parse HEAD)"
+
+      - name: Install uv
+        if: steps.occ-app-token.outputs.token != ''
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        if: steps.occ-app-token.outputs.token != ''
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        if: steps.occ-app-token.outputs.token != ''
+        # `--locked` (not `--all-extras`): the extras pull adaptive-classifier ->
+        # torch/CUDA (~2GB) and blow the timeout, exactly as documented on
+        # call-occ-companion-author.yml. The declared checks are pytest targets
+        # derived from the PR's own diff, which the base env collects.
+        run: |
+          set -euo pipefail
+          attempt=1
+          until uv sync --locked; do
+            if [ "$attempt" -ge 3 ]; then
+              echo "::error::uv sync --locked failed after 3 attempts"
+              exit 1
+            fi
+            sleep $((attempt == 1 ? 15 : 30))
+            attempt=$((attempt + 1))
+          done
+
+      - name: Execute declared checks and write receipts
+        id: runner
+        if: steps.occ-app-token.outputs.token != ''
+        env:
+          TICKETS: ${{ steps.tickets.outputs.tickets }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          uv run python scripts/ci/occ_receipt_runner.py \
+            --occ-root "${RUNNER_TEMP}/occ" \
+            --product-root "${GITHUB_WORKSPACE}" \
+            --pr-number "$PR_NUMBER" \
+            --repo "$REPO" \
+            --head-sha "$HEAD_SHA" \
+            --branch "$HEAD_REF" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --tickets "$TICKETS" \
+            --json-out "${RUNNER_TEMP}/runner_summary.json"
+
+      - name: Push receipts to the companion branch
+        id: push
+        if: steps.occ-app-token.outputs.token != ''
+        env:
+          OCC_TOKEN: ${{ steps.occ-app-token.outputs.token }}
+          OCC_BRANCH: ${{ steps.companion.outputs.occ_branch }}
+          OCC_PR: ${{ steps.companion.outputs.occ_pr }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/occ"
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "::notice::No receipt changes to push — every runner-covered check already resolves PASS."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Append-only in the literal sense: `git add` only ever sees net-new
+          # files, because the runner never opens an existing receipt for write.
+          # `--porcelain` is asserted to carry no modifications so a future
+          # regression that DID edit a merged receipt cannot silently ship.
+          if git status --porcelain | grep -qE '^( M|M |MM|D | D|R )'; then
+            echo "::error::Refusing to push: the working tree carries a MODIFIED or DELETED file. OCC evidence is append-only; only net-new files may be added. Tree state:"
+            git status --porcelain
+            exit 1
+          fi
+
+          git config user.name "onexbot-occ-writer[bot]"
+          git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
+          git add -A
+          # Separate -m flags, not one embedded multi-line string: a
+          # continuation line at column 0 terminates this YAML block scalar and
+          # makes the whole workflow unparseable.
+          git commit \
+            -m "evidence(OMN-16859): executed test_passes receipts for ${REPO}#${PR_NUMBER}" \
+            -m "The declared checks were executed for real in the ${REPO} checkout at the PR head by the product-repo OCC receipt runner, and the results written append-only into this companion. Producer-minted PENDING receipts are superseded by a net-new record; no existing receipt was edited." \
+            -m "Ticket: OMN-16859 (AC3b)"
+
+          git push "https://x-access-token:${OCC_TOKEN}@github.com/OmniNode-ai/onex_change_control.git" "HEAD:${OCC_BRANCH}"
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          echo "::notice::Pushed executed receipts to OCC#${OCC_PR} (${OCC_BRANCH})."
+
+      - name: Heal the stale occ-preflight
+        if: steps.push.outputs.pushed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          # occ-preflight resolves the companion tip LIVE, so re-running the
+          # failed jobs of the EXISTING run re-evaluates against the receipts
+          # just pushed. `--failed` keeps the same run id, so any poller that
+          # watches that run's job list observes the new result — the same
+          # recipe occ-preflight-heal.yml uses (which lives in omnibase_infra
+          # and fires on `edited`, so it does not cover this path).
+          for wf in "OCC Preflight" "ci.yml"; do
+            run_id="$(gh run list --repo "$REPO" --workflow "$wf" \
+              --json databaseId,headSha,status \
+              --jq "[.[] | select(.headSha == \"$HEAD_SHA\" and .status == \"completed\")] | .[0].databaseId // empty" 2>/dev/null || true)"
+            if [ -z "$run_id" ]; then
+              echo "No completed '${wf}' run for ${HEAD_SHA} — nothing to heal there."
+              continue
+            fi
+            echo "Re-running failed jobs of '${wf}' run ${run_id}."
+            gh run rerun "$run_id" --failed --repo "$REPO" \
+              || echo "::notice::'${wf}' run ${run_id} had no failed jobs to re-run."
+          done

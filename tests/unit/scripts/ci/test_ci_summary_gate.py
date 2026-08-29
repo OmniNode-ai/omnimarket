@@ -727,6 +727,16 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         "self-declared report-only, non-blocking observer (job name: "
         "'OCC Attestation Observe (report-only, non-blocking)')."
     ),
+    ("occ-receipt-runner.yml", "occ-receipt-runner"): (
+        "OMN-16859 AC3b — an UNBLOCKER, not a gate. It executes the "
+        "companion's declared test_passes checks in this repo's checkout and "
+        "writes the results into the open OCC companion so occ-preflight can "
+        "go green. It is `continue-on-error: true`, carries no required "
+        "status-check name, and is referenced by no `needs:` — including CI "
+        "Summary's. A red check is reported by the FAIL receipt it writes "
+        "(which correctly keeps the companion ineligible), never by this job. "
+        "Making it blocking would deadlock the very PRs it exists to clear."
+    ),
     ("call-occ-autobind.yml", "publish-occ-autobind"): (
         "additive command publisher, never fails a PR — same contract as "
         "the omniweb/omnibase_infra call-occ-autobind siblings."
