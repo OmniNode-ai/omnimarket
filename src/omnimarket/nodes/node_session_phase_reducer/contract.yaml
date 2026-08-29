@@ -4,29 +4,69 @@
 # ONEX Node Contract — node_session_phase_reducer
 #
 # Pure reducer: delta(state, event) -> new_state
-# Materializes canonical phase state from session events.
-# Writes to .onex_state/session/phase_state.yaml for hook consumption.
+# Materializes canonical phase state from session events into the DATABASE,
+# via the runtime's state_io dispatch seam (see the `state_io` block below).
 #
 # Related Tickets:
 #   - OMN-11230: Task 6: Create node_session_phase_reducer (REDUCER)
 #   - OMN-11224: Session phase control loop epic
+#   - OMN-16924: state of record moved from .onex_state to the database
 name: node_session_phase_reducer
 node_type: reducer
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 
 description: >
   Pure reducer that materializes canonical session phase state from events.
-  delta(state, event) -> new_state. Writes phase_state.yaml for hook consumption.
+  delta(state, event) -> new_state. As of 1.1.0 (OMN-16924) the state of record
+  is a session_id-keyed row in the database, loaded and CAS-persisted by the
+  runtime's state_io dispatch seam; the handler performs no I/O.
   REDUCER nodes return projections[] only — no events, intents, or result.
+
+# OMN-16924: the durable binding for this reducer's state.
+#
+# Operator ruling 2026-08-29, verbatim: "onex_state should be configurable via
+# contract overlay right? for our purposes, state should only be kept in the
+# database. if you disagree, let's have a conversation."
+#
+# Before this, the reducer's state of record was a cwd-relative
+# `.onex_state/session/phase_state.yaml`. The runtime container's cwd is /app
+# (root:root 0755) while the process runs as omniinfra, so every bus dispatch
+# raised `PermissionError: [Errno 13] Permission denied: '.onex_state'` and
+# DLQ'd — 100% failure on all three subscribed topics, on every lane.
+#
+# `database` and `table` resolve through the sanctioned `${env.VAR:default}`
+# contract-overlay convention (omnibase_infra.runtime.overlay.contract_env_ref),
+# so an operator rebinds this node's state of record per lane without a code
+# change. An env var set to an empty value resolves to "" and the runtime fails
+# closed at wiring time — there is no local-file fallback to silently take.
+#
+# `key` names BOTH the wire payload field the row is keyed on and the row's
+# primary-key column. It is `session_id`, not `correlation_id`: a REDUCER folds
+# per DOMAIN entity, `delta` explicitly rejects an event whose session_id
+# disagrees with the folded state's, and the omniclaude hooks mint a fresh
+# correlation_id per event — keying on it would scatter one session's fold
+# across N rows.
+#
+# Runtime activation is gated on the paired omnibase_infra wiring (contract-
+# declared state_io key + migration 101_create_session_phase_state.sql). On a
+# runtime that predates it the key falls back to the previous hardcoded
+# behaviour; on this one it is honoured.
+state_io:
+  database: "${env.ONEX_SESSION_PHASE_STATE_DATABASE:omnibase_infra}"
+  table: "${env.ONEX_SESSION_PHASE_STATE_TABLE:session_phase_state}"
+  key: "session_id"
+  codec:
+    module: "omnimarket.nodes.node_session_phase_reducer.state_codec"
+    name: "StateIoCodec"
 
 input_model:
   name: ModelSessionPhaseReducerInput
   module: omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer
   # OMN-16790: this is the WIRE payload of ONE subscribed message. It is NOT a
   # {state, event} envelope — no wire schema on any subscribe topic carries a
-  # `state` field, and the reducer reads its prior state from the projection file
-  # it itself writes (.onex_state/session/phase_state.yaml).
+  # `state` field. OMN-16924: prior state is supplied by the runtime from the
+  # `state_io` row above, not read by the handler from anywhere.
   description: "The wire payload of one subscribed session event."
 
 output_model:
@@ -47,6 +87,9 @@ handler_routing:
         module: omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer
 
 descriptor:
+  # OMN-16924 AC3: `purity: pure` is now literally true. The handler performs no
+  # I/O at all — the runtime's state_io seam owns the database read and write.
+  # Before this it claimed `pure` while writing a YAML file on every fold.
   node_archetype: reducer
   purity: pure
   idempotent: true
@@ -106,4 +149,6 @@ state_machine:
       trigger: session_ended
       description: "Session ended."
   terminal_states: [ended]
-  persistence_enabled: false
+  # OMN-16924: the fold IS persisted — one session_id-keyed row per session in
+  # the `state_io` table above, written by the runtime after every handle().
+  persistence_enabled: true

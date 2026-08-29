@@ -53,16 +53,17 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-import yaml
 from omnibase_core.enums import EnumNodeKind
 from omnibase_infra.runtime.auto_wiring.handler_wiring import _make_dispatch_callback
 
 from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer import (
     HandlerSessionPhaseReducer,
 )
+from tests.session_phase_state_io_harness import StateIoRowStore, state_io_dispatch
 
 _TOPIC_SESSION_STARTED = "onex.evt.omniclaude.session-started.v1"
 _TOPIC_SESSION_ENDED = "onex.evt.omniclaude.session-ended.v1"
+_LIVE_SESSION_ID = "omn16162-live-proof-1787064555"
 
 # Captured verbatim, 2026-08-27, from the stability lane:
 #   docker exec omnibase-infra-stability-test-redpanda \
@@ -114,7 +115,11 @@ def _materialized_wire_envelope(topic: str, payload: dict[str, Any]) -> dict[str
 
 
 async def _dispatch(
-    topic: str, payload: dict[str, Any]
+    topic: str,
+    payload: dict[str, Any],
+    *,
+    store: StateIoRowStore,
+    session_id: str,
 ) -> tuple[Any, BaseException | None]:
     """Drive the real dispatch callback, returning ``(result, raised_or_None)``.
 
@@ -133,7 +138,11 @@ async def _dispatch(
         None,
     )
     try:
-        result = await callback(_materialized_wire_envelope(topic, payload))  # type: ignore[arg-type]
+        # OMN-16924: prior state is supplied by the runtime from the durable
+        # session_phase_state row, so the harness binds that row around the
+        # dispatch exactly as ``_load_handle_persist`` does.
+        with state_io_dispatch(store, session_id):
+            result = await callback(_materialized_wire_envelope(topic, payload))  # type: ignore[arg-type]
     except Exception as exc:
         # The captured outcome IS the assertion subject; see the docstring.
         return None, exc
@@ -152,9 +161,13 @@ async def test_live_session_started_payload_dispatches_without_keyerror(
     failed assertion on the captured outcome.
     """
     monkeypatch.chdir(tmp_path)
+    store = StateIoRowStore()
 
     result, error = await _dispatch(
-        _TOPIC_SESSION_STARTED, _LIVE_SESSION_STARTED_PAYLOAD
+        _TOPIC_SESSION_STARTED,
+        _LIVE_SESSION_STARTED_PAYLOAD,
+        store=store,
+        session_id=_LIVE_SESSION_ID,
     )
 
     assert error is None, (
@@ -163,11 +176,11 @@ async def test_live_session_started_payload_dispatches_without_keyerror(
     )
     assert result is not None, "dispatch produced no ModelDispatchResult"
 
-    state_file = tmp_path / ".onex_state" / "session" / "phase_state.yaml"
-    assert state_file.exists(), "the reducer's projection side effect did not fire"
-    state = yaml.safe_load(state_file.read_text())
-    assert state["session_id"] == "omn16162-live-proof-1787064555"
-    assert state["current_phase"] == "start"
+    persisted = store.load(_LIVE_SESSION_ID)
+    assert persisted is not None, "the fold persisted no durable row"
+    assert persisted.session_id == _LIVE_SESSION_ID
+    assert persisted.current_phase == "start"
+    assert list(tmp_path.iterdir()) == [], "the fold wrote to the filesystem"
 
 
 @pytest.mark.integration
@@ -175,35 +188,44 @@ async def test_live_session_started_payload_dispatches_without_keyerror(
 async def test_session_started_then_ended_folds_across_two_wire_messages(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Prior state comes from the projection file, not from the message.
+    """Prior state comes from the durable row, not from the message.
 
     A bus message carries ONE event and never the prior state -- there is no
-    ``state`` key on any wire schema. The reducer must therefore read the state it
-    itself materialized. Without that read, ``session.ended`` would hit the
-    ``state is None`` branch of ``delta`` and clobber a live session's phase with
-    ``"unknown"`` on every event after the first.
+    ``state`` key on any wire schema. OMN-16924: the runtime therefore supplies
+    the prior state from the ``session_id``-keyed ``session_phase_state`` row.
+    Without it, ``session.ended`` would hit the ``state is None`` branch of
+    ``delta`` and clobber a live session's phase with ``"unknown"`` on every
+    event after the first.
     """
     monkeypatch.chdir(tmp_path)
+    store = StateIoRowStore()
 
     _, started_error = await _dispatch(
-        _TOPIC_SESSION_STARTED, _LIVE_SESSION_STARTED_PAYLOAD
+        _TOPIC_SESSION_STARTED,
+        _LIVE_SESSION_STARTED_PAYLOAD,
+        store=store,
+        session_id=_LIVE_SESSION_ID,
     )
     assert started_error is None, (
         f"session.started dispatch raised {type(started_error).__name__}: "
         f"{started_error}"
     )
-    _, ended_error = await _dispatch(_TOPIC_SESSION_ENDED, _SESSION_ENDED_PAYLOAD)
+    _, ended_error = await _dispatch(
+        _TOPIC_SESSION_ENDED,
+        _SESSION_ENDED_PAYLOAD,
+        store=store,
+        session_id=_LIVE_SESSION_ID,
+    )
     assert ended_error is None, (
         f"session.ended dispatch raised {type(ended_error).__name__}: {ended_error}"
     )
 
-    state = yaml.safe_load(
-        (tmp_path / ".onex_state" / "session" / "phase_state.yaml").read_text()
+    persisted = store.load(_LIVE_SESSION_ID)
+    assert persisted is not None, "the second fold persisted no durable row"
+    assert persisted.current_phase == "ended", (
+        "session.ended did not fold onto the durable row the first dispatch wrote"
     )
-    assert state["current_phase"] == "ended", (
-        "session.ended did not fold onto the state the reducer had already written"
-    )
-    assert state["session_id"] == "omn16162-live-proof-1787064555"
+    assert persisted.session_id == _LIVE_SESSION_ID
 
 
 @pytest.mark.integration

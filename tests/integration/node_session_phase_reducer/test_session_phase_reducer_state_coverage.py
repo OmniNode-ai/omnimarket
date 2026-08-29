@@ -12,8 +12,9 @@ asserted.
 OMN-16790: this suite previously published a ``{"state": ..., "event": ...}``
 envelope — a shape that appears in no wire schema for any subscribed topic — and
 called ``delta`` directly. It therefore passed for the entire live outage in which
-every real message raised ``KeyError: 'event'``. Prior state now comes from the
-projection file, which is where the reducer's state of record actually lives.
+every real message raised ``KeyError: 'event'``. OMN-16924: prior state now comes
+from the durable ``session_phase_state`` row the runtime supplies, which is where
+the reducer's state of record actually lives.
 
 The contract's ``state_machine`` declares three states — ``idle`` (no session),
 ``active`` (session materialized), ``ended`` (terminal) — with transitions
@@ -39,7 +40,6 @@ from __future__ import annotations
 
 import json
 from datetime import UTC, datetime
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -51,6 +51,7 @@ from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_
     ModelSessionPhaseState,
 )
 from tests.integration._wave7_bus import drive_round_trip
+from tests.session_phase_state_io_harness import StateIoRowStore, state_io_dispatch
 
 _START_TOPIC = "onex.evt.omnimarket.session-phase-reduce.v1"
 _RESULT_TOPIC = "onex.evt.omnimarket.session-phase-state-reduced.v1"
@@ -63,17 +64,20 @@ _T1 = datetime(2026, 6, 19, 2, 45, 0, tzinfo=UTC)
 class _ReducerBusHandler:
     """Bus-facing shim that drives the REAL def-B ``handle`` over a wire payload.
 
-    Prior state is read from ``state_path`` — the projection file the handler
-    itself writes — exactly as the runtime path does.
+    OMN-16924: prior state is supplied around the fold from the durable
+    ``session_phase_state`` row, exactly as the runtime's state_io dispatch seam
+    does — the handler itself reads and writes nothing.
     """
 
-    def __init__(self, state_path: Path) -> None:
+    def __init__(self, store: StateIoRowStore, session_id: str) -> None:
         self._handler = HandlerSessionPhaseReducer()
-        self._state_path = state_path
+        self._store = store
+        self._session_id = session_id
 
     async def handle(self, **payload: Any) -> ModelSessionPhaseState:
         request = ModelSessionPhaseReducerInput.model_validate(payload)
-        result = self._handler.handle(request, state_path=str(self._state_path))
+        with state_io_dispatch(self._store, self._session_id):
+            result = self._handler.handle(request)
         return ModelSessionPhaseState(**result["projections"][0])
 
 
@@ -122,15 +126,14 @@ async def _projection(
     bus: Any,
     *,
     group: str,
-    tmp_path: Path,
     prior_state: ModelSessionPhaseState | None = None,
 ) -> dict[str, Any]:
-    state_file = tmp_path / f"{group}-phase_state.yaml"
+    store = StateIoRowStore()
     if prior_state is not None:
-        HandlerSessionPhaseReducer()._write_state(prior_state, state_file)
+        store.seed(prior_state)
     history = await drive_round_trip(
         bus,
-        handler=_ReducerBusHandler(state_file),
+        handler=_ReducerBusHandler(store, event.session_id),
         handler_name="session-phase-reducer",
         input_model_cls=None,
         start_topic=f"{_START_TOPIC}.{group}",
@@ -152,14 +155,13 @@ async def _projection(
 @pytest.mark.asyncio
 class TestReducerDeclaredStateCoverage:
     async def test_idle_to_active_on_session_started(
-        self, integration_event_bus: Any, tmp_path: Path
+        self, integration_event_bus: Any
     ) -> None:
         """idle -> active: session.started materialises a fresh projection."""
         projection = await _projection(
             _started_event(),
             integration_event_bus,
             group="reducer-start",
-            tmp_path=tmp_path,
         )
         assert projection["session_id"] == _SESSION
         assert projection["current_phase"] == "health_gate"
@@ -167,7 +169,7 @@ class TestReducerDeclaredStateCoverage:
         assert projection["active_worker_count"] == 2
 
     async def test_active_to_active_on_phase_state_fold(
-        self, integration_event_bus: Any, tmp_path: Path
+        self, integration_event_bus: Any
     ) -> None:
         """active -> active: a phase-state event folds a partial update."""
         event = ModelSessionPhaseEvent(
@@ -186,7 +188,6 @@ class TestReducerDeclaredStateCoverage:
             event,
             integration_event_bus,
             group="reducer-fold",
-            tmp_path=tmp_path,
             prior_state=_active_state(),
         )
         assert projection["current_phase"] == "merge"
@@ -198,7 +199,7 @@ class TestReducerDeclaredStateCoverage:
         assert projection["last_evaluation"] == "budget_warning"
 
     async def test_active_to_ended_on_session_ended(
-        self, integration_event_bus: Any, tmp_path: Path
+        self, integration_event_bus: Any
     ) -> None:
         """active -> ended (terminal): session.ended marks current_phase ended."""
         event = ModelSessionPhaseEvent(
@@ -210,7 +211,6 @@ class TestReducerDeclaredStateCoverage:
             event,
             integration_event_bus,
             group="reducer-end",
-            tmp_path=tmp_path,
             prior_state=_active_state(),
         )
         assert projection["current_phase"] == "ended"
@@ -226,27 +226,37 @@ class TestReducerDeclaredStateCoverage:
 @pytest.mark.asyncio
 class TestReducerDimensions:
     async def test_reapplying_session_started_is_deterministic(
-        self, integration_event_bus: Any, tmp_path: Path
+        self, integration_event_bus: Any
     ) -> None:
         """Re-folding the same session.started yields an identical projection."""
         first = await _projection(
             _started_event(),
             integration_event_bus,
             group="reducer-idem-1",
-            tmp_path=tmp_path,
         )
         second = await _projection(
             _started_event(),
             integration_event_bus,
             group="reducer-idem-2",
-            tmp_path=tmp_path,
         )
         assert first == second
 
-    async def test_out_of_order_event_for_other_session_is_rejected(
-        self, integration_event_bus: Any, tmp_path: Path
+    async def test_event_for_another_session_cannot_reach_this_session_state(
+        self, integration_event_bus: Any
     ) -> None:
-        """An event whose session_id != the state's session_id leaves state as-is."""
+        """A foreign session's event folds against its OWN row, not this one's.
+
+        OMN-16924 strengthened this property. It used to be enforced late, by
+        ``delta``'s session_id-mismatch branch, because every session shared one
+        ``phase_state.yaml``. Now the durable row is keyed on ``session_id`` (the
+        contract's ``state_io.key``), so a ``sess-OTHER`` event loads
+        ``sess-OTHER``'s row — it cannot observe or overwrite ``_SESSION``'s
+        state at all. With no row of its own yet, it lands on ``delta``'s idle
+        sentinel.
+        """
+        store = StateIoRowStore()
+        store.seed(_active_state(phase="health_gate"))
+
         foreign = ModelSessionPhaseEvent(
             event_type="session.phase_state",
             session_id="sess-OTHER",
@@ -254,20 +264,30 @@ class TestReducerDimensions:
             phase="merge",
             budget_elapsed_pct=99,
         )
-        projection = await _projection(
-            foreign,
+        history = await drive_round_trip(
             integration_event_bus,
-            group="reducer-mismatch",
-            tmp_path=tmp_path,
-            prior_state=_active_state(phase="health_gate"),
+            handler=_ReducerBusHandler(store, foreign.session_id),
+            handler_name="session-phase-reducer",
+            input_model_cls=None,
+            start_topic=f"{_START_TOPIC}.reducer-mismatch",
+            output_topic=f"{_RESULT_TOPIC}.reducer-mismatch",
+            payload_bytes=_wire_payload(foreign).model_dump_json().encode("utf-8"),
+            group_id="reducer-mismatch",
         )
-        # Unchanged: the foreign event did not overwrite phase or budget.
-        assert projection["current_phase"] == "health_gate"
-        assert projection["budget_elapsed_pct"] == 10
-        assert projection["session_id"] == _SESSION
+        assert len(history) == 1
+        projection: dict[str, Any] = json.loads(history[0].value)
+        assert projection["session_id"] == "sess-OTHER"
+        assert projection["current_phase"] == "unknown"
+
+        untouched = store.load(_SESSION)
+        assert untouched is not None
+        assert untouched.current_phase == "health_gate", (
+            "the foreign session's fold reached this session's durable row"
+        )
+        assert untouched.budget_elapsed_pct == 10
 
     async def test_idle_reject_non_start_event_yields_unknown(
-        self, integration_event_bus: Any, tmp_path: Path
+        self, integration_event_bus: Any
     ) -> None:
         """NEGATIVE CONTROL: a non-start event with NO prior state (idle) must
         yield the sentinel ``current_phase == "unknown"`` rather than fabricate
@@ -283,7 +303,6 @@ class TestReducerDimensions:
             event,
             integration_event_bus,
             group="reducer-idle-reject",
-            tmp_path=tmp_path,
         )
         assert projection["current_phase"] == "unknown"
         assert projection["session_id"] == _SESSION
