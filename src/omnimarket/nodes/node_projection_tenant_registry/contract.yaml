@@ -68,9 +68,32 @@ dod_evidence:
 
 db_io:
   db_tables:
+    # OMN-16930 AC2: classified `omninode_internal`, deliberately NOT `tenant`,
+    # and with no RLS. The mirror is a cross-tenant registry INDEX -- it holds
+    # no tenant's business rows, only the public slug<->uuid correspondence the
+    # platform already exposes at signup. Under `tenant` it would sit behind
+    # RLS and be invisible to the migrate identity (`role_omnidash`,
+    # rolbypassrls=f, app.tenant_id unset), reproducing the exact blindness
+    # that made migration 0031's DELETE a silent no-op and left only
+    # `contains null values` to diagnose from for a week.
+    #
+    # `public` was wrong and is corrected here: only TENANT and
+    # OMNINODE_INTERNAL are mapped in the topology's
+    # DOMAIN_PROJECTION_BINDINGS, so a `public`-domain declaration derives no
+    # projection binding at all and surfaces as an unresolved residual rather
+    # than as the grant this relation needs. The manifest row for this same
+    # migration already classifies it `omninode_internal`; the contract now
+    # agrees with it.
+    #
+    # PHYSICAL location is bare `public` -- the migration issues an
+    # unqualified CREATE TABLE, like every other relation still awaiting the
+    # OMN-15359 schema cutover -- so the topology's
+    # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 bridge must gain
+    # this table name when the generated TABLE grants are next re-derived
+    # (omnibase_infra, after this contract ships in a release).
     - name: tenant_registry_mirror
       database_ref: application
-      schema: public
+      schema: omninode_internal
       migration: "0000_create_tenant_registry_mirror.sql"
       access: write
       role: registry_mirror
