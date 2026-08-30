@@ -40,6 +40,10 @@ from omnimarket.nodes.node_event_emit_effect.enrichment import (
     derive_partition_key,
     inject_metadata,
 )
+from omnimarket.nodes.node_event_emit_effect.errors import (
+    NonMappingPayloadError,
+    UnknownTransformError,
+)
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
 )
@@ -414,9 +418,14 @@ def test_strip_body_transform_matches_daemon() -> None:
     assert out == {"body_length": 3, "body_preview": "abc"}
 
 
-def test_unknown_transform_falls_back_to_passthrough() -> None:
+def test_unknown_transform_refuses_rather_than_falling_back() -> None:
+    """OMN-17237 H1 inverted this: an unknown NAME used to resolve to
+    passthrough, publishing exactly what the named transform existed to
+    strip. A declared absence (``None``) and ``passthrough`` are unchanged --
+    they are postures the registry states, not lookup misses."""
     payload = {"a": 1}
-    assert apply_transform("no-such-transform", payload) == payload
+    with pytest.raises(UnknownTransformError):
+        apply_transform("no-such-transform", payload)
     assert apply_transform("passthrough", payload) == payload
     assert apply_transform(None, payload) == payload
 
@@ -445,13 +454,18 @@ def test_resolved_topics_carry_their_transform_name() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_non_dict_payload_is_published_verbatim(tmp_path: Path) -> None:
-    """A list payload has no field surface to enrich, transform, or key off."""
+def test_non_dict_payload_is_refused_not_published(tmp_path: Path) -> None:
+    """OMN-17237 H3 inverted this: a list payload has no field surface for a
+    transform to act on, so it used to bypass enrichment, transform and
+    keying and go out verbatim. The daemon this node is at parity with
+    rejects non-object payloads outright, so refusing NARROWS the node back
+    to parity rather than adding a restriction."""
     handler, adapter = _handler(tmp_path)
-    handler.handle(ModelEmitRequest(event_type="session.started", payload=["a", "b"]))
-    (_topic, payload, key) = adapter.calls[0]
-    assert payload == ["a", "b"]
-    assert key is None
+    with pytest.raises(NonMappingPayloadError):
+        handler.handle(
+            ModelEmitRequest(event_type="session.started", payload=["a", "b"])
+        )
+    assert adapter.calls == []
 
 
 # ---------------------------------------------------------------------------

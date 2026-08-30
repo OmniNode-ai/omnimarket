@@ -18,6 +18,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.nodes.node_event_emit_effect.errors import UnresolvableTransformError
 from omnimarket.nodes.node_event_emit_effect.handlers.handler_event_emit_effect import (
     HandlerEventEmitEffect,
 )
@@ -395,9 +396,19 @@ def test_model_emit_request_default_event_id_is_filesystem_safe() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_topic_override_with_unregistered_event_type_succeeds(
+def test_topic_override_with_unregistered_event_type_refuses(
     tmp_path: Path,
 ) -> None:
+    """OMN-17237 H2 inverted this test's premise.
+
+    An unregistered event_type pointed at an unregistered topic has no
+    declared redaction posture on either side, so nothing states what may
+    reach that topic. This used to publish -- which made the override field a
+    bypass of the whole event registry, reachable from any caller. The
+    conservative-tier reasoning of OMN-15987 finding 4 (below) still stands
+    for an override onto a topic the registry DOES declare; what changed is
+    that "declared nowhere" is no longer a publishable state.
+    """
     adapter = FakePublishAdapter()
     spool = SpoolOutbox(tmp_path / "spool")
     handler = HandlerEventEmitEffect(spool=spool, publish_adapter=adapter)
@@ -407,13 +418,12 @@ def test_topic_override_with_unregistered_event_type_succeeds(
         payload={"x": 1},
         topic="onex.evt.omnimarket.some-topic-not-in-the-registry.v1",
     )
-    result = handler.handle(request)
 
-    assert result.published is True
-    assert result.topics_published == [
-        "onex.evt.omnimarket.some-topic-not-in-the-registry.v1"
-    ]
-    assert len(adapter.calls) == 1
+    with pytest.raises(UnresolvableTransformError):
+        handler.handle(request)
+
+    assert adapter.calls == []
+    assert spool.pending_count() == 0
 
 
 def test_topic_override_with_unregistered_event_type_defaults_to_telemetry_tier(
@@ -421,7 +431,15 @@ def test_topic_override_with_unregistered_event_type_defaults_to_telemetry_tier(
 ) -> None:
     """Unregistered event_type + override topic must not silently inherit
     never-drop duty_critical semantics it was never declared for -- it
-    defaults to the conservative (bounded, drop-oldest) telemetry tier."""
+    defaults to the conservative (bounded, drop-oldest) telemetry tier.
+
+    The override topics here are registry-DECLARED (OMN-17237 H2): the tier
+    fallback under test is reached via an unregistered ``event_type``, and
+    that is now only publishable when the topic itself declares a redaction
+    posture. Both topics chosen below declare no transform, so this exercises
+    the tier path and nothing else. Picking undeclared topics, as this test
+    originally did, now refuses before any tier is assigned.
+    """
     spool = SpoolOutbox(
         tmp_path / "spool", max_telemetry_messages=1, max_duty_critical_messages=1
     )
@@ -431,7 +449,7 @@ def test_topic_override_with_unregistered_event_type_defaults_to_telemetry_tier(
         ModelEmitRequest(
             event_type="unregistered.one",
             payload={},
-            topic="onex.evt.omnimarket.unregistered-one.v1",
+            topic="onex.evt.omniclaude.session-started.v1",
         )
     )
     # A second telemetry-tier event should evict the first (bounded,
@@ -441,7 +459,7 @@ def test_topic_override_with_unregistered_event_type_defaults_to_telemetry_tier(
         ModelEmitRequest(
             event_type="unregistered.two",
             payload={},
-            topic="onex.evt.omnimarket.unregistered-two.v1",
+            topic="onex.evt.omniclaude.session-ended.v1",
         )
     )
     assert result.dropped_count == 1

@@ -61,6 +61,7 @@ from omnimarket.nodes.node_event_emit_effect.enrichment import (
     derive_partition_key,
     inject_metadata,
 )
+from omnimarket.nodes.node_event_emit_effect.errors import NonMappingPayloadError
 from omnimarket.nodes.node_event_emit_effect.models.model_emit_request import (
     JsonType,
     ModelEmitRequest,
@@ -78,6 +79,7 @@ from omnimarket.nodes.node_event_emit_effect.spool.topic_resolver import (
     ResolvedTopic,
     UnknownEventTypeError,
     resolve_event_type,
+    resolve_override_transform,
     resolve_partition_key_field,
     resolve_tier,
 )
@@ -414,12 +416,25 @@ class HandlerEventEmitEffect:
             # override changes where it publishes, not how durable it is.
             tier = EnumDurabilityTier.TELEMETRY
             partition_key_field = None
-        # An override topic has no fan-out rule, so no declared transform:
-        # the payload goes out enriched but untransformed. The registry's
-        # partition_key_field still applies when event_type IS registered, so
-        # an override does not silently lose key-based ordering.
+        # An override topic has no fan-out rule of its own, but it still has
+        # a declared redaction posture -- resolved from the topic's own
+        # registry declaration, else from the event's (OMN-17237, H2). This
+        # previously hardcoded transform_name=None, which made the override
+        # field a bypass of the entire registry: an override onto
+        # agent.chat.broadcast's observability topic published the raw `body`
+        # that topic's declared strip_body exists to remove. A posture that
+        # cannot be resolved raises rather than defaulting to verbatim.
+        #
+        # The registry's partition_key_field still applies when event_type IS
+        # registered, so an override does not silently lose key-based ordering.
         return (
-            ResolvedTopic(topic=request.topic, tier=tier, transform_name=None),
+            ResolvedTopic(
+                topic=request.topic,
+                tier=tier,
+                transform_name=resolve_override_transform(
+                    request.topic, request.event_type
+                ),
+            ),
         ), partition_key_field
 
     def _build_messages(
@@ -436,13 +451,32 @@ class HandlerEventEmitEffect:
         each rule's own post-transform result.
 
         A non-dict ``payload`` (the model permits list/str/number/bool/None)
-        has no field surface to enrich, transform or key off, so it is
-        published verbatim -- as the daemon would also do, since it rejects
-        such payloads outright rather than enriching them.
+        has no field surface for a transform to act on, so it is REFUSED
+        rather than published (OMN-17237, H3). It previously returned here
+        verbatim, un-enriched and un-transformed -- and a bare string is
+        exactly the shape captured command output arrives in, i.e. the
+        content a redaction posture exists to hold. The legacy daemon already
+        rejects these (``socket_server._handle_emit``: "'payload' must be a
+        JSON object"), so refusing narrows this node back to daemon parity
+        rather than imposing a new restriction.
+
+        ``None`` is not refused: the daemon maps it to ``{}`` before its own
+        object check, and an empty object has nothing to disclose. Mirroring
+        that keeps the null case at parity instead of trading a disclosure
+        hole for a parity regression.
+
+        Raises:
+            NonMappingPayloadError: ``payload`` is neither a JSON object nor
+                null.
         """
         raw = request.payload
+        if raw is None:
+            raw = {}
         if not isinstance(raw, dict):
-            return [(t.topic, raw, request.partition_key) for t in targets]
+            raise NonMappingPayloadError(
+                event_type=request.event_type,
+                payload_type=type(raw).__name__,
+            )
 
         enriched = inject_metadata(
             raw,
