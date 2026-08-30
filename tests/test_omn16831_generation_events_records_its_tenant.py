@@ -167,14 +167,23 @@ async def test_generation_events_row_is_attributed_by_the_writer_not_the_column(
         )
         assert stored == INTERIM_DEFAULT_TENANT
 
-        # And prove the discriminator actually discriminates: the pre-ruling
-        # writer -- the one that omitted the key -- cannot write this row.
-        with pytest.raises(asyncpg.exceptions.NotNullViolationError):
-            await conn.execute(
-                f'INSERT INTO "{schema}".generation_events (correlation_id) '
-                "VALUES ($1)",
-                str(uuid4()),
-            )
+        # And prove the discriminator actually discriminates without emitting a
+        # PostgreSQL ERROR into the integration log: the column is NOT NULL and
+        # its default was removed, so a writer that omits it has no database
+        # fallback path.
+        discriminator = await conn.fetchrow(
+            """
+            SELECT is_nullable, column_default
+            FROM information_schema.columns
+            WHERE table_schema = $1
+              AND table_name = 'generation_events'
+              AND column_name = 'tenant_id'
+            """,
+            schema,
+        )
+        assert discriminator is not None
+        assert discriminator["is_nullable"] == "NO"
+        assert discriminator["column_default"] is None
     finally:
         await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         await conn.close()

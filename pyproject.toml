@@ -521,6 +521,16 @@ omnimarket-projection-api = "omnimarket.projection.api_server:main"
 
 [project.entry-points."onex.cli"]
 market = "omnimarket.cli.market:market"
+# OMN-16967: the tenant-facing delegation client (`onex cloud delegate`).
+# Registered here and NOWHERE else — omnibase_core's CLI discovers the
+# "onex.cli" group over installed distributions, so installing this market
+# package is what makes the command exist for a customer. Never hand-wire it
+# with add_command; tests/unit/cli/
+# test_cloud_cli_entry_point_registration_omn16967.py fails if anyone does.
+# Named "cloud", not "delegate": omnibase_infra already advertises "delegate"
+# in this same group for the local-LLM/bus path, and two distributions
+# claiming one name resolve in iteration order (a shadow, not an override).
+cloud = "omnimarket.cli.cli_cloud:cloud_group"
 
 [project.entry-points."onex.domain_plugins"]
 delegation = "omnimarket.nodes.node_delegation_orchestrator.plugin:PluginDelegation"

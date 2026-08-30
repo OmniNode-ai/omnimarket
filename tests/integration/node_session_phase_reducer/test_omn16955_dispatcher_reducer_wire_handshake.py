@@ -191,11 +191,23 @@ async def test_dispatcher_actual_payload_validates_and_advances_current_phase(
     )
     assert result is not None, "dispatch produced no ModelDispatchResult"
 
-    state_file = tmp_path / ".onex_state" / "session" / "phase_state.yaml"
-    assert state_file.exists(), "the reducer's projection side effect did not fire"
-    state = yaml.safe_load(state_file.read_text())
-    assert state["session_id"] == _SESSION_ID
-    assert state["current_phase"] == "phase_2", (
-        "the fold did not advance current_phase — phase_name was not "
+    try:
+        from omnimarket.nodes.node_session_phase_reducer.state_codec import (
+            get_default_proxy,
+        )
+    except ModuleNotFoundError:
+        state_file = tmp_path / ".onex_state" / "session" / "phase_state.yaml"
+        assert state_file.exists(), "the reducer's projection side effect did not fire"
+        state: Any = yaml.safe_load(state_file.read_text())
+        assert state["session_id"] == _SESSION_ID
+        current_phase = state["current_phase"]
+    else:
+        state = get_default_proxy().get(_SESSION_ID)
+        assert state is not None, "the reducer did not update the state proxy"
+        assert state.session_id == _SESSION_ID
+        current_phase = state.current_phase
+
+    assert current_phase == "phase_2", (
+        "the fold did not advance current_phase -- phase_name was not "
         f"transcribed onto the reducer's phase field (state={state!r})"
     )

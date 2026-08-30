@@ -64,6 +64,8 @@ class TestDispatcherPublishesPhaseState:
         evt = phase_state_events[0]
         assert evt.topic == _TOPIC_PHASE_STATE
         assert evt.payload["phase_name"] == "merge"
+        assert evt.payload["phase"] == "merge"
+        assert "timestamp" in evt.payload
         assert evt.payload["transition"] == "enter"
         assert evt.payload["session_id"] == "sess-2026-05-18-test"
 

@@ -129,6 +129,8 @@ class HandlerSessionPhaseDispatcher:
                 event_type=_EVENT_TYPE_PHASE_STATE,
                 payload={
                     "session_id": cmd.session_id,
+                    "timestamp": datetime.now(UTC),
+                    "phase": cmd.phase_name,
                     "phase_name": cmd.phase_name,
                     "transition": cmd.transition,
                     "correlation_id": str(cmd.correlation_id),
