@@ -195,6 +195,20 @@ def _parse_reset_instant(message: str) -> datetime | None:
     return parsed
 
 
+def _with_hint(rule: ModelQuotaCodeRule, reason: str) -> str:
+    """Append the contract-declared operator hint, when the rule carries one.
+
+    The provider's own message is not always the cause. z.ai returns
+    ``1113 Insufficient balance`` when a Coding-Plan key is presented to the
+    pay-as-you-go surface — a routing defect that reads as a billing one.
+    The contract declares the real cause; this puts it in front of whoever
+    reads the verdict (OMN-6790).
+    """
+    if not rule.alert_hint:
+        return reason
+    return f"{reason} {rule.alert_hint.strip()}"
+
+
 def classify_quota_response(
     *,
     status_code: int,
@@ -246,10 +260,11 @@ def classify_quota_response(
             provider_code=rule.code,
             disabled_until=None,
             alert=rule.alert,
-            reason=(
-                f"{provider.provider_id} code {rule.code}: no balance or resource "
-                "package. No reset will arrive on its own — retrying cannot "
-                "succeed, so the tier is disabled and an operator is alerted."
+            reason=_with_hint(
+                rule,
+                f"{provider.provider_id} code {rule.code}: the provider reports "
+                "no balance or resource package. No reset will arrive on its "
+                "own, so the tier is disabled and an operator is alerted.",
             ),
         )
 
@@ -275,9 +290,10 @@ def classify_quota_response(
             provider_code=rule.code,
             disabled_until=disabled_until,
             alert=rule.alert,
-            reason=(
+            reason=_with_hint(
+                rule,
                 f"{provider.provider_id} code {rule.code}: periodic limit "
-                f"exhausted; {detail}"
+                f"exhausted; {detail}",
             ),
         )
 
@@ -286,7 +302,9 @@ def classify_quota_response(
         provider_id=provider.provider_id,
         provider_code=rule.code,
         alert=rule.alert,
-        reason=f"{provider.provider_id} code {rule.code}: declared retryable",
+        reason=_with_hint(
+            rule, f"{provider.provider_id} code {rule.code}: declared retryable"
+        ),
     )
 
 

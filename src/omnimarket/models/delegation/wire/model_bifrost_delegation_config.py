@@ -286,6 +286,16 @@ class ModelQuotaCodeRule(BaseModel):
         default=False,
         description="Whether this condition needs an operator, not a retry.",
     )
+    alert_hint: str | None = Field(
+        default=None,
+        description=(
+            "Operator-facing cause for this code, declared in the contract and "
+            "appended verbatim to the verdict reason. Exists because a "
+            "provider's own error text can name the wrong cause: z.ai 1113 "
+            "reads 'Insufficient balance' but on a Coding-Plan key it means the "
+            "request hit the pay-as-you-go surface (OMN-6790)."
+        ),
+    )
 
 
 class ModelQuotaProviderRule(BaseModel):

@@ -312,8 +312,10 @@ class TestJudgeResolvesConcreteModelNotTier:
         ticket — cheap_cloud/claude were repointed to a different backend
         (``cloud-gemini-pro``), leaving ``cloud-glm`` itself defined-but-unused
         (still ``glm-5-turbo``). The JUDGE's OWN ``cloud-glm-judge`` backend was
-        separately repointed off z.ai GLM to Gemini (``gemini-2.5-flash``) because
-        the z.ai route is DEAD from the .201 runtime. This test's load-bearing
+        separately repointed off z.ai GLM to Gemini (``gemini-2.5-flash``) on a
+        "z.ai route is DEAD from the .201 runtime" finding that OMN-6790 later
+        disproved (the route serves 200s on the Coding Plan endpoint; the judge
+        stays on Gemini for quota-domain independence, not necessity). This test's load-bearing
         invariant survives both repoints unchanged: the judge and the escalation
         backend resolve from DIFFERENT backend definitions and are never forced
         to the same model — repointing one can never again drag the other along
@@ -324,13 +326,14 @@ class TestJudgeResolvesConcreteModelNotTier:
             "code_generation", backend_id="cloud-glm"
         ).model_id
         assert judge_model == "gemini-2.5-flash"
-        # OMN-16891: was pinned to "glm-5-turbo". That id is absent from every
-        # current z.ai doc, so cloud-glm was repointed to the documented
-        # ``glm-5.3`` on the standard (non-coding-plan) surface. The exact id is
-        # incidental to this test — assert that cloud-glm resolves its OWN
-        # model rather than pinning a value this ticket's sibling repoints will
-        # keep invalidating.
-        assert escalation_model == "glm-5.3"
+        # The exact GLM id is incidental to this test, and pinning it here has
+        # now invalidated this test twice on unrelated repoints (OMN-16891
+        # glm-5-turbo -> glm-5.3, OMN-6790 glm-5.3 -> glm-5.3-flash). What is
+        # load-bearing is only that cloud-glm resolves its OWN model and not
+        # the judge's, so assert exactly that and let the id authority live in
+        # tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py.
+        assert escalation_model != judge_model
+        assert escalation_model.startswith("glm-")
         # The load-bearing invariant: the two are resolved from DIFFERENT backends
         # and are NOT the same model — the judge does not ride the escalation model.
         assert judge_model != escalation_model
