@@ -32,6 +32,42 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_savings/migrations/074_create_savings_estimates.sql
       access: read_write
       role: savings_estimates_projection_table
+    # OMN-16180: register this repository as the CATALOG owner of the physical
+    # relation `work_events` -- the L1 work-ledger surface of the OMN-16176
+    # ladder, created by node_projection_work_events' own node-owned migration.
+    #
+    # WHY THIS ENTRY LANDS BEFORE THE MIGRATION IT DESCRIBES
+    #   The OMN-15361 SQL ownership gate
+    #   (omnibase_infra/scripts/ci/check_application_database_sql.py) requires
+    #   exactly one ownership declaration for every application relation a
+    #   CHANGED deployable SQL file targets, and it resolves declarations from
+    #   service manifests ONLY -- never from a node's own contract.yaml. It runs
+    #   on the omnibase_infra PR that vendors the migration, and reads THIS file
+    #   from omnimarket@dev.
+    #
+    #   Meanwhile omnimarket's own node-migration-vendor-parity-gate fails any
+    #   omnimarket PR touching src/omnimarket/nodes/*/migrations/*.sql unless
+    #   omnibase_infra@dev ALREADY carries a byte-identical vendored copy.
+    #
+    #   The two gates therefore force a strict three-PR order, and this file is
+    #   step 1 of it:
+    #     1. this declaration (no SQL, so the parity gate short-circuits)
+    #     2. omnibase_infra vendors the migration (ownership now resolvable)
+    #     3. omnimarket lands the node package and the migration itself
+    #   Splitting it any other way deadlocks. This is not a gate bypass: no
+    #   exemption is added anywhere, and both gates stay fail-closed throughout.
+    #
+    # Unlike session_replay_snapshots (OMN-16993), this relation is created
+    # DIRECTLY in omninode_internal -- it is net-new, so it needs no entry in
+    # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 and no
+    # _LEGACY_DEFAULT_SCHEMA_SQL_EXACT_PATHS exemption, now or at the governed
+    # OMN-15359 cutover.
+    - name: work_events
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_work_events/migrations/0001_create_work_events.sql
+      access: read_write
+      role: work_events_projection_table
     # OMN-16993: register this repository as the CATALOG owner of the physical
     # relation `session_replay_snapshots`, mirroring the `live_events` entry
     # below and for the same reason -- the OMN-15361 SQL ownership gate
