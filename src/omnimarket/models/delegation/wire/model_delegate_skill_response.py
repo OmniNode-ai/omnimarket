@@ -16,6 +16,11 @@ from omnibase_core.models.delegation.wire import (
 )
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.enums.enum_delegation_acceptance import (
+    EnumDelegationAcceptanceDecision,
+    EnumDelegationAcceptanceReason,
+)
+
 
 class ModelDelegateSkillAttemptRecord(BaseModel):
     """One tier/backend attempt in a delegation's escalation ladder (OMN-14063).
@@ -45,6 +50,21 @@ class ModelDelegateSkillAttemptRecord(BaseModel):
         default="",
         description="Why this tier was skipped/failed, e.g. 'endpoint <url> failed "
         "health probe' — the same reason previously visible only in the capture log.",
+    )
+    # OMN-16932: the accept/climb verdict for this rung, carried onto the
+    # CONSUMER-facing terminal rather than left in orchestrator-internal state.
+    # The ticket exists because an escalation past a working free rung was
+    # invisible here: a reader could see that a later rung ran and had to infer
+    # why the earlier one was abandoned. ``None`` means this attempt never
+    # reached an accept/climb decision (a transport skip on the bus-less path),
+    # which is a different fact from "it was rejected" and is typed as such.
+    acceptance_decision: EnumDelegationAcceptanceDecision | None = Field(
+        default=None,
+        description="Whether this rung's response was accepted or the ladder climbed past it.",
+    )
+    acceptance_reason: EnumDelegationAcceptanceReason | None = Field(
+        default=None,
+        description="Typed reason for the accept/climb decision on this rung.",
     )
 
 

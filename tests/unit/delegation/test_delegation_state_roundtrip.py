@@ -29,6 +29,10 @@ from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
 )
 
+from omnimarket.enums.enum_delegation_acceptance import (
+    EnumDelegationAcceptanceDecision,
+    EnumDelegationAcceptanceReason,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import ModelQualityGateResult
 from omnimarket.nodes.node_delegation_orchestrator import state_codec
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
@@ -132,6 +136,8 @@ def _build_fully_populated_state() -> DelegationWorkflowState:
         cost_usd=0.0042,
         latency_ms=1850,
         fallback_recommended=True,
+        acceptance_decision=EnumDelegationAcceptanceDecision.CLIMB,
+        acceptance_reason=(EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR),
         attempted_at=datetime.now(UTC),
         routing_decision_id=uuid4(),
     )

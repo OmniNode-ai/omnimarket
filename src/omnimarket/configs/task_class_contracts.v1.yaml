@@ -99,6 +99,64 @@ task_model_overrides:
   # `review`); the local Qwen coder serves it, with cheap_cloud fallback.
   code_review: "qwen3.8"
   research: "qwen3.8"
+# ── OMN-16932: request-scoped response shape ──────────────────────────────────
+#
+# A task class's definition_of_done describes the CLASS, not the request. When a
+# prompt explicitly constrains its own answer ("Reply with exactly the word:
+# alive"), the class rubric is a category error: on 2026-08-30 the dev lane
+# scored that obedient one-word answer 0.7 against `research`'s prose rubric
+# (cites_sources + methodical_analysis + semantic_adequacy), rejected it three
+# times on the FREE local rung, and climbed into two metered 429s looking for a
+# longer wrong answer.
+#
+# `response_shape_directives` are the CLOSED set of prompt directives that
+# declare a shape. Each pattern is a Python `re` pattern matched case-
+# insensitively against the prompt. A prompt matching none of them resolves to
+# `unconstrained` and the class DoD applies unchanged — the default path is
+# byte-for-byte the prior behaviour.
+#
+# `definition_of_done.shape_overrides.<shape>` replaces the HEURISTIC band for
+# that shape. The deterministic band is never overridden: a structural floor
+# (response_non_empty, compiles_without_errors) is a property of the artifact,
+# not of how long the caller asked the answer to be. A class that declares no
+# override for the resolved shape falls back to `default_shape_overrides` below.
+response_shape_directives:
+  exact_literal:
+    - "reply with exactly the word"
+    - "respond with exactly the word"
+    - "reply with exactly:"
+    - "respond with exactly:"
+    - "answer with exactly:"
+    - "output exactly:"
+  single_word:
+    - "in (?:exactly )?one word"
+    - "in a single word"
+    - "one[- ]word (?:answer|response|reply)"
+    - "single[- ]word (?:answer|response|reply)"
+    # The determiner is open on purpose: the live dev-lane probes used BOTH
+    # "reply with the single word: ok" (2026-08-30T14:42Z) and "Reply with
+    # exactly the word: alive" (14:47Z). An `(?:a )?`-only alternation matched
+    # the second and missed the first, so the operator's own row-1 probe still
+    # resolved `unconstrained` and still climbed the paid ladder.
+    - "(?:answer|reply|respond) with (?:only )?(?:the |a |one )?single word"
+    - "(?:answer|reply|respond) with (?:only )?(?:just )?one word"
+
+# Applied when a task class declares no shape_overrides entry of its own for the
+# resolved shape. `short_form_adequacy` is the adequacy authority here: it keeps
+# every non-length failure mode of `semantic_adequacy` (empty, truncated
+# mid-token, truncated mid-clause) and drops only the bare-single-word-fragment
+# rule, which is precisely the rule the prompt overrode. `no_refusal` is kept
+# because a constrained shape never licenses a refusal.
+default_shape_overrides:
+  exact_literal:
+    heuristic:
+      - no_refusal
+      - short_form_adequacy
+  single_word:
+    heuristic:
+      - no_refusal
+      - short_form_adequacy
+
 task_classes:
   code_generation:
     gateway_exposure: public

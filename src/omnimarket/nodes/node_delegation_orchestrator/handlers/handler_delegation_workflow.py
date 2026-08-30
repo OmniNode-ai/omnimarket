@@ -57,6 +57,10 @@ from omnibase_core.models.primitives.model_semver import ModelSemVer
 from pydantic import BaseModel
 
 from omnimarket.config import get_settings
+from omnimarket.enums.enum_delegation_acceptance import (
+    EnumDelegationAcceptanceDecision,
+    EnumDelegationAcceptanceReason,
+)
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalation_triggered_event import (
@@ -1213,6 +1217,13 @@ class HandlerDelegationWorkflow:
                     fallback_recommended=True,
                     attempted_at=datetime.now(UTC),
                     routing_decision_id=workflow.routing_decision.selected_backend_id,
+                    # OMN-16932: the call never produced a response, so there was
+                    # no quality verdict to accept or reject. Typed as such rather
+                    # than borrowed from the quality vocabulary.
+                    acceptance_decision=EnumDelegationAcceptanceDecision.CLIMB,
+                    acceptance_reason=(
+                        EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED
+                    ),
                 ),
                 prompt_tokens=response.prompt_tokens,
                 completion_tokens=response.completion_tokens,
@@ -1533,8 +1544,53 @@ class HandlerDelegationWorkflow:
             and result.passed
             and (judge_unavailable_floor or not score_below_required_bar)
         )
+        # OMN-16932: the same four booleans, as a typed decision + reason that is
+        # recorded rather than inferred. Derived here so the ACCEPT and CLIMB
+        # branches below cannot disagree about what was decided.
+        acceptance_decision, acceptance_reason = self._acceptance_decision(
+            pre_filter_rejected=pre_filter_rejected,
+            gate_passed=result.passed,
+            judge_unavailable_floor=judge_unavailable_floor,
+            score_below_required_bar=score_below_required_bar,
+        )
+        _logger.info(
+            "delegation acceptance decision: decision=%s reason=%s tier=%s "
+            "model=%s score=%.3f required_bar=%.3f correlation_id=%s",
+            acceptance_decision.value,
+            acceptance_reason.value,
+            workflow.current_tier_name or "unknown",
+            workflow.inference_model_used or "unknown",
+            actual_score,
+            required_bar_authority.required_bar,
+            cid,
+        )
 
         if quality_accepted:
+            # OMN-16932: record the WINNING rung in escalation_history. Until now
+            # only rejections were recorded, so an accepted terminal carried
+            # ``attempts: []`` — the event log could show every rung the ladder
+            # abandoned and never the rung that answered. A passing local answer
+            # ending the chain is the outcome this ticket exists to produce, so
+            # it is the one outcome that must be legible in the log.
+            self._record_accepted_attempt(
+                workflow,
+                ModelDelegationEscalationAttempt(
+                    tier_name=workflow.current_tier_name or "unknown",
+                    model_used=workflow.inference_model_used or "unknown",
+                    quality_score=result.quality_score,
+                    required_bar=required_bar_authority.required_bar,
+                    actual_score=actual_score,
+                    authority_source=required_bar_authority.authority_source,
+                    score_source=required_bar_authority.score_source,
+                    failure_reasons=(),
+                    latency_ms=elapsed_ms,
+                    fallback_recommended=False,
+                    acceptance_decision=acceptance_decision,
+                    acceptance_reason=acceptance_reason,
+                    attempted_at=datetime.now(UTC),
+                    routing_decision_id=(workflow.routing_decision.selected_backend_id),
+                ),
+            )
             # --- PASSED: complete as before ---
             terminal_inputs = self._gate_terminal_inputs(
                 workflow,
@@ -1593,6 +1649,8 @@ class HandlerDelegationWorkflow:
                 failure_reasons=tuple(result.failure_reasons),
                 latency_ms=elapsed_ms,
                 fallback_recommended=True,
+                acceptance_decision=acceptance_decision,
+                acceptance_reason=acceptance_reason,
                 attempted_at=result.evaluated_at
                 if hasattr(result, "evaluated_at") and result.evaluated_at is not None
                 else datetime.now(UTC),
@@ -1937,6 +1995,86 @@ class HandlerDelegationWorkflow:
         )
 
     @staticmethod
+    def _record_accepted_attempt(
+        workflow: DelegationWorkflowState,
+        attempt: ModelDelegationEscalationAttempt,
+    ) -> None:
+        """Append the WINNING rung to ``escalation_history`` (OMN-16932).
+
+        ``_record_escalation_attempt`` records rejections and banks their metered
+        spend. This records the accepted attempt and banks NOTHING: the winning
+        rung's served tokens and measured cost are already the terminal's
+        top-level values, and ``prior_attempt_cost_usd`` /
+        ``cumulative_attempt_cost`` are the sum over the rungs the ladder
+        ABANDONED. Pricing the winner here as well would double-count it in
+        every consumer that re-derives the total from ``attempts[]`` plus the
+        top-level row (the projection contract at ``_emit_terminal`` says it
+        does exactly that), so the appended row deliberately carries the model's
+        zero token/cost defaults and exists for its verdict, not its price.
+
+        Recorded because the event log previously had no representation at all
+        for "the ladder stopped here": an accepted terminal carried
+        ``attempts: []`` and the only rungs ever named were the abandoned ones.
+        """
+        workflow.escalation_history.append(attempt)
+
+    @staticmethod
+    def _acceptance_decision(
+        *,
+        pre_filter_rejected: bool,
+        gate_passed: bool,
+        judge_unavailable_floor: bool,
+        score_below_required_bar: bool,
+    ) -> tuple[EnumDelegationAcceptanceDecision, EnumDelegationAcceptanceReason]:
+        """Derive the TYPED accept/climb decision from the acceptance expression.
+
+        OMN-16932. ``quality_accepted`` below is the whole decision::
+
+            quality_accepted = (
+                not pre_filter_rejected
+                and result.passed
+                and (judge_unavailable_floor or not score_below_required_bar)
+            )
+
+        The orchestrator has always evaluated it and never recorded it. A reader
+        of the event log could learn "it climbed" only by noticing a later
+        provider call, which is why a free local rung being abandoned three
+        times in a row stayed invisible until it surfaced as two metered 429s
+        (dev lane, 2026-08-30, correlation cf245cad).
+
+        This derives the decision and its reason from the SAME four booleans the
+        expression uses, so the recorded reason cannot drift from the branch that
+        was actually taken — there is no second place where a reason is composed
+        by hand. Precedence matches the expression: the deterministic floor
+        short-circuits, then the acceptance criteria, then the numeric bar (the
+        OMN-15464 three-way split, now typed).
+        """
+        if pre_filter_rejected:
+            return (
+                EnumDelegationAcceptanceDecision.CLIMB,
+                EnumDelegationAcceptanceReason.DETERMINISTIC_FLOOR_FAILED,
+            )
+        if not gate_passed:
+            return (
+                EnumDelegationAcceptanceDecision.CLIMB,
+                EnumDelegationAcceptanceReason.ACCEPTANCE_CRITERIA_FAILED,
+            )
+        if judge_unavailable_floor:
+            return (
+                EnumDelegationAcceptanceDecision.ACCEPT,
+                EnumDelegationAcceptanceReason.JUDGE_UNAVAILABLE_DETERMINISTIC_FLOOR,
+            )
+        if score_below_required_bar:
+            return (
+                EnumDelegationAcceptanceDecision.CLIMB,
+                EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR,
+            )
+        return (
+            EnumDelegationAcceptanceDecision.ACCEPT,
+            EnumDelegationAcceptanceReason.QUALITY_BAR_MET,
+        )
+
+    @staticmethod
     def _score_vs_bar_reason(
         result: ModelQualityGateResult,
         required_bar_authority: RequiredBarAuthority,
@@ -2038,7 +2176,18 @@ class HandlerDelegationWorkflow:
         path, which terminates before any attempt is appended) can never report
         fewer attempts than it provably made, nor zero.
         """
-        recorded = len(workflow.escalation_history) + (1 if completed else 0)
+        # OMN-16932: the winning rung is now recorded in ``escalation_history``
+        # like every abandoned one, so the synthetic +1 that used to stand in for
+        # it would double-count. Add it only when no ACCEPT row is present —
+        # which keeps every non-gate completion path (transport terminals that
+        # never reach ``handle_gate_result``) counting exactly as before.
+        accept_recorded = any(
+            attempt.acceptance_decision is EnumDelegationAcceptanceDecision.ACCEPT
+            for attempt in workflow.escalation_history
+        )
+        recorded = len(workflow.escalation_history) + (
+            1 if completed and not accept_recorded else 0
+        )
         raw_inference_sequence = getattr(workflow, "inference_attempt_sequence", 0)
         inference_sequence = (
             raw_inference_sequence

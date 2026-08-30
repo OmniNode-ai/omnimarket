@@ -1206,7 +1206,15 @@ class TestInferenceErrorEscalation:
         result: ModelDelegationResult = result_event
         assert result.quality_passed is True
         assert result.escalation_count == 1
-        assert len(result.escalation_history) == 1
+        # OMN-16932: the history now records the rung that ANSWERED as well as
+        # the one that was abandoned. Before, an accepted terminal named only
+        # the rungs the ladder walked away from, so "which rung produced this
+        # answer" was not in the event log at all.
+        assert len(result.escalation_history) == 2
+        assert result.escalation_history[0]["acceptance_decision"] == "climb"
+        assert result.escalation_history[1]["acceptance_decision"] == "accept"
+        assert result.escalation_history[1]["acceptance_reason"] == "quality_bar_met"
+        assert result.escalation_history[1]["tier_name"] == "cheap_cloud"
 
     def test_auth_error_on_all_tiers_produces_terminal_failed(self) -> None:
         """When no more tiers available after infra error, emit terminal FAILED."""
