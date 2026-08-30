@@ -31,9 +31,19 @@
 # Fail-closed: if none resolve, the gate FAILS rather than silently skipping. A gate that
 # can no-op is advisory, and advisory checks get ignored (doctrine rule 5).
 #
-# OMN-17167: when none resolve the gate now exits 2 through the shared OMNI_HOME
-# preflight, which distinguishes an UNSET OMNI_HOME from a STALE one and prints the
-# full expanded path it probed (rule 8; memory feedback_own_errors_give_full_paths).
+# OMN-17167: when none resolve the gate now exits 2 through a shared preflight that
+# distinguishes an UNSET candidate variable from a STALE one and prints the full
+# expanded path it probed (rule 8; memory feedback_own_errors_give_full_paths).
+#
+# OMN-17167 correction (2026-08-30): the first cut of this fix routed every failure
+# through a preflight that unconditionally named OMNI_HOME, even though
+# OMNIBASE_INFRA_PATH is THIS gate's own, higher-priority override (checked before
+# $OMNI_HOME/omnibase_infra/src above) and OMNI_HOME here is only a worktree-friendly
+# fallback. Telling an operator who already set (a wrong) OMNIBASE_INFRA_PATH that
+# "OMNI_HOME is not set" sends them to fix the wrong variable -- the same
+# "blanket-blame" failure mode rule 8 exists to prevent. The preflight below names
+# whichever candidate variable was actually set-but-wrong, and only talks about
+# OMNI_HOME as a fallback option when OMNIBASE_INFRA_PATH was never set at all.
 #
 # Once omnimarket's omnibase-infra pin includes this validator, collapse all of the above
 # to `uv run python -m omnibase_infra.validators.subscriber_dispatcher_resolution`.
@@ -41,25 +51,30 @@
 set -euo pipefail
 
 # --- OMN-17167 shared preflight ------------------------------------------------
-# Deliberately duplicated verbatim in scripts/validation/run_topic_lint.sh and
-# omnibase_core/scripts/pre_commit_validate_deterministic_skills.sh rather than
-# factored into a cross-repo shim library: a hook whose job is to diagnose a broken
-# sibling layout must not itself be loaded from that sibling layout. Repo-local,
-# identical wording.
+# Deliberately duplicated verbatim in scripts/validation/run_topic_lint.sh (this repo)
+# rather than factored into a cross-repo shim library: a hook whose job is to diagnose
+# a broken sibling layout must not itself be loaded from that sibling layout.
+# omnibase_core/scripts/pre_commit_validate_deterministic_skills.sh keeps its own
+# OMNI_HOME-only preflight -- there OMNI_HOME genuinely is the sole variable that
+# fallback branch depends on, so no such split applies there.
 #
-#   $1     human list of the sibling clones THIS hook needs
-#   $2...  the full $OMNI_HOME-derived paths this hook needed and did not find
-omni_home_preflight_fail() {
-  local siblings="$1"
-  shift
-  if [ -z "${OMNI_HOME:-}" ]; then
-    echo "OMNI_HOME is not set. It must be the directory containing the sibling clones (${siblings}). Example: export OMNI_HOME=\$HOME/omninode" >&2
+#   $1  human list of the sibling clones THIS hook needs
+#   $2  the full OMNIBASE_INFRA_PATH-derived path this hook needed and did not find
+#   $3  the full OMNI_HOME-derived path this hook needed and did not find
+infra_sibling_preflight_fail() {
+  local siblings="$1" infra_path_missing="$2" omni_home_missing="$3"
+  if [ -n "${OMNIBASE_INFRA_PATH:-}" ]; then
+    echo "OMNIBASE_INFRA_PATH is set to ${OMNIBASE_INFRA_PATH}, but the sibling clone this hook needs (${siblings}) is not there. Missing:" >&2
+    echo "  ${infra_path_missing}" >&2
+    echo "OMNIBASE_INFRA_PATH must be the omnibase_infra repo root. Example: export OMNIBASE_INFRA_PATH=\$HOME/omninode/omnibase_infra" >&2
+  elif [ -n "${OMNI_HOME:-}" ]; then
+    echo "OMNIBASE_INFRA_PATH is not set, and OMNI_HOME is set to ${OMNI_HOME}, but the sibling clone this hook needs (${siblings}) is not there either. Missing:" >&2
+    echo "  ${omni_home_missing}" >&2
+    echo "Set OMNIBASE_INFRA_PATH to the omnibase_infra repo root, or point OMNI_HOME at the directory containing the sibling clones (${siblings}). Example: export OMNIBASE_INFRA_PATH=\$HOME/omninode/omnibase_infra" >&2
   else
-    echo "OMNI_HOME is set to ${OMNI_HOME}, but the sibling clones this hook needs (${siblings}) are not there. Missing:" >&2
-    for missing_path in "$@"; do
-      echo "  ${missing_path}" >&2
-    done
-    echo "OMNI_HOME must be the directory containing the sibling clones (${siblings}). Example: export OMNI_HOME=\$HOME/omninode" >&2
+    echo "Neither OMNIBASE_INFRA_PATH nor OMNI_HOME is set. Set one of them so this hook can find the sibling clone (${siblings}):" >&2
+    echo "  export OMNIBASE_INFRA_PATH=<path to the omnibase_infra repo root>, or" >&2
+    echo "  export OMNI_HOME=<directory containing the sibling clones, e.g. \$HOME/omninode>" >&2
   fi
   exit 2
 }
@@ -84,14 +99,16 @@ done
 if [[ -z "${INFRA_SRC}" ]]; then
   echo "[subscriber-dispatcher-resolution] FAIL: no omnibase_infra source tree carrying" >&2
   echo "  omnibase_infra/validators/subscriber_dispatcher_resolution.py was found." >&2
-  echo "  Looked at ./omnibase_infra/src, \$OMNIBASE_INFRA_PATH/src, \$OMNI_HOME/omnibase_infra/src," >&2
-  echo "  ../omnibase_infra/src, ../../../omnibase_infra/src." >&2
-  echo "  Override with: export OMNIBASE_INFRA_PATH=<path to the omnibase_infra repo root>" >&2
+  echo "  Looked at ./omnibase_infra/src, OMNIBASE_INFRA_PATH=${OMNIBASE_INFRA_PATH:-<unset>}/src," >&2
+  echo "  OMNI_HOME=${OMNI_HOME:-<unset>}/omnibase_infra/src, ../omnibase_infra/src, ../../../omnibase_infra/src." >&2
   echo "  Failing closed (OMN-16939)." >&2
-  # OMN-17167: the list above prints the candidates as LITERAL unexpanded text, so a
-  # stale OMNI_HOME (set, wrong directory) produced output byte-indistinguishable from
-  # an unset one. The shared preflight names the variable and the full expanded path.
-  omni_home_preflight_fail "omnibase_infra" "${OMNI_HOME:-}/omnibase_infra/src/omnibase_infra/validators/subscriber_dispatcher_resolution.py"
+  # OMN-17167: the list above prints the candidates with their live values, so a
+  # stale variable (set, wrong directory) is no longer byte-indistinguishable from
+  # an unset one. The shared preflight below names whichever candidate variable was
+  # actually set-but-wrong and the full expanded path.
+  infra_sibling_preflight_fail "omnibase_infra" \
+    "${OMNIBASE_INFRA_PATH:-}/src/omnibase_infra/validators/subscriber_dispatcher_resolution.py" \
+    "${OMNI_HOME:-}/omnibase_infra/src/omnibase_infra/validators/subscriber_dispatcher_resolution.py"
 fi
 
 echo "[subscriber-dispatcher-resolution] using validator from ${INFRA_SRC}" >&2
