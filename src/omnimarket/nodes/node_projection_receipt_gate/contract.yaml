@@ -21,6 +21,16 @@ handler_routing:
       handler:
         name: HandlerProjectionReceiptGate
         module: omnimarket.nodes.node_projection_receipt_gate.handlers.handler_projection_receipt_gate
+    # OMN-17210: the standalone Kafka->Postgres writer. Same two-entry shape
+    # node_projection_savings uses (HandlerProjectionSavings +
+    # SavingsProjectionRunner): the *ProjectionRunner-suffixed class is
+    # deliberately no-op'd by the shared dispatch kernel and runs as its own
+    # Deployment, while the dict handler above stays the in-process reduce path.
+    - operation: receipt_gate_projection_runner
+      handler:
+        name: HandlerReceiptGateProjectionRunner
+        module: omnimarket.nodes.node_projection_receipt_gate.handlers.handler_receipt_gate
+      handler_module: omnimarket.nodes.node_projection_receipt_gate.handlers.handler_receipt_gate
 
 descriptor:
   node_archetype: reducer

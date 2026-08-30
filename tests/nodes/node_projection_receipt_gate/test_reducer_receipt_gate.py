@@ -232,3 +232,42 @@ def test_handler_round_trip() -> None:
     assert len(rows) == 1
     assert rows[0]["name"] == "ci_checks"
     assert rows[0]["pass"] is True
+
+
+def test_explicit_event_type_hint_beats_structural_sniffing_omn17210() -> None:
+    """OMN-17210: a verification receipt that happens to carry
+    ``evidence_lifecycle_state`` must NOT be reclassified as an OCC row.
+
+    The dispatch used to OR the explicit hint with the structural probe, so the
+    field won over the caller's own declaration. Harmless while the only caller
+    was the in-memory ``handle_dict`` shim; a real misclassified row once
+    HandlerReceiptGateProjectionRunner passes the Kafka topic through as the hint and
+    writes the result to ``receipt_gate_rows``.
+    """
+    rows = reduce_receipt_gate(
+        (),
+        {
+            "_event_type": "onex.evt.omnimarket.verification-receipt-completed.v1",
+            "task_id": "OMN-17210",
+            "overall_pass": True,
+            "verified_at": "2026-08-30T12:00:00+00:00",
+            "evidence_lifecycle_state": "VALIDATED",
+        },
+    )
+
+    assert [row.name for row in rows] == ["overall"]
+
+
+def test_hintless_evidence_event_still_sniffs_structurally_omn17210() -> None:
+    """The fallback is unchanged: with no hint at all, the structural probe is
+    still the whole behaviour."""
+    rows = reduce_receipt_gate(
+        (),
+        {
+            "ticket_id": "OMN-17210",
+            "validation_state": "PASSED",
+            "evidence_lifecycle_state": "VALIDATED",
+        },
+    )
+
+    assert [row.name for row in rows] == ["occ-evidence"]
