@@ -123,20 +123,21 @@ class HandlerSessionPhaseDispatcher:
         # (``handler_event_emitter.py``: ``emitted_at=tracing.emitted_at or
         # datetime.now(UTC)``). This handler has no caller-supplied event time
         # to thread through, so it always injects the emission instant.
+        emitted_at = datetime.now(UTC)
         events.append(
             ModelSessionPhaseEvent(
                 topic=_TOPIC_PHASE_STATE,
                 event_type=_EVENT_TYPE_PHASE_STATE,
                 payload={
                     "session_id": cmd.session_id,
-                    "timestamp": datetime.now(UTC),
                     "phase": cmd.phase_name,
                     "phase_name": cmd.phase_name,
                     "transition": cmd.transition,
                     "correlation_id": str(cmd.correlation_id),
                     "elapsed_seconds": cmd.elapsed_seconds,
                     "cost_usd": cmd.cost_usd,
-                    "emitted_at": datetime.now(UTC).isoformat(),
+                    "emitted_at": emitted_at.isoformat(),
+                    "timestamp": emitted_at,
                 },
             )
         )
