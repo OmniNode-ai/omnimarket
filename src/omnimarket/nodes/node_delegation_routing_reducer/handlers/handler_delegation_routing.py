@@ -1472,9 +1472,16 @@ def _decision_from_tenant_overlay(
         ),
         endpoint_url=overlay.endpoint_url,
         # No api_key_env / house env-var fallback is ever threaded for a
-        # tenant-overlay backend — see secret_store_resolver
-        # .resolve_tenant_scoped_api_key_async, the effect-boundary resolver
-        # for this api_key_ref.
+        # tenant-overlay backend. OMN-16944: this is now ENFORCED rather than
+        # merely observed here. ``overlay.secret_ref`` carries the minted
+        # tenant-credential shape, and ``secret_store_resolver
+        # .resolve_api_key_async`` routes any ref of that shape through
+        # ``resolve_tenant_scoped_api_key_async`` -- dropping ``env_var_fallback``
+        # unconditionally -- at the one choke point every effect-boundary entry
+        # point funnels through. So the guarantee holds even if a future DTO
+        # grows an ``api_key_env`` field or a call site threads one. Until
+        # OMN-16944 that resolver had zero production call sites and this
+        # comment described an intent, not a mechanism.
         api_key_ref=overlay.secret_ref,
         extra_headers=None,
         cost_tier="tenant_byok",
