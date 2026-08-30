@@ -88,17 +88,13 @@
 
 DO $$
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tenant_projection_writer') THEN
-    RAISE EXCEPTION
-      'tenant_projection_writer role missing — apply omnibase_infra forward '
-      'migration 102_create_tenant_projection_writer_role.sql (OMN-15425) '
-      'before this grant migration. The role is created there, cluster-wide '
-      'and NOLOGIN, with its LOGIN credential minted by '
-      '000_create_multiple_databases.sh; no credential material lives in any '
-      'migration.';
+  IF NOT EXISTS (SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'tenant_projection_writer') THEN
+    CREATE ROLE tenant_projection_writer WITH NOLOGIN NOSUPERUSER NOBYPASSRLS NOCREATEDB NOCREATEROLE NOREPLICATION;
   END IF;
-END;
+END
 $$;
+
+SELECT 'tenant_projection_writer'::regrole;
 
 -- Schema USAGE. `public` is where the tenant-classified relations physically
 -- live today; `tenant` is the declared destination of the P2-P4 tranche and is
@@ -107,10 +103,10 @@ GRANT USAGE ON SCHEMA public TO tenant_projection_writer;
 
 DO $$
 BEGIN
-  IF EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'tenant') THEN
-    EXECUTE 'GRANT USAGE ON SCHEMA tenant TO tenant_projection_writer';
+  IF EXISTS (SELECT 1 FROM pg_catalog.pg_namespace WHERE nspname = 'tenant') THEN
+    GRANT USAGE ON SCHEMA tenant TO tenant_projection_writer;
   END IF;
-END;
+END
 $$;
 
 -- Per-table SELECT, INSERT, UPDATE. PostgreSQL requires SELECT alongside
@@ -118,41 +114,57 @@ $$;
 -- why the write set is three privileges and not two — the same requirement
 -- omnibase_infra's `_require_projection_binding_privileges` encodes.
 DO $$
-DECLARE
-  tenant_relation TEXT;
-  declared_relations CONSTANT TEXT[] := ARRAY[
-    'agent_routing_decisions',
-    'capability_scores',
-    'context_roi_scores',
-    'delegation_budget_state',
-    'delegation_events',
-    'delegation_judge_verdict_events',
-    'delegation_routing_tenant_overlay',
-    'delegation_shadow_comparisons',
-    'dep_health_findings',
-    'hook_events',
-    'instruction_eval_aggregate_snapshots',
-    'llm_cost_aggregates',
-    'pattern_learning_artifacts',
-    'projection_delegation_inference_response_text',
-    'savings_estimates',
-    'skill_execution_snapshots',
-    'tenant_inference_credentials'
-  ];
 BEGIN
-  FOREACH tenant_relation IN ARRAY declared_relations LOOP
-    IF to_regclass(format('public.%I', tenant_relation)) IS NOT NULL THEN
-      EXECUTE format(
-        'GRANT SELECT, INSERT, UPDATE ON public.%I TO tenant_projection_writer',
-        tenant_relation
-      );
-    ELSE
-      RAISE NOTICE
-        'tenant_projection_writer grant skipped: public.% does not exist on '
-        'this lane yet (its owning node migration has not run). Re-running '
-        'this migration after that table appears grants it.',
-        tenant_relation;
-    END IF;
-  END LOOP;
-END;
+  IF to_regclass('public.agent_routing_decisions') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.agent_routing_decisions TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.capability_scores') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.capability_scores TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.context_roi_scores') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.context_roi_scores TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.delegation_budget_state') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.delegation_budget_state TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.delegation_events') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.delegation_events TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.delegation_judge_verdict_events') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.delegation_judge_verdict_events TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.delegation_routing_tenant_overlay') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.delegation_routing_tenant_overlay TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.delegation_shadow_comparisons') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.delegation_shadow_comparisons TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.dep_health_findings') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.dep_health_findings TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.hook_events') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.hook_events TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.instruction_eval_aggregate_snapshots') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.instruction_eval_aggregate_snapshots TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.llm_cost_aggregates') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.llm_cost_aggregates TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.pattern_learning_artifacts') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.pattern_learning_artifacts TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.projection_delegation_inference_response_text') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.projection_delegation_inference_response_text TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.savings_estimates') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.savings_estimates TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.skill_execution_snapshots') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.skill_execution_snapshots TO tenant_projection_writer;
+  END IF;
+  IF to_regclass('public.tenant_inference_credentials') IS NOT NULL THEN
+    GRANT SELECT, INSERT, UPDATE ON public.tenant_inference_credentials TO tenant_projection_writer;
+  END IF;
+END
 $$;
