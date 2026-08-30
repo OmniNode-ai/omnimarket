@@ -31,10 +31,39 @@
 # Fail-closed: if none resolve, the gate FAILS rather than silently skipping. A gate that
 # can no-op is advisory, and advisory checks get ignored (doctrine rule 5).
 #
+# OMN-17167: when none resolve the gate now exits 2 through the shared OMNI_HOME
+# preflight, which distinguishes an UNSET OMNI_HOME from a STALE one and prints the
+# full expanded path it probed (rule 8; memory feedback_own_errors_give_full_paths).
+#
 # Once omnimarket's omnibase-infra pin includes this validator, collapse all of the above
 # to `uv run python -m omnibase_infra.validators.subscriber_dispatcher_resolution`.
 
 set -euo pipefail
+
+# --- OMN-17167 shared preflight ------------------------------------------------
+# Deliberately duplicated verbatim in scripts/validation/run_topic_lint.sh and
+# omnibase_core/scripts/pre_commit_validate_deterministic_skills.sh rather than
+# factored into a cross-repo shim library: a hook whose job is to diagnose a broken
+# sibling layout must not itself be loaded from that sibling layout. Repo-local,
+# identical wording.
+#
+#   $1     human list of the sibling clones THIS hook needs
+#   $2...  the full $OMNI_HOME-derived paths this hook needed and did not find
+omni_home_preflight_fail() {
+  local siblings="$1"
+  shift
+  if [ -z "${OMNI_HOME:-}" ]; then
+    echo "OMNI_HOME is not set. It must be the directory containing the sibling clones (${siblings}). Example: export OMNI_HOME=\$HOME/omninode" >&2
+  else
+    echo "OMNI_HOME is set to ${OMNI_HOME}, but the sibling clones this hook needs (${siblings}) are not there. Missing:" >&2
+    for missing_path in "$@"; do
+      echo "  ${missing_path}" >&2
+    done
+    echo "OMNI_HOME must be the directory containing the sibling clones (${siblings}). Example: export OMNI_HOME=\$HOME/omninode" >&2
+  fi
+  exit 2
+}
+# --- end shared preflight ------------------------------------------------------
 
 SCAN_ROOT="${1:-src/omnimarket}"
 BASELINE="${2:-config/validation/subscriber_dispatcher_resolution_baseline.yaml}"
@@ -57,8 +86,12 @@ if [[ -z "${INFRA_SRC}" ]]; then
   echo "  omnibase_infra/validators/subscriber_dispatcher_resolution.py was found." >&2
   echo "  Looked at ./omnibase_infra/src, \$OMNIBASE_INFRA_PATH/src, \$OMNI_HOME/omnibase_infra/src," >&2
   echo "  ../omnibase_infra/src, ../../../omnibase_infra/src." >&2
-  echo "  Set OMNIBASE_INFRA_PATH to an omnibase_infra clone. Failing closed (OMN-16939)." >&2
-  exit 1
+  echo "  Override with: export OMNIBASE_INFRA_PATH=<path to the omnibase_infra repo root>" >&2
+  echo "  Failing closed (OMN-16939)." >&2
+  # OMN-17167: the list above prints the candidates as LITERAL unexpanded text, so a
+  # stale OMNI_HOME (set, wrong directory) produced output byte-indistinguishable from
+  # an unset one. The shared preflight names the variable and the full expanded path.
+  omni_home_preflight_fail "omnibase_infra" "${OMNI_HOME:-}/omnibase_infra/src/omnibase_infra/validators/subscriber_dispatcher_resolution.py"
 fi
 
 echo "[subscriber-dispatcher-resolution] using validator from ${INFRA_SRC}" >&2
