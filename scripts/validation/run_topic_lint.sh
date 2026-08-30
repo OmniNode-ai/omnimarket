@@ -16,33 +16,46 @@
 # $OMNI_HOME/omni_worktrees/<ticket>/omnimarket the hook was unrunnable and the
 # error named no variable the operator could act on (the OMN-14444 mechanism).
 # The candidate list below now matches the order
-# scripts/ci/check_subscriber_dispatcher_resolution.sh already uses, and failure
-# routes through the shared preflight that names OMNI_HOME and the full missing
-# path. Doctrine: omni_home CLAUDE.md rule 8 (fail fast on missing env, never a
-# silent default) and rule 6 (no absolute paths -- the remediation is an
-# ``export`` line, not a machine path).
+# scripts/ci/check_subscriber_dispatcher_resolution.sh already uses.
+#
+# OMN-17167 correction (2026-08-30): the first cut of this fix routed every
+# failure through a preflight that unconditionally named OMNI_HOME, even though
+# OMNIBASE_INFRA_PATH is THIS hook's own, higher-priority override (checked
+# before $OMNI_HOME/omnibase_infra below) and OMNI_HOME here is only a
+# worktree-friendly fallback added by this same ticket. Telling an operator who
+# already set (a wrong) OMNIBASE_INFRA_PATH that "OMNI_HOME is not set" sends
+# them to fix the wrong variable -- the same "blanket-blame" failure mode rule 8
+# and memory feedback_own_errors_give_full_paths exist to prevent. The preflight
+# below names whichever candidate variable was actually set-but-wrong, and only
+# talks about OMNI_HOME as a fallback option when OMNIBASE_INFRA_PATH was never
+# set at all.
 set -euo pipefail
 
 # --- OMN-17167 shared preflight ------------------------------------------------
 # Deliberately duplicated verbatim in scripts/ci/check_subscriber_dispatcher_resolution.sh
-# and omnibase_core/scripts/pre_commit_validate_deterministic_skills.sh rather than
-# factored into a cross-repo shim library: a hook whose job is to diagnose a broken
-# sibling layout must not itself be loaded from that sibling layout. Repo-local,
-# identical wording.
+# (this repo) rather than factored into a cross-repo shim library: a hook whose
+# job is to diagnose a broken sibling layout must not itself be loaded from that
+# sibling layout. omnibase_core/scripts/pre_commit_validate_deterministic_skills.sh
+# keeps its own OMNI_HOME-only preflight -- there OMNI_HOME genuinely is the sole
+# variable that fallback branch depends on, so no such split applies there.
 #
-#   $1     human list of the sibling clones THIS hook needs
-#   $2...  the full $OMNI_HOME-derived paths this hook needed and did not find
-omni_home_preflight_fail() {
-  local siblings="$1"
-  shift
-  if [ -z "${OMNI_HOME:-}" ]; then
-    echo "OMNI_HOME is not set. It must be the directory containing the sibling clones (${siblings}). Example: export OMNI_HOME=\$HOME/omninode" >&2
+#   $1  human list of the sibling clones THIS hook needs
+#   $2  the full OMNIBASE_INFRA_PATH-derived path this hook needed and did not find
+#   $3  the full OMNI_HOME-derived path this hook needed and did not find
+infra_sibling_preflight_fail() {
+  local siblings="$1" infra_path_missing="$2" omni_home_missing="$3"
+  if [ -n "${OMNIBASE_INFRA_PATH:-}" ]; then
+    echo "OMNIBASE_INFRA_PATH is set to ${OMNIBASE_INFRA_PATH}, but the sibling clone this hook needs (${siblings}) is not there. Missing:" >&2
+    echo "  ${infra_path_missing}" >&2
+    echo "OMNIBASE_INFRA_PATH must be the omnibase_infra repo root. Example: export OMNIBASE_INFRA_PATH=\$HOME/omninode/omnibase_infra" >&2
+  elif [ -n "${OMNI_HOME:-}" ]; then
+    echo "OMNIBASE_INFRA_PATH is not set, and OMNI_HOME is set to ${OMNI_HOME}, but the sibling clone this hook needs (${siblings}) is not there either. Missing:" >&2
+    echo "  ${omni_home_missing}" >&2
+    echo "Set OMNIBASE_INFRA_PATH to the omnibase_infra repo root, or point OMNI_HOME at the directory containing the sibling clones (${siblings}). Example: export OMNIBASE_INFRA_PATH=\$HOME/omninode/omnibase_infra" >&2
   else
-    echo "OMNI_HOME is set to ${OMNI_HOME}, but the sibling clones this hook needs (${siblings}) are not there. Missing:" >&2
-    for missing_path in "$@"; do
-      echo "  ${missing_path}" >&2
-    done
-    echo "OMNI_HOME must be the directory containing the sibling clones (${siblings}). Example: export OMNI_HOME=\$HOME/omninode" >&2
+    echo "Neither OMNIBASE_INFRA_PATH nor OMNI_HOME is set. Set one of them so this hook can find the sibling clone (${siblings}):" >&2
+    echo "  export OMNIBASE_INFRA_PATH=<path to the omnibase_infra repo root>, or" >&2
+    echo "  export OMNI_HOME=<directory containing the sibling clones, e.g. \$HOME/omninode>" >&2
   fi
   exit 2
 }
@@ -73,10 +86,11 @@ done
 
 if [ -z "$OMNIBASE_INFRA" ]; then
   echo "ERROR: OMN-8507 topic-naming-lint cannot run: $LINT_REL not found." >&2
-  echo "  Looked at ./omnibase_infra, \$OMNIBASE_INFRA_PATH, \$OMNI_HOME/omnibase_infra," >&2
+  echo "  Looked at ./omnibase_infra, OMNIBASE_INFRA_PATH=${OMNIBASE_INFRA_PATH:-<unset>}, OMNI_HOME=${OMNI_HOME:-<unset>}/omnibase_infra," >&2
   echo "  ../omnibase_infra, ../../../omnibase_infra." >&2
-  echo "  Override with: export OMNIBASE_INFRA_PATH=<path to the omnibase_infra repo root>" >&2
-  omni_home_preflight_fail "omnibase_infra" "${OMNI_HOME:-}/omnibase_infra/$LINT_REL"
+  infra_sibling_preflight_fail "omnibase_infra" \
+    "${OMNIBASE_INFRA_PATH:-}/$LINT_REL" \
+    "${OMNI_HOME:-}/omnibase_infra/$LINT_REL"
 fi
 
 LINT="$OMNIBASE_INFRA/$LINT_REL"

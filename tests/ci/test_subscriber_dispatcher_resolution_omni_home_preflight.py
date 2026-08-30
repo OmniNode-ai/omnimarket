@@ -1,27 +1,38 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""OMNI_HOME fail-fast preflight for subscriber-dispatcher-resolution (OMN-17167).
+"""Sibling-resolution fail-fast preflight for subscriber-dispatcher-resolution
+(OMN-17167).
 
 ``scripts/ci/check_subscriber_dispatcher_resolution.sh`` runs the canonical
 validator, which lives in ``omnibase_infra`` (OMN-16939 deliberately keeps one
 implementation in one repo). Reported by a contractor 2026-08-30: with a stale or
-unset ``OMNI_HOME`` the failure listed its five candidates as LITERAL unexpanded
-text (``$OMNI_HOME/omnibase_infra/src``), so the operator never saw the path that
-was actually probed and a STALE OMNI_HOME was byte-indistinguishable from an
-UNSET one.
+unset sibling-resolution variable the failure listed its five candidates as
+LITERAL unexpanded text (``$OMNI_HOME/omnibase_infra/src``), so the operator
+never saw the path that was actually probed and a stale variable was
+byte-indistinguishable from an unset one.
+
+OMN-17167 correction (2026-08-30): the first cut of this fix routed every
+failure through a message that unconditionally named ``OMNI_HOME``, even though
+``OMNIBASE_INFRA_PATH`` is this gate's own, higher-priority override -- checked
+before ``$OMNI_HOME/omnibase_infra/src`` in the script's candidate list -- and
+``OMNI_HOME`` here is only a worktree-friendly fallback. Blaming ``OMNI_HOME``
+when the operator already set (a wrong) ``OMNIBASE_INFRA_PATH`` sends them to fix
+the variable that ISN'T the problem. These tests assert the preflight names
+whichever candidate variable was actually set-but-wrong, and only talks about
+``OMNI_HOME`` as a fallback option when ``OMNIBASE_INFRA_PATH`` was never set.
 
 Doctrine under test: omni_home CLAUDE.md rule 8 (fail fast on missing env, never a
 silent default), rule 6 (no absolute paths -- the remediation is an ``export``
-line), and memory ``feedback_own_errors_give_full_paths`` (name the variable AND
-the full missing path).
+line), and memory ``feedback_own_errors_give_full_paths`` (name the actual
+variable AND the full missing path).
 
 What the gate VALIDATES is untouched: the CI checkout candidate
 (``./omnibase_infra/src``, used by .github/workflows/subscriber-dispatcher-resolution.yml)
-still wins ahead of every OMNI_HOME-derived path, so CI never reaches the
-preflight. These tests drive THE real script end-to-end via subprocess from an
-isolated tmp cwd; git env vars are stripped from the child per the
-OMN-14746/14744 worktree-safety lesson.
+still wins ahead of every other candidate, so CI never reaches the preflight.
+These tests drive THE real script end-to-end via subprocess from an isolated tmp
+cwd; git env vars are stripped from the child per the OMN-14746/14744
+worktree-safety lesson.
 """
 
 from __future__ import annotations
@@ -43,12 +54,13 @@ VALIDATOR_REL = (
 # The literal remediation the operator must be able to copy. Asserting on its
 # PRESENCE (not merely a non-zero exit) is the point of the ticket: an opaque
 # non-zero exit is the defect, not the fix.
-_UNSET_MESSAGE = "OMNI_HOME is not set."
-_SIBLING_LAYOUT = (
-    "It must be the directory containing the sibling clones (omnibase_infra)."
+_BOTH_UNSET_MESSAGE = "Neither OMNIBASE_INFRA_PATH nor OMNI_HOME is set."
+_UNSET_EXPORT_EXAMPLE = (
+    "export OMNIBASE_INFRA_PATH=<path to the omnibase_infra repo root>"
 )
-_EXPORT_EXAMPLE = "export OMNI_HOME=$HOME/omninode"
-_STALE_MESSAGE = "OMNI_HOME is set to"
+_INFRA_PATH_STALE_MESSAGE = "OMNIBASE_INFRA_PATH is set to"
+_OMNI_HOME_STALE_MESSAGE = "OMNI_HOME is set to"
+_OMNI_HOME_FALLBACK_PREFIX = "OMNIBASE_INFRA_PATH is not set, and OMNI_HOME is set to"
 
 _STUB_UV = """#!/usr/bin/env bash
 echo "STUB_UV_INVOKED $*"
@@ -140,24 +152,25 @@ def test_no_hardcoded_absolute_paths() -> None:
 
 
 @pytest.mark.unit
-def test_unset_omni_home_names_the_variable_and_the_expected_layout(
+def test_both_unset_names_both_variables_and_offers_both_examples(
     isolated_script: Path, stub_bin: Path
 ) -> None:
-    """UNSET -> exit 2, naming the variable, the layout, and a copyable export."""
+    """UNSET (both) -> exit 2, naming both candidate variables with copyable exports."""
     result = _run(isolated_script, _clean_env(stub_bin))
 
     assert result.returncode == 2, (
-        f"expected exit 2 on unset OMNI_HOME, got {result.returncode}\n"
+        f"expected exit 2 with both variables unset, got {result.returncode}\n"
         f"stdout={result.stdout}\nstderr={result.stderr}"
     )
-    assert _UNSET_MESSAGE in result.stderr, (
-        f"stderr must name the unset variable; got:\n{result.stderr}"
+    assert _BOTH_UNSET_MESSAGE in result.stderr, (
+        f"stderr must state neither variable is set; got:\n{result.stderr}"
     )
-    assert _SIBLING_LAYOUT in result.stderr, (
-        f"stderr must state what OMNI_HOME points at; got:\n{result.stderr}"
+    assert _UNSET_EXPORT_EXAMPLE in result.stderr, (
+        f"stderr must carry the copyable OMNIBASE_INFRA_PATH export example; "
+        f"got:\n{result.stderr}"
     )
-    assert _EXPORT_EXAMPLE in result.stderr, (
-        f"stderr must carry the copyable export example; got:\n{result.stderr}"
+    assert "export OMNI_HOME=" in result.stderr, (
+        f"stderr must also offer OMNI_HOME as an alternative; got:\n{result.stderr}"
     )
     assert "STUB_UV_INVOKED" not in result.stdout, (
         "the gate must not run when its validator cannot be resolved"
@@ -165,10 +178,45 @@ def test_unset_omni_home_names_the_variable_and_the_expected_layout(
 
 
 @pytest.mark.unit
-def test_stale_omni_home_prints_the_full_missing_path(
+def test_stale_omnibase_infra_path_names_that_variable_not_omni_home(
     isolated_script: Path, stub_bin: Path, tmp_path: Path
 ) -> None:
-    """STALE -> exit 2 naming the FULL expanded missing path AND the variable.
+    """STALE OMNIBASE_INFRA_PATH -> names OMNIBASE_INFRA_PATH, never blames OMNI_HOME.
+
+    This is the OMN-17167 correction under test: OMNIBASE_INFRA_PATH is this
+    gate's own, higher-priority override. An operator who set it (wrong) must not
+    be told "OMNI_HOME is not set" -- that sends them to fix the wrong variable.
+    """
+    stale_root = tmp_path / "stale_infra_path"
+    stale_root.mkdir()
+    env = _clean_env(stub_bin)
+    env["OMNIBASE_INFRA_PATH"] = str(stale_root)
+
+    result = _run(isolated_script, env)
+
+    expected_missing = str(stale_root / "src" / VALIDATOR_REL)
+    assert result.returncode == 2, (
+        f"expected exit 2 on stale OMNIBASE_INFRA_PATH, got {result.returncode}\n"
+        f"stdout={result.stdout}\nstderr={result.stderr}"
+    )
+    assert _INFRA_PATH_STALE_MESSAGE in result.stderr, (
+        f"stderr must say OMNIBASE_INFRA_PATH is set (not unset); got:\n{result.stderr}"
+    )
+    assert expected_missing in result.stderr, (
+        f"stderr must print the full expanded missing path {expected_missing!r}; "
+        f"got:\n{result.stderr}"
+    )
+    assert "OMNI_HOME is not set" not in result.stderr, (
+        "must not blanket-blame OMNI_HOME when OMNIBASE_INFRA_PATH is the "
+        f"variable that is actually set-but-wrong; got:\n{result.stderr}"
+    )
+
+
+@pytest.mark.unit
+def test_stale_omni_home_when_infra_path_unset_names_omni_home(
+    isolated_script: Path, stub_bin: Path, tmp_path: Path
+) -> None:
+    """STALE OMNI_HOME, OMNIBASE_INFRA_PATH unset -> names OMNI_HOME as the fallback.
 
     This is the case the pre-OMN-17167 script could not express: it printed the
     candidate list as literal ``$OMNI_HOME/...`` text, never the expanded path.
@@ -185,14 +233,15 @@ def test_stale_omni_home_prints_the_full_missing_path(
         f"expected exit 2 on stale OMNI_HOME, got {result.returncode}\n"
         f"stdout={result.stdout}\nstderr={result.stderr}"
     )
+    assert _OMNI_HOME_FALLBACK_PREFIX in result.stderr, (
+        f"stderr must say OMNIBASE_INFRA_PATH is unset and OMNI_HOME is set; "
+        f"got:\n{result.stderr}"
+    )
     assert expected_missing in result.stderr, (
         f"stderr must print the full expanded missing path {expected_missing!r}; "
         f"got:\n{result.stderr}"
     )
-    assert _STALE_MESSAGE in result.stderr, (
-        f"stderr must say OMNI_HOME is set (not unset); got:\n{result.stderr}"
-    )
-    assert _UNSET_MESSAGE not in result.stderr, (
+    assert _BOTH_UNSET_MESSAGE not in result.stderr, (
         "a stale OMNI_HOME must not be reported as unset -- that is the reported "
         f"defect; got:\n{result.stderr}"
     )
@@ -215,8 +264,8 @@ def test_correct_omni_home_resolves_and_does_not_preflight_fail(
         f"expected the gate to run, got {result.returncode}\n"
         f"stdout={result.stdout}\nstderr={result.stderr}"
     )
-    assert _UNSET_MESSAGE not in result.stderr
-    assert _STALE_MESSAGE not in result.stderr
+    assert _BOTH_UNSET_MESSAGE not in result.stderr
+    assert _OMNI_HOME_STALE_MESSAGE not in result.stderr
     assert "STUB_UV_INVOKED" in result.stdout, (
         f"the validator must actually be invoked; got stdout:\n{result.stdout}"
     )
@@ -230,17 +279,17 @@ def test_ci_checkout_candidate_still_wins_over_omni_home(
 
     Regression guard on the OMN-17167 change: the preflight must not disturb the
     resolution order .github/workflows/subscriber-dispatcher-resolution.yml relies
-    on, where OMNI_HOME is never set.
+    on, where neither OMNIBASE_INFRA_PATH nor OMNI_HOME is ever set.
     """
     _plant_infra(_cwd_of(isolated_script))
 
     result = _run(isolated_script, _clean_env(stub_bin))
 
     assert result.returncode == 0, (
-        f"CI checkout must resolve with OMNI_HOME unset, got {result.returncode}\n"
+        f"CI checkout must resolve with both variables unset, got {result.returncode}\n"
         f"stdout={result.stdout}\nstderr={result.stderr}"
     )
-    assert _UNSET_MESSAGE not in result.stderr, (
+    assert _BOTH_UNSET_MESSAGE not in result.stderr, (
         "the preflight must not fire when the CI checkout resolves; "
         f"got:\n{result.stderr}"
     )
