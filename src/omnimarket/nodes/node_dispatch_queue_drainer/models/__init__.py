@@ -9,9 +9,17 @@ from omnimarket.nodes.node_dispatch_queue_drainer.models.model_dispatch_queue_dr
 from omnimarket.nodes.node_dispatch_queue_drainer.models.model_dispatch_queue_item import (
     ModelDispatchQueueItem,
 )
+from omnimarket.nodes.node_dispatch_queue_drainer.models.model_dispatch_queue_lifecycle import (
+    ModelDispatchQueueLifecycle,
+    ModelDispatchQueueTerminal,
+    ModelDispatchQueueTransition,
+)
 
 __all__ = [
     "ModelDispatchQueueDrainerRequest",
     "ModelDispatchQueueDrainerResult",
     "ModelDispatchQueueItem",
+    "ModelDispatchQueueLifecycle",
+    "ModelDispatchQueueTerminal",
+    "ModelDispatchQueueTransition",
 ]
