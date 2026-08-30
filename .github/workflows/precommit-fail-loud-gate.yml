@@ -71,6 +71,12 @@ jobs:
           uv run --no-project --with pyyaml \
             python3 scripts/validation/validate_precommit_fail_loud.py
 
+      - name: Interpreter-resolution gate (no bare `python` in hook entries)
+        working-directory: ${{ github.workspace }}
+        run: |
+          uv run --no-project --with pyyaml \
+            python3 scripts/validation/validate_precommit_interpreter.py
+
       - name: Pin-parity check (pre-commit rev vs CI-pinned SHA)
         working-directory: ${{ github.workspace }}
         run: |
