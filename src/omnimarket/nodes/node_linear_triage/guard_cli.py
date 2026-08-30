@@ -4,9 +4,12 @@
 
 Runs with no human in the loop: probe Linear, assert that no team's git
 automation resolves to a ``completed``-type workflow state, print the report,
-and exit non-zero on drift. Wired as a scheduled GitHub Actions workflow
-(``.github/workflows/linear-done-guard.yml``) so the assertion actually fires
-rather than sitting in a doc.
+and exit non-zero on drift. The scheduled runner is
+``omnibase_infra/.github/workflows/linear-done-guard-armed.yml`` (OMN-17182),
+which holds ``LINEAR_API_KEY`` and checks this repo out at ``dev``; this repo's
+own ``.github/workflows/linear-done-guard.yml`` is ``workflow_dispatch``-only
+because omnimarket has no Linear credential. Either way the assertion actually
+fires rather than sitting in a doc.
 
 Requires:
   LINEAR_API_KEY — Linear API key with read access to team settings.

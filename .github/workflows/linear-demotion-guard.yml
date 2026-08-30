@@ -60,24 +60,29 @@
 #   an OmniNode-ai org secret. It IS provisioned as an `omnibase_infra` repo
 #   secret. No Linear credential was minted for this workflow.
 #
-#   Until omnimarket is armed, the scheduled trigger below fails with exit 2 and
-#   the message in the "Fail loudly when the guard is unarmed" step. That is
-#   deliberate: an unarmed guard reporting green would be the exact false
-#   assurance OMN-16536 is about.
+#   The live surface is omnibase_infra's
+#   `.github/workflows/linear-demotion-guard-armed.yml` (OMN-16536 AC#2), which
+#   checks out omnimarket@dev and runs `demotion_guard_cli` on the same `43 */6`
+#   cadence with the credential attached. Verified green on every recent tick.
 #
-#   The `workflow_call` trigger is the bridge: any repo that already holds the
-#   credential calls this workflow and passes it in as a secret, so the
-#   assertion runs armed without copying the credential into a second repo.
+#   This file's `schedule:` trigger was REMOVED by OMN-17182. Unarmed it could
+#   only ever exit 2, and it had failed 13 of 13 runs — on 2026-08-30 the armed
+#   runner passed at 12:45:53Z and this duplicate failed 36s later at 12:46:29Z,
+#   asserting nothing. That is noise, not a signal. Coverage is unchanged: the
+#   same assertion still runs, armed, at the same cadence, in the repo that holds
+#   the key.
+#
+#   `workflow_call` and `workflow_dispatch` are retained: the former is the
+#   bridge for any repo that already holds the credential to call this workflow
+#   and pass it in as a secret, so the assertion can run armed without copying
+#   the credential into a second repo.
 
 name: Linear Demotion Guard
 
+# Deliberately NO `schedule:` here — see "ARMING" above. The every-6h tick lives
+# on the armed runner in omnibase_infra, which has the credential; a schedule in
+# this repo could only ever produce exit 2.
 on:
-  schedule:
-    # Every 6h, offset from linear-done-guard's :17 so the two mirrors do not
-    # hit the Linear API in the same minute. Drift here is a config flip rather
-    # than a gradual process, so bounded time-to-detection matters more than
-    # frequency.
-    - cron: '43 */6 * * *'
   workflow_dispatch:
   workflow_call:
     secrets:
