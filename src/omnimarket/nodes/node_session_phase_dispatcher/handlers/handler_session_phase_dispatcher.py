@@ -10,6 +10,7 @@ Topics are read from contract.yaml — never hardcoded.
 from __future__ import annotations
 
 import logging
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -110,18 +111,33 @@ class HandlerSessionPhaseDispatcher:
         workers_dispatched = 0
         warnings_emitted = 0
 
-        # Always publish phase-state event
+        # Always publish phase-state event.
+        #
+        # OMN-16955: ``emitted_at`` is REQUIRED on the wire —
+        # ``node_session_phase_reducer``'s ``ModelSessionPhaseReducerInput.
+        # _require_an_event_timestamp`` rejects any message carrying neither
+        # ``emitted_at`` nor ``timestamp``. This node is an EFFECT
+        # (``descriptor.purity: impure``), so reading the clock at the moment
+        # of emission is legitimate non-determinism, not a hidden default —
+        # the same pattern the two omniclaude hook producers use
+        # (``handler_event_emitter.py``: ``emitted_at=tracing.emitted_at or
+        # datetime.now(UTC)``). This handler has no caller-supplied event time
+        # to thread through, so it always injects the emission instant.
+        emitted_at = datetime.now(UTC)
         events.append(
             ModelSessionPhaseEvent(
                 topic=_TOPIC_PHASE_STATE,
                 event_type=_EVENT_TYPE_PHASE_STATE,
                 payload={
                     "session_id": cmd.session_id,
+                    "phase": cmd.phase_name,
                     "phase_name": cmd.phase_name,
                     "transition": cmd.transition,
                     "correlation_id": str(cmd.correlation_id),
                     "elapsed_seconds": cmd.elapsed_seconds,
                     "cost_usd": cmd.cost_usd,
+                    "emitted_at": emitted_at.isoformat(),
+                    "timestamp": emitted_at,
                 },
             )
         )

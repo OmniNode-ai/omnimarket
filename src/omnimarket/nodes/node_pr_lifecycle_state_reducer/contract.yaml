@@ -38,10 +38,69 @@ output_model:
   module: omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_state
   description: "New FSM state after applying the event."
 
+# OMN-16939: per-topic `topic_match` entries, each carrying its OWN explicit
+# `message_category`. This was a single `operation_match` entry, which made
+# `_prepare_handler_wiring` derive ONE category for the whole entry — falling back to
+# `subscribe_topics[0]` (`onex.cmd.…pr-lifecycle-sweep-start.v1`, i.e. `command`) and
+# stamping `command` on the routes for all seven `.evt.` topics as well.
+# `MessageDispatchEngine` filters candidate routes by the message's REAL category before
+# any handler runs, so every event was permanently NO_DISPATCHER: consumed, DLQ'd, and
+# COMMITTED (174 in / 174 DLQ over 6h on the .201 dev lane, group Stable / LAG 0).
+#
+# `topic:` alone would NOT have fixed it — the category still falls back to
+# `subscribe_topics[0]`. The explicit `message_category` on each entry is the load-bearing
+# half. Distinct dispatcher IDs are safe because OMN-14580 folds `topic` into
+# `_derive_handler_entry_key`'s digest, so same-operation/same-handler entries do not
+# collide. This is the OMN-14605 fix pattern, applied to a contract that ticket named as
+# affected but never fixed.
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
     - operation: reduce_pr_state
+      topic: onex.cmd.omnimarket.pr-lifecycle-sweep-start.v1
+      message_category: command
+      handler:
+        name: HandlerPrLifecycleStateReducer
+        module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
+    - operation: reduce_pr_state
+      topic: onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1
+      message_category: event
+      handler:
+        name: HandlerPrLifecycleStateReducer
+        module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
+    - operation: reduce_pr_state
+      topic: onex.evt.omnimarket.pr-lifecycle-triage-completed.v1
+      message_category: event
+      handler:
+        name: HandlerPrLifecycleStateReducer
+        module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
+    - operation: reduce_pr_state
+      topic: onex.evt.omnimarket.pr-lifecycle-fix-completed.v1
+      message_category: event
+      handler:
+        name: HandlerPrLifecycleStateReducer
+        module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
+    - operation: reduce_pr_state
+      topic: onex.evt.omnimarket.pr-lifecycle-merge-completed.v1
+      message_category: event
+      handler:
+        name: HandlerPrLifecycleStateReducer
+        module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
+    - operation: reduce_pr_state
+      topic: onex.evt.omnimarket.pr-lifecycle-failed.v1
+      message_category: event
+      handler:
+        name: HandlerPrLifecycleStateReducer
+        module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
+    - operation: reduce_pr_state
+      topic: onex.evt.omnimarket.repo-health-classified.v1
+      message_category: event
+      handler:
+        name: HandlerPrLifecycleStateReducer
+        module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
+    - operation: reduce_pr_state
+      topic: onex.evt.omnimarket.repo-health-repair-emitted.v1
+      message_category: event
       handler:
         name: HandlerPrLifecycleStateReducer
         module: omnimarket.nodes.node_pr_lifecycle_state_reducer.handlers.handler_pr_lifecycle_state_reducer
@@ -128,6 +187,14 @@ terminal_event: onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
 event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.pr-lifecycle-sweep-start.v1
+    # OMN-16939 / AC6: two owners on this topic is CORRECT, not drift. The boot-time
+    # "Duplicate topic ownership detected ... owners=('node_pr_lifecycle_state_reducer',
+    # 'node_pr_lifecycle_triage_compute') level=intra-package" warning describes ordinary
+    # pub/sub fan-out: node_pr_lifecycle_triage_compute (COMPUTE) classifies the inventory
+    # and emits pr-lifecycle-triage-completed, while this REDUCER independently folds the
+    # same event into the FSM (inventorying -> triaged). They consume under separate
+    # consumer groups (each derived from its own node name), so both receive every message
+    # — neither starves the other. Collapsing to one owner would delete a real consumer.
     - onex.evt.omnimarket.pr-lifecycle-inventory-completed.v1
     - onex.evt.omnimarket.pr-lifecycle-triage-completed.v1
     - onex.evt.omnimarket.pr-lifecycle-fix-completed.v1

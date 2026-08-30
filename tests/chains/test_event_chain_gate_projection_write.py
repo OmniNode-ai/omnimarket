@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Event Chain Gate — the projection WRITE seam (OMN-16831).
+"""Event Chain Gate — the projection WRITE seam (OMN-16831, OMN-16976).
 
 Why this suite exists, separately from ``test_event_chain_gate.py``.
 
@@ -38,6 +38,30 @@ structurally unreachable, and it fails the way the OMN-16767 outage failed: the
 dispatch reports ``SUCCESS``, the caller keeps its 202, one ERROR line is
 logged, the event goes to a DLQ topic nobody watches, and CI stays green in
 every repo.
+
+What OMN-16976 added, and why the gate is parametrized.
+
+The same refusal was caught again on 2026-08-29, on a different node and on the
+onex-dev *cluster* runtime rather than the .201 compose lane: 32 occurrences in
+60 minutes, twice per delegation, on
+``HandlerProjectionDelegationInferenceResponse``. Its table is TENANT-classified
+too, so it dies at the identical seam. It was invisible for the delegation
+reasons above plus one more — ``GET /v1/tenants/me/delegations`` reads Postgres
+directly rather than the projection, so a projection layer that has been 100%
+dead for weeks produced no customer-visible symptom.
+
+Delegation is 1 of **12** omnimarket contracts declaring ``schema: tenant``, so
+this file is parametrized over cases: the seam is what is under gate, not the
+node that happened to be diagnosed first.
+
+The refusal survives even though ``omnibase_infra`` ``dev`` already fixed it in
+``01261b796`` (#2976, 2026-08-28), because that commit is in **no release tag**.
+The newest release is ``v0.38.11``; this repo declares
+``omnibase-infra>=0.38.3,<0.39.0`` and therefore resolves it. Proven both ways
+against this file: against the released wheel both seam rows FAIL with the
+verbatim live error; with ``omnibase_infra`` resolved from ``dev`` source both
+PASS. So the strict xfail below is not a permanent excuse — it is a tripwire on
+a release that has not happened yet.
 
 Why no existing test caught it.
 
@@ -180,6 +204,56 @@ DELEGATION_PROJECTION_CASE = ProjectionChainCase(
         "duration_ms": 2300,
         "emitted_at": "2026-08-28T00:00:00+00:00",
     },
+)
+
+
+# The inference-response shape, reconstructed from a REAL event the onex-dev
+# cluster runtime rejected on 2026-08-29 (OMN-16976). That refusal fired 32
+# times in 60 minutes -- twice per delegation, a 100% failure rate -- and every
+# one of them was quarantined on this contract's own DLQ topic:
+#
+#     Projection handler HandlerProjectionDelegationInferenceResponse routed
+#     malformed/erroring event to DLQ
+#     onex.dlq.omnimarket.projection-delegation-inference-response-malformed.v1:
+#     ProjectionTenantContextError: [ONEX_CORE_081_OPERATION_FAILED]
+#     Tenant projection has no cryptographically verified authority
+#
+# Every field here is one ModelInferenceResponseData declares. That model is
+# `extra="forbid"`, so an invented key would be rejected as a validation error
+# and this row would then be gating payload shape rather than the write seam.
+#
+# Why this row belongs in this file rather than a ticket comment: delegation is
+# 1 of 12 omnimarket contracts declaring `schema: tenant`, and a gate that
+# covers only the node that happened to be diagnosed first will not notice the
+# other 11 regressing. This second row is the cheapest proof that the seam --
+# not the node -- is what is under gate.
+INFERENCE_RESPONSE_PROJECTION_CASE = ProjectionChainCase(
+    chain_id="projection-delegation-inference-response-write",
+    node_dir="node_projection_delegation_inference_response",
+    entry_topic="onex.evt.omnibase-infra.inference-response.v1",
+    dlq_topic=(
+        "onex.dlq.omnimarket.projection-delegation-inference-response-malformed.v1"
+    ),
+    writer_handler_name="HandlerProjectionDelegationInferenceResponse",
+    wire_payload={
+        "correlation_id": "7a300828-4000-4000-8000-000000000002",
+        "content": "ok",
+        "model_used": "qwen3.8",
+        "llm_call_id": "chatcmpl-omn16976",
+        "latency_ms": 2300,
+        "prompt_tokens": 53,
+        "completion_tokens": 2,
+        "total_tokens": 55,
+        "tenant_id": "omninode",
+    },
+)
+
+
+# Both rows drive the SAME seam. They are parametrized rather than duplicated so
+# that a third tenant-classified projection is one tuple entry, not a new file.
+PROJECTION_CHAIN_CASES = (
+    DELEGATION_PROJECTION_CASE,
+    INFERENCE_RESPONSE_PROJECTION_CASE,
 )
 
 
@@ -336,11 +410,26 @@ async def _run_projection_chain(
         version="v1",
         result_applier=applier,
     )
+    # Only ``subscribe_topics`` is passed, which is what the subcontract is for
+    # and what the kernel's own wiring uses it for. The publish side is already
+    # carried by the DispatchResultApplier above, built from
+    # ``contract.event_bus.publish_topics`` exactly as service_kernel builds it.
+    #
+    # OMN-16976: this is not cosmetic. Declaring the publish side here as well
+    # would make the harness reject a contract the runtime accepts.
+    # ``node_projection_delegation_inference_response`` publishes
+    # ``onex.snapshot.projection.delegation.inference-response-text.v1``, which
+    # ``ModelEventBusSubcontract`` refuses outright — its topic validator
+    # demands exactly 5 segments (onex.kind.producer.event-name.version) and a
+    # snapshot topic has 6. The kernel never routes that topic through this
+    # model (it goes straight into DispatchResultApplier), so the contract is
+    # live and working; a harness that validated it here would fail for a
+    # reason production never encounters, and would have masked the tenant-seam
+    # refusal this file exists to gate.
     await wiring.wire_subscriptions(
         ModelEventBusSubcontract(
             version=ModelSemVer(major=1, minor=0, patch=0),
             subscribe_topics=[case.entry_topic],
-            publish_topics=[terminal_topic],
         ),
         case.chain_id,
     )
@@ -393,7 +482,9 @@ async def _run_projection_chain(
     )
 
 
+@pytest.mark.parametrize("case", PROJECTION_CHAIN_CASES, ids=lambda case: case.chain_id)
 async def test_wiring_does_not_quarantine_the_projection_handlers(
+    case: ProjectionChainCase,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -403,7 +494,7 @@ async def test_wiring_does_not_quarantine_the_projection_handlers(
     OMN-16767 hid behind green CI. This is the cheapest half of the gate and
     it must never be allowed to regress.
     """
-    run = await _run_projection_chain(DELEGATION_PROJECTION_CASE, monkeypatch, caplog)
+    run = await _run_projection_chain(case, monkeypatch, caplog)
 
     quarantined = [
         (w.handler_name, w.quarantine_reason, w.quarantine_detail)
@@ -411,18 +502,20 @@ async def test_wiring_does_not_quarantine_the_projection_handlers(
         if w.quarantine_reason is not None
     ]
     assert not quarantined, (
-        f"[{DELEGATION_PROJECTION_CASE.chain_id}] wiring quarantined "
+        f"[{case.chain_id}] wiring quarantined "
         f"{len(quarantined)} handler(s) before a single message was "
         f"dispatched: {quarantined}"
     )
     assert not run.quarantine_messages, (
-        f"[{DELEGATION_PROJECTION_CASE.chain_id}] "
+        f"[{case.chain_id}] "
         f"{len(run.quarantine_messages)} message(s) landed in "
         f"{QUARANTINE_TOPIC} — the chain died before reaching its handler"
     )
 
 
+@pytest.mark.parametrize("case", PROJECTION_CHAIN_CASES, ids=lambda case: case.chain_id)
 async def test_delegate_skill_terminal_reaches_the_projection_writer(
+    case: ProjectionChainCase,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -435,7 +528,6 @@ async def test_delegate_skill_terminal_reaches_the_projection_writer(
     future regression in any of them is attributed correctly instead of being
     re-diagnosed as the write-seam defect.
     """
-    case = DELEGATION_PROJECTION_CASE
     run = await _run_projection_chain(case, monkeypatch, caplog)
 
     assert case.writer_handler_name in run.handlers_entered, (
@@ -451,19 +543,29 @@ async def test_delegate_skill_terminal_reaches_the_projection_writer(
 @pytest.mark.xfail(
     strict=True,
     reason=(
-        "OMN-16831: the delegation projection write is refused at the "
-        "tenant-authority seam. `delegation_events` is classified TENANT "
-        "domain by this repo's contract, so every read and write goes through "
-        "TenantProjectionTableOperation, which requires a "
-        "VerifiedProjectionTenantAuthority — a sealed capability that "
-        "`bind_projection_tenant_authority` never binds anywhere in shipped "
-        "omnibase_infra (asserted on purpose by "
-        "tests/unit/projection/test_house_tenant_default_ratchet.py). STRICT: "
-        "this turns RED (XPASS) the moment that is reconciled, which is the "
-        "signal to delete this marker."
+        "OMN-16831 / OMN-16976: the projection write is refused at the "
+        "tenant-authority seam. Both nodes classify their table TENANT domain "
+        "by contract (`db_io.db_tables[].schema: tenant`), so every read and "
+        "write goes through TenantProjectionTableOperation. In the RELEASE "
+        "this repo resolves — omnibase-infra 0.38.11, the newest on PyPI under "
+        "the declared `>=0.38.3,<0.39.0` — that operation calls "
+        "`_bound_tenant_context()` (handler_wiring.py:2805-2811), which raises "
+        "unconditionally unless a VerifiedProjectionTenantAuthority is bound; "
+        "`bind_projection_tenant_authority` has zero non-test call sites, so "
+        "none ever is (asserted on purpose by "
+        "tests/unit/projection/test_house_tenant_default_ratchet.py). "
+        "omnibase_infra `dev` has fixed this in 01261b796 (#2976, merged "
+        "2026-08-28) by making an absent authority a normal state, but that "
+        "commit is in NO release tag, so no runtime executes it. STRICT: this "
+        "turns RED (XPASS) the first time a release carrying 01261b796 is "
+        "resolved here — that XPASS is the mechanical signal to re-pin the "
+        "floor and delete this marker, and it is the only automated notice "
+        "OMN-16976 AC2 gets."
     ),
 )
+@pytest.mark.parametrize("case", PROJECTION_CHAIN_CASES, ids=lambda case: case.chain_id)
 async def test_the_projection_write_is_not_refused_at_the_tenant_authority_seam(
+    case: ProjectionChainCase,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
@@ -483,9 +585,13 @@ async def test_the_projection_write_is_not_refused_at_the_tenant_authority_seam(
       OMN-13360 gates it on `rows_upserted >= 1`;
     * the dashboard's delegation surfaces and the `event_sessions` branch of
       `projection_delegation_savings` have no input;
-    * OMN-15533 AC1/AC2 have no positive control to assert against.
+    * OMN-15533 AC1/AC2 have no positive control to assert against;
+    * for the inference-response row: `projection_delegation_inference_response_text`
+      stays empty, the `inference-response-text.v1` snapshot the dashboard's
+      DelegationModelOutputWidget subscribes to is never published, and the
+      failure is masked from customers because `GET /v1/tenants/me/delegations`
+      reads Postgres directly instead of the projection (OMN-16976).
     """
-    case = DELEGATION_PROJECTION_CASE
     run = await _run_projection_chain(case, monkeypatch, caplog)
 
     refusals = [

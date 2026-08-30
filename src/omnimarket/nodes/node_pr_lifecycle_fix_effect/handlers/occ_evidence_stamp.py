@@ -481,6 +481,53 @@ _ADMISSIBILITY_VALIDATOR_ITEM_SUPERSEDING_HEAD_TEMPLATE = (
 # BEHAVIOR. One string, three consumers, no drift.
 BEHAVIOR_PROOF_EVIDENCE_ID = "dod-occ-diff-derived-behavior-proof"
 
+# OMN-16859 AC3a/AC3b — the rollout knob for honest born receipts.
+#
+# A repo belongs here ONLY when its CI carries the receipt runner
+# (`.github/workflows/occ-receipt-runner.yml` + `scripts/ci/occ_receipt_runner.py`),
+# because membership changes the born `test_passes` receipt from a fabricated
+# PASS to an honest PENDING — and PENDING is non-PASS, so it holds the
+# companion ineligible until something actually executes the check.
+#
+# Order matters and is the whole safety property: install the runner FIRST,
+# then add the repo. Reversed, every PR in that repo mints a receipt nothing
+# will ever flip, converting a dishonest-but-moving pipeline into a permanent
+# jam on the ~55% of PRs that carry this item. This producer serves every
+# product repo from one deployment, so the blast radius of getting it backwards
+# is org-wide.
+RUNNER_COVERED_REPOS: frozenset[str] = frozenset({"OmniNode-ai/omnimarket"})
+
+# The name the PENDING receipt cites as owing the execution. Four separate
+# lanes re-diagnosed the missing-receipt failure from scratch because nothing
+# in the evidence named the surface that would resolve it.
+RECEIPT_RUNNER_NAME = "occ-receipt-runner"
+
+# Kept in step with `EXECUTABLE_CHECK_TYPES` in scripts/ci/occ_receipt_runner.py:
+# these are the check types whose declared command only a product checkout can
+# honestly run.
+EXECUTED_BY_PRODUCT_RUNNER_CHECK_TYPES: frozenset[str] = frozenset({"test_passes"})
+
+
+def born_slot_receipt_status(*, repo: str, check_type: str) -> str:
+    """The honest status for a born slot receipt this producer mints.
+
+    ``PENDING`` exactly when two things are BOTH true:
+
+    1. the check type is one this producer cannot execute (``test_passes``
+       names a pytest run in a product checkout it does not have), and
+    2. the repo has a runner that will execute it.
+
+    Everything else keeps ``PASS``. That is not a concession — for a
+    ``command`` admissibility item the OCC contract-compliance runner really
+    does execute the declared check, so its PASS is earned rather than assumed.
+    """
+    if check_type in EXECUTED_BY_PRODUCT_RUNNER_CHECK_TYPES and repo in (
+        RUNNER_COVERED_REPOS
+    ):
+        return "PENDING"
+    return "PASS"
+
+
 # Bound on how many test targets one minted command names. A behavior check
 # whose command grows without limit is a check nobody can read and a fold risk
 # on the contract line; four is enough to carry a normal PR's test surface and
@@ -790,7 +837,7 @@ _DOWNSTREAM_RECEIPT_HEAD_TEMPLATE = textwrap.dedent("""\
 _DOWNSTREAM_RECEIPT_MID1_TEMPLATE = textwrap.dedent("""\
     contract_sha256: "sha256:PENDING"
     contract_entry_sha256: "sha256:PENDING"
-    status: PASS
+    status: {status}
     run_timestamp: "{run_timestamp}"
     commit_sha: "{commit_sha}"
     runner: "{runner}"
@@ -1769,8 +1816,20 @@ def render_downstream_receipt(
     check_value: str | None = None,
     actual_output: str | None = None,
     check_type: str = "command",
+    status: str = "PASS",
 ) -> str:
     """Render the downstream (product-PR-bound) DoD receipt YAML.
+
+    ``status`` (OMN-16859 AC3a) defaults to ``PASS`` so every pre-existing
+    caller renders byte-identically. It exists so a producer that CANNOT
+    execute the check it declares can say so: a ``test_passes`` item's
+    declared check is a pytest run in the product repo, and this producer runs
+    in the effects runtime against the GitHub API with no checkout of it.
+    ``PENDING`` is the vocabulary's own word for "the probe was allocated but
+    has not yet executed", and ``ModelDodReceipt`` Rule 3 exempts PENDING from
+    the non-empty ``probe_stdout`` requirement, so an honest unexecuted receipt
+    is structurally valid with no schema change. See
+    :func:`born_slot_receipt_status` for when it is used.
 
     ``check_type`` (OMN-16892) MUST equal the ``check_type`` declared by the
     contract item this receipt backs, and the caller MUST write the file at
@@ -1810,6 +1869,7 @@ def render_downstream_receipt(
             indent=0,
         )
         + _DOWNSTREAM_RECEIPT_MID1_TEMPLATE.format(
+            status=status,
             run_timestamp=run_timestamp,
             commit_sha=commit_sha,
             runner=runner,

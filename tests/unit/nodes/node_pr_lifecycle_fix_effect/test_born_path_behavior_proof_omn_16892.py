@@ -66,6 +66,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     ADMISSIBILITY_VALIDATOR_EVIDENCE_ID,
     BEHAVIOR_PROOF_EVIDENCE_ID,
     behavior_proof_cwd,
+    born_slot_receipt_status,
     render_companion_contract,
 )
 
@@ -401,7 +402,17 @@ class TestEmitterWiresTheDiffIntoTheContract:
         receipt = yaml.safe_load(expected.read_text(encoding="utf-8"))
         assert receipt["check_type"] == declared_type
         assert receipt["evidence_item_id"] == BEHAVIOR_PROOF_EVIDENCE_ID
-        assert receipt["status"] == "PASS"
+        # OMN-16859 AC3a: this line asserted "PASS" when the module landed.
+        # That PASS was the defect, not the contract — it claimed the outcome
+        # of a pytest run this producer cannot perform (it has no product-repo
+        # checkout). On a runner-covered repo the born receipt is now PENDING
+        # and the product-CI receipt runner supersedes it with the real run.
+        # The subject of THIS test is unchanged: the receipt filename matches
+        # the declared check_type. The status is sourced from the same helper
+        # the producer uses, so the two cannot drift apart.
+        assert receipt["status"] == born_slot_receipt_status(
+            repo=_REPO, check_type=declared_type
+        )
 
     def test_no_orphan_surrogate_receipt_is_minted_alongside(
         self, tmp_path: Path

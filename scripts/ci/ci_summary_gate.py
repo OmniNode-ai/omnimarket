@@ -342,11 +342,11 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
 # stays here (now enforced, not merely disclosed); `reason-graph` was dropped
 # (removed from branch protection 2026-07-25 — product-readiness-shadow.yml is
 # a self-declared non-required Phase-3 canary, see EXEMPT_CONTEXTS in the test
-# file); `receipt-honesty` / `shell-hygiene` were dropped for the same reason
-# (self-declared staged/deferred promotion, see EXEMPT_CONTEXTS); `verify /
-# verify` and `call-reject-skip-token / scan / reject-skip-gate-token` were
-# added (live main-required, missing from the old disclosure list). NEW gap
-# closures (never required anywhere before this gate): `fsm-handler-drift`,
+# file); `shell-hygiene` was dropped for the same reason (self-declared
+# staged/deferred promotion, see EXEMPT_CONTEXTS); `verify / verify` and
+# `call-reject-skip-token / scan / reject-skip-gate-token` were added (live
+# main-required, missing from the old disclosure list). NEW gap closures
+# (never required anywhere before this gate): `fsm-handler-drift`,
 # `skill-mapping-input-coverage-gate`, `node-migration-vendor-parity-gate`,
 # `node-drift-gate` (was main-only), `contract-validation` (was main-only),
 # `deploy-gate / deploy-gate` (was main-only), `validate` (from
@@ -356,6 +356,23 @@ SOFT_ALLOWLIST: frozenset[str] = frozenset(
 # own `name:` field only, exactly like the sibling bare-name `state-coverage-
 # gate` job — "validate", not workflow-name-prefixed. Corrected in the same
 # PR that adds this assertion.).
+#
+# `receipt-honesty` (OMN-16878 AC3): promoted out of EXEMPT_CONTEXTS, where it
+# sat as "self-declared staged, not yet promoted" — receipt-honesty.yml's own
+# header said only "Required-status-check name (when later flipped)", a
+# deferral with no unmet technical precondition, not a genuine blocker.
+# `contract-validation` was already asserted here; the sibling gap this closes
+# is that omniclaude and omnibase_infra both already carry `receipt-honesty`
+# in their own equivalent tuples (OMN-16878 AC1/AC2) while omnimarket's own
+# CI ran the same producer on every PR and could not block on it — Operating
+# Rule 5 (detection not wired as a pre-merge gate is advisory and gets
+# ignored). Admission: 10/10 recent merged dev PR heads sampled
+# (#2194-#2203, 2026-08-29) present and green, consistent with the ticket's
+# original 16/16 measurement; non-vacuity is the shared
+# `omnibase_core.validation.validator_receipt_honesty` proof already recorded
+# for the sibling repos (OCC#7433 dod-nonvacuity-negative-tests: gamed
+# receipt exits 1, real committed receipt exits 0). Pinned by
+# `tests/unit/scripts/ci/test_omn_16878_omnimarket_receipt_honesty.py`.
 EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "Architectural Compliance Lint",
     "Canonical Inference Gate",
@@ -392,9 +409,11 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "non-dev-base-guard",
     "occ-preflight / eligibility",
     "pr-title / check-title",
+    "receipt-honesty",
     "required-check-skip-guard / check-skip-vectors",
     "skill-mapping-input-coverage-gate",
     "state-coverage-gate",
+    "subscriber-dispatcher-resolution",
     "validate",
     "verify / verify",
 )

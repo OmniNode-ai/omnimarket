@@ -1,0 +1,66 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# Ticket: OMN-16955
+#
+# Wire schema contract for onex.evt.omnimarket.session-phase-state.v1
+#
+# OMN-16955: this contract did not exist before this ticket. The producer and
+# consumer disagreed on shape from two independently-written Python models —
+# the reducer expected 'phase'/'timestamp', the dispatcher emitted
+# 'phase_name' with no timestamp at all — and every message DLQ'd. This file
+# is the single source of truth both sides now transcribe from, matching the
+# format already established by the omniclaude hook wire contracts
+# (src/omniclaude/hooks/contracts/wire/session_started_v1.yaml,
+# session_ended_v1.yaml), which node_session_phase_reducer also subscribes to.
+topic: "onex.evt.omnimarket.session-phase-state.v1"  # onex-topic-sot
+schema_version: "1.0.0"
+ticket: "OMN-16955"
+description: >
+  Session phase transition event published by node_session_phase_dispatcher
+  after processing a phase transition command. Consumed by
+  node_session_phase_reducer to fold current_phase state.
+
+producer:
+  repo: "omnimarket"
+  file: "src/omnimarket/nodes/node_session_phase_dispatcher/handlers/handler_session_phase_dispatcher.py"
+  function: "HandlerSessionPhaseDispatcher._process_transition"
+
+consumer:
+  repo: "omnimarket"
+  file: "src/omnimarket/nodes/node_session_phase_reducer/handlers/handler_session_phase_reducer.py"
+  model: "ModelSessionPhaseReducerInput"
+
+required_fields:
+  - name: "session_id"
+    type: "string"
+    description: "Session identifier string."
+  - name: "phase_name"
+    type: "string"
+    description: >
+      The phase named by this transition command. The reducer's
+      ModelSessionPhaseReducerInput.to_event() transcribes this onto its
+      internal 'phase' field when no explicit 'phase' is present.
+  - name: "transition"
+    type: "string"
+    description: "One of enter, exit, skip, fail (dispatcher's ModelSessionPhaseTransitionCommand.transition)."
+  - name: "correlation_id"
+    type: "string"
+    description: "Correlation ID shared by all commands/events in one dispatcher batch."
+  - name: "emitted_at"
+    type: "datetime"
+    description: >
+      Timestamp when the dispatcher emitted this event (UTC). Required by
+      ModelSessionPhaseReducerInput._require_an_event_timestamp — a message
+      with neither 'emitted_at' nor 'timestamp' is rejected at the adapter
+      boundary and DLQs. node_session_phase_dispatcher is an EFFECT node
+      (descriptor.purity: impure), so injecting datetime.now(UTC) at
+      publish time is legitimate non-determinism, matching the pattern the
+      two omniclaude hook producers use.
+  - name: "elapsed_seconds"
+    type: "float"
+    description: "Elapsed seconds in the exiting/current phase at transition time."
+  - name: "cost_usd"
+    type: "float"
+    description: "Accumulated cost in USD at transition time."
+
+optional_fields: []

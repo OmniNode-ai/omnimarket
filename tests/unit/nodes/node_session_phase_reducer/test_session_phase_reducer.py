@@ -3,7 +3,7 @@
 """Unit tests for node_session_phase_reducer.
 
 TDD: tests written before implementation was complete. Each test asserts the
-pure delta function and the YAML projection side effect.
+pure delta function and the durable state the runtime persists around it.
 
 OMN-16790: the ``handle()`` cases below used to pass ``input_data={"event": ...}``
 — an envelope shape no producer emits — and so could not observe the live
@@ -13,10 +13,12 @@ the same object the runtime validates the wire payload into.
 Related:
     - OMN-11230: Task 6: Create node_session_phase_reducer (REDUCER)
     - OMN-16790: fold the WIRE payload, not a hand-built local envelope
+    - OMN-16924: state of record is a database row, not .onex_state/…/phase_state.yaml
 """
 
 from __future__ import annotations
 
+import json
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -29,6 +31,7 @@ from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_
     ModelSessionPhaseReducerInput,
     ModelSessionPhaseState,
 )
+from tests.session_phase_state_io_harness import StateIoRowStore, state_io_dispatch
 
 _SESSION_ID = "sess-2026-05-18-001"
 _NOW = datetime(2026, 5, 18, 9, 0, 0, tzinfo=UTC)
@@ -284,44 +287,52 @@ class TestSessionPhaseReducerIdempotency:
 
 
 @pytest.mark.unit
-class TestSessionPhaseReducerWritesStateFile:
-    def test_reducer_writes_state_file(self, tmp_path: Path) -> None:
-        """After handle(), phase_state.yaml is written to the specified path."""
+class TestSessionPhaseReducerPersistsDurableState:
+    """OMN-16924: the fold's durable output is a session_id-keyed database row.
+
+    ``state_io_dispatch`` plays the runtime's part around each ``handle()`` —
+    bind the loaded row, run the fold, persist what the contract-declared codec
+    flushes. The handler itself touches no filesystem, which is why these cases
+    no longer need a ``tmp_path`` at all.
+    """
+
+    def test_reducer_persists_a_row(self) -> None:
+        """After handle(), the session's durable row holds the folded state."""
         handler = HandlerSessionPhaseReducer()
-        state_file = tmp_path / "phase_state.yaml"
+        store = StateIoRowStore()
 
-        handler.handle(
-            ModelSessionPhaseReducerInput(
-                event_type="session.started",
-                session_id=_SESSION_ID,
-                timestamp=_NOW,
-            ),
-            state_path=str(state_file),
-        )
+        with state_io_dispatch(store, _SESSION_ID):
+            handler.handle(
+                ModelSessionPhaseReducerInput(
+                    event_type="session.started",
+                    session_id=_SESSION_ID,
+                    timestamp=_NOW,
+                )
+            )
 
-        assert state_file.exists()
-        data = yaml.safe_load(state_file.read_text())
-        assert data["session_id"] == _SESSION_ID
-        assert data["current_phase"] == "start"
+        persisted = store.load(_SESSION_ID)
+        assert persisted is not None
+        assert persisted.session_id == _SESSION_ID
+        assert persisted.current_phase == "start"
 
-    def test_state_file_contains_all_required_fields(self, tmp_path: Path) -> None:
-        """YAML file contains every field the evaluator and hook need."""
+    def test_persisted_row_contains_all_required_fields(self) -> None:
+        """The row carries every field the evaluator and hook need."""
         handler = HandlerSessionPhaseReducer()
-        state_file = tmp_path / "phase_state.yaml"
+        store = StateIoRowStore()
 
-        handler.handle(
-            ModelSessionPhaseReducerInput(
-                event_type="session.started",
-                session_id=_SESSION_ID,
-                timestamp=_NOW,
-                phase="health_gate",
-                budget_elapsed_pct=10,
-                active_worker_count=2,
-            ),
-            state_path=str(state_file),
-        )
+        with state_io_dispatch(store, _SESSION_ID):
+            handler.handle(
+                ModelSessionPhaseReducerInput(
+                    event_type="session.started",
+                    session_id=_SESSION_ID,
+                    timestamp=_NOW,
+                    phase="health_gate",
+                    budget_elapsed_pct=10,
+                    active_worker_count=2,
+                )
+            )
 
-        data = yaml.safe_load(state_file.read_text())
+        data = json.loads(store.rows[_SESSION_ID][0])
         required_fields = {
             "session_id",
             "current_phase",
@@ -334,72 +345,54 @@ class TestSessionPhaseReducerWritesStateFile:
         }
         assert required_fields.issubset(data.keys())
 
-    def test_state_file_is_overwritten_on_second_event(self, tmp_path: Path) -> None:
-        """Each event folds onto the previous state file (latest-state-wins).
+    def test_second_event_folds_onto_the_persisted_row(self) -> None:
+        """Each event folds onto the previous durable row (latest-state-wins).
 
         OMN-16790: the second call passes NO prior state, because a bus message
-        never carries one. The fold must pick the session up from the projection
-        file the first call wrote — if it did not, ``session.phase.state`` would
-        hit the ``state is None`` branch of ``delta`` and yield ``"unknown"``.
+        never carries one. OMN-16924: the fold must pick the session up from the
+        row the runtime loaded — if it did not, ``session.phase.state`` would hit
+        the ``state is None`` branch of ``delta`` and yield ``"unknown"``.
         """
         handler = HandlerSessionPhaseReducer()
-        state_file = tmp_path / "phase_state.yaml"
+        store = StateIoRowStore()
 
-        # First event: session started
-        handler.handle(
-            ModelSessionPhaseReducerInput(
-                event_type="session.started",
-                session_id=_SESSION_ID,
-                timestamp=_NOW,
-            ),
-            state_path=str(state_file),
-        )
+        with state_io_dispatch(store, _SESSION_ID):
+            handler.handle(
+                ModelSessionPhaseReducerInput(
+                    event_type="session.started",
+                    session_id=_SESSION_ID,
+                    timestamp=_NOW,
+                )
+            )
+        with state_io_dispatch(store, _SESSION_ID):
+            handler.handle(
+                ModelSessionPhaseReducerInput(
+                    event_type="session.phase.state",
+                    session_id=_SESSION_ID,
+                    timestamp=_LATER,
+                    phase="rsd_scoring",
+                    phase_index=1,
+                )
+            )
 
-        # Second event: phase transition, prior state read from the file
-        handler.handle(
-            ModelSessionPhaseReducerInput(
-                event_type="session.phase.state",
-                session_id=_SESSION_ID,
-                timestamp=_LATER,
-                phase="rsd_scoring",
-                phase_index=1,
-            ),
-            state_path=str(state_file),
-        )
+        persisted = store.load(_SESSION_ID)
+        assert persisted is not None
+        assert persisted.current_phase == "rsd_scoring"
+        assert persisted.phase_index == 1
 
-        data = yaml.safe_load(state_file.read_text())
-        assert data["current_phase"] == "rsd_scoring"
-        assert data["phase_index"] == 1
-
-    def test_state_file_parent_dirs_created(self, tmp_path: Path) -> None:
-        """Nested path is created if it doesn't exist."""
-        handler = HandlerSessionPhaseReducer()
-        state_file = tmp_path / "nested" / "deep" / "phase_state.yaml"
-
-        handler.handle(
-            ModelSessionPhaseReducerInput(
-                event_type="session.started",
-                session_id=_SESSION_ID,
-                timestamp=_NOW,
-            ),
-            state_path=str(state_file),
-        )
-
-        assert state_file.exists()
-
-    def test_handle_returns_projections_only(self, tmp_path: Path) -> None:
+    def test_handle_returns_projections_only(self) -> None:
         """REDUCER nodes return projections[] only — no events, intents, or result."""
         handler = HandlerSessionPhaseReducer()
-        state_file = tmp_path / "phase_state.yaml"
+        store = StateIoRowStore()
 
-        result = handler.handle(
-            ModelSessionPhaseReducerInput(
-                event_type="session.started",
-                session_id=_SESSION_ID,
-                timestamp=_NOW,
-            ),
-            state_path=str(state_file),
-        )
+        with state_io_dispatch(store, _SESSION_ID):
+            result = handler.handle(
+                ModelSessionPhaseReducerInput(
+                    event_type="session.started",
+                    session_id=_SESSION_ID,
+                    timestamp=_NOW,
+                )
+            )
 
         assert set(result.keys()) == {"projections"}
         assert len(result["projections"]) == 1

@@ -182,7 +182,17 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # +2 for OMN-16777's node_projection_consumer_flow db_io declarations
     # (consumer_flow_windows + topic_produce_windows), both required by the
     # shadow gate since its migration creates both = 65.
-    assert census["source_declared_tables"] == 65
+    # +1 for OMN-16180's work_events catalog declaration in
+    # scripts/application-relation-ownership.yaml = 66. This is step 1 of the
+    # forced three-PR sequence documented on that entry: the declaration must
+    # reach omnimarket@dev BEFORE omnibase_infra can vendor the migration,
+    # because the OMN-15361 ownership gate resolves declarations from service
+    # manifests only and reads this file from dev. The relation is therefore
+    # DECLARED here while still classification_status "blocked" ("no
+    # authoritative CREATE TABLE migration found") -- source_created_tables
+    # stays 61 until the node's own migration lands in step 3, which is exactly
+    # what the counts below encode.
+    assert census["source_declared_tables"] == 66
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then

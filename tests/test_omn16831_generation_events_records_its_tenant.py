@@ -30,10 +30,10 @@ blind spot OMN-15909 was filed for, which is why the write-path gate demands
 this file.
 
 The discriminator used below is deliberately NOT the stored value (identical
-either way). It is ``pg_attribute``-level: the row is written with the column
-default made *impossible to reach* -- the DEFAULT is dropped for the duration
-of the assertion -- so a writer that still omits the key fails the ``NOT NULL``
-constraint outright, and only a writer that records the value can succeed.
+either way). It is catalog-level: the row is written with the column default
+made *impossible to reach* -- the DEFAULT is dropped for the duration of the
+assertion -- and the test proves the column remains NOT NULL with no default
+without deliberately emitting a Postgres ERROR into CI logs.
 
 Skips (never ERRORs) without a reachable database, mirroring
 ``test_writer_tenant_isolation_omn14898.py``'s ``_connect_or_skip``.
@@ -119,10 +119,10 @@ async def test_generation_events_row_is_attributed_by_the_writer_not_the_column(
     """Real Postgres: the row lands with the DEFAULT made unreachable.
 
     Falsifiable in exactly the way that matters. With the column DEFAULT
-    dropped, a writer that omits ``tenant_id`` raises ``NotNullViolationError``
-    and the assertion fails; the write can only succeed if the value came from
-    the writer. Restored in ``finally`` so the fixture database is left as
-    found.
+    dropped and ``tenant_id`` still NOT NULL, the write can only succeed if the
+    value came from the writer. The negative discriminator is proved through
+    the catalog instead of an expected failing INSERT so CI logs stay free of
+    intentional database ERROR lines.
 
     Forces the no-configured-tenant precondition for the same reason as
     ``test_the_writer_resolves_a_tenant_for_generation_events`` above: a lane
@@ -167,14 +167,23 @@ async def test_generation_events_row_is_attributed_by_the_writer_not_the_column(
         )
         assert stored == INTERIM_DEFAULT_TENANT
 
-        # And prove the discriminator actually discriminates: the pre-ruling
-        # writer -- the one that omitted the key -- cannot write this row.
-        with pytest.raises(asyncpg.exceptions.NotNullViolationError):
-            await conn.execute(
-                f'INSERT INTO "{schema}".generation_events (correlation_id) '
-                "VALUES ($1)",
-                str(uuid4()),
-            )
+        # And prove the discriminator actually discriminates without emitting a
+        # PostgreSQL ERROR into the integration log: the column is NOT NULL and
+        # its default was removed, so a writer that omits it has no database
+        # fallback path.
+        discriminator = await conn.fetchrow(
+            """
+            SELECT is_nullable, column_default
+            FROM information_schema.columns
+            WHERE table_schema = $1
+              AND table_name = 'generation_events'
+              AND column_name = 'tenant_id'
+            """,
+            schema,
+        )
+        assert discriminator is not None
+        assert discriminator["is_nullable"] == "NO"
+        assert discriminator["column_default"] is None
     finally:
         await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         await conn.close()

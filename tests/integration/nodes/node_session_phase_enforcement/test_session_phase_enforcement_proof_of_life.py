@@ -2,27 +2,39 @@
 # SPDX-License-Identifier: MIT
 """Proof-of-life integration test for the session phase enforcement pipeline.
 
-Exercises the full end-to-end chain with real models and real state files,
+Exercises the full end-to-end chain with real models and real durable state,
 wiring handler outputs directly (no Kafka) to simulate the event bus:
 
-    evaluator -> orchestrator -> dispatcher -> reducer -> phase_state.yaml
+    evaluator -> orchestrator -> dispatcher -> reducer -> session_phase_state row
                                                               |
-                                                         hook reads file
+                                                    enforcement directive
 
-Contract loaded, tick fires, evaluator runs, reducer projects state, hook
-injects directive — all paths exercised with real model instances.
+Contract loaded, tick fires, evaluator runs, reducer folds state, the directive
+builder renders it — all paths exercised with real model instances.
 
-[OMN-11283] [OMN-11234]
+OMN-16924: the chain used to terminate in ``.onex_state/session/phase_state.yaml``.
+That file is gone — the reducer's state of record is now a session_id-keyed
+database row the runtime loads and persists around ``handle()``, and the handler
+performs no I/O. ``state_io_dispatch`` plays the runtime's part here.
+
+RESIDUAL, stated rather than papered over: omniclaude's
+``session_phase_enforcement`` hook still reads that local file. It reads nothing
+today either — the reducer's bus dispatch has never once succeeded (KeyError
+before OMN-16790, PermissionError after), so the file was never written on any
+lane. Re-pointing the hook at the projection is separate follow-up work; this
+test proves the enforcement rendering against the state the platform actually
+holds.
+
+[OMN-11283] [OMN-11234] [OMN-16924]
 """
 
 from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
-from pathlib import Path
+from typing import Any
 
 import pytest
-import yaml
 
 from omnimarket.nodes.node_session_phase_dispatcher.handlers.handler_session_phase_dispatcher import (
     HandlerSessionPhaseDispatcher,
@@ -46,22 +58,21 @@ from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_
     HandlerSessionPhaseReducer,
     ModelSessionPhaseReducerInput,
 )
+from tests.session_phase_state_io_harness import StateIoRowStore, state_io_dispatch
 
 _SESSION_ID = "sess-omn-11283-proof-of-life"
 _PHASE_1_NAME = "phase_1"
 _PHASE_2_NAME = "phase_2"
 
 
-def _build_enforcement_directive(state_dir: Path) -> str:
-    """Replicate hook logic: read phase_state.yaml and return enforcement directive."""
-    path = state_dir / "session" / "phase_state.yaml"
-    if not path.exists():
-        return ""
-    try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except (yaml.YAMLError, OSError):
-        return ""
-    if not isinstance(data, dict):
+def _build_enforcement_directive(data: dict[str, Any] | None) -> str:
+    """Replicate hook logic over the reducer's materialized phase state.
+
+    Takes the state itself rather than a file path — OMN-16924 moved the state of
+    record into the database, so "what the hook renders" is a question about the
+    projection, not about a file on the developer's disk.
+    """
+    if not data:
         return ""
 
     evaluation: str = data.get("last_evaluation", "")
@@ -84,11 +95,9 @@ def _build_enforcement_directive(state_dir: Path) -> str:
 
 
 @pytest.mark.integration
-def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
-    """Full chain: budget exhausted -> transition_required -> state file -> hook directive."""
-    state_file = tmp_path / "session" / "phase_state.yaml"
-    state_file.parent.mkdir(parents=True, exist_ok=True)
-    state_dir = tmp_path
+def test_session_phase_enforcement_proof_of_life() -> None:
+    """Full chain: budget exhausted -> transition_required -> durable row -> directive."""
+    store = StateIoRowStore()
 
     # Step 1: Contract — 2 phases, phase 1 budget = 1 minute.
     # (contract is encoded in the evaluation request; no external YAML needed)
@@ -99,17 +108,19 @@ def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
     now = datetime(2026, 5, 21, 9, 2, 0, tzinfo=UTC)  # 2 minutes later
 
     reducer = HandlerSessionPhaseReducer()
-    reducer.handle(
-        ModelSessionPhaseReducerInput(
-            event_type="session.started",
-            session_id=_SESSION_ID,
-            timestamp=started_at,
-            phase=_PHASE_1_NAME,
-            phase_index=0,
-        ),
-        state_path=str(state_file),
+    with state_io_dispatch(store, _SESSION_ID):
+        reducer.handle(
+            ModelSessionPhaseReducerInput(
+                event_type="session.started",
+                session_id=_SESSION_ID,
+                timestamp=started_at,
+                phase=_PHASE_1_NAME,
+                phase_index=0,
+            )
+        )
+    assert store.load(_SESSION_ID) is not None, (
+        "Reducer must persist a durable row on session.started"
     )
-    assert state_file.exists(), "Reducer must write phase_state.yaml on session.started"
 
     # Step 3: Run evaluator — elapsed 2 min vs budget 1 min => transition_required.
     # halt_threshold_pct=110 so budget-exhausted (100%) triggers transition_required
@@ -180,37 +191,35 @@ def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
     assert dispatch_result.correlation_id == correlation_id
     phase_state_payload = phase_state_events[0].payload
 
-    # Step 6: Feed phase-state event to reducer -> update phase_state.yaml to phase 2.
-    # OMN-16790: the wire event alone; prior state comes from the projection file
-    # the reducer wrote in step 2, which is where its state of record lives.
-    reducer.handle(
-        ModelSessionPhaseReducerInput(
-            event_type="session.phase.state",
-            session_id=phase_state_payload["session_id"],
-            timestamp=now,
-            phase=transition_payload["next_phase"],
-            phase_index=1,
-            last_evaluation="transition_required",
-            budget_elapsed_pct=evaluation.budget_elapsed_pct,
-        ),
-        state_path=str(state_file),
-    )
+    # Step 6: Feed phase-state event to reducer -> advance the durable row to phase 2.
+    # OMN-16790: the wire event alone. OMN-16924: prior state comes from the row
+    # the runtime loaded, which is where its state of record lives.
+    with state_io_dispatch(store, _SESSION_ID):
+        reducer.handle(
+            ModelSessionPhaseReducerInput(
+                event_type="session.phase.state",
+                session_id=phase_state_payload["session_id"],
+                timestamp=now,
+                phase=transition_payload["next_phase"],
+                phase_index=1,
+                last_evaluation="transition_required",
+                budget_elapsed_pct=evaluation.budget_elapsed_pct,
+            )
+        )
 
-    # Step 7: Read phase_state.yaml — verify phase_index=1, current_phase=phase_2.
-    assert state_file.exists(), (
-        "Reducer must write phase_state.yaml on phase transition"
+    # Step 7: Read the durable row — verify phase_index=1, current_phase=phase_2.
+    persisted = reducer_state = store.load(_SESSION_ID)
+    assert persisted is not None, "Reducer must persist a row on phase transition"
+    assert persisted.phase_index == 1, (
+        f"Expected phase_index=1, got {persisted.phase_index}"
     )
-    written = yaml.safe_load(state_file.read_text(encoding="utf-8"))
-    assert written["phase_index"] == 1, (
-        f"Expected phase_index=1, got {written['phase_index']}"
+    assert persisted.current_phase == _PHASE_2_NAME, (
+        f"Expected current_phase={_PHASE_2_NAME}, got {persisted.current_phase}"
     )
-    assert written["current_phase"] == _PHASE_2_NAME, (
-        f"Expected current_phase={_PHASE_2_NAME}, got {written['current_phase']}"
-    )
-    assert written["last_evaluation"] == "transition_required"
+    assert persisted.last_evaluation == "transition_required"
 
-    # Step 8: Verify hook injects the correct enforcement directive.
-    directive = _build_enforcement_directive(state_dir)
+    # Step 8: Verify the enforcement directive renders from that state.
+    directive = _build_enforcement_directive(reducer_state.model_dump(mode="json"))
     assert directive, (
         "Hook must return a non-empty directive for transition_required state"
     )
@@ -223,7 +232,7 @@ def test_session_phase_enforcement_proof_of_life(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-def test_budget_exhaustion_triggers_phase_transition(tmp_path: Path) -> None:
+def test_budget_exhaustion_triggers_phase_transition() -> None:
     """Budget exhaustion (200% elapsed) produces transition_required from evaluator."""
     evaluator = HandlerSessionPhaseEvaluator()
 
@@ -243,137 +252,91 @@ def test_budget_exhaustion_triggers_phase_transition(tmp_path: Path) -> None:
 
 
 @pytest.mark.integration
-def test_reducer_state_reflects_transition_at_every_step(tmp_path: Path) -> None:
-    """State file is accurate after each event: started -> phase_1 -> phase_2."""
-    state_file = tmp_path / "session" / "phase_state.yaml"
-    state_file.parent.mkdir(parents=True, exist_ok=True)
+def test_reducer_state_reflects_transition_at_every_step() -> None:
+    """The durable row is accurate after each event: started -> phase_1 -> phase_2."""
+    store = StateIoRowStore()
     reducer = HandlerSessionPhaseReducer()
     ts_start = datetime(2026, 5, 21, 9, 0, 0, tzinfo=UTC)
     ts_tick = datetime(2026, 5, 21, 9, 2, 0, tzinfo=UTC)
 
     # After session.started
-    reducer.handle(
-        ModelSessionPhaseReducerInput(
-            event_type="session.started",
-            session_id=_SESSION_ID,
-            timestamp=ts_start,
-            phase=_PHASE_1_NAME,
-            phase_index=0,
-        ),
-        state_path=str(state_file),
-    )
-    state_1 = yaml.safe_load(state_file.read_text())
-    assert state_1["current_phase"] == _PHASE_1_NAME
-    assert state_1["phase_index"] == 0
+    with state_io_dispatch(store, _SESSION_ID):
+        reducer.handle(
+            ModelSessionPhaseReducerInput(
+                event_type="session.started",
+                session_id=_SESSION_ID,
+                timestamp=ts_start,
+                phase=_PHASE_1_NAME,
+                phase_index=0,
+            )
+        )
+    state_1 = store.load(_SESSION_ID)
+    assert state_1 is not None
+    assert state_1.current_phase == _PHASE_1_NAME
+    assert state_1.phase_index == 0
 
-    # After transition to phase_2
-    # OMN-16790: no prior state is passed — a bus message never carries one. The
-    # fold picks the session up from the projection file written above.
-    reducer.handle(
-        ModelSessionPhaseReducerInput(
-            event_type="session.phase.state",
-            session_id=_SESSION_ID,
-            timestamp=ts_tick,
-            phase=_PHASE_2_NAME,
-            phase_index=1,
-            last_evaluation="transition_required",
-            budget_elapsed_pct=100,
-        ),
-        state_path=str(state_file),
-    )
-    state_2 = yaml.safe_load(state_file.read_text())
-    assert state_2["current_phase"] == _PHASE_2_NAME
-    assert state_2["phase_index"] == 1
-    assert state_2["last_evaluation"] == "transition_required"
+    # After transition to phase_2.
+    # OMN-16790: no prior state is passed — a bus message never carries one.
+    # OMN-16924: the fold picks the session up from the durable row above, which
+    # the runtime loads and rebinds before every dispatch.
+    with state_io_dispatch(store, _SESSION_ID):
+        reducer.handle(
+            ModelSessionPhaseReducerInput(
+                event_type="session.phase.state",
+                session_id=_SESSION_ID,
+                timestamp=ts_tick,
+                phase=_PHASE_2_NAME,
+                phase_index=1,
+                last_evaluation="transition_required",
+                budget_elapsed_pct=100,
+            )
+        )
+    state_2 = store.load(_SESSION_ID)
+    assert state_2 is not None
+    assert state_2.current_phase == _PHASE_2_NAME
+    assert state_2.phase_index == 1
+    assert state_2.last_evaluation == "transition_required"
+
+
+def _phase_state(*, evaluation: str, budget_elapsed_pct: int) -> dict[str, Any]:
+    """The materialized phase state a directive is rendered from."""
+    return {
+        "session_id": _SESSION_ID,
+        "current_phase": _PHASE_1_NAME,
+        "phase_index": 0,
+        "budget_elapsed_pct": budget_elapsed_pct,
+        "last_evaluation": evaluation,
+        "last_tick_at": None,
+        "phase_started_at": None,
+        "active_worker_count": 0,
+        "exit_conditions_met": [],
+        "exit_conditions_pending": [],
+    }
 
 
 @pytest.mark.integration
-def test_hook_reads_state_and_injects_directive(tmp_path: Path) -> None:
-    """Hook function reads phase_state.yaml and returns correct directive per evaluation."""
-    state_dir = tmp_path
-    state_path = state_dir / "session" / "phase_state.yaml"
-    state_path.parent.mkdir(parents=True, exist_ok=True)
+def test_directive_rendering_covers_every_evaluation_outcome() -> None:
+    """Each evaluation outcome renders its own enforcement directive.
 
-    # transition_required state
-    state_path.write_text(
-        yaml.safe_dump(
-            {
-                "session_id": _SESSION_ID,
-                "current_phase": _PHASE_1_NAME,
-                "phase_index": 0,
-                "budget_elapsed_pct": 100,
-                "last_evaluation": "transition_required",
-                "last_tick_at": None,
-                "phase_started_at": None,
-                "active_worker_count": 0,
-                "exit_conditions_met": [],
-                "exit_conditions_pending": [],
-            }
-        ),
-        encoding="utf-8",
+    OMN-16924: the cases are driven from the materialized state itself rather
+    than from a YAML file on disk. The rendering logic under test is unchanged;
+    only its input source moved, because the state of record did.
+    """
+    assert "PHASE ENFORCEMENT" in _build_enforcement_directive(
+        _phase_state(evaluation="transition_required", budget_elapsed_pct=100)
     )
-    directive = _build_enforcement_directive(state_dir)
-    assert "PHASE ENFORCEMENT" in directive
-
-    # halt_required state
-    state_path.write_text(
-        yaml.safe_dump(
-            {
-                "session_id": _SESSION_ID,
-                "current_phase": _PHASE_1_NAME,
-                "phase_index": 0,
-                "budget_elapsed_pct": 120,
-                "last_evaluation": "halt_required",
-                "last_tick_at": None,
-                "phase_started_at": None,
-                "active_worker_count": 0,
-                "exit_conditions_met": [],
-                "exit_conditions_pending": [],
-            }
-        ),
-        encoding="utf-8",
+    assert "SESSION HALT" in _build_enforcement_directive(
+        _phase_state(evaluation="halt_required", budget_elapsed_pct=120)
     )
-    directive = _build_enforcement_directive(state_dir)
-    assert "SESSION HALT" in directive
-
-    # budget_warning state
-    state_path.write_text(
-        yaml.safe_dump(
-            {
-                "session_id": _SESSION_ID,
-                "current_phase": _PHASE_1_NAME,
-                "phase_index": 0,
-                "budget_elapsed_pct": 85,
-                "last_evaluation": "budget_warning",
-                "last_tick_at": None,
-                "phase_started_at": None,
-                "active_worker_count": 0,
-                "exit_conditions_met": [],
-                "exit_conditions_pending": [],
-            }
-        ),
-        encoding="utf-8",
+    assert "PHASE WARNING" in _build_enforcement_directive(
+        _phase_state(evaluation="budget_warning", budget_elapsed_pct=85)
     )
-    directive = _build_enforcement_directive(state_dir)
-    assert "PHASE WARNING" in directive
-
-    # no_action state — empty directive
-    state_path.write_text(
-        yaml.safe_dump(
-            {
-                "session_id": _SESSION_ID,
-                "current_phase": _PHASE_1_NAME,
-                "phase_index": 0,
-                "budget_elapsed_pct": 40,
-                "last_evaluation": "no_action",
-                "last_tick_at": None,
-                "phase_started_at": None,
-                "active_worker_count": 0,
-                "exit_conditions_met": [],
-                "exit_conditions_pending": [],
-            }
-        ),
-        encoding="utf-8",
+    assert (
+        _build_enforcement_directive(
+            _phase_state(evaluation="no_action", budget_elapsed_pct=40)
+        )
+        == ""
     )
-    directive = _build_enforcement_directive(state_dir)
-    assert directive == ""
+    assert _build_enforcement_directive(None) == "", (
+        "no materialized state must render no directive, not a crash"
+    )
