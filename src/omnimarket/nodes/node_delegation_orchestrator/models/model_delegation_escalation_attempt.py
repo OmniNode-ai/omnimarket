@@ -10,6 +10,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_delegation_acceptance import (
+    EnumDelegationAcceptanceDecision,
+    EnumDelegationAcceptanceReason,
+)
+
 
 class ModelDelegationEscalationAttempt(BaseModel):
     """Evidence record for a single tier attempt during escalation."""
@@ -78,6 +83,21 @@ class ModelDelegationEscalationAttempt(BaseModel):
     routing_decision_id: UUID | None = Field(
         default=None,
         description="ID of the ModelRoutingDecision that produced this attempt, for cross-event correlation.",
+    )
+    # OMN-16932: the accept/climb verdict for this rung, as a TYPED pair rather
+    # than prose. The orchestrator has always made this decision and never
+    # recorded it, so an escalation past a working free rung was only inferable
+    # from a later provider call showing up in a log — which is how a $0 local
+    # answer came to be abandoned three times in favour of two metered 429s
+    # without anything in the event log saying so. Required, because an attempt
+    # row that cannot say why it was abandoned is the exact record that failed.
+    acceptance_decision: EnumDelegationAcceptanceDecision = Field(
+        ...,
+        description="Whether this rung's response was accepted or the ladder climbed past it.",
+    )
+    acceptance_reason: EnumDelegationAcceptanceReason = Field(
+        ...,
+        description="Typed reason for the accept/climb decision on this rung.",
     )
 
 

@@ -36,6 +36,10 @@ from uuid import UUID, uuid4
 import pytest
 from omnibase_core.models.delegation.wire import EnumQualityScoreComparison
 
+from omnimarket.enums.enum_delegation_acceptance import (
+    EnumDelegationAcceptanceDecision,
+    EnumDelegationAcceptanceReason,
+)
 from omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow import (
     DelegationWorkflowState,
     HandlerDelegationWorkflow,
@@ -456,6 +460,8 @@ def _attempt(tier_name: str) -> ModelDelegationEscalationAttempt:
         failure_reasons=(OBSERVED_CRITERION_FAILURE,),
         latency_ms=1958,
         fallback_recommended=True,
+        acceptance_decision=EnumDelegationAcceptanceDecision.CLIMB,
+        acceptance_reason=(EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR),
         attempted_at=datetime.now(UTC),
         routing_decision_id=uuid4(),
     )

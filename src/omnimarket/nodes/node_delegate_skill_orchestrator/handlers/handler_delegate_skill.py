@@ -21,6 +21,10 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.config import get_settings
+from omnimarket.enums.enum_delegation_acceptance import (
+    EnumDelegationAcceptanceDecision,
+    EnumDelegationAcceptanceReason,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -158,6 +162,45 @@ def _as_str_list(value: object) -> list[str]:
     return []
 
 
+def _as_acceptance_decision(
+    value: object,
+) -> EnumDelegationAcceptanceDecision | None:
+    """Coerce a serialized accept/climb decision (OMN-16932).
+
+    ``None`` for an attempt record that carries no decision — a transport skip,
+    or a record written before the field existed. Unknown values are treated as
+    absent rather than raising: this is a read-side projection of history, and a
+    terminal must still render when an older row carries a value this build does
+    not know.
+    """
+    if value is None:
+        return None
+    if isinstance(value, EnumDelegationAcceptanceDecision):
+        return value
+    if isinstance(value, str):
+        try:
+            return EnumDelegationAcceptanceDecision(value)
+        except ValueError:
+            return None
+    return None
+
+
+def _as_acceptance_reason(
+    value: object,
+) -> EnumDelegationAcceptanceReason | None:
+    """Coerce a serialized accept/climb reason (OMN-16932). See above."""
+    if value is None:
+        return None
+    if isinstance(value, EnumDelegationAcceptanceReason):
+        return value
+    if isinstance(value, str):
+        try:
+            return EnumDelegationAcceptanceReason(value)
+        except ValueError:
+            return None
+    return None
+
+
 def _as_quality_score_comparison(
     value: object,
 ) -> EnumQualityScoreComparison | None:
@@ -258,9 +301,14 @@ def _attempt_records(
     ``result["attempts"]`` is the richer dispatch-port-owned record and always
     wins when present. Canonical bus terminals currently expose only serialized
     ``escalation_history``; map that as documented best-effort evidence rather
-    than dropping it. History contains rejected attempts and may lack backend
-    aliases or the accepted terminal attempt, so callers must use the separate
-    ``attempts_count`` as the total-call authority.
+    than dropping it. History may lack backend aliases, so callers must use the
+    separate ``attempts_count`` as the total-call authority.
+
+    OMN-16932: history is no longer rejections-only — the ACCEPTED rung is
+    recorded there too, so that the rung which answered is legible rather than
+    inferable. Each row's typed ``acceptance_decision`` is therefore the
+    authority for whether it passed; a row without one predates the field and
+    keeps the old rejected-only reading.
     """
     raw_attempts = result.get("attempts")
     from_escalation_history = not isinstance(raw_attempts, list)
@@ -278,6 +326,7 @@ def _attempt_records(
             continue
         if from_escalation_history:
             failure_reasons = _as_str_list(raw.get("failure_reasons"))
+            decision = _as_acceptance_decision(raw.get("acceptance_decision"))
             records.append(
                 ModelDelegateSkillAttemptRecord(
                     tier=str(raw.get("tier_name") or raw.get("tier") or ""),
@@ -285,9 +334,20 @@ def _attempt_records(
                         raw.get("backend_id") or raw.get("routing_decision_id") or ""
                     ),
                     model_id=str(raw.get("model_used") or raw.get("model_id") or ""),
-                    # Escalation history records rejected/failed attempts. It does
-                    # not contain the accepted terminal attempt.
-                    quality_gate_passed=False,
+                    # OMN-16932: escalation history used to hold ONLY rejected
+                    # attempts, so this was hardcoded False. The accepted rung is
+                    # now recorded there too — that is the whole point of the
+                    # ticket, the winning rung has to be legible — so a hardcoded
+                    # False would relabel the attempt that ANSWERED as a failure.
+                    # The typed decision is the authority; absent it (a record
+                    # predating this field) the old rejected-only reading holds.
+                    quality_gate_passed=(
+                        decision is EnumDelegationAcceptanceDecision.ACCEPT
+                    ),
+                    acceptance_decision=decision,
+                    acceptance_reason=_as_acceptance_reason(
+                        raw.get("acceptance_reason")
+                    ),
                     quality_score=(
                         _as_float(raw["quality_score"])
                         if raw.get("quality_score") is not None
@@ -309,6 +369,13 @@ def _attempt_records(
                 backend_id=str(raw.get("backend_id", "")),
                 model_id=str(raw.get("model_id", "")),
                 quality_gate_passed=bool(raw.get("quality_gate_passed", False)),
+                # OMN-16932: the dispatch-port path records the same typed
+                # accept/climb verdict the bus path does, so a reader of either
+                # terminal sees WHY a rung was kept or abandoned.
+                acceptance_decision=_as_acceptance_decision(
+                    raw.get("acceptance_decision")
+                ),
+                acceptance_reason=_as_acceptance_reason(raw.get("acceptance_reason")),
                 quality_score=(
                     _as_float(raw["quality_score"])
                     if raw.get("quality_score") is not None

@@ -28,8 +28,14 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from typing import Any
 
 from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
+from omnimarket.inference.provider_quota_policy import classify_quota_response
+from omnimarket.inference.provider_quota_state import (
+    quota_domain_disabled,
+    record_quota_verdict,
+)
 from omnimarket.inference.secret_store_resolver import resolve_api_key
 from omnimarket.nodes.node_llm_delegation_call_effect.handlers import transport
 from omnimarket.routing.delegation_backend_resolution import (
@@ -73,6 +79,73 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
         # task_type is unused when backend_id pins the backend, but the resolver
         # signature requires it; pass the judge task class for provenance.
         return resolve_delegation_backend("judge_adequacy", backend_id=self._backend_id)
+
+    def quota_disabled(self) -> bool:
+        """Return whether the judge's provider is a known-exhausted quota domain.
+
+        OMN-16932. ``cloud-glm-judge`` was repointed onto Gemini by OMN-14625
+        (z.ai GLM is unreachable from ``.201``), which put the judge on the SAME
+        free-tier counter as the ``cheap_cloud`` escalation rung. Against a cap
+        of 20 requests, one judge call per delegation exhausts the lane in ~10
+        delegations — and the judge kept calling afterwards, so every subsequent
+        delegation spent a guaranteed-429 call to rediscover the same cap.
+
+        Asking before calling turns that into a single 429 for the whole
+        cooldown. Resolution failures are swallowed to ``False``: a judge that
+        cannot resolve its own backend must still attempt the call and fail
+        closed to ``JUDGE_FAILED`` through the existing path, never be silently
+        skipped on an unrelated error.
+        """
+        try:
+            endpoint = self._resolve_backend().endpoint_ref
+        except Exception:  # pragma: no cover - resolution errors surface on call
+            return False
+        return quota_domain_disabled(endpoint) is not None
+
+    def record_quota_failure(self, *, endpoint_url: str, error: object) -> None:
+        """Fold a judge-leg 429 into the routing-visible quota ledger.
+
+        The judge is the FIRST metered call in a delegation, so it is usually
+        the one that discovers an exhausted quota. Recording it here is what
+        lets the escalation target resolution (a different node, same process)
+        know the provider is dead before it routes there — closing the loop that
+        previously spent a second metered call per delegation to learn the same
+        fact.
+
+        ``error`` is duck-typed rather than annotated as a concrete transport
+        exception: this module lives inside a REDUCER node, where ARCH-002
+        forbids importing a transport library at runtime. Reading
+        ``error.response.status_code`` / ``.json()`` structurally keeps the
+        reducer transport-agnostic and works for any transport whose error
+        carries the provider's response. Anything that does not carry one is
+        simply not a quota signal and is ignored.
+        """
+        response: Any = getattr(error, "response", None)
+        if response is None or getattr(response, "status_code", None) != 429:
+            return
+        body: object = None
+        json_reader = getattr(response, "json", None)
+        if callable(json_reader):
+            try:
+                body = json_reader()
+            except Exception:  # pragma: no cover - non-JSON error bodies
+                body = None
+        verdict = classify_quota_response(
+            status_code=429,
+            endpoint_url=endpoint_url,
+            body=body if isinstance(body, dict) else None,
+        )
+        if verdict is None:
+            return
+        record_quota_verdict(endpoint_url=endpoint_url, verdict=verdict)
+        if not verdict.retryable:
+            logger.warning(
+                "judge_quota_disable provider=%s code=%s until=%s: %s",
+                verdict.provider_id,
+                verdict.provider_code,
+                verdict.disabled_until,
+                verdict.reason,
+            )
 
     def resolved_model_id(self) -> str:
         """Return the concrete model id resolved from the routing contract."""
@@ -148,12 +221,25 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
         backend_timeout = resolve_timeout_seconds(backend_timeout_ms=backend.timeout_ms)
         effective_timeout = min(timeout_seconds, backend_timeout)
 
-        response = transport.post_chat_completion(
-            endpoint_url=backend.endpoint_ref,
-            payload=payload,
-            timeout_seconds=effective_timeout,
-            extra_headers=headers,
-        )
+        try:
+            response = transport.post_chat_completion(
+                endpoint_url=backend.endpoint_ref,
+                payload=payload,
+                timeout_seconds=effective_timeout,
+                extra_headers=headers,
+            )
+        except Exception as exc:
+            # OMN-16932: a judge 429 is the lane's earliest quota signal. Record
+            # it before re-raising so the escalation target resolution downstream
+            # does not spend a second metered call rediscovering the same cap.
+            # Caught broadly because ARCH-002 forbids naming a transport
+            # exception type inside a reducer node; ``record_quota_failure``
+            # ignores anything that does not carry a 429 response, so a timeout
+            # or a connection error falls straight through. The raise is
+            # unchanged — HandlerJudgeAdequacy still fails closed to
+            # JUDGE_FAILED on every one of these.
+            self.record_quota_failure(endpoint_url=backend.endpoint_ref, error=exc)
+            raise
         return str(response.json_body["choices"][0]["message"]["content"])
 
 

@@ -66,6 +66,10 @@ from omnibase_core.models.delegation.wire import (
 )
 
 from omnimarket.config import get_settings
+from omnimarket.enums.enum_delegation_acceptance import (
+    EnumDelegationAcceptanceDecision,
+    EnumDelegationAcceptanceReason,
+)
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.protocol_config import apply_inference_protocol
@@ -808,6 +812,17 @@ class LocalDelegationDispatchPort:
                         # must be visible to the caller of ModelDelegateSkillResponse,
                         # not just an operator grepping logs after the fact.
                         "error_message": transport_failure_message,
+                        # OMN-16932: the call never produced a response, so no
+                        # accept/climb verdict was reachable. Typed as CLIMB /
+                        # PROVIDER_CALL_FAILED rather than borrowed from the
+                        # quality vocabulary, matching the bus path's record for
+                        # the same situation.
+                        "acceptance_decision": (
+                            EnumDelegationAcceptanceDecision.CLIMB.value
+                        ),
+                        "acceptance_reason": (
+                            EnumDelegationAcceptanceReason.PROVIDER_CALL_FAILED.value
+                        ),
                     }
                 )
 
@@ -905,6 +920,20 @@ class LocalDelegationDispatchPort:
                     "quality_gate_passed": quality_passed,
                     "quality_score": gate_result.quality_score,
                     "cost_usd": float(result.actual_cost_usd),
+                    # OMN-16932: the accept/climb verdict, typed, on the bus-less
+                    # path too — so `onex delegate` and the bus terminal describe
+                    # a stop-or-climb the same way instead of one of them leaving
+                    # the reader to infer it from a later rung appearing.
+                    "acceptance_decision": (
+                        EnumDelegationAcceptanceDecision.ACCEPT.value
+                        if quality_passed
+                        else EnumDelegationAcceptanceDecision.CLIMB.value
+                    ),
+                    "acceptance_reason": (
+                        EnumDelegationAcceptanceReason.QUALITY_BAR_MET.value
+                        if quality_passed
+                        else EnumDelegationAcceptanceReason.SCORE_BELOW_REQUIRED_BAR.value
+                    ),
                 }
             )
 
@@ -1498,6 +1527,7 @@ class LocalDelegationDispatchPort:
         gate_result = await self._evaluate_quality_gate(
             correlation_id=correlation_id,
             task_type=task_type,
+            prompt=prompt,
             content=result.content or "",
             quality_contract_mode=quality_contract_mode,
             acceptance_criteria=acceptance_criteria,
@@ -1515,6 +1545,7 @@ class LocalDelegationDispatchPort:
         *,
         correlation_id: UUID,
         task_type: str,
+        prompt: str,
         content: str,
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
@@ -1565,7 +1596,14 @@ class LocalDelegationDispatchPort:
                 task_type
             )
 
-        dod_deterministic, dod_heuristic = resolve_task_class_dod_checks(task_type)
+        # OMN-16932: the prompt is threaded in so this bus-less path resolves the
+        # SAME request-scoped response shape the bus routing reducer resolves. A
+        # prompt that declares its own answer shape selects the contract's
+        # shape_overrides heuristic band; a prompt that declares nothing resolves
+        # UNCONSTRAINED and gets the class DoD unchanged.
+        dod_deterministic, dod_heuristic = resolve_task_class_dod_checks(
+            task_type, prompt=prompt
+        )
         gate_input = ModelQualityGateInput(
             correlation_id=correlation_id,
             task_type=task_type,

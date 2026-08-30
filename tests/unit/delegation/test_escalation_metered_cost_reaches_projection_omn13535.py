@@ -242,10 +242,24 @@ class TestEscalationMeteredCostReachesProjectionOmn13535:
         # The rejected metered tier is recorded in escalation_history WITH its
         # priced cost (the durable per-tier provenance the projection re-derives).
         history = result.escalation_history
-        assert len(history) == 1
+        # OMN-16932: the accepted rung is recorded too, so the history is
+        # [rejected metered, accepted free] rather than [rejected metered].
+        assert len(history) == 2
         assert history[0]["tier_name"] == "cheap_cloud"
+        assert history[0]["acceptance_decision"] == "climb"
         assert float(history[0]["cost_usd"]) == pytest.approx(expected_metered)
         assert history[0]["prompt_tokens"] == _METERED_PROMPT_TOKENS
+        # The accepted row exists for its VERDICT, not its price. It banks
+        # nothing: the winning rung's tokens and cost are already the terminal's
+        # top-level values, and cumulative_attempt_cost is the sum over the rungs
+        # the ladder ABANDONED. A priced accept row would double-count the winner
+        # in every consumer that re-derives the total from attempts[] plus the
+        # top-level row — which is exactly what this test class exists to guard.
+        assert history[1]["tier_name"] == "local"
+        assert history[1]["acceptance_decision"] == "accept"
+        assert float(history[1]["cost_usd"]) == pytest.approx(0.0)
+        assert history[1]["prompt_tokens"] == 0
+        assert result.cumulative_attempt_cost == pytest.approx(expected_metered)
 
     def test_canonical_terminal_cost_is_total_metered_spend(self) -> None:
         handler = HandlerDelegationWorkflow(workflows={})
@@ -331,7 +345,15 @@ class TestEscalationMeteredCostReachesProjectionOmn13535:
         result = _canonical_terminal(events)
         # No prior attempts → cumulative == the single served tier's cost.
         assert result.cumulative_attempt_cost == pytest.approx(single_tier_cost)
-        assert result.escalation_history == ()
+        # OMN-16932: a non-escalated delegation now carries exactly ONE history
+        # row — the accepted rung — where it previously carried none. The row it
+        # gained is unpriced, so the cost assertion above is what proves the
+        # metered total did not move: the accept row adds a verdict, not a charge.
+        assert len(result.escalation_history) == 1
+        accepted = result.escalation_history[0]
+        assert accepted["acceptance_decision"] == "accept"
+        assert accepted["tier_name"] == "cheap_cloud"
+        assert float(accepted["cost_usd"]) == pytest.approx(0.0)
 
         measurement = _measure_canonical(result)
         assert measurement.cost_usd == pytest.approx(single_tier_cost)

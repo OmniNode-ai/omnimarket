@@ -328,8 +328,21 @@ _SOURCE_CITATION_RE = re.compile(
     r"| \b(?:theorem|lemma|corollary|proposition|proof|equation|figure"
     r"|table|appendix|chapter|section|page)\s+\d"
     r"| \[\s*\d+\s*\]"  # bracketed numeric citation: [12]
-    r"| \(\s*[A-Z][A-Za-z.'-]+(?:\s+(?:et\s+al\.?|and|&)\s+[A-Z][A-Za-z.'-]+)?"
-    r"\s*,?\s*\d{4}[a-z]?\s*\)"  # author-year: (Smith, 2020) / (Smith et al., 2020)
+    # Author-year, where the author may be a person, several people, or an
+    # organisation: (Smith, 2020) / (Smith et al., 2020) / (Smith and Jones,
+    # 2020) / (OpenAPI Initiative, 2017) / (World Health Organization, 2021).
+    # OMN-16932: the author was previously a SINGLE capitalised token unless it
+    # was joined by et al./and/&, and even then the joiner had to be followed by
+    # another name — so "(Smith et al., 2020)", the form this comment has always
+    # advertised, did not match, and neither did any organisational author. The
+    # result was "TASK_MISMATCH: missing source citations or references" emitted
+    # against answers that visibly carried a citation: a reason untrue of the
+    # response it judged, which then sent a correct free local answer up a
+    # metered ladder. Continuation tokens stay capitalised so ordinary
+    # parenthetical prose ("(in practice, 2017 was late)") still cannot match.
+    r"| \(\s*[A-Z][A-Za-z.'-]+"
+    r"(?:\s+(?:et\s+al\.?|and|&|[A-Z][A-Za-z.'-]+)){0,3}"
+    r"\s*,?\s*\d{4}[a-z]?\s*\)"
     r"| https?://\S | \bdoi:\s*\S"
 )
 _SENTENCE_RE = re.compile(r"[^.!?]+[.!?]")
@@ -700,6 +713,55 @@ def _check_semantic_adequacy(content: str) -> str | None:
     return None
 
 
+def _check_short_form_adequacy(content: str) -> str | None:
+    """Adequacy authority for a prompt that declared a constrained answer shape.
+
+    OMN-16932. ``semantic_adequacy`` ends with a rule that a lone token with no
+    terminal punctuation is a fragment rather than an answer. That rule is right
+    when the request said nothing about length and wrong when the request said
+    "Reply with exactly the word: alive" — there the single token IS the complete
+    answer, and calling it ``WEAK_OUTPUT`` made obedience the failure mode.
+    Observed on the dev lane 2026-08-30: ``alive`` scored 0.7 against the
+    ``research`` prose rubric, was rejected three times on the FREE local rung,
+    and the ladder climbed into two metered 429s.
+
+    This check keeps every OTHER inadequacy ``semantic_adequacy`` detects —
+    empty, truncated mid-token, truncated mid-clause on a dangling function word
+    — and drops only the single-word-fragment rule, which is precisely the rule
+    the prompt overrode. It is therefore still a real adequacy authority (an
+    empty or truncated answer fails it), not a rubber stamp, and it is selected
+    ONLY by a contract-declared ``shape_overrides`` entry — never by the
+    response's own shape, which the model controls.
+
+    Every reason names the shape rule that actually fired, so a reason read off
+    this check is true of the response it judged.
+    """
+    stripped = content.strip()
+    if not stripped:
+        return "WEAK_OUTPUT: response is empty, fails short_form_adequacy"
+
+    if stripped[-1] in _TRUNCATION_TRAILING_TOKENS:
+        return "WEAK_OUTPUT: response truncated mid-token, fails short_form_adequacy"
+
+    if _extract_fenced_code_blocks(content) or '"""' in stripped or "'''" in stripped:
+        return None
+
+    if stripped[-1] in _TERMINAL_PUNCTUATION:
+        return None
+
+    words = stripped.split()
+    last_word = words[-1].lower().strip(".,;:!?\"'()[]{}`-")
+    # A LONE dangling function word ("the") is the whole answer, not a clause cut
+    # short — there is no clause to cut. Only a multi-word response can dangle.
+    if len(words) > 1 and last_word in _DANGLING_TRAILING_WORDS:
+        return (
+            "WEAK_OUTPUT: response truncated mid-clause "
+            f"(ends on '{last_word}'), fails short_form_adequacy"
+        )
+
+    return None
+
+
 def _check_compiles_without_errors(content: str) -> str | None:
     """Deterministic: delegated code must parse as its declared artifact language.
 
@@ -967,6 +1029,11 @@ _HEURISTIC_SIMPLE_CHECKS: dict[str, Callable[[str], str | None]] = {
     "concise": _check_concise,
     "accurate": _check_accurate,
     "semantic_adequacy": _check_semantic_adequacy,
+    # OMN-16932: adequacy authority for a contract-declared constrained
+    # response shape. Deliberately NOT in _REJECT_ONLY_HEURISTIC_CHECKS -
+    # like semantic_adequacy it may promote an output to adequate, which is
+    # what lets a correct one-word answer terminalize on the free local rung.
+    "short_form_adequacy": _check_short_form_adequacy,
 }
 
 _REJECT_ONLY_HEURISTIC_CHECKS: frozenset[str] = frozenset(

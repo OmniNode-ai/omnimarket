@@ -698,6 +698,42 @@ provider_quota_policy:
       # The free tier is rate-limited with no SLA and no structured code; its
       # 429s are ordinary throttling that clears on its own.
       codes: []
+    # OMN-16932: Gemini was the ONE metered host the lane actually calls and
+    # the one this policy did not describe, so its 429s fell through to
+    # `default_disposition: retryable` — an exhausted daily cap read as a
+    # transient throttle, and nothing ever stopped routing to it.
+    #
+    # Live-observed 2026-08-29T12:13:33Z on the dev lane, verbatim (docker logs
+    # omninode-runtime-effects, correlation 414e11bf-…):
+    #   {"error":{"code":429,"status":"RESOURCE_EXHAUSTED","message":
+    #    "You exceeded your current quota … * Quota exceeded for metric:
+    #     generativelanguage.googleapis.com/generate_content_free_tier_requests,
+    #     limit: 20, model: gemini-2.5-flash\nPlease retry in 27.024259969s."}}
+    #
+    # Two shape differences from z.ai drive the entry below:
+    #   * `error.code` is the bare HTTP status (429), not a provider-native
+    #     sub-code — Gemini has no 1310/1113 equivalent, so the status code IS
+    #     the code and one rule covers the class.
+    #   * the reset is stated as a retry DELAY, not an absolute instant, so
+    #     `reset_from: message_retry_delay` reads it. When the delay is absent
+    #     the fallback cooldown applies (fail-closed: a cap we cannot time is
+    #     still a cap).
+    #
+    # `alert: false` because this one DOES clear on its own — it is a periodic
+    # free-tier cap, not a billing gap. Raising the cap is a capacity decision
+    # for an operator, not something a retry can fix, but the ladder recovering
+    # by itself is the correct default.
+    - provider_id: google-gemini
+      match_endpoint_host: "generativelanguage.googleapis.com"
+      codes:
+        - code: "429"
+          disposition: disable_until_reset
+          reset_from: message_retry_delay
+          # The free tier's request counter is a DAILY cap; when the provider
+          # does not state a delay, an hour is a conservative re-probe interval
+          # that neither hammers the endpoint nor strands the rung for the day.
+          fallback_cooldown_seconds: 3600
+          alert: false
 
 # Saturation policy (OMN-16891) — bounded-wait-then-escalate.
 #

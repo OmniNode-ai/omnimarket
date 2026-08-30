@@ -45,6 +45,7 @@ from __future__ import annotations
 import importlib
 import logging
 import os
+from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
 from uuid import NAMESPACE_DNS, UUID, uuid5
@@ -61,9 +62,16 @@ from pydantic import TypeAdapter
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
 )
+from omnimarket.enums.enum_requested_response_shape import (
+    EnumRequestedResponseShape,
+)
 from omnimarket.inference.delegation_config_provenance import (
     resolve_optional_path_config,
     resolve_path_config,
+)
+from omnimarket.inference.provider_quota_state import quota_domain_disabled
+from omnimarket.inference.requested_response_shape import (
+    resolve_requested_response_shape,
 )
 from omnimarket.inference.secret_store_resolver import api_key_ref_available
 from omnimarket.models.delegation.wire.model_token_limits import (
@@ -249,6 +257,35 @@ def _backend_secret_available(backend: BifrostBackendRef) -> bool:
     )
 
 
+def _backend_routable(
+    backend: BifrostBackendRef, *, now: datetime | None = None
+) -> bool:
+    """Return whether a backend may be selected RIGHT NOW.
+
+    Eligibility used to mean "endpoint resolves and its secret resolves". Both
+    are static properties of the contract, so a backend whose provider had
+    returned a non-retryable 429 minutes earlier still passed and stayed a
+    first-class escalation target forever (OMN-16932).
+
+    That is what made escalate-into-a-corpse the default on the dev lane. Within
+    a single workflow OMN-15503's ``transport_failed_backend_refs`` already
+    excludes a backend after it fails, but every NEW delegation starts with an
+    empty exclusion set, so each one re-spent a metered call to relearn the same
+    exhausted Gemini quota. Provider health is the third eligibility term, and
+    it has to outlive the workflow.
+
+    The quota check reads the ledger the contract-declared quota classifier
+    writes (``provider_quota_state``), keyed by provider quota DOMAIN, so the
+    judge leg's 429 correctly bars every backend sharing that counter. Entries
+    lift themselves at the provider's stated reset, so this can only ever
+    withhold a rung the provider itself declared unusable, and only for as long
+    as the provider said.
+    """
+    if not _backend_secret_available(backend):
+        return False
+    return quota_domain_disabled(backend.endpoint_url, now=now) is None
+
+
 def _select_model_for_task(
     tier_models: tuple[ModelTierModel, ...],
     task_type: str,
@@ -338,7 +375,7 @@ def _select_model_for_task(
             if model.id == contract_model_ref
             and model.backend_ref not in exclude_backend_refs
             and (backend := bifrost_backends.get(model.backend_ref)) is not None
-            and _backend_secret_available(backend)
+            and _backend_routable(backend)
             and estimated_tokens <= model.max_context_tokens
         ]
         for model in id_matches:
@@ -361,7 +398,7 @@ def _select_model_for_task(
             and model.fast_path_threshold_tokens is not None
             and estimated_tokens <= model.fast_path_threshold_tokens
             and backend
-            and _backend_secret_available(backend)
+            and _backend_routable(backend)
         ):
             return model
 
@@ -372,7 +409,7 @@ def _select_model_for_task(
         if (
             task_type in model.use_for
             and backend
-            and _backend_secret_available(backend)
+            and _backend_routable(backend)
             and estimated_tokens <= model.max_context_tokens
         ):
             return model
@@ -843,8 +880,95 @@ def _definition_of_done_checks(
     )
 
 
+def _declared_shape_directives(
+    contract: dict[str, object] | None,
+) -> dict[EnumRequestedResponseShape, tuple[str, ...]]:
+    """Return the contract-declared ``response_shape_directives`` (OMN-16932).
+
+    An absent or malformed block yields an EMPTY mapping, which
+    ``resolve_requested_response_shape`` always resolves to ``UNCONSTRAINED``.
+    A deployment whose contract predates the declaration therefore keeps the
+    exact prior DoD selection — the feature cannot switch itself on.
+
+    A key that is not a declared shape is skipped rather than raising: the
+    directive block is an open authoring surface and an unknown shape name has
+    no override to apply, so there is nothing to fail closed about.
+    """
+    if not isinstance(contract, dict):
+        return {}
+    raw = contract.get("response_shape_directives")
+    if not isinstance(raw, dict):
+        return {}
+    declared: dict[EnumRequestedResponseShape, tuple[str, ...]] = {}
+    for key, patterns in raw.items():
+        if not isinstance(key, str) or not isinstance(patterns, list):
+            continue
+        try:
+            shape = EnumRequestedResponseShape(key)
+        except ValueError:
+            continue
+        declared[shape] = tuple(p for p in patterns if isinstance(p, str) and p)
+    return declared
+
+
+def _shape_override_heuristic(
+    contract: dict[str, object] | None,
+    entry: dict[str, object] | None,
+    shape: EnumRequestedResponseShape,
+) -> tuple[str, ...] | None:
+    """Return the heuristic band declared for ``shape``, or None (OMN-16932).
+
+    Resolution order: the task class's own
+    ``definition_of_done.shape_overrides.<shape>`` first, then the contract-wide
+    ``default_shape_overrides.<shape>``. Only the HEURISTIC band is overridable
+    — a deterministic floor is a property of the artifact, not of how long the
+    caller asked the answer to be, so a shape directive can never lower it.
+
+    ``None`` means "nothing declared for this shape", which leaves the class DoD
+    untouched.
+    """
+    if shape is EnumRequestedResponseShape.UNCONSTRAINED:
+        return None
+
+    def _heuristic_of(block: object) -> tuple[str, ...] | None:
+        if not isinstance(block, dict):
+            return None
+        for_shape = block.get(shape.value)
+        if not isinstance(for_shape, dict):
+            return None
+        heuristic = for_shape.get("heuristic")
+        if not isinstance(heuristic, list):
+            return None
+        return tuple(item for item in heuristic if isinstance(item, str))
+
+    if isinstance(entry, dict):
+        dod = entry.get("definition_of_done")
+        if isinstance(dod, dict):
+            class_override = _heuristic_of(dod.get("shape_overrides"))
+            if class_override is not None:
+                return class_override
+
+    if isinstance(contract, dict):
+        return _heuristic_of(contract.get("default_shape_overrides"))
+    return None
+
+
+def resolve_requested_shape_for_prompt(prompt: str) -> EnumRequestedResponseShape:
+    """Resolve the request-scoped response shape for ``prompt`` (OMN-16932).
+
+    Public routing-authority surface, mirroring
+    ``resolve_task_class_dod_checks``: the shape is resolved from the SAME
+    contract read that selects the DoD set, so the bus reducer and the bus-less
+    local dispatch path cannot disagree about what the prompt asked for.
+    """
+    return resolve_requested_response_shape(
+        prompt, _declared_shape_directives(_get_task_class_contract())
+    )
+
+
 def resolve_task_class_dod_checks(
     task_type: str,
+    prompt: str | None = None,
 ) -> tuple[tuple[str, ...], tuple[str, ...]]:
     """Resolve the task-class DoD checks for ``task_type`` (OMN-13597).
 
@@ -856,10 +980,25 @@ def resolve_task_class_dod_checks(
     legacy heuristic checks. This lets the bus-less local CLI dispatch path run
     the canonical gate without reaching into the routing reducer's private
     helpers or re-deriving the contract read.
+
+    OMN-16932: when ``prompt`` is supplied and declares a response shape (see
+    ``response_shape_directives``), the heuristic band is replaced by the band
+    the contract declares for that shape. ``prompt=None`` — a caller with no
+    prompt to offer — resolves ``UNCONSTRAINED`` and returns the class DoD
+    unchanged, so every existing caller keeps its current behaviour.
     """
     contract = _get_task_class_contract()
     entry = _task_class_entry(contract, task_type)
-    return _definition_of_done_checks(entry)
+    dod_deterministic, dod_heuristic = _definition_of_done_checks(entry)
+    if prompt is None:
+        return dod_deterministic, dod_heuristic
+    shape = resolve_requested_response_shape(
+        prompt, _declared_shape_directives(contract)
+    )
+    override = _shape_override_heuristic(contract, entry, shape)
+    if override is None:
+        return dod_deterministic, dod_heuristic
+    return dod_deterministic, override
 
 
 def _response_contract_ref(entry: dict[str, object] | None) -> str | None:
@@ -1630,6 +1769,17 @@ def delta(
         else _tier_order_from_contract(config, entry)
     )
     dod_deterministic, dod_heuristic = _definition_of_done_checks(entry)
+    # OMN-16932: a prompt that declares its own answer shape ("Reply with
+    # exactly the word: alive") overrides the CLASS heuristic rubric for this
+    # request. Resolved here, where the prompt and the task-class contract are
+    # both already in hand, so the quality gate stays a pure function over a
+    # declared check set and never has to guess what was asked.
+    requested_shape = resolve_requested_response_shape(
+        request.prompt, _declared_shape_directives(contract)
+    )
+    shape_heuristic = _shape_override_heuristic(contract, entry, requested_shape)
+    if shape_heuristic is not None:
+        dod_heuristic = shape_heuristic
 
     # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
@@ -1675,7 +1825,7 @@ def delta(
                         and estimated_tokens <= model.max_context_tokens
                         and (pinned_backend := bifrost_backends.get(model.backend_ref))
                         is not None
-                        and _backend_secret_available(pinned_backend)
+                        and _backend_routable(pinned_backend)
                     ),
                     None,
                 )
