@@ -8,6 +8,12 @@ description: >
   close-path gate-escape audit (OMN-13854): flags Done tickets with
   startedAt=null + zero attachments/documents + no merged PR discoverable as
   wf_1628d9a5-signature gate-escape candidates.
+  OMN-17022: every ticket is swept under a durable per-item retry lifecycle.
+  An in-flight attempt is recorded before the checks run, so an item killed
+  mid-run is distinguishable from one never attempted; a run that reaches no
+  verdict is reported `unresolved` with a typed cause and is re-attempted only
+  under bounded backoff, and never at all when the cause is a
+  credential/resolution defect a retry would reproduce exactly.
 
 handler:
   module: omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator
@@ -21,6 +27,15 @@ handler_routing:
       handler:
         name: HandlerDodSweepOrchestrator
         module: omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator
+
+state_artifacts:
+  # OMN-17022: durable per-item retry state, written beside the receipt the
+  # sweep already produces for the same ticket. Append-only — a write that
+  # would truncate or rewrite recorded attempts is refused, which is what
+  # stops a fresh pass from making an unresolved item read as never-attempted.
+  dod_retry_state:
+    path: "<evidence_root>/.evidence/<TICKET-ID>/dod_retry_state.json"
+    model: omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state.ModelDodVerifyRetryState
 
 env_dependencies:
   ONEX_CC_REPO_PATH:

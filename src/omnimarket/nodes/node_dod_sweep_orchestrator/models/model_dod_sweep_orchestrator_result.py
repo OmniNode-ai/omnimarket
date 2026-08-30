@@ -1,7 +1,15 @@
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Self
 
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 from omnimarket.nodes.node_dod_sweep_orchestrator.services.gate_escape_audit import (
     ModelGateEscapeFinding,
+)
+from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+    EnumDodVerifyRetryDisposition,
 )
 
 
@@ -26,7 +34,9 @@ class ModelDodTicketResult(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     ticket_id: str = Field(description="Ticket ID.")
-    status: str = Field(description="verified | failed | skipped")
+    status: str = Field(
+        description="verified | failed | skipped | unresolved (OMN-17022)"
+    )
     checks: tuple[ModelDodCheckResult, ...] = Field(default=())
     receipt_path: str = Field(
         default="", description="Written or planned receipt path."
@@ -34,6 +44,45 @@ class ModelDodTicketResult(BaseModel):
     receipt_written: bool = Field(default=False)
     failed: int = Field(default=0)
     skipped: int = Field(default=0)
+    # OMN-17022 (off-rails A15). Before these fields, a ticket whose sweep run
+    # faulted was reported with whatever partial checks had accumulated, and
+    # nothing on the result said the run had not finished — which is how ten
+    # items were "held unadjudicated" with no machine-readable trace of why.
+    unresolved_cause: EnumDodVerifyUnresolvedCause | None = Field(
+        default=None,
+        description="Why the run reached no verdict. Set iff status is 'unresolved'.",
+    )
+    retry_disposition: EnumDodVerifyRetryDisposition | None = Field(
+        default=None,
+        description="What reconciliation decided for this item this pass.",
+    )
+    attempt_count: int = Field(
+        default=0,
+        ge=0,
+        description="Attempts recorded for this item, including this one.",
+    )
+    next_attempt_not_before: str = Field(
+        default="",
+        description=(
+            "ISO-8601 instant the next attempt may run. Non-empty only when "
+            "retry_disposition is RETRY_SCHEDULED."
+        ),
+    )
+    retry_reason: str = Field(
+        default="", description="Human-readable justification for the disposition."
+    )
+
+    @model_validator(mode="after")
+    def _cause_pairs_with_unresolved(self) -> Self:
+        """An untyped 'unresolved' is the ad-hoc label this ticket removes."""
+        unresolved = self.status == "unresolved"
+        if unresolved != (self.unresolved_cause is not None):
+            raise ValueError(
+                "unresolved_cause is set exactly when status is 'unresolved'; "
+                f"got status={self.status!r}, "
+                f"unresolved_cause={self.unresolved_cause!r} for {self.ticket_id}"
+            )
+        return self
 
 
 class ModelDodSweepOrchestratorResult(BaseModel):
@@ -73,6 +122,14 @@ class ModelDodSweepOrchestratorResult(BaseModel):
     )
     batch_verified: int = Field(
         default=0, description="Tickets with all checks passing."
+    )
+    # OMN-17022: an unresolved item blocks any "sweep clean" claim. Counted on
+    # its own axis and never folded into batch_failed — a run that faulted is
+    # not a red about the product, and reporting it as one is what made the
+    # ten held items look adjudicated when nothing had been adjudicated.
+    batch_unresolved: int = Field(
+        default=0,
+        description="Tickets that reached no verdict (status 'unresolved').",
     )
     # Gate-escape audit fields (OMN-13854, mode == "gate_escape_audit")
     gate_escape_findings: tuple[ModelGateEscapeFinding, ...] = Field(

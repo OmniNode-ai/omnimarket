@@ -37,6 +37,9 @@ from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutpu
 from omnibase_core.models.ticket.model_contract_dod_item import ModelContractDodItem
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDodEvidenceGithubEffect,
 )
@@ -1278,6 +1281,17 @@ class EvidenceCollector:
         # instead of a generic "cannot resolve" message.
         self._last_pr_lookup_error: str | None = None
         self._last_repo_lookup_error: str | None = None
+        # OMN-17022: the two fields above are reset at the top of every lookup,
+        # so by the time ``collect()`` returns they say nothing about a failure
+        # that happened three items ago. This one is STICKY for the life of the
+        # collector: the first lookup failure of the run is retained so the
+        # handler can classify the whole run as UNRESOLVED with a typed cause
+        # rather than reporting it FAILED — the misclassification that made
+        # OMN-14993 (``PR_LOOKUP_FAILED``) look like a substantive red instead
+        # of the credential/resolution defect it is. First-wins, because the
+        # earliest failure is the one that determines what could not be looked
+        # at; later ones are usually its consequence.
+        self._sticky_lookup_failure_code: str | None = None
         # OMN-15382 (F2): set by ``_resolve_pr_bindings`` when it found NO
         # trustworthy binding but SOME evidence the item is PR-related (a PASS
         # receipt recording a pr_number that could not be consistently paired
@@ -2960,6 +2974,7 @@ class EvidenceCollector:
                 "(set REPO env var, or the evidence item id must embed "
                 "owner/repo per the autobind naming convention)"
             )
+            self._record_lookup_failure(self._last_pr_lookup_error)
             return ""
 
         command = ModelDodEvidenceGithubLookupCommand(
@@ -2971,6 +2986,7 @@ class EvidenceCollector:
         result = self._github_lookup_result(output)
         if not result.text_value and result.error_code:
             self._last_pr_lookup_error = result.error_code
+            self._record_lookup_failure(result.error_code)
         return result.text_value
 
     def _lookup_repo_for_ticket(self, ticket_id: str) -> str:
@@ -3007,7 +3023,33 @@ class EvidenceCollector:
         result = self._github_lookup_result(output)
         if not result.text_value and result.error_code:
             self._last_repo_lookup_error = result.error_code
+            self._record_lookup_failure(result.error_code)
         return result.text_value
+
+    def _record_lookup_failure(self, error_code: str | None) -> None:
+        """Retain the FIRST lookup failure code of this run (OMN-17022)."""
+        if error_code and self._sticky_lookup_failure_code is None:
+            self._sticky_lookup_failure_code = error_code
+
+    @property
+    def lookup_failure_code(self) -> str | None:
+        """The first PR/repo lookup failure code observed this run, verbatim.
+
+        Exposed the same way ``occ_refresh_outcome`` is: provenance the handler
+        reads AFTER ``collect()`` returns, so the classification is made from a
+        typed code the effect handler already emitted rather than by parsing a
+        rendered message string.
+        """
+        return self._sticky_lookup_failure_code
+
+    @property
+    def lookup_failure_cause(self) -> EnumDodVerifyUnresolvedCause | None:
+        """``lookup_failure_code`` mapped onto the OMN-17022 cause taxonomy."""
+        if self._sticky_lookup_failure_code is None:
+            return None
+        return EnumDodVerifyUnresolvedCause.from_error_code(
+            self._sticky_lookup_failure_code
+        )
 
     def _resolve_command_placeholders(
         self,

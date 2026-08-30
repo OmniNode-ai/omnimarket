@@ -41,8 +41,17 @@ from typing import Final
 from omnibase_core.enums.ticket.enum_receipt_status import EnumReceiptStatus
 from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodReceipt
 
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
+from omnimarket.nodes.node_dod_verify.handlers.dod_verify_retry_ledger import (
+    FilesystemDodVerifyRetryLedger,
+)
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
+)
+from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+    ModelDodVerifyRetryState,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command import (
     ModelDodVerifyStartCommand,
@@ -50,6 +59,9 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command impo
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     ModelDodVerifyState,
+)
+from omnimarket.nodes.node_dod_verify.services.retry_policy import (
+    reconcile_abandoned_attempt,
 )
 
 _log = logging.getLogger(__name__)
@@ -263,6 +275,55 @@ def _write_receipt(path: Path, receipt: dict[str, object]) -> None:
     path.write_text(json.dumps(receipt, indent=2), encoding="utf-8")
 
 
+def _open_attempt(
+    ledger: FilesystemDodVerifyRetryLedger, ticket_id: str
+) -> ModelDodVerifyRetryState:
+    """Record an in-flight attempt BEFORE the verification runs (OMN-17022).
+
+    The ordering is the whole mechanism. This process may be killed by a
+    caller-side timeout — which is exactly what happened to nine of the ten
+    items held by the 2026-08-29 sprint-triage closeout — and a record written
+    only on the way out would leave nothing behind. Written first, a killed run
+    leaves a started-but-uncompleted attempt that reads UNRESOLVED, not
+    PENDING.
+    """
+    recorded = ledger.read(ticket_id)
+    state = (
+        recorded
+        if recorded is not None
+        else ModelDodVerifyRetryState(ticket_id=ticket_id, attempts=())
+    )
+    if state.has_abandoned_attempt:
+        state = reconcile_abandoned_attempt(
+            state,
+            now=datetime.now(tz=UTC),
+            detail=(
+                "attempt started and no completion was recorded; a previous "
+                "node_dod_verify process did not survive the run"
+            ),
+        )
+    return state.start_attempt(now=datetime.now(tz=UTC))
+
+
+def _close_attempt(
+    ledger: FilesystemDodVerifyRetryLedger,
+    state: ModelDodVerifyRetryState,
+    *,
+    status: EnumDodVerifyStatus,
+    cause: EnumDodVerifyUnresolvedCause | None,
+    detail: str | None,
+) -> None:
+    """Close the in-flight attempt with the run's real outcome."""
+    ledger.write(
+        state.complete_attempt(
+            status=status,
+            cause=cause,
+            now=datetime.now(tz=UTC),
+            detail=detail,
+        )
+    )
+
+
 def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
@@ -319,15 +380,53 @@ def main() -> None:
         requested_at=datetime.now(tz=UTC),
     )
 
+    # OMN-17022: the durable per-item retry ledger lives beside the receipt,
+    # under the same ONEX_EVIDENCE_ROOT. When that is unset the node is in its
+    # documented stdout-only mode and there is nowhere durable to record an
+    # attempt — no silent fallback path is invented for it.
+    evidence_root_env = os.environ.get("ONEX_EVIDENCE_ROOT")
+    ledger = (
+        FilesystemDodVerifyRetryLedger(ticket_state_root=Path(evidence_root_env))
+        if evidence_root_env
+        else None
+    )
+    attempt: ModelDodVerifyRetryState | None = None
+    if ledger is not None:
+        attempt = _open_attempt(ledger, args.ticket_id)
+        ledger.write(attempt)
+
     handler = HandlerDodVerify()
-    state, _event = handler.run_verification(command)
+    try:
+        state, _event = handler.run_verification(command)
+    except BaseException as exc:
+        # A killed or faulting run is recorded as the typed run fault it is,
+        # then re-raised unchanged. Without this the process leaves an
+        # in-flight record that only the NEXT pass can reconcile.
+        if ledger is not None and attempt is not None:
+            _close_attempt(
+                ledger,
+                attempt,
+                status=EnumDodVerifyStatus.UNRESOLVED,
+                cause=EnumDodVerifyUnresolvedCause.RUN_ERROR_OR_TIMEOUT,
+                detail=f"{type(exc).__name__}: {exc}",
+            )
+        raise
+
+    if ledger is not None and attempt is not None:
+        _close_attempt(
+            ledger,
+            attempt,
+            status=state.status,
+            cause=state.unresolved_cause,
+            detail=state.error_message,
+        )
 
     sys.stdout.write(state.model_dump_json(indent=2) + "\n")
 
     receipt_path = _resolve_receipt_path(
         ticket_id=args.ticket_id,
         explicit=args.output_path,
-        evidence_root_env=os.environ.get("ONEX_EVIDENCE_ROOT"),
+        evidence_root_env=evidence_root_env,
     )
     if receipt_path is not None:
         receipt = _build_receipt(

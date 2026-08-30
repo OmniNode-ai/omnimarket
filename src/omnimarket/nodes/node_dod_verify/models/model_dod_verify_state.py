@@ -9,6 +9,9 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 
 
 class EnumDodVerifyStatus(StrEnum):
@@ -18,6 +21,16 @@ class EnumDodVerifyStatus(StrEnum):
     VERIFIED = "verified"
     FAILED = "failed"
     SKIPPED = "skipped"
+    # OMN-17022 (off-rails A15): the run reached NO verdict — it faulted, was
+    # killed by a caller-side timeout, or could not resolve the binding it
+    # needed to look at anything. Before this member existed, such a run was
+    # indistinguishable from PENDING (the field's own default), which reads as
+    # "not yet attempted" — which is precisely why the ten items held by the
+    # 2026-08-29 sprint-triage closeout were never re-run without re-running
+    # the whole audit. UNRESOLVED is terminal for the run that produced it and
+    # never counts toward completion; a retry, when the cause allows one, is a
+    # NEW attempt recorded alongside it, not a mutation of it.
+    UNRESOLVED = "unresolved"
 
 
 class EnumEvidenceCheckStatus(StrEnum):
@@ -306,11 +319,35 @@ class ModelDodVerifyState(BaseModel):
         default=None,
         description="40-char commit SHA of the OCC worktree HEAD actually read.",
     )
+    # OMN-17022: set exactly on an UNRESOLVED status. An unresolved run that
+    # cannot say WHY is the untyped ``RUN_ERROR_OR_TIMEOUT`` label all over
+    # again — the closeout's ad-hoc string, which no consumer could branch on.
+    # The pairing is enforced structurally below rather than by convention,
+    # because the two retry policies (bounded backoff for a run fault, refusal
+    # for a credential/resolution defect) key off this field alone.
+    unresolved_cause: EnumDodVerifyUnresolvedCause | None = Field(
+        default=None,
+        description="Why the run reached no verdict. Set iff status is UNRESOLVED.",
+    )
+
+    @model_validator(mode="after")
+    def _cause_pairs_with_unresolved(self) -> Self:
+        """A cause without UNRESOLVED misreports a run that DID reach a verdict;
+        UNRESOLVED without a cause is unactionable. Reject both shapes."""
+        unresolved = self.status is EnumDodVerifyStatus.UNRESOLVED
+        if unresolved != (self.unresolved_cause is not None):
+            raise ValueError(
+                "unresolved_cause is set exactly when status is UNRESOLVED; got "
+                f"status={self.status.value}, "
+                f"unresolved_cause={self.unresolved_cause!r} for {self.ticket_id}"
+            )
+        return self
 
 
 __all__: list[str] = [
     "EnumCheckProofClass",
     "EnumDodVerifyStatus",
+    "EnumDodVerifyUnresolvedCause",
     "EnumEvidenceCheckStatus",
     "EnumEvidenceUnverifiableCause",
     "EnumOccRefRefreshOutcome",

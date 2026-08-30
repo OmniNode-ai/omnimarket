@@ -80,6 +80,11 @@ class _StubCollectorHandler(HandlerDodVerify):
             occ_refresh_outcome = None
             occ_resolved_sha = None
             occ_governance_ref = "origin/dev"
+            # OMN-17022: the same provenance surface grew a typed
+            # PR/repo-lookup-failure pair, read unconditionally by
+            # _handle_typed. None means "no lookup failed this run".
+            lookup_failure_cause = None
+            lookup_failure_code = None
 
             def collect(
                 self, ticket_id: str, contract_path: str | None

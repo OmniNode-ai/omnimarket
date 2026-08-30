@@ -1,5 +1,10 @@
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+    CANONICAL_DOD_VERIFY_RETRY_POLICY,
+    ModelDodVerifyRetryPolicy,
+)
+
 
 class ModelDodSweepOrchestratorRequest(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
@@ -109,5 +114,23 @@ class ModelDodSweepOrchestratorRequest(BaseModel):
         description=(
             "Optional Linear API key override for the gate-escape audit. "
             "Defaults to the LINEAR_API_KEY environment variable."
+        ),
+    )
+    # OMN-17022 (off-rails A15) --------------------------------------------
+    retry_policy: ModelDodVerifyRetryPolicy = Field(
+        default=CANONICAL_DOD_VERIFY_RETRY_POLICY,
+        description=(
+            "Bounded backoff applied to items whose previous run reached no "
+            "verdict for a retry-eligible cause. Never applied to a "
+            "credential/resolution defect, which a retry reproduces exactly."
+        ),
+    )
+    force_retry: bool = Field(
+        default=False,
+        description=(
+            "Re-attempt items whose bounded attempt budget is spent. The "
+            "operator lever over the BUDGET only — it never overrides the "
+            "cause taxonomy (a PR_LOOKUP_FAILED item stays refused) and it "
+            "never erases recorded attempt history."
         ),
     )
