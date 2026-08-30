@@ -46,37 +46,31 @@ class ProtocolHookChainProbes(Protocol):
 
     async def resolve_address(self) -> ModelHookChainAddress:
         """Resolve hook topic, emit lane and cloud gateway base URL from contracts."""
-        ...
 
     async def emit(
         self, *, correlation_id: str, address: ModelHookChainAddress
     ) -> ModelLocalEmitObservation:
         """Leg 1: emit one hook-shaped event carrying the correlation id."""
-        ...
 
     async def read_local_bus(
         self, *, correlation_id: str, address: ModelHookChainAddress
     ) -> ModelLocalBusObservation:
         """Leg 2: read the correlated record back off the local bus."""
-        ...
 
     async def read_forwarder(
         self, *, correlation_id: str, address: ModelHookChainAddress
     ) -> ModelForwarderObservation:
         """Leg 3: read the forwarder's declared mirror policy and live consumption."""
-        ...
 
     async def read_cloud_gateway(
         self, *, correlation_id: str, address: ModelHookChainAddress
     ) -> ModelCloudGatewayObservation:
         """Leg 4: ask the cloud gateway whether it ingested the correlation id."""
-        ...
 
     async def read_cloud_projection(
         self, *, correlation_id: str, address: ModelHookChainAddress
     ) -> ModelCloudProjectionObservation:
         """Leg 5: read the correlated row back out of the cloud projection."""
-        ...
 
 
 class HandlerHookChainProbe:

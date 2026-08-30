@@ -429,9 +429,11 @@ class TestHookEdgeLaneIsResolvedFromTheHooksOwnAuthority:
         )
 
         try:
-            lane, source = resolve_hook_edge_lane(default_hook_edge_env_files())
+            resolved = resolve_hook_edge_lane(default_hook_edge_env_files())
         except Exception as exc:  # pragma: no cover - host without the authority
             pytest.skip(f"no hook edge authority on this host: {exc}")
+            return
+        lane, source = resolved
         ambient = os.environ.get("KAFKA_BOOTSTRAP_SERVERS")
         if ambient is None:
             pytest.skip(
@@ -788,3 +790,132 @@ class TestUnresolvableCloudAddressNamesTheConfigGap:
         assert base_url.startswith("unresolved:")
         assert "no_secret_resolver_config" in base_url
         assert "IsADirectoryError" not in base_url
+
+
+class TestTheProbeConstructsNoRawTransport:
+    """The effect boundary must reach the bus and the network through ONEX surfaces.
+
+    The imperative-contract guard (OMN-12515/12540) blocks a live node that
+    constructs a raw Kafka client or calls a raw HTTP function: those bypass the
+    injected event bus and the contract transport, which is how a node ends up
+    with its own private, unaddressed, unauthenticated path to a broker. A probe
+    whose whole purpose is to prove the sanctioned path works must not be the
+    one node that goes around it.
+
+    Pinned here as well as in CI so the local suite fails before the push does.
+    """
+
+    def test_live_probes_constructs_no_raw_kafka_or_http_client(self) -> None:
+        import ast
+        from pathlib import Path
+
+        import omnimarket.nodes.node_hook_chain_probe_effect.live_probes as module
+
+        # The guard's own forbidden-construction list for the two classes this
+        # node touches. Matched against CALL expressions via the AST, not raw
+        # text: a docstring that NAMES the forbidden pattern while explaining
+        # why the code avoids it must not read as a violation.
+        forbidden = {
+            "AIOKafkaConsumer",
+            "AIOKafkaProducer",
+            "urlopen",
+            "urllib.request.urlopen",
+            "httpx.get",
+            "httpx.post",
+            "httpx.request",
+            "httpx.Client",
+            "httpx.AsyncClient",
+            "requests.get",
+            "requests.post",
+            "requests.Session",
+        }
+
+        def dotted(node: ast.expr) -> str:
+            parts: list[str] = []
+            while isinstance(node, ast.Attribute):
+                parts.append(node.attr)
+                node = node.value
+            if isinstance(node, ast.Name):
+                parts.append(node.id)
+            return ".".join(reversed(parts))
+
+        tree = ast.parse(Path(module.__file__).read_text())
+        offenders = sorted(
+            {
+                name
+                for call in ast.walk(tree)
+                if isinstance(call, ast.Call)
+                for name in (dotted(call.func),)
+                if name in forbidden
+            }
+        )
+
+        assert offenders == [], (
+            f"live_probes.py constructs raw transport {offenders} -- reach the bus "
+            "through KafkaTransport and the network through ProviderHttpClient, "
+            "which are the surfaces the runtime injects"
+        )
+
+
+class TestForwarderGroupIsReadFromTheForwarderOrNotAsserted:
+    """An undeclared consumer group is not evidence of an absent consumer.
+
+    The forwarder's contract declares no consumer group, so the probe used to
+    carry a GUESSED group name in its own contract and reported NO_CONSUMER
+    when that guess found no committed offset -- a blocker manufactured from a
+    name nobody promised. It also put an ``onex.``-prefixed non-topic string in
+    contract.yaml, which the ARCH-TOPIC-002 lint reads as a malformed topic.
+    Both problems have the same fix: read the group from the forwarder, and
+    when it declares none, assert nothing.
+    """
+
+    def test_contract_declares_no_guessed_consumer_group(self) -> None:
+        from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
+            _load_probe_config,
+        )
+
+        assert "forwarder_consumer_group" not in _load_probe_config()
+
+    def test_no_onex_prefixed_non_topic_strings_in_the_contract(self) -> None:
+        """ARCH-TOPIC-002, pinned locally so it fails here before it fails CI."""
+        import re
+        from pathlib import Path
+
+        import omnimarket.nodes.node_hook_chain_probe_effect.live_probes as module
+
+        contract = Path(module.__file__).parent / "contract.yaml"
+        topic_shape = re.compile(r"^onex\.(cmd|evt|dlq)\.[a-z0-9-]+\.[a-z0-9-]+\.v\d+$")
+        offenders = [
+            value
+            for value in re.findall(r'"(onex\.[^"]+)"', contract.read_text())
+            if not topic_shape.match(value)
+        ]
+
+        assert offenders == [], (
+            f"contract.yaml carries onex.-prefixed strings that are not topics: "
+            f"{offenders}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_undeclared_group_does_not_assert_no_consumer(self) -> None:
+        from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
+            LiveHookChainProbes,
+        )
+
+        probes = LiveHookChainProbes()
+        probes._emit_offset = 42
+        address = ModelHookChainAddress(
+            hook_topic=HOOK_TOPIC,
+            emit_lane=STABILITY_LANE,
+            emit_lane_authority="test",
+            cloud_gateway_base_url="unresolved:test",
+        )
+
+        advanced, detail = await probes._forwarder_group_advanced(address)
+
+        assert advanced is True, (
+            "an undeclared consumer group must not be reported as a consumer "
+            "that failed to advance -- that is a blocker invented from a guess"
+        )
+        assert detail is not None
+        assert "not asserted" in detail.lower()

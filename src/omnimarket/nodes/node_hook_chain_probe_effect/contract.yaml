@@ -97,11 +97,12 @@ config:
     # omnibase_infra package -- the declared allowlist is the un-forgeable
     # source, not a copy maintained here.
     forwarder_contract_module: "omnibase_infra.nodes.node_bus_forwarder_effect"
-    # The forwarder contract declares no consumer group, so this is the probe's
-    # assumption rather than the forwarder's declaration -- consulted ONLY after
-    # the allowlist, lane-attachment and transport facts all pass, so a wrong
-    # guess can never masquerade as one of those three.
-    forwarder_consumer_group: "onex.gateway.forwarder.outbound"
+    # The forwarder's consumer group is read from the FORWARDER's contract when
+    # it declares one, and is otherwise not asserted. No guessed group name
+    # lives here: a name nobody promised produced a NO_CONSUMER verdict
+    # manufactured out of a guess, and an onex.-prefixed non-topic string in a
+    # contract is itself an ARCH-TOPIC-002 violation.
+    forwarder_consumer_group_key: "local_leg.consumer_group"
     # Legs 4 and 5 are read over the cloud gateway's HTTPS read routes, never
     # the Kubernetes API: the operator must be able to run this from the Mac
     # with no cluster access (AC4).

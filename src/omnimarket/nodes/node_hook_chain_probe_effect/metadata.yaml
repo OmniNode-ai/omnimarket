@@ -20,6 +20,11 @@ dependencies:
   # package, and legs 1-2 speak to the hook edge broker directly.
   - "omnibase-infra>=0.38.3"
   - "aiokafka"
+  # Only for httpx.HTTPError: the CLIENT is built by omnibase_infra's
+  # ProviderHttpClient, never here -- this node names the exception type the
+  # provider's client raises so a transport failure reads as unreachable
+  # rather than escaping as an untyped error.
+  - "httpx"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "hook-ledger", "cloud-relay", "correlation-probe", "OMN-17202"]

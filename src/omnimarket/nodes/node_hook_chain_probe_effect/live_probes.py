@@ -34,12 +34,11 @@ import json
 import os
 import re
 import time
-import urllib.error
 import urllib.parse
-import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, Final
+from uuid import uuid4
 
 import yaml
 
@@ -61,10 +60,6 @@ _HTTP_TIMEOUT_SECONDS: Final[float] = 15.0
 _ENV_ASSIGNMENT: Final[re.Pattern[str]] = re.compile(
     r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*?)\s*$"
 )
-
-
-class _TopicAbsentError(LookupError):
-    """The topic does not exist on the probed lane."""
 
 
 class HookEdgeLaneUnresolvedError(RuntimeError):
@@ -515,15 +510,8 @@ class LiveHookChainProbes:
                 "forwarder liveness topic unknown; lane attachment NOT asserted",
             )
         try:
-            total = await self._liveness_high_watermark(
+            present = await self._liveness_records_present(
                 lane=address.emit_lane, topic=liveness_topic
-            )
-        except _TopicAbsentError:
-            return (
-                False,
-                f"forwarder liveness topic {liveness_topic} does not exist on "
-                f"lane {address.emit_lane} -- the forwarder is not attached to "
-                "the lane the hooks publish to",
             )
         except (Exception, asyncio.CancelledError) as exc:
             return (
@@ -531,67 +519,97 @@ class LiveHookChainProbes:
                 f"forwarder lane attachment not measurable from this host "
                 f"({type(exc).__name__}); lane mismatch NOT asserted",
             )
-        if total > 0:
+        if present:
             return (True, None)
         return (
             False,
-            f"forwarder liveness topic {liveness_topic} has high-watermark 0 on "
-            f"lane {address.emit_lane} -- the forwarder is not attached to the "
-            "lane the hooks publish to",
+            f"forwarder liveness topic {liveness_topic} carries no record on "
+            f"lane {address.emit_lane} (absent or empty -- the same verdict "
+            "here, not the same evidence) -- the forwarder is not attached to "
+            "the lane the hooks publish to",
         )
 
-    @staticmethod
-    async def _liveness_high_watermark(*, lane: str, topic: str) -> int:
-        """Summed end offset of ``topic`` on ``lane``.
+    async def _liveness_records_present(self, *, lane: str, topic: str) -> bool:
+        """Does ``topic`` carry any record on ``lane``?
 
-        Raises ``_TopicAbsentError`` when the topic does not exist there -- absence
-        and emptiness are the same verdict here but not the same evidence, and
-        the operator reading the result should see which one it was.
+        Read through ``KafkaTransport`` -- the sanctioned bus surface -- rather
+        than a raw ``AIOKafkaConsumer``. A raw client would give this node its
+        own private, unaddressed path to a broker, which is exactly the shape
+        the imperative-contract guard (OMN-12515/12540) blocks and exactly the
+        shape a probe defending the sanctioned path must not take.
 
-        ``stop()`` is suppressed separately: aiokafka's coordinator teardown
-        raises ``CancelledError``, which is a ``BaseException`` in 3.12 and so
-        escapes an ``except Exception`` around the whole block -- that exact
-        escape crashed the first live run of this probe instead of reporting a
-        leg.
+        The read is from ``earliest`` over a bounded window: any record proves
+        the forwarder writes its canary HERE. An empty window is reported as
+        not-present, and the caller records that "absent topic" and "topic with
+        no records" are the same verdict on this lane even though they are not
+        the same evidence.
         """
-        from aiokafka import AIOKafkaConsumer
-        from aiokafka.structs import TopicPartition
-        from omnibase_infra.event_bus.kafka_auth import (
-            build_aiokafka_auth_kwargs_from_env,
-        )
+        from omnibase_infra.event_bus.kafka_transport import KafkaTransport
 
-        consumer = AIOKafkaConsumer(
-            bootstrap_servers=lane, **build_aiokafka_auth_kwargs_from_env()
+        consumer = KafkaTransport.from_bootstrap(
+            lane,
+            group=f"onex.probe.hook-chain.liveness.{uuid4().hex}",
+            topics=(topic,),
+            auto_offset_reset="earliest",
         )
         await consumer.start()
         try:
-            await consumer.topics()  # force a metadata fetch before asking
-            partition_ids = consumer.partitions_for_topic(topic)
-            if not partition_ids:
-                raise _TopicAbsentError(topic)
-            end_offsets = await consumer.end_offsets(
-                [TopicPartition(topic, pid) for pid in partition_ids]
-            )
-            return sum(int(offset) for offset in end_offsets.values())
+            deadline = time.monotonic() + min(self._timeout_seconds, 15.0)
+            while time.monotonic() < deadline:
+                messages = await consumer.poll(
+                    max_messages=1, timeout_ms=_POLL_SLICE_MS
+                )
+                if messages:
+                    return True
+            return False
         finally:
             with contextlib.suppress(Exception, asyncio.CancelledError):
-                await consumer.stop()
+                await consumer.close()
+
+    def _forwarder_consumer_group(self) -> str | None:
+        """The forwarder's OWN declared consumer group, or None if it declares none."""
+        contract = _read_forwarder_contract(
+            str(self._config["forwarder_contract_module"])
+        )
+        if isinstance(contract, str):
+            return None
+        node: Any = contract.get("config", {}).get("gateway_forwarder", {})
+        for key in str(self._config["forwarder_consumer_group_key"]).split("."):
+            if not isinstance(node, dict):
+                return None
+            node = node.get(key)
+        return str(node) if isinstance(node, str) and node else None
 
     async def _forwarder_group_advanced(
         self, address: ModelHookChainAddress
     ) -> tuple[bool, str | None]:
         """Did the forwarder's consumer group advance past the probe's offset.
 
-        The forwarder contract declares no consumer group, so the group name
-        comes from this node's own contract and is the probe's assumption, not
-        the forwarder's declaration. It is only ever consulted after the
-        allowlist, lane-attachment and transport facts all pass, so a wrong
-        guess here can never masquerade as one of those three.
+        The group is read from the FORWARDER's own contract. When the forwarder
+        declares none -- which it does not today -- nothing is asserted: a
+        NO_CONSUMER verdict built on a guessed group name is a blocker
+        manufactured from a name nobody promised, and this node exists to end
+        exactly that. The cloud legs then supply the terminal evidence instead,
+        which is stronger than a group offset in any case.
+
+        Consulted only after the allowlist, lane-attachment and transport facts
+        all pass, so it can never masquerade as one of those three.
         """
+        group = self._forwarder_consumer_group()
+        if group is None:
+            return (
+                True,
+                "forwarder contract declares no consumer group; consumption NOT "
+                "asserted (the cloud legs carry the terminal evidence)",
+            )
         if self._emit_offset is None:
             return (False, "no emit offset to compare the forwarder group against")
-        group = str(self._config["forwarder_consumer_group"])
         try:
+            # Committed group offsets have no KafkaTransport equivalent -- the
+            # transport exposes consumption, not another group's commit
+            # position. This is a READ-ONLY admin call, it is consulted LAST
+            # (only after the allowlist, lane-attachment and transport facts
+            # all pass), and it publishes nothing.
             from aiokafka.admin import AIOKafkaAdminClient
             from aiokafka.structs import TopicPartition
             from omnibase_infra.event_bus.kafka_auth import (
@@ -711,9 +729,7 @@ class LiveHookChainProbes:
             openapi_url = (
                 f"{base_url.rstrip('/')}{self._config['cloud_gateway_openapi_path']!s}"
             )
-            _reachable, _status, body, _detail = await asyncio.to_thread(
-                self._http_get, openapi_url
-            )
+            _reachable, _status, body, _detail = await self._http_get(openapi_url)
             if body is None:
                 return None
             parsed = json.loads(body) if body.lstrip().startswith("{") else {}
@@ -734,31 +750,47 @@ class LiveHookChainProbes:
         url = build_cloud_read_url(
             base_url=base_url, path=path, correlation_id=correlation_id
         )
-        return await asyncio.to_thread(self._http_get, url)
+        return await self._http_get(url)
 
-    @staticmethod
-    def _http_get(url: str) -> tuple[bool, int | None, str | None, str | None]:
-        """One GET. Returns ``(reachable, status, body, detail)``.
+    async def _http_get(
+        self, url: str
+    ) -> tuple[bool, int | None, str | None, str | None]:
+        """One GET through the runtime's HTTP client. ``(reachable, status, body, detail)``.
+
+        The client comes from ``ProviderHttpClient`` -- the same materialized
+        dependency the runtime injects into contract-declared ``http_client``
+        consumers -- rather than a raw ``urlopen``/``httpx.get``. Reaching the
+        network through the sanctioned surface is the point: a node that opens
+        its own socket is unaddressed and unauthenticated by construction.
 
         A definitive status is REACHABLE: refused (401/403) and absent (404) are
         different facts and both are answers, so neither is folded into the
         unreachable case that means "the network never got there".
         """
-        request = urllib.request.Request(url, method="GET")
+        import httpx
+        from omnibase_infra.runtime.models.model_http_client_config import (
+            ModelHttpClientConfig,
+        )
+        from omnibase_infra.runtime.providers.provider_http_client import (
+            ProviderHttpClient,
+        )
+
+        provider = ProviderHttpClient(
+            ModelHttpClientConfig(timeout_seconds=_HTTP_TIMEOUT_SECONDS)
+        )
+        client = await provider.create()
         try:
-            with urllib.request.urlopen(
-                request, timeout=_HTTP_TIMEOUT_SECONDS
-            ) as response:
-                return (
-                    True,
-                    int(response.status),
-                    response.read().decode(errors="replace"),
-                    None,
-                )
-        except urllib.error.HTTPError as exc:
-            return (True, int(exc.code), None, f"HTTP {exc.code}")
-        except (urllib.error.URLError, TimeoutError, OSError) as exc:
+            response = await client.get(url)
+        except httpx.HTTPError as exc:
             return (False, None, None, type(exc).__name__)
+        finally:
+            await ProviderHttpClient.close(client)
+        status = int(response.status_code)
+        if status >= 400:
+            # Still an ANSWER, not a transport failure: the classifier needs to
+            # see 401 (refused) and 404 (absent) as the distinct facts they are.
+            return (True, status, None, f"HTTP {status}")
+        return (True, status, response.text, None)
 
 
 __all__: list[str] = [
