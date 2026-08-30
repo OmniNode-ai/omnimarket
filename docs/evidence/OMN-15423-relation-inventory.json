@@ -60,13 +60,6 @@
       "kind": "function",
       "name": "update_hook_events_updated_at",
       "reason": "schema 'unresolved' does not resolve through deployment topology"
-    },
-    {
-      "authoritative_sources": [],
-      "current_database": "omnidash_analytics",
-      "kind": "table",
-      "name": "work_events",
-      "reason": "no authoritative CREATE TABLE migration found"
     }
   ],
   "completion_status": "blocked_pending_live_catalog_and_activity_evidence",
@@ -5039,20 +5032,22 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_work_events",
         "service:omnimarket_projection_migration_runner"
       ],
-      "authoritative_sources": [],
-      "blocked_reasons": [
-        "no authoritative CREATE TABLE migration found"
+      "authoritative_sources": [
+        "src/omnimarket/nodes/node_projection_work_events/migrations/0001_create_work_events.sql"
       ],
+      "blocked_reasons": [],
       "classification_evidence": "contract.yaml -> db_io.db_tables schema",
-      "classification_status": "blocked",
+      "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
-        "scripts/application-relation-ownership.yaml"
+        "scripts/application-relation-ownership.yaml",
+        "src/omnimarket/nodes/node_projection_work_events/contract.yaml"
       ],
       "current_schema": [
-        "public"
+        "omninode_internal"
       ],
       "dependencies": [],
       "dependent_objects": [],
@@ -5061,27 +5056,37 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
-      "indexes": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
+      "indexes": [
+        "idx_work_events_actor",
+        "idx_work_events_emitted_at",
+        "idx_work_events_kind",
+        "idx_work_events_ticket"
+      ],
       "internal_tenant_column_transform": {
         "key_fk_index_partition_dependencies": [],
         "runtime_collision_scan": "not_applicable",
         "source_occurrences": [],
         "status": "not_applicable_no_source_tenant_id"
       },
-      "keys": [],
+      "keys": [
+        "PRIMARY KEY (event_id)"
+      ],
       "kind": "table",
       "migration_root": "src/omnimarket/nodes",
-      "migration_stream": null,
+      "migration_stream": "node:node_projection_work_events",
       "name": "work_events",
-      "owner_declaration": null,
+      "owner_declaration": "node_projection_work_events",
       "partitioning": [],
-      "producer": null,
+      "producer": "node_projection_work_events",
       "readers": [
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
+        "node_projection_work_events",
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -5480,14 +5485,14 @@
   ],
   "retained_live_census": {
     "evidence_source": "retained two-database split plan, 2026-07-29",
-    "minimum_unreconciled_live_base_tables": 25,
+    "minimum_unreconciled_live_base_tables": 24,
     "observed_at": "2026-07-29T00:38:00Z/2026-07-29T00:46:00Z",
     "observed_base_tables": 86,
     "observed_views_and_materialized_views": 9,
     "parity_status": "blocked",
     "physical_database": "omnidash_analytics",
     "reason": "the retained census contains counts but not a complete object-name export; repository migrations therefore cannot prove name-for-name live parity without a fresh authorized catalog read",
-    "source_created_tables": 61,
+    "source_created_tables": 62,
     "source_declared_tables": 66
   },
   "runtime_evidence": {
@@ -5504,7 +5509,7 @@
       "status": "blocked"
     },
     "live_catalog_parity": {
-      "reason": "repository sources contain 61 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-25-table gap require an authorized catalog read",
+      "reason": "repository sources contain 62 CREATE TABLE objects while the retained live census reports 86 base tables; exact overlap and the at-least-24-table gap require an authorized catalog read",
       "status": "blocked"
     }
   },
