@@ -28,20 +28,31 @@
 #   empty result set, a probe error, or a missing credential — because a guard
 #   that could not run is not a guard that passed.
 #
-# ARMING (one-time operator step)
-#   `LINEAR_API_KEY` is NOT currently provisioned as an omnimarket repo secret
-#   or an OmniNode-ai org secret (verified 2026-07-30 via `gh secret list`).
-#   Until it is, this job fails with exit 2 and the message below. That is
-#   deliberate: an unarmed guard reporting green would be the exact false
-#   assurance OMN-15373 is about.
+# WHERE THIS ACTUALLY RUNS (OMN-17182)
+#   `LINEAR_API_KEY` is NOT an omnimarket repo secret and NOT an OmniNode-ai org
+#   secret (verified 2026-07-30 and again 2026-08-30 via `gh secret list`). It IS
+#   an omnibase_infra repo secret. So in THIS repo the job can only ever exit 2 at
+#   the unarmed step below, with the assertion step skipped.
+#
+#   The live surface is therefore omnibase_infra's
+#   `.github/workflows/linear-done-guard-armed.yml`, which checks out
+#   omnimarket@dev and runs the same `guard_cli` on the same `17 */6` cadence with
+#   the credential attached. That mirrors how OMN-16536 armed this guard's twin
+#   (`linear-demotion-guard-armed.yml`).
+#
+#   This file keeps `workflow_dispatch` so the assertion can still be run by hand
+#   from here once omnimarket is ever armed. Its `schedule:` trigger was REMOVED
+#   by OMN-17182: it was structurally incapable of passing and had failed 100 of
+#   its last 100 runs, which is not a signal — it is noise that trains reviewers
+#   to ignore a red scheduled workflow. Nothing is suppressed; the assertion runs
+#   armed, at the same cadence, in the repo that holds the key.
 
 name: Linear Done Guard
 
+# Deliberately NO `schedule:` here — see "WHERE THIS ACTUALLY RUNS" above. The
+# every-6h tick lives on the armed runner in omnibase_infra, which has the
+# credential; a schedule in this repo could only ever produce exit 2.
 on:
-  schedule:
-    # Every 6h. Drift is a config flip, not a gradual process, so the useful
-    # property is bounded time-to-detection rather than high frequency.
-    - cron: '17 */6 * * *'
   workflow_dispatch:
 
 # Deliberately NOT wired to `pull_request`. What this job asserts is live Linear

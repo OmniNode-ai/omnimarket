@@ -7,9 +7,13 @@ Runs with no human in the loop: enumerate every Linear team, read each team's
 ``completed``-type ticket to a non-``completed`` state, print the report, and
 exit non-zero on drift or on any failure of the positive control.
 
-Wired as a scheduled GitHub Actions workflow
-(``.github/workflows/linear-demotion-guard.yml``) so the assertion actually
-fires rather than sitting in a doc — the setting is not the mechanism.
+The scheduled runner is
+``omnibase_infra/.github/workflows/linear-demotion-guard-armed.yml``
+(OMN-16536 AC#2), which holds ``LINEAR_API_KEY`` and checks this repo out at
+``dev``; this repo's own ``.github/workflows/linear-demotion-guard.yml`` is
+``workflow_dispatch``/``workflow_call``-only because omnimarket has no Linear
+credential (OMN-17182). Either way the assertion actually fires rather than
+sitting in a doc — the setting is not the mechanism.
 
 Requires:
   LINEAR_API_KEY — Linear API key with read access to team settings.
