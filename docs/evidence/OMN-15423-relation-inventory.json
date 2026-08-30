@@ -4696,6 +4696,7 @@
       "partitioning": [],
       "producer": "node_projection_session_replay",
       "readers": [
+        "node_projection_session_replay",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
