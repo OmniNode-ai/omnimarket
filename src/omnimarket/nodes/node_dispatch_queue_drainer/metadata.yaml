@@ -1,6 +1,6 @@
 name: node_dispatch_queue_drainer
 version: 0.1.0
-description: Compile one legacy dispatch queue YAML item without spawning agents.
+description: Drain the next QUEUED dispatch queue item and advance its lifecycle.
 pack: orchestration
 display_name: Dispatch Queue Drainer
 node_role: compute

@@ -126,7 +126,8 @@ def test_cli_scans_limit_one(tmp_path: Path) -> None:
 
 
 @pytest.mark.unit
-def test_cli_accepts_documented_dry_run_flag(tmp_path: Path) -> None:
+def test_cli_dry_run_reports_a_plan_and_writes_nothing(tmp_path: Path) -> None:
+    """OMN-17018: --dry-run is a real mode now, not a phantom compatibility flag."""
     state_dir = tmp_path / "state"
     queue_dir = state_dir / "dispatch_queue"
     queue_dir.mkdir(parents=True)
@@ -165,5 +166,11 @@ def test_cli_accepts_documented_dry_run_flag(tmp_path: Path) -> None:
 
     assert completed.returncode == 0, completed.stderr
     payload = json.loads(completed.stdout)
-    assert payload["status"] == "compiled"
+    assert payload["status"] == "dry_run"
+    assert payload["dry_run"] is True
     assert payload["queue_item_path"] == str(queue_item)
+    assert payload["dispatch_worker_command"] is not None
+    assert payload["lifecycle_phase"] is None
+    assert payload["result_artifact_path"] == ""
+    assert not (state_dir / "dispatch_queue" / "lifecycle").exists()
+    assert not (state_dir / "dispatch_queue" / "drainer_results").exists()

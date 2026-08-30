@@ -21,7 +21,10 @@ def main() -> None:
     logging.basicConfig(level=logging.WARNING, format="%(levelname)s: %(message)s")
 
     parser = argparse.ArgumentParser(
-        description="Compile one legacy dispatch queue YAML item without spawning."
+        description=(
+            "Compile the next QUEUED dispatch-queue item and durably advance "
+            "its lifecycle, without spawning agents or moving queue files."
+        )
     )
     parser.add_argument(
         "--queue-item-path",
@@ -63,9 +66,34 @@ def main() -> None:
         "--dry-run",
         action="store_true",
         help=(
-            "Compatibility flag for skill dispatch. The drainer is already "
-            "compile-only and never spawns agents or moves queue files."
+            "Select, validate and compile the next QUEUED item but mutate "
+            "nothing: no lifecycle transition, no dispatch record, no result "
+            "artifact. Reports status 'dry_run'."
         ),
+    )
+    parser.add_argument(
+        "--claim-lease-seconds",
+        type=int,
+        default=900,
+        help=(
+            "Renewable claim lease. Expiry marks the claim stale for observers; "
+            "it never deletes the queue item."
+        ),
+    )
+    parser.add_argument(
+        "--dispatch-ack-timeout-seconds",
+        type=int,
+        default=900,
+        help=(
+            "How long a dispatched item may go unacknowledged before it is "
+            "observably pending."
+        ),
+    )
+    parser.add_argument(
+        "--actor",
+        type=str,
+        default="node_dispatch_queue_drainer",
+        help="Actor recorded on every lifecycle transition this run writes.",
     )
 
     args = parser.parse_args()
@@ -76,6 +104,10 @@ def main() -> None:
         state_dir=args.state_dir,
         tasks_dir=args.tasks_dir,
         omni_home=args.omni_home,
+        dry_run=args.dry_run,
+        claim_lease_seconds=args.claim_lease_seconds,
+        dispatch_ack_timeout_seconds=args.dispatch_ack_timeout_seconds,
+        actor=args.actor,
     )
     result = HandlerDispatchQueueDrainer().handle(payload)
     sys.stdout.write(result.model_dump_json(indent=2) + "\n")

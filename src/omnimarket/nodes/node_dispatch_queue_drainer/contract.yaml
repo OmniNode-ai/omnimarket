@@ -3,8 +3,12 @@ contract_version: {major: 1, minor: 0, patch: 0}
 node_type: compute
 node_version: {major: 1, minor: 0, patch: 0}
 description: >
-  Compile one legacy .onex_state/dispatch_queue YAML item through
-  node_dispatch_worker without spawning agents or moving queue files.
+  Compile the next QUEUED .onex_state/dispatch_queue YAML item through
+  node_dispatch_worker and durably advance that item through
+  QUEUED -> CLAIMED -> DISPATCHED (or -> TERMINAL with a typed stop reason),
+  without spawning agents and without moving or deleting queue files.
+  Selection skips items an attempt already holds or closed, so N successive
+  runs drain N distinct items (OMN-17018).
 
 # OMN-14242: top-level input_model is the source the RuntimeLocal event-driven
 # path uses to seed the initial command (mirrors node_ledger_stats_compute).
@@ -54,10 +58,20 @@ externally_consumed_topics:
 
 capabilities:
   - compile_legacy_dispatch_queue_item
+  - advance_dispatch_queue_item_lifecycle
+  - classify_dispatch_terminal_reason
 invariants:
   - first_slice_limit_is_one
   - no_agent_or_taskcreate_spawn
+  # The item is transitioned by a durable append-only lifecycle record, never
+  # by moving or deleting the queue file (OMN-17018 / operator A1-REVISED).
   - no_queue_file_move_or_delete_by_default
+  - selection_skips_non_queued_items
+  - selected_item_is_durably_transitioned
+  - dispatched_item_stays_pending_until_acknowledged
+  - claim_lease_expiry_marks_stale_never_deletes
+  - unknown_terminal_reason_is_non_redispatchable
+  - dry_run_mutates_nothing
 verification:
   focused_tests:
     command: env -u PYTHONPATH uv run pytest tests/unit/nodes/node_dispatch_queue_drainer -v
