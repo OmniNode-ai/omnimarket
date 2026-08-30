@@ -100,6 +100,21 @@ projection_api:
   # (see migration 0000), so nothing else was scoping it either. Declaring the
   # tenant column makes the serving path refuse rather than answer unscoped.
   tenant_column: "tenant_id"
+  # OMN-17199 — the reader end. This exposure is `bus_backed: true` and has no
+  # rendering consumer, and that is CORRECT rather than an oversight, so it says
+  # so here instead of failing the exposure-reader gate silently. The rows are
+  # tenant-scoped BYOK inference-credential REFERENCES (`api_key_ref`, never a
+  # value): they are served to the owning tenant's own API client through the
+  # tenant-scoped serving path above, and a dashboard widget rendering another
+  # tenant's credential refs is the outcome `tenant_column` exists to prevent.
+  # If a per-tenant surface ever renders these, delete both keys — the gate
+  # fails on an opt-out left standing over a live reader.
+  consumers: none
+  consumers_reason: >-
+    Tenant-scoped BYOK credential references served to the owning tenant's own
+    API client, never to a shared dashboard surface; a rendered widget here
+    would be the cross-tenant leak the tenant_column declaration exists to
+    refuse (OMN-15797).
 
 metadata:
   transport_type: kafka
