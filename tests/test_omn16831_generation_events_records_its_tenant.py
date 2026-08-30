@@ -167,12 +167,11 @@ async def test_generation_events_row_is_attributed_by_the_writer_not_the_column(
         )
         assert stored == INTERIM_DEFAULT_TENANT
 
-        # And prove the discriminator actually discriminates: a pre-ruling
-        # writer that omitted the key would face a NOT NULL column with no
-        # database-authored DEFAULT to rescue it. Do not execute that failing
-        # insert: Postgres logs expected constraint failures as ERROR, and the
-        # integration guard treats those as signal.
-        column = await conn.fetchrow(
+        # And prove the discriminator actually discriminates without emitting a
+        # PostgreSQL ERROR into the integration log: the column is NOT NULL and
+        # its default was removed, so a writer that omits it has no database
+        # fallback path.
+        discriminator = await conn.fetchrow(
             """
             SELECT is_nullable, column_default
             FROM information_schema.columns
@@ -182,9 +181,9 @@ async def test_generation_events_row_is_attributed_by_the_writer_not_the_column(
             """,
             schema,
         )
-        assert column is not None
-        assert column["is_nullable"] == "NO"
-        assert column["column_default"] is None
+        assert discriminator is not None
+        assert discriminator["is_nullable"] == "NO"
+        assert discriminator["column_default"] is None
     finally:
         await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
         await conn.close()
