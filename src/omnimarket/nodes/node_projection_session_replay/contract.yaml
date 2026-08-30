@@ -83,7 +83,15 @@ db_io:
       database_ref: application
       schema: omninode_internal
       migration: "0001_create_session_replay_snapshots.sql"
-      access: write
+      # OMN-17183: this handler QUERIES this table (reducer-state rehydration +
+      # idempotency lookup) before writing. `access: write` is refused
+      # fail-closed at the runtime read seam
+      # (ProjectionTableOperation._assert_read_declared), which quarantines
+      # every event while the caller still sees a 202 (OMN-16690). The
+      # declaration must cover what the handler actually does. The DB-level
+      # SELECT grant already exists -- migration 0002 grants
+      # SELECT, INSERT, UPDATE to omninode_runtime (OMN-16993).
+      access: read_write
       role: snapshots
 
 projection_api:
