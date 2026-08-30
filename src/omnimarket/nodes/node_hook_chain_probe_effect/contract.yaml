@@ -1,0 +1,164 @@
+---
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: node_hook_chain_probe_effect
+contract_name: node_hook_chain_probe_effect
+node_name: node_hook_chain_probe_effect
+node_type: EFFECT_GENERIC
+# Nothing publishes a start command for this probe and nothing consumes its
+# completion event yet -- see the runtime_dispatch note below. Declaring the
+# event_bus pair to satisfy the liveness gate would manufacture exactly the
+# wired-looking-but-unwired path this node exists to detect, so the node
+# declares its real state instead.
+lifecycle: experimental
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Traces ONE hook-shaped event, carrying one minted correlation id, across all
+  five legs of the hook->cloud chain and reports which leg it died at.
+
+  WHY THIS NODE EXISTS (OMN-17202). Every ticket on this chain carried a proof
+  of its own leg -- OMN-16162 proved a record lands on the .201 bus (leg 2),
+  OMN-16979 AC3 asked for a relay crossing (leg 3), OMN-16459 proved the
+  transport (leg 3c/4) -- and nothing emitted one event with a known
+  correlation id and asserted it was readable at the far end. The chain was
+  therefore green-by-parts and dead-in-fact from at least 2026-08-21, and the
+  operator asked "what about our Claude Code hooks captured to the cloud" four
+  times over nine days because per-leg proofs cannot answer that question.
+  This node is the mechanical remedy for RC-L: a goal row's terminal read must
+  occur on the plane the operator named.
+
+  WHY LEG 3 IS NAMED, NOT TIMED OUT. Three independent structural facts can
+  each stop the relay and all three held simultaneously on 2026-08-30: the hook
+  topic is absent from the forwarder's contract-declared outbound mirror set;
+  the forwarder consumes a different lane than hooks publish to; the cloud leg
+  is still direct-MSK rather than the HTTPS relay. The probe reports all three
+  and names the first as primary. Only when NONE of them holds does an absent
+  consumer advance classify as NO_CONSUMER. A probe that cannot tell "denied by
+  allowlist" from "no consumer" does not satisfy this ticket.
+
+  ADDRESSING IS RUNTIME-RESOLVED. The hook topic, the forwarder's declared
+  mirror policy and the cloud read routes are read from contracts at the effect
+  boundary; the lane identities are read live. Nothing here is a hardcoded URL.
+
+handler:
+  module: omnimarket.nodes.node_hook_chain_probe_effect.handlers.handler_hook_chain_probe
+  class: HandlerHookChainProbe
+  input_model: omnimarket.nodes.node_hook_chain_probe_effect.models.model_hook_chain_probe.ModelHookChainProbeRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: hook_chain_probe
+      handler:
+        name: HandlerHookChainProbe
+        module: omnimarket.nodes.node_hook_chain_probe_effect.handlers.handler_hook_chain_probe
+      handler_module: omnimarket.nodes.node_hook_chain_probe_effect.handlers.handler_hook_chain_probe
+      event_model: omnimarket.nodes.node_hook_chain_probe_effect.models.model_hook_chain_probe.ModelHookChainProbeRequest
+
+input_model:
+  name: ModelHookChainProbeRequest
+  module: omnimarket.nodes.node_hook_chain_probe_effect.models.model_hook_chain_probe
+  description: One probe invocation; correlation id optional, minted when omitted.
+
+output_model:
+  name: ModelHookChainProbeResult
+  module: omnimarket.nodes.node_hook_chain_probe_effect.models.model_hook_chain_probe
+  description: Per-leg verdict naming the furthest leg reached and every blocker.
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  idempotent: false
+  timeout_ms: 180000
+  runtime_profiles: [effects]
+
+config:
+  chain_probe:
+    # The hook class the probe traces. tool-executed is deliberate: it is the
+    # highest-volume real hook family and the one the forwarder's outbound
+    # mirror set denies today, so the probe exercises the actual denial rather
+    # than the two lifecycle topics OMN-16204 already admitted.
+    hook_topic: "onex.evt.omniclaude.tool-executed.v1"
+    # The hook EDGE lane is resolved from the hooks' OWN environment authority,
+    # in the hooks' own precedence order (installed common.sh: global
+    # ~/.omnibase/.env first, project .env overrides). Reading the ambient shell
+    # instead -- which is what ModelKafkaEventBusConfig.default() does, since it
+    # applies environment overrides -- is the OMN-17010 defect: on this Mac the
+    # hook authority declares the stability lane while an interactive shell
+    # carries the dev lane, and that ambiguity produced the wrong-broker verdict
+    # that flipped OMN-16162 out of Done. No lane address is written here.
+    hook_edge_lane_var: "KAFKA_BOOTSTRAP_SERVERS"
+    hook_edge_env_files:
+      - "${HOME}/.omnibase/.env"
+      - "${CLAUDE_PROJECT_DIR}/.env"
+    # Leg 3 policy is read from the forwarder's own contract, in the installed
+    # omnibase_infra package -- the declared allowlist is the un-forgeable
+    # source, not a copy maintained here.
+    forwarder_contract_module: "omnibase_infra.nodes.node_bus_forwarder_effect"
+    # The forwarder's consumer group is read from the FORWARDER's contract when
+    # it declares one, and is otherwise not asserted. No guessed group name
+    # lives here: a name nobody promised produced a NO_CONSUMER verdict
+    # manufactured out of a guess, and an onex.-prefixed non-topic string in a
+    # contract is itself an ARCH-TOPIC-002 violation.
+    forwarder_consumer_group_key: "local_leg.consumer_group"
+    # Legs 4 and 5 are read over the cloud gateway's HTTPS read routes, never
+    # the Kubernetes API: the operator must be able to run this from the Mac
+    # with no cluster access (AC4).
+    cloud_gateway_base_url_ref: "gateway.cloud.https.base_url"
+    # Leg 4's observation point: the SINGLE relay ingress the forwarder POSTs
+    # to (OMN-16459), read on the gateway's existing surface. The probe never
+    # acquires an ingest, echo or debug route of its own -- operator ruling
+    # 2026-08-30: "the cloud leg shouldn't need anything new. all we need is
+    # one ingress for all calls".
+    cloud_gateway_ingest_path: "/v1/hook-events/ingest"
+    # Leg 5's read is SUPPLIED by OMN-17205, which deliberately chose this exact
+    # string so the two surfaces cannot diverge. It takes the correlation id as
+    # a query parameter and answers HTTP 200 for found / not_found /
+    # projection_absent alike.
+    cloud_projection_path: "/v1/projections/hook-events/by-correlation"
+    # The gateway's own published route list. onex-api answers 401 for every
+    # UNMATCHED /v1 path, so without this a route that was never deployed is
+    # indistinguishable from one that refused the caller -- the ambiguity that
+    # cost OMN-17205 a session. Public, unauthenticated, no cluster access.
+    cloud_gateway_openapi_path: "/openapi.json"
+
+# This probe is invoked directly by the operator (AC4: from the Mac, with no
+# cluster access) and by the runtime's dispatch path. Nothing publishes a start
+# command for it and nothing consumes its completion event yet, so declaring
+# event_bus.subscribe_topics/publish_topics would make it an orphaned consumer
+# AND an orphaned producer in the contract topic graph -- a wired-looking path
+# that nothing is on either end of, which is the exact class of green-by-parts
+# claim this node exists to end.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.hook-chain-probe-requested.v1
+  terminal_events:
+    success: onex.evt.omnimarket.hook-chain-probe-completed.v1
+    failure: onex.evt.omnimarket.hook-chain-probe-failed.v1
+
+dod_evidence:
+  PYTEST:
+    description: "hook->cloud chain probe classifier, handler and live-contract tests"
+    command: "uv run pytest tests/test_golden_chain_hook_chain_probe_effect.py -q"
+    pass_criteria: >
+      leg-3 blockers are distinguishable (allowlist denial, lane mismatch,
+      transport, no-consumer), a downstream leg is never blamed for an upstream
+      break, and the hook edge lane is read from the hooks own env authority
+      rather than the ambient shell
+  LIVE_PROBE:
+    description: "AC1 + AC2 against the live chain from the operator Mac"
+    command: "uv run python -m omnimarket.nodes.node_hook_chain_probe_effect"
+    pass_criteria: >
+      exits non-zero with failed_leg=forwarder_relay and blockers naming
+      allowlist_denied, lane_mismatch and transport_not_relay -- never timeout
+  ARCHITECTURE:
+    description: "def-B handler; pure classifier; all I/O behind one injected protocol"
+    pass_criteria: >
+      handle(payload: ModelHookChainProbeRequest) -> ModelHookChainProbeResult;
+      the handler imports neither ModelEventEnvelope nor ModelHandlerOutput;
+      chain_classifier performs zero I/O
+
+metadata:
+  transport_type: inmemory
+  ticket: OMN-17202

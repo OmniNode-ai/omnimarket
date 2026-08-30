@@ -111,6 +111,7 @@ Repository = "https://github.com/OmniNode-ai/omnimarket"
 
 [project.entry-points."onex.nodes"]
 node_knowledge_context_assembler_orchestrator = "omnimarket.nodes.node_knowledge_context_assembler_orchestrator"
+node_hook_chain_probe_effect = "omnimarket.nodes.node_hook_chain_probe_effect"
 node_knowledge_context_assembler_reducer = "omnimarket.nodes.node_knowledge_context_assembler_reducer"
 node_ab_compare_orchestrator = "omnimarket.nodes.node_ab_compare_orchestrator"
 node_delegate_skill_orchestrator = "omnimarket.nodes.node_delegate_skill_orchestrator"
