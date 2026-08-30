@@ -162,7 +162,15 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # consumer_flow_windows (the per-(consumer_group, topic) throughput read
     # model) and topic_produce_windows (the upstream-production evidence that
     # separates STARVED from IDLE without polling the broker) = 61.
-    assert census["source_created_tables"] == 61
+    # +1 for OMN-16180's node-owned
+    # node_projection_work_events/0001_create_work_events.sql, which creates
+    # omninode_internal.work_events -- the L1 work-ledger surface of the
+    # OMN-16176 ladder = 62. This is the CREATE that flips the relation from
+    # classification_status "blocked" (declared by omnimarket#2217's ownership
+    # manifest entry, with no authoritative CREATE yet) to "classified", so
+    # source_declared_tables does NOT move again here: #2217 already counted
+    # this relation once and this PR names the same one.
+    assert census["source_created_tables"] == 62
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -205,7 +213,12 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # two more source-created tables, so the same arithmetic drops the bound by
     # two. Same caveat -- neither exists in the 2026-07-29 live catalog, and
     # this remains a lower bound, not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 25
+    # 24 as of OMN-16180: work_events is one more source-created table, so the
+    # same max(0, 86 - source_created_tables) arithmetic drops the bound by one.
+    # Same caveat as every entry above -- the census was observed 2026-07-29 and
+    # this table did not exist then, so this remains a LOWER bound on
+    # unreconciled live tables, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 24
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

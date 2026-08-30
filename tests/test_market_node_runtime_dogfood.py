@@ -239,7 +239,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # node re-proves it on the existing heartbeat and classifies a channel that
     # cannot deliver as DEAD / NOT_CONFIGURED / PROBE_ERROR rather than letting
     # an HTTP 200 carrying {"ok": false} read as success): 389 -> 390.
-    assert summary["node_dirs"] == 390
+    # 391 as of OMN-16180: node_projection_work_events, the L1 work-ledger
+    # projection over the four live omniclaude hook topics.
+    assert summary["node_dirs"] == 391
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -298,7 +300,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # (routable via its subscribe topic onex.evt.platform.node-heartbeat.v1 —
     # the carrier the observability epic names, so the check dies with the
     # runtime it measures instead of polling a corpse): 386 -> 387.
-    assert summary["entry_points"] == 387
+    # OMN-16180 adds the node_projection_work_events entry point (see node_dirs
+    # comment above; routable via its subscribe topics, the four live omniclaude
+    # hook topics -- session-started, prompt-submitted, tool-executed,
+    # session-ended): 387 -> 388.
+    assert summary["entry_points"] == 388
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

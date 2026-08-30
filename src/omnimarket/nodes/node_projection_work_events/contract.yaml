@@ -1,0 +1,124 @@
+---
+name: projection_work_events
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Projects live omniclaude session events (started, prompt-submitted,
+  tool-executed, ended) into omninode_internal.work_events -- the L1
+  work-ledger surface of the OMN-16176 L0 -> L1 -> L2 ladder. One event
+  produces one content-addressed row, so replay is idempotent without any
+  cross-dispatch reducer state. The authoritative L0 record remains
+  docs/tracking/ROLLING_WORK_LEDGER.md; L0 and L1 dual-write during the
+  transition (retiring L0 is OMN-16183/C7). Claims arbitration is NOT here --
+  OMN-16179 (C3) puts it on a compacted Kafka view, deliberately not in
+  Postgres, so a reducer outage degrades rendering only and never the ability
+  to claim work.
+
+handler:
+  module: omnimarket.nodes.node_projection_work_events.handlers.handler_projection_work_events
+  class: HandlerProjectionWorkEvents
+  input_model: omnimarket.nodes.node_projection_work_events.models.model_work_event.ModelWorkEventInbound
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - topic: onex.evt.omniclaude.session-started.v1
+      operation: work_session_started_projected
+      event_model:
+        name: ModelWorkEventInbound
+        module: omnimarket.nodes.node_projection_work_events.models.model_work_event
+      handler:
+        name: HandlerProjectionWorkEvents
+        module: omnimarket.nodes.node_projection_work_events.handlers.handler_projection_work_events
+    - topic: onex.evt.omniclaude.prompt-submitted.v1
+      operation: work_prompt_submitted_projected
+      event_model:
+        name: ModelWorkEventInbound
+        module: omnimarket.nodes.node_projection_work_events.models.model_work_event
+      handler:
+        name: HandlerProjectionWorkEvents
+        module: omnimarket.nodes.node_projection_work_events.handlers.handler_projection_work_events
+    - topic: onex.evt.omniclaude.tool-executed.v1
+      operation: work_tool_executed_projected
+      event_model:
+        name: ModelWorkEventInbound
+        module: omnimarket.nodes.node_projection_work_events.models.model_work_event
+      handler:
+        name: HandlerProjectionWorkEvents
+        module: omnimarket.nodes.node_projection_work_events.handlers.handler_projection_work_events
+    - topic: onex.evt.omniclaude.session-ended.v1
+      operation: work_session_ended_projected
+      event_model:
+        name: ModelWorkEventInbound
+        module: omnimarket.nodes.node_projection_work_events.models.model_work_event
+      handler:
+        name: HandlerProjectionWorkEvents
+        module: omnimarket.nodes.node_projection_work_events.handlers.handler_projection_work_events
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+# Topic order is load-bearing: handler_projection_work_events._load_topics
+# resolves the four topics BY POSITION and refuses to import unless exactly
+# four are declared. Reordering this list reclassifies every projected event.
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.session-started.v1
+    - onex.evt.omniclaude.prompt-submitted.v1
+    - onex.evt.omniclaude.tool-executed.v1
+    - onex.evt.omniclaude.session-ended.v1
+  # The RUNTIME publishes this, not the handler. handler_wiring emits the
+  # terminal applied-event only when the projection handler's returned
+  # ModelProjectionWorkEventsResult carries rows_upserted >= 1 (OMN-13360
+  # deterministic-truth gate) -- so the event asserts that a durable row
+  # actually landed, never merely that handle() did not raise. That is exactly
+  # why this handler returns a real count instead of None: a zero-row path must
+  # be able to suppress the event.
+  publish_topics:
+    - onex.evt.omnimarket.projection-work-events-applied.v1
+
+# The applied-event is a terminal deterministic-truth assertion -- "a durable
+# row landed" -- consumed by the observability plane (event ledger, dashboards),
+# not by another omnimarket node. Declaring that here is the sanctioned way to
+# satisfy the contract-topic-graph gate; adding it to that gate's baseline is
+# NOT, because the baseline is frozen pre-existing debt that may only shrink.
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-work-events-applied.v1
+
+db_io:
+  db_tables:
+    - name: work_events
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_work_events.sql"
+      access: write
+      role: work_events
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.work.events.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "work_events"
+  schema: "omninode_internal"
+  columns:
+    - "event_id"
+    - "emitted_at"
+    - "event_kind"
+    - "actor_kind"
+    - "actor_id"
+    - "ticket_id"
+    - "summary"
+    - "source_topic"
+    - "payload"
+  json_columns:
+    - "payload"
+  order_by: "emitted_at DESC"
+  freshness_column: "emitted_at"
+  limit: 500
+
+metadata:
+  transport_type: kafka

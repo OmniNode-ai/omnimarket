@@ -1,0 +1,23 @@
+name: node_projection_work_events
+version: "1.0.0"
+description: "Projects live omniclaude session events into the omninode_internal.work_events L1 work-ledger surface"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_work_events: "omnimarket.nodes.node_projection_work_events"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["work-ledger", "projection", "reducer", "observability"]
+pack: "data"
+display_name: "Work Events Projection"
+node_role: "reducer"
