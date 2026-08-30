@@ -22,7 +22,6 @@ from omnimarket.nodes.node_projection_session_replay.handlers.handler_projection
 )
 from omnimarket.nodes.node_projection_session_replay.models.model_session_replay import (
     ModelSessionReplayEvent,
-    ModelSessionReplayState,
 )
 from omnimarket.projection.discovery import build_projection_topic_map
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
@@ -63,8 +62,13 @@ class TestSessionReplayProjectionChain:
         assert rows[0]["is_checkpoint"] is True
 
     def test_session_lifecycle_materializes_ordered_replay_snapshots(self) -> None:
+        """OMN-17183: drives handle(), the path the runtime actually calls.
+
+        This test previously hand-threaded ``accumulate()`` and hand-built the
+        ``db.upsert`` call, so it stayed green while the deployed projection
+        collapsed 69,014 consumed events onto 15 rows.
+        """
         db = InmemoryDatabaseAdapter()
-        state = ModelSessionReplayState()
         events = [
             (
                 TOPIC_SESSION_STARTED,
@@ -110,11 +114,19 @@ class TestSessionReplayProjectionChain:
         ]
 
         for topic, event in events:
-            state, row = HANDLER.accumulate(state, event, topic)
-            db.upsert(TABLE, "snapshot_id", row.model_dump(mode="python"))
+            result = HANDLER.handle(
+                {
+                    **event.model_dump(mode="json", exclude_none=True),
+                    "_db": db,
+                    "_topic": topic,
+                }
+            )
+            assert result["rows_upserted"] == 1
 
-        rows = db.query(TABLE)
+        rows = sorted(db.query(TABLE), key=lambda row: int(str(row["sequence"])))
+        assert len(rows) == 5
         assert [row["sequence"] for row in rows] == [0, 1, 2, 3, 4]
+        assert len({str(row["snapshot_id"]) for row in rows}) == 5
         assert [row["event_type"] for row in rows] == [
             "session_start",
             "user_input",
@@ -123,8 +135,7 @@ class TestSessionReplayProjectionChain:
             "session_end",
         ]
         assert rows[2]["node_name"] == "Read"
-        assert rows[2]["cumulative_tokens"] == 20
-        assert state.cumulative_tokens == 20
+        assert [row["cumulative_tokens"] for row in rows] == [0, 12, 20, 20, 20]
 
     def test_handle_materializes_via_injected_db(self) -> None:
         db = InmemoryDatabaseAdapter()

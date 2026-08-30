@@ -17,6 +17,8 @@ Tests cover:
 
 from __future__ import annotations
 
+from uuid import UUID, uuid4
+
 import pytest
 
 from omnimarket.nodes.node_projection_session_replay.handlers.handler_projection_session_replay import (
@@ -62,32 +64,88 @@ def _make_event(
 
 @pytest.mark.unit
 def test_derive_snapshot_id_is_deterministic() -> None:
-    """Same session_id + sequence always yields the same snapshot_id."""
-    sid_a = _derive_snapshot_id("sess-001", 0)
-    sid_b = _derive_snapshot_id("sess-001", 0)
+    """The same event on the same topic always yields the same snapshot_id."""
+    event = _make_event()
+    sid_a = _derive_snapshot_id(
+        session_id=event.session_id, topic=TOPIC_STARTED, event=event
+    )
+    sid_b = _derive_snapshot_id(
+        session_id=event.session_id, topic=TOPIC_STARTED, event=event
+    )
     assert sid_a == sid_b
 
 
 @pytest.mark.unit
-def test_derive_snapshot_id_differs_by_sequence() -> None:
-    """Different sequences produce different ids even for the same session."""
-    sid_0 = _derive_snapshot_id("sess-001", 0)
-    sid_1 = _derive_snapshot_id("sess-001", 1)
-    assert sid_0 != sid_1
+def test_derive_snapshot_id_differs_by_event_content() -> None:
+    """OMN-17183: distinct events of one session must derive distinct ids.
+
+    The pre-fix derivation hashed ``f"{session_id}::{sequence}"`` with a
+    sequence that never advanced, so every event of a session collided onto one
+    row. Identity is now content-addressed and cannot degrade that way.
+    """
+    session_id = "sess-001"
+    first = _make_event(session_id=session_id, timestamp="2026-08-30T10:00:00Z")
+    second = _make_event(session_id=session_id, timestamp="2026-08-30T10:00:01Z")
+    assert _derive_snapshot_id(
+        session_id=session_id, topic=TOPIC_TOOL, event=first
+    ) != _derive_snapshot_id(session_id=session_id, topic=TOPIC_TOOL, event=second)
+
+
+@pytest.mark.unit
+def test_derive_snapshot_id_differs_by_topic() -> None:
+    """The same payload on two topics is two events, not one."""
+    event = _make_event()
+    assert _derive_snapshot_id(
+        session_id=event.session_id, topic=TOPIC_STARTED, event=event
+    ) != _derive_snapshot_id(
+        session_id=event.session_id, topic=TOPIC_ENDED, event=event
+    )
 
 
 @pytest.mark.unit
 def test_derive_snapshot_id_differs_by_session() -> None:
-    """Different session_ids produce different snapshot_ids at the same sequence."""
-    sid_a = _derive_snapshot_id("sess-001", 0)
-    sid_b = _derive_snapshot_id("sess-002", 0)
-    assert sid_a != sid_b
+    """Different session_ids produce different snapshot_ids for the same payload."""
+    event_a = _make_event(session_id="sess-001")
+    event_b = _make_event(session_id="sess-002")
+    assert _derive_snapshot_id(
+        session_id="sess-001", topic=TOPIC_STARTED, event=event_a
+    ) != _derive_snapshot_id(session_id="sess-002", topic=TOPIC_STARTED, event=event_b)
+
+
+@pytest.mark.unit
+def test_derive_snapshot_id_prefers_the_injected_envelope_id() -> None:
+    """A runtime-injected envelope UUID overrides the content address.
+
+    ``handler_shim`` surfaces ``_envelope_id`` precisely so a reducer can use
+    the stable envelope UUID as its durable idempotency key across Kafka
+    redeliveries.
+    """
+    event = _make_event()
+    with_envelope = _derive_snapshot_id(
+        session_id=event.session_id,
+        topic=TOPIC_STARTED,
+        event=event,
+        envelope_id="6f1d5f6e-7c2a-4f0b-9f3a-2b1c4d5e6f70",
+    )
+    without = _derive_snapshot_id(
+        session_id=event.session_id, topic=TOPIC_STARTED, event=event
+    )
+    assert with_envelope != without
+    assert with_envelope == _derive_snapshot_id(
+        session_id=event.session_id,
+        topic=TOPIC_STARTED,
+        event=event,
+        envelope_id="6f1d5f6e-7c2a-4f0b-9f3a-2b1c4d5e6f70",
+    )
 
 
 @pytest.mark.unit
 def test_derive_snapshot_id_format() -> None:
     """snapshot_id follows UUID-shaped format: 8-4-4-4-12 hex chars."""
-    snapshot_id = _derive_snapshot_id("sess-001", 0)
+    event = _make_event()
+    snapshot_id = _derive_snapshot_id(
+        session_id=event.session_id, topic=TOPIC_STARTED, event=event
+    )
     parts = snapshot_id.split("-")
     assert len(parts) == 5
     assert len(parts[0]) == 8
@@ -317,56 +375,78 @@ def test_project_upserts_one_row() -> None:
 
 @pytest.mark.unit
 def test_project_is_idempotent_on_replay() -> None:
-    """Projecting the same event twice UPSERTs (not inserts twice)."""
+    """Projecting the same event twice UPSERTs (not inserts twice).
+
+    This assertion was previously satisfied by the defect itself -- EVERY event
+    collapsed onto one row, so a repeat trivially did too. It now holds because
+    the row identity is the event's content address.
+    """
     handler = HandlerProjectionSessionReplay()
     db = InmemoryDatabaseAdapter()
     event = _make_event(session_id="sess-idem")
 
-    handler.project(event, db, TOPIC_STARTED)
-    handler.project(event, db, TOPIC_STARTED)
+    assert handler.project(event, db, TOPIC_STARTED).rows_upserted == 1
+    assert handler.project(event, db, TOPIC_STARTED).rows_upserted == 1
 
     rows = db.query("session_replay_snapshots")
     assert len(rows) == 1
+    assert int(str(rows[0]["sequence"])) == 0
 
 
 @pytest.mark.unit
 def test_project_sequence_of_events_produces_ordered_rows() -> None:
-    """Multiple events for the same session produce ordered rows."""
+    """Multiple events for the same session produce ordered rows.
+
+    OMN-17183: this test previously hand-threaded ``accumulate()`` and
+    hand-built the ``db.upsert`` call -- the two steps ``project()``/``handle()``
+    do NOT do -- so it stayed green through the entire period the live
+    projection was collapsing every session onto one row. It now drives
+    ``project()``, the code path the runtime actually reaches.
+    """
     handler = HandlerProjectionSessionReplay()
     db = InmemoryDatabaseAdapter()
-    state = ModelSessionReplayState()
 
     events = [
-        (_make_event(session_id="sess-seq"), TOPIC_STARTED),
-        (_make_event(session_id="sess-seq", prompt_preview="hello"), TOPIC_PROMPT),
-        (_make_event(session_id="sess-seq", tool_name="Bash"), TOPIC_TOOL),
-        (_make_event(session_id="sess-seq", outcome="success"), TOPIC_OUTCOME),
-        (_make_event(session_id="sess-seq"), TOPIC_ENDED),
+        (
+            _make_event(session_id="sess-seq", timestamp="2026-08-30T10:00:00Z"),
+            TOPIC_STARTED,
+        ),
+        (
+            _make_event(
+                session_id="sess-seq",
+                timestamp="2026-08-30T10:00:01Z",
+                prompt_preview="hello",
+            ),
+            TOPIC_PROMPT,
+        ),
+        (
+            _make_event(
+                session_id="sess-seq",
+                timestamp="2026-08-30T10:00:02Z",
+                tool_name="Bash",
+            ),
+            TOPIC_TOOL,
+        ),
+        (
+            _make_event(
+                session_id="sess-seq",
+                timestamp="2026-08-30T10:00:03Z",
+                outcome="success",
+            ),
+            TOPIC_OUTCOME,
+        ),
+        (
+            _make_event(session_id="sess-seq", timestamp="2026-08-30T10:00:04Z"),
+            TOPIC_ENDED,
+        ),
     ]
 
     for event, topic in events:
-        new_state, row = handler.accumulate(state, event, topic)
-        db.upsert(
-            "session_replay_snapshots",
-            "snapshot_id",
-            {
-                "snapshot_id": row.snapshot_id,
-                "session_id": row.session_id,
-                "sequence": row.sequence,
-                "timestamp": row.timestamp,
-                "event_type": row.event_type,
-                "node_name": row.node_name,
-                "state_delta": row.state_delta,
-                "cumulative_tokens": row.cumulative_tokens,
-                "is_checkpoint": row.is_checkpoint,
-            },
-        )
-        state = new_state
+        assert handler.project(event, db, topic).rows_upserted == 1
 
     rows = db.query("session_replay_snapshots")
     assert len(rows) == 5
-    sequences = [r["sequence"] for r in rows]
-    assert sequences == [0, 1, 2, 3, 4]
+    assert sorted(int(str(r["sequence"])) for r in rows) == [0, 1, 2, 3, 4]
 
 
 @pytest.mark.unit
@@ -417,3 +497,215 @@ def test_handle_raises_on_missing_db() -> None:
 
     with pytest.raises(TypeError, match="_db"):
         handler.handle(input_data)
+
+
+# ---------------------------------------------------------------------------
+# OMN-17183 — real-dispatch-path tests
+#
+# Every test below drives ``handle()``, the entry point the runtime auto-wiring
+# actually calls (``omnibase_infra.runtime.auto_wiring.handler_wiring
+# ._invoke_projection``). The pre-existing
+# ``test_project_sequence_of_events_produces_ordered_rows`` was green while the
+# live projection destroyed data because it hand-threaded ``accumulate()`` and
+# hand-built the ``db.upsert`` call — the two steps ``handle()`` does NOT do.
+#
+# Live evidence this locks (stability lane, 2026-08-30): 69,014 consumed
+# ``tool-executed`` events materialized 15 rows — one per session — with
+# ``cumulative_tokens`` stuck at 0, consumer lag 0 and DLQ 0 the whole time.
+# ---------------------------------------------------------------------------
+
+
+def _dispatch(
+    handler: HandlerProjectionSessionReplay,
+    db: InmemoryDatabaseAdapter,
+    topic: str,
+    *,
+    session_id: str = "sess-dispatch",
+    envelope_id: UUID | None = None,
+    payload: dict[str, object] | None = None,
+) -> dict[str, object]:
+    """Invoke handle() exactly as the runtime auto-wiring does."""
+    input_data: dict[str, object] = {
+        "session_id": session_id,
+        "_db": db,
+        "_topic": topic,
+        **(payload or {}),
+    }
+    if envelope_id is not None:
+        input_data["_envelope_id"] = envelope_id
+    return handler.handle(input_data)
+
+
+_LIFECYCLE: list[tuple[str, dict[str, object]]] = [
+    (TOPIC_STARTED, {"timestamp": "2026-08-30T10:00:00Z"}),
+    (
+        TOPIC_PROMPT,
+        {
+            "timestamp": "2026-08-30T10:00:01Z",
+            "prompt_preview": "hi",
+            "tokens_used": 10,
+        },
+    ),
+    (
+        TOPIC_TOOL,
+        {"timestamp": "2026-08-30T10:00:02Z", "tool_name": "Bash", "tokens_used": 25},
+    ),
+    (
+        TOPIC_TOOL,
+        {"timestamp": "2026-08-30T10:00:03Z", "tool_name": "Read", "tokens_used": 5},
+    ),
+    (TOPIC_OUTCOME, {"timestamp": "2026-08-30T10:00:04Z", "outcome": "success"}),
+    (TOPIC_ENDED, {"timestamp": "2026-08-30T10:00:05Z"}),
+]
+
+
+@pytest.mark.unit
+def test_handle_many_events_for_one_session_produce_distinct_rows() -> None:
+    """N events dispatched through handle() materialize N distinct rows.
+
+    RED before OMN-17183: handle() called project() with no state, project()
+    reset to a fresh ModelSessionReplayState on every message, so sequence was
+    permanently 0, every event derived the same snapshot_id, and each UPSERT
+    overwrote the previous one — 6 events collapsed to 1 row.
+    """
+    handler = HandlerProjectionSessionReplay()
+    db = InmemoryDatabaseAdapter()
+
+    for topic, payload in _LIFECYCLE:
+        result = _dispatch(
+            handler, db, topic, session_id="sess-omn17183", payload=payload
+        )
+        assert result["rows_upserted"] == 1
+
+    rows = db.query("session_replay_snapshots", {"session_id": "sess-omn17183"})
+    assert len(rows) == len(_LIFECYCLE)
+    assert len({str(r["snapshot_id"]) for r in rows}) == len(_LIFECYCLE)
+
+
+@pytest.mark.unit
+def test_handle_advances_sequence_monotonically_across_dispatches() -> None:
+    """sequence is a per-session monotonic ordinal, not a constant 0."""
+    handler = HandlerProjectionSessionReplay()
+    db = InmemoryDatabaseAdapter()
+
+    for topic, payload in _LIFECYCLE:
+        _dispatch(handler, db, topic, session_id="sess-seq-live", payload=payload)
+
+    rows = db.query("session_replay_snapshots", {"session_id": "sess-seq-live"})
+    sequences = sorted(int(str(r["sequence"])) for r in rows)
+    assert sequences == list(range(len(_LIFECYCLE)))
+
+
+@pytest.mark.unit
+def test_handle_accumulates_cumulative_tokens_across_dispatches() -> None:
+    """cumulative_tokens is a running per-session total, not stuck at 0."""
+    handler = HandlerProjectionSessionReplay()
+    db = InmemoryDatabaseAdapter()
+
+    for topic, payload in _LIFECYCLE:
+        _dispatch(handler, db, topic, session_id="sess-tokens", payload=payload)
+
+    rows = sorted(
+        db.query("session_replay_snapshots", {"session_id": "sess-tokens"}),
+        key=lambda r: int(str(r["sequence"])),
+    )
+    cumulative = [int(str(r["cumulative_tokens"])) for r in rows]
+    # 0, +10, +25, +5, +0, +0
+    assert cumulative == [0, 10, 35, 40, 40, 40]
+
+
+@pytest.mark.unit
+def test_handle_keeps_sessions_independent() -> None:
+    """Interleaved sessions each carry their own sequence and token total."""
+    handler = HandlerProjectionSessionReplay()
+    db = InmemoryDatabaseAdapter()
+
+    for topic, payload in _LIFECYCLE:
+        _dispatch(handler, db, topic, session_id="sess-a", payload=payload)
+        _dispatch(handler, db, topic, session_id="sess-b", payload=payload)
+
+    for session_id in ("sess-a", "sess-b"):
+        rows = db.query("session_replay_snapshots", {"session_id": session_id})
+        assert len(rows) == len(_LIFECYCLE)
+        assert sorted(int(str(r["sequence"])) for r in rows) == list(
+            range(len(_LIFECYCLE))
+        )
+        assert max(int(str(r["cumulative_tokens"])) for r in rows) == 40
+
+
+@pytest.mark.unit
+def test_handle_redelivery_of_same_envelope_does_not_duplicate_or_double_count() -> (
+    None
+):
+    """At-least-once redelivery is idempotent when the runtime injects _envelope_id."""
+    handler = HandlerProjectionSessionReplay()
+    db = InmemoryDatabaseAdapter()
+    envelope_ids = [uuid4() for _ in _LIFECYCLE]
+
+    for (topic, payload), envelope_id in zip(_LIFECYCLE, envelope_ids, strict=True):
+        _dispatch(
+            handler,
+            db,
+            topic,
+            session_id="sess-redeliver",
+            envelope_id=envelope_id,
+            payload=payload,
+        )
+    # Redeliver the whole stream — the broker's at-least-once guarantee.
+    for (topic, payload), envelope_id in zip(_LIFECYCLE, envelope_ids, strict=True):
+        result = _dispatch(
+            handler,
+            db,
+            topic,
+            session_id="sess-redeliver",
+            envelope_id=envelope_id,
+            payload=payload,
+        )
+        # rows_upserted must stay >= 1: the runtime gates the terminal event on
+        # it and logs an error on zero (handler_wiring, OMN-13360).
+        assert result["rows_upserted"] == 1
+
+    rows = db.query("session_replay_snapshots", {"session_id": "sess-redeliver"})
+    assert len(rows) == len(_LIFECYCLE)
+    assert max(int(str(r["cumulative_tokens"])) for r in rows) == 40
+
+
+@pytest.mark.unit
+def test_handle_redelivery_without_envelope_id_is_content_addressed() -> None:
+    """With no _envelope_id the row key is content-addressed, so replay is stable."""
+    handler = HandlerProjectionSessionReplay()
+    db = InmemoryDatabaseAdapter()
+
+    for topic, payload in _LIFECYCLE:
+        _dispatch(handler, db, topic, session_id="sess-content", payload=payload)
+    for topic, payload in _LIFECYCLE:
+        _dispatch(handler, db, topic, session_id="sess-content", payload=payload)
+
+    rows = db.query("session_replay_snapshots", {"session_id": "sess-content"})
+    assert len(rows) == len(_LIFECYCLE)
+    assert max(int(str(r["cumulative_tokens"])) for r in rows) == 40
+
+
+@pytest.mark.unit
+def test_handle_reprojects_deterministically_into_an_empty_table() -> None:
+    """Deterministic replay: same stream into a fresh table yields the same rows."""
+    handler = HandlerProjectionSessionReplay()
+
+    def _run() -> list[dict[str, object]]:
+        db = InmemoryDatabaseAdapter()
+        for topic, payload in _LIFECYCLE:
+            _dispatch(handler, db, topic, session_id="sess-replay", payload=payload)
+        return sorted(
+            db.query("session_replay_snapshots"),
+            key=lambda r: int(str(r["sequence"])),
+        )
+
+    first = _run()
+    second = _run()
+    assert [
+        (r["snapshot_id"], r["sequence"], r["cumulative_tokens"], r["event_type"])
+        for r in first
+    ] == [
+        (r["snapshot_id"], r["sequence"], r["cumulative_tokens"], r["event_type"])
+        for r in second
+    ]
