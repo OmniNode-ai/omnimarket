@@ -26,21 +26,27 @@ printed, logged, or serialized.
 from __future__ import annotations
 
 import asyncio
+import json
 import os
 from functools import lru_cache
 from pathlib import Path
 from queue import Queue
 from threading import Thread
-from typing import cast
+from typing import TYPE_CHECKING, cast
+from uuid import UUID
 
 import yaml
+from omnibase_infra.handlers.models.infisical import ModelInfisicalHandlerConfig
 from omnibase_infra.runtime.models.model_secret_resolver_config import (
     ModelSecretResolverConfig,
 )
 from omnibase_infra.runtime.secret_resolver import SecretResolver
 from omnibase_infra.secret_stores import AdapterEnvSecretStore
 from omnibase_spi.protocols.services import ProtocolSecretStore
-from pydantic import SecretStr
+from pydantic import SecretStr, ValidationError
+
+if TYPE_CHECKING:
+    from omnibase_infra.handlers.handler_infisical import HandlerInfisical
 
 from omnimarket.tenant_credential_ref import (
     is_tenant_credential_ref,
@@ -50,6 +56,18 @@ from omnimarket.tenant_credential_ref import (
 
 class SecretResolutionError(RuntimeError):
     """Raised when a declared ``api_key_ref`` cannot be resolved fail-closed."""
+
+
+class SecretStoreConfigurationError(RuntimeError):
+    """Raised when a lane declares a secret source the store cannot construct.
+
+    OMN-16984 AC2. Deliberately NOT a subclass of :class:`SecretResolutionError`:
+    a missing VALUE and an unconstructable STORE are different facts, and the
+    tenant-overlay wrapper rewrites ``SecretResolutionError`` into "the tenant
+    must register this ref", which would misattribute a lane misconfiguration to
+    the customer. This error propagates uncaught and names only variable /
+    logical names -- never a secret value.
+    """
 
 
 class _MappedSecretStore:
@@ -180,6 +198,258 @@ class _ConventionFallbackSecretStore:
         return
 
 
+# OMN-16984: the Infisical machine-identity bootstrap. These are the SAME
+# variables the intake side already reads in
+# ``omnimarket.projection.credential_publisher._build_secret_store()`` -- this
+# is the read half of the same credential plane, not a second configuration
+# surface. A machine identity is the sanctioned bootstrap exception to
+# "config comes from contracts": it is the credential that unlocks the store
+# the contracts are resolved from, and a keyring cannot unlock itself.
+_INFISICAL_BOOTSTRAP_VARS: tuple[str, ...] = (
+    "INFISICAL_ADDR",
+    "INFISICAL_CLIENT_ID",
+    "INFISICAL_CLIENT_SECRET",
+    "INFISICAL_PROJECT_ID",
+    "INFISICAL_ENVIRONMENT_SLUG",
+)
+
+_TRUTHY = frozenset({"true", "1", "yes"})
+
+
+def _infisical_required() -> bool:
+    """Whether the lane declares itself Infisical-controlled.
+
+    Mirrors ``runtime_host_process``'s reading of the same variable so a lane
+    cannot be "controlled" for the config prefetcher and uncontrolled at the
+    effect boundary.
+    """
+    raw = os.environ.get("INFISICAL_REQUIRED", "")  # ONEX_EXCLUDE: secret_resolver
+    return raw.strip().lower() in _TRUTHY
+
+
+def _infisical_folder(source_path: str) -> str:
+    """Return the Infisical FOLDER a mapping's ``source_path`` addresses.
+
+    ``SecretResolver._read_infisical_secret_sync`` keeps only the last path
+    segment as the secret key and reads it through the handler's configured
+    ``secret_path``, so the folder in a mapping is carried by the handler, not
+    by the per-read call. Deriving it from the mapping keeps the rendered lane
+    config the single authority for addressing -- no new env var.
+    """
+    raw = source_path.rsplit("#", 1)[0]
+    if "/" not in raw:
+        return "/"
+    folder = raw.rsplit("/", 1)[0]
+    return folder or "/"
+
+
+def _infisical_bootstrap_config(secret_path: str) -> ModelInfisicalHandlerConfig:
+    """Build the typed handler config from the lane's bootstrap env, or raise.
+
+    Raises:
+        SecretStoreConfigurationError: naming every missing/blank variable at
+            once. Variable NAMES only; no value is ever interpolated.
+    """
+    values = {
+        name: os.environ.get(name, "").strip()  # ONEX_EXCLUDE: secret_resolver
+        for name in _INFISICAL_BOOTSTRAP_VARS
+    }
+    missing = sorted(name for name, value in values.items() if not value)
+    if missing:
+        raise SecretStoreConfigurationError(
+            "Lane declares an Infisical-backed secret source but the Infisical "
+            "machine identity is not fully configured. Missing or blank: "
+            f"{missing}. Declared bootstrap variables: "
+            f"{list(_INFISICAL_BOOTSTRAP_VARS)}."
+        )
+    try:
+        return ModelInfisicalHandlerConfig(
+            host=values["INFISICAL_ADDR"],
+            client_id=SecretStr(values["INFISICAL_CLIENT_ID"]),
+            client_secret=SecretStr(values["INFISICAL_CLIENT_SECRET"]),
+            project_id=UUID(values["INFISICAL_PROJECT_ID"]),
+            environment_slug=values["INFISICAL_ENVIRONMENT_SLUG"],
+            secret_path=secret_path,
+        )
+    except (ValidationError, ValueError) as exc:
+        raise SecretStoreConfigurationError(
+            "Infisical machine-identity bootstrap failed validation "
+            f"(secret_path={secret_path!r}); check "
+            f"{list(_INFISICAL_BOOTSTRAP_VARS)}. Underlying error type: "
+            f"{type(exc).__name__}"
+        ) from exc
+
+
+def _build_infisical_handler(config: ModelInfisicalHandlerConfig) -> HandlerInfisical:
+    """Construct and initialize ``HandlerInfisical`` for this lane.
+
+    ``HandlerInfisical.initialize`` is declared ``async`` but performs no
+    awaits, and this function is reached from both sync and async call sites
+    (``_configured_secret_store`` is memoized behind ``resolve_api_key`` /
+    ``resolve_api_key_async``). Driving it with ``asyncio.run`` on a worker
+    thread is correct in both -- the same pattern
+    :func:`_resolve_api_key_from_running_loop` already uses in this module.
+
+    This function is the single CONSTRUCTION seam: tests replace it to prove
+    the wiring without reaching a real Infisical server.
+    """
+    from omnibase_core.container import ModelONEXContainer
+    from omnibase_infra.handlers.handler_infisical import HandlerInfisical as _Handler
+
+    handler = _Handler(ModelONEXContainer())
+
+    result: Queue[BaseException | None] = Queue(maxsize=1)
+
+    def _runner() -> None:
+        try:
+            asyncio.run(
+                handler.initialize(
+                    {
+                        "host": config.host,
+                        "client_id": config.client_id.get_secret_value(),
+                        "client_secret": config.client_secret.get_secret_value(),
+                        "project_id": str(config.project_id),
+                        "environment_slug": config.environment_slug,
+                        "secret_path": config.secret_path,
+                    }
+                )
+            )
+        except BaseException as exc:
+            result.put(exc)
+        else:
+            result.put(None)
+
+    thread = Thread(target=_runner, name="omnimarket-infisical-init", daemon=True)
+    thread.start()
+    thread.join()
+    error = result.get()
+    if error is not None:
+        raise SecretStoreConfigurationError(
+            "Lane declares an Infisical-backed secret source but the Infisical "
+            f"handler could not be initialized against {config.host!r} "
+            f"(environment {config.environment_slug!r}, path "
+            f"{config.secret_path!r}): {type(error).__name__}"
+        ) from error
+    return handler
+
+
+def _lane_infisical_handler(
+    config: ModelSecretResolverConfig,
+) -> HandlerInfisical | None:
+    """Return the Infisical handler this lane's config requires, or ``None``.
+
+    OMN-16984 AC1/AC2. A lane needs a handler when it DECLARES an Infisical
+    source, or when it declares itself controlled via ``INFISICAL_REQUIRED``.
+    In either case an unbuildable handler is a fail-fast refusal at store
+    construction, naming the offending logical names -- never a per-read
+    ``None`` behind a WARNING, which is what made this defect invisible.
+    """
+    infisical_mappings = [
+        mapping
+        for mapping in config.mappings
+        if mapping.source.source_type == "infisical"
+    ]
+    required = _infisical_required()
+    if not infisical_mappings and not required:
+        return None
+
+    folders = sorted(
+        {
+            _infisical_folder(mapping.source.source_path)
+            for mapping in infisical_mappings
+        }
+    )
+    if len(folders) > 1:
+        raise SecretStoreConfigurationError(
+            "Lane declares Infisical-backed sources in more than one folder, "
+            f"which the resolver cannot address: {folders}. SecretResolver "
+            "reads every Infisical mapping through the handler's single "
+            "configured secret_path, so a second folder would silently read "
+            "from the wrong one. Offending logical names: "
+            f"{sorted(mapping.logical_name for mapping in infisical_mappings)}."
+        )
+    # No declared folder means the lane is controlled (INFISICAL_REQUIRED) but
+    # routes nothing through Infisical yet; the handler is still built so the
+    # credential is proven, and no mapping can reach this path.
+    secret_path = folders[0] if folders else "/"
+
+    try:
+        handler_config = _infisical_bootstrap_config(secret_path)
+    except SecretStoreConfigurationError as exc:
+        raise SecretStoreConfigurationError(
+            f"{exc} Declared Infisical logical names: "
+            f"{sorted(mapping.logical_name for mapping in infisical_mappings)}; "
+            f"INFISICAL_REQUIRED={required}."
+        ) from exc
+    return _build_infisical_handler(handler_config)
+
+
+def _load_lane_resolver_config(config_path: str) -> ModelSecretResolverConfig:
+    """Load the lane's secret-resolver config from its declared sources.
+
+    ``ONEX_SECRET_RESOLVER_CONFIG_PATH`` names the artifact
+    ``omnibase_infra.runtime.render_secret_resolver_config`` writes at boot,
+    but that renderer runs only in ``entrypoint-runtime.sh``. Workloads that
+    inherit the variable from a namespace-wide ConfigMap while overriding the
+    image command (``onex-api``, ``omnimarket-projection-*``) never render it,
+    and this function used to crash there with a bare ``FileNotFoundError``
+    from ``Path.read_text``.
+
+    The declared inline ``ONEX_SECRET_RESOLVER_CONFIG_JSON`` is the SAME source
+    the renderer itself reads first, so consulting it when the rendered
+    artifact is absent is not a fallback default -- it is the same contract
+    read from its authoritative form. With neither present this raises a
+    typed, attributable error naming both surfaces (CLAUDE.md rule 8).
+    """
+    path = Path(config_path)
+    if path.is_file():
+        try:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError) as exc:
+            raise SecretStoreConfigurationError(
+                f"Secret resolver config at {config_path!r} "
+                "(ONEX_SECRET_RESOLVER_CONFIG_PATH) could not be read: "
+                f"{type(exc).__name__}"
+            ) from exc
+        origin = f"ONEX_SECRET_RESOLVER_CONFIG_PATH={config_path!r}"
+    else:
+        inline = os.environ.get(  # ONEX_EXCLUDE: secret_resolver
+            "ONEX_SECRET_RESOLVER_CONFIG_JSON", ""
+        ).strip()
+        if not inline:
+            raise SecretStoreConfigurationError(
+                "ONEX_SECRET_RESOLVER_CONFIG_PATH declares a lane secret "
+                f"mapping at {config_path!r} but no file exists there and "
+                "ONEX_SECRET_RESOLVER_CONFIG_JSON is unset. The rendered "
+                "artifact is written by "
+                "omnibase_infra.runtime.render_secret_resolver_config, which "
+                "runs only in entrypoint-runtime.sh -- a workload that "
+                "overrides the image command must either render it or declare "
+                "the mapping inline."
+            )
+        try:
+            raw = json.loads(inline)
+        except json.JSONDecodeError as exc:
+            raise SecretStoreConfigurationError(
+                "ONEX_SECRET_RESOLVER_CONFIG_JSON is not valid JSON: "
+                f"{type(exc).__name__}"
+            ) from exc
+        origin = "ONEX_SECRET_RESOLVER_CONFIG_JSON"
+
+    if not isinstance(raw, dict):
+        raise SecretStoreConfigurationError(
+            f"Secret resolver config from {origin} must have a mapping root, "
+            f"got {type(raw).__name__}"
+        )
+    try:
+        return ModelSecretResolverConfig.model_validate(raw)
+    except ValidationError as exc:
+        raise SecretStoreConfigurationError(
+            f"Secret resolver config from {origin} failed validation; "
+            f"offending fields: {[err.get('loc') for err in exc.errors()]}"
+        ) from exc
+
+
 @lru_cache(maxsize=1)
 def _configured_secret_store() -> ProtocolSecretStore | None:
     """Return a lane-configured logical secret store when one is declared."""
@@ -189,10 +459,11 @@ def _configured_secret_store() -> ProtocolSecretStore | None:
     if not config_path:
         return None
 
-    path = Path(config_path)
-    raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    config = ModelSecretResolverConfig.model_validate(raw)
-    resolver = SecretResolver(config=config)
+    config = _load_lane_resolver_config(config_path)
+    resolver = SecretResolver(
+        config=config,
+        infisical_handler=_lane_infisical_handler(config),
+    )
     store: ProtocolSecretStore = _MappedSecretStore(resolver)
     return store
 
@@ -571,6 +842,7 @@ def api_key_ref_available(
 
 __all__: list[str] = [
     "SecretResolutionError",
+    "SecretStoreConfigurationError",
     "api_key_ref_available",
     "resolve_api_key",
     "resolve_api_key_async",
