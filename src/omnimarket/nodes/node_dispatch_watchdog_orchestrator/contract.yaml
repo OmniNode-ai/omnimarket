@@ -1,7 +1,14 @@
 ---
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# ONEX Node Contract - Dispatch Watchdog Orchestrator (OMN-12209)
+# ONEX Node Contract - Dispatch Watchdog Orchestrator (OMN-12209, repaired OMN-17017)
+#
+# OMN-17017 made this contract honest and the node reachable. Deleted: two
+# publish topics the node never published (watchdog-stall-detected,
+# watchdog-task-escalated) — stall events and escalations are typed result
+# fields. Implemented: epic-state loading (the only CLI-expressible shape used to
+# raise unconditionally) and the two state-path promises below, which were
+# hardcoded None on every result.
 #
 # Epic-level sidecar: monitors all Task() subagents in a wave for stalls,
 # triggers recovery (report | cancel | redispatch), and escalates blocked tasks
@@ -30,11 +37,16 @@ description: >
     - cancel     : Send shutdown_request; leave ticket incomplete.
     - redispatch : Kill stalled agent; redispatch with narrower scope (default).
 
-  Escalation: when a task exceeds max_redispatches, move ticket to Blocked in
-  Linear, write a friction event to .onex_state/friction/, and log escalation
-  to .onex_state/dispatch-log/{date}.ndjson.
-  Bounded handler slice computes one watchdog pass from injected task state;
-  cancel, redispatch, and escalation side effects require injected adapters.
+  Escalation: when a task exceeds max_redispatches, write a friction event to
+  <state_dir>/friction/ and log the escalation to
+  <state_dir>/dispatch-log/{date}.ndjson. Every check pass also writes
+  <state_dir>/watchdog/watchdog.json and appends a dispatch-log line; both paths
+  are reported on the result. Task state is either injected as wave_tasks or
+  loaded from <state_dir>/epics/<epic_id>/state.yaml when only epic_id is given.
+  Cancel, redispatch, escalation and the durable check record go through
+  ProtocolWatchdogRecoveryAdapter; HandlerWatchdogStateStore is the shipped
+  default, so a live run works without injection and EVERY pass leaves a durable
+  record. dry_run suppresses the mutating recovery actions, not the record.
 
 handler:
   module: omnimarket.nodes.node_dispatch_watchdog_orchestrator.handlers.handler_watchdog
@@ -63,15 +75,14 @@ event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.watchdog-check.v1
   publish_topics:
+    # Terminal event only — published by the runtime on the handler's behalf.
+    # A topic is listed here ONLY when something actually publishes it
+    # (enforced by scripts/ci/check_contract_publish_parity.py, OMN-17017).
     - onex.evt.omnimarket.watchdog-check-completed.v1
-    - onex.evt.omnimarket.watchdog-stall-detected.v1
-    - onex.evt.omnimarket.watchdog-task-escalated.v1
   dlq_topics:
     - onex.dlq.omnimarket.watchdog-check.v1
 
 metadata:
   transport_type: kafka
-  implementation_wave: 2
-  handlers_deferred_until_wave: 2
-  related_tickets: ["OMN-12209"]
+  related_tickets: ["OMN-12209", "OMN-17017"]
   skill_source: omniclaude/plugins/onex/skills/dispatch_watchdog/

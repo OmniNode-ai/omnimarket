@@ -482,8 +482,6 @@ accepted:
 - ORPHANED_PRODUCER::node_dependency_health_sweep::onex.evt.omnimarket.dep-health-finding.v1
 - ORPHANED_PRODUCER::node_design_to_plan::onex.evt.omnimarket.design-to-plan-completed.v1
 - ORPHANED_PRODUCER::node_dispatch_watchdog_orchestrator::onex.evt.omnimarket.watchdog-check-completed.v1
-- ORPHANED_PRODUCER::node_dispatch_watchdog_orchestrator::onex.evt.omnimarket.watchdog-stall-detected.v1
-- ORPHANED_PRODUCER::node_dispatch_watchdog_orchestrator::onex.evt.omnimarket.watchdog-task-escalated.v1
 - ORPHANED_PRODUCER::node_dispatch_worker::onex.evt.omnimarket.dispatch-worker-compiled.v1
 - ORPHANED_PRODUCER::node_env_parity_collect_effect::onex.evt.omnimarket.env-parity-collect-completed.v1
 - ORPHANED_PRODUCER::node_env_parity_compute::onex.evt.omnimarket.env-parity-compute-completed.v1
@@ -650,10 +648,6 @@ accepted:
 - ORPHANED_PRODUCER::node_verification_sweep_orchestrator::onex.evt.omnimarket.verification-sweep-finding.v1
 - ORPHANED_PRODUCER::node_waste_detection_compute::onex.evt.omniintelligence.waste-detected.v1
 - ORPHANED_PRODUCER::node_wave_scheduler_orchestrator::onex.evt.omnimarket.wave-scheduler-completed.v1
-- ORPHANED_PRODUCER::node_wave_scheduler_orchestrator::onex.evt.omnimarket.wave-scheduler-dependency-violation.v1
-- ORPHANED_PRODUCER::node_wave_scheduler_orchestrator::onex.evt.omnimarket.wave-scheduler-stall-detected.v1
-- ORPHANED_PRODUCER::node_wave_scheduler_orchestrator::onex.evt.omnimarket.wave-scheduler-wave-completed.v1
-- ORPHANED_PRODUCER::node_wave_scheduler_orchestrator::onex.evt.omnimarket.wave-scheduler-wave-dispatched.v1
 - ORPHANED_PRODUCER::node_worker_stall_recovery::onex.evt.omnimarket.worker-stall-recovery-result.v1
 - ORPHANED_PRODUCER::overnight::onex.evt.omnimarket.overnight-session-failed.v1
 - ORPHANED_PRODUCER::overnight::onex.evt.omnimarket.overseer-tick.v1

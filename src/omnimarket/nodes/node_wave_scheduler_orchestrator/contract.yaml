@@ -1,11 +1,18 @@
 ---
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# ONEX Node Contract - Wave Scheduler Orchestrator (OMN-12210)
+# ONEX Node Contract - Wave Scheduler Orchestrator (OMN-12210, repaired OMN-17017)
 #
 # Dependency-aware wave scheduler: parse plan file → build dependency DAG →
-# compute execution waves with configurable max concurrency → dispatch parallel
-# agents per wave → monitor stalls → collect results.
+# dispatch one wave at a time → read observed terminal outcomes back → compute
+# the next wave from what actually completed.
+#
+# OMN-17017 made this contract honest. Deleted claims the handler did not
+# implement: stall monitoring, agent_healthcheck integration, and three publish
+# topics the node never published (wave-dispatched, wave-completed,
+# stall-detected, dependency-violation). Dependency violations are returned as a
+# typed result field, not published. The terminal event is published by the
+# runtime, not by the handler.
 name: node_wave_scheduler_orchestrator
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: orchestrator
@@ -13,15 +20,20 @@ node_version: {major: 1, minor: 0, patch: 0}
 node_not_implemented: false
 
 description: >
-  Wave scheduler orchestrator. Consumes a ModelWaveSchedulerRequest carrying
-  a plan file path and max_concurrency cap, builds a dependency DAG from
-  ticket `depends_on` relationships, computes execution waves via topological
-  sort (Kahn's algorithm), and dispatches parallel ticket-pipeline workers per
-  wave. Serialises dependent work across waves; detects cycles and dependency
-  violations; propagates failure cascades so blocked tickets are not dispatched.
-  Integrates with agent_healthcheck for stall detection. Bounded handler slice
-  parses plans, validates dependencies, computes dry-run waves, and requires an
-  injected dispatcher for live ticket-pipeline execution.
+  Wave scheduler orchestrator. Consumes a ModelWaveSchedulerRequest carrying a
+  plan file path and max_concurrency cap, builds a dependency DAG from ticket
+  `depends_on` relationships, and dispatches one wave at a time. Each wave is
+  computed from OBSERVED completion reported by the dispatcher — never from
+  selection — so a failed, stalled or unreported ticket removes its transitive
+  dependent closure from the remaining waves and those tickets are reported
+  BLOCKED without ever being dispatched. A ticket the dispatcher does not report
+  is recorded UNREPORTED and forbids run_status=COMPLETED; a status outside the
+  enum is a hard error. `fail_fast` aborts the run on the first wave carrying any
+  non-COMPLETED ticket. `resume` reads the run's persisted checkpoint and reports
+  `resumed` only when one was actually read. The default effect boundary
+  (HandlerWaveDispatchStateStore) records dispatch-lifecycle transitions as
+  append-only NDJSON under the resolved state dir and reads terminal outcomes
+  back from it; an alternative dispatcher may be injected.
 
 handler:
   module: omnimarket.nodes.node_wave_scheduler_orchestrator.handlers.handler_wave_scheduler_orchestrator
@@ -40,7 +52,10 @@ descriptor:
   node_archetype: orchestrator
   purity: impure
   idempotent: false
-  timeout_ms: 14400000
+  # OMN-17017: was 14400000 (4h), which read as a long-running supervisor. The
+  # handler waits on nothing — it dispatches, reads observed outcomes back from
+  # durable state, and returns. 10 minutes is the honest ceiling.
+  timeout_ms: 600000
   runtime_profiles:
     - effects
 
@@ -50,16 +65,14 @@ event_bus:
   subscribe_topics:
     - onex.cmd.omnimarket.wave-scheduler-start.v1
   publish_topics:
-    - onex.evt.omnimarket.wave-scheduler-wave-dispatched.v1
-    - onex.evt.omnimarket.wave-scheduler-wave-completed.v1
+    # Terminal event only — published by the runtime on the handler's behalf.
+    # A topic is listed here ONLY when something actually publishes it
+    # (enforced by scripts/ci/check_contract_publish_parity.py, OMN-17017).
     - onex.evt.omnimarket.wave-scheduler-completed.v1
-    - onex.evt.omnimarket.wave-scheduler-stall-detected.v1
-    - onex.evt.omnimarket.wave-scheduler-dependency-violation.v1
   dlq_topics:
     - onex.dlq.omnimarket.wave-scheduler.v1
 
 metadata:
   transport_type: kafka
-  implementation_wave: 2
-  handlers_deferred: true
-  related_tickets: ["OMN-12210"]
+  handlers_deferred: false
+  related_tickets: ["OMN-12210", "OMN-17017"]

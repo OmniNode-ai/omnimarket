@@ -15,7 +15,6 @@ from omnimarket.nodes.node_wave_scheduler_orchestrator.handlers.handler_wave_sch
     HandlerWaveSchedulerOrchestrator,
 )
 from omnimarket.nodes.node_wave_scheduler_orchestrator.models.model_wave_scheduler_request import (
-    ModelHealthcheckConfig,
     ModelWaveSchedulerRequest,
 )
 from omnimarket.nodes.node_wave_scheduler_orchestrator.models.model_wave_scheduler_result import (
@@ -87,14 +86,12 @@ def test_wave_scheduler_orchestrator_contract_event_bus() -> None:
         "OMN-15639: event_bus.consumer_group is seam-deleted. The group name is derived from node identity via compute_consumer_group_id(), never declared."
     )
     assert "onex.cmd.omnimarket.wave-scheduler-start.v1" in eb["subscribe_topics"]
-    assert "onex.evt.omnimarket.wave-scheduler-completed.v1" in eb["publish_topics"]
-    assert (
-        "onex.evt.omnimarket.wave-scheduler-wave-dispatched.v1" in eb["publish_topics"]
-    )
-    assert (
-        "onex.evt.omnimarket.wave-scheduler-dependency-violation.v1"
-        in eb["publish_topics"]
-    )
+    # OMN-17017: publish_topics is now exactly the terminal event. The four other
+    # topics this contract declared (wave-dispatched, wave-completed,
+    # stall-detected, dependency-violation) were never published by the node —
+    # its Python contained zero publish/Envelope/event_bus references — so the
+    # declarations were deleted rather than left as machine-readable claims.
+    assert eb["publish_topics"] == ["onex.evt.omnimarket.wave-scheduler-completed.v1"]
     assert "onex.dlq.omnimarket.wave-scheduler.v1" in eb["dlq_topics"]
 
 
@@ -133,17 +130,11 @@ def test_model_wave_scheduler_request_minimal() -> None:
     assert req.resume is False
     assert req.fail_fast is False
     assert req.defer_repo_conflicts is False
-    assert isinstance(req.healthcheck_config, ModelHealthcheckConfig)
+    assert req.state_dir is None
 
 
 @pytest.mark.unit
 def test_model_wave_scheduler_request_all_flags() -> None:
-    hc = ModelHealthcheckConfig(
-        enabled=False,
-        stall_timeout_seconds=600,
-        max_recovery_attempts=5,
-        poll_interval_seconds=60,
-    )
     req = ModelWaveSchedulerRequest(
         plan_path="/absolute/path/plan.yaml",
         max_concurrency=3,
@@ -151,7 +142,7 @@ def test_model_wave_scheduler_request_all_flags() -> None:
         resume=True,
         fail_fast=True,
         defer_repo_conflicts=True,
-        healthcheck_config=hc,
+        state_dir="/tmp/onex-state",
     )
 
     assert req.max_concurrency == 3
@@ -159,8 +150,15 @@ def test_model_wave_scheduler_request_all_flags() -> None:
     assert req.resume is True
     assert req.fail_fast is True
     assert req.defer_repo_conflicts is True
-    assert req.healthcheck_config.enabled is False
-    assert req.healthcheck_config.stall_timeout_seconds == 600
+    assert req.state_dir == "/tmp/onex-state"
+
+
+@pytest.mark.unit
+def test_model_wave_scheduler_request_has_no_healthcheck_config() -> None:
+    """OMN-17017: the four-field healthcheck model had zero handler references
+    and was not CLI-expressible — unreachable AND inert. It was deleted, not
+    re-plumbed; stall detection belongs to node_dispatch_watchdog_orchestrator."""
+    assert "healthcheck_config" not in ModelWaveSchedulerRequest.model_fields
 
 
 @pytest.mark.unit
@@ -195,22 +193,6 @@ def test_model_wave_scheduler_request_max_concurrency_bounds() -> None:
     assert req_high.max_concurrency == 20
 
 
-@pytest.mark.unit
-def test_model_healthcheck_config_defaults() -> None:
-    hc = ModelHealthcheckConfig()
-
-    assert hc.enabled is True
-    assert hc.stall_timeout_seconds == 300
-    assert hc.max_recovery_attempts == 3
-    assert hc.poll_interval_seconds == 30
-
-
-@pytest.mark.unit
-def test_model_healthcheck_config_rejects_extra_fields() -> None:
-    with pytest.raises(ValidationError):
-        ModelHealthcheckConfig(bogus=True)  # type: ignore[call-arg]
-
-
 # ---------------------------------------------------------------------------
 # Output models
 # ---------------------------------------------------------------------------
@@ -232,6 +214,9 @@ def test_model_wave_scheduler_result_minimal() -> None:
     assert result.tickets_completed == 0
     assert result.tickets_failed == 0
     assert result.tickets_blocked == 0
+    assert result.tickets_unreported == 0
+    assert result.tickets_skipped == 0
+    assert result.dispatch_lifecycle_path is None
     assert result.dry_run is False
     assert result.resumed is False
 
@@ -372,14 +357,28 @@ def test_wave_scheduler_orchestrator_dry_run_computes_waves(tmp_path: Path) -> N
 
 
 @pytest.mark.unit
-def test_wave_scheduler_orchestrator_live_requires_dispatcher(tmp_path: Path) -> None:
+def test_wave_scheduler_orchestrator_live_uses_the_default_effect_boundary(
+    tmp_path: Path,
+) -> None:
+    """OMN-17017: a live run no longer raises ``dispatcher adapter required``.
+
+    ``ProtocolWaveDispatcher`` had no implementation anywhere in the repo, and
+    the previous version of THIS test asserted that RuntimeError as expected
+    behaviour — codifying "the executor does not exist" as a passing guardrail.
+    """
     plan = tmp_path / "plan.yaml"
     plan.write_text(
         yaml.safe_dump({"tickets": [{"ticket_id": "OMN-1"}]}),
         encoding="utf-8",
     )
     handler = HandlerWaveSchedulerOrchestrator()
-    request = ModelWaveSchedulerRequest(plan_path=str(plan))
+    request = ModelWaveSchedulerRequest(
+        plan_path=str(plan), state_dir=str(tmp_path / "state")
+    )
 
-    with pytest.raises(RuntimeError, match="dispatcher adapter required"):
-        handler.handle(request)
+    result = handler.handle(request)
+
+    # Nothing acknowledged the dispatch, so the ticket stays visibly pending.
+    assert result.run_status is EnumWaveSchedulerStatus.PARTIAL
+    assert result.tickets_unreported == 1
+    assert result.dispatch_lifecycle_path is not None

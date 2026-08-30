@@ -6,6 +6,11 @@ from omnimarket.nodes.node_dispatch_watchdog_orchestrator.handlers.handler_watch
     HandlerDispatchWatchdogOrchestrator,
     ModelWatchdogRequest,
 )
+from omnimarket.nodes.node_dispatch_watchdog_orchestrator.handlers.handler_watchdog_state_store import (
+    HandlerWatchdogEpicStateReader,
+    HandlerWatchdogStateStore,
+    ModelWatchdogStatePaths,
+)
 from omnimarket.nodes.node_dispatch_watchdog_orchestrator.models.model_watchdog import (
     EnumRecoveryAction,
     EnumTaskStatus,
@@ -20,10 +25,13 @@ __all__ = [
     "EnumRecoveryAction",
     "EnumTaskStatus",
     "HandlerDispatchWatchdogOrchestrator",
+    "HandlerWatchdogEpicStateReader",
+    "HandlerWatchdogStateStore",
     "ModelRecoveryAction",
     "ModelStallEvent",
     "ModelWatchdogRequest",
     "ModelWatchdogResult",
+    "ModelWatchdogStatePaths",
     "ModelWatchdogSummary",
     "ModelWaveTask",
 ]
