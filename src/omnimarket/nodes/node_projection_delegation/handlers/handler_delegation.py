@@ -61,8 +61,11 @@ from omnimarket.projection.runner import (
 from omnimarket.projection.tenant_isolation import (
     house_tenant_write_stamp,
     require_tenant_id,
-    resolve_tenant_uuid_or_none,
     resolve_write_tenant,
+)
+from omnimarket.projection.tenant_registry_resolution import (
+    async_registry_tenant_uuid,
+    resolve_registry_tenant_uuid_or_none,
 )
 
 logger = logging.getLogger(__name__)
@@ -86,6 +89,10 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
         "savings_estimates",
         "session_outcomes",
         "injection_effectiveness",
+        # OMN-16804: READ-ONLY. node_projection_tenant_registry owns and writes
+        # this relation; this handler only asks it to resolve a verified tenant
+        # slug to the canonical UUID the registry recorded at provisioning time.
+        "tenant_registry_mirror",
     }
 )
 
@@ -479,6 +486,28 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         )
         return True
 
+    async def _resolve_write_tenant_uuid(self, tenant_slug: str | None) -> str | None:
+        """Resolve the verified tenant slug on this event to its canonical UUID.
+
+        OMN-16804. The identity comes from ``tenant_registry_mirror``, which
+        ``node_projection_tenant_registry`` materializes from
+        ``onex.tenant.events`` -- the durable outbox ``onex-api`` writes in the
+        same transaction that provisions the tenant. It is therefore the
+        authenticated context's own identifier, carried here through the bus;
+        it is never taken from the caller and never derived from the slug.
+
+        Raises ``TenantRegistryResolutionError`` when no source knows the slug.
+        That reaches the runner's POISON path and quarantines the event, which
+        is the right terminal state for an event nobody can attribute -- the
+        defect this closes was reaching it for ordinary paying customers.
+        """
+        if not tenant_slug or not tenant_slug.strip():
+            return None
+        registry_uuid = await async_registry_tenant_uuid(self.db, tenant_slug)
+        return resolve_registry_tenant_uuid_or_none(
+            tenant_slug, registry_uuid=registry_uuid
+        )
+
     async def _dynamic_upsert(
         self, *, table: str, conflict_key: str, row: dict[str, object]
     ) -> None:
@@ -797,7 +826,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # before it reaches the row. This is the LIVE production write path
         # (the async Kafka runner); the sync CLI path in
         # HandlerProjectionDelegation.project() carries the identical fix.
-        resolved_tenant_uuid = resolve_tenant_uuid_or_none(event.tenant_id)
+        # OMN-16804: that resolution now reads tenant_registry_mirror -- the
+        # relation node_projection_tenant_registry materializes from
+        # onex.tenant.events -- instead of a three-entry dict compiled into
+        # this source tree. Every provisioned tenant resolves, not just the
+        # three that happened to be hardcoded when the column was converted.
+        resolved_tenant_uuid = await self._resolve_write_tenant_uuid(event.tenant_id)
         if resolved_tenant_uuid is not None:
             row["tenant_id"] = resolved_tenant_uuid
         evidence = extract_quality_bar_evidence(row)
@@ -986,7 +1020,12 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # OMN-14898: same fail-closed guard as _project_typed_event_async.
         require_tenant_id(row_model.tenant_id, table=self._table_delegation)
         # OMN-15683: same UUID resolution as _project_typed_event_async above.
-        resolved_tenant_uuid = resolve_tenant_uuid_or_none(row_model.tenant_id)
+        # OMN-16804: registry-resolved, so the terminal row is keyed by the
+        # same canonical UUID the gateway verified -- never omitted to let a
+        # column DEFAULT stand in for an identity nobody recorded.
+        resolved_tenant_uuid = await self._resolve_write_tenant_uuid(
+            row_model.tenant_id
+        )
         if resolved_tenant_uuid is not None:
             row["tenant_id"] = resolved_tenant_uuid
         # OMN-13596: preserve an already-correct response_text when this

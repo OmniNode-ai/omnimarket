@@ -63,7 +63,10 @@ from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.tenant_isolation import (
     house_tenant_write_stamp,
     require_tenant_id,
-    resolve_tenant_uuid_or_none,
+)
+from omnimarket.projection.tenant_registry_resolution import (
+    resolve_registry_tenant_uuid_or_none,
+    sync_registry_tenant_uuid,
 )
 
 TABLE = "delegation_events"
@@ -425,7 +428,15 @@ class HandlerProjectionDelegation:
         # Stamping the raw slug here would either fail the INSERT (unmapped
         # value) or, worse, silently key the row under a representation the
         # gateway's UUID-keyed reader can never join against again.
-        resolved_tenant_uuid = resolve_tenant_uuid_or_none(event.tenant_id)
+        # OMN-16804: resolved against tenant_registry_mirror -- the relation
+        # node_projection_tenant_registry materializes from onex.tenant.events
+        # -- rather than a three-entry dict compiled into this source tree, so
+        # every provisioned tenant resolves rather than only the three that
+        # were hardcoded when the column was converted.
+        resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
+            event.tenant_id,
+            registry_uuid=sync_registry_tenant_uuid(db, event.tenant_id or ""),
+        )
         if resolved_tenant_uuid is not None:
             row["tenant_id"] = resolved_tenant_uuid
         evidence = extract_quality_bar_evidence(row)
@@ -560,7 +571,11 @@ class HandlerProjectionDelegation:
         # and leaves an already-known tenant untouched on UPDATE.
         # OMN-15683: same UUID resolution as project() above — see that
         # call site's comment for why the raw slug must never reach the row.
-        resolved_tenant_uuid = resolve_tenant_uuid_or_none(row_model.tenant_id)
+        # OMN-16804: see the registry-resolution note on project() above.
+        resolved_tenant_uuid = resolve_registry_tenant_uuid_or_none(
+            row_model.tenant_id,
+            registry_uuid=sync_registry_tenant_uuid(db, row_model.tenant_id or ""),
+        )
         if resolved_tenant_uuid is not None:
             row["tenant_id"] = resolved_tenant_uuid
         # OMN-13596: preserve an already-correct response_text when this
