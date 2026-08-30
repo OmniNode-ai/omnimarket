@@ -175,7 +175,14 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # omninode_internal.tenant_registry_mirror -- the cross-tenant slug<->uuid
     # index that the OMN-16930 registry-resolved migration conversion reads
     # to convert legacy slug-keyed rows to canonical tenant uuid = 63.
-    assert census["source_created_tables"] == 63
+    # +1 for OMN-17019's node-owned node_projection_open_obligations
+    # /0001_create_open_obligations.sql, which creates
+    # omninode_internal.open_obligations -- the materialized "what is currently
+    # owed" fold over the five work.obligation.* events = 64. Unlike OMN-16180,
+    # this ticket lands the ownership declaration and the node's own migration
+    # in ONE omnimarket PR, so the relation goes straight to classification
+    # "classified" and BOTH counts move together in this PR.
+    assert census["source_created_tables"] == 64
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -209,7 +216,13 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # (tenant_registry_mirror), required by the shadow gate since its own
     # migration creates the table in the same PR (declare and create land
     # together here, unlike the cross-repo two-step above) = 67.
-    assert census["source_declared_tables"] == 67
+    # +1 for OMN-17019's open_obligations catalog declaration in
+    # scripts/application-relation-ownership.yaml = 68, landing in the same PR
+    # as the migration that creates it (see the source_created_tables note
+    # above). The forced split OMN-16180 lived through applies to the
+    # omnibase_infra VENDORING PR, not to the omnimarket PR that authors both
+    # sides -- so this ticket does not repeat the two-count-move sequence.
+    assert census["source_declared_tables"] == 68
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -231,7 +244,12 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # table, so the same arithmetic drops the bound by one again. Same
     # caveat -- the 2026-07-29 census predates this table, so this stays a
     # LOWER bound, not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 23
+    # 22 as of OMN-17019: open_obligations is one more source-created table, so
+    # the same max(0, 86 - source_created_tables) arithmetic drops the bound by
+    # one. Same caveat as every entry above -- the census was observed
+    # 2026-07-29 and this table did not exist then, so this remains a LOWER
+    # bound on unreconciled live tables, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 22
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

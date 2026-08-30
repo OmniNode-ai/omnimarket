@@ -1,0 +1,144 @@
+---
+name: projection_open_obligations
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  Folds the five work-obligation lifecycle events (created, transferred,
+  satisfied, superseded, abandoned) into omninode_internal.open_obligations --
+  the materialized "what is currently owed" projection of the OMN-16176
+  L0 -> L1 -> L2 ladder (OMN-17019 / C9). One obligation is one row, keyed on
+  obligation_id, folded across its whole lifecycle. Each event writes ONLY the
+  columns its own kind owns, and `state` / `owed_by` are Postgres GENERATED
+  columns over those facts, so a consumer restarting from an earlier partition
+  offset cannot reopen a closed obligation or hand it back to a previous owner.
+  The append-only event log stays the authority; this table is a view of it.
+  session-goal.md, ROLLING_SEVEN_DAY_PLAN.md, the rolling ledger's open-ask
+  section and the session handoff are RENDERERS over this projection -- none of
+  them is a store. Claims arbitration is NOT here: OMN-16179 (C3) keeps it on a
+  compacted Kafka view precisely so a reducer outage degrades rendering only
+  and never the ability to claim work.
+
+handler:
+  module: omnimarket.nodes.node_projection_open_obligations.handlers.handler_projection_open_obligations
+  class: HandlerProjectionOpenObligations
+  input_model: omnimarket.nodes.node_projection_open_obligations.models.model_obligation_event.ModelObligationEventInbound
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - topic: onex.evt.omniclaude.work-obligation-created.v1
+      operation: obligation_created_projected
+      event_model:
+        name: ModelObligationEventInbound
+        module: omnimarket.nodes.node_projection_open_obligations.models.model_obligation_event
+      handler:
+        name: HandlerProjectionOpenObligations
+        module: omnimarket.nodes.node_projection_open_obligations.handlers.handler_projection_open_obligations
+    - topic: onex.evt.omniclaude.work-obligation-transferred.v1
+      operation: obligation_transferred_projected
+      event_model:
+        name: ModelObligationEventInbound
+        module: omnimarket.nodes.node_projection_open_obligations.models.model_obligation_event
+      handler:
+        name: HandlerProjectionOpenObligations
+        module: omnimarket.nodes.node_projection_open_obligations.handlers.handler_projection_open_obligations
+    - topic: onex.evt.omniclaude.work-obligation-satisfied.v1
+      operation: obligation_satisfied_projected
+      event_model:
+        name: ModelObligationEventInbound
+        module: omnimarket.nodes.node_projection_open_obligations.models.model_obligation_event
+      handler:
+        name: HandlerProjectionOpenObligations
+        module: omnimarket.nodes.node_projection_open_obligations.handlers.handler_projection_open_obligations
+    - topic: onex.evt.omniclaude.work-obligation-superseded.v1
+      operation: obligation_superseded_projected
+      event_model:
+        name: ModelObligationEventInbound
+        module: omnimarket.nodes.node_projection_open_obligations.models.model_obligation_event
+      handler:
+        name: HandlerProjectionOpenObligations
+        module: omnimarket.nodes.node_projection_open_obligations.handlers.handler_projection_open_obligations
+    - topic: onex.evt.omniclaude.work-obligation-abandoned.v1
+      operation: obligation_abandoned_projected
+      event_model:
+        name: ModelObligationEventInbound
+        module: omnimarket.nodes.node_projection_open_obligations.models.model_obligation_event
+      handler:
+        name: HandlerProjectionOpenObligations
+        module: omnimarket.nodes.node_projection_open_obligations.handlers.handler_projection_open_obligations
+
+descriptor:
+  node_archetype: reducer
+  purity: pure
+  idempotent: true
+  timeout_ms: 30000
+
+# Topic order is load-bearing: handler_projection_open_obligations._load_topics
+# resolves the five topics BY POSITION, in EnumObligationEventKind declaration
+# order, and refuses to import unless exactly five are declared. Reordering this
+# list reclassifies every projected event -- a `satisfied` would be folded as a
+# `created`. The handler's own import-time guard is what makes that reordering
+# fail loudly instead of silently corrupting the projection.
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.work-obligation-created.v1
+    - onex.evt.omniclaude.work-obligation-transferred.v1
+    - onex.evt.omniclaude.work-obligation-satisfied.v1
+    - onex.evt.omniclaude.work-obligation-superseded.v1
+    - onex.evt.omniclaude.work-obligation-abandoned.v1
+  # The RUNTIME publishes this, not the handler. handler_wiring emits the
+  # terminal applied-event only when the returned
+  # ModelProjectionOpenObligationsResult carries rows_upserted >= 1 (OMN-13360
+  # deterministic-truth gate) -- so the event asserts a durable row actually
+  # landed, never merely that handle() did not raise.
+  publish_topics:
+    - onex.evt.omnimarket.projection-open-obligations-applied.v1
+
+# Terminal deterministic-truth assertion consumed by the observability plane
+# (event ledger, dashboards, the session-closeout renderer), not by another
+# omnimarket node. Declaring it here is the sanctioned way to satisfy the
+# contract-topic-graph gate; adding it to that gate's baseline is NOT, because
+# the baseline is frozen pre-existing debt that may only shrink.
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-open-obligations-applied.v1
+
+db_io:
+  db_tables:
+    - name: open_obligations
+      database_ref: application
+      schema: omninode_internal
+      migration: "0001_create_open_obligations.sql"
+      access: write
+      role: open_obligations
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.work.open-obligations.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "open_obligations"
+  schema: "omninode_internal"
+  columns:
+    - "obligation_id"
+    - "state"
+    - "owed_by"
+    - "asked_by"
+    - "acceptance_condition"
+    - "opened_summary"
+    - "ticket_id"
+    - "created_at"
+    - "closed_at"
+    - "evidence_uri"
+    - "delivery_state"
+    - "superseded_by"
+    - "abandon_reason"
+    - "last_event_kind"
+    - "last_event_at"
+  # last_event_at, not created_at: freshness is "when did this projection last
+  # learn anything", which is the newest applied event, not the oldest open ask.
+  order_by: "last_event_at DESC"
+  freshness_column: "last_event_at"
+  limit: 500
+
+metadata:
+  transport_type: kafka

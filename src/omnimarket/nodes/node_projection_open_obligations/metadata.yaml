@@ -1,0 +1,23 @@
+name: node_projection_open_obligations
+version: "1.0.0"
+description: "Folds work-obligation lifecycle events into the omninode_internal.open_obligations 'what is currently owed' projection"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_open_obligations: "omnimarket.nodes.node_projection_open_obligations"
+capabilities:
+  standalone: true
+  full_runtime: true
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["work-ledger", "obligations", "projection", "reducer", "observability"]
+pack: "data"
+display_name: "Open Obligations Projection"
+node_role: "reducer"
