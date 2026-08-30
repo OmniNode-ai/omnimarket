@@ -105,7 +105,7 @@ def _isolated_lane(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _set_bootstrap_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("INFISICAL_ADDR", "http://infisical.dev.svc.cluster.local:8080")
+    monkeypatch.setenv("INFISICAL_ADDR", "http://infisical.example.invalid:8080")
     monkeypatch.setenv("INFISICAL_CLIENT_ID", "id-not-a-secret-value")
     monkeypatch.setenv("INFISICAL_CLIENT_SECRET", "unit-test-placeholder")
     monkeypatch.setenv("INFISICAL_PROJECT_ID", _PROJECT_UUID)
@@ -203,7 +203,7 @@ class TestDeclaredButUnreadableIsLoud:
     async def test_error_names_variables_never_values(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setenv("INFISICAL_ADDR", "http://infisical.invalid:8080")
+        monkeypatch.setenv("INFISICAL_ADDR", "http://infisical.example.invalid:8080")
         monkeypatch.setenv("INFISICAL_CLIENT_ID", "id-not-a-secret-value")
         monkeypatch.setenv("INFISICAL_CLIENT_SECRET", "unit-test-placeholder")
         # INFISICAL_PROJECT_ID / _ENVIRONMENT_SLUG deliberately absent.
