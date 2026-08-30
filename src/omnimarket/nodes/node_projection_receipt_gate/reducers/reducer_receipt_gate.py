@@ -55,20 +55,33 @@ def _rows_from_event(event: dict[str, object]) -> list[ModelReceiptGateRow]:
         event.get("_event_type") or event.get("event_type") or event.get("type") or ""
     )
 
+    # OMN-17210: an EXPLICIT event-type hint wins outright. The previous
+    # dispatch OR-ed the hint with the structural probe
+    # (``"evidence-validated" in event_type or "evidence_lifecycle_state" in
+    # event``), so a verification receipt that merely carried an
+    # ``evidence_lifecycle_state`` field was projected as an ``occ-evidence``
+    # row even when the caller had said otherwise. That was invisible while the
+    # only caller was the in-memory ``handle_dict`` shim; it is not invisible
+    # once HandlerReceiptGateProjectionRunner passes the Kafka topic through as the
+    # hint and the misclassified row is written to receipt_gate_rows and
+    # rendered. Structural sniffing below is unchanged and still the whole
+    # behaviour for a hint-less event -- it is now the FALLBACK it was always
+    # described as, not a competing signal.
+    if "evidence-validated" in event_type:
+        return [_row_from_evidence_validated(event)]
+    if "verification-receipt" in event_type:
+        return _rows_from_verification_receipt(event)
+
     # Evidence-validated events from node_occ_evidence_validator_compute.
-    if "evidence-validated" in event_type or "evidence_lifecycle_state" in event:
+    if "evidence_lifecycle_state" in event:
         return [_row_from_evidence_validated(event)]
 
     # Verification-receipt-completed events produce one row per check dimension.
     # Detect by: explicit event_type hint, presence of "checks" list, or presence
     # of canonical receipt fields (overall_pass + verified_at / task_id).
-    _is_receipt = (
-        "checks" in event
-        or "verification-receipt" in event_type
-        or (
-            "overall_pass" in event
-            and ("verified_at" in event or "task_id" in event or "pr_number" in event)
-        )
+    _is_receipt = "checks" in event or (
+        "overall_pass" in event
+        and ("verified_at" in event or "task_id" in event or "pr_number" in event)
     )
     if _is_receipt:
         return _rows_from_verification_receipt(event)
