@@ -802,10 +802,6 @@ EXEMPT_CONTEXTS: dict[tuple[str, str], str] = {
         ".onex_state/dep_health_baseline.json is committed — no separate "
         "promotion PR needed then; out of this wave's scope."
     ),
-    ("receipt-honesty.yml", "receipt-honesty"): (
-        "self-declared staged, not yet promoted (file header: "
-        "'Required-status-check name (when later flipped)')."
-    ),
     ("shellcheck-gate.yml", "shell-hygiene"): (
         "self-declared 'can be promoted to a required status check' — "
         "promotion deliberately deferred."

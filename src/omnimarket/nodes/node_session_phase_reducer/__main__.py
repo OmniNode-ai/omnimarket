@@ -22,7 +22,12 @@ from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
-        description="Session phase state reducer — apply an event to the current phase state."
+        description=(
+            "Session phase state reducer — fold ONE event and print the "
+            "resulting phase state. Preview only: the durable state of record "
+            "is a database row the runtime maintains on the bus path "
+            "(OMN-16924), so this command reads and writes nothing."
+        )
     )
     parser.add_argument(
         "--event-type",
@@ -48,19 +53,17 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="Number of active workers.",
     )
-    parser.add_argument(
-        "--state-path",
-        default=".onex_state/session/phase_state.yaml",
-        help=(
-            "Path to phase_state.yaml. This is BOTH the prior-state source and "
-            "the write target — the reducer folds onto whatever it last wrote."
-        ),
-    )
     args = parser.parse_args(argv)
 
     # OMN-16790: the handler's def-B input is the WIRE payload of one event, not
-    # a {state, event} envelope. Prior state is read from --state-path, the same
-    # projection file the bus path reads, so the CLI and the bus fold identically.
+    # a {state, event} envelope.
+    #
+    # OMN-16924: `--state-path` is GONE, with no replacement. The reducer's
+    # state of record is a row in the database, loaded and persisted by the
+    # runtime's state_io dispatch seam around handle(); a CLI process is not the
+    # runtime and does not touch the database. So this command folds ONE event
+    # against NO prior state and prints the result — a preview of the delta, not
+    # a state mutation. Durable folds happen on the bus.
     request = ModelSessionPhaseReducerInput(
         event_type=args.event_type,
         session_id=args.session_id,
@@ -71,10 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         active_worker_count=args.active_worker_count,
     )
 
-    result = HandlerSessionPhaseReducer().handle(
-        request,
-        state_path=args.state_path,
-    )
+    result = HandlerSessionPhaseReducer().handle(request)
     sys.stdout.write(json.dumps(result, indent=2) + "\n")
     return 0
 

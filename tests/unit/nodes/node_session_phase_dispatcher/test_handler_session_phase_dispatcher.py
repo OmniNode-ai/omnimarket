@@ -10,6 +10,7 @@ Three cases from the ticket spec:
 
 from __future__ import annotations
 
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
@@ -67,6 +68,30 @@ class TestDispatcherPublishesPhaseState:
         assert "timestamp" in evt.payload
         assert evt.payload["transition"] == "enter"
         assert evt.payload["session_id"] == "sess-2026-05-18-test"
+
+    def test_phase_state_event_carries_a_parseable_emitted_at(self) -> None:
+        """OMN-16955: the wire message must carry a timestamp.
+
+        ``ModelSessionPhaseReducerInput._require_an_event_timestamp`` rejects
+        any phase-state message with neither ``emitted_at`` nor ``timestamp``
+        — this dispatcher was, until OMN-16955, the ONLY producer of
+        ``onex.evt.omnimarket.session-phase-state.v1`` and emitted neither,
+        so every one of its messages DLQ'd at the adapter boundary.
+        """
+        handler = HandlerSessionPhaseDispatcher()
+        cmd = _make_cmd(transition="enter")
+        result = handler.handle(ModelSessionPhaseDispatcherInput(commands=(cmd,)))
+
+        phase_state_events = [
+            e for e in result.events if e.event_type == _EVENT_TYPE_PHASE_STATE
+        ]
+        assert len(phase_state_events) == 1
+        emitted_at = phase_state_events[0].payload["emitted_at"]
+        assert isinstance(emitted_at, str), "emitted_at must be a string"
+        assert emitted_at, "emitted_at must be non-empty"
+        # datetime.fromisoformat raises ValueError on anything unparseable —
+        # letting it propagate is the assertion.
+        datetime.fromisoformat(emitted_at)
 
 
 @pytest.mark.unit

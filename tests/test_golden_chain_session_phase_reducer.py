@@ -15,40 +15,46 @@ Related:
     - OMN-11230: session phase reducer
     - OMN-13283: canonical node-purity validator rollout
     - OMN-16790: fold the WIRE payload, not a hand-built local envelope
+    - OMN-16924: the fold's durable output is a database row, not a YAML file
 """
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from pathlib import Path
 
 import pytest
-import yaml
 
 from omnimarket.nodes.node_session_phase_reducer.handlers.handler_session_phase_reducer import (
     HandlerSessionPhaseReducer,
     ModelSessionPhaseReducerInput,
 )
+from tests.session_phase_state_io_harness import StateIoRowStore, state_io_dispatch
 
 
 @pytest.mark.unit
-def test_session_phase_reducer_golden_chain_start_projection(tmp_path: Path) -> None:
-    """session.started -> reducer output projection + phase_state.yaml."""
+def test_session_phase_reducer_golden_chain_start_projection() -> None:
+    """session.started -> reducer projection + the durable session_phase_state row.
+
+    OMN-16924: the chain's terminal artifact is the database row the runtime
+    persists after handle(), not a YAML file. ``state_io_dispatch`` plays the
+    runtime's part around the fold.
+    """
     handler = HandlerSessionPhaseReducer()
-    state_path = tmp_path / "phase_state.yaml"
+    store = StateIoRowStore()
+    session_id = "session-golden-chain"
     timestamp = datetime(2026, 6, 19, 2, 30, 0, tzinfo=UTC)
 
-    result = handler.handle(
-        ModelSessionPhaseReducerInput(
-            event_type="session.started",
-            session_id="session-golden-chain",
-            timestamp=timestamp,
-            phase="health_gate",
-            budget_elapsed_pct=10,
-            active_worker_count=2,
-        ),
-        state_path=str(state_path),
-    )
+    with state_io_dispatch(store, session_id):
+        result = handler.handle(
+            ModelSessionPhaseReducerInput(
+                event_type="session.started",
+                session_id=session_id,
+                timestamp=timestamp,
+                phase="health_gate",
+                budget_elapsed_pct=10,
+                active_worker_count=2,
+            )
+        )
     serialized_timestamp = "2026-06-19T02:30:00Z"
 
     assert result["projections"] == [
@@ -66,7 +72,8 @@ def test_session_phase_reducer_golden_chain_start_projection(tmp_path: Path) -> 
         }
     ]
 
-    state = yaml.safe_load(state_path.read_text())
-    assert state["session_id"] == "session-golden-chain"
-    assert state["current_phase"] == "health_gate"
-    assert state["budget_elapsed_pct"] == 10
+    persisted = store.load(session_id)
+    assert persisted is not None, "the golden chain persisted no durable row"
+    assert persisted.session_id == session_id
+    assert persisted.current_phase == "health_gate"
+    assert persisted.budget_elapsed_pct == 10

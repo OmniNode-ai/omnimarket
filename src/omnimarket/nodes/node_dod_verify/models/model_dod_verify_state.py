@@ -77,6 +77,30 @@ class EnumEvidenceUnverifiableCause(StrEnum):
     # Remedy: add the repo to the installation.
     REPO_NOT_ACCESSIBLE_TO_CREDENTIAL = "repo_not_accessible_to_credential"
 
+    # OMN-16846 D2. The clone named by a check's ``cwd`` is BEHIND its own
+    # remote-tracking branch, so the tree the command would execute against is
+    # not the tree under adjudication. Measured live 2026-08-28: the canonical
+    # ``omnibase_core`` clone sat 2 commits behind ``origin/dev``, missing the
+    # very merge being verified, and ``uv run pytest <new test file>`` returned
+    # "collected 0 items / no tests ran" — a verdict indistinguishable in the
+    # receipt from "the tests were never written". 9 of 12 canonical clones
+    # were behind that same session (up to -22), so this is the machine's
+    # normal state, not an edge case. Remedy: fast-forward the named clone.
+    PRODUCT_CLONE_STALE = "product_clone_stale"
+    # OMN-16846 D2, fail-closed arm. Freshness of the clone named by ``cwd``
+    # could not be established at all — it is not a git repository, has no
+    # upstream to compare against, or the ``git fetch`` that would resolve the
+    # comparison failed. UNKNOWN must never read as fresh (the OMN-15454 rule,
+    # applied to the product clone instead of the OCC one).
+    PRODUCT_CLONE_FRESHNESS_UNKNOWN = "product_clone_freshness_unknown"
+    # OMN-16846 D1. The OMN-15620 venv-purity gate refused the venv at
+    # ``pytest_configure`` — before collection, before any test module import.
+    # The command exited non-zero having executed NOTHING about the product, so
+    # recording it FAILED asserts a defect the run never looked for. Positively
+    # identified from the gate's own verbatim refusal banner, never inferred
+    # from a bare non-zero exit.
+    GATE_VENV_IMPURE = "gate_venv_impure"
+
 
 class EnumOccRefRefreshOutcome(StrEnum):
     """Outcome of refreshing the OCC governance ref's remote-tracking branch.
@@ -96,6 +120,76 @@ class EnumOccRefRefreshOutcome(StrEnum):
     # the test-override case) has no remote to fetch at all; this is not a
     # failure and must keep resolving exactly as before (AC4).
     NOT_APPLICABLE = "not_applicable"
+
+
+class EnumProductCloneFreshness(StrEnum):
+    """Freshness of the PRODUCT clone a behaviour check executes in (OMN-16846).
+
+    ``node_dod_verify`` already refreshes and pins the CONTRACT repo — the
+    receipt carries ``occ_governance_ref``, ``occ_refresh_outcome`` and
+    ``occ_resolved_sha``. It asserted nothing at all about the clone the
+    ``test_passes`` commands actually run in, and recorded no tree SHA for it,
+    so two runs of the same contract against different trees produced receipts
+    a reader cannot tell apart. This enum is the product-clone counterpart of
+    ``EnumOccRefRefreshOutcome``.
+    """
+
+    # HEAD contains every commit its upstream has. AHEAD is deliberately not a
+    # distinct value: a worktree parked on a feature branch is legitimately
+    # ahead of ``origin/dev``, and refusing that would break verification of
+    # the very branch under review. Only MISSING commits falsify a verdict.
+    FRESH = "fresh"
+    # HEAD is behind its upstream — the tree lacks commits the remote has.
+    STALE = "stale"
+    # Tracked files differ from HEAD, so the executed tree is not any commit
+    # and the recorded SHA would misattribute the result. Untracked files are
+    # deliberately NOT dirt: build artefacts, caches and scratch files litter
+    # every canonical clone, and refusing on them would make the gate
+    # unusable without catching the failure mode it exists for.
+    DIRTY = "dirty"
+    # The clone IS a git repository, but freshness could not be established:
+    # no upstream is configured for HEAD, or the comparison fetch failed.
+    # UNKNOWN never reads as FRESH (OMN-15454's rule).
+    UNKNOWN = "unknown"
+    # The declared ``cwd`` is not inside a git repository at all — a scratch
+    # or generated directory. There is no tree it could be stale against, so
+    # there is nothing for this gate to assert and no provenance to record.
+    # Distinct from UNKNOWN on purpose: UNKNOWN means "there is a tree here
+    # and we could not pin it", which is a refusal; this means the question
+    # does not arise. ``_resolve_cwd`` has already proven the path exists, so
+    # this cannot mask a typo'd repository path.
+    NOT_APPLICABLE = "not_applicable"
+
+
+class ModelProductCloneResolution(BaseModel):
+    """What tree a check's declared ``cwd`` resolved to, and how fresh it was.
+
+    Recorded on the check result so a receipt reader can answer "which tree
+    produced this verdict?" without re-running anything (OMN-16846 AC5).
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    repo_root: str = Field(
+        ..., description="Absolute path of the git repository the check ran in."
+    )
+    freshness: EnumProductCloneFreshness = Field(...)
+    head_sha: str | None = Field(
+        default=None,
+        description="40-char commit SHA of the tree the check executed against.",
+    )
+    upstream_ref: str | None = Field(
+        default=None,
+        description="Remote-tracking ref HEAD was compared against (e.g. origin/dev).",
+    )
+    behind_count: int | None = Field(
+        default=None,
+        ge=0,
+        description="Commits present on the upstream ref but absent from HEAD.",
+    )
+    detail: str | None = Field(
+        default=None, description="Why freshness is UNKNOWN, when it is."
+    )
 
 
 class ModelEvidenceCheckResult(BaseModel):
@@ -133,6 +227,17 @@ class ModelEvidenceCheckResult(BaseModel):
     proof_class: EnumCheckProofClass = Field(
         default=EnumCheckProofClass.INDETERMINATE,
         description="What this check binds: behavior / merge-state / surrogate.",
+    )
+
+    # OMN-16846 AC5: the tree(s) this item's commands actually executed in, one
+    # entry per distinct repository a check's declared ``cwd`` resolved to.
+    # Empty for every item whose checks declare no ``cwd`` (they inherit the
+    # caller's directory or the auto-injected OCC root, which the OCC
+    # provenance fields above already pin). Ordered by first resolution so the
+    # receipt is stable across runs.
+    product_clones: tuple[ModelProductCloneResolution, ...] = Field(
+        default=(),
+        description="Per-repository tree provenance for this item's commands.",
     )
 
     @model_validator(mode="after")
@@ -209,6 +314,8 @@ __all__: list[str] = [
     "EnumEvidenceCheckStatus",
     "EnumEvidenceUnverifiableCause",
     "EnumOccRefRefreshOutcome",
+    "EnumProductCloneFreshness",
     "ModelDodVerifyState",
     "ModelEvidenceCheckResult",
+    "ModelProductCloneResolution",
 ]
