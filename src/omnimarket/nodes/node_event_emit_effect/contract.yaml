@@ -247,6 +247,54 @@ envelope_enrichment:
     source: registries/topics.yaml events.<event_type>.fan_out[].transform
     supported: [passthrough, strip_prompt, strip_body]
 
+    # OMN-17237: the seam fails CLOSED. Three paths previously reached the
+    # wire without entering the transform pipeline, each defaulting to a
+    # verbatim publish -- the failure direction that discloses. Declared here
+    # rather than left implicit in the handler so the posture is contract
+    # -visible and a regression is a contract diff, not a silent code change.
+    #
+    # Every refusal below raises a subclass of
+    # omnimarket.nodes.node_event_emit_effect.errors.EmitRedactionError
+    # (itself a ValueError), carries structured attributes for DLQ routing,
+    # and fires BEFORE anything is spooled -- a refused publish leaves zero
+    # spool records, so the backlog drain cannot re-publish it later.
+    fail_closed:
+      unresolvable_transform_name:
+        # A registry typo, or a transform declared but never implemented.
+        rule: refuse
+        raises: UnknownTransformError
+        note: >-
+          Diverges from the legacy daemon, which logs a warning and falls
+          back to passthrough. Unreachable on the registry as it stands --
+          test_transform_fail_closed asserts every declared fan_out[].
+          transform resolves -- so wire parity is unaffected.
+      topic_override:
+        # ModelEmitRequest.topic publishes to one topic outside the event's
+        # declared fan-out set. It does NOT escape the redaction contract.
+        rule: resolve_or_refuse
+        resolution_order:
+          - the transform declared by fan-out rules targeting that topic
+          - the transform declared by the event_type's own fan-out rules,
+            when they agree on one posture
+        raises: [AmbiguousTransformError, UnresolvableTransformError]
+        note: >-
+          An override may not weaken the redaction its event declares. Rules
+          that disagree (prompt.submitted declares none on its cmd topic and
+          strip_prompt on its evt topic) are ambiguous, not permissive:
+          refuse. A topic declared nowhere under an unregistered or
+          zero-fan-out event has no posture at all: refuse.
+      non_object_payload:
+        # A list/str/number/bool has no field surface for a field-level
+        # transform to act on.
+        rule: refuse
+        raises: NonMappingPayloadError
+        null_payload: coerced_to_empty_object
+        note: >-
+          Narrows this node back to daemon parity rather than adding a
+          restriction: socket_server._handle_emit already rejects these with
+          "'payload' must be a JSON object". Null is coerced to {} first, as
+          the daemon does, since an empty object discloses nothing.
+
   partition_key:
     # Derived from the POST-transform payload, matching the daemon's
     # get_partition_key(event_type, rule.apply_transform(enriched)) ordering.

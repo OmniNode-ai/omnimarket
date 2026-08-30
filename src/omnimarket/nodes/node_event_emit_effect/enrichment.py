@@ -50,6 +50,8 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
+from omnimarket.nodes.node_event_emit_effect.errors import UnknownTransformError
+
 JsonDict = dict[str, object]
 
 #: Emitted verbatim into every payload. Matches
@@ -207,17 +209,31 @@ TRANSFORM_REGISTRY: dict[str, Callable[[JsonDict], JsonDict]] = {
 
 
 def apply_transform(transform_name: str | None, payload: JsonDict) -> JsonDict:
-    """Apply the named registry transform, mirroring ``FanOutRule.apply_transform``.
+    """Apply the named registry transform, refusing an unresolvable name.
 
-    An absent name, ``passthrough``, and an unknown name all resolve to a
-    shallow copy -- the daemon logs a warning for an unknown name and falls
-    back to passthrough (``EventRegistry.from_yaml``), so the wire result is
-    the same.
+    ``None`` and ``passthrough`` resolve to a shallow copy. ``None`` is the
+    registry *declaring* that a fan-out rule needs no transform -- the case
+    for 60 of the 62 registered events -- so it is a posture, not a miss.
+
+    An unknown NAME is a hard refusal (OMN-17237, H1). This deliberately
+    diverges from ``FanOutRule.apply_transform``, which logs a warning and
+    falls back to passthrough: that fallback publishes exactly the content
+    the named transform exists to remove, so a registry typo or a transform
+    declared but never implemented becomes a silent information disclosure.
+    The divergence is safe for wire parity because it is unreachable on the
+    registry as it stands -- ``test_transform_fail_closed`` asserts every
+    ``fan_out[].transform`` in ``topics.yaml`` resolves, so this branch can
+    only fire on a name that was never publishable in the first place.
+
+    Raises:
+        UnknownTransformError: ``transform_name`` has no implementation.
     """
     if transform_name is None:
         return dict(payload)
     transform = TRANSFORM_REGISTRY.get(transform_name)
-    if transform is None or transform is transform_passthrough:
+    if transform is None:
+        raise UnknownTransformError(transform_name, tuple(TRANSFORM_REGISTRY))
+    if transform is transform_passthrough:
         return dict(payload)
     return transform(payload)
 

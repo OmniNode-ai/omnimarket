@@ -24,6 +24,11 @@ from typing import Any
 
 import yaml
 
+from omnimarket.nodes.node_event_emit_effect.errors import (
+    AmbiguousTransformError,
+    UnresolvableTransformError,
+)
+
 
 class EnumDurabilityTier(StrEnum):
     """Per-topic durability tier, as declared in the event registry.
@@ -199,6 +204,107 @@ def resolve_partition_key_field(
     return _registration(event_type, registry_path=registry_path).partition_key_field
 
 
+@lru_cache(maxsize=8)
+def _load_topic_transform_index(path_str: str) -> dict[str, frozenset[str | None]]:
+    """Invert the registry: topic -> the set of transforms declared FOR it.
+
+    The registry is authored event-first, but a topic override arrives
+    topic-first: the caller names a topic and no fan-out rule. This index is
+    what lets that topic still carry the redaction its own rule declares
+    (OMN-17237, H2).
+
+    The value is a set because a topic may legitimately appear under more than
+    one event. A set of size > 1 means those declarations disagree about what
+    may reach the topic -- an ambiguity the caller must resolve in the
+    registry, not one this module may silently pick a winner for. ``None`` is
+    a member of the set like any other value: "declared, needs no transform".
+    """
+    index: dict[str, set[str | None]] = {}
+    for registration in _load_registry(path_str).values():
+        for resolved in registration.topics:
+            index.setdefault(resolved.topic, set()).add(resolved.transform_name)
+    return {topic: frozenset(names) for topic, names in index.items()}
+
+
+def resolve_override_transform(
+    topic: str, event_type: str, *, registry_path: Path | None = None
+) -> str | None:
+    """Resolve the redaction posture for a caller-supplied topic override.
+
+    ``ModelEmitRequest.topic`` publishes to exactly one topic instead of the
+    event's declared fan-out set. Before OMN-17237 that path hardcoded
+    ``transform_name=None``, so ANY override published untransformed --
+    including onto ``agent.chat.broadcast``'s own observability topic, which
+    declares ``strip_body`` precisely so raw chat bodies never land there.
+    The escape hatch was a bypass of the entire registry.
+
+    Resolution order, most specific first:
+
+    1. **The topic's own declaration.** If any fan-out rule in the registry
+       targets this topic, that rule's transform applies. The topic is what is
+       being written to, so what the registry says may reach it wins -- even
+       when the override is issued under a different ``event_type``.
+    2. **The event's declaration.** For a topic absent from the registry, the
+       payload still came from a registered event, and an override must not be
+       a way to shed the redaction that event declares. When the event's own
+       fan-out rules agree on one posture, it follows the payload to wherever
+       the override points it.
+    3. **Refuse.** Anything else has no declared posture: an unregistered topic
+       under an unregistered (or zero-fan-out) event, or declarations that
+       disagree. ``prompt.submitted`` is the live example of disagreement --
+       its cmd topic declares no transform, its evt topic declares
+       ``strip_prompt``, so an override has no basis to choose. Guessing here
+       means guessing permissively, which is the disclosure.
+
+    Raises:
+        AmbiguousTransformError: declarations disagree (rule 3).
+        UnresolvableTransformError: nothing declares a posture (rule 3).
+    """
+    path = registry_path if registry_path is not None else default_registry_path()
+
+    declared_for_topic = _load_topic_transform_index(str(path)).get(topic)
+    if declared_for_topic is not None:
+        if len(declared_for_topic) > 1:
+            raise AmbiguousTransformError(
+                topic=topic,
+                event_type=event_type,
+                candidates=tuple(declared_for_topic),
+                source="fan-out rules targeting this topic",
+            )
+        return next(iter(declared_for_topic))
+
+    try:
+        registration = _registration(event_type, registry_path=path)
+    except UnknownEventTypeError as exc:
+        raise UnresolvableTransformError(
+            topic=topic,
+            event_type=event_type,
+            reason=(
+                "the topic is absent from the registry and the event_type is "
+                "unregistered, so neither declares what may reach it"
+            ),
+        ) from exc
+
+    declared_for_event = {t.transform_name for t in registration.topics}
+    if not declared_for_event:
+        raise UnresolvableTransformError(
+            topic=topic,
+            event_type=event_type,
+            reason=(
+                "the topic is absent from the registry and the event_type "
+                "declares an empty fan_out, so neither declares a transform"
+            ),
+        )
+    if len(declared_for_event) > 1:
+        raise AmbiguousTransformError(
+            topic=topic,
+            event_type=event_type,
+            candidates=tuple(declared_for_event),
+            source=f"the fan-out rules of event_type {event_type!r}",
+        )
+    return next(iter(declared_for_event))
+
+
 def resolve_tier(topics: tuple[ResolvedTopic, ...]) -> EnumDurabilityTier:
     """Roll up a set of resolved topics into one durability tier.
 
@@ -220,6 +326,7 @@ __all__: list[str] = [
     "UnknownEventTypeError",
     "default_registry_path",
     "resolve_event_type",
+    "resolve_override_transform",
     "resolve_partition_key_field",
     "resolve_tier",
 ]
