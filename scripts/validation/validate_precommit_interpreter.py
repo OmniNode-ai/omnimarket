@@ -71,43 +71,117 @@ LOCAL_LANGUAGES = {"system", "script"}
 ENTRY_BANNED = {"python", "python3"}
 
 # Command word rejected inside a referenced shell script (docstring rule 2).
-SCRIPT_BANNED_RE = re.compile(
-    r"(?:^|[;&|(]|\bthen\b|\belse\b|\bdo\b)\s*python(?![\w./-])"
+# A shell line puts a command in far more positions than "start of line": after
+# a separator (`;`, `&&`, `||`, `|`), inside a substitution (`$(`, backticks),
+# after a control keyword (`if`, `then`, `while`, ...), behind a transparent
+# wrapper (`env`, `exec`, `command`), and behind inline `FOO=bar` assignments.
+# All of those are command positions and all of them are scanned.
+_ASSIGN = r"""(?:[A-Za-z_]\w*=(?:"[^"]*"|'[^']*'|\S*)\s+)*"""
+_CMD_PREFIX = (
+    r"(?:^|[;&|(`!]|\$\(|"
+    r"\b(?:if|then|else|elif|do|while|until|exec|command|nice|time|env|xargs)\s)"
 )
+SCRIPT_BANNED_RE = re.compile(_CMD_PREFIX + r"\s*" + _ASSIGN + r"python(?![\w./-])")
 
 # `env FOO=bar <cmd>` and `exec <cmd>` are transparent wrappers: keep scanning
 # past them for the real command word.
 _ENV_ASSIGN_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=")
 
+# Shell operators that terminate one command and start another. `shlex` in
+# punctuation mode preserves them as their own tokens, so an entry such as
+# `bash -c 'true && python x.py'` is scanned in every command position rather
+# than only the first (CodeRabbit finding, PR #2223).
+_COMMAND_SEPARATORS = {";", "&&", "||", "|", "&", "(", ")", ";;"}
 
-def _command_words(tokens: list[str]) -> list[str]:
-    """Yield every token that sits in command position for a token list.
+# Transparent wrappers whose own arguments are the real command.
+_WRAPPERS = {"env", "exec", "command", "nice", "time", "builtin"}
 
-    Handles `env A=1 B=2 cmd`, `exec cmd`, and `uv run [flags] cmd` so the
-    scanner sees the interpreter that will actually be exec'd, not the wrapper.
-    Returns the command words with a marker for whether `uv run` covered them.
+# `uv run` options that consume a FOLLOWING argument. Without this list a
+# `uv run --with pyyaml python3 x.py` entry would be read as the command word
+# `pyyaml` and silently accepted (CodeRabbit finding, PR #2223). Options in
+# `--opt=value` form carry their own value and need no lookahead.
+_UV_RUN_VALUE_OPTS = {
+    "--with",
+    "--with-editable",
+    "--with-requirements",
+    "--python",
+    "-p",
+    "--directory",
+    "--project",
+    "--package",
+    "--index",
+    "--default-index",
+    "--index-url",
+    "--extra-index-url",
+    "--find-links",
+    "-f",
+    "--extra",
+    "--group",
+    "--only-group",
+    "--no-group",
+    "--config-file",
+    "--cache-dir",
+    "--refresh-package",
+    "--resolution",
+    "--prerelease",
+    "--python-preference",
+    "--color",
+    "--env-file",
+    "--constraints",
+    "-c",
+    "--overrides",
+    "--no-binary-package",
+    "--no-build-package",
+}
+
+
+def _shell_tokens(text: str) -> list[str]:
+    """Tokenize a shell string, keeping operators (`&&`, `|`, `;`) as tokens.
+
+    `shlex.split` collapses operators into the surrounding words, which would
+    hide the second command of `bash -c 'true && python x.py'`.
     """
-    words: list[str] = []
+    lexer = shlex.shlex(text, posix=True, punctuation_chars=True)
+    lexer.whitespace_split = True
+    return list(lexer)
+
+
+def _split_segments(tokens: list[str]) -> list[list[str]]:
+    """Split a token list into per-command segments on shell operators."""
+    segments: list[list[str]] = [[]]
+    for tok in tokens:
+        if tok in _COMMAND_SEPARATORS:
+            segments.append([])
+        else:
+            segments[-1].append(tok)
+    return [seg for seg in segments if seg]
+
+
+def _command_word(tokens: list[str]) -> str | None:
+    """Return the interpreter a single command segment will actually exec.
+
+    Sees through inline `FOO=bar` assignments, transparent wrappers (`env`,
+    `exec`, ...) and a full `uv run [options]` prefix -- including options that
+    consume a following value -- so the token reported is the one the shell will
+    resolve on PATH. Returns None when `uv run` covers the command: uv resolves
+    the project interpreter itself, which is the sanctioned form.
+    """
     i = 0
-    uv_run = False
     while i < len(tokens):
         tok = tokens[i]
-        if tok in {"env", "exec", "command", "nice"}:
-            i += 1
-            continue
-        if _ENV_ASSIGN_RE.match(tok):
+        if tok in _WRAPPERS or _ENV_ASSIGN_RE.match(tok):
             i += 1
             continue
         if tok == "uv" and i + 1 < len(tokens) and tokens[i + 1] == "run":
-            uv_run = True
             i += 2
-            # skip uv flags and their values (`--with pyyaml`, `--frozen`)
             while i < len(tokens) and tokens[i].startswith("-"):
+                opt = tokens[i]
                 i += 1
-            continue
-        words.append(tok if not uv_run else f"uv-run:{tok}")
-        break
-    return words
+                if "=" not in opt and opt in _UV_RUN_VALUE_OPTS:
+                    i += 1  # consume the option's value
+            return None
+        return tok
+    return None
 
 
 def _scan_entry(hook_id: str, entry: str) -> list[str]:
@@ -117,14 +191,14 @@ def _scan_entry(hook_id: str, entry: str) -> list[str]:
         return violations
 
     try:
-        tokens = shlex.split(entry)
+        tokens = _shell_tokens(entry)
     except ValueError:
         # Unbalanced quoting -- fail loud rather than silently skipping.
         return [f"{hook_id}: entry is not shell-parsable: {entry!r}"]
 
     fragments: list[list[str]] = [tokens]
 
-    # `bash -c '<body>'` / `sh -c '<body>'`: scan the body too.
+    # `bash -c '<body>'` / `sh -c '<body>'`: scan every command in the body too.
     for idx, tok in enumerate(tokens):
         if (
             tok in {"bash", "sh", "zsh"}
@@ -132,10 +206,11 @@ def _scan_entry(hook_id: str, entry: str) -> list[str]:
             and tokens[idx + 1] == "-c"
         ):
             with contextlib.suppress(ValueError):
-                fragments.append(shlex.split(tokens[idx + 2]))
+                fragments.append(_shell_tokens(tokens[idx + 2]))
 
     for frag in fragments:
-        for word in _command_words(frag):
+        for segment in _split_segments(frag):
+            word = _command_word(segment)
             if word in ENTRY_BANNED:
                 violations.append(
                     f"{hook_id}: entry invokes bare `{word}` -- use `uv run python` "

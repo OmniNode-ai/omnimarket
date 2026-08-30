@@ -131,3 +131,94 @@ def test_gate_fails_closed_on_vacuous_scan(gate: Any, tmp_path: Path) -> None:
         assert gate.main() == 1
     finally:
         gate.CONFIG_PATH = original
+
+
+# --- CodeRabbit findings on PR #2223: bypass shapes that must NOT slip through
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "entry",
+    [
+        # `uv run` covers the interpreter it wraps, but not a nested shell:
+        # the option-value parser must not lose the `bash -c` body.
+        "uv run --with pyyaml bash -c 'python scripts/ci/x.py'",
+        # A command LIST: only the first command used to be scanned.
+        "bash -c 'true && python scripts/ci/x.py'",
+        "bash -c 'echo hi; python3 scripts/ci/x.py'",
+        "bash -c 'uv run mypy src || python scripts/ci/x.py'",
+        # Inline assignment / wrapper in front of the interpreter.
+        "bash -c 'FOO=1 python scripts/ci/x.py'",
+    ],
+)
+def test_bypass_shapes_are_rejected(gate: Any, entry: str) -> None:
+    assert gate._scan_entry("some-hook", entry), f"bypass not caught: {entry!r}"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "entry",
+    [
+        # `--opt=value` form carries its own value; `python` here is still uv's.
+        "uv run --with=pyyaml python scripts/ci/x.py",
+        # A value-taking option must not leave its value read as the command
+        # word (CodeRabbit finding): both of these are uv-resolved and fine.
+        "uv run --with pyyaml python3 scripts/ci/x.py",
+        "uv run --python 3.12 python scripts/ci/x.py",
+        "bash -c 'uv run python a.py && uv run python b.py'",
+    ],
+)
+def test_uv_run_variants_stay_accepted(gate: Any, entry: str) -> None:
+    assert gate._scan_entry("some-hook", entry) == []
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "line",
+    [
+        "FOO=1 python script.py",
+        "env FOO=1 python script.py",
+        "if python -c 'import yaml'; then :; fi",
+        "while python check.py; do :; done",
+        "uv run true && python script.py",
+        "out=$(python -c 'print(1)')",
+        "exec python script.py",
+    ],
+)
+def test_shell_command_positions_are_scanned(
+    gate: Any, tmp_path: Path, line: str
+) -> None:
+    script = tmp_path / "hook.sh"
+    script.write_text(f"#!/usr/bin/env bash\n{line}\n")
+    original = gate.REPO_ROOT
+    gate.REPO_ROOT = tmp_path
+    try:
+        violations = gate._scan_script(script)
+    finally:
+        gate.REPO_ROOT = original
+    assert violations, f"bare python not caught in {line!r}"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "line",
+    [
+        "uv run python script.py",
+        "command -v python3 >/dev/null && python3 -c 'import yaml'",
+        'exec python3 "$GATE_WRAPPER" --repo-root "$REPO_ROOT"',
+        "/opt/homebrew/bin/python3 script.py",
+        '"$PYTHON" script.py',
+    ],
+)
+def test_resolvable_shell_lines_stay_accepted(
+    gate: Any, tmp_path: Path, line: str
+) -> None:
+    script = tmp_path / "hook.sh"
+    script.write_text(f"#!/usr/bin/env bash\n{line}\n")
+    original = gate.REPO_ROOT
+    gate.REPO_ROOT = tmp_path
+    try:
+        violations = gate._scan_script(script)
+    finally:
+        gate.REPO_ROOT = original
+    assert violations == [], f"false positive on {line!r}: {violations}"
