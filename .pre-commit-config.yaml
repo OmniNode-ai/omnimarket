@@ -266,6 +266,22 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-16939: every declared subscribe_topic must resolve to a REGISTERED DISPATCHER
+      # for its own (category, message type). A topic that does not resolve is consumed,
+      # DLQ'd and COMMITTED on every message — the offset advances after DLQ-routing, so
+      # LAG can never rise and the group reads Stable / MEMBERS 1 / LAG 0 while 100% of
+      # the traffic is lost. Same script the 'Subscriber Dispatcher Resolution' CI job
+      # runs, so local and CI enforcement cannot drift. Triggers on contract.yaml (a
+      # routing change needs no .py edit). Ratchet frozen in
+      # config/validation/subscriber_dispatcher_resolution_baseline.yaml (shrink-only).
+      - id: subscriber-dispatcher-resolution
+        name: Every subscribe_topic resolves to a registered dispatcher (OMN-16939)
+        language: system
+        entry: bash scripts/ci/check_subscriber_dispatcher_resolution.sh
+        files: ^(src/omnimarket/.*\.(py|yaml)|config/validation/subscriber_dispatcher_resolution_baseline\.yaml|scripts/ci/check_subscriber_dispatcher_resolution\.sh)$
+        pass_filenames: false
+        stages: [pre-commit]
+
       # Shell hygiene gate (OMN-14761 / F-22). Fail-closed shellcheck over changed
       # shell scripts; same script the shellcheck-gate CI job runs, so local and CI
       # enforcement cannot drift. The tracked tree is held to --severity=error.
