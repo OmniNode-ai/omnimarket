@@ -1,0 +1,28 @@
+name: node_hook_chain_probe_effect
+version: "1.0.0"
+description: "Trace one correlated hook event across all five legs of the hook->cloud chain."
+omnibase_core_compat: ">=0.46.13,<0.47.0"
+entry_points:
+  onex.nodes:
+    node_hook_chain_probe_effect: "omnimarket.nodes.node_hook_chain_probe_effect"
+capabilities:
+  standalone: false
+  full_runtime: true
+  requires_network: true
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: event_publish
+dependencies:
+  - "omnibase_core>=0.46.13"
+  # The forwarder's own contract (the un-forgeable mirror allowlist, cloud-leg
+  # transport and liveness topic) is read out of the INSTALLED omnibase_infra
+  # package, and legs 1-2 speak to the hook edge broker directly.
+  - "omnibase-infra>=0.38.3"
+  - "aiokafka"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["effect", "hook-ledger", "cloud-relay", "correlation-probe", "OMN-17202"]
+pack: "observability"
+display_name: "Hook Chain Correlation Probe Effect"
+node_role: "effect"
