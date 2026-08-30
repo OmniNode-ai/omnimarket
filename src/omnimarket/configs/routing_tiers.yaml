@@ -16,9 +16,11 @@
 # overlay, and executes through the canonical HTTP inference path (Bifrost
 # complete-URL-from-contract) identical to the lower tiers. The ceiling tier model
 # maps to an HTTP frontier backend (default backend_id ``cloud-gemini-pro`` since
-# OMN-14625 — repointed off direct z.ai GLM (``cloud-glm``), whose route is DEAD
-# from the .201 runtime (resolve_api_key succeeds but every completion call
-# 401s / loops FAILED-only); OMN-13667 previously repointed off free-tier AI
+# OMN-14625 — repointed off direct z.ai GLM (``cloud-glm``) on a "route is DEAD"
+# finding that OMN-6790 has since disproved: the GLM route authenticates and
+# serves 200s on the Coding Plan endpoint. The ceiling stays on Gemini for
+# quota-domain independence, not because GLM is dead); OMN-13667 previously
+# repointed off free-tier AI
 # Studio Gemini that 503s on escalation; OMN-13351 before that repointed off
 # the dead Anthropic ``cloud-sonnet``); it is swappable across gemini / glm /
 # openrouter / claude purely via contract overlay (repoint the model's
@@ -36,8 +38,12 @@
 #   - OMN-10657: Endpoint resolution from bifrost contract, not env vars
 #   - OMN-10717: Default contract + endpoint overlay merge semantics
 #   - OMN-13215: Canonical, provider-swappable ceiling tier; remove shelled CLI
-#   - OMN-14625: GLM z.ai route dead from .201 — cheap_cloud/ceiling/judge
-#     repointed to Gemini (cloud-gemini-pro)
+#   - OMN-14625: GLM z.ai route believed dead from .201 — cheap_cloud/ceiling/
+#     judge repointed to Gemini (cloud-gemini-pro). Premise DISPROVED by
+#     OMN-6790; the ceiling/judge stay on Gemini by choice, not by necessity.
+#   - OMN-6790: GLM endpoint pinned to the Coding Plan surface
+#     (https://api.z.ai/api/coding/paas/v4) in the contract, with a test. The
+#     repeated "GLM is out of money" rediscovery was a wrong-endpoint defect.
 tiers:
   - name: local
     cost_per_1k_tokens: 0.0
@@ -259,43 +265,40 @@ tiers:
           # served it, another decorative/unreachable rung of the class above.
           - validator_generation
         fast_path_threshold_tokens: 8192
-      # OMN-16891: GLM restored to the cheap_cloud tier as a DECLARED-BUT-
-      # DISABLED rung, per the operator directive "we have subs for GLM, why
-      # not start using it?" — and its follow-up, "i removed the api keys just
-      # in case."
+      # OMN-6790: GLM is an ACTIVE cheap_cloud rung. This account holds a live
+      # z.ai GLM Coding Plan (0% of the 5-hour, weekly, and MCP quotas used as
+      # of 2026-08-29 14:52; weekly reset 2026-09-05 13:38), the key resolves
+      # on the .201 dev lane, and a one-token completion against the plan's
+      # endpoint returns 200 (probed 2026-08-30 — see the cloud-glm backend
+      # block in bifrost_delegation.yaml for the full ladder).
       #
-      # Both halves of that are load-bearing:
-      #   * DECLARED — the rung is present and ordered, so activation is a
-      #     one-step operator action (seed `llm.glm.api_key`), not a code or
-      #     contract change. A backend that no tier references is dead config;
-      #     seeding a key against it would activate nothing.
-      #   * DISABLED — with no resolvable key, `_backend_secret_available`
-      #     (handler_delegation_routing) reports this backend unavailable, so
-      #     `_select_model_for_task` never picks it and `_tier_can_route_task`
-      #     never advertises the tier for it. No probe is issued and no request
-      #     is attempted. This is the same mechanism that keeps the tier honest
-      #     rather than silently-broken, and it needs no `enabled:` flag.
+      # This supersedes two stale premises that each cost a rediscovery:
+      #   * OMN-14625: "the z.ai GLM route is DEAD — resolve_api_key succeeds
+      #     but every completion call 401s." Not reproducible; the route
+      #     authenticates and serves.
+      #   * OMN-16891: "DECLARED-BUT-DISABLED, the operator removed the keys",
+      #     and the 429/1113 read as a plan-entitlement gap. Both wrong. The
+      #     429 came from pointing this backend at the PAY-AS-YOU-GO surface
+      #     (/api/paas/v4) with a Coding-Plan key. The endpoint was the bug.
       #
-      # OMN-14625 repointed cheap_cloud OFF this backend on the finding that
-      # "the z.ai GLM route is DEAD — resolve_api_key succeeds but every
-      # completion call 401s". That premise is STALE: re-probed 2026-08-28 the
-      # route returned 429 (quota/billing), never 401 — auth resolves and the
-      # route is live. The failure class changed from credential-dead to
-      # plan-entitlement, which is a disable-and-wait condition, not a reason
-      # to delete the rung. cloud-gemini-pro above stays the PRIMARY cheap_cloud
-      # code backend, so this rung adds capacity without displacing a
-      # proven-resolvable one.
+      # cloud-gemini-pro above remains the PRIMARY cheap_cloud code backend;
+      # this rung adds a second, independently-funded quota domain beside it
+      # (see OMN-17193) rather than displacing it.
       #
-      # Quota discipline: a flat-rate subscription is near-zero MARGINAL cost
-      # but has a hard periodic ceiling, so GLM is deliberately NOT ranked as
-      # an unconditional primary anywhere — ranking it near-free in
-      # cheapest-first ordering without a guard strands every class pointing at
-      # it the moment the cap trips. The 429 codes are classified by
+      # Quota discipline is unchanged: a flat-rate subscription is near-zero
+      # MARGINAL cost but has a hard periodic ceiling, so GLM is deliberately
+      # NOT ranked as an unconditional primary anywhere — ranking it near-free
+      # in cheapest-first ordering without a guard strands every class pointing
+      # at it the moment the cap trips. The 429 codes stay classified by
       # bifrost_delegation.yaml's provider_quota_policy (1310 -> disable until
-      # the stated reset; 1113 -> disable and alert, never retry).
-      - id: glm-5.3
+      # the stated reset; 1113 -> WRONG ENDPOINT, alert, never a billing
+      # action).
+      - id: glm-5.3-flash
         backend_id: cloud-glm
-        # The z.ai standard surface serves a 128k context window.
+        # OMN-6790: id kept in sync with the cloud-glm backend's model_name —
+        # cheapest id the Coding Plan accepts, per cheapest-first. A mismatch
+        # here strands the task_model_overrides id-match escape hatch.
+        # The z.ai coding surface serves a 128k context window.
         max_context_tokens: 131072
         use_for:
           - code_generation

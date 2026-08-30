@@ -57,27 +57,25 @@ _GLM_BACKEND = "cloud-glm"
 # https://docs.z.ai/api-reference/llm/chat-completion. The coding-plan surface
 # (/api/coding/paas/v4/...) is a DIFFERENT product, shared with ZCode.app, and
 # is what produced the 429/1310 misattributed to our own usage.
-_ZAI_STANDARD_URL = "https://api.z.ai/api/paas/v4/chat/completions"
-_ZAI_CODING_PLAN_FRAGMENT = "/api/coding/paas/v4/"
+# OMN-6790: this account's plan is the GLM **Coding Plan**, served ONLY at the
+# coding surface. The pay-as-you-go surface refuses our key with 429/1113.
+# The endpoint authority is bifrost_delegation.yaml; the enforcing test is
+# tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py.
+_ZAI_CODING_PLAN_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
+_ZAI_PAY_AS_YOU_GO_FRAGMENT = "/api/paas/v4/"
 
 # Model ids z.ai currently documents. ``glm-5-turbo`` (the contract's previous
 # model_name) appears nowhere in current docs on either surface.
-_DOCUMENTED_GLM_IDS: frozenset[str] = frozenset(
+# OMN-6790: model ids the Coding Plan ACCEPTED on live probe 2026-08-30. This
+# replaces the standard-surface documentation list that used to sit here — that
+# list is for a product we do not hold, and reading `glm-5-turbo`'s absence from
+# it as "a dead pin" is what dropped a working model id.
+_CODING_PLAN_SERVED_IDS: frozenset[str] = frozenset(
     {
         "glm-5.3",
-        "glm-5.2",
-        "glm-5.1",
-        "glm-5",
-        "glm-4.7",
-        "glm-4.7-flash",
-        "glm-4.7-flashx",
+        "glm-5-turbo",
+        "glm-5.3-flash",
         "glm-4.6",
-        "glm-4.5",
-        "glm-4.5-air",
-        "glm-4.5-x",
-        "glm-4.5-airx",
-        "glm-4.5-flash",
-        "glm-4-32b-0414-128k",
     }
 )
 
@@ -263,36 +261,55 @@ class TestOpenRouterCredentialNaming:
 
 
 @pytest.mark.unit
-class TestGlmShipsDeclaredButDisabled:
-    """GLM's declaration is correct; its activation is credential-gated."""
+class TestGlmShipsOnTheCodingPlanSurface:
+    """GLM is an active, funded rung pinned to the Coding Plan endpoint."""
 
-    def test_glm_points_at_the_standard_zai_surface(self) -> None:
-        """The coding-plan URL is the wrong product surface.
+    def test_glm_points_at_the_coding_plan_surface(self) -> None:
+        """CORRECTED by OMN-6790 — this test previously asserted the defect.
 
-        ``/api/coding/paas/v4/`` is the ZCode.app coding-plan product, shared
-        with a co-tenant whose usage burned the 429/1310 cap this ticket
-        originally misattributed to our own routing. The direct-API
-        subscription this tier represents lives on the standard surface.
+        The prior revision asserted the OPPOSITE: that ``cloud-glm`` must sit
+        on ``/api/paas/v4`` and must NOT contain the coding-plan fragment, on
+        the theory that the coding surface belonged to a ZCode.app co-tenant
+        and that our subscription was a direct-API one. Both halves were wrong.
+        The account holds a GLM **Coding Plan** (active, 0% of every quota used
+        as of 2026-08-29 14:52), and a live probe on 2026-08-30 from the .201
+        host returned 200 on the coding surface and 429/1113 on the
+        pay-as-you-go surface for the same key and all four probed models.
+
+        This is recorded rather than quietly reversed because a test that
+        asserts a defect is worse than no test — it makes the correct fix look
+        like a regression. Endpoint authority now lives in one place:
+        tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py.
         """
         backend = _backends()[_GLM_BACKEND]
-        assert backend["endpoint_url"] == _ZAI_STANDARD_URL
-        assert _ZAI_CODING_PLAN_FRAGMENT not in backend["endpoint_url"]
-
-    def test_glm_names_a_currently_documented_model(self) -> None:
-        """``glm-5-turbo`` is absent from z.ai's current docs — a dead pin."""
-        backend = _backends()[_GLM_BACKEND]
-        assert backend["model_name"] in _DOCUMENTED_GLM_IDS, (
-            f"{_GLM_BACKEND} pins model_name={backend['model_name']!r}, which "
-            "z.ai does not currently document on either surface"
+        assert backend["endpoint_url"] == _ZAI_CODING_PLAN_URL
+        path = backend["endpoint_url"].split("api.z.ai", 1)[1]
+        assert not path.startswith(_ZAI_PAY_AS_YOU_GO_FRAGMENT), (
+            "cloud-glm is on the pay-as-you-go surface; a Coding-Plan key is "
+            "refused there with 429/1113 'Insufficient balance', which is a "
+            "wrong-endpoint signal and never a billing action (OMN-6790)"
         )
 
-    def test_glm_activation_is_credential_gated(self) -> None:
-        """Absent key -> tier not selected, no probe.
+    def test_glm_names_a_model_the_plan_serves(self) -> None:
+        """The id must be one the Coding Plan accepted on a live probe.
 
-        The operator removed the GLM keys. The routing reducer already gates
-        selection on ``_backend_secret_available``; this asserts the GLM entry
-        declares the secret_ref that gate reads, so seeding the key is the
-        ONLY step needed to activate the tier.
+        CORRECTED by OMN-6790: this used to check the id against z.ai's
+        standard-surface documentation list. That list describes a product we
+        do not hold. ``glm-5-turbo`` is absent from it yet returns 200 on our
+        plan, so "undocumented" was never evidence of "dead".
+        """
+        backend = _backends()[_GLM_BACKEND]
+        assert backend["model_name"] in _CODING_PLAN_SERVED_IDS, (
+            f"{_GLM_BACKEND} pins model_name={backend['model_name']!r}, which "
+            "the GLM Coding Plan was not probed to serve on 2026-08-30"
+        )
+
+    def test_glm_declares_the_secret_ref_the_routing_gate_reads(self) -> None:
+        """The routing reducer gates selection on ``_backend_secret_available``.
+
+        The backend must declare the ref that gate reads, so the rung tracks
+        real credential state instead of an ``enabled:`` flag someone has to
+        remember to flip.
         """
         backend = _backends()[_GLM_BACKEND]
         assert backend["secret_ref"] == "llm.glm.api_key"

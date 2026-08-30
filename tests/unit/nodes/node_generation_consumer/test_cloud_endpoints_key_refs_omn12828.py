@@ -47,14 +47,19 @@ _COMMITTED_BIFROST = (
 
 # The COMPLETE verbatim endpoints B3 requires (A1 supplied these).
 _GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-# OMN-16891: was the CODING-PLAN surface
-# (https://api.z.ai/api/coding/paas/v4/chat/completions). That is a different
-# z.ai PRODUCT, shared with ZCode.app on the same account — its 429/1310 cap was
-# a co-tenant's, not ours. cloud-glm is repointed to the STANDARD direct-API
-# surface, verbatim from https://docs.z.ai/api-reference/llm/chat-completion.
+# OMN-6790: back on the CODING-PLAN surface, and this time with a test that
+# owns the fact. OMN-16891 moved this constant to the pay-as-you-go surface
+# (/api/paas/v4) on the theory that the coding surface belonged to a ZCode.app
+# co-tenant; that was wrong. This account holds an active z.ai GLM **Coding
+# Plan**, and a Coding-Plan key sent to the pay-as-you-go surface is refused
+# with 429 code 1113 "Insufficient balance or no resource package" — a
+# wrong-endpoint signal, never a billing one. Live probe from the .201 host on
+# 2026-08-30 (key sha12 27fecebdd647): coding surface 200 for glm-5.3,
+# glm-5-turbo, glm-5.3-flash and glm-4.6; pay-as-you-go 429/1113 for all four.
+# Endpoint authority: tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py.
 # The property this file guards is unchanged: a COMPLETE chat-completions URL,
 # posted verbatim, never constructed.
-_GLM_URL = "https://api.z.ai/api/paas/v4/chat/completions"
+_GLM_URL = "https://api.z.ai/api/coding/paas/v4/chat/completions"
 _OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 # OMN-13351: the Anthropic ceiling backends (cloud-sonnet/cloud-haiku, secret_ref
 # llm.anthropic.api_key) were DELETED — that key resolves to None in every lane.

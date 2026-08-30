@@ -206,35 +206,55 @@ backends:
   - backend_id: cloud-glm
     # OMN-12819: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     #
-    # OMN-16891: repointed off the CODING-PLAN surface
-    # (https://api.z.ai/api/coding/paas/v4/chat/completions) to the STANDARD
-    # direct-API surface below. These are different z.ai PRODUCTS, not two
-    # spellings of one endpoint:
-    #   * /api/coding/paas/v4/ is the coding-plan product. It is shared with
-    #     ZCode.app, a separate z.ai desktop agent OAuth-configured against the
-    #     SAME account (ledger, 2026-07-14 zai-trace, read-only). Its 429/1310
-    #     "Weekly/Monthly Limit Exhausted" was a CO-TENANT's cap, misread on
-    #     this ticket as our own subscription being exhausted; the operator
-    #     corrected it — "we haven't used glm at all."
-    #   * /api/paas/v4/ is the standard direct-API surface this tier's
-    #     subscription actually addresses. Verbatim from the official docs
-    #     (https://docs.z.ai/api-reference/llm/chat-completion, base
-    #     https://api.z.ai/api/paas/v4).
-    # Known live state, recorded so it is not rediscovered as a bug: probed
-    # 2026-08-28 with the then-present key, this surface returned 429 code 1113
-    # "Insufficient balance or no resource package" — a BILLING/entitlement gap
-    # on the standard product, distinct from 1310. The operator has since
-    # removed the keys, so the tier is credential-disabled regardless; both
-    # codes are classified by the provider_quota_policy block at the bottom of
-    # this file so neither is retried blindly.
-    endpoint_url: "https://api.z.ai/api/paas/v4/chat/completions"
-    # OMN-16891: was "glm-5-turbo" (OMN-14225). That id appears NOWHERE in
-    # current z.ai documentation on either surface — it is a dead pin, and a
-    # wrong id fails closed. Repointed to `glm-5.3`, the current flagship text
-    # model on the documented standard-surface list (glm-5.3, glm-5.2, glm-5.1,
-    # glm-5, glm-4.7*, glm-4.6, glm-4.5*, glm-4-32b-0414-128k). Re-pin via
-    # overlay if the plan's entitlement covers a cheaper documented id.
-    model_name: "glm-5.3"
+    # OMN-6790 — SETTLED. This account holds an ACTIVE z.ai **GLM Coding Plan**
+    # (operator, 2026-08-30; console screenshot refreshed 2026-08-29 14:52 shows
+    # the plan active with 5-hour, weekly, and MCP quotas all at 0% used, weekly
+    # reset 2026-09-05 13:38). The Coding Plan is served ONLY at the coding
+    # surface below. These are two different z.ai PRODUCTS, not two spellings of
+    # one endpoint, and a Coding-Plan key presented to the wrong one is refused:
+    #
+    #   * /api/coding/paas/v4/  — the CODING-PLAN product. THIS IS OURS.
+    #   * /api/paas/v4/         — the pay-as-you-go standard product. We hold no
+    #                             balance and no resource package on it.
+    #
+    # Live probe from the .201 host, 2026-08-30, one key (sha12 27fecebdd647),
+    # one-token completion, four model ids, both surfaces:
+    #
+    #   https://api.z.ai/api/coding/paas/v4  glm-5.3        HTTP 200 (echo glm-5.3)
+    #   https://api.z.ai/api/coding/paas/v4  glm-5-turbo    HTTP 200 (echo glm-5-turbo)
+    #   https://api.z.ai/api/coding/paas/v4  glm-5.3-flash  HTTP 200 (echo glm-5.3-flash)
+    #   https://api.z.ai/api/coding/paas/v4  glm-4.6        HTTP 200 (echo glm-4.6)
+    #   https://api.z.ai/api/paas/v4         all four       HTTP 429 code 1113
+    #     {"error":{"code":"1113","message":"Insufficient balance or no resource
+    #      package. Please recharge."}}
+    #
+    # READ 1113 AS A ROUTING FACT, NOT A BILLING FACT. It is what the
+    # pay-as-you-go surface returns when a Coding-Plan key is presented to it.
+    # It is NOT a signal to fund the account, and it never was.
+    #
+    # This corrects OMN-16891, which repointed this backend OFF the coding
+    # surface onto /api/paas/v4 and recorded the resulting 1113 as "a
+    # BILLING/entitlement gap on the standard product". The endpoint move was
+    # the defect; the 1113 was its symptom. OMN-16891 also recorded that the
+    # operator "removed the keys" — the key is present and resolving on the
+    # .201 dev lane today (that lane is exactly where the 1113 was observed, so
+    # the request reached z.ai and was authenticated enough to be quota-judged).
+    #
+    # This URL is the SINGLE AUTHORITY for the GLM endpoint. Do not re-derive it
+    # from an env var, a memory note, or a lane overlay — those are the surfaces
+    # that let this fact get dropped twice. It is enforced by
+    # tests/unit/delegation/test_glm_coding_plan_endpoint_omn6790.py, which
+    # fails closed on any GLM endpoint lacking the /api/coding/paas/v4 prefix.
+    endpoint_url: "https://api.z.ai/api/coding/paas/v4/chat/completions"
+    # OMN-6790: cheapest ACCEPTED id on the Coding Plan, per cheapest-first
+    # ladder doctrine. All four probed ids return 200 on this surface; the
+    # flash variant is the cheapest of them. `glm-5-turbo` (the OMN-14225 pin)
+    # IS served here after all — OMN-16891 declared it "appears NOWHERE in
+    # current z.ai documentation" and dropped it, but that was read off the
+    # standard-surface model list, which is not the list this plan serves.
+    # The served set is pinned with its probe date in the test above; re-pin
+    # both together, never one alone.
+    model_name: "glm-5.3-flash"
     secret_ref: llm.glm.api_key
     api_key_env: LLM_GLM_API_KEY
     tier: cheap_cloud
@@ -653,14 +673,26 @@ provider_quota_policy:
           reset_from: message_reset_timestamp
           fallback_cooldown_seconds: 3600
           alert: false
-        # Live-observed 2026-08-28 on the standard surface, verbatim:
+        # Live-observed on the PAY-AS-YOU-GO surface (/api/paas/v4), verbatim:
         #   {"error":{"code":"1113","message":"Insufficient balance or no
         #    resource package. Please recharge."}}
-        # No reset instant exists — this clears only when a human funds the
-        # account, so it alerts instead of retrying.
+        # OMN-6790: on THIS account 1113 is a WRONG-ENDPOINT signal, not a
+        # billing one. We hold an active GLM Coding Plan, which is served only
+        # at /api/coding/paas/v4; the same key on that surface returns 200 for
+        # every probed model (see the cloud-glm backend block above, probed
+        # 2026-08-30). Reaching this code means a GLM request went to the
+        # pay-as-you-go product — fix the endpoint, do NOT fund the account.
+        # The disposition stays disable-and-alert because retrying a
+        # misrouted request is pure waste and the misroute needs a human.
         - code: "1113"
           disposition: disable_until_billing
           alert: true
+          # Surfaced on the alert so the on-call reads the cause, not the text.
+          alert_hint: >-
+            z.ai 1113 on an OmniNode GLM request means the request hit the
+            pay-as-you-go surface (/api/paas/v4) with a Coding-Plan key.
+            The Coding Plan endpoint is https://api.z.ai/api/coding/paas/v4.
+            This is a routing defect, never a billing action.
     - provider_id: openrouter
       match_endpoint_host: "openrouter.ai"
       # The free tier is rate-limited with no SLA and no structured code; its
