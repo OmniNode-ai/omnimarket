@@ -65,6 +65,25 @@ _DUTY_CRITICAL_ALLOWLIST = frozenset(
         "audit.scope.violation",
         "artifact.captured",
         "tool.output.captured",
+        # OMN-17019 (C9). The five work-obligation lifecycle kinds are
+        # duty_critical DELIBERATELY, and the tier is the whole point of the
+        # ticket: an obligation READ may degrade to the last-good projection
+        # and say so, but an obligation WRITE must fail closed. The
+        # `telemetry` tier permits exactly the silent drop -- an ask recorded
+        # nowhere, owed by no one -- that C9 exists to end.
+        #
+        # max_payload: none of the five is a CAPTURE topic (_CAPTURE_EVENTS
+        # above is the closed set of two that carry arbitrary artifact/tool
+        # output), so the "bounded and strictly below the daemon stream cap"
+        # obligation this ratchet enforces for capture topics does not apply.
+        # Every field of an obligation event is a short scalar -- ids, an
+        # actor, a one-line summary, an acceptance condition, a URI, a reason
+        # -- so the payload is bounded by its own schema, not by a byte cap.
+        "work.obligation.created",
+        "work.obligation.transferred",
+        "work.obligation.satisfied",
+        "work.obligation.superseded",
+        "work.obligation.abandoned",
     }
 )
 
