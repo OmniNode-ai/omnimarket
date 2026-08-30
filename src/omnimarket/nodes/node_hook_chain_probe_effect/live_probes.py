@@ -35,6 +35,7 @@ import os
 import re
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Sequence
 from pathlib import Path
@@ -204,6 +205,78 @@ def _load_forwarder_policy(module_path: str) -> tuple[tuple[str, ...], str, str 
     return (outbound, transport, None)
 
 
+def build_cloud_read_url(*, base_url: str, path: str, correlation_id: str) -> str:
+    """Build the cloud read URL the supplier route actually serves.
+
+    The correlation id rides as a QUERY parameter because that is the signature
+    OMN-17205 deployed (``GET /v1/projections/hook-events/by-correlation?
+    correlation_id=...``). Posting it as a path segment produces an unmatched
+    ``/v1`` path, which onex-api answers 401 -- the probe would then report a
+    credential problem for a URL it built wrong.
+    """
+    return (
+        f"{base_url.rstrip('/')}{path}"
+        f"?correlation_id={urllib.parse.quote(correlation_id, safe='')}"
+    )
+
+
+def parse_projection_body(body: str) -> tuple[bool, str | None]:
+    """Read the supplier route's own three-state answer out of a 200 body.
+
+    Returns ``(row_found, data_state)``. A row counts as found ONLY when the
+    route says ``data_state == "found"`` and returns at least one row. The
+    previous "any non-empty body" heuristic would have read the route's honest
+    ``{"data_state": "not_found", "rows": []}`` as a successful chain -- the
+    exact silent-blinding class (OMN-15797) the supplier's three states exist
+    to prevent, re-opened on the reading side.
+    """
+    try:
+        parsed = json.loads(body)
+    except (ValueError, TypeError):
+        return (False, None)
+    if not isinstance(parsed, dict):
+        return (False, None)
+    data_state = parsed.get("data_state")
+    state = str(data_state) if isinstance(data_state, str) else None
+    rows = parsed.get("rows")
+    has_rows = isinstance(rows, list) and len(rows) > 0
+    return (state == "found" and has_rows, state)
+
+
+def route_is_served(*, openapi_body: str, path: str) -> bool | None:
+    """Is ``path`` in the gateway's own published route list?
+
+    ``None`` when the list could not be parsed -- deliberately NOT ``False``.
+    Claiming a route is absent because its inventory was unreadable would
+    fabricate a blocker from a failed measurement, which is the error class
+    this whole node exists to end.
+    """
+    try:
+        parsed = json.loads(openapi_body)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    paths = parsed.get("paths")
+    if not isinstance(paths, dict):
+        return None
+    return path in paths
+
+
+def _resolve_secret_resolver_config_path() -> str:
+    """Indirection over the infra resolver path so tests can pin the empty case.
+
+    Imported lazily: this module is imported by the operator entry point on a
+    Mac with no runtime installed, and an import-time infra dependency would
+    turn a missing config into an import error.
+    """
+    from omnibase_infra.runtime.runtime_profile import (
+        resolve_secret_resolver_config_path,
+    )
+
+    return str(resolve_secret_resolver_config_path())
+
+
 class LiveHookChainProbes:
     """Live implementation of ``ProtocolHookChainProbes``."""
 
@@ -212,6 +285,8 @@ class LiveHookChainProbes:
         self._config = _load_probe_config()
         self._consumer: Any | None = None
         self._emit_offset: int | None = None
+        #: The gateway's published route list, fetched at most once per run.
+        self._served_paths: tuple[str, ...] | None = None
 
     # -- addressing ---------------------------------------------------------
 
@@ -243,17 +318,21 @@ class LiveHookChainProbes:
         here would turn a config gap into a fake network failure.
         """
         ref = str(self._config["cloud_gateway_base_url_ref"])
+        config_path = _resolve_secret_resolver_config_path()
+        if not config_path:
+            # The path resolver answers "" when nothing is configured, and
+            # reading "" raises IsADirectoryError -- reporting that verbatim
+            # sends the reader hunting for a corrupt file when the fact is that
+            # this host carries no secret-resolver config at all.
+            return f"unresolved:{ref}:no_secret_resolver_config"
         try:
             from omnibase_infra.runtime.models.model_secret_resolver_config import (
                 ModelSecretResolverConfig,
             )
-            from omnibase_infra.runtime.runtime_profile import (
-                resolve_secret_resolver_config_path,
-            )
             from omnibase_infra.runtime.secret_resolver import SecretResolver
 
             config = ModelSecretResolverConfig.model_validate(
-                yaml.safe_load(Path(resolve_secret_resolver_config_path()).read_text())
+                yaml.safe_load(Path(config_path).read_text())
             )
             secret = SecretResolver(config).get_secret(ref, required=True)
         except Exception as exc:
@@ -547,68 +626,148 @@ class LiveHookChainProbes:
     async def read_cloud_gateway(
         self, *, correlation_id: str, address: ModelHookChainAddress
     ) -> ModelCloudGatewayObservation:
-        reachable, status, found, detail = await self._read_cloud_route(
+        """Leg 4: is the correlated event observable past the cloud gateway?
+
+        The observation is taken from the gateway's EXISTING surfaces only --
+        its published route list and the declared ingest route's own response.
+        The probe never acquires an ingest, echo or debug route of its own
+        (operator ruling 2026-08-30: the cloud leg is one ingress, nothing new),
+        so when the OMN-16459 ingest route is not yet deployed the honest
+        verdict is that the route is absent, not that the gateway refused us.
+        """
+        path = str(self._config["cloud_gateway_ingest_path"])
+        served = await self._route_is_served(
+            base_url=address.cloud_gateway_base_url, path=path
+        )
+        reachable, status, body, detail = await self._read_cloud_route(
             base_url=address.cloud_gateway_base_url,
-            path=str(self._config["cloud_gateway_ingest_path"]),
+            path=path,
             correlation_id=correlation_id,
         )
+        found, _state = (
+            parse_projection_body(body) if body is not None else (False, None)
+        )
+        if served is False:
+            detail = (
+                f"{path} is absent from the {len(self._served_paths or ())} routes "
+                "the gateway publishes -- the relay ingress is not deployed "
+                "(OMN-16459), so the 401 is an unmatched path, not a refusal"
+            )
         return ModelCloudGatewayObservation(
             reachable=reachable,
             status_code=status,
             correlation_found=found,
+            route_served=served,
             detail=detail,
         )
 
     async def read_cloud_projection(
         self, *, correlation_id: str, address: ModelHookChainAddress
     ) -> ModelCloudProjectionObservation:
-        reachable, status, found, detail = await self._read_cloud_route(
+        """Leg 5: read the correlated row back through the supplier route.
+
+        The route (OMN-17205) answers HTTP 200 for ``found``, ``not_found`` and
+        ``projection_absent`` alike, so the body -- not the status -- carries
+        the verdict.
+        """
+        path = str(self._config["cloud_projection_path"])
+        served = await self._route_is_served(
+            base_url=address.cloud_gateway_base_url, path=path
+        )
+        reachable, status, body, detail = await self._read_cloud_route(
             base_url=address.cloud_gateway_base_url,
-            path=str(self._config["cloud_projection_path"]),
+            path=path,
             correlation_id=correlation_id,
         )
+        found, data_state = (
+            parse_projection_body(body) if body is not None else (False, None)
+        )
+        if served is False:
+            detail = (
+                f"{path} is absent from the {len(self._served_paths or ())} routes "
+                "the gateway publishes -- the projection read route is not deployed "
+                "on this plane"
+            )
         return ModelCloudProjectionObservation(
             reachable=reachable,
             status_code=status,
             row_found=found,
+            route_served=served,
+            data_state=data_state,
             detail=detail,
         )
 
+    async def _route_is_served(self, *, base_url: str, path: str) -> bool | None:
+        """Consult the gateway's own published route list, once per run.
+
+        onex-api 401s every unmatched ``/v1`` path, so a status code alone
+        cannot tell a refused read from a route that was never deployed -- the
+        ambiguity that cost OMN-17205 a session. The route list is public and
+        needs no credential and no cluster access (AC4).
+        """
+        if base_url.startswith("unresolved:"):
+            return None
+        if self._served_paths is None:
+            openapi_url = (
+                f"{base_url.rstrip('/')}{self._config['cloud_gateway_openapi_path']!s}"
+            )
+            _reachable, _status, body, _detail = await asyncio.to_thread(
+                self._http_get, openapi_url
+            )
+            if body is None:
+                return None
+            parsed = json.loads(body) if body.lstrip().startswith("{") else {}
+            paths = parsed.get("paths") if isinstance(parsed, dict) else None
+            self._served_paths = (
+                tuple(str(key) for key in paths) if isinstance(paths, dict) else ()
+            )
+            if not self._served_paths:
+                self._served_paths = None
+                return None
+        return path in self._served_paths
+
     async def _read_cloud_route(
         self, *, base_url: str, path: str, correlation_id: str
-    ) -> tuple[bool, int | None, bool, str | None]:
+    ) -> tuple[bool, int | None, str | None, str | None]:
         if base_url.startswith("unresolved:"):
-            return (False, None, False, f"cloud gateway base URL {base_url}")
-        url = f"{base_url.rstrip('/')}{path}/{correlation_id}"
-        return await asyncio.to_thread(self._read_cloud_route_sync, url)
+            return (False, None, None, f"cloud gateway base URL {base_url}")
+        url = build_cloud_read_url(
+            base_url=base_url, path=path, correlation_id=correlation_id
+        )
+        return await asyncio.to_thread(self._http_get, url)
 
     @staticmethod
-    def _read_cloud_route_sync(url: str) -> tuple[bool, int | None, bool, str | None]:
+    def _http_get(url: str) -> tuple[bool, int | None, str | None, str | None]:
+        """One GET. Returns ``(reachable, status, body, detail)``.
+
+        A definitive status is REACHABLE: refused (401/403) and absent (404) are
+        different facts and both are answers, so neither is folded into the
+        unreachable case that means "the network never got there".
+        """
         request = urllib.request.Request(url, method="GET")
         try:
             with urllib.request.urlopen(
                 request, timeout=_HTTP_TIMEOUT_SECONDS
             ) as response:
-                status = int(response.status)
-                body = response.read().decode(errors="replace")
+                return (
+                    True,
+                    int(response.status),
+                    response.read().decode(errors="replace"),
+                    None,
+                )
         except urllib.error.HTTPError as exc:
-            # A definitive status: refused (401/403) and absent (404) are
-            # different facts and the classifier must see which one it was.
-            return (True, int(exc.code), False, f"HTTP {exc.code}")
+            return (True, int(exc.code), None, f"HTTP {exc.code}")
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
-            return (False, None, False, type(exc).__name__)
-        return (
-            True,
-            status,
-            bool(body.strip()) and body.strip() not in {"[]", "{}"},
-            None,
-        )
+            return (False, None, None, type(exc).__name__)
 
 
 __all__: list[str] = [
     "HookEdgeLaneUnresolvedError",
     "LiveHookChainProbes",
+    "build_cloud_read_url",
     "default_hook_edge_env_files",
     "load_forwarder_liveness_topic",
+    "parse_projection_body",
     "resolve_hook_edge_lane",
+    "route_is_served",
 ]

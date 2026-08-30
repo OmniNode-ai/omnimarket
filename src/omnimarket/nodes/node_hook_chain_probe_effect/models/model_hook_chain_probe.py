@@ -59,8 +59,10 @@ class EnumHookChainBlocker(StrEnum):
     NO_CONSUMER = "no_consumer"
     GATEWAY_UNREACHABLE = "gateway_unreachable"
     GATEWAY_UNAUTHORIZED = "gateway_unauthorized"
+    GATEWAY_ROUTE_ABSENT = "gateway_route_absent"
     GATEWAY_INGEST_ABSENT = "gateway_ingest_absent"
     PROJECTION_ROW_ABSENT = "projection_row_absent"
+    PROJECTION_SINK_ABSENT = "projection_sink_absent"
     TIMEOUT = "timeout"
 
 
@@ -170,6 +172,13 @@ class ModelCloudGatewayObservation(BaseModel):
     reachable: bool
     status_code: int | None = None
     correlation_found: bool = False
+    route_served: bool | None = Field(
+        default=None,
+        description="Whether the gateway's own public route list serves the "
+        "declared path. None means the list could not be read -- deliberately "
+        "distinct from False, because onex-api 401s every UNMATCHED /v1 path, "
+        "so a 401 alone cannot tell 'refused' from 'never deployed' (OMN-17205).",
+    )
     detail: str | None = None
 
 
@@ -181,6 +190,19 @@ class ModelCloudProjectionObservation(BaseModel):
     reachable: bool
     status_code: int | None = None
     row_found: bool = False
+    route_served: bool | None = Field(
+        default=None,
+        description="Whether the gateway serves the declared projection path; "
+        "None when the route list could not be read.",
+    )
+    data_state: str | None = Field(
+        default=None,
+        description="The supplier route's own three-state answer -- 'found', "
+        "'not_found' or 'projection_absent' (OMN-17205). All three are HTTP "
+        "200, so the status code alone cannot distinguish a row that did not "
+        "arrive from a sink that was never built; this field is what keeps "
+        "them apart.",
+    )
     detail: str | None = None
 
 

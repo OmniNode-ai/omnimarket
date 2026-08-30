@@ -505,3 +505,286 @@ class TestForwarderLaneAttachmentIsMeasuredNotAsserted:
         )
         assert detail is None, detail
         assert topic.startswith("onex.evt."), topic
+
+
+class TestCloudLegsAgainstTheLiveSupplierRoute:
+    """The cloud legs must read the route OMN-17205 actually serves.
+
+    OMN-17205 merged ``GET /v1/projections/hook-events/by-correlation``
+    (omninode_infra 93678ec, live on staging 17:42Z) as the supplier of exactly
+    the string this node's contract declares. It takes the correlation id as a
+    QUERY parameter and answers HTTP 200 for all three data states -- ``found``,
+    ``not_found`` and ``projection_absent`` -- precisely so a missing leg-5 sink
+    cannot read as a successful empty answer (the OMN-15797 silent-blinding
+    class). A consumer that posts the id as a path segment, or that treats any
+    non-empty 200 body as a row, re-opens that hole on the reading side and
+    would let this probe report a green chain over a projection that does not
+    exist.
+    """
+
+    def test_correlation_id_rides_as_a_query_param_not_a_path_segment(self) -> None:
+        from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
+            build_cloud_read_url,
+        )
+
+        url = build_cloud_read_url(
+            base_url="https://gateway.example/",
+            path="/v1/projections/hook-events/by-correlation",
+            correlation_id="omn17202-abc123",
+        )
+
+        assert url == (
+            "https://gateway.example/v1/projections/hook-events/by-correlation"
+            "?correlation_id=omn17202-abc123"
+        )
+
+    def test_not_found_body_is_not_a_found_row(self) -> None:
+        from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
+            parse_projection_body,
+        )
+
+        found, data_state = parse_projection_body(
+            '{"correlation_id":"x","projection":"hook_events",'
+            '"data_state":"not_found","count":0,"rows":[]}'
+        )
+
+        assert found is False
+        assert data_state == "not_found"
+
+    def test_projection_absent_body_is_not_a_found_row(self) -> None:
+        from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
+            parse_projection_body,
+        )
+
+        found, data_state = parse_projection_body(
+            '{"correlation_id":"x","projection":"hook_events",'
+            '"data_state":"projection_absent","count":0,"rows":[]}'
+        )
+
+        assert found is False
+        assert data_state == "projection_absent"
+
+    def test_found_body_with_rows_is_a_found_row(self) -> None:
+        from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
+            parse_projection_body,
+        )
+
+        found, data_state = parse_projection_body(
+            '{"correlation_id":"x","projection":"hook_events",'
+            '"data_state":"found","count":1,"rows":[{"event_type":"tool-executed"}]}'
+        )
+
+        assert found is True
+        assert data_state == "found"
+
+    def test_missing_leg_five_sink_is_its_own_blocker_not_a_missing_row(self) -> None:
+        """``projection_absent`` and ``not_found`` are different facts.
+
+        The sink for leg 5 does not exist yet (OMN-17201). Collapsing "the
+        table is not there" into "the row did not arrive" would point the
+        operator at the relay when the defect is a table that was never built.
+        """
+        result = classify_chain(
+            correlation_id="cid-sink",
+            hook_topic="onex.evt.omniclaude.session-started.v1",
+            emit=_emit(lane=DEV_LANE),
+            bus=_bus(lane=DEV_LANE),
+            forwarder=_forwarder(
+                transport="https_relay", advanced=True, present_on_emit_lane=True
+            ),
+            gateway=ModelCloudGatewayObservation(
+                reachable=True,
+                status_code=200,
+                correlation_found=True,
+                route_served=True,
+            ),
+            projection=ModelCloudProjectionObservation(
+                reachable=True,
+                status_code=200,
+                row_found=False,
+                route_served=True,
+                data_state="projection_absent",
+            ),
+        )
+
+        assert result.failed_leg is EnumHookChainLeg.CLOUD_PROJECTION
+        assert result.primary_blocker is EnumHookChainBlocker.PROJECTION_SINK_ABSENT
+
+    def test_row_absent_from_an_existing_projection_stays_row_absent(self) -> None:
+        result = classify_chain(
+            correlation_id="cid-row",
+            hook_topic="onex.evt.omniclaude.session-started.v1",
+            emit=_emit(lane=DEV_LANE),
+            bus=_bus(lane=DEV_LANE),
+            forwarder=_forwarder(
+                transport="https_relay", advanced=True, present_on_emit_lane=True
+            ),
+            gateway=ModelCloudGatewayObservation(
+                reachable=True,
+                status_code=200,
+                correlation_found=True,
+                route_served=True,
+            ),
+            projection=ModelCloudProjectionObservation(
+                reachable=True,
+                status_code=200,
+                row_found=False,
+                route_served=True,
+                data_state="not_found",
+            ),
+        )
+
+        assert result.failed_leg is EnumHookChainLeg.CLOUD_PROJECTION
+        assert result.primary_blocker is EnumHookChainBlocker.PROJECTION_ROW_ABSENT
+
+
+class TestAnAbsentRouteIsNotACredentialProblem:
+    """401 on an unmatched path is the API's default, not a refusal.
+
+    onex-api's M4 middleware 401s every unmatched ``/v1`` path, which is how
+    OMN-17205 spent a session unable to tell "the read route refused me" from
+    "the read route was never deployed" -- ``/v1/definitely-not-a-route-xyz``
+    401s identically. The probe therefore reads the gateway's own public route
+    list before believing a 401, and reports a route that is not served as
+    exactly that.
+    """
+
+    def test_absent_gateway_ingest_route_is_not_reported_as_unauthorized(self) -> None:
+        result = classify_chain(
+            correlation_id="cid-route",
+            hook_topic="onex.evt.omniclaude.session-started.v1",
+            emit=_emit(lane=DEV_LANE),
+            bus=_bus(lane=DEV_LANE),
+            forwarder=_forwarder(
+                transport="https_relay", advanced=True, present_on_emit_lane=True
+            ),
+            gateway=ModelCloudGatewayObservation(
+                reachable=True,
+                status_code=401,
+                correlation_found=False,
+                route_served=False,
+            ),
+            projection=None,
+        )
+
+        assert result.failed_leg is EnumHookChainLeg.CLOUD_GATEWAY
+        assert result.primary_blocker is EnumHookChainBlocker.GATEWAY_ROUTE_ABSENT
+
+    def test_a_served_route_returning_401_is_still_unauthorized(self) -> None:
+        result = classify_chain(
+            correlation_id="cid-401",
+            hook_topic="onex.evt.omniclaude.session-started.v1",
+            emit=_emit(lane=DEV_LANE),
+            bus=_bus(lane=DEV_LANE),
+            forwarder=_forwarder(
+                transport="https_relay", advanced=True, present_on_emit_lane=True
+            ),
+            gateway=ModelCloudGatewayObservation(
+                reachable=True,
+                status_code=401,
+                correlation_found=False,
+                route_served=True,
+            ),
+            projection=None,
+        )
+
+        assert result.primary_blocker is EnumHookChainBlocker.GATEWAY_UNAUTHORIZED
+
+    def test_route_presence_is_read_from_the_gateways_public_route_list(self) -> None:
+        from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
+            route_is_served,
+        )
+
+        served = route_is_served(
+            openapi_body='{"paths": {"/v1/projections/hook-events/by-correlation": {}}}',
+            path="/v1/projections/hook-events/by-correlation",
+        )
+        absent = route_is_served(
+            openapi_body='{"paths": {"/v1/health": {}}}',
+            path="/v1/hook-events/ingest",
+        )
+        unknown = route_is_served(openapi_body="<html>gateway error</html>", path="/x")
+
+        assert served is True
+        assert absent is False
+        assert unknown is None, (
+            "an unparseable route list must be UNKNOWN, never False -- claiming "
+            "a route is absent because the list could not be read invents the "
+            "same fabricated blocker this node exists to end"
+        )
+
+    def test_unknown_route_presence_never_fabricates_a_route_absent_verdict(
+        self,
+    ) -> None:
+        result = classify_chain(
+            correlation_id="cid-unknown",
+            hook_topic="onex.evt.omniclaude.session-started.v1",
+            emit=_emit(lane=DEV_LANE),
+            bus=_bus(lane=DEV_LANE),
+            forwarder=_forwarder(
+                transport="https_relay", advanced=True, present_on_emit_lane=True
+            ),
+            gateway=ModelCloudGatewayObservation(
+                reachable=True,
+                status_code=401,
+                correlation_found=False,
+                route_served=None,
+            ),
+            projection=None,
+        )
+
+        assert result.primary_blocker is EnumHookChainBlocker.GATEWAY_UNAUTHORIZED
+
+
+class TestTheContractDeclaresTheRouteItsSupplierServes:
+    """The consumed path string must stay identical to the supplier's.
+
+    OMN-17205 chose its route path specifically to match this contract; if this
+    contract drifts, the two surfaces diverge silently and the leg-5 read starts
+    401ing on an unmatched path again.
+    """
+
+    def test_cloud_projection_path_matches_the_supplier_route(self) -> None:
+        from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
+            _load_probe_config,
+        )
+
+        config = _load_probe_config()
+
+        assert (
+            config["cloud_projection_path"]
+            == "/v1/projections/hook-events/by-correlation"
+        )
+        assert config["cloud_gateway_openapi_path"], (
+            "the probe needs the gateway's public route list to tell an absent "
+            "route from a refused one"
+        )
+
+
+class TestUnresolvableCloudAddressNamesTheConfigGap:
+    """An unset resolver config is a config gap, not a filesystem error.
+
+    ``resolve_secret_resolver_config_path()`` returns ``""`` when nothing is
+    configured, and reading ``""`` raises ``IsADirectoryError`` -- which the
+    probe would then have reported verbatim, sending a reader hunting for a
+    corrupt file when the real fact is that this host has no secret-resolver
+    config at all. Naming the gap is the difference between an actionable
+    verdict and a misleading one.
+    """
+
+    def test_unset_resolver_config_is_named_as_the_gap(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from omnimarket.nodes.node_hook_chain_probe_effect import live_probes
+
+        monkeypatch.setattr(
+            live_probes,
+            "_resolve_secret_resolver_config_path",
+            lambda: "",
+        )
+
+        base_url = live_probes.LiveHookChainProbes()._resolve_cloud_base_url()
+
+        assert base_url.startswith("unresolved:")
+        assert "no_secret_resolver_config" in base_url
+        assert "IsADirectoryError" not in base_url

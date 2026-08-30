@@ -6,6 +6,15 @@ ZERO I/O. Takes the five structural observations the effect boundary collected
 and returns the typed union verdict: the furthest leg reached, the leg it died
 at, and the blockers that explain it.
 
+Two cloud-leg distinctions matter as much as leg 3 does, and for the same
+reason. A 401 from onex-api means "unmatched path" just as readily as it means
+"refused", so a route that was never deployed is only distinguishable from a
+credential problem by reading the gateway's own public route list -- an absent
+route reports GATEWAY_ROUTE_ABSENT, and an UNKNOWN route list never fabricates
+one. And the leg-5 supplier answers 200 for "found", "not_found" and
+"projection_absent" alike, so a sink that does not exist yet (OMN-17201) is
+reported as PROJECTION_SINK_ABSENT rather than as a row that failed to arrive.
+
 Leg 3 is the whole point. Three independent structural facts can each stop the
 relay, and they were all true simultaneously on 2026-08-30:
 
@@ -43,6 +52,12 @@ _RELAY_TRANSPORT = "https_relay"
 
 #: HTTP statuses that mean "the read route refused us", not "the row is absent".
 _UNAUTHORIZED_STATUSES = frozenset({401, 403})
+
+#: The supplier route (OMN-17205) answers HTTP 200 for all three data states, so
+#: the sink-does-not-exist case is only visible in the body. Folding it into
+#: "row absent" would point the operator at the relay when the defect is a table
+#: that was never created -- the OMN-15797 silent-blinding class.
+_PROJECTION_ABSENT_STATE = "projection_absent"
 
 
 def _classify_local_emit(
@@ -214,6 +229,15 @@ def _classify_cloud_gateway(
             blocker=EnumHookChainBlocker.GATEWAY_UNREACHABLE,
             evidence=gateway.detail or "cloud gateway read route unreachable",
         )
+    if gateway.route_served is False:
+        return ModelHookChainLegResult(
+            leg=EnumHookChainLeg.CLOUD_GATEWAY,
+            reached=False,
+            blocker=EnumHookChainBlocker.GATEWAY_ROUTE_ABSENT,
+            evidence=gateway.detail
+            or "the declared cloud ingest path is absent from the gateway's own "
+            "public route list -- never deployed, not refused",
+        )
     if gateway.status_code in _UNAUTHORIZED_STATUSES:
         return ModelHookChainLegResult(
             leg=EnumHookChainLeg.CLOUD_GATEWAY,
@@ -255,6 +279,15 @@ def _classify_cloud_projection(
             blocker=EnumHookChainBlocker.GATEWAY_UNREACHABLE,
             evidence=projection.detail or "cloud projection read route unreachable",
         )
+    if projection.route_served is False:
+        return ModelHookChainLegResult(
+            leg=EnumHookChainLeg.CLOUD_PROJECTION,
+            reached=False,
+            blocker=EnumHookChainBlocker.GATEWAY_ROUTE_ABSENT,
+            evidence=projection.detail
+            or "the declared cloud projection path is absent from the gateway's "
+            "own public route list -- never deployed, not refused",
+        )
     if projection.status_code in _UNAUTHORIZED_STATUSES:
         return ModelHookChainLegResult(
             leg=EnumHookChainLeg.CLOUD_PROJECTION,
@@ -262,6 +295,16 @@ def _classify_cloud_projection(
             blocker=EnumHookChainBlocker.GATEWAY_UNAUTHORIZED,
             evidence=f"cloud projection read route returned {projection.status_code} "
             "-- refused, not empty",
+        )
+    if projection.data_state == _PROJECTION_ABSENT_STATE:
+        return ModelHookChainLegResult(
+            leg=EnumHookChainLeg.CLOUD_PROJECTION,
+            reached=False,
+            blocker=EnumHookChainBlocker.PROJECTION_SINK_ABSENT,
+            evidence=projection.detail
+            or "the cloud hook projection itself does not exist on this plane "
+            "(supplier route answered data_state=projection_absent) -- the sink "
+            "was never built, so no row could have landed in it",
         )
     if not projection.row_found:
         return ModelHookChainLegResult(

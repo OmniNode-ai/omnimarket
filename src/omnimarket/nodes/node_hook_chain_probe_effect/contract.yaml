@@ -106,8 +106,22 @@ config:
     # the Kubernetes API: the operator must be able to run this from the Mac
     # with no cluster access (AC4).
     cloud_gateway_base_url_ref: "gateway.cloud.https.base_url"
-    cloud_gateway_ingest_path: "/v1/hook-events/by-correlation"
+    # Leg 4's observation point: the SINGLE relay ingress the forwarder POSTs
+    # to (OMN-16459), read on the gateway's existing surface. The probe never
+    # acquires an ingest, echo or debug route of its own -- operator ruling
+    # 2026-08-30: "the cloud leg shouldn't need anything new. all we need is
+    # one ingress for all calls".
+    cloud_gateway_ingest_path: "/v1/hook-events/ingest"
+    # Leg 5's read is SUPPLIED by OMN-17205, which deliberately chose this exact
+    # string so the two surfaces cannot diverge. It takes the correlation id as
+    # a query parameter and answers HTTP 200 for found / not_found /
+    # projection_absent alike.
     cloud_projection_path: "/v1/projections/hook-events/by-correlation"
+    # The gateway's own published route list. onex-api answers 401 for every
+    # UNMATCHED /v1 path, so without this a route that was never deployed is
+    # indistinguishable from one that refused the caller -- the ambiguity that
+    # cost OMN-17205 a session. Public, unauthenticated, no cluster access.
+    cloud_gateway_openapi_path: "/openapi.json"
 
 # This probe is invoked directly by the operator (AC4: from the Mac, with no
 # cluster access) and by the runtime's dispatch path. Nothing publishes a start
@@ -125,7 +139,7 @@ runtime_dispatch:
 dod_evidence:
   PYTEST:
     description: "hook->cloud chain probe classifier, handler and live-contract tests"
-    command: "uv run pytest tests/test_hook_chain_probe_effect.py -q"
+    command: "uv run pytest tests/test_golden_chain_hook_chain_probe_effect.py -q"
     pass_criteria: >
       leg-3 blockers are distinguishable (allowlist denial, lane mismatch,
       transport, no-consumer), a downstream leg is never blamed for an upstream
