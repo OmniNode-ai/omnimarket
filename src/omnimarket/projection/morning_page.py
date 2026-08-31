@@ -665,7 +665,7 @@ def _render_flow(panel: ModelFlowPanel) -> str:
         f'<div class="v">{panel.consumer_count}</div></div>'
     ]
     tiles += [
-        f'<div class="tile {state.lower()}"><div class="k">{_esc(state)}</div>'
+        f'<div class="tile {_esc(state.lower())}"><div class="k">{_esc(state)}</div>'
         f'<div class="v">{count}</div></div>'
         for state, count in panel.state_counts
     ]
