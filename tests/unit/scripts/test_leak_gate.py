@@ -228,3 +228,136 @@ def test_invalid_scope_returns_two(tmp_path: Path) -> None:
     _init_repo(tmp_path)
     result = _run(tmp_path, "advisory", "bogus")
     assert result.returncode == 2
+
+
+# --------------------------------------------------------------------------- #
+# OMN-17369 -- the `staged` scope, i.e. the pre-commit surface.
+#
+# The hook runs with pass_filenames: false, so the scope argument IS the file
+# selection. `diff` enumerates BASE_REF...HEAD -- already-committed files -- and
+# therefore never sees the file being committed. Measured on dev b95e9d03: a
+# staged file carrying a real forbidden literal produced `files_scanned=54
+# findings=0` and the hook PASSED. These tests pin the fix so it cannot silently
+# regress to a committed-files-only enumeration.
+# --------------------------------------------------------------------------- #
+
+
+def _stage(tmp_path: Path, rel: str, content: str) -> None:
+    """Write `content` to `rel` and stage it WITHOUT committing."""
+    target = tmp_path / rel
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    subprocess.run(["git", "add", "--", rel], cwd=tmp_path, check=True)
+
+
+@pytest.mark.unit
+def test_staged_scope_blocks_a_leak_that_is_staged_but_not_committed(
+    tmp_path: Path,
+) -> None:
+    """AC2: the regression. This is the case `diff` scope silently passed."""
+    _init_repo(tmp_path)
+    _stage(tmp_path, "src/module.py", 'HOST = "192.168.86.201"\n')
+
+    result = _run(tmp_path, "blocking", "staged")
+    assert result.returncode == 1, (
+        "staged scope passed a staged leak -- the OMN-17369 defect is back\n"
+        f"{result.stdout}"
+    )
+    assert "src/module.py" in result.stdout
+
+
+@pytest.mark.unit
+def test_diff_scope_is_blind_to_staged_content(tmp_path: Path) -> None:
+    """Pins WHY the hook may not use `diff`: that scope enumerates
+    ``BASE_REF...HEAD``, so staged-but-uncommitted content is invisible to it.
+
+    The base ref must actually exist for this to reproduce. Without it the script
+    WARNs and falls back to scope=all, whose ``git ls-files -co`` DOES list staged
+    files -- so a naive fixture makes `diff` look fine and hides the defect. That
+    fallback is exactly why the bug survived review.
+    """
+    _init_repo(tmp_path)
+    subprocess.run(
+        ["git", "update-ref", "refs/remotes/origin/main", "HEAD"],
+        cwd=tmp_path,
+        check=True,
+    )
+    _stage(tmp_path, "src/module.py", 'HOST = "192.168.86.201"\n')
+
+    result = _run(tmp_path, "blocking", "diff")
+    assert "falling back to scope=all" not in result.stderr, (
+        "fixture did not establish the base ref; the assertion below would be "
+        "vacuous:\n" + result.stderr
+    )
+    assert "src/module.py" not in result.stdout, (
+        "diff scope now sees staged files; if that is deliberate, delete this "
+        "test and the OMN-17369 comments that cite it"
+    )
+    assert result.returncode == 0, result.stdout
+
+
+@pytest.mark.unit
+def test_staged_scope_ignores_unstaged_working_tree_changes(tmp_path: Path) -> None:
+    """A leak sitting in the worktree but never `git add`-ed is not being
+    committed, so the pre-commit surface must not block on it."""
+    _init_repo(tmp_path)
+    unstaged = tmp_path / "src" / "scratch.py"
+    unstaged.parent.mkdir(parents=True, exist_ok=True)
+    unstaged.write_text('HOST = "192.168.86.201"\n', encoding="utf-8")
+
+    result = _run(tmp_path, "blocking", "staged")
+    assert result.returncode == 0, result.stdout
+    assert "findings=0" in result.stdout
+
+
+@pytest.mark.unit
+def test_staged_scope_with_nothing_staged_passes(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    result = _run(tmp_path, "blocking", "staged")
+    assert result.returncode == 0, result.stdout
+    assert "findings=0" in result.stdout
+
+
+@pytest.mark.unit
+def test_staged_scope_honours_the_inline_annotation(tmp_path: Path) -> None:
+    _init_repo(tmp_path)
+    _stage(
+        tmp_path,
+        "src/module.py",
+        'HOST = "192.168.86.201"  # onex-allow-internal-ip OMN-17369 '
+        'reason="fixture proving the annotation survives the staged scope"\n',
+    )
+
+    result = _run(tmp_path, "blocking", "staged")
+    assert result.returncode == 0, result.stdout
+
+
+@pytest.mark.unit
+def test_staged_scope_tolerates_a_staged_deletion(tmp_path: Path) -> None:
+    """--diff-filter=ACMR must drop deletions: the path is gone from disk, and a
+    missing path must not become a hard error."""
+    _init_repo(tmp_path)
+    doomed = tmp_path / "src" / "doomed.py"
+    doomed.parent.mkdir(parents=True, exist_ok=True)
+    doomed.write_text("VALUE = 1\n", encoding="utf-8")
+    subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "commit", "-qm", "add"], cwd=tmp_path, check=True)
+    subprocess.run(["git", "rm", "-q", "--", "src/doomed.py"], cwd=tmp_path, check=True)
+
+    result = _run(tmp_path, "blocking", "staged")
+    assert result.returncode == 0, result.stdout
+
+
+@pytest.mark.unit
+def test_precommit_hook_uses_the_staged_scope(tmp_path: Path) -> None:
+    """AC5: the enforcement surface itself. A correct script wired with the wrong
+    scope is the whole defect, so the wiring is asserted, not assumed."""
+    config = (REPO_ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    assert "check_leaked_literals.sh blocking staged" in config, (
+        "the leaked-literals pre-commit hook must run scope=staged; scope=diff "
+        "cannot see the file being committed (OMN-17369)"
+    )
+    assert "check_leaked_literals.sh blocking diff" not in config, (
+        "a leaked-literals hook is still wired to the staged-blind diff scope "
+        "(OMN-17369)"
+    )

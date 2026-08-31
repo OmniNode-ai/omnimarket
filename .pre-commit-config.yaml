@@ -259,10 +259,20 @@ repos:
       # OMN-10580: Leaked-literals gate — blocks hardcoded LAN IPs, personal
       # paths, private model IDs from being committed. Add an inline annotation
       # to exempt a legitimate occurrence (see docs/leaked-literals-governance.md).
+      #
+      # OMN-17369: the scope MUST be `staged`, not `diff`. `diff` enumerates
+      # BASE_REF...HEAD — already-committed files — so at pre-commit time it never
+      # sees the file being committed. Measured on dev b95e9d03: a staged file
+      # carrying a real forbidden literal produced `files_scanned=54 findings=0`
+      # and the hook PASSED, for the OMN-17320 exposed-identifier class and for
+      # the five OMN-10580 regex classes alike. CI (`scope=all`) still caught it,
+      # so this was a lost local surface rather than an open door — but a gate
+      # that reports green because it scanned the wrong file set is precisely the
+      # failure mode this gate family exists to prevent. Do not revert to `diff`.
       - id: leaked-literals-gate
         name: Leaked literals gate (OMN-10580)
         language: system
-        entry: bash scripts/validation/check_leaked_literals.sh blocking diff
+        entry: bash scripts/validation/check_leaked_literals.sh blocking staged
         pass_filenames: false
         stages: [pre-commit]
 

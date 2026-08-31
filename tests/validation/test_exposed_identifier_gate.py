@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -487,3 +488,108 @@ def test_fingerprint_subcommand_reports_both_digests() -> None:
     assert result.returncode == 0, result.stderr
     assert PINNED_SCANNER_SHA256 in result.stdout, result.stdout
     assert PINNED_DENYLIST_SHA256 in result.stdout, result.stdout
+
+
+# --------------------------------------------------------------------------- #
+# OMN-17369 -- the delegated gate must inherit the pre-commit `staged` scope.
+#
+# OMN-17320 AC6 required this class to be enforced "as a pre-commit hook AND a
+# CI gate". The CI half held; the pre-commit half did not. The hook ran the host
+# script with scope=diff, which enumerates BASE_REF...HEAD -- already-committed
+# files -- so the delegated gate inherited that scope and never saw the file
+# being committed. Measured on dev b95e9d03 with the REAL slug staged:
+# `exposed-id-gate: mode=blocking scope=diff entries=5 files_scanned=55
+# findings=0`, and `pre-commit run leaked-literals-gate` reported Passed.
+#
+# The scanner was never at fault -- handed the path explicitly it flags the hit.
+# The fix is caller-side on purpose: check_exposed_identifiers.py is byte-identical
+# across omnimarket and omnibase_infra (AC7, pinned by test_cross_repo_fingerprint_pin
+# above), so teaching it a `staged` scope would break parity in two repos to fix an
+# enumeration bug in one.
+# --------------------------------------------------------------------------- #
+
+
+def _fixture_repo(tmp_path: Path) -> Path:
+    """A throwaway git repo carrying the host script, the gate, and a SYNTHETIC
+    denylist in the sibling layout the delegation resolves against."""
+    repo = tmp_path / "fixture"
+    (repo / "scripts" / "validation").mkdir(parents=True)
+    subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    subprocess.run(
+        ["git", "config", "user.email", "test@example.com"], cwd=repo, check=True
+    )
+    subprocess.run(["git", "config", "user.name", "test"], cwd=repo, check=True)
+
+    validation = repo / "scripts" / "validation"
+    for src in (
+        REPO_ROOT / "scripts" / "validation" / "check_leaked_literals.sh",
+        GATE,
+    ):
+        (validation / src.name).write_bytes(src.read_bytes())
+    # Synthetic denylist in the sibling slot, so the real literals stay out of
+    # this test entirely -- the same discipline as _mint above.
+    (validation / REAL_DENYLIST.name).write_bytes(
+        _mint(tmp_path, SYNTHETIC).read_bytes()
+    )
+    subprocess.run(["git", "add", "-A"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "init"], cwd=repo, check=True)
+    return repo
+
+
+def _run_host(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        ["bash", "scripts/validation/check_leaked_literals.sh", *args],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "PYTHON": sys.executable},
+    )
+
+
+def test_staged_scope_blocks_a_denylisted_identifier(tmp_path: Path) -> None:
+    """AC1: the regression, at the surface that actually failed."""
+    repo = _fixture_repo(tmp_path)
+    target = repo / "src" / "resolution.py"
+    target.parent.mkdir(parents=True)
+    target.write_text(f'TENANT = "{SYNTHETIC}"\n', encoding="utf-8")
+    subprocess.run(["git", "add", "--", "src/resolution.py"], cwd=repo, check=True)
+
+    result = _run_host(repo, "blocking", "staged")
+    combined = result.stdout + result.stderr
+    assert result.returncode == 1, (
+        "the pre-commit surface passed a staged denylisted identifier -- "
+        f"OMN-17369 has regressed\n{combined}"
+    )
+    assert "src/resolution.py" in combined, combined
+    assert "denylisted test-fixture" in combined, combined
+
+
+def test_staged_scope_does_not_fall_back_to_scanning_the_whole_tree(
+    tmp_path: Path,
+) -> None:
+    """With nothing staged the delegated gate must be skipped, not handed an
+    empty argv -- which would make it fall back to its own scope=all and walk
+    the entire repository on every commit."""
+    repo = _fixture_repo(tmp_path)
+    result = _run_host(repo, "blocking", "staged")
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "files_scanned=3" not in result.stdout, (
+        "the delegated gate scanned the whole tree on an empty stage:\n" + result.stdout
+    )
+
+
+def test_staged_scope_still_honours_the_annotation(tmp_path: Path) -> None:
+    repo = _fixture_repo(tmp_path)
+    target = repo / "src" / "narrative.md"
+    target.parent.mkdir(parents=True)
+    target.write_text(
+        f"The reintroduced slug was `{SYNTHETIC}`.  "
+        "<!-- # onex-allow-exposed-identifier OMN-17369 "
+        'reason="historical narrative; a stand-in would assert a false fact" -->\n',
+        encoding="utf-8",
+    )
+    subprocess.run(["git", "add", "--", "src/narrative.md"], cwd=repo, check=True)
+
+    result = _run_host(repo, "blocking", "staged")
+    assert result.returncode == 0, result.stdout + result.stderr
