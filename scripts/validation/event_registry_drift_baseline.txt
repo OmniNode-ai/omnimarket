@@ -25,3 +25,23 @@ event_registry_only delegation.request
 # for liveness checks. It is never produced by an omniclaude hook, so it has no
 # entry in the hook registry by design.
 event_registry_only daemon.health.probe
+
+# --- OMN-17019 (C9) work-obligation events ------------------------------------
+# The five obligation lifecycle kinds are emit-daemon-only BY DESIGN, not as
+# debt: their emitter is the onex CLI and the nodes that record work, not a
+# Claude Code lifecycle hook. OMN-17019 names omniclaude's hook wiring as
+# *existing* and unchanged, so there is no hook-side registration to mirror --
+# the same situation daemon.health.probe is in. Both carve-out kinds are needed
+# because compare_topic_sets() compares the flattened wire-topic sets
+# independently of compare_registrations()' event-type membership check.
+# This carve-out shrinks if a hook client ever constructs these; it never grows.
+registry_only onex.evt.omniclaude.work-obligation-created.v1
+registry_only onex.evt.omniclaude.work-obligation-transferred.v1
+registry_only onex.evt.omniclaude.work-obligation-satisfied.v1
+registry_only onex.evt.omniclaude.work-obligation-superseded.v1
+registry_only onex.evt.omniclaude.work-obligation-abandoned.v1
+event_registry_only work.obligation.created
+event_registry_only work.obligation.transferred
+event_registry_only work.obligation.satisfied
+event_registry_only work.obligation.superseded
+event_registry_only work.obligation.abandoned

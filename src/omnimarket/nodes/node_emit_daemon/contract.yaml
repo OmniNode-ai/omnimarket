@@ -175,6 +175,17 @@ event_bus:
     # and cannot be listed here without failing the topic-naming lint. It is allowlisted
     # in dep_health_allowlist.yaml for UNDECLARED_TOPIC suppression (OMN-11061).
     - onex.evt.omniclaude.diagnostic-daemon-health.v1
+    # Work-obligation lifecycle (OMN-17019 / C9). Mirrors the five
+    # work.obligation.* fan-out targets in registries/topics.yaml. Declaring
+    # them here is what makes node_projection_open_obligations a wired consumer
+    # rather than an ORPHANED_CONSUMER: the contract-topic-graph gate proves
+    # statically that something can send a subscriber a message, and the emit
+    # daemon is that something for every topic this registry fans out to.
+    - onex.evt.omniclaude.work-obligation-created.v1
+    - onex.evt.omniclaude.work-obligation-transferred.v1
+    - onex.evt.omniclaude.work-obligation-satisfied.v1
+    - onex.evt.omniclaude.work-obligation-superseded.v1
+    - onex.evt.omniclaude.work-obligation-abandoned.v1
 
 externally_consumed_topics:
   - onex.cmd.omniintelligence.tool-content.v1

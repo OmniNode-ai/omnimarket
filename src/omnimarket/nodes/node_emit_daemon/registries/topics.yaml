@@ -634,3 +634,84 @@ events:
     partition_key_field: daemon_id
     required_fields: [daemon_id, pid, socket_path, kafka_offset, round_trip_ms, status]
     payload_model: daemon_health
+
+  # =========================================================================
+  # Work-Obligation Events (OMN-17019 / C9 of the OMN-16176 ledger ladder)
+  # =========================================================================
+  # An obligation is what one actor owes another. It is created, transferred,
+  # satisfied, superseded or abandoned by a TYPED EVENT against a contract --
+  # never by editing a markdown file. `session-goal.md`,
+  # `ROLLING_SEVEN_DAY_PLAN.md`, the rolling ledger's open-ask section and the
+  # session handoff all become RENDERERS over the open-obligations projection
+  # these events feed (node_projection_open_obligations); none of them is the
+  # authority.
+  #
+  # NO BESPOKE TOPIC FAMILY. These are ordinary events in the existing
+  # onex.evt.omniclaude.* producer namespace, sitting in the same `work.`
+  # event-type namespace as OMN-16177's work.claim.* / work.result.* kinds.
+  # An obligation is a work event, not a new transport.
+  #
+  # partition_key_field is obligation_id for all five, deliberately. The
+  # lifecycle fold is resolved by PARTITION OFFSET, not by emitted_at
+  # (OMN-16177's ordering contract; emitted_at is display sort only). If two
+  # events about one obligation could land in different partitions, "what is
+  # currently owed" becomes a race between consumers.
+  #
+  # tier is duty_critical for all five, deliberately. Off-rails rev 2 sets the
+  # failure behaviour for this surface: obligation READS may degrade to the
+  # last-good projection and say so, but obligation WRITES fail closed -- an
+  # obligation that cannot be recorded must block the close, never be dropped.
+  # telemetry tier permits exactly the silent drop this ticket exists to end.
+  #
+  # HOOK-SIDE REGISTRATION: none, by design. The emitter is the onex CLI and
+  # the nodes that record work, not a Claude Code lifecycle hook -- OMN-17019
+  # names omniclaude's hook wiring as *existing*, unchanged by this ticket. So
+  # these five are declared in scripts/validation/event_registry_drift_baseline.txt
+  # as `event_registry_only` + `registry_only`, the same carve-out
+  # delegation.request and daemon.health.probe already use. When a hook client
+  # does start constructing them, the carve-out shrinks; it never grows.
+  work.obligation.created:
+    fan_out:
+      - topic: "onex.evt.omniclaude.work-obligation-created.v1"
+        tier: duty_critical
+        description: "An obligation is opened: who asked, who owes, what would satisfy it"
+    partition_key_field: obligation_id
+    required_fields:
+      [obligation_id, actor_id, summary, asked_by, owed_by, acceptance_condition]
+
+  work.obligation.transferred:
+    fan_out:
+      - topic: "onex.evt.omniclaude.work-obligation-transferred.v1"
+        tier: duty_critical
+        description: "The debt moves to a different owner; the obligation survives"
+    partition_key_field: obligation_id
+    required_fields: [obligation_id, actor_id, summary, owed_by]
+
+  work.obligation.satisfied:
+    fan_out:
+      - topic: "onex.evt.omniclaude.work-obligation-satisfied.v1"
+        tier: duty_critical
+        # evidence_uri + delivery_state are BOTH required: off-rails rev 2 A14
+        # closes an obligation on a delivered artifact plus a delivery state,
+        # explicitly NOT on a ticket id. A ticket moving to Done is not
+        # evidence that anything was delivered to anyone.
+        description: "Closed by delivery: artifact reference plus delivery state"
+    partition_key_field: obligation_id
+    required_fields: [obligation_id, actor_id, summary, evidence_uri, delivery_state]
+
+  work.obligation.superseded:
+    fan_out:
+      - topic: "onex.evt.omniclaude.work-obligation-superseded.v1"
+        tier: duty_critical
+        description: "Closed because a named successor obligation replaced it"
+    partition_key_field: obligation_id
+    required_fields:
+      [obligation_id, actor_id, summary, superseded_by_obligation_id]
+
+  work.obligation.abandoned:
+    fan_out:
+      - topic: "onex.evt.omniclaude.work-obligation-abandoned.v1"
+        tier: duty_critical
+        description: "Closed without delivery, with a recorded reason -- never a silent drop"
+    partition_key_field: obligation_id
+    required_fields: [obligation_id, actor_id, summary, abandon_reason]
