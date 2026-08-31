@@ -483,11 +483,54 @@ async def _run_projection_chain(
     )
 
 
+def _xfail_pending_tenant_registry_grant(
+    request: pytest.FixtureRequest, case: ProjectionChainCase
+) -> None:
+    """Mark the delegation-write case xfail(strict) pending the OMN-16930/
+    OMN-16804 topology grant, exactly the file's own sanctioned idiom below
+    (see ``test_the_projection_write_is_not_refused_at_the_tenant_authority_seam``)
+    applied here per-case rather than function-wide, because only this one
+    case (``DELEGATION_PROJECTION_CASE``) reads ``tenant_registry_mirror`` —
+    the other case in ``PROJECTION_CHAIN_CASES`` does not touch it and must
+    keep passing.
+
+    node_projection_delegation's OMN-16804 read of tenant_registry_mirror
+    needs a topology TABLE grant (SELECT for tenant_projection_writer on
+    public.tenant_registry_mirror) that omnibase_infra's
+    scripts/generate_application_database_table_grants.py can only generate
+    against a PINNED omnimarket release carrying this contract's db_io
+    declaration (omnimarket#2238 / OMN-16930, unreleased as of this marker).
+    STRICT: this turns RED (XPASS) the moment that release lands and the
+    grant is regenerated (OMN-16804 leg 3) — the mechanical signal to delete
+    this marker and land the pin.
+    """
+    if case.chain_id != DELEGATION_PROJECTION_CASE.chain_id:
+        return
+    request.node.add_marker(
+        pytest.mark.xfail(
+            strict=True,
+            reason=(
+                "OMN-16930/OMN-16804: node_projection_delegation's read of "
+                "tenant_registry_mirror needs a topology TABLE grant -- "
+                "SELECT for tenant_projection_writer on "
+                "public.tenant_registry_mirror -- that "
+                "generate_application_database_table_grants.py can only "
+                "generate against a PINNED omnimarket release carrying this "
+                "contract's db_io declaration (omnimarket#2238, unreleased). "
+                "STRICT: this turns RED (XPASS) the moment that release "
+                "lands and the grant is regenerated (OMN-16804 leg 3) -- the "
+                "mechanical signal to delete this marker."
+            ),
+        )
+    )
+
+
 @pytest.mark.parametrize("case", PROJECTION_CHAIN_CASES, ids=lambda case: case.chain_id)
 async def test_wiring_does_not_quarantine_the_projection_handlers(
     case: ProjectionChainCase,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    request: pytest.FixtureRequest,
 ) -> None:
     """No handler the contract declares may be quarantined before dispatch.
 
@@ -495,6 +538,7 @@ async def test_wiring_does_not_quarantine_the_projection_handlers(
     OMN-16767 hid behind green CI. This is the cheapest half of the gate and
     it must never be allowed to regress.
     """
+    _xfail_pending_tenant_registry_grant(request, case)
     run = await _run_projection_chain(case, monkeypatch, caplog)
 
     quarantined = [
@@ -519,6 +563,7 @@ async def test_delegate_skill_terminal_reaches_the_projection_writer(
     case: ProjectionChainCase,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    request: pytest.FixtureRequest,
 ) -> None:
     """The writing handler must actually be entered by the real dispatch.
 
@@ -529,6 +574,7 @@ async def test_delegate_skill_terminal_reaches_the_projection_writer(
     future regression in any of them is attributed correctly instead of being
     re-diagnosed as the write-seam defect.
     """
+    _xfail_pending_tenant_registry_grant(request, case)
     run = await _run_projection_chain(case, monkeypatch, caplog)
 
     assert case.writer_handler_name in run.handlers_entered, (
