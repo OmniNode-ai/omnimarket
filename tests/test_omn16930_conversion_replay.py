@@ -26,9 +26,17 @@ THE CENSUS
         22222222-2222-2222-2222-...        3   SEED-B-1/2/3
         d5-e2e-0b5ae67c                    1
         delegation-spotcheck-1786977419    1
-        t-1lostguy1                        1   real, active, external customer
+        t-external-fixture-omn17288        1   externally-owned tenant
         -----------------------------------------
                                          169
+
+    The last slug is SYNTHETIC. The live census row was an external customer's
+    real slug and registry UUID, and this file is in a PUBLIC repo, so
+    OMN-17288 substituted a stand-in that is provably nobody's:
+    uuid5(NAMESPACE_DNS, "t-external-fixture-omn17288.example.invalid"), over
+    an RFC 2606 reserved domain. Only the identifier changed -- the row count,
+    the arithmetic below, and the fact that this slug is outside 0031's CASE
+    are all unchanged, and none of them ever depended on whose tenant it was.
 
     Six of the nine "unmapped" rows are the SEED-A/SEED-B fixtures, which have
     no registry identity at any point in the future -- neither literal appears
@@ -86,12 +94,21 @@ _REGISTRY_MIGRATIONS = (
     / "migrations"
 )
 
-_SUPERSEDED = "0031_delegation_events_tenant_id_to_uuid.sql"
-_CONVERSION = "0032_delegation_events_tenant_id_uuid_via_registry.sql"
+# 0031 and 0032 are both RETIRED and fenced. 0033 is the operative conversion:
+# OMN-17288 superseded 0032 because its policy recreate and GRANT sat AFTER
+# `END$$`, which broke the documented table-absent no-op and left a real
+# RLS-enabled-with-no-policy window between transactions. The mechanism under
+# test here is unchanged, so this replay simply follows the live file.
+_SUPERSEDED_0031 = "0031_delegation_events_tenant_id_to_uuid.sql"
+_SUPERSEDED_0032 = "0032_delegation_events_tenant_id_uuid_via_registry.sql"
+_CONVERSION = "0033_delegation_events_uuid_via_registry_single_transaction.sql"
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
 # The registry rows, pinned as literals from the live cross-check against
-# omninode_cloud.public.tenants (OMN-16493 comment 4d7a41a1, finding 4).
+# omninode_cloud.public.tenants (OMN-16493 comment 4d7a41a1, finding 4) --
+# except t-external-fixture-omn17288, which is the OMN-17288 synthetic
+# stand-in for the one externally-owned customer in that census (see the
+# module docstring).
 # Deliberately NOT imported from omnimarket.projection.tenant_isolation: this
 # file is the independent check on that map. Note that three of these six are
 # absent from _LEGACY_TENANT_UUID_MAP and from 0031's CASE -- they are the
@@ -102,7 +119,7 @@ _REGISTRY: dict[str, UUID] = {
     "beta-gateway-canary-79afa7263852": UUID("79afa726-3852-464f-b7a4-d4b8b9c75ee7"),
     "d5-e2e-0b5ae67c": UUID("18ae3951-376b-4400-af83-c34a137bfda1"),
     "delegation-spotcheck-1786977419": UUID("7e7e6e72-1a02-4a66-a98a-dae317e72e00"),
-    "t-1lostguy1": UUID("e9c62089-2fe8-4190-8fc2-1c40b757b7b1"),
+    "t-external-fixture-omn17288": UUID("7527359e-3c87-53fd-a0ae-09fb9c2fe82d"),
 }
 
 # Slugs that 0031's three-entry CASE knew nothing about but which resolve
@@ -110,7 +127,7 @@ _REGISTRY: dict[str, UUID] = {
 _BEYOND_0031 = {
     "d5-e2e-0b5ae67c",
     "delegation-spotcheck-1786977419",
-    "t-1lostguy1",
+    "t-external-fixture-omn17288",
 }
 
 _SEED_DEBRIS_CORRELATION_IDS = [
@@ -130,7 +147,7 @@ _CENSUS: list[tuple[str, int]] = [
     ("22222222-2222-2222-2222-222222222222", 3),
     ("d5-e2e-0b5ae67c", 1),
     ("delegation-spotcheck-1786977419", 1),
-    ("t-1lostguy1", 1),
+    ("t-external-fixture-omn17288", 1),
 ]
 _CENSUS_TOTAL = sum(count for _, count in _CENSUS)
 _DEBRIS_ROWS = len(_SEED_DEBRIS_CORRELATION_IDS)
@@ -215,14 +232,14 @@ def _test_schema_safe_sql(raw_sql: str) -> str:
 def _pre_conversion_migrations() -> list[Path]:
     """Every delegation migration up to and including 0030.
 
-    0031 is excluded deliberately: it is FENCED and superseded, and this file
-    proves the replacement. Applying it here would convert the column before
-    0032 ever ran, making the whole replay vacuous.
+    0031 and 0032 are excluded deliberately: both are FENCED and superseded,
+    and this file proves the replacement. Applying either here would convert
+    the column before 0033 ever ran, making the whole replay vacuous.
     """
     return [
         path
         for path in sorted(_DELEGATION_MIGRATIONS.glob("*.sql"), key=lambda f: f.name)
-        if path.name not in {_SUPERSEDED, _CONVERSION}
+        if path.name not in {_SUPERSEDED_0031, _SUPERSEDED_0032, _CONVERSION}
     ]
 
 
@@ -596,5 +613,5 @@ class TestConversionReplay:
                     "INSERT INTO tenant_registry_mirror "
                     "(tenant_slug, tenant_uuid, status) VALUES ($1, $2, 'active')",
                     "an-alias-slug",
-                    str(_REGISTRY["t-1lostguy1"]),
+                    str(_REGISTRY["t-external-fixture-omn17288"]),
                 )

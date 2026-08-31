@@ -60,8 +60,14 @@ _MIRROR_MIGRATION = (
 )
 
 _TOPIC = "onex.tenant.events"
-_SLUG = "t-1lostguy1"
-_UUID = UUID("e9c62089-2fe8-4190-8fc2-1c40b757b7b1")
+# Synthetic stand-in for the externally-owned tenant of OMN-16930. The real
+# slug and registry UUID were live customer identifiers committed to a PUBLIC
+# repo; OMN-17288 replaced them. The UUID below is
+# uuid5(NAMESPACE_DNS, "t-external-fixture-omn17288.example.invalid") -- RFC
+# 2606 reserves .invalid, so the pair is provably not anyone's. What is under
+# test is the resolution mechanism, which needs no real identity.
+_SLUG = "t-external-fixture-omn17288"
+_UUID = UUID("7527359e-3c87-53fd-a0ae-09fb9c2fe82d")
 _OTHER_UUID = UUID("91c74442-1233-4c97-b191-911a10346fdf")
 
 
