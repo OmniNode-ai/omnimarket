@@ -110,7 +110,12 @@ def _scan_literal_credentials(rel: str, text: str) -> list[str]:
 
 
 def _backend_has_logical_ref(backend: dict[str, Any]) -> bool:
-    for key in ("secret_ref", "api_key_ref", "api_key_env", "credential_ref"):
+    # OMN-17372: ``api_key_env`` is no longer accepted as a logical reference.
+    # It never was one -- it named a HOUSE environment variable, which is the
+    # opposite of the store indirection ``secret_ref`` provides. A backend
+    # carrying only ``api_key_env`` is now unreferenced, not "referenced by an
+    # env var", and this gate says so.
+    for key in ("secret_ref", "api_key_ref", "credential_ref"):
         value = backend.get(key)
         if isinstance(value, str) and value.strip():
             return True
@@ -122,9 +127,54 @@ def _backend_auth_is_exclusive(backend: dict[str, Any]) -> bool:
     has_credential = isinstance(credential, str) and credential.strip()
     has_api_key = any(
         isinstance(backend.get(key), str) and backend.get(key, "").strip()
-        for key in ("secret_ref", "api_key_ref", "api_key_env")
+        for key in ("secret_ref", "api_key_ref")
     )
     return not (has_credential and has_api_key)
+
+
+def _scan_api_key_env(rel: str, data: dict[str, Any]) -> list[str]:
+    """Reject any ``api_key_env`` key in the delegation backend config.
+
+    OMN-17372. ``api_key_env`` named a house environment variable, so a backend
+    carrying one could authenticate on OmniNode's own provider account the
+    moment that variable held a value. That is how a keyless customer's
+    delegation -- routed to the platform-default ladder by the fail-open
+    tenant-overlay miss -- executed on our credential instead of receiving an
+    honest refusal.
+
+    OmniNode does not offer inference and there are no keyless customers on the
+    cloud: every customer brings their own provider key, resolved per-tenant
+    from the managed store, and a customer with none gets a typed refusal. So
+    the field is DELETED rather than deprecated -- no renamed variable, no
+    dual-read fallback, and deliberately no suppression token. A backend that
+    cannot authenticate from ``secret_ref`` alone must fail, not reach for an
+    env var.
+
+    Scanned on the RAW mapping so a re-added key is caught even when no code
+    reads it any more: config that merely looks configured is exactly how this
+    comes back.
+    """
+    violations: list[str] = []
+    backends = data.get("backends", [])
+    if not isinstance(backends, list):
+        return violations
+    for backend in backends:
+        if not isinstance(backend, dict):
+            continue
+        if "api_key_env" not in backend:
+            continue
+        backend_id = backend.get("backend_id", "<unknown>")
+        named = backend.get("api_key_env")
+        violations.append(
+            f"{rel}: backend {backend_id!r} declares api_key_env={named!r}. "
+            f"The house env-var fallback was DELETED (OMN-17372): OmniNode does "
+            f"not offer inference and there are no keyless customers on the "
+            f"cloud, so a backend authenticates from its managed-store "
+            f"secret_ref or not at all. Do not re-add this field, rename it, or "
+            f"reintroduce it as a fallback -- a delegation that lacks a key must "
+            f"refuse, not borrow the house account."
+        )
+    return violations
 
 
 def _scan_bifrost_backends(rel: str, data: dict[str, Any]) -> list[str]:
@@ -158,6 +208,7 @@ def _scan_bifrost_backends(rel: str, data: dict[str, Any]) -> list[str]:
 def build_report(repo_root: Path) -> dict[str, Any]:
     literal_violations: list[str] = []
     backend_violations: list[str] = []
+    api_key_env_violations: list[str] = []
     errors: list[str] = []
 
     for rel in _SCANNED_CONFIGS:
@@ -171,16 +222,21 @@ def build_report(repo_root: Path) -> dict[str, Any]:
             parsed = yaml.safe_load(text)
             if isinstance(parsed, dict):
                 backend_violations.extend(_scan_bifrost_backends(rel, parsed))
+                api_key_env_violations.extend(_scan_api_key_env(rel, parsed))
             else:
                 errors.append(f"{rel}: did not parse to a mapping")
 
-    all_violations = literal_violations + backend_violations
+    all_violations = literal_violations + backend_violations + api_key_env_violations
     return {
         "ticket": "OMN-12971",
         "gate": "backend-secret-discipline",
         "scanned_configs": list(_SCANNED_CONFIGS),
         "literal_credential_violations": literal_violations,
         "backend_ref_violations": backend_violations,
+        # OMN-17372: the house env-var fallback ban, reported as its own bucket
+        # so a failure names the actual rule rather than reading as generic
+        # "missing ref" drift.
+        "api_key_env_violations": api_key_env_violations,
         "errors": errors,
         "passed": len(all_violations) == 0 and len(errors) == 0,
     }
@@ -214,6 +270,8 @@ def main() -> int:
         print(f"  literal-credential: {v}")
     for v in report["backend_ref_violations"]:
         print(f"  backend-ref: {v}")
+    for v in report["api_key_env_violations"]:
+        print(f"  api-key-env: {v}")
     print(
         "\nFix: keep credential VALUES in the secret store; declare only logical "
         "refs (secret_ref / credential_ref) in routing-authority config."
