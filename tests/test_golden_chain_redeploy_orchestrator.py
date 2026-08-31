@@ -219,3 +219,22 @@ class TestRedeployOrchestratorGoldenChain:
         output = await handler.handle(envelope)
         assert output.projections == ()
         assert output.result is None
+
+    def test_publish_topic_constants_are_pinned_to_their_wire_literals(self) -> None:
+        """Every assertion above compares against a CONTRACT-DERIVED constant.
+
+        ``TOPIC_*`` are resolved at import time by ``_topic_with_suffix`` from
+        ``event_bus.publish_topics``, so a contract-side rename would move the constant
+        and every golden-chain edge above would keep passing against the new name — the
+        chain would be pinned to itself, not to the wire. Pin the literals once so a
+        publish-topic change has to be deliberate (OMN-17296).
+        """
+        assert (
+            TOPIC_GRANT_RESOLVE == "onex.cmd.omnimarket.prod-promotion-grant-resolve.v1"
+        )
+        assert (
+            TOPIC_PROD_GATE_EVALUATE
+            == "onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1"
+        )
+        assert TOPIC_DEPLOY_PUBLISH == "onex.cmd.omnimarket.redeploy-deploy-publish.v1"
+        assert TOPIC_REDEPLOY_COMPLETED == "onex.evt.omnimarket.redeploy-completed.v1"

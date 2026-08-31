@@ -76,8 +76,21 @@ event_bus:
     - onex.evt.omnimarket.readiness-gate-completed.v1
     - onex.evt.omnimarket.readiness-gate-blocked.v1
     # OMN-12577 PROBING consumes the LIVE runtime attestation.
+    #
+    # OMN-17296: onex.evt.omnibase-infra.runtime-manifest-published.v1 was DROPPED from
+    # this list. HandlerRedeployOrchestrator has no branch for it — it fell to the
+    # redeploy-START default, which cannot coerce a manifest payload — so the
+    # subscription was unserviceable in both directions: the runtime DLQ'd 189 manifest
+    # events per restart with failure_class=no_dispatcher and committed every offset
+    # (group Stable / LAG 0), and routing it instead would only have moved the failure
+    # into the handler. It is a vestige of the pre-OMN-13211 in-process node_redeploy
+    # FSM; the canonical bus-dispatching orchestrator never implemented a manifest
+    # branch. Re-add it only together with a real branch AND an explicit
+    # message_category on the owning handler entry.
+    #
+    # runtime-booted.v1 has the same unserviceable shape and is tracked in the OMN-16939
+    # subscriber-dispatcher-resolution burn-down; it is deliberately NOT touched here.
     - onex.evt.omnibase-infra.runtime-booted.v1
-    - onex.evt.omnibase-infra.runtime-manifest-published.v1
   publish_topics:
     # OMN-13439 Phase 2b: resolve the grant from onex_change_control@main first.
     - onex.cmd.omnimarket.prod-promotion-grant-resolve.v1

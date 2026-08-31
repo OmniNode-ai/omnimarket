@@ -228,7 +228,6 @@ accepted:
 - ORPHANED_CONSUMER::node_recall_compute::onex.cmd.omnimarket.recall-start.v1
 - ORPHANED_CONSUMER::node_redeploy_deploy_effect::onex.evt.deploy.rebuild-completed.v1
 - ORPHANED_CONSUMER::node_redeploy_fsm_reducer::onex.evt.omnimarket.redeploy-phase-advance.v1
-- ORPHANED_CONSUMER::node_redeploy_orchestrator::onex.evt.omnibase-infra.runtime-manifest-published.v1
 - ORPHANED_CONSUMER::node_redeploy_orchestrator::onex.evt.omnimarket.runtime-image-built.v1
 - ORPHANED_CONSUMER::node_refill_sprint_orchestrator::onex.cmd.omnimarket.sprint-refill.v1
 - ORPHANED_CONSUMER::node_release::onex.cmd.omnimarket.release-start.v1

@@ -113,10 +113,6 @@ known_unresolved_subscriptions:
     category: event
     reason: category_mismatch
   - contract: node_redeploy_orchestrator
-    topic: onex.evt.omnibase-infra.runtime-manifest-published.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_redeploy_orchestrator
     topic: onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
     category: event
     reason: category_mismatch

@@ -1457,13 +1457,6 @@ entries:
   topic: onex.evt.omnimarket.redeploy-phase-advance.v1
   tag: genuine_orphan
   signal: null
-- key: ORPHANED_CONSUMER::node_redeploy_orchestrator::onex.evt.omnibase-infra.runtime-manifest-published.v1
-  defect: ORPHANED_CONSUMER
-  node: node_redeploy_orchestrator
-  package: omnimarket
-  topic: onex.evt.omnibase-infra.runtime-manifest-published.v1
-  tag: cli_dispatch_reachable
-  signal: skill_mapping_registry
 - key: ORPHANED_CONSUMER::node_redeploy_orchestrator::onex.evt.omnimarket.runtime-image-built.v1
   defect: ORPHANED_CONSUMER
   node: node_redeploy_orchestrator
