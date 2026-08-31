@@ -23,6 +23,7 @@ import logging
 from collections.abc import Sequence
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import yaml
 from pydantic import ValidationError
@@ -43,6 +44,16 @@ _DEFAULT_OVERLAY_PATH = (
 _IDENTITY_KEYS = ("backend_id", "rule_id")
 
 _COMMITTED_CONTRACT_RELPATH = "src/omnimarket/configs/bifrost_delegation.yaml"
+
+
+class ProviderSurfaceMismatchError(ValueError):
+    """A backend addresses a declared provider host on the wrong path prefix.
+
+    OMN-6790. Distinct from a plain schema ``ValueError`` because the caller
+    (and the operator reading the traceback) needs the CAUSE, not the field:
+    one provider host can serve two different PRODUCTS on two prefixes, and the
+    wrong one answers our key with an error naming a cause that is not real.
+    """
 
 
 class OverlayOnlyBackendIdError(ValueError):
@@ -241,6 +252,8 @@ def load_bifrost_delegation_config(
             )
             raise ValueError(msg)
 
+    _reject_backends_off_a_declared_provider_surface(config, source=str(resolved))
+
     rule_ids = [rule.rule_id for rule in config.routing_rules]
     if len(rule_ids) != len(set(rule_ids)):
         counts: dict[object, int] = {}
@@ -257,6 +270,73 @@ def load_bifrost_delegation_config(
         len(config.routing_rules),
     )
     return config
+
+
+def _reject_backends_off_a_declared_provider_surface(
+    config: ModelBifrostDelegationConfig,
+    *,
+    source: str,
+) -> None:
+    """Fail the LOAD when a backend addresses a provider on the wrong surface.
+
+    OMN-6790. ``provider_quota_policy.providers[].required_path_prefix`` is the
+    contract's declaration that a given provider host serves the product we
+    hold on ONE path prefix. Enforcing it here — at the single locus every
+    consumer of the routing authority funnels through — is what makes the fact
+    hold on the HOST, not merely in the repo.
+
+    That distinction is the whole point. The two OMN-6790 regression tests are
+    source-tree scanners: they read the committed YAML in a checkout. On
+    2026-08-31 the checkout was green and the delegation call still went to the
+    pay-as-you-go surface, because the client executed an INSTALLED omnimarket
+    build predating the fix (``omnibase_infra/.venv``, omnimarket @ 66b7131a3).
+    No source-tree test can see that; a load-time assertion in the code that
+    ships WITH the contract can, because a stale build carries a stale contract
+    and this check travels with it. The same assertion also covers a site
+    overlay or a lane ``BIFROST_CONTRACT_PATH`` that repoints the backend.
+
+    Fails closed: a mismatched surface raises rather than being logged, because
+    the alternative is a provider error whose text names a cause that is not
+    real ("Insufficient balance") and which has now been misread three times.
+    """
+    policy = config.provider_quota_policy
+    if policy is None:
+        return
+
+    rules = [p for p in policy.providers if p.required_path_prefix]
+    if not rules:
+        return
+
+    offenders: list[str] = []
+    for rule in rules:
+        prefix = cast(str, rule.required_path_prefix)
+        for backend in config.backends:
+            url = backend.endpoint_url
+            if not url:
+                continue
+            parsed = urlparse(url)
+            if parsed.hostname != rule.match_endpoint_host:
+                continue
+            if parsed.path.startswith(prefix):
+                continue
+            hint = rule.required_path_prefix_hint or ""
+            offenders.append(
+                f"backend {backend.backend_id!r} -> {url} "
+                f"(provider {rule.provider_id!r} requires path prefix {prefix!r})"
+                + (f" — {hint}" if hint else "")
+            )
+
+    if offenders:
+        msg = (
+            "Bifrost delegation config declares backend(s) on the WRONG surface "
+            f"of a provider host (source: {source}):\n  "
+            + "\n  ".join(offenders)
+            + "\nThis config is refused rather than loaded. If the committed "
+            "contract is correct, the build or overlay resolving it on THIS host "
+            "is stale — reconcile the installed package / overlay, do not edit "
+            "the prefix."
+        )
+        raise ProviderSurfaceMismatchError(msg)
 
 
 def _read_yaml_mapping(path: Path) -> dict[str, Any]:
@@ -352,6 +432,7 @@ def _list_identity_key(
 
 __all__: list[str] = [
     "OverlayOnlyBackendIdError",
+    "ProviderSurfaceMismatchError",
     "deep_merge_bifrost_delegation_config",
     "load_bifrost_delegation_config",
     "reject_overlay_only_backend_ids",
