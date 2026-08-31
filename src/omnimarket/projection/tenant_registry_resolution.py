@@ -97,7 +97,7 @@ class ProtocolTenantRegistryReader(Protocol):
 
     def registry_tenant_uuid(self, tenant_slug: str) -> UUID | None:
         """Return the registry's UUID for ``tenant_slug``, or ``None``."""
-        ...
+        raise NotImplementedError
 
 
 def _legacy_tenant_uuid(tenant_slug: str) -> UUID | None:

@@ -293,11 +293,13 @@ def real_pg_adapter():
     """A migrated, disposable schema plus a sync adapter bound to it."""
     dsn = _dsn()
     loop = asyncio.new_event_loop()
+    conn: asyncpg.Connection | None = None
     try:
         try:
             conn = loop.run_until_complete(asyncpg.connect(dsn))
         except (OSError, asyncpg.PostgresError) as exc:  # pragma: no cover
             pytest.skip(f"no reachable Postgres for the OMN-16804 proof: {exc}")
+        assert conn is not None
         schema = f"omn16804_{uuid4().hex[:12]}"
         try:
             loop.run_until_complete(conn.execute(f"CREATE SCHEMA {schema}"))
