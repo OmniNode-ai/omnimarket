@@ -21,7 +21,7 @@
 # See routing_tiers.yaml for tier escalation ladder.
 #
 # Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155, OMN-16442
-config_version: "2.5.0"
+config_version: "2.6.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 # model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
@@ -661,6 +661,24 @@ provider_quota_policy:
     - provider_id: zai
       # Matched against the backend's endpoint_url host.
       match_endpoint_host: "api.z.ai"
+      # OMN-6790: this host serves TWO PRODUCTS on two prefixes. We hold the
+      # Coding Plan, served only under /api/coding/paas/v4. Declaring the
+      # prefix here makes a config that points any api.z.ai backend elsewhere
+      # UN-LOADABLE (config_loader_bifrost_delegation.
+      # _reject_backends_off_a_declared_provider_surface), on whatever host is
+      # resolving it. The two existing OMN-6790 tests scan a source checkout;
+      # they were both green on 2026-08-31 while a delegation call still hit
+      # /api/paas/v4, because the client ran an INSTALLED omnimarket build
+      # predating the fix. This declaration is what a stale build cannot be
+      # green against — it travels inside the same artifact as the endpoint.
+      required_path_prefix: "/api/coding/paas/v4"
+      required_path_prefix_hint: >-
+        We hold a z.ai GLM Coding Plan, served ONLY at
+        https://api.z.ai/api/coding/paas/v4. The bare /api/paas/v4 is the
+        pay-as-you-go product, which this account does not hold; it answers a
+        Coding-Plan key with 429 code 1113 "Insufficient balance or no resource
+        package". That is a WRONG-ENDPOINT signal, never a billing fact, and
+        never a reason to fund the account.
       codes:
         # Live-observed 2026-08-28 on the coding-plan surface, verbatim:
         #   {"error":{"code":"1310","message":"Weekly/Monthly Limit Exhausted.

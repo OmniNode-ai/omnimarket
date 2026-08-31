@@ -233,3 +233,170 @@ def test_zai_1113_is_classified_as_a_wrong_endpoint_not_a_funding_action() -> No
     assert "billing" in hint.lower() or "never" in hint.lower(), (
         "the hint must say this is not a billing action"
     )
+
+
+# ---------------------------------------------------------------------------
+# OMN-6790 round 2 (2026-08-31): the source-tree tests above were BOTH GREEN
+# while a live delegation call still went to /api/paas/v4.
+#
+# Root cause: they assert about a source CHECKOUT. The client executed an
+# INSTALLED omnimarket build that predated the fix (``omnibase_infra/.venv``,
+# omnimarket installed from git 66b7131a3 — pyproject version "0.4.11", which
+# is NOT release tag v0.4.11; the tag was cut later and does contain the fix).
+# A stale build carries a stale contract, and no scanner over the repo tree can
+# see the contract a different process actually loaded.
+#
+# The guard that CAN see it ships inside the same artifact as the contract:
+# ``provider_quota_policy.providers[].required_path_prefix``, enforced at load
+# time by the loader every consumer funnels through. The tests below pin that
+# declaration and its enforcement.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_zai_provider_declares_the_required_path_prefix() -> None:
+    """The contract must DECLARE the surface, not only happen to use it.
+
+    Without the declaration the loader has nothing to enforce, and the only
+    thing standing between a stale build and a 1113 is a test that build never
+    runs.
+    """
+    policy = _load(_BIFROST_PATH)["provider_quota_policy"]
+    zai = next(p for p in policy["providers"] if p["match_endpoint_host"] == _ZAI_HOST)
+
+    assert zai.get("required_path_prefix") == CODING_PLAN_PATH_PREFIX, (
+        "the zai provider rule must declare required_path_prefix "
+        f"{CODING_PLAN_PATH_PREFIX!r} so the loader can refuse a config that "
+        "points an api.z.ai backend at the pay-as-you-go surface. A committed "
+        "URL that is merely correct is not enforcement — it was correct on "
+        "2026-08-31 and the live call still hit /api/paas/v4."
+    )
+
+    hint = zai.get("required_path_prefix_hint") or ""
+    assert "1113" in hint, (
+        "required_path_prefix_hint must name the 1113 code: the load failure is "
+        "read by whoever is holding a stale build, and 1113 is the string they "
+        "will have in front of them."
+    )
+    assert "billing" in hint.lower(), (
+        "required_path_prefix_hint must say this is not a billing fact — the "
+        "provider's own text will tell them to add funds."
+    )
+
+
+@pytest.mark.unit
+def test_loader_refuses_a_config_that_moves_glm_to_pay_as_you_go() -> None:
+    """The declaration is enforced at LOAD, fail-closed, with the cause named.
+
+    This is the assertion that goes red on a stale installed build or a site
+    overlay that repoints the backend — the two surfaces the source-tree
+    scanners above are blind to.
+    """
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        ProviderSurfaceMismatchError,
+        load_bifrost_delegation_config,
+    )
+
+    data = _load(_BIFROST_PATH)
+    for backend in data["backends"]:
+        url = backend.get("endpoint_url")
+        if isinstance(url, str) and urlparse(url).hostname == _ZAI_HOST:
+            backend["endpoint_url"] = url.replace(
+                CODING_PLAN_PATH_PREFIX, PAY_AS_YOU_GO_PATH_PREFIX
+            )
+
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as tmp:
+        stale = Path(tmp) / "bifrost_delegation.yaml"
+        stale.write_text(yaml.safe_dump(data, sort_keys=False), encoding="utf-8")
+
+        with pytest.raises(ProviderSurfaceMismatchError) as excinfo:
+            load_bifrost_delegation_config(stale)
+
+    rendered = str(excinfo.value)
+    assert PAY_AS_YOU_GO_PATH_PREFIX in rendered
+    assert CODING_PLAN_PATH_PREFIX in rendered
+    assert "1113" in rendered, (
+        "the load failure must carry the 1113 hint; a bare 'wrong prefix' "
+        "message sends the reader back to the z.ai console."
+    )
+    assert "stale" in rendered.lower(), (
+        "the load failure must point at the build/overlay resolving the config "
+        "on THIS host, because the committed contract is usually already right."
+    )
+
+
+@pytest.mark.unit
+def test_the_committed_contract_still_loads() -> None:
+    """Guard the guard: the new load-time rule must not reject our own config."""
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        load_bifrost_delegation_config,
+    )
+
+    config = load_bifrost_delegation_config(_BIFROST_PATH)
+    assert any(b.backend_id == "cloud-glm" for b in config.backends)
+
+
+# ---------------------------------------------------------------------------
+# OMN-17314: drive the guard through the RESOLUTION entry point, not the file.
+#
+# ``routing/delegation_backend_resolution._merge_overlay`` merges an overlay row
+# onto a contract backend FIELD BY FIELD, so a row carrying only
+# ``{backend_id: cloud-glm, endpoint_url: .../api/paas/v4/chat/completions}``
+# used to replace the committed endpoint silently: ``reject_overlay_only_
+# backend_ids`` (OMN-16903) rejects an unknown backend_id, and nothing looked at
+# the overridden VALUE. These tests exercise ``load_bifrost_backends`` — the
+# entry point a client actually reaches — with a real overlay file.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_an_overlay_cannot_repoint_glm_to_pay_as_you_go(tmp_path: Path) -> None:
+    """The overlay is a real shadowing surface; it must not move the surface."""
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        ProviderSurfaceMismatchError,
+    )
+    from omnimarket.routing.delegation_backend_resolution import load_bifrost_backends
+
+    overlay = tmp_path / "bifrost_overrides.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "backends": [
+                    {
+                        "backend_id": "cloud-glm",
+                        "endpoint_url": (
+                            f"https://{_ZAI_HOST}{PAY_AS_YOU_GO_PATH_PREFIX}"
+                            "/chat/completions"
+                        ),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ProviderSurfaceMismatchError) as excinfo:
+        load_bifrost_backends(config_path=_BIFROST_PATH, overlay_path=overlay)
+
+    rendered = str(excinfo.value)
+    assert "cloud-glm" in rendered
+    assert str(overlay) in rendered, (
+        "the rejection must name the overlay that supplied the bad value — "
+        "otherwise the reader cannot tell which of three shadowing surfaces "
+        "(overlay, BIFROST_CONTRACT_PATH tree, installed build) did it."
+    )
+    assert CODING_PLAN_PATH_PREFIX in rendered
+
+
+@pytest.mark.unit
+def test_resolution_entry_point_admits_the_committed_contract(tmp_path: Path) -> None:
+    """Guard the guard on the resolution path too: our own config must resolve."""
+    from omnimarket.routing.delegation_backend_resolution import load_bifrost_backends
+
+    backends = load_bifrost_backends(
+        config_path=_BIFROST_PATH, overlay_path=tmp_path / "absent.yaml"
+    )
+    glm = next(b for b in backends if b["backend_id"] == "cloud-glm")
+    assert glm["endpoint_url"].startswith(CODING_PLAN_BASE)

@@ -311,6 +311,30 @@ class ModelQuotaProviderRule(BaseModel):
     provider_id: str = Field(...)
     match_endpoint_host: str = Field(...)
     codes: tuple[ModelQuotaCodeRule, ...] = Field(default_factory=tuple)
+    required_path_prefix: str | None = Field(
+        default=None,
+        description=(
+            "OMN-6790. When set, EVERY backend whose endpoint host matches "
+            "``match_endpoint_host`` must carry an endpoint_url whose path "
+            "starts with this prefix, or the config fails to load. Exists "
+            "because one provider host can serve two different PRODUCTS on "
+            "two path prefixes, and presenting our key to the wrong one is "
+            "refused with an error that names the wrong cause (z.ai 429 code "
+            "1113 'Insufficient balance' on /api/paas/v4 when the account "
+            "holds a Coding Plan served only at /api/coding/paas/v4). The "
+            "committed contract is already correct; this field makes a WRONG "
+            "one un-loadable on the host that has it, which is the only place "
+            "a stale installed build or a bad overlay can be caught."
+        ),
+    )
+    required_path_prefix_hint: str | None = Field(
+        default=None,
+        description=(
+            "Operator-facing explanation appended verbatim to the "
+            "``required_path_prefix`` load failure, so the reader is told the "
+            "cause instead of being sent to the provider's billing page."
+        ),
+    )
 
 
 class ModelProviderQuotaPolicy(BaseModel):

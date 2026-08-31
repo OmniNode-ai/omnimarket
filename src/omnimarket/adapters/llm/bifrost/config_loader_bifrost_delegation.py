@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import yaml
 from pydantic import ValidationError
@@ -43,6 +44,16 @@ _DEFAULT_OVERLAY_PATH = (
 _IDENTITY_KEYS = ("backend_id", "rule_id")
 
 _COMMITTED_CONTRACT_RELPATH = "src/omnimarket/configs/bifrost_delegation.yaml"
+
+
+class ProviderSurfaceMismatchError(ValueError):
+    """A backend addresses a declared provider host on the wrong path prefix.
+
+    OMN-6790. Distinct from a plain schema ``ValueError`` because the caller
+    (and the operator reading the traceback) needs the CAUSE, not the field:
+    one provider host can serve two different PRODUCTS on two prefixes, and the
+    wrong one answers our key with an error naming a cause that is not real.
+    """
 
 
 class OverlayOnlyBackendIdError(ValueError):
@@ -241,6 +252,8 @@ def load_bifrost_delegation_config(
             )
             raise ValueError(msg)
 
+    _reject_backends_off_a_declared_provider_surface(config, source=str(resolved))
+
     rule_ids = [rule.rule_id for rule in config.routing_rules]
     if len(rule_ids) != len(set(rule_ids)):
         counts: dict[object, int] = {}
@@ -257,6 +270,100 @@ def load_bifrost_delegation_config(
         len(config.routing_rules),
     )
     return config
+
+
+def reject_backends_off_a_declared_provider_surface(
+    backends: Sequence[Mapping[str, Any]],
+    provider_rules: Sequence[Mapping[str, Any]],
+    *,
+    source: str,
+) -> None:
+    """Refuse a RESOLVED backend set that addresses a provider on the wrong surface.
+
+    OMN-6790 / OMN-17314. ``provider_quota_policy.providers[].required_path_prefix``
+    is the contract's declaration that a given provider host serves the product
+    we hold on ONE path prefix. This is the shared rejector for that rule —
+    same module, same shape and same attributable-message contract as
+    :func:`reject_overlay_only_backend_ids`, and for the same reason: one input
+    class must produce one outcome no matter which loader a caller reached for.
+
+    It operates on the MERGED/RESOLVED backends, not on committed bytes. That
+    distinction is the whole point. The two OMN-6790 regression tests are
+    source-tree scanners, and on 2026-08-31 both were green on ``origin/dev``
+    while this workstation still POSTed GLM to the pay-as-you-go surface: the
+    canonical clone sat detached at a pre-fix commit, ``BIFROST_CONTRACT_PATH``
+    pointed at that clone's working tree, and the venv was installed from the
+    same clone HEAD (omnimarket @ 66b7131a3 — pyproject version "0.4.11", NOT
+    release tag v0.4.11, which was cut later and does carry the fix). Nothing
+    that reads a checkout can see any of that.
+
+    Fails closed: a mismatched surface raises rather than being logged, because
+    the alternative is a provider error whose own text names a cause that is not
+    real ("Insufficient balance. Please recharge") and which has now been
+    misread three times (OMN-14625, OMN-16891, OMN-17193).
+
+    Args:
+        backends: the resolved backend mappings (post-overlay-merge).
+        provider_rules: ``provider_quota_policy.providers`` entries as mappings.
+        source: what produced this backend set — a config path, an overlay path,
+            or a store key. Required and keyword-only so no call site can refuse
+            (or admit) a config it cannot attribute.
+
+    Raises:
+        ProviderSurfaceMismatchError: naming every offending ``backend_id``, its
+            URL, the required prefix, the declared hint, and ``source``.
+    """
+    rules = [r for r in provider_rules if r.get("required_path_prefix")]
+    if not rules:
+        return
+
+    offenders: list[str] = []
+    for rule in rules:
+        prefix = cast(str, rule["required_path_prefix"])
+        host = rule.get("match_endpoint_host")
+        hint = rule.get("required_path_prefix_hint") or ""
+        for backend in backends:
+            url = backend.get("endpoint_url")
+            if not isinstance(url, str) or not url:
+                continue
+            parsed = urlparse(url)
+            if parsed.hostname != host:
+                continue
+            if parsed.path.startswith(prefix):
+                continue
+            offenders.append(
+                f"backend {backend.get('backend_id')!r} -> {url} "
+                f"(provider {rule.get('provider_id')!r} requires path prefix "
+                f"{prefix!r})" + (f" — {hint}" if hint else "")
+            )
+
+    if offenders:
+        msg = (
+            "Delegation routing authority resolves backend(s) onto the WRONG "
+            f"surface of a provider host (source: {source}):\n  "
+            + "\n  ".join(offenders)
+            + "\nThis config is refused rather than resolved. If the committed "
+            "contract is correct, then the overlay, the BIFROST_CONTRACT_PATH "
+            "tree, or the installed build resolving it on THIS host is stale — "
+            "reconcile that, do not edit the prefix."
+        )
+        raise ProviderSurfaceMismatchError(msg)
+
+
+def _reject_backends_off_a_declared_provider_surface(
+    config: ModelBifrostDelegationConfig,
+    *,
+    source: str,
+) -> None:
+    """Typed-config adapter over :func:`reject_backends_off_a_declared_provider_surface`."""
+    policy = config.provider_quota_policy
+    if policy is None:
+        return
+    reject_backends_off_a_declared_provider_surface(
+        [b.model_dump(mode="python") for b in config.backends],
+        [p.model_dump(mode="python") for p in policy.providers],
+        source=source,
+    )
 
 
 def _read_yaml_mapping(path: Path) -> dict[str, Any]:
@@ -352,7 +459,9 @@ def _list_identity_key(
 
 __all__: list[str] = [
     "OverlayOnlyBackendIdError",
+    "ProviderSurfaceMismatchError",
     "deep_merge_bifrost_delegation_config",
     "load_bifrost_delegation_config",
+    "reject_backends_off_a_declared_provider_surface",
     "reject_overlay_only_backend_ids",
 ]
