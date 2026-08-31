@@ -77,6 +77,96 @@ def test_vertex_backend_uses_secret_ref_bearer_path() -> None:
 
 
 @pytest.mark.unit
+def test_no_backend_declares_an_api_key_env_fallback() -> None:
+    """OMN-17372: the house env-var fallback is deleted from every backend.
+
+    ``api_key_env`` named a HOUSE environment variable, so a backend carrying
+    one authenticated on OmniNode's own provider account the moment that
+    variable held a value. That is how a keyless customer's delegation --
+    routed to the platform-default ladder by the fail-open tenant-overlay miss
+    -- executed on our credential instead of receiving an honest refusal.
+
+    OmniNode does not offer inference and there are no keyless customers on the
+    cloud, so the field is gone rather than discouraged.
+    """
+    import yaml
+
+    config = _repo_root() / "src" / "omnimarket" / "configs" / "bifrost_delegation.yaml"
+    data = yaml.safe_load(config.read_text(encoding="utf-8"))
+    offenders = {
+        backend.get("backend_id", "<unknown>"): backend["api_key_env"]
+        for backend in data["backends"]
+        if isinstance(backend, dict) and "api_key_env" in backend
+    }
+    assert not offenders, (
+        f"backends still declare a house env-var fallback: {offenders}. A "
+        f"backend authenticates from its managed-store secret_ref or not at "
+        f"all (OMN-17372)."
+    )
+
+
+@pytest.mark.unit
+def test_api_key_env_is_detected_when_reintroduced() -> None:
+    """The gate must FIRE on a re-added field -- a green gate proves nothing.
+
+    Deleting the field from config is undone by one line in a future PR. This
+    asserts the scanner would catch that line, so the removal is enforced
+    rather than merely performed.
+    """
+    module = _load_module()
+    data = {
+        "backends": [
+            {
+                "backend_id": "openrouter-glm-flash",
+                "tier": "cheap_cloud",
+                "endpoint_url": "https://openrouter.ai/api/v1/chat/completions",
+                "secret_ref": "llm.openrouter.api_key",
+                "api_key_env": "OPENROUTER_API_KEY",
+            },
+            {
+                "backend_id": "cloud-gemini-flash",
+                "tier": "cheap_cloud",
+                "endpoint_url": "https://example.invalid/v1/chat/completions",
+                "secret_ref": "llm.gemini.api_key",
+            },
+        ]
+    }
+    violations = module._scan_api_key_env("fake.yaml", data)
+    assert len(violations) == 1, violations
+    assert "openrouter-glm-flash" in violations[0]
+    assert "OPENROUTER_API_KEY" in violations[0]
+    # A backend carrying only secret_ref is clean -- the rule bans the env
+    # indirection, not authenticated cloud backends.
+    assert "cloud-gemini-flash" not in violations[0]
+
+
+@pytest.mark.unit
+def test_api_key_env_alone_no_longer_counts_as_a_logical_ref() -> None:
+    """A backend whose ONLY credential surface is api_key_env is unreferenced.
+
+    Before OMN-17372 ``api_key_env`` satisfied ``_backend_has_logical_ref``, so
+    such a backend passed the discipline gate. It never was a logical ref --
+    it pointed at a house env var, the opposite of store indirection. It must
+    now fail as a cloud backend with no declared reference.
+    """
+    module = _load_module()
+    violations = module._scan_bifrost_backends(
+        "fake.yaml",
+        {
+            "backends": [
+                {
+                    "backend_id": "cloud-env-only",
+                    "tier": "cheap_cloud",
+                    "endpoint_url": "https://example.invalid/v1/chat/completions",
+                    "api_key_env": "OPENROUTER_API_KEY",
+                }
+            ]
+        },
+    )
+    assert any("cloud-env-only" in v for v in violations), violations
+
+
+@pytest.mark.unit
 def test_gemini_key_path_preserved() -> None:
     """Vertex wiring is ADDITIVE — the AI Studio key path must still exist."""
     import yaml

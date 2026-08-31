@@ -207,16 +207,42 @@ class TestOpenRouterFreeCoderIsAnActiveCodeTier:
 class TestOpenRouterCredentialNaming:
     """One spelling, and it is the one the runtime host actually exports."""
 
-    def test_openrouter_backends_declare_the_canonical_env_var(self) -> None:
-        offenders = {
-            backend_id: backend.get("api_key_env")
+    def test_openrouter_backends_declare_no_env_var_fallback(self) -> None:
+        """OMN-17372 INVERTS this: the canonical spelling is now no field.
+
+        This asserted that every OpenRouter backend declared
+        ``api_key_env: OPENROUTER_API_KEY`` -- OMN-16891's fix for a rung that
+        was credential-dead because the field named a variable no host
+        exported. That whole exercise presumed a house env var SHOULD
+        authenticate the backend.
+
+        It should not. OmniNode does not offer inference and there are no
+        keyless customers on the cloud: a backend authenticates from its
+        per-tenant ``secret_ref`` in the managed store, or it refuses. An
+        ``api_key_env`` naming a house variable is the mechanism by which a
+        keyless customer's delegation executed on our OpenRouter account, so
+        the field is deleted rather than correctly spelled.
+
+        ``secret_ref`` must survive -- deleting the fallback must not have
+        stripped the backend of its real, store-resolved credential reference.
+        """
+        openrouter = {
+            backend_id: backend
             for backend_id, backend in _backends().items()
             if backend.get("secret_ref") == "llm.openrouter.api_key"
-            and backend.get("api_key_env") != _CANONICAL_OPENROUTER_ENV
+        }
+        assert openrouter, "no OpenRouter backend found; fixture drifted"
+
+        offenders = {
+            backend_id: backend["api_key_env"]
+            for backend_id, backend in openrouter.items()
+            if "api_key_env" in backend
         }
         assert not offenders, (
-            f"OpenRouter backends declare a non-canonical api_key_env: "
-            f"{offenders}. Expected {_CANONICAL_OPENROUTER_ENV!r}."
+            f"OpenRouter backends still declare a house env-var fallback: "
+            f"{offenders}. The field was deleted in OMN-17372 -- a customer "
+            f"reaches OpenRouter on THEIR key, resolved per-tenant from the "
+            f"managed store. Do not re-add it under any spelling."
         )
 
     def test_resolver_alias_names_the_canonical_env_var(self) -> None:
@@ -313,7 +339,15 @@ class TestGlmShipsOnTheCodingPlanSurface:
         """
         backend = _backends()[_GLM_BACKEND]
         assert backend["secret_ref"] == "llm.glm.api_key"
-        assert backend["api_key_env"] == "LLM_GLM_API_KEY"
+        # OMN-17372: the companion `api_key_env: LLM_GLM_API_KEY` assertion was
+        # removed with the field itself. `secret_ref` is now the ONLY credential
+        # surface a backend has, which is precisely what makes
+        # `_backend_secret_available` a real credential-state gate rather than a
+        # gate a house env var could satisfy on a customer's behalf.
+        assert "api_key_env" not in backend, (
+            "the house env-var fallback was deleted in OMN-17372; a backend "
+            "authenticates from its managed-store secret_ref or not at all"
+        )
 
     def test_glm_is_declared_in_a_routing_tier(self) -> None:
         """A backend no tier references is dead config, not a disabled tier.
