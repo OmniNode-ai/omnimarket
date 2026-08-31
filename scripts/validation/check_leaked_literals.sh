@@ -14,12 +14,27 @@
 #
 #   all        — scan the full tree (default).
 #   diff       — scan only files modified in the current branch vs origin/main.
+#   staged     — scan only files staged in the INDEX (the pre-commit surface).
 #
 # Usage:
 #   bash scripts/validation/check_leaked_literals.sh                    # blocking + all (default)
 #   bash scripts/validation/check_leaked_literals.sh advisory all       # advisory + full tree
 #   bash scripts/validation/check_leaked_literals.sh advisory diff      # advisory + branch diff
 #   bash scripts/validation/check_leaked_literals.sh blocking diff      # blocking + branch diff
+#   bash scripts/validation/check_leaked_literals.sh blocking staged    # blocking + staged (pre-commit)
+#
+# OMN-17369: why `staged` exists and why pre-commit MUST use it.
+#   `diff` enumerates `${BASE_REF}...HEAD` — files that are already COMMITTED.
+#   At pre-commit time the file being committed lives in the index, not in HEAD,
+#   so `diff` never enumerates it. The hook then reported `files_scanned=54
+#   findings=0` and PASSED on a staged file carrying a real forbidden literal:
+#   a green result produced by scanning the wrong file set. That was measured,
+#   not theorised — for the OMN-17320 exposed-identifier class AND for the five
+#   OMN-10580 regex classes, since the defect is in this shared enumeration.
+#   CI (`scope=all`) always caught it, so the loss was defence-in-depth, not an
+#   open door — but a local gate that silently checks nothing is the exact
+#   "PASS because it scanned nothing" failure this whole gate family exists to
+#   prevent. `staged` reads the index, so the hook sees what is being committed.
 #
 # Scope policy (all paths scanned; annotations permitted everywhere):
 #   All files except self-exempt gate scripts and ignored dirs are scanned.
@@ -94,8 +109,8 @@ if [[ "${MODE}" != "advisory" && "${MODE}" != "blocking" ]]; then
   exit 2
 fi
 
-if [[ "${SCOPE}" != "all" && "${SCOPE}" != "diff" ]]; then
-  echo "ERROR: scope must be 'all' or 'diff', got '${SCOPE}'" >&2
+if [[ "${SCOPE}" != "all" && "${SCOPE}" != "diff" && "${SCOPE}" != "staged" ]]; then
+  echo "ERROR: scope must be 'all', 'diff' or 'staged', got '${SCOPE}'" >&2
   exit 2
 fi
 
@@ -152,6 +167,16 @@ cd "${REPO_ROOT}" || { echo "could not cd to ${REPO_ROOT}" >&2; exit 2; }
 # Build file list (NUL-delimited so spaces in paths survive).
 TMP_FILES="$(mktemp)"
 trap 'rm -f "${TMP_FILES}"' EXIT
+
+if [[ "${SCOPE}" == "staged" ]]; then
+  # OMN-17369: the pre-commit surface. Enumerate the INDEX, not HEAD.
+  # --diff-filter=ACMR drops staged deletions (nothing left on disk to scan)
+  # and resolves a rename to its new path. pre-commit stashes unstaged changes
+  # for the duration of the hook, so the worktree copy this script greps IS the
+  # staged content; outside pre-commit the two can differ, and scanning the
+  # worktree is the conservative choice (it is what would be committed next).
+  git diff --cached --name-only -z --diff-filter=ACMR > "${TMP_FILES}"
+fi
 
 if [[ "${SCOPE}" == "diff" ]]; then
   BASE_REF="${BASE_REF:-origin/main}"
@@ -264,7 +289,26 @@ if [[ -f "${EXPOSED_ID_GATE}" ]]; then
   # and pass through the SAME base ref this script resolved -- the two gates
   # must never disagree about what "the diff" is.
   PY_BIN="${PYTHON:-python3}"
-  if [[ "${SCOPE}" == "diff" ]]; then
+  if [[ "${SCOPE}" == "staged" ]]; then
+    # OMN-17369: hand the staged paths over explicitly rather than teaching the
+    # Python scanner a `staged` scope of its own. That file is byte-identical
+    # across omnimarket and omnibase_infra (OMN-17320 AC7, pinned by a cross-repo
+    # fingerprint test), so forking it here to fix a caller-side enumeration bug
+    # would break parity in both repos to fix one. The scanner already accepts
+    # explicit paths; this reuses that surface.
+    staged_paths=()
+    while IFS= read -r -d '' staged_file; do
+      # Skip anything gone from disk: the scanner treats a missing path as a
+      # config error (exit 2), and a race here must not turn into a hard stop.
+      [[ -f "${staged_file}" ]] && staged_paths+=("${staged_file}")
+    done < "${TMP_FILES}"
+    # An empty argv would make the scanner fall back to its own scope=all and
+    # walk the whole tree — slow, and not what "nothing staged" means.
+    if (( ${#staged_paths[@]} > 0 )); then
+      "${PY_BIN}" "${EXPOSED_ID_GATE}" --mode "${MODE}" -- "${staged_paths[@]}" \
+        || exposed_id_status=$?
+    fi
+  elif [[ "${SCOPE}" == "diff" ]]; then
     "${PY_BIN}" "${EXPOSED_ID_GATE}" --mode "${MODE}" --scope diff \
       --base-ref "${BASE_REF:-origin/main}" || exposed_id_status=$?
   else
