@@ -1,0 +1,62 @@
+{
+  "schema": "onex.exposed-identifier-denylist/1",
+  "ticket": "OMN-17320",
+  "salt": "onex-exposed-identifier-v1:",
+  "annotation_class": "exposed-identifier",
+  "plaintext_source": "OMN-17288 (Linear, private workspace) -- description + the 'Finding 2' comment carry every value below in full.",
+  "readme": [
+    "Each entry is a salted SHA-256 of a forbidden literal. The plaintext is deliberately",
+    "ABSENT: this file ships in PUBLIC repos, and writing the literal here would create the",
+    "exact fresh, greppable, current-tree occurrence the gate exists to prevent.",
+    "The salt is committed. That makes this obfuscation, not secrecy -- a reader with this",
+    "file can brute-force a short slug. It is not trying to be a confidentiality control:",
+    "the OMN-17288 values are already public in git history and the operator ruled",
+    "document-and-accept on that. The property that matters is FORWARD safety -- the next",
+    "entry added here may be a live identifier that has NOT leaked, and this format is safe",
+    "for that case where a plaintext denylist would not be.",
+    "To add an entry: run scripts/validation/gen_exposed_identifier_entry.py <literal>,",
+    "paste the emitted object here, and record the plaintext in the owning Linear ticket."
+  ],
+  "entries": [
+    {
+      "id": "omn17288-tenant-slug",
+      "kind": "tenant-slug",
+      "length": 11,
+      "sha256": "fab7da6b5e1546d6181ef3a8f81a706e653621a3c9d314dc1508fb88622c7012",
+      "ticket": "OMN-17288",
+      "notes": "External tenant slug scrubbed from omnimarket + omnibase_infra by OMN-17288; reintroduced by omnimarket#2239 three hours later."
+    },
+    {
+      "id": "omn17288-tenant-slug-body",
+      "kind": "tenant-slug-body",
+      "length": 9,
+      "sha256": "6e615fc3fd71dd3860c60d1a52200f62bebdcb202ed3458dc615a0cb7fdee9a4",
+      "ticket": "OMN-17288",
+      "notes": "Same slug without its tenant prefix -- the discriminating substring OMN-17288's own AC4 grep matched on."
+    },
+    {
+      "id": "omn17288-tenant-uuid",
+      "kind": "tenant-uuid",
+      "length": 36,
+      "sha256": "0ccdfc9608f1f41a65ffba8fb3e5e1adf5ec03d63dd57e68f4ee9cb2017d1886",
+      "ticket": "OMN-17288",
+      "notes": "Registry UUID for the same tenant, scrubbed from omnimarket by OMN-17288. Never reached omnibase_infra."
+    },
+    {
+      "id": "omn17288-tenant-uuid-prefix",
+      "kind": "tenant-uuid-prefix",
+      "length": 18,
+      "sha256": "4cb40ecee91f0007ebdf58d51be2608cfccc8b507e11119867381662fbf912bc",
+      "ticket": "OMN-17288",
+      "notes": "Leading three groups of the same UUID -- the form OMN-17288's AC4 grep used, and the form a truncated log line leaves behind."
+    },
+    {
+      "id": "omn17288-tenant-uuid-hex",
+      "kind": "tenant-uuid-hex",
+      "length": 32,
+      "sha256": "4381a13c2440ddb99abd8e9077147daee6b2d1e5c3990af8912a74d1aa2eb393",
+      "ticket": "OMN-17288",
+      "notes": "Same UUID with dashes stripped -- the shape uuid.UUID(...).hex and most JSON encoders emit."
+    }
+  ]
+}
