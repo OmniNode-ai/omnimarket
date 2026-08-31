@@ -24,6 +24,10 @@ import pytest
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SCRIPT_REL = Path("scripts/validation/check_leaked_literals.sh")
 SCRIPT_SRC = REPO_ROOT / SCRIPT_REL
+EXPOSED_ID_GATE_REL = Path("scripts/validation/check_exposed_identifiers.py")
+EXPOSED_ID_GATE_SRC = REPO_ROOT / EXPOSED_ID_GATE_REL
+EXPOSED_ID_DENYLIST_REL = Path("scripts/validation/exposed_identifiers_denylist.json")
+EXPOSED_ID_DENYLIST_SRC = REPO_ROOT / EXPOSED_ID_DENYLIST_REL
 
 
 def _init_repo(tmp_path: Path) -> Path:
@@ -39,6 +43,10 @@ def _init_repo(tmp_path: Path) -> Path:
     target_script.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(SCRIPT_SRC, target_script)
     target_script.chmod(0o755)
+    target_exposed_id_gate = tmp_path / EXPOSED_ID_GATE_REL
+    shutil.copy2(EXPOSED_ID_GATE_SRC, target_exposed_id_gate)
+    target_exposed_id_gate.chmod(0o755)
+    shutil.copy2(EXPOSED_ID_DENYLIST_SRC, tmp_path / EXPOSED_ID_DENYLIST_REL)
     subprocess.run(["git", "add", "-A"], cwd=tmp_path, check=True)
     subprocess.run(["git", "commit", "-qm", "init"], cwd=tmp_path, check=True)
     return target_script
