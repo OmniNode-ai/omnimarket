@@ -40,7 +40,10 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-from omnimarket.nodes.contract_topics import contract_subscribe_topics
+from omnimarket.nodes.contract_topics import (
+    contract_publish_topics,
+    contract_subscribe_topics,
+)
 from omnimarket.nodes.node_projection_open_obligations.models.model_obligation_event import (
     CLOSED_STATE_BY_KIND,
     REQUIRED_FIELDS_BY_KIND,
@@ -67,6 +70,8 @@ SCHEMA = "omninode_internal"
 CONFLICT_KEY = "obligation_id"
 
 _DEFAULT_CONTRACT_PATH = Path(__file__).resolve().parent.parent / "contract.yaml"
+_PUBLISH_TOPICS = contract_publish_topics(_DEFAULT_CONTRACT_PATH)
+PUBLISH_TOPIC_PROJECTION_OPEN_OBLIGATIONS_APPLIED = _PUBLISH_TOPICS[0]
 
 # Declaration order of EnumObligationEventKind IS the contract's declared topic
 # order. Both are asserted against each other at import time by _load_topics.
@@ -340,4 +345,7 @@ class HandlerProjectionOpenObligations:
         return result.model_dump(mode="json")
 
 
-__all__: list[str] = ["HandlerProjectionOpenObligations"]
+__all__: list[str] = [
+    "PUBLISH_TOPIC_PROJECTION_OPEN_OBLIGATIONS_APPLIED",
+    "HandlerProjectionOpenObligations",
+]

@@ -49,6 +49,7 @@ import pytest
 
 from omnimarket.nodes.node_projection_open_obligations.handlers.handler_projection_open_obligations import (
     _TOPIC_KIND,
+    PUBLISH_TOPIC_PROJECTION_OPEN_OBLIGATIONS_APPLIED,
     SCHEMA,
     TABLE,
     HandlerProjectionOpenObligations,
@@ -61,6 +62,7 @@ from omnimarket.nodes.node_projection_open_obligations.models.model_obligation_e
 
 _QUALIFIED = f"{SCHEMA}.{TABLE}"
 _OBLIGATION = "omn17019-real-pg-write-path"
+_APPLIED_TOPIC = "onex.evt.omnimarket.projection-open-obligations-applied.v1"
 _TOPIC_BY_KIND: dict[EnumObligationEventKind, str] = {
     kind: topic for topic, kind in _TOPIC_KIND.items()
 }
@@ -369,6 +371,7 @@ def test_the_derived_columns_cannot_be_written_by_anyone() -> None:
 def test_handle_writes_real_column_types_through_the_runtime_entrypoint() -> None:
     """``handle()`` is what the runtime calls; prove IT against real columns."""
     dsn = _dsn_or_skip()
+    assert PUBLISH_TOPIC_PROJECTION_OPEN_OBLIGATIONS_APPLIED == _APPLIED_TOPIC
     adapter = _RealPostgresUpsertAdapter(dsn)
 
     async def _run() -> None:
