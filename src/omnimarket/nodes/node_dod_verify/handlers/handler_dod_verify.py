@@ -182,7 +182,37 @@ class HandlerDodVerify:
         # signal an operator uses to decide whether a ticket is closeable.
         # The superseded entries stay in ``checks`` (and in ``superseded_count``)
         # so the receipt still shows the repair rather than hiding it.
-        non_superseded_total = len(checks) - superseded
+        # OMN-17323: the SECOND class of entry that carries no product-dependent
+        # verdict, excluded on exactly the reasoning above. An unbindable
+        # ``::pr-live-state`` overlay is not a criterion the TICKET declared —
+        # it is one the VERIFIER auto-derives for every evidence item, and this
+        # one skipped because the verifier's own binder derived no (repo, pr)
+        # pair. It was never executed and can never pass, so counting it in the
+        # denominator reports the tool's inability as the ticket's shortfall.
+        #
+        # This is load-bearing, not cosmetic: OMN-16434 auto-mints
+        # ``dod-occ-diff-derived-behavior-proof`` onto every new OCC companion,
+        # so every freshly-minted companion carried exactly one guaranteed
+        # unbindable overlay and the OMN-16821 autoclose flip equality
+        # (``verified + non_probative == total``) was unsatisfiable BY
+        # CONSTRUCTION for the whole corpus — 24 consecutive scheduled runs,
+        # ~660 companion scans, FLIP=0 in every one.
+        #
+        # Deliberately narrow. The three other SKIPPED shapes — a
+        # live-PR-check-disabled skip, an OMN-16087 intentional non-merged
+        # assertion, and an OMN-16788 ``unverifiable_cause`` skip — carry no
+        # marker, stay in the denominator, and keep blocking on their existing
+        # terms.
+        unbindable_overlays = sum(1 for r in checks if r.unbindable_derived_overlay)
+        non_superseded_total = len(checks) - superseded - unbindable_overlays
+        # The marker is only valid on a SKIPPED result (enforced on the model),
+        # so every excluded overlay is also inside ``skipped``. Both sides of
+        # the "everything was skipped" comparison below must therefore drop
+        # them, or a single genuine skip alongside one overlay stops matching
+        # and falls through to VERIFIED with zero verified checks — a fail-OPEN
+        # introduced by the exclusion itself. ``skipped_count`` on the state
+        # keeps the raw tally; only this comparison uses the narrowed one.
+        verdict_bearing_skipped = skipped - unbindable_overlays
         unresolved_cause: EnumDodVerifyUnresolvedCause | None = None
         if lookup_failure_cause is not None and verified == 0:
             # OMN-17022 (off-rails A15). The run could not resolve the PR or
@@ -253,9 +283,14 @@ class HandlerDodVerify:
             # OMN-15715 D1's fail-closed intent through the degrade: the
             # ticket cannot flip on evidence no one read.
             overall = EnumDodVerifyStatus.SKIPPED
-        elif non_superseded_total == 0 or skipped == non_superseded_total:
-            # Either nothing but superseded entries remain, or every
-            # non-superseded check was skipped — do not claim VERIFIED.
+        elif (
+            non_superseded_total == 0 or verdict_bearing_skipped == non_superseded_total
+        ):
+            # Either no verdict-bearing entry remains at all (only superseded
+            # entries and/or OMN-17323 unbindable overlays), or every one that
+            # does was skipped — do not claim VERIFIED. The first disjunct is
+            # what keeps the OMN-17323 exclusion from manufacturing a green out
+            # of a contract whose only entries are unbindable overlays.
             overall = EnumDodVerifyStatus.SKIPPED
         else:
             overall = EnumDodVerifyStatus.VERIFIED
@@ -361,6 +396,7 @@ class HandlerDodVerify:
             superseded_count=superseded,
             non_probative_count=non_probative,
             behavior_proving_count=behavior_proving,
+            unbindable_overlay_count=unbindable_overlays,
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,
             occ_resolved_sha=occ_resolved_sha,
@@ -404,6 +440,7 @@ class HandlerDodVerify:
             superseded_count=state.superseded_count,
             non_probative_count=state.non_probative_count,
             behavior_proving_count=state.behavior_proving_count,
+            unbindable_overlay_count=state.unbindable_overlay_count,
             error_message=state.error_message,
             unresolved_cause=state.unresolved_cause,
         )
