@@ -360,6 +360,13 @@ jobs:
       # hardcoded watchdog topic string outside the registry.
       - name: Watchdog-topic authority gate
         run: uv run python scripts/ci/check_watchdog_topic_authority.py
+      # OMN-17017 (A10 step 1): contract-vs-handler publish parity. The wave
+      # scheduler declared five publish topics while its Python contained zero
+      # publish/Envelope/event_bus references — the contract described a system
+      # that did not exist. Burn-down ratchet; a NEW offender fails closed.
+      # SYNC with pre-commit hook 'contract-publish-parity-gate'.
+      - name: Contract publish parity gate
+        run: uv run python scripts/ci/check_contract_publish_parity.py
       # OMN-13026: Transport-mock lint. Bare AsyncMock/MagicMock without
       # spec=/spec_set= on EventBus/transport/kafka surfaces. Ratchet: existing
       # violations frozen in validation/transport_mock_baseline.yaml. New

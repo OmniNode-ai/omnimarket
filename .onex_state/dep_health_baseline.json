@@ -5637,69 +5637,9 @@
       "finding_type": "MISSING_TOPIC_EDGE",
       "severity": "MAJOR",
       "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_dispatch_watchdog_orchestrator/contract.yaml",
-      "symbol": "onex.evt.omnimarket.watchdog-stall-detected.v1",
-      "detail": "Topic 'onex.evt.omnimarket.watchdog-stall-detected.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_dispatch_watchdog_orchestrator/contract.yaml",
-      "symbol": "onex.evt.omnimarket.watchdog-task-escalated.v1",
-      "detail": "Topic 'onex.evt.omnimarket.watchdog-task-escalated.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
       "file_path": "src/omnimarket/nodes/node_wave_scheduler_orchestrator/contract.yaml",
       "symbol": "onex.evt.omnimarket.wave-scheduler-completed.v1",
       "detail": "Topic 'onex.evt.omnimarket.wave-scheduler-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_wave_scheduler_orchestrator/contract.yaml",
-      "symbol": "onex.evt.omnimarket.wave-scheduler-dependency-violation.v1",
-      "detail": "Topic 'onex.evt.omnimarket.wave-scheduler-dependency-violation.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_wave_scheduler_orchestrator/contract.yaml",
-      "symbol": "onex.evt.omnimarket.wave-scheduler-stall-detected.v1",
-      "detail": "Topic 'onex.evt.omnimarket.wave-scheduler-stall-detected.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_wave_scheduler_orchestrator/contract.yaml",
-      "symbol": "onex.evt.omnimarket.wave-scheduler-wave-completed.v1",
-      "detail": "Topic 'onex.evt.omnimarket.wave-scheduler-wave-completed.v1' is published but has no subscriber and is not declared as externally consumed.",
-      "rule_id": "MISSING_TOPIC_EDGE",
-      "rule_version": "v1"
-    },
-    {
-      "finding_type": "MISSING_TOPIC_EDGE",
-      "severity": "MAJOR",
-      "repo": "omnimarket",
-      "file_path": "src/omnimarket/nodes/node_wave_scheduler_orchestrator/contract.yaml",
-      "symbol": "onex.evt.omnimarket.wave-scheduler-wave-dispatched.v1",
-      "detail": "Topic 'onex.evt.omnimarket.wave-scheduler-wave-dispatched.v1' is published but has no subscriber and is not declared as externally consumed.",
       "rule_id": "MISSING_TOPIC_EDGE",
       "rule_version": "v1"
     },

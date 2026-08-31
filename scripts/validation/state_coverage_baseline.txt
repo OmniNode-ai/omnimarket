@@ -156,9 +156,6 @@ node_deployment_evidence_reducer reduced
 node_design_plan_context_compute onex.evt.omnimarket.design-plan-context-completed.v1
 node_dispatch_queue_drainer onex.evt.omnimarket.dispatch-queue-drain-completed.v1
 node_dispatch_queue_drainer onex.evt.omnimarket.dispatch-queue-drain-failed.v1
-node_dispatch_watchdog_orchestrator onex.evt.omnimarket.watchdog-check-completed.v1
-node_dispatch_watchdog_orchestrator onex.evt.omnimarket.watchdog-stall-detected.v1
-node_dispatch_watchdog_orchestrator onex.evt.omnimarket.watchdog-task-escalated.v1
 node_dispatch_worker onex.evt.omnimarket.dispatch-worker-compiled.v1
 node_dispatch_worker_execution_effect onex.cmd.omnimarket.delegation-request.v1
 node_dispatch_worker_execution_effect onex.evt.omnimarket.dispatch-worker-execution-completed.v1
@@ -521,7 +518,5 @@ node_version_skew_detector onex.evt.omniclaude.version-skew-healthy.v1
 node_version_skew_detector plugin_version
 node_version_skew_detector runtime_version
 node_version_skew_detector status
-node_wave_scheduler_orchestrator onex.evt.omnimarket.wave-scheduler-stall-detected.v1
-node_wave_scheduler_orchestrator onex.evt.omnimarket.wave-scheduler-wave-completed.v1
 node_worker_stall_recovery onex.evt.omnimarket.worker-stall-recovery-complete.v1
 node_worker_stall_recovery onex.evt.omnimarket.worker-stall-recovery-result.v1

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -18,6 +19,19 @@ from omnimarket.nodes.node_dispatch_watchdog_orchestrator import (
     ModelWatchdogSummary,
     ModelWaveTask,
 )
+
+
+@pytest.fixture(autouse=True)
+def _scratch_state_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point the default recovery adapter at a scratch state dir.
+
+    OMN-17017 gave the watchdog a shipped default recovery adapter
+    (HandlerWatchdogStateStore), so every check pass now writes watchdog.json and
+    a dispatch-log line. Without this fixture those writes would land in the
+    developer's real $ONEX_STATE_DIR.
+    """
+    monkeypatch.setenv("ONEX_STATE_DIR", str(tmp_path / "onex_state"))
+
 
 # ---------------------------------------------------------------------------
 # Import / public surface
@@ -373,7 +387,15 @@ class TestHandlerDispatchWatchdogOrchestrator:
         assert handler is not None
 
     @pytest.mark.unit
-    def test_live_redispatch_without_adapter_requires_adapter(self) -> None:
+    def test_live_redispatch_uses_the_shipped_default_adapter(
+        self, tmp_path: Path
+    ) -> None:
+        """OMN-17017: a live redispatch no longer raises for want of an adapter.
+
+        ``ProtocolWatchdogRecoveryAdapter`` had no implementation anywhere, so
+        the previous version of this test asserted the RuntimeError as expected
+        behaviour. ``HandlerWatchdogStateStore`` is now the shipped default.
+        """
         handler = HandlerDispatchWatchdogOrchestrator(
             now_utc=datetime(2026, 5, 28, 12, 0, tzinfo=UTC)
         )
@@ -387,10 +409,17 @@ class TestHandlerDispatchWatchdogOrchestrator:
                 ),
             ),
             stall_timeout_seconds=120,
+            state_dir=str(tmp_path / "state"),
         )
 
-        with pytest.raises(RuntimeError, match="recovery_adapter required"):
-            handler.handle(req)
+        result = handler.handle(req)
+
+        assert result.summary.redispatched == 1
+        assert result.stall_events[0].recovery_task_id == "task-1-redispatch-1"
+        assert result.watchdog_log_path is not None
+        assert Path(result.watchdog_log_path).is_file()
+        assert result.dispatch_log_path is not None
+        assert Path(result.dispatch_log_path).is_file()
 
     @pytest.mark.unit
     def test_report_mode_does_not_require_adapter(self) -> None:

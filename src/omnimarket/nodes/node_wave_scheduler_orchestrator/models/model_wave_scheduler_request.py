@@ -1,38 +1,20 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Input model for node_wave_scheduler_orchestrator [OMN-12210].
+"""Input model for node_wave_scheduler_orchestrator [OMN-12210, OMN-17017].
 
 ModelWaveSchedulerRequest: carries the plan file path, concurrency cap, and
 execution flags consumed by the orchestrator when triggered via
 onex.cmd.omnimarket.wave-scheduler-start.v1.
+
+OMN-17017 deleted ``healthcheck_config``: it was a four-field model with zero
+handler references, omitted from the CLI as "not a supported CLI scalar arg
+type" — unreachable AND inert. Stall detection belongs to
+node_dispatch_watchdog_orchestrator, which owns it for real.
 """
 
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
-
-
-class ModelHealthcheckConfig(BaseModel):
-    """Health-check policy for stall detection during wave execution."""
-
-    model_config = ConfigDict(frozen=True, extra="forbid")
-
-    enabled: bool = Field(
-        default=True,
-        description="Enable stall detection via agent_healthcheck.",
-    )
-    stall_timeout_seconds: int = Field(
-        default=300,
-        description="Seconds of worker inactivity before a stall is declared.",
-    )
-    max_recovery_attempts: int = Field(
-        default=3,
-        description="Maximum health-check recovery relaunches per ticket before marking failed.",
-    )
-    poll_interval_seconds: int = Field(
-        default=30,
-        description="Polling interval in seconds between health checks.",
-    )
 
 
 class ModelWaveSchedulerRequest(BaseModel):
@@ -67,14 +49,19 @@ class ModelWaveSchedulerRequest(BaseModel):
     resume: bool = Field(
         default=False,
         description=(
-            "Resume from persisted wave state under "
-            ".onex_state/wave_scheduler/{epic_id}/state.yaml. "
-            "Skips completed waves; re-dispatches in-progress wave tickets."
+            "Resume from the persisted checkpoint under "
+            "<state_dir>/wave_scheduler/<run_id>/checkpoint.json. Tickets already "
+            "observed COMPLETED are not re-dispatched. When no checkpoint exists "
+            "the run starts clean and reports resumed=False."
         ),
     )
     fail_fast: bool = Field(
         default=False,
-        description="Abort the entire execution on the first ticket failure.",
+        description=(
+            "Abort the entire execution on the first wave that reports any "
+            "non-COMPLETED ticket. Undispatched tickets are reported SKIPPED and "
+            "the run status is ABORTED."
+        ),
     )
     defer_repo_conflicts: bool = Field(
         default=False,
@@ -83,7 +70,10 @@ class ModelWaveSchedulerRequest(BaseModel):
             "worktree conflicts. Default false: each ticket gets its own worktree."
         ),
     )
-    healthcheck_config: ModelHealthcheckConfig = Field(
-        default_factory=ModelHealthcheckConfig,
-        description="Health-check policy for stall detection during wave execution.",
+    state_dir: str | None = Field(
+        default=None,
+        description=(
+            "Durable state root for dispatch-lifecycle records and checkpoints. "
+            "When unset it resolves from $ONEX_STATE_DIR, else $OMNI_HOME/.onex_state."
+        ),
     )

@@ -1,22 +1,38 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Handler for node_wave_scheduler_orchestrator [OMN-12210].
+"""Handler for node_wave_scheduler_orchestrator [OMN-12210, repaired OMN-17017].
 
 ORCHESTRATOR node. Consumes ModelWaveSchedulerRequest, parses the plan file,
-builds a dependency DAG, computes execution waves with configurable max
-concurrency, and dispatches parallel ticket-pipeline workers per wave.
+builds a dependency DAG, and dispatches one wave at a time — each wave computed
+against **observed** completion, never against selection.
 
-Bounded production slice: parse a plan, validate dependencies, compute waves,
-and require an injected dispatcher adapter for live execution.
+OMN-17017 repaired four defects the contract concealed (2026-08-29 beta
+off-the-rails analysis rev 2, §RC-J):
+
+* the schedule was fully computed before the first ticket ran, with
+  ``completed.update(selected)`` making *selection* equal *completion*;
+* failed dependencies did not suppress downstream dispatch — the execution loop
+  was an unconditional comprehension over the pre-computed assignment list;
+* a missing dispatcher status silently became ``"completed"``;
+* ``fail_fast`` was a live CLI flag with zero handler references, and ``resumed``
+  was reported ``true`` for a run that resumed nothing.
+
+Waves are now derived incrementally: dispatch the ready set, read back what the
+dispatcher observed, promote only observed COMPLETED tickets, and remove the
+transitive dependent closure of everything else from the remaining waves.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Protocol
 
 import yaml
 
+from omnimarket.nodes.node_wave_scheduler_orchestrator.handlers.handler_wave_dispatch_state_store import (
+    HandlerWaveDispatchStateStore,
+)
 from omnimarket.nodes.node_wave_scheduler_orchestrator.models.model_wave_scheduler_request import (
     ModelWaveSchedulerRequest,
 )
@@ -29,14 +45,31 @@ from omnimarket.nodes.node_wave_scheduler_orchestrator.models.model_wave_schedul
     ModelWaveExecutionSummary,
     ModelWaveSchedulerResult,
 )
+from omnimarket.nodes.node_wave_scheduler_orchestrator.wave_state import (
+    ModelWaveCheckpoint,
+    load_checkpoint,
+    resolve_state_dir,
+    run_id_for,
+    write_checkpoint,
+)
+
+# Only an observed COMPLETED unblocks a dependent. Everything else — FAILED,
+# BLOCKED, STALLED, TIMEOUT, SKIPPED, DEFERRED, UNREPORTED — cascades.
+_UNBLOCKING = EnumTicketExecutionStatus.COMPLETED
 
 
 class ProtocolWaveDispatcher(Protocol):
-    """Adapter boundary for live ticket-pipeline wave dispatch."""
+    """Adapter boundary for live ticket-pipeline wave dispatch.
+
+    A dispatcher returns statuses **only** for tickets whose terminal outcome it
+    actually observed. Omitting a ticket is the honest answer for "dispatched,
+    not acknowledged"; the orchestrator records it UNREPORTED and blocks its
+    dependents. It must never invent a status.
+    """
 
     def dispatch_wave(
         self, assignment: ModelWaveAssignment
-    ) -> dict[str, EnumTicketExecutionStatus | str]: ...
+    ) -> Mapping[str, EnumTicketExecutionStatus]: ...
 
 
 class HandlerWaveSchedulerOrchestrator:
@@ -57,52 +90,256 @@ class HandlerWaveSchedulerOrchestrator:
                 dependency_violations=tuple(violations),
                 total_tickets=len(tickets),
                 dry_run=request.dry_run,
-                resumed=request.resume,
+                resumed=False,
             )
 
-        assignments = _build_wave_assignments(
-            tickets,
-            max_concurrency=request.max_concurrency,
-            defer_repo_conflicts=request.defer_repo_conflicts,
-        )
         if request.dry_run:
             return ModelWaveSchedulerResult(
                 plan_path=request.plan_path,
                 run_status=EnumWaveSchedulerStatus.DRY_RUN,
-                wave_assignments=tuple(assignments),
+                wave_assignments=tuple(
+                    _projected_wave_assignments(
+                        tickets,
+                        max_concurrency=request.max_concurrency,
+                        defer_repo_conflicts=request.defer_repo_conflicts,
+                    )
+                ),
                 wave_execution_summaries=(),
                 dependency_violations=(),
                 total_tickets=len(tickets),
                 dry_run=True,
-                resumed=request.resume,
+                resumed=False,
             )
 
-        if self._dispatcher is None:
-            raise RuntimeError("dispatcher adapter required when dry_run is false")
+        return self._execute(request, tickets)
 
-        summaries = [
-            _execute_assignment(self._dispatcher, assignment)
-            for assignment in assignments
-        ]
-        failed = sum(summary.failed_count for summary in summaries)
-        blocked = sum(summary.blocked_count for summary in summaries)
-        return ModelWaveSchedulerResult(
-            plan_path=request.plan_path,
-            run_status=(
-                EnumWaveSchedulerStatus.COMPLETED
-                if failed == 0 and blocked == 0
-                else EnumWaveSchedulerStatus.PARTIAL
-            ),
-            wave_assignments=tuple(assignments),
-            wave_execution_summaries=tuple(summaries),
-            dependency_violations=(),
-            total_tickets=len(tickets),
-            tickets_completed=sum(summary.completed_count for summary in summaries),
-            tickets_failed=failed,
-            tickets_blocked=blocked,
-            dry_run=False,
-            resumed=request.resume,
+    # -- live execution ----------------------------------------------------
+
+    def _execute(
+        self,
+        request: ModelWaveSchedulerRequest,
+        tickets: dict[str, dict[str, Any]],
+    ) -> ModelWaveSchedulerResult:
+        state_dir = resolve_state_dir(request.state_dir)
+        run_id = run_id_for(request.plan_path)
+        checkpoint = load_checkpoint(state_dir, run_id) if request.resume else None
+        resumed = checkpoint is not None
+
+        dispatcher = self._dispatcher or HandlerWaveDispatchStateStore(
+            state_dir=state_dir, run_id=run_id
         )
+
+        completed: set[str] = {
+            ticket_id
+            for ticket_id in (checkpoint.completed_ticket_ids if checkpoint else ())
+            if ticket_id in tickets
+        }
+        remaining = set(tickets) - completed
+        assignments: list[ModelWaveAssignment] = []
+        summaries: list[ModelWaveExecutionSummary] = []
+        terminal: dict[str, EnumTicketExecutionStatus] = {}
+        aborted = False
+        wave_id = 0
+
+        while remaining:
+            ready = sorted(
+                ticket_id
+                for ticket_id in remaining
+                if set(tickets[ticket_id]["depends_on"]).issubset(completed)
+            )
+            if not ready:
+                # Everything left depends on something that did not complete.
+                break
+            selected, deferred = _select_wave_tickets(
+                ready,
+                tickets,
+                max_concurrency=request.max_concurrency,
+                defer_repo_conflicts=request.defer_repo_conflicts,
+            )
+            assignment = ModelWaveAssignment(
+                wave_id=wave_id,
+                ticket_ids=tuple(selected),
+                repo_assignments=tuple(
+                    (ticket_id, str(tickets[ticket_id]["repo"]))
+                    for ticket_id in selected
+                    if tickets[ticket_id]["repo"]
+                ),
+                deferred_ticket_ids=tuple(deferred),
+            )
+            assignments.append(assignment)
+
+            statuses = _observed_statuses(dispatcher, assignment)
+            summaries.append(_summarise(assignment, statuses))
+            terminal.update(statuses)
+            remaining.difference_update(selected)
+
+            wave_completed = {
+                ticket_id
+                for ticket_id, status in statuses.items()
+                if status is _UNBLOCKING
+            }
+            completed.update(wave_completed)
+            write_checkpoint(
+                state_dir,
+                ModelWaveCheckpoint(
+                    run_id=run_id,
+                    plan_path=request.plan_path,
+                    completed_ticket_ids=tuple(sorted(completed)),
+                ),
+            )
+
+            if request.fail_fast and len(wave_completed) != len(selected):
+                aborted = True
+                break
+            wave_id += 1
+
+        blocked = _dependent_closure(tickets, remaining, completed)
+        for ticket_id in sorted(blocked):
+            terminal[ticket_id] = EnumTicketExecutionStatus.BLOCKED
+        skipped = sorted(remaining - blocked)
+        for ticket_id in skipped:
+            terminal[ticket_id] = EnumTicketExecutionStatus.SKIPPED
+        if blocked or skipped:
+            # Keyed off the number of dispatched waves, not the loop counter: a
+            # fail_fast break leaves wave_id un-incremented and would collide.
+            summaries.append(
+                _undispatched_summary(len(assignments), sorted(blocked), skipped)
+            )
+
+        return _result(
+            request=request,
+            total_tickets=len(tickets),
+            assignments=assignments,
+            summaries=summaries,
+            terminal=terminal,
+            aborted=aborted,
+            resumed=resumed,
+            dispatcher=dispatcher,
+        )
+
+
+def _observed_statuses(
+    dispatcher: ProtocolWaveDispatcher, assignment: ModelWaveAssignment
+) -> dict[str, EnumTicketExecutionStatus]:
+    """Coerce the dispatcher's report, defaulting nothing and inventing nothing."""
+    reported = dispatcher.dispatch_wave(assignment)
+    statuses: dict[str, EnumTicketExecutionStatus] = {}
+    for ticket_id in assignment.ticket_ids:
+        if ticket_id not in reported:
+            statuses[ticket_id] = EnumTicketExecutionStatus.UNREPORTED
+            continue
+        statuses[ticket_id] = EnumTicketExecutionStatus(reported[ticket_id])
+    return statuses
+
+
+def _summarise(
+    assignment: ModelWaveAssignment,
+    statuses: Mapping[str, EnumTicketExecutionStatus],
+) -> ModelWaveExecutionSummary:
+    ordered = tuple(
+        (ticket_id, statuses[ticket_id]) for ticket_id in assignment.ticket_ids
+    )
+
+    def _count(target: EnumTicketExecutionStatus) -> int:
+        return sum(1 for _, status in ordered if status is target)
+
+    return ModelWaveExecutionSummary(
+        wave_id=assignment.wave_id,
+        dispatched_count=len(ordered),
+        completed_count=_count(EnumTicketExecutionStatus.COMPLETED),
+        failed_count=_count(EnumTicketExecutionStatus.FAILED),
+        blocked_count=_count(EnumTicketExecutionStatus.BLOCKED),
+        stalled_count=_count(EnumTicketExecutionStatus.STALLED),
+        skipped_count=_count(EnumTicketExecutionStatus.SKIPPED),
+        unreported_count=_count(EnumTicketExecutionStatus.UNREPORTED),
+        ticket_statuses=ordered,
+    )
+
+
+def _undispatched_summary(
+    wave_id: int, blocked: list[str], skipped: list[str]
+) -> ModelWaveExecutionSummary:
+    """A zero-dispatch summary carrying the cascade — visible, not silent."""
+    ordered = tuple(
+        [(ticket_id, EnumTicketExecutionStatus.BLOCKED) for ticket_id in blocked]
+        + [(ticket_id, EnumTicketExecutionStatus.SKIPPED) for ticket_id in skipped]
+    )
+    return ModelWaveExecutionSummary(
+        wave_id=wave_id,
+        dispatched_count=0,
+        blocked_count=len(blocked),
+        skipped_count=len(skipped),
+        ticket_statuses=ordered,
+    )
+
+
+def _dependent_closure(
+    tickets: dict[str, dict[str, Any]],
+    remaining: set[str],
+    completed: set[str],
+) -> set[str]:
+    """Undispatched tickets that transitively depend on a non-completion."""
+    blocked: set[str] = set()
+    changed = True
+    while changed:
+        changed = False
+        for ticket_id in sorted(remaining - blocked):
+            dependencies = set(tickets[ticket_id]["depends_on"])
+            unmet = dependencies - completed
+            if unmet:
+                blocked.add(ticket_id)
+                changed = True
+    return blocked
+
+
+def _result(
+    *,
+    request: ModelWaveSchedulerRequest,
+    total_tickets: int,
+    assignments: list[ModelWaveAssignment],
+    summaries: list[ModelWaveExecutionSummary],
+    terminal: Mapping[str, EnumTicketExecutionStatus],
+    aborted: bool,
+    resumed: bool,
+    dispatcher: ProtocolWaveDispatcher,
+) -> ModelWaveSchedulerResult:
+    def _count(target: EnumTicketExecutionStatus) -> int:
+        return sum(1 for status in terminal.values() if status is target)
+
+    failed = _count(EnumTicketExecutionStatus.FAILED)
+    blocked = _count(EnumTicketExecutionStatus.BLOCKED)
+    unreported = _count(EnumTicketExecutionStatus.UNREPORTED)
+    skipped = _count(EnumTicketExecutionStatus.SKIPPED)
+    clean = all(status is _UNBLOCKING for status in terminal.values())
+
+    if aborted:
+        run_status = EnumWaveSchedulerStatus.ABORTED
+    elif clean:
+        run_status = EnumWaveSchedulerStatus.COMPLETED
+    else:
+        run_status = EnumWaveSchedulerStatus.PARTIAL
+
+    lifecycle_path = (
+        str(dispatcher.lifecycle_path)
+        if isinstance(dispatcher, HandlerWaveDispatchStateStore)
+        else None
+    )
+    return ModelWaveSchedulerResult(
+        plan_path=request.plan_path,
+        run_status=run_status,
+        wave_assignments=tuple(assignments),
+        wave_execution_summaries=tuple(summaries),
+        dependency_violations=(),
+        total_tickets=total_tickets,
+        tickets_completed=_count(_UNBLOCKING),
+        tickets_failed=failed,
+        tickets_blocked=blocked,
+        tickets_unreported=unreported,
+        tickets_skipped=skipped,
+        dispatch_lifecycle_path=lifecycle_path,
+        dry_run=False,
+        resumed=resumed,
+    )
 
 
 def _read_plan(path: Path) -> dict[str, dict[str, Any]]:
@@ -198,14 +435,20 @@ def _find_cycle(tickets: dict[str, dict[str, Any]]) -> list[str]:
     return []
 
 
-def _build_wave_assignments(
+def _projected_wave_assignments(
     tickets: dict[str, dict[str, Any]],
     *,
     max_concurrency: int,
     defer_repo_conflicts: bool,
 ) -> list[ModelWaveAssignment]:
+    """Dry-run PROJECTION of the wave schedule.
+
+    This is the one place where selection may stand in for completion, because
+    nothing is dispatched: it answers "what would run, assuming every wave
+    succeeds". Live execution never uses it (OMN-17017).
+    """
     remaining = set(tickets)
-    completed: set[str] = set()
+    assumed_completed: set[str] = set()
     assignments: list[ModelWaveAssignment] = []
     wave_id = 0
 
@@ -213,7 +456,7 @@ def _build_wave_assignments(
         ready = sorted(
             ticket_id
             for ticket_id in remaining
-            if set(tickets[ticket_id]["depends_on"]).issubset(completed)
+            if set(tickets[ticket_id]["depends_on"]).issubset(assumed_completed)
         )
         if not ready:
             raise ValueError("dependency graph has no ready tickets")
@@ -236,7 +479,7 @@ def _build_wave_assignments(
             )
         )
         remaining.difference_update(selected)
-        completed.update(selected)
+        assumed_completed.update(selected)
         wave_id += 1
     return assignments
 
@@ -263,39 +506,6 @@ def _select_wave_tickets(
         if repo:
             used_repos.add(repo)
     return selected, deferred
-
-
-def _execute_assignment(
-    dispatcher: ProtocolWaveDispatcher, assignment: ModelWaveAssignment
-) -> ModelWaveExecutionSummary:
-    raw_statuses = dispatcher.dispatch_wave(assignment)
-    statuses = tuple(
-        (
-            ticket_id,
-            EnumTicketExecutionStatus(raw_statuses.get(ticket_id, "completed")),
-        )
-        for ticket_id in assignment.ticket_ids
-    )
-    return ModelWaveExecutionSummary(
-        wave_id=assignment.wave_id,
-        dispatched_count=len(assignment.ticket_ids),
-        completed_count=sum(
-            1 for _, status in statuses if status is EnumTicketExecutionStatus.COMPLETED
-        ),
-        failed_count=sum(
-            1 for _, status in statuses if status is EnumTicketExecutionStatus.FAILED
-        ),
-        blocked_count=sum(
-            1 for _, status in statuses if status is EnumTicketExecutionStatus.BLOCKED
-        ),
-        stalled_count=sum(
-            1 for _, status in statuses if status is EnumTicketExecutionStatus.STALLED
-        ),
-        skipped_count=sum(
-            1 for _, status in statuses if status is EnumTicketExecutionStatus.SKIPPED
-        ),
-        ticket_statuses=statuses,
-    )
 
 
 __all__ = ["HandlerWaveSchedulerOrchestrator", "ProtocolWaveDispatcher"]

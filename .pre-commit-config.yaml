@@ -787,6 +787,21 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-17017: contract-vs-handler publish parity. A contract that declares a
+      # publish topic (other than terminal_event, which the runtime publishes)
+      # with no publish/emit call anywhere in the node's Python is a
+      # machine-readable claim every downstream reader believes. Burn-down
+      # ratchet against scripts/ci/contract_publish_parity_baseline.py — the
+      # frozen set may only shrink. SYNC with ci.yml step "Contract publish
+      # parity gate".
+      - id: contract-publish-parity-gate
+        name: Contract publish parity gate
+        language: system
+        entry: uv run python scripts/ci/check_contract_publish_parity.py
+        files: ^(src/omnimarket/nodes/.*/(contract\.yaml|.*\.py)|scripts/ci/(check_contract_publish_parity|contract_publish_parity_baseline)\.py)$
+        pass_filenames: false
+        stages: [pre-commit]
+
   # Ruff — standalone pre-commit hooks (no uv source resolution needed)
   # Using astral-sh/ruff-pre-commit avoids `uv run ruff` which fails in worktrees
   # because uv.sources relative paths (../omnibase_core) resolve against the worktree
