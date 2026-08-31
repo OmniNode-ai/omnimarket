@@ -3476,6 +3476,17 @@ class EvidenceCollector:
                         status=EnumEvidenceCheckStatus.SKIPPED,
                         message=self._last_binding_note,
                         proof_class=EnumCheckProofClass.MERGE_STATE,
+                        # OMN-17323: THIS is the arm the marker exists for, and
+                        # the only one. The result is an overlay this collector
+                        # synthesised — the ticket declared no such criterion —
+                        # and it is skipped because THIS collector's own binder
+                        # derived nothing. Reporting it in the verdict-bearing
+                        # denominator states the tool's inability as the
+                        # ticket's shortfall, which is what held the OMN-16106
+                        # autoclose flip at zero for the whole corpus. The
+                        # entry is kept, note and all, so the receipt still
+                        # shows the binder gap.
+                        unbindable_derived_overlay=True,
                     )
                 ]
             return []

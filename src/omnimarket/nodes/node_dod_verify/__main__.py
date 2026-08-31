@@ -138,6 +138,14 @@ def _build_probe_stdout(state: ModelDodVerifyState) -> str:
         # entries to fit the cap. Zero on a fully-green run means no check in
         # this receipt executed the claimed behavior.
         "behavior_proving": state.behavior_proving_count,
+        # OMN-17323: ``::pr-live-state`` overlays this verifier derived and
+        # could not bind. Like ``superseded`` and UNLIKE ``non_probative``
+        # these are excluded from ``total``, because they were never executed
+        # and can never pass — the tool's own inability, not the ticket's
+        # shortfall. Named here so the receipt shows the binder gap; the
+        # entries themselves remain in ``details`` with their
+        # ``NO_CONSISTENT_PR_BINDING`` note.
+        "unbindable_overlays": state.unbindable_overlay_count,
     }
 
     def render(kept: int) -> str:

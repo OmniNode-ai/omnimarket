@@ -211,6 +211,36 @@ class ModelEvidenceCheckResult(BaseModel):
         ),
     )
 
+    # OMN-17323: this result is an overlay the VERIFIER auto-derived, not a
+    # criterion the TICKET declared, and the verifier's own binder could not
+    # bind it. Set ONLY on the ``::pr-live-state`` result that
+    # ``EvidenceCollector._live_pr_checks_for_item`` emits when
+    # ``_resolve_pr_bindings`` returned nothing but left a binding note — the
+    # tool reporting its own inability, which was being attributed to the
+    # ticket as an evidence shortfall.
+    #
+    # Why it needs its own axis rather than reusing ``unverifiable_cause``:
+    # that field means "the evidence exists and the credential could not READ
+    # it", and it deliberately BLOCKS the verdict on those terms. This means
+    # "there is no evidence item here at all" — the overlay is synthetic, was
+    # never executed, and can never pass. Since OMN-16434 auto-mints
+    # ``dod-occ-diff-derived-behavior-proof`` onto every new OCC companion,
+    # every freshly-minted companion carries exactly one guaranteed-unbindable
+    # overlay, which made the OMN-16821 flip equality unsatisfiable by
+    # construction for the entire corpus (24 consecutive scheduled autoclose
+    # runs, ~660 scans, FLIP=0).
+    #
+    # Consumers must branch on this field, never on ``NO_CONSISTENT_PR_BINDING``
+    # message text — the OMN-16788 rule, one axis over.
+    unbindable_derived_overlay: bool = Field(
+        default=False,
+        description=(
+            "True only for a verifier-derived ::pr-live-state overlay whose "
+            "binder derived no (repo, pr) pair. Excluded from the "
+            "verdict-bearing denominator; retained in `checks` with its note."
+        ),
+    )
+
     # OMN-15911: `status` says whether the check passed; `proof_class` says
     # what passing it PROVED. Without this axis a merge-state read and an
     # executed test suite are the same `verified`, and a downstream tally of
@@ -247,6 +277,21 @@ class ModelEvidenceCheckResult(BaseModel):
             raise ValueError(
                 f"unverifiable_cause is only valid on a SKIPPED result; "
                 f"got status={self.status.value} for {self.evidence_id}"
+            )
+        # OMN-17323: the marker asserts "this overlay was never executed and
+        # can never pass" — it may not sit on a status claiming it ran. The
+        # counter in HandlerDodVerify subtracts every marked entry from the
+        # denominator, so a marker on a VERIFIED/NON_PROBATIVE result would
+        # shrink the denominator while its own verdict stayed in a numerator
+        # term and manufacture a green. Rejected structurally rather than
+        # audited per-producer, mirroring the cause invariant above.
+        if (
+            self.unbindable_derived_overlay
+            and self.status is not EnumEvidenceCheckStatus.SKIPPED
+        ):
+            raise ValueError(
+                f"unbindable_derived_overlay is only valid on a SKIPPED "
+                f"result; got status={self.status.value} for {self.evidence_id}"
             )
         return self
 
@@ -286,6 +331,15 @@ class ModelDodVerifyState(BaseModel):
     # and a NON_PROBATIVE one never was. Zero means "green, and nothing here
     # proves the system does the thing."
     behavior_proving_count: int = Field(default=0, ge=0)
+    # OMN-17323: verifier-derived ``::pr-live-state`` overlays whose binder
+    # derived no (repo, pr) pair. Excluded from ``total_checks`` on exactly the
+    # OMN-15390 reasoning that excludes ``superseded`` — an entry carrying no
+    # product-dependent verdict does not belong in a verdict-bearing
+    # denominator — and named here, like ``superseded_count``, so the receipt
+    # shows the binder gap rather than hiding it. These entries ARE still
+    # counted in ``skipped_count``: they are skipped results present in
+    # ``checks``, and understating that would trade one misreport for another.
+    unbindable_overlay_count: int = Field(default=0, ge=0)
     error_message: str | None = Field(default=None)
     # OMN-15454 AC2: provenance of the OCC governance ref actually read this
     # run — "attribution must name what was actually read, not what was
