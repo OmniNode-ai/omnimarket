@@ -605,8 +605,10 @@ class TestCrossBoundarySeam:
             with (
                 patch(
                     "omnimarket.nodes.node_projection_delegation.handlers."
-                    "handler_delegation.resolve_tenant_uuid_or_none",
-                    side_effect=lambda value: value,  # pre-fix: raw slug through
+                    "handler_delegation.resolve_registry_tenant_uuid_or_none",
+                    side_effect=lambda value, *, registry_uuid: (  # noqa: ARG005
+                        value
+                    ),  # pre-fix: raw slug through
                 ),
                 pytest.raises(asyncpg.exceptions.DataError),
             ):
