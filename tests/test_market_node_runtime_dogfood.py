@@ -247,7 +247,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # correlated hook event and reports the furthest leg it reached, naming the
     # allowlist denial / lane mismatch / non-relay transport rather than timing
     # out): 391 -> 392.
-    assert summary["node_dirs"] == 392
+    # OMN-16930 adds node_projection_tenant_registry (REDUCER; the tenant
+    # registry mirror -- consumes the registry-owned tenant lifecycle events
+    # and materializes omninode_internal.tenant_registry_mirror, the
+    # cross-tenant slug<->uuid index the OMN-16930 registry-resolved
+    # conversion reads to convert migration 0031's legacy slug-keyed rows to
+    # canonical tenant uuid at apply time): 392 -> 393.
+    assert summary["node_dirs"] == 393
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -312,7 +318,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # session-ended): 387 -> 388.
     # OMN-17202 adds the node_hook_chain_probe_effect entry point (see node_dirs
     # comment above; routable via its runtime_dispatch.command_topic): 388 -> 389.
-    assert summary["entry_points"] == 389
+    # OMN-16930 adds the node_projection_tenant_registry entry point (see
+    # node_dirs comment above; routable via its subscribe topic
+    # onex.tenant.events, the control-plane tenant lifecycle topic owned by
+    # onex-api): 389 -> 390.
+    assert summary["entry_points"] == 390
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
