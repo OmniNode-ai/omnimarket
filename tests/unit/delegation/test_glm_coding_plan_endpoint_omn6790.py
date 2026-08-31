@@ -336,3 +336,67 @@ def test_the_committed_contract_still_loads() -> None:
 
     config = load_bifrost_delegation_config(_BIFROST_PATH)
     assert any(b.backend_id == "cloud-glm" for b in config.backends)
+
+
+# ---------------------------------------------------------------------------
+# OMN-17314: drive the guard through the RESOLUTION entry point, not the file.
+#
+# ``routing/delegation_backend_resolution._merge_overlay`` merges an overlay row
+# onto a contract backend FIELD BY FIELD, so a row carrying only
+# ``{backend_id: cloud-glm, endpoint_url: .../api/paas/v4/chat/completions}``
+# used to replace the committed endpoint silently: ``reject_overlay_only_
+# backend_ids`` (OMN-16903) rejects an unknown backend_id, and nothing looked at
+# the overridden VALUE. These tests exercise ``load_bifrost_backends`` — the
+# entry point a client actually reaches — with a real overlay file.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_an_overlay_cannot_repoint_glm_to_pay_as_you_go(tmp_path: Path) -> None:
+    """The overlay is a real shadowing surface; it must not move the surface."""
+    from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+        ProviderSurfaceMismatchError,
+    )
+    from omnimarket.routing.delegation_backend_resolution import load_bifrost_backends
+
+    overlay = tmp_path / "bifrost_overrides.yaml"
+    overlay.write_text(
+        yaml.safe_dump(
+            {
+                "backends": [
+                    {
+                        "backend_id": "cloud-glm",
+                        "endpoint_url": (
+                            f"https://{_ZAI_HOST}{PAY_AS_YOU_GO_PATH_PREFIX}"
+                            "/chat/completions"
+                        ),
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    with pytest.raises(ProviderSurfaceMismatchError) as excinfo:
+        load_bifrost_backends(config_path=_BIFROST_PATH, overlay_path=overlay)
+
+    rendered = str(excinfo.value)
+    assert "cloud-glm" in rendered
+    assert str(overlay) in rendered, (
+        "the rejection must name the overlay that supplied the bad value — "
+        "otherwise the reader cannot tell which of three shadowing surfaces "
+        "(overlay, BIFROST_CONTRACT_PATH tree, installed build) did it."
+    )
+    assert CODING_PLAN_PATH_PREFIX in rendered
+
+
+@pytest.mark.unit
+def test_resolution_entry_point_admits_the_committed_contract(tmp_path: Path) -> None:
+    """Guard the guard on the resolution path too: our own config must resolve."""
+    from omnimarket.routing.delegation_backend_resolution import load_bifrost_backends
+
+    backends = load_bifrost_backends(
+        config_path=_BIFROST_PATH, overlay_path=tmp_path / "absent.yaml"
+    )
+    glm = next(b for b in backends if b["backend_id"] == "cloud-glm")
+    assert glm["endpoint_url"].startswith(CODING_PLAN_BASE)

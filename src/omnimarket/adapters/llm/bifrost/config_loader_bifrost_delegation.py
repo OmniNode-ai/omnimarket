@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import copy
 import logging
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, cast
 from urllib.parse import urlparse
@@ -272,71 +272,98 @@ def load_bifrost_delegation_config(
     return config
 
 
-def _reject_backends_off_a_declared_provider_surface(
-    config: ModelBifrostDelegationConfig,
+def reject_backends_off_a_declared_provider_surface(
+    backends: Sequence[Mapping[str, Any]],
+    provider_rules: Sequence[Mapping[str, Any]],
     *,
     source: str,
 ) -> None:
-    """Fail the LOAD when a backend addresses a provider on the wrong surface.
+    """Refuse a RESOLVED backend set that addresses a provider on the wrong surface.
 
-    OMN-6790. ``provider_quota_policy.providers[].required_path_prefix`` is the
-    contract's declaration that a given provider host serves the product we
-    hold on ONE path prefix. Enforcing it here — at the single locus every
-    consumer of the routing authority funnels through — is what makes the fact
-    hold on the HOST, not merely in the repo.
+    OMN-6790 / OMN-17314. ``provider_quota_policy.providers[].required_path_prefix``
+    is the contract's declaration that a given provider host serves the product
+    we hold on ONE path prefix. This is the shared rejector for that rule —
+    same module, same shape and same attributable-message contract as
+    :func:`reject_overlay_only_backend_ids`, and for the same reason: one input
+    class must produce one outcome no matter which loader a caller reached for.
 
-    That distinction is the whole point. The two OMN-6790 regression tests are
-    source-tree scanners: they read the committed YAML in a checkout. On
-    2026-08-31 the checkout was green and the delegation call still went to the
-    pay-as-you-go surface, because the client executed an INSTALLED omnimarket
-    build predating the fix (``omnibase_infra/.venv``, omnimarket @ 66b7131a3).
-    No source-tree test can see that; a load-time assertion in the code that
-    ships WITH the contract can, because a stale build carries a stale contract
-    and this check travels with it. The same assertion also covers a site
-    overlay or a lane ``BIFROST_CONTRACT_PATH`` that repoints the backend.
+    It operates on the MERGED/RESOLVED backends, not on committed bytes. That
+    distinction is the whole point. The two OMN-6790 regression tests are
+    source-tree scanners, and on 2026-08-31 both were green on ``origin/dev``
+    while this workstation still POSTed GLM to the pay-as-you-go surface: the
+    canonical clone sat detached at a pre-fix commit, ``BIFROST_CONTRACT_PATH``
+    pointed at that clone's working tree, and the venv was installed from the
+    same clone HEAD (omnimarket @ 66b7131a3 — pyproject version "0.4.11", NOT
+    release tag v0.4.11, which was cut later and does carry the fix). Nothing
+    that reads a checkout can see any of that.
 
     Fails closed: a mismatched surface raises rather than being logged, because
-    the alternative is a provider error whose text names a cause that is not
-    real ("Insufficient balance") and which has now been misread three times.
-    """
-    policy = config.provider_quota_policy
-    if policy is None:
-        return
+    the alternative is a provider error whose own text names a cause that is not
+    real ("Insufficient balance. Please recharge") and which has now been
+    misread three times (OMN-14625, OMN-16891, OMN-17193).
 
-    rules = [p for p in policy.providers if p.required_path_prefix]
+    Args:
+        backends: the resolved backend mappings (post-overlay-merge).
+        provider_rules: ``provider_quota_policy.providers`` entries as mappings.
+        source: what produced this backend set — a config path, an overlay path,
+            or a store key. Required and keyword-only so no call site can refuse
+            (or admit) a config it cannot attribute.
+
+    Raises:
+        ProviderSurfaceMismatchError: naming every offending ``backend_id``, its
+            URL, the required prefix, the declared hint, and ``source``.
+    """
+    rules = [r for r in provider_rules if r.get("required_path_prefix")]
     if not rules:
         return
 
     offenders: list[str] = []
     for rule in rules:
-        prefix = cast(str, rule.required_path_prefix)
-        for backend in config.backends:
-            url = backend.endpoint_url
-            if not url:
+        prefix = cast(str, rule["required_path_prefix"])
+        host = rule.get("match_endpoint_host")
+        hint = rule.get("required_path_prefix_hint") or ""
+        for backend in backends:
+            url = backend.get("endpoint_url")
+            if not isinstance(url, str) or not url:
                 continue
             parsed = urlparse(url)
-            if parsed.hostname != rule.match_endpoint_host:
+            if parsed.hostname != host:
                 continue
             if parsed.path.startswith(prefix):
                 continue
-            hint = rule.required_path_prefix_hint or ""
             offenders.append(
-                f"backend {backend.backend_id!r} -> {url} "
-                f"(provider {rule.provider_id!r} requires path prefix {prefix!r})"
-                + (f" — {hint}" if hint else "")
+                f"backend {backend.get('backend_id')!r} -> {url} "
+                f"(provider {rule.get('provider_id')!r} requires path prefix "
+                f"{prefix!r})" + (f" — {hint}" if hint else "")
             )
 
     if offenders:
         msg = (
-            "Bifrost delegation config declares backend(s) on the WRONG surface "
-            f"of a provider host (source: {source}):\n  "
+            "Delegation routing authority resolves backend(s) onto the WRONG "
+            f"surface of a provider host (source: {source}):\n  "
             + "\n  ".join(offenders)
-            + "\nThis config is refused rather than loaded. If the committed "
-            "contract is correct, the build or overlay resolving it on THIS host "
-            "is stale — reconcile the installed package / overlay, do not edit "
-            "the prefix."
+            + "\nThis config is refused rather than resolved. If the committed "
+            "contract is correct, then the overlay, the BIFROST_CONTRACT_PATH "
+            "tree, or the installed build resolving it on THIS host is stale — "
+            "reconcile that, do not edit the prefix."
         )
         raise ProviderSurfaceMismatchError(msg)
+
+
+def _reject_backends_off_a_declared_provider_surface(
+    config: ModelBifrostDelegationConfig,
+    *,
+    source: str,
+) -> None:
+    """Typed-config adapter over :func:`reject_backends_off_a_declared_provider_surface`."""
+    policy = config.provider_quota_policy
+    if policy is None:
+        return
+    reject_backends_off_a_declared_provider_surface(
+        [b.model_dump(mode="python") for b in config.backends],
+        [p.model_dump(mode="python") for p in policy.providers],
+        source=source,
+    )
 
 
 def _read_yaml_mapping(path: Path) -> dict[str, Any]:
@@ -435,5 +462,6 @@ __all__: list[str] = [
     "ProviderSurfaceMismatchError",
     "deep_merge_bifrost_delegation_config",
     "load_bifrost_delegation_config",
+    "reject_backends_off_a_declared_provider_surface",
     "reject_overlay_only_backend_ids",
 ]

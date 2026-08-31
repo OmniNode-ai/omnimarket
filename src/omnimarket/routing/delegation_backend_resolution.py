@@ -34,6 +34,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from queue import Queue
 from typing import Any, Final
@@ -43,6 +44,7 @@ from omnibase_spi.protocols.services import ProtocolSecretStore
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
+    reject_backends_off_a_declared_provider_surface,
     reject_overlay_only_backend_ids,
 )
 
@@ -214,6 +216,7 @@ def _merge_overlay(
     overlay_backends: list[dict[str, Any]],
     *,
     overlay_source: str,
+    provider_rules: Sequence[Mapping[str, Any]] = (),
 ) -> list[dict[str, Any]]:
     """Merge overlay entries field-by-field onto matching ``backend_id`` entries.
 
@@ -235,6 +238,17 @@ def _merge_overlay(
         override = overlay_by_id.get(backend["backend_id"])
         if override is not None:
             merged[i] = {**backend, **override}
+    # OMN-17314: the overlay merge is field-by-field, so an overlay row carrying
+    # only ``{backend_id, endpoint_url}`` silently REPLACES a contract-declared
+    # endpoint. reject_overlay_only_backend_ids above rejects an unknown id;
+    # nothing inspected the overridden VALUE. Enforce the contract's declared
+    # provider surface on the MERGED result, through the same shared rejector
+    # the sibling loader calls, so one input class produces one outcome
+    # regardless of which merge path a caller reached for (the OMN-16903
+    # pattern).
+    reject_backends_off_a_declared_provider_surface(
+        merged, provider_rules, source=overlay_source
+    )
     return merged
 
 
@@ -269,9 +283,19 @@ def load_bifrost_backends(
             naming the offending id and the overlay source (OMN-16903).
     """
     backends: list[dict[str, Any]] = []
+    provider_rules: list[Mapping[str, Any]] = []
     if config_path.is_file():
         base = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
         backends = list(base.get("backends", []))
+        # OMN-17314: the declared surface policy travels with the contract that
+        # declared the backends, so an overlay cannot both repoint a backend and
+        # delete the rule that would refuse the repoint.
+        provider_rules = list(
+            (base.get("provider_quota_policy") or {}).get("providers") or []
+        )
+        reject_backends_off_a_declared_provider_surface(
+            backends, provider_rules, source=str(config_path)
+        )
 
     # --- Primary authority: store overlay (OMN-13232 / ADR D2) -----------------
     if store is not None:
@@ -281,6 +305,7 @@ def load_bifrost_backends(
                 backends,
                 store_overlay,
                 overlay_source=f"store key {BIFROST_OVERLAY_STORE_KEY!r}",
+                provider_rules=provider_rules,
             )
             return backends
         # Store is configured but has no overlay key → fall through to file with
@@ -310,7 +335,10 @@ def load_bifrost_backends(
         overlay = yaml.safe_load(overlay_path.read_text(encoding="utf-8")) or {}
         file_overlay_backends = list(overlay.get("backends", []))
         backends = _merge_overlay(
-            backends, file_overlay_backends, overlay_source=str(overlay_path)
+            backends,
+            file_overlay_backends,
+            overlay_source=str(overlay_path),
+            provider_rules=provider_rules,
         )
 
     return backends
