@@ -19,7 +19,6 @@ runner needed.
 
 from __future__ import annotations
 
-import textwrap
 from collections.abc import Generator
 from pathlib import Path
 
@@ -53,66 +52,83 @@ _SEAM_ENDPOINT_ENV = "OMN15628_SEAM_TEST_LOCAL_CODER_ENDPOINT_URL"
 # authorized binding — this way the test tracks the contract it is exercising.
 # The leading-underscore access is the price of that, and is preferable to a
 # stale duplicate of a security-relevant allowlist.
-_SEAM_ENDPOINT_URL = (
-    f"http://{_binding._LAB_HOST}:{_binding._LAB_PORT}{_binding._CHAT_COMPLETIONS_PATH}"
-)
-_SEAM_SERVED_MODEL_ID = _binding._SERVED_MODEL_NAME
-_SEAM_PARAMETER_COUNT = _binding._PARAMETER_COUNT
-_SEAM_CONTEXT_WINDOW = _binding._CONTEXT_WINDOW
+# OMN-16997: omnibase-infra 0.38.15 replaced the module-level scalars
+# (_LAB_HOST / _LAB_PORT / _SERVED_MODEL_NAME / _PARAMETER_COUNT /
+# _CONTEXT_WINDOW), which described ONE authorized lab endpoint, with a
+# per-backend _AUTHORIZED_BINDINGS mapping of AuthorizedLabBinding records —
+# the lane overlay now authorizes several distinct backends. Reading the
+# record for the backend this seam actually declares below (local-coder)
+# keeps the property the comment above is about: the values still come from
+# the installed contract, so no lab IP is retyped here and an upstream re-pin
+# still propagates instead of rotting.
+_ACTIVE_BACKEND_IDS: tuple[str, ...] = tuple(sorted(_binding.ACTIVE_BACKEND_KEYS))
 
-_SOURCE_CONTRACT = textwrap.dedent(
-    f"""\
-    config_version: "1.0.0"
-    schema_version: "bifrost_delegation.v1"
-    backends:
-      - backend_id: local-coder
-        endpoint_url_env: {_SEAM_ENDPOINT_ENV}
-        endpoint_url: null
-        model_name: {_SEAM_SERVED_MODEL_ID}
-        tier: local
-        timeout_ms: 30000
-        capabilities: [code_generation]
-      # OMN-16794: the v2 lane overlay declares EXACTLY the two active local
-      # backends, and the renderer rejects an overlay naming a backend the base
-      # does not carry. So the base must declare both, even though only
-      # local-coder is asserted on below.
-      - backend_id: local-heavy-reasoning
-        endpoint_url_env: {_SEAM_ENDPOINT_ENV}
-        endpoint_url: null
-        model_name: {_SEAM_SERVED_MODEL_ID}
-        tier: local
-        timeout_ms: 60000
-        capabilities: [code_generation]
-    routing_rules:
-      - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
-        priority: 10
-        task_class: code_generation
-        task_class_contract_version: "1.0.0"
-        backend_policy_version: "1.0.0"
-        match_operation_types: [chat_completion]
-        match_capabilities: [code_generation]
-        backend_ids: [local-coder]
-        fallback_policy:
-          action: escalate_to_next_tier
-          max_retries: 1
-          on_exhaust: return_error
-        shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
-    default_backends:
-      - local-coder
-    circuit_breaker:
-      failure_threshold: 5
-      window_seconds: 30
-    failover:
-      max_attempts: 3
-      backoff_base_ms: 500
-    shadow_mode:
-      enabled: false
-      policy_version: "unknown"
-      log_sample_rate: 1.0
-      comparison_logging_enabled: true
-      max_shadow_latency_ms: 5.0
-    """
+
+def _authorized_endpoint_url(backend_id: str) -> str:
+    """The one endpoint URL the authorization contract accepts for a backend."""
+    bound = _binding._AUTHORIZED_BINDINGS[backend_id]
+    return f"http://{bound.host}:{bound.port}{_binding._CHAT_COMPLETIONS_PATH}"
+
+
+_SEAM_BACKEND_ID = "local-coder"
+_SEAM_BINDING = _binding._AUTHORIZED_BINDINGS[_SEAM_BACKEND_ID]
+_SEAM_ENDPOINT_URL = _authorized_endpoint_url(_SEAM_BACKEND_ID)
+_SEAM_SERVED_MODEL_ID = _SEAM_BINDING.served_model_id
+_SEAM_PARAMETER_COUNT = _SEAM_BINDING.parameter_count
+_SEAM_CONTEXT_WINDOW = _SEAM_BINDING.context_window
+
+_SOURCE_BACKENDS_YAML = "\n".join(
+    f"""  - backend_id: {backend_id}
+    endpoint_url_env: {_SEAM_ENDPOINT_ENV}
+    endpoint_url: null
+    model_name: {_binding._AUTHORIZED_BINDINGS[backend_id].served_model_id}
+    tier: local
+    timeout_ms: 30000
+    capabilities: [code_generation]"""
+    for backend_id in _ACTIVE_BACKEND_IDS
 )
+
+# OMN-16794/OMN-16997: the v2 lane overlay must declare EXACTLY the active
+# local backends, and the renderer rejects an overlay naming a backend the base
+# does not carry — so the base declares every active backend even though only
+# local-coder is asserted on. The set is READ from ACTIVE_BACKEND_KEYS rather
+# than retyped: omnibase-infra 0.38.15 added a third backend
+# (local-ds-v4-flash) to what had been a hardcoded two-element tuple here, and
+# deriving it means the next addition cannot break this file again.
+_SOURCE_CONTRACT = f"""\
+config_version: "1.0.0"
+schema_version: "bifrost_delegation.v1"
+backends:
+{_SOURCE_BACKENDS_YAML}
+routing_rules:
+  - rule_id: "d4e5f6a7-0001-4000-8000-000000000001"
+    priority: 10
+    task_class: code_generation
+    task_class_contract_version: "1.0.0"
+    backend_policy_version: "1.0.0"
+    match_operation_types: [chat_completion]
+    match_capabilities: [code_generation]
+    backend_ids: [local-coder]
+    fallback_policy:
+      action: escalate_to_next_tier
+      max_retries: 1
+      on_exhaust: return_error
+    shadow_policy_id: "e5f6a7b8-0001-4000-8000-000000000001"
+default_backends:
+  - local-coder
+circuit_breaker:
+  failure_threshold: 5
+  window_seconds: 30
+failover:
+  max_attempts: 3
+  backoff_base_ms: 500
+shadow_mode:
+  enabled: false
+  policy_version: "unknown"
+  log_sample_rate: 1.0
+  comparison_logging_enabled: true
+  max_shadow_latency_ms: 5.0
+"""
 
 
 @pytest.fixture(autouse=True)
@@ -160,14 +176,30 @@ def _render_overlay(tmp_path: Path, *, coder_endpoint_url: str) -> Path:
                 "backends": [
                     {
                         "backend_id": backend_key,
-                        "endpoint_url": coder_endpoint_url,
-                        "served_model_id": _SEAM_SERVED_MODEL_ID,
-                        "parameter_count": _SEAM_PARAMETER_COUNT,
-                        "context_window": _SEAM_CONTEXT_WINDOW,
+                        # Only the backend under test takes the caller-supplied
+                        # URL; every other active backend must carry ITS OWN
+                        # authorized endpoint/model, because the binding is an
+                        # authorization contract per backend (local-ds-v4-flash
+                        # lives on a different host and model than local-coder,
+                        # so reusing the coder URL is rejected outright).
+                        "endpoint_url": (
+                            coder_endpoint_url
+                            if backend_key == _SEAM_BACKEND_ID
+                            else _authorized_endpoint_url(backend_key)
+                        ),
+                        "served_model_id": _binding._AUTHORIZED_BINDINGS[
+                            backend_key
+                        ].served_model_id,
+                        "parameter_count": _binding._AUTHORIZED_BINDINGS[
+                            backend_key
+                        ].parameter_count,
+                        "context_window": _binding._AUTHORIZED_BINDINGS[
+                            backend_key
+                        ].context_window,
                         "max_tokens": 4096,
                         "timeout_ms": 30000,
                     }
-                    for backend_key in ("local-coder", "local-heavy-reasoning")
+                    for backend_key in _ACTIVE_BACKEND_IDS
                 ],
             },
             sort_keys=False,

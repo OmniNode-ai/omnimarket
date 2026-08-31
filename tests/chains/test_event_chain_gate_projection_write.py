@@ -54,14 +54,15 @@ Delegation is 1 of **12** omnimarket contracts declaring ``schema: tenant``, so
 this file is parametrized over cases: the seam is what is under gate, not the
 node that happened to be diagnosed first.
 
-The refusal survives even though ``omnibase_infra`` ``dev`` already fixed it in
-``01261b796`` (#2976, 2026-08-28), because that commit is in **no release tag**.
-The newest release is ``v0.38.11``; this repo declares
-``omnibase-infra>=0.38.3,<0.39.0`` and therefore resolves it. Proven both ways
-against this file: against the released wheel both seam rows FAIL with the
-verbatim live error; with ``omnibase_infra`` resolved from ``dev`` source both
-PASS. So the strict xfail below is not a permanent excuse — it is a tripwire on
-a release that has not happened yet.
+RESOLVED (OMN-16997, 2026-08-30). The fix ``01261b796`` (#2976, 2026-08-28)
+shipped in ``omnibase-infra`` **0.38.15**, and this repo now declares
+``omnibase-infra>=0.38.15,<0.39.0``. Both seam rows PASS against the released
+wheel, so the strict ``xfail`` tripwire that guarded this gate has been deleted
+rather than left as a standing excuse — exactly the action its own reason string
+instructed on the first XPASS. This is the automated notice OMN-16976 AC2 asked
+for, and it has now fired and been acted on. The gate below is a plain
+assertion again: if the tenant-authority seam ever refuses these writes a
+second time, these rows go RED directly.
 
 Why no existing test caught it.
 
@@ -540,29 +541,6 @@ async def test_delegate_skill_terminal_reaches_the_projection_writer(
     )
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "OMN-16831 / OMN-16976: the projection write is refused at the "
-        "tenant-authority seam. Both nodes classify their table TENANT domain "
-        "by contract (`db_io.db_tables[].schema: tenant`), so every read and "
-        "write goes through TenantProjectionTableOperation. In the RELEASE "
-        "this repo resolves — omnibase-infra 0.38.11, the newest on PyPI under "
-        "the declared `>=0.38.3,<0.39.0` — that operation calls "
-        "`_bound_tenant_context()` (handler_wiring.py:2805-2811), which raises "
-        "unconditionally unless a VerifiedProjectionTenantAuthority is bound; "
-        "`bind_projection_tenant_authority` has zero non-test call sites, so "
-        "none ever is (asserted on purpose by "
-        "tests/unit/projection/test_house_tenant_default_ratchet.py). "
-        "omnibase_infra `dev` has fixed this in 01261b796 (#2976, merged "
-        "2026-08-28) by making an absent authority a normal state, but that "
-        "commit is in NO release tag, so no runtime executes it. STRICT: this "
-        "turns RED (XPASS) the first time a release carrying 01261b796 is "
-        "resolved here — that XPASS is the mechanical signal to re-pin the "
-        "floor and delete this marker, and it is the only automated notice "
-        "OMN-16976 AC2 gets."
-    ),
-)
 @pytest.mark.parametrize("case", PROJECTION_CHAIN_CASES, ids=lambda case: case.chain_id)
 async def test_the_projection_write_is_not_refused_at_the_tenant_authority_seam(
     case: ProjectionChainCase,
