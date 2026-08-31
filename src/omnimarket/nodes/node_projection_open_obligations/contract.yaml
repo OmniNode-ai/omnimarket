@@ -96,6 +96,8 @@ event_bus:
   publish_topics:
     - onex.evt.omnimarket.projection-open-obligations-applied.v1
 
+terminal_event: onex.evt.omnimarket.projection-open-obligations-applied.v1
+
 # Terminal deterministic-truth assertion consumed by the observability plane
 # (event ledger, dashboards, the session-closeout renderer), not by another
 # omnimarket node. Declaring it here is the sanctioned way to satisfy the
