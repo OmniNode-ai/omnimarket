@@ -709,7 +709,11 @@ ignore = [
 strict = true
 plugins = ["pydantic.mypy"]
 python_version = "3.12"
-mypy_path = "src"
+# "scripts" is on the path because the thin GHA publishers import their sibling
+# `ci_bus_lanes` module (OMN-17378) exactly as `python scripts/<publisher>.py`
+# resolves it at runtime (scripts/ lands on sys.path[0]). Without this, mypy
+# reports import-not-found for a call that works in production.
+mypy_path = "src:scripts"
 namespace_packages = true
 explicit_package_bases = true
 
