@@ -93,6 +93,12 @@ from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_tier 
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_tier_model import (
     ModelTierModel,
 )
+from omnimarket.routing.customer_key_terminus import (
+    EnumDelegationSurface,
+    enforce_customer_key_terminus,
+    house_credential_refs,
+    refuse_keyless_customer_on_cloud,
+)
 from omnimarket.routing.roi_overlay import ModelRoutingRoiOverlay
 from omnimarket.routing.routing_tiers_path import resolve_routing_tiers_path
 from omnimarket.routing.tenant_overlay_resolver import (
@@ -1645,6 +1651,7 @@ def delta(
     roi_overlay: ModelRoutingRoiOverlay | None = None,
     excluded_backend_refs: frozenset[str] = frozenset(),
     tenant_overlay: ModelTenantRoutingOverlayBackend | None = None,
+    surface: EnumDelegationSurface = EnumDelegationSurface.CLOUD,
 ) -> ModelRoutingDecision:
     """Compute routing decision for a delegation request.
 
@@ -1728,6 +1735,11 @@ def delta(
 
     Raises:
         ProtocolConfigurationError: If no tier has a configured endpoint for the task type.
+        CustomerKeyRefusedError: OMN-17082. If the request is customer-attributed
+            and the only routable answer would authenticate the customer's work
+            with an OmniNode platform credential — or, on the cloud surface,
+            with OmniNode's own compute. See
+            :mod:`omnimarket.routing.customer_key_terminus`.
     """
     task_type = request.task_type
     estimated_tokens = _estimate_prompt_tokens(request.prompt)
@@ -1740,12 +1752,56 @@ def delta(
             raise ValueError(
                 "tenant_overlay must match the request tenant_id and task_type"
             )
-        return _decision_from_tenant_overlay(
+        overlay_decision = _decision_from_tenant_overlay(
             request,
             task_type=task_type,
             overlay=tenant_overlay,
             estimated_tokens=estimated_tokens,
         )
+        # OMN-17082. The overlay table is writable DATA: a row whose
+        # ``secret_ref`` names a platform credential is house pooling by
+        # configuration, and it slips past the OMN-16944 minted-ref guard
+        # precisely because such a ref is not tenant-shaped. Checked against
+        # the credential set DERIVED from the shipped bifrost contract, not
+        # against a naming convention.
+        enforce_customer_key_terminus(
+            tenant_id=request.tenant_id,
+            task_type=task_type,
+            correlation_id=request.correlation_id,
+            surface=surface,
+            api_key_ref=overlay_decision.api_key_ref,
+            # A tenant-overlay row carries no ``api_key_env`` by construction
+            # (migration 0001 declares no such column) — there is nothing to
+            # thread, which is the OMN-15631 / OMN-16944 invariant.
+            api_key_env=None,
+            backend_ref=overlay_decision.selected_backend_ref,
+            house_refs=house_credential_refs(_load_bifrost_endpoints()),
+            # The route is the customer's OWN declared backend, so an absent
+            # secret_ref means "this endpoint of mine needs no auth" — their
+            # infrastructure, their cost — not "fall back to OmniNode".
+            customer_declared_backend=True,
+        )
+        return overlay_decision
+
+    # OMN-17082 (operator ruling 2026-08-31: no keyless customers, no
+    # house-credential execution, ever). A customer with no overlay row has
+    # registered no provider key, so on the cloud there is nothing OF THEIRS
+    # to route to — every rung of the platform ladder is an OmniNode key or an
+    # OmniNode GPU, and we do not sell inference. Refusing HERE, before tier
+    # iteration, is what makes the terminus honest: the customer is told
+    # "register a provider key" rather than "no tier has a configured endpoint
+    # for this task type", which is a statement about our config and not about
+    # their problem. The customer-local CLI surface deliberately falls through
+    # — an uncredentialed backend on the customer's OWN machine pools nothing
+    # — and the return-site guard below still refuses a house-credentialed
+    # route there.
+    refuse_keyless_customer_on_cloud(
+        tenant_id=request.tenant_id,
+        task_type=task_type,
+        correlation_id=request.correlation_id,
+        surface=surface,
+        has_customer_credential=False,
+    )
 
     config = _get_config()
     bifrost_backends = _load_bifrost_endpoints()
@@ -1900,6 +1956,26 @@ def delta(
             cost_tier_map = {"local": "low", "cheap_cloud": "medium", "claude": "high"}
             cost_tier = cost_tier_map.get(tier.name, tier.name)
 
+            # OMN-17082. The last gate before a route becomes executable. On
+            # the cloud a customer never reaches here (the pre-ladder refusal
+            # above fires first); this is the guard for the customer-local CLI
+            # surface, where the free local rung IS the honest terminus but an
+            # escalation to a house-credentialed tier is not. Both of the
+            # backend's credential fields are checked because ``api_key_env``
+            # is a genuine additional fallback the effect boundary resolves
+            # (OMN-13943) — a route carrying only ``api_key_env`` still
+            # executes on OmniNode's key.
+            enforce_customer_key_terminus(
+                tenant_id=request.tenant_id,
+                task_type=task_type,
+                correlation_id=request.correlation_id,
+                surface=surface,
+                api_key_ref=backend.api_key_ref,
+                api_key_env=backend.api_key_env,
+                backend_ref=selected.backend_ref,
+                house_refs=house_credential_refs(bifrost_backends),
+            )
+
             return ModelRoutingDecision(
                 correlation_id=request.correlation_id,
                 task_type=task_type,
@@ -1968,6 +2044,11 @@ def delta(
 __all__: list[str] = [
     "NO_HIGHER_TIER_REASON_TOKEN",
     "TENANT_OVERLAY_TIER_NAME",
+    # OMN-17082: ``EnumDelegationSurface`` and ``house_credential_refs`` are
+    # re-exported alongside ``delta`` so a caller enforcing the customer-path
+    # terminus imports them from the same routing-authority module it already
+    # imports ``delta`` from, rather than reaching past it.
+    "EnumDelegationSurface",
     # OMN-13356: re-exported as the routing-authority surface. Consumers (e.g.
     # node_generation_consumer) annotate against the type ``delta`` returns by
     # importing it from this authority handler module — not by reaching into the
@@ -1980,6 +2061,7 @@ __all__: list[str] = [
     "delta",
     "describe_no_higher_tier_available",
     "first_eligible_tier",
+    "house_credential_refs",
     "is_free_tier",
     "next_eligible_tier",
     "resolve_task_class_dod_checks",
