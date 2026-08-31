@@ -56,6 +56,12 @@ from omnimarket.nodes.node_projection_savings.handlers.handler_projection_saving
     HandlerProjectionSavings,
     ModelSavingsEstimatedEvent,
 )
+from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
+    SAVINGS_METHOD_VALUES,
+    USAGE_SOURCE_VALUES,
+    _normalize_savings_estimate_payload,
+    provenance_or_none,
+)
 from omnimarket.pricing import build_premium_counterfactual
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from tests.constants import MODEL_CLAUDE_OPUS_4_6, MODEL_QWEN3_CODER_30B
@@ -96,10 +102,20 @@ _SERIES_TIER_VIEW = _migration("079")
 _TOKEN_COLUMNS = _migration("082")
 _VIEW_RECONCILE = _migration("083")
 _CONSTRAINT_VALIDATION = _migration("084")
+_PROVENANCE_COLUMNS = _migration("085")
+_PROVENANCE_VALIDATION = _migration("086")
+_PROVENANCE_VIEWS = _migration("087")
 
 # The migrations this ticket adds. Everything else in the chain is the pre-fix
 # world, which is what the RED phase applies.
-_FIX_MIGRATIONS = (_TOKEN_COLUMNS, _VIEW_RECONCILE, _CONSTRAINT_VALIDATION)
+_FIX_MIGRATIONS = (
+    _TOKEN_COLUMNS,
+    _VIEW_RECONCILE,
+    _CONSTRAINT_VALIDATION,
+    _PROVENANCE_COLUMNS,
+    _PROVENANCE_VALIDATION,
+    _PROVENANCE_VIEWS,
+)
 
 # Migrations that shipped the defect. run-projection-migrations.py records a
 # sha256 per applied file and refuses to continue when one changes, so these stay
@@ -281,9 +297,10 @@ class TestProjectionViewReconciliation:
         assert "completion_tokens::int AS completion_tokens" in body
 
     def test_savings_method_is_never_an_unconditional_literal(self) -> None:
-        # AC3: with provenance keyed on served tokens, the falsifying conjunction
-        # (measured + savings-estimated + zero tokens) is unreachable by
-        # construction rather than merely absent from the fixtures.
+        # AC3, first pass: 083 removed the hardcoded literal. It is a frozen,
+        # already-applied migration, so this asserts what it shipped; migration
+        # 087 supersedes its token-keyed derivation (see
+        # TestProvenanceIsCarriedNotInferred for the rule in force).
         body = _sql_body(_VIEW_RECONCILE)
         assert "'measured' AS savings_method" not in body
         assert (
@@ -483,6 +500,260 @@ class TestWritePathCarriesTaskTypeAndTokens:
             )
 
 
+@pytest.mark.unit
+class TestProvenanceIsCarriedNotInferred:
+    """AC3, second pass: the projection must carry the provenance its SOURCE
+    stated, never derive one from token counts.
+
+    Migration 083 replaced the hardcoded ``'measured'`` literal with
+    ``served tokens > 0 -> 'measured'``. That made AC3's falsifying conjunction
+    unreachable, but only by tying ``measured`` to the exact negation of the AC's
+    "and tokens are 0" clause -- the label became unfalsifiable rather than
+    correct, and it still mislabels in the one direction that matters: an
+    estimate-derived saving reads ``measured`` the moment it carries any token
+    count. Tokens are a fact about the REQUEST; they are not evidence about how
+    the SAVING was computed.
+    """
+
+    def test_provenance_columns_exist_to_hold_the_source_s_own_claim(self) -> None:
+        body = _sql_body(_PROVENANCE_COLUMNS)
+        for column in (
+            "savings_method TEXT",
+            "usage_source TEXT",
+            "pricing_manifest_version TEXT",
+        ):
+            assert f"ADD COLUMN IF NOT EXISTS {column}" in body
+
+    def test_provenance_columns_are_nullable_with_no_manufactured_default(
+        self,
+    ) -> None:
+        # NULL means "the source stated nothing". A DEFAULT would manufacture a
+        # claim that was never made -- the same defect as the retired literal.
+        body = _sql_body(_PROVENANCE_COLUMNS)
+        for column in ("savings_method", "usage_source", "pricing_manifest_version"):
+            assert f"{column} SET NOT NULL" not in body
+        assert "DEFAULT" not in body
+
+    def test_persisted_provenance_is_constrained_to_the_consumer_vocabulary(
+        self,
+    ) -> None:
+        body = _sql_body(_PROVENANCE_COLUMNS)
+        assert "savings_method IN ('measured', 'estimated')" in body
+        assert "usage_source IN ('measured', 'estimated', 'unknown')" in body
+        # Both are added NOT VALID and validated in the follow-up migration, so
+        # the validation scan stays out of the constraint-definition transaction.
+        assert body.count("NOT VALID") == 2
+        validation = _sql_body(_PROVENANCE_VALIDATION)
+        assert (
+            "VALIDATE CONSTRAINT savings_estimates_savings_method_check" in validation
+        )
+        assert "VALIDATE CONSTRAINT savings_estimates_usage_source_check" in validation
+
+    def test_views_read_the_persisted_column_instead_of_counting_tokens(self) -> None:
+        body = _sql_body(_PROVENANCE_VIEWS)
+        # The retired inference must be gone from BOTH views (AC5).
+        assert (
+            "CASE WHEN COALESCE(prompt_tokens, 0) + COALESCE(completion_tokens, 0) > 0"
+            not in body
+        )
+        assert "'measured' AS savings_method" not in body
+        # Both savings branches now pass the persisted value through.
+        assert (
+            body.count("COALESCE(savings_method, 'estimated') AS savings_method") == 2
+        )
+        assert body.count("COALESCE(usage_source, 'unknown') AS usage_source") == 2
+
+    def test_unrecorded_provenance_falls_back_to_a_refusal_never_to_measured(
+        self,
+    ) -> None:
+        # 'unknown' is the consumer contract's refusal value; savings_method has
+        # no third value there, so it floors at 'estimated'. Neither fallback may
+        # be 'measured' -- claiming a measurement requires the source to have
+        # claimed one.
+        body = _sql_body(_PROVENANCE_VIEWS)
+        assert "COALESCE(savings_method, 'measured')" not in body
+        assert "COALESCE(usage_source, 'measured')" not in body
+
+    def test_event_branch_provenance_keys_on_how_cost_was_measured(self) -> None:
+        # delegation_events.cost_measurement_source (migration 0018) records HOW
+        # cost_usd was derived. manifest_compute means the actual cost was itself
+        # modelled, so the saving built on it is an estimate.
+        body = _sql_body(_PROVENANCE_VIEWS)
+        assert body.count("cost_measurement_source IN (") == 4
+        assert (
+            body.count("cost_measurement_source = 'manifest_compute' THEN 'estimated'")
+            == 2
+        )
+
+    def test_real_manifest_version_replaces_the_hardcoded_source_table_name(
+        self,
+    ) -> None:
+        # 'savings-estimated' names the SOURCE TABLE, not any manifest the run
+        # priced with. It is retained ONLY as the fallback for rows that recorded
+        # none -- deliberately, so AC3's falsifying conjunction stays reachable
+        # and is proven to resolve honestly rather than being defined away.
+        body = _sql_body(_PROVENANCE_VIEWS)
+        assert "'savings-estimated' AS pricing_manifest_version" not in body
+        assert (
+            body.count("COALESCE(pricing_manifest_version, 'savings-estimated')") == 2
+        )
+
+    def test_migrations_apply_after_the_columns_they_read(self) -> None:
+        assert _PROVENANCE_COLUMNS.name < _PROVENANCE_VALIDATION.name
+        assert _PROVENANCE_VALIDATION.name < _PROVENANCE_VIEWS.name
+        assert _VIEW_RECONCILE.name < _PROVENANCE_VIEWS.name
+
+    def test_applied_provenance_migration_is_not_edited_in_place(self) -> None:
+        # 083 is applied on the dev lane; editing it raises "Checksum mismatch for
+        # already-applied migration". The superseded derivation must stay visible
+        # in the frozen file and be corrected forward by 087.
+        assert (
+            "CASE WHEN COALESCE(prompt_tokens, 0) "
+            "+ COALESCE(completion_tokens, 0) > 0" in _sql_body(_VIEW_RECONCILE)
+        )
+
+
+@pytest.mark.unit
+class TestWritePathCarriesSourceProvenance:
+    """The producer states its own provenance on every event. The seam dropped
+    all three fields, which is what left the read view with nothing to read."""
+
+    def test_producer_is_measured_becomes_the_savings_method(self) -> None:
+        # ModelSavingsEstimate.is_measured is the producer's answer to exactly
+        # the question savings_method asks.
+        assert (
+            _normalize_savings_estimate_payload(
+                {"actual_model_id": "qwen3.8", "is_measured": False}
+            )["savings_method"]
+            == "estimated"
+        )
+        assert (
+            _normalize_savings_estimate_payload(
+                {"actual_model_id": "qwen3.8", "is_measured": True}
+            )["savings_method"]
+            == "measured"
+        )
+
+    def test_absent_is_measured_states_nothing_rather_than_guessing(self) -> None:
+        normalized = _normalize_savings_estimate_payload({"actual_model_id": "qwen3.8"})
+        assert "savings_method" not in normalized
+
+    def test_wire_case_is_folded_to_the_consumer_vocabulary(self) -> None:
+        # The producer emits MEASURED / ESTIMATED / UNKNOWN; the consumer
+        # contract is lower-case.
+        assert provenance_or_none("ESTIMATED", SAVINGS_METHOD_VALUES) == "estimated"
+        assert provenance_or_none("Unknown", USAGE_SOURCE_VALUES) == "unknown"
+
+    def test_off_contract_labels_are_discarded_not_coerced(self) -> None:
+        # A label that cannot be interpreted is not evidence of a measurement, so
+        # it is dropped to NULL and read back as a refusal.
+        assert provenance_or_none("savings_estimates", USAGE_SOURCE_VALUES) is None
+        assert provenance_or_none("unknown", SAVINGS_METHOD_VALUES) is None
+        assert (
+            ModelSavingsEstimatedEvent(
+                event_timestamp=_EVENT_TIMESTAMP,
+                session_id=_CORRELATION_ID,
+                model_local=_MODEL_NAME,
+                model_cloud_baseline=MODEL_CLAUDE_OPUS_4_6,
+                local_cost_usd=_LOCAL_COST_USD,
+                cloud_cost_usd=_COUNTERFACTUAL_USD,
+                savings_usd=_COUNTERFACTUAL_USD - _LOCAL_COST_USD,
+                savings_method="TOKEN_DIFF",
+            ).savings_method
+            is None
+        )
+
+    def test_estimate_event_persists_its_provenance_verbatim(self) -> None:
+        db = InmemoryDatabaseAdapter()
+        HandlerProjectionSavings().handle(
+            {
+                "_db": db,
+                "_event_type": "savings-estimated",
+                "session_id": _CORRELATION_ID,
+                "timestamp_iso": _EVENT_TIMESTAMP.isoformat(),
+                "actual_model_id": _MODEL_NAME,
+                "counterfactual_model_id": MODEL_CLAUDE_OPUS_4_6,
+                "actual_cost_usd": "0.000000",
+                "estimated_total_savings_usd": str(_COUNTERFACTUAL_USD),
+                # Real tokens on an event the producer itself calls an estimate.
+                "prompt_tokens": _PROMPT_TOKENS,
+                "completion_tokens": _COMPLETION_TOKENS,
+                "is_measured": False,
+                "usage_source": "ESTIMATED",
+                "pricing_manifest_version": "manifest-2026-07",
+            }
+        )
+        row = db.query("savings_estimates")[0]
+        assert row["savings_method"] == "estimated"
+        assert row["usage_source"] == "estimated"
+        assert row["pricing_manifest_version"] == "manifest-2026-07"
+        # ...and the token counts are still carried. Real tokens on an estimate
+        # are not a contradiction; treating them as proof of measurement was.
+        assert row["prompt_tokens"] == _PROMPT_TOKENS
+        assert row["completion_tokens"] == _COMPLETION_TOKENS
+
+    def test_a_source_stating_nothing_leaves_the_columns_unset(self) -> None:
+        # Omitting the key (rather than writing a value) is what lets a later,
+        # richer terminal establish the provenance without an earlier estimate
+        # having blanked it.
+        db = InmemoryDatabaseAdapter()
+        HandlerProjectionSavings().handle(
+            {
+                "_db": db,
+                "_event_type": "savings-estimated",
+                "session_id": _CORRELATION_ID,
+                "timestamp_iso": _EVENT_TIMESTAMP.isoformat(),
+                "actual_model_id": _MODEL_NAME,
+                "counterfactual_model_id": MODEL_CLAUDE_OPUS_4_6,
+                "actual_cost_usd": "0.000000",
+                "estimated_total_savings_usd": str(_COUNTERFACTUAL_USD),
+            }
+        )
+        row = db.query("savings_estimates")[0]
+        assert "savings_method" not in row
+        assert "usage_source" not in row
+        assert "pricing_manifest_version" not in row
+
+    def test_terminal_projection_states_measured_only_with_a_token_basis(
+        self,
+    ) -> None:
+        # The writer knows how it computed the number, so it states the
+        # provenance. A recorded token basis yields OMN-13629's measurement.
+        source = ModelTaskDelegatedSavingsSource.from_canonical_payload(
+            {
+                "correlation_id": _CORRELATION_ID,
+                "task_type": _TASK_TYPE,
+                "model_used": _MODEL_NAME,
+                "quality_passed": True,
+                "cumulative_attempt_cost": float(_LOCAL_COST_USD),
+                "cumulative_input_tokens": _PROMPT_TOKENS,
+                "cumulative_output_tokens": _COMPLETION_TOKENS,
+                "timestamp": _EVENT_TIMESTAMP,
+            },
+            counterfactual_builder=build_premium_counterfactual,
+        )
+        projection = ModelDelegateSkillSavingsProjection.from_task_delegated_event(
+            source, baseline_model=MODEL_CLAUDE_OPUS_4_6
+        )
+        assert projection is not None
+        assert projection.savings_method == "measured"
+        assert projection.usage_source == "measured"
+
+    def test_terminal_projection_refuses_measured_without_a_token_basis(self) -> None:
+        projection = ModelDelegateSkillSavingsProjection(
+            event_timestamp=_EVENT_TIMESTAMP,
+            session_id=_CORRELATION_ID,
+            model_local=_MODEL_NAME,
+            model_cloud_baseline=MODEL_CLAUDE_OPUS_4_6,
+            local_cost_usd=_LOCAL_COST_USD,
+            cloud_cost_usd=_COUNTERFACTUAL_USD,
+            savings_usd=_COUNTERFACTUAL_USD - _LOCAL_COST_USD,
+            task_type=_TASK_TYPE,
+        )
+        assert projection.savings_method == "estimated"
+        assert projection.usage_source == "unknown"
+
+
 async def _apply(conn: asyncpg.Connection, migrations: tuple[Path, ...]) -> None:
     """Apply real migration files. Any failure raises -- nothing is skipped."""
     for migration in migrations:
@@ -570,7 +841,8 @@ async def test_real_postgres_view_reproduces_then_corrects_the_matrix_row(
         await conn.execute(
             """
             UPDATE savings_estimates
-               SET task_type = $1, prompt_tokens = $2, completion_tokens = $3
+               SET task_type = $1, prompt_tokens = $2, completion_tokens = $3,
+                   savings_method = 'measured', usage_source = 'measured'
              WHERE session_id = $4
             """,
             _TASK_TYPE,
@@ -587,7 +859,10 @@ async def test_real_postgres_view_reproduces_then_corrects_the_matrix_row(
         # AC2: the source terminal's real counts.
         assert green["prompt_tokens"] == _PROMPT_TOKENS
         assert green["completion_tokens"] == _COMPLETION_TOKENS
-        # AC3: measured is now earned by served tokens.
+        # AC3: measured because the WRITER stated it -- the delegation terminal
+        # path re-derives the baseline from these very tokens (OMN-13629), so it
+        # stamps the provenance itself. Migration 087 passes that through; it is
+        # no longer the view guessing from token presence.
         assert green["savings_method"] == "measured"
         assert green["usage_source"] == "measured"
         # AC4: the counterfactual is readable under a name that says so.
@@ -678,5 +953,138 @@ async def test_real_postgres_replace_view_preserves_column_contract(
         )
         assert actual == list(declared)
         assert actual[-1] == "cumulative_counterfactual_baseline_usd"
+    finally:
+        await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+
+
+@pytest.mark.integration
+async def test_real_postgres_estimate_with_real_tokens_is_never_labelled_measured(
+    postgres_fixture: asyncpg.Connection,
+) -> None:
+    """AC3's falsifying conjunction, made REACHABLE and proven to resolve honestly.
+
+    Migration 083 satisfied AC3 by tying ``measured`` to ``tokens > 0`` -- the
+    exact negation of the AC's "and tokens are 0" clause -- so the conjunction
+    became unreachable by construction rather than false. This is the row that
+    construction could not express: ``pricing_manifest_version='savings-estimated'``
+    AND real, non-zero token counts AND a source that calls its own saving an
+    estimate.
+
+    Under 083 it renders ``measured``. Under 087 it renders ``estimated``, because
+    the provenance is the source's to state and served tokens are a fact about the
+    request rather than evidence about how the saving was computed.
+    """
+    conn = postgres_fixture
+    schema = "omn15533_estimate_with_tokens"
+    chain = _migration_chain()
+    superseded = tuple(
+        p
+        for p in chain
+        if p not in (_PROVENANCE_COLUMNS, _PROVENANCE_VALIDATION, _PROVENANCE_VIEWS)
+    )
+    try:
+        await _isolated_schema(conn, schema)
+        await _apply(conn, superseded)
+        await _insert_savings_row(conn, "sess-estimate-with-tokens")
+        await conn.execute(
+            """
+            UPDATE savings_estimates
+               SET task_type = $1, prompt_tokens = $2, completion_tokens = $3
+             WHERE session_id = $4
+            """,
+            _TASK_TYPE,
+            _PROMPT_TOKENS,
+            _COMPLETION_TOKENS,
+            "sess-estimate-with-tokens",
+        )
+
+        # ---- RED: 083 calls an estimate a measurement -------------------------
+        red = await _single_session(conn)
+        assert red["prompt_tokens"] == _PROMPT_TOKENS
+        assert red["pricing_manifest_version"] == "savings-estimated"
+        assert red["savings_method"] == "measured"
+
+        # ---- Apply 085-087 and record what the SOURCE actually said -----------
+        await _apply(
+            conn, (_PROVENANCE_COLUMNS, _PROVENANCE_VALIDATION, _PROVENANCE_VIEWS)
+        )
+        await conn.execute(
+            """
+            UPDATE savings_estimates
+               SET savings_method = 'estimated', usage_source = 'estimated'
+             WHERE session_id = $1
+            """,
+            "sess-estimate-with-tokens",
+        )
+
+        # ---- GREEN: the conjunction is reachable AND resolves honestly --------
+        green = await _single_session(conn)
+        assert green["pricing_manifest_version"] == "savings-estimated"
+        assert green["prompt_tokens"] == _PROMPT_TOKENS
+        assert green["completion_tokens"] == _COMPLETION_TOKENS
+        assert green["savings_method"] == "estimated"
+        assert green["usage_source"] == "estimated"
+        # The task class and the counts survive intact -- this fix removes a false
+        # provenance claim, it does not discard data to be safe.
+        assert green["task_type"] == _TASK_TYPE
+        assert green["task_type"] != green["model_name"]
+    finally:
+        await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+
+
+@pytest.mark.integration
+async def test_real_postgres_persisted_manifest_version_replaces_the_literal(
+    postgres_fixture: asyncpg.Connection,
+) -> None:
+    """A row that recorded the manifest it priced with renders THAT, not the
+    hardcoded ``savings-estimated`` literal, which named the source table."""
+    conn = postgres_fixture
+    schema = "omn15533_manifest_version"
+    try:
+        await _isolated_schema(conn, schema)
+        await _apply(conn, _migration_chain())
+        await _insert_savings_row(conn, "sess-real-manifest")
+        await conn.execute(
+            """
+            UPDATE savings_estimates
+               SET pricing_manifest_version = $1
+             WHERE session_id = $2
+            """,
+            "manifest-2026-07",
+            "sess-real-manifest",
+        )
+
+        row = await _single_session(conn)
+        assert row["pricing_manifest_version"] == "manifest-2026-07"
+    finally:
+        await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')
+
+
+@pytest.mark.integration
+async def test_real_postgres_off_contract_provenance_cannot_be_persisted(
+    postgres_fixture: asyncpg.Connection,
+) -> None:
+    """Migration 085's CHECK constraints are what let 087 pass the persisted value
+    straight through instead of re-deriving a safe one."""
+    conn = postgres_fixture
+    schema = "omn15533_provenance_vocabulary"
+    try:
+        await _isolated_schema(conn, schema)
+        await _apply(conn, _migration_chain())
+        await _insert_savings_row(conn, "sess-vocabulary")
+
+        for column, value in (
+            ("savings_method", "token_diff"),
+            # 'unknown' is valid for usage_source but NOT for savings_method,
+            # which the consumer contract declares as measured | estimated only.
+            ("savings_method", "unknown"),
+            ("usage_source", "savings_estimates"),
+        ):
+            with pytest.raises(asyncpg.CheckViolationError):
+                await conn.execute(
+                    f"UPDATE savings_estimates SET {column} = $1 WHERE session_id = $2",
+                    value,
+                    "sess-vocabulary",
+                )
     finally:
         await conn.execute(f'DROP SCHEMA IF EXISTS "{schema}" CASCADE')

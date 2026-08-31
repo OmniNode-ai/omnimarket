@@ -87,6 +87,21 @@ projection_api:
         - savings_usd
         - repo_name
         - machine_id
+        # OMN-15533: the task class, the served token counts, and the
+        # provenance the source event stated about its own saving. Every one of
+        # these was materialized on the table but surfaced by no exposure —
+        # dropped silently at the projection boundary, which is the exact
+        # cost_tier_name failure this gate exists to catch (OMN-13649). The
+        # provenance pair is a RENDERED surface, not an internal flag: omnidash
+        # DelegationCostComparisonWidget reads `usage_source ?? savings_method`
+        # straight into its ProvenanceBadge, so a consumer that cannot see them
+        # cannot tell a measured saving from an estimated one.
+        - task_type
+        - prompt_tokens
+        - completion_tokens
+        - savings_method
+        - usage_source
+        - pricing_manifest_version
         - created_at
         - updated_at
       order_by: created_at DESC
