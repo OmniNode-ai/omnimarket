@@ -227,18 +227,20 @@ def _infisical_required() -> bool:
     return raw.strip().lower() in _TRUTHY
 
 
-def _infisical_folder(source_path: str) -> str:
-    """Return the Infisical FOLDER a mapping's ``source_path`` addresses.
+def _infisical_declared_folder(source_path: str) -> str | None:
+    """Return the Infisical FOLDER a mapping declares, or ``None`` if it declares none.
 
-    ``SecretResolver._read_infisical_secret_sync`` keeps only the last path
-    segment as the secret key and reads it through the handler's configured
-    ``secret_path``, so the folder in a mapping is carried by the handler, not
-    by the per-read call. Deriving it from the mapping keeps the rendered lane
-    config the single authority for addressing -- no new env var.
+    Mirrors ``omnibase_infra.runtime.secret_resolver._split_infisical_path``,
+    which is the code that actually performs the read. A folder-qualified
+    ``source_path`` (``/dev/onex-runtime/LLM_GLM_API_KEY``) carries its folder
+    through as the per-read ``secret_path``; a flat one (``LLM_GLM_API_KEY``)
+    declares no folder and inherits the handler's configured default. Deriving
+    both from the mapping keeps the rendered lane config the single authority
+    for addressing -- no new env var.
     """
     raw = source_path.rsplit("#", 1)[0]
     if "/" not in raw:
-        return "/"
+        return None
     folder = raw.rsplit("/", 1)[0]
     return folder or "/"
 
@@ -353,25 +355,48 @@ def _lane_infisical_handler(
     if not infisical_mappings and not required:
         return None
 
+    # A folder-qualified mapping carries its OWN folder through as the per-read
+    # ``secret_path`` (omnibase_infra ``_split_infisical_path``, OMN-16984,
+    # released in omnibase-infra v0.38.15), so any number of folders is
+    # addressable. An earlier revision refused two folders outright, on the
+    # grounds that the resolver "reads every Infisical mapping through the
+    # handler's single configured secret_path" -- that was true before
+    # ``_split_infisical_path`` and false after it, and it would have hard-
+    # blocked the real BYOK lane, where the house provider keys live in
+    # ``/dev/onex-runtime`` and runtime-minted tenant credentials in
+    # ``/tenant-inference-credentials`` on the SAME lane (OMN-16944).
     folders = sorted(
         {
-            _infisical_folder(mapping.source.source_path)
+            folder
             for mapping in infisical_mappings
+            if (folder := _infisical_declared_folder(mapping.source.source_path))
+            is not None
         }
     )
-    if len(folders) > 1:
+    # A FLAT source declares no folder, so it can only inherit the handler's
+    # single configured default. With more than one folder declared on the lane
+    # there is no non-arbitrary default to give it, and picking whichever folder
+    # sorted first is exactly the silent wrong-folder read this gate exists to
+    # prevent. That residual ambiguity stays a loud refusal.
+    unqualified = sorted(
+        mapping.logical_name
+        for mapping in infisical_mappings
+        if _infisical_declared_folder(mapping.source.source_path) is None
+    )
+    if unqualified and len(folders) > 1:
         raise SecretStoreConfigurationError(
-            "Lane declares Infisical-backed sources in more than one folder, "
-            f"which the resolver cannot address: {folders}. SecretResolver "
-            "reads every Infisical mapping through the handler's single "
-            "configured secret_path, so a second folder would silently read "
-            "from the wrong one. Offending logical names: "
-            f"{sorted(mapping.logical_name for mapping in infisical_mappings)}."
+            "Lane declares Infisical sources that name no folder while also "
+            f"declaring more than one folder: {folders}. A folder-less source "
+            "inherits the handler's single configured secret_path, and there "
+            "is no non-arbitrary choice for it here. Qualify these logical "
+            f"names with their folder: {unqualified}."
         )
-    # No declared folder means the lane is controlled (INFISICAL_REQUIRED) but
-    # routes nothing through Infisical yet; the handler is still built so the
-    # credential is proven, and no mapping can reach this path.
-    secret_path = folders[0] if folders else "/"
+    # One declared folder is the default for any flat source; none declared
+    # means the lane is controlled (INFISICAL_REQUIRED) but routes nothing
+    # through Infisical yet, and the handler is still built so the credential
+    # is proven. With several folders declared and no flat source, every read
+    # names its own folder and this default is never consulted.
+    secret_path = folders[0] if len(folders) == 1 else "/"
 
     try:
         handler_config = _infisical_bootstrap_config(secret_path)

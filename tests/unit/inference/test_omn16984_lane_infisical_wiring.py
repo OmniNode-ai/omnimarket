@@ -71,6 +71,15 @@ class _FakeInfisicalHandler:
         self._secrets = secrets
         self.secret_path = secret_path
         self.requested: list[str] = []
+        # (secret_name, per-read folder) -- ``None`` means the read declared no
+        # folder and inherits ``self.secret_path``. OMN-16984 asserts the folder
+        # actually travels with each read rather than being re-rooted.
+        self.reads: list[tuple[str, str | None]] = []
+
+    def _lookup(self, secret_name: str, folder: str | None) -> str | None:
+        """Address a secret by (folder, name), exactly as the adapter does."""
+        effective = folder if folder is not None else self.secret_path
+        return self._secrets.get(f"{effective.rstrip('/')}/{secret_name}")
 
     def get_secret_sync(
         self,
@@ -81,15 +90,18 @@ class _FakeInfisicalHandler:
         secret_path: str | None = None,
     ) -> SecretStr | None:
         self.requested.append(secret_name)
-        value = self._secrets.get(secret_name)
+        self.reads.append((secret_name, secret_path))
+        value = self._lookup(secret_name, secret_path)
         return SecretStr(value) if value is not None else None
 
     async def execute(self, envelope: dict[str, Any]) -> Any:
         """Async surface ``SecretResolver._read_infisical_secret_async`` drives."""
         payload = envelope["payload"]
         secret_name = payload["secret_name"]
+        folder = payload.get("secret_path")
         self.requested.append(secret_name)
-        value = self._secrets.get(secret_name)
+        self.reads.append((secret_name, folder))
+        value = self._lookup(secret_name, folder)
         return SimpleNamespace(result={"value": value} if value is not None else {})
 
 
@@ -145,7 +157,7 @@ class TestInfisicalHandlerIsWired:
         _set_bootstrap_env(monkeypatch)
         _render_lane_config(tmp_path, monkeypatch)
         built = _install_fake_handler(
-            monkeypatch, {"LLM_GLM_API_KEY": "value-from-infisical"}
+            monkeypatch, {"/dev/onex-runtime/LLM_GLM_API_KEY": "value-from-infisical"}
         )
 
         resolved = await resolve_api_key_async("llm.glm.api_key")
@@ -162,7 +174,7 @@ class TestInfisicalHandlerIsWired:
         _set_bootstrap_env(monkeypatch)
         _render_lane_config(tmp_path, monkeypatch)
         built = _install_fake_handler(
-            monkeypatch, {"LLM_GLM_API_KEY": "value-from-infisical"}
+            monkeypatch, {"/dev/onex-runtime/LLM_GLM_API_KEY": "value-from-infisical"}
         )
 
         await resolve_api_key_async("llm.glm.api_key")
@@ -267,27 +279,119 @@ class TestDeclaredButUnreadableIsLoud:
 
         assert isinstance(resolved, SecretStr)
 
-    async def test_two_infisical_folders_on_one_lane_are_rejected(
+
+_BYOK_LANE_YAML = textwrap.dedent("""\
+    enable_convention_fallback: false
+    mappings:
+      - logical_name: llm.glm.api_key
+        source:
+          source_type: infisical
+          source_path: /dev/onex-runtime/LLM_GLM_API_KEY
+      - logical_name: cred_t_acme_openrouter_0a1b
+        source:
+          source_type: infisical
+          source_path: /tenant-inference-credentials/cred_t_acme_openrouter_0a1b
+""")
+
+# A folder-LESS Infisical source appended to the two-folder lane above. It
+# declares no folder of its own, so it can only inherit the handler's single
+# configured default -- which two declared folders make ambiguous.
+_UNQUALIFIED_MAPPING_YAML = (
+    "  - logical_name: llm.unqualified.api_key\n"
+    "    source:\n"
+    "      source_type: infisical\n"
+    "      source_path: UNQUALIFIED_KEY\n"
+)
+
+
+class TestBYOKLaneAddressesTwoFolders:
+    """The real BYOK lane shape: house keys and tenant credentials share a lane.
+
+    House provider keys live in ``/dev/onex-runtime`` and runtime-minted tenant
+    credentials in ``/tenant-inference-credentials`` -- on the SAME lane. An
+    earlier revision refused that outright, on the stated grounds that
+    ``SecretResolver`` "reads every Infisical mapping through the handler's
+    single configured secret_path, so a second folder would silently read from
+    the wrong one". ``omnibase_infra#3023`` (``_split_infisical_path``, released
+    in v0.38.15) removed exactly that: each mapping's own folder is now carried
+    through as the per-read ``secret_path``. The refusal outlived its own
+    justification and would have hard-blocked the BYOK lane at store
+    construction, so it is gone -- and these tests pin the per-read addressing
+    that replaces it, not merely the absence of the raise.
+    """
+
+    def _render_byok_lane(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """SecretResolver drops the folder from source_path and reads through the
-        handler's configured path, so exactly one folder is expressible today.
-        Two must be a loud refusal, never a silent read from the wrong folder."""
+        config_file = tmp_path / "secret_resolver.yaml"
+        config_file.write_text(_BYOK_LANE_YAML, encoding="utf-8")
+        monkeypatch.setenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", str(config_file))
+        clear_secret_store_resolver_cache()
+
+    async def test_house_key_and_tenant_credential_each_read_their_own_folder(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        _set_bootstrap_env(monkeypatch)
+        self._render_byok_lane(tmp_path, monkeypatch)
+        built = _install_fake_handler(
+            monkeypatch,
+            {
+                "/dev/onex-runtime/LLM_GLM_API_KEY": "house-value",
+                "/tenant-inference-credentials/cred_t_acme_openrouter_0a1b": (
+                    "tenant-value"
+                ),
+            },
+        )
+
+        house = await resolve_api_key_async("llm.glm.api_key")
+        tenant = await resolve_api_key_async("cred_t_acme_openrouter_0a1b")
+
+        assert isinstance(house, SecretStr)
+        assert isinstance(tenant, SecretStr)
+        # Same-named-store, different folders: proof the folder travelled with
+        # the read rather than both landing in one configured secret_path.
+        assert house.get_secret_value() == "house-value"
+        assert tenant.get_secret_value() == "tenant-value"
+        assert built["handler"].reads == [
+            ("LLM_GLM_API_KEY", "/dev/onex-runtime"),
+            ("cred_t_acme_openrouter_0a1b", "/tenant-inference-credentials"),
+        ]
+
+    async def test_a_tenant_credential_folder_is_never_read_as_the_house_folder(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The failure the old refusal existed to prevent, pinned directly.
+
+        The store holds ONLY the house folder. A tenant ref must miss and fail
+        closed -- never silently re-root into ``/dev/onex-runtime`` and return
+        the house key under a tenant's logical name (OMN-15631).
+        """
+        _set_bootstrap_env(monkeypatch)
+        self._render_byok_lane(tmp_path, monkeypatch)
+        _install_fake_handler(
+            monkeypatch, {"/dev/onex-runtime/LLM_GLM_API_KEY": "house-value"}
+        )
+
+        with pytest.raises(SecretResolutionError) as excinfo:
+            await resolve_api_key_async("cred_t_acme_openrouter_0a1b")
+
+        assert "house-value" not in str(excinfo.value)
+
+    async def test_unqualified_source_with_two_declared_folders_is_refused(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """The residual ambiguity, still loud.
+
+        A flat (folder-less) Infisical source declares no folder, so it inherits
+        the handler's single configured ``secret_path``. With two folders
+        declared on the lane there is no non-arbitrary choice for that default,
+        so it is a refusal at store construction naming the flat logical name --
+        never a silent read from whichever folder sorted first.
+        """
         _set_bootstrap_env(monkeypatch)
         config_file = tmp_path / "secret_resolver.yaml"
         config_file.write_text(
-            textwrap.dedent("""\
-                enable_convention_fallback: false
-                mappings:
-                  - logical_name: llm.glm.api_key
-                    source:
-                      source_type: infisical
-                      source_path: /dev/onex-runtime/LLM_GLM_API_KEY
-                  - logical_name: llm.tenant.api_key
-                    source:
-                      source_type: infisical
-                      source_path: /tenant-inference-credentials/CRED_X
-            """),
+            _BYOK_LANE_YAML + _UNQUALIFIED_MAPPING_YAML,
             encoding="utf-8",
         )
         monkeypatch.setenv("ONEX_SECRET_RESOLVER_CONFIG_PATH", str(config_file))
@@ -297,6 +401,7 @@ class TestDeclaredButUnreadableIsLoud:
             await resolve_api_key_async("llm.glm.api_key")
 
         message = str(excinfo.value)
+        assert "llm.unqualified.api_key" in message
         assert "/dev/onex-runtime" in message
         assert "/tenant-inference-credentials" in message
 
