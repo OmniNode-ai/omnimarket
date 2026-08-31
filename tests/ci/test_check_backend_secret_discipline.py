@@ -228,3 +228,95 @@ def test_mutually_exclusive_auth_detected() -> None:
     }
     violations = module._scan_bifrost_backends("fake.yaml", data)
     assert any("mutually exclusive" in v for v in violations)
+
+
+# ---------------------------------------------------------------------------
+# OMN-17372: the source-tree half — no in-code house-credential reads.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_live_source_tree_has_no_house_credential_reads() -> None:
+    """No module under src/omnimarket reads a house inference credential.
+
+    The companion assertion to ``test_no_backend_declares_api_key_env``.
+    Deleting ``api_key_env`` from the config closes the DECLARED house
+    fallback; this closes the same path written directly in Python, which a
+    config-only rule cannot see.
+    """
+    module = _load_module()
+    report = module.build_report(_repo_root())
+    assert report["house_credential_source_violations"] == [], (
+        "a module under src/omnimarket reads a house inference-provider "
+        "credential from the process environment: "
+        f"{report['house_credential_source_violations']}"
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("body", "expected_kind"),
+    [
+        pytest.param(
+            'import os\nk = os.environ.get("LLM_GLM_API_KEY", "")\n',
+            "os.environ read",
+            id="environ-get",
+        ),
+        pytest.param(
+            'import os\nk = os.environ["OPENROUTER_API_KEY"]\n',
+            "os.environ read",
+            id="environ-subscript",
+        ),
+        pytest.param(
+            'resolve("llm.openrouter.api_key", env_var_fallback="OPEN_ROUTER_API_KEY")\n',
+            "env_var_fallback",
+            id="env-var-fallback",
+        ),
+    ],
+)
+def test_source_scan_fires_on_each_house_credential_shape(
+    tmp_path: Path, body: str, expected_kind: str
+) -> None:
+    """Each shape the removal closed is actually caught.
+
+    A gate that passes proves nothing on its own — it must be shown to fail on
+    the exact code that was removed, or it is indistinguishable from a gate
+    that scans nothing. One case per shape, because they are found by three
+    different AST branches and a regression could silently disable any one of
+    them while the other two kept the suite green.
+    """
+    module = _load_module()
+    pkg = tmp_path / "src" / "omnimarket"
+    pkg.mkdir(parents=True)
+    (pkg / "offender.py").write_text(body, encoding="utf-8")
+
+    violations = module._scan_source_for_house_credentials(tmp_path)
+
+    assert len(violations) == 1, violations
+    assert "offender.py" in violations[0]
+    assert expected_kind in violations[0]
+
+
+@pytest.mark.unit
+def test_source_scan_ignores_prose_and_non_house_variables(tmp_path: Path) -> None:
+    """Documentation naming the variable is not a read, and neither is any
+    non-house variable.
+
+    The rule is matched on the AST precisely so that explaining it does not
+    violate it — a text scan would make the modules that document this removal
+    fail the check it exists to enforce, and the cheapest way to pass would be
+    to delete the explanation.
+    """
+    module = _load_module()
+    pkg = tmp_path / "src" / "omnimarket"
+    pkg.mkdir(parents=True)
+    (pkg / "documented.py").write_text(
+        '"""This used to call os.environ.get("LLM_GLM_API_KEY") — OMN-17372."""\n'
+        "import os\n"
+        '# env_var_fallback="OPEN_ROUTER_API_KEY" was deleted here.\n'
+        'url = os.environ.get("LLM_GLM_URL", "")\n'
+        'token = os.environ.get("GITHUB_TOKEN", "")\n',
+        encoding="utf-8",
+    )
+
+    assert module._scan_source_for_house_credentials(tmp_path) == []

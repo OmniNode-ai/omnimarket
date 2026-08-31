@@ -642,6 +642,28 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
+      # OMN-17372: house inference-credential gate. Fails if a delegation
+      # backend re-declares `api_key_env`, or if any omnimarket source reads a
+      # house provider key (OPENROUTER/GLM/GEMINI/...) from the process
+      # environment — either as a bare os.environ read or as the resolver's
+      # `env_var_fallback`, which is serviced by os.environ AFTER the store
+      # lookup and so bypasses the lane secret mapping. OmniNode does not offer
+      # inference and there are no keyless customers on the cloud: a credential
+      # resolves from its secret_ref through the managed store (per-tenant
+      # scoped) or the delegation refuses. This runs the repo-local script,
+      # which carries the OMN-17372 rules; the separate
+      # `backend-secret-discipline-gate` hook above runs the omnibase_core
+      # validator, which still accepts `api_key_env` as a logical ref and is
+      # therefore NOT a substitute for this one.
+      # SYNC with ci.yml step "House inference-credential gate (enforce)".
+      - id: house-inference-credential-gate
+        name: House inference-credential gate
+        language: system
+        entry: uv run python scripts/ci/check_backend_secret_discipline.py
+        files: ^(src/omnimarket/.*\.py|src/omnimarket/configs/.*\.yaml|scripts/ci/check_backend_secret_discipline\.py)
+        pass_filenames: false
+        stages: [pre-commit]
+
       # OMN-13295 (W6a): delegation env-read scanner. Detects direct os.environ/
       # os.getenv reads in delegation-owned modules and enforces the provenance
       # ratchet (OMN-12967): BIFROST_CONTRACT_PATH and sibling path-config keys

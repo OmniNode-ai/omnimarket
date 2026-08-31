@@ -117,10 +117,19 @@ class HandlerSwarmFleetDiscovery:
         if openrouter_api_key:
             self._api_key = openrouter_api_key
         else:
+            # OMN-17372: no ``env_var_fallback``. It named a house variable and
+            # is serviced by a direct ``os.environ.get`` inside the resolver,
+            # AFTER the store lookup — so on a deployed lane it bypassed the
+            # lane secret mapping that is otherwise the only sanctioned
+            # resolution path, and kept this effect authenticating on
+            # OmniNode's own OpenRouter account. The ref alone still resolves a
+            # developer's own key locally (the local store maps it) and the
+            # tenant's key on a lane; where neither exists this resolves to
+            # None and the fleet is reported unauthenticated, which is the
+            # honest answer.
             resolved = resolve_api_key_loop_safe(
                 "llm.openrouter.api_key",
                 required=False,
-                env_var_fallback="OPEN_ROUTER_API_KEY",
             )
             self._api_key = resolved.get_secret_value() if resolved else ""
 

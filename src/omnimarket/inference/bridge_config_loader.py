@@ -25,8 +25,21 @@ new model.
 OpenRouter keys follow the pattern ``openrouter/<model_id>`` where model_id is
 the full OpenRouter routing string (e.g. ``qwen/qwen3-coder:free``). These are
 registered dynamically from the OpenRouter model catalog when the OpenRouter
-API key (``OPEN_ROUTER_API_KEY`` — resolved via the ``llm.openrouter.api_key``
-secret ref, OMN-15048) is present. The base URL is resolved from ``OPENROUTER_BASE_URL`` config —
+API key resolves from the ``llm.openrouter.api_key`` secret ref through the
+lane's secret store.
+
+OMN-17372: that resolution no longer carries an ``env_var_fallback``. It
+previously named ``OPEN_ROUTER_API_KEY`` literally, and ``env_var_fallback`` is
+read with a direct ``os.environ.get`` INSIDE the resolver — it bypasses the
+lane secret mapping entirely, so it kept working on a deployed lane even
+though ``enable_convention_fallback`` is off there and the lane mapping is
+otherwise the only resolution path. That made it the same house-credential
+socket as the ``api_key_env`` field deleted from ``bifrost_delegation.yaml``,
+just hardcoded in source instead of declared in config, and it would have
+survived the config-side removal untouched. OmniNode does not offer inference:
+a customer reaches OpenRouter on their OWN key, resolved per-tenant from the
+managed store, so there is no house variable left for this to fall back to.
+The base URL is resolved from ``OPENROUTER_BASE_URL`` config —
 there is NO hardcoded in-code provider URL default (OMN-12824). When OpenRouter
 is configured (key present) but the base URL is missing, registration fails
 closed rather than substituting a baked-in literal.
@@ -91,17 +104,20 @@ def load_inference_bridge_config_from_env() -> ModelInferenceBridgeConfig:
     For each registry entry: if the URL env var is set, register the key
     with ``base_url``, ``model_id`` (from the model-name env var, empty string
     if unset), ``transport="http"``, ``context_window``, and ``timeout_seconds``.
-    GLM also picks up ``api_key`` from ``LLM_GLM_API_KEY`` when present.
+    GLM also picks up ``api_key`` when the ``llm.glm.api_key`` secret ref
+    resolves through the store.
 
     OpenRouter models are registered as ``openrouter/<model_id>`` keys when the
-    OpenRouter API key (``OPEN_ROUTER_API_KEY``) resolves. Each entry carries the
-    OpenRouter base URL,
-    model_id, and required HTTP-Referer / X-Title headers.
+    ``llm.openrouter.api_key`` secret ref resolves. Each entry carries the
+    OpenRouter base URL, model_id, and required HTTP-Referer / X-Title headers.
     """
-    model_configs = _build_static_model_configs()
-    openrouter_key = resolve_api_key(
-        "llm.openrouter.api_key", required=False, env_var_fallback="OPEN_ROUTER_API_KEY"
-    )
+    # OMN-17372: both credentials resolve from their secret ref through the
+    # store, with no ``env_var_fallback``. See the module docstring — that
+    # parameter named a house variable and bypassed the lane secret mapping on
+    # the way to ``os.environ``.
+    glm_key = resolve_api_key("llm.glm.api_key", required=False)
+    model_configs = _build_static_model_configs(glm_key)
+    openrouter_key = resolve_api_key("llm.openrouter.api_key", required=False)
     _register_openrouter_models(model_configs, openrouter_key)
     return ModelInferenceBridgeConfig(model_configs=model_configs)
 
@@ -112,21 +128,40 @@ async def load_inference_bridge_config_from_env_async() -> ModelInferenceBridgeC
     Identical wiring, but resolves the OpenRouter key through
     ``resolve_api_key_async`` so it is safe to call from inside a running event
     loop (the runtime auto-wiring boot path, ``HandlerSegmentation.handle``).
-    The static ``LLM_*`` env reads are pure and shared with the sync loader.
+    The static ``LLM_*_URL`` env reads are pure and shared with the sync loader.
     """
-    model_configs = _build_static_model_configs()
+    # OMN-17372: both credentials resolve from their secret ref through the
+    # store, with no ``env_var_fallback`` — same reason as the sync loader.
+    glm_key = await resolve_api_key_async("llm.glm.api_key", required=False)
+    model_configs = _build_static_model_configs(glm_key)
     openrouter_key = await resolve_api_key_async(
-        "llm.openrouter.api_key", required=False, env_var_fallback="OPEN_ROUTER_API_KEY"
+        "llm.openrouter.api_key", required=False
     )
     _register_openrouter_models(model_configs, openrouter_key)
     return ModelInferenceBridgeConfig(model_configs=model_configs)
 
 
-def _build_static_model_configs() -> dict[str, dict[str, object]]:
-    """Build the env-driven static model configs (no secret-store resolution).
+def _build_static_model_configs(
+    glm_key: SecretStr | None = None,
+) -> dict[str, dict[str, object]]:
+    """Build the env-driven static model configs for the endpoint metadata.
 
-    Pure with respect to the secret store — only reads ``LLM_*`` env vars — so
-    it is shared verbatim by the sync and async loaders.
+    Pure with respect to the secret store — it reads only the non-secret
+    ``LLM_*_URL`` / model-id env vars and never resolves a credential itself —
+    so it is shared verbatim by the sync and async loaders, which each resolve
+    ``glm_key`` through the store in the posture that suits them and pass the
+    resolved value in.
+
+    OMN-17372: GLM's key used to be read here as a bare
+    ``os.environ.get("LLM_GLM_API_KEY")``. That was a raw ambient house
+    credential — no secret store in the path at all, so unlike every other
+    credential on this boundary it honoured neither the lane secret mapping nor
+    any per-tenant scoping, and it named a house variable literally. It now
+    arrives as ``glm_key``, resolved from the ``llm.glm.api_key`` secret ref
+    like OpenRouter's. On a local install the convention store still maps that
+    ref onto ``LLM_GLM_API_KEY``, so a developer's own key resolves exactly as
+    before; on a deployed lane it resolves through the lane mapping, which is
+    where the house entry was deleted.
     """
     model_configs: dict[str, dict[str, object]] = {}
 
@@ -147,10 +182,10 @@ def _build_static_model_configs() -> dict[str, dict[str, object]]:
             "timeout_seconds": _DEFAULT_TIMEOUT_SECONDS,
         }
 
-        if key == "glm":
-            api_key = os.environ.get("LLM_GLM_API_KEY", "").strip()
-            if api_key:
-                cfg["api_key"] = api_key
+        if key == "glm" and glm_key is not None:
+            resolved = glm_key.get_secret_value().strip()
+            if resolved:
+                cfg["api_key"] = resolved
 
         model_configs[key] = cfg
 
@@ -180,7 +215,7 @@ def _register_openrouter_models(
     ).strip()  # contract-config-ok: config
     if not base_url:
         raise ValueError(
-            "OpenRouter is configured (OPEN_ROUTER_API_KEY present) but "
+            "OpenRouter is configured (llm.openrouter.api_key resolved) but "
             "OPENROUTER_BASE_URL is missing. Declare the OpenRouter base URL in "
             "config — no hardcoded provider URL default is permitted (OMN-12824)."
         )

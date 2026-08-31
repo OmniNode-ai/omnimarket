@@ -41,6 +41,7 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import re
 import sys
@@ -58,6 +59,38 @@ _SCANNED_CONFIGS: tuple[str, ...] = (
     "src/omnimarket/configs/routing_tiers.yaml",
     "src/omnimarket/data/model_registry/model_registry_v1.yaml",
 )
+
+# OMN-17372: house inference-provider credential variables. Every spelling that
+# has ever named one of OmniNode's OWN provider keys, including the retired
+# OPEN_ROUTER_API_KEY form -- a name no host defines still reads as configured,
+# which is how this class of defect returns.
+_HOUSE_INFERENCE_ENV_VARS: frozenset[str] = frozenset(
+    {
+        "OPENROUTER_API_KEY",
+        "OPEN_ROUTER_API_KEY",
+        "LLM_OPENROUTER_API_KEY",
+        "LLM_GLM_API_KEY",
+        "ZHIPU_API_KEY",
+        "GEMINI_API_KEY",
+        "GOOGLE_API_KEY",
+        "VERTEX_ACCESS_TOKEN",
+    }
+)
+
+# Source tree scanned for in-code house-credential reads. The config gate alone
+# cannot see these: the paths removed by OMN-17372 in
+# ``inference/bridge_config_loader.py`` were a hardcoded ``env_var_fallback``
+# and a bare ``os.environ.get`` in SOURCE, so a config-only rule would have
+# reported PASS while the house key still resolved.
+_SCANNED_SOURCE_ROOT = "src/omnimarket"
+
+# Matched over the parsed AST, never the raw text: a module that DISCUSSES one
+# of these variables in a docstring or comment (this repo's resolver documents
+# the retired-alias history at length, and so does the file the removal landed
+# in) is not reading it. Scanning source text would make prose a violation and
+# push authors toward deleting the explanation of the rule in order to pass the
+# rule. Only a real read of the process environment, or a real
+# ``env_var_fallback=`` argument, counts.
 
 # Local backends do not require cloud auth; identified by tier == "local" or a
 # base_url_env pointing at a local inference endpoint.
@@ -177,6 +210,107 @@ def _scan_api_key_env(rel: str, data: dict[str, Any]) -> list[str]:
     return violations
 
 
+def _scan_source_for_house_credentials(repo_root: Path) -> list[str]:
+    """Reject in-code reads of a house inference-provider credential.
+
+    OMN-17372, the source-tree half of the same rule ``_scan_api_key_env``
+    enforces over config. Deleting ``api_key_env`` from
+    ``bifrost_delegation.yaml`` closes the DECLARED house fallback; it does
+    nothing about an equivalent read written directly in Python, and this repo
+    had two of those on the same boundary:
+
+      * ``resolve_api_key(..., env_var_fallback="OPEN_ROUTER_API_KEY")`` --
+        ``env_var_fallback`` is serviced by a direct ``os.environ.get`` inside
+        the resolver, AFTER the store lookup, so it bypasses the lane secret
+        mapping entirely and kept resolving on a deployed lane where that
+        mapping is the only sanctioned path;
+      * ``os.environ.get("LLM_GLM_API_KEY")`` -- no secret store in the path at
+        all, honouring neither the lane mapping nor per-tenant scoping.
+
+    Both would have survived a config-only gate reporting PASS. A credential
+    reaches an inference call through its secret ref and the store, or it does
+    not reach it.
+    """
+    violations: list[str] = []
+    source_root = repo_root / _SCANNED_SOURCE_ROOT
+    if not source_root.is_dir():
+        return violations
+
+    for path in sorted(source_root.rglob("*.py")):
+        rel = path.relative_to(repo_root).as_posix()
+        try:
+            tree = ast.parse(path.read_text(encoding="utf-8"), filename=rel)
+        except (OSError, SyntaxError) as exc:
+            violations.append(f"{rel}: could not be parsed ({type(exc).__name__})")
+            continue
+
+        for node, name, kind in _house_credential_reads(tree):
+            violations.append(
+                f"{rel}:{node.lineno}: {kind} names the house inference "
+                f"credential {name!r}. OMN-17372: OmniNode does not offer "
+                f"inference and there are no keyless customers on the cloud, "
+                f"so an inference credential resolves from its secret_ref "
+                f"through the store (per-tenant scoped) or not at all. Do not "
+                f"reach for the process environment here -- a delegation with "
+                f"no key must refuse, not borrow the house account."
+            )
+    return violations
+
+
+def _is_os_environ(node: ast.expr) -> bool:
+    """Whether ``node`` is the ``os.environ`` attribute chain."""
+    return (
+        isinstance(node, ast.Attribute)
+        and node.attr == "environ"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "os"
+    )
+
+
+def _string_constant(node: ast.expr | None) -> str | None:
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        return node.value
+    return None
+
+
+def _house_credential_reads(tree: ast.AST) -> list[tuple[ast.AST, str, str]]:
+    """Yield (node, variable, kind) for every real house-credential read.
+
+    Three shapes, all resolved on the AST so comments and docstrings are
+    invisible to the rule:
+
+      * ``os.environ["NAME"]`` -- subscript read;
+      * ``os.environ.get("NAME", ...)`` -- call read;
+      * ``f(..., env_var_fallback="NAME")`` -- the resolver's env escape hatch,
+        which is serviced by a direct ``os.environ.get`` after the store lookup
+        and therefore bypasses the lane secret mapping.
+    """
+    found: list[tuple[ast.AST, str, str]] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Subscript) and _is_os_environ(node.value):
+            name = _string_constant(node.slice)
+            if name in _HOUSE_INFERENCE_ENV_VARS:
+                found.append((node, str(name), "os.environ read"))
+        elif isinstance(node, ast.Call):
+            func = node.func
+            if (
+                isinstance(func, ast.Attribute)
+                and func.attr == "get"
+                and _is_os_environ(func.value)
+                and node.args
+            ):
+                name = _string_constant(node.args[0])
+                if name in _HOUSE_INFERENCE_ENV_VARS:
+                    found.append((node, str(name), "os.environ read"))
+            for kw in node.keywords:
+                if kw.arg != "env_var_fallback":
+                    continue
+                name = _string_constant(kw.value)
+                if name in _HOUSE_INFERENCE_ENV_VARS:
+                    found.append((node, str(name), "env_var_fallback"))
+    return found
+
+
 def _scan_bifrost_backends(rel: str, data: dict[str, Any]) -> list[str]:
     violations: list[str] = []
     backends = data.get("backends", [])
@@ -226,7 +360,14 @@ def build_report(repo_root: Path) -> dict[str, Any]:
             else:
                 errors.append(f"{rel}: did not parse to a mapping")
 
-    all_violations = literal_violations + backend_violations + api_key_env_violations
+    house_source_violations = _scan_source_for_house_credentials(repo_root)
+
+    all_violations = (
+        literal_violations
+        + backend_violations
+        + api_key_env_violations
+        + house_source_violations
+    )
     return {
         "ticket": "OMN-12971",
         "gate": "backend-secret-discipline",
@@ -237,6 +378,9 @@ def build_report(repo_root: Path) -> dict[str, Any]:
         # so a failure names the actual rule rather than reading as generic
         # "missing ref" drift.
         "api_key_env_violations": api_key_env_violations,
+        # OMN-17372: the source-tree half of the same rule — an in-code read of
+        # a house provider credential, which the config buckets cannot see.
+        "house_credential_source_violations": house_source_violations,
         "errors": errors,
         "passed": len(all_violations) == 0 and len(errors) == 0,
     }
@@ -272,6 +416,8 @@ def main() -> int:
         print(f"  backend-ref: {v}")
     for v in report["api_key_env_violations"]:
         print(f"  api-key-env: {v}")
+    for v in report["house_credential_source_violations"]:
+        print(f"  house-credential-source: {v}")
     print(
         "\nFix: keep credential VALUES in the secret store; declare only logical "
         "refs (secret_ref / credential_ref) in routing-authority config."
