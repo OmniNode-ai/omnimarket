@@ -32,6 +32,9 @@
 #     # onex-allow-test-fixture OMN-XXXXX reason="<concrete reason>"
 #     # onex-allow-raw-env OMN-XXXXX reason="<concrete reason>"
 #     # onex-allow-model-id OMN-XXXXX reason="<concrete reason>"
+#     # onex-allow-exposed-identifier OMN-XXXXX reason="<concrete reason>"
+#       ^ handled by the DELEGATED exposed-identifier gate, not by the regex
+#         catalog below -- see the OMN-17320 section at the end of this file.
 #
 #   A bare annotation without ticket+reason (e.g. `# onex-allow-internal-ip`)
 #   is REJECTED — every exception must be ticketed and reasoned.
@@ -229,10 +232,59 @@ if [[ "${MODE}" == "advisory" ]]; then
   exit 0
 fi
 
+# OMN-17320: delegated exposed-identifier gate.
+#
+# Why this is delegated rather than folded into LEAK_REGEX above: that catalog
+# matches patterns written out in PLAINTEXT. The exposed-identifier class cannot
+# use that mechanism -- writing a forbidden customer identifier into a pattern
+# list in a PUBLIC repo would create exactly the fresh, greppable, current-tree
+# occurrence the class exists to prevent, and would force this file to be exempt
+# from its own rule. The delegated gate keys on salted SHA-256 digests instead,
+# so nothing here or in its denylist restates a forbidden value.
+#
+# Why it is wired HERE rather than as its own CI job: "Leaked Literals Gate" is
+# already in omnimarket dev's required_status_checks AND already a pre-commit
+# hook, so delegating makes the new class blocking on both surfaces the moment
+# this lands -- no branch-protection edit, and no new workflow to classify
+# against tests/unit/scripts/ci/test_ci_summary_gate.py's completeness test.
+#
+# Provenance: OMN-17288 scrubbed a live tenant slug + UUID from this repo, and
+# omnimarket#2239 reintroduced the slug three hours later with every gate green.
+# Resolved against THIS script's own directory, not the caller's CWD: the gate is
+# routinely invoked with a different working directory (pre-commit from the repo
+# root, CI from the checkout, and the validation tests from a throwaway fixture
+# repo under tmp_path). A CWD-relative path made the sibling look "missing" in
+# exactly those cases and tripped the fail-closed branch below, turning a healthy
+# gate into a hard exit 2. The sibling ships beside this file, so its own
+# directory is the only correct anchor.
+EXPOSED_ID_GATE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/check_exposed_identifiers.py"
+exposed_id_status=0
+if [[ -f "${EXPOSED_ID_GATE}" ]]; then
+  # Reuse this run's mode and scope so local (diff) and CI (all) stay aligned,
+  # and pass through the SAME base ref this script resolved -- the two gates
+  # must never disagree about what "the diff" is.
+  PY_BIN="${PYTHON:-python3}"
+  if [[ "${SCOPE}" == "diff" ]]; then
+    "${PY_BIN}" "${EXPOSED_ID_GATE}" --mode "${MODE}" --scope diff \
+      --base-ref "${BASE_REF:-origin/main}" || exposed_id_status=$?
+  else
+    "${PY_BIN}" "${EXPOSED_ID_GATE}" --mode "${MODE}" --scope all || exposed_id_status=$?
+  fi
+else
+  # Fail closed: a missing delegated gate is a silently-unenforced class.
+  echo "leak-gate: ERROR ${EXPOSED_ID_GATE} is missing (OMN-17320)" >&2
+  exposed_id_status=2
+fi
+
 # blocking mode — fail on any finding.
 if (( ${#findings[@]} > 0 )); then
   echo "leak-gate: blocking — ${#findings[@]} unallowlisted findings"
   exit 1
+fi
+
+if (( exposed_id_status != 0 )); then
+  echo "leak-gate: blocking — delegated exposed-identifier gate failed (exit ${exposed_id_status})"
+  exit "${exposed_id_status}"
 fi
 
 exit 0

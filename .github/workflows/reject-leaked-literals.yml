@@ -14,6 +14,20 @@
 #   # onex-allow-raw-env OMN-XXXXX reason="<concrete reason>"
 #   # onex-allow-model-id OMN-XXXXX reason="<concrete reason>"
 #
+# OMN-17320: this job ALSO enforces the delegated exposed-identifier class --
+# a salted-SHA256 denylist of customer identifiers that must never re-enter this
+# PUBLIC repo (scripts/validation/check_exposed_identifiers.py). It is wired here,
+# inside an already-required context, rather than as its own workflow so that it
+# blocks the moment it lands: no branch-protection edit, and no new job to
+# classify against tests/unit/scripts/ci/test_ci_summary_gate.py's completeness
+# test. Its annotation class is:
+#   # onex-allow-exposed-identifier OMN-XXXXX reason="<concrete reason>"
+# and unlike the classes above it has NO file-level waiver and NO self-exempt
+# files -- the gate is subject to its own rule.
+#
+# Provenance: OMN-17288 scrubbed a live tenant slug + UUID from five files here;
+# three hours later omnimarket#2239 reintroduced the slug with every gate green.
+#
 # See docs/leaked-literals-governance.md for the full governance policy.
 #
 # This job is a REQUIRED STATUS CHECK. The job name
