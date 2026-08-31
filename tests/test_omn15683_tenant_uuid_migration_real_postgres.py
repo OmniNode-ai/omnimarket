@@ -73,7 +73,8 @@ _MIGRATIONS_DIR = (
 
 _TENANT_UUID_MIGRATION = "0031_delegation_events_tenant_id_to_uuid.sql"
 
-# OMN-16930 added 0032 and OMN-17288 added 0033, which SUPERSEDE 0031 (same
+# OMN-16930 added 0032, OMN-17288 added 0033 and OMN-17316 added 0034, which
+# SUPERSEDE 0031 (same
 # TEXT->UUID conversion of delegation_events.tenant_id, resolved through the
 # tenant_registry_mirror JOIN instead of a hardcoded map) and run whether or
 # not 0031 already did. The "pre-conversion" fixture below must exclude all
@@ -89,6 +90,7 @@ _TENANT_UUID_MIGRATIONS = frozenset(
         _TENANT_UUID_MIGRATION,
         "0032_delegation_events_tenant_id_uuid_via_registry.sql",
         "0033_delegation_events_uuid_via_registry_single_transaction.sql",
+        "0034_delegation_events_uuid_via_registry_role_set_guard.sql",
     }
 )
 

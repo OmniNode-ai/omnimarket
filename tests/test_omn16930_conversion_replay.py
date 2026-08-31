@@ -94,14 +94,20 @@ _REGISTRY_MIGRATIONS = (
     / "migrations"
 )
 
-# 0031 and 0032 are both RETIRED and fenced. 0033 is the operative conversion:
-# OMN-17288 superseded 0032 because its policy recreate and GRANT sat AFTER
-# `END$$`, which broke the documented table-absent no-op and left a real
-# RLS-enabled-with-no-policy window between transactions. The mechanism under
-# test here is unchanged, so this replay simply follows the live file.
+# 0031, 0032 and 0033 are all RETIRED and fenced. 0034 is the operative
+# conversion. OMN-17288 superseded 0032 because its policy recreate and GRANT
+# sat AFTER `END$$`, which broke the documented table-absent no-op and left a
+# real RLS-enabled-with-no-policy window between transactions; OMN-17316 then
+# superseded 0033 because its ownership guard tested
+# `pg_has_role(..., 'USAGE')` and then exercised `SET ROLE`, which since
+# PostgreSQL 16 is a different membership option -- a `WITH INHERIT TRUE,
+# SET FALSE` identity passed the guard and aborted opaquely just past it. The
+# identity mechanism under test HERE is unchanged across all three, so this
+# replay simply follows the live file.
 _SUPERSEDED_0031 = "0031_delegation_events_tenant_id_to_uuid.sql"
 _SUPERSEDED_0032 = "0032_delegation_events_tenant_id_uuid_via_registry.sql"
-_CONVERSION = "0033_delegation_events_uuid_via_registry_single_transaction.sql"
+_SUPERSEDED_0033 = "0033_delegation_events_uuid_via_registry_single_transaction.sql"
+_CONVERSION = "0034_delegation_events_uuid_via_registry_role_set_guard.sql"
 _MIRROR = "0000_create_tenant_registry_mirror.sql"
 
 # The registry rows, pinned as literals from the live cross-check against
@@ -239,7 +245,8 @@ def _pre_conversion_migrations() -> list[Path]:
     return [
         path
         for path in sorted(_DELEGATION_MIGRATIONS.glob("*.sql"), key=lambda f: f.name)
-        if path.name not in {_SUPERSEDED_0031, _SUPERSEDED_0032, _CONVERSION}
+        if path.name
+        not in {_SUPERSEDED_0031, _SUPERSEDED_0032, _SUPERSEDED_0033, _CONVERSION}
     ]
 
 
