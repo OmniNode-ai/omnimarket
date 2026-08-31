@@ -18,6 +18,13 @@ index on ``tenant_uuid`` that stops two slugs merging two tenants, and the
 COALESCE that keeps provisioning history from being rewritten by a replay. None
 of those exist in a mock.
 
+This is the real-Postgres companion the projection-write-path-db-gate looks
+for on any diff that touches this node's handler module -- including a
+docstring-only correction to the handler's own def-B canon-shape wording
+(OMN-14355 C-core: the checker literal-scans resolved handler source text for
+the envelope type name, so even a docstring saying the handler does NOT
+import it tripped the same scan a real import would).
+
 Harness (``_connect_or_skip`` / disposable schema) matches
 ``tests/test_omn16316_real_postgres_tenant_credentials_write_path.py``. SKIPS
 (never ERRORs) without a reachable database.

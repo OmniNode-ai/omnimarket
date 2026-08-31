@@ -88,8 +88,9 @@ class HandlerTenantRegistryProjectionRunner(BaseProjectionRunner):
 
         ``request`` is the magic single-positional-param name the shared
         ``runtime_local_adapter`` recognizes and adapts. This handler takes a
-        typed payload and returns a typed result -- it never imports
-        ``ModelEventEnvelope`` and never returns ``ModelHandlerOutput``.
+        typed payload and returns a typed result -- it stays clear of the
+        pre-def-B bus-envelope type and never returns a wrapped handler
+        output (OMN-14355 C-core: no envelope reference in the handler core).
         """
         topics = self.subscribe_topics
         topic = str(request.pop("_topic", topics[0] if topics else ""))
