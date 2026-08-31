@@ -42,7 +42,7 @@ from typing import Any
 
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 
 from omnimarket.projection.discovery import (
     build_projection_topic_map,
@@ -54,6 +54,11 @@ from omnimarket.projection.generation_publisher import (
     publish_generation_request,
 )
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
+from omnimarket.projection.morning_page import (
+    DEFAULT_REFRESH_SECONDS,
+    build_morning_page,
+    render_morning_page,
+)
 from omnimarket.projection.runner import (
     KAFKA_BROKERS_ENV,
     projection_runtime_binding_from_overlay_env,
@@ -556,6 +561,37 @@ async def list_projections(
         for cfg in topic_map.values()
     ]
     return JSONResponse({"topics": topics})
+
+
+@app.get("/morning", response_class=HTMLResponse)
+async def morning_page(
+    refresh: int = Query(default=DEFAULT_REFRESH_SECONDS, ge=5, le=3600),
+    topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
+    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+) -> HTMLResponse:
+    """The morning observability page (OMN-17197).
+
+    Operator ruling 2026-08-31: an always-up server-rendered page straight off
+    the projection API, now; omnidash becomes the richer version later. It is
+    served here, from the same in-memory SnapshotCache every JSON route reads,
+    because that is the only surface with no build step, no bundle, no session
+    gate and no separate deployable between the projection and a human.
+
+    ``200`` unconditionally, and deliberately: the page's own content carries
+    per-panel health. Returning 5xx for the whole document because one exposure
+    refused would hide the six panels that are fine — the page IS the report,
+    so it must render even when most of what it reports on is refusing.
+    """
+    page = build_morning_page(
+        topic_map,
+        cache,
+        service_name=(
+            os.environ.get("OTEL_SERVICE_NAME")
+            or "projection-api (OTEL_SERVICE_NAME unset)"
+        ),
+        refresh_seconds=refresh,
+    )
+    return HTMLResponse(render_morning_page(page))
 
 
 @app.get("/projection/{topic:path}")
