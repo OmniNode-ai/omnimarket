@@ -104,6 +104,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_int
 from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
     ModelRoutingIntent,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_stale_inference_response_rejection import (
+    ModelStaleInferenceResponseRejection,
+)
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthority,
     RequiredBarAuthorityError,
@@ -398,11 +401,17 @@ def _record_inference_response(
     workflow.inference_llm_call_id = response.llm_call_id
 
 
-def _response_belongs_to_current_attempt(
+def _stale_response_rejection(
     workflow: DelegationWorkflowState,
     response: ModelInferenceResponseData,
-) -> bool:
-    """Return whether this response was produced by the CURRENT route (OMN-15542).
+) -> ModelStaleInferenceResponseRejection | None:
+    """Return typed evidence if this response came from a SUPERSEDED attempt (OMN-15542).
+
+    ``None`` means the response was produced by the route currently in flight
+    and may be accepted. A ``ModelStaleInferenceResponseRejection`` means it was
+    not, and carries both attempt identities plus the route the response would
+    otherwise have been relabelled onto — the caller records it on the workflow
+    and drops the response.
 
     ``correlation_id`` addresses the workflow, not the attempt. Escalation
     (and retry-local / same-tier sibling retry / the compliance repair loop)
@@ -415,8 +424,14 @@ def _response_belongs_to_current_attempt(
 
     The check is attempt identity, and only attempt identity: when the response
     carries an ``inference_attempt_id`` it must equal the one in flight, and any
-    other value belongs to a superseded attempt and is dropped. That is exact —
+    other value belongs to a superseded attempt and is rejected. That is exact —
     no heuristic, no false rejects.
+
+    The rejection is never silent and never a relabel. It is emitted as typed,
+    durable evidence (``ModelStaleInferenceResponseRejection``, persisted on the
+    workflow through the node's ``state_io`` codec) naming the rejected attempt,
+    the live attempt, the model the response actually reported, and the
+    endpoint/tier/model it would have been falsely attributed to.
 
     **A response with NO attempt identity is accepted (documented residual).**
     The ticket's AC3 asked for a legacy fallback that accepts an id-less
@@ -448,24 +463,23 @@ def _response_belongs_to_current_attempt(
     expected = workflow.current_inference_attempt_id
     observed = getattr(response, "inference_attempt_id", None)
 
-    if observed is None or expected is None:
-        return True
+    if observed is None or expected is None or observed == expected:
+        return None
 
-    if observed != expected:
-        _logger.warning(
-            "OMN-15542: dropping inference response from a superseded "
-            "attempt: correlation_id=%s response_attempt=%s "
-            "current_attempt=%s current_tier=%s current_model=%s",
-            response.correlation_id,
-            observed,
-            expected,
-            workflow.current_tier_name,
-            workflow.routing_decision.selected_model
-            if workflow.routing_decision is not None
-            else None,
-        )
-        return False
-    return True
+    decision = workflow.routing_decision
+    return ModelStaleInferenceResponseRejection(
+        correlation_id=response.correlation_id,
+        rejected_attempt_id=observed,
+        current_attempt_id=expected,
+        response_model_used=response.model_used,
+        response_was_error=bool(response.error_message),
+        current_tier_name=workflow.current_tier_name,
+        current_endpoint_url=decision.endpoint_url if decision is not None else None,
+        current_selected_model=decision.selected_model
+        if decision is not None
+        else None,
+        rejected_at=datetime.now(UTC),
+    )
 
 
 def _should_escalate_inference_error(error_message: str) -> bool:
@@ -868,6 +882,17 @@ class DelegationWorkflowState:
     # the rest of the workflow state so the binding survives a leg replayed in a
     # different process.
     current_inference_attempt_id: UUID | None = None
+    # OMN-15542: typed, durable evidence for every response rejected as
+    # superseded. A silent drop would leave the route-honesty guard unfalsifiable
+    # from the control plane — this list is what proves a stale response was
+    # REJECTED rather than relabelled, and names the endpoint/tier/model it would
+    # have been falsely attributed to. Append-only audit: it never feeds costs,
+    # gate inputs, escalation, or terminal provenance. Round-trips through the
+    # node's state_io codec with the rest of the state; an older persisted row
+    # with no such key decodes to the empty default.
+    stale_response_rejections: list[ModelStaleInferenceResponseRejection] = field(
+        default_factory=list
+    )
     routing_intent_replayed: bool = False
     # Escalation state (OMN-12254). Tracks tier escalation across quality gate
     # failures. ``escalation_count`` is incremented on each escalation;
@@ -1296,7 +1321,27 @@ class HandlerDelegationWorkflow:
         if workflow.routing_decision is None:
             return []
 
-        if not _response_belongs_to_current_attempt(workflow, response):
+        # OMN-15542: a response from a route the workflow has already left is
+        # rejected with typed, durable evidence — never relabelled onto the live
+        # route — before any workflow-state, cost, gate-input, or terminal
+        # mutation. Appending the rejection is the ONLY state change a stale
+        # response is allowed to make: it is audit, not workflow progress.
+        rejection = _stale_response_rejection(workflow, response)
+        if rejection is not None:
+            workflow.stale_response_rejections.append(rejection)
+            _logger.warning(
+                "OMN-15542: rejected inference response from a superseded "
+                "attempt: correlation_id=%s rejected_attempt=%s "
+                "current_attempt=%s response_model=%s current_tier=%s "
+                "current_model=%s current_endpoint=%s",
+                rejection.correlation_id,
+                rejection.rejected_attempt_id,
+                rejection.current_attempt_id,
+                rejection.response_model_used,
+                rejection.current_tier_name,
+                rejection.current_selected_model,
+                rejection.current_endpoint_url,
+            )
             return []
 
         if response.error_message:

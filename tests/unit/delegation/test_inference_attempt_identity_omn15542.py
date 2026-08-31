@@ -54,6 +54,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_int
 from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
     ModelRoutingIntent,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_stale_inference_response_rejection import (
+    ModelStaleInferenceResponseRejection,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
 )
@@ -221,6 +224,70 @@ class TestInferenceAttemptIdentity:
         assert workflow.routing_decision is not None
         assert workflow.routing_decision.endpoint_url == _CLOUD_ENDPOINT
 
+    def test_rejection_emits_typed_evidence_naming_the_prevented_relabel(self) -> None:
+        """AC2: the drop is not silent. It produces a typed, durable record that
+        names both attempt identities AND the route the stale response would
+        otherwise have been relabelled onto — the internally impossible
+        provenance pair this ticket exists to prevent."""
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+
+        local_attempt_id, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        workflow = handler.workflows[cid]
+        assert workflow.stale_response_rejections == []
+
+        handler.handle_inference_response(
+            _make_response(
+                cid,
+                content="local Qwen draft that arrived late",
+                model_used="Qwen3.6-35B-A3B",
+                inference_attempt_id=local_attempt_id,
+            )
+        )
+
+        assert len(workflow.stale_response_rejections) == 1
+        evidence = workflow.stale_response_rejections[0]
+        assert isinstance(evidence, ModelStaleInferenceResponseRejection)
+        assert evidence.correlation_id == cid
+        assert evidence.rejected_attempt_id == local_attempt_id
+        assert evidence.current_attempt_id == cloud_attempt_id
+        # What the response truthfully reported...
+        assert evidence.response_model_used == "Qwen3.6-35B-A3B"
+        assert evidence.response_was_error is False
+        # ...against what it would have been falsely attributed to.
+        assert evidence.current_tier_name == "cheap_cloud"
+        assert evidence.current_endpoint_url == _CLOUD_ENDPOINT
+        assert evidence.current_selected_model == _CLOUD_MODEL
+        assert evidence.response_model_used != evidence.current_selected_model
+
+    def test_a_stale_error_response_is_rejected_and_does_not_re_escalate(self) -> None:
+        """A late ERROR from a superseded attempt would otherwise escalate the
+        ladder a second time off a route that already moved on."""
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+
+        local_attempt_id, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+        workflow = handler.workflows[cid]
+        escalation_count_before = workflow.escalation_count
+
+        stale_error = ModelInferenceResponseData(
+            correlation_id=cid,
+            inference_attempt_id=local_attempt_id,
+            content="",
+            model_used=_LOCAL_MODEL,
+            latency_ms=50,
+            error_message="503 Service Unavailable",
+        )
+        events = handler.handle_inference_response(stale_error)
+
+        assert events == []
+        assert workflow.escalation_count == escalation_count_before
+        assert workflow.current_inference_attempt_id == cloud_attempt_id
+        assert workflow.routing_decision is not None
+        assert workflow.routing_decision.endpoint_url == _CLOUD_ENDPOINT
+        assert len(workflow.stale_response_rejections) == 1
+        assert workflow.stale_response_rejections[0].response_was_error is True
+
     def test_current_cloud_response_is_accepted_and_stays_coherent(self) -> None:
         """AC4 (the other half): the response from the CURRENT attempt reaches
         the gate and its model/endpoint/tier remain internally coherent."""
@@ -330,6 +397,33 @@ class TestInferenceAttemptIdentity:
 
         assert decoded.current_inference_attempt_id == cloud_attempt_id
         assert isinstance(decoded.current_inference_attempt_id, UUID)
+
+    def test_state_codec_round_trips_the_typed_rejection_evidence(self) -> None:
+        """AC5: the rejection evidence is durable, not just an in-process log —
+        it survives the same persistence boundary as the rest of the state."""
+        from omnimarket.nodes.node_delegation_orchestrator import state_codec
+
+        handler = HandlerDelegationWorkflow()
+        cid = uuid4()
+        local_attempt_id, cloud_attempt_id = _escalate_to_cloud(handler, cid)
+
+        handler.handle_inference_response(
+            _make_response(
+                cid,
+                content="local Qwen draft that arrived late",
+                model_used="Qwen3.6-35B-A3B",
+                inference_attempt_id=local_attempt_id,
+            )
+        )
+
+        decoded = state_codec.decode(state_codec.encode(handler.workflows[cid]))
+
+        assert len(decoded.stale_response_rejections) == 1
+        evidence = decoded.stale_response_rejections[0]
+        assert isinstance(evidence, ModelStaleInferenceResponseRejection)
+        assert evidence.rejected_attempt_id == local_attempt_id
+        assert evidence.current_attempt_id == cloud_attempt_id
+        assert evidence.current_endpoint_url == _CLOUD_ENDPOINT
 
 
 @pytest.mark.unit
