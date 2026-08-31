@@ -1,10 +1,10 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""Tests for the morning observability page (OMN-17197, epic OMN-16776).
+"""Tests for the ONEX status page (OMN-17197, always-on per OMN-17346).
 
-The page's whole reason to exist is that a projection was live and nothing
-rendered it. Its second reason is that when a projection is NOT live, the
-render must say so instead of drawing a zero. Both are asserted here:
+Epic OMN-16776. The page's whole reason to exist is that a projection was live
+and nothing rendered it. Its second reason is that when a projection is NOT
+live, the render must say so instead of drawing a zero. Both are asserted here:
 
 * a currently-STALLED consumer group is named on the page with its
   ``messages_in``/``messages_out`` (never an aggregate alone);
@@ -12,10 +12,17 @@ render must say so instead of drawing a zero. Both are asserted here:
 * the delegation-savings panel, when its exposures refuse, renders the refusal
   code and its tickets and emits **no currency string at all** — the
   "confident zero" regression guard.
+
+``TestStatusRootRoute`` covers the OMN-17346 half: the page is served at the
+root, ``/morning`` renders the identical document rather than redirecting to
+it, the ``<meta http-equiv="refresh">`` interval is present and sane, and the
+document title carries the lane so a dev tab and a prod tab are not
+interchangeable at the tab strip.
 """
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
@@ -25,6 +32,8 @@ from fastapi.testclient import TestClient
 from omnimarket.projection.api_server import app, get_snapshot_cache, get_topic_map
 from omnimarket.projection.models import ProjectionStatus, ProjectionTableConfig
 from omnimarket.projection.morning_page import (
+    DEFAULT_REFRESH_SECONDS,
+    PAGE_NAME,
     TOPIC_CONSUMER_FLOW,
     TOPIC_COST_SAVINGS_OVERVIEW,
     TOPIC_DELEGATION_SAVINGS,
@@ -36,6 +45,7 @@ from omnimarket.projection.morning_page import (
     build_morning_page,
     build_savings_panel,
     latest_window_per_consumer,
+    page_title,
     read_projection,
     render_morning_page,
 )
@@ -546,7 +556,7 @@ class TestMorningRoute:
         assert response.status_code == 200
         assert response.headers["content-type"].startswith("text/html")
         assert 'http-equiv="refresh"' in response.text
-        assert "ONEX morning observability" in response.text
+        assert PAGE_NAME in response.text
 
     def test_route_renders_200_even_when_every_exposure_refuses(self) -> None:
         """The page IS the report: a 5xx would hide the panels that are fine."""
@@ -558,4 +568,121 @@ class TestMorningRoute:
         finally:
             app.dependency_overrides.clear()
         assert response.status_code == 200
+        assert "unknown_topic" in response.text
+
+
+#: Every ISO-8601 UTC instant on the page. Used to neutralise the one value
+#: that legitimately differs between two renders taken microseconds apart.
+_ISO_INSTANT = re.compile(r"\d{4}-\d{2}-\d{2}T[\d:.]+\+00:00")
+
+
+class TestStatusRootRoute:
+    """OMN-17346: the page is the always-on root surface; /morning is an alias.
+
+    Operator ruling 2026-08-31: *"it should be always on and not require
+    /morning. Index.html should be fine."* Root answered ``404`` before this,
+    so the only always-up render of the live projections was reachable solely
+    by an operator who already knew the path.
+    """
+
+    @staticmethod
+    def _get(path: str, **kwargs: Any) -> Any:
+        topic_map = _live_topic_map()
+        cache = _FakeCache({TOPIC_CONSUMER_FLOW: _LIVE_FLOW_ROWS})
+        app.dependency_overrides[get_topic_map] = lambda: topic_map
+        app.dependency_overrides[get_snapshot_cache] = lambda: cache
+        try:
+            client = TestClient(app, raise_server_exceptions=True)
+            return client.get(path, **kwargs)
+        finally:
+            app.dependency_overrides.clear()
+
+    def test_root_serves_the_page(self) -> None:
+        response = self._get("/")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html")
+        assert "<!doctype html>" in response.text
+        # The panels, not just a shell: a root that 200s with an empty body
+        # would satisfy a status-code assertion and still show nothing.
+        assert TOPIC_CONSUMER_FLOW in response.text
+        assert (
+            "local.omnimarket.projection_consumer_flow.consume.1.0.0" in response.text
+        )
+
+    def test_morning_renders_the_page_rather_than_redirecting_to_root(self) -> None:
+        """A redirect would put a hop in front of every already-published link
+        and would double the request count on a page that reloads itself."""
+        response = self._get("/morning", follow_redirects=False)
+        assert response.status_code == 200
+        assert "location" not in response.headers
+
+    def test_alias_and_root_render_the_same_document(self) -> None:
+        root = _ISO_INSTANT.sub("<instant>", self._get("/").text)
+        alias = _ISO_INSTANT.sub("<instant>", self._get("/morning").text)
+        assert root == alias
+
+    def test_refresh_meta_carries_a_sane_interval(self) -> None:
+        """Server-rendered auto-refresh, no JS: the meta tag IS the mechanism,
+        so an absent or absurd interval is the whole feature failing."""
+        match = re.search(
+            r'<meta http-equiv="refresh" content="(\d+)">', self._get("/").text
+        )
+        assert match is not None
+        interval = int(match.group(1))
+        assert interval == DEFAULT_REFRESH_SECONDS
+        assert 5 <= interval <= 60
+
+    def test_refresh_interval_is_overridable_within_the_served_bounds(self) -> None:
+        assert (
+            '<meta http-equiv="refresh" content="60">'
+            in self._get("/", params={"refresh": 60}).text
+        )
+
+    def test_title_carries_the_lane(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Three lanes serve this page; a tab strip that reads the same on all
+        three is how an operator reads prod and believes it is dev."""
+        monkeypatch.setenv(
+            "OTEL_SERVICE_NAME", "omnimarket-stability-test-projection-api"
+        )
+        html = self._get("/").text
+        assert (
+            "<title>ONEX Status — omnimarket-stability-test-projection-api</title>"
+            in html
+        )
+        assert "omnimarket-stability-test-projection-api" in html
+
+    def test_title_is_standing_not_morning_framed(self) -> None:
+        html = self._get("/").text
+        assert f"<title>{PAGE_NAME} — " in html
+        assert "morning" not in html.lower()
+
+    def test_as_of_timestamp_is_rendered_in_the_page_chrome(self) -> None:
+        """Staleness has to be visible without scrolling on a page whose whole
+        job is telling you whether what you are reading is current."""
+        html = self._get("/").text
+        header = html[html.index("<header>") : html.index("</header>")]
+        match = re.search(
+            r'<span class="asof">as of (' + _ISO_INSTANT.pattern + ")<", header
+        )
+        assert match is not None
+        # Parses, and is the render instant — not a hardcoded or fixture value.
+        rendered_at = datetime.fromisoformat(match.group(1))
+        assert abs((datetime.now(UTC) - rendered_at).total_seconds()) < 60
+
+    def test_page_title_helper_preserves_the_lane_verbatim(self) -> None:
+        assert (
+            page_title("omnimarket-prod-projection-api")
+            == "ONEX Status — omnimarket-prod-projection-api"
+        )
+
+    def test_root_renders_200_even_when_every_exposure_refuses(self) -> None:
+        app.dependency_overrides[get_topic_map] = lambda: {}
+        app.dependency_overrides[get_snapshot_cache] = lambda: _FakeCache({})
+        try:
+            client = TestClient(app, raise_server_exceptions=True)
+            response = client.get("/")
+        finally:
+            app.dependency_overrides.clear()
+        assert response.status_code == 200
+        # The refusal survives the move to root: still a refusal, never a zero.
         assert "unknown_topic" in response.text

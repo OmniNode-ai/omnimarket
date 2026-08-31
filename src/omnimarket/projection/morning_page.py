@@ -1,10 +1,19 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-"""The morning observability page (OMN-17197, epic OMN-16776).
+"""The ONEX status page (OMN-17197, made always-on by OMN-17346; epic OMN-16776).
 
 Operator ruling, 2026-08-31: *"go with the always-up server-rendered page
 straight off the projection API now; omnidash becomes the richer version
-later."*
+later."* Then, same day: *"it should be always on and not require /morning.
+Index.html should be fine."*
+
+That second ruling is why the page no longer calls itself a *morning* page. It
+is the standing ops surface of the projection API: served at ``GET /`` with
+``GET /morning`` kept as a byte-identical alias (links to it already exist on
+tickets), titled ``ONEX Status — <lane>`` so a dev tab and a prod tab are
+distinguishable at the tab strip, and carrying its ``as of`` timestamp in the
+header chrome rather than in the fine print, because on an auto-refreshing page
+the only thing standing between an operator and a stale read is that line.
 
 This module is the render half of that ruling. It is **server-rendered off the
 same in-process SnapshotCache the JSON routes serve** — no client fetch, no
@@ -64,6 +73,14 @@ TOPIC_DELEGATION_SUMMARY = "onex.snapshot.projection.delegation.summary.v1"
 #: a STALLED window age off the top of the page before anyone saw it.
 DEFAULT_REFRESH_SECONDS = 30
 
+#: The standing name of this surface (OMN-17346). The lane is appended from the
+#: serving process's own service identity, which is per-lane
+#: (``omnimarket-projection-api`` on dev,
+#: ``omnimarket-stability-test-projection-api`` on stability,
+#: ``omnimarket-prod-projection-api`` on prod), so a title alone tells an
+#: operator which runtime they are looking at.
+PAGE_NAME = "ONEX Status"
+
 #: How many rows to pull per exposure. consumer-flow publishes one row per
 #: (consumer_group, topic) per window, and the live fleet is ~500 pairs; the
 #: cache holds the compacted latest-per-key set, so this is a render cap, not a
@@ -75,6 +92,7 @@ _TICKET_NOT_BUS_BACKED = "OMN-15800"
 _TICKET_TENANT = "OMN-15797"
 _TICKET_DELEGATION_ROWS = "OMN-17298"
 _TICKET_PAGE = "OMN-17197"
+_TICKET_ALWAYS_ON = "OMN-17346"
 
 #: Severity order for the attention table. STALLED first because it is the
 #: OMN-16755 shape (consumer up, lag zero, output topic flat); UNKNOWN ranks
@@ -580,6 +598,9 @@ header{padding:18px 22px;border-bottom:1px solid var(--line);
 display:flex;flex-wrap:wrap;gap:6px 22px;align-items:baseline}
 h1{font-size:15px;margin:0;letter-spacing:.06em;text-transform:uppercase}
 header .meta{color:var(--dim);font-size:11px}
+header .lane{color:var(--fg);font-size:12px;letter-spacing:.04em}
+header .asof{color:var(--fg);font-size:12px;border:1px solid var(--line);
+border-radius:4px;padding:2px 9px;background:var(--panel);margin-left:auto}
 main{padding:18px 22px;display:flex;flex-direction:column;gap:18px}
 section{border:1px solid var(--line);border-radius:6px;background:var(--panel)}
 section>h2{margin:0;padding:10px 14px;border-bottom:1px solid var(--line);
@@ -807,6 +828,16 @@ def _render_inventory(rows: tuple[ModelInventoryRow, ...], bus_backed: int) -> s
     )
 
 
+def page_title(service_name: str) -> str:
+    """The standing document title, lane included (OMN-17346).
+
+    The lane is the serving process's own service identity — not a caller-
+    supplied label and not a guess from the request Host — so a page cannot
+    claim to be a lane it is not.
+    """
+    return f"{PAGE_NAME} — {service_name}"
+
+
 def render_morning_page(page: ModelMorningPage) -> str:
     """Render the assembled page model to a single self-contained HTML document."""
     sections = [
@@ -838,11 +869,11 @@ def render_morning_page(page: ModelMorningPage) -> str:
         '<!doctype html><html lang="en"><head><meta charset="utf-8">'
         '<meta name="viewport" content="width=device-width,initial-scale=1">'
         f'<meta http-equiv="refresh" content="{page.refresh_seconds}">'
-        "<title>ONEX morning observability</title>"
+        f"<title>{_esc(page_title(page.service_name))}</title>"
         f"<style>{_STYLE}</style></head><body>"
-        "<header><h1>ONEX morning observability</h1>"
-        f'<span class="meta">{_esc(page.service_name)}</span>'
-        f'<span class="meta">generated {_esc(page.generated_at)}</span>'
+        f"<header><h1>{_esc(PAGE_NAME)}</h1>"
+        f'<span class="lane">{_esc(page.service_name)}</span>'
+        f'<span class="asof">as of {_esc(page.generated_at)}</span>'
         f'<span class="meta">auto-refresh {page.refresh_seconds}s</span>'
         f'<span class="meta">{page.bus_backed_count}/{page.exposure_count} '
         "exposures bus-backed</span></header>"
@@ -853,12 +884,14 @@ def render_morning_page(page: ModelMorningPage) -> str:
         "client-side fetch, no client-side derivation: every verdict on this "
         "page was written by the reducer that owns it. A panel that could not be "
         "served says so and names its ticket &mdash; it never renders a zero it "
-        f"did not measure. {_ticket_ref(_TICKET_PAGE)}</footer></body></html>"
+        f"did not measure. {_ticket_ref(_TICKET_PAGE)} "
+        f"{_ticket_ref(_TICKET_ALWAYS_ON)}</footer></body></html>"
     )
 
 
 __all__ = [
     "DEFAULT_REFRESH_SECONDS",
+    "PAGE_NAME",
     "EnumPanelState",
     "ModelFlowConsumer",
     "ModelFlowPanel",
@@ -872,6 +905,7 @@ __all__ = [
     "build_morning_page",
     "build_savings_panel",
     "latest_window_per_consumer",
+    "page_title",
     "read_projection",
     "render_morning_page",
 ]
