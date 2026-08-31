@@ -9,8 +9,11 @@ three-entry dict compiled into this source tree. The live registry
 signup, so every tenant outside those three raised
 :class:`UnmappedTenantIdentityError` out of the writer, landed on the
 malformed-event path, and was quarantined to the DLQ. A real, active,
-externally-owned customer (``t-1lostguy1``, provisioned 2026-08-26) was already
-in that set.
+externally-owned customer (provisioned 2026-08-26) was already in that set. Its
+slug is deliberately NOT named here: this repo is PUBLIC, and OMN-17288 removed
+that customer's slug and registry UUID from this tree. The claim this paragraph
+makes -- that a live external tenant was in the unmapped set -- does not depend
+on naming it.
 
 The fix is the same one the operator green-lit for the apply path (OMN-16930,
 verbatim ruling *"Hold + fix mechanism"*): resolve identity against a
