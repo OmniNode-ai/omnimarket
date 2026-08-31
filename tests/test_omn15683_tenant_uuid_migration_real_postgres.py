@@ -73,6 +73,24 @@ _MIGRATIONS_DIR = (
 
 _TENANT_UUID_MIGRATION = "0031_delegation_events_tenant_id_to_uuid.sql"
 
+# OMN-16930 added 0032, which SUPERSEDES 0031 (same TEXT->UUID conversion of
+# delegation_events.tenant_id, resolved through the tenant_registry_mirror
+# JOIN instead of a hardcoded map) and runs whether or not 0031 already did.
+# The "pre-conversion" fixture below must exclude BOTH -- excluding only
+# 0031 left 0032 free to convert the column anyway, which is exactly what
+# broke this file the moment 0032 landed: a slug string bound to a now-uuid
+# column raised asyncpg.exceptions.DataError instead of the TEXT-vs-TEXT
+# comparison this test exists to pin. The singular constant above stays --
+# two tests below apply 0031's own SQL text directly, deliberately in
+# isolation from 0032, to pin 0031's own legacy-map CASE expression and
+# fail-closed behavior specifically.
+_TENANT_UUID_MIGRATIONS = frozenset(
+    {
+        _TENANT_UUID_MIGRATION,
+        "0032_delegation_events_tenant_id_uuid_via_registry.sql",
+    }
+)
+
 # Independently pinned -- NOT imported from omnimarket.projection.tenant_isolation
 # -- matching the OMN-15683 ticket's live probe against
 # omninode_cloud.public.tenants on onex-dev (2026-08-03, re-confirmed
@@ -84,10 +102,10 @@ _BETA_BUSINESS_PROOF_UUID = UUID("91c74442-1233-4c97-b191-911a10346fdf")
 _OTHER_TENANT_UUID = UUID("79afa726-3852-464f-b7a4-d4b8b9c75ee7")
 
 
-def _live_migration_files(*, exclude: str | None = None) -> list[Path]:
+def _live_migration_files(*, exclude: frozenset[str] | None = None) -> list[Path]:
     files = sorted(_MIGRATIONS_DIR.glob("*.sql"), key=lambda f: f.name)
     if exclude is not None:
-        files = [f for f in files if f.name != exclude]
+        files = [f for f in files if f.name not in exclude]
     return files
 
 
@@ -233,7 +251,7 @@ async def _provisioned_schema(
         await admin_conn.execute(
             f'GRANT CONNECT ON DATABASE "{db_name}" TO {_READER_ROLE}'
         )
-        exclude = None if include_tenant_uuid_migration else _TENANT_UUID_MIGRATION
+        exclude = None if include_tenant_uuid_migration else _TENANT_UUID_MIGRATIONS
         for migration_path in _live_migration_files(exclude=exclude):
             sql = _test_schema_safe_sql(migration_path.read_text(encoding="utf-8"))
             await admin_conn.execute(sql)
