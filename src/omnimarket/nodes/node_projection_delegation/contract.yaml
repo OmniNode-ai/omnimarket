@@ -104,6 +104,34 @@ db_io:
       # The declaration must cover what the handler actually does.
       access: read_write
       role: budget_state
+    # OMN-16804: the slug -> canonical-UUID lookup this handler performs before
+    # every delegation write. READ ONLY -- node_projection_tenant_registry owns
+    # the relation and is the only writer; this node asks it a question and
+    # never answers one. Declared here because the runtime's read seam
+    # (ProjectionTableOperation._assert_read_declared) refuses an undeclared
+    # table fail-closed and quarantines the event, which is exactly how the
+    # undeclared read surfaced: `Projection table 'tenant_registry_mirror' is
+    # not declared by the typed db_io contract`.
+    #
+    # NOT `tenant`, and that is load-bearing. The mirror is a cross-tenant
+    # registry index -- it holds no tenant's business rows, only the public
+    # slug<->uuid correspondence the platform already exposes at signup.
+    # Classified `tenant` it would sit behind RLS and be invisible to a reader
+    # whose app.tenant_id is not yet known, which is precisely the reader here:
+    # resolving the tenant IS the thing it is trying to do.
+    #
+    # This read accessor now matches node_projection_tenant_registry's owner
+    # declaration: logical schema `omninode_internal`, with access `read` here
+    # and `write` on the owning projection. The table remains physically bare
+    # until the OMN-15359 schema cutover, but the contract domain must be the
+    # same on both reader and writer so topology grants and relation inventory
+    # derive one relation instead of conflicting public/internal declarations.
+    - name: tenant_registry_mirror
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_tenant_registry_mirror.sql"
+      access: read
+      role: tenant_registry_mirror
 
 event_bus:
   subscribe_topics:
