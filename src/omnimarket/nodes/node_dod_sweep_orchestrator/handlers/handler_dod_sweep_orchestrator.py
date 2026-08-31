@@ -44,6 +44,18 @@ from typing import Any
 import yaml
 
 from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
+from omnimarket.events.dod_verify_retry import (
+    EnumDodVerifyRetryDisposition,
+    ModelDodVerifyRetryDecision,
+    ModelDodVerifyRetryPolicy,
+    ModelDodVerifyRetryState,
+    plan_next_attempt,
+    reconcile_abandoned_attempt,
+)
 from omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_request import (
     ModelDodSweepOrchestratorRequest,
 )
@@ -57,6 +69,10 @@ from omnimarket.nodes.node_dod_sweep_orchestrator.services.gate_escape_audit imp
     ModelGateEscapeTicketSnapshot,
     compute_child_done_rollup,
     evaluate_gate_escape,
+)
+from omnimarket.protocols.protocol_dod_verify_retry_ledger import (
+    FilesystemDodVerifyRetryLedger,
+    ProtocolDodVerifyRetryLedger,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,6 +96,22 @@ LinearFetchDoneTicketsFn = Callable[
 ]
 GhSearchMergedPrFn = Callable[[str], bool]
 LinearPostCommentFn = Callable[[str, str, str], None]
+
+# OMN-17022: the clock and the durable retry ledger are seams for the same
+# reason the ``gh`` calls are — a backoff window must be provable by advancing
+# a clock, not by sleeping through it, and the ledger is an effect boundary.
+ClockFn = Callable[[], datetime]
+RetryLedgerFactoryFn = Callable[[Path], ProtocolDodVerifyRetryLedger]
+
+
+def _utc_now() -> datetime:
+    return datetime.now(UTC)
+
+
+def _default_retry_ledger(evidence_root: Path) -> ProtocolDodVerifyRetryLedger:
+    """The sweep's per-ticket state sits under ``<evidence_root>/.evidence/``,
+    the same directory ``_run_ticket_checks`` writes ``dod_report.json`` into."""
+    return FilesystemDodVerifyRetryLedger(ticket_state_root=evidence_root / ".evidence")
 
 
 # ---------------------------------------------------------------------------
@@ -664,6 +696,187 @@ def _run_ticket_checks(
 
 
 # ---------------------------------------------------------------------------
+# Per-item retry reconciliation (OMN-17022 / off-rails A15)
+# ---------------------------------------------------------------------------
+
+#: ``ModelDodTicketResult.status`` for an item whose run reached no verdict.
+_UNRESOLVED_STATUS = "unresolved"
+
+#: Sweep verdict strings mapped onto the verify-status taxonomy so one recorded
+#: attempt history covers both producers (``node_dod_verify`` writes the same
+#: ledger). Unknown strings are rejected rather than defaulted — a verdict this
+#: mapping has not seen must not silently inherit another's retry policy.
+_SWEEP_STATUS_TO_VERIFY_STATUS: dict[str, EnumDodVerifyStatus] = {
+    "verified": EnumDodVerifyStatus.VERIFIED,
+    "failed": EnumDodVerifyStatus.FAILED,
+    "skipped": EnumDodVerifyStatus.SKIPPED,
+}
+
+
+def _unresolved_result(
+    *,
+    ticket_id: str,
+    cause: EnumDodVerifyUnresolvedCause,
+    decision: ModelDodVerifyRetryDecision,
+    evidence_root: Path,
+) -> ModelDodTicketResult:
+    """A ticket result that says, in typed terms, that nothing was adjudicated.
+
+    Deliberately carries no ``checks``: partial checks from a run that faulted
+    are not a verdict, and presenting them as one is how the ten held items
+    came to look processed.
+    """
+    return ModelDodTicketResult(
+        ticket_id=ticket_id,
+        status=_UNRESOLVED_STATUS,
+        checks=(),
+        receipt_path=str(evidence_root / ".evidence" / ticket_id / "dod_report.json"),
+        receipt_written=False,
+        failed=0,
+        skipped=0,
+        unresolved_cause=cause,
+        retry_disposition=decision.disposition,
+        attempt_count=decision.attempt_count,
+        next_attempt_not_before=(
+            decision.next_attempt_not_before.isoformat()
+            if decision.next_attempt_not_before is not None
+            else ""
+        ),
+        retry_reason=decision.reason,
+    )
+
+
+def _with_retry_provenance(
+    result: ModelDodTicketResult, decision: ModelDodVerifyRetryDecision
+) -> ModelDodTicketResult:
+    """Stamp a resolved ticket result with what reconciliation decided."""
+    return result.model_copy(
+        update={
+            "retry_disposition": decision.disposition,
+            "attempt_count": decision.attempt_count,
+            "retry_reason": decision.reason,
+        }
+    )
+
+
+def _reconcile_ticket(
+    *,
+    ticket_id: str,
+    ledger: ProtocolDodVerifyRetryLedger,
+    policy: ModelDodVerifyRetryPolicy,
+    clock: ClockFn,
+    force_retry: bool,
+    evidence_root: Path,
+    run_checks: Callable[[], ModelDodTicketResult],
+) -> ModelDodTicketResult:
+    """Run one ticket under the durable per-item retry lifecycle.
+
+    The ordering is the point. The in-flight attempt is written to the ledger
+    **before** ``run_checks`` executes, so a process killed mid-run leaves a
+    started-but-uncompleted record instead of nothing at all. That record is
+    what makes a caller-side timeout distinguishable from an item that was
+    never attempted — the exact ambiguity that stranded the ten items held by
+    the 2026-08-29 sprint-triage closeout.
+    """
+    recorded = ledger.read(ticket_id)
+    state = (
+        recorded
+        if recorded is not None
+        else ModelDodVerifyRetryState(ticket_id=ticket_id, attempts=())
+    )
+
+    if state.has_abandoned_attempt:
+        # A previous pass died mid-run. Type it as the run fault it was before
+        # any policy looks at it; it must never be re-read as "not attempted".
+        state = reconcile_abandoned_attempt(
+            state,
+            now=clock(),
+            detail=(
+                "attempt started and no completion was recorded; the sweep "
+                "process did not survive the run"
+            ),
+        )
+        ledger.write(state)
+
+    decision = plan_next_attempt(state, policy=policy, now=clock())
+    if decision.disposition.blocks_attempt:
+        exhausted = (
+            decision.disposition
+            is EnumDodVerifyRetryDisposition.TERMINAL_ATTEMPTS_EXHAUSTED
+        )
+        if not (force_retry and exhausted):
+            # Held on purpose: inside a backoff window, out of budget, or a
+            # defect a retry reproduces exactly. ``force_retry`` lifts the
+            # budget only — never the taxonomy.
+            cause = decision.cause
+            if cause is None:  # pragma: no cover - blocked implies a cause
+                cause = EnumDodVerifyUnresolvedCause.UNKNOWN
+            return _unresolved_result(
+                ticket_id=ticket_id,
+                cause=cause,
+                decision=decision,
+                evidence_root=evidence_root,
+            )
+        logger.info(
+            "OMN-17022: force_retry lifts the spent attempt budget for %s "
+            "(%d attempts recorded, none erased)",
+            ticket_id,
+            state.attempt_count,
+        )
+
+    state = state.start_attempt(now=clock())
+    ledger.write(state)
+
+    try:
+        result = run_checks()
+    except BaseException as exc:
+        # BaseException, not Exception: a killed run presents as SystemExit or
+        # KeyboardInterrupt, and those are precisely the shapes that used to
+        # leave no trace. The record is completed and then re-raised, so the
+        # caller's control flow is unchanged.
+        state = state.complete_attempt(
+            status=EnumDodVerifyStatus.UNRESOLVED,
+            cause=EnumDodVerifyUnresolvedCause.RUN_ERROR_OR_TIMEOUT,
+            now=clock(),
+            detail=f"{type(exc).__name__}: {exc}",
+        )
+        ledger.write(state)
+        if isinstance(exc, Exception):
+            decision = plan_next_attempt(state, policy=policy, now=clock())
+            logger.warning(
+                "OMN-17022: %s reached no verdict (%s): %s",
+                ticket_id,
+                EnumDodVerifyUnresolvedCause.RUN_ERROR_OR_TIMEOUT.value,
+                exc,
+            )
+            return _unresolved_result(
+                ticket_id=ticket_id,
+                cause=EnumDodVerifyUnresolvedCause.RUN_ERROR_OR_TIMEOUT,
+                decision=decision,
+                evidence_root=evidence_root,
+            )
+        raise
+
+    verify_status = _SWEEP_STATUS_TO_VERIFY_STATUS.get(result.status)
+    if verify_status is None:
+        raise ValueError(
+            f"{ticket_id}: unmapped sweep verdict {result.status!r}; add it to "
+            "_SWEEP_STATUS_TO_VERIFY_STATUS rather than letting it inherit a "
+            "retry policy by accident"
+        )
+    state = state.complete_attempt(
+        status=verify_status,
+        cause=None,
+        now=clock(),
+        detail=None,
+    )
+    ledger.write(state)
+    return _with_retry_provenance(
+        result, plan_next_attempt(state, policy=policy, now=clock())
+    )
+
+
+# ---------------------------------------------------------------------------
 # Handler
 # ---------------------------------------------------------------------------
 
@@ -686,7 +899,11 @@ class HandlerDodSweepOrchestrator:
         linear_fetch_done_tickets_fn: LinearFetchDoneTicketsFn = _fetch_done_tickets_via_linear,
         gh_search_merged_pr_fn: GhSearchMergedPrFn = _gh_search_merged_pr_exists,
         linear_post_comment_fn: LinearPostCommentFn = _post_linear_comment,
+        clock_fn: ClockFn = _utc_now,
+        retry_ledger_factory: RetryLedgerFactoryFn = _default_retry_ledger,
     ) -> None:
+        self._clock_fn = clock_fn
+        self._retry_ledger_factory = retry_ledger_factory
         self._gh_find_merged_pr_fn = gh_find_merged_pr_fn
         self._gh_pr_checks_pass_fn = gh_pr_checks_pass_fn
         self._enumerate_tickets_fn = enumerate_tickets_fn
@@ -809,15 +1026,12 @@ class HandlerDodSweepOrchestrator:
         contract_root: Path,
         evidence_root: Path,
     ) -> ModelDodSweepOrchestratorResult:
-        ticket_result = _run_ticket_checks(
+        ticket_result = self._sweep_one(
             ticket_id=ticket_id,
+            request=request,
             contract_root=contract_root,
             evidence_root=evidence_root,
-            enabled_checks=request.enabled_checks,
             gh_repos=self._effective_repos(request),
-            dry_run=request.dry_run,
-            gh_find_merged_pr_fn=self._gh_find_merged_pr_fn,
-            gh_pr_checks_pass_fn=self._gh_pr_checks_pass_fn,
         )
 
         contract_path = contract_root / "contracts" / f"{ticket_id}.yaml"
@@ -885,15 +1099,12 @@ class HandlerDodSweepOrchestrator:
         gh_repos = self._effective_repos(request)
         results: list[ModelDodTicketResult] = []
         for tid in valid_ids:
-            tr = _run_ticket_checks(
+            tr = self._sweep_one(
                 ticket_id=tid,
+                request=request,
                 contract_root=contract_root,
                 evidence_root=evidence_root,
-                enabled_checks=request.enabled_checks,
                 gh_repos=gh_repos,
-                dry_run=request.dry_run,
-                gh_find_merged_pr_fn=self._gh_find_merged_pr_fn,
-                gh_pr_checks_pass_fn=self._gh_pr_checks_pass_fn,
             )
             results.append(tr)
             logger.info(
@@ -903,7 +1114,18 @@ class HandlerDodSweepOrchestrator:
         total_failed = sum(r.failed for r in results)
         batch_failed_count = sum(1 for r in results if r.failed > 0)
         batch_verified_count = sum(1 for r in results if r.status == "verified")
-        batch_status = "verified" if batch_failed_count == 0 else "failed"
+        # OMN-17022: an unresolved item is not a red about the product, but it
+        # is emphatically not clean either — the sweep looked at nothing. It
+        # gets its own count and blocks the batch from reporting "verified".
+        batch_unresolved_count = sum(
+            1 for r in results if r.status == _UNRESOLVED_STATUS
+        )
+        if batch_failed_count:
+            batch_status = "failed"
+        elif batch_unresolved_count:
+            batch_status = _UNRESOLVED_STATUS
+        else:
+            batch_status = "verified"
 
         return ModelDodSweepOrchestratorResult(
             status=batch_status,
@@ -919,6 +1141,40 @@ class HandlerDodSweepOrchestrator:
             batch_total=len(valid_ids),
             batch_failed=batch_failed_count,
             batch_verified=batch_verified_count,
+            batch_unresolved=batch_unresolved_count,
+        )
+
+    def _sweep_one(
+        self,
+        *,
+        ticket_id: str,
+        request: ModelDodSweepOrchestratorRequest,
+        contract_root: Path,
+        evidence_root: Path,
+        gh_repos: tuple[str, ...],
+    ) -> ModelDodTicketResult:
+        """Run one ticket under the OMN-17022 per-item retry lifecycle."""
+
+        def _run() -> ModelDodTicketResult:
+            return _run_ticket_checks(
+                ticket_id=ticket_id,
+                contract_root=contract_root,
+                evidence_root=evidence_root,
+                enabled_checks=request.enabled_checks,
+                gh_repos=gh_repos,
+                dry_run=request.dry_run,
+                gh_find_merged_pr_fn=self._gh_find_merged_pr_fn,
+                gh_pr_checks_pass_fn=self._gh_pr_checks_pass_fn,
+            )
+
+        return _reconcile_ticket(
+            ticket_id=ticket_id,
+            ledger=self._retry_ledger_factory(evidence_root),
+            policy=request.retry_policy,
+            clock=self._clock_fn,
+            force_retry=request.force_retry,
+            evidence_root=evidence_root,
+            run_checks=_run,
         )
 
     @staticmethod

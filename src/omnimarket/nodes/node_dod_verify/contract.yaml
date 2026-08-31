@@ -65,7 +65,14 @@ inputs:
 outputs:
   status:
     type: str
-    description: "Overall verification status (verified, failed, skipped)"
+    description: >-
+      Overall verification status: verified, failed, skipped, or unresolved.
+      OMN-17022 added `unresolved` — the run reached NO verdict (it faulted,
+      was killed by a caller-side timeout, or could not resolve the PR/repo
+      binding its checks are written against). It is terminal and never
+      counts toward completion; before it existed such a run was
+      indistinguishable from the `pending` default, i.e. from never having
+      been attempted at all.
   total_checks:
     type: int
     description: "Verdict-bearing evidence checks run (excludes superseded)"
@@ -86,6 +93,16 @@ outputs:
   behavior_proving_count:
     type: int
     description: "Checks that both passed AND executed the claimed behavior"
+  # OMN-17022: an unresolved run that cannot say WHY is the untyped
+  # RUN_ERROR_OR_TIMEOUT label all over again. The two retry policies key off
+  # this field alone — bounded backoff for a run fault, outright refusal for a
+  # credential/resolution defect a retry reproduces exactly.
+  unresolved_cause:
+    type: str
+    description: >-
+      Why the run reached no verdict, from EnumDodVerifyUnresolvedCause
+      (run_error_or_timeout | pr_lookup_failed | pr_lookup_ambiguous |
+      repo_lookup_failed | unknown). Set exactly when status is `unresolved`.
 
 terminal_event: onex.evt.omnimarket.dod-verify-completed.v1
 

@@ -17,6 +17,9 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_completed_event import (
     ModelDodVerifyCompletedEvent,
 )
@@ -98,6 +101,11 @@ class HandlerDodVerify:
         occ_governance_ref: str | None = None
         occ_refresh_outcome: EnumOccRefRefreshOutcome | None = None
         occ_resolved_sha: str | None = None
+        # OMN-17022: the first PR/repo lookup failure of this run, as a typed
+        # cause. None on the caller-supplied ``evidence_results`` path, which
+        # never performed a lookup at all.
+        lookup_failure_cause: EnumDodVerifyUnresolvedCause | None = None
+        lookup_failure_code: str | None = None
         if evidence_results is None:
             collector = self._make_collector()
             evidence_results = collector.collect(
@@ -111,6 +119,10 @@ class HandlerDodVerify:
                 occ_governance_ref = collector.occ_governance_ref
                 occ_refresh_outcome = collector.occ_refresh_outcome
                 occ_resolved_sha = collector.occ_resolved_sha
+            # OMN-17022: read the same way — typed provenance the collector
+            # already holds, never a message string parsed back out.
+            lookup_failure_cause = collector.lookup_failure_cause
+            lookup_failure_code = collector.lookup_failure_code
 
         checks = evidence_results
 
@@ -171,7 +183,29 @@ class HandlerDodVerify:
         # The superseded entries stay in ``checks`` (and in ``superseded_count``)
         # so the receipt still shows the repair rather than hiding it.
         non_superseded_total = len(checks) - superseded
-        if failed > 0:
+        unresolved_cause: EnumDodVerifyUnresolvedCause | None = None
+        if lookup_failure_cause is not None and verified == 0:
+            # OMN-17022 (off-rails A15). The run could not resolve the PR or
+            # repo binding its checks are written against, and NOTHING verified.
+            # Every check that needed the binding returned ``(False, "cannot
+            # resolve …")``, which the collector renders as a FAILED check — so
+            # the run reported a substantive red for evidence it never looked
+            # at. That is exactly how OMN-14993 was recorded: ``failed``, with
+            # ``PR_LOOKUP_FAILED`` buried in a message, when three merged PRs
+            # existed the whole time. It is a tooling defect, not missing work.
+            #
+            # UNRESOLVED is not a relaxation — it blocks a Done-flip on the same
+            # terms FAILED does, and ``_build_receipt`` still writes FAIL and the
+            # CLI still exits 1. What changes is that the outcome is now typed,
+            # so reconciliation can refuse to retry it (a retry reproduces a
+            # binding defect exactly) instead of spending the backoff budget.
+            #
+            # ``verified == 0`` is the guard that keeps this narrow: if any
+            # check DID prove something, a red alongside it is a real red and
+            # the FAILED arm below keeps it.
+            overall = EnumDodVerifyStatus.UNRESOLVED
+            unresolved_cause = lookup_failure_cause
+        elif failed > 0:
             overall = EnumDodVerifyStatus.FAILED
         elif verified == 0 and non_probative > 0:
             # OMN-15391 — the refusal, and the reason it is SKIPPED rather than
@@ -227,7 +261,23 @@ class HandlerDodVerify:
             overall = EnumDodVerifyStatus.VERIFIED
 
         error_message: str | None = None
-        if overall == EnumDodVerifyStatus.SKIPPED:
+        if unresolved_cause is not None:
+            # OMN-17022: a distinct, machine-checkable reason code, sitting
+            # alongside CONTRACT_MISSING / NO_PROBATIVE_EVIDENCE /
+            # EVIDENCE_UNVERIFIABLE. The remedy named here is a binding or a
+            # credential — never "re-run it", which is what the untyped
+            # RUN_ERROR_OR_TIMEOUT label invited for the whole held set.
+            error_message = (
+                f"VERIFICATION_UNRESOLVED: {unresolved_cause.value} — "
+                f"0/{non_superseded_total} evidence checks for "
+                f"{command.ticket_id} could be evaluated because the PR/repo "
+                f"binding could not be resolved ({lookup_failure_code}). This "
+                "is a resolution defect, not a verdict about the work: a retry "
+                "reproduces it exactly. Bind REPO/PR_NUMBER, or name the "
+                "owner/repo in the evidence item id per the autobind naming "
+                "convention."
+            )
+        elif overall == EnumDodVerifyStatus.SKIPPED:
             # OMN-15380: surface a distinct, machine-checkable reason so callers
             # that only read ``error_message`` (e.g. RuntimeLocal._classify_result,
             # which treats a populated error_message as an unambiguous failure
@@ -314,6 +364,7 @@ class HandlerDodVerify:
             occ_governance_ref=occ_governance_ref,
             occ_refresh_outcome=occ_refresh_outcome,
             occ_resolved_sha=occ_resolved_sha,
+            unresolved_cause=unresolved_cause,
         )
 
         return state
@@ -354,6 +405,7 @@ class HandlerDodVerify:
             non_probative_count=state.non_probative_count,
             behavior_proving_count=state.behavior_proving_count,
             error_message=state.error_message,
+            unresolved_cause=state.unresolved_cause,
         )
 
     def serialize_completed(self, event: ModelDodVerifyCompletedEvent) -> bytes:

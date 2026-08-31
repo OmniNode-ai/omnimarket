@@ -9,15 +9,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
-
-
-class EnumDodVerifyStatus(StrEnum):
-    """Status values for DoD verification."""
-
-    PENDING = "pending"
-    VERIFIED = "verified"
-    FAILED = "failed"
-    SKIPPED = "skipped"
+from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 
 
 class EnumEvidenceCheckStatus(StrEnum):
@@ -306,11 +301,35 @@ class ModelDodVerifyState(BaseModel):
         default=None,
         description="40-char commit SHA of the OCC worktree HEAD actually read.",
     )
+    # OMN-17022: set exactly on an UNRESOLVED status. An unresolved run that
+    # cannot say WHY is the untyped ``RUN_ERROR_OR_TIMEOUT`` label all over
+    # again — the closeout's ad-hoc string, which no consumer could branch on.
+    # The pairing is enforced structurally below rather than by convention,
+    # because the two retry policies (bounded backoff for a run fault, refusal
+    # for a credential/resolution defect) key off this field alone.
+    unresolved_cause: EnumDodVerifyUnresolvedCause | None = Field(
+        default=None,
+        description="Why the run reached no verdict. Set iff status is UNRESOLVED.",
+    )
+
+    @model_validator(mode="after")
+    def _cause_pairs_with_unresolved(self) -> Self:
+        """A cause without UNRESOLVED misreports a run that DID reach a verdict;
+        UNRESOLVED without a cause is unactionable. Reject both shapes."""
+        unresolved = self.status is EnumDodVerifyStatus.UNRESOLVED
+        if unresolved != (self.unresolved_cause is not None):
+            raise ValueError(
+                "unresolved_cause is set exactly when status is UNRESOLVED; got "
+                f"status={self.status.value}, "
+                f"unresolved_cause={self.unresolved_cause!r} for {self.ticket_id}"
+            )
+        return self
 
 
 __all__: list[str] = [
     "EnumCheckProofClass",
     "EnumDodVerifyStatus",
+    "EnumDodVerifyUnresolvedCause",
     "EnumEvidenceCheckStatus",
     "EnumEvidenceUnverifiableCause",
     "EnumOccRefRefreshOutcome",

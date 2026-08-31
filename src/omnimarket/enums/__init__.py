@@ -17,6 +17,11 @@ from omnimarket.enums.enum_dispatch_terminal_reason import (
     EnumDispatchTerminalDisposition,
     EnumDispatchTerminalReason,
 )
+from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    NON_RETRYABLE_CAUSES,
+    EnumDodVerifyUnresolvedCause,
+)
 from omnimarket.enums.enum_node_role import EnumNodeRole
 from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
@@ -25,6 +30,7 @@ from omnimarket.enums.enum_usage_source import EnumUsageSource
 
 __all__ = [
     "IN_FLIGHT_PHASES",
+    "NON_RETRYABLE_CAUSES",
     "EnumCheckProofClass",
     "EnumCostBasis",
     "EnumDelegationAcceptanceDecision",
@@ -33,6 +39,8 @@ __all__ = [
     "EnumDispatchQueuePhase",
     "EnumDispatchTerminalDisposition",
     "EnumDispatchTerminalReason",
+    "EnumDodVerifyStatus",
+    "EnumDodVerifyUnresolvedCause",
     "EnumNodeRole",
     "EnumRequestedResponseShape",
     "EnumUsageSource",

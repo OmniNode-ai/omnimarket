@@ -3,10 +3,14 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     ModelEvidenceCheckResult,
@@ -37,6 +41,21 @@ class ModelDodVerifyCompletedEvent(BaseModel):
     # discrimination the state does, without re-deriving it from `checks`.
     behavior_proving_count: int = Field(default=0, ge=0)
     error_message: str | None = Field(default=None)
+    # OMN-17022: carried on the terminal event so a bus consumer branches on
+    # the typed cause instead of re-parsing ``error_message``. Set exactly
+    # when ``status`` is UNRESOLVED, mirroring ModelDodVerifyState.
+    unresolved_cause: EnumDodVerifyUnresolvedCause | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _cause_pairs_with_unresolved(self) -> Self:
+        unresolved = self.status is EnumDodVerifyStatus.UNRESOLVED
+        if unresolved != (self.unresolved_cause is not None):
+            raise ValueError(
+                "unresolved_cause is set exactly when status is UNRESOLVED; "
+                f"got status={self.status.value}, "
+                f"unresolved_cause={self.unresolved_cause!r} for {self.ticket_id}"
+            )
+        return self
 
 
 __all__: list[str] = ["ModelDodVerifyCompletedEvent"]
