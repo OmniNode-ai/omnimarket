@@ -1823,36 +1823,48 @@ def compute_companion_plan(request: ModelOccCompanionRequest) -> ModelOccCompani
                 )
             )
 
-        # This consumer's downstream receipt (net-new, per-PR path — never the
-        # merged entry's path). Bound to the product head SHA. The per-entry hash
-        # resolves against the fresh contract (evidence_id IS declared there); on
-        # the merged path evidence_id is NOT in the frozen contract, so
-        # _entry_hash_for returns None and the receipt keeps the whole-file bind.
-        entry_hash = _entry_hash_for(parsed_contract, evidence_id)
-        content = _receipt(
-            request=request,
-            ticket_id=ticket,
-            evidence_id=evidence_id,
-            check_value=receipt_check_value,
-            contract_sha256=contract_hash,
-            contract_entry_sha256=entry_hash,
-            commit_sha=request.pr_head_sha,
-            probe=request.product_probe,
-            actual_output=(
-                f"PASS: Evidence-Source autobind for {ticket} from {repo}#{pr_number}."
-            ),
-            branch=branch,
+        downstream_receipt_path = (
+            f"drift/dod_receipts/{ticket}/{evidence_id}/command.yaml"
         )
-        files.append(
-            ModelCompanionFile(
-                path=f"drift/dod_receipts/{ticket}/{evidence_id}/command.yaml",
-                content=content,
-                kind=EnumCompanionFileKind.DOWNSTREAM_RECEIPT,
-                ticket_id=ticket,
-                contract_sha256=contract_hash,
-                contract_entry_sha256=entry_hash or "",
+        downstream_receipt_is_frozen = (
+            state.exists
+            and state.merged
+            and (
+                evidence_id in state.existing_entry_ids
+                or downstream_receipt_path in state.merged_receipt_paths
             )
         )
+        if not downstream_receipt_is_frozen:
+            # This consumer's downstream receipt (net-new, per-PR path). Bound
+            # to the product head SHA. On the merged same-product-PR path, the
+            # original per-PR receipt is frozen; the loop above emits a
+            # net-new supersession rebind instead.
+            entry_hash = _entry_hash_for(parsed_contract, evidence_id)
+            content = _receipt(
+                request=request,
+                ticket_id=ticket,
+                evidence_id=evidence_id,
+                check_value=receipt_check_value,
+                contract_sha256=contract_hash,
+                contract_entry_sha256=entry_hash,
+                commit_sha=request.pr_head_sha,
+                probe=request.product_probe,
+                actual_output=(
+                    f"PASS: Evidence-Source autobind for {ticket} from "
+                    f"{repo}#{pr_number}."
+                ),
+                branch=branch,
+            )
+            files.append(
+                ModelCompanionFile(
+                    path=downstream_receipt_path,
+                    content=content,
+                    kind=EnumCompanionFileKind.DOWNSTREAM_RECEIPT,
+                    ticket_id=ticket,
+                    contract_sha256=contract_hash,
+                    contract_entry_sha256=entry_hash or "",
+                )
+            )
 
         # OMN-15247 R21b: the receipt backing the minted admissibility-validator
         # item. It is REQUIRED, not optional: `validator_occ_merge_eligibility`
