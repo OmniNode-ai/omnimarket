@@ -4921,6 +4921,7 @@
     },
     {
       "accessor_nodes": [
+        "node_projection_delegation",
         "node_projection_tenant_registry"
       ],
       "authoritative_sources": [
@@ -4931,6 +4932,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "src/omnimarket/nodes/node_projection_delegation/contract.yaml",
         "src/omnimarket/nodes/node_projection_tenant_registry/contract.yaml"
       ],
       "current_schema": [
@@ -4965,7 +4967,9 @@
       "owner_declaration": "node_projection_tenant_registry",
       "partitioning": [],
       "producer": "node_projection_tenant_registry",
-      "readers": [],
+      "readers": [
+        "node_projection_delegation"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_projection_tenant_registry"

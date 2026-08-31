@@ -222,6 +222,10 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # above). The forced split OMN-16180 lived through applies to the
     # omnibase_infra VENDORING PR, not to the omnimarket PR that authors both
     # sides -- so this ticket does not repeat the two-count-move sequence.
+    # OMN-16804 then adds node_projection_delegation as a read accessor for
+    # that same tenant_registry_mirror relation. That widens accessor_nodes but
+    # does not create a new relation or increase the declared-table relation
+    # count.
     assert census["source_declared_tables"] == 68
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each

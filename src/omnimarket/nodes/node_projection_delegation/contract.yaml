@@ -118,31 +118,17 @@ db_io:
     # slug<->uuid correspondence the platform already exposes at signup.
     # Classified `tenant` it would sit behind RLS and be invisible to a reader
     # whose app.tenant_id is not yet known, which is precisely the reader here:
-    # resolving the tenant IS the thing it is trying to do. OMN-16930 records
-    # the identical reasoning for the migrate identity (role_omnidash is
-    # rolbypassrls=f, so an RLS-covered mirror reproduces the blindness that
-    # made 0031's DELETE a silent no-op).
+    # resolving the tenant IS the thing it is trying to do.
     #
-    # NOT byte-identical to node_projection_tenant_registry's own db_io entry
-    # for the same relation, and the difference is deliberate on one axis and
-    # UNSETTLED on the other. Deliberate: `access` is `read` here and `write`
-    # there -- that node is the only writer, this one only ever reads.
-    # UNSETTLED: `schema`. This entry says `public`, which is the relation's
-    # real PHYSICAL location (the migration issues an unqualified CREATE TABLE)
-    # and matches the node_hook_event_capture precedent, where declaring the
-    # logical domain instead of the physical schema produced
-    # `schema "tenant" does not exist` on every write. The owning node's entry
-    # says `omninode_internal`, the logical domain, on the argument that
-    # DOMAIN_PROJECTION_BINDINGS maps only TENANT and OMNINODE_INTERNAL so a
-    # `public` declaration derives no projection binding. Both gates are real
-    # and they pull opposite ways; the two contracts must be reconciled to ONE
-    # answer before this node and node_projection_tenant_registry are both
-    # live, or the writer and the reader will disagree about where the table
-    # is. Tracked on OMN-16930/OMN-16804 -- do not resolve it by editing one
-    # side in isolation.
+    # This read accessor now matches node_projection_tenant_registry's owner
+    # declaration: logical schema `omninode_internal`, with access `read` here
+    # and `write` on the owning projection. The table remains physically bare
+    # until the OMN-15359 schema cutover, but the contract domain must be the
+    # same on both reader and writer so topology grants and relation inventory
+    # derive one relation instead of conflicting public/internal declarations.
     - name: tenant_registry_mirror
       database_ref: application
-      schema: public
+      schema: omninode_internal
       migration: "0000_create_tenant_registry_mirror.sql"
       access: read
       role: tenant_registry_mirror
