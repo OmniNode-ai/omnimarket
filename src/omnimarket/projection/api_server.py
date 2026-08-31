@@ -563,24 +563,17 @@ async def list_projections(
     return JSONResponse({"topics": topics})
 
 
-@app.get("/morning", response_class=HTMLResponse)
-async def morning_page(
-    refresh: int = Query(default=DEFAULT_REFRESH_SECONDS, ge=5, le=3600),
-    topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
-    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+def _render_status_page(
+    refresh: int,
+    topic_map: dict[str, ProjectionTableConfig],
+    cache: SnapshotCache,
 ) -> HTMLResponse:
-    """The morning observability page (OMN-17197).
+    """Build and render the status page (OMN-17197, always-on per OMN-17346).
 
-    Operator ruling 2026-08-31: an always-up server-rendered page straight off
-    the projection API, now; omnidash becomes the richer version later. It is
-    served here, from the same in-memory SnapshotCache every JSON route reads,
-    because that is the only surface with no build step, no bundle, no session
-    gate and no separate deployable between the projection and a human.
-
-    ``200`` unconditionally, and deliberately: the page's own content carries
-    per-panel health. Returning 5xx for the whole document because one exposure
-    refused would hide the six panels that are fine — the page IS the report,
-    so it must render even when most of what it reports on is refusing.
+    Both ``GET /`` and ``GET /morning`` land here, so the alias is identical by
+    construction rather than by two templates that agree today. The lane label
+    is this process's own service identity — a page cannot be asked to claim a
+    lane it is not running in.
     """
     page = build_morning_page(
         topic_map,
@@ -592,6 +585,46 @@ async def morning_page(
         refresh_seconds=refresh,
     )
     return HTMLResponse(render_morning_page(page))
+
+
+@app.get("/", response_class=HTMLResponse)
+async def status_page(
+    refresh: int = Query(default=DEFAULT_REFRESH_SECONDS, ge=5, le=3600),
+    topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
+    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+) -> HTMLResponse:
+    """The standing ONEX status page, at the root (OMN-17346).
+
+    Operator ruling 2026-08-31: *"it should be always on and not require
+    /morning. Index.html should be fine."* The root of the projection API used
+    to answer ``404``, which meant the one always-up render of the live
+    projections was reachable only by an operator who already knew a path — the
+    OMN-14440 failure mode wearing a different hat. It is served from the same
+    in-memory SnapshotCache every JSON route reads, because that is the only
+    surface with no build step, no bundle, no session gate and no separate
+    deployable between the projection and a human.
+
+    ``200`` unconditionally, and deliberately: the page's own content carries
+    per-panel health. Returning 5xx for the whole document because one exposure
+    refused would hide the six panels that are fine — the page IS the report,
+    so it must render even when most of what it reports on is refusing.
+    """
+    return _render_status_page(refresh, topic_map, cache)
+
+
+@app.get("/morning", response_class=HTMLResponse)
+async def morning_page(
+    refresh: int = Query(default=DEFAULT_REFRESH_SECONDS, ge=5, le=3600),
+    topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
+    cache: SnapshotCache = Depends(get_snapshot_cache),  # noqa: B008
+) -> HTMLResponse:
+    """Alias of ``GET /`` kept for the links already on tickets (OMN-17346).
+
+    It renders the page, it does not redirect to it: a redirect would break the
+    already-published deep links behind a hop and would turn one request into
+    two on a page that reloads itself every 30s.
+    """
+    return _render_status_page(refresh, topic_map, cache)
 
 
 @app.get("/projection/{topic:path}")
