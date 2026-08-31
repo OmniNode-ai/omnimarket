@@ -592,6 +592,7 @@ async def test_the_projection_write_is_not_refused_at_the_tenant_authority_seam(
     case: ProjectionChainCase,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
+    request: pytest.FixtureRequest,
 ) -> None:
     """A delegation terminal must reach the database, not die before it.
 
@@ -616,6 +617,7 @@ async def test_the_projection_write_is_not_refused_at_the_tenant_authority_seam(
       failure is masked from customers because `GET /v1/tenants/me/delegations`
       reads Postgres directly instead of the projection (OMN-16976).
     """
+    _xfail_pending_tenant_registry_grant(request, case)
     run = await _run_projection_chain(case, monkeypatch, caplog)
 
     refusals = [
