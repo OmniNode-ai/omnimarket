@@ -494,6 +494,37 @@ class TestRenderedPage:
         assert "<script>alert(1)</script>" not in html
         assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
 
+    def test_hostile_flow_state_cannot_break_out_of_the_class_attribute(
+        self,
+    ) -> None:
+        """`flow_state` is an unvalidated snapshot value that also reaches a
+        `class` attribute, not only element text.
+
+        `build_flow_panel` passes `flow_state` through verbatim into
+        `state_counts`, so a value crafted to close the attribute would inject
+        an event handler into a page served without authentication. Escaping the
+        text rendering alone is not sufficient — the attribute site needs it too.
+        """
+        hostile = 'A" onmouseover="alert(1)'
+        topic_map = {TOPIC_CONSUMER_FLOW: _flow_cfg()}
+        cache = _FakeCache(
+            {
+                TOPIC_CONSUMER_FLOW: [
+                    _window("cg", "t", hostile, messages_in=1, messages_out=0)
+                ]
+            }
+        )
+        html = render_morning_page(
+            build_morning_page(topic_map, cache, service_name="svc")
+        )
+        # The breakout: an unescaped site renders `class="tile a" onmouseover=
+        # "alert(1)"`, which is a live handler. Escaped, the same bytes stay
+        # inside the quoted value. Asserting on the whole class attribute is
+        # what distinguishes the two — the escaped text legitimately still
+        # contains the substring `onmouseover=` followed by an entity.
+        assert 'onmouseover="alert(1)"' not in html
+        assert 'class="tile a&quot; onmouseover=&quot;alert(1)"' in html
+
     def test_exposure_census_lists_every_discovered_topic(self) -> None:
         html = self._page_html()
         for topic in _live_topic_map():
