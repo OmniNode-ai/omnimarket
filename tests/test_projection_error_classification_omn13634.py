@@ -454,6 +454,14 @@ class TestDelegationRunnerSafetyNet:
                 '"delegation_events"'
             )
         )
+        # OMN-16804: the write path resolves tenant identity through
+        # tenant_registry_mirror via db.fetchval() before falling back to the
+        # closed legacy map. An unconfigured spec'd mock returns another mock
+        # instance, which the resolver correctly refuses as not a UUID; None
+        # (no row for this slug) lets resolution fall through to the legacy
+        # map for "beta-business-proof" -- this test exercises RLS-violation
+        # classification, not tenant resolution.
+        mock_db.fetchval = AsyncMock(return_value=None)
         runner._db = mock_db
         runner._consumer = _CommitRecordingConsumer()  # type: ignore[assignment]
 

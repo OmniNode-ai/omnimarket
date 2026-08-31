@@ -95,6 +95,15 @@ def _mock_db() -> AsyncMock:
     # rows -- these are fresh-row scenarios; the empty-list return matches
     # the real AsyncpgAdapter.execute() contract for a no-match SELECT.
     db.execute = AsyncMock(return_value=[])
+    # OMN-16804: the write path now resolves tenant identity through
+    # tenant_registry_mirror via db.fetchval() before falling back to the
+    # closed legacy map. An unconfigured AsyncMock returns another AsyncMock
+    # instance, which _coerce_registry_uuid correctly refuses as "not a UUID
+    # or its string form" -- these tests are not exercising the registry
+    # mirror, so None (mirror has no row for this slug, same as an
+    # unprovisioned-lane fresh start) is the correct stand-in and lets
+    # resolution fall through to the legacy map for the fixtures' slugs.
+    db.fetchval = AsyncMock(return_value=None)
     return db
 
 
