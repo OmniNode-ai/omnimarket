@@ -753,8 +753,19 @@ class HandlerLlmDelegationCall:
         """
         headers = dict(request.extra_headers)
         api_key = resolve_api_key_loop_safe(
-            request.secret_ref, env_var_fallback=request.api_key_env
+            request.secret_ref,
+            env_var_fallback=(
+                None if request.require_canonical_secret_ref else request.api_key_env
+            ),
         )
+        if (
+            request.require_canonical_secret_ref
+            and request.secret_ref
+            and api_key is None
+        ):
+            raise RuntimeError(
+                "pinned delegation credential secret_ref could not be resolved"
+            )
         if api_key is not None:
             headers["Authorization"] = f"Bearer {api_key.get_secret_value()}"
         return headers

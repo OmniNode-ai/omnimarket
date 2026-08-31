@@ -26,8 +26,15 @@ from omnibase_infra.runtime.service_delegation_dispatch_port import (
     _normalize_result_payload,
 )
 
+from omnimarket.models.delegation.wire.model_dispatch_policy import (
+    canonical_execution_binding_type,
+)
+from omnimarket.nodes.node_delegate_skill_orchestrator.handlers import (
+    handler_delegate_skill as handler_mod,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.handlers.handler_delegate_skill import (
     HandlerDelegateSkill,
+    _response_from_result,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
@@ -36,6 +43,11 @@ from omnimarket.pricing import (
     DEFAULT_BASELINE_MODEL,
     estimate_baseline_cost_usd,
     get_manifest_version_int,
+)
+
+_requires_core_execution_binding = pytest.mark.skipif(
+    canonical_execution_binding_type() is None,
+    reason="requires Core ModelDelegationExecutionBinding",
 )
 
 
@@ -278,6 +290,237 @@ async def test_handler_passes_none_backend_id_when_unset() -> None:
 
     call_kwargs = port.dispatch.await_args.kwargs
     assert call_kwargs["backend_id"] is None
+
+
+@pytest.mark.unit
+@_requires_core_execution_binding
+async def test_handler_prohibits_raw_pinned_policy_before_effect_or_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A client request tenant is not an authenticated tenant activation."""
+    correlation_id = uuid4()
+    port = AsyncMock()
+    port.dispatch.return_value = {
+        "status": "completed",
+        "content": "constrained answer",
+        "delegated_to": "https://local.example/v1/chat/completions",
+        "model_name": "Qwen3.6-35B-A3B",
+        "quality_gate_passed": True,
+        "quality_score": 1.0,
+        "attempts_count": 1,
+        "attempts": [
+            {
+                "tier": "local",
+                "backend_id": "local-coder-mlx",
+                "model_id": "Qwen3.6-35B-A3B",
+                "quality_gate_passed": True,
+            }
+        ],
+        "execution_binding": {
+            "correlation_id": str(correlation_id),
+            "tenant_id": "rsd-lab",
+            "backend_id": "local-coder-mlx",
+            "served_model_id": "Qwen3.6-35B-A3B",
+            "rendered_contract_sha256": "c" * 64,
+            "attempt_count": 1,
+            "fallback_used": False,
+            "judge_used": False,
+            "dispatch_policy": "backend-pinned-single-attempt.v1",
+            "terminal_kind": "completed",
+        },
+    }
+
+    def _settings_must_not_be_read() -> object:
+        raise AssertionError("single-attempt tenant resolution consulted settings")
+
+    monkeypatch.setattr(handler_mod, "get_settings", _settings_must_not_be_read)
+    request = ModelDelegateSkillRequest(
+        prompt="Constrained lab task",
+        task_type="research",
+        source="codex",
+        correlation_id=correlation_id,
+        tenant_id="rsd-lab",
+        backend_id="local-coder-mlx",
+        dispatch_policy="backend-pinned-single-attempt.v1",
+        rendered_contract_sha256="c" * 64,
+    )
+
+    response = await HandlerDelegateSkill(dispatch_port=port).handle(request)
+
+    assert response.status == "failed"
+    assert response.execution_binding is None
+    assert "raw request tenant_id is non-authorizing" in response.error_message
+    port.dispatch.assert_not_awaited()
+
+
+def _pinned_terminal_result(correlation_id: object) -> dict[str, object]:
+    return {
+        "status": "completed",
+        "content": "constrained answer",
+        "delegated_to": "https://local.example/v1/chat/completions",
+        "model_name": "Qwen3.6-35B-A3B",
+        "quality_gate_passed": True,
+        "quality_score": 1.0,
+        "correlation_id": str(correlation_id),
+        "tenant_id": "rsd-lab",
+        "backend_id": "local-coder-mlx",
+        "attempts_count": 1,
+        "attempts": [
+            {
+                "tier": "local",
+                "backend_id": "local-coder-mlx",
+                "model_id": "Qwen3.6-35B-A3B",
+                "quality_gate_passed": True,
+            }
+        ],
+        "execution_binding": {
+            "correlation_id": str(correlation_id),
+            "tenant_id": "rsd-lab",
+            "backend_id": "local-coder-mlx",
+            "served_model_id": "Qwen3.6-35B-A3B",
+            "rendered_contract_sha256": "c" * 64,
+            "attempt_count": 1,
+            "fallback_used": False,
+            "judge_used": False,
+            "dispatch_policy": "backend-pinned-single-attempt.v1",
+            "terminal_kind": "completed",
+        },
+    }
+
+
+@pytest.mark.unit
+@_requires_core_execution_binding
+async def test_handler_rejects_missing_pinned_execution_binding() -> None:
+    correlation_id = uuid4()
+    port = AsyncMock()
+    result = _pinned_terminal_result(correlation_id)
+    result["execution_binding"] = None
+    port.dispatch.return_value = result
+    request = ModelDelegateSkillRequest(
+        prompt="Constrained lab task",
+        task_type="research",
+        source="codex",
+        correlation_id=correlation_id,
+        tenant_id="rsd-lab",
+        backend_id="local-coder-mlx",
+        dispatch_policy="backend-pinned-single-attempt.v1",
+        rendered_contract_sha256="c" * 64,
+    )
+
+    with pytest.raises(ValueError, match="requires execution_binding"):
+        _response_from_result(request, result, tenant_id="rsd-lab")
+
+
+@pytest.mark.unit
+@_requires_core_execution_binding
+async def test_handler_accepts_request_bound_pinned_failure_receipt() -> None:
+    """A transport/quality terminal keeps its receipt; only mismatches reject."""
+    correlation_id = uuid4()
+    port = AsyncMock()
+    result = _pinned_terminal_result(correlation_id)
+    result.update(
+        {
+            "status": "failed",
+            "quality_gate_passed": False,
+            "quality_score": 0.0,
+            "error_message": "pinned adapter unavailable",
+        }
+    )
+    binding = result["execution_binding"]
+    assert isinstance(binding, dict)
+    binding["terminal_kind"] = "failed"
+    attempts = result["attempts"]
+    assert isinstance(attempts, list)
+    attempt = attempts[0]
+    assert isinstance(attempt, dict)
+    attempt.update(
+        {
+            "quality_gate_passed": False,
+            "failure_class": "model_unavailable",
+            "error_message": "pinned adapter unavailable",
+        }
+    )
+    port.dispatch.return_value = result
+    request = ModelDelegateSkillRequest(
+        prompt="Constrained lab task",
+        task_type="research",
+        source="codex",
+        correlation_id=correlation_id,
+        tenant_id="rsd-lab",
+        backend_id="local-coder-mlx",
+        dispatch_policy="backend-pinned-single-attempt.v1",
+        rendered_contract_sha256="c" * 64,
+    )
+
+    response = _response_from_result(request, result, tenant_id="rsd-lab")
+
+    assert response.status == "failed"
+    assert response.execution_binding is not None
+    assert response.execution_binding.terminal_kind == "failed"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("result_overrides", "binding_overrides"),
+    [
+        pytest.param({}, {"backend_id": "alternate-backend"}, id="backend"),
+        pytest.param({}, {"served_model_id": "alternate-model"}, id="model"),
+        pytest.param({}, {"tenant_id": "other-tenant"}, id="tenant"),
+        pytest.param({}, {"correlation_id": str(uuid4())}, id="binding-correlation"),
+        pytest.param({}, {"dispatch_policy": "other-policy.v1"}, id="policy"),
+        pytest.param({}, {"rendered_contract_sha256": "d" * 64}, id="digest"),
+        pytest.param({}, {"terminal_kind": "failed"}, id="terminal-kind"),
+        pytest.param({}, {"attempt_count": 2}, id="attempt-count"),
+        pytest.param({}, {"fallback_used": True}, id="fallback"),
+        pytest.param({"correlation_id": str(uuid4())}, {}, id="result-correlation"),
+        pytest.param({"tenant_id": "other-tenant"}, {}, id="result-tenant"),
+        pytest.param({"backend_id": "alternate-backend"}, {}, id="result-backend"),
+    ],
+)
+@_requires_core_execution_binding
+async def test_handler_rejects_spoofed_or_mismatched_pinned_receipt(
+    result_overrides: dict[str, object],
+    binding_overrides: dict[str, object],
+) -> None:
+    correlation_id = uuid4()
+    port = AsyncMock()
+    result = _pinned_terminal_result(correlation_id)
+    result.update(result_overrides)
+    binding = result["execution_binding"]
+    assert isinstance(binding, dict)
+    binding.update(binding_overrides)
+    port.dispatch.return_value = result
+    request = ModelDelegateSkillRequest(
+        prompt="Constrained lab task",
+        task_type="research",
+        source="codex",
+        correlation_id=correlation_id,
+        tenant_id="rsd-lab",
+        backend_id="local-coder-mlx",
+        dispatch_policy="backend-pinned-single-attempt.v1",
+        rendered_contract_sha256="c" * 64,
+    )
+
+    with pytest.raises(ValueError, match=r"validation error|execution_binding"):
+        _response_from_result(request, result, tenant_id="rsd-lab")
+
+
+@pytest.mark.unit
+@_requires_core_execution_binding
+async def test_handler_rejects_execution_binding_without_policy() -> None:
+    correlation_id = uuid4()
+    port = AsyncMock()
+    port.dispatch.return_value = _pinned_terminal_result(correlation_id)
+    request = ModelDelegateSkillRequest(
+        prompt="Unpinned request",
+        task_type="research",
+        source="codex",
+        correlation_id=correlation_id,
+        tenant_id="rsd-lab",
+    )
+
+    with pytest.raises(ValueError, match="unrequested dispatch"):
+        _response_from_result(request, port.dispatch.return_value, tenant_id="rsd-lab")
 
 
 @pytest.mark.unit

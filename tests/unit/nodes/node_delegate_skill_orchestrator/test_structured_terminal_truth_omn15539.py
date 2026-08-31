@@ -243,12 +243,13 @@ def test_projection_accepts_and_preserves_additive_structured_truth() -> None:
 def test_node_contract_declares_additive_terminal_truth_outputs() -> None:
     contract = yaml.safe_load(_CONTRACT_PATH.read_text(encoding="utf-8"))
 
-    assert contract["contract_version"] == {"major": 1, "minor": 1, "patch": 0}
-    assert contract["node_version"] == {"major": 1, "minor": 1, "patch": 0}
+    assert contract["contract_version"] == {"major": 1, "minor": 3, "patch": 0}
+    assert contract["node_version"] == {"major": 1, "minor": 3, "patch": 0}
     assert {
         "required_quality_bar",
         "score_vs_required_bar",
         "failed_acceptance_criteria",
         "terminal_failure_cause",
         "attempts_count",
+        "execution_binding",
     }.issubset(contract["outputs"])

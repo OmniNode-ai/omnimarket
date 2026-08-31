@@ -184,7 +184,7 @@ def _engine_from_contract() -> MessageDispatchEngine:
                 route_id=f"route.orch-{index}",
                 topic_pattern=topic,
                 message_category=category,
-                dispatcher_id=f"orch-{index}",
+                handler_id=f"orch-{index}",
             )
         )
     engine.freeze()
@@ -243,7 +243,7 @@ class TestCommandCategoryDropsOutcomeEvent:
                 route_id="route.orch-legacy",
                 topic_pattern=_T_VALIDATION_OUTCOME,
                 message_category=EnumMessageCategory.COMMAND,
-                dispatcher_id="orch-legacy",
+                handler_id="orch-legacy",
             )
         )
         engine.freeze()

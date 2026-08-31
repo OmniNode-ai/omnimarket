@@ -83,6 +83,8 @@ class _StubDispatchPort:
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
         backend_id: str | None = None,
+        dispatch_policy: str | None = None,
+        rendered_contract_sha256: str | None = None,
         response_contract: dict[str, object] | None = None,
         # OMN-15482: completion-shaping parameters added to
         # ``ProtocolDelegationDispatchPort``. Accepted and ignored here -- this

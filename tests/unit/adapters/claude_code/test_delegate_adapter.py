@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import json
 from uuid import UUID
 
 import pytest
@@ -85,6 +86,61 @@ def test_build_delegation_payload_includes_explicit_max_tokens() -> None:
         max_tokens=65536,
     )
     assert payload["max_tokens"] == 65536
+
+
+@pytest.mark.unit
+def test_build_delegation_payload_propagates_complete_pinned_binding() -> None:
+    payload = build_delegation_payload(
+        prompt="Constrained lab task",
+        task_type="test",
+        source="claude-code",
+        tenant_id="rsd-lab",
+        backend_id="local-coder-mlx",
+        dispatch_policy="backend-pinned-single-attempt.v1",
+        rendered_contract_sha256="a" * 64,
+    )
+
+    assert payload["tenant_id"] == "rsd-lab"
+    assert payload["backend_id"] == "local-coder-mlx"
+    assert payload["dispatch_policy"] == "backend-pinned-single-attempt.v1"
+    assert payload["rendered_contract_sha256"] == "a" * 64
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        pytest.param(
+            {"dispatch_policy": "unknown-policy.v1"},
+            "unknown dispatch_policy",
+            id="unknown-policy",
+        ),
+        pytest.param(
+            {
+                "dispatch_policy": "backend-pinned-single-attempt.v1",
+                "tenant_id": "rsd-lab",
+                "backend_id": "local-coder-mlx",
+            },
+            "rendered_contract_sha256",
+            id="missing-digest",
+        ),
+        pytest.param(
+            {"rendered_contract_sha256": "a" * 64},
+            "requires an explicit dispatch_policy",
+            id="digest-without-policy",
+        ),
+    ],
+)
+def test_build_delegation_payload_fails_closed_for_invalid_pinned_binding(
+    kwargs: dict[str, str], message: str
+) -> None:
+    with pytest.raises(ValueError, match=message):
+        build_delegation_payload(
+            prompt="Constrained lab task",
+            task_type="test",
+            source="claude-code",
+            **kwargs,
+        )
 
 
 @pytest.mark.unit
@@ -246,8 +302,6 @@ def test_compile_only_uses_provided_correlation_id() -> None:
 
 @pytest.mark.unit
 def test_cli_compile_only_returns_zero(capsys: pytest.CaptureFixture[str]) -> None:
-    import json
-
     rc = main(
         [
             "--prompt",
@@ -284,6 +338,68 @@ def test_cli_compile_only_returns_zero(capsys: pytest.CaptureFixture[str]) -> No
     assert out["payload"]["codex_sandbox_mode"] == "workspace-write"
     assert out["payload"]["quality_contract_mode"] == "replace_task_class"
     assert out["payload"]["acceptance_criteria"] == ["exactly_two_sentences"]
+
+
+@pytest.mark.unit
+def test_cli_compile_only_propagates_complete_pinned_binding(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    import json
+
+    rc = main(
+        [
+            "--prompt",
+            "Constrained lab task",
+            "--task-type",
+            "test",
+            "--source",
+            "claude-code",
+            "--tenant-id",
+            "rsd-lab",
+            "--backend-id",
+            "local-coder-mlx",
+            "--dispatch-policy",
+            "backend-pinned-single-attempt.v1",
+            "--rendered-contract-sha256",
+            "a" * 64,
+            "--compile-only",
+        ]
+    )
+
+    assert rc == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["authorization"] == "untrusted/non-authorizing"
+    payload = output["payload"]
+    assert payload["tenant_id"] == "rsd-lab"
+    assert payload["backend_id"] == "local-coder-mlx"
+    assert payload["dispatch_policy"] == "backend-pinned-single-attempt.v1"
+    assert payload["rendered_contract_sha256"] == "a" * 64
+
+
+@pytest.mark.unit
+def test_cli_prohibits_raw_pinned_execution_before_runtime_dispatch(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = main(
+        [
+            "--prompt",
+            "Constrained lab task",
+            "--task-type",
+            "test",
+            "--tenant-id",
+            "spoofed-tenant",
+            "--backend-id",
+            "local-coder-mlx",
+            "--dispatch-policy",
+            "backend-pinned-single-attempt.v1",
+            "--rendered-contract-sha256",
+            "a" * 64,
+        ]
+    )
+
+    assert rc == 1
+    output = json.loads(capsys.readouterr().out)
+    assert "untrusted and non-authorizing" in output["error"]
 
 
 @pytest.mark.unit

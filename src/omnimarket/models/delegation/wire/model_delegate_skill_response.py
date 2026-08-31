@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
-from typing import Literal, Self
+from typing import Any, Literal, Self, cast
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
@@ -14,11 +14,14 @@ from omnibase_core.models.delegation.wire import (
     EnumQualityScoreComparison,
     ModelPremiumCounterfactual,
 )
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
+)
+from omnimarket.models.delegation.wire.model_dispatch_policy import (
+    parse_canonical_execution_binding,
 )
 
 
@@ -170,6 +173,27 @@ class ModelDelegateSkillResponse(BaseModel):
         "attempts include the terminal attempt; escalation_history fallback may "
         "contain rejected attempts only. attempts_count remains authoritative.",
     )
+    # Core 0.47.2 owns the concrete ModelDelegationExecutionBinding model. This
+    # base annotation keeps normal (unbound) responses importable with the
+    # currently released Core; the field validator below requires Core's exact
+    # model whenever a binding is present.
+    execution_binding: Any | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+        description=(
+            "Core ModelDelegationExecutionBinding for a policy-constrained "
+            "single backend attempt; it is an unsigned assertion, not a "
+            "signature. None preserves the normal delegation path."
+        ),
+    )
+
+    @field_validator("execution_binding", mode="before")
+    @classmethod
+    def validate_canonical_execution_binding(cls, value: object) -> Any | None:
+        """Accept only Core's canonical binding, never a local lookalike."""
+        if value is None:
+            return None
+        return cast(BaseModel, parse_canonical_execution_binding(value))
 
     @model_validator(mode="after")
     def validate_structured_terminal_evidence(self) -> Self:
@@ -237,6 +261,42 @@ class ModelDelegateSkillResponse(BaseModel):
             raise ValueError(msg)
         if self.quality_gate_passed and self.terminal_failure_cause is not None:
             msg = "successful delegation cannot carry terminal_failure_cause"
+            raise ValueError(msg)
+
+        raw_execution_binding = self.execution_binding
+        if raw_execution_binding is None:
+            return self
+        execution_binding = parse_canonical_execution_binding(raw_execution_binding)
+        if execution_binding.correlation_id != self.correlation_id:
+            msg = "execution_binding correlation_id must match response correlation_id"
+            raise ValueError(msg)
+        if execution_binding.terminal_kind != self.status:
+            msg = "execution_binding terminal_kind must match response status"
+            raise ValueError(msg)
+        if execution_binding.tenant_id != self.tenant_id:
+            msg = "execution_binding tenant_id must match response tenant_id"
+            raise ValueError(msg)
+        if self.model_name and execution_binding.served_model_id != self.model_name:
+            msg = "execution_binding served_model_id must match response model_name"
+            raise ValueError(msg)
+        if self.escalation_count != 0:
+            msg = "execution_binding requires escalation_count=0"
+            raise ValueError(msg)
+        if self.attempts_count != 1:
+            msg = "execution_binding requires attempts_count=1"
+            raise ValueError(msg)
+        if execution_binding.judge_used:
+            msg = "execution_binding requires judge_used=false"
+            raise ValueError(msg)
+        if len(self.attempts) != 1:
+            msg = "execution_binding requires exactly one recorded attempt"
+            raise ValueError(msg)
+        attempt = self.attempts[0]
+        if attempt.backend_id != execution_binding.backend_id:
+            msg = "execution_binding backend_id must match the recorded attempt"
+            raise ValueError(msg)
+        if attempt.model_id != execution_binding.served_model_id:
+            msg = "execution_binding served_model_id must match the recorded attempt"
             raise ValueError(msg)
         return self
 

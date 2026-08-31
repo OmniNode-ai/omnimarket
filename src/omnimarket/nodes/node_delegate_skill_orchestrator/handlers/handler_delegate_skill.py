@@ -11,7 +11,7 @@ internal.
 
 from __future__ import annotations
 
-from typing import Literal, Protocol
+from typing import Literal, Protocol, cast
 from uuid import UUID
 
 from omnibase_core.models.delegation.wire import (
@@ -19,11 +19,18 @@ from omnibase_core.models.delegation.wire import (
     EnumQualityScoreComparison,
     ModelPremiumCounterfactual,
 )
+from pydantic import BaseModel
 
 from omnimarket.config import get_settings
 from omnimarket.enums.enum_delegation_acceptance import (
     EnumDelegationAcceptanceDecision,
     EnumDelegationAcceptanceReason,
+)
+from omnimarket.models.delegation.wire.model_dispatch_policy import (
+    DispatchPolicy,
+    ProtocolCanonicalExecutionBinding,
+    is_backend_pinned_single_attempt,
+    parse_canonical_execution_binding,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
@@ -59,21 +66,14 @@ class ProtocolDelegationDispatchPort(Protocol):
     value from the selected backend's per-backend ceiling in the routing contract.
 
     OMN-15180: ``backend_id`` is ``str | None``, default ``None``. ``None``
-    preserves the pre-existing cheapest-first tier_order resolution.
-    ``LocalDelegationDispatchPort`` (bus-less local path) honors a non-None pin
-    end-to-end via the OMN-15156 seam. ``RuntimeDelegationDispatchPort`` (deployed
-    bus path) declares the same parameter to satisfy this Protocol but does not
-    yet thread it downstream — see that port's docstring for the explicit
-    fail-loud boundary.
+    preserves the pre-existing cheapest-first tier_order resolution. Both local
+    and runtime ports carry an explicit pin. The selected single-attempt policy
+    requires it and rejects any differing routing decision before inference.
 
     OMN-15193: ``response_contract`` is ``dict[str, object] | None``, default
-    ``None``. ``None`` preserves the exact pre-existing quality-gate behavior
-    (task-class keyword heuristics). A non-None value is a caller-declared JSON
-    Schema; ``LocalDelegationDispatchPort`` threads it into the quality-gate
-    reducer, where structural schema validation REPLACES the keyword heuristics
-    for that request. ``RuntimeDelegationDispatchPort`` declares the same
-    parameter to satisfy this Protocol but does not yet thread it downstream —
-    see that port's docstring for the explicit fail-loud boundary.
+    ``None``. A non-None caller-declared JSON Schema reaches the quality gate;
+    for the selected policy this is the only permitted positive quality authority
+    and it is evaluated locally without a model judge.
 
     OMN-15482: ``system_prompt`` (``str | None``), ``temperature``
     (``float | None``) and ``response_format`` (``dict[str, object] | None``)
@@ -82,10 +82,8 @@ class ProtocolDelegationDispatchPort(Protocol):
     ``None`` on each preserves the exact pre-existing behavior: the task-type
     default system prompt, the effect-layer default temperature, and no
     ``response_format`` key on the outbound payload respectively.
-    ``LocalDelegationDispatchPort`` threads all three through to the outbound
-    chat-completions payload. ``RuntimeDelegationDispatchPort`` declares them to
-    satisfy this Protocol but fails loud on a non-None value — the same boundary
-    as ``backend_id``/``response_contract`` above.
+    Both local and runtime ports forward all three through their canonical
+    delegation request DTOs.
     """
 
     async def dispatch(
@@ -102,6 +100,8 @@ class ProtocolDelegationDispatchPort(Protocol):
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
         backend_id: str | None = None,
+        dispatch_policy: DispatchPolicy | None = None,
+        rendered_contract_sha256: str | None = None,
         response_contract: dict[str, object] | None = None,
         system_prompt: str | None = None,
         temperature: float | None = None,
@@ -408,6 +408,16 @@ def _response_attempts_count(
     )
 
 
+def _execution_binding_from_result(
+    result: dict[str, object],
+) -> ProtocolCanonicalExecutionBinding | None:
+    """Parse a Core binding without accepting an arbitrary result shape."""
+    raw_binding = result.get("execution_binding")
+    if raw_binding is None:
+        return None
+    return parse_canonical_execution_binding(raw_binding)
+
+
 def _premium_counterfactual(
     result: dict[str, object],
 ) -> ModelPremiumCounterfactual | None:
@@ -478,6 +488,64 @@ def _response_from_result(
         if status_value == "completed" and quality_gate_passed
         else 0.0
     )
+    execution_binding = _execution_binding_from_result(result)
+    if is_backend_pinned_single_attempt(request.dispatch_policy):
+        if execution_binding is None:
+            if (
+                status_value != "failed"
+                or error_message != "pinned_served_model_id_required"
+            ):
+                raise ValueError("pinned dispatch terminal requires execution_binding")
+            # Provider identity was absent, so the terminal deliberately has no
+            # execution binding: a routing/configured model must not be forged
+            # into an execution claim.
+            return ModelDelegateSkillResponse(
+                status="failed",
+                correlation_id=request.correlation_id,
+                task_type=request.task_type,
+                tenant_id=None,
+                response=str(result.get("content", "")),
+                quality_gate_passed=False,
+                quality_score=0.0,
+                quality_gates_failed=("pinned_served_model_id_required",),
+                error_message=error_message,
+                attempts_count=1,
+                attempts=_attempt_records(result),
+            )
+        # The result dictionary is an untrusted port boundary. Parse its receipt
+        # as a closed Pydantic model above, then bind every identity claim back to
+        # both the original request and the terminal fields the port reported.
+        result_correlation_id = result.get("correlation_id")
+        result_tenant_id = result.get("tenant_id")
+        result_backend_id = result.get("backend_id")
+        if (
+            execution_binding.dispatch_policy != request.dispatch_policy
+            or execution_binding.backend_id != request.backend_id
+            or execution_binding.tenant_id != request.tenant_id
+            or execution_binding.correlation_id != request.correlation_id
+            or execution_binding.rendered_contract_sha256
+            != request.rendered_contract_sha256
+            or execution_binding.terminal_kind != status_value
+            or execution_binding.attempt_count != 1
+            or execution_binding.fallback_used
+            or execution_binding.judge_used
+            or (
+                result_correlation_id is not None
+                and str(result_correlation_id) != str(request.correlation_id)
+            )
+            or (
+                result_tenant_id is not None
+                and str(result_tenant_id) != request.tenant_id
+            )
+            or (
+                result_backend_id is not None
+                and str(result_backend_id) != request.backend_id
+            )
+            or (status_value == "completed" and not quality_gate_passed)
+        ):
+            raise ValueError("execution_binding does not match pinned request")
+    elif execution_binding is not None:
+        raise ValueError("unrequested dispatch must not carry execution_binding")
     return ModelDelegateSkillResponse(
         status=status_value,
         correlation_id=request.correlation_id,
@@ -531,6 +599,27 @@ def _response_from_result(
         escalation_count=_as_int(result.get("escalation_count")),
         attempts_count=_response_attempts_count(result, attempts),
         attempts=attempts,
+        execution_binding=cast(BaseModel | None, execution_binding),
+    )
+
+
+def _failed_terminal_from_exception(
+    request: ModelDelegateSkillRequest,
+    *,
+    tenant_id: str | None,
+    exception: Exception,
+) -> ModelDelegateSkillFailed:
+    """Terminalize an untrusted dispatch or receipt-validation failure."""
+    error_message = str(exception)
+    return ModelDelegateSkillFailed(
+        status="failed",
+        correlation_id=request.correlation_id,
+        task_type=request.task_type,
+        tenant_id=tenant_id,
+        error_message=error_message,
+        terminal_failure_cause=resolve_terminal_failure_cause(
+            (), error_message=error_message
+        ),
     )
 
 
@@ -578,6 +667,23 @@ class HandlerDelegateSkill:
         refused with HTTP 429 terminalized as completed and reported
         ``ok=true`` to the caller.
         """
+        # A consumer-facing request is not an Infra-authenticated activation
+        # context.  In particular its tenant_id can originate from a raw CLI
+        # flag.  Do not let that assertion reach a local effect or runtime
+        # subscribe/publish path merely because it has the pinned policy shape.
+        # The broker implementation remains fail-closed until canonical Infra
+        # exposes an issuer-verified first-effect authorization source.  Core
+        # DTO shape and matching request pins alone do not prove that issuer.
+        if is_backend_pinned_single_attempt(request.dispatch_policy):
+            return _failed_terminal_from_exception(
+                request,
+                tenant_id=None,
+                exception=PermissionError(
+                    "backend-pinned-single-attempt.v1 requires a trusted Infra "
+                    "tenant activation; raw request tenant_id is non-authorizing"
+                ),
+            )
+
         # OMN-14485: resolve the tenant identity ONCE at request-acceptance and
         # carry it onto the response (and thus the auto-published terminal event
         # node_projection_delegation reads). Precedence mirrors the local dispatch
@@ -586,7 +692,11 @@ class HandlerDelegateSkill:
         # The dispatch port still receives the verified request tenant_id (OMN-14349
         # seam) — the env-var interim is a projection-stamping fallback, not a
         # verified-identity source at the port boundary.
-        resolved_tenant_id = request.tenant_id or get_settings().onex_tenant_id or None
+        resolved_tenant_id = (
+            request.tenant_id
+            if is_backend_pinned_single_attempt(request.dispatch_policy)
+            else request.tenant_id or get_settings().onex_tenant_id or None
+        )
         try:
             result = await self._dispatch_port.dispatch(
                 prompt=request.prompt,
@@ -610,6 +720,8 @@ class HandlerDelegateSkill:
                 # is the seam pinned by
                 # test_handler_propagates_backend_id_pin_to_dispatch_port.
                 backend_id=request.backend_id,
+                dispatch_policy=request.dispatch_policy,
+                rendered_contract_sha256=request.rendered_contract_sha256,
                 # OMN-15193: thread the optional wire-level declared response
                 # contract to the dispatch port. A contract that stops here is
                 # dead on arrival -- this is the seam pinned by
@@ -624,23 +736,22 @@ class HandlerDelegateSkill:
                 response_format=request.response_format,
             )
         except Exception as exc:
-            return ModelDelegateSkillFailed(
-                status="failed",
-                correlation_id=request.correlation_id,
-                task_type=request.task_type,
-                # OMN-14485: a failed delegation still writes a projection row —
-                # stamp the resolved tenant so per-tenant failure visibility holds.
+            return _failed_terminal_from_exception(
+                request,
                 tenant_id=resolved_tenant_id,
-                error_message=str(exc),
-                # OMN-15469: a dispatch exception is a failure terminal, so it
-                # must carry the FAILED class identity. Returning the base
-                # response here routed hard dispatch failures onto the SUCCESS
-                # terminal by map-miss fallback.
-                terminal_failure_cause=resolve_terminal_failure_cause(
-                    (), error_message=str(exc)
-                ),
+                exception=exc,
             )
 
-        return delegate_skill_terminal_from_response(
-            _response_from_result(request, result, tenant_id=resolved_tenant_id)
-        )
+        try:
+            response = _response_from_result(
+                request,
+                result,
+                tenant_id=resolved_tenant_id,
+            )
+            return delegate_skill_terminal_from_response(response)
+        except Exception as exc:
+            return _failed_terminal_from_exception(
+                request,
+                tenant_id=resolved_tenant_id,
+                exception=exc,
+            )

@@ -10,8 +10,11 @@ from typing import get_args
 from uuid import UUID, uuid4
 
 import pytest
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
+from omnimarket.models.delegation.wire.model_dispatch_policy import (
+    canonical_execution_binding_type,
+)
 from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_skill_request import (
     ModelDelegateSkillRequest,
 )
@@ -23,6 +26,13 @@ from omnimarket.nodes.node_delegate_skill_orchestrator.models.model_delegate_ski
 
 # src/omnimarket -- parents[4] from this test file's directory.
 _SRC_ROOT = Path(__file__).resolve().parents[4] / "src" / "omnimarket"
+
+
+def _canonical_binding_type_or_skip() -> type[BaseModel]:
+    binding_type = canonical_execution_binding_type()
+    if binding_type is None:
+        pytest.skip("requires Core ModelDelegationExecutionBinding")
+    return binding_type
 
 
 def test_valid_request_minimal() -> None:
@@ -129,6 +139,219 @@ def test_backend_id_widening_preserves_frozen_extra_forbid() -> None:
             source="claude-code",
             unknown_field="not allowed",  # type: ignore[call-arg]
         )
+
+
+def test_backend_pinned_single_attempt_policy_round_trips_canonically() -> None:
+    request = ModelDelegateSkillRequest(
+        prompt="Inspect this constrained lab task.",
+        task_type="research",
+        source="codex",
+        tenant_id="rsd-lab",
+        backend_id="local-coder-mlx",
+        dispatch_policy="backend-pinned-single-attempt.v1",
+        rendered_contract_sha256="c" * 64,
+    )
+
+    dumped = request.model_dump(mode="json")
+
+    assert dumped["dispatch_policy"] == "backend-pinned-single-attempt.v1"
+    assert dumped["rendered_contract_sha256"] == "c" * 64
+    assert ModelDelegateSkillRequest.model_validate(dumped) == request
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        pytest.param(
+            {"tenant_id": None, "backend_id": "local-coder-mlx"},
+            "verified non-empty tenant_id",
+            id="missing-tenant",
+        ),
+        pytest.param(
+            {"tenant_id": "rsd-lab", "backend_id": None},
+            "non-empty backend_id",
+            id="missing-backend",
+        ),
+        pytest.param(
+            {"tenant_id": " rsd-lab", "backend_id": "local-coder-mlx"},
+            "verified non-empty tenant_id",
+            id="padded-tenant",
+        ),
+        pytest.param(
+            {"tenant_id": "rsd-lab", "backend_id": " local-coder-mlx"},
+            "non-empty backend_id",
+            id="padded-backend",
+        ),
+    ],
+)
+def test_backend_pinned_single_attempt_requires_explicit_verified_binding(
+    overrides: dict[str, str | None], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        ModelDelegateSkillRequest(
+            prompt="Inspect this constrained lab task.",
+            task_type="research",
+            source="codex",
+            dispatch_policy="backend-pinned-single-attempt.v1",
+            **overrides,
+        )
+
+
+@pytest.mark.parametrize(
+    ("rendered_contract_sha256", "message"),
+    [
+        pytest.param(None, "rendered_contract_sha256", id="missing-digest"),
+        pytest.param("A" * 64, "String should match pattern", id="uppercase-digest"),
+        pytest.param("a" * 63, "String should match pattern", id="short-digest"),
+    ],
+)
+def test_backend_pinned_single_attempt_requires_caller_rendered_contract_digest(
+    rendered_contract_sha256: str | None,
+    message: str,
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        ModelDelegateSkillRequest(
+            prompt="Inspect this constrained lab task.",
+            task_type="research",
+            source="codex",
+            tenant_id="rsd-lab",
+            backend_id="local-coder-mlx",
+            dispatch_policy="backend-pinned-single-attempt.v1",
+            rendered_contract_sha256=rendered_contract_sha256,
+        )
+
+
+def test_rendered_contract_digest_requires_explicit_dispatch_policy() -> None:
+    with pytest.raises(ValidationError, match="requires an explicit dispatch_policy"):
+        ModelDelegateSkillRequest(
+            prompt="Inspect this constrained lab task.",
+            task_type="research",
+            source="codex",
+            rendered_contract_sha256="a" * 64,
+        )
+
+
+def test_execution_binding_round_trips_with_canonical_single_attempt_claim() -> None:
+    correlation_id = uuid4()
+    binding_type = _canonical_binding_type_or_skip()
+    response = ModelDelegateSkillResponse(
+        status="failed",
+        correlation_id=correlation_id,
+        task_type="research",
+        tenant_id="rsd-lab",
+        model_name="Qwen3.6-35B-A3B",
+        attempts_count=1,
+        attempts=[
+            ModelDelegateSkillAttemptRecord(
+                tier="local",
+                backend_id="local-coder-mlx",
+                model_id="Qwen3.6-35B-A3B",
+                quality_gate_passed=False,
+                failure_class="timeout",
+                error_message="adapter timeout",
+            )
+        ],
+        execution_binding=binding_type(
+            correlation_id=correlation_id,
+            tenant_id="rsd-lab",
+            backend_id="local-coder-mlx",
+            served_model_id="Qwen3.6-35B-A3B",
+            rendered_contract_sha256="a" * 64,
+            attempt_count=1,
+            fallback_used=False,
+            judge_used=False,
+            dispatch_policy="backend-pinned-single-attempt.v1",
+            terminal_kind="failed",
+        ),
+    )
+
+    dumped = response.model_dump(mode="json")
+
+    assert dumped["execution_binding"] == {
+        "correlation_id": str(correlation_id),
+        "tenant_id": "rsd-lab",
+        "backend_id": "local-coder-mlx",
+        "served_model_id": "Qwen3.6-35B-A3B",
+        "rendered_contract_sha256": "a" * 64,
+        "attempt_count": 1,
+        "fallback_used": False,
+        "judge_used": False,
+        "dispatch_policy": "backend-pinned-single-attempt.v1",
+        "terminal_kind": "failed",
+    }
+    assert ModelDelegateSkillResponse.model_validate(dumped) == response
+
+
+@pytest.mark.parametrize(
+    ("response_overrides", "binding_overrides", "message"),
+    [
+        pytest.param(
+            {"status": "completed"},
+            {},
+            "terminal_kind must match",
+            id="terminal-kind-mismatch",
+        ),
+        pytest.param(
+            {"attempts_count": 2},
+            {},
+            "requires attempts_count=1",
+            id="attempt-count-mismatch",
+        ),
+        pytest.param(
+            {},
+            {"fallback_used": True},
+            "Input should be False",
+            id="fallback-used-mismatch",
+        ),
+        pytest.param(
+            {},
+            {"backend_id": "alternate-backend"},
+            "backend_id must match the recorded attempt",
+            id="alternate-backend-mismatch",
+        ),
+    ],
+)
+def test_execution_binding_rejects_terminal_mismatches(
+    response_overrides: dict[str, object],
+    binding_overrides: dict[str, object],
+    message: str,
+) -> None:
+    _canonical_binding_type_or_skip()
+    correlation_id = uuid4()
+    binding = {
+        "correlation_id": correlation_id,
+        "tenant_id": "rsd-lab",
+        "backend_id": "local-coder-mlx",
+        "served_model_id": "Qwen3.6-35B-A3B",
+        "rendered_contract_sha256": "b" * 64,
+        "attempt_count": 1,
+        "fallback_used": False,
+        "judge_used": False,
+        "dispatch_policy": "backend-pinned-single-attempt.v1",
+        "terminal_kind": "failed",
+    }
+    binding.update(binding_overrides)
+    response = {
+        "status": "failed",
+        "correlation_id": correlation_id,
+        "task_type": "research",
+        "tenant_id": "rsd-lab",
+        "model_name": "Qwen3.6-35B-A3B",
+        "attempts_count": 1,
+        "attempts": [
+            {
+                "tier": "local",
+                "backend_id": "local-coder-mlx",
+                "model_id": "Qwen3.6-35B-A3B",
+                "quality_gate_passed": False,
+            }
+        ],
+        "execution_binding": binding,
+    }
+    response.update(response_overrides)
+
+    with pytest.raises(ValidationError, match=message):
+        ModelDelegateSkillResponse.model_validate(response)
 
 
 def test_response_contract_defaults_to_none() -> None:

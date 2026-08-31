@@ -58,6 +58,8 @@ class _StubDispatchPort:
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
         backend_id: str | None = None,
+        dispatch_policy: str | None = None,
+        rendered_contract_sha256: str | None = None,
         response_contract: dict[str, object] | None = None,
         # OMN-15482: completion-shaping parameters added to
         # ``ProtocolDelegationDispatchPort``. Recorded rather than merely
@@ -72,6 +74,8 @@ class _StubDispatchPort:
                 "task_type": task_type,
                 "correlation_id": correlation_id,
                 "backend_id": backend_id,
+                "dispatch_policy": dispatch_policy,
+                "rendered_contract_sha256": rendered_contract_sha256,
                 "response_contract": response_contract,
                 "system_prompt": system_prompt,
                 "temperature": temperature,
@@ -119,6 +123,7 @@ class TestDelegateSkillGoldenChain:
         # The route dispatched exactly the requested coding work.
         assert port.calls[0]["task_type"] == "code_generation"
         assert port.calls[0]["prompt"] == "generate a parser for the config file"
+        assert port.calls[0]["dispatch_policy"] is None
 
     async def test_failed_dispatch_stays_typed_failure(self) -> None:
         """A dispatch exception is surfaced as a typed failed response by the route."""

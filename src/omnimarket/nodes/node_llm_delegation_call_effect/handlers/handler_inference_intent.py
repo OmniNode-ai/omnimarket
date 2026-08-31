@@ -291,7 +291,11 @@ class HandlerInferenceIntent:
             return ModelInferenceResponseData(
                 correlation_id=intent.correlation_id,
                 content="",
-                model_used=intent.model,
+                model_used=(
+                    "unknown"
+                    if _requires_provider_confirmed_served_model(intent)
+                    else intent.model
+                ),
                 llm_call_id=call_id,
                 latency_ms=latency_ms,
                 prompt_tokens=prompt_tokens,
@@ -400,6 +404,7 @@ class HandlerInferenceIntent:
             )
 
         response_id: str = data.get("id") or call_id
+        provider_served_model_id = _provider_served_model_id(data)
 
         logger.info(
             "HandlerInferenceIntent succeeded: model=%s tokens=%d latency=%dms "
@@ -414,7 +419,14 @@ class HandlerInferenceIntent:
         return ModelInferenceResponseData(
             correlation_id=intent.correlation_id,
             content=content,
-            model_used=intent.model,
+            # A pinned workflow may bind only the provider response's served
+            # identity.  It must never inherit ``intent.model`` (a routing
+            # selection) when the provider omits that evidence.
+            model_used=(
+                provider_served_model_id
+                if _requires_provider_confirmed_served_model(intent)
+                else intent.model
+            ),
             llm_call_id=response_id,
             latency_ms=latency_ms,
             prompt_tokens=prompt_tokens,
@@ -422,6 +434,17 @@ class HandlerInferenceIntent:
             total_tokens=total_tokens,
             **_tenant_round_trip_fields(intent),
         )
+
+
+def _requires_provider_confirmed_served_model(intent: ModelInferenceIntent) -> bool:
+    """Return whether this effect is executing Core's closed pinned authority."""
+    return getattr(intent, "first_effect_authorization_binding", None) is not None
+
+
+def _provider_served_model_id(response: dict[str, Any]) -> str:
+    """Extract only a nonempty model identity returned by the provider."""
+    model = response.get("model")
+    return model.strip() if isinstance(model, str) else ""
 
 
 __all__ = ["HandlerInferenceIntent", "InferenceUsageError"]

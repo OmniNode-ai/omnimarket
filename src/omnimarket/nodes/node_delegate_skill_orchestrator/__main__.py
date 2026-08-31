@@ -22,6 +22,9 @@ from omnimarket.cli.reporting import (
     load_contract_metadata,
 )
 from omnimarket.models.cli_report import ModelMarketCliStep
+from omnimarket.models.delegation.wire.model_dispatch_policy import (
+    BACKEND_PINNED_SINGLE_ATTEMPT_V1,
+)
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -48,6 +51,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--codex-sandbox-mode",
         default=None,
         help="Codex sandbox mode requested by the caller.",
+    )
+    parser.add_argument("--tenant-id", default=None, help="Verified tenant identity.")
+    parser.add_argument("--backend-id", default=None, help="Exact backend to use.")
+    parser.add_argument(
+        "--dispatch-policy",
+        choices=(BACKEND_PINNED_SINGLE_ATTEMPT_V1,),
+        default=None,
+        help="Closed dispatch policy; requires tenant, backend, and render digest.",
+    )
+    parser.add_argument(
+        "--rendered-contract-sha256",
+        default=None,
+        help="SHA-256 of complete canonical contract bytes rendered by caller.",
     )
     parser.add_argument(
         "--quality-contract-mode",
@@ -123,6 +139,10 @@ def _compile_or_dispatch(args: argparse.Namespace) -> dict[str, object]:
         # OMN-13161: None => omit from payload so the backend ceiling resolves.
         "max_tokens": None if args.max_tokens is None else int(args.max_tokens),
         "correlation_id": args.correlation_id,
+        "tenant_id": args.tenant_id,
+        "backend_id": args.backend_id,
+        "dispatch_policy": args.dispatch_policy,
+        "rendered_contract_sha256": args.rendered_contract_sha256,
     }
     if args.dispatch:
         result = adapter.dispatch_sync(**common_kwargs)
@@ -175,6 +195,10 @@ def main(argv: list[str] | None = None) -> int:
             "dispatch": args.dispatch,
             "quality_contract_mode": args.quality_contract_mode,
             "acceptance_criteria_count": len(args.acceptance_criterion),
+            "tenant_id": args.tenant_id,
+            "backend_id": args.backend_id,
+            "dispatch_policy": args.dispatch_policy,
+            "rendered_contract_sha256": args.rendered_contract_sha256,
         },
         output_config=output_config,
         result_summary=_result_summary(result),

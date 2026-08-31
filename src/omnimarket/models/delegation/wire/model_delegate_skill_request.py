@@ -16,14 +16,20 @@ reference it without reaching into a sibling node's private models package
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Literal, Self
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from omnimarket.events.delegation import (
     EnumQualityContractMode,
     validate_acceptance_criteria,
+)
+from omnimarket.models.delegation.wire.model_dispatch_policy import (
+    DispatchPolicy,
+    is_backend_pinned_single_attempt,
+    validate_backend_pinned_single_attempt_binding,
+    validate_backend_pinned_single_attempt_render_digest,
 )
 
 # OMN-15482: the closed set of ``response_format`` directives this delegation
@@ -144,6 +150,25 @@ class ModelDelegateSkillRequest(BaseModel):
             "the backend via the normal cheapest-first tier_order selection."
         ),
     )
+    dispatch_policy: DispatchPolicy | None = Field(
+        default=None,
+        description=(
+            "Optional closed dispatch policy. "
+            "'backend-pinned-single-attempt.v1' requires an explicit backend_id "
+            "and verified tenant_id; it permits exactly one attempt on that backend "
+            "with no retry, escalation, or fallback. None preserves normal "
+            "delegation behavior."
+        ),
+    )
+    rendered_contract_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        description=(
+            "SHA-256 of the complete caller-rendered delegation contract bytes. "
+            "Required by backend-pinned-single-attempt.v1; no local projection or "
+            "configuration fallback is permitted."
+        ),
+    )
     # OMN-15193: optional caller-declared JSON-Schema response contract. None
     # (the default) is threaded to dispatch_port.dispatch(response_contract=None),
     # which then resolves the TASK-CLASS-DECLARED default schema, if any
@@ -251,6 +276,26 @@ class ModelDelegateSkillRequest(BaseModel):
                 "response_contract for schema-level response validation."
             )
         return response_format
+
+    @model_validator(mode="after")
+    def _validate_dispatch_policy_requirements(self) -> Self:
+        """Fail closed when the single-attempt policy lacks its immutable binding."""
+        if not is_backend_pinned_single_attempt(self.dispatch_policy):
+            validate_backend_pinned_single_attempt_render_digest(
+                dispatch_policy=self.dispatch_policy,
+                rendered_contract_sha256=self.rendered_contract_sha256,
+            )
+            return self
+        validate_backend_pinned_single_attempt_binding(
+            dispatch_policy=self.dispatch_policy,
+            backend_id=self.backend_id,
+            tenant_id=self.tenant_id,
+        )
+        validate_backend_pinned_single_attempt_render_digest(
+            dispatch_policy=self.dispatch_policy,
+            rendered_contract_sha256=self.rendered_contract_sha256,
+        )
+        return self
 
 
 __all__: list[str] = [

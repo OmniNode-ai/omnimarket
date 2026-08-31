@@ -73,6 +73,15 @@ from omnimarket.enums.enum_delegation_acceptance import (
 from omnimarket.enums.enum_delegation_failure_class import EnumDelegationFailureClass
 from omnimarket.events.delegation_judge_verdict import EnumDelegationJudgeVerdict
 from omnimarket.inference.protocol_config import apply_inference_protocol
+from omnimarket.models.delegation.wire.model_dispatch_policy import (
+    DispatchPolicy,
+    build_canonical_execution_binding,
+    canonical_execution_binding_payload,
+    is_backend_pinned_single_attempt,
+    require_canonical_execution_binding_type,
+    validate_backend_pinned_single_attempt_binding,
+    validate_backend_pinned_single_attempt_render_digest,
+)
 
 # The reducer (``delta``) returns the omnimarket wire result DTO (it carries the
 # P1 deterministic-acceptance evidence fields not yet promoted to core), so the
@@ -80,6 +89,9 @@ from omnimarket.inference.protocol_config import apply_inference_protocol
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
     ModelQualityGateResult,
+)
+from omnimarket.models.delegation.wire.pinned_quality import (
+    evaluate_pinned_response_contract,
 )
 from omnimarket.nodes.node_delegate_skill_orchestrator.ports.evidence_db_resolution import (
     resolve_local_delegation_evidence_db,
@@ -630,11 +642,53 @@ class LocalDelegationDispatchPort:
         acceptance_criteria: tuple[str, ...],
         tenant_id: str | None,
         backend_id: str | None = None,
+        dispatch_policy: DispatchPolicy | None = None,
+        rendered_contract_sha256: str | None = None,
         response_contract: dict[str, object] | None = None,
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
     ) -> dict[str, object]:
+        if dispatch_policy is not None and not is_backend_pinned_single_attempt(
+            dispatch_policy
+        ):
+            raise ValueError(f"unknown dispatch_policy: {dispatch_policy!r}")
+        validate_backend_pinned_single_attempt_render_digest(
+            dispatch_policy=dispatch_policy,
+            rendered_contract_sha256=rendered_contract_sha256,
+        )
+        if is_backend_pinned_single_attempt(dispatch_policy):
+            validate_backend_pinned_single_attempt_binding(
+                dispatch_policy=dispatch_policy,
+                backend_id=backend_id,
+                tenant_id=tenant_id,
+            )
+            # The selected policy must never run an adapter and only later
+            # discover that the installed Core cannot represent its required
+            # canonical terminal binding.
+            require_canonical_execution_binding_type()
+            assert backend_id is not None
+            assert tenant_id is not None
+            assert dispatch_policy is not None
+            assert rendered_contract_sha256 is not None
+            return await self._dispatch_backend_pinned_single_attempt(
+                prompt=prompt,
+                task_type=task_type,
+                correlation_id=correlation_id,
+                max_tokens=max_tokens,
+                source_session_id=source_session_id,
+                quality_contract_mode=quality_contract_mode,
+                acceptance_criteria=acceptance_criteria,
+                tenant_id=tenant_id,
+                backend_id=backend_id,
+                dispatch_policy=dispatch_policy,
+                rendered_contract_sha256=rendered_contract_sha256,
+                response_contract=response_contract,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                response_format=response_format,
+            )
+
         # OMN-15156: an optional caller-supplied backend PIN. ``None`` (the
         # default) preserves the exact pre-existing cheapest-first task_type +
         # tier_order resolution — see ``_resolve_initial_backend``. A non-None
@@ -1112,6 +1166,252 @@ class LocalDelegationDispatchPort:
             escalation_count += 1
             backend = next_backend
 
+    async def _dispatch_backend_pinned_single_attempt(
+        self,
+        *,
+        prompt: str,
+        task_type: str,
+        correlation_id: UUID,
+        max_tokens: int | None,
+        source_session_id: str | None,
+        quality_contract_mode: str,
+        acceptance_criteria: tuple[str, ...],
+        tenant_id: str,
+        backend_id: str,
+        dispatch_policy: DispatchPolicy,
+        rendered_contract_sha256: str,
+        response_contract: dict[str, object] | None,
+        system_prompt: str | None,
+        temperature: float | None,
+        response_format: dict[str, object] | None,
+    ) -> dict[str, object]:
+        """Execute the selected backend once and terminalize every outcome.
+
+        This deliberately does not read ROI state, retry a local draft, select a
+        sibling, or consult escalation routing. The only backend resolution is the
+        caller-pinned ``backend_id``. The caller supplies the digest of the
+        complete rendered contract; this port never hashes a backend projection.
+        """
+        backend = resolve_delegation_backend(task_type, backend_id=backend_id)
+
+        try:
+            outcome = await self._run_single_attempt(
+                backend=backend,
+                prompt=prompt,
+                task_type=task_type,
+                correlation_id=correlation_id,
+                max_tokens=max_tokens,
+                quality_contract_mode=quality_contract_mode,
+                acceptance_criteria=acceptance_criteria,
+                response_contract=response_contract,
+                system_prompt=system_prompt,
+                temperature=temperature,
+                response_format=response_format,
+                allow_model_judge=False,
+                pinned_single_attempt=True,
+            )
+        except Exception as exc:
+            failure_result = ModelLlmDelegationCallResult(
+                request_id="pinned-single-attempt",
+                success=False,
+                failure_class=EnumDelegationFailureClass.UNKNOWN,
+                error_message=str(exc),
+                endpoint_healthy=False,
+            )
+            return self._pinned_single_attempt_terminal(
+                backend=backend,
+                correlation_id=correlation_id,
+                task_type=task_type,
+                prompt=prompt,
+                source_session_id=source_session_id,
+                tenant_id=tenant_id,
+                dispatch_policy=dispatch_policy,
+                rendered_contract_sha256=rendered_contract_sha256,
+                result=failure_result,
+                quality_passed=False,
+                quality_score=None,
+                failure_class=EnumDelegationFailureClass.UNKNOWN,
+                failure_message=str(exc),
+            )
+
+        if outcome.failure_message is not None and outcome.result is None:
+            assert outcome.timeout_result is not None
+            return self._pinned_single_attempt_terminal(
+                backend=backend,
+                correlation_id=correlation_id,
+                task_type=task_type,
+                prompt=prompt,
+                source_session_id=source_session_id,
+                tenant_id=tenant_id,
+                dispatch_policy=dispatch_policy,
+                rendered_contract_sha256=rendered_contract_sha256,
+                result=outcome.timeout_result,
+                quality_passed=False,
+                quality_score=None,
+                failure_class=EnumDelegationFailureClass.TIMEOUT,
+                failure_message=outcome.failure_message,
+            )
+
+        assert outcome.result is not None
+        result = outcome.result
+        if not result.success:
+            failure_class = result.failure_class or EnumDelegationFailureClass.UNKNOWN
+            return self._pinned_single_attempt_terminal(
+                backend=backend,
+                correlation_id=correlation_id,
+                task_type=task_type,
+                prompt=prompt,
+                source_session_id=source_session_id,
+                tenant_id=tenant_id,
+                dispatch_policy=dispatch_policy,
+                rendered_contract_sha256=rendered_contract_sha256,
+                result=result,
+                quality_passed=False,
+                quality_score=None,
+                failure_class=failure_class,
+                failure_message=result.error_message or "delegation call failed",
+            )
+
+        assert outcome.gate_result is not None
+        gate_result = outcome.gate_result
+        quality_passed = self._is_quality_accepted(task_type, gate_result)
+        failure_message = (
+            "" if quality_passed else "; ".join(gate_result.failure_reasons)
+        )
+        return self._pinned_single_attempt_terminal(
+            backend=backend,
+            correlation_id=correlation_id,
+            task_type=task_type,
+            prompt=prompt,
+            source_session_id=source_session_id,
+            tenant_id=tenant_id,
+            dispatch_policy=dispatch_policy,
+            rendered_contract_sha256=rendered_contract_sha256,
+            result=result,
+            quality_passed=quality_passed,
+            quality_score=gate_result.quality_score,
+            failure_class=(
+                None
+                if quality_passed
+                else EnumDelegationFailureClass.QUALITY_GATE_FAILED
+            ),
+            failure_message=failure_message,
+            quality_gates_failed=tuple(gate_result.failure_reasons),
+        )
+
+    def _pinned_single_attempt_terminal(
+        self,
+        *,
+        backend: ModelResolvedDelegationBackend,
+        correlation_id: UUID,
+        task_type: str,
+        prompt: str,
+        source_session_id: str | None,
+        tenant_id: str,
+        dispatch_policy: DispatchPolicy,
+        rendered_contract_sha256: str,
+        result: ModelLlmDelegationCallResult,
+        quality_passed: bool,
+        quality_score: float | None,
+        failure_class: EnumDelegationFailureClass | None,
+        failure_message: str,
+        quality_gates_failed: tuple[str, ...] = (),
+    ) -> dict[str, object]:
+        """Build one unsigned receipt after exactly one adapter invocation."""
+        status: Literal["completed", "failed"] = (
+            "completed" if quality_passed else "failed"
+        )
+        served_model_id = (result.served_model_id or "").strip()
+        # The configured routing model is a request, not provider evidence.  A
+        # pinned success without runtime-confirmed identity cannot make a model
+        # binding or evidence claim, even if the provider returned content.
+        if not served_model_id:
+            terminal_error = (
+                "pinned_served_model_id_required"
+                if result.success
+                else failure_message or result.error_message or "pinned_unknown_failure"
+            )
+            return {
+                "status": "failed",
+                "content": result.content or "",
+                "error_message": terminal_error,
+                "correlation_id": str(correlation_id),
+                "quality_gate_passed": False,
+                "quality_score": 0.0,
+                "quality_gates_failed": [terminal_error],
+                "escalation_count": 0,
+                "attempts_count": 1,
+                "attempts": [
+                    {
+                        "tier": _routing_tier_name(backend),
+                        "backend_id": backend.backend_id,
+                        "model_id": "",
+                        "quality_gate_passed": False,
+                        "quality_score": None,
+                        "cost_usd": float(result.actual_cost_usd),
+                        "failure_class": EnumDelegationFailureClass.UNKNOWN.value,
+                        "error_message": terminal_error,
+                    }
+                ],
+            }
+        cost_usd = result.actual_cost_usd
+        savings_usd = result.savings_usd if quality_passed else Decimal("0")
+        self._project_evidence(
+            correlation_id=correlation_id,
+            task_type=task_type,
+            endpoint_ref=backend.endpoint_ref,
+            model_id=served_model_id,
+            result=result,
+            prompt=prompt,
+            source_session_id=source_session_id,
+            tenant_id=tenant_id,
+            quality_passed=quality_passed,
+            failure_message=failure_message,
+            cost_usd=cost_usd,
+            savings_usd=savings_usd,
+            escalation_count=0,
+        )
+        attempt: dict[str, object] = {
+            "tier": _routing_tier_name(backend),
+            "backend_id": backend.backend_id,
+            "model_id": served_model_id,
+            "quality_gate_passed": quality_passed,
+            "quality_score": quality_score,
+            "cost_usd": float(cost_usd),
+            "failure_class": failure_class.value if failure_class is not None else None,
+            "error_message": failure_message,
+        }
+        return {
+            "status": status,
+            "content": result.content or "",
+            "error_message": failure_message,
+            "correlation_id": str(correlation_id),
+            "delegated_to": backend.endpoint_ref,
+            "model_name": served_model_id,
+            "quality_gate_passed": quality_passed,
+            "quality_score": quality_score or 0.0,
+            "quality_gates_failed": list(quality_gates_failed),
+            "delegation_latency_ms": result.latency_ms,
+            "input_tokens": result.tokens_in,
+            "output_tokens": result.tokens_out,
+            "total_tokens": result.tokens_in + result.tokens_out,
+            "escalation_count": 0,
+            "attempts_count": 1,
+            "cost_usd": float(cost_usd),
+            "attempts": [attempt],
+            "execution_binding": canonical_execution_binding_payload(
+                build_canonical_execution_binding(
+                    correlation_id=correlation_id,
+                    tenant_id=tenant_id,
+                    backend_id=backend.backend_id,
+                    served_model_id=served_model_id,
+                    rendered_contract_sha256=rendered_contract_sha256,
+                    dispatch_policy=dispatch_policy,
+                    terminal_kind=status,
+                )
+            ),
+        }
+
     def _is_quality_accepted(
         self, task_type: str, gate_result: ModelQualityGateResult
     ) -> bool:
@@ -1341,6 +1641,8 @@ class LocalDelegationDispatchPort:
         system_prompt: str | None = None,
         temperature: float | None = None,
         response_format: dict[str, object] | None = None,
+        allow_model_judge: bool = True,
+        pinned_single_attempt: bool = False,
     ) -> _AttemptOutcome:
         """Run one resolve->effect->gate attempt for ``backend``.
 
@@ -1443,7 +1745,11 @@ class LocalDelegationDispatchPort:
             # name as an ADDITIONAL fallback the effect resolves when the
             # secret_ref convention mapping misses (e.g. GEMINI_API_KEY /
             # OPEN_ROUTER_API_KEY drift against the LLM_*_API_KEY convention).
-            api_key_env=backend.api_key_env,
+            # A pinned policy may use the canonical secret_ref or explicit
+            # no-auth local backend only.  It must never consult a legacy env
+            # fallback, including when the secret reference is unavailable.
+            api_key_env=None if pinned_single_attempt else backend.api_key_env,
+            require_canonical_secret_ref=pinned_single_attempt,
             # OMN-15482: the caller's response-format directive, forwarded as a
             # real wire parameter on the outbound chat-completions payload.
             # ``None`` omits the key entirely (pre-existing behavior).
@@ -1524,14 +1830,23 @@ class LocalDelegationDispatchPort:
         #    as a gate PASS. Resolve the task-class DoD checks from the routing
         #    authority and evaluate the real verdict + graded score, threading the
         #    LLM-judge adequacy score for combinable task classes (OMN-13849).
-        gate_result = await self._evaluate_quality_gate(
-            correlation_id=correlation_id,
-            task_type=task_type,
-            prompt=prompt,
-            content=result.content or "",
-            quality_contract_mode=quality_contract_mode,
-            acceptance_criteria=acceptance_criteria,
-            response_contract=response_contract,
+        gate_result = (
+            evaluate_pinned_response_contract(
+                correlation_id=correlation_id,
+                content=result.content or "",
+                response_contract=response_contract,
+            )
+            if pinned_single_attempt
+            else await self._evaluate_quality_gate(
+                correlation_id=correlation_id,
+                task_type=task_type,
+                prompt=prompt,
+                content=result.content or "",
+                quality_contract_mode=quality_contract_mode,
+                acceptance_criteria=acceptance_criteria,
+                response_contract=response_contract,
+                allow_model_judge=allow_model_judge,
+            )
         )
         return _AttemptOutcome(
             result=result,
@@ -1550,6 +1865,7 @@ class LocalDelegationDispatchPort:
         quality_contract_mode: str,
         acceptance_criteria: tuple[str, ...],
         response_contract: dict[str, object] | None = None,
+        allow_model_judge: bool = True,
     ) -> ModelQualityGateResult:
         """Run the canonical quality-gate reducer, combining the LLM-judge score.
 
@@ -1617,7 +1933,8 @@ class LocalDelegationDispatchPort:
         judge_score: float | None = None
         judge_verdict_value: EnumDelegationJudgeVerdict | None = None
         if (
-            effective_response_contract is None
+            allow_model_judge
+            and effective_response_contract is None
             and task_type in JUDGE_COMBINABLE_TASK_TYPES
         ):
             judge_verdict = await self._judge.score(

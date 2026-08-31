@@ -4,8 +4,8 @@
 name: node_delegate_skill_orchestrator
 contract_name: node_delegate_skill_orchestrator
 node_name: node_delegate_skill_orchestrator
-contract_version: {major: 1, minor: 1, patch: 0}
-node_version: {major: 1, minor: 1, patch: 0}
+contract_version: {major: 1, minor: 3, patch: 0}
+node_version: {major: 1, minor: 3, patch: 0}
 node_type: orchestrator
 description: >
   Consumer-facing delegation entry point for Claude Code and Codex adapters.
@@ -106,6 +106,15 @@ outputs:
     description: >
       Authoritative total inference calls, including compliance repairs,
       same-tier retries, and the terminal attempt.
+  execution_binding:
+    type: object
+    required: false
+    description: >
+      Core-typed unsigned execution-binding assertion (receipt) emitted only for
+      backend-pinned-single-attempt.v1. It binds correlation_id, verified tenant,
+      requested backend_id, served_model_id, rendered_contract_sha256,
+      attempt_count=1, fallback_used=false, judge_used=false, dispatch_policy,
+      and terminal_kind; it is not a cryptographic signature.
 
 allowed_task_types:
   - test
@@ -203,6 +212,24 @@ inputs:
     description: >
       Optional explicit backend pin (e.g. 'local-coder-mlx'). None resolves
       the backend via the normal cheapest-first tier_order selection.
+  dispatch_policy:
+    type: str
+    required: false
+    enum: [backend-pinned-single-attempt.v1]
+    description: >
+      Optional closed delegation policy. backend-pinned-single-attempt.v1 requires
+      a verified non-empty tenant_id and explicit backend_id, invokes that backend
+      exactly once, terminalizes transport or quality failure, and forbids retries,
+      escalation, alternate-backend routing, and cloud or metered fallback. Omit to
+      preserve normal delegation behavior.
+  rendered_contract_sha256:
+    type: str
+    required: false
+    pattern: "^[0-9a-f]{64}$"
+    description: >
+      Lowercase SHA-256 of the complete canonical delegation-contract bytes the
+      caller rendered. Required with backend-pinned-single-attempt.v1; never
+      derived from a selected backend or backend configuration.
   response_contract:
     type: object
     required: false

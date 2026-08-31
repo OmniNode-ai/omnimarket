@@ -128,6 +128,28 @@ def test_contract_declares_max_tokens_optional_without_hardcap() -> None:
 
 
 @pytest.mark.unit
+def test_contract_declares_backend_pinned_single_attempt_policy_and_attestation() -> (
+    None
+):
+    contract = _load_contract()
+
+    dispatch_policy = contract["inputs"]["dispatch_policy"]
+    assert dispatch_policy["required"] is False
+    assert dispatch_policy["enum"] == ["backend-pinned-single-attempt.v1"]
+    assert "verified non-empty tenant_id" in dispatch_policy["description"]
+    assert "exactly once" in dispatch_policy["description"]
+    rendered_contract_sha256 = contract["inputs"]["rendered_contract_sha256"]
+    assert rendered_contract_sha256["pattern"] == "^[0-9a-f]{64}$"
+    assert "caller rendered" in rendered_contract_sha256["description"]
+    execution_binding = contract["outputs"]["execution_binding"]
+    assert "Core-typed" in execution_binding["description"]
+    assert "judge_used=false" in execution_binding["description"]
+    assert "not a cryptographic signature" in execution_binding["description"]
+    assert contract["contract_version"] == {"major": 1, "minor": 3, "patch": 0}
+    assert contract["node_version"] == {"major": 1, "minor": 3, "patch": 0}
+
+
+@pytest.mark.unit
 def test_contract_declares_timeout_behavior() -> None:
     contract = _load_contract()
     tb = contract["timeout_behavior"]

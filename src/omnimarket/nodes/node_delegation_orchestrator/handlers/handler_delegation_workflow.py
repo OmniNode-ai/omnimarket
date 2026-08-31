@@ -69,8 +69,18 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_delegation_escalati
 from omnimarket.models.delegation.quality_bar_evidence import (
     format_quality_bar_labels,
 )
+from omnimarket.models.delegation.wire.model_dispatch_policy import (
+    DispatchPolicy,
+    build_canonical_execution_binding,
+    is_backend_pinned_single_attempt,
+    require_canonical_execution_binding_type,
+    validate_canonical_first_effect_authorization_binding,
+)
 from omnimarket.models.delegation.wire.model_quality_gate import (
     SCORE_SOURCE_DETERMINISTIC_ACCEPTANCE,
+)
+from omnimarket.models.delegation.wire.pinned_quality import (
+    evaluate_pinned_response_contract,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_escalation_decision_compute.handlers.handler_escalation_decision import (
@@ -475,6 +485,59 @@ def _resolve_tenant_id(workflow: DelegationWorkflowState) -> str | None:
     return get_settings().onex_tenant_id or None
 
 
+def _pinned_dispatch_policy(
+    request: ModelDelegationRequest,
+) -> DispatchPolicy | None:
+    """Read the forward-Core policy field without weakening current-Core imports."""
+    return cast("DispatchPolicy | None", getattr(request, "dispatch_policy", None))
+
+
+def _is_backend_pinned_single_attempt_request(
+    request: ModelDelegationRequest,
+) -> bool:
+    """Return whether a request selects the no-retry/no-judge execution path."""
+    return is_backend_pinned_single_attempt(_pinned_dispatch_policy(request))
+
+
+def _require_pinned_first_effect_authorization(
+    request: ModelDelegationRequest,
+) -> BaseModel:
+    """Require the Core authority copied from the broker composition root.
+
+    The workflow never accepts a caller-provided side-channel activation.  The
+    only candidate is the canonical Core field carried by the broker command;
+    unsupported Core versions fail before an inference intent can be emitted.
+    """
+    dispatch_policy = _pinned_dispatch_policy(request)
+    rendered_contract_sha256 = getattr(request, "rendered_contract_sha256", None)
+    if (
+        dispatch_policy is None
+        or request.tenant_id is None
+        or request.backend_id is None
+        or not isinstance(rendered_contract_sha256, str)
+    ):
+        raise RuntimeError(
+            "pinned delegation request lost its required authority binding"
+        )
+    activation = getattr(request, "first_effect_authorization_binding", None)
+    if activation is None:
+        raise RuntimeError(
+            "backend-pinned-single-attempt.v1 requires a trusted Core/Infra "
+            "first-effect activation before inference"
+        )
+    return cast(
+        BaseModel,
+        validate_canonical_first_effect_authorization_binding(
+            activation,
+            correlation_id=request.correlation_id,
+            tenant_id=request.tenant_id,
+            backend_id=request.backend_id,
+            rendered_contract_sha256=rendered_contract_sha256,
+            dispatch_policy=dispatch_policy,
+        ),
+    )
+
+
 def _build_model_inference_intent(
     *,
     base_url: str,
@@ -490,6 +553,7 @@ def _build_model_inference_intent(
     provider_request_options: dict[str, Any],
     response_format: dict[str, object] | None,
     tenant_id: str | None,
+    first_effect_authorization_binding: BaseModel | None,
 ) -> ModelInferenceIntent:
     # OMN-12815: base_url carries the COMPLETE endpoint URL from the routing
     # authority (decision.endpoint_url); the inference effect posts it verbatim.
@@ -517,6 +581,13 @@ def _build_model_inference_intent(
     # during the coordinated release window instead of raising extra="forbid".
     if "tenant_id" in model_fields:
         payload["tenant_id"] = tenant_id
+    if first_effect_authorization_binding is not None:
+        # This is a Core model instance supplied by the runtime composition
+        # root, never a raw caller mapping.  If the installed Core cannot carry
+        # it, model validation fails before the effect intent is emitted.
+        payload["first_effect_authorization_binding"] = (
+            first_effect_authorization_binding
+        )
     return ModelInferenceIntent.model_validate(payload)
 
 
@@ -637,6 +708,9 @@ def _evaluate_compliance(
             # OMN-14280: stamp the workflow tenant onto the repair-attempt intent
             # (same precedence as slice-1 terminal attribution via _resolve_tenant_id).
             tenant_id=_resolve_tenant_id(workflow),
+            # Selected policy never enters the compliance-repair loop; it
+            # terminalizes after its one closed reducer evaluation.
+            first_effect_authorization_binding=None,
         )
     ]
 
@@ -1004,6 +1078,11 @@ class HandlerDelegationWorkflow:
         Emits an intent to the routing reducer.
         """
         cid = request.correlation_id
+        if _is_backend_pinned_single_attempt_request(request):
+            # Do this before workflow state, routing, or inference can start. A
+            # selected policy without Core's canonical result binding has no safe
+            # terminal representation and must not create an uncertain effect.
+            require_canonical_execution_binding_type()
 
         if cid in self._workflows:
             workflow = self._workflows[cid]
@@ -1067,6 +1146,23 @@ class HandlerDelegationWorkflow:
             )
             return []
 
+        assert workflow.request is not None
+        first_effect_authorization_binding: BaseModel | None = None
+        if (
+            _is_backend_pinned_single_attempt_request(workflow.request)
+            and decision.selected_backend_ref != workflow.request.backend_id
+        ):
+            msg = (
+                "backend-pinned-single-attempt.v1 routing decision selected "
+                f"{decision.selected_backend_ref!r}, not requested backend "
+                f"{workflow.request.backend_id!r}; refusing before inference"
+            )
+            raise RuntimeError(msg)
+        if _is_backend_pinned_single_attempt_request(workflow.request):
+            first_effect_authorization_binding = (
+                _require_pinned_first_effect_authorization(workflow.request)
+            )
+
         if workflow.state == EnumDelegationState.RECEIVED:
             self._advance(workflow, EnumDelegationState.ROUTED)
             workflow.routing_decision = decision
@@ -1099,7 +1195,6 @@ class HandlerDelegationWorkflow:
 
         workflow.inference_intent_in_flight = True
 
-        assert workflow.request is not None
         temperature = (
             workflow.request.temperature
             if workflow.request.temperature is not None
@@ -1142,6 +1237,7 @@ class HandlerDelegationWorkflow:
                 # OMN-14280: stamp the workflow tenant onto the initial/escalation
                 # inference intent (slice-1 precedence via _resolve_tenant_id).
                 tenant_id=_resolve_tenant_id(workflow),
+                first_effect_authorization_binding=first_effect_authorization_binding,
             )
         ]
 
@@ -1192,6 +1288,11 @@ class HandlerDelegationWorkflow:
         assert workflow.request is not None
         if workflow.routing_decision is None:
             return []
+
+        if _is_backend_pinned_single_attempt_request(workflow.request):
+            return self._handle_backend_pinned_single_attempt_response(
+                workflow, response
+            )
 
         if response.error_message:
             # OMN-14208: wall-clock epoch subtraction (started_at_ns is now
@@ -1410,6 +1511,144 @@ class HandlerDelegationWorkflow:
 
         # Compliance-loop path.
         return _evaluate_compliance(workflow, response, self._advance)
+
+    def _handle_backend_pinned_single_attempt_response(
+        self,
+        workflow: DelegationWorkflowState,
+        response: ModelInferenceResponseData,
+    ) -> list[BaseModel]:
+        """Terminalize one pinned provider response without judge or fallback.
+
+        This branch runs before the normal transport retry, compliance-repair,
+        quality-gate-intent, same-tier retry, and escalation paths. The reducer
+        call below is its pure local deterministic function: no
+        ``HandlerJudgeAdequacy``, judge adapter, cloud request, or model-based
+        quality gate is constructed or emitted.
+        """
+        assert workflow.request is not None
+        assert workflow.routing_decision is not None
+        assert _is_backend_pinned_single_attempt_request(workflow.request)
+
+        elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
+        _record_inference_response(workflow, response)
+        # A routing selection is never evidence of what the provider served.
+        # Preserve the terminal's required model string as ``unknown`` when the
+        # effect cannot confirm it, and intentionally omit the Core binding.
+        model_used = (response.model_used or "").strip()
+        if not model_used or model_used == "unknown":
+            model_used = "unknown"
+
+        if response.error_message:
+            terminal_inputs = self._pinned_single_attempt_terminal_inputs(
+                workflow=workflow,
+                response=response,
+                model_used=model_used,
+                elapsed_ms=elapsed_ms,
+                quality_passed=False,
+                quality_score=0.0,
+                failure_reason=response.error_message,
+                quality_gates_failed=(response.error_message,),
+                failed_acceptance_criteria=(response.error_message,),
+            )
+            self._advance(workflow, EnumDelegationState.FAILED)
+            return self._emit_terminal(terminal_inputs)
+
+        if model_used == "unknown":
+            terminal_inputs = self._pinned_single_attempt_terminal_inputs(
+                workflow=workflow,
+                response=response,
+                model_used=model_used,
+                elapsed_ms=elapsed_ms,
+                quality_passed=False,
+                quality_score=0.0,
+                failure_reason="pinned_served_model_id_required",
+                quality_gates_failed=("pinned_served_model_id_required",),
+                failed_acceptance_criteria=("pinned_served_model_id_required",),
+            )
+            self._advance(workflow, EnumDelegationState.FAILED)
+            return self._emit_terminal(terminal_inputs)
+
+        self._advance(workflow, EnumDelegationState.INFERENCE_COMPLETED)
+        deterministic_gate = evaluate_pinned_response_contract(
+            correlation_id=response.correlation_id,
+            content=response.content,
+            response_contract=workflow.request.response_contract,
+        )
+        self._advance(workflow, EnumDelegationState.GATE_EVALUATED)
+        quality_passed = deterministic_gate.passed
+        failure_reasons = tuple(deterministic_gate.failure_reasons)
+        failure_reason = "" if quality_passed else "; ".join(failure_reasons)
+        terminal_inputs = self._pinned_single_attempt_terminal_inputs(
+            workflow=workflow,
+            response=response,
+            model_used=model_used,
+            elapsed_ms=elapsed_ms,
+            quality_passed=quality_passed,
+            quality_score=deterministic_gate.quality_score,
+            failure_reason=failure_reason,
+            quality_gates_failed=failure_reasons,
+            failed_acceptance_criteria=() if quality_passed else failure_reasons,
+        )
+        self._advance(
+            workflow,
+            (
+                EnumDelegationState.COMPLETED
+                if quality_passed
+                else EnumDelegationState.FAILED
+            ),
+        )
+        return self._emit_terminal(terminal_inputs)
+
+    def _pinned_single_attempt_terminal_inputs(
+        self,
+        *,
+        workflow: DelegationWorkflowState,
+        response: ModelInferenceResponseData,
+        model_used: str,
+        elapsed_ms: int,
+        quality_passed: bool,
+        quality_score: float,
+        failure_reason: str,
+        quality_gates_failed: tuple[str, ...],
+        failed_acceptance_criteria: tuple[str, ...],
+    ) -> TerminalEmissionInputs:
+        """Build facts for the only terminal a selected policy may emit."""
+        assert workflow.request is not None
+        assert workflow.routing_decision is not None
+        return TerminalEmissionInputs(
+            completed=quality_passed,
+            correlation_id=response.correlation_id,
+            task_type=workflow.request.task_type,
+            model_used=model_used,
+            endpoint_url=workflow.routing_decision.endpoint_url,
+            content=response.content,
+            quality_passed=quality_passed,
+            quality_score=quality_score,
+            latency_ms=elapsed_ms,
+            prompt_tokens=workflow.inference_prompt_tokens,
+            completion_tokens=workflow.inference_completion_tokens,
+            total_tokens=workflow.inference_total_tokens,
+            fallback_to_claude=False,
+            failure_reason=failure_reason,
+            tokens_to_compliance=workflow.inference_total_tokens,
+            compliance_attempts=1,
+            cost_tier_name=workflow.current_tier_name or "",
+            premium_counterfactual=None,
+            escalation_count=0,
+            escalation_history=(),
+            terminal_failure_reason=None if quality_passed else "pinned_terminal",
+            routing_tiers_hash=self._routing_tiers_hash(),
+            escalation_config_hash=None,
+            attempts_count=1,
+            model_name=model_used,
+            session_id=None,
+            quality_gates_checked=["deterministic_response_contract"],
+            quality_gates_failed=list(quality_gates_failed),
+            llm_call_id=response.llm_call_id,
+            context_pack_hash=workflow.context_pack_hash,
+            tenant_id=_resolve_tenant_id(workflow),
+            failed_acceptance_criteria=failed_acceptance_criteria,
+        )
 
     @staticmethod
     def _terminal_failed_fields(
@@ -2374,6 +2613,55 @@ class HandlerDelegationWorkflow:
                 )
         return None
 
+    def _pinned_execution_binding_fields(
+        self, inputs: TerminalEmissionInputs
+    ) -> dict[str, BaseModel]:
+        """Build the Core terminal binding only from actual workflow facts."""
+        workflow = self._workflows.get(inputs.correlation_id)
+        request = workflow.request if workflow is not None else None
+        if request is None or not _is_backend_pinned_single_attempt_request(request):
+            return {}
+
+        dispatch_policy = _pinned_dispatch_policy(request)
+        rendered_contract_sha256 = getattr(request, "rendered_contract_sha256", None)
+        if (
+            dispatch_policy is None
+            or request.backend_id is None
+            or request.tenant_id is None
+            or not isinstance(rendered_contract_sha256, str)
+        ):
+            msg = "pinned delegation request lost its required authority binding"
+            raise RuntimeError(msg)
+        if (
+            inputs.attempts_count != 1
+            or inputs.compliance_attempts != 1
+            or inputs.escalation_count != 0
+            or inputs.escalation_history
+            or inputs.fallback_to_claude
+            or inputs.tenant_id != request.tenant_id
+        ):
+            msg = "pinned delegation terminal facts violate single-attempt authority"
+            raise RuntimeError(msg)
+        if inputs.model_used == "unknown":
+            # No provider-confirmed served model means no binding may make a
+            # configured-routing-model claim.  The failed terminal remains
+            # observable, but is explicitly unbound.
+            return {}
+        return {
+            "execution_binding": cast(
+                BaseModel,
+                build_canonical_execution_binding(
+                    correlation_id=inputs.correlation_id,
+                    tenant_id=request.tenant_id,
+                    backend_id=request.backend_id,
+                    served_model_id=inputs.model_used,
+                    rendered_contract_sha256=rendered_contract_sha256,
+                    dispatch_policy=dispatch_policy,
+                    terminal_kind="completed" if inputs.completed else "failed",
+                ),
+            )
+        }
+
     def _emit_terminal(self, inputs: TerminalEmissionInputs) -> list[BaseModel]:
         """ONE builder for the single canonical terminal event (OMN-13629).
 
@@ -2498,6 +2786,7 @@ class HandlerDelegationWorkflow:
         _terminal_cls = (
             ModelDelegationCompleted if inputs.completed else ModelDelegationFailed
         )
+        binding_fields = self._pinned_execution_binding_fields(inputs)
         delegation_result = _terminal_cls(
             correlation_id=inputs.correlation_id,
             task_type=inputs.task_type,
@@ -2547,6 +2836,7 @@ class HandlerDelegationWorkflow:
             # request-acceptance, carried through TerminalEmissionInputs onto
             # every terminal shape (completed / failed / agent-lifecycle).
             tenant_id=inputs.tenant_id,
+            **binding_fields,
         )
 
         # OMN-13629 (WS-F Phase 1): the legacy compat ``ModelTaskDelegatedEvent``

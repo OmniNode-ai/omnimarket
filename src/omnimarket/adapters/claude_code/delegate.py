@@ -28,6 +28,12 @@ from omnimarket.events.delegation import (
     EnumQualityContractMode,
     validate_acceptance_criteria,
 )
+from omnimarket.models.delegation.wire.model_dispatch_policy import (
+    BACKEND_PINNED_SINGLE_ATTEMPT_V1,
+    DispatchPolicy,
+    validate_backend_pinned_single_attempt_binding,
+    validate_backend_pinned_single_attempt_render_digest,
+)
 
 _ALLOWED_TASK_TYPES = (
     "test",
@@ -134,6 +140,10 @@ def build_delegation_payload(
     max_tokens: int | None = None,
     correlation_id: str | UUID | None = None,
     metadata: dict[str, str] | None = None,
+    tenant_id: str | None = None,
+    backend_id: str | None = None,
+    dispatch_policy: str | None = None,
+    rendered_contract_sha256: str | None = None,
 ) -> dict[str, Any]:
     """Build the payload object carried inside the delegation command envelope.
 
@@ -150,6 +160,22 @@ def build_delegation_payload(
         or max_tokens < 1
     ):
         raise ValueError("max_tokens must be a positive integer when supplied")
+    if (
+        dispatch_policy is not None
+        and dispatch_policy != BACKEND_PINNED_SINGLE_ATTEMPT_V1
+    ):
+        raise ValueError(f"unknown dispatch_policy: {dispatch_policy!r}")
+    validate_backend_pinned_single_attempt_render_digest(
+        dispatch_policy=cast(DispatchPolicy | None, dispatch_policy),
+        rendered_contract_sha256=rendered_contract_sha256,
+    )
+    if dispatch_policy == BACKEND_PINNED_SINGLE_ATTEMPT_V1:
+        pinned_policy = cast(DispatchPolicy, dispatch_policy)
+        validate_backend_pinned_single_attempt_binding(
+            dispatch_policy=pinned_policy,
+            backend_id=backend_id,
+            tenant_id=tenant_id,
+        )
     cid = _coerce_correlation_id(correlation_id)
     payload: dict[str, Any] = {
         "prompt": prompt,
@@ -173,6 +199,14 @@ def build_delegation_payload(
         payload["recipient"] = recipient
     if codex_sandbox_mode is not None:
         payload["codex_sandbox_mode"] = codex_sandbox_mode
+    if tenant_id is not None:
+        payload["tenant_id"] = tenant_id
+    if backend_id is not None:
+        payload["backend_id"] = backend_id
+    if dispatch_policy is not None:
+        payload["dispatch_policy"] = dispatch_policy
+    if rendered_contract_sha256 is not None:
+        payload["rendered_contract_sha256"] = rendered_contract_sha256
     payload["quality_contract_mode"] = quality_contract_mode
     payload["acceptance_criteria"] = validate_acceptance_criteria(acceptance_criteria)
     return payload
@@ -206,6 +240,10 @@ class DelegationDispatchAdapter:
         max_tokens: int | None,
         correlation_id: str | UUID | None,
         metadata: dict[str, str] | None,
+        tenant_id: str | None,
+        backend_id: str | None,
+        dispatch_policy: str | None,
+        rendered_contract_sha256: str | None,
     ) -> dict[str, Any]:
         payload = build_delegation_payload(
             prompt=prompt,
@@ -223,6 +261,10 @@ class DelegationDispatchAdapter:
             max_tokens=max_tokens,
             correlation_id=correlation_id,
             metadata=metadata,
+            tenant_id=tenant_id,
+            backend_id=backend_id,
+            dispatch_policy=dispatch_policy,
+            rendered_contract_sha256=rendered_contract_sha256,
         )
         return {
             "command_topic": self._topics.command_topic,
@@ -253,6 +295,10 @@ class DelegationDispatchAdapter:
         max_tokens: int | None = None,
         correlation_id: str | UUID | None = None,
         metadata: dict[str, str] | None = None,
+        tenant_id: str | None = None,
+        backend_id: str | None = None,
+        dispatch_policy: str | None = None,
+        rendered_contract_sha256: str | None = None,
     ) -> dict[str, Any]:
         """Return the exact command envelope without touching the message bus."""
         return self._envelope(
@@ -271,6 +317,10 @@ class DelegationDispatchAdapter:
             max_tokens=max_tokens,
             correlation_id=correlation_id,
             metadata=metadata,
+            tenant_id=tenant_id,
+            backend_id=backend_id,
+            dispatch_policy=dispatch_policy,
+            rendered_contract_sha256=rendered_contract_sha256,
         )
 
     def dispatch_sync(
@@ -291,6 +341,10 @@ class DelegationDispatchAdapter:
         max_tokens: int | None = None,
         correlation_id: str | UUID | None = None,
         metadata: dict[str, str] | None = None,
+        tenant_id: str | None = None,
+        backend_id: str | None = None,
+        dispatch_policy: str | None = None,
+        rendered_contract_sha256: str | None = None,
         timeout_ms: int | None = None,
     ) -> dict[str, Any]:
         """Publish the delegation command and wait for the correlated terminal event.
@@ -299,6 +353,11 @@ class DelegationDispatchAdapter:
         returns ``ok: false`` with a typed error; a timeout returns
         ``status="timeout"`` matching the contract's timeout behavior.
         """
+        if dispatch_policy == BACKEND_PINNED_SINGLE_ATTEMPT_V1:
+            raise PermissionError(
+                "backend-pinned-single-attempt.v1 cannot be executed by the raw "
+                "onex-delegate adapter: --tenant-id is untrusted and non-authorizing"
+            )
         # Imported lazily so that compile-only / payload-building paths and unit
         # tests do not require the runtime transport stack.
         from omnimarket.adapters.codex.runtime_client import (
@@ -321,6 +380,10 @@ class DelegationDispatchAdapter:
             max_tokens=max_tokens,
             correlation_id=correlation_id,
             metadata=metadata,
+            tenant_id=tenant_id,
+            backend_id=backend_id,
+            dispatch_policy=dispatch_policy,
+            rendered_contract_sha256=rendered_contract_sha256,
         )
         effective_timeout = min(
             timeout_ms or self._topics.default_timeout_ms,
@@ -373,6 +436,19 @@ def _build_parser() -> argparse.ArgumentParser:
         "--codex-sandbox-mode",
         default=None,
         help="Codex sandbox mode requested by the caller.",
+    )
+    parser.add_argument("--tenant-id", default=None, help="Verified tenant identity.")
+    parser.add_argument("--backend-id", default=None, help="Exact backend to use.")
+    parser.add_argument(
+        "--dispatch-policy",
+        choices=(BACKEND_PINNED_SINGLE_ATTEMPT_V1,),
+        default=None,
+        help="Closed dispatch policy; requires tenant, backend, and render digest.",
+    )
+    parser.add_argument(
+        "--rendered-contract-sha256",
+        default=None,
+        help="SHA-256 of complete canonical contract bytes rendered by caller.",
     )
     parser.add_argument(
         "--quality-contract-mode",
@@ -446,6 +522,10 @@ def main(argv: list[str] | None = None) -> int:
                 wait=args.wait,
                 max_tokens=args.max_tokens,
                 correlation_id=correlation_id,
+                tenant_id=args.tenant_id,
+                backend_id=args.backend_id,
+                dispatch_policy=args.dispatch_policy,
+                rendered_contract_sha256=args.rendered_contract_sha256,
             )
         except ValueError as exc:
             sys.stdout.write(
@@ -460,7 +540,14 @@ def main(argv: list[str] | None = None) -> int:
                 + "\n"
             )
             return 2
-        result = {"ok": True, **envelope}
+        result = {
+            "ok": True,
+            # A rendered raw CLI envelope is useful for inspection, but its
+            # tenant flag has no Infra ingress authority and cannot authorize a
+            # selected policy effect.
+            "authorization": "untrusted/non-authorizing",
+            **envelope,
+        }
         sys.stdout.write(json.dumps(result, indent=2) + "\n")
         return 0
 
@@ -480,6 +567,10 @@ def main(argv: list[str] | None = None) -> int:
             wait=args.wait,
             max_tokens=args.max_tokens,
             correlation_id=correlation_id,
+            tenant_id=args.tenant_id,
+            backend_id=args.backend_id,
+            dispatch_policy=args.dispatch_policy,
+            rendered_contract_sha256=args.rendered_contract_sha256,
         )
     except Exception as exc:
         sys.stdout.write(

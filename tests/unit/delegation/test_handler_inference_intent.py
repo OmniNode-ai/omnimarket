@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import NAMESPACE_DNS, uuid4, uuid5
 
@@ -28,6 +30,9 @@ from omnibase_infra.runtime.service_dispatch_result_applier import (
     DispatchResultApplier,
 )
 
+from omnimarket.models.delegation.wire.model_dispatch_policy import (
+    canonical_first_effect_authorization_binding_type,
+)
 from omnimarket.nodes.node_delegation_orchestrator.enums import (
     EnumDelegationState,
 )
@@ -67,6 +72,33 @@ _SUCCESSFUL_HTTPX_RESPONSE = {
     "choices": [{"message": {"content": "def test_foo(): pass"}}],
     "usage": {"prompt_tokens": 10, "completion_tokens": 20, "total_tokens": 30},
 }
+
+
+_requires_core_first_effect_authorization = pytest.mark.skipif(
+    canonical_first_effect_authorization_binding_type() is None,
+    reason="requires Core ModelDelegationFirstEffectAuthorizationBinding",
+)
+
+
+def _test_first_effect_authorization(correlation_id: object) -> object:
+    binding_type = canonical_first_effect_authorization_binding_type()
+    assert binding_type is not None
+    return binding_type(
+        correlation_id=correlation_id,
+        tenant_id="rsd-lab",
+        backend_id="local-coder-mlx",
+        rendered_contract_sha256="a" * 64,
+        authorization_digest="b" * 64,
+        grant_id=uuid4(),
+        envelope_id=uuid4(),
+        issuer_key_fingerprint_sha256="e" * 64,
+        nonce_digest="c" * 64,
+        request_digest="d" * 64,
+        retry_disposition="forbidden",
+        expected_output_topic="onex.evt.omnimarket.delegate-skill-completed.v1",
+        expected_output_event_class="ModelDelegationResult",
+        expected_output_event_index=0,
+    )
 
 
 def _make_delegation_request(correlation_id: object) -> ModelDelegationRequest:
@@ -137,6 +169,53 @@ class TestHandlerInferenceIntent:
         assert result.completion_tokens == 20
         assert result.total_tokens == 30
         assert result.error_message == ""
+
+    @_requires_core_first_effect_authorization
+    def test_pinned_effect_uses_only_provider_served_model_identity(self) -> None:
+        """Configured intent.model cannot manufacture a pinned binding identity."""
+        handler = HandlerInferenceIntent()
+        untrusted_selection = _make_intent(model="configured-routing-model")
+        pinned_intent_data = untrusted_selection.model_dump()
+        pinned_intent_data.update(
+            {
+                "api_key_ref": None,
+                "extra_headers": None,
+                "provider_request_options": None,
+                "response_format": None,
+                "tenant_id": None,
+                "first_effect_authorization_binding": _test_first_effect_authorization(
+                    untrusted_selection.correlation_id
+                ),
+            }
+        )
+        pinned_intent = cast(
+            ModelInferenceIntent,
+            SimpleNamespace(**pinned_intent_data),
+        )
+
+        missing_identity = MagicMock()
+        missing_identity.json.return_value = _SUCCESSFUL_HTTPX_RESPONSE
+        missing_identity.raise_for_status.return_value = None
+        actual_identity = MagicMock()
+        actual_identity.json.return_value = {
+            **_SUCCESSFUL_HTTPX_RESPONSE,
+            "model": "provider-confirmed-model-v2",
+        }
+        actual_identity.raise_for_status.return_value = None
+
+        with patch("httpx.Client") as mock_client_cls:  # onex-allow-faked-boundary
+            mock_client = MagicMock()
+            mock_client.__enter__ = MagicMock(return_value=mock_client)
+            mock_client.__exit__ = MagicMock(return_value=False)
+            mock_client.post.side_effect = [missing_identity, actual_identity]
+            mock_client_cls.return_value = mock_client
+
+            missing = handler.handle(pinned_intent)
+            actual = handler.handle(pinned_intent)
+
+        assert missing.model_used == ""
+        assert missing.model_used != untrusted_selection.model
+        assert actual.model_used == "provider-confirmed-model-v2"
 
     def test_posts_base_url_verbatim_no_path_append(self) -> None:
         """OMN-12815: the POST URL equals intent.base_url exactly — no append."""

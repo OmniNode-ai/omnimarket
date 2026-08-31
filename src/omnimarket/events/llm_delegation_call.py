@@ -119,3 +119,11 @@ class ModelLlmDelegationCallRequest(BaseModel):
     fallback at the effect boundary when ``secret_ref``'s dotted convention
     mapping misses — distinct from ``secret_ref``, never a substitute for it.
     ``None`` when the backend config declares no ``api_key_env``."""
+
+    require_canonical_secret_ref: bool = Field(default=False)
+    """Require a resolved ``secret_ref`` and prohibit environment fallback.
+
+    Used only by closed policy paths.  ``secret_ref=None`` remains the explicit
+    no-auth local-backend form; a declared reference that cannot resolve aborts
+    before the provider call.
+    """
