@@ -74,6 +74,34 @@ _SNAPSHOT_KIND_CONTRACT = textwrap.dedent("""\
         - "onex.snapshot.platform.registration-snapshots.v1"
 """)
 
+_CONTROL_PLANE_SUBSCRIBE_CONTRACT = textwrap.dedent("""\
+    name: node_test_control_plane_consumer
+    node_type: REDUCER_GENERIC
+    contract_version:
+      major: 1
+      minor: 0
+      patch: 0
+    node_version: "1.0.0"
+    description: "Consumes the onex-api-owned tenant lifecycle topic (OMN-16930)"
+    event_bus:
+      subscribe_topics:
+        - "onex.tenant.events"
+""")
+
+_CONTROL_PLANE_PUBLISH_CONTRACT = textwrap.dedent("""\
+    name: node_test_control_plane_producer
+    node_type: EFFECT_GENERIC
+    contract_version:
+      major: 1
+      minor: 0
+      patch: 0
+    node_version: "1.0.0"
+    description: "Illegitimately declares the onex-api-owned topic as an OUTPUT"
+    event_bus:
+      publish_topics:
+        - "onex.tenant.events"
+""")
+
 _MALFORMED_SNAPSHOT_CONTRACT = textwrap.dedent("""\
     name: node_test_malformed_snapshot
     node_type: ORCHESTRATOR_GENERIC
@@ -302,6 +330,59 @@ class TestHandlerContractSweepTopicValidation:
         ]
         assert len(topic_violations) == 1
         assert "onex.snapshot.v1" in topic_violations[0].message
+
+    def test_control_plane_topic_passes_as_a_subscription(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """GREEN PROOF (OMN-16930): onex.tenant.events is onex-api's
+        control-plane tenant-lifecycle topic. It predates the
+        onex.{cmd|evt|intent}.<producer>.<event>.vN convention and this repo
+        only CONSUMES it, so a subscription to it is exempt."""
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        repo = tmp_path / "repo"
+        (repo / "src").mkdir(parents=True)
+        _write_contract(
+            repo / "src", "node_cp_consumer", _CONTROL_PLANE_SUBSCRIBE_CONTRACT
+        )
+
+        result = NodeContractSweep().handle(ContractSweepRequest(repos=["repo"]))
+        assert result.contracts_checked == 1
+        assert result.violations == []
+        assert result.status == EnumSweepStatus.PASS
+
+    def test_control_plane_topic_is_rejected_as_a_publish_target(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """MANDATORY RED PROOF (OMN-17288): the exemption is DIRECTIONAL.
+
+        The exception exists because onex-api owns onex.tenant.events and this
+        repo consumes it. Applied to publish_topics it excuses the opposite
+        claim -- an omnimarket node asserting ownership of another repo's
+        control-plane topic -- and that contract would pass the naming lint
+        unnoticed. Ownership is the whole reason the name is exempt, so the
+        exemption cannot survive a direction flip.
+        """
+        monkeypatch.setenv("OMNI_HOME", str(tmp_path))
+        repo = tmp_path / "repo"
+        (repo / "src").mkdir(parents=True)
+        _write_contract(
+            repo / "src", "node_cp_producer", _CONTROL_PLANE_PUBLISH_CONTRACT
+        )
+
+        result = NodeContractSweep().handle(ContractSweepRequest(repos=["repo"]))
+        assert result.contracts_checked == 1
+        topic_violations = [
+            v
+            for v in result.violations
+            if v.violation_type == EnumViolationType.INVALID_TOPIC_NAME
+        ]
+        assert len(topic_violations) == 1, (
+            "a node declaring onex.tenant.events as a PUBLISH target must be "
+            "flagged: the control-plane exemption is a consumer carve-out, "
+            "not a licence to produce onto another repo's topic"
+        )
+        assert topic_violations[0].field == "event_bus.publish_topics"
+        assert "onex.tenant.events" in topic_violations[0].message
 
     def test_missing_required_fields_produces_violations(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch

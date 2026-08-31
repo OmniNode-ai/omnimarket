@@ -41,13 +41,21 @@ from omnimarket.projection.tenant_registry_events import (
 
 pytestmark = pytest.mark.unit
 
-# The live registry values for the tenant whose delegation row landed 31
-# minutes after signup -- a real, active, externally-owned customer, and the
-# row that made OMN-16804 urgent. Pinned here as literals rather than imported
-# from tenant_isolation.py: this file is the independent check on that map,
-# not a restatement of it.
-_LIVE_SLUG = "t-1lostguy1"
-_LIVE_UUID = UUID("e9c62089-2fe8-4190-8fc2-1c40b757b7b1")
+# A SYNTHETIC stand-in for the externally-owned tenant whose delegation row
+# landed 31 minutes after signup -- the row that made OMN-16804 urgent.
+#
+# The real slug and registry UUID used to be pinned here as literals. They were
+# a live customer's identifiers in a PUBLIC repo, and OMN-17288 replaced them.
+# The pair below is provably not anyone's: the UUID is
+# uuid5(NAMESPACE_DNS, "t-external-fixture-omn17288.example.invalid"), and
+# .invalid is reserved by RFC 2606 precisely so it can never be delegated.
+#
+# Nothing here asserts a property that needs the real customer's identity --
+# what is under test is the resolution MECHANISM. Still pinned as literals
+# rather than imported from tenant_isolation.py: this file is the independent
+# check on that map, not a restatement of it.
+_LIVE_SLUG = "t-external-fixture-omn17288"
+_LIVE_UUID = UUID("7527359e-3c87-53fd-a0ae-09fb9c2fe82d")
 
 
 def _envelope(

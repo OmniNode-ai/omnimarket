@@ -30,8 +30,11 @@
 -- ===========================================================================
 -- 0031 resolved identity from a CLOSED THREE-VALUE LITERAL CASE with no ELSE.
 -- The live table holds 169 rows across SIX writing slugs (census 2026-08-29),
--- nine of them outside that map -- including t-1lostguy1, a real, active,
+-- nine of them outside that map -- including one belonging to a real, active,
 -- externally-owned customer provisioned eight days AFTER 0031 was authored.
+-- That customer's slug was named here verbatim until OMN-17288 removed it:
+-- this repository is PUBLIC and the identifier was a live one. Nothing in this
+-- migration ever depended on the value; it was narrative.
 -- An unmapped slug evaluated to NULL, tripped 0022's NOT NULL, and surfaced
 -- as `column "tenant_id" of relation "delegation_events" contains null
 -- values`. The data was never null. The MAP was incomplete, and it was

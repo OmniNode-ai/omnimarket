@@ -9,9 +9,10 @@ The defect, stated exactly. ``delegation_events.tenant_id`` was keyed through
 ``UnmappedTenantIdentityError`` out of the writer, which subclasses
 ``ValueError`` and is caught nowhere in ``src/``, so the projection runner
 classified it POISON and quarantined the event: no row at all. The live registry
-held 39 tenants; three were in the map. ``t-1lostguy1`` -- a real, active,
-externally-owned customer -- wrote its first delegation 31 minutes after signup
-and was in the other 36.
+held 39 tenants; three were in the map. One real, active, externally-owned
+customer -- deliberately NOT named here, because this repo is PUBLIC and
+OMN-17288 removed that customer's slug and registry UUID from this tree --
+wrote its first delegation 31 minutes after signup and was in the other 36.
 
 Two of these tests are RED-first in the strict sense: ``test_ac1_*`` below
 exercise the REAL resolver, not an injected double. The OMN-16690 post-mortem

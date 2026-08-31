@@ -41,8 +41,14 @@ _CONTRACT = _NODE_DIR / "contract.yaml"
 TOPIC_TENANT_EVENTS = "onex.tenant.events"
 TERMINAL_EVENT = "onex.evt.omnimarket.tenant-registry-projection-applied.v1"
 
-_LIVE_SLUG = "t-1lostguy1"
-_LIVE_UUID = UUID("e9c62089-2fe8-4190-8fc2-1c40b757b7b1")
+# Synthetic stand-in for the externally-owned tenant of OMN-16930. The real
+# slug and registry UUID were live customer identifiers committed to a PUBLIC
+# repo; OMN-17288 replaced them. The UUID below is
+# uuid5(NAMESPACE_DNS, "t-external-fixture-omn17288.example.invalid") -- RFC
+# 2606 reserves .invalid, so the pair is provably not anyone's. What is under
+# test is the resolution mechanism, which needs no real identity.
+_LIVE_SLUG = "t-external-fixture-omn17288"
+_LIVE_UUID = UUID("7527359e-3c87-53fd-a0ae-09fb9c2fe82d")
 
 
 def _make_meta(partition: int = 0, offset: int = 0) -> MessageMeta:

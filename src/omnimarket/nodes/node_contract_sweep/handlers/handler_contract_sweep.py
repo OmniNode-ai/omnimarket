@@ -328,7 +328,19 @@ class NodeContractSweep:
                     if isinstance(topic, str) and not (
                         _TOPIC_RE.match(topic)
                         or _SNAPSHOT_TOPIC_RE.match(topic)
-                        or topic in _CONTROL_PLANE_TOPICS
+                        # OMN-17288: the control-plane carve-out is
+                        # DIRECTIONAL. onex.tenant.events is exempt from the
+                        # naming convention because onex-api OWNS it and this
+                        # repo only consumes it. Applied to publish_topics the
+                        # same exemption would excuse an omnimarket node
+                        # claiming to produce onto another repo's
+                        # control-plane topic -- the opposite of the fact that
+                        # justifies the exemption -- and that contract would
+                        # pass this lint unnoticed.
+                        or (
+                            direction == "subscribe_topics"
+                            and topic in _CONTROL_PLANE_TOPICS
+                        )
                     ):
                         violations.append(
                             ContractViolation(
