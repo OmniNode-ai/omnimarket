@@ -90,7 +90,19 @@ _CORRELATION_ID = "116571c0-0000-4000-8000-000000000000"
 # (a developer Mac) builds the callback while a clean host (the gate runner)
 # raises before the harvest can run. Depending on ambient environment would
 # make this suite pass or fail on host identity rather than on the seam.
-_DSN_ENV_VARS = ("OMNIDASH_ANALYTICS_DB_URL", "OMNINODE_INTERNAL_DB_URL")
+_DSN_ENV_VARS = (
+    "OMNIDASH_ANALYTICS_DB_URL",
+    "OMNINODE_INTERNAL_DB_URL",
+    # OMN-15425 repointed the `tenant_projection` binding off
+    # OMNIDASH_ANALYTICS_DB_URL onto its own ONEX_TENANT_DB_URL. Because
+    # this list is hand-written, the new binding was invisible here until
+    # omnimarket pinned an omnibase-infra carrying it, and the eager
+    # binding validation then failed closed. Same failure class the
+    # omnibase_infra-side modules hit in OMN-17142; OMN-17152 tracks
+    # deriving this set from the shipped topology so the NEXT binding
+    # addition cannot break this module again.
+    "ONEX_TENANT_DB_URL",
+)
 
 
 @pytest.fixture(autouse=True)
