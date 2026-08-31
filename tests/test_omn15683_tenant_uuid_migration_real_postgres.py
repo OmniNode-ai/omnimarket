@@ -73,21 +73,22 @@ _MIGRATIONS_DIR = (
 
 _TENANT_UUID_MIGRATION = "0031_delegation_events_tenant_id_to_uuid.sql"
 
-# OMN-16930 added 0032, which SUPERSEDES 0031 (same TEXT->UUID conversion of
-# delegation_events.tenant_id, resolved through the tenant_registry_mirror
-# JOIN instead of a hardcoded map) and runs whether or not 0031 already did.
-# The "pre-conversion" fixture below must exclude BOTH -- excluding only
-# 0031 left 0032 free to convert the column anyway, which is exactly what
-# broke this file the moment 0032 landed: a slug string bound to a now-uuid
-# column raised asyncpg.exceptions.DataError instead of the TEXT-vs-TEXT
-# comparison this test exists to pin. The singular constant above stays --
-# two tests below apply 0031's own SQL text directly, deliberately in
-# isolation from 0032, to pin 0031's own legacy-map CASE expression and
-# fail-closed behavior specifically.
+# OMN-16930 added 0032 and OMN-17288 added 0033, which SUPERSEDE 0031 (same
+# TEXT->UUID conversion of delegation_events.tenant_id, resolved through the
+# tenant_registry_mirror JOIN instead of a hardcoded map) and run whether or
+# not 0031 already did. The "pre-conversion" fixture below must exclude all
+# conversion migrations -- excluding only earlier revisions leaves a newer
+# supersession free to convert the column anyway, so a slug string bound to a
+# now-uuid column raises asyncpg.exceptions.DataError instead of the
+# TEXT-vs-TEXT comparison this test exists to pin. The singular constant above
+# stays -- two tests below apply 0031's own SQL text directly, deliberately in
+# isolation from its supersessions, to pin 0031's own legacy-map CASE
+# expression and fail-closed behavior specifically.
 _TENANT_UUID_MIGRATIONS = frozenset(
     {
         _TENANT_UUID_MIGRATION,
         "0032_delegation_events_tenant_id_uuid_via_registry.sql",
+        "0033_delegation_events_uuid_via_registry_single_transaction.sql",
     }
 )
 
