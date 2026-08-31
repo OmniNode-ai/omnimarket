@@ -35,7 +35,7 @@ state_artifacts:
   # stops a fresh pass from making an unresolved item read as never-attempted.
   dod_retry_state:
     path: "<evidence_root>/.evidence/<TICKET-ID>/dod_retry_state.json"
-    model: omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state.ModelDodVerifyRetryState
+    model: omnimarket.events.dod_verify_retry.ModelDodVerifyRetryState
 
 env_dependencies:
   ONEX_CC_REPO_PATH:

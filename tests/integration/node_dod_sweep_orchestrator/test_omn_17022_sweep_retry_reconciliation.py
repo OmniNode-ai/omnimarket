@@ -27,21 +27,21 @@ import pytest
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.events.dod_verify_retry import (
+    EnumDodVerifyRetryDisposition,
+    ModelDodVerifyRetryPolicy,
+)
 from omnimarket.nodes.node_dod_sweep_orchestrator.handlers.handler_dod_sweep_orchestrator import (
     HandlerDodSweepOrchestrator,
 )
 from omnimarket.nodes.node_dod_sweep_orchestrator.models.model_dod_sweep_orchestrator_request import (
     ModelDodSweepOrchestratorRequest,
 )
-from omnimarket.nodes.node_dod_verify.handlers.dod_verify_retry_ledger import (
-    FilesystemDodVerifyRetryLedger,
-)
-from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
-    EnumDodVerifyRetryDisposition,
-    ModelDodVerifyRetryPolicy,
-)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
+)
+from omnimarket.protocols.protocol_dod_verify_retry_ledger import (
+    FilesystemDodVerifyRetryLedger,
 )
 
 pytestmark = pytest.mark.integration
@@ -286,7 +286,7 @@ class TestTheTenHeldItems:
         ledger = FilesystemDodVerifyRetryLedger(
             ticket_state_root=evidence_root / ".evidence"
         )
-        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+        from omnimarket.events.dod_verify_retry import (
             ModelDodVerifyRetryState,
         )
 
@@ -348,7 +348,7 @@ class TestTheTenHeldItems:
         ledger = FilesystemDodVerifyRetryLedger(
             ticket_state_root=evidence_root / ".evidence"
         )
-        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+        from omnimarket.events.dod_verify_retry import (
             ModelDodVerifyRetryState,
         )
 
@@ -491,7 +491,7 @@ class TestForcedTimeoutIsDistinctFromNeverStarted:
         ledger = FilesystemDodVerifyRetryLedger(
             ticket_state_root=evidence_root / ".evidence"
         )
-        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+        from omnimarket.events.dod_verify_retry import (
             ModelDodVerifyRetryState,
         )
 
@@ -515,7 +515,7 @@ class TestForcedTimeoutIsDistinctFromNeverStarted:
         ledger = FilesystemDodVerifyRetryLedger(
             ticket_state_root=evidence_root / ".evidence"
         )
-        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+        from omnimarket.events.dod_verify_retry import (
             ModelDodVerifyRetryState,
         )
 
@@ -557,7 +557,7 @@ class TestForceRetryIsTheOperatorLever:
         ledger = FilesystemDodVerifyRetryLedger(
             ticket_state_root=evidence_root / ".evidence"
         )
-        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+        from omnimarket.events.dod_verify_retry import (
             ModelDodVerifyRetryState,
         )
 
@@ -601,7 +601,7 @@ class TestForceRetryIsTheOperatorLever:
         ledger = FilesystemDodVerifyRetryLedger(
             ticket_state_root=evidence_root / ".evidence"
         )
-        from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+        from omnimarket.events.dod_verify_retry import (
             ModelDodVerifyRetryState,
         )
 

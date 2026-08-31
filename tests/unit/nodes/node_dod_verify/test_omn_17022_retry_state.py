@@ -31,22 +31,20 @@ from pydantic import ValidationError
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
-from omnimarket.nodes.node_dod_verify.handlers.dod_verify_retry_ledger import (
-    FilesystemDodVerifyRetryLedger,
-)
-from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+from omnimarket.events.dod_verify_retry import (
     CANONICAL_DOD_VERIFY_RETRY_POLICY,
     EnumDodVerifyRetryDisposition,
     ModelDodVerifyRetryPolicy,
     ModelDodVerifyRetryState,
+    plan_next_attempt,
+    reconcile_abandoned_attempt,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     ModelDodVerifyState,
 )
-from omnimarket.nodes.node_dod_verify.services.retry_policy import (
-    plan_next_attempt,
-    reconcile_abandoned_attempt,
+from omnimarket.protocols.protocol_dod_verify_retry_ledger import (
+    FilesystemDodVerifyRetryLedger,
 )
 
 pytestmark = pytest.mark.unit

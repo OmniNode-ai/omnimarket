@@ -6,6 +6,9 @@
 The effect boundary for :mod:`retry_policy`, which is pure. Same shape as the
 OMN-17018 dispatch-queue lifecycle ledger one layer up: a Protocol plus a
 filesystem implementation, injectable so callers and tests share one contract.
+Shared rather than node-local because both ``node_dod_verify`` and
+``node_dod_sweep_orchestrator`` write it (OMN-9263 forbids a node reaching
+into a sibling's internals).
 
 The record lives beside the evidence it explains —
 ``<ticket_state_root>/<TICKET-ID>/dod_retry_state.json`` — next to the
@@ -34,12 +37,8 @@ import re
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
-    ModelDodVerifyRetryState,
-)
-from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
-    EnumDodVerifyStatus,
-)
+from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
+from omnimarket.events.dod_verify_retry import ModelDodVerifyRetryState
 
 logger = logging.getLogger(__name__)
 

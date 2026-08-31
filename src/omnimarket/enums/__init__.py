@@ -13,6 +13,7 @@ from omnimarket.enums.enum_dispatch_terminal_reason import (
     EnumDispatchTerminalDisposition,
     EnumDispatchTerminalReason,
 )
+from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     NON_RETRYABLE_CAUSES,
     EnumDodVerifyUnresolvedCause,
@@ -29,6 +30,7 @@ __all__ = [
     "EnumDispatchQueuePhase",
     "EnumDispatchTerminalDisposition",
     "EnumDispatchTerminalReason",
+    "EnumDodVerifyStatus",
     "EnumDodVerifyUnresolvedCause",
     "EnumNodeRole",
     "EnumUsageSource",

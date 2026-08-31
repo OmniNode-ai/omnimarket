@@ -44,14 +44,12 @@ from omnibase_core.models.contracts.ticket.model_dod_receipt import ModelDodRece
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
-from omnimarket.nodes.node_dod_verify.handlers.dod_verify_retry_ledger import (
-    FilesystemDodVerifyRetryLedger,
+from omnimarket.events.dod_verify_retry import (
+    ModelDodVerifyRetryState,
+    reconcile_abandoned_attempt,
 )
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
-)
-from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
-    ModelDodVerifyRetryState,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_start_command import (
     ModelDodVerifyStartCommand,
@@ -60,8 +58,8 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumDodVerifyStatus,
     ModelDodVerifyState,
 )
-from omnimarket.nodes.node_dod_verify.services.retry_policy import (
-    reconcile_abandoned_attempt,
+from omnimarket.protocols.protocol_dod_verify_retry_ledger import (
+    FilesystemDodVerifyRetryLedger,
 )
 
 _log = logging.getLogger(__name__)

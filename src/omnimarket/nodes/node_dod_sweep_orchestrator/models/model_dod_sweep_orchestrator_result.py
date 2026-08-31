@@ -5,11 +5,11 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
+from omnimarket.events.dod_verify_retry import (
+    EnumDodVerifyRetryDisposition,
+)
 from omnimarket.nodes.node_dod_sweep_orchestrator.services.gate_escape_audit import (
     ModelGateEscapeFinding,
-)
-from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
-    EnumDodVerifyRetryDisposition,
 )
 
 

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_dod_verify.models.model_dod_verify_retry_state import (
+from omnimarket.events.dod_verify_retry import (
     CANONICAL_DOD_VERIFY_RETRY_POLICY,
     ModelDodVerifyRetryPolicy,
 )

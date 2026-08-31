@@ -9,28 +9,10 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+from omnimarket.enums.enum_dod_verify_status import EnumDodVerifyStatus
 from omnimarket.enums.enum_dod_verify_unresolved_cause import (
     EnumDodVerifyUnresolvedCause,
 )
-
-
-class EnumDodVerifyStatus(StrEnum):
-    """Status values for DoD verification."""
-
-    PENDING = "pending"
-    VERIFIED = "verified"
-    FAILED = "failed"
-    SKIPPED = "skipped"
-    # OMN-17022 (off-rails A15): the run reached NO verdict — it faulted, was
-    # killed by a caller-side timeout, or could not resolve the binding it
-    # needed to look at anything. Before this member existed, such a run was
-    # indistinguishable from PENDING (the field's own default), which reads as
-    # "not yet attempted" — which is precisely why the ten items held by the
-    # 2026-08-29 sprint-triage closeout were never re-run without re-running
-    # the whole audit. UNRESOLVED is terminal for the run that produced it and
-    # never counts toward completion; a retry, when the cause allows one, is a
-    # NEW attempt recorded alongside it, not a mutation of it.
-    UNRESOLVED = "unresolved"
 
 
 class EnumEvidenceCheckStatus(StrEnum):
