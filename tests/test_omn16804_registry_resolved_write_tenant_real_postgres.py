@@ -146,14 +146,30 @@ CREATE TABLE IF NOT EXISTS tenant_registry_mirror (
 # and recreated with the ::uuid cast -- byte-for-byte the sequence
 # omnibase_infra's 0032 performs.
 _CONVERT_TENANT_ID_TO_UUID = """
-DROP POLICY IF EXISTS tenant_isolation ON delegation_events;
-ALTER TABLE delegation_events ALTER COLUMN tenant_id DROP DEFAULT;
-ALTER TABLE delegation_events
-    ALTER COLUMN tenant_id TYPE UUID USING (NULLIF(tenant_id, '')::uuid);
-CREATE POLICY tenant_isolation ON delegation_events
-  FOR ALL
-  USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
-  WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+DO $$
+DECLARE
+    v_data_type TEXT;
+BEGIN
+    SELECT data_type
+      INTO v_data_type
+      FROM information_schema.columns
+     WHERE table_schema = current_schema()
+       AND table_name = 'delegation_events'
+       AND column_name = 'tenant_id';
+
+    IF v_data_type = 'uuid' THEN
+        RETURN;
+    END IF;
+
+    DROP POLICY IF EXISTS tenant_isolation ON delegation_events;
+    ALTER TABLE delegation_events ALTER COLUMN tenant_id DROP DEFAULT;
+    ALTER TABLE delegation_events
+        ALTER COLUMN tenant_id TYPE UUID USING (NULLIF(tenant_id, '')::uuid);
+    CREATE POLICY tenant_isolation ON delegation_events
+      FOR ALL
+      USING (tenant_id = current_setting('app.tenant_id', true)::uuid)
+      WITH CHECK (tenant_id = current_setting('app.tenant_id', true)::uuid);
+END$$;
 """
 
 FRESH_TENANT_SLUG = "beta-fresh-6a0c1d33"
