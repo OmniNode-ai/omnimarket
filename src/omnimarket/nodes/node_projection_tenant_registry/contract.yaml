@@ -49,7 +49,7 @@ terminal_event: onex.evt.omnimarket.tenant-registry-projection-applied.v1
 
 golden_path:
   - "onex-api creates a tenant row and, in the SAME transaction, enqueues a TENANT_CREATED envelope into tenant_event_outbox (OMN-16027)"
-  - "The outbox flusher publishes that envelope to onex.tenant.events"
+  - "The outbox flusher publishes that envelope to the tenant lifecycle event topic"
   - "This node consumes it and upserts tenant_registry_mirror keyed by tenant_slug"
   - "A migration converting a legacy TEXT slug column to UUID JOINs tenant_registry_mirror in its ALTER ... TYPE ... USING clause"
   - "A slug the mirror cannot resolve aborts the conversion, naming the slug and stating that this projection has not caught up"

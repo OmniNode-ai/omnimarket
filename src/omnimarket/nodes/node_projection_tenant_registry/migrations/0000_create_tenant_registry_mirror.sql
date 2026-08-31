@@ -107,13 +107,23 @@ ALTER TABLE tenant_registry_mirror ADD COLUMN IF NOT EXISTS source_event_id TEXT
 -- CREATEs the relation, no other writer touches it, and the projection's own
 -- writer refuses an event that carries no identity. It is here for the drifted
 -- pre-existing table the reconciliation idiom exists to converge.
+--
+-- The count is taken by ASSIGNMENT from a scalar subquery rather than with
+-- `SELECT ... INTO v_unusable`. The OMN-15361 application-database SQL gate
+-- parses a top-level `SELECT ... INTO <name>` as PostgreSQL's SELECT INTO
+-- table-creation form and reports the PL/pgSQL variable as an unqualified
+-- relation target. The assignment form states the same thing and leaves the
+-- one real relation reference below visible and checkable to that gate.
 DO $$
 DECLARE
     v_unusable BIGINT;
 BEGIN
-    SELECT count(*) INTO v_unusable
-    FROM tenant_registry_mirror
-    WHERE tenant_slug IS NULL OR tenant_slug = '' OR tenant_uuid IS NULL;
+    v_unusable := (
+        SELECT count(*)
+        FROM tenant_registry_mirror
+        WHERE tenant_slug IS NULL
+           OR tenant_slug = ''
+           OR tenant_uuid IS NULL);
 
     IF v_unusable > 0 THEN
         RAISE EXCEPTION
@@ -161,21 +171,35 @@ CREATE INDEX IF NOT EXISTS idx_tenant_registry_mirror_observed_at
 -- this table at apply time or the mechanism does not work. app_dashboard is
 -- the dashboard reader, granted for parity with every other relation on this
 -- surface (the OMN-14894 ratchet's posture).
+--
+-- The grants are written out one per role as STATIC PL/pgSQL utility
+-- statements. An earlier revision looped over an array and issued
+-- `format('GRANT SELECT ON tenant_registry_mirror TO %I', v_role)` through
+-- dynamic SQL; the OMN-15361 application-database SQL gate rejects any
+-- procedural block whose relation targets are runtime strings, and it is
+-- right to -- a dynamically-composed target cannot be proven against the
+-- topology at all. Two roles do not justify a loop that defeats the gate.
 DO $$
-DECLARE
-    v_role TEXT;
 BEGIN
-    FOREACH v_role IN ARRAY ARRAY['role_omnidash', 'app_dashboard']
-    LOOP
-        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = v_role) THEN
-            EXECUTE format(
-                'GRANT SELECT ON tenant_registry_mirror TO %I', v_role
-            );
-        ELSE
-            RAISE NOTICE
-                'OMN-16930: role % not present on this lane; skipping GRANT '
-                '(compose lanes run migrations as the postgres superuser and '
-                'do not provision the k8s role set)', v_role;
-        END IF;
-    END LOOP;
+    IF EXISTS (
+        SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'role_omnidash')
+    THEN
+        GRANT SELECT ON tenant_registry_mirror TO role_omnidash;
+    ELSE
+        RAISE NOTICE
+            'OMN-16930: role role_omnidash not present on this lane; '
+            'skipping GRANT (compose lanes run migrations as the postgres '
+            'superuser and do not provision the k8s role set)';
+    END IF;
+
+    IF EXISTS (
+        SELECT 1 FROM pg_catalog.pg_roles WHERE rolname = 'app_dashboard')
+    THEN
+        GRANT SELECT ON tenant_registry_mirror TO app_dashboard;
+    ELSE
+        RAISE NOTICE
+            'OMN-16930: role app_dashboard not present on this lane; '
+            'skipping GRANT (compose lanes run migrations as the postgres '
+            'superuser and do not provision the k8s role set)';
+    END IF;
 END$$;

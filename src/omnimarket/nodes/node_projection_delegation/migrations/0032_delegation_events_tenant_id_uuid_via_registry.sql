@@ -98,9 +98,17 @@
 --     file runs before the mirror exists. Handled explicitly below: with an
 --     EMPTY delegation_events (exactly the fresh-bootstrap case, since 0007
 --     creates it in the same run) the conversion is unambiguous and proceeds;
---     with rows present it aborts and names the ordering violation. Every
---     statement that references the mirror is issued through EXECUTE so this
---     file parses on a lane where the relation does not yet exist.
+--     with rows present it aborts and names the ordering violation. The
+--     statements that reference the mirror sit inside the branch that only
+--     runs when `to_regclass` already resolved it: PL/pgSQL prepares a
+--     statement's plan lazily, on that statement's FIRST EXECUTION, not when
+--     the block is compiled -- so a never-taken branch never resolves the
+--     relation and the file applies cleanly on a lane where the mirror does
+--     not yet exist. An earlier revision wrapped those statements in dynamic
+--     SQL for the same effect; the OMN-15361 application-database SQL gate
+--     rejects that outright (a runtime-composed target cannot be proven
+--     against the topology), and the lazy-plan property makes the wrapper
+--     unnecessary.
 
 DO $$
 DECLARE
@@ -112,7 +120,6 @@ DECLARE
     v_row_count      BIGINT;
     v_debris_deleted BIGINT;
     v_unresolved     TEXT;
-    v_using_expr     TEXT;
 BEGIN
     IF to_regclass('delegation_events') IS NULL THEN
         RAISE NOTICE
@@ -121,11 +128,17 @@ BEGIN
         RETURN;
     END IF;
 
-    SELECT atttypid::regtype::text INTO v_current_type
-    FROM pg_attribute
-    WHERE attrelid = 'delegation_events'::regclass
-      AND attname = 'tenant_id'
-      AND NOT attisdropped;
+    -- Assignment from a scalar subquery, not `SELECT ... INTO`: the
+    -- OMN-15361 gate parses a top-level `SELECT ... INTO <name>` as
+    -- PostgreSQL's SELECT INTO table-creation form and reports the PL/pgSQL
+    -- variable as an unqualified relation target. Same statement, same
+    -- semantics, and the catalog reference stays visible to the gate.
+    v_current_type := (
+        SELECT atttypid::regtype::text
+        FROM pg_catalog.pg_attribute
+        WHERE attrelid = 'delegation_events'::regclass
+          AND attname = 'tenant_id'
+          AND NOT attisdropped);
 
     IF v_current_type IS NULL THEN
         RAISE EXCEPTION
@@ -153,10 +166,14 @@ BEGIN
     -- tenant-isolated table. A DO block is one transaction; an abort anywhere
     -- below rolls the toggle back with it.
     -- ---------------------------------------------------------------------
-    SELECT pg_get_userbyid(relowner), relforcerowsecurity
-    INTO v_owner, v_forced
-    FROM pg_class
-    WHERE oid = 'delegation_events'::regclass;
+    v_owner := (
+        SELECT pg_get_userbyid(relowner)
+        FROM pg_catalog.pg_class
+        WHERE oid = 'delegation_events'::regclass);
+    v_forced := (
+        SELECT relforcerowsecurity
+        FROM pg_catalog.pg_class
+        WHERE oid = 'delegation_events'::regclass);
 
     IF v_forced THEN
         IF NOT pg_has_role(current_user, v_owner, 'USAGE') THEN
@@ -168,7 +185,12 @@ BEGIN
                 'Refusing to convert half-blind.',
                 current_user, v_owner;
         END IF;
-        EXECUTE format('SET LOCAL ROLE %I', v_owner);
+        -- set_config('role', <name>, is_local => true) is exactly
+        -- `SET LOCAL ROLE <name>` and takes the owner as a VALUE, so no SQL
+        -- text is composed at runtime and the OMN-15361 gate's dynamic-SQL
+        -- rejection does not apply. PL/pgSQL's own `SET` statement cannot
+        -- take a variable, which is why the earlier revision composed one.
+        PERFORM set_config('role', v_owner::text, true);
         v_assumed_owner := TRUE;
         ALTER TABLE delegation_events NO FORCE ROW LEVEL SECURITY;
     END IF;
@@ -202,7 +224,9 @@ BEGIN
         'OMN-16930: removed % pre-tenancy debris row(s) with no registry '
         'identity', v_debris_deleted;
 
-    SELECT count(*) INTO v_row_count FROM delegation_events;
+    v_row_count := (
+        SELECT count(*)
+        FROM delegation_events);
 
     v_mirror := to_regclass('tenant_registry_mirror');
 
@@ -228,7 +252,6 @@ BEGIN
         RAISE NOTICE
             'OMN-16930: tenant_registry_mirror absent and delegation_events '
             'is empty -- converting with no rows to resolve (fresh bootstrap)';
-        v_using_expr := 'NULL::uuid';
     ELSE
         -- -----------------------------------------------------------------
         -- FAIL-CLOSED PRE-GUARD. A slug the mirror cannot resolve aborts.
@@ -239,13 +262,12 @@ BEGIN
         -- (`contains null values`) cost a week of misdirected diagnosis by
         -- describing the symptom instead of the cause.
         -- -----------------------------------------------------------------
-        EXECUTE $q$
+        v_unresolved := (
             SELECT string_agg(DISTINCT quote_literal(d.tenant_id), ', '
                               ORDER BY quote_literal(d.tenant_id))
             FROM delegation_events d
             LEFT JOIN tenant_registry_mirror m ON m.tenant_slug = d.tenant_id
-            WHERE m.tenant_slug IS NULL
-        $q$ INTO v_unresolved;
+            WHERE m.tenant_slug IS NULL);
 
         IF v_unresolved IS NOT NULL THEN
             RAISE EXCEPTION
@@ -285,13 +307,10 @@ BEGIN
         -- -----------------------------------------------------------------
         ALTER TABLE delegation_events
             ADD COLUMN IF NOT EXISTS omn16930_resolved_tenant_uuid UUID;
-        EXECUTE $u$
-            UPDATE delegation_events d
-            SET omn16930_resolved_tenant_uuid = m.tenant_uuid
-            FROM tenant_registry_mirror m
-            WHERE m.tenant_slug = d.tenant_id
-        $u$;
-        v_using_expr := 'omn16930_resolved_tenant_uuid';
+        UPDATE delegation_events d
+        SET omn16930_resolved_tenant_uuid = m.tenant_uuid
+        FROM tenant_registry_mirror m
+        WHERE m.tenant_slug = d.tenant_id;
     END IF;
 
     -- The pre-existing tenant_isolation POLICY (migration 0023) depends on
@@ -311,11 +330,21 @@ BEGIN
     -- inside this transaction), and NULL is rejected by the column's existing
     -- NOT NULL constraint from 0022 -- aborting the statement. No partial
     -- conversion, no invented UUID, no silent passthrough.
-    EXECUTE format(
-        'ALTER TABLE delegation_events '
-        'ALTER COLUMN tenant_id TYPE UUID USING (%s)',
-        v_using_expr
-    );
+    -- Two static conversions rather than one statement composed from a
+    -- transform-expression string. The branch is the one already decided
+    -- above -- mirror absent (and therefore zero rows, proven by the guard)
+    -- versus mirror present (identity resolved into the scratch column) --
+    -- so nothing is lost by writing both out, and the OMN-15361 gate can see
+    -- and prove each target. The mirror-absent branch never touches the
+    -- scratch column, which on that path was never added.
+    IF v_mirror IS NULL THEN
+        ALTER TABLE delegation_events
+            ALTER COLUMN tenant_id TYPE UUID USING (NULL::uuid);
+    ELSE
+        ALTER TABLE delegation_events
+            ALTER COLUMN tenant_id TYPE UUID
+            USING (omn16930_resolved_tenant_uuid);
+    END IF;
 
     -- The scratch column never outlives this transaction.
     ALTER TABLE delegation_events
