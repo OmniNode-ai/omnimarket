@@ -1,0 +1,88 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# byok_provider_backends.v1.yaml — the provider→backend binding a CUSTOMER's
+# own registered key routes to (OMN-17372 blocker b3).
+#
+# WHY THIS FILE EXISTS
+#
+#   Registering a BYOK key writes `tenant_inference_credentials` (the ref
+#   catalog). EXECUTING on that key requires a row in a DIFFERENT table,
+#   `delegation_routing_tenant_overlay` — the only path that produces
+#   `cost_tier="tenant_byok"` and threads the tenant's own `secret_ref`
+#   (node_delegation_routing_reducer/handlers/handler_delegation_routing.py::
+#   _decision_from_tenant_overlay). Until OMN-17372 that table had a creating
+#   migration and a GRANT and NO WRITER OF ANY KIND, so a customer could
+#   register an OpenRouter key and still have no route that selects it.
+#
+#   node_projection_tenant_credentials now derives BOTH read models from the
+#   one credential-registered/-revoked event stream. It needs to know which
+#   backend a given `provider` string means. That mapping is DECLARED here
+#   rather than branched on in the handler.
+#
+# WHAT A CUSTOMER'S KEY IS ALLOWED TO ADDRESS
+#
+#   Only a provider declared below produces an overlay row. An unrecognised
+#   provider is recorded in the credential catalog and produces NO route —
+#   fail-CLOSED. It must never silently inherit the platform's own backend,
+#   because the platform backend carries a HOUSE secret_ref
+#   (`llm.openrouter.api_key`) and answering a customer on a house credential
+#   is exactly what OMN-17372 ruling 3 forbids.
+#
+# MODEL CHOICE — WHY A ZERO-COST SLUG
+#
+#   The key is the customer's, so every token billed here is billed to THEM.
+#   There is no per-tenant model-selection surface yet, so the default must be
+#   one that cannot spend money a customer never agreed to spend. Each entry
+#   below therefore mirrors a FREE slug already declared and live-probed on the
+#   platform's own rung in bifrost_delegation.yaml. A per-tenant model override
+#   is a follow-on; it belongs in the overlay row's `model_name`, which is
+#   already per-tenant, so it needs no schema change when it lands.
+#
+# DRIFT IS GATED, NOT TRUSTED
+#
+#   `endpoint_url` and `model_name` below are duplicated from
+#   bifrost_delegation.yaml deliberately: the projection writer is a lean Kafka
+#   consumer and must not import the bifrost loader (which deep-merges a
+#   site overlay and can raise ProviderSurfaceMismatchError at import-adjacent
+#   time). The duplication is held honest by
+#   tests/test_omn17372_byok_routing_overlay_bridge.py::TestPlatformContractParity,
+#   which fails if either value stops matching a live backend entry in
+#   bifrost_delegation.yaml. Repoint the platform rung and this file must move
+#   with it.
+#
+# Related tickets:
+#   - OMN-17372: cloud delegation on a customer's OpenRouter key (blocker b3)
+#   - OMN-15631: the delegation_routing_tenant_overlay table and its resolver
+#   - OMN-16944: tenant-shaped refs resolve tenant-scoped, never env-fallback
+#   - OMN-17373: OpenAI has no delegation backend, so `openai` is deliberately
+#     ABSENT below — declaring it here would mint a route to a backend that
+#     does not exist.
+
+schema_version: "byok_provider_backends.v1"
+
+providers:
+  # The OMN-17372 minimum bar. `provider: "openrouter"` is the exact string the
+  # customer submits to POST /v1/tenants/me/inference-credentials, and the same
+  # string that is baked into the minted ref
+  # (`cred_<tenant>_openrouter_<uuid>`).
+  - provider: openrouter
+    # NOT one of the platform's own backend_ids. A tenant-overlay decision
+    # namespaces this by tenant_id before deriving the selected_backend_id
+    # UUID (_decision_from_tenant_overlay), so the string only has to be
+    # stable and legible — and it must NOT collide with a platform rung name,
+    # or cost/tier accounting would attribute a customer-paid call to a house
+    # rung.
+    backend_id: byok-openrouter
+    # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted
+    # VERBATIM — identical to the platform's openrouter rungs.
+    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
+    # Mirrors bifrost_delegation.yaml's `openrouter-qwen3-coder-480b` rung
+    # (OMN-15638 repoint). Free tier: rate-limited, no SLA, and $0 on the
+    # customer's account.
+    model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
+    # Both mirror the same platform rung. They land in the overlay row's own
+    # nullable columns; the routing reducer falls back to its platform
+    # defaults (30000 / DELEGATION_MAX_TOKENS_HARD_LIMIT) when either is null.
+    timeout_ms: 300000
+    max_tokens: 65536

@@ -67,6 +67,30 @@ _ENV_TENANT_OVERLAY_DSN = "OMNIDASH_ANALYTICS_DB_URL"
 #: Table created by migration 0001 (node_delegation_routing_reducer/migrations).
 TENANT_OVERLAY_TABLE = "delegation_routing_tenant_overlay"
 
+#: Sentinel stored in ``task_type`` for a row that binds EVERY task type of one
+#: tenant to one backend (OMN-17372).
+#:
+#: Why the table needed this. The BYOK bridge writes an overlay row from a
+#: customer's ``credential-registered`` event, and that event carries a
+#: provider and a ref -- it carries no task type, because the customer
+#: registered a KEY, not a per-task-class routing policy. The alternative was a
+#: fan-out of one row per declared task class at registration time, which would
+#: couple the credential projection to ``task_class_contracts.v1.yaml`` and
+#: silently strand any class added later. One sentinel row says the true thing
+#: instead: *this tenant's delegations run on this tenant's own key*, which is
+#: also exactly OMN-17372 ruling 3 ("no keyless customers on the cloud; every
+#: customer brings their own provider key").
+#:
+#: Precedence is unchanged and strictly narrower-wins: an exact
+#: ``(tenant_id, task_type)`` row still WHOLESALE-replaces the platform backend
+#: for that pair, and is consulted FIRST. The sentinel is only reached when no
+#: exact row exists, so every pre-OMN-17372 row keeps its exact semantics and
+#: the ``UNIQUE (tenant_id, task_type)`` constraint keeps holding it. ``*`` is
+#: not a pattern and is never interpreted as one -- it is an equality-matched
+#: literal, and no real task type can collide with it because task types are
+#: identifiers in ``task_class_contracts.v1.yaml``.
+BYOK_ALL_TASK_TYPES = "*"
+
 
 class ModelTenantRoutingOverlayBackend(BaseModel):
     """Resolved tenant-overlay backend binding for one (tenant_id, task_type).
@@ -153,6 +177,13 @@ def resolve_tenant_overlay(
     tenant-zero's resolution never touches this table and is byte-identical
     to the pre-OMN-15631 behaviour.
 
+    Resolution order (OMN-17372), narrower first:
+        1. the exact ``(tenant_id, task_type)`` row -- unchanged v1(a) semantics;
+        2. the tenant's ``(tenant_id, "*")`` row (:data:`BYOK_ALL_TASK_TYPES`),
+           written by the BYOK bridge from a ``credential-registered`` event.
+    A resolved sentinel row is returned with ``task_type`` set to the REQUESTED
+    task type, so ``delta()`` sees the same shape either path produced.
+
     Fail-open on read errors, an absent DSN (``db is None``), or no matching
     row -- all return ``None`` and the caller falls through to the unchanged
     platform-default resolution (AC3's "no overlay -> platform default").
@@ -173,6 +204,16 @@ def resolve_tenant_overlay(
             TENANT_OVERLAY_TABLE,
             filters={"tenant_id": tenant_id, "task_type": task_type},
         )
+        if not rows:
+            # OMN-17372: fall back to the tenant's all-task-types row, which is
+            # what the BYOK bridge writes from a credential-registered event.
+            # Narrower-wins: this second read only happens when no exact
+            # (tenant_id, task_type) row exists, so an exact row's semantics
+            # are untouched.
+            rows = db.query(
+                TENANT_OVERLAY_TABLE,
+                filters={"tenant_id": tenant_id, "task_type": BYOK_ALL_TASK_TYPES},
+            )
     except Exception:
         logger.warning(
             "tenant overlay read failed for tenant_id=%s task_type=%s; "
@@ -187,7 +228,14 @@ def resolve_tenant_overlay(
     row = rows[0]
     return ModelTenantRoutingOverlayBackend(
         tenant_id=str(row["tenant_id"]),
-        task_type=str(row["task_type"]),
+        # OMN-17372: the REQUESTED task type, not the stored one. A sentinel
+        # row stores ``*``; ``delta()`` asserts the resolved overlay's
+        # task_type equals the request's and would raise on the raw sentinel.
+        # Stamping the request's own task type here is what makes the sentinel
+        # a resolution-time expansion rather than a new reducer branch -- the
+        # reducer keeps seeing exactly the shape it always saw. An exact-match
+        # row is unaffected: its stored task_type already IS ``task_type``.
+        task_type=task_type,
         backend_id=str(row["backend_id"]),
         endpoint_url=str(row["endpoint_url"]),
         model_name=str(row["model_name"]),
@@ -216,6 +264,7 @@ def _optional_int(value: object) -> int | None:
 
 
 __all__: list[str] = [
+    "BYOK_ALL_TASK_TYPES",
     "TENANT_OVERLAY_TABLE",
     "ModelTenantRoutingOverlayBackend",
     "ProtocolTenantOverlayReader",

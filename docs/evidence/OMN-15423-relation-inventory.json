@@ -916,6 +916,7 @@
     {
       "accessor_nodes": [
         "node_delegation_routing_reducer",
+        "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -927,7 +928,8 @@
       "constraints": [],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml"
+        "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml",
+        "src/omnimarket/nodes/node_projection_tenant_credentials/contract.yaml"
       ],
       "current_schema": [
         "public"
@@ -957,6 +959,7 @@
       "target_schema": "tenant",
       "writers": [
         "node_delegation_routing_reducer",
+        "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ]
     },
@@ -2293,6 +2296,7 @@
         "node_projection_routing_decision",
         "node_projection_savings",
         "node_projection_session_outcome",
+        "node_projection_tenant_credentials",
         "node_session_orchestrator",
         "service:omnimarket_projection_migration_runner"
       ],
@@ -2355,6 +2359,7 @@
     {
       "accessor_nodes": [
         "node_delegation_routing_reducer",
+        "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
@@ -2370,7 +2375,8 @@
       ],
       "contract_sources": [
         "scripts/application-relation-ownership.yaml",
-        "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml"
+        "src/omnimarket/nodes/node_delegation_routing_reducer/contract.yaml",
+        "src/omnimarket/nodes/node_projection_tenant_credentials/contract.yaml"
       ],
       "current_schema": [
         "public"
@@ -2402,11 +2408,13 @@
       "producer": "node_delegation_routing_reducer",
       "readers": [
         "node_delegation_routing_reducer",
+        "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "tenant",
       "writers": [
         "node_delegation_routing_reducer",
+        "node_projection_tenant_credentials",
         "service:omnimarket_projection_migration_runner"
       ]
     },
