@@ -16,3 +16,14 @@ onex.cmd.deploy.rebuild-requested.v1
 onex.evt.savings.estimation-completed.v1
 onex.evt.model-router.routing-decision.v1
 onex.evt.baselines.computation-completed.v1
+
+# OMN-16930: onex.tenant.events is the control-plane tenant-lifecycle topic
+# OWNED BY onex-api (omninode_infra/docker/onex-api/topic_constants.py
+# TENANT_EVENTS_TOPIC), not by omnimarket. node_projection_tenant_registry is a
+# CONSUMER of it. Renaming it to satisfy this lint would require a coordinated
+# producer change in a different repo plus an MSK topic migration, and the
+# producer is the durable outbox OMN-16027 built precisely so tenant lifecycle
+# events stop being lost -- churning its topic name is the last thing that
+# surface needs. Baselined as a consumed foreign topic, not as debt this repo
+# can pay down unilaterally.
+onex.tenant.events

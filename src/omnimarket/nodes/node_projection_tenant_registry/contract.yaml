@@ -1,0 +1,125 @@
+---
+name: projection_tenant_registry
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+input_model: omnimarket.projection.tenant_registry_events.ModelTenantRegistryEvent
+description: >
+  Ingress+projection for the tenant registry (OMN-16930). Consumes the tenant
+  lifecycle events onex-api writes to its durable outbox in the same
+  transaction that creates the tenant row (OMN-16027), and materializes
+  tenant_registry_mirror -- the slug -> canonical UUID relation that
+  migration-time conversions in omnidash_analytics resolve against at apply
+  time, instead of inlining a literal map that is incomplete by construction
+  the moment it is written.
+
+  Operator ruling 2026-08-29, verbatim: "Hold + fix mechanism" -- the 0031
+  fence STAYS until write-time stamping deploys, and the permanent fix is
+  green-lit as new scope: a RUNTIME-POPULATED slug->UUID tenant relation in
+  omnidash_analytics so migration-time conversions resolve at apply time
+  instead of hardcoded maps.
+
+  The registry itself (omninode_cloud.public.tenants) lives in a different
+  database. It is NOT joined across databases -- postgres_fdw and dblink are
+  available but deliberately not installed. It is PROJECTED into
+  omnidash_analytics over the bus, the same governed write path as every
+  other node_projection_* relation. Only the runtime touches the database.
+
+handler:
+  module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_tenant_registry_projection
+  class: HandlerTenantRegistryProjectionRunner
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: TENANT_CREATED
+      handler:
+        name: HandlerTenantRegistryProjectionRunner
+        module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_tenant_registry_projection
+      handler_module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_tenant_registry_projection
+      event_model: omnimarket.projection.tenant_registry_events.ModelTenantRegistryEvent
+    - operation: TENANT_UPDATED
+      handler:
+        name: HandlerTenantRegistryProjectionRunner
+        module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_tenant_registry_projection
+      handler_module: omnimarket.nodes.node_projection_tenant_registry.handlers.handler_tenant_registry_projection
+      event_model: omnimarket.projection.tenant_registry_events.ModelTenantRegistryEvent
+
+terminal_event: onex.evt.omnimarket.tenant-registry-projection-applied.v1
+
+golden_path:
+  - "onex-api creates a tenant row and, in the SAME transaction, enqueues a TENANT_CREATED envelope into tenant_event_outbox (OMN-16027)"
+  - "The outbox flusher publishes that envelope to the tenant lifecycle event topic"
+  - "This node consumes it and upserts tenant_registry_mirror keyed by tenant_slug"
+  - "A migration converting a legacy TEXT slug column to UUID JOINs tenant_registry_mirror in its ALTER ... TYPE ... USING clause"
+  - "A slug the mirror cannot resolve aborts the conversion, naming the slug and stating that this projection has not caught up"
+
+dod_evidence:
+  - test: tests/test_omn16930_tenant_registry_projection.py::test_tenant_created_upserts_mirror_row
+    description: a TENANT_CREATED envelope upserts tenant_slug -> tenant_uuid with status and registry timestamp
+  - test: tests/test_omn16930_tenant_registry_projection.py::test_slug_rebinding_to_a_different_uuid_is_refused
+    description: a second event binding an existing slug to a DIFFERENT uuid raises rather than silently reassigning a tenant identity
+  - test: tests/test_omn16930_tenant_registry_projection.py::test_envelope_without_a_resolvable_tenant_identity_raises
+    description: an envelope carrying no tenant_id/tenant_slug pair fails fast instead of writing a partial row
+  - test: tests/test_omn16930_conversion_replay.py::TestConversionReplay::test_red_unresolved_slugs_abort_naming_the_projection
+    description: "AC4 RED -- scratch-Postgres replay of the live 169-row census with an EMPTY mirror aborts, names all 5 unresolved slugs, and says the projection has not caught up"
+  - test: tests/test_omn16930_conversion_replay.py::TestConversionReplay::test_green_populated_mirror_converts_every_row
+    description: "AC4 GREEN -- the same census with the mirror populated from the registry converts all 169 rows to uuid with zero rows lost"
+
+db_io:
+  db_tables:
+    # OMN-16930 AC2: classified `omninode_internal`, deliberately NOT `tenant`,
+    # and with no RLS. The mirror is a cross-tenant registry INDEX -- it holds
+    # no tenant's business rows, only the public slug<->uuid correspondence the
+    # platform already exposes at signup. Under `tenant` it would sit behind
+    # RLS and be invisible to the migrate identity (`role_omnidash`,
+    # rolbypassrls=f, app.tenant_id unset), reproducing the exact blindness
+    # that made migration 0031's DELETE a silent no-op and left only
+    # `contains null values` to diagnose from for a week.
+    #
+    # `public` was wrong and is corrected here: only TENANT and
+    # OMNINODE_INTERNAL are mapped in the topology's
+    # DOMAIN_PROJECTION_BINDINGS, so a `public`-domain declaration derives no
+    # projection binding at all and surfaces as an unresolved residual rather
+    # than as the grant this relation needs. The manifest row for this same
+    # migration already classifies it `omninode_internal`; the contract now
+    # agrees with it.
+    #
+    # PHYSICAL location is bare `public` -- the migration issues an
+    # unqualified CREATE TABLE, like every other relation still awaiting the
+    # OMN-15359 schema cutover -- so the topology's
+    # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 bridge must gain
+    # this table name when the generated TABLE grants are next re-derived
+    # (omnibase_infra, after this contract ships in a release).
+    - name: tenant_registry_mirror
+      database_ref: application
+      schema: omninode_internal
+      migration: "0000_create_tenant_registry_mirror.sql"
+      access: write
+      role: registry_mirror
+
+event_bus:
+  subscribe_topics:
+    - onex.tenant.events # onex-topic-allow: control-plane tenant lifecycle topic, owned by onex-api (topic_constants.TENANT_EVENTS_TOPIC, OMN-16027)
+  publish_topics:
+    - onex.evt.omnimarket.tenant-registry-projection-applied.v1
+  dlq_topics:
+    - onex.dlq.omnimarket.tenant-registry-projection-malformed.v1
+
+externally_consumed_topics:
+  - onex.evt.omnimarket.tenant-registry-projection-applied.v1
+
+# Deliberately NO projection_api exposure.
+#
+# tenant_registry_mirror is a cross-tenant registry index, not tenant-scoped
+# data -- it is read at MIGRATION time by the migrate Job's own identity, not
+# by a dashboard caller. Declaring an exposure would put the whole slug<->uuid
+# correspondence behind a serving path that would then need tenant scoping to
+# be safe, which is precisely the scoping this relation must NOT have (see the
+# migration header: an RLS-covered or tenant-scoped mirror is invisible to
+# role_omnidash with app.tenant_id unset, which reproduces the OMN-16493
+# blindness in the one place it would be fatal). No exposure, no scoping
+# question.
+
+metadata:
+  transport_type: kafka

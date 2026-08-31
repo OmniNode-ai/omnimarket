@@ -170,7 +170,12 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # manifest entry, with no authoritative CREATE yet) to "classified", so
     # source_declared_tables does NOT move again here: #2217 already counted
     # this relation once and this PR names the same one.
-    assert census["source_created_tables"] == 62
+    # +1 for OMN-16930's node-owned node_projection_tenant_registry
+    # /0000_create_tenant_registry_mirror.sql, which creates
+    # omninode_internal.tenant_registry_mirror -- the cross-tenant slug<->uuid
+    # index that the OMN-16930 registry-resolved migration conversion reads
+    # to convert legacy slug-keyed rows to canonical tenant uuid = 63.
+    assert census["source_created_tables"] == 63
     # 63 as of OMN-15631 (rebased onto OMN-16316/OMN-16293): 59 as of
     # OMN-16146, +2 for OMN-16293's two omnibase_infra#2818 catalog
     # declarations (savings_injection_signals, savings_validator_catch_signals)
@@ -200,7 +205,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # authoritative CREATE TABLE migration found") -- source_created_tables
     # stays 61 until the node's own migration lands in step 3, which is exactly
     # what the counts below encode.
-    assert census["source_declared_tables"] == 66
+    # +1 for OMN-16930's node-owned db_io declaration
+    # (tenant_registry_mirror), required by the shadow gate since its own
+    # migration creates the table in the same PR (declare and create land
+    # together here, unlike the cross-repo two-step above) = 67.
+    assert census["source_declared_tables"] == 67
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
@@ -218,7 +227,11 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # Same caveat as every entry above -- the census was observed 2026-07-29 and
     # this table did not exist then, so this remains a LOWER bound on
     # unreconciled live tables, not a claim about the live database.
-    assert census["minimum_unreconciled_live_base_tables"] == 24
+    # 23 as of OMN-16930: tenant_registry_mirror is one more source-created
+    # table, so the same arithmetic drops the bound by one again. Same
+    # caveat -- the 2026-07-29 census predates this table, so this stays a
+    # LOWER bound, not a claim about the live database.
+    assert census["minimum_unreconciled_live_base_tables"] == 23
     assert census["parity_status"] == "blocked"
     assert payload["runtime_evidence"]["live_catalog_parity"]["status"] == "blocked"
 

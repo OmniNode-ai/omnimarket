@@ -35,6 +35,25 @@ _TOPIC_RE = re.compile(r"^onex\.(cmd|evt|intent)\.[a-z0-9_-]+\.[a-z0-9_-]+\.v\d+
 _SNAPSHOT_TOPIC_RE = re.compile(
     r"^onex\.snapshot\.[a-z0-9_-]+(?:\.[a-z0-9_-]+)+\.v\d+$"
 )
+# Control-plane topics this repo CONSUMES but does not own (OMN-16930).
+#
+# Deliberately an exact-match frozenset and NOT a pattern. A pattern like
+# `onex.<something>.events` would let any future contract mint an unversioned,
+# unowned topic name and pass; an exact set can only ever excuse a topic
+# somebody added here on purpose, with the producer named.
+#
+# `onex.tenant.events` is the tenant lifecycle stream published by onex-api
+# (omninode_infra/docker/onex-api/topic_constants.py -- TENANT_EVENTS_TOPIC,
+# itself a member of that module's CONTROL_PLANE_TOPICS). It predates this
+# naming convention and its producer lives in a different repo, so renaming it
+# to satisfy this rule would mean a coordinated producer change plus an MSK
+# topic migration on the durable outbox OMN-16027 built specifically so tenant
+# lifecycle events stop being silently lost. That is not a rename this repo can
+# make unilaterally, and it is not one that surface needs.
+#
+# Adding an entry here is a claim that the topic is (a) produced outside this
+# repo and (b) named in the producer's own constants. Both are checkable.
+_CONTROL_PLANE_TOPICS = frozenset({"onex.tenant.events"})
 _REQUIRED_FIELDS = frozenset(
     ["name", "contract_version", "node_type", "node_version", "description"]
 )
@@ -307,7 +326,9 @@ class NodeContractSweep:
             for direction in ("subscribe_topics", "publish_topics"):
                 for topic in event_bus.get(direction, []) or []:
                     if isinstance(topic, str) and not (
-                        _TOPIC_RE.match(topic) or _SNAPSHOT_TOPIC_RE.match(topic)
+                        _TOPIC_RE.match(topic)
+                        or _SNAPSHOT_TOPIC_RE.match(topic)
+                        or topic in _CONTROL_PLANE_TOPICS
                     ):
                         violations.append(
                             ContractViolation(
