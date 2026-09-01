@@ -196,9 +196,8 @@ def _scan_api_key_env(rel: str, data: dict[str, Any]) -> list[str]:
             continue
         if "api_key_env" not in backend:
             continue
-        backend_id = backend.get("backend_id", "<unknown>")
         violations.append(
-            f"{rel}: backend {backend_id!r} declares api_key_env. "
+            f"{rel}: a backend declares api_key_env. "
             f"The house env-var fallback was DELETED (OMN-17372): OmniNode does "
             f"not offer inference and there are no keyless customers on the "
             f"cloud, so a backend authenticates from its managed-store "
@@ -243,7 +242,7 @@ def _scan_source_for_house_credentials(repo_root: Path) -> list[str]:
             violations.append(f"{rel}: could not be parsed ({type(exc).__name__})")
             continue
 
-        for node, _name, kind in _house_credential_reads(tree):
+        for node, kind in _house_credential_reads(tree):
             violations.append(
                 f"{rel}:{node.lineno}: {kind} names the house inference "
                 f"credential. OMN-17372: OmniNode does not offer inference "
@@ -272,8 +271,8 @@ def _string_constant(node: ast.expr | None) -> str | None:
     return None
 
 
-def _house_credential_reads(tree: ast.AST) -> list[tuple[ast.AST, str, str]]:
-    """Yield (node, variable, kind) for every real house-credential read.
+def _house_credential_reads(tree: ast.AST) -> list[tuple[ast.AST, str]]:
+    """Yield (node, kind) for every real house-credential read.
 
     Three shapes, all resolved on the AST so comments and docstrings are
     invisible to the rule:
@@ -284,12 +283,12 @@ def _house_credential_reads(tree: ast.AST) -> list[tuple[ast.AST, str, str]]:
         which is serviced by a direct ``os.environ.get`` after the store lookup
         and therefore bypasses the lane secret mapping.
     """
-    found: list[tuple[ast.AST, str, str]] = []
+    found: list[tuple[ast.AST, str]] = []
     for node in ast.walk(tree):
         if isinstance(node, ast.Subscript) and _is_os_environ(node.value):
             name = _string_constant(node.slice)
             if name in _HOUSE_INFERENCE_ENV_VARS:
-                found.append((node, str(name), "os.environ read"))
+                found.append((node, "os.environ read"))
         elif isinstance(node, ast.Call):
             func = node.func
             if (
@@ -300,13 +299,13 @@ def _house_credential_reads(tree: ast.AST) -> list[tuple[ast.AST, str, str]]:
             ):
                 name = _string_constant(node.args[0])
                 if name in _HOUSE_INFERENCE_ENV_VARS:
-                    found.append((node, str(name), "os.environ read"))
+                    found.append((node, "os.environ read"))
             for kw in node.keywords:
                 if kw.arg != "env_var_fallback":
                     continue
                 name = _string_constant(kw.value)
                 if name in _HOUSE_INFERENCE_ENV_VARS:
-                    found.append((node, str(name), "env_var_fallback"))
+                    found.append((node, "env_var_fallback"))
     return found
 
 
