@@ -256,6 +256,73 @@ class TestProjectionWriter:
             await _runner(db).project_event("onex.tenant.events", _envelope(), _meta())
 
 
+class TestRunnerDeliveredShape:
+    """OMN-17478: the shape ``BaseProjectionRunner`` ACTUALLY hands the handler.
+
+    Every test above feeds ``project_event`` the raw outbox envelope. The
+    runner never delivers that shape: ``_handle_message`` passes the message
+    through :func:`omnimarket.projection.envelope.unwrap_envelope`, which
+    strips the ``ModelOnexEnvelope`` wrapper and returns ``payload``'s
+    contents with the full envelope attached under ``"_envelope"``. The
+    handler routes on top-level ``operation`` — absent from that shape — so
+    on the live onex-dev plane every builder-emitted ``TENANT_CREATED`` was
+    silently declined at DEBUG, the offset committed, and the mirror stayed
+    empty (observed live 2026-09-01: group committed 27→31, ``n_tup_ins=0``).
+
+    These tests pin the REAL wire path by round-tripping through the real
+    ``unwrap_envelope``, not a hand-modeled dict.
+    """
+
+    @staticmethod
+    def _runner_delivered(envelope: dict[str, Any]) -> dict[str, Any]:
+        import json
+
+        from omnimarket.projection.envelope import unwrap_envelope
+
+        unwrapped = unwrap_envelope(json.dumps(envelope).encode("utf-8"))
+        assert unwrapped is not None
+        return unwrapped
+
+    async def test_runner_unwrapped_tenant_created_still_projects(self) -> None:
+        """A builder-shaped TENANT_CREATED must project when delivered the way
+        the runner delivers it — not only when handed the raw envelope."""
+        db = _FakeDb(
+            results=[
+                [],
+                [
+                    {
+                        "tenant_slug": _LIVE_SLUG,
+                        "tenant_uuid": str(_LIVE_UUID),
+                        "status": "active",
+                        "observed_at": "2026-09-01T12:00:00+00:00",
+                    }
+                ],
+            ]
+        )
+        data = self._runner_delivered(_envelope())
+        assert await _runner(db).project_event("onex.tenant.events", data, _meta())
+        # The decline path's signature is success-with-zero-statements; the
+        # projection path must touch the DB (rebinding check + upsert).
+        assert len(db.statements) == 2
+        assert "INSERT INTO" in db.statements[1][0]
+
+    async def test_runner_unwrapped_non_registry_operation_still_ignored(self) -> None:
+        db = _FakeDb()
+        data = self._runner_delivered(_envelope(operation="TENANT_BILLING_SYNCED"))
+        assert await _runner(db).project_event("onex.tenant.events", data, _meta())
+        assert db.statements == []
+
+    async def test_runner_unwrapped_rebinding_is_still_refused(self) -> None:
+        """The refusal branches must survive the unwrap too — restoring the
+        envelope must not skip the identity-rebinding guard."""
+        db = _FakeDb(
+            results=[[{"tenant_uuid": "00000000-0000-4000-8000-000000000000"}]]
+        )
+        data = self._runner_delivered(_envelope())
+        with pytest.raises(TenantIdentityRebindingError):
+            await _runner(db).project_event("onex.tenant.events", data, _meta())
+
+
 class TestDefBHandlerShape:
     def test_handle_takes_request_and_returns_a_plain_result(self) -> None:
         """OMN-14355 canon-shape ratchet.
