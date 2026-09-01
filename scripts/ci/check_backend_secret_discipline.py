@@ -197,9 +197,8 @@ def _scan_api_key_env(rel: str, data: dict[str, Any]) -> list[str]:
         if "api_key_env" not in backend:
             continue
         backend_id = backend.get("backend_id", "<unknown>")
-        named = backend.get("api_key_env")
         violations.append(
-            f"{rel}: backend {backend_id!r} declares api_key_env={named!r}. "
+            f"{rel}: backend {backend_id!r} declares api_key_env. "
             f"The house env-var fallback was DELETED (OMN-17372): OmniNode does "
             f"not offer inference and there are no keyless customers on the "
             f"cloud, so a backend authenticates from its managed-store "
@@ -244,15 +243,15 @@ def _scan_source_for_house_credentials(repo_root: Path) -> list[str]:
             violations.append(f"{rel}: could not be parsed ({type(exc).__name__})")
             continue
 
-        for node, name, kind in _house_credential_reads(tree):
+        for node, _name, kind in _house_credential_reads(tree):
             violations.append(
                 f"{rel}:{node.lineno}: {kind} names the house inference "
-                f"credential {name!r}. OMN-17372: OmniNode does not offer "
-                f"inference and there are no keyless customers on the cloud, "
-                f"so an inference credential resolves from its secret_ref "
-                f"through the store (per-tenant scoped) or not at all. Do not "
-                f"reach for the process environment here -- a delegation with "
-                f"no key must refuse, not borrow the house account."
+                f"credential. OMN-17372: OmniNode does not offer inference "
+                f"and there are no keyless customers on the cloud, so an "
+                f"inference credential resolves from its secret_ref through "
+                f"the store (per-tenant scoped) or not at all. Do not reach "
+                f"for the process environment here -- a delegation with no "
+                f"key must refuse, not borrow the house account."
             )
     return violations
 

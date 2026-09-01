@@ -134,7 +134,7 @@ def test_api_key_env_is_detected_when_reintroduced() -> None:
     violations = module._scan_api_key_env("fake.yaml", data)
     assert len(violations) == 1, violations
     assert "openrouter-glm-flash" in violations[0]
-    assert "OPENROUTER_API_KEY" in violations[0]
+    assert "declares api_key_env" in violations[0]
     # A backend carrying only secret_ref is clean -- the rule bans the env
     # indirection, not authenticated cloud backends.
     assert "cloud-gemini-flash" not in violations[0]
