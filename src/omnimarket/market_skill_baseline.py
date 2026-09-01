@@ -600,7 +600,20 @@ def _smoke_aislop_sweep() -> ModelCommandResult:
         "CRITICAL",
     ]
     completed = _run_command(command=command, env={"OMNI_HOME": str(OMNI_HOME)})
-    payload = _parse_json(completed.stdout)
+    try:
+        payload = _parse_json(completed.stdout)
+    except (json.JSONDecodeError, ValueError) as exc:
+        return ModelCommandResult(
+            passed=False,
+            command=_sanitize_command(command),
+            returncode=completed.returncode,
+            summary={
+                "stage": "parse_json",
+                "error_type": type(exc).__name__,
+                "stdout_bytes": len(completed.stdout),
+            },
+            stderr=completed.stderr.strip() or str(exc),
+        )
     observed = _unwrap_cli_report_payload(payload)
     status = str(payload.get("status", ""))
     observed_status = str(observed.get("status", status))
