@@ -55,9 +55,18 @@
 # never a raw address." The occ-autobind fan-out (this overlay + call-occ-
 # autobind.yml, and the omniclaude reusable / omnibase_infra caller once this
 # promotes to omnimarket main) no longer needs a `KAFKA_BOOTSTRAP_SERVERS`
-# secret. The other raw-secret publishers (pr-merged-publisher.yml,
-# runtime-rebuild-trigger.yml) do NOT use this overlay yet and are the remaining
-# systemic OMN-14801 point-5 follow-up.
+# secret.
+#
+# OMN-17378 (2026-08-31): `pr-merged-publisher.yml` now resolves through this
+# overlay too, with its `KAFKA_BOOTSTRAP_SERVERS` secret injection and its
+# `source ~/.omnibase/.env` line both removed. That closes half of the OMN-14801
+# point-5 residual, and it was not academic: that publisher's opaque secret is
+# what let a hosted-runner misroute masquerade as a configured broker, so it ran
+# GREEN and published NOTHING from 2026-08-27 to 2026-08-31 (topic stuck at
+# HIGH-WATERMARK 97, last message PR #2159, while the repo merged through
+# #2249). `runtime-rebuild-trigger.yml` is the one remaining raw-secret
+# publisher and the last of the point-5 follow-up (see also OMN-15009 — it has
+# never published once).
 
 default: inmemory
 

@@ -28,6 +28,13 @@ LOCAL_LANE_ENDPOINT = (
 
 
 def _load_publisher_module() -> types.ModuleType:
+    # The publisher imports its sibling `ci_bus_lanes` module (OMN-17378). At
+    # runtime `python scripts/publish_pr_merged_event.py` puts scripts/ on
+    # sys.path[0]; a spec_from_file_location load does not, so the harness must
+    # reproduce that import context.
+    scripts_dir = str(SCRIPT_PATH.parent)
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
     spec = importlib.util.spec_from_file_location(
         "publish_pr_merged_event", SCRIPT_PATH
     )
@@ -103,23 +110,56 @@ def test_module_imports_without_omnibase_core(
 
 
 class _FakeMessage:
-    def __init__(self, err: object = None) -> None:
+    """Stand-in for confluent_kafka.Message.
+
+    Carries broker-assigned coordinates: the publisher records partition/offset
+    from the delivery callback as the publish receipt (OMN-17378), and refuses
+    to claim success without them.
+    """
+
+    def __init__(self, err: object = None, partition: int = 0, offset: int = 0) -> None:
         self._err = err
+        self._partition = partition
+        self._offset = offset
 
     def error(self) -> object:
         return self._err
 
+    def partition(self) -> int:
+        return self._partition
+
+    def offset(self) -> int:
+        return self._offset
+
 
 class _FakeProducer:
-    """Minimal confluent_kafka.Producer stand-in."""
+    """Minimal confluent_kafka.Producer stand-in with REAL flush() semantics.
+
+    ``flush()`` returns the number of messages still queued when the timeout
+    elapses — the return value the pre-OMN-17378 publisher discarded, which is
+    what let an undelivered event report success. Class-level knobs let a test
+    reproduce the two live failure shapes without a broker:
+
+    ``undelivered``  -> delivery callback never fires and flush() reports the
+                        message still queued (unresolvable broker: exactly run
+                        33436788824).
+    ``silent_drain`` -> flush() drains to 0 but no delivery callback ever ran,
+                        so there are no broker-assigned coordinates.
+    """
 
     instances: list[_FakeProducer] = []
+    undelivered: bool = False
+    silent_drain: bool = False
+    delivery_error: object = None
+    next_partition: int = 0
+    next_offset: int = 0
 
     def __init__(self, config: dict[str, Any]) -> None:
         self.config = config
         self.produced: list[dict[str, Any]] = []
         _FakeProducer.instances.append(self)
         self._on_delivery: Any = None
+        self._queued = 0
 
     def produce(
         self,
@@ -129,6 +169,7 @@ class _FakeProducer:
         on_delivery: Any = None,
     ) -> None:
         self._on_delivery = on_delivery
+        self._queued += 1
         self.produced.append(
             {
                 "topic": topic,
@@ -136,17 +177,45 @@ class _FakeProducer:
                 "value": json.loads(value.decode("utf-8")),
             }
         )
-        # Simulate successful delivery
-        if on_delivery is not None:
-            on_delivery(None, _FakeMessage())
 
-    def flush(self, timeout: float = 30.0) -> None:
-        pass
+    def flush(self, timeout: float = 30.0) -> int:
+        if _FakeProducer.undelivered:
+            # Broker never resolved: the message stays queued and librdkafka's
+            # per-message timeout is far beyond this flush window, so the
+            # delivery callback never runs.
+            return self._queued
+        if _FakeProducer.silent_drain:
+            self._queued = 0
+            return 0
+        if self._on_delivery is not None:
+            self._on_delivery(
+                _FakeProducer.delivery_error,
+                _FakeMessage(
+                    partition=_FakeProducer.next_partition,
+                    offset=_FakeProducer.next_offset,
+                ),
+            )
+        self._queued = 0
+        return 0
 
 
 @pytest.fixture(autouse=True)
 def _reset_producer_instances() -> None:  # type: ignore[return]
     _FakeProducer.instances.clear()
+    _FakeProducer.undelivered = False
+    _FakeProducer.silent_drain = False
+    _FakeProducer.delivery_error = None
+    _FakeProducer.next_partition = 0
+    _FakeProducer.next_offset = 0
+
+
+def _override_overlay(module: types.ModuleType, overlay: dict[str, object]) -> None:
+    """Point the publisher at an in-memory lane overlay instead of the file."""
+
+    def _fake(path: object = None) -> dict[str, object]:
+        return overlay
+
+    module.load_lane_overlay = _fake  # type: ignore[attr-defined]
 
 
 # ---------------------------------------------------------------------------
@@ -203,7 +272,7 @@ def test_publish_pr_merged_event_correct_topic_and_payload(
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
 
-    event_id = publisher_module.publish_pr_merged_event(  # type: ignore[attr-defined]
+    event_id, partition, offset = publisher_module.publish_pr_merged_event(  # type: ignore[attr-defined]
         bootstrap_servers="broker:9092",
         username="user",
         password="secret",
@@ -229,6 +298,8 @@ def test_publish_pr_merged_event_correct_topic_and_payload(
     assert value["ticket"] == "OMN-13226"
     assert value["merged_at"] == "2026-06-18T10:00:00Z"
     assert value["event_id"] == event_id
+    # Broker-assigned coordinates are returned, never synthesised.
+    assert (partition, offset) == (0, 0)
 
 
 @pytest.mark.unit
@@ -342,22 +413,24 @@ def test_cli_publishes_when_broker_set(
     publisher_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CLI calls publish_pr_merged_event when broker env vars are present."""
+    """CLI publishes when the lane is 'from-secret' and a broker secret is set."""
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(publisher_module, {"lanes": {"dev": {"broker": "from-secret"}}})
 
     monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
     monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-publish")
     monkeypatch.setenv("PR_NUMBER", "200")
     monkeypatch.setenv("PR_MERGED_AT", "2026-06-18T11:00:00Z")
     monkeypatch.delenv("PR_TICKET", raising=False)
+    monkeypatch.setenv("RUNNER_IS_TRUSTED", "true")
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", BROKER_ENDPOINT)
     monkeypatch.setenv("KAFKA_SASL_USERNAME", "key")
     monkeypatch.setenv("KAFKA_SASL_PASSWORD", "secret")
 
     result = CliRunner().invoke(
         publisher_module.main,  # type: ignore[attr-defined]
-        [],
+        ["--lane", "dev"],
     )
 
     assert result.exit_code == 0, result.output
@@ -373,27 +446,31 @@ def test_cli_publishes_local_lane_plaintext_no_sasl(
     publisher_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """CLI publishes via plaintext when a broker is set but no SASL creds.
+    """The trusted path publishes plaintext to the overlay-declared lane broker.
 
-    This is the self-hosted-runner path: KAFKA_BOOTSTRAP_SERVERS resolves to the
-    local lane broker (from ~/.omnibase/.env) with no SASL credentials, so the
-    event still publishes to the canonical topic over plaintext.
+    This is the live self-hosted-runner shape after OMN-17378: NO
+    KAFKA_BOOTSTRAP_SERVERS secret is injected at all, the broker comes from the
+    committed lane overlay, and the dev-lane Redpanda has no SASL.
     """
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(
+        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+    )
 
     monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
     monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-lane")
     monkeypatch.setenv("PR_NUMBER", "201")
     monkeypatch.setenv("PR_MERGED_AT", "2026-06-18T11:30:00Z")
     monkeypatch.delenv("PR_TICKET", raising=False)
-    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", LOCAL_LANE_ENDPOINT)
+    monkeypatch.setenv("RUNNER_IS_TRUSTED", "true")
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
     monkeypatch.delenv("KAFKA_SASL_USERNAME", raising=False)
     monkeypatch.delenv("KAFKA_SASL_PASSWORD", raising=False)
 
     result = CliRunner().invoke(
         publisher_module.main,  # type: ignore[attr-defined]
-        [],
+        ["--lane", "dev"],
     )
 
     assert result.exit_code == 0, result.output
@@ -407,36 +484,355 @@ def test_cli_publishes_local_lane_plaintext_no_sasl(
     assert record["value"]["pr_number"] == 201
 
 
-@pytest.mark.unit
-def test_cli_skips_gracefully_when_broker_unset(
-    publisher_module: types.ModuleType,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """CLI exits 0 with a loud warning when KAFKA_BOOTSTRAP_SERVERS is unset.
+# ---------------------------------------------------------------------------
+# OMN-17378: the publisher must never report success on an unpublished event
+# ---------------------------------------------------------------------------
 
-    A broker misconfiguration (e.g. misrouted onto a cloud runner with no broker
-    provisioned) must be visible in the logs but must NOT red every merge: the
-    publisher skips gracefully (exit 0) and instantiates no Producer.
-    """
-    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
-    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
 
+def _trusted_env(monkeypatch: pytest.MonkeyPatch, pr_number: str = "300") -> None:
+    """Minimal trusted-runner env for a merged PR."""
     monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
-    monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-skip")
-    monkeypatch.setenv("PR_NUMBER", "202")
-    monkeypatch.setenv("PR_MERGED_AT", "2026-06-18T12:00:00Z")
+    monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-guard")
+    monkeypatch.setenv("PR_NUMBER", pr_number)
+    monkeypatch.setenv("PR_MERGED_AT", "2026-08-31T20:34:39Z")
     monkeypatch.delenv("PR_TICKET", raising=False)
+    monkeypatch.setenv("RUNNER_IS_TRUSTED", "true")
     monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
     monkeypatch.delenv("KAFKA_SASL_USERNAME", raising=False)
     monkeypatch.delenv("KAFKA_SASL_PASSWORD", raising=False)
+
+
+@pytest.mark.unit
+def test_publish_raises_when_flush_leaves_message_undelivered(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-zero flush remainder is a delivery FAILURE, never a success.
+
+    Reproduces run 33436788824 exactly: the broker name does not resolve, the
+    message stays queued past the 30s flush window, and librdkafka's per-message
+    timeout (300000ms) means the delivery callback never fires. The pre-fix code
+    discarded flush()'s return and printed "Published ..." anyway.
+    """
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _FakeProducer.undelivered = True
+
+    with pytest.raises(RuntimeError) as excinfo:
+        publisher_module.publish_pr_merged_event(  # type: ignore[attr-defined]
+            bootstrap_servers=BROKER_ENDPOINT,
+            username="",
+            password="",
+            repo="OmniNode-ai/omnimarket",
+            branch=PUBLISH_BRANCH,
+            pr_number=2249,
+            ticket="OMN-17369",
+            merged_at="2026-08-31T20:34:39Z",
+        )
+
+    message = str(excinfo.value)
+    assert "undelivered" in message
+    assert BROKER_ENDPOINT in message
+
+
+@pytest.mark.unit
+def test_publish_raises_when_no_delivery_callback_ran(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A drained queue with no delivery callback yields no offset, so no success.
+
+    Without broker-assigned coordinates there is no proof of publication; the
+    publisher must refuse rather than synthesise a receipt.
+    """
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _FakeProducer.silent_drain = True
+
+    with pytest.raises(RuntimeError) as excinfo:
+        publisher_module.publish_pr_merged_event(  # type: ignore[attr-defined]
+            bootstrap_servers=BROKER_ENDPOINT,
+            username="",
+            password="",
+            repo="OmniNode-ai/omnimarket",
+            branch=PUBLISH_BRANCH,
+            pr_number=2250,
+            ticket="",
+            merged_at="2026-08-31T20:34:39Z",
+        )
+
+    assert "no proof of publication" in str(excinfo.value)
+
+
+@pytest.mark.unit
+def test_publish_returns_broker_assigned_partition_and_offset(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A successful publish returns the coordinates the broker assigned."""
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _FakeProducer.next_partition = 0
+    _FakeProducer.next_offset = 97
+
+    event_id, partition, offset = publisher_module.publish_pr_merged_event(  # type: ignore[attr-defined]
+        bootstrap_servers=LOCAL_LANE_ENDPOINT,
+        username="",
+        password="",
+        repo="OmniNode-ai/omnimarket",
+        branch=PUBLISH_BRANCH,
+        pr_number=2251,
+        ticket="OMN-17378",
+        merged_at="2026-08-31T21:00:00Z",
+    )
+
+    assert event_id
+    assert (partition, offset) == (0, 97)
+
+
+@pytest.mark.unit
+def test_cli_fails_loud_when_broker_unresolvable_on_trusted_runner(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """SEEDED-RED ACCEPTANCE (OMN-17378): trusted + unreachable broker => exit 1.
+
+    The whole defect: eight green runs published nothing. On the trusted path an
+    unreachable broker is a defect, so the job must go red.
+    """
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(
+        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+    )
+    _FakeProducer.undelivered = True
+    _trusted_env(monkeypatch, pr_number="2249")
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "dev"],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "Delivery error" in result.output
+    assert "Published onex.evt.github.pr-merged.v1" not in result.output
+
+
+@pytest.mark.unit
+def test_cli_fails_loud_when_lane_undeclared_on_trusted_runner(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unresolvable lane on the trusted runner is a wiring gap, not a no-op."""
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(publisher_module, {"lanes": {"dev": {"broker": "inmemory"}}})
+    _trusted_env(monkeypatch)
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "stability"],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "is not declared" in result.output
+    assert len(_FakeProducer.instances) == 0
+
+
+@pytest.mark.unit
+def test_cli_fails_loud_when_no_lane_supplied_on_trusted_runner(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """No --lane on the trusted runner must not silently pick a default bus."""
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(
+        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+    )
+    _trusted_env(monkeypatch)
 
     result = CliRunner().invoke(
         publisher_module.main,  # type: ignore[attr-defined]
         [],
     )
 
+    assert result.exit_code == 1, result.output
+    assert "--lane was not supplied" in result.output
+    assert len(_FakeProducer.instances) == 0
+
+
+@pytest.mark.unit
+def test_cli_fails_loud_on_lane_bus_drift_on_trusted_runner(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An injected secret diverging from the declared lane broker is red.
+
+    The OMN-14800 silent dev->stability repoint guard, now applied here too. The
+    masked secret value is never echoed; only the committed declared broker is.
+    """
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(
+        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+    )
+    _trusted_env(monkeypatch)
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", BROKER_ENDPOINT)
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "dev"],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "LANE BUS DRIFT" in result.output
+    assert BROKER_ENDPOINT not in result.output
+    assert len(_FakeProducer.instances) == 0
+
+
+@pytest.mark.unit
+def test_cli_requires_runner_is_trusted(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RUNNER_IS_TRUSTED has no default: a wiring gap fails rather than guesses."""
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _trusted_env(monkeypatch)
+    monkeypatch.delenv("RUNNER_IS_TRUSTED", raising=False)
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "dev"],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert "RUNNER_IS_TRUSTED" in result.output
+
+
+@pytest.mark.unit
+def test_cli_skips_gracefully_on_untrusted_fork_runner(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Graceful skip survives ONLY on the fork/hosted path, where it is correct.
+
+    A fork PR runs on ubuntu-latest with no broker provisioned by design, so a
+    skip there is not a defect and must not red a contributor's merge.
+    """
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(
+        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+    )
+    _trusted_env(monkeypatch, pr_number="202")
+    monkeypatch.setenv("RUNNER_IS_TRUSTED", "false")
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "dev"],
+    )
+
     assert result.exit_code == 0, result.output
     assert "WARNING" in result.output
-    assert "KAFKA_BOOTSTRAP_SERVERS is not set" in result.output
-    # No Producer should have been instantiated when skipping.
     assert len(_FakeProducer.instances) == 0
+
+
+@pytest.mark.unit
+def test_cli_skips_when_lane_declares_inmemory(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An explicitly in-memory lane is a declared no-op, loud and exit 0."""
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(publisher_module, {"lanes": {"prod": {"broker": "inmemory"}}})
+    _trusted_env(monkeypatch)
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "prod"],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "in-memory bus" in result.output
+    assert len(_FakeProducer.instances) == 0
+
+
+@pytest.mark.unit
+def test_cli_writes_publish_receipt_to_step_summary(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """The run page must answer "did it publish" without a broker probe.
+
+    OMN-17378 fix item 3: topic + event_id + partition + offset land in
+    $GITHUB_STEP_SUMMARY on success.
+    """
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(
+        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+    )
+    _FakeProducer.next_offset = 98
+    _trusted_env(monkeypatch, pr_number="2250")
+
+    summary = tmp_path / "step_summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "dev"],
+    )
+
+    assert result.exit_code == 0, result.output
+    written = summary.read_text(encoding="utf-8")
+    assert "pr-merged publish receipt" in written
+    assert "onex.evt.github.pr-merged.v1" in written
+    assert "`0` / `98`" in written
+    assert LOCAL_LANE_ENDPOINT in written
+
+
+@pytest.mark.unit
+def test_no_step_summary_receipt_when_publish_fails(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """A failed publish writes NO receipt — a receipt is proof, not decoration."""
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(
+        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+    )
+    _FakeProducer.undelivered = True
+    _trusted_env(monkeypatch, pr_number="2251")
+
+    summary = tmp_path / "step_summary.md"
+    monkeypatch.setenv("GITHUB_STEP_SUMMARY", str(summary))
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "dev"],
+    )
+
+    assert result.exit_code == 1, result.output
+    assert not summary.exists()
+
+
+@pytest.mark.unit
+def test_committed_overlay_declares_a_concrete_dev_lane_broker(
+    publisher_module: types.ModuleType,
+) -> None:
+    """The real config/ci_bus_lanes.yaml must resolve 'dev' to a concrete broker.
+
+    Guards the routing decision itself: if the overlay ever regresses 'dev' to
+    inmemory/from-secret, the trusted publisher would stop publishing, so this
+    asserts the committed file, not a fixture.
+    """
+    overlay = publisher_module.load_lane_overlay()  # type: ignore[attr-defined]
+    mode, broker = publisher_module.resolve_lane_broker(overlay, "dev")  # type: ignore[attr-defined]
+    assert mode == "concrete"
+    assert ":" in broker
