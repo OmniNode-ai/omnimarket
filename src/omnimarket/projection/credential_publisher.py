@@ -28,6 +28,10 @@ Design notes (mirrors ``generation_publisher.py``, OMN-13004)
 * The event-bus producer is created per-publish and closed immediately
   unless one is injected (tests, or a caller that wants to own the
   lifecycle) -- see ``ProtocolGenerationEventBus`` precedent.
+* The secret store follows the same ownership rule (OMN-17349): built
+  per-request, ``initialize()``d at construction so it can actually write,
+  and closed in a ``finally`` -- an authenticated Infisical SDK client must
+  not outlive the POST that opened it. An injected store is never closed.
 * Fail-fast: a broker or secret store that is unreachable/unconfigured
   raises before any state is left half-written; the route maps that to 503.
 * ``ModelInferenceCredentialCreateRequest.key_value`` is a ``pydantic.SecretStr``
@@ -43,7 +47,7 @@ from typing import Literal, Protocol, cast
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_spi.protocols.services import ProtocolSecretStore
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
 
 from omnimarket.events.topics import (
     CREDENTIAL_REGISTERED_TOPIC_V1,
@@ -51,6 +55,76 @@ from omnimarket.events.topics import (
 )
 
 _SOURCE_TOOL = "omnimarket-tenant-credential-intake"
+
+# Every variable the Infisical machine identity needs, resolved fail-closed and
+# reported together. Deliberately byte-identical to
+# ``inference.secret_store_resolver._INFISICAL_BOOTSTRAP_VARS`` (the READ half,
+# OMN-16984): the two halves of the BYOK chain must demand the same bootstrap,
+# or a host can be configured well enough to accept a customer's key and not
+# well enough to hand it back. ``INFISICAL_ENVIRONMENT_SLUG`` is in the REQUIRED
+# set rather than defaulted -- see ``_bootstrap_values`` (OMN-17349 AC5).
+_INFISICAL_BOOTSTRAP_VARS: tuple[str, ...] = (
+    "INFISICAL_ADDR",
+    "INFISICAL_CLIENT_ID",
+    "INFISICAL_CLIENT_SECRET",
+    "INFISICAL_PROJECT_ID",
+    "INFISICAL_ENVIRONMENT_SLUG",
+)
+
+# The folder the tenant-credential values live in. This one keeps a default:
+# unlike the environment slug, a wrong path cannot silently cross an environment
+# boundary, and the value is a fixed product-level address rather than a
+# per-host fact.
+_DEFAULT_TENANT_CREDENTIAL_SECRET_PATH = "/tenant-inference-credentials"
+
+
+class CredentialStoreError(RuntimeError):
+    """Base: the BYOK intake store could not be made ready to write.
+
+    Every subclass names ADDRESSING only -- host, project id, environment slug,
+    secret path, the minted ref, and the NAMES of bootstrap variables. No secret
+    value and no machine-identity material is ever interpolated into any of
+    these messages: the onex-api route logs this exception with
+    ``logger.exception`` before mapping it to 503, so the message lands in a pod
+    log by construction.
+    """
+
+
+class CredentialStoreConfigurationError(CredentialStoreError):
+    """The host's Infisical bootstrap configuration is missing or malformed.
+
+    Raised INSTEAD of the bare ``KeyError`` / ``ValidationError`` the previous
+    ``os.environ[...]`` triple produced, so a misconfigured host reads as a
+    legible fact rather than a traceback (OMN-17349 AC1).
+    """
+
+
+class CredentialStoreUnavailableError(CredentialStoreError):
+    """The adapter was configured but could not authenticate against Infisical.
+
+    The underlying ``InfraConnectionError`` is chained as ``__cause__`` (it is
+    already sanitized by ``omnibase_infra.utils.util_error_sanitization``), but
+    the message raised here is written from addressing this module holds rather
+    than forwarded out of the SDK.
+    """
+
+
+class CredentialStoreWriteRejectedError(CredentialStoreError):
+    """``set_secret`` reported failure WITHOUT raising -- the key is not stored.
+
+    ``ProtocolSecretStore.set_secret`` is declared ``-> bool`` ("True if stored
+    successfully, False otherwise"), so a conforming store is allowed to decline
+    a write by returning ``False`` rather than raising. The deployed
+    ``InfisicalSecretStore`` only ever returns ``True`` or raises, but this
+    publisher is written against the PROTOCOL, not that one implementation.
+
+    Discarding the boolean would publish ``credential-registered`` -- and hand
+    the customer a 201 plus an ``api_key_ref`` -- for a key that was never
+    persisted. The customer would then see a live credential in the dashboard
+    whose every delegation fails to resolve at the effect boundary: exactly the
+    "configured and inert" failure class OMN-17349 exists to remove, moved one
+    layer out. Fail loud at intake instead.
+    """
 
 
 class ModelInferenceCredentialCreateRequest(BaseModel):
@@ -189,34 +263,123 @@ def _build_event_bus() -> ProtocolCredentialEventBus:
     return cast(ProtocolCredentialEventBus, EventBusKafka(config))
 
 
-def _build_secret_store() -> ProtocolSecretStore:
-    """Construct the Infisical-backed secret store for the value->ref exchange.
+def _bootstrap_values() -> dict[str, str]:
+    """Resolve the Infisical bootstrap env fail-closed, naming every gap at once.
 
-    This is the deployed default per OMN-13236 ("wire Infisical-backed
-    ProtocolSecretStore as the deployed default"). Fail-fast on missing
-    config (CLAUDE.md rule 8) -- a silently-misconfigured store must not
-    accept a customer key it cannot actually persist.
+    Three deliberate departures from what this replaced:
+
+    * ``INFISICAL_ADDR`` is read HERE rather than via
+      ``ModelInfisicalAdapterConfig.host``'s ``default_factory``, whose
+      ``os.environ[...]`` raises a bare ``KeyError`` from inside pydantic
+      validation.
+    * A blank / whitespace-only value counts as missing. An empty
+      ``INFISICAL_CLIENT_SECRET`` is a misconfigured host, not a credential.
+    * ``INFISICAL_ENVIRONMENT_SLUG`` is REQUIRED (OMN-17349 AC5). It previously
+      defaulted to ``"prod"``, so any host that left it unset wrote **customer
+      keys into the prod environment of the ``omninode`` project**. The safe
+      failure of a secret-write path is to refuse, never to guess the most
+      privileged environment.
+
+    Raises:
+        CredentialStoreConfigurationError: naming the missing variables. Names
+            only -- no value is ever interpolated.
     """
     import os
 
-    from omnibase_infra.adapters._internal.adapter_infisical import AdapterInfisical
+    values = {
+        name: os.environ.get(name, "").strip() for name in _INFISICAL_BOOTSTRAP_VARS
+    }
+    missing = sorted(name for name, value in values.items() if not value)
+    if missing:
+        raise CredentialStoreConfigurationError(
+            "BYOK credential intake cannot reach the managed secret store: the "
+            "Infisical machine identity is not fully configured on this host. "
+            f"Missing or blank: {missing}. Required bootstrap variables: "
+            f"{list(_INFISICAL_BOOTSTRAP_VARS)}. "
+            "INFISICAL_ENVIRONMENT_SLUG has no default by design (OMN-17349): "
+            "an unset slug must refuse the write, never pick an environment."
+        )
+    values["INFISICAL_TENANT_CREDENTIAL_SECRET_PATH"] = (
+        os.environ.get("INFISICAL_TENANT_CREDENTIAL_SECRET_PATH", "").strip()
+        or _DEFAULT_TENANT_CREDENTIAL_SECRET_PATH
+    )
+    return values
+
+
+def _build_secret_store() -> ProtocolSecretStore:
+    """Construct an INITIALIZED Infisical-backed store for the value->ref exchange.
+
+    This is the deployed default per OMN-13236 ("wire Infisical-backed
+    ProtocolSecretStore as the deployed default"), and the only branch the
+    onex-api route ever takes -- it never passes ``secret_store=``.
+
+    ``InfisicalSecretStore`` states its own precondition in its class docstring:
+    "The wrapper does not own the adapter's lifecycle; callers must
+    ``initialize()`` the adapter before passing it in." This function did not,
+    so ``AdapterInfisical`` stayed ``_authenticated = False`` and BOTH write
+    paths (``update_secret`` then the ``create_secret`` fallback) raised
+    "Infisical adapter not initialized" -- a deterministic 503 for every tenant,
+    every provider, every request (OMN-17349). ``handler_secret_seed`` is the
+    sibling construction site that gets this right.
+
+    **Ownership model (AC3): the CALLER owns what this returns.** The adapter
+    holds an authenticated SDK client, so a per-request construction that is
+    never closed leaks one authenticated client per POST.
+    :func:`register_inference_credential` closes exactly the store it built, in
+    a ``finally``, and never closes an injected one.
+
+    Raises:
+        CredentialStoreConfigurationError: bootstrap env missing/malformed.
+        CredentialStoreUnavailableError: configured, but ``initialize()`` failed.
+    """
+    from omnibase_infra.adapters._internal import adapter_infisical
     from omnibase_infra.adapters.models.model_infisical_config import (
         ModelInfisicalAdapterConfig,
     )
+    from omnibase_infra.errors import InfraConnectionError
     from omnibase_infra.secret_stores.infisical_secret_store import (
         InfisicalSecretStore,
     )
 
-    config = ModelInfisicalAdapterConfig(
-        client_id=SecretStr(os.environ["INFISICAL_CLIENT_ID"]),
-        client_secret=SecretStr(os.environ["INFISICAL_CLIENT_SECRET"]),
-        project_id=os.environ["INFISICAL_PROJECT_ID"],
-        environment_slug=os.environ.get("INFISICAL_ENVIRONMENT_SLUG", "prod"),
-        secret_path=os.environ.get(
-            "INFISICAL_TENANT_CREDENTIAL_SECRET_PATH", "/tenant-inference-credentials"
-        ),
-    )
-    adapter = AdapterInfisical(config)
+    values = _bootstrap_values()
+    host = values["INFISICAL_ADDR"]
+    project_id = values["INFISICAL_PROJECT_ID"]
+    environment_slug = values["INFISICAL_ENVIRONMENT_SLUG"]
+    secret_path = values["INFISICAL_TENANT_CREDENTIAL_SECRET_PATH"]
+
+    try:
+        config = ModelInfisicalAdapterConfig(
+            host=host,
+            client_id=SecretStr(values["INFISICAL_CLIENT_ID"]),
+            client_secret=SecretStr(values["INFISICAL_CLIENT_SECRET"]),
+            project_id=uuid.UUID(project_id),
+            environment_slug=environment_slug,
+            secret_path=secret_path,
+        )
+    except (ValidationError, ValueError) as exc:
+        raise CredentialStoreConfigurationError(
+            "BYOK credential intake could not build the managed secret-store "
+            f"config for host={host!r} INFISICAL_PROJECT_ID={project_id!r} "
+            f"environment_slug={environment_slug!r} secret_path={secret_path!r}. "
+            f"Check {list(_INFISICAL_BOOTSTRAP_VARS)}. Underlying error type: "
+            f"{type(exc).__name__}."
+        ) from exc
+
+    adapter = adapter_infisical.AdapterInfisical(config)
+    try:
+        adapter.initialize()
+    except InfraConnectionError as exc:
+        # Release the half-built client rather than leaving an unauthenticated
+        # SDK object rooted by the traceback.
+        adapter.shutdown()
+        raise CredentialStoreUnavailableError(
+            "BYOK credential intake could not authenticate against the managed "
+            f"secret store host={host!r} project_id={project_id!r} "
+            f"environment_slug={environment_slug!r} secret_path={secret_path!r}. "
+            "The customer key was NOT stored. Verify the machine identity named "
+            f"by {list(_INFISICAL_BOOTSTRAP_VARS)} is live for that project."
+        ) from exc
+
     return cast(
         ProtocolSecretStore,
         InfisicalSecretStore(
@@ -240,11 +403,47 @@ async def register_inference_credential(
     ``key_value`` exists in this process for exactly one line: the
     ``set_secret`` call below. It is never assigned to any other variable,
     never logged, and never placed on the published event.
+
+    ``api_key_ref`` is minted from the AUTHENTICATED ``tenant_id``, never from
+    the request body -- ``ModelInferenceCredentialCreateRequest`` is
+    ``extra="forbid"`` and has no ref field, so one tenant structurally cannot
+    name (and therefore cannot overwrite) another tenant's secret.
+
+    Store ownership (OMN-17349 AC3) mirrors the ``owns_bus`` shape directly
+    below: a store this function CONSTRUCTS holds an authenticated Infisical
+    SDK client and is closed in a ``finally``, success or failure, so a
+    per-request construction cannot leak one authenticated client per POST. An
+    INJECTED store is never closed -- its caller owns its lifetime.
+
+    ``set_secret``'s ``bool`` is CHECKED, not discarded: a protocol-conforming
+    store may decline a write by returning ``False``, and publishing
+    credential-registered for a key the store does not hold would hand the
+    customer a ref that can never resolve.
+
+    Raises:
+        CredentialStoreConfigurationError: host bootstrap missing/malformed.
+        CredentialStoreUnavailableError: store configured but unauthenticated.
+        CredentialStoreWriteRejectedError: the store declined the write.
     """
     api_key_ref = mint_api_key_ref(tenant_id, request.provider)
 
-    store = secret_store or _build_secret_store()
-    await store.set_secret(api_key_ref, request.key_value.get_secret_value())
+    owns_store = secret_store is None
+    store = secret_store if secret_store is not None else _build_secret_store()
+    try:
+        stored = await store.set_secret(
+            api_key_ref, request.key_value.get_secret_value()
+        )
+    finally:
+        if owns_store:
+            await store.close()
+    if not stored:
+        raise CredentialStoreWriteRejectedError(
+            "BYOK credential intake did not persist the key: the managed secret "
+            f"store declined the write for ref {api_key_ref!r} (tenant "
+            f"{tenant_id!r}, provider {request.provider!r}) by returning False. "
+            "No credential-registered event was published -- a ref the store "
+            "does not hold must never reach the projection or the customer."
+        )
 
     event = ModelCredentialRegisteredEvent(
         tenant_id=tenant_id,
