@@ -4184,7 +4184,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
       "indexes": [
         "idx_pr_merged_events_cursor",
         "idx_pr_merged_events_merged_at",
