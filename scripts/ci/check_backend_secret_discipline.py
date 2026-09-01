@@ -384,6 +384,30 @@ def build_report(repo_root: Path) -> dict[str, Any]:
     }
 
 
+def _public_report(report: dict[str, Any]) -> dict[str, Any]:
+    """Return a CLI-safe summary that never emits credential-shaped findings."""
+
+    violation_keys = (
+        "literal_credential_violations",
+        "backend_ref_violations",
+        "api_key_env_violations",
+        "house_credential_source_violations",
+    )
+    return {
+        "ticket": report["ticket"],
+        "gate": report["gate"],
+        "scanned_configs": report["scanned_configs"],
+        "passed": report["passed"],
+        "error_count": len(report["errors"]),
+        "violation_counts": {key: len(report[key]) for key in violation_keys},
+    }
+
+
+def _print_violation_count(label: str, values: list[str]) -> None:
+    if values:
+        print(f"  {label}: {len(values)} finding(s); details withheld from logs")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Backend secret-ref / credential-ref discipline gate (OMN-12971)"
@@ -395,7 +419,7 @@ def main() -> int:
     report = build_report(repo_root)
 
     if args.json:
-        print(json.dumps(report, indent=2, sort_keys=True))
+        print(json.dumps(_public_report(report), indent=2, sort_keys=True))
         return 0 if report["passed"] else 1
 
     if report["passed"]:
@@ -408,14 +432,14 @@ def main() -> int:
     print("[backend-secret-discipline] FAIL")
     for err in report["errors"]:
         print(f"  error: {err}")
-    for v in report["literal_credential_violations"]:
-        print(f"  literal-credential: {v}")
-    for v in report["backend_ref_violations"]:
-        print(f"  backend-ref: {v}")
-    for v in report["api_key_env_violations"]:
-        print(f"  api-key-env: {v}")
-    for v in report["house_credential_source_violations"]:
-        print(f"  house-credential-source: {v}")
+    _print_violation_count(
+        "literal-credential", report["literal_credential_violations"]
+    )
+    _print_violation_count("backend-ref", report["backend_ref_violations"])
+    _print_violation_count("api-key-env", report["api_key_env_violations"])
+    _print_violation_count(
+        "house-credential-source", report["house_credential_source_violations"]
+    )
     print(
         "\nFix: keep credential VALUES in the secret store; declare only logical "
         "refs (secret_ref / credential_ref) in routing-authority config."
