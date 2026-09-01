@@ -108,6 +108,21 @@ class HandlerTenantRegistryProjectionRunner(BaseProjectionRunner):
     ) -> bool:
         del topic  # single-topic node; routing is by operation, not by topic
 
+        # OMN-17478: BaseProjectionRunner delivers the UNWRAPPED payload —
+        # unwrap_envelope() strips the ModelOnexEnvelope wrapper and returns
+        # payload's contents with the full transport envelope attached under
+        # "_envelope". This node routes on the envelope's top-level
+        # `operation` and parses `payload.tenant`, both of which live on the
+        # envelope, so restore it when the runner has unwrapped. Without this,
+        # every builder-emitted TENANT_CREATED read as "no operation" and was
+        # silently declined at DEBUG while the offset committed — the mirror
+        # could never populate from the live wire (observed on onex-dev
+        # 2026-09-01: group committed past offsets 27-30, n_tup_ins=0).
+        # A raw envelope (no "_envelope" key) still passes through unchanged.
+        restored = data.get("_envelope")
+        if isinstance(restored, dict):
+            data = restored
+
         operation = data.get("operation")
         if (
             not isinstance(operation, str)

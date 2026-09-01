@@ -275,3 +275,36 @@ async def test_the_mirror_carries_no_rls() -> None:
         )
         assert flags["relrowsecurity"] is False
         assert flags["relforcerowsecurity"] is False
+
+
+@pytest.mark.integration
+@pytest.mark.asyncio
+async def test_runner_delivered_shape_lands_a_row_end_to_end() -> None:
+    """OMN-17478: the shape BaseProjectionRunner actually delivers, on real
+    Postgres.
+
+    The runner strips the ModelOnexEnvelope wrapper via unwrap_envelope() and
+    hands the handler payload's contents with the envelope under "_envelope".
+    Before the fix the handler routed on the now-absent top-level `operation`
+    and silently declined every builder-emitted TENANT_CREATED — commit with
+    zero inserts, observed live on onex-dev 2026-09-01. This pins the whole
+    wire path: serialized envelope -> real unwrap_envelope -> project_event ->
+    a real row.
+    """
+    import json
+
+    from omnimarket.projection.envelope import unwrap_envelope
+
+    async with _mirror_schema() as (conn, _schema):
+        delivered = unwrap_envelope(json.dumps(_envelope()).encode("utf-8"))
+        assert delivered is not None
+        assert "operation" not in delivered  # the wrapper really was stripped
+
+        assert await _runner(conn).project_event(_TOPIC, delivered, _meta())
+
+        row = await conn.fetchrow(
+            "SELECT * FROM tenant_registry_mirror WHERE tenant_slug = $1", _SLUG
+        )
+        assert row is not None
+        assert row["tenant_uuid"] == _UUID
+        assert row["status"] == "active"
