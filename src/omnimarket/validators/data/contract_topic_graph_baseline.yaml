@@ -301,7 +301,6 @@ accepted:
 - ORPHANED_CONSUMER::pr_lifecycle_fix_effect::onex.cmd.omnimarket.pr-lifecycle-fix-start.v1
 - ORPHANED_CONSUMER::pr_lifecycle_merge_effect::onex.cmd.omnimarket.pr-lifecycle-merge-start.v1
 - ORPHANED_CONSUMER::pr_lifecycle_worktree_prune_effect::onex.cmd.omnimarket.pr-lifecycle-worktree-prune-start.v1
-- ORPHANED_CONSUMER::pr_merged_projection::onex.evt.github.pr-merged.v1
 - ORPHANED_CONSUMER::pr_semantic_grader_llm_effect::onex.cmd.omnimarket.pr-semantic-grading-requested.v1
 - ORPHANED_CONSUMER::pr_snapshot_effect::onex.cmd.omnimarket.pr-snapshot-start.v1
 - ORPHANED_CONSUMER::process_watchdog::onex.cmd.omnimarket.watchdog-start.v1
@@ -700,6 +699,15 @@ accepted:
 - ORPHANED_PRODUCER::version_skew_detector::onex.evt.omniclaude.version-skew-detected.v1
 - ORPHANED_PRODUCER::version_skew_detector::onex.evt.omniclaude.version-skew-healthy.v1
 external_producers:
+  # OMN-17277: the GitHub PR-merged feed is published by a GHA workflow, not by
+  # any node contract — omnimarket/.github/workflows/pr-merged-publisher.yml
+  # running scripts/publish_pr_merged_event.py (OMN-13226, hardened OMN-17378).
+  # This was already stated in the merge-state-transition comment below as the
+  # reference case for the shape, but the topic itself was never declared, so
+  # every consumer of it scored as an orphan. Declaring it retires the frozen
+  # ORPHANED_CONSUMER::pr_merged_projection entry (a shrink, which the ratchet
+  # allows) rather than adding a second node to the same false positive.
+  onex.evt.github.pr-merged.v1: "pr-merged-publisher GHA workflow (scripts/publish_pr_merged_event.py), not a node contract — OMN-13226 / OMN-17378"
   # OMN-16316: BYOK inference-credential value->ref exchange. The gateway
   # handler (POST/DELETE /v1/tenants/me/inference-credentials, route wiring
   # pending OMN-16319) calls omnimarket.projection.credential_publisher

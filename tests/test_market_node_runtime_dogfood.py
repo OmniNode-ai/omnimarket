@@ -255,7 +255,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # canonical tenant uuid at apply time): 392 -> 393.
     # OMN-17019 adds node_projection_open_obligations, the materialized
     # "what is currently owed" fold over the five work.obligation.* events.
-    assert summary["node_dirs"] == 394
+    # OMN-17277 adds node_contractor_integration_note_effect (EFFECT; posts one
+    # idempotent Linear note per merge whose cited ticket belongs to a
+    # configured external contractor -- the mechanism replacing the manual
+    # announcement that left omnibase_infra#3120 unannounced for five hours on
+    # 2026-09-01): 394 -> 395.
+    assert summary["node_dirs"] == 395
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -327,7 +332,15 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # OMN-17019 adds the node_projection_open_obligations entry point (see the
     # node_dirs comment above; routable via its subscribe topics, the five
     # work.obligation.* fan-out topics): 390 -> 391.
-    assert summary["entry_points"] == 391
+    # OMN-17277 adds the node_contractor_integration_note_effect entry point
+    # (see the node_dirs comment above). It is deliberately NOT routable: the
+    # contract declares no subscribe topic because the reachability field is
+    # answered by `git tag --contains` against the merged repo and the runtime
+    # holds no checkout of it -- the GitHub Actions shim that invokes the node's
+    # module entrypoint does. Declaring a topic to raise `routable` would
+    # manufacture the wired-looking-but-unwired path this very inventory
+    # exists to detect: 391 -> 392.
+    assert summary["entry_points"] == 392
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

@@ -1,0 +1,168 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract — Contractor Integration Note Effect
+#
+# When a PR merges in any OmniNode repo and its title or body cites a ticket
+# assigned to a configured external contractor, post exactly one self-contained
+# Linear comment on that ticket: what changed, what it means for the surfaces
+# they probe, the probe, the pass expectation, and whether the change is in a
+# released tag or on the integration branch only (with the pin recipe).
+#
+# Why this exists: on 2026-09-01 omnibase_infra#3120 — the overlay fix a
+# contractor was blocked on — merged at 15:21Z and sat unannounced for five
+# hours, because the announcement was a manual promise on the ticket. This node
+# removes the promise.
+#
+# Related Tickets:
+#   - OMN-17277: integration note (WS2 of the customer-plane validation charter)
+#   - OMN-17274: charter epic
+#   - OMN-17021: delivery-acknowledgement states (this is its first consumer)
+---
+name: node_contractor_integration_note_effect
+node_type: EFFECT_GENERIC
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 1, minor: 0, patch: 0}
+node_not_implemented: false
+
+description: >
+  Effect node that delivers one integration note per merge whose cited ticket is
+  assigned to a contractor in the configured roster. Idempotent by construction:
+  the note carries its own key (owner/repo#number) and the node reads the
+  ticket's existing comments back before writing, so a replay, a backfill
+  dispatch, and a re-run all converge on "already posted". The note is composed
+  by a pure service; the handler owns only sequencing and I/O.
+
+handler:
+  # Constructed by the module entrypoint (cli.py) with its two effect
+  # boundaries injected, NOT by the boot resolver — see the event_bus note below.
+  module: omnimarket.nodes.node_contractor_integration_note_effect.handlers.handler_contractor_integration_note
+  class: HandlerContractorIntegrationNote
+  input_model: omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_request.ModelIntegrationNoteRequest
+
+input_model:
+  name: ModelIntegrationNoteRequest
+  module: omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_request
+  description: "Merge facts plus the contractor roster resolved from the overlay."
+output_model:
+  name: ModelIntegrationNoteResult
+  module: omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_result
+  description: "The composer's decision plus what happened at the Linear boundary."
+
+descriptor:
+  node_archetype: effect
+  purity: effectful
+  # NOT idempotent as a raw write; idempotent as an operation. The node reads
+  # the ticket's posted note keys back before writing, so re-running it for the
+  # same merge is a no-op with skip_reason=already_posted. Declaring `true`
+  # here would claim the Linear mutation itself is replay-safe, which it is not.
+  idempotent: false
+  timeout_ms: 60000
+  runtime_profiles:
+    - effects
+
+secrets:
+  # OMN-12856: the literal credential reference lives here, never as a bare
+  # string in source. The handler resolves the ref name via contract_secret_ref
+  # and reads the value from the store-populated environment.
+  LINEAR_API_KEY:
+    description: "Linear API key with read access to issues and comment-create."
+    required: true
+
+inputs:
+  pull_request:
+    type: object
+    description: "Merged PR facts: repo, number, title, body, merge SHA, merged_at, base ref, URL."
+    required: true
+  roster:
+    type: object
+    description: "Contractor roster and pin recipes, loaded from config/contractor_roster.yaml."
+    required: true
+  dry_run:
+    type: bool
+    description: "Compose and report the note without writing it to Linear."
+    required: false
+    default: false
+
+outputs:
+  repo:
+    type: str
+    description: "GitHub repo slug (owner/repo) of the merge."
+  pr_number:
+    type: int
+    description: "Merged PR number."
+  decision:
+    type: object
+    description: "Composer verdict: should_post, skip_reason, note_key, note_body, reachability."
+  posted:
+    type: bool
+    description: "True only when a comment was actually written to Linear."
+  dry_run:
+    type: bool
+    description: "True when writing was suppressed by request."
+
+# ADDRESSING — the command address is real; the bus PRODUCER is not, yet.
+#
+# An EFFECT node is command-addressable by platform rule, so the node declares
+# its own command topic and terminal event. What dispatches that command today
+# is this node's module entrypoint (cli.py), invoked by a GitHub Actions shim
+# (omnibase_infra/.github/workflows/contractor-integration-note.yml) — not a bus
+# producer. That is stated rather than implied: no contract publishes
+# onex.cmd.omnimarket.contractor-integration-note.v1.
+#
+# The obvious producer would be onex.evt.github.pr-merged.v1, and it is
+# deliberately NOT subscribed here. A bus-dispatched shape cannot answer the
+# note's reachability field: that comes from `git tag --contains` against the
+# MERGED repo, and the runtime holds no checkout of it — the workflow does.
+# Subscribing anyway would manufacture the wired-looking-but-unwired path this
+# platform's topic-graph oracle exists to catch. Earning the bus shape needs a
+# release-state probe answerable without a working tree (a tag projection, or a
+# GitHub API read behind a declared credential); recorded here so it is not
+# rediscovered as a mystery.
+terminal_event: onex.evt.omnimarket.contractor-integration-note-posted.v1
+
+event_bus:
+  subscribe_topics:
+    - onex.cmd.omnimarket.contractor-integration-note.v1
+  publish_topics:
+    - onex.evt.omnimarket.contractor-integration-note-posted.v1
+
+runtime_dispatch:
+  # Declared instead of a handler_routing entry. The handler takes its two
+  # effect boundaries by constructor injection and is therefore not
+  # boot-resolvable from the three known-injectable providers; listing it under
+  # handler_routing would have the boot resolver quarantine it behind a warning
+  # nobody reads (OMN-13551). The node keeps its real handler either way.
+  command_topic: onex.cmd.omnimarket.contractor-integration-note.v1
+  terminal_events:
+    success: onex.evt.omnimarket.contractor-integration-note-posted.v1
+
+externally_consumed_topics:
+  # The delivery record is read by the charter's reconciliation pass and by the
+  # operator, not by another node in this graph. Declared so the topic-graph
+  # oracle scores it as a deliberate external terminal, not an orphaned publish.
+  - onex.evt.omnimarket.contractor-integration-note-posted.v1
+
+side_effects:
+  reads:
+    - linear_api
+    - git_tag_graph
+  writes:
+    - linear_comment
+  duplicate_key_fields:
+    - repo
+    - pr_number
+
+metadata:
+  transport_type: kafka
+  description: "Contractor integration-note delivery effect."
+  author: "OmniNode Platform Team"
+  created: "2026-09-01"
+  tags:
+    - "effect"
+    - "integration-note"
+    - "contractor"
+    - "OMN-17277"
+  related_tickets:
+    - "OMN-17277"
+    - "OMN-17274"
+    - "OMN-17021"
