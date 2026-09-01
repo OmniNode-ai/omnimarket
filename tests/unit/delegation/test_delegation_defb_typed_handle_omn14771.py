@@ -161,7 +161,7 @@ _ALL_BUILDERS = (
     (_inference_response, "handle_inference_response"),
     (_gate_result, "handle_gate_result"),
     (_lifecycle, "handle_agent_task_lifecycle"),
-    (_routing_failure_terminal, "handle_routing_failure_terminal"),
+    (_routing_failure_terminal, "handle_boundary_failure_terminal"),
 )
 
 

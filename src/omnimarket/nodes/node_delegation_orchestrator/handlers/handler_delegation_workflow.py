@@ -24,7 +24,7 @@ import hashlib
 import json
 import logging
 import time
-from collections.abc import Callable, MutableMapping
+from collections.abc import Callable, Mapping, MutableMapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -358,23 +358,112 @@ _PER_STEP_DISPATCH: dict[type, str] = {
     ModelInferenceResponseData: "handle_inference_response",
     ModelQualityGateResult: "handle_gate_result",
     ModelAgentTaskLifecycleEvent: "handle_agent_task_lifecycle",
-    # OMN-17397: the routing leg's FAILURE answer. Without an entry here
-    # ``handle`` fails closed with ValueError, which at the consume boundary is
-    # just a second raise -- the record would be DLQ'd again and the caller
+    # OMN-17397 / OMN-17445: the FAILURE answer from ANY of the three legs this
+    # orchestrator dispatches to. All three publish the same class on their own
+    # topics, so one entry here resolves all three to one method -- which is the
+    # point: a second copy of the idempotency refusals would be free to disagree
+    # with the first about what "already answered" means, and a double terminal
+    # for one correlation is made of exactly that disagreement. Without an entry
+    # here ``handle`` fails closed with ValueError, which at the consume boundary
+    # is just a second raise -- the record would be DLQ'd again and the caller
     # would still never be told.
-    ModelBoundaryFailureTerminal: "handle_routing_failure_terminal",
+    ModelBoundaryFailureTerminal: "handle_boundary_failure_terminal",
 }
 
-# OMN-17397: the states in which this workflow is genuinely WAITING on a routing
-# decision, and therefore the only states in which a routing-leg failure
-# terminal is a verdict about this workflow rather than a stale or misordered
-# record. ``RECEIVED`` is the initial dispatch (the staging incident's shape);
-# ``ROUTED`` with ``routing_decision`` reset to None is every escalation /
-# retry-local re-entry waiting on a fresh decision. Both have a declared
-# ``-> FAILED`` edge in the contract FSM.
-_ROUTING_FAILURE_TERMINALIZABLE_STATES: frozenset[EnumDelegationState] = frozenset(
-    {EnumDelegationState.RECEIVED, EnumDelegationState.ROUTED}
-)
+# OMN-17445: the three command topics this orchestrator dispatches legs to,
+# resolved from its OWN contract rather than written twice. A literal here would
+# be free to drift from the topic the contract publishes to, and the drift would
+# be silent: an unrecognized origin is refused, so a renamed topic would turn
+# every terminal on that leg back into the stall this closes.
+_ROUTING_REQUEST_SUFFIX = "delegation-routing-request.v1"  # onex-topic-allow: suffix used only for contract lookup
+_INFERENCE_REQUEST_SUFFIX = "delegation-inference-request.v1"  # onex-topic-allow: suffix used only for contract lookup
+_QUALITY_GATE_REQUEST_SUFFIX = "delegation-quality-gate-request.v1"  # onex-topic-allow: suffix used only for contract lookup
+
+
+def _resolve_leg_command_topic(suffix: str) -> str:
+    """Return the single contract-declared publish topic ending with ``suffix``."""
+    matches = tuple(
+        topic
+        for topic in contract_publish_topics(_CONTRACT_PATH)
+        if topic.endswith(suffix)
+    )
+    if len(matches) != 1:
+        raise RuntimeError(
+            f"Contract {_CONTRACT_PATH} must declare exactly one "
+            f"event_bus.publish_topics topic ending with {suffix!r}; "
+            f"found {matches!r}."
+        )
+    return matches[0]
+
+
+@dataclass(frozen=True)
+class _BoundaryFailureLeg:
+    """What a consume-boundary failure on ONE delegation leg is a verdict about.
+
+    OMN-17445. The three legs answer with the same
+    :class:`ModelBoundaryFailureTerminal` payload on three different topics, and
+    ``origin_topic`` -- stamped by the boundary from the topic it was consuming,
+    never supplied by a caller -- is the only un-forgeable way to tell them
+    apart. Each leg fails while the workflow is waiting in a DIFFERENT state, so
+    "is this terminal a verdict about this workflow" has a different answer per
+    leg and that answer is declared here rather than inferred at the call site.
+
+    ``awaiting_states`` and ``routing_decision_present`` together express the
+    wait exactly: a routing failure is a verdict only while no decision is in
+    hand, an inference failure only once one is, and a gate failure only after a
+    response has been folded. Every ``awaiting_state`` has a declared
+    ``-> FAILED`` edge in the contract FSM; ``_advance`` rejects anything else,
+    so a leg added here without its edge fails loudly rather than silently.
+    """
+
+    origin_topic: str
+    awaiting_states: frozenset[EnumDelegationState]
+    routing_decision_present: bool
+    reports_recorded_inference: bool
+    waiting_for: str
+
+
+# OMN-17445. ``reports_recorded_inference`` decides what the terminal says about
+# tokens, and it is not cosmetic: the delegation and savings projections are
+# built from these numbers. A routing- or inference-leg failure means the
+# CURRENT attempt returned nothing, so it served no tokens and the terminal says
+# zero -- ``workflow.inference_*`` at that moment holds a SUPERSEDED attempt's
+# counts, already banked into ``cumulative_attempt_*`` by the escalation path,
+# and reporting them here would double-count them against a call that never
+# happened. A gate-leg failure is the opposite case: the inference did return
+# and was metered, and zeroing it would understate real served tokens.
+_BOUNDARY_FAILURE_LEGS: Mapping[str, _BoundaryFailureLeg] = {
+    leg.origin_topic: leg
+    for leg in (
+        _BoundaryFailureLeg(
+            origin_topic=_resolve_leg_command_topic(_ROUTING_REQUEST_SUFFIX),
+            # ``RECEIVED`` is the initial dispatch (the OMN-17397 staging
+            # incident's shape); ``ROUTED`` with ``routing_decision`` reset to
+            # None is every escalation / retry-local re-entry waiting on a fresh
+            # decision.
+            awaiting_states=frozenset(
+                {EnumDelegationState.RECEIVED, EnumDelegationState.ROUTED}
+            ),
+            routing_decision_present=False,
+            reports_recorded_inference=False,
+            waiting_for="a routing decision",
+        ),
+        _BoundaryFailureLeg(
+            origin_topic=_resolve_leg_command_topic(_INFERENCE_REQUEST_SUFFIX),
+            awaiting_states=frozenset({EnumDelegationState.ROUTED}),
+            routing_decision_present=True,
+            reports_recorded_inference=False,
+            waiting_for="an inference response",
+        ),
+        _BoundaryFailureLeg(
+            origin_topic=_resolve_leg_command_topic(_QUALITY_GATE_REQUEST_SUFFIX),
+            awaiting_states=frozenset({EnumDelegationState.INFERENCE_COMPLETED}),
+            routing_decision_present=True,
+            reports_recorded_inference=True,
+            waiting_for="a quality-gate verdict",
+        ),
+    )
+}
 
 # OMN-17397: read from the contract FSM, never hand-listed — the same single
 # source of truth ``_DECLARED_TRANSITIONS`` projects. A parallel literal set
@@ -1310,22 +1399,27 @@ class HandlerDelegationWorkflow:
             )
         ]
 
-    def handle_routing_failure_terminal(
+    def handle_boundary_failure_terminal(
         self,
         terminal: ModelBoundaryFailureTerminal,
     ) -> list[BaseModel]:
-        """Terminalize a workflow whose routing leg died at the consume boundary.
+        """Terminalize a workflow whose leg died at its consume boundary.
 
-        OMN-17397. OMN-16812 made ``omnibase_infra``'s auto-wired consume
-        boundary answer a handler failure it is about to ACK: it publishes a
-        correlation-exact :class:`ModelBoundaryFailureTerminal` onto the failing
-        contract's own declared failure terminal. For the routing reducer that
-        is ``routing-decision-failed.v1`` — and, until this method existed, that
-        topic had a publisher and no subscriber anywhere in the platform. The
-        record was DLQ'd safely and this FSM stayed in ``RECEIVED`` forever, so
-        ``delegation-failed.v1`` was never published and ``onex-api``'s
+        OMN-17397 (routing leg) and OMN-17445 (inference and quality-gate legs).
+        OMN-16812 made ``omnibase_infra``'s auto-wired consume boundary answer a
+        handler failure it is about to ACK: it publishes a correlation-exact
+        :class:`ModelBoundaryFailureTerminal` onto the failing contract's own
+        declared failure terminal. Until OMN-17397 that topic had a publisher
+        and no subscriber anywhere in the platform, and until OMN-17445 only ONE
+        of the three legs declared such a topic at all — the emitter's
+        ``len(failure_terminal_topics) != 1`` gate resolved zero for the other
+        two, so it was inert for them.
+
+        Either way the symptom is one symptom: the record is DLQ'd safely, this
+        FSM stays parked in whatever state it was waiting in,
+        ``delegation-failed.v1`` is never published, and ``onex-api``'s
         ``workflow_terminal_consumer`` — the sole writer of
-        ``gateway_workflows.status`` — never fired. Live on staging (run
+        ``gateway_workflows.status`` — never fires. Live on staging (run
         ``33443670050``, correlation ``e317122c-…``): a
         ``ProtocolConfigurationError`` / ``ONEX_CORE_041_INVALID_CONFIGURATION``
         was known one second after submission, and thirty minutes later the row
@@ -1336,29 +1430,44 @@ class HandlerDelegationWorkflow:
         so it can be replayed, and this closes the workflow so nobody waits on a
         replay that may never happen.
 
-        **Idempotent by correlation id, in three explicit refusals**, because a
-        double terminal for one correlation would double-write the delegation
-        projection and re-close an already-closed gateway row:
+        **One method for all three legs, deliberately.** They carry the same
+        payload class, so ``_PER_STEP_DISPATCH`` resolves them here together; a
+        per-leg copy of the refusals below would be free to disagree with its
+        siblings about what "already answered" means, and a double terminal for
+        one correlation is made of exactly that disagreement. What differs per
+        leg — which states the workflow is genuinely waiting in, and whether an
+        inference result is in hand — is declared once in
+        :data:`_BOUNDARY_FAILURE_LEGS` and looked up by ``origin_topic``, the
+        boundary-stamped address no caller can forge.
+
+        **Idempotent by correlation id, in four explicit refusals**, because a
+        double terminal would double-write the delegation projection and
+        re-close an already-closed gateway row:
 
         1. *No workflow* — this orchestrator never accepted the correlation (or
            already dropped it). Minting a terminal would fabricate a delegation
            row for a workflow that does not exist here.
         2. *Already terminal* — Kafka is at-least-once and the boundary's own
            DLQ leg can redeliver. The second delivery is a no-op.
-        3. *Not awaiting a routing decision* — the workflow has a live routing
-           decision and its outcome now belongs to the inference / quality legs.
-           A routing failure arriving then is stale or misordered, and acting on
-           it would race the live path into a second terminal.
+        3. *Unrecognized leg* — the terminal names an ``origin_topic`` this
+           orchestrator does not dispatch to, so there is no model of what the
+           workflow would have been waiting on. Closing a caller's row on the
+           strength of an unknown topic string is a guess; refusing is not.
+        4. *Not awaiting THIS leg* — the workflow is not in a state where this
+           leg's answer is outstanding (a routing failure once a decision is
+           live, an inference failure before one is, a gate failure before a
+           response was folded). Such a terminal is stale or misordered, and
+           acting on it would race the live path into a second terminal.
 
-        Refusals (1) and (3) are logged, never silent: a terminal that reaches
-        this handler and produces nothing is exactly the shape that must stay
-        visible if it ever starts happening.
+        Refusals (1), (3) and (4) are logged, never silent: a terminal that
+        reaches this handler and produces nothing is exactly the shape that must
+        stay visible if it ever starts happening.
         """
         cid = terminal.correlation_id
         workflow = self._workflows.get(cid)
         if workflow is None:
             _logger.warning(
-                "metric_name=routing_failure_terminal_unmatched correlation_id=%s "
+                "metric_name=boundary_failure_terminal_unmatched correlation_id=%s "
                 "failure_class=%s origin_topic=%s",
                 cid,
                 terminal.failure_class,
@@ -1371,23 +1480,47 @@ class HandlerDelegationWorkflow:
             # first delivery emitted the terminal and is the record of it.
             return []
 
-        awaiting_routing_decision = (
-            workflow.state in _ROUTING_FAILURE_TERMINALIZABLE_STATES
-            and workflow.routing_decision is None
-        )
-        if not awaiting_routing_decision:
+        leg = _BOUNDARY_FAILURE_LEGS.get(terminal.origin_topic)
+        if leg is None:
             _logger.error(
-                "metric_name=routing_failure_terminal_out_of_order "
-                "correlation_id=%s state=%s failure_class=%s",
+                "metric_name=boundary_failure_terminal_unknown_leg "
+                "correlation_id=%s state=%s failure_class=%s origin_topic=%s",
                 cid,
                 workflow.state.value,
                 terminal.failure_class,
+                terminal.origin_topic,
+            )
+            return []
+
+        awaiting_this_leg = (
+            workflow.state in leg.awaiting_states
+            and (workflow.routing_decision is not None) == leg.routing_decision_present
+        )
+        if not awaiting_this_leg:
+            _logger.error(
+                "metric_name=boundary_failure_terminal_out_of_order "
+                "correlation_id=%s state=%s failure_class=%s origin_topic=%s "
+                "waiting_for=%s",
+                cid,
+                workflow.state.value,
+                terminal.failure_class,
+                terminal.origin_topic,
+                leg.waiting_for,
             )
             return []
 
         # OMN-14208: wall-clock epoch subtraction — see started_at_ns docstring.
         elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
         model_used, endpoint_url, content = self._terminal_failed_fields(workflow)
+        prompt_tokens = (
+            workflow.inference_prompt_tokens if leg.reports_recorded_inference else 0
+        )
+        completion_tokens = (
+            workflow.inference_completion_tokens
+            if leg.reports_recorded_inference
+            else 0
+        )
+        total_tokens = prompt_tokens + completion_tokens
         # The boundary already sanitized this string
         # (``util_error_sanitization.sanitize_error_message``) before publishing
         # it, and it is the ONLY place the originating class and ONEX code
@@ -1423,11 +1556,19 @@ class HandlerDelegationWorkflow:
             quality_passed=False,
             quality_score=0.0,
             latency_ms=elapsed_ms,
-            # No inference ran: the routing leg died before a model was chosen.
-            # Zero here is the measured truth, not a placeholder.
-            prompt_tokens=0,
-            completion_tokens=0,
-            total_tokens=0,
+            # OMN-17445: what this leg's failure means about tokens, declared
+            # per leg rather than assumed. A routing- or inference-leg failure
+            # means the CURRENT attempt returned nothing, so zero is the
+            # measured truth — and ``workflow.inference_*`` at that moment holds
+            # a SUPERSEDED attempt's counts, already banked into
+            # ``cumulative_attempt_*``, which reporting here would double-count
+            # against a call that never happened. A gate-leg failure is the
+            # opposite case: the inference did return and was metered, and
+            # zeroing it would understate real served tokens on the terminal the
+            # savings and delegation projections are built from.
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
             fallback_to_claude=False,
             failure_reason=failure_reason,
             tokens_to_compliance=0,
@@ -1451,18 +1592,25 @@ class HandlerDelegationWorkflow:
             tenant_id=_resolve_tenant_id(workflow),
             quality_gates_checked=[],
             quality_gates_failed=[],
-            llm_call_id="",
+            # OMN-17445: the upstream call id belongs to the terminal only when
+            # a response was actually folded — the gate leg. On the routing and
+            # inference legs there is no call of this attempt's to name.
+            llm_call_id=(
+                workflow.inference_llm_call_id if leg.reports_recorded_inference else ""
+            ),
             context_pack_hash=workflow.context_pack_hash,
         )
         self._advance(workflow, EnumDelegationState.FAILED)
         _logger.error(
-            "metric_name=routing_failure_terminalized correlation_id=%s "
-            "failure_class=%s failure_code=%s retryable=%s origin_topic=%s",
+            "metric_name=boundary_failure_terminalized correlation_id=%s "
+            "failure_class=%s failure_code=%s retryable=%s origin_topic=%s "
+            "waiting_for=%s",
             cid,
             terminal.failure_class,
             terminal.failure_code,
             terminal.retryable,
             terminal.origin_topic,
+            leg.waiting_for,
         )
         return self._emit_terminal(terminal_inputs)
 
@@ -1771,8 +1919,21 @@ class HandlerDelegationWorkflow:
         terminal event emitted (silent loss; the all-tiers-failed HWM stayed 0).
         Fail closed to explicit sentinel strings so a valid terminal event is
         ALWAYS emitted; the failure reason carries the real cause.
+
+        OMN-17445: ``model_used`` falls back to the live routing decision's
+        ``selected_model`` before the sentinel, mirroring what ``endpoint_url``
+        below has always done. Without it a terminal on a leg that failed AFTER
+        routing (an inference or quality-gate boundary failure) reported the
+        real endpoint against ``model_used='none'`` — an internally
+        contradictory pair, on the very fields the delegation and savings
+        projections group by. The sentinel still covers the genuinely unknown
+        case: no response folded AND no decision in hand.
         """
-        model_used = workflow.inference_model_used or "none"
+        model_used = workflow.inference_model_used or (
+            workflow.routing_decision.selected_model
+            if workflow.routing_decision is not None
+            else "none"
+        )
         endpoint_url = (
             workflow.routing_decision.endpoint_url
             if workflow.routing_decision is not None

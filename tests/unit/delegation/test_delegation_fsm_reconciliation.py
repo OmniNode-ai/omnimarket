@@ -162,21 +162,31 @@ HANDLER_TRANSITION_CALLSITES: tuple[
         EnumDelegationState.FAILED,
         "handle_agent_task_lifecycle",
     ),
-    # OMN-17397 — handle_routing_failure_terminal: the routing leg's consume
+    # OMN-17397 — handle_boundary_failure_terminal, ROUTING leg: the consume
     # boundary terminalized the record before any decision was produced, on the
     # INITIAL dispatch (guard: state == RECEIVED and routing_decision is None).
     (
         EnumDelegationState.RECEIVED,
         EnumDelegationState.FAILED,
-        "handle_routing_failure_terminal",
+        "handle_boundary_failure_terminal",
     ),
     # OMN-17397 — the same terminal on an escalation / retry-local re-entry,
     # which resets routing_decision to None and waits in ROUTED for a fresh
-    # decision that now will never arrive.
+    # decision that now will never arrive. OMN-17445 — the INFERENCE leg lands
+    # on this same edge from the other side of the guard: state == ROUTED with a
+    # LIVE routing decision, waiting on a response that will never come.
     (
         EnumDelegationState.ROUTED,
         EnumDelegationState.FAILED,
-        "handle_routing_failure_terminal",
+        "handle_boundary_failure_terminal",
+    ),
+    # OMN-17445 — handle_boundary_failure_terminal, QUALITY-GATE leg: the gate's
+    # consume boundary failed the record while the workflow waited in
+    # INFERENCE_COMPLETED for a verdict that will never be produced.
+    (
+        EnumDelegationState.INFERENCE_COMPLETED,
+        EnumDelegationState.FAILED,
+        "handle_boundary_failure_terminal",
     ),
 )
 

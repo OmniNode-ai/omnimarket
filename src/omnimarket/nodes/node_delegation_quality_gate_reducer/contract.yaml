@@ -48,6 +48,43 @@ event_bus:
   publish_topics:
     - "onex.evt.omnibase-infra.quality-gate-result.v1"
     - "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
+    # OMN-17445: the address the consume boundary answers at when
+    # HandlerQualityGateIntent RAISES. APPENDED, never prepended: the
+    # dispatch-result applier resolves this contract's SUCCESS terminal as the
+    # FIRST publish topic (no top-level terminal_event is declared), so a
+    # prepended failure terminal would silently become the success terminal.
+    - "onex.evt.omnibase-infra.quality-gate-result-failed.v1"
+
+# OMN-17445 -- WHY THIS DECLARATION EXISTS.
+#
+# OMN-16812's boundary emitter publishes onto the failing contract's OWN
+# declared failure terminal and only when `_declared_failure_terminal_topics`
+# resolves EXACTLY ONE. This contract declared none, so the gate resolved zero
+# and the emitter was inert: a raise inside HandlerQualityGateIntent -- e.g.
+# the ProtocolConfigurationError `_load_response_contract_schema` raises for a
+# task class whose `response_contract_ref` does not import -- was DLQ'd safely,
+# produced no terminal, and left the delegation FSM parked in
+# INFERENCE_COMPLETED forever. `delegation-failed.v1` was never published and
+# the caller's gateway row never left 'published'.
+#
+# `success` is declared alongside `failure` deliberately: with a failure entry
+# alone the Pattern B broker treats `terminal_events[0]` -- the failure topic --
+# as this contract's success topic.
+#
+# Arming this also arms the OMN-15468 AC2 re-route guard over this node's
+# RETURN values, which was adjudicated before the declaration landed, not
+# after: `ModelQualityGateResult(passed=False)` is a NORMAL outcome and is NOT
+# re-routed, because `resolve_terminal_verdict` reads only
+# `terminal_failure_cause` / `status` / `ok` / `success` / `contract_passed`
+# and this model declares none of them (`passed` and its `pass_` authority
+# sibling are not among them). Pinned in
+# tests/unit/delegation/test_omn17445_effect_and_gate_failure_terminals.py so a
+# later field addition trips a test rather than silently stranding every
+# escalation a failing gate is supposed to trigger.
+runtime_dispatch:
+  terminal_events:
+    success: "onex.evt.omnibase-infra.quality-gate-result.v1"
+    failure: "onex.evt.omnibase-infra.quality-gate-result-failed.v1"
 # Maps the handler's returned model to its publish topic so the runtime
 # dispatch-result applier routes ModelQualityGateResult to quality-gate-result.v1.
 # event_type is the Model-prefix-stripped short class name (OMN-12294).
