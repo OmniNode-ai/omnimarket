@@ -158,6 +158,31 @@ SELF_EXEMPT_FILES=(
   # ADR text to annotate it would corrupt the ground-truth fidelity the file
   # exists to provide.
   "docs/adr-canary/ground_truth_manifest.yaml"
+  # OMN-17435: the pre-push lab picker family. Three distinct reasons, none of
+  # them "annotating it was inconvenient":
+  #
+  #   * prepush_hosts.tsv IS the lab address book. Its ssh targets, absolute uv
+  #     paths and workroots are the file's entire payload -- the hook reads them
+  #     to decide where a suite runs. There is no env-var indirection to prefer
+  #     here: the gate is deliberately sourced from a COMMITTED, reviewed file
+  #     precisely so a host cannot self-designate through the environment
+  #     (OMN-16991). Same class as the generated audit reports above: literals
+  #     as data, not as a source default.
+  #   * prepush_dispatch.sh and pytest_full_suite_host_guard.py are VENDORED,
+  #     byte-identical copies of omnibase_infra's files, pinned by sha256 AND
+  #     upstream commit in scripts/hooks/prepush_vendored.tsv and asserted by
+  #     tests/scripts/test_prepush_host_table.py. Adding an annotation comment
+  #     to either would FORK the copy and break that pin -- trading a real
+  #     integrity control for a cosmetic one. Their literals are prose in
+  #     comments recording live measurements, plus the remote PATH prefix the
+  #     leg must export.
+  #
+  # These are exempt from the SCAN, not from review: a change to any of them
+  # still shows in the diff, and the two vendored files additionally fail their
+  # digest pin if edited at all.
+  "scripts/hooks/prepush_hosts.tsv"
+  "scripts/hooks/prepush_dispatch.sh"
+  "scripts/hooks/pytest_full_suite_host_guard.py"
 )
 
 # Locate the repo root robustly (tolerates being called from elsewhere).

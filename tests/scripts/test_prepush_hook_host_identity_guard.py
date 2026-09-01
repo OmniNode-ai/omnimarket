@@ -45,22 +45,51 @@ import subprocess
 import tempfile
 from pathlib import Path
 
+from tests.scripts._prepush_lab_isolation import network_free_lab_env
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK_SCRIPT = REPO_ROOT / "scripts" / "hooks" / "prepush_smart_tests.sh"
 
 _GUARANTEED_NON_MATCHING_HOSTNAME = "definitely-not-the-200-host-omn15059"
 
 
-def _force_undesignated_host(env: dict[str, str]) -> None:
-    """Make the ambient host un-designated for BOTH gate identities (OMN-16752).
+def _designated_row_labels() -> tuple[str, ...]:
+    """Every label in the COMMITTED host table, read from the table itself.
 
-    The guard admits a host if `hostname -s` matches EITHER designated
-    identity: `.200` (``PREPUSH_200_HOSTNAME``) or the `.201` gate-runner
-    container (``PREPUSH_201_GATE_RUNNER_HOSTNAME``, default
-    ``gate-runner-201``). Every "the guard must REFUSE" proof below therefore
-    has to neutralise both; overriding only the `.200` name leaves the `.201`
-    arm live, and on a host whose real hostname matches it the guard correctly
-    ALLOWS and the assertion inverts.
+    Read rather than hardcoded so that adding a row to
+    ``scripts/hooks/prepush_hosts.tsv`` cannot silently leave that row
+    designated inside a refusal proof. A hardcoded list is the exact defect
+    OMN-17435 fixed one layer up: the guard used to know two hostnames, and a
+    third host was invisible to it by construction.
+    """
+    table = REPO_ROOT / "scripts" / "hooks" / "prepush_hosts.tsv"
+    labels = []
+    for line in table.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0]
+        if not line.strip():
+            continue
+        labels.append(line.split("\t")[0])
+    assert labels, f"expected at least one data row in {table}"
+    return tuple(labels)
+
+
+def _force_undesignated_host(env: dict[str, str]) -> None:
+    """Make the ambient host un-designated for EVERY table row (OMN-16752,
+    widened by OMN-17435).
+
+    Before OMN-17435 the guard admitted a host if `hostname -s` matched either
+    of TWO identities: `.200` (``PREPUSH_200_HOSTNAME``) or the `.201`
+    gate-runner container (``PREPUSH_201_GATE_RUNNER_HOSTNAME``, default
+    ``gate-runner-201``), so neutralising those two names was sufficient.
+
+    IT IS NO LONGER SUFFICIENT, and that is the whole point of this port.
+    Identity now comes from ``scripts/hooks/prepush_hosts.tsv``, which
+    designates `h101` (stickybeatz), `h105` (omnibook) and the `.201` HOST
+    itself (`h201`, omninode-pc) in addition to those two. On any of those
+    machines a two-name override leaves the row live, the guard correctly
+    ALLOWS, and every refusal proof below inverts. So this neutralises every
+    row via the picker's own per-row seam,
+    ``PREPUSH_HOST_OVERRIDE_<LABEL uppercased>``, enumerated FROM the table.
 
     That is not hypothetical, and the cost was not a cosmetic red. The `.201`
     gate-runner is the host the OMN-16295 capacity guard routes to when `.200`
@@ -74,13 +103,26 @@ def _force_undesignated_host(env: dict[str, str]) -> None:
     (documented below as deliberate first-entry behavior) and re-entered —
     measured four nested full suites deep, one new level per minute, on the
     shared `.201` host that also carries the runner fleet and every runtime
-    lane.
+    lane. With three more designated hosts in the table, the same fork bomb is
+    now reachable on three more machines.
 
     So this override is a correctness AND a containment requirement. Neutralise
-    both identities; do not narrow this to one.
+    every row; do not narrow this to a subset.
     """
+    # The two legacy aliases the picker still honors, kept so a reader sees the
+    # continuity with the pre-table behavior.
     env["PREPUSH_200_HOSTNAME"] = _GUARANTEED_NON_MATCHING_HOSTNAME
     env["PREPUSH_201_GATE_RUNNER_HOSTNAME"] = _GUARANTEED_NON_MATCHING_HOSTNAME
+    # And every row, including any added after this was written.
+    for label in _designated_row_labels():
+        var = "PREPUSH_HOST_OVERRIDE_" + "".join(
+            c if c.isalnum() else "_" for c in label.upper()
+        )
+        env[var] = _GUARANTEED_NON_MATCHING_HOSTNAME
+    # OMN-16991/OMN-17435: hold the lab-dispatch leg network-free. Without it a
+    # refusal proof ships a real bundle to a lab host and starts the whole
+    # suite there. See tests/scripts/_prepush_lab_isolation.
+    env.update(network_free_lab_env())
 
 
 _FULL_SUITE_BRANCH_RE = re.compile(
@@ -137,10 +179,33 @@ def test_guard_fails_closed_when_hostname_cannot_be_determined() -> None:
     )
 
 
-def test_guard_has_a_visible_degraded_host_override() -> None:
+def test_the_escape_hatch_is_a_receipted_grant_not_an_env_var() -> None:
+    """OMN-16480, ported to this repo by OMN-17435.
+
+    This gate's escape hatch used to BE ``PREPUSH_ALLOW_LOCAL_FULL_SUITE=1``.
+    An environment variable is inherited by every descendant process, bound to
+    no repo/commit/run, never expires and leaves no receipt -- so one leaked
+    value disarmed the gate for a whole process tree and recursively spawned
+    another full suite. The variable is now a HARD REFUSAL in both directions,
+    and the supported path is a single-use, repo+HEAD-scoped, TTL-bounded,
+    receipted grant.
+
+    Both halves are asserted, because either alone would be a different change:
+    the rejection must be CALLED (defining a function is not enforcing it), and
+    a replacement must EXIST (removing an escape hatch with nothing in its place
+    is not this change).
+    """
     script_text = HOOK_SCRIPT.read_text(encoding="utf-8")
-    assert "PREPUSH_ALLOW_LOCAL_FULL_SUITE" in script_text, (
-        "expected a documented PREPUSH_ALLOW_LOCAL_FULL_SUITE escape hatch"
+    assert "reject_inherited_env_overrides" in script_text
+    assert any(
+        line.strip() == "reject_inherited_env_overrides"
+        for line in script_text.splitlines()
+    ), "the entry rejection is defined but never called"
+    assert "consume_override_grant" in script_text, (
+        "the env-var hatch was removed with no receipted replacement"
+    )
+    assert "prepush_override_grant.py" in script_text, (
+        "expected the refusal to name the grant-minting command"
     )
     assert "DEGRADED-HOST OVERRIDE" in script_text, (
         "expected the override to print a loud, visible warning naming the "
@@ -507,7 +572,7 @@ _LOAD_HELPERS_RE = re.compile(
 def _extract_load_helpers_source() -> str:
     """Extract-and-execute the real `PREPUSH_LOAD_THRESHOLD` default,
     `host_load_ratio` / `host_is_fit` / `_prepush_timeout_cmd` bash functions,
-    and their shared `_PREPUSH_LOAD_PROBE_PY` constant from the shipped hook
+    and their shared `_PREPUSH_LOAD_PROBE_SH` constant from the shipped hook
     -- never a Python re-implementation, for the same reason
     `_extract_predicate_source` above extracts `selection_is_whole_suite`
     rather than re-implementing it. The threshold default must travel with
@@ -524,9 +589,9 @@ def _extract_load_helpers_source() -> str:
         f"expected a PREPUSH_LOAD_THRESHOLD default assignment in {HOOK_SCRIPT}"
     )
     py_match = re.search(
-        r"^_PREPUSH_LOAD_PROBE_PY='.*?'$", script_text, re.DOTALL | re.MULTILINE
+        r"^_PREPUSH_LOAD_PROBE_SH='.*?'$", script_text, re.DOTALL | re.MULTILINE
     )
-    assert py_match is not None, f"expected _PREPUSH_LOAD_PROBE_PY in {HOOK_SCRIPT}"
+    assert py_match is not None, f"expected _PREPUSH_LOAD_PROBE_SH in {HOOK_SCRIPT}"
     fn_match = _LOAD_HELPERS_RE.search(script_text)
     assert fn_match is not None, (
         f"expected _prepush_timeout_cmd/host_load_ratio/host_is_fit in {HOOK_SCRIPT}"
