@@ -519,8 +519,10 @@ prepush_select_candidate() {
 }
 
 # pick_capacity_host LC_HOST REPO [REQUIRE_MODE] -- ranks every host that has
-# PROVEN a free slot, cheapest load first, into PREPUSH_FIT_RECORDS, and loads
-# the best one into PREPUSH_PICK_*. Returns 1 when nothing is fit. Always sets
+# PROVEN a free slot into PREPUSH_FIT_RECORDS -- placement_tier first
+# (OMN-17485: a `last_resort` row can never outrank a fit `default` row,
+# however idle it is), cheapest load within a tier -- and loads the best one
+# into PREPUSH_PICK_*. Returns 1 when nothing is fit. Always sets
 # PREPUSH_PROBE_LOG (a "label=verdict" trail for the receipt and the refusal
 # message -- every considered host is on the record, so a refusal can be
 # audited rather than believed).
@@ -541,7 +543,7 @@ prepush_select_candidate() {
 # it is a tiebreaker, not the placement key.
 pick_capacity_host() {
   local lc_host repo want_mode row label role name ssh_t uv floor workroot slotmode denied mode
-  local self ratio rc recs="" slots k slot_label
+  local self ratio rc recs="" slots k slot_label tier tier_rank
   lc_host="$1"; repo="$2"; want_mode="${3:-authorizing}"
   PREPUSH_PROBE_LOG=""
   PREPUSH_PICK_LABEL=""
@@ -580,6 +582,14 @@ pick_capacity_host() {
     slots="$(prepush_field "$row" 10)"
     case "$slots" in '' | *[!0-9]*) slots=1 ;; esac
     [ "$slots" -ge 1 ] 2> /dev/null || slots=1
+    # placement_tier (OMN-17485): only the literal `last_resort` demotes a row.
+    # Any other value -- `default`, `-`, or a value this build has never heard
+    # of -- ranks as tier 0, the pre-OMN-17485 behavior, so a typo can only
+    # ever FAIL to demote (caught by the pinned-contents test), never silently
+    # promote a demoted host back by accident at pick time.
+    tier="$(prepush_field "$row" 14)"
+    tier_rank=0
+    [ "$tier" != "last_resort" ] || tier_rank=1
     self=0
     if [ "$name" = "$lc_host" ]; then
       # This host: probe it directly, and expect to see OUR OWN hook process.
@@ -657,23 +667,36 @@ pick_capacity_host() {
       # The fit record carries the MEASUREMENT, not just the verdict, so the
       # receipt and the refusal message both show what the placement was
       # decided on (OMN-17271 item 4: evidence-carrying routing).
-      PREPUSH_PROBE_LOG="${PREPUSH_PROBE_LOG}${slot_label}=fit(${ratio},${mode},${PREPUSH_PROBE_MEM_MB:-na}MiB) "
-      recs="${recs}${ratio}|${slot_label}|${name}|${ssh_t}|${uv}|${workroot}|${slotmode}|${mode}|${k}
+      if [ "$tier_rank" -eq 0 ]; then
+        PREPUSH_PROBE_LOG="${PREPUSH_PROBE_LOG}${slot_label}=fit(${ratio},${mode},${PREPUSH_PROBE_MEM_MB:-na}MiB) "
+      else
+        # Operator-visible demotion (OMN-17485): the fit record names its tier
+        # so a receipt or refusal showing this host was passed over -- or
+        # taken -- can be audited rather than believed.
+        PREPUSH_PROBE_LOG="${PREPUSH_PROBE_LOG}${slot_label}=fit(${ratio},${mode},${PREPUSH_PROBE_MEM_MB:-na}MiB,tier=last_resort) "
+      fi
+      recs="${recs}${ratio}|${slot_label}|${name}|${ssh_t}|${uv}|${workroot}|${slotmode}|${mode}|${k}|${tier_rank}
 "
       k=$((k + 1))
     done
   done
   PREPUSH_PROBE_LOG="${PREPUSH_PROBE_LOG% }"
   [ -n "$recs" ] || return 1
-  # Ascending by load ratio: the cheapest host is tried first and the rest stay
-  # available as fallbacks.
-  PREPUSH_FIT_RECORDS="$(printf '%s' "$recs" | sed '/^[[:space:]]*$/d' | sort -t'|' -k1,1g)"
+  # Tier-major (field 10, OMN-17485), then ascending load ratio within a tier:
+  # every fit default-tier host is tried before any last_resort host, and
+  # within a tier the cheapest host is tried first with the rest staying
+  # available as fallbacks. The record keeps the true measured ratio in field
+  # 1 -- the demotion lives in the sort key, never in the evidence.
+  PREPUSH_FIT_RECORDS="$(printf '%s' "$recs" | sed '/^[[:space:]]*$/d' | sort -t'|' -k10,10n -k1,1g)"
   prepush_select_candidate 1
 }
 
 # prepush_heavy_local_policy LC_HOST -- the `heavy_local` policy (column 13) of
-# the capacity row that IS this host: `prefer_remote`, `allowed`, or empty when
-# this host is not a capacity row at all.
+# the capacity OR identity row that IS this host: `prefer_remote`, `allowed`,
+# or empty when this host is not in the table at all. Identity rows are read
+# too as of OMN-17485: the gate-runner CONTAINER (h201c) is identity-only as a
+# placement TARGET, but it is the LOCAL host of every in-container push, and an
+# escalation originating there must be routable off-box like any other.
 #
 # OMN-17392, operator directive 2026-08-31 ("we should move prepush off this
 # box if possible"). `prefer_remote` does NOT de-designate a host: the row stays
@@ -694,7 +717,10 @@ prepush_heavy_local_policy() {
   lc_host="$1"
   while IFS= read -r row; do
     [ -n "$row" ] || continue
-    [ "$(prepush_field "$row" 2)" = "capacity" ] || continue
+    case "$(prepush_field "$row" 2)" in
+      capacity | identity) ;;
+      *) continue ;;
+    esac
     if [ "$(prepush_row_hostname "$row")" = "$lc_host" ]; then
       v="$(prepush_field "$row" 13)"
       case "$v" in

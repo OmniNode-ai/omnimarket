@@ -64,10 +64,11 @@ def test_table_exists_and_every_row_has_the_full_column_set() -> None:
     rows = _rows()
     assert rows, "expected at least one data row"
     for row in rows:
-        assert len(row) == 14, (
-            f"row {row[0] if row else row!r} has {len(row)} columns, expected 14 "
+        assert len(row) == 15, (
+            f"row {row[0] if row else row!r} has {len(row)} columns, expected 15 "
             "(label role hostname ssh_target cores uv_abs_path uv_min_version "
-            "workroot slot_mode slots repos_denied mode heavy_local note)"
+            "workroot slot_mode slots repos_denied mode heavy_local "
+            "placement_tier note)"
         )
 
 
@@ -89,37 +90,42 @@ def test_table_contents_are_pinned() -> None:
 
 
 def test_the_shipped_heavy_local_policy_is_pinned() -> None:
-    """`h200` -- the box the operator directed pre-push OFF of on 2026-08-31 --
-    is the ONLY `prefer_remote` row, and it is still `authorizing`.
+    """The interactive hosts route their own heavy work off-box; the pure lab
+    hosts keep the pre-OMN-17392 behavior.
 
-    Both halves matter and they pull in opposite directions, which is why this
-    is pinned rather than left to the note column. Flipping a lab host to
-    `prefer_remote` would quietly shrink the pool that `prefer_remote` exists to
-    route work INTO, and every host preferring remote is a lab that routes to
-    nobody. Conversely, de-designating `h200` (mode != authorizing) would be a
-    much larger change wearing this ticket's clothes: it would stop `h200`
-    satisfying anyone's escalation, not just its own.
+    `h200` (OMN-17392, operator-directed) and the two `.201` identities
+    (OMN-17485: `h201` the host, `h201c` the gate-runner container -- the dev
+    runtime lane's evidence surface and an interactive collaborator workspace)
+    are `prefer_remote`; `h101`/`h105` stay `allowed`. Every prefer_remote row
+    is still `authorizing` -- the policy governs where a row's OWN escalations
+    go, never whether the row may satisfy anyone else's.
     """
     policy = {r[0]: r[12] for r in _rows()}
     assert policy == {
         "h200": "prefer_remote",
-        "h201": "allowed",
-        "h201c": "-",
+        "h201": "prefer_remote",
+        "h201c": "prefer_remote",
         "h101": "allowed",
         "h105": "allowed",
     }
     modes = {r[0]: r[11] for r in _rows()}
-    assert modes["h200"] == "authorizing", (
-        "prefer_remote must not be a back-door de-designation: h200 still has to "
-        "be able to authorize an escalation for every OTHER host in the table"
-    )
+    for label in ("h200", "h201", "h201c"):
+        assert modes[label] == "authorizing", (
+            f"prefer_remote must not be a back-door de-designation: {label} still "
+            "has to be able to authorize an escalation for every OTHER host"
+        )
 
 
-def test_exactly_one_row_prefers_remote_so_the_lab_still_has_targets() -> None:
+def test_prefer_remote_rows_stay_a_strict_subset_of_capacity_rows() -> None:
     """A structural invariant, not a restatement of the pin above: whatever the
     table grows to, the set of rows that route work away from themselves must
     stay a strict subset of the capacity rows, or an escalation has nowhere to
-    go and every push falls back to the box it was routed off."""
+    go and every push falls back to the box it was routed off.
+
+    Since OMN-17485 the subset is two (h200, h201) rather than one; the
+    remainder must still contain at least one `allowed`, default-tier capacity
+    row, or the "somewhere else" every prefer_remote host routes to would be
+    nothing but demoted or self-deflecting hosts."""
     capacity = [r for r in _rows() if r[1] == "capacity"]
     prefer_remote = [r for r in capacity if r[12] == "prefer_remote"]
     assert prefer_remote, "expected at least one prefer_remote row (h200)"
@@ -127,6 +133,30 @@ def test_exactly_one_row_prefers_remote_so_the_lab_still_has_targets() -> None:
         "every capacity row is prefer_remote -- there is no host left to route "
         "an escalation TO, so the bounded off-box wait can only ever time out"
     )
+    allowed_default = [
+        r for r in capacity if r[12] == "allowed" and r[13] != "last_resort"
+    ]
+    assert allowed_default, (
+        "no allowed, default-tier capacity row remains -- heavy escalations "
+        "have no first-choice destination anywhere in the lab"
+    )
+
+
+def test_placement_tier_is_pinned() -> None:
+    """`.201` (h201) is the ONLY `last_resort` row: it hosts the dev runtime
+    lane -- the live evidence surface the OMN-16963 AC5 terminalization
+    measurement reads from -- and the interactive collaborator lane, so the
+    placement engine may take it only when no default-tier host is fit
+    (OMN-17485). Promotion back to `default` is this reviewed two-step, not a
+    quiet edit. `h201c` is identity-only and never a placement target."""
+    tiers = {r[0]: r[13] for r in _rows()}
+    assert tiers == {
+        "h200": "default",
+        "h201": "last_resort",
+        "h201c": "-",
+        "h101": "default",
+        "h105": "default",
+    }
 
 
 def test_201_host_is_designated_by_its_real_hostname() -> None:
@@ -229,7 +259,7 @@ def test_the_two_denied_macs_keep_their_proven_capacity_facts() -> None:
     blocker. (Why they are denied at all is pinned in
     test_the_shipped_repo_denials_are_pinned.)
     """
-    notes = {r[0]: r[13] for r in _rows()}
+    notes = {r[0]: r[14] for r in _rows()}
     modes = {r[0]: r[11] for r in _rows()}
     for label in ("h101", "h105"):
         assert modes[label] == "authorizing", (
@@ -357,10 +387,11 @@ def _driver_both(repo_root: Path, body: str) -> str:
 #: idlest, so a load-only picker chooses it and then throws its verdict away.
 _SYNTHETIC_TABLE = (
     "#label\trole\thostname\tssh_target\tcores\tuv_abs_path\tuv_min_version"
-    "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local\tnote\n"
-    "ha\tcapacity\thosta\tjonah@hosta\t24\t/bin/uv\t0.1.0\t/tmp/wa\tlockdir\t1\t-\tauthorizing\tallowed\tbusier\n"
-    "hb\tcapacity\thostb\tjonah@hostb\t24\t/bin/uv\t0.1.0\t/tmp/wb\tlockdir\t1\t-\tauthorizing\tallowed\tidler\n"
-    "hs\tcapacity\thosts\tjonah@hosts\t24\t/bin/uv\t0.1.0\t/tmp/ws\tlockdir\t1\t-\tshadow\tallowed\tidlest of all\n"
+    "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local"
+    "\tplacement_tier\tnote\n"
+    "ha\tcapacity\thosta\tjonah@hosta\t24\t/bin/uv\t0.1.0\t/tmp/wa\tlockdir\t1\t-\tauthorizing\tallowed\tdefault\tbusier\n"
+    "hb\tcapacity\thostb\tjonah@hostb\t24\t/bin/uv\t0.1.0\t/tmp/wb\tlockdir\t1\t-\tauthorizing\tallowed\tdefault\tidler\n"
+    "hs\tcapacity\thosts\tjonah@hosts\t24\t/bin/uv\t0.1.0\t/tmp/ws\tlockdir\t1\t-\tshadow\tallowed\tdefault\tidlest of all\n"
 )
 
 #: A single disabled row, so the shipped table's promotion of h101 (its last
@@ -368,8 +399,9 @@ _SYNTHETIC_TABLE = (
 #: probed" rule without a fixture to exercise it.
 _SYNTHETIC_TABLE_DISABLED_ONLY = (
     "#label\trole\thostname\tssh_target\tcores\tuv_abs_path\tuv_min_version"
-    "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local\tnote\n"
-    "hd\tcapacity\thostd\tjonah@hostd\t24\t/bin/uv\t0.1.0\t/tmp/wd\tlockdir\t1\t-\tdisabled\tallowed\tstill unfit\n"
+    "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local"
+    "\tplacement_tier\tnote\n"
+    "hd\tcapacity\thostd\tjonah@hostd\t24\t/bin/uv\t0.1.0\t/tmp/wd\tlockdir\t1\t-\tdisabled\tallowed\tdefault\tstill unfit\n"
 )
 
 
@@ -472,7 +504,7 @@ def test_an_uncommitted_table_edit_cannot_designate_a_host(table_repo: Path) -> 
     tsv = table_repo / "scripts" / "hooks" / "prepush_hosts.tsv"
     tsv.write_text(
         tsv.read_text(encoding="utf-8")
-        + "hevil\tcapacity\tmy-laptop\t-\t8\t/bin/uv\t0.1.0\t/tmp/w\tlockdir\t1\t-\tauthorizing\tallowed\tforged\n",
+        + "hevil\tcapacity\tmy-laptop\t-\t8\t/bin/uv\t0.1.0\t/tmp/w\tlockdir\t1\t-\tauthorizing\tallowed\tdefault\tforged\n",
         encoding="utf-8",
     )
     out = _driver(table_repo, "prepush_identity_label my-laptop || echo NONE")
@@ -718,8 +750,9 @@ def test_every_probed_host_is_recorded_for_the_receipt(table_repo: Path) -> None
 
 _SYNTHETIC_TABLE_MULTISLOT = (
     "#label\trole\thostname\tssh_target\tcores\tuv_abs_path\tuv_min_version"
-    "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local\tnote\n"
-    "hm\tcapacity\thostm\tjonah@hostm\t10\t/bin/uv\t0.1.0\t/tmp/wm\tlockdir\t2\t-\tauthorizing\tallowed\ttwo-slot test host\n"
+    "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local"
+    "\tplacement_tier\tnote\n"
+    "hm\tcapacity\thostm\tjonah@hostm\t10\t/bin/uv\t0.1.0\t/tmp/wm\tlockdir\t2\t-\tauthorizing\tallowed\tdefault\ttwo-slot test host\n"
 )
 
 
@@ -1944,11 +1977,12 @@ def test_the_wrapper_runs_normally_when_no_base_ref_is_supplied(
 
 _TABLE_PREFER_REMOTE = (
     "#label\trole\thostname\tssh_target\tcores\tuv_abs_path\tuv_min_version"
-    "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local\tnote\n"
+    "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local"
+    "\tplacement_tier\tnote\n"
     "hp\tcapacity\thostp\tjonah@hostp\t24\t/bin/uv\t0.1.0\t/tmp/wp\tlockdir\t1\t-"
-    "\tauthorizing\tprefer_remote\tthe box we route off\n"
+    "\tauthorizing\tprefer_remote\tdefault\tthe box we route off\n"
     "hl\tcapacity\thostl\tjonah@hostl\t24\t/bin/uv\t0.1.0\t/tmp/wl\tlockdir\t1\t-"
-    "\tauthorizing\tallowed\ta lab host\n"
+    "\tauthorizing\tallowed\tdefault\ta lab host\n"
 )
 
 
@@ -1963,9 +1997,10 @@ def test_a_lab_host_reports_allowed(tmp_path: Path) -> None:
 
 
 def test_an_unknown_host_has_no_policy_at_all(tmp_path: Path) -> None:
-    """Absence must be distinguishable from `allowed`: a host that is not a
-    capacity row at all is not "allowed to run heavy work here", it is not a
-    designated host, and the caller's own not-a-designated-host branch owns it."""
+    """Absence must be distinguishable from `allowed`: a host that is in the
+    table on no row at all (capacity or identity, OMN-17485) is not "allowed to
+    run heavy work here", it is not a designated host, and the caller's own
+    not-a-designated-host branch owns it."""
     repo = _repo_with_table(tmp_path, _TABLE_PREFER_REMOTE, name="pr3")
     out = _driver(repo, "prepush_heavy_local_policy nosuchhost || echo NONE")
     assert out.strip() == "NONE"
@@ -2004,6 +2039,156 @@ def test_prefer_remote_host_is_still_a_placement_target_for_others(
         "fi\n"
     )
     assert "PICK=hp" in _driver(repo, body)
+
+
+_TABLE_IDENTITY_POLICY = (
+    "#label\trole\thostname\tssh_target\tcores\tuv_abs_path\tuv_min_version"
+    "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local"
+    "\tplacement_tier\tnote\n"
+    "hc\tidentity\tcontainerhost\t-\t32\t-\t-\t-\tnone\t1\t-\tauthorizing"
+    "\tprefer_remote\t-\tan executing container identity\n"
+    "hl\tcapacity\thostl\tjonah@hostl\t24\t/bin/uv\t0.1.0\t/tmp/wl\tlockdir\t1\t-"
+    "\tauthorizing\tallowed\tdefault\ta lab host\n"
+)
+
+
+def test_an_identity_row_carries_a_heavy_local_policy_too(tmp_path: Path) -> None:
+    """The gate-runner container (h201c) is identity-only as a placement
+    TARGET, but it is the LOCAL host of every in-container push (OMN-17485).
+    A policy function that reads capacity rows only would silently hand every
+    in-container escalation the `allowed` default -- exactly the origination
+    surface the .201 demotion exists to close."""
+    repo = _repo_with_table(tmp_path, _TABLE_IDENTITY_POLICY, name="idp1")
+    out = _driver(repo, "prepush_heavy_local_policy containerhost")
+    assert out.strip() == "prefer_remote"
+
+
+# =============================================================================
+# placement_tier: a last_resort host can never outrank a fit default host
+# (OMN-17485)
+# =============================================================================
+# `.201` hosts the dev runtime lane -- the live evidence surface the OMN-16963
+# AC5 terminalization measurement reads from -- and the interactive
+# collaborator lane. Measured 2026-09-01: its gate-runner slot ran heavy
+# suites back-to-back 08:31Z-12:02Z while a collaborator's own governed full
+# core suite (44464 tests, 2h58m) ran host-side concurrently. The demotion is
+# a RANKING rule, deliberately not an exclusion: a heavy escalation with
+# nowhere else to go still lands there rather than dying, and the fit record
+# says so out loud.
+
+_TABLE_TIERED = (
+    "#label\trole\thostname\tssh_target\tcores\tuv_abs_path\tuv_min_version"
+    "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local"
+    "\tplacement_tier\tnote\n"
+    "hd1\tcapacity\thostd1\tjonah@hostd1\t24\t/bin/uv\t0.1.0\t/tmp/w1\tlockdir\t1\t-"
+    "\tauthorizing\tallowed\tdefault\tbusier default host\n"
+    "hd2\tcapacity\thostd2\tjonah@hostd2\t24\t/bin/uv\t0.1.0\t/tmp/w2\tlockdir\t1\t-"
+    "\tauthorizing\tallowed\tdefault\tidler default host\n"
+    "hlr\tcapacity\thostlr\tjonah@hostlr\t32\t/bin/uv\t0.1.0\t/tmp/w3\tlockdir\t1\t-"
+    "\tauthorizing\tprefer_remote\tlast_resort\tidlest host in the lab, demoted\n"
+)
+
+_TIER_ENV = (
+    'export PREPUSH_SLOT_OVERRIDE_MAP="hd1=free,hd2=free,hlr=free"\n'
+    'export PREPUSH_UV_OVERRIDE_MAP="hd1=1.0.0,hd2=1.0.0,hlr=1.0.0"\n'
+)
+
+
+def test_a_fit_default_host_outranks_an_idler_last_resort_host(
+    tmp_path: Path,
+) -> None:
+    """The load-only ranking this replaces would pick hlr at 0.05x every time.
+    Tier is the major key: however idle the demoted host is, a fit default
+    host wins."""
+    repo = _repo_with_table(tmp_path, _TABLE_TIERED, name="tier1")
+    out = _driver(
+        repo,
+        'export PREPUSH_LOAD_OVERRIDE_MAP="hd1=0.90,hd2=0.60,hlr=0.05"\n'
+        + _TIER_ENV
+        + "if pick_capacity_host somewhere-else omnibase_core; then\n"
+        '  echo "PICK=$PREPUSH_PICK_LABEL"\n'
+        "else\n"
+        '  echo "PICK=none"\n'
+        "fi\n"
+        'echo "PROBE=$PREPUSH_PROBE_LOG"\n',
+    )
+    assert "PICK=hd2" in out, out
+    assert "tier=last_resort" in out, (
+        "the demoted host's fit record must carry its tier so the pass-over "
+        f"is auditable, got: {out}"
+    )
+
+
+def test_the_last_resort_host_is_still_reachable_when_nothing_else_is_fit(
+    tmp_path: Path,
+) -> None:
+    """Demotion is a ranking rule, not an exclusion. When every default-tier
+    slot is held, the escalation lands on the demoted host rather than
+    refusing a push another authorizing host could have cleared."""
+    repo = _repo_with_table(tmp_path, _TABLE_TIERED, name="tier2")
+    out = _driver(
+        repo,
+        'export PREPUSH_LOAD_OVERRIDE_MAP="hd1=0.90,hd2=0.60,hlr=0.05"\n'
+        'export PREPUSH_SLOT_OVERRIDE_MAP="hd1=busy,hd2=busy,hlr=free"\n'
+        'export PREPUSH_UV_OVERRIDE_MAP="hd1=1.0.0,hd2=1.0.0,hlr=1.0.0"\n'
+        "if pick_capacity_host somewhere-else omnibase_core; then\n"
+        '  echo "PICK=$PREPUSH_PICK_LABEL"\n'
+        "else\n"
+        '  echo "PICK=none"\n'
+        "fi\n",
+    )
+    assert "PICK=hlr" in out, out
+
+
+def test_the_ranked_list_puts_every_default_host_before_the_last_resort_host(
+    tmp_path: Path,
+) -> None:
+    """Not just the winner: the walk order itself is tier-major, so a default
+    host that fails to answer costs the OTHER default host next, and the
+    demoted host only after both."""
+    repo = _repo_with_table(tmp_path, _TABLE_TIERED, name="tier3")
+    out = _driver(
+        repo,
+        'export PREPUSH_LOAD_OVERRIDE_MAP="hd1=0.90,hd2=0.60,hlr=0.05"\n'
+        + _TIER_ENV
+        + "pick_capacity_host somewhere-else omnibase_core > /dev/null 2>&1\n"
+        'echo "COUNT=$(prepush_candidate_count)"\n'
+        'prepush_select_candidate 1 && echo "FIRST=$PREPUSH_PICK_LABEL"\n'
+        'prepush_select_candidate 2 && echo "SECOND=$PREPUSH_PICK_LABEL"\n'
+        'prepush_select_candidate 3 && echo "THIRD=$PREPUSH_PICK_LABEL"\n',
+    )
+    assert "COUNT=3" in out, out
+    assert "FIRST=hd2" in out, out
+    assert "SECOND=hd1" in out, out
+    assert "THIRD=hlr" in out, out
+
+
+def test_a_row_predating_the_tier_column_ranks_as_default(tmp_path: Path) -> None:
+    """The column is additive, in both directions of trouble: a 14-column row
+    (the pre-OMN-17485 schema, whose field 14 is the free-text note) must rank
+    as `default` -- never be demoted by its own note text -- and must still
+    outrank an explicit `last_resort` row."""
+    mixed = (
+        "#label\trole\thostname\tssh_target\tcores\tuv_abs_path\tuv_min_version"
+        "\tworkroot\tslot_mode\tslots\trepos_denied\tmode\theavy_local\tnote\n"
+        "hy\tcapacity\thosty\tjonah@hosty\t24\t/bin/uv\t0.1.0\t/tmp/wy\tlockdir\t1\t-"
+        "\tauthorizing\tallowed\tlegacy row, note in field 14\n"
+        "hlr\tcapacity\thostlr\tjonah@hostlr\t32\t/bin/uv\t0.1.0\t/tmp/w3\tlockdir\t1\t-"
+        "\tauthorizing\tprefer_remote\tlast_resort\tidlest, demoted\n"
+    )
+    repo = _repo_with_table(tmp_path, mixed, name="tier4")
+    out = _driver(
+        repo,
+        'export PREPUSH_LOAD_OVERRIDE_MAP="hy=0.90,hlr=0.05"\n'
+        'export PREPUSH_SLOT_OVERRIDE_MAP="hy=free,hlr=free"\n'
+        'export PREPUSH_UV_OVERRIDE_MAP="hy=1.0.0,hlr=1.0.0"\n'
+        "if pick_capacity_host somewhere-else omnibase_core; then\n"
+        '  echo "PICK=$PREPUSH_PICK_LABEL"\n'
+        "else\n"
+        '  echo "PICK=none"\n'
+        "fi\n",
+    )
+    assert "PICK=hy" in out, out
 
 
 def test_the_guard_consults_the_policy_before_running_locally() -> None:
