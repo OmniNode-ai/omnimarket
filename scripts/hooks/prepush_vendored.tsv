@@ -35,6 +35,6 @@
 # thing that cannot happen quietly.
 #
 #path	upstream_repo	upstream_path	upstream_commit	upstream_branch	sha256	copied_at
-scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	3608895e6d6f54f2e8cf240a6f3366119e42ed60	dev	2fb4e80f09b187d0fb652a798d4d178844cc29017823a80dc98361539dc9d5ac	2026-09-01
+scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	8dba826f9217990fc50a0f4449b93e3440775c65	dev	2fb4e80f09b187d0fb652a798d4d178844cc29017823a80dc98361539dc9d5ac	2026-09-01
 scripts/hooks/prepush_override_grant.py	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_override_grant.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	6777c592a944fe1964a195bf088c00c7747551e5e9a20705ca49d9e59dbc3f3c	2026-09-01
 scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	1fd00d5c4db005be2151507b9d690d49e4c8cfb34ebffd4ecf771d02962feb11	2026-09-01
