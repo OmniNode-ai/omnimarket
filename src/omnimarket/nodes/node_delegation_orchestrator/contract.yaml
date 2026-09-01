@@ -92,8 +92,18 @@ event_bus:
     # -- the half the reducer's own OMN-16812 comment named and deferred.
     - "onex.evt.omnibase-infra.routing-decision-failed.v1"
     - "onex.evt.omnibase-infra.inference-response.v1"
+    # OMN-17445: the inference effect's FAILURE terminal. OMN-17397 shut the
+    # routing door; this is the same stall reached through the inference leg --
+    # the effect's consume boundary fails the record for good, the FSM sits in
+    # ROUTED waiting on a response that will never come, and the caller waits
+    # out the whole ingress budget to be told nothing.
+    - "onex.evt.omnibase-infra.inference-response-failed.v1"
     - "onex.evt.omnibase-infra.agent-task-lifecycle.v1"
     - "onex.evt.omnibase-infra.quality-gate-result.v1"
+    # OMN-17445: the quality gate's FAILURE terminal. Same stall again, one leg
+    # later: the FSM sits in INFERENCE_COMPLETED waiting on a gate verdict whose
+    # producer already gave up on the record.
+    - "onex.evt.omnibase-infra.quality-gate-result-failed.v1"
   publish_topics:
     - "onex.evt.omnibase-infra.delegation-completed.v1"
     - "onex.evt.omnibase-infra.delegation-failed.v1"
@@ -216,7 +226,16 @@ fsm:
     # table, would have rejected the only honest transition available.
     - from: RECEIVED
       to: FAILED
-      trigger: "routing leg's consume boundary terminalized the record before any routing decision was produced (handle_routing_failure_terminal, OMN-17397)"
+      trigger: "routing leg's consume boundary terminalized the record before any routing decision was produced (handle_boundary_failure_terminal, OMN-17397)"
+    # OMN-17445: the quality-gate leg fails while the workflow sits in
+    # INFERENCE_COMPLETED, whose only declared exit was -> GATE_EVALUATED, i.e.
+    # the gate answering. A gate that never answers had nowhere to go, and
+    # _advance -- which resolves every edge from this table -- would have
+    # rejected the only honest transition available. The inference leg's own
+    # ROUTED -> FAILED edge already exists above.
+    - from: INFERENCE_COMPLETED
+      to: FAILED
+      trigger: "quality-gate leg's consume boundary terminalized the record before any gate verdict was produced (handle_boundary_failure_terminal, OMN-17445)"
 handler_routing:
   routing_strategy: "payload_type_match"
   # OMN-14771 (S8 PR3, PR2<->PR3 seam): each entry now carries an explicit
@@ -284,6 +303,37 @@ handler_routing:
       event_type: "omnibase-infra.routing-decision-failed"
       topic: "onex.evt.omnibase-infra.routing-decision-failed.v1"
       description: "Terminalize the workflow when the routing leg's consume boundary failed the record for good (OMN-17397)."
+    # OMN-17445: the inference and quality-gate legs answer with the SAME class
+    # on their own topics. One payload type means one entry in
+    # _PER_STEP_DISPATCH and therefore one handler method for all three legs --
+    # which is the point: a second copy of the idempotency refusals would be
+    # free to disagree with the first about what "already answered" means, and a
+    # double terminal for one correlation is made of exactly that disagreement.
+    # The legs are told apart inside the handler by
+    # ModelBoundaryFailureTerminal.origin_topic, which the boundary stamps from
+    # the topic it was consuming -- no caller can forge it.
+    - operation: "delegation.orchestrate.inference_failure"
+      message_category: "event"
+      handler:
+        name: "HandlerDelegationWorkflow"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      event_model:
+        name: "ModelBoundaryFailureTerminal"
+        module: "omnibase_infra.runtime.boundary_failure_terminal"
+      event_type: "omnibase-infra.inference-response-failed"
+      topic: "onex.evt.omnibase-infra.inference-response-failed.v1"
+      description: "Terminalize the workflow when the inference leg's consume boundary failed the record for good (OMN-17445)."
+    - operation: "delegation.orchestrate.quality_gate_failure"
+      message_category: "event"
+      handler:
+        name: "HandlerDelegationWorkflow"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      event_model:
+        name: "ModelBoundaryFailureTerminal"
+        module: "omnibase_infra.runtime.boundary_failure_terminal"
+      event_type: "omnibase-infra.quality-gate-result-failed"
+      topic: "onex.evt.omnibase-infra.quality-gate-result-failed.v1"
+      description: "Terminalize the workflow when the quality-gate leg's consume boundary failed the record for good (OMN-17445)."
     - operation: "delegation.orchestrate.inference"
       message_category: "event"
       handler:

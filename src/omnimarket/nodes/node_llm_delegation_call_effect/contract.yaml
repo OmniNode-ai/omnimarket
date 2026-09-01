@@ -88,6 +88,13 @@ event_bus:
     - "onex.evt.omnimarket.delegation-escalation-triggered.v1"
     - "onex.evt.omnimarket.delegation-all-tiers-failed.v1"
     - "onex.evt.omnimarket.delegation-model-degraded.v1"
+    # OMN-17445: the address the consume boundary answers at when a record on
+    # either subscribed topic fails for good. APPENDED, never prepended: the
+    # dispatch-result applier resolves this contract's SUCCESS terminal as the
+    # FIRST publish topic (this contract declares no top-level terminal_event),
+    # so a prepended failure terminal would silently become the success
+    # terminal and mis-route every returned model.
+    - "onex.evt.omnibase-infra.inference-response-failed.v1"
 
   subscribe_topic_metadata:
     "onex.cmd.omnimarket.delegation-execute.v1":
@@ -113,6 +120,59 @@ event_bus:
     "onex.evt.omnibase-infra.inference-response.v1":
       schema_ref: "omnibase_core.models.delegation.wire.ModelInferenceResponseData"
       description: "Inference response published to the orchestrator's subscribe topic after handling ModelInferenceIntent."
+    "onex.evt.omnibase-infra.inference-response-failed.v1":
+      schema_ref: "omnibase_infra.runtime.boundary_failure_terminal.ModelBoundaryFailureTerminal"
+      description: "OMN-17445: emitted by omnibase_infra's auto-wired consume boundary — not by a handler here — when a record on this node's subscribed topics fails for good and the offset is about to advance over it."
+
+# =============================================================================
+# OMN-17445 -- WHY THIS DECLARATION EXISTS AND WHAT ARMING IT ALSO CHANGES.
+#
+# OMN-16812 gave the auto-wired consume boundary the ability to terminalize a
+# handler failure it is about to ACK, but it refuses to guess an address: it
+# publishes only onto the failing contract's OWN declared failure terminal, and
+# only when `_declared_failure_terminal_topics` resolves EXACTLY ONE. This
+# contract declared no terminal events at all, so that gate resolved zero and
+# the emitter was inert here. A dispatch failure on the inference leg was
+# DLQ'd safely, produced no terminal anywhere, and left the delegation FSM
+# parked in ROUTED -- `delegation-failed.v1` never published, onex-api's
+# workflow_terminal_consumer never fired, `gateway_workflows.status` stuck at
+# 'published' with completed_at NULL. That is OMN-17397's incident reached
+# through a door OMN-17397 did not shut.
+#
+# Declared under `runtime_dispatch` (as the routing reducer's is) because that
+# is the site `runtime_local_ingress._extract_terminal_events` builds the
+# Pattern B broker's subscription set from; both sites feed the one reader
+# (`extract_terminal_event_topics`), so the broker's view and the boundary's
+# view cannot drift apart. `success` is declared alongside `failure` and is
+# NOT optional: with a failure entry alone the broker would treat
+# `terminal_events[0]` -- the failure topic -- as this contract's success
+# topic.
+#
+# THE SECOND EFFECT, MEASURED NOT ASSUMED. The same
+# `_declared_failure_terminal_topics` also feeds
+# `DispatchResultApplier(failure_terminal_topics=...)`, the OMN-15468 AC2
+# guard that re-routes a RETURNED model stating a failure verdict off the
+# success terminal. Declaring here arms that guard over this node's return
+# values, so it was adjudicated before the declaration landed rather than
+# after (tests/unit/delegation/test_omn17445_effect_and_gate_failure_terminals.py,
+# band A):
+#   * `ModelInferenceResponseData` with `error_message` set -- the normal
+#     failure the tier-escalation ladder rides -- is NOT re-routed.
+#     `resolve_terminal_verdict` reads exactly `terminal_failure_cause`,
+#     `status`, `ok`, `success`, `contract_passed`; that model (frozen,
+#     `extra="forbid"`) declares none of them, so the verdict is None and
+#     routing is unchanged. The ladder is proven intact end-to-end against
+#     real wiring, not argued.
+#   * `ModelLlmDelegationCallResult` with `success=False` IS re-routed here,
+#     and that is the intended improvement: it is absent from
+#     `published_events`, so it was falling back onto
+#     `inference-response.v1` -- a channel typed to
+#     `ModelInferenceResponseData`, where it could never validate.
+# =============================================================================
+runtime_dispatch:
+  terminal_events:
+    success: "onex.evt.omnibase-infra.inference-response.v1"
+    failure: "onex.evt.omnibase-infra.inference-response-failed.v1"
 
 externally_consumed_topics:
   - "onex.evt.omnimarket.delegation-call-completed.v1"
