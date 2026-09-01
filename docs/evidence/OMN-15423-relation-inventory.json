@@ -5370,7 +5370,8 @@
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_savings/migrations/076_create_delegation_savings_projection_view.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/087_savings_views_read_persisted_provenance.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",
@@ -5411,7 +5412,8 @@
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_savings/migrations/078_create_delegation_savings_series_projection_view.sql",
         "src/omnimarket/nodes/node_projection_savings/migrations/079_add_savings_series_tier_mix.sql",
-        "src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql"
+        "src/omnimarket/nodes/node_projection_savings/migrations/083_reconcile_delegation_savings_projection_views.sql",
+        "src/omnimarket/nodes/node_projection_savings/migrations/087_savings_views_read_persisted_provenance.sql"
       ],
       "blocked_reasons": [],
       "classification_evidence": "owning node migration plus referenced table domains",

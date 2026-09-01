@@ -22,7 +22,10 @@ from omnimarket.models.delegation.wire.model_delegate_skill_terminal_projection 
     ModelTaskDelegatedSavingsSource,
 )
 from omnimarket.nodes.node_projection_savings.handlers.handler_savings import (
+    SAVINGS_METHOD_VALUES,
+    USAGE_SOURCE_VALUES,
     _normalize_savings_estimate_payload,
+    provenance_or_none,
 )
 from omnimarket.pricing import DEFAULT_BASELINE_MODEL, build_premium_counterfactual
 from omnimarket.projection.protocol_database import DatabaseAdapter
@@ -49,6 +52,13 @@ _CANONICAL_SAVINGS_FIELDS: frozenset[str] = frozenset(
         "task_type",
         "prompt_tokens",
         "completion_tokens",
+        # OMN-15533 (AC3, second pass): the producer's OWN provenance. Dropping
+        # these here is what forced the read view to invent a replacement, and the
+        # replacement it settled on (tokens > 0 -> 'measured') relabels every
+        # estimate that carries token counts as a measurement.
+        "savings_method",
+        "usage_source",
+        "pricing_manifest_version",
     }
 )
 
@@ -83,6 +93,41 @@ class ModelSavingsEstimatedEvent(BaseModel):
     completion_tokens: int | None = Field(
         default=None, ge=0, description="Served output tokens; None if not recorded."
     )
+    # OMN-15533 (AC3, second pass): the provenance the SOURCE stated. The real
+    # producer ships all three on every event (ModelSavingsEstimate.is_measured /
+    # .usage_source / .pricing_manifest_version) and they were being dropped at
+    # this seam, leaving the read view to infer a provenance from token counts —
+    # which labelled estimate-derived rows 'measured' the moment they carried any
+    # tokens. None persists as NULL and is read back as a refusal, never as a
+    # measurement claim.
+    savings_method: str | None = Field(
+        default=None,
+        description=(
+            "How the saving was obtained, as stated by the source event: "
+            "'measured' or 'estimated'. None if the source did not state it."
+        ),
+    )
+    usage_source: str | None = Field(
+        default=None,
+        description=(
+            "Cost provenance as stated by the source event: 'measured', "
+            "'estimated' or 'unknown'. None if the source did not state it."
+        ),
+    )
+    pricing_manifest_version: str | None = Field(
+        default=None,
+        description=("Pricing manifest the source priced with. None if not recorded."),
+    )
+
+    @field_validator("savings_method")
+    @classmethod
+    def validate_savings_method(cls, value: str | None) -> str | None:
+        return provenance_or_none(value, SAVINGS_METHOD_VALUES)
+
+    @field_validator("usage_source")
+    @classmethod
+    def validate_usage_source(cls, value: str | None) -> str | None:
+        return provenance_or_none(value, USAGE_SOURCE_VALUES)
 
     @field_validator("event_timestamp")
     @classmethod
@@ -239,6 +284,16 @@ class HandlerProjectionSavings:
             row["prompt_tokens"] = event.prompt_tokens
         if event.completion_tokens is not None:
             row["completion_tokens"] = event.completion_tokens
+        # OMN-15533: same omit-when-absent convention. A source that stated no
+        # provenance leaves the column NULL, which the read view renders as
+        # estimated/unknown; it must never overwrite a provenance a richer
+        # terminal already established for the same row.
+        if event.savings_method is not None:
+            row["savings_method"] = event.savings_method
+        if event.usage_source is not None:
+            row["usage_source"] = event.usage_source
+        if event.pricing_manifest_version:
+            row["pricing_manifest_version"] = event.pricing_manifest_version
         ok = db.upsert(TABLE, CONFLICT_KEY, row)
         return ModelProjectionResult(rows_upserted=1 if ok else 0)
 
@@ -271,6 +326,13 @@ class HandlerProjectionSavings:
             "task_type": projection.task_type,
             "prompt_tokens": projection.prompt_tokens,
             "completion_tokens": projection.completion_tokens,
+            # OMN-15533: the writer states the provenance, because the writer is
+            # the only party that knows how the number was produced. A terminal
+            # whose token basis is recorded yields OMN-13629's measurement; one
+            # without refuses rather than claiming it. The read view no longer
+            # guesses from token presence.
+            "savings_method": projection.savings_method,
+            "usage_source": projection.usage_source,
         }
         # OMN-14058 (OPERATOR-ACCEPTED INTERIM): only stamp tenant_id when the
         # source projection carried one — omitting the key lets the

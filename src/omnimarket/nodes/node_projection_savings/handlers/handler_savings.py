@@ -36,6 +36,16 @@ logger = logging.getLogger(__name__)
 
 HANDLER_ID_PROJECTION_SAVINGS = "node_projection_savings"
 
+# OMN-15533: the consumer contract's provenance vocabulary (omnidash
+# delegation-savings.types.ts):
+#     savings_method: 'measured' | 'estimated'
+#     usage_source:   'measured' | 'estimated' | 'unknown'
+# Declared here rather than in handler_projection_savings so both write paths
+# share one definition; that module already imports from this one, so the
+# dependency runs in a single direction.
+SAVINGS_METHOD_VALUES: frozenset[str] = frozenset({"measured", "estimated"})
+USAGE_SOURCE_VALUES: frozenset[str] = frozenset({"measured", "estimated", "unknown"})
+
 KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
     {
         "delegation_events",
@@ -288,6 +298,22 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         completion_tokens = _optional_non_negative_int(
             _first_present(data, "completion_tokens", "completionTokens")
         )
+        # OMN-15533: the provenance the source stated about its own saving.
+        # _normalize_savings_estimate_payload has already mapped the real
+        # producer's is_measured onto savings_method and left its usage_source /
+        # pricing_manifest_version in place. An unrecognised label is discarded
+        # rather than coerced, so it persists as NULL and reads back as a refusal.
+        savings_method = provenance_or_none(
+            _str_or_none(_first_present(data, "savings_method", "savingsMethod")),
+            SAVINGS_METHOD_VALUES,
+        )
+        usage_source = provenance_or_none(
+            _str_or_none(_first_present(data, "usage_source", "usageSource")),
+            USAGE_SOURCE_VALUES,
+        )
+        pricing_manifest_version = _str_or_none(
+            _first_present(data, "pricing_manifest_version", "pricingManifestVersion")
+        )
 
         if savings_usd != cloud_cost_usd - local_cost_usd:
             return await self._route_malformed_to_dlq(
@@ -311,6 +337,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             task_type=task_type,
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
+            savings_method=savings_method,
+            usage_source=usage_source,
+            pricing_manifest_version=pricing_manifest_version,
         )
         logger.info(
             "Projected savings-estimated for session %s (total_savings=$%s)",
@@ -381,6 +410,11 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             task_type=projection.task_type or None,
             prompt_tokens=projection.prompt_tokens,
             completion_tokens=projection.completion_tokens,
+            # OMN-15533: the writer states provenance because only the writer
+            # knows how the number was produced. The read view no longer infers
+            # it from token presence.
+            savings_method=projection.savings_method,
+            usage_source=projection.usage_source,
         )
         logger.info(
             "Projected canonical delegation savings for %s (savings=$%s)",
@@ -427,6 +461,11 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             task_type=projection.task_type or None,
             prompt_tokens=projection.prompt_tokens,
             completion_tokens=projection.completion_tokens,
+            # OMN-15533: the writer states provenance because only the writer
+            # knows how the number was produced. The read view no longer infers
+            # it from token presence.
+            savings_method=projection.savings_method,
+            usage_source=projection.usage_source,
         )
         logger.info(
             "Projected delegate-skill savings for %s (savings=$%s)",
@@ -452,6 +491,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         task_type: str | None = None,
         prompt_tokens: int | None = None,
         completion_tokens: int | None = None,
+        savings_method: str | None = None,
+        usage_source: str | None = None,
+        pricing_manifest_version: str | None = None,
     ) -> None:
         # OMN-15533: task_type and the served token counts are persisted so the
         # read views stop substituting model_local for the task class and stop
@@ -459,18 +501,25 @@ class SavingsProjectionRunner(BaseProjectionRunner):
         # carry them cannot erase a value an earlier one established — but a NULL
         # is never replaced by a manufactured default, so "not recorded" survives
         # as NULL and the view labels such a row estimated/unknown.
+        #
+        # The three provenance columns follow the identical rule (migration 085):
+        # they hold what the SOURCE stated about how the saving was obtained, so
+        # the read view stops inferring a provenance from token presence and
+        # relabelling estimate-derived rows as measurements.
         rows = await self.db.execute(
             f"""
             INSERT INTO {self._table_estimates} (
               event_timestamp, session_id, model_local, model_cloud_baseline,
               local_cost_usd, cloud_cost_usd, savings_usd,
               repo_name, machine_id,
-              task_type, prompt_tokens, completion_tokens
+              task_type, prompt_tokens, completion_tokens,
+              savings_method, usage_source, pricing_manifest_version
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
               $8, $9,
-              $10, $11, $12
+              $10, $11, $12,
+              $13, $14, $15
             )
             ON CONFLICT (
               session_id, event_timestamp, model_local, model_cloud_baseline
@@ -487,11 +536,22 @@ class SavingsProjectionRunner(BaseProjectionRunner):
               completion_tokens = COALESCE(
                 EXCLUDED.completion_tokens, {self._table_estimates}.completion_tokens
               ),
+              savings_method = COALESCE(
+                EXCLUDED.savings_method, {self._table_estimates}.savings_method
+              ),
+              usage_source = COALESCE(
+                EXCLUDED.usage_source, {self._table_estimates}.usage_source
+              ),
+              pricing_manifest_version = COALESCE(
+                EXCLUDED.pricing_manifest_version,
+                {self._table_estimates}.pricing_manifest_version
+              ),
               updated_at = NOW()
             RETURNING id, session_id, event_timestamp, model_local,
               model_cloud_baseline, local_cost_usd, cloud_cost_usd,
               savings_usd, repo_name, machine_id, task_type, prompt_tokens,
-              completion_tokens, created_at, updated_at
+              completion_tokens, savings_method, usage_source,
+              pricing_manifest_version, created_at, updated_at
             """,
             event_timestamp,
             session_id,
@@ -505,6 +565,9 @@ class SavingsProjectionRunner(BaseProjectionRunner):
             task_type,
             prompt_tokens,
             completion_tokens,
+            savings_method,
+            usage_source,
+            pricing_manifest_version,
         )
         row = rows[0] if rows else None
         if self._snapshot_exposure is None or row is None:
@@ -552,9 +615,18 @@ def _normalize_savings_estimate_payload(data: dict[str, Any]) -> dict[str, Any]:
         no direct cloud-cost field; the counterfactual cost is reconstructed the same
         way every other path in this module derives it: local + savings)
       * ``timestamp_iso``              -> ``event_timestamp``
+      * ``is_measured``                -> ``savings_method``    (OMN-15533)
+      * ``usage_source``               -> ``usage_source``      (case-folded)
+      * ``pricing_manifest_version``   -> passed through unchanged
       * ``repo_name``/``machine_id``: ModelSavingsEstimate carries neither; they
         stay absent (the existing repo_name/machine_id lookups below already
         default to None on a missing key).
+
+    OMN-15533: the three provenance keys were previously dropped, so the read view
+    had to invent a provenance and settled on ``served tokens > 0 -> measured`` —
+    which relabels an estimate as a measurement the moment it carries any token
+    count. ``estimated_total_savings_usd`` is ``direct + heuristic``, and the
+    producer says so on the wire; carrying its word is the fix.
     """
     if data.get("model_local") or data.get("modelLocal"):
         return data  # already canonical-shaped
@@ -565,6 +637,17 @@ def _normalize_savings_estimate_payload(data: dict[str, Any]) -> dict[str, Any]:
     normalized.setdefault("model_local", data.get("actual_model_id"))
     normalized.setdefault("model_cloud_baseline", data.get("counterfactual_model_id"))
     normalized.setdefault("event_timestamp", data.get("timestamp_iso"))
+
+    # OMN-15533: carry the producer's own provenance. is_measured is the
+    # producer's answer to exactly the question savings_method asks, so it is
+    # mapped rather than re-derived. Only a real boolean is read — a missing or
+    # non-boolean value leaves the key absent, which persists as NULL and reads
+    # back as a refusal instead of a fabricated 'estimated' claim.
+    is_measured = data.get("is_measured")
+    if isinstance(is_measured, bool):
+        normalized.setdefault(
+            "savings_method", "measured" if is_measured else "estimated"
+        )
 
     local_cost = _first_present(data, "actual_cost_usd")
     savings = _first_present(data, "estimated_total_savings_usd")
@@ -641,6 +724,25 @@ def _str_or_none(value: Any) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def provenance_or_none(value: str | None, allowed: frozenset[str]) -> str | None:
+    """Normalize a producer-supplied provenance label, or discard it.
+
+    OMN-15533. ``ModelSavingsEstimate.usage_source`` is upper-case on the wire
+    (``MEASURED`` / ``ESTIMATED`` / ``UNKNOWN``) while the consumer contract is
+    lower-case, so the case is folded here rather than at each call site.
+
+    Anything outside the contract's vocabulary returns None — "the source stated
+    nothing usable" — so an off-contract label is never persisted and never
+    reaches the read view as a claim. Discarding beats coercing: a value that
+    cannot be interpreted is not evidence of a measurement, and NULL is read back
+    as a refusal.
+    """
+    if value is None:
+        return None
+    folded = value.strip().lower()
+    return folded if folded in allowed else None
 
 
 if __name__ == "__main__":

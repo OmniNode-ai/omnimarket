@@ -286,6 +286,49 @@ class ModelDelegateSkillSavingsProjection(BaseModel):
             raise ValueError("savings_usd must equal cloud_cost_usd - local_cost_usd")
         return self
 
+    @property
+    def _has_token_basis(self) -> bool:
+        """Whether the source actually recorded the tokens this row was built on.
+
+        ``None`` means the source recorded nothing. A recorded total of zero is
+        also not a basis: both constructors only produce a row for a saving > 0,
+        so a zero-token total contradicts the saving rather than evidencing it.
+        """
+        return (self.prompt_tokens or 0) + (self.completion_tokens or 0) > 0
+
+    @property
+    def savings_method(self) -> str:
+        """How the SAVING was obtained — stated by the code that computed it.
+
+        OMN-15533. Both constructors work from a measured local cost against a
+        cloud baseline tied to really-served tokens: ``from_terminal_event`` takes
+        the terminal's own reported ``cost_savings_usd`` alongside the metrics it
+        served the call with, and ``from_task_delegated_event`` takes a
+        counterfactual that pins the exact ``tokens_in``/``tokens_out`` its cost
+        was computed over. That is OMN-13629's measurement, so this row may claim
+        ``measured`` when — and only when — that token basis was actually
+        recorded; otherwise it refuses to ``estimated``.
+
+        This is NOT the read view's retired ``tokens > 0`` rule. There, a view with
+        no access to how a number was produced guessed a provenance for it, and
+        mislabelled every estimate that happened to carry token counts. Here the
+        writer states a fact about a computation it performed itself. The
+        distinction is the whole point of persisting the value instead of
+        re-deriving it downstream.
+        """
+        return "measured" if self._has_token_basis else "estimated"
+
+    @property
+    def usage_source(self) -> str:
+        """Cost provenance, in the consumer contract's vocabulary.
+
+        Mirrors :attr:`savings_method`, except that an unrecorded token basis is
+        reported as the contract's explicit refusal value (``unknown``) rather
+        than floored to ``estimated`` — ``usage_source`` has somewhere to put "we
+        do not know", and ``savings_method`` does not.
+        """
+        return "measured" if self._has_token_basis else "unknown"
+
     @classmethod
     def from_terminal_event(
         cls,
