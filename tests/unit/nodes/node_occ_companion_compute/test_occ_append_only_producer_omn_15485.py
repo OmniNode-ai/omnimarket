@@ -254,53 +254,44 @@ def test_admissibility_supersede_carries_the_full_rebind() -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_merged_path_refuses_to_rewrite_any_frozen_receipt_generic() -> None:
-    """A collision through the DOWNSTREAM receipt site is refused, loudly.
+def test_merged_path_supersedes_same_product_pr_downstream_receipt() -> None:
+    """A same-PR downstream receipt collision emits a net-new supersession.
 
-    The point fix guards ONE emission site. This drives a merged contract that
-    already declares THIS PR's own downstream id — the second-order fragility the
-    ticket names, where ``dod-<repo>-pr-<N>`` is safe only by naming coincidence
-    — so the downstream receipt at the unguarded site targets a frozen merged
-    path. The producer must refuse rather than emit.
-
-    ``ValueError`` (not the subclass) is asserted so the RED against ``dev`` is
-    BEHAVIOURAL — "DID NOT RAISE" — rather than a collection-time ImportError on
-    a symbol dev does not have.
+    The branch-update reauthoring path can revisit the same product PR after its
+    first OCC companion has already merged. The original per-PR ``command.yaml``
+    is frozen then; the legal correction is the supersession record the merged
+    path already knows how to emit.
     """
     own_id = f"dod-{_REPO.replace('/', '-')}-pr-{_PRODUCT_PR}"
     contract = _merged_contract(first_entry=own_id)
     assert own_id in _declared_entry_ids(contract)
 
-    # Broad ``ValueError`` (with the required PT011 ``match``) rather than the
-    # subclass, ON PURPOSE — see the docstring: this keeps the dev-side RED a
-    # behavioural "DID NOT RAISE" instead of a collection-time ImportError.
-    with pytest.raises(ValueError, match=r"command\.supersede\.\d+\.yaml") as excinfo:
-        compute_companion_plan(
-            _request(
-                contract_states=(_merged_state(contract),),
-                occ_pr_number=None,
-            )
+    plan = compute_companion_plan(
+        _request(
+            contract_states=(_merged_state(contract),),
+            occ_pr_number=None,
         )
+    )
+    paths = _paths(plan)
 
-    message = str(excinfo.value)
-    assert f"drift/dod_receipts/{_TICKET}/{own_id}/command.yaml" in message
-    assert "command.supersede." in message
-
-
-def test_append_only_invariant_is_a_typed_named_error() -> None:
-    """The refusal is a typed error, not a bare ValueError or a silent drop."""
-    from omnimarket.nodes.node_occ_companion_compute.handlers.handler_occ_companion_compute import (
-        AppendOnlyEmissionError,
+    assert f"drift/dod_receipts/{_TICKET}/{own_id}/command.yaml" not in paths
+    assert (
+        f"drift/dod_receipts/{_TICKET}/{own_id}/command.supersede.{_PRODUCT_PR}.yaml"
+        in paths
     )
 
+
+def test_same_product_pr_downstream_collision_keeps_append_only_invariant() -> None:
+    """Same-PR reauthoring stays add-only instead of silently dropping proof."""
     own_id = f"dod-{_REPO.replace('/', '-')}-pr-{_PRODUCT_PR}"
-    with pytest.raises(AppendOnlyEmissionError):
-        compute_companion_plan(
-            _request(
-                contract_states=(_merged_state(_merged_contract(first_entry=own_id)),),
-                occ_pr_number=None,
-            )
+    plan = compute_companion_plan(
+        _request(
+            contract_states=(_merged_state(_merged_contract(first_entry=own_id)),),
+            occ_pr_number=None,
         )
+    )
+
+    assert any(f".supersede.{_PRODUCT_PR}.yaml" in f.path for f in plan.companion_files)
 
 
 def test_invariant_falsifier_supersede_allowed_plain_refused() -> None:

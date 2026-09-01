@@ -27,6 +27,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_int
 from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
     ModelRoutingIntent,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_stale_inference_response_rejection import (
+    ModelStaleInferenceResponseRejection,
+)
 from omnimarket.nodes.node_delegation_orchestrator.models.model_task_delegated_event import (
     ModelTaskDelegatedEvent,
 )
@@ -41,5 +44,6 @@ __all__: list[str] = [
     "ModelInferenceResponseData",
     "ModelQualityGateIntent",
     "ModelRoutingIntent",
+    "ModelStaleInferenceResponseRejection",
     "ModelTaskDelegatedEvent",
 ]

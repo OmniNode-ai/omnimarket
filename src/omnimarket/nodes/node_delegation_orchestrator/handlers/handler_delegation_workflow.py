@@ -104,6 +104,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_quality_gate_int
 from omnimarket.nodes.node_delegation_orchestrator.models.model_routing_intent import (
     ModelRoutingIntent,
 )
+from omnimarket.nodes.node_delegation_orchestrator.models.model_stale_inference_response_rejection import (
+    ModelStaleInferenceResponseRejection,
+)
 from omnimarket.nodes.node_delegation_orchestrator.quality_bar_authority import (
     RequiredBarAuthority,
     RequiredBarAuthorityError,
@@ -398,6 +401,87 @@ def _record_inference_response(
     workflow.inference_llm_call_id = response.llm_call_id
 
 
+def _stale_response_rejection(
+    workflow: DelegationWorkflowState,
+    response: ModelInferenceResponseData,
+) -> ModelStaleInferenceResponseRejection | None:
+    """Return typed evidence if this response came from a SUPERSEDED attempt (OMN-15542).
+
+    ``None`` means the response was produced by the route currently in flight
+    and may be accepted. A ``ModelStaleInferenceResponseRejection`` means it was
+    not, and carries both attempt identities plus the route the response would
+    otherwise have been relabelled onto — the caller records it on the workflow
+    and drops the response.
+
+    ``correlation_id`` addresses the workflow, not the attempt. Escalation
+    (and retry-local / same-tier sibling retry / the compliance repair loop)
+    replaces ``workflow.routing_decision`` in place while the workflow stays
+    ``ROUTED``, so before this guard a delayed response from the superseded
+    attempt still matched and was combined with the NEW endpoint and tier —
+    producing the impossible provenance pair observed live (``model_name``
+    ``Qwen3.6-35B-A3B`` stamped against the Gemini endpoint at
+    ``escalation_count = 1``).
+
+    The check is attempt identity, and only attempt identity: when the response
+    carries an ``inference_attempt_id`` it must equal the one in flight, and any
+    other value belongs to a superseded attempt and is rejected. That is exact —
+    no heuristic, no false rejects.
+
+    The rejection is never silent and never a relabel. It is emitted as typed,
+    durable evidence (``ModelStaleInferenceResponseRejection``, persisted on the
+    workflow through the node's ``state_io`` codec) naming the rejected attempt,
+    the live attempt, the model the response actually reported, and the
+    endpoint/tier/model it would have been falsely attributed to.
+
+    **A response with NO attempt identity is accepted (documented residual).**
+    The ticket's AC3 asked for a legacy fallback that accepts an id-less
+    response only when its ``model_used`` matches the current routing decision.
+    That was implemented, measured, and REMOVED, because both readings of it
+    fail on the live escalation path:
+
+    * *Strict equality* (``model_used == selected_model``) rejects good
+      responses. Providers routinely report a model string that differs from
+      the routing contract's ``selected_model`` in case, version suffix, or
+      namespace — OMN-16419 records exactly that divergence live on ``.201``
+      (contract declares ``Qwen3.6-35B-A3B``, the endpoint serves ``qwen3.8``).
+    * *"Attributable to a superseded tier"* (the narrower form) rejects good
+      responses on the SAME-TIER sibling-backend retry path (OMN-14402): after
+      sibling A fails, its model is in ``escalation_history``, and sibling B's
+      response can carry a model string that collides with it. Three existing
+      tests caught this — ``test_all_local_siblings_exhausted_then_escalates_to_cheap_cloud``
+      and two ``test_delegation_tier_escalation`` cases — where the dropped
+      response stopped the ladder from escalating at all.
+
+    Both variants trade a provenance defect for an availability defect: a
+    dropped response leaves the workflow ``ROUTED`` with no terminal. A model
+    NAME is not attempt identity and cannot be made into one. The genuine
+    exposure left is narrow and one-time: inference events already on the bus
+    when this change deploys. The orchestrator and the effect ship in the SAME
+    omnimarket artifact, so from the first attempt dispatched after deploy every
+    response carries an id and this guard is exact.
+    """
+    expected = workflow.current_inference_attempt_id
+    observed = getattr(response, "inference_attempt_id", None)
+
+    if observed is None or expected is None or observed == expected:
+        return None
+
+    decision = workflow.routing_decision
+    return ModelStaleInferenceResponseRejection(
+        correlation_id=response.correlation_id,
+        rejected_attempt_id=observed,
+        current_attempt_id=expected,
+        response_model_used=response.model_used,
+        response_was_error=bool(response.error_message),
+        current_tier_name=workflow.current_tier_name,
+        current_endpoint_url=decision.endpoint_url if decision is not None else None,
+        current_selected_model=decision.selected_model
+        if decision is not None
+        else None,
+        rejected_at=datetime.now(UTC),
+    )
+
+
 def _should_escalate_inference_error(error_message: str) -> bool:
     """Return whether an inference error should retry on a higher tier."""
     normalized = error_message.lower()
@@ -485,6 +569,7 @@ def _build_model_inference_intent(
     temperature: float,
     timeout_seconds: float,
     correlation_id: UUID,
+    inference_attempt_id: UUID,
     api_key_ref: str | None,
     extra_headers: dict[str, str] | None,
     provider_request_options: dict[str, Any],
@@ -507,6 +592,17 @@ def _build_model_inference_intent(
         "response_format": response_format,
     }
     model_fields = getattr(ModelInferenceIntent, "model_fields", {})
+    # OMN-15542: per-attempt identity. ``correlation_id`` addresses the WORKFLOW,
+    # which outlives any single inference attempt — after an escalation resets the
+    # route, a delayed response from the prior attempt still matches it and used to
+    # be accepted against the NEW endpoint/tier (the live Qwen-model-on-Gemini-route
+    # terminal). This id addresses the ATTEMPT, so the orchestrator can bind a
+    # response to the route that actually produced it. Guarded on the model exposing
+    # the field (same shape as tenant_id below) so a core older than the 0.46.11
+    # release that carries it degrades to the pre-OMN-15542 behavior instead of
+    # raising on ``extra="forbid"``.
+    if "inference_attempt_id" in model_fields:
+        payload["inference_attempt_id"] = inference_attempt_id
     if provider_request_options and "provider_request_options" in model_fields:
         payload["provider_request_options"] = provider_request_options
     # OMN-14280 (OMN-14208 slice-2 A-now): stamp the workflow tenant onto the
@@ -598,6 +694,9 @@ def _evaluate_compliance(
     advance(workflow, EnumDelegationState.ROUTED)
     workflow.compliance_attempts += 1
     workflow.inference_intent_in_flight = True
+    # OMN-15542: the repair self-loop is a NEW attempt on the same route — mint a
+    # fresh identity so the superseded attempt's response cannot be re-accepted.
+    workflow.current_inference_attempt_id = uuid4()
     temperature = (
         workflow.request.temperature
         if workflow.request.temperature is not None
@@ -630,6 +729,7 @@ def _evaluate_compliance(
             temperature=temperature,
             timeout_seconds=_inference_timeout_seconds(workflow),
             correlation_id=workflow.correlation_id,
+            inference_attempt_id=workflow.current_inference_attempt_id,
             api_key_ref=workflow.routing_decision.api_key_ref,
             extra_headers=workflow.routing_decision.extra_headers,
             provider_request_options=provider_request_options,
@@ -772,6 +872,27 @@ class DelegationWorkflowState:
     compliance_attempts: int = 0
     accumulated_tokens: int = 0
     inference_intent_in_flight: bool = False
+    # OMN-15542: identity of the ONE inference attempt currently in flight. Set
+    # whenever the orchestrator emits a ModelInferenceIntent (initial dispatch,
+    # escalation re-dispatch, same-tier sibling retry, retry-local, and the
+    # compliance-loop repair self-loop) and compared against the attempt id the
+    # inference effect echoes on the response. A response carrying any OTHER
+    # attempt id belongs to a superseded route and is dropped without touching
+    # workflow state, costs, gate inputs, or terminal provenance. Persisted with
+    # the rest of the workflow state so the binding survives a leg replayed in a
+    # different process.
+    current_inference_attempt_id: UUID | None = None
+    # OMN-15542: typed, durable evidence for every response rejected as
+    # superseded. A silent drop would leave the route-honesty guard unfalsifiable
+    # from the control plane — this list is what proves a stale response was
+    # REJECTED rather than relabelled, and names the endpoint/tier/model it would
+    # have been falsely attributed to. Append-only audit: it never feeds costs,
+    # gate inputs, escalation, or terminal provenance. Round-trips through the
+    # node's state_io codec with the rest of the state; an older persisted row
+    # with no such key decodes to the empty default.
+    stale_response_rejections: list[ModelStaleInferenceResponseRejection] = field(
+        default_factory=list
+    )
     routing_intent_replayed: bool = False
     # Escalation state (OMN-12254). Tracks tier escalation across quality gate
     # failures. ``escalation_count`` is incremented on each escalation;
@@ -1098,6 +1219,12 @@ class HandlerDelegationWorkflow:
             return []
 
         workflow.inference_intent_in_flight = True
+        # OMN-15542: every routing decision the orchestrator acts on — the initial
+        # dispatch AND the escalation / retry-local / sibling-retry re-entry — opens
+        # a NEW inference attempt. Minting the identity here (immediately after the
+        # in-flight dedup guard, so a deduped duplicate decision cannot rotate it)
+        # is what makes the previous attempt's late response identifiable as stale.
+        workflow.current_inference_attempt_id = uuid4()
 
         assert workflow.request is not None
         temperature = (
@@ -1135,6 +1262,7 @@ class HandlerDelegationWorkflow:
                 temperature=temperature,
                 timeout_seconds=_inference_timeout_seconds(workflow),
                 correlation_id=cid,
+                inference_attempt_id=workflow.current_inference_attempt_id,
                 api_key_ref=decision.api_key_ref,
                 extra_headers=decision.extra_headers,
                 provider_request_options=provider_request_options,
@@ -1191,6 +1319,29 @@ class HandlerDelegationWorkflow:
 
         assert workflow.request is not None
         if workflow.routing_decision is None:
+            return []
+
+        # OMN-15542: a response from a route the workflow has already left is
+        # rejected with typed, durable evidence — never relabelled onto the live
+        # route — before any workflow-state, cost, gate-input, or terminal
+        # mutation. Appending the rejection is the ONLY state change a stale
+        # response is allowed to make: it is audit, not workflow progress.
+        rejection = _stale_response_rejection(workflow, response)
+        if rejection is not None:
+            workflow.stale_response_rejections.append(rejection)
+            _logger.warning(
+                "OMN-15542: rejected inference response from a superseded "
+                "attempt: correlation_id=%s rejected_attempt=%s "
+                "current_attempt=%s response_model=%s current_tier=%s "
+                "current_model=%s current_endpoint=%s",
+                rejection.correlation_id,
+                rejection.rejected_attempt_id,
+                rejection.current_attempt_id,
+                rejection.response_model_used,
+                rejection.current_tier_name,
+                rejection.current_selected_model,
+                rejection.current_endpoint_url,
+            )
             return []
 
         if response.error_message:

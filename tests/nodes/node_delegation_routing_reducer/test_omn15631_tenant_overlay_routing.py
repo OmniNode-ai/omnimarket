@@ -53,6 +53,10 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_routing_i
 )
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 from omnimarket.projection.tenant_isolation import HOUSE_TENANT_SLUG
+from omnimarket.routing.customer_key_terminus import (
+    CustomerKeyRefusedError,
+    EnumDelegationSurface,
+)
 from omnimarket.routing.tenant_overlay_resolver import (
     TENANT_OVERLAY_TABLE,
     ModelTenantRoutingOverlayBackend,
@@ -242,20 +246,58 @@ def test_ac1_house_tenant_never_queries_the_overlay_table() -> None:
 
 @pytest.mark.usefixtures("platform_default_routable")
 def test_ac3_no_overlay_row_resolves_platform_default() -> None:
-    """T3: authenticated tenant, zero overlay rows -> platform default."""
+    """T3: authenticated tenant, zero overlay rows -> platform default.
+
+    SUPERSEDED IN PART by OMN-17082 (operator ruling 2026-08-31: no keyless
+    customers, no house-credential execution). AC3's structural claim — "no
+    overlay row means the platform ladder, not a tenant-overlay decision" —
+    still holds and is still asserted here. What no longer holds is that the
+    claim is surface-independent: on the CLOUD surface a customer with no
+    registered key now terminates in a typed refusal rather than a platform
+    route, because every rung of that ladder is an OmniNode key or an
+    OmniNode GPU. The AC3 assertion is therefore made on the customer-local
+    surface, where it remains true and meaningful. The cloud half is asserted
+    in ``tests/test_omn17082_customer_key_terminus.py``.
+    """
     db = InmemoryDatabaseAdapter()  # empty — no rows for T3 at all
     t3_overlay = resolve_tenant_overlay(
         db, tenant_id="t3-no-overlay", task_type="code_generation"
     )
     assert t3_overlay is None
 
-    decision = delta(_request(tenant_id="t3-no-overlay"), tenant_overlay=t3_overlay)
+    decision = delta(
+        _request(tenant_id="t3-no-overlay"),
+        tenant_overlay=t3_overlay,
+        surface=EnumDelegationSurface.CUSTOMER_LOCAL,
+    )
     # Endpoint comes from the fixture's bifrost contract; the selected model
     # id comes from the real (conftest-bound) routing_tiers.yaml tier ladder
     # for the "local" tier — routing STRUCTURE is untouched by this fixture.
     assert decision.endpoint_url == "http://local.test:8000/v1/chat/completions"
     assert decision.tier_name != TENANT_OVERLAY_TIER_NAME
     assert decision.selected_backend_ref == "local-coder"
+
+
+@pytest.mark.usefixtures("platform_default_routable")
+def test_ac3_no_overlay_row_on_the_cloud_is_a_refusal_omn17082() -> None:
+    """The other half of the superseded AC3, asserted rather than left implied.
+
+    Same tenant, same empty overlay table, same fixture — only the surface
+    differs. Kept beside AC3 so the supersession is legible at the site of the
+    claim it narrows, not only in the ticket.
+    """
+    db = InmemoryDatabaseAdapter()
+    t3_overlay = resolve_tenant_overlay(
+        db, tenant_id="t3-no-overlay", task_type="code_generation"
+    )
+    assert t3_overlay is None
+
+    with pytest.raises(CustomerKeyRefusedError):
+        delta(
+            _request(tenant_id="t3-no-overlay"),
+            tenant_overlay=t3_overlay,
+            surface=EnumDelegationSurface.CLOUD,
+        )
 
 
 # --- AC4: tenant-zero equivalence, proven by equivalence not assertion --------
@@ -290,13 +332,22 @@ def test_ac5_red_tenant_blindness_reproduced_when_overlay_not_threaded() -> None
     sites, and exactly what `delta()` did before this ticket for EVERY
     caller). Two different tenants, same task_type, same result: the tenant
     dimension provably does not exist on this path.
+
+    OMN-17082 note: the reproduction is now pinned to the customer-local
+    surface. On the cloud surface these two calls no longer produce equal
+    decisions — they produce two typed refusals, each naming its own tenant,
+    which is itself the tenant dimension existing. The RED case needs a
+    surface on which a platform route is still reachable for a customer, and
+    customer-local is that surface.
     """
     acme_request = _request(tenant_id="acme-corp")
     widgets_request = _request(tenant_id="widgets-inc")
 
     # Neither caller resolves/threads a tenant_overlay — the OMN-15631 default.
-    acme_decision = delta(acme_request)
-    widgets_decision = delta(widgets_request)
+    acme_decision = delta(acme_request, surface=EnumDelegationSurface.CUSTOMER_LOCAL)
+    widgets_decision = delta(
+        widgets_request, surface=EnumDelegationSurface.CUSTOMER_LOCAL
+    )
 
     assert acme_decision.endpoint_url == widgets_decision.endpoint_url
     assert acme_decision.selected_model == widgets_decision.selected_model

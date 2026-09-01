@@ -126,6 +126,35 @@ def _tenant_round_trip_fields(intent: ModelInferenceIntent) -> dict[str, Any]:
     return {}
 
 
+def _attempt_round_trip_fields(intent: ModelInferenceIntent) -> dict[str, Any]:
+    """Return the inference-attempt round-trip kwarg for the response (OMN-15542).
+
+    The effect is the only party that can prove which attempt a response came
+    from: it holds the intent while the call is outstanding. Echoing the intent's
+    ``inference_attempt_id`` back onto ``ModelInferenceResponseData`` is what lets
+    the orchestrator reject a delayed response from a route it has already left,
+    instead of stamping the previous attempt's model identity onto the current
+    endpoint and tier.
+
+    Applied on BOTH the success and the error path — an error response is what
+    drives escalation, and a late error from a superseded attempt would otherwise
+    escalate the ladder a second time off a route that already moved on.
+
+    Emitted only when the intent actually carries an id and the response model
+    exposes the field (mirrors the tenant guard above), so the effect degrades
+    to pre-OMN-15542 behavior against an older core instead of raising on
+    ``extra="forbid"``.
+    """
+    attempt_id = getattr(intent, "inference_attempt_id", None)
+    if attempt_id is None:
+        return {}
+    if "inference_attempt_id" in getattr(
+        ModelInferenceResponseData, "model_fields", {}
+    ):
+        return {"inference_attempt_id": attempt_id}
+    return {}
+
+
 def _get_inference_response_topic() -> str:
     """Return the full inference-response publish topic from the contract.
 
@@ -298,6 +327,7 @@ class HandlerInferenceIntent:
                 completion_tokens=completion_tokens,
                 total_tokens=total_tokens,
                 error_message=error_msg,
+                **_attempt_round_trip_fields(intent),
                 **_tenant_round_trip_fields(intent),
             )
 
@@ -420,6 +450,7 @@ class HandlerInferenceIntent:
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             total_tokens=total_tokens,
+            **_attempt_round_trip_fields(intent),
             **_tenant_round_trip_fields(intent),
         )
 

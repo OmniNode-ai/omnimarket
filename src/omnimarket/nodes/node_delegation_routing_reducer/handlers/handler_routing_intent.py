@@ -22,6 +22,9 @@ from omnibase_core.models.delegation.wire import ModelRoutingIntent
 
 from omnimarket.nodes.contract_topics import contract_publish_topics
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    EnumDelegationSurface,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     delta as routing_delta,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
@@ -119,6 +122,13 @@ class HandlerRoutingIntent:
             min_tier_name=intent.min_tier_name,
             excluded_backend_refs=excluded_backend_refs,
             tenant_overlay=tenant_overlay,
+            # OMN-17082. This consumer IS the deployed multi-tenant cloud
+            # runtime, so it names that surface explicitly rather than relying
+            # on the (identical, deliberately strict) default. The surface is
+            # a property of WHICH entry point ran — never read from an env
+            # var, which a lane could set wrong and silently downgrade every
+            # customer's terminus to the permissive one.
+            surface=EnumDelegationSurface.CLOUD,
         )
         logger.info(
             "HandlerRoutingIntent resolved: model=%s endpoint=%s tier=%s correlation_id=%s",
