@@ -12,6 +12,47 @@ logic or fallback scheduler logic to this skill.
 
 ## Arguments
 
+<!-- BEGIN GENERATED CODEX RUNTIME TRUTH: do not edit -->
+## Runtime truth (generator-owned)
+
+This section is generated from the Codex adapter contract and the target node
+contract. Keep the two surfaces distinct:
+
+### Codex adapter transport
+
+- **Command name:** `session_bootstrap`
+- **Request wrapper:** `scripts/run_codex_runtime_request.py`
+- **Route:** generic Pattern-B adapter transport.
+- **Adapter transport command topic:** `onex.cmd.omnimarket.pattern-b-dispatch.v1`
+- **Adapter transport response topic:** `onex.evt.omnimarket.pattern-b-dispatch-completed.v1`
+- **Compile-only:** pass `--compile-only` to validate the request and binding
+  without publishing an event or starting a runtime. This is adapter preflight,
+  not evidence that a target runtime executed the command.
+- **Runtime evidence:** inspect `runtime_evidence.runtime_observation` and
+  `runtime_evidence.adapter_dispatch_binding`; compile-only is `UNOBSERVED`
+  with reason `compile_only`.
+- **Evidence wire schema:** `runtime_evidence.schema_version` is
+  `runtime-evidence/v2`; v2 requires `runtime_observation` and carries the
+  resolved node contract under `adapter_dispatch_binding.node_contract`.
+- **Binding fields:** `adapter_dispatch_binding` reports
+  `adapter_command_topic`, `requested_response_topic`,
+  `selected_terminal_topic`, and `terminal_selection` (`NODE_CONTRACT`,
+  `DIRECT_DELEGATE_SKILL_CONTRACT`, or `EXPLICIT_RESPONSE_OVERRIDE`); its
+  `node_contract` is the resolved, typed contract binding.
+
+### Target node contract metadata
+
+- **Backing node:** `node_session_bootstrap`
+- **Contract command name:** `session_bootstrap`
+- **Contract command topic:** `onex.cmd.omnimarket.session-bootstrap-start.v2`
+- **Contract terminal topic:** `onex.evt.omnimarket.session-bootstrap-completed.v2`
+
+The skill must use the request wrapper for dispatch. It must not publish the
+target node command topic directly as its generic adapter transport; the target
+topics above are contract metadata selected by the runtime adapter.
+<!-- END GENERATED CODEX RUNTIME TRUTH -->
+
+
 | Argument | Description | Default |
 | --- | --- | --- |
 | `session_id` | UUID for the session run | Required |
@@ -90,8 +131,8 @@ If `ok` is `false`, surface `error.code` and `error.message` directly.
 - Backing node: `src/omnimarket/nodes/node_session_bootstrap/`
 - Pattern B request wrapper: `scripts/run_codex_runtime_request.py`
 - Command name: `session_bootstrap`
-- Runtime topic: `onex.cmd.omnimarket.session-bootstrap-start.v2`
-- Completion topic: `onex.evt.omnimarket.session-bootstrap-completed.v2`
+- Target contract command topic: `onex.cmd.omnimarket.session-bootstrap-start.v2`
+- Target contract terminal topic: `onex.evt.omnimarket.session-bootstrap-completed.v2`
 
 ## Output
 

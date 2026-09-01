@@ -129,7 +129,11 @@ async def _dispatch_pr_watch(
 
     assert evidence.node_name == _NODE_NAME
     assert evidence.command_topic == "onex.cmd.omnimarket.pr-watch-start.v1"
-    assert evidence.terminal_topic == "onex.evt.omnimarket.pr-watch-completed.v1"
+    assert evidence.terminal_topic == _RESPONSE_TOPIC
+    assert evidence.runtime_observation.reason == "terminal_received"
+    assert evidence.adapter_dispatch_binding.terminal_selection == (
+        "EXPLICIT_RESPONSE_OVERRIDE"
+    )
     assert evidence.payload_model.endswith(f"{_REQUEST_MODULE}.{_REQUEST_CLASS}")
     assert evidence.handler_route.endswith(f"{_HANDLER_MODULE}.{_HANDLER_CLASS}")
     assert terminal.payload is not None
