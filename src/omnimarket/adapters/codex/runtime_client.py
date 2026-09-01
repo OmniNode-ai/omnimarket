@@ -15,7 +15,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 from uuid import UUID
 
 import yaml
@@ -25,7 +25,14 @@ from omnibase_infra.errors import ModelInfraErrorContext, ProtocolConfigurationE
 from omnibase_infra.event_bus.event_bus_kafka import EventBusKafka
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
 from omnibase_infra.runtime.overlay.contract_env_ref import expand_contract_env_refs
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from omnimarket.adapters.codex.topics import (
     TOPIC_CODEX_DELEGATE_SKILL_COMMAND,
@@ -110,17 +117,131 @@ class ModelDispatchBusTerminalResult(BaseModel):
     error_message: str | None = None
 
 
-class ModelRuntimeEvidence(BaseModel):
-    """Runtime/backend evidence returned by the adapter."""
+class ModelRuntimeObservation(BaseModel):
+    """States whether this response observed a runtime execution."""
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
+    status: Literal["OBSERVED", "UNOBSERVED"]
+    reason: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_truth(self) -> ModelRuntimeObservation:
+        if self.status == "OBSERVED" and self.reason != "terminal_received":
+            raise ValueError("OBSERVED requires reason='terminal_received'")
+        if self.status == "UNOBSERVED" and self.reason not in {
+            "compile_only",
+            "readiness_timeout",
+            "readiness_failure",
+            "publish_failure",
+            "terminal_timeout",
+            "local_dispatch_failure",
+            "request_invalid",
+        }:
+            raise ValueError("UNOBSERVED requires a known non-terminal reason")
+        return self
+
+
+class ModelNodeContractBinding(BaseModel):
+    """Typed adapter-local resolution of a target node contract."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    status: Literal["RESOLVED", "UNRESOLVABLE"]
+    node_name: str
+    contract_identity: str
+    contract_path: str | None = None
+    command_topic: str | None = None
+    terminal_topic: str | None = None
+    reason: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_resolution(self) -> ModelNodeContractBinding:
+        resolved_values = (self.contract_path, self.command_topic, self.terminal_topic)
+        if self.status == "RESOLVED":
+            if self.reason is not None or any(
+                value is None for value in resolved_values
+            ):
+                raise ValueError("RESOLVED requires path/topics and forbids reason")
+        elif self.reason is None or any(value is not None for value in resolved_values):
+            raise ValueError("UNRESOLVABLE requires reason and forbids path/topics")
+        return self
+
+
+class ModelAdapterDispatchBinding(BaseModel):
+    """Adapter-local terminal-selection binding; not deployed-manifest proof."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    adapter_command_topic: str
+    requested_response_topic: str
+    selected_terminal_topic: str
+    terminal_selection: Literal[
+        "NODE_CONTRACT",
+        "DIRECT_DELEGATE_SKILL_CONTRACT",
+        "EXPLICIT_RESPONSE_OVERRIDE",
+        "UNRESOLVED_DEFAULT_FALLBACK",
+    ]
+    node_contract: ModelNodeContractBinding
+    evidence_scope: Literal["adapter_local_contract_binding"] = (
+        "adapter_local_contract_binding"
+    )
+    remote_deployed_manifest_proven: bool = False
+
+    @model_validator(mode="after")
+    def _validate_selection(self) -> ModelAdapterDispatchBinding:
+        if self.evidence_scope != "adapter_local_contract_binding":
+            raise ValueError("adapter binding must declare its local evidence scope")
+        if self.remote_deployed_manifest_proven:
+            raise ValueError("adapter-local binding cannot prove a deployed manifest")
+        if self.terminal_selection == "EXPLICIT_RESPONSE_OVERRIDE":
+            if self.selected_terminal_topic != self.requested_response_topic:
+                raise ValueError(
+                    "explicit response override must select the requested topic"
+                )
+        elif self.terminal_selection == "UNRESOLVED_DEFAULT_FALLBACK":
+            if (
+                self.node_contract.status != "UNRESOLVABLE"
+                or self.selected_terminal_topic != self.requested_response_topic
+                or self.requested_response_topic != default_response_topic()
+            ):
+                raise ValueError(
+                    "unresolved fallback requires an unresolvable contract"
+                )
+        elif self.node_contract.status != "RESOLVED":
+            raise ValueError("contract terminal selection requires a resolved contract")
+        elif self.terminal_selection == "NODE_CONTRACT" and (
+            self.requested_response_topic != default_response_topic()
+            or self.selected_terminal_topic != self.node_contract.terminal_topic
+        ):
+            raise ValueError("node contract selection must use its terminal topic")
+        elif self.terminal_selection == "DIRECT_DELEGATE_SKILL_CONTRACT" and (
+            self.adapter_command_topic != _DELEGATE_SKILL_COMMAND_TOPIC
+            or self.selected_terminal_topic != _DELEGATE_SKILL_COMPLETED_TOPIC
+            or self.node_contract.node_name != "node_delegate_skill_orchestrator"
+        ):
+            raise ValueError("direct delegate selection must use its completed topic")
+        return self
+
+
+class ModelRuntimeEvidence(BaseModel):
+    """Runtime/backend evidence, schema v2.
+
+    Migration from v1: the nullable scalar ``node_contract`` moved to
+    ``adapter_dispatch_binding.node_contract`` and ``runtime_observation`` is
+    required. Consumers must branch on the typed binding/observation fields.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True, validate_default=True)
+
+    schema_version: Literal["runtime-evidence/v2"]
     selected_runtime_mode: str
     event_bus_backend: str
     state_store_backend: str
-    node_contract: str | None = None
+    runtime_observation: ModelRuntimeObservation
+    adapter_dispatch_binding: ModelAdapterDispatchBinding
     command_topic: str
-    terminal_topic: str | None = None
+    terminal_topic: str
     details: dict[str, object] = Field(default_factory=dict)
 
 
@@ -664,17 +785,25 @@ def _dispatch_result(
 
 def _deployed_runtime_evidence(
     *,
+    binding: ModelAdapterDispatchBinding,
     command_topic: str,
-    terminal_topic: str,
     runtime_selection: str,
+    observation: ModelRuntimeObservation,
 ) -> ModelRuntimeEvidence:
     return ModelRuntimeEvidence(
+        schema_version="runtime-evidence/v2",
         selected_runtime_mode="deployed",
         event_bus_backend="kafka",
         state_store_backend="deployed_runtime",
+        runtime_observation=observation,
+        adapter_dispatch_binding=binding,
         command_topic=command_topic,
-        terminal_topic=terminal_topic,
-        details={"runtime_selection": runtime_selection},
+        terminal_topic=binding.selected_terminal_topic,
+        details={
+            "runtime_selection": runtime_selection,
+            "evidence_scope": "adapter_local_contract_binding",
+            "remote_deployed_manifest_proven": False,
+        },
     )
 
 
@@ -685,12 +814,18 @@ def _local_runtime_evidence(evidence: BaseModel) -> ModelRuntimeEvidence:
     )
     details = dict(raw)
     return ModelRuntimeEvidence(
+        schema_version="runtime-evidence/v2",
         selected_runtime_mode=str(raw["selected_runtime_mode"]),
         event_bus_backend=str(raw["event_bus_backend"]),
         state_store_backend=str(raw["state_store_backend"]),
-        node_contract=cast(str, raw.get("node_contract")),
+        runtime_observation=ModelRuntimeObservation.model_validate(
+            raw["runtime_observation"]
+        ),
+        adapter_dispatch_binding=ModelAdapterDispatchBinding.model_validate(
+            raw["adapter_dispatch_binding"]
+        ),
         command_topic=str(raw["command_topic"]),
-        terminal_topic=cast(str | None, raw.get("terminal_topic")),
+        terminal_topic=str(raw["terminal_topic"]),
         details=details,
     )
 
@@ -718,16 +853,32 @@ def _contract_dispatch_route(command_name: str) -> _ContractDispatchRoute | None
     contract_path = _NODE_ROOT / _node_name_for_command(command_name) / "contract.yaml"
     if not contract_path.exists():
         return None
-    raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    try:
+        raw = yaml.safe_load(contract_path.read_text(encoding="utf-8")) or {}
+    except (OSError, UnicodeError, yaml.YAMLError):
+        return None
     if not isinstance(raw, dict):
         return None
+    if not _has_valid_contract_shapes(raw):
+        return None
 
-    event_bus = cast(dict[str, Any], raw.get("event_bus") or {})
-    runtime_dispatch = cast(dict[str, Any], raw.get("runtime_dispatch") or {})
-    terminals = cast(
-        dict[str, Any],
-        runtime_dispatch.get("terminal_events") or raw.get("terminal_events") or {},
+    event_bus_raw = raw.get("event_bus", {})
+    runtime_dispatch_raw = raw.get("runtime_dispatch", {})
+    if not isinstance(event_bus_raw, dict) or not isinstance(
+        runtime_dispatch_raw, dict
+    ):
+        return None
+    event_bus = cast(dict[str, Any], event_bus_raw)
+    runtime_dispatch = cast(dict[str, Any], runtime_dispatch_raw)
+    runtime_terminals = runtime_dispatch.get("terminal_events")
+    terminals_raw = (
+        runtime_terminals
+        if runtime_terminals is not None
+        else raw.get("terminal_events", {})
     )
+    if not isinstance(terminals_raw, dict):
+        return None
+    terminals = cast(dict[str, Any], terminals_raw)
     command_topic = runtime_dispatch.get("command_topic") or _first_topic(
         event_bus.get("subscribe_topics"),
         event_bus.get("subscribe"),
@@ -737,7 +888,16 @@ def _contract_dispatch_route(command_name: str) -> _ContractDispatchRoute | None
     if not isinstance(command_topic, str) or not command_topic.strip():
         return None
 
-    terminal_topic = raw.get("terminal_event") or terminals.get("success")
+    terminal_topic = (
+        raw.get("terminal_event")
+        or terminals.get("success")
+        or _completed_topic(
+            event_bus.get("publish_topics"),
+            event_bus.get("publish"),
+            raw.get("publish_topics"),
+            raw.get("publish_topic"),
+        )
+    )
     if not isinstance(terminal_topic, str) or not terminal_topic.strip():
         return None
 
@@ -746,6 +906,8 @@ def _contract_dispatch_route(command_name: str) -> _ContractDispatchRoute | None
     if not isinstance(failure_topic, str) or not failure_topic.strip():
         failure_topic = _first_topic_containing(
             event_bus.get("publish_topics"), "failed"
+        ) or _topic_from_value(
+            event_bus.get("publish"), mapping_keys=("failure_topic",)
         )
     if isinstance(failure_topic, str) and failure_topic.strip():
         additional_topics.append(failure_topic.strip())
@@ -765,11 +927,126 @@ def _contract_dispatch_route(command_name: str) -> _ContractDispatchRoute | None
     )
 
 
+def _node_contract_binding(command_name: str) -> ModelNodeContractBinding:
+    """Resolve adapter-local contract identity without collapsing failures to None."""
+
+    node_name = _node_name_for_command(command_name)
+    contract_path = _NODE_ROOT / node_name / "contract.yaml"
+    contract_identity = f"src/omnimarket/nodes/{node_name}/contract.yaml"
+    if not contract_path.exists():
+        return ModelNodeContractBinding(
+            status="UNRESOLVABLE",
+            node_name=node_name,
+            contract_identity=contract_identity,
+            reason="missing_contract",
+        )
+    try:
+        raw = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError):
+        return ModelNodeContractBinding(
+            status="UNRESOLVABLE",
+            node_name=node_name,
+            contract_identity=contract_identity,
+            reason="contract_unreadable",
+        )
+    except yaml.YAMLError:
+        return ModelNodeContractBinding(
+            status="UNRESOLVABLE",
+            node_name=node_name,
+            contract_identity=contract_identity,
+            reason="malformed_contract",
+        )
+    if not isinstance(raw, dict):
+        return ModelNodeContractBinding(
+            status="UNRESOLVABLE",
+            node_name=node_name,
+            contract_identity=contract_identity,
+            reason="malformed_contract",
+        )
+    if not _has_valid_contract_shapes(raw):
+        return ModelNodeContractBinding(
+            status="UNRESOLVABLE",
+            node_name=node_name,
+            contract_identity=contract_identity,
+            reason="malformed_contract",
+        )
+    route = _contract_dispatch_route(command_name)
+    if route is None:
+        return ModelNodeContractBinding(
+            status="UNRESOLVABLE",
+            node_name=node_name,
+            contract_identity=contract_identity,
+            reason="missing_dispatch_topics",
+        )
+    return ModelNodeContractBinding(
+        status="RESOLVED",
+        node_name=node_name,
+        contract_identity=contract_identity,
+        contract_path=contract_identity,
+        command_topic=route.command_topic,
+        terminal_topic=route.terminal_topic,
+    )
+
+
+def _adapter_dispatch_binding(
+    *,
+    request: ModelCodexRuntimeRequestAdapterRequest,
+    adapter_command_topic: str,
+    contract_route: _ContractDispatchRoute | None,
+) -> ModelAdapterDispatchBinding:
+    """Describe exactly how this adapter selected its terminal subscription."""
+
+    node_contract = _node_contract_binding(request.command_name)
+    if (
+        adapter_command_topic == _DELEGATE_SKILL_COMMAND_TOPIC
+        and request.command_name in _DELEGATE_SKILL_COMMAND_NAMES
+    ):
+        return ModelAdapterDispatchBinding(
+            adapter_command_topic=adapter_command_topic,
+            requested_response_topic=request.response_topic,
+            selected_terminal_topic=_DELEGATE_SKILL_COMPLETED_TOPIC,
+            terminal_selection="DIRECT_DELEGATE_SKILL_CONTRACT",
+            node_contract=node_contract,
+        )
+    if request.response_topic != default_response_topic():
+        return ModelAdapterDispatchBinding(
+            adapter_command_topic=adapter_command_topic,
+            requested_response_topic=request.response_topic,
+            selected_terminal_topic=request.response_topic,
+            terminal_selection="EXPLICIT_RESPONSE_OVERRIDE",
+            node_contract=node_contract,
+        )
+    if contract_route is not None:
+        return ModelAdapterDispatchBinding(
+            adapter_command_topic=adapter_command_topic,
+            requested_response_topic=request.response_topic,
+            selected_terminal_topic=contract_route.terminal_topic,
+            terminal_selection="NODE_CONTRACT",
+            node_contract=node_contract,
+        )
+    return ModelAdapterDispatchBinding(
+        adapter_command_topic=adapter_command_topic,
+        requested_response_topic=request.response_topic,
+        selected_terminal_topic=request.response_topic,
+        terminal_selection="UNRESOLVED_DEFAULT_FALLBACK",
+        node_contract=node_contract,
+    )
+
+
 def _contract_terminal_topics(command_name: str) -> tuple[str, tuple[str, ...]] | None:
     route = _contract_dispatch_route(command_name)
     if route is None:
         return None
     return route.terminal_topic, route.additional_terminal_topics
+
+
+_EVENT_BUS_SUBSCRIBE_MAPPING_KEYS = ("topic", "command_topic")
+_EVENT_BUS_PUBLISH_MAPPING_KEYS = (
+    "topic",
+    "success_topic",
+    "completed_topic",
+    "failure_topic",
+)
 
 
 def _first_topic(*values: object) -> str | None:
@@ -783,36 +1060,223 @@ def _first_topic(*values: object) -> str | None:
 def _first_topic_containing(value: object, fragment: str) -> str | None:
     if isinstance(value, list):
         for item in value:
-            topic = _topic_from_value(item)
+            topic = _topic_from_value(
+                item, mapping_keys=_EVENT_BUS_PUBLISH_MAPPING_KEYS
+            )
             if topic is not None and fragment in topic:
                 return topic
-    topic = _topic_from_value(value)
+    topic = _topic_from_value(value, mapping_keys=_EVENT_BUS_PUBLISH_MAPPING_KEYS)
     if topic is not None and fragment in topic:
         return topic
     return None
 
 
-def _first_string(value: object) -> str | None:
-    topic = _topic_from_value(value)
+def _first_string(
+    value: object, *, mapping_keys: tuple[str, ...] = _EVENT_BUS_SUBSCRIBE_MAPPING_KEYS
+) -> str | None:
+    topic = _topic_from_value(value, mapping_keys=mapping_keys)
     if topic is not None:
         return topic
     if isinstance(value, list):
         return next(
-            (topic for item in value if (topic := _topic_from_value(item)) is not None),
+            (
+                topic
+                for item in value
+                if (topic := _topic_from_value(item, mapping_keys=mapping_keys))
+                is not None
+            ),
             None,
         )
     return None
 
 
-def _topic_from_value(value: object) -> str | None:
+def _topic_from_value(
+    value: object, *, mapping_keys: tuple[str, ...] = _EVENT_BUS_SUBSCRIBE_MAPPING_KEYS
+) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     if isinstance(value, dict):
-        for key in ("topic", "command_topic", "success_topic"):
+        for key in mapping_keys:
             raw = value.get(key)
             if isinstance(raw, str) and raw.strip():
                 return raw.strip()
     return None
+
+
+def _completed_topic(*values: object) -> str | None:
+    """Resolve a terminal topic from a validated event-bus publication form."""
+
+    completed_keys = ("success_topic", "completed_topic", "topic")
+    for value in values:
+        topic = _topic_from_value(value, mapping_keys=completed_keys)
+        if topic is not None and ("completed" in topic or not isinstance(value, list)):
+            return topic
+    for value in values:
+        if isinstance(value, list):
+            for item in value:
+                topic = _topic_from_value(item, mapping_keys=completed_keys)
+                if topic is not None and "completed" in topic:
+                    return topic
+            topic = _first_string(value, mapping_keys=completed_keys)
+            if topic is not None:
+                return topic
+    return next(
+        (
+            topic
+            for value in values
+            if (topic := _first_string(value, mapping_keys=completed_keys)) is not None
+        ),
+        None,
+    )
+
+
+def _valid_event_bus_topic_value(
+    value: object,
+    *,
+    mapping_keys: tuple[str, ...],
+    primary_mapping_keys: tuple[str, ...],
+) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if not isinstance(value, dict) or not value:
+        return False
+    return (
+        set(value).issubset(mapping_keys)
+        and len(set(value).intersection(primary_mapping_keys)) == 1
+        and all(
+            isinstance(topic, str) and bool(topic.strip()) for topic in value.values()
+        )
+    )
+
+
+def _has_valid_contract_shapes(contract: dict[str, Any]) -> bool:
+    """Reject malformed nested dispatch metadata before any mapping access."""
+
+    for key in ("event_bus", "runtime_dispatch", "terminal_events", "handler"):
+        value = contract.get(key)
+        if value is not None and not isinstance(value, dict):
+            return False
+    routing = contract.get("handler_routing")
+    if routing is not None:
+        if not isinstance(routing, dict):
+            return False
+        handlers = routing.get("handlers")
+        if handlers is not None and (
+            not isinstance(handlers, list)
+            or any(not isinstance(handler, dict) for handler in handlers)
+        ):
+            return False
+        if isinstance(handlers, list):
+            for handler_entry in handlers:
+                for key in (
+                    "handler_module",
+                    "handler_class",
+                    "module",
+                    "class",
+                    "name",
+                    "event_type",
+                ):
+                    value = handler_entry.get(key)
+                    if value is not None and (
+                        not isinstance(value, str) or not value.strip()
+                    ):
+                        return False
+                nested = handler_entry.get("handler")
+                if nested is not None and not _has_valid_contract_shapes(
+                    {"handler": nested}
+                ):
+                    return False
+                for key in ("input_model", "event_model"):
+                    value = handler_entry.get(key)
+                    if value is not None and not _valid_model_reference(value):
+                        return False
+    event_bus = contract.get("event_bus")
+    if isinstance(event_bus, dict):
+        for key in ("subscribe_topics", "publish_topics"):
+            value = event_bus.get(key)
+            if value is None:
+                continue
+            if not isinstance(value, list) or any(
+                not isinstance(item, str) or not item.strip() for item in value
+            ):
+                return False
+        for key, mapping_keys, primary_mapping_keys in (
+            (
+                "subscribe",
+                _EVENT_BUS_SUBSCRIBE_MAPPING_KEYS,
+                _EVENT_BUS_SUBSCRIBE_MAPPING_KEYS,
+            ),
+            (
+                "publish",
+                _EVENT_BUS_PUBLISH_MAPPING_KEYS,
+                ("topic", "success_topic", "completed_topic"),
+            ),
+        ):
+            value = event_bus.get(key)
+            if value is not None and not _valid_event_bus_topic_value(
+                value,
+                mapping_keys=mapping_keys,
+                primary_mapping_keys=primary_mapping_keys,
+            ):
+                return False
+    runtime_dispatch = contract.get("runtime_dispatch")
+    if isinstance(runtime_dispatch, dict):
+        command_topic = runtime_dispatch.get("command_topic")
+        if command_topic is not None and (
+            not isinstance(command_topic, str) or not command_topic.strip()
+        ):
+            return False
+        terminals = runtime_dispatch.get("terminal_events")
+        if terminals is not None and (
+            not isinstance(terminals, dict)
+            or any(
+                not isinstance(value, str) or not value.strip()
+                for value in terminals.values()
+            )
+        ):
+            return False
+    top_terminals = contract.get("terminal_events")
+    if top_terminals is not None and (
+        not isinstance(top_terminals, dict)
+        or any(
+            not isinstance(value, str) or not value.strip()
+            for value in top_terminals.values()
+        )
+    ):
+        return False
+    for key in ("terminal_event", "subscribe_topic", "publish_topic"):
+        value = contract.get(key)
+        if value is not None and (not isinstance(value, str) or not value.strip()):
+            return False
+    handler = contract.get("handler")
+    if isinstance(handler, dict):
+        for key in ("module", "class", "name"):
+            value = handler.get(key)
+            if value is not None and (not isinstance(value, str) or not value.strip()):
+                return False
+        input_model = handler.get("input_model")
+        if input_model is not None and not _valid_model_reference(input_model):
+            return False
+    models = contract.get("models")
+    if models is not None:
+        if not isinstance(models, dict):
+            return False
+        model_input = models.get("input")
+        if model_input is not None and not _valid_model_reference(model_input):
+            return False
+    return True
+
+
+def _valid_model_reference(value: object) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if not isinstance(value, dict):
+        return False
+    for key in ("module", "class", "name"):
+        item = value.get(key)
+        if item is not None and (not isinstance(item, str) or not item.strip()):
+            return False
+    return bool(value.get("module") and (value.get("class") or value.get("name")))
 
 
 def _input_model_ref(contract: dict[str, Any], *, node_name: str) -> str | None:
@@ -864,7 +1328,7 @@ def _model_ref_from_local_name(node_name: str, model_name: str) -> str | None:
             continue
         try:
             source = model_file.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeError):
             continue
         if f"class {model_name}" in source:
             return f"omnimarket.nodes.{node_name}.models.{model_file.stem}.{model_name}"
@@ -872,7 +1336,7 @@ def _model_ref_from_local_name(node_name: str, model_name: str) -> str | None:
     init_file = node_dir / "__init__.py"
     try:
         init_source = init_file.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeError):
         return None
     if model_name in init_source:
         return f"omnimarket.nodes.{node_name}.models.{model_name}"
@@ -1085,20 +1549,32 @@ class CodexRuntimeRequestAdapter:
         )
         command = _build_dispatch_command(request, requester=self._requester)
         command_topic = self._command_topic
-        terminal_topic = request.response_topic
-        contract_route = (
-            _contract_dispatch_route(request.command_name)
-            if (
-                request.command_name == "pr_lifecycle_orchestrator"
-                and self._command_topic == default_command_topic()
-                and request.response_topic == default_response_topic()
-            )
-            else None
+        contract_route = _contract_dispatch_route(request.command_name)
+        is_native_pr_lifecycle = (
+            request.command_name == "pr_lifecycle_orchestrator"
+            and self._command_topic == default_command_topic()
+            and request.response_topic == default_response_topic()
         )
-        if contract_route is not None and contract_route.payload_model is not None:
+        if (
+            is_native_pr_lifecycle
+            and contract_route is not None
+            and contract_route.payload_model is not None
+        ):
             command_topic = contract_route.command_topic
-            terminal_topic = contract_route.terminal_topic
+        binding = _adapter_dispatch_binding(
+            request=request,
+            adapter_command_topic=command_topic,
+            contract_route=contract_route,
+        )
         compiled_command = command.model_dump(mode="json", exclude_none=True)
+        compiled_dispatch = {
+            "status": "compiled",
+            "runtime_selection": request.runtime_selection,
+            "command_topic": command_topic,
+            "response_topic": request.response_topic,
+            "terminal_topic": binding.selected_terminal_topic,
+            "command": compiled_command,
+        }
         return ModelCodexRuntimeRequestAdapterResponse(
             ok=True,
             command_name=request.command_name,
@@ -1107,24 +1583,21 @@ class CodexRuntimeRequestAdapter:
             correlation_id=command.correlation_id,
             runtime_selection=request.runtime_selection,
             runtime_mode="compiled",
-            dispatch_result={
-                "status": "compiled",
-                "runtime_selection": request.runtime_selection,
-                "command_topic": command_topic,
-                "response_topic": request.response_topic,
-                "terminal_topic": terminal_topic,
-                "command": compiled_command,
-            },
-            output_payloads=[
-                {
-                    "status": "compiled",
-                    "runtime_selection": request.runtime_selection,
-                    "command_topic": command_topic,
-                    "response_topic": request.response_topic,
-                    "terminal_topic": terminal_topic,
-                    "command": compiled_command,
-                }
-            ],
+            runtime_evidence=ModelRuntimeEvidence(
+                schema_version="runtime-evidence/v2",
+                selected_runtime_mode="compiled",
+                event_bus_backend="unobserved",
+                state_store_backend="unobserved",
+                runtime_observation=ModelRuntimeObservation(
+                    status="UNOBSERVED", reason="compile_only"
+                ),
+                adapter_dispatch_binding=binding,
+                command_topic=command_topic,
+                terminal_topic=binding.selected_terminal_topic,
+                details={"runtime_selection": request.runtime_selection},
+            ),
+            dispatch_result=compiled_dispatch,
+            output_payloads=[compiled_dispatch],
         )
 
     async def dispatch_async(
@@ -1185,14 +1658,11 @@ class CodexRuntimeRequestAdapter:
                 self._command_topic == _DELEGATE_SKILL_COMMAND_TOPIC
                 and request.command_name in _DELEGATE_SKILL_COMMAND_NAMES
             )
-            contract_route = (
-                _contract_dispatch_route(request.command_name)
-                if (
-                    request.command_name == "pr_lifecycle_orchestrator"
-                    and self._command_topic == default_command_topic()
-                    and request.response_topic == default_response_topic()
-                )
-                else None
+            contract_route = _contract_dispatch_route(request.command_name)
+            is_native_pr_lifecycle = (
+                request.command_name == "pr_lifecycle_orchestrator"
+                and self._command_topic == default_command_topic()
+                and request.response_topic == default_response_topic()
             )
             if is_delegate_skill:
                 terminal_topic = _DELEGATE_SKILL_COMPLETED_TOPIC
@@ -1204,7 +1674,9 @@ class CodexRuntimeRequestAdapter:
                     *additional_response_topics,
                 )
             elif (
-                contract_route is not None and contract_route.payload_model is not None
+                is_native_pr_lifecycle
+                and contract_route is not None
+                and contract_route.payload_model is not None
             ):
                 terminal_topic = contract_route.terminal_topic
                 command_topic = contract_route.command_topic
@@ -1229,6 +1701,11 @@ class CodexRuntimeRequestAdapter:
                 else:
                     terminal_topic, contract_extra_topics = contract_topics
                     extra_topics = (*contract_extra_topics, *additional_response_topics)
+            binding = _adapter_dispatch_binding(
+                request=request,
+                adapter_command_topic=command_topic,
+                contract_route=contract_route,
+            )
             route = ModelDispatchBusRoute(
                 contract_path=Path("codex-runtime-request-adapter"),
                 command_topic=command_topic,
@@ -1263,33 +1740,64 @@ class CodexRuntimeRequestAdapter:
                     status="timeout",
                     error_message=timeout_error.message,
                 )
+                observation = ModelRuntimeObservation(
+                    status="UNOBSERVED", reason="readiness_timeout"
+                )
+            except Exception as exc:
+                terminal_result = ModelDispatchBusTerminalResult(
+                    correlation_id=command.correlation_id,
+                    status="failed",
+                    error_message=str(exc),
+                )
+                observation = ModelRuntimeObservation(
+                    status="UNOBSERVED", reason="readiness_failure"
+                )
             else:
                 try:
                     await dispatch_adapter.publish_command(route, command)
-                    terminal_result = await asyncio.wait_for(
-                        result_queue.get(),
-                        timeout=command.timeout_seconds,
-                    )
-                except TimeoutError:
-                    timeout_error = handle_timeout(
-                        operation="Codex runtime adapter terminal result",
-                        timeout_ms=request.timeout_ms,
-                        correlation_id=command.correlation_id,
-                    )
+                except Exception as exc:
                     terminal_result = ModelDispatchBusTerminalResult(
                         correlation_id=command.correlation_id,
-                        status="timeout",
-                        error_message=timeout_error.message,
+                        status="failed",
+                        error_message=str(exc),
                     )
+                    observation = ModelRuntimeObservation(
+                        status="UNOBSERVED", reason="publish_failure"
+                    )
+                else:
+                    try:
+                        terminal_result = await asyncio.wait_for(
+                            result_queue.get(),
+                            timeout=command.timeout_seconds,
+                        )
+                    except TimeoutError:
+                        timeout_error = handle_timeout(
+                            operation="Codex runtime adapter terminal result",
+                            timeout_ms=request.timeout_ms,
+                            correlation_id=command.correlation_id,
+                        )
+                        terminal_result = ModelDispatchBusTerminalResult(
+                            correlation_id=command.correlation_id,
+                            status="timeout",
+                            error_message=timeout_error.message,
+                        )
+                        observation = ModelRuntimeObservation(
+                            status="UNOBSERVED", reason="terminal_timeout"
+                        )
+                    else:
+                        observation = ModelRuntimeObservation(
+                            status="OBSERVED", reason="terminal_received"
+                        )
                 finally:
                     await unsubscribe()
         finally:
             await transport.close()
 
         evidence = _deployed_runtime_evidence(
+            binding=binding,
             command_topic=command_topic,
-            terminal_topic=terminal_topic,
             runtime_selection=request.runtime_selection,
+            observation=observation,
         )
         ok = _is_success_status(terminal_result.status)
         if ok:
@@ -1404,6 +1912,44 @@ def _response_to_exit_code(response: ModelCodexRuntimeRequestAdapterResponse) ->
     return 0 if response.ok else 1
 
 
+def _unobserved_runtime_evidence(
+    *, command_name: str, reason: str
+) -> ModelRuntimeEvidence:
+    """Build a non-ambiguous evidence packet for requests that never ran."""
+
+    request = _build_client_request(command_name=command_name)
+    observation_reason = (
+        reason
+        if reason
+        in {
+            "compile_only",
+            "readiness_timeout",
+            "readiness_failure",
+            "publish_failure",
+            "terminal_timeout",
+            "local_dispatch_failure",
+        }
+        else "request_invalid"
+    )
+    binding = _adapter_dispatch_binding(
+        request=request,
+        adapter_command_topic=default_command_topic(),
+        contract_route=_contract_dispatch_route(command_name),
+    )
+    return ModelRuntimeEvidence(
+        schema_version="runtime-evidence/v2",
+        selected_runtime_mode="unobserved",
+        event_bus_backend="unobserved",
+        state_store_backend="unobserved",
+        runtime_observation=ModelRuntimeObservation(
+            status="UNOBSERVED", reason=observation_reason
+        ),
+        adapter_dispatch_binding=binding,
+        command_topic=default_command_topic(),
+        terminal_topic=binding.selected_terminal_topic,
+    )
+
+
 def _build_cli_error_response(
     *,
     command_name: str,
@@ -1416,6 +1962,9 @@ def _build_cli_error_response(
         command_name=command_name,
         command_topic=default_command_topic(),
         response_topic=default_response_topic(),
+        runtime_evidence=_unobserved_runtime_evidence(
+            command_name=command_name, reason=code
+        ),
         error=ModelCodexRuntimeRequestAdapterError(
             code=code,
             message=message,
@@ -1571,9 +2120,13 @@ if __name__ == "__main__":
 __all__ = [
     "CodexRuntimeRequestAdapter",
     "LocalRuntimeIngressClient",
+    "ModelAdapterDispatchBinding",
     "ModelCodexRuntimeRequestAdapterError",
     "ModelCodexRuntimeRequestAdapterRequest",
     "ModelCodexRuntimeRequestAdapterResponse",
+    "ModelNodeContractBinding",
+    "ModelRuntimeEvidence",
+    "ModelRuntimeObservation",
     "default_command_topic",
     "default_requester",
     "default_response_topic",

@@ -15,6 +15,7 @@ from typing import cast
 from uuid import uuid4
 
 import pytest
+import yaml
 from omnibase_core.models.delegation.wire import EnumQualityScoreComparison
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_infra.errors import ProtocolConfigurationError
@@ -25,7 +26,7 @@ from omnibase_infra.event_bus.models import (
     ModelEventMessage,
 )
 
-from omnimarket.adapters.codex import runtime_client
+from omnimarket.adapters.codex import local_runtime_dispatch, runtime_client
 from omnimarket.adapters.codex.runtime_client import (
     _KAFKA_BOOTSTRAP_ENV_VAR,
     CodexRuntimeRequestAdapter,
@@ -1407,6 +1408,9 @@ async def test_dispatch_async_times_out_before_publish_when_terminal_never_ready
     assert result.ok is False
     assert result.error is not None
     assert result.error.code == "runtime_timeout"
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.runtime_observation.status == "UNOBSERVED"
+    assert result.runtime_evidence.runtime_observation.reason == "readiness_timeout"
     assert not transport.published
 
 
@@ -1434,6 +1438,13 @@ async def test_dispatch_async_uses_contract_terminal_topic_for_default_response_
     assert result.runtime_evidence is not None
     assert result.runtime_evidence.terminal_topic == (
         "onex.evt.omnimarket.session-orchestrator-completed.v1"
+    )
+    binding = result.runtime_evidence.adapter_dispatch_binding
+    assert binding.terminal_selection == "NODE_CONTRACT"
+    assert binding.evidence_scope == "adapter_local_contract_binding"
+    assert binding.remote_deployed_manifest_proven is False
+    assert binding.node_contract.contract_path == (
+        "src/omnimarket/nodes/node_session_orchestrator/contract.yaml"
     )
     assert transport.subscribe_topics == [
         "onex.evt.omnimarket.session-orchestrator-completed.v1",
@@ -1585,6 +1596,11 @@ async def test_delegate_skill_direct_dispatch_publishes_contract_payload() -> No
     assert transport.started is True
     assert transport.closed is True
     assert result.ok is True
+    assert result.runtime_evidence is not None
+    assert (
+        result.runtime_evidence.adapter_dispatch_binding.terminal_selection
+        == "DIRECT_DELEGATE_SKILL_CONTRACT"
+    )
     assert result.output_payloads is not None
     assert result.output_payloads[0]["response"] == "delegated"
     assert result.output_payloads[0]["required_quality_bar"] == 0.85
@@ -1731,6 +1747,30 @@ def test_delegate_skill_explicit_local_runtime_dispatches_via_contract_bus(
     ).exists()
 
 
+def test_local_runtime_honors_explicit_response_topic_override(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+    override = "onex.evt.omnimarket.local-runtime-override.v1"
+
+    result = CodexRuntimeRequestAdapter(requester="codex-test").dispatch_sync(
+        command_name="session_orchestrator",
+        payload={"dry_run": True, "skip_health": True},
+        response_topic=override,
+        runtime_selection="local",
+        timeout_ms=5000,
+    )
+
+    assert result.ok is True
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.terminal_topic == override
+    assert result.runtime_evidence.runtime_observation.reason == "terminal_received"
+    assert (
+        result.runtime_evidence.adapter_dispatch_binding.terminal_selection
+        == "EXPLICIT_RESPONSE_OVERRIDE"
+    )
+
+
 def test_delegate_skill_python_m_local_runtime_dispatch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1843,9 +1883,9 @@ def test_aislop_sweep_explicit_local_runtime_preserves_node_contract_topics(
 
     assert result.ok is True
     assert result.runtime_evidence is not None
-    assert result.runtime_evidence.node_contract is not None
-    assert result.runtime_evidence.node_contract.endswith(
-        "node_aislop_sweep/contract.yaml"
+    assert (
+        result.runtime_evidence.adapter_dispatch_binding.node_contract.contract_path
+        == "src/omnimarket/nodes/node_aislop_sweep/contract.yaml"
     )
     assert result.runtime_evidence.command_topic == (
         "onex.cmd.omnimarket.aislop-sweep-start.v1"
@@ -1893,9 +1933,9 @@ def test_observability_sink_local_runtime_smoke_uses_contract_topics(
 
     assert result.ok is True
     assert result.runtime_evidence is not None
-    assert result.runtime_evidence.node_contract is not None
-    assert result.runtime_evidence.node_contract.endswith(
-        "node_observability_sink_effect/contract.yaml"
+    assert (
+        result.runtime_evidence.adapter_dispatch_binding.node_contract.contract_path
+        == "src/omnimarket/nodes/node_observability_sink_effect/contract.yaml"
     )
     assert result.runtime_evidence.command_topic == (
         "onex.cmd.omnimarket.observability-sink.v1"
@@ -1929,9 +1969,9 @@ def test_emit_daemon_local_runtime_lifecycle_uses_typed_contract(
 
     assert result.ok is True
     assert result.runtime_evidence is not None
-    assert result.runtime_evidence.node_contract is not None
-    assert result.runtime_evidence.node_contract.endswith(
-        "node_emit_daemon/contract.yaml"
+    assert (
+        result.runtime_evidence.adapter_dispatch_binding.node_contract.contract_path
+        == "src/omnimarket/nodes/node_emit_daemon/contract.yaml"
     )
     assert result.runtime_evidence.command_topic == (
         "onex.cmd.omnimarket.emit-daemon-lifecycle.v1"
@@ -2600,6 +2640,12 @@ async def test_session_orchestrator_pattern_b_runs_node_end_to_end(
         "observability_sink_effect",
         "dep_cascade_dedup_orchestrator",
         "adversarial_pipeline_orchestrator",
+        "bus_audit_compute",
+        "gap_compute",
+        "coderabbit_triage",
+        "local_review",
+        "pr_polish",
+        "ticket_pipeline",
     ],
 )
 @pytest.mark.asyncio
@@ -2691,6 +2737,13 @@ def test_market_plugin_commands_compile_without_event_bus(
     assert result.command_name == command_name
     assert result.dispatch_result is not None
     assert result.dispatch_result["status"] == "compiled"
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.runtime_observation.status == "UNOBSERVED"
+    assert result.runtime_evidence.runtime_observation.reason == "compile_only"
+    assert (
+        result.runtime_evidence.adapter_dispatch_binding.node_contract.status
+        == "RESOLVED"
+    )
     command = result.dispatch_result["command"]
     assert isinstance(command, dict)
     assert command["command_name"] == command_name
@@ -2737,6 +2790,419 @@ def test_main_compile_only_outputs_command_without_event_bus(
     assert (
         '"target_runtime_address": "runtime://omninode-pc/stability-test/main"'
         in captured.out
+    )
+
+
+@pytest.mark.parametrize(
+    ("command_name", "terminal_topic"),
+    [
+        ("adversarial_pipeline_orchestrator", "adversarial-pipeline-completed"),
+        ("aislop_sweep", "aislop-sweep-completed"),
+        ("bus_audit_compute", "bus-audit-completed"),
+        ("coderabbit_triage", "coderabbit-triage-completed"),
+        ("dep_cascade_dedup_orchestrator", "dep-cascade-dedup-completed"),
+        ("gap_compute", "gap-compute"),
+        ("local_review", "local-review-completed"),
+        ("pr_lifecycle_orchestrator", "pr-lifecycle-orchestrator-completed"),
+        ("observability_sink_effect", "observability-persisted"),
+        ("pr_polish", "pr-polish-completed"),
+        ("recall_compute", "recall-completed"),
+        ("session_bootstrap", "session-bootstrap-completed"),
+        ("session_orchestrator", "session-orchestrator-completed"),
+        ("ticket_pipeline", "ticket-pipeline-completed"),
+    ],
+)
+def test_compile_routes_bind_target_contract_terminal(
+    command_name: str, terminal_topic: str
+) -> None:
+    result = CodexRuntimeRequestAdapter(requester="codex-test").compile_request(
+        command_name=command_name
+    )
+
+    assert result.runtime_evidence is not None
+    binding = result.runtime_evidence.adapter_dispatch_binding
+    assert binding.node_contract.status == "RESOLVED"
+    assert binding.terminal_selection == "NODE_CONTRACT"
+    assert terminal_topic in binding.selected_terminal_topic
+
+
+def test_compile_explicit_response_override_is_not_contract_terminal_selection() -> (
+    None
+):
+    override = "onex.evt.omnimarket.test-override.v1"
+    result = CodexRuntimeRequestAdapter(requester="codex-test").compile_request(
+        command_name="session_orchestrator", response_topic=override
+    )
+
+    assert result.runtime_evidence is not None
+    binding = result.runtime_evidence.adapter_dispatch_binding
+    assert binding.terminal_selection == "EXPLICIT_RESPONSE_OVERRIDE"
+    assert binding.selected_terminal_topic == override
+    assert binding.node_contract.terminal_topic == (
+        "onex.evt.omnimarket.session-orchestrator-completed.v1"
+    )
+
+
+def test_unresolvable_contract_binding_names_missing_and_malformed_reasons(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(runtime_client, "_NODE_ROOT", tmp_path)
+
+    missing = runtime_client._node_contract_binding("missing_node")
+    assert missing.status == "UNRESOLVABLE"
+    assert missing.reason == "missing_contract"
+    assert missing.contract_path is None
+
+    malformed_path = tmp_path / "node_malformed_node"
+    malformed_path.mkdir()
+    (malformed_path / "contract.yaml").write_text("[unterminated", encoding="utf-8")
+    malformed = runtime_client._node_contract_binding("malformed_node")
+    assert malformed.status == "UNRESOLVABLE"
+    assert malformed.reason == "malformed_contract"
+    assert malformed.contract_path is None
+
+
+@pytest.mark.parametrize(
+    ("command_name", "command_topic", "terminal_topic"),
+    [
+        (
+            "session_compose",
+            "onex.cmd.omnimarket.session-compose.v1",
+            "onex.evt.omnimarket.session-compose-completed.v1",
+        ),
+        (
+            "skill_overseer_verify_orchestrator",
+            "onex.cmd.omnimarket.overseer_verify.v1",
+            "onex.evt.omnimarket.overseer_verify-completed.v1",
+        ),
+        (
+            "skill_dispatch_engine_orchestrator",
+            "onex.cmd.omnimarket.dispatch_engine.v1",
+            "onex.evt.omnimarket.dispatch_engine-completed.v1",
+        ),
+    ],
+)
+def test_mapped_event_bus_contracts_resolve_for_compile_and_local_dispatch(
+    command_name: str, command_topic: str, terminal_topic: str
+) -> None:
+    binding = runtime_client._node_contract_binding(command_name)
+    route = local_runtime_dispatch._resolve_node_route(command_name)
+
+    assert binding.status == "RESOLVED"
+    assert binding.command_topic == command_topic
+    assert binding.terminal_topic == terminal_topic
+    assert route.command_topic == command_topic
+    assert route.terminal_topic == terminal_topic
+
+
+def test_scalar_event_bus_forms_remain_valid_contract_shapes() -> None:
+    assert runtime_client._has_valid_contract_shapes(
+        {
+            "event_bus": {
+                "subscribe": "onex.cmd.omnimarket.scalar-form.v1",
+                "publish": "onex.evt.omnimarket.scalar-form-completed.v1",
+            }
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("event_bus", []),
+        ("event_bus", "topic"),
+        ("runtime_dispatch", []),
+        ("terminal_events", "topic"),
+        ("handler", "bad"),
+        ("handler_routing", []),
+        ("handler_routing", {"handlers": ["bad"]}),
+        ("event_bus", {"subscribe_topics": [42]}),
+        (
+            "event_bus",
+            {
+                "subscribe": {
+                    "topic": "onex.cmd.omnimarket.first.v1",
+                    "command_topic": "onex.cmd.omnimarket.second.v1",
+                }
+            },
+        ),
+        (
+            "event_bus",
+            {
+                "publish": {
+                    "topic": "onex.evt.omnimarket.first-completed.v1",
+                    "success_topic": "onex.evt.omnimarket.second-completed.v1",
+                }
+            },
+        ),
+        ("runtime_dispatch", {"terminal_events": {"success": 42}}),
+        ("runtime_dispatch", {"command_topic": ["bad"]}),
+        ("handler", {"module": ["bad"]}),
+        ("terminal_events", {"success": ["bad"]}),
+        ("handler_routing", {"handlers": [{"handler_module": ["bad"]}]}),
+        ("handler_routing", {"handlers": [{"handler_class": {"bad": 1}}]}),
+        ("handler_routing", {"handlers": [{"name": ["bad"]}]}),
+    ],
+)
+def test_contract_binding_rejects_non_mapping_dispatch_shapes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: object
+) -> None:
+    monkeypatch.setattr(runtime_client, "_NODE_ROOT", tmp_path)
+    contract_dir = tmp_path / "node_shape_check"
+    contract_dir.mkdir()
+    contract_dir.joinpath("contract.yaml").write_text(
+        yaml.safe_dump({field: value}), encoding="utf-8"
+    )
+
+    binding = runtime_client._node_contract_binding("shape_check")
+    assert binding.status == "UNRESOLVABLE"
+    assert binding.reason == "malformed_contract"
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("event_bus", []),
+        ("event_bus", "topic"),
+        ("runtime_dispatch", []),
+        ("terminal_events", "topic"),
+        ("handler", "bad"),
+        ("handler_routing", []),
+        ("handler_routing", {"handlers": ["bad"]}),
+        ("event_bus", {"subscribe_topics": [42]}),
+        (
+            "event_bus",
+            {
+                "subscribe": {
+                    "topic": "onex.cmd.omnimarket.first.v1",
+                    "command_topic": "onex.cmd.omnimarket.second.v1",
+                }
+            },
+        ),
+        (
+            "event_bus",
+            {
+                "publish": {
+                    "topic": "onex.evt.omnimarket.first-completed.v1",
+                    "success_topic": "onex.evt.omnimarket.second-completed.v1",
+                }
+            },
+        ),
+        ("runtime_dispatch", {"terminal_events": {"success": 42}}),
+        ("runtime_dispatch", {"command_topic": ["bad"]}),
+        ("handler", {"module": ["bad"]}),
+        ("terminal_events", {"success": ["bad"]}),
+        ("handler_routing", {"handlers": [{"handler_module": ["bad"]}]}),
+        ("handler_routing", {"handlers": [{"handler_class": {"bad": 1}}]}),
+        ("handler_routing", {"handlers": [{"name": ["bad"]}]}),
+    ],
+)
+def test_local_route_rejects_non_mapping_dispatch_shapes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, field: str, value: object
+) -> None:
+    monkeypatch.setattr(local_runtime_dispatch, "_NODE_ROOT", tmp_path)
+    contract_dir = tmp_path / "node_local_shape_check"
+    contract_dir.mkdir()
+    contract_dir.joinpath("contract.yaml").write_text(
+        yaml.safe_dump({field: value}), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="Malformed node contract"):
+        local_runtime_dispatch._resolve_node_route("local_shape_check")
+
+
+def test_typed_observation_and_binding_reject_contradictory_packets() -> None:
+    with pytest.raises(ValueError, match="OBSERVED"):
+        runtime_client.ModelRuntimeObservation(status="OBSERVED")
+
+    with pytest.raises(ValueError, match="RESOLVED"):
+        runtime_client.ModelNodeContractBinding(
+            status="RESOLVED",
+            node_name="node_test",
+            contract_identity="src/omnimarket/nodes/node_test/contract.yaml",
+        )
+
+    unresolved = runtime_client.ModelNodeContractBinding(
+        status="UNRESOLVABLE",
+        node_name="node_test",
+        contract_identity="src/omnimarket/nodes/node_test/contract.yaml",
+        reason="missing_contract",
+    )
+    with pytest.raises(ValueError, match="unresolved fallback"):
+        runtime_client.ModelAdapterDispatchBinding(
+            adapter_command_topic="onex.cmd.test.v1",
+            requested_response_topic="onex.evt.test.v1",
+            selected_terminal_topic="onex.evt.other.v1",
+            terminal_selection="UNRESOLVED_DEFAULT_FALLBACK",
+            node_contract=unresolved,
+        )
+
+    resolved = (
+        CodexRuntimeRequestAdapter()
+        .compile_request(command_name="session_orchestrator")
+        .runtime_evidence.adapter_dispatch_binding.node_contract
+    )
+    with pytest.raises(ValueError, match="direct delegate"):
+        runtime_client.ModelAdapterDispatchBinding(
+            adapter_command_topic="onex.cmd.omnimarket.delegate-skill.v1",
+            requested_response_topic=default_response_topic(),
+            selected_terminal_topic="onex.evt.omnimarket.not-delegate.v1",
+            terminal_selection="DIRECT_DELEGATE_SKILL_CONTRACT",
+            node_contract=resolved,
+        )
+    with pytest.raises(ValueError, match="direct delegate"):
+        runtime_client.ModelAdapterDispatchBinding(
+            adapter_command_topic="onex.cmd.omnimarket.delegate-skill.v1",
+            requested_response_topic=default_response_topic(),
+            selected_terminal_topic="onex.evt.omnimarket.delegate-skill-completed.v1",
+            terminal_selection="DIRECT_DELEGATE_SKILL_CONTRACT",
+            node_contract=resolved,
+        )
+    with pytest.raises(ValueError, match="node contract"):
+        runtime_client.ModelAdapterDispatchBinding(
+            adapter_command_topic=default_command_topic(),
+            requested_response_topic="onex.evt.omnimarket.override.v1",
+            selected_terminal_topic=resolved.terminal_topic,
+            terminal_selection="NODE_CONTRACT",
+            node_contract=resolved,
+        )
+    with pytest.raises(ValueError, match="unresolved fallback"):
+        runtime_client.ModelAdapterDispatchBinding(
+            adapter_command_topic=default_command_topic(),
+            requested_response_topic="onex.evt.omnimarket.override.v1",
+            selected_terminal_topic="onex.evt.omnimarket.override.v1",
+            terminal_selection="UNRESOLVED_DEFAULT_FALLBACK",
+            node_contract=unresolved,
+        )
+
+
+def test_runtime_evidence_v2_round_trip_rejects_v1_and_unknown_fields() -> None:
+    evidence = (
+        CodexRuntimeRequestAdapter()
+        .compile_request(command_name="session_orchestrator")
+        .runtime_evidence
+    )
+    payload = evidence.model_dump(mode="json")
+    assert payload["schema_version"] == "runtime-evidence/v2"
+    assert runtime_client.ModelRuntimeEvidence.model_validate(payload) == evidence
+
+    with pytest.raises(ValueError, match="schema_version"):
+        runtime_client.ModelRuntimeEvidence.model_validate(
+            {**payload, "schema_version": "runtime-evidence/v1"}
+        )
+    without_version = dict(payload)
+    del without_version["schema_version"]
+    with pytest.raises(ValueError, match="schema_version"):
+        runtime_client.ModelRuntimeEvidence.model_validate(without_version)
+    with pytest.raises(ValueError, match="node_contract"):
+        runtime_client.ModelRuntimeEvidence.model_validate(
+            {**payload, "node_contract": "legacy-scalar"}
+        )
+
+
+def test_contract_read_failure_is_typed_unreadable(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(runtime_client, "_NODE_ROOT", tmp_path)
+    (tmp_path / "node_unreadable" / "contract.yaml").mkdir(parents=True)
+
+    binding = runtime_client._node_contract_binding("unreadable")
+    assert binding.status == "UNRESOLVABLE"
+    assert binding.reason == "contract_unreadable"
+
+
+@pytest.mark.parametrize(
+    ("contract", "reason"),
+    [({}, "missing_contract"), ({"handler": "bad"}, "malformed_contract")],
+)
+def test_public_local_dispatch_returns_typed_route_resolution_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    contract: dict[str, object],
+    reason: str,
+) -> None:
+    monkeypatch.setattr(runtime_client, "_NODE_ROOT", tmp_path)
+    monkeypatch.setattr(local_runtime_dispatch, "_NODE_ROOT", tmp_path)
+    if contract:
+        node_dir = tmp_path / "node_public_bad"
+        node_dir.mkdir()
+        (node_dir / "contract.yaml").write_text(yaml.safe_dump(contract))
+
+    correlation_id = uuid4()
+    result = CodexRuntimeRequestAdapter().dispatch_sync(
+        command_name="public_bad",
+        correlation_id=correlation_id,
+        runtime_selection="local",
+        timeout_ms=1000,
+    )
+
+    assert result.ok is False
+    assert result.correlation_id == correlation_id
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.schema_version == "runtime-evidence/v2"
+    assert result.runtime_evidence.runtime_observation.status == "UNOBSERVED"
+    assert (
+        result.runtime_evidence.runtime_observation.reason == "local_dispatch_failure"
+    )
+    binding = result.runtime_evidence.adapter_dispatch_binding
+    assert binding.node_contract.status == "UNRESOLVABLE"
+    assert binding.node_contract.reason == reason
+
+
+def test_public_local_dispatch_terminal_timeout_is_typed(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    async def no_terminal(self: object, *args: object, **kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(
+        local_runtime_dispatch.LocalRuntimeDispatch, "_on_node_command", no_terminal
+    )
+    monkeypatch.setenv("ONEX_LOCAL_RUNTIME_STATE_ROOT", str(tmp_path / "state"))
+    result = CodexRuntimeRequestAdapter().dispatch_sync(
+        command_name="session_orchestrator",
+        payload={"dry_run": True, "skip_health": True},
+        runtime_selection="local",
+        timeout_ms=1000,
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "runtime_timeout"
+    assert result.error.retryable is True
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.runtime_observation.reason == "terminal_timeout"
+
+
+@pytest.mark.parametrize(
+    "models",
+    [
+        [],
+        {"input": ""},
+        {"input": {"module": ["bad"], "class": "Model"}},
+        {"input": {"module": "module", "class": ["Model"]}},
+        {"input": {"module": "module", "name": {"bad": 1}}},
+    ],
+)
+def test_public_compile_and_local_reject_malformed_models_input_parity(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, models: object
+) -> None:
+    for module in (runtime_client, local_runtime_dispatch):
+        monkeypatch.setattr(module, "_NODE_ROOT", tmp_path)
+    node_dir = tmp_path / "node_models_bad"
+    node_dir.mkdir()
+    (node_dir / "contract.yaml").write_text(yaml.safe_dump({"models": models}))
+
+    compiled = CodexRuntimeRequestAdapter().compile_request(command_name="models_bad")
+    assert compiled.runtime_evidence.adapter_dispatch_binding.node_contract.reason == (
+        "malformed_contract"
+    )
+    local = CodexRuntimeRequestAdapter().dispatch_sync(
+        command_name="models_bad", runtime_selection="local", timeout_ms=1000
+    )
+    assert local.runtime_evidence is not None
+    assert local.runtime_evidence.adapter_dispatch_binding.node_contract.reason == (
+        "malformed_contract"
     )
 
 

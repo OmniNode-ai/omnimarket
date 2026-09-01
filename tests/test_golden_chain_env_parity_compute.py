@@ -54,7 +54,10 @@ def _dispatch_env_parity(payload: dict[str, object]) -> dict[str, object]:
     assert response.ok is True
     assert response.runtime_mode == "local"
     assert response.runtime_evidence is not None
-    assert response.runtime_evidence.node_contract == str(_CONTRACT_PATH)
+    assert (
+        response.runtime_evidence.adapter_dispatch_binding.node_contract.contract_path
+        == ("src/omnimarket/nodes/node_env_parity_compute/contract.yaml")
+    )
     assert response.runtime_evidence.command_topic == (
         "onex.cmd.omnimarket.env-parity-compute-start.v1"
     )

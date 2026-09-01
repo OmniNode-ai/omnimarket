@@ -52,7 +52,10 @@ def _dispatch(payload: dict[str, Any]) -> dict[str, Any]:
     assert response.ok is True
     assert response.runtime_mode == "local"
     assert response.runtime_evidence is not None
-    assert response.runtime_evidence.node_contract == str(_CONTRACT_PATH)
+    assert (
+        response.runtime_evidence.adapter_dispatch_binding.node_contract.contract_path
+        == ("src/omnimarket/nodes/node_staging_readiness_compute/contract.yaml")
+    )
     assert response.runtime_evidence.command_topic == _COMMAND_TOPIC
     assert response.runtime_evidence.terminal_topic == _TERMINAL_TOPIC
     assert response.output_payloads is not None

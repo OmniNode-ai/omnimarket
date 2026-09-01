@@ -33,8 +33,16 @@ from omnibase_core.services.state.service_state_disk import ServiceStateDisk
 from pydantic import BaseModel, ConfigDict, Field
 
 from omnimarket.adapters.codex.runtime_client import (
+    ModelAdapterDispatchBinding,
     ModelDispatchBusCommand,
     ModelDispatchBusTerminalResult,
+    ModelNodeContractBinding,
+    ModelRuntimeObservation,
+    _completed_topic,
+    _first_topic,
+    _has_valid_contract_shapes,
+    _node_contract_binding,
+    default_response_topic,
 )
 from omnimarket.nodes.node_delegation_orchestrator.models import (
     ModelDelegationRequest,
@@ -61,7 +69,8 @@ class ModelLocalRuntimeEvidence(BaseModel):
     state_store_backend: str = "local_disk"
     state_root: str
     node_name: str
-    node_contract: str
+    runtime_observation: ModelRuntimeObservation
+    adapter_dispatch_binding: ModelAdapterDispatchBinding
     adapter_command_topic: str
     command_topic: str
     terminal_topic: str
@@ -170,11 +179,54 @@ class LocalRuntimeDispatch:
         if command is None:
             return
 
-        route = _resolve_node_route(command.command_name)
+        try:
+            route = _resolve_node_route(command.command_name)
+        except Exception as exc:
+            selected_terminal = command.response_topic
+            binding = ModelAdapterDispatchBinding(
+                adapter_command_topic=self._adapter_command_topic,
+                requested_response_topic=command.response_topic,
+                selected_terminal_topic=selected_terminal,
+                terminal_selection=(
+                    "EXPLICIT_RESPONSE_OVERRIDE"
+                    if command.response_topic != default_response_topic()
+                    else "UNRESOLVED_DEFAULT_FALLBACK"
+                ),
+                node_contract=_node_contract_binding(command.command_name),
+            )
+            evidence = ModelLocalRuntimeEvidence(
+                state_root=str(self._state_store._state_root),  # noqa: SLF001
+                node_name=_node_name_for_command(command.command_name),
+                runtime_observation=ModelRuntimeObservation(
+                    status="UNOBSERVED", reason="local_dispatch_failure"
+                ),
+                adapter_dispatch_binding=binding,
+                adapter_command_topic=self._adapter_command_topic,
+                command_topic=self._adapter_command_topic,
+                terminal_topic=selected_terminal,
+                payload_model="",
+                handler_route="",
+            )
+            await result_queue.put(
+                (
+                    ModelDispatchBusTerminalResult(
+                        correlation_id=command.correlation_id,
+                        status="failed",
+                        error_message=str(exc),
+                    ),
+                    evidence,
+                )
+            )
+            return
         events: list[dict[str, str]] = []
         node_terminal_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue(maxsize=1)
+        selected_terminal_topic = (
+            command.response_topic
+            if command.response_topic != default_response_topic()
+            else route.terminal_topic
+        )
         unsubscribe_terminal = await self._bus.subscribe(
-            route.terminal_topic,
+            selected_terminal_topic,
             None,
             lambda terminal_message: _capture_terminal(
                 terminal_message, node_terminal_queue
@@ -187,6 +239,7 @@ class LocalRuntimeDispatch:
             lambda node_message: self._on_node_command(
                 node_message,
                 route=route,
+                terminal_topic=selected_terminal_topic,
                 events=events,
             ),
             group_id=f"codex-local-node-{route.node_name}-{command.correlation_id.hex}",
@@ -231,14 +284,31 @@ class LocalRuntimeDispatch:
                 payload=terminal_payload,
                 error_message=cast(str | None, terminal_payload.get("error_message")),
             )
+            observation = ModelRuntimeObservation(
+                status="OBSERVED", reason="terminal_received"
+            )
+        except TimeoutError:
+            terminal = ModelDispatchBusTerminalResult(
+                correlation_id=command.correlation_id,
+                status="timeout",
+                error_message="Local runtime terminal timed out.",
+            )
+            observation = ModelRuntimeObservation(
+                status="UNOBSERVED", reason="terminal_timeout"
+            )
         except Exception as exc:
             terminal = ModelDispatchBusTerminalResult(
                 correlation_id=command.correlation_id,
                 status="failed",
                 error_message=str(exc),
             )
+            observation = ModelRuntimeObservation(
+                status="UNOBSERVED", reason="local_dispatch_failure"
+            )
 
-        evidence = self._build_evidence(route, events)
+        evidence = self._build_evidence(
+            command, route, events, selected_terminal_topic, observation
+        )
         await result_queue.put((terminal, evidence))
         await _call_unsubscribe(unsubscribe_terminal)
         await _call_unsubscribe(unsubscribe_node)
@@ -249,6 +319,7 @@ class LocalRuntimeDispatch:
         message: object,
         *,
         route: _NodeRoute,
+        terminal_topic: str,
         events: list[dict[str, str]],
     ) -> None:
         try:
@@ -270,18 +341,18 @@ class LocalRuntimeDispatch:
                 payload=result_payload,
                 correlation_id=_extract_correlation_id(message),
                 envelope_timestamp=datetime.now(UTC),
-                event_type=route.terminal_topic,
+                event_type=terminal_topic,
                 source_tool=_LOCAL_RUNTIME_SOURCE,
             )
             await self._bus.publish(
-                route.terminal_topic,
+                terminal_topic,
                 None,
                 terminal_envelope.model_dump_json(exclude_none=True).encode("utf-8"),
                 None,
             )
             events.append(
                 {
-                    "topic": route.terminal_topic,
+                    "topic": terminal_topic,
                     "event": "node_terminal_published",
                 }
             )
@@ -294,11 +365,11 @@ class LocalRuntimeDispatch:
                 payload=failure_payload,
                 correlation_id=_extract_correlation_id(message),
                 envelope_timestamp=datetime.now(UTC),
-                event_type=route.failure_topic or route.terminal_topic,
+                event_type=terminal_topic,
                 source_tool=_LOCAL_RUNTIME_SOURCE,
             )
             await self._bus.publish(
-                route.failure_topic or route.terminal_topic,
+                terminal_topic,
                 None,
                 terminal_envelope.model_dump_json(exclude_none=True).encode("utf-8"),
                 None,
@@ -400,16 +471,41 @@ class LocalRuntimeDispatch:
 
     def _build_evidence(
         self,
+        command: ModelDispatchBusCommand,
         route: _NodeRoute,
         events: list[dict[str, str]],
+        selected_terminal_topic: str,
+        observation: ModelRuntimeObservation,
     ) -> ModelLocalRuntimeEvidence:
         return ModelLocalRuntimeEvidence(
             state_root=str(self._state_store._state_root),  # noqa: SLF001
             node_name=route.node_name,
-            node_contract=str(route.contract_path),
+            runtime_observation=observation,
+            adapter_dispatch_binding=ModelAdapterDispatchBinding(
+                adapter_command_topic=self._adapter_command_topic,
+                requested_response_topic=command.response_topic,
+                selected_terminal_topic=selected_terminal_topic,
+                terminal_selection=(
+                    "EXPLICIT_RESPONSE_OVERRIDE"
+                    if command.response_topic != default_response_topic()
+                    else "NODE_CONTRACT"
+                ),
+                node_contract=ModelNodeContractBinding(
+                    status="RESOLVED",
+                    node_name=route.node_name,
+                    contract_identity=(
+                        f"src/omnimarket/nodes/{route.node_name}/contract.yaml"
+                    ),
+                    contract_path=(
+                        f"src/omnimarket/nodes/{route.node_name}/contract.yaml"
+                    ),
+                    command_topic=route.command_topic,
+                    terminal_topic=route.terminal_topic,
+                ),
+            ),
             adapter_command_topic=self._adapter_command_topic,
             command_topic=route.command_topic,
-            terminal_topic=route.terminal_topic,
+            terminal_topic=selected_terminal_topic,
             payload_model=route.payload_model_ref,
             handler_route=route.handler_ref,
             fallback_reason=self._fallback_reason,
@@ -422,32 +518,44 @@ def _resolve_node_route(command_name: str) -> _NodeRoute:
     contract_path = _NODE_ROOT / node_name / "contract.yaml"
     if not contract_path.exists():
         raise ValueError(f"No local node contract found for command {command_name!r}")
-    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    try:
+        contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError) as exc:
+        raise ValueError(f"Node contract is unreadable: {contract_path}") from exc
+    except yaml.YAMLError as exc:
+        raise ValueError(f"Malformed node contract: {contract_path}") from exc
     if not isinstance(contract, dict):
         raise ValueError(f"Node contract must be a mapping: {contract_path}")
+    if not _has_valid_contract_shapes(contract):
+        raise ValueError(f"Malformed node contract dispatch shape: {contract_path}")
 
-    event_bus = cast(dict[str, Any], contract.get("event_bus") or {})
-    runtime_dispatch = cast(dict[str, Any], contract.get("runtime_dispatch") or {})
-    terminals = cast(
-        dict[str, Any],
-        runtime_dispatch.get("terminal_events")
-        or contract.get("terminal_events")
-        or {},
+    event_bus_raw = contract.get("event_bus", {})
+    runtime_dispatch_raw = contract.get("runtime_dispatch", {})
+    if not isinstance(event_bus_raw, dict) or not isinstance(
+        runtime_dispatch_raw, dict
+    ):
+        raise ValueError(f"Malformed node contract dispatch mapping: {contract_path}")
+    event_bus = cast(dict[str, Any], event_bus_raw)
+    runtime_dispatch = cast(dict[str, Any], runtime_dispatch_raw)
+    runtime_terminals = runtime_dispatch.get("terminal_events")
+    terminals_raw = (
+        runtime_terminals
+        if runtime_terminals is not None
+        else contract.get("terminal_events", {})
     )
+    if not isinstance(terminals_raw, dict):
+        raise ValueError(f"Malformed node contract terminal mapping: {contract_path}")
+    terminals = cast(dict[str, Any], terminals_raw)
     input_model = _input_model_spec(contract, node_name=node_name)
     handler = _handler_spec(contract)
 
-    command_topic = str(
-        runtime_dispatch.get("command_topic")
-        or _first_topic(
-            event_bus.get("subscribe_topics"),
-            event_bus.get("subscribe"),
-            contract.get("subscribe_topics"),
-            contract.get("subscribe_topic"),
-        )
-        or ""
+    command_topic = runtime_dispatch.get("command_topic") or _first_topic(
+        event_bus.get("subscribe_topics"),
+        event_bus.get("subscribe"),
+        contract.get("subscribe_topics"),
+        contract.get("subscribe_topic"),
     )
-    terminal_topic = str(
+    terminal_topic = (
         contract.get("terminal_event")
         or terminals.get("success")
         or _completed_topic(
@@ -456,17 +564,20 @@ def _resolve_node_route(command_name: str) -> _NodeRoute:
             contract.get("publish_topics"),
             contract.get("publish_topic"),
         )
-        or ""
     )
-    if not command_topic or not terminal_topic:
+    if not isinstance(command_topic, str) or not isinstance(terminal_topic, str):
         raise ValueError(f"Contract lacks command/terminal topics: {contract_path}")
 
     return _NodeRoute(
         node_name=node_name,
         contract_path=contract_path,
-        command_topic=command_topic,
-        terminal_topic=terminal_topic,
-        failure_topic=cast(str | None, terminals.get("failure")),
+        command_topic=command_topic.strip(),
+        terminal_topic=terminal_topic.strip(),
+        failure_topic=(
+            terminals["failure"].strip()
+            if isinstance(terminals.get("failure"), str)
+            else None
+        ),
         input_model_module=input_model[0],
         input_model_name=input_model[1],
         handler_module=handler[0],
@@ -567,8 +678,12 @@ def _first_handler_model_spec(
 def _model_ref_from_mapping(
     raw: dict[str, Any], *, node_name: str
 ) -> tuple[str, str] | None:
-    module = str(raw.get("module") or "")
-    name = str(raw.get("class") or raw.get("name") or "")
+    module_value = raw.get("module")
+    name_value = raw.get("class") or raw.get("name")
+    if not isinstance(module_value, str) or not isinstance(name_value, str):
+        return None
+    module = module_value
+    name = name_value
     if not module or not name:
         return None
     if module.endswith(f".{name}"):
@@ -595,7 +710,7 @@ def _model_ref_from_local_name(
             continue
         try:
             source = model_file.read_text(encoding="utf-8")
-        except OSError:
+        except (OSError, UnicodeError):
             continue
         if class_pattern.search(source):
             module = f"omnimarket.nodes.{node_name}.models.{model_file.stem}"
@@ -604,67 +719,10 @@ def _model_ref_from_local_name(
     init_file = node_dir / "__init__.py"
     try:
         init_source = init_file.read_text(encoding="utf-8")
-    except OSError:
+    except (OSError, UnicodeError):
         return None
     if model_name in init_source:
         return f"omnimarket.nodes.{node_name}.models", model_name
-    return None
-
-
-def _topic_from_value(value: object, *, prefer_completed: bool = False) -> str | None:
-    if isinstance(value, str) and value:
-        return value
-    if isinstance(value, dict):
-        keys = (
-            ("success_topic", "completed_topic", "topic")
-            if prefer_completed
-            else ("topic", "command_topic", "success_topic")
-        )
-        for key in keys:
-            raw = value.get(key)
-            if isinstance(raw, str) and raw:
-                return raw
-    return None
-
-
-def _first_string(value: object) -> str | None:
-    direct = _topic_from_value(value)
-    if direct is not None:
-        return direct
-    if isinstance(value, list):
-        return next(
-            (topic for item in value if (topic := _topic_from_value(item)) is not None),
-            None,
-        )
-    return None
-
-
-def _first_topic(*values: object) -> str | None:
-    for value in values:
-        topic = _first_string(value)
-        if topic is not None:
-            return topic
-    return None
-
-
-def _completed_topic(*values: object) -> str | None:
-    for value in values:
-        topic = _topic_from_value(value, prefer_completed=True)
-        if topic is not None and ("completed" in topic or not isinstance(value, list)):
-            return topic
-    for value in values:
-        if isinstance(value, list):
-            for item in value:
-                topic = _topic_from_value(item, prefer_completed=True)
-                if topic is not None and "completed" in topic:
-                    return topic
-            topic = _first_string(value)
-            if topic is not None:
-                return topic
-    for value in values:
-        topic = _first_string(value)
-        if topic is not None:
-            return topic
     return None
 
 
