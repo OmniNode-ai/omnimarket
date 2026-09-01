@@ -42,6 +42,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from tests.scripts._prepush_lab_isolation import network_free_lab_env
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 HOOK_SCRIPT = REPO_ROOT / "scripts" / "hooks" / "prepush_smart_tests.sh"
 
@@ -131,6 +133,11 @@ def _run_hook(
     env["PREPUSH_TEST_SELECTION_JSON"] = str(selection_file)
     env["PREPUSH_BASE_REF"] = "HEAD"
     env["PREPUSH_200_HOSTNAME"] = _NON_MATCHING_HOSTNAME
+    # OMN-16991/OMN-17435: this harness runs the REAL hook, which can now place
+    # a heavy run on a lab host. Keep that leg network-free so a unit test never
+    # ships a bundle to another machine or spends the 900s off-box wait budget.
+    # See tests/scripts/_prepush_lab_isolation.
+    env.update(network_free_lab_env())
     if extra_env:
         env.update(extra_env)
 
@@ -243,7 +250,12 @@ def test_overrides_do_not_inherit_into_pytest_child(tmp_path: Path) -> None:
         is_full_suite=False,
         selected_paths=[_NARROW_SELECTION],
         extra_env={
-            "PREPUSH_ALLOW_LOCAL_FULL_SUITE": "1",
+            # NOT `PREPUSH_ALLOW_LOCAL_FULL_SUITE` any more: OMN-16480 makes
+            # every `PREPUSH_ALLOW_*` name a hard refusal at hook ENTRY, so
+            # using one here would refuse before the scrub this test is about
+            # ever runs. The scrub itself is unchanged and still matters -- it
+            # covers the whole `PREPUSH_*` namespace, not just the old hatch.
+            # The hatch's new refusal behavior is pinned separately, below.
             "PREPUSH_CANARY_LEAK_PROBE": "leaked",
             # Deliberately a value the hook's FLAG parsing ignores, so the
             # selection stays the narrow subset; only inheritance is probed.
@@ -255,10 +267,6 @@ def test_overrides_do_not_inherit_into_pytest_child(tmp_path: Path) -> None:
         f"{result.returncode}. stdout={result.stdout!r} stderr={result.stderr!r}"
     )
     child_env = _stub_pytest_env(result.stdout)
-    assert child_env["ALLOW"] == "UNSET", (
-        "PREPUSH_ALLOW_LOCAL_FULL_SUITE leaked into the pytest child env — "
-        f"the exact F-01/F-04 recursion fuel: {child_env!r}"
-    )
     assert child_env["CANARY"] == "UNSET", (
         f"a generic PREPUSH_* var leaked into the pytest child env: {child_env!r}"
     )
@@ -271,6 +279,34 @@ def test_overrides_do_not_inherit_into_pytest_child(tmp_path: Path) -> None:
     )
     assert child_env["SENTINEL"].isdigit(), (
         f"the sentinel must carry the exporting hook's pid: {child_env!r}"
+    )
+
+
+def test_the_old_env_hatch_is_refused_at_entry_even_on_a_narrow_selection(
+    tmp_path: Path,
+) -> None:
+    """OMN-16480, ported by OMN-17435: the rejection is UNCONDITIONAL.
+
+    Sibling of the scrub test above, and deliberately driving a NARROW
+    selection -- the cheap path that never touches the host guard. If the
+    rejection only fired on the heavy branch, a leaked variable would sit in the
+    process tree unnoticed through every fast push and detonate on the first
+    escalation. Refusing at entry is what makes the leak surface immediately
+    instead of silently disarming the gate for a whole process tree.
+    """
+    result = _run_hook(
+        tmp_path,
+        is_full_suite=False,
+        selected_paths=[_NARROW_SELECTION],
+        extra_env={"PREPUSH_ALLOW_LOCAL_FULL_SUITE": "1"},
+    )
+    assert result.returncode != 0, (
+        "a leaked PREPUSH_ALLOW_* variable must be refused even when the "
+        f"selection is narrow: {result!r}"
+    )
+    assert "REJECTED, never honored" in result.stderr, result.stderr
+    assert "PREPUSH_ALLOW_LOCAL_FULL_SUITE" in result.stderr, (
+        "the refusal must name the variable it found"
     )
 
 

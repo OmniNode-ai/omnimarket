@@ -73,6 +73,43 @@ def _designated_row_labels() -> tuple[str, ...]:
     return tuple(labels)
 
 
+def _capacity_row_labels() -> tuple[str, ...]:
+    """Labels of rows that are placement candidates (role=capacity)."""
+    table = REPO_ROOT / "scripts" / "hooks" / "prepush_hosts.tsv"
+    labels = []
+    for line in table.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0]
+        if not line.strip():
+            continue
+        fields = line.split("\t")
+        if len(fields) > 1 and fields[1] == "capacity":
+            labels.append(fields[0])
+    assert labels, f"expected at least one capacity row in {table}"
+    return tuple(labels)
+
+
+def _skip_if_the_shared_host_slot_is_held(
+    result: subprocess.CompletedProcess[str],
+) -> None:
+    """Skip when a REAL heavy push holds this host's exclusive slot.
+
+    The local heavy path takes the same `<workroot>/LOCK` a remote host would
+    (OMN-16174 -- before that lock existed, five concurrent full suites once ran
+    on one machine). The workroot is shared across repos and lanes, so a genuine
+    push in flight legitimately makes this host unplaceable, and the guard then
+    refuses exactly as designed. That is the mechanism working, not a defect --
+    but it is also not what this test measures, so it is skipped rather than
+    reported as a failure or, worse, asserted away.
+    """
+    if "slot is already held" in result.stderr:
+        import pytest
+
+        pytest.skip(
+            "another heavy pre-push run holds this host's exclusive slot; "
+            "the fit-host path cannot be exercised while it is held"
+        )
+
+
 def _force_undesignated_host(env: dict[str, str]) -> None:
     """Make the ambient host un-designated for EVERY table row (OMN-16752,
     widened by OMN-17435).
@@ -553,117 +590,63 @@ def test_guard_allows_a_genuinely_narrow_selection_on_a_local_host(
 
 
 # =============================================================================
-# OMN-16295: live-load host selection
+# OMN-16295 live-load selection: the helpers moved under the picker (OMN-17435)
 # =============================================================================
-# The guard above answers "is this host the right one by IDENTITY". OMN-16295
-# adds a second question -- "does the right host have CAPACITY right now" --
-# answered by `host_load_ratio()` / `host_is_fit()` and consulted inside
-# `guard_full_suite_host()` before it returns 0 for a known-good host. See
-# docs/runbooks/200-build-lane-execution-pattern.md and
-# omnibase_infra/docker/docker-compose.gate-runner.yml for the second
-# execution target this selects between.
+# This file used to extract `host_load_ratio` / `host_is_fit` /
+# `_prepush_timeout_cmd` out of the hook with a regex and execute them in a
+# bare `bash -c`, which worked while they were self-contained.
+#
+# They are not self-contained any more. `host_load_ratio` now calls
+# `reap_spin_loop_orphans` (OMN-16995: reap leaked spin-loop orphans BEFORE
+# measuring, because 19 of them once put `.200` at 1.64x-core and refused every
+# heavy escalation in the lab), and that function lives in
+# `scripts/hooks/prepush_dispatch.sh`. Extracting the helpers alone therefore
+# produced `reap_spin_loop_orphans: command not found` and rc=2 -- a harness
+# failure that says nothing about the helpers.
+#
+# The right fix is NOT to extract more text until it links. It is to test the
+# helpers where they actually run: `tests/scripts/test_prepush_host_table.py`
+# sources the REAL library and exercises both fitness dimensions against it --
+# `test_host_is_fit_accepts_a_host_that_proves_both_dimensions`,
+# `test_host_is_fit_refuses_a_host_that_is_idle_but_out_of_memory`,
+# `test_host_is_fit_reports_unreadable_memory_as_could_not_check`, and
+# `test_a_memory_starved_host_is_unfit_even_at_zero_load`. This pin makes that
+# coupling explicit so the coverage cannot be dropped by deleting a file and
+# assuming the other one still has it.
 
-_LOAD_HELPERS_RE = re.compile(
-    r"^_prepush_timeout_cmd\(\) \{.*?^host_is_fit\(\) \{.*?^\}",
-    re.DOTALL | re.MULTILINE,
-)
 
-
-def _extract_load_helpers_source() -> str:
-    """Extract-and-execute the real `PREPUSH_LOAD_THRESHOLD` default,
-    `host_load_ratio` / `host_is_fit` / `_prepush_timeout_cmd` bash functions,
-    and their shared `_PREPUSH_LOAD_PROBE_SH` constant from the shipped hook
-    -- never a Python re-implementation, for the same reason
-    `_extract_predicate_source` above extracts `selection_is_whole_suite`
-    rather than re-implementing it. The threshold default must travel with
-    the functions: `host_is_fit` reads `$PREPUSH_LOAD_THRESHOLD` directly, and
-    an unset value silently awk-coerces to 0 (every positive ratio reads as
-    "over threshold"), which would falsely fail the fit-path tests below."""
-    script_text = HOOK_SCRIPT.read_text(encoding="utf-8")
-    threshold_match = re.search(
-        r'^PREPUSH_LOAD_THRESHOLD="\$\{PREPUSH_LOAD_THRESHOLD:-[^}]*\}"$',
-        script_text,
-        re.MULTILINE,
+def test_the_load_helpers_are_covered_by_the_host_table_suite() -> None:
+    """The helpers this file used to extract are exercised elsewhere -- pinned
+    here so their coverage cannot vanish silently."""
+    sibling = REPO_ROOT / "tests" / "scripts" / "test_prepush_host_table.py"
+    assert sibling.is_file(), (
+        "the load-helper coverage moved to test_prepush_host_table.py; that "
+        "file is gone, so the helpers are now untested"
     )
-    assert threshold_match is not None, (
-        f"expected a PREPUSH_LOAD_THRESHOLD default assignment in {HOOK_SCRIPT}"
-    )
-    py_match = re.search(
-        r"^_PREPUSH_LOAD_PROBE_SH='.*?'$", script_text, re.DOTALL | re.MULTILINE
-    )
-    assert py_match is not None, f"expected _PREPUSH_LOAD_PROBE_SH in {HOOK_SCRIPT}"
-    fn_match = _LOAD_HELPERS_RE.search(script_text)
-    assert fn_match is not None, (
-        f"expected _prepush_timeout_cmd/host_load_ratio/host_is_fit in {HOOK_SCRIPT}"
-    )
-    return f"{threshold_match.group(0)}\n{py_match.group(0)}\n{fn_match.group(0)}\n"
-
-
-def test_host_load_helpers_are_defined() -> None:
-    script_text = HOOK_SCRIPT.read_text(encoding="utf-8")
-    for name in ("host_load_ratio()", "host_is_fit()", "_prepush_timeout_cmd()"):
-        assert name in script_text, f"expected {name} defined in {HOOK_SCRIPT}"
-
-
-def _run_load_helper(
-    *args: str, env_extra: dict[str, str] | None = None
-) -> subprocess.CompletedProcess[str]:
-    script = f'{_extract_load_helpers_source()}\n"$@"\n'
-    env = dict(os.environ)
-    env.update(env_extra or {})
-    return subprocess.run(
-        ["bash", "-c", script, "load-helper-test", *args],
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
-        env=env,
-    )
-
-
-def test_host_is_fit_true_under_threshold() -> None:
-    result = _run_load_helper(
-        "host_is_fit", "", env_extra={"PREPUSH_LOAD_OVERRIDE_LOCAL": "5 24"}
-    )
-    assert result.returncode == 0, f"expected fit (rc=0): {result!r}"
-
-
-def test_host_is_fit_false_over_threshold() -> None:
-    result = _run_load_helper(
-        "host_is_fit", "", env_extra={"PREPUSH_LOAD_OVERRIDE_LOCAL": "50 24"}
-    )
-    assert result.returncode == 1, f"expected over-threshold (rc=1): {result!r}"
-
-
-def test_host_is_fit_distinguishes_unreachable_from_over_threshold() -> None:
-    """rc=2 (could not check) must never collapse into rc=1 (measured, over
-    threshold) -- callers give a different remediation message for each."""
-    result = _run_load_helper(
+    text = sibling.read_text(encoding="utf-8")
+    for name in (
         "host_is_fit",
-        "definitely-unroutable.invalid",
-        env_extra={"PREPUSH_LOAD_OVERRIDE_LOCAL": ""},
-    )
-    assert result.returncode == 2, (
-        f"expected unreachable (rc=2) for an unresolvable remote target with "
-        f"no override and no real network dependency assumed: {result!r}"
-    )
+        "host_load_ratio",
+        "PREPUSH_MIN_FREE_MEM_MB",
+    ):
+        assert name in text, (
+            f"{name} is no longer referenced by the host-table suite -- the "
+            "coverage this file gave up was not picked up there"
+        )
 
 
-def test_host_load_ratio_computes_from_the_override_not_a_hardcoded_value() -> None:
-    """Anti-vacuous-test pin: two different override pairs must produce two
-    different measured ratios, proving the arithmetic actually runs against
-    the input rather than returning a constant."""
-    low = _run_load_helper(
-        "host_load_ratio", "", env_extra={"PREPUSH_LOAD_OVERRIDE_LOCAL": "2 24"}
-    )
-    high = _run_load_helper(
-        "host_load_ratio", "", env_extra={"PREPUSH_LOAD_OVERRIDE_LOCAL": "48 24"}
-    )
-    assert low.returncode == 0, (low, high)
-    assert high.returncode == 0, (low, high)
-    assert low.stdout.strip() != high.stdout.strip()
-    assert low.stdout.split()[-1] == "0.083"
-    assert high.stdout.split()[-1] == "2.000"
+def test_the_hook_still_defines_the_load_helpers_it_delegates_to() -> None:
+    """The helpers must remain in the HOOK, not migrate into the vendored
+    picker.
+
+    `prepush_dispatch.sh` is a byte-identical copy of omnibase_infra's and
+    deliberately reuses the caller's `host_load_ratio` / `host_is_fit` /
+    `_prepush_timeout_cmd` rather than reimplementing them. Moving them out of
+    the hook would fork the copy on the next sync.
+    """
+    text = HOOK_SCRIPT.read_text(encoding="utf-8")
+    for fn in ("host_load_ratio()", "host_is_fit()", "_prepush_timeout_cmd()"):
+        assert fn in text, f"{fn} is no longer defined in {HOOK_SCRIPT.name}"
 
 
 def _run_hook_forcing_full_suite(
@@ -703,6 +686,18 @@ def _run_hook_forcing_full_suite(
         # the override var -- this helper exercises FIRST-entry behavior.
         for leaky in ("PREPUSH_ALLOW_LOCAL_FULL_SUITE", "ONEX_PREPUSH_HOOK_ACTIVE"):
             env.pop(leaky, None)
+        # OMN-16991/OMN-17435: hold the lab-dispatch leg network-free. Two
+        # distinct hazards, both live before this line existed:
+        #   * this harness runs the REAL hook, which can now ship a bundle to a
+        #     lab host and start the whole suite there from inside a unit test;
+        #   * a lab row that probes `busy`/`over` is TRANSIENT, so the guard
+        #     spends the full 900s off-box wait budget -- past this harness's
+        #     120s subprocess timeout, turning a behavioral proof into a
+        #     TimeoutExpired that says nothing about the guard.
+        # An unknown slot is structural, so every row is skipped with no ssh and
+        # no wait, and the hook falls straight through to the refusal ladder
+        # these tests are actually about.
+        env.update(network_free_lab_env())
         env.update(env_extra)
 
         return subprocess.run(
@@ -745,12 +740,25 @@ def test_guard_refuses_known_good_host_that_is_over_the_load_threshold() -> None
 
 
 def test_guard_allows_known_good_host_that_is_under_the_load_threshold() -> None:
+    """A fit, designated host still reaches pytest -- the anti-overreach pin.
+
+    TWO things changed under OMN-17435 and both are visible here.
+    (1) The override is now a THREE-field reading `<load1> <nproc> <mem_mib>`:
+    the two-field form means "memory could not be read", which OMN-17392 treats
+    as UNFIT rather than ample, so the historical `"2 24"` would refuse for a
+    reason that has nothing to do with load. (2) `h200` is
+    `heavy_local=prefer_remote`, so the hook asks the lab FIRST; the lab
+    isolation makes every row structurally unavailable, the bounded wait is
+    skipped, and control reaches the local slot -- which is the path this test
+    is about.
+    """
     result = _run_hook_forcing_full_suite(
         env_extra={
             "PREPUSH_200_HOSTNAME": _real_short_hostname(),
-            "PREPUSH_LOAD_OVERRIDE_LOCAL": "2 24",
+            "PREPUSH_LOAD_OVERRIDE_LOCAL": "2 24 65536",
         },
     )
+    _skip_if_the_shared_host_slot_is_held(result)
     assert result.returncode == 0, f"expected success on a fit known host: {result!r}"
     assert "STUB-PYTEST-INVOKED" in result.stdout, (
         f"expected the run to reach pytest: {result!r}"
@@ -764,9 +772,10 @@ def test_guard_allows_the_201_gate_runner_identity_when_fit() -> None:
         env_extra={
             "PREPUSH_201_GATE_RUNNER_HOSTNAME": _real_short_hostname(),
             "PREPUSH_200_HOSTNAME": "definitely-not-this-host",
-            "PREPUSH_LOAD_OVERRIDE_LOCAL": "2 24",
+            "PREPUSH_LOAD_OVERRIDE_LOCAL": "2 24 65536",
         },
     )
+    _skip_if_the_shared_host_slot_is_held(result)
     assert result.returncode == 0, (
         f"expected success when this host matches the .201 gate-runner "
         f"identity and is fit: {result!r}"
@@ -774,10 +783,20 @@ def test_guard_allows_the_201_gate_runner_identity_when_fit() -> None:
     assert "STUB-PYTEST-INVOKED" in result.stdout, result
 
 
-def test_guard_override_still_works_under_load() -> None:
-    """PREPUSH_ALLOW_LOCAL_FULL_SUITE must still force through the NEW
-    capacity check, exactly as it already does for the identity check --
-    same escape hatch, same visible degraded-evidence warning."""
+def test_the_env_var_override_is_now_refused_at_entry_not_honored() -> None:
+    """OMN-16480, ported here by OMN-17435 -- this test is INVERTED on purpose.
+
+    It used to assert that `PREPUSH_ALLOW_LOCAL_FULL_SUITE=1` forced through
+    the capacity check. That variable is no longer an arming signal in either
+    direction: it is inherited by every descendant process, bound to no
+    repo/commit/run, never expires and leaves no receipt, and one leaked value
+    recursively spawned another full suite (~9h03m, friction F-01/F-04). Its
+    presence is now a HARD REFUSAL at hook entry, BEFORE the selector runs.
+
+    Inverting an existing assertion is the honest way to record that: deleting
+    the test would leave no evidence the behavior ever changed, and leaving it
+    green would require keeping the bypass.
+    """
     result = _run_hook_forcing_full_suite(
         env_extra={
             "PREPUSH_200_HOSTNAME": _real_short_hostname(),
@@ -785,36 +804,150 @@ def test_guard_override_still_works_under_load() -> None:
             "PREPUSH_ALLOW_LOCAL_FULL_SUITE": "1",
         },
     )
-    assert result.returncode == 0, result
-    assert "DEGRADED-CAPACITY OVERRIDE" in result.stderr, result.stderr
-    assert "STUB-PYTEST-INVOKED" in result.stdout, result
+    assert result.returncode != 0, (
+        f"a leaked PREPUSH_ALLOW_* variable must be REFUSED, not honored: {result!r}"
+    )
+    assert "REJECTED, never honored" in result.stderr, result.stderr
+    assert "prepush_override_grant.py" in result.stderr, (
+        "the refusal must name the receipted replacement, not just say no"
+    )
+    assert "STUB-PYTEST-INVOKED" not in result.stdout, (
+        "the rejection must fire before any pytest is invoked"
+    )
 
 
-def test_guard_refusal_names_a_fit_alternate_host() -> None:
+def test_the_refusal_reports_the_whole_probe_trail_not_one_other_host() -> None:
+    """The refusal names EVERY row it probed and why each was rejected.
+
+    Before OMN-17435 this pair of tests asserted a two-host remediation
+    sentence -- "the .201 gate-runner currently HAS capacity -- route there
+    instead" / "is ALSO at/over the load threshold". That phrasing could only
+    ever exist because the guard knew exactly two hosts. With a table there is
+    no singular "other host" to name, and a refusal that named one would hide
+    the other three. The replacement is strictly more informative: a
+    per-row verdict trail, which is also what tells a reader whether the lab
+    was saturated or simply unreachable.
+    """
     result = _run_hook_forcing_full_suite(
         env_extra={
             "PREPUSH_200_HOSTNAME": _real_short_hostname(),
             "PREPUSH_LOAD_OVERRIDE_LOCAL": "50 24",
-            "PREPUSH_LOAD_OVERRIDE_REMOTE": "3 32",
         },
     )
     assert result.returncode != 0, result
-    assert "HAS capacity -- route there instead" in result.stderr, result.stderr
-
-
-def test_guard_refusal_names_both_hosts_saturated() -> None:
-    result = _run_hook_forcing_full_suite(
-        env_extra={
-            "PREPUSH_200_HOSTNAME": _real_short_hostname(),
-            "PREPUSH_LOAD_OVERRIDE_LOCAL": "50 24",
-            "PREPUSH_LOAD_OVERRIDE_REMOTE": "40 32",
-        },
+    assert "probed hosts:" in result.stderr, (
+        f"expected the probe trail in the refusal, got {result.stderr!r}"
     )
-    assert result.returncode != 0, result
-    assert "is ALSO at/over the load threshold" in result.stderr, result.stderr
+    # CAPACITY rows only. An `identity` row (h201c, the .201 gate-runner
+    # container) has no ssh target by construction -- it confers identity and is
+    # never an execution target -- so probing it would be meaningless work, and
+    # asserting it appears here would pin a bug rather than a behavior.
+    for label in _capacity_row_labels():
+        assert f"{label}=" in result.stderr, (
+            f"capacity row {label} is in the committed table but absent from "
+            f"the refusal's probe trail: {result.stderr!r}"
+        )
+    assert "STUB-PYTEST-INVOKED" not in result.stdout, (
+        "the guard must refuse BEFORE pytest is ever invoked"
+    )
 
 
 def _real_short_hostname() -> str:
     return subprocess.run(
         ["hostname", "-s"], capture_output=True, text=True, check=True
     ).stdout.strip()
+
+
+# =============================================================================
+# Containment: a unit test must never spend a lab host (OMN-16991 / OMN-17435)
+# =============================================================================
+
+
+def test_the_heavy_harness_never_dispatches_a_real_lab_run(tmp_path: Path) -> None:
+    """A unit test must not take a lab host's exclusive slot for an hour.
+
+    Before OMN-17435 this repo's hook had no lab-dispatch seam at all, so the
+    harnesses above were contained by construction. That containment is now
+    gone. The equivalent was observed live in omnibase_infra on 2026-08-30,
+    minutes after its host scan was fixed: the next `pytest` shipped a real git
+    bundle to `omnibook`, took its LOCK, and started a full suite there -- with
+    the remote wrapper's ORIGIN naming the test process. That is the
+    OMN-16425/OMN-16489 F-01 recursion in distributed form, reached from a test
+    rather than a push.
+
+    Proven by shadowing `ssh`/`scp` on PATH and asserting that nothing in the
+    heavy path ever addresses a lab target. `git fetch` may legitimately use
+    ssh for `origin`, so the witness records lab targets only.
+    """
+    stub_bin = tmp_path / "stub-bin"
+    stub_bin.mkdir()
+    witness = tmp_path / "lab-calls"
+    for name in ("ssh", "scp"):
+        stub = stub_bin / name
+        stub.write_text(
+            "#!/usr/bin/env bash\n"
+            f'case " $* " in *jonah@*) echo "{name} $*" >> "{witness}" ;; esac\n'
+            "exit 1\n",
+            encoding="utf-8",
+        )
+        stub.chmod(0o755)
+
+    env = dict(os.environ)
+    for leaky in (
+        "PREPUSH_FULL_SUITE",
+        "PREPUSH_ALLOW_LOCAL_FULL_SUITE",
+        "ENABLE_SMART_TESTS",
+        "PREPUSH_ADJACENCY",
+        "PREPUSH_PYTEST_ARGS",
+        "ONEX_PREPUSH_HOOK_ACTIVE",
+    ):
+        env.pop(leaky, None)
+    env["PATH"] = f"{stub_bin}{os.pathsep}{env['PATH']}"
+    env["PREPUSH_FULL_SUITE"] = "1"
+    _force_undesignated_host(env)
+
+    result = subprocess.run(
+        ["bash", str(HOOK_SCRIPT)],
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+    )
+    assert result.returncode != 0, (
+        "the de-designated heavy path must still refuse; got exit "
+        f"{result.returncode}. stderr={result.stderr!r}"
+    )
+    assert not witness.exists(), (
+        "the hook addressed a lab host from inside the test harness: "
+        f"{witness.read_text()!r}"
+    )
+
+
+def test_both_hook_harnesses_apply_the_lab_isolation() -> None:
+    """Static pin so a new harness cannot quietly reintroduce live dispatch.
+
+    The behavioral test above only covers the harness it drives; this covers
+    every subprocess call site in the two files that run the real hook. It
+    counts rather than spot-checks, because the failure mode is an ADDED call
+    site that forgot the isolation, not an edited one.
+    """
+    for path in (
+        Path(__file__),
+        REPO_ROOT
+        / "tests"
+        / "scripts"
+        / "test_prepush_hook_recursion_and_env_guard.py",
+    ):
+        text = path.read_text(encoding="utf-8")
+        hook_runs = text.count('["bash", str(HOOK_SCRIPT)]')
+        assert hook_runs > 0, f"{path.name}: expected at least one hook subprocess"
+        applications = text.count("network_free_lab_env()") + text.count(
+            "_force_undesignated_host("
+        )
+        assert applications >= hook_runs, (
+            f"{path.name}: {hook_runs} hook subprocess call site(s) but only "
+            f"{applications} application(s) of the lab isolation -- a harness "
+            "that omits it dispatches a real remote run"
+        )
