@@ -701,6 +701,19 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["T201", "SLF001"]
 "scripts/**/*.py" = ["T201"]
+# OMN-17435: these two are VENDORED, byte-identical copies of omnibase_infra's
+# pre-push files, pinned by sha256 + upstream commit in
+# scripts/hooks/prepush_vendored.tsv and asserted by
+# tests/scripts/test_prepush_host_table.py. Applying this repo's local lint
+# preferences to them would fork the copies -- and the fork is the actual risk
+# being managed here, since three divergent copies of a fail-closed placement
+# gate is its own defect class. The findings are style-only against upstream's
+# own (green) ruff config: RUF100 for `noqa: BLE001` directives that upstream
+# enables and this repo does not, and SIM105 for a deliberate try/except/pass.
+# Any real defect in these files is fixed UPSTREAM and flows here as a digest
+# bump, never as a local edit.
+"scripts/hooks/pytest_full_suite_host_guard.py" = ["T201", "RUF100"]
+"scripts/hooks/prepush_override_grant.py" = ["T201", "RUF100", "SIM105"]
 # CLI entrypoint for the SWE-discriminator smoke battery (OMN-13988) — prints
 # progress/results to stdout like the sibling recorder scripts.
 "src/omnimarket/delegation/swe_discriminator/run_smoke.py" = ["T201"]

@@ -1,0 +1,87 @@
+# Lab capacity/identity table for the pre-push heavy-suite guard (OMN-16991,
+# ported to this repo by OMN-17435).
+#
+# THIS FILE IS AUTHORITY FOR HOST IDENTITY. It is read from the COMMITTED tree
+# (`git show HEAD:scripts/hooks/prepush_hosts.tsv`), never from the working
+# tree, and the hook refuses if the two differ -- an uncommitted row whose
+# `hostname` matches the local machine would otherwise self-designate a laptop
+# as an authorizing gate host with no review, no receipt and no guard tripped.
+# That is precisely the forgeable-on-disk-artifact surface OMN-16688
+# deliberately avoided ("no file on disk to forge"). Adding or enabling a row
+# therefore requires a reviewed commit, and tests/scripts/
+# test_prepush_host_table.py asserts the full contents so a row addition also
+# requires a deliberate test update.
+#
+# WHY THIS FILE EXISTS AT ALL IN omnimarket (OMN-17435): before it, this repo's
+# heavy escalation matched two literal hostnames -- `.200` and the `.201`
+# gate-runner CONTAINER -- so `.101` and `.105` were unreachable for omnimarket
+# NO MATTER WHAT any other repo's table said. Measured 2026-09-01T01:0xZ, two
+# omnimarket lanes refused in under 20s with `.200` at 78.24/24 = 3.26x while
+# `.101` sat at 0.34x and `.105` at 0.27x with free slots. The picker is not
+# repo-specific; the missing dispatch seam in THIS repo was.
+#
+# Columns (TAB separated; no tabs inside any field):
+#   label          stable row id; also names the per-row override env var
+#                  PREPUSH_HOST_OVERRIDE_<LABEL uppercased>
+#   role           capacity = placement candidate AND identity
+#                  identity = identity only, never an execution target
+#   hostname       `hostname -s` of that host, lowercased
+#   ssh_target     ssh(1) target for probes/execution, or - for role=identity
+#   cores          nominal core count (documentation; the live probe re-reads it)
+#   uv_abs_path    ABSOLUTE uv path. uv is on NO host's non-interactive PATH
+#                  (re-measured 2026-09-01: an ssh login on h105 gets literally
+#                  `/usr/bin:/bin:/usr/sbin:/sbin`), so every remote leg invokes
+#                  this path literally rather than relying on a login profile.
+#   uv_min_version floor. A host below it is SKIPPED, never assumed fit -- the
+#                  fleet spread is 0.11.5 -> 0.12.7 against this repo's uv.lock.
+#   workroot       remote scratch root (bundles/, trees/, runs/, LOCK)
+#   slot_mode      queue   = enqueue into ~/push-lanes/QUEUE (.201, OMN-16968)
+#                  lockdir = exclusive mkdir(2) lockdir at <workroot>/LOCK
+#                  none    = not an execution target
+#   slots          how many CONCURRENT heavy-suite lanes this row may hold
+#                  (OMN-17269). EVERY ROW HERE IS 1 -- see the h105 note for why
+#                  this repo does not inherit omnibase_infra's slots=2.
+#   repos_denied   comma-separated repos this host must NOT run, or -
+#   mode           authorizing = its verdict may satisfy the escalation
+#                  shadow      = runs and receipts, but NEVER authorizes
+#                  disabled    = not probed, not run, not an identity
+#   heavy_local    (OMN-17392) what happens when THIS row is the host doing the
+#                  pushing. `allowed` = if the local probe reads fit, run the
+#                  heavy suite here. `prefer_remote` = attempt lab placement
+#                  FIRST, and run here only after the bounded off-box wait is
+#                  exhausted, with a loud notice. It is NOT a de-designation: a
+#                  prefer_remote row keeps full identity and stays a placement
+#                  target for every OTHER host. `-` on identity-only rows.
+#   note           free text
+#
+# HOW EVERY CAPACITY ROW BELOW WAS PROVEN FOR **THIS REPO'S** DEPENDENCY SET
+# (2026-09-01, over the real bundle -> scp -> clone -> `uv sync --all-extras` ->
+# pytest transport, i.e. the same steps prepush_dispatch.sh's remote leg takes;
+# never by analogy with omnibase_infra's or omnibase_core's table):
+#   * `git bundle create HEAD --tags` carried 19 of 19 tag refs (~20.8 MB), so
+#     scripts/check_release_identity.py evaluates a real tag set on the remote
+#     host rather than silently taking its "no published tag yet" branch
+#     (OMN-17240).
+#   * `uv sync --all-extras` rc=0 on every host, from omnimarket's own uv.lock.
+#   * `pytest tests/ --collect-only --ignore=tests/integration` rc=0.
+#   * a real executed slice, rc=0, under the SAME PATH the remote wrapper
+#     exports (see the shellcheck note on h101/h105 below).
+#
+# CAVEAT, MEASURED NOT ASSUMED -- the remote leg drops this repo's marker
+# filter. The local sites run `-m "not kafka"`; prepush_dispatch.sh's remote
+# wrapper runs `pytest "${ARGV[@]}" --ignore=tests/integration` with no `-m`.
+# Four of this repo's five kafka-marked modules live under `tests/integration/`
+# and are excluded by that `--ignore` on both sides. The fifth,
+# tests/test_integration_task_execution_orchestrator.py, was run on h105 on
+# 2026-09-01 WITHOUT the marker filter: 4 passed, 3 skipped, rc=0 -- its
+# kafka-marked cases self-skip with no broker. So the missing filter is not a
+# false-red source today. It would become one the moment a kafka-marked test
+# outside tests/integration/ stops self-skipping; that is a property to re-check
+# when adding one, not a reason to fork the byte-identical picker.
+#
+#label	role	hostname	ssh_target	cores	uv_abs_path	uv_min_version	workroot	slot_mode	slots	repos_denied	mode	heavy_local	note
+h200	capacity	stickybeatz-studio	jonah@stickybeatz-studio.tail75df5e.ts.net	24	/Users/jonah/.local/bin/uv	0.11.0	/Users/Shared/onex-prepush	lockdir	1	-	authorizing	prefer_remote	.200 Mac Studio; the host this repo's pre-OMN-17435 hook designated by literal hostname, so it is authorizing by continuity, not by a new promotion. uv 0.11.32 (read 2026-09-01). heavy_local=prefer_remote for the same reason omnibase_infra's h200 row carries it (OMN-17392, operator directive 2026-08-31 verbatim "we should move prepush off this box if possible") and because THIS ticket exists: measured 2026-09-01T01:0xZ at 78.24/24 = 3.26x with swap 29131/29696 MB while two omnimarket lanes queued, and re-read at 43.63/24 = 1.82x while this row was written. It stays authorizing and stays a placement target for every other host. KNOWN LIMITATION, verified not assumed: from h105, `ssh jonah@stickybeatz-studio.tail75df5e.ts.net` returns "Permission denied (publickey,password,keyboard-interactive)" -- so when the PUSHER is another lab host this row probes `unreachable` and is skipped. That is the fail-closed skip, not a defect this port introduces (omnibase_infra's identical row has the same property); it means .200 is in practice a local-identity row plus a target for nothing, until that key is present
+h201	capacity	omninode-pc	jonah@192.168.86.201	32	/home/jonah/.local/bin/uv	0.11.0	/data/omninode/onex-prepush	queue	1	-	authorizing	allowed	.201 Linux host, 32 cores, the only non-macOS row. PROVEN FOR OMNIMARKET 2026-09-01 over the real transport: uv 0.11.5, Python 3.12.3, `uv sync --all-extras` rc=0 in 11s from this repo's own lock, `pytest tests/ --collect-only --ignore=tests/integration` rc=0 with 17,722 tests collected in 35.55s, and `pytest tests/scripts tests/golden_chains tests/ci tests/gates` 600 passed / 6 skipped rc=0 in 38.45s under the remote wrapper's PATH. The collected count is 25 BELOW the macOS rows' 17,747 -- a platform-conditional collection difference, recorded here because a table that claims "same tree, same tests everywhere" would be false; it is not a failure and no test errored. Probed under an actively HELD heavy slot (omn17319-prepush2, omnibase_core) at load1 6.11/32 = 0.19x; the slot was NOT taken and NOT preempted by this proof. Separately proven by first-hand read of ~/push-lanes/queue-runner.log rather than by analogy: 12 completed omnimarket lanes between 2026-08-27 and 2026-08-30, 8 rc=0 (OMN-16663, OMN-16690, OMN-16924, OMN-16944, OMN-16833, OMN-17202 x2, OMN-17018) and 4 rc=1 -- the rc=1 lanes are branch test failures, and this table does NOT claim they were host-coupled. slot_mode=queue: this row runs the separate ~/push-lanes/QUEUE serializer (OMN-16968), a different concurrency mechanism from the lockdir rows, so slots stays 1. Before this file existed, that queue was reachable for omnimarket ONLY by a human hand-routing a lane into ~/push-lanes/lanes/<lane>.env + QUEUE
+h201c	identity	gate-runner-201	-	32	-	-	-	none	1	-	authorizing	-	.201 gate-runner CONTAINER hostname; no sshd (OMN-16446) so identity-only. This row is what the pre-OMN-17435 PREPUSH_201_GATE_RUNNER_HOSTNAME env var used to name. Keeping it as a ROW is the point: the container reports gate-runner-201 while the host reports omninode-pc, so before this table a push on .201 needed that variable exported to pass the identity guard, and the variable had to survive a process and ssh boundary to do it
+h101	capacity	stickybeatz	jonah@192.168.86.101	12	/Users/jonah/.local/bin/uv	0.11.0	/Users/Shared/onex-prepush	lockdir	1	omnimarket	authorizing	allowed	MacBook, 12 cores. PROVEN FOR OMNIMARKET 2026-09-01 over the real transport, not carried over from omnibase_infra's row: uv 0.12.7, Python 3.12.11, `uv sync --all-extras` rc=0 in 6s, `pytest tests/ --collect-only --ignore=tests/integration` rc=0 with 17,747 tests collected in 31.18s, `pytest tests/scripts` 73 passed / 4 skipped rc=0, `pytest tests/golden_chains tests/ci tests/gates` 527 passed / 2 skipped rc=0 in 39.34s. load1 5.02/12 = 0.418x at proof time. Promoted straight to authorizing on the same reasoning omnibase_infra used for h105/h101: a shadow row can never record a heavy verdict, because the transplanted guard refuses a full-suite target on any host outside the authorizing set, so a shadow day proves nothing and the promotion is proven by real dispatch instead. DISK CAVEAT (OMN-17420, unlanded upstream): 68 GiB free of 926 GiB = 93% used at proof time. The picker has NO min-free-disk fitness dimension yet -- an ENOSPC mid-suite here returns a red indistinguishable from a real failure. That precondition belongs in prepush_dispatch.sh upstream; adding it here would fork the byte-identical copy REPOS_DENIED=omnimarket, and the reason is MEASURED, not precautionary. A real dispatch of this repo's full suite to this host on 2026-09-01 ran 17,883 tests in 13m58s and returned 12 HOST-COUPLED failures -- a FALSE RED, which prepush_dispatch.sh correctly treats as a genuine red and which therefore HARD-BLOCKS the push. Single root cause, not twelve: $OMNI_HOME is not propagated across the ssh boundary, and two call sites silently default to `Path.home()/'Code'/'omni_home'` (handler_post_merge_sync.py's EVIDENCE_BASE_DIR and market_skill_baseline _smoke_aislop_sweep's env). That path EXISTS on the lab Macs and is TCC-denied to sshd, so 11 node_post_merge_knowledge_sync_orchestrator tests raise PermissionError on mkdir and test_market_skill_smokes gets non-JSON from a sweep that could not read the workspace. All 12 pass locally. Lifting this denial is a ONE-FIELD change once that coupling is fixed -- the capacity itself is already proven above. Shipping it undenied today would make this gate strictly WORSE than the status quo it replaces: a guaranteed false red is worse than an honest refusal. The row KEEPS mode=authorizing on purpose: the denial is about THIS REPO's workspace coupling, not about the host's standing -- de-designating it would also stop it authorizing anything else and would delete an identity that is genuinely valid. This is the same column, and the same lift-when-proven path, that OMN-16989 used for h201 in omnibase_infra.
+h105	capacity	omnibook	jonah@192.168.86.105	10	/Users/jonah/.local/bin/uv	0.11.0	/Users/Shared/onex-prepush	lockdir	1	omnimarket	authorizing	allowed	MacBook Air M4, 10 cores, the fittest row in the lab at proof time (load1 1.06/10 = 0.106x, 137 GiB free of 460 GiB = 68% used). PROVEN FOR OMNIMARKET 2026-09-01 over the real transport: uv 0.11.8, Python 3.12.9, `uv sync --all-extras` rc=0 in 6s, `pytest tests/ --collect-only --ignore=tests/integration` rc=0 with 17,747 tests collected in 22.78s, `pytest tests/scripts` 73 passed / 4 skipped rc=0, `pytest tests/golden_chains tests/ci tests/gates` 527 passed / 2 skipped rc=0 in 30.54s. SHELLCHECK / PATH FINDING, worth recording because the first proof run FAILED on it: tests/scripts/test_shell_hygiene_gate.py hard-fails 12 tests when `shellcheck` is off PATH, and a bare non-interactive ssh gets PATH=/usr/bin:/bin:/usr/sbin:/sbin on this host. shellcheck IS installed (/opt/homebrew/bin/shellcheck) -- it was the PATH, not the tool. prepush_dispatch.sh's remote wrapper already prepends /opt/homebrew/bin and friends, so the shipped leg is unaffected; the failure was in the hand-rolled proof harness, and re-running the identical slice under the wrapper's PATH line returned rc=0. Do not add a host to this table using a harness that skips that PATH line. SLOTS=1 DELIBERATELY, and NOT the same as omnibase_infra's row for this host, which declares slots=2: the lockdir namespace (<workroot>/LOCK, LOCK.<k>) is SHARED across repos, so a per-repo slots value is a self-limit, not a host-wide one. omnibase_infra's 2 was measured against ITS suite; this repo's escalation target is all 17,747 tests of `tests/`, and two concurrent runs of that on a 10-core M4 was NOT measured by OMN-17435. Widening this row requires that measurement, in its own commit REPOS_DENIED=omnimarket, and the reason is MEASURED, not precautionary. A real dispatch of this repo's full suite to this host on 2026-09-01 ran 17,883 tests in 13m58s and returned 12 HOST-COUPLED failures -- a FALSE RED, which prepush_dispatch.sh correctly treats as a genuine red and which therefore HARD-BLOCKS the push. Single root cause, not twelve: $OMNI_HOME is not propagated across the ssh boundary, and two call sites silently default to `Path.home()/'Code'/'omni_home'` (handler_post_merge_sync.py's EVIDENCE_BASE_DIR and market_skill_baseline _smoke_aislop_sweep's env). That path EXISTS on the lab Macs and is TCC-denied to sshd, so 11 node_post_merge_knowledge_sync_orchestrator tests raise PermissionError on mkdir and test_market_skill_smokes gets non-JSON from a sweep that could not read the workspace. All 12 pass locally. Lifting this denial is a ONE-FIELD change once that coupling is fixed -- the capacity itself is already proven above. Shipping it undenied today would make this gate strictly WORSE than the status quo it replaces: a guaranteed false red is worse than an honest refusal. The row KEEPS mode=authorizing on purpose: the denial is about THIS REPO's workspace coupling, not about the host's standing -- de-designating it would also stop it authorizing anything else and would delete an identity that is genuinely valid. This is the same column, and the same lift-when-proven path, that OMN-16989 used for h201 in omnibase_infra.
