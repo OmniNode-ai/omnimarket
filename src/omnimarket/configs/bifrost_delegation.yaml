@@ -181,7 +181,6 @@ backends:
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     model_name: "gemini-2.5-flash"
     secret_ref: llm.gemini.api_key
-    api_key_env: GEMINI_API_KEY
     tier: frontier_api
     # OMN-13170: size the timeout to the output budget below (300000 ms) so large
     # ceiling-tier generations are not killed at the 60s default.
@@ -256,7 +255,6 @@ backends:
     # both together, never one alone.
     model_name: "glm-5.3-flash"
     secret_ref: llm.glm.api_key
-    api_key_env: LLM_GLM_API_KEY
     tier: cheap_cloud
     # OMN-13170: GLM large reads/generations (64k output budget) were timing
     # out at 60s on the dev runtime; size the timeout to the budget (300000 ms).
@@ -290,7 +288,6 @@ backends:
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     model_name: "gemini-2.5-flash"
     secret_ref: llm.gemini.api_key
-    api_key_env: GEMINI_API_KEY
     tier: judge
     # Match the ceiling/cheap_cloud Gemini budget: the judge issues a small
     # structured verdict but rides the same endpoint, so the same generous
@@ -308,7 +305,6 @@ backends:
     endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
     model_name: "gemini-2.5-flash-lite"
     secret_ref: llm.gemini.api_key
-    api_key_env: GEMINI_API_KEY
     tier: cheap_cloud
     timeout_ms: 60000
     # OMN-13161: Gemini Flash family caps output at ~8192 tokens; do not exceed the
@@ -414,31 +410,40 @@ backends:
   # gate the inventory places on the mini/laptop/Gemma-canary endpoints;
   # tracked as the scoped follow-on on OMN-16442.
   # OpenRouter backends (OMN-7980) — route authority carries logical secret refs
-  # (secret_ref). OMN-13943: api_key_env is a genuine ADDITIONAL fallback the
-  # effect boundary resolves when secret_ref's dotted convention mapping (→
-  # LLM_OPENROUTER_API_KEY) misses — it must name the REAL canonical env var,
-  # not migration metadata.
+  # (secret_ref) and NOTHING ELSE.
   #
-  # OMN-16891: that canonical name is OPENROUTER_API_KEY (no underscore), the
-  # provider's own documented variable and the only spelling carrying a value
-  # on the .201 runtime host. The deployed lanes resolve this ref through
-  # omnibase_infra's per-lane `secret_resolver_mappings` with
-  # `enable_convention_fallback: false`, so the lane mapping and this field
-  # must name the SAME variable or the rung is credential-dead with no alias
-  # path to rescue it — which is exactly what it was until this ticket.
+  # OMN-17372: the `api_key_env` field was DELETED from every backend in this
+  # file. It was a second, env-shaped way to authenticate a backend, and it is
+  # gone — not renamed, not deprecated-but-read, not kept as a dual-read
+  # fallback. `secret_ref` is now the only credential surface a backend has.
+  #
+  # Why it had to go, not merely be discouraged: OmniNode does not offer
+  # inference, and there are no keyless customers on the cloud. Every customer
+  # brings their own provider key, resolved per-tenant from the managed store.
+  # `api_key_env` named a HOUSE env var, so any backend carrying one could
+  # authenticate on OmniNode's own account the moment that variable held a
+  # value — which is exactly how a keyless customer's delegation, routed to the
+  # platform-default ladder by the fail-open tenant-overlay miss, executed on
+  # our credential instead of returning an honest refusal. The prior revisions
+  # of this comment (OMN-13943, OMN-16891) were about getting that env var's
+  # SPELLING right so the fallback would resolve. Under the current rule the
+  # correct spelling is no field at all.
+  #
+  # This is one half of a two-repo removal; on its own it would not have closed
+  # the path. The other half is omninode_infra, which deleted both the house
+  # provider env vars from the onex-dev runtime Deployments and the
+  # `llm.*` mappings from the lane secret-resolver config. Guarded by
+  # `scripts/ci/check_backend_secret_discipline.py` here and
+  # `tests/k8s/test_no_house_inference_credentials.py` there.
   - backend_id: openrouter-glm-flash
     # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
     endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
     model_name: "thudm/glm-4-9b-chat:free"
     secret_ref: llm.openrouter.api_key
-    # OMN-16891: REVERTS OMN-13943's rename. That ticket changed this field to
-    # OPEN_ROUTER_API_KEY on the stated premise that "canonical
-    # ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with underscore)". Live
-    # probe 2026-08-28 (names + LENGTHS only) falsifies it: the .201 runtime
-    # host exports OPENROUTER_API_KEY (len 73) and defines the underscored form
-    # nowhere. api_key_env IS genuinely resolved as a fallback, so naming a
-    # variable no host defines made this rung silently unauthenticatable.
-    api_key_env: OPENROUTER_API_KEY
+    # OMN-17372: this backend's `api_key_env: OPENROUTER_API_KEY` was deleted
+    # along with every other one in this file. A customer reaches OpenRouter on
+    # THEIR key, resolved per-tenant from the managed store; the house env var
+    # this field named is no longer mounted on the customer plane at all.
     tier: cheap_cloud
     timeout_ms: 60000
     # OMN-13161: GLM-4-9B (free OpenRouter tier) — modest 8192 output budget.
@@ -482,14 +487,10 @@ backends:
     # Zero cost is paid for in availability, not dollars.
     model_name: "nvidia/nemotron-3-ultra-550b-a55b:free"
     secret_ref: llm.openrouter.api_key
-    # OMN-16891: REVERTS OMN-13943's rename. That ticket changed this field to
-    # OPEN_ROUTER_API_KEY on the stated premise that "canonical
-    # ~/.omnibase/.env declares OPEN_ROUTER_API_KEY (with underscore)". Live
-    # probe 2026-08-28 (names + LENGTHS only) falsifies it: the .201 runtime
-    # host exports OPENROUTER_API_KEY (len 73) and defines the underscored form
-    # nowhere. api_key_env IS genuinely resolved as a fallback, so naming a
-    # variable no host defines made this rung silently unauthenticatable.
-    api_key_env: OPENROUTER_API_KEY
+    # OMN-17372: this backend's `api_key_env: OPENROUTER_API_KEY` was deleted
+    # along with every other one in this file. A customer reaches OpenRouter on
+    # THEIR key, resolved per-tenant from the managed store; the house env var
+    # this field named is no longer mounted on the customer plane at all.
     tier: cheap_frontier
     # OMN-13170: 64k-output frontier backend — align the timeout to the budget
     # (300000 ms); 120s was short for full 64k generations.

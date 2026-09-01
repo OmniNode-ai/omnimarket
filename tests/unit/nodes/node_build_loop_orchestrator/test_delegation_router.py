@@ -343,8 +343,17 @@ class TestBuildEndpointConfigs:
     def test_gemini_key_skips_cli_when_binary_is_missing(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """OMN-17372: the Gemini credential resolves through the secret store.
+
+        The key is set here as ``GEMINI_API_KEY`` rather than the previous
+        ``GOOGLE_API_KEY`` because this router no longer reads either variable
+        directly: it resolves ``llm.gemini.api_key``, and the local store maps
+        that ref onto the provider-native ``GEMINI_API_KEY``. The tier-skipping
+        behaviour under test is unchanged — only the path the credential
+        travels.
+        """
         _clear_endpoint_env(monkeypatch)
-        monkeypatch.setenv("GOOGLE_API_KEY", "secret")
+        monkeypatch.setenv("GEMINI_API_KEY", "secret")
         monkeypatch.setenv("GEMINI_CLI_MODEL_NAME", "gemini-cli-profile")
         monkeypatch.setenv("LLM_GOOGLE_URL", "https://google.example/openai")
         monkeypatch.setenv("LLM_GOOGLE_MODEL_NAME", "google-frontier")
@@ -357,6 +366,42 @@ class TestBuildEndpointConfigs:
         assert EnumModelTier.GEMINI_CLI not in configs
         assert configs[EnumModelTier.FRONTIER_GOOGLE].api_key == "secret"
         assert configs[EnumModelTier.FRONTIER_GOOGLE].model_id == "google-frontier"
+
+    def test_google_api_key_alone_no_longer_configures_a_tier(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """OMN-17372: ``GOOGLE_API_KEY`` is not a credential source any more.
+
+        The router used to read ``GEMINI_API_KEY or GOOGLE_API_KEY`` straight
+        out of the process environment — a raw ambient house credential with no
+        secret store in the path, honouring neither the lane secret mapping nor
+        any per-tenant scoping. This is the negative half of the inversion: the
+        variable is set, and no tier may pick a credential up from it.
+
+        ``FRONTIER_GOOGLE`` is still REGISTERED — that tier is gated on its
+        endpoint URL and model id, not on the key — but it must now carry an
+        empty ``api_key``. That is the intended shape: an unauthenticated call
+        that fails at the provider is an honest hard failure, where silently
+        succeeding on OmniNode's account was not. ``GEMINI_CLI`` is gated on
+        the key itself and so drops out entirely.
+        """
+        _clear_endpoint_env(monkeypatch)
+        monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+        monkeypatch.setenv("GOOGLE_API_KEY", "house-secret")
+        monkeypatch.setenv("GEMINI_CLI_MODEL_NAME", "gemini-cli-profile")
+        monkeypatch.setenv("LLM_GOOGLE_URL", "https://google.example/openai")
+        monkeypatch.setenv("LLM_GOOGLE_MODEL_NAME", "google-frontier")
+        monkeypatch.setattr(
+            adapter_delegation_router, "_gemini_cli_available", lambda: True
+        )
+
+        configs = build_endpoint_configs()
+
+        assert EnumModelTier.GEMINI_CLI not in configs
+        assert configs[EnumModelTier.FRONTIER_GOOGLE].api_key == "", (
+            "GOOGLE_API_KEY still reached a tier's api_key — the raw house "
+            "env read deleted by OMN-17372 has come back"
+        )
 
     def test_openai_endpoint_requires_url_and_model_name(
         self, monkeypatch: pytest.MonkeyPatch

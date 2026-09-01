@@ -289,6 +289,17 @@ jobs:
       # SYNC with pre-commit hook 'github-token-env-gate'.
       - name: GitHub-token env-read gate (enforce)
         run: uv run python scripts/ci/check_github_token_env_reads.py
+      # OMN-17372: house inference-credential gate. Fails CI if a delegation
+      # backend re-declares `api_key_env`, or if any omnimarket source reads a
+      # house provider key from the process environment (bare os.environ, or
+      # the resolver's `env_var_fallback`, which bypasses the lane secret
+      # mapping on its way to os.environ). OmniNode does not offer inference
+      # and there are no keyless customers on the cloud: a credential resolves
+      # from its secret_ref through the managed store, per-tenant scoped, or
+      # the delegation refuses rather than borrowing the house account.
+      # SYNC with pre-commit hook 'house-inference-credential-gate'.
+      - name: House inference-credential gate (enforce)
+        run: uv run python scripts/ci/check_backend_secret_discipline.py
       # OMN-12821 (plan A1.5): routing-authority demo gate. Proves the demo path
       # (generation + delegation) resolves provider/model/endpoint_ref/endpoint/
       # route_source from contract+authority AND that no demo-path source reads

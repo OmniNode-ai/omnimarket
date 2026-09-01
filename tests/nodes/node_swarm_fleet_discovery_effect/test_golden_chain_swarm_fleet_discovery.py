@@ -188,13 +188,21 @@ class TestDiscoveryChain:
             await handler.handle(req)
 
     @pytest.mark.asyncio
-    async def test_default_key_resolution_uses_canonical_open_router_api_key(
+    async def test_default_key_resolution_goes_through_the_store_not_house_env(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """OMN-15048: end-to-end, the DEFAULT (no test-override) key resolution
-        must pick up OPEN_ROUTER_API_KEY — the name every real deployment
-        surface (k8s manifests, docker-compose.judge.yml, ~/.omnibase/.env)
-        actually sets — and carry it through to the live HTTP call.
+        """OMN-17372: end-to-end, the DEFAULT key resolution goes through the
+        SECRET STORE, and the house env var alone authenticates nothing.
+
+        ASSERTION INVERTED at the case it replaces. This previously required
+        the default path to pick up ``OPEN_ROUTER_API_KEY``, passed to the
+        resolver as a literal ``env_var_fallback``. That parameter is serviced
+        by ``os.environ`` AFTER the store lookup, so it bypassed the lane
+        secret mapping and kept this effect authenticating on OmniNode's own
+        OpenRouter account. OmniNode does not offer inference: the fallback is
+        deleted, so the house variable must now carry NO Authorization header,
+        while the ``llm.openrouter.api_key`` ref still resolves through the
+        store.
         """
         from omnimarket.nodes.node_swarm_fleet_discovery_effect.handlers.handler_swarm_fleet_discovery import (
             HandlerSwarmFleetDiscovery,
@@ -206,7 +214,9 @@ class TestDiscoveryChain:
         base_url = "https://openrouter.example/api/v1"
         monkeypatch.setenv("OPENROUTER_BASE_URL", base_url)
         monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
-        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-golden-chain-canonical-key")
+        # The deleted house fallback. Set on its own it must authenticate
+        # nothing; the store-resolved name is set further down.
+        monkeypatch.setenv("OPEN_ROUTER_API_KEY", "sk-house-underscore-key")
 
         captured_headers: dict[str, str] = {}
 
@@ -226,7 +236,16 @@ class TestDiscoveryChain:
 
         await handler.handle(req)
 
-        assert (
-            captured_headers.get("Authorization")
-            == "Bearer sk-golden-chain-canonical-key"
+        assert captured_headers.get("Authorization") is None, (
+            "OPEN_ROUTER_API_KEY still produced an Authorization header — the "
+            "house env-var fallback deleted by OMN-17372 has come back"
         )
+
+        # The surviving path: the ref resolves through the store, which on a
+        # local install maps it onto the provider-native name.
+        captured_headers.clear()
+        monkeypatch.setenv("OPENROUTER_API_KEY", "sk-store-resolved-key")
+        store_handler = HandlerSwarmFleetDiscovery(http_get_fn=_capture)
+        await store_handler.handle(req)
+
+        assert captured_headers.get("Authorization") == "Bearer sk-store-resolved-key"

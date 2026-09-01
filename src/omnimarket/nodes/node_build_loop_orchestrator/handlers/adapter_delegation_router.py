@@ -96,6 +96,24 @@ _TASK_TYPE_CODE_GENERATION = "code_generation"
 _TASK_TYPE_CLASSIFICATION = "classification"
 
 
+def _resolved_secret(secret_ref: str) -> str:
+    """Return a credential VALUE for ``secret_ref``, or "" when unresolvable.
+
+    OMN-17372. Every credential on this boundary resolves through the secret
+    store, never straight out of the process environment. ``required=False``
+    keeps the caller's existing "unset means skip this tier" behaviour: a tier
+    whose key does not resolve is simply not configured, exactly as before.
+
+    ``resolve_api_key_loop_safe`` is used because ``build_endpoint_configs`` is
+    a sync function reached from both sync callers and code already inside a
+    running event loop; the sync resolver fails closed in the latter.
+    """
+    from omnimarket.inference.secret_store_resolver import resolve_api_key_loop_safe
+
+    resolved = resolve_api_key_loop_safe(secret_ref, required=False)
+    return resolved.get_secret_value() if resolved else ""
+
+
 def _gemini_cli_available() -> bool:
     """Return True if the `gemini` CLI binary is available on PATH."""
     import shutil
@@ -251,8 +269,16 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
 
     configs: dict[EnumModelTier, ModelEndpointConfig] = {}
 
-    # Frontier GLM (primary code gen) — reads LLM_GLM_* from env.
-    glm_key = os.environ.get("LLM_GLM_API_KEY", "")
+    # Frontier GLM (primary code gen) — endpoint/model from env, CREDENTIAL
+    # from the secret store.
+    # OMN-17372: the key was a bare ``os.environ.get("LLM_GLM_API_KEY")``. That
+    # is a raw ambient house credential: no store in the path, so it honoured
+    # neither the lane secret mapping nor any per-tenant scoping. Resolving the
+    # ``llm.glm.api_key`` ref instead keeps a developer's own key working
+    # locally (the local store maps that ref onto the same variable) while a
+    # deployed lane now resolves it through the lane mapping, where the house
+    # entry was deleted.
+    glm_key = _resolved_secret("llm.glm.api_key")
     glm_url = os.environ.get("LLM_GLM_URL", "")  # contract-config-ok: config  # fmt: skip
     glm_model = os.environ.get("LLM_GLM_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
     if glm_key:
@@ -269,7 +295,7 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
         logger.info("GLM endpoint configured: %s (model=%s)", glm_url, glm_model)
 
     # Frontier review — explicit served model ID required.
-    glm_review_key = os.environ.get("LLM_GLM_API_KEY", "")
+    glm_review_key = _resolved_secret("llm.glm.api_key")  # OMN-17372: store, not env
     glm_review_url = os.environ.get("LLM_GLM_URL", "")  # contract-config-ok: config  # fmt: skip
     glm_review_model = os.environ.get("LLM_GLM_REVIEW_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
     if glm_review_key:
@@ -340,7 +366,12 @@ def build_endpoint_configs() -> dict[EnumModelTier, ModelEndpointConfig]:
     # Gemini CLI — preferred for architecture/multi-file tasks; repo-aware via SSO
     # Auth: GEMINI_API_KEY or GOOGLE_API_KEY (both same value per ticket description)
     # Availability: requires `gemini` CLI binary on PATH
-    gemini_key = os.environ.get("GEMINI_API_KEY", "") or os.environ.get("GOOGLE_API_KEY", "")  # contract-config-ok: config  # fmt: skip
+    # OMN-17372: was ``os.environ.get("GEMINI_API_KEY") or
+    # os.environ.get("GOOGLE_API_KEY")`` — raw ambient house credentials read
+    # with no store in the path. The ``llm.gemini.api_key`` ref resolves a
+    # developer's own key locally and the tenant's on a lane; the house entry
+    # it used to find on a deployed lane is gone.
+    gemini_key = _resolved_secret("llm.gemini.api_key")
     gemini_cli_model = os.environ.get("GEMINI_CLI_MODEL_NAME", "")  # contract-config-ok: config  # fmt: skip
     if gemini_key and _gemini_cli_available():
         _add_endpoint_config(

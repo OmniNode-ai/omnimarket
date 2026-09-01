@@ -342,7 +342,17 @@ async def _call_glm(
     )
 
     base_url = os.environ.get("LLM_GLM_URL", "").strip()
-    api_key = os.environ.get("LLM_GLM_API_KEY", "").strip()
+    # OMN-17372: the GLM key resolves from its secret ref through the store,
+    # never straight out of the process environment. Locally the store still
+    # maps this ref onto the developer's own LLM_GLM_API_KEY, so this
+    # harness behaves exactly as before; on a lane it resolves through the
+    # lane mapping, where the house entry was deleted.
+    from omnimarket.inference.secret_store_resolver import (
+        resolve_api_key_loop_safe,
+    )
+
+    _glm_secret = resolve_api_key_loop_safe("llm.glm.api_key", required=False)
+    api_key = _glm_secret.get_secret_value().strip() if _glm_secret else ""
     model_name = os.environ.get("LLM_GLM_MODEL_NAME", "").strip()
     if not base_url or not api_key:
         return None

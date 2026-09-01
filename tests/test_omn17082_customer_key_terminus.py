@@ -373,8 +373,19 @@ def test_no_house_credential_is_reachable_on_the_customer_path() -> None:
     house_refs = house_credential_refs(routing._load_bifrost_endpoints())
     # The fixture is only meaningful if the shipped contract actually declares
     # house credentials to leak.
+    #
+    # OMN-17372: the companion assertion `"LLM_GLM_API_KEY" in house_refs` was
+    # REMOVED, not relaxed. It asserted the shipped config still declared a
+    # house credential by ENV-VAR NAME, via `api_key_env` — and that field has
+    # since been deleted from every backend in `bifrost_delegation.yaml`,
+    # because it let a keyless customer's delegation authenticate on OmniNode's
+    # own provider account. The precondition it guarded is unweakened: the
+    # shipped ladder still declares house credentials by `secret_ref`, which
+    # the surviving assertion checks, and that is what makes the planted-key
+    # fixture below genuinely able to execute customer work if the terminus
+    # leaked. `house_credential_refs` still scans `api_key_env` as
+    # defence-in-depth, so a re-added field would be caught here too.
     assert "llm.glm.api_key" in house_refs
-    assert "LLM_GLM_API_KEY" in house_refs
 
     # Every ``use_for`` task class declared anywhere in the shipped ladder.
     declared_task_types: set[str] = {"code_generation"}
