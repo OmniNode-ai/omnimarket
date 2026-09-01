@@ -4922,7 +4922,8 @@
     {
       "accessor_nodes": [
         "node_projection_delegation",
-        "node_projection_tenant_registry"
+        "node_projection_tenant_registry",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_tenant_registry/migrations/0000_create_tenant_registry_mirror.sql"
@@ -4932,6 +4933,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_delegation/contract.yaml",
         "src/omnimarket/nodes/node_projection_tenant_registry/contract.yaml"
       ],
@@ -4945,7 +4947,9 @@
         "OMNIDASH_ANALYTICS_DB_URL"
       ],
       "foreign_keys": [],
-      "grants": [],
+      "grants": [
+        "SELECT, INSERT, UPDATE TO omninode_runtime"
+      ],
       "indexes": [
         "idx_tenant_registry_mirror_observed_at",
         "uq_tenant_registry_mirror_tenant_uuid"
@@ -4968,11 +4972,13 @@
       "partitioning": [],
       "producer": "node_projection_tenant_registry",
       "readers": [
-        "node_projection_delegation"
+        "node_projection_delegation",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_tenant_registry"
+        "node_projection_tenant_registry",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
