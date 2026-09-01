@@ -249,6 +249,111 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_consumer_flow/migrations/0000_create_consumer_flow_windows.sql
       access: read_write
       role: topic_produce_projection_table
+    # OMN-17440: register this repository as the CATALOG owner of the thirteen
+    # physical relations whose topology-declared `omninode_runtime` TABLE grants
+    # that ticket delivers, for exactly the reason the session_replay_snapshots
+    # (OMN-16993) and tenant_registry_mirror (OMN-17374) entries above exist --
+    # the OMN-15361 SQL ownership gate
+    # (`omnibase_infra/scripts/ci/check_application_database_sql.py`) requires
+    # exactly one ownership declaration for every application relation a CHANGED
+    # deployable SQL file targets, and it resolves those from service manifests
+    # only, never from a node's own contract.yaml.
+    #
+    # Every entry restates the `schema: omninode_internal` its owning node's
+    # contract.yaml already declares. A `schema: public` restatement of the
+    # PHYSICAL location is rejected by
+    # scripts/generate_application_relation_inventory.py as a conflicting-schema
+    # declaration -- the same trap both entries above document. Physically these
+    # tables still live bare in `public` until the governed OMN-15359 cutover,
+    # which is why the grant migrations name `public.<relation>` and the
+    # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 bridge resolves the two.
+    #
+    # `access: read_write` matches each contract's declared `access: write` plus
+    # the SELECT PostgreSQL requires alongside INSERT/UPDATE for the adapter's
+    # `INSERT ... ON CONFLICT DO UPDATE`. It is not a widening: it is what the
+    # topology already declares for this principal, which is the very thing the
+    # grant migrations deliver. Zero behavior change here; this only satisfies
+    # the ownership gate so omnibase_infra can vendor OMN-17440's grant files.
+    # `migration:` points at the file that CREATES each relation, per the
+    # convention both entries above follow.
+    - name: contract_registry
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_contract_registry/migrations/0000_create_contract_registry.sql
+      access: read_write
+      role: contract_registry_projection_table
+    - name: merge_state_transitions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_merge_state_projection/migrations/0001_create_merge_state_transitions.sql
+      access: read_write
+      role: merge_state_projection_table
+    - name: gate_activity
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_omnigate_projection/migrations/0000_create_gate_projection_tables.sql
+      access: read_write
+      role: gate_activity_projection_table
+    - name: gate_metrics
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_omnigate_projection/migrations/0000_create_gate_projection_tables.sql
+      access: read_write
+      role: gate_metrics_projection_table
+    - name: pr_lifecycle_ledger_entries
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_pr_lifecycle_state_reducer/migrations/0001_create_pr_lifecycle_ledger_entries.sql
+      access: read_write
+      role: pr_lifecycle_projection_table
+    - name: baselines_breakdown
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_baselines/migrations/0001_create_baselines_tables.sql
+      access: read_write
+      role: baselines_breakdown_projection_table
+    - name: baselines_comparisons
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_baselines/migrations/0001_create_baselines_tables.sql
+      access: read_write
+      role: baselines_comparisons_projection_table
+    - name: baselines_snapshots
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_baselines/migrations/0001_create_baselines_tables.sql
+      access: read_write
+      role: baselines_snapshots_projection_table
+    - name: baselines_trend
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_baselines/migrations/0001_create_baselines_tables.sql
+      access: read_write
+      role: baselines_trend_projection_table
+    - name: intent_classification_events
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_intent_classification/migrations/0000_create_intent_classification_events.sql
+      access: read_write
+      role: intent_classification_projection_table
+    - name: overnight_session_phases
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_overnight/migrations/0000_create_overnight_sessions_tables.sql
+      access: read_write
+      role: overnight_phases_projection_table
+    - name: overnight_sessions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_overnight/migrations/0000_create_overnight_sessions_tables.sql
+      access: read_write
+      role: overnight_sessions_projection_table
+    - name: receipt_gate_rows
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_receipt_gate/migrations/0000_create_receipt_gate_projection_table.sql
+      access: read_write
+      role: receipt_gate_projection_table
 
 relation_evidence:
   - name: consumer_flow_windows
