@@ -355,6 +355,84 @@ db_io:
       access: read_write
       role: receipt_gate_projection_table
 
+database_objects:
+  # OMN-17447: the OMN-15361 SQL ownership gate resolves changed deployable
+  # SEQUENCE grants against exact physical catalog identities. These sequences
+  # are PostgreSQL-owned objects created implicitly by the node table DDL above,
+  # but they physically exist in public until OMN-15359 moves their owning
+  # tables. The table rows stay logical; these object rows name the physical
+  # sequence identities targeted by the grant migrations.
+  - name: capability_scores_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: contract_registry_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: delegation_routing_tenant_overlay_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: merge_state_transitions_projection_cursor_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: gate_activity_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: pr_lifecycle_ledger_entries_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: dep_health_findings_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: TENANT
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: intent_classification_events_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: overnight_session_phases_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+  - name: receipt_gate_rows_id_seq
+    kind: sequence
+    database_ref: application
+    schema: public
+    domain: OMNINODE_INTERNAL
+    owner_declaration: service:omnimarket_projection_migration_runner
+    writers: []
+
 relation_evidence:
   - name: consumer_flow_windows
     kind: table

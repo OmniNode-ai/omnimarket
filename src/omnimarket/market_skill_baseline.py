@@ -599,7 +599,10 @@ def _smoke_aislop_sweep() -> ModelCommandResult:
         "--severity-threshold",
         "CRITICAL",
     ]
-    completed = _run_command(command=command, env={"OMNI_HOME": str(OMNI_HOME)})
+    with tempfile.TemporaryDirectory(prefix="market-skill-omni-home-") as tmp:
+        workspace = Path(tmp)
+        (workspace / "omnimarket").symlink_to(REPO_ROOT, target_is_directory=True)
+        completed = _run_command(command=command, env={"OMNI_HOME": str(workspace)})
     try:
         payload = _parse_json(completed.stdout)
     except (json.JSONDecodeError, ValueError) as exc:
