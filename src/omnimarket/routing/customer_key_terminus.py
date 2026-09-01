@@ -227,10 +227,18 @@ def house_credential_refs(backends: Mapping[str, object]) -> frozenset[str]:
     """Derive the set of platform credential names from resolved backends.
 
     Every ``api_key_ref`` and every ``api_key_env`` a platform backend
-    declares. Both, because ``api_key_env`` is a genuine ADDITIONAL fallback
-    the effect boundary resolves (OMN-13943) — a decision carrying only
-    ``api_key_env`` still executes on a house key, so treating it as
-    uncredentialed would reopen exactly this defect.
+    declares.
+
+    OMN-17372 DELETED ``api_key_env`` from every backend in the shipped
+    ``bifrost_delegation.yaml``, so in practice this now returns the dotted
+    ``secret_ref``/``api_key_ref`` names only. The ``api_key_env`` scan is
+    deliberately KEPT as defence-in-depth rather than removed with the field:
+    if one is ever re-added, it must still read as a house credential here.
+    Dropping the scan would mean a re-added field made a backend look
+    uncredentialed — which is precisely the defect this function exists to
+    catch. (A re-added field also fails
+    ``scripts/ci/check_backend_secret_discipline.py`` outright; this is the
+    second layer, not the first.)
 
     Derived, never hardcoded: a house-credentialed backend added to the
     bifrost contract is covered the day it lands.
