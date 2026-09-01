@@ -139,52 +139,115 @@ def test_201_host_is_designated_by_its_real_hostname() -> None:
     assert hosts["h201c"] == "gate-runner-201"
 
 
-def test_201_denies_no_repo_since_omn16989_closed() -> None:
-    """OMN-16989 recorded 15 "host-coupled" `omnibase_infra` failures and denied
-    the repo on `h201` because of them. Every one of those 15 was measured in
-    the `.201` **gate-runner container** -- a different execution environment
-    from the one this table addresses, which is the `.201` HOST over the
-    OMN-16991 remote leg (bundle transplant, `uv sync` in a fresh tree, the
-    wrapper's developer-shell PATH). Re-measured on the host over that real leg
-    the full `tests/unit/` selection is green, so the denial was pinning a
-    verdict from an environment the table never routes work to.
+def test_the_shipped_repo_denials_are_pinned() -> None:
+    """`h101` and `h105` DENY this repo; `h200`/`h201`/`h201c` deny nothing.
 
-    Denial is per-repo capacity policy, so lifting it is a reviewed table edit
-    plus a deliberate edit here -- the same two-step that guards a promotion."""
+    Denial is per-repo capacity policy, so both directions are a reviewed table
+    edit plus a deliberate edit here -- the same two-step that guards a mode
+    promotion.
+
+    WHY THE TWO MACS ARE DENIED, measured not precautionary: a real dispatch of
+    this repo's full suite to `h101` on 2026-09-01 ran 17,883 tests in 13m58s
+    and returned 12 HOST-COUPLED failures -- all 12 pass locally -- from ONE
+    root cause. `$OMNI_HOME` does not cross the ssh boundary, and two call sites
+    silently default to `Path.home()/"Code"/"omni_home"`: EVIDENCE_BASE_DIR in
+    handler_post_merge_sync.py, and the env `_smoke_aislop_sweep` passes in
+    market_skill_baseline.py. That path EXISTS on the lab Macs and is TCC-denied
+    to sshd, so 11 knowledge-sync tests raise PermissionError on `mkdir` and
+    test_market_skill_smokes gets non-JSON from a sweep that could not read a
+    workspace.
+
+    `prepush_dispatch.sh` treats a remote red as a genuine red and HARD-BLOCKS
+    the push -- correctly, since a red must never fall through to an override
+    grant. So an undenied row here would make this gate strictly WORSE than the
+    two-hostname literal it replaces: a guaranteed false red is worse than an
+    honest refusal. The capacity itself is proven (see the row notes); only this
+    repo's workspace coupling is not.
+
+    WHY `repos_denied` AND NOT `mode=disabled`: the denial is about THIS REPO,
+    not about the host's standing. `disabled` would also strip the row's
+    identity -- a valid identity -- and would stop it authorizing anything else.
+    This is the same column, and the same lift-when-proven path, OMN-16989 used
+    for `h201` in omnibase_infra.
+
+    `h201` denies nothing: OMN-16989's 15 "host-coupled" failures were all
+    measured in the `.201` gate-runner CONTAINER, a different environment from
+    the `.201` HOST this table routes to, and the denial was lifted after a
+    green run over the real remote leg.
+    """
     denied = {r[0]: r[10] for r in _rows()}
-    assert denied["h201"] == "-", (
-        "h201 must deny no repo: the OMN-16989 denial was lifted after a green "
-        "full tests/unit/ run on the host over the real remote leg"
+    assert denied == {
+        "h200": "-",
+        "h201": "-",
+        "h201c": "-",
+        "h101": "omnimarket",
+        "h105": "omnimarket",
+    }
+
+
+def test_a_denied_row_is_skipped_for_this_repo_but_kept_for_others(
+    table_repo: Path,
+) -> None:
+    """The denial has to bite on the REPO ARGUMENT, not on the row itself.
+
+    Two assertions in opposite directions, because a denial that skipped the row
+    unconditionally would be `disabled` wearing another column's name, and a
+    denial that never skipped anything would be a comment.
+    """
+    fit = "h200=2.09,h201=2.09,h101=0.20,h105=0.10"
+    mem = "h200=65536,h201=65536,h101=65536,h105=65536"
+    denied_out = _pick(
+        table_repo,
+        load=fit,
+        slot=_ALL_FREE,
+        uv=_GOOD_UV,
+        mem=mem,
+        repo_name="omnimarket",
     )
-    assert all(v == "-" for v in denied.values()), (
-        f"no row should deny a repo today; got {denied}"
+    assert "h101=repo-denied" in denied_out, denied_out
+    assert "h105=repo-denied" in denied_out, denied_out
+    assert "PICK=h101" not in denied_out, denied_out
+    assert "PICK=h105" not in denied_out, denied_out
+
+    other_out = _pick(
+        table_repo,
+        load=fit,
+        slot=_ALL_FREE,
+        uv=_GOOD_UV,
+        mem=mem,
+        repo_name="some-other-repo",
     )
+    assert "PICK=h105" in other_out, other_out
 
 
-def test_h105_is_authorizing_because_shadow_could_never_add_capacity() -> None:
-    """h105 (omnibook) is the only net-new host, and while it was `shadow` it
-    could not add a single unit of pre-push capacity -- by construction, not by
-    accident. A shadow row never authorizes, and the transplanted tree carries
-    this repo's own conftest guard, which refuses a full-suite target on any
-    host outside the authorizing set. So every heavy dispatch to a shadow h105
-    exited nonzero at `pytest_configure` and wrote a receipt whose
-    `pytest_exit != 0` is indistinguishable from a genuine red.
+def test_the_two_denied_macs_keep_their_proven_capacity_facts() -> None:
+    """Denying a host must not delete the evidence that the host WORKS.
 
-    Promotion is the fix, and it is a reviewed table edit plus a deliberate
-    edit here -- exactly the two-step this file exists to force."""
+    A row turned off with no record of why is indistinguishable from a row that
+    was never proven, and the next person re-runs every probe from scratch. The
+    note has to carry BOTH halves: the measured capacity and the measured
+    blocker. (Why they are denied at all is pinned in
+    test_the_shipped_repo_denials_are_pinned.)
+    """
+    notes = {r[0]: r[13] for r in _rows()}
     modes = {r[0]: r[11] for r in _rows()}
-    assert modes["h105"] == "authorizing"
-
-
-def test_h101_is_authorizing_because_shadow_could_never_add_capacity() -> None:
-    """h101 (stickybeatz) was the last row stuck `disabled` (uv 0.8.3, below
-    the 0.11.0 floor). OMN-17161 upgraded uv to 0.12.7 and re-probed
-    non-interactively; the same shadow-can-never-authorize reasoning as h105
-    applies, so promotion is proven by a real full-suite dispatch to h101
-    rather than a preceding shadow day (see OMN-16991's own SUPERSEDED DoD
-    item)."""
-    modes = {r[0]: r[11] for r in _rows()}
-    assert modes["h101"] == "authorizing"
+    for label in ("h101", "h105"):
+        assert modes[label] == "authorizing", (
+            f"{label} must keep its identity: the denial is per-repo capacity "
+            "policy, not a de-designation"
+        )
+        assert "PROVEN FOR OMNIMARKET" in notes[label], (
+            f"{label} lost the record of the capacity proof when it was denied"
+        )
+        assert "17,747" in notes[label], (
+            f"{label}'s note no longer carries the measured collection count"
+        )
+        assert "REPOS_DENIED=omnimarket" in notes[label], (
+            f"{label} is denied with no stated reason in its note"
+        )
+        assert "TCC-denied" in notes[label], (
+            f"{label}'s note does not name the measured root cause"
+        )
 
 
 def test_h101_hostname_is_what_hostname_s_actually_prints() -> None:
@@ -219,11 +282,23 @@ def test_101_workroot_avoids_the_tcc_protected_tree() -> None:
     workroot must live outside it -- the bundle design never needs `~/Code` on
     a remote host, which is what removes the out-of-band GUI grant step."""
     workroots = {r[0]: r[7] for r in _rows()}
-    tcc_denied_prefix = "/Users/jonah/Code"  # onex-allow-local-path OMN-17435 reason="the TCC-denied prefix this test asserts the workroot is NOT under; the literal is the thing being excluded, not a default"
+    # Both literals carry TWO annotations, in this order, because two
+    # independent gates scan the line and their grammars are incompatible:
+    #   * scripts/validation/check_leaked_literals.sh matches
+    #     `# onex-allow-local-path OMN-[0-9]+ reason="..."` anchored at the `#`,
+    #     so its marker must come FIRST;
+    #   * tests/unit/structure/test_no_hardcoded_literals.py matches
+    #     `#\s*(onex-allow-internal-ip|test-literal-ok)` -- it does not accept
+    #     `onex-allow-local-path` at all -- so it needs its own trailing `#`.
+    # Each literal is bound to a NAME on its own line so `ruff format` cannot
+    # move it away from the annotation that exempts it. That is not
+    # hypothetical: the first version of this test annotated an expression that
+    # the formatter then split, which passed the leak gate locally and went red
+    # only on the lab host, in the full suite.
+    tcc_denied_prefix = "/Users/jonah/Code"  # onex-allow-local-path OMN-17435 reason="the TCC-denied prefix this test asserts the workroot is NOT under; the literal is the thing being excluded, never a default"  # test-literal-ok: same, for the structural gate
+    shared_workroot = "/Users/Shared/onex-prepush"  # onex-allow-local-path OMN-17435 reason="the shared, TCC-free remote workroot the committed host table pins for this row"  # test-literal-ok: same, for the structural gate
     assert not workroots["h101"].startswith(tcc_denied_prefix)
-    assert (
-        workroots["h101"] == "/Users/Shared/onex-prepush"
-    )  # onex-allow-local-path OMN-17435 reason="the shared, TCC-free remote workroot the host table pins for this row"
+    assert workroots["h101"] == shared_workroot
 
 
 # =============================================================================
@@ -453,7 +528,11 @@ def _pick(
     slot: str,
     uv: str,
     mem: str = "",
-    repo_name: str = "omnibase_core",
+    # A repo name NO row denies, so the picker-mechanics tests below measure
+    # load/slot/uv/memory ranking and nothing else. This repo's own denial
+    # policy is exercised deliberately, by the two tests that pass
+    # `repo_name="omnimarket"`, rather than leaking into every ranking test.
+    repo_name: str = "picker-fixture-repo",
 ) -> str:
     body = (
         f'export PREPUSH_LOAD_OVERRIDE_MAP="{load}"\n'
@@ -563,13 +642,26 @@ def test_a_repo_denied_host_is_never_chosen(tmp_path: Path) -> None:
     assert "PICK=hb" in out, out
 
 
-def test_no_row_denies_a_repo_today_so_the_rule_needs_a_synthetic_fixture() -> None:
-    """Guards the fixture choice above: the moment a real row denies a repo
-    again, this fails and tells the next author they may pin the live table."""
+def test_the_synthetic_denial_fixture_is_still_the_right_shape() -> None:
+    """Guards the fixture choice above, INVERTED from its upstream form.
+
+    In omnibase_infra no shipped row denies a repo, so that assertion reads
+    "if a real row ever denies again, this fixture can be retired". Here two
+    rows DO deny (h101/h105 -- see test_the_shipped_repo_denials_are_pinned),
+    so the useful guard is the opposite one: the synthetic fixture must keep
+    testing the rule against a table this repo does NOT ship, so the rule stays
+    proven if and when the live denials are lifted.
+    """
     denied = {r[0]: r[10] for r in _rows()}
-    assert all(v == "-" for v in denied.values()), (
-        f"a row denies a repo again ({denied}) -- "
-        "test_a_repo_denied_host_is_never_chosen may pin the live table again"
+    live_denials = {k: v for k, v in denied.items() if v != "-"}
+    assert live_denials, (
+        "no shipped row denies a repo any more -- the live denials were lifted, "
+        "so update test_the_shipped_repo_denials_are_pinned and consider "
+        "whether the synthetic fixture is still the clearer proof"
+    )
+    assert "\tsomerepo\t" not in TABLE.read_text(encoding="utf-8"), (
+        "the synthetic fixture's sentinel repo name leaked into the shipped "
+        "table -- the two must stay independent"
     )
 
 
