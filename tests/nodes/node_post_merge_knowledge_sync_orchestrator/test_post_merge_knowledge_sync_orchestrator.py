@@ -48,6 +48,16 @@ REPO = "OmniNode-ai/omnimarket"
 COMMIT_SHA = "abc1234def5678"
 
 
+@pytest.fixture(autouse=True)
+def _sandbox_evidence_dir(tmp_path: Path) -> None:
+    evidence_dir = tmp_path / ".onex_state" / "knowledge-sync"
+    with patch(
+        "omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.handlers.handler_post_merge_sync.EVIDENCE_BASE_DIR",
+        evidence_dir,
+    ):
+        yield
+
+
 def _make_request(
     changed_files: list[str],
     pr_body: str = "",
