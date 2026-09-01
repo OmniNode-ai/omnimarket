@@ -801,6 +801,24 @@ selection_is_whole_suite() {
 # and remains guarded at its own call site further down (`guard_full_suite_host`
 # inside the `IS_FULL` branch); this early check does not replace that one, it
 # only covers the case where the answer is already known without a diff.
+# REPO_ROOT IS RESOLVED HERE, ABOVE THE EARLY CALL SITE, NOT BELOW IT
+# (OMN-17435). It used to be resolved after this block, which was harmless
+# while the guard only compared hostnames and ssh-probed load. It is not
+# harmless now: `guard_full_suite_host` reads the host table with
+# `git -C "$REPO_ROOT" show HEAD:...`, so under `set -u` an unset REPO_ROOT
+# makes that read fail -- and the read's failure is (correctly) FAIL-CLOSED, so
+# every `PREPUSH_FULL_SUITE=1` / `ENABLE_SMART_TESTS=off` escalation died with
+# "the host table could not be read from HEAD" on a machine whose table was
+# committed and clean. A refusal that names the wrong cause is worse than a
+# refusal, because it sends the reader to commit a file that is already
+# committed. Resolving the root first costs one `git rev-parse` and makes both
+# call sites -- this static one and the dynamic one in the IS_FULL branch --
+# read the same table the same way.
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
+  || die "not inside a git worktree" \
+         "run 'git push' from within the omnimarket repository"
+cd "$REPO_ROOT"
+
 case "${ENABLE_SMART_TESTS:-}" in
   false | False | FALSE | 0 | off | OFF) guard_full_suite_host ;;
 esac
@@ -831,11 +849,6 @@ if [ -n "${PYTHONPATH:-}" ]; then
   log "WARNING: ambient PYTHONPATH detected (${PYTHONPATH}) -- stripping it for this pre-push run (OMN-14420: an ambient PYTHONPATH can silently shadow this repo's pinned omnibase_* dependencies with a stale sibling clone). This hook always runs hermetically; see tests/conftest.py's hermetic-import guard for defense-in-depth on direct 'uv run pytest' invocations."
   unset PYTHONPATH
 fi
-
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)" \
-  || die "not inside a git worktree" \
-         "run 'git push' from within the omnimarket repository"
-cd "$REPO_ROOT"
 
 BASE_REF="${PREPUSH_BASE_REF:-origin/dev}"
 
