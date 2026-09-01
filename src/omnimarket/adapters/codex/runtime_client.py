@@ -1134,7 +1134,7 @@ def _valid_event_bus_topic_value(
     value: object,
     *,
     mapping_keys: tuple[str, ...],
-    required_mapping_keys: tuple[str, ...],
+    primary_mapping_keys: tuple[str, ...],
 ) -> bool:
     if isinstance(value, str):
         return bool(value.strip())
@@ -1142,7 +1142,7 @@ def _valid_event_bus_topic_value(
         return False
     return (
         set(value).issubset(mapping_keys)
-        and bool(set(value).intersection(required_mapping_keys))
+        and len(set(value).intersection(primary_mapping_keys)) == 1
         and all(
             isinstance(topic, str) and bool(topic.strip()) for topic in value.values()
         )
@@ -1200,7 +1200,7 @@ def _has_valid_contract_shapes(contract: dict[str, Any]) -> bool:
                 not isinstance(item, str) or not item.strip() for item in value
             ):
                 return False
-        for key, mapping_keys, required_mapping_keys in (
+        for key, mapping_keys, primary_mapping_keys in (
             (
                 "subscribe",
                 _EVENT_BUS_SUBSCRIBE_MAPPING_KEYS,
@@ -1216,7 +1216,7 @@ def _has_valid_contract_shapes(contract: dict[str, Any]) -> bool:
             if value is not None and not _valid_event_bus_topic_value(
                 value,
                 mapping_keys=mapping_keys,
-                required_mapping_keys=required_mapping_keys,
+                primary_mapping_keys=primary_mapping_keys,
             ):
                 return False
     runtime_dispatch = contract.get("runtime_dispatch")

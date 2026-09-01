@@ -2895,6 +2895,17 @@ def test_mapped_event_bus_contracts_resolve_for_compile_and_local_dispatch(
     assert route.terminal_topic == terminal_topic
 
 
+def test_scalar_event_bus_forms_remain_valid_contract_shapes() -> None:
+    assert runtime_client._has_valid_contract_shapes(
+        {
+            "event_bus": {
+                "subscribe": "onex.cmd.omnimarket.scalar-form.v1",
+                "publish": "onex.evt.omnimarket.scalar-form-completed.v1",
+            }
+        }
+    )
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     [
@@ -2906,6 +2917,24 @@ def test_mapped_event_bus_contracts_resolve_for_compile_and_local_dispatch(
         ("handler_routing", []),
         ("handler_routing", {"handlers": ["bad"]}),
         ("event_bus", {"subscribe_topics": [42]}),
+        (
+            "event_bus",
+            {
+                "subscribe": {
+                    "topic": "onex.cmd.omnimarket.first.v1",
+                    "command_topic": "onex.cmd.omnimarket.second.v1",
+                }
+            },
+        ),
+        (
+            "event_bus",
+            {
+                "publish": {
+                    "topic": "onex.evt.omnimarket.first-completed.v1",
+                    "success_topic": "onex.evt.omnimarket.second-completed.v1",
+                }
+            },
+        ),
         ("runtime_dispatch", {"terminal_events": {"success": 42}}),
         ("runtime_dispatch", {"command_topic": ["bad"]}),
         ("handler", {"module": ["bad"]}),
@@ -2941,6 +2970,24 @@ def test_contract_binding_rejects_non_mapping_dispatch_shapes(
         ("handler_routing", []),
         ("handler_routing", {"handlers": ["bad"]}),
         ("event_bus", {"subscribe_topics": [42]}),
+        (
+            "event_bus",
+            {
+                "subscribe": {
+                    "topic": "onex.cmd.omnimarket.first.v1",
+                    "command_topic": "onex.cmd.omnimarket.second.v1",
+                }
+            },
+        ),
+        (
+            "event_bus",
+            {
+                "publish": {
+                    "topic": "onex.evt.omnimarket.first-completed.v1",
+                    "success_topic": "onex.evt.omnimarket.second-completed.v1",
+                }
+            },
+        ),
         ("runtime_dispatch", {"terminal_events": {"success": 42}}),
         ("runtime_dispatch", {"command_topic": ["bad"]}),
         ("handler", {"module": ["bad"]}),
