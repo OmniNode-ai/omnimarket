@@ -54,6 +54,18 @@ from omnibase_core.models.delegation.wire import (
 )
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.primitives.model_semver import ModelSemVer
+
+# OMN-17397: the typed terminal omnibase_infra's auto-wired consume boundary
+# publishes when it fails a record for good (OMN-16812,
+# handler_wiring._emit_boundary_failure_terminal). Imported rather than
+# re-declared locally: it is the WIRE contract between the boundary that emits
+# it and this FSM, and a repo-local copy of the shape is precisely the drift
+# that would let a field rename re-open the stall silently. omnimarket already
+# depends on omnibase-infra (>=0.38.15), which is a downward dependency under
+# the compat -> core -> spi -> infra layering.
+from omnibase_infra.runtime.boundary_failure_terminal import (
+    ModelBoundaryFailureTerminal,
+)
 from pydantic import BaseModel
 
 from omnimarket.config import get_settings
@@ -346,7 +358,31 @@ _PER_STEP_DISPATCH: dict[type, str] = {
     ModelInferenceResponseData: "handle_inference_response",
     ModelQualityGateResult: "handle_gate_result",
     ModelAgentTaskLifecycleEvent: "handle_agent_task_lifecycle",
+    # OMN-17397: the routing leg's FAILURE answer. Without an entry here
+    # ``handle`` fails closed with ValueError, which at the consume boundary is
+    # just a second raise -- the record would be DLQ'd again and the caller
+    # would still never be told.
+    ModelBoundaryFailureTerminal: "handle_routing_failure_terminal",
 }
+
+# OMN-17397: the states in which this workflow is genuinely WAITING on a routing
+# decision, and therefore the only states in which a routing-leg failure
+# terminal is a verdict about this workflow rather than a stale or misordered
+# record. ``RECEIVED`` is the initial dispatch (the staging incident's shape);
+# ``ROUTED`` with ``routing_decision`` reset to None is every escalation /
+# retry-local re-entry waiting on a fresh decision. Both have a declared
+# ``-> FAILED`` edge in the contract FSM.
+_ROUTING_FAILURE_TERMINALIZABLE_STATES: frozenset[EnumDelegationState] = frozenset(
+    {EnumDelegationState.RECEIVED, EnumDelegationState.ROUTED}
+)
+
+# OMN-17397: read from the contract FSM, never hand-listed — the same single
+# source of truth ``_DECLARED_TRANSITIONS`` projects. A parallel literal set
+# here would be free to disagree with the contract about what "already
+# answered" means, which is the disagreement a double terminal is made of.
+_TERMINAL_STATES: frozenset[EnumDelegationState] = frozenset(
+    EnumDelegationState(state) for state in _FSM_SUBCONTRACT.terminal_states
+)
 
 
 # OMN-14771 (S8 PR1): the typed def-B input union — exactly the six
@@ -362,6 +398,7 @@ type DelegationWorkflowInput = (
     | ModelInferenceResponseData
     | ModelQualityGateResult
     | ModelAgentTaskLifecycleEvent
+    | ModelBoundaryFailureTerminal
 )
 
 
@@ -1272,6 +1309,162 @@ class HandlerDelegationWorkflow:
                 tenant_id=_resolve_tenant_id(workflow),
             )
         ]
+
+    def handle_routing_failure_terminal(
+        self,
+        terminal: ModelBoundaryFailureTerminal,
+    ) -> list[BaseModel]:
+        """Terminalize a workflow whose routing leg died at the consume boundary.
+
+        OMN-17397. OMN-16812 made ``omnibase_infra``'s auto-wired consume
+        boundary answer a handler failure it is about to ACK: it publishes a
+        correlation-exact :class:`ModelBoundaryFailureTerminal` onto the failing
+        contract's own declared failure terminal. For the routing reducer that
+        is ``routing-decision-failed.v1`` — and, until this method existed, that
+        topic had a publisher and no subscriber anywhere in the platform. The
+        record was DLQ'd safely and this FSM stayed in ``RECEIVED`` forever, so
+        ``delegation-failed.v1`` was never published and ``onex-api``'s
+        ``workflow_terminal_consumer`` — the sole writer of
+        ``gateway_workflows.status`` — never fired. Live on staging (run
+        ``33443670050``, correlation ``e317122c-…``): a
+        ``ProtocolConfigurationError`` / ``ONEX_CORE_041_INVALID_CONFIGURATION``
+        was known one second after submission, and thirty minutes later the row
+        still read ``status=published, completed_at=NULL``.
+
+        The DLQ routing is unchanged and still owns the RECORD. This owns the
+        CALLER, and the two are not alternatives: the boundary parks the message
+        so it can be replayed, and this closes the workflow so nobody waits on a
+        replay that may never happen.
+
+        **Idempotent by correlation id, in three explicit refusals**, because a
+        double terminal for one correlation would double-write the delegation
+        projection and re-close an already-closed gateway row:
+
+        1. *No workflow* — this orchestrator never accepted the correlation (or
+           already dropped it). Minting a terminal would fabricate a delegation
+           row for a workflow that does not exist here.
+        2. *Already terminal* — Kafka is at-least-once and the boundary's own
+           DLQ leg can redeliver. The second delivery is a no-op.
+        3. *Not awaiting a routing decision* — the workflow has a live routing
+           decision and its outcome now belongs to the inference / quality legs.
+           A routing failure arriving then is stale or misordered, and acting on
+           it would race the live path into a second terminal.
+
+        Refusals (1) and (3) are logged, never silent: a terminal that reaches
+        this handler and produces nothing is exactly the shape that must stay
+        visible if it ever starts happening.
+        """
+        cid = terminal.correlation_id
+        workflow = self._workflows.get(cid)
+        if workflow is None:
+            _logger.warning(
+                "metric_name=routing_failure_terminal_unmatched correlation_id=%s "
+                "failure_class=%s origin_topic=%s",
+                cid,
+                terminal.failure_class,
+                terminal.origin_topic,
+            )
+            return []
+
+        if workflow.state in _TERMINAL_STATES:
+            # Redelivery of a terminal already acted on. Silent by design: the
+            # first delivery emitted the terminal and is the record of it.
+            return []
+
+        awaiting_routing_decision = (
+            workflow.state in _ROUTING_FAILURE_TERMINALIZABLE_STATES
+            and workflow.routing_decision is None
+        )
+        if not awaiting_routing_decision:
+            _logger.error(
+                "metric_name=routing_failure_terminal_out_of_order "
+                "correlation_id=%s state=%s failure_class=%s",
+                cid,
+                workflow.state.value,
+                terminal.failure_class,
+            )
+            return []
+
+        # OMN-14208: wall-clock epoch subtraction — see started_at_ns docstring.
+        elapsed_ms = (time.time_ns() - workflow.started_at_ns) // 1_000_000
+        model_used, endpoint_url, content = self._terminal_failed_fields(workflow)
+        # The boundary already sanitized this string
+        # (``util_error_sanitization.sanitize_error_message``) before publishing
+        # it, and it is the ONLY place the originating class and ONEX code
+        # survive — ``MessageDispatchEngine.dispatch`` flattened the real
+        # exception into text long before the boundary saw it. Carrying it
+        # verbatim is what makes the caller's answer the configuration error
+        # instead of ``dispatch_timeout``.
+        failure_reason = terminal.failure_reason
+        # ``terminal_failure_reason`` is the MACHINE-readable half the
+        # projections group on, so it carries the class (+ ONEX code when the
+        # boundary recovered one) without the free-text tail.
+        terminal_failure_reason = (
+            f"{terminal.failure_class}: {terminal.failure_code}"
+            if terminal.failure_code is not None
+            else terminal.failure_class
+        )
+
+        terminal_inputs = TerminalEmissionInputs(
+            completed=False,
+            correlation_id=cid,
+            # The DTO requires a non-null task_type. A workflow whose request
+            # did not survive a state decode still has to produce a terminal —
+            # refusing to emit here would be this ticket's own defect — so the
+            # gap is named in the field rather than blocking the answer.
+            task_type=(
+                workflow.request.task_type
+                if workflow.request is not None
+                else "unknown"
+            ),
+            model_used=model_used,
+            endpoint_url=endpoint_url,
+            content=content,
+            quality_passed=False,
+            quality_score=0.0,
+            latency_ms=elapsed_ms,
+            # No inference ran: the routing leg died before a model was chosen.
+            # Zero here is the measured truth, not a placeholder.
+            prompt_tokens=0,
+            completion_tokens=0,
+            total_tokens=0,
+            fallback_to_claude=False,
+            failure_reason=failure_reason,
+            tokens_to_compliance=0,
+            compliance_attempts=workflow.compliance_attempts or 1,
+            cost_tier_name=workflow.current_tier_name or "",
+            premium_counterfactual=None,
+            escalation_count=workflow.escalation_count,
+            # Serialized the same way every other terminal site serializes it —
+            # the audit copy of the tiers already attempted, which a failure on
+            # a RE-ROUTE still has to carry.
+            escalation_history=tuple(
+                attempt.model_dump(mode="json")
+                for attempt in workflow.escalation_history
+            ),
+            terminal_failure_reason=terminal_failure_reason,
+            routing_tiers_hash=None,
+            escalation_config_hash=None,
+            attempts_count=workflow.compliance_attempts or 1,
+            model_name=model_used,
+            session_id=None,
+            tenant_id=_resolve_tenant_id(workflow),
+            quality_gates_checked=[],
+            quality_gates_failed=[],
+            llm_call_id="",
+            context_pack_hash=workflow.context_pack_hash,
+        )
+        self._advance(workflow, EnumDelegationState.FAILED)
+        _logger.error(
+            "metric_name=routing_failure_terminalized correlation_id=%s "
+            "failure_class=%s failure_code=%s retryable=%s origin_topic=%s",
+            cid,
+            terminal.failure_class,
+            terminal.failure_code,
+            terminal.retryable,
+            terminal.origin_topic,
+        )
+        return self._emit_terminal(terminal_inputs)
 
     def handle_inference_response(
         self,
