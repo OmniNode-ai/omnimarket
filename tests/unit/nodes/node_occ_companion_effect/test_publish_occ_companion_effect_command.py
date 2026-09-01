@@ -21,8 +21,10 @@ loudly), the Kafka key/topic shape, and the OMN-14639 fail-loud flush.
 
 from __future__ import annotations
 
+import base64
 import importlib.util
 import json
+import re
 import sys
 import types
 from pathlib import Path
@@ -115,10 +117,40 @@ class _FetchRecorder:
         self.payload = payload
         self.urls: list[str] = []
         self.tokens: list[str] = []
+        self._product_repo = "OmniNode-ai/omnimarket"
+        self._product_pr_number = 42
+
+    def _generated_provenance(self) -> dict[str, object]:
+        contract = (
+            f"check_value: gh api repos/{self._product_repo}/contents/x?ref={'a' * 40} "
+            f"--jq '.content' # pulls/{self._product_pr_number}\n"
+        )
+        receipt = f'pr_number: {self._product_pr_number}\ncommit_sha: "{"a" * 40}"\n'
+        return {
+            "contracts/test.yaml": contract,
+            "drift/dod_receipts/test/command.yaml": receipt,
+        }
 
     def __call__(self, url: str, token: str) -> object | None:
         self.urls.append(url)
         self.tokens.append(token)
+        if "/pulls?head=" in url:
+            match = re.search(
+                r"head=OmniNode-ai:auto/omninode-ai-(.+)-pr-(\d+)-occ-autobind",
+                url,
+            )
+            if match is not None:
+                self._product_repo = f"OmniNode-ai/{match.group(1)}"
+                self._product_pr_number = int(match.group(2))
+            return self.payload
+        if re.search(r"/pulls/\d+/files\?", url):
+            return [{"filename": path} for path in self._generated_provenance()]
+        if "/contents/" in url:
+            for path, content in self._generated_provenance().items():
+                if path in url:
+                    return {
+                        "content": base64.b64encode(content.encode()).decode(),
+                    }
         return self.payload
 
 
@@ -757,7 +789,7 @@ class TestSkipRequiresArtifactResolution:
             RUNNER_IS_TRUSTED="true",
         )
         runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
-        assert len(fetcher.urls) == 1
+        assert len(fetcher.urls) >= 1
         url = fetcher.urls[0]
         assert "OmniNode-ai/onex_change_control/pulls" in url
         # Live-verified: OCC#5793's headRefName for omniclaude#1969.
@@ -772,6 +804,113 @@ class TestSkipRequiresArtifactResolution:
             module.companion_branch("OmniNode-ai/omniclaude", 1969)  # type: ignore[attr-defined]
             == "auto/omninode-ai-omniclaude-pr-1969-occ-autobind"
         )
+
+
+@pytest.mark.unit
+class TestCompanionProvenanceBindsTheProductHead:
+    """A cited companion is evidence only for the exact head it generated."""
+
+    @staticmethod
+    def _provenance(head: str) -> dict[str, str]:
+        return {
+            "contracts/test.yaml": (
+                "check_value: gh api repos/OmniNode-ai/omnimarket/contents/x?ref="
+                f"{head} --jq '.content' # pulls/42\n"
+            ),
+            "drift/dod_receipts/test/command.yaml": (
+                f'pr_number: 42\ncommit_sha: "{head}"\n'
+            ),
+        }
+
+    def _run(
+        self,
+        *,
+        state: str,
+        merged_at: str | None,
+        provenance: dict[str, str],
+    ) -> tuple[object, _PublishRecorder, object]:
+        module = _load_publisher()
+        fetcher = _stub_resolution(
+            module,
+            [_companion_payload(number=8001, state=state, merged_at=merged_at)],
+        )
+        fetcher._generated_provenance = lambda: provenance  # type: ignore[method-assign]
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        result = CliRunner().invoke(
+            module.main,  # type: ignore[attr-defined]
+            ["--lane", "dev"],
+            env=_required_pr_env(
+                PR_BODY="Evidence-Source: OCC#8001\n", RUNNER_IS_TRUSTED="true"
+            ),
+        )
+        return result, recorder, fetcher
+
+    @pytest.mark.parametrize(
+        ("state", "merged_at"),
+        [("open", None), ("closed", "2026-09-01T22:30:00Z")],
+        ids=["open", "merged"],
+    )
+    def test_same_head_companion_skips_idempotently(
+        self, state: str, merged_at: str | None
+    ) -> None:
+        result, recorder, _fetcher = self._run(
+            state=state, merged_at=merged_at, provenance=self._provenance("a" * 40)
+        )
+        assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
+        assert "skipped_bound_to: OCC#8001" in result.output  # type: ignore[attr-defined]
+        assert recorder.brokers == []
+
+    def test_stale_open_companion_republishes_existing_effect(self) -> None:
+        result, recorder, _fetcher = self._run(
+            state="open", merged_at=None, provenance=self._provenance("b" * 40)
+        )
+        assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
+        assert (
+            "publish_reason: cited_open_companion_stale_product_head" in result.output
+        )  # type: ignore[attr-defined]
+        assert recorder.brokers != []
+
+    def test_stale_merged_companion_fails_closed_for_supersession(self) -> None:
+        result, recorder, _fetcher = self._run(
+            state="closed",
+            merged_at="2026-09-01T22:30:00Z",
+            provenance=self._provenance("b" * 40),
+        )
+        assert result.exit_code == 1, result.output  # type: ignore[attr-defined]
+        assert (
+            "publish_declined: cited_merged_companion_stale_product_head"
+            in result.output
+        )  # type: ignore[attr-defined]
+        assert recorder.brokers == []
+
+    @pytest.mark.parametrize(
+        ("label", "provenance", "reason"),
+        [
+            ("missing", {}, "binding_missing_artifacts"),
+            (
+                "unparseable",
+                {
+                    "contracts/test.yaml": (
+                        "check_value: repos/OmniNode-ai/omnimarket/pulls/42 has no ref\n"
+                    ),
+                    "drift/dod_receipts/test/command.yaml": (
+                        f'pr_number: 42\ncommit_sha: "{"a" * 40}"\n'
+                    ),
+                },
+                "binding_unparseable_contract",
+            ),
+        ],
+    )
+    def test_missing_or_unparseable_binding_fails_closed(
+        self, label: str, provenance: dict[str, str], reason: str
+    ) -> None:
+        result, recorder, _fetcher = self._run(
+            state="open", merged_at=None, provenance=provenance
+        )
+        assert result.exit_code == 1, f"{label}: {result.output}"  # type: ignore[attr-defined]
+        assert f"publish_declined: {reason}" in result.output  # type: ignore[attr-defined]
+        assert recorder.brokers == []
 
 
 @pytest.mark.unit

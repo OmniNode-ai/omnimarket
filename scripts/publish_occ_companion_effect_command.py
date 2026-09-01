@@ -46,7 +46,11 @@
 #   3. RESOLVE that citation against the live onex_change_control companion set
 #      for this exact product PR. Skip only when it resolves to an OPEN or
 #      MERGED companion on this PR's deterministic ``auto/...-occ-autobind``
-#      branch.
+#      branch AND its generated contract plus product receipt bind the current
+#      product head. An OPEN stale companion is refreshed through the existing
+#      deterministic effect path; a MERGED, missing, or unparseable binding
+#      fails closed because immutable evidence requires append-only
+#      supersession.
 #
 # Every other outcome PUBLISHES, including every indeterminate one (API error,
 # rate limit, malformed JSON, unparsable stamp, empty PR_BODY). The asymmetry
@@ -104,6 +108,7 @@
 
 from __future__ import annotations
 
+import base64
 import http.client
 import importlib.util
 import json
@@ -111,6 +116,7 @@ import os
 import re
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 from collections.abc import Callable
@@ -348,21 +354,129 @@ class Resolution(NamedTuple):
     """Outcome of resolving a citation against the live OCC companion set.
 
     ``bound`` is True ONLY when the citation names an OPEN or MERGED companion
-    on this product PR's deterministic branch. Every other outcome — including
-    every indeterminate one — is ``bound=False`` with a ``reason`` naming why,
-    and every ``bound=False`` publishes.
+    on this product PR's deterministic branch whose generated contract and
+    product receipt bind the exact product head. ``fail_closed`` distinguishes
+    unsafe evidence (missing, malformed, or stale merged provenance) from a
+    safe refresh of an OPEN stale bot companion.
     """
 
     bound: bool
     reason: str
     occ_pr_number: int | None
+    fail_closed: bool = False
 
 
 class _Companion(NamedTuple):
     number: int
     open_or_merged: bool
     merged: bool
+    head_sha: str
     shas: tuple[str, ...]
+
+
+_FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
+_CONTRACT_REF_RE = re.compile(r"[?&]ref=([0-9a-f]{40})(?:\b|[&\"'])", re.IGNORECASE)
+_RECEIPT_COMMIT_SHA_RE = re.compile(
+    r'^commit_sha:\s*["\']?([0-9a-f]{40})["\']?\s*$', re.IGNORECASE | re.MULTILINE
+)
+_RECEIPT_PR_NUMBER_RE = re.compile(r"^pr_number:\s*(\d+)\s*$", re.MULTILINE)
+
+
+def _decode_github_content(payload: object) -> str | None:
+    """Decode one GitHub contents response, rejecting every ambiguous shape."""
+    if not isinstance(payload, dict):
+        return None
+    encoded = payload.get("content")
+    if not isinstance(encoded, str):
+        return None
+    try:
+        return base64.b64decode(encoded, validate=False).decode("utf-8")
+    except (UnicodeDecodeError, ValueError):
+        return None
+
+
+def _companion_product_head_binding(
+    companion: _Companion,
+    *,
+    repo: str,
+    pr_number: int,
+    product_head_sha: str,
+    token: str,
+    fetch: Callable[[str, str], object | None],
+) -> str:
+    """Classify generated OCC provenance for one cited companion.
+
+    The companion's branch identifies a product PR but does not identify the
+    product *revision*.  Only the generated contract probe and the matching
+    product receipt do that.  Both must parse and bind the exact event head;
+    a missing or malformed artifact is deliberately not treated as historical
+    evidence that happens to be good enough.
+    """
+    if not _FULL_SHA_RE.fullmatch(product_head_sha):
+        return "product_head_invalid"
+
+    files_url = (
+        f"{_GITHUB_API}/repos/{_OCC_REPO}/pulls/{companion.number}/files?per_page=100"
+    )
+    files_payload = fetch(files_url, token)
+    if not isinstance(files_payload, list):
+        return "binding_unparseable_files"
+    filenames: list[str] = []
+    for item in files_payload:
+        filename = item.get("filename") if isinstance(item, dict) else None
+        if not isinstance(filename, str):
+            return "binding_unparseable_files"
+        filenames.append(filename)
+
+    contract_paths = [
+        path
+        for path in filenames
+        if path.startswith("contracts/") and path.endswith(".yaml")
+    ]
+    receipt_paths = [
+        path
+        for path in filenames
+        if path.startswith("drift/dod_receipts/") and path.endswith(".yaml")
+    ]
+    if not contract_paths or not receipt_paths:
+        return "binding_missing_artifacts"
+
+    contract_heads: list[str] = []
+    matching_receipt_heads: list[str] = []
+    for path in [*contract_paths, *receipt_paths]:
+        content_url = (
+            f"{_GITHUB_API}/repos/{_OCC_REPO}/contents/"
+            f"{urllib.parse.quote(path, safe='/')}?ref={companion.head_sha}"
+        )
+        content = _decode_github_content(fetch(content_url, token))
+        if content is None:
+            return "binding_unparseable_content"
+        if path.startswith("contracts/"):
+            # A contract probe must name this product PR before its ref can be
+            # considered provenance for it; an unrelated ref is not evidence.
+            if repo in content and f"pulls/{pr_number}" in content:
+                refs = _CONTRACT_REF_RE.findall(content)
+                if not refs:
+                    return "binding_unparseable_contract"
+                contract_heads.extend(ref.lower() for ref in refs)
+            continue
+
+        receipt_pr = _RECEIPT_PR_NUMBER_RE.search(content)
+        if receipt_pr is None or int(receipt_pr.group(1)) != pr_number:
+            continue
+        receipt_sha = _RECEIPT_COMMIT_SHA_RE.search(content)
+        if receipt_sha is None:
+            return "binding_unparseable_receipt"
+        matching_receipt_heads.append(receipt_sha.group(1).lower())
+
+    if not contract_heads or not matching_receipt_heads:
+        return "binding_missing_product_provenance"
+    normalized_head = product_head_sha.lower()
+    if all(
+        head == normalized_head for head in [*contract_heads, *matching_receipt_heads]
+    ):
+        return "binding_matches_product_head"
+    return "binding_stale_product_head"
 
 
 def _github_get_json(url: str, token: str) -> object | None:
@@ -408,6 +522,8 @@ def _parse_companions(payload: object) -> tuple[_Companion, ...] | None:
         merged = bool(item.get("merged_at"))
         head = item.get("head")
         head_sha = head.get("sha") if isinstance(head, dict) else None
+        if not isinstance(head_sha, str) or not _FULL_SHA_RE.fullmatch(head_sha):
+            return None
         merge_sha = item.get("merge_commit_sha")
         shas = tuple(
             value.lower()
@@ -419,6 +535,7 @@ def _parse_companions(payload: object) -> tuple[_Companion, ...] | None:
                 number=number,
                 open_or_merged=(state.lower() == "open") or merged,
                 merged=merged,
+                head_sha=head_sha.lower(),
                 shas=shas,
             )
         )
@@ -429,6 +546,7 @@ def resolve_citation(
     citation: Citation,
     repo: str,
     pr_number: int,
+    product_head_sha: str,
     token: str = "",
     fetch: Callable[[str, str], object | None] | None = None,
 ) -> Resolution:
@@ -441,9 +559,10 @@ def resolve_citation(
     product PR is simply not in the returned set. A body that quotes some other
     PR's ``OCC#<n>`` therefore resolves to nothing and publishes.
 
-    Fail-closed toward publishing (AC3): transport error, non-200, rate limit,
-    malformed payload — every one returns ``bound=False``. The publisher never
-    suppresses a mint on an answer it could not obtain.
+    A missing companion or a closed-unmerged companion remains eligible for a
+    fresh deterministic effect. A cited open/merged companion must additionally
+    prove its generated provenance binds ``product_head_sha``; without that
+    proof the publisher never silently skips.
     """
     fetcher = fetch if fetch is not None else _github_get_json
     owner = _OCC_REPO.split("/")[0]
@@ -467,7 +586,32 @@ def resolve_citation(
             if companion.number != cited:
                 continue
             if companion.open_or_merged:
-                return Resolution(True, "cited_companion_open_or_merged", cited)
+                binding = _companion_product_head_binding(
+                    companion,
+                    repo=repo,
+                    pr_number=pr_number,
+                    product_head_sha=product_head_sha,
+                    token=token,
+                    fetch=fetcher,
+                )
+                if binding == "binding_matches_product_head":
+                    return Resolution(
+                        True, "cited_companion_open_or_merged_same_head", cited
+                    )
+                if binding == "binding_stale_product_head":
+                    if companion.merged:
+                        return Resolution(
+                            False,
+                            "cited_merged_companion_stale_product_head",
+                            cited,
+                            fail_closed=True,
+                        )
+                    # An OPEN bot-owned companion is safe to refresh only by
+                    # republishing the existing deterministic effect command.
+                    return Resolution(
+                        False, "cited_open_companion_stale_product_head", cited
+                    )
+                return Resolution(False, binding, cited, fail_closed=True)
             # The OMN-15214 incident state: a companion CLOSED without merging
             # is destroyed evidence, not a binding. Re-mint.
             return Resolution(False, "cited_companion_closed_unmerged", None)
@@ -482,9 +626,28 @@ def resolve_citation(
         if not companion.merged:
             continue
         if any(sha.startswith(citation.value) for sha in companion.shas):
-            return Resolution(
-                True, "cited_sha_is_a_merged_companion_of_this_pr", companion.number
+            binding = _companion_product_head_binding(
+                companion,
+                repo=repo,
+                pr_number=pr_number,
+                product_head_sha=product_head_sha,
+                token=token,
+                fetch=fetcher,
             )
+            if binding == "binding_matches_product_head":
+                return Resolution(
+                    True,
+                    "cited_sha_is_a_merged_companion_of_this_pr_same_head",
+                    companion.number,
+                )
+            if binding == "binding_stale_product_head":
+                return Resolution(
+                    False,
+                    "cited_merged_companion_stale_product_head",
+                    companion.number,
+                    fail_closed=True,
+                )
+            return Resolution(False, binding, companion.number, fail_closed=True)
     return Resolution(False, "sha_is_not_a_merged_companion_of_this_pr", None)
 
 
@@ -664,10 +827,25 @@ def main(dry_run: bool, lane: str | None) -> None:
             citation,
             repo=repo,
             pr_number=pr_number,
+            product_head_sha=pr_head_sha,
             token=(
                 os.environ.get("GH_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "")
             ).strip(),
         )
+    if resolution.fail_closed:
+        # A cited companion with absent, ambiguous, or stale generated
+        # provenance is not evidence for this head.  An OPEN companion can be
+        # refreshed through the normal effect path, but a MERGED companion is
+        # immutable append-only evidence and must be superseded explicitly.
+        click.echo(f"publish_declined: {resolution.reason}")
+        click.echo(
+            f"ERROR: {repo}#{pr_number} cites OCC#{resolution.occ_pr_number}, but "
+            f"its generated provenance is not valid for product head {pr_head_sha}. "
+            "Refusing to suppress or replay the publisher; create an append-only "
+            "superseding companion when the cited evidence is merged.",
+            err=True,
+        )
+        sys.exit(1)
     if resolution.bound:
         # AC7: the machine-readable verdict names the RESOLVED companion. A
         # skip that cannot name one is the vacuous-SUCCESS shape itself.
