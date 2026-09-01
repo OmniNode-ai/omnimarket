@@ -38,6 +38,8 @@ from omnimarket.adapters.codex.runtime_client import (
     ModelDispatchBusTerminalResult,
     ModelNodeContractBinding,
     ModelRuntimeObservation,
+    _completed_topic,
+    _first_topic,
     _has_valid_contract_shapes,
     _node_contract_binding,
     default_response_topic,
@@ -547,17 +549,13 @@ def _resolve_node_route(command_name: str) -> _NodeRoute:
     input_model = _input_model_spec(contract, node_name=node_name)
     handler = _handler_spec(contract)
 
-    command_topic = str(
-        runtime_dispatch.get("command_topic")
-        or _first_topic(
-            event_bus.get("subscribe_topics"),
-            event_bus.get("subscribe"),
-            contract.get("subscribe_topics"),
-            contract.get("subscribe_topic"),
-        )
-        or ""
+    command_topic = runtime_dispatch.get("command_topic") or _first_topic(
+        event_bus.get("subscribe_topics"),
+        event_bus.get("subscribe"),
+        contract.get("subscribe_topics"),
+        contract.get("subscribe_topic"),
     )
-    terminal_topic = str(
+    terminal_topic = (
         contract.get("terminal_event")
         or terminals.get("success")
         or _completed_topic(
@@ -566,17 +564,20 @@ def _resolve_node_route(command_name: str) -> _NodeRoute:
             contract.get("publish_topics"),
             contract.get("publish_topic"),
         )
-        or ""
     )
-    if not command_topic or not terminal_topic:
+    if not isinstance(command_topic, str) or not isinstance(terminal_topic, str):
         raise ValueError(f"Contract lacks command/terminal topics: {contract_path}")
 
     return _NodeRoute(
         node_name=node_name,
         contract_path=contract_path,
-        command_topic=command_topic,
-        terminal_topic=terminal_topic,
-        failure_topic=cast(str | None, terminals.get("failure")),
+        command_topic=command_topic.strip(),
+        terminal_topic=terminal_topic.strip(),
+        failure_topic=(
+            terminals["failure"].strip()
+            if isinstance(terminals.get("failure"), str)
+            else None
+        ),
         input_model_module=input_model[0],
         input_model_name=input_model[1],
         handler_module=handler[0],
@@ -722,63 +723,6 @@ def _model_ref_from_local_name(
         return None
     if model_name in init_source:
         return f"omnimarket.nodes.{node_name}.models", model_name
-    return None
-
-
-def _topic_from_value(value: object, *, prefer_completed: bool = False) -> str | None:
-    if isinstance(value, str) and value:
-        return value
-    if isinstance(value, dict):
-        keys = (
-            ("success_topic", "completed_topic", "topic")
-            if prefer_completed
-            else ("topic", "command_topic", "success_topic")
-        )
-        for key in keys:
-            raw = value.get(key)
-            if isinstance(raw, str) and raw:
-                return raw
-    return None
-
-
-def _first_string(value: object) -> str | None:
-    direct = _topic_from_value(value)
-    if direct is not None:
-        return direct
-    if isinstance(value, list):
-        return next(
-            (topic for item in value if (topic := _topic_from_value(item)) is not None),
-            None,
-        )
-    return None
-
-
-def _first_topic(*values: object) -> str | None:
-    for value in values:
-        topic = _first_string(value)
-        if topic is not None:
-            return topic
-    return None
-
-
-def _completed_topic(*values: object) -> str | None:
-    for value in values:
-        topic = _topic_from_value(value, prefer_completed=True)
-        if topic is not None and ("completed" in topic or not isinstance(value, list)):
-            return topic
-    for value in values:
-        if isinstance(value, list):
-            for item in value:
-                topic = _topic_from_value(item, prefer_completed=True)
-                if topic is not None and "completed" in topic:
-                    return topic
-            topic = _first_string(value)
-            if topic is not None:
-                return topic
-    for value in values:
-        topic = _first_string(value)
-        if topic is not None:
-            return topic
     return None
 
 

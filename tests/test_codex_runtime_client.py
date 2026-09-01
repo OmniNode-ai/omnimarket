@@ -2863,6 +2863,39 @@ def test_unresolvable_contract_binding_names_missing_and_malformed_reasons(
 
 
 @pytest.mark.parametrize(
+    ("command_name", "command_topic", "terminal_topic"),
+    [
+        (
+            "session_compose",
+            "onex.cmd.omnimarket.session-compose.v1",
+            "onex.evt.omnimarket.session-compose-completed.v1",
+        ),
+        (
+            "skill_overseer_verify_orchestrator",
+            "onex.cmd.omnimarket.overseer_verify.v1",
+            "onex.evt.omnimarket.overseer_verify-completed.v1",
+        ),
+        (
+            "skill_dispatch_engine_orchestrator",
+            "onex.cmd.omnimarket.dispatch_engine.v1",
+            "onex.evt.omnimarket.dispatch_engine-completed.v1",
+        ),
+    ],
+)
+def test_mapped_event_bus_contracts_resolve_for_compile_and_local_dispatch(
+    command_name: str, command_topic: str, terminal_topic: str
+) -> None:
+    binding = runtime_client._node_contract_binding(command_name)
+    route = local_runtime_dispatch._resolve_node_route(command_name)
+
+    assert binding.status == "RESOLVED"
+    assert binding.command_topic == command_topic
+    assert binding.terminal_topic == terminal_topic
+    assert route.command_topic == command_topic
+    assert route.terminal_topic == terminal_topic
+
+
+@pytest.mark.parametrize(
     ("field", "value"),
     [
         ("event_bus", []),

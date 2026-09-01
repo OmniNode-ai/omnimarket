@@ -888,7 +888,16 @@ def _contract_dispatch_route(command_name: str) -> _ContractDispatchRoute | None
     if not isinstance(command_topic, str) or not command_topic.strip():
         return None
 
-    terminal_topic = raw.get("terminal_event") or terminals.get("success")
+    terminal_topic = (
+        raw.get("terminal_event")
+        or terminals.get("success")
+        or _completed_topic(
+            event_bus.get("publish_topics"),
+            event_bus.get("publish"),
+            raw.get("publish_topics"),
+            raw.get("publish_topic"),
+        )
+    )
     if not isinstance(terminal_topic, str) or not terminal_topic.strip():
         return None
 
@@ -897,6 +906,8 @@ def _contract_dispatch_route(command_name: str) -> _ContractDispatchRoute | None
     if not isinstance(failure_topic, str) or not failure_topic.strip():
         failure_topic = _first_topic_containing(
             event_bus.get("publish_topics"), "failed"
+        ) or _topic_from_value(
+            event_bus.get("publish"), mapping_keys=("failure_topic",)
         )
     if isinstance(failure_topic, str) and failure_topic.strip():
         additional_topics.append(failure_topic.strip())
@@ -1029,6 +1040,15 @@ def _contract_terminal_topics(command_name: str) -> tuple[str, tuple[str, ...]] 
     return route.terminal_topic, route.additional_terminal_topics
 
 
+_EVENT_BUS_SUBSCRIBE_MAPPING_KEYS = ("topic", "command_topic")
+_EVENT_BUS_PUBLISH_MAPPING_KEYS = (
+    "topic",
+    "success_topic",
+    "completed_topic",
+    "failure_topic",
+)
+
+
 def _first_topic(*values: object) -> str | None:
     for value in values:
         topic = _first_string(value)
@@ -1040,36 +1060,93 @@ def _first_topic(*values: object) -> str | None:
 def _first_topic_containing(value: object, fragment: str) -> str | None:
     if isinstance(value, list):
         for item in value:
-            topic = _topic_from_value(item)
+            topic = _topic_from_value(
+                item, mapping_keys=_EVENT_BUS_PUBLISH_MAPPING_KEYS
+            )
             if topic is not None and fragment in topic:
                 return topic
-    topic = _topic_from_value(value)
+    topic = _topic_from_value(value, mapping_keys=_EVENT_BUS_PUBLISH_MAPPING_KEYS)
     if topic is not None and fragment in topic:
         return topic
     return None
 
 
-def _first_string(value: object) -> str | None:
-    topic = _topic_from_value(value)
+def _first_string(
+    value: object, *, mapping_keys: tuple[str, ...] = _EVENT_BUS_SUBSCRIBE_MAPPING_KEYS
+) -> str | None:
+    topic = _topic_from_value(value, mapping_keys=mapping_keys)
     if topic is not None:
         return topic
     if isinstance(value, list):
         return next(
-            (topic for item in value if (topic := _topic_from_value(item)) is not None),
+            (
+                topic
+                for item in value
+                if (topic := _topic_from_value(item, mapping_keys=mapping_keys))
+                is not None
+            ),
             None,
         )
     return None
 
 
-def _topic_from_value(value: object) -> str | None:
+def _topic_from_value(
+    value: object, *, mapping_keys: tuple[str, ...] = _EVENT_BUS_SUBSCRIBE_MAPPING_KEYS
+) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     if isinstance(value, dict):
-        for key in ("topic", "command_topic", "success_topic"):
+        for key in mapping_keys:
             raw = value.get(key)
             if isinstance(raw, str) and raw.strip():
                 return raw.strip()
     return None
+
+
+def _completed_topic(*values: object) -> str | None:
+    """Resolve a terminal topic from a validated event-bus publication form."""
+
+    completed_keys = ("success_topic", "completed_topic", "topic")
+    for value in values:
+        topic = _topic_from_value(value, mapping_keys=completed_keys)
+        if topic is not None and ("completed" in topic or not isinstance(value, list)):
+            return topic
+    for value in values:
+        if isinstance(value, list):
+            for item in value:
+                topic = _topic_from_value(item, mapping_keys=completed_keys)
+                if topic is not None and "completed" in topic:
+                    return topic
+            topic = _first_string(value, mapping_keys=completed_keys)
+            if topic is not None:
+                return topic
+    return next(
+        (
+            topic
+            for value in values
+            if (topic := _first_string(value, mapping_keys=completed_keys)) is not None
+        ),
+        None,
+    )
+
+
+def _valid_event_bus_topic_value(
+    value: object,
+    *,
+    mapping_keys: tuple[str, ...],
+    required_mapping_keys: tuple[str, ...],
+) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if not isinstance(value, dict) or not value:
+        return False
+    return (
+        set(value).issubset(mapping_keys)
+        and bool(set(value).intersection(required_mapping_keys))
+        and all(
+            isinstance(topic, str) and bool(topic.strip()) for topic in value.values()
+        )
+    )
 
 
 def _has_valid_contract_shapes(contract: dict[str, Any]) -> bool:
@@ -1123,9 +1200,24 @@ def _has_valid_contract_shapes(contract: dict[str, Any]) -> bool:
                 not isinstance(item, str) or not item.strip() for item in value
             ):
                 return False
-        for key in ("subscribe", "publish"):
+        for key, mapping_keys, required_mapping_keys in (
+            (
+                "subscribe",
+                _EVENT_BUS_SUBSCRIBE_MAPPING_KEYS,
+                _EVENT_BUS_SUBSCRIBE_MAPPING_KEYS,
+            ),
+            (
+                "publish",
+                _EVENT_BUS_PUBLISH_MAPPING_KEYS,
+                ("topic", "success_topic", "completed_topic"),
+            ),
+        ):
             value = event_bus.get(key)
-            if value is not None and (not isinstance(value, str) or not value.strip()):
+            if value is not None and not _valid_event_bus_topic_value(
+                value,
+                mapping_keys=mapping_keys,
+                required_mapping_keys=required_mapping_keys,
+            ):
                 return False
     runtime_dispatch = contract.get("runtime_dispatch")
     if isinstance(runtime_dispatch, dict):
