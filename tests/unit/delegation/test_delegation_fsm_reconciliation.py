@@ -162,6 +162,22 @@ HANDLER_TRANSITION_CALLSITES: tuple[
         EnumDelegationState.FAILED,
         "handle_agent_task_lifecycle",
     ),
+    # OMN-17397 — handle_routing_failure_terminal: the routing leg's consume
+    # boundary terminalized the record before any decision was produced, on the
+    # INITIAL dispatch (guard: state == RECEIVED and routing_decision is None).
+    (
+        EnumDelegationState.RECEIVED,
+        EnumDelegationState.FAILED,
+        "handle_routing_failure_terminal",
+    ),
+    # OMN-17397 — the same terminal on an escalation / retry-local re-entry,
+    # which resets routing_decision to None and waits in ROUTED for a fresh
+    # decision that now will never arrive.
+    (
+        EnumDelegationState.ROUTED,
+        EnumDelegationState.FAILED,
+        "handle_routing_failure_terminal",
+    ),
 )
 
 

@@ -8,7 +8,8 @@ with an internal envelope/dict sniff to the canonical definition-B shape: a type
 ``handle(request) -> list[BaseModel]`` that dispatches off ``type(request)``
 through the existing ``_PER_STEP_DISPATCH`` table. This suite pins the PR1 DoD:
 
-  * each of the six contract-declared event_models routes to its per-step handler;
+  * each contract-declared event_model routes to its per-step handler (six at
+    OMN-14771; a seventh, the OMN-17397 routing-failure terminal, since);
   * the FSM advances on the typed path (invocation command + lifecycle, the two
     edges the OMN-13477 parity suite does not already drive through ``handle()``);
   * ``correlation_id`` propagates from the inbound typed model on the legacy path;
@@ -34,6 +35,9 @@ from omnibase_core.models.delegation.model_agent_task_lifecycle_event import (
 )
 from omnibase_core.models.delegation.model_invocation_command import (
     ModelInvocationCommand,
+)
+from omnibase_infra.runtime.boundary_failure_terminal import (
+    ModelBoundaryFailureTerminal,
 )
 
 from omnimarket.nodes.node_delegation_orchestrator.enums import EnumDelegationState
@@ -135,6 +139,21 @@ def _lifecycle(cid: UUID) -> ModelAgentTaskLifecycleEvent:
     )
 
 
+def _routing_failure_terminal(cid: UUID) -> ModelBoundaryFailureTerminal:
+    """OMN-17397: the terminal omnibase_infra's consume boundary publishes."""
+    return ModelBoundaryFailureTerminal(
+        correlation_id=cid,
+        failure_class="ProtocolConfigurationError",
+        failure_code="ONEX_CORE_041_INVALID_CONFIGURATION",
+        retryable=False,
+        failure_reason=(
+            "ProtocolConfigurationError: [ONEX_CORE_041_INVALID_CONFIGURATION] "
+            "No tier has a configured endpoint"
+        ),
+        origin_topic="onex.cmd.omnibase-infra.delegation-routing-request.v1",  # onex-topic-allow: verbatim from the live incident trace
+    )
+
+
 _ALL_BUILDERS = (
     (_request, "handle_delegation_request"),
     (_invocation, "handle_invocation_command"),
@@ -142,6 +161,7 @@ _ALL_BUILDERS = (
     (_inference_response, "handle_inference_response"),
     (_gate_result, "handle_gate_result"),
     (_lifecycle, "handle_agent_task_lifecycle"),
+    (_routing_failure_terminal, "handle_routing_failure_terminal"),
 )
 
 
@@ -152,7 +172,7 @@ _ALL_BUILDERS = (
 
 @pytest.mark.unit
 class TestTypedDispatchRouting:
-    def test_all_six_contract_models_covered(self) -> None:
+    def test_all_contract_models_covered(self) -> None:
         """The builder set matches the dispatch table one-for-one."""
         dispatch_methods = set(_PER_STEP_DISPATCH.values())
         builder_methods = {method for _, method in _ALL_BUILDERS}

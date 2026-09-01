@@ -80,6 +80,17 @@ event_bus:
     - "onex.cmd.omnibase-infra.delegation-request.v1"
     - "onex.cmd.omnibase-infra.invocation.v1"
     - "onex.evt.omnibase-infra.routing-decision.v1"
+    # OMN-17397: the routing reducer's FAILURE terminal. OMN-16812 gave the
+    # auto-wired consume boundary an address to answer at when
+    # HandlerRoutingIntent RAISES, and node_delegation_routing_reducer declared
+    # it -- but nothing consumed it, so the emission was a second silent drop.
+    # A config-class routing failure DLQ'd in milliseconds while this FSM stayed
+    # in RECEIVED forever: delegation-failed.v1 was never published, onex-api's
+    # workflow_terminal_consumer never fired, and gateway_workflows.status stayed
+    # 'published' with completed_at NULL (staging run 33443670050, correlation
+    # e317122c-13b2-4983-988b-1050065d2929). This subscription is the missing hop
+    # -- the half the reducer's own OMN-16812 comment named and deferred.
+    - "onex.evt.omnibase-infra.routing-decision-failed.v1"
     - "onex.evt.omnibase-infra.inference-response.v1"
     - "onex.evt.omnibase-infra.agent-task-lifecycle.v1"
     - "onex.evt.omnibase-infra.quality-gate-result.v1"
@@ -197,6 +208,15 @@ fsm:
     - from: ROUTED
       to: COMPLETED
       trigger: "remote lifecycle COMPLETED received before any PROGRESS event reached EXECUTING (handle_agent_task_lifecycle)"
+    # OMN-17397: the routing leg can die before any decision is returned, which
+    # leaves the workflow in its INITIAL state with nothing in flight. Every
+    # other declared FAILED edge originates at ROUTED or later, so before this
+    # edge existed the contract FSM could not express the outcome the staging
+    # incident actually had -- and _advance, which resolves every edge from this
+    # table, would have rejected the only honest transition available.
+    - from: RECEIVED
+      to: FAILED
+      trigger: "routing leg's consume boundary terminalized the record before any routing decision was produced (handle_routing_failure_terminal, OMN-17397)"
 handler_routing:
   routing_strategy: "payload_type_match"
   # OMN-14771 (S8 PR3, PR2<->PR3 seam): each entry now carries an explicit
@@ -244,6 +264,26 @@ handler_routing:
       event_type: "omnibase-infra.routing-decision"
       topic: "onex.evt.omnibase-infra.routing-decision.v1"
       description: "Advance the workflow after model-routing selection."
+    # OMN-17397: the routing leg's FAILURE answer. The event_model names the
+    # SAME class omnibase_infra's boundary publishes
+    # (runtime.boundary_failure_terminal.ModelBoundaryFailureTerminal) rather
+    # than a repo-local copy of its wire shape: a copy is exactly the drift that
+    # would let a field rename silently re-open this stall, and omnimarket
+    # already depends on omnibase-infra (>=0.38.15), which is where the emitter
+    # and the model both live. The long-term home for a wire DTO crossing two
+    # repos is omnibase_core; relocating it is a core+infra+market version
+    # cascade and is tracked separately, not smuggled in here.
+    - operation: "delegation.orchestrate.routing_failure"
+      message_category: "event"
+      handler:
+        name: "HandlerDelegationWorkflow"
+        module: "omnimarket.nodes.node_delegation_orchestrator.handlers.handler_delegation_workflow"
+      event_model:
+        name: "ModelBoundaryFailureTerminal"
+        module: "omnibase_infra.runtime.boundary_failure_terminal"
+      event_type: "omnibase-infra.routing-decision-failed"
+      topic: "onex.evt.omnibase-infra.routing-decision-failed.v1"
+      description: "Terminalize the workflow when the routing leg's consume boundary failed the record for good (OMN-17397)."
     - operation: "delegation.orchestrate.inference"
       message_category: "event"
       handler:

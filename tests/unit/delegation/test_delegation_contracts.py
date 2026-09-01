@@ -116,6 +116,14 @@ class TestOrchestratorContract:
             "ModelQualityGateResult": (
                 "omnimarket.nodes.node_delegation_quality_gate_reducer.models"
             ),
+            # OMN-17397: the routing leg's FAILURE answer. The module is
+            # omnibase_infra's on purpose — this is the wire contract with the
+            # consume boundary that publishes it (OMN-16812), and a repo-local
+            # copy of the shape would be free to drift out of agreement with
+            # the publisher.
+            "ModelBoundaryFailureTerminal": (
+                "omnibase_infra.runtime.boundary_failure_terminal"
+            ),
         }
         assert categories == {
             "ModelDelegationRequest": "command",
@@ -124,6 +132,7 @@ class TestOrchestratorContract:
             "ModelInferenceResponseData": "event",
             "ModelAgentTaskLifecycleEvent": "event",
             "ModelQualityGateResult": "event",
+            "ModelBoundaryFailureTerminal": "event",
         }
 
     def test_orchestrator_quality_gate_result_model_matches_reducer_output(
