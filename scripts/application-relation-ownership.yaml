@@ -118,6 +118,37 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_session_replay/migrations/0001_create_session_replay_snapshots.sql
       access: read_write
       role: session_replay_projection_table
+    # OMN-17374: register this repository as the CATALOG owner of the physical
+    # relation `tenant_registry_mirror`, for exactly the reason the
+    # session_replay_snapshots entry above exists -- the OMN-15361 SQL
+    # ownership gate requires one ownership declaration for every application
+    # relation a CHANGED deployable SQL file targets, and it resolves those
+    # from service manifests only, never from a node's own contract.yaml. The
+    # changed file is
+    # `node_projection_tenant_registry/migrations/0001_grant_omninode_runtime_tenant_registry_mirror.sql`.
+    #
+    # `schema: omninode_internal` restates what BOTH contracts that touch this
+    # relation already declare -- node_projection_tenant_registry (write) and
+    # node_projection_delegation (read, OMN-16804). A `schema: public`
+    # restatement of the physical location is rejected by
+    # scripts/generate_application_relation_inventory.py as a
+    # conflicting-schema declaration, the same trap the session_replay entry
+    # documents. Physically the table still lives bare in `public` -- it is
+    # enumerated in `INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359`,
+    # where 0000's own header explains why physically-public is load-bearing
+    # rather than incidental for this relation -- so the grant migration names
+    # `public.tenant_registry_mirror` and the bridge resolves the two.
+    #
+    # `access: read_write` is what the pair of contracts jointly amounts to and
+    # is not a widening: the registry projection writes, the delegation writer
+    # reads, and this manifest declares the relation once for the repo rather
+    # than once per consumer.
+    - name: tenant_registry_mirror
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_tenant_registry/migrations/0000_create_tenant_registry_mirror.sql
+      access: read_write
+      role: tenant_registry_mirror_projection_table
     # OMN-15359: the physical CREATE TABLE for this node's already-declared
     # db_io.db_tables[0] (schema: omninode_internal, in this node's own
     # contract.yaml) lives in the omnibase_infra repo, not here -- the
