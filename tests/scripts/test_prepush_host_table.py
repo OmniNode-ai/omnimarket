@@ -85,6 +85,7 @@ def test_table_contents_are_pinned() -> None:
         "h201c": ("identity", "gate-runner-201", "authorizing"),
         "h101": ("capacity", "stickybeatz", "authorizing"),
         "h105": ("capacity", "omnibook", "authorizing"),
+        "hcloud": ("capacity", "onex-prepush-cloud1", "authorizing"),
     }
 
 
@@ -107,6 +108,7 @@ def test_the_shipped_heavy_local_policy_is_pinned() -> None:
         "h201c": "-",
         "h101": "allowed",
         "h105": "allowed",
+        "hcloud": "allowed",
     }
     modes = {r[0]: r[11] for r in _rows()}
     assert modes["h200"] == "authorizing", (
@@ -182,6 +184,7 @@ def test_the_shipped_repo_denials_are_pinned() -> None:
         "h201c": "-",
         "h101": "omnimarket",
         "h105": "omnimarket",
+        "hcloud": "omnimarket",
     }
 
 
@@ -745,6 +748,7 @@ def test_the_shipped_slots_column_is_pinned(table_repo: Path) -> None:
         "h201c": "1",
         "h101": "1",
         "h105": "1",
+        "hcloud": "1",
     }
 
 
@@ -1784,6 +1788,7 @@ def test_the_conftest_guard_reads_the_same_committed_table_as_the_bash_guard(
         "gate-runner-201",
         "stickybeatz",
         "omnibook",
+        "onex-prepush-cloud1",
     )
 
 
