@@ -436,6 +436,36 @@ def _decode_github_content(payload: object) -> str | None:
         return None
 
 
+_PRODUCT_PROOF_COMMENT_RE = re.compile(
+    r"^(?P<command>.*?)[ \t]+#[ \t]+pulls/[1-9][0-9]*[ \t\r\n]*$",
+    re.DOTALL,
+)
+
+
+def _closed_shell_tokens(
+    value: str, *, allow_product_proof_comment: bool = False
+) -> list[str] | None:
+    """Tokenise a closed proof grammar without changing shell argument meaning.
+
+    ``shlex``'s ``comments=True`` treats ``#`` inside a word as a comment,
+    whereas a POSIX shell passes that word and any later flags to ``gh``.  A
+    proof parser must therefore retain every token, rejecting ``#`` outright.
+    The one generated product-proof annotation is retained as data only when
+    it is the exact trailing ``# pulls/<positive-number>`` shape.
+    """
+    if allow_product_proof_comment:
+        comment = _PRODUCT_PROOF_COMMENT_RE.fullmatch(value)
+        if comment is not None:
+            value = comment.group("command")
+    try:
+        tokens = shlex.split(value, comments=False)
+    except ValueError:
+        return None
+    if any("#" in token for token in tokens):
+        return None
+    return tokens
+
+
 def _parse_product_ref_check(value: object) -> tuple[str, str] | None:
     """Parse the one generated ``gh api ...contents...?ref=<sha>`` check.
 
@@ -449,11 +479,10 @@ def _parse_product_ref_check(value: object) -> tuple[str, str] | None:
     if not isinstance(value, str):
         return None
     try:
-        # Honour shell comments.  In particular, the canonical generated
-        # command carries a trailing ``# pulls/<number>`` annotation.  A quoted
-        # ``'#'`` remains an argument and is rejected by the closed grammar.
-        tokens = shlex.split(value, comments=True)
+        tokens = _closed_shell_tokens(value, allow_product_proof_comment=True)
     except ValueError:
+        return None
+    if tokens is None:
         return None
     if len(tokens) != 5 or tokens[:2] != ["gh", "api"]:
         return None
@@ -534,10 +563,10 @@ def _parse_receipt_binding(content: str) -> tuple[str, int, str, str] | None:
     ):
         return None
     try:
-        # See _parse_product_ref_check: parse comments as a shell would, while
-        # retaining a quoted '#' as an ordinary (and unsupported) argument.
-        tokens = shlex.split(probe_command, comments=True)
+        tokens = _closed_shell_tokens(probe_command)
     except ValueError:
+        return None
+    if tokens is None:
         return None
     if len(tokens) < 7 or tokens[:3] != ["gh", "pr", "view"]:
         return None

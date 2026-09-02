@@ -998,6 +998,41 @@ class TestCompanionProvenanceBindsTheProductHead:
         )
         assert module._parse_product_ref_check(command) is None  # type: ignore[attr-defined]
 
+    def test_product_proof_accepts_only_the_generated_trailing_annotation(self) -> None:
+        module = _load_publisher()
+        command = (
+            f"gh api repos/OmniNode-ai/omnimarket/contents/x?ref={'a' * 40} "
+            "--jq .content # pulls/42"
+        )
+        assert module._parse_product_ref_check(command) == (  # type: ignore[attr-defined]
+            "OmniNode-ai/omnimarket",
+            "a" * 40,
+        )
+
+    @pytest.mark.parametrize(
+        "command",
+        [
+            lambda sha: (
+                "gh api repos/OmniNode-ai/omnimarket/contents/x?ref="
+                f"{sha} --jq .content# --hostname attacker.example"
+            ),
+            lambda sha: (
+                "gh api repos/OmniNode-ai/omnimarket/contents/x?ref="
+                f"{sha} --jq '.content#' --hostname attacker.example"
+            ),
+            lambda sha: (
+                "gh api repos/OmniNode-ai/omnimarket/contents/x?ref="
+                f"{sha} --jq .content # --hostname attacker.example"
+            ),
+        ],
+        ids=["adjacent", "quoted", "standalone"],
+    )
+    def test_product_proof_rejects_hash_that_could_hide_later_flags(
+        self, command: Callable[[str], str]
+    ) -> None:
+        module = _load_publisher()
+        assert module._parse_product_ref_check(command("a" * 40)) is None  # type: ignore[attr-defined]
+
     @pytest.mark.parametrize(
         "selector",
         [
@@ -1049,6 +1084,30 @@ class TestCompanionProvenanceBindsTheProductHead:
             "branch: auto/omninode-ai-omnimarket-pr-42-occ-autobind\n"
             "probe_command: >-\n"
             f"  gh pr view 42 {selector_suffix} --json number,state\n"
+        )
+        assert module._parse_receipt_binding(content) is None  # type: ignore[attr-defined]
+
+    @pytest.mark.parametrize(
+        "json_value",
+        [
+            "number,state# --hostname attacker.example",
+            "'number,state#' --hostname attacker.example",
+            "number,state # --hostname attacker.example",
+        ],
+        ids=["adjacent", "quoted", "standalone"],
+    )
+    def test_receipt_proof_rejects_hash_that_could_hide_later_flags(
+        self, json_value: str
+    ) -> None:
+        module = _load_publisher()
+        content = (
+            "evidence_item_id: product-proof\n"
+            "pr_number: 42\n"
+            f'commit_sha: "{"a" * 40}"\n'
+            "branch: auto/omninode-ai-omnimarket-pr-42-occ-autobind\n"
+            "probe_command: >-\n"
+            "  gh pr view 42 --repo OmniNode-ai/omnimarket --json "
+            f"{json_value}\n"
         )
         assert module._parse_receipt_binding(content) is None  # type: ignore[attr-defined]
 
