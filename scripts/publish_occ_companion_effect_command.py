@@ -452,6 +452,8 @@ def _parse_product_ref_check(value: object) -> tuple[str, str] | None:
     if len(tokens) < 3 or tokens[:2] != ["gh", "api"]:
         return None
     api_path = urllib.parse.urlsplit(tokens[2])
+    if api_path.scheme or api_path.netloc:
+        return None
     path_parts = api_path.path.split("/")
     if len(path_parts) < 5 or path_parts[0] != "repos":
         return None
@@ -531,10 +533,10 @@ def _parse_receipt_binding(content: str) -> tuple[str, int, str, str] | None:
         return None
     if tokens[3] != str(pr_number):
         return None
-    try:
-        repo_index = tokens.index("--repo")
-    except ValueError:
+    repo_indexes = [index for index, token in enumerate(tokens) if token == "--repo"]
+    if len(repo_indexes) != 1:
         return None
+    repo_index = repo_indexes[0]
     if repo_index + 1 >= len(tokens):
         return None
     repo = _canonical_repo(tokens[repo_index + 1])
@@ -811,6 +813,7 @@ def resolve_citation(
     owner = _OCC_REPO.split("/")[0]
     branch = companion_branch(repo, pr_number)
     all_companions: list[_Companion] = []
+    companion_numbers: set[int] = set()
     for page in range(1, _MAX_GITHUB_PAGES + 1):
         url = (
             f"{_GITHUB_API}/repos/{_OCC_REPO}/pulls"
@@ -824,6 +827,11 @@ def resolve_citation(
             return Resolution(
                 False, "resolution_malformed_payload", None, fail_closed=True
             )
+        if any(companion.number in companion_numbers for companion in companions):
+            return Resolution(
+                False, "resolution_malformed_payload", None, fail_closed=True
+            )
+        companion_numbers.update(companion.number for companion in companions)
         all_companions.extend(companions)
         if len(companions) < 100:
             break

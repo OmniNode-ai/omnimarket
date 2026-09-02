@@ -1054,6 +1054,48 @@ class TestCompanionProvenanceBindsTheProductHead:
         assert recorder.brokers == []
 
     @pytest.mark.parametrize(
+        ("label", "mutate", "reason"),
+        [
+            (
+                "absolute_product_ref_url",
+                lambda provenance: {
+                    **provenance,
+                    "contracts/test.yaml": provenance["contracts/test.yaml"].replace(
+                        "repos/OmniNode-ai/omnimarket/contents/x",
+                        "https://api.github.com/repos/OmniNode-ai/omnimarket/contents/x",
+                    ),
+                },
+                "binding_unparseable_contract",
+            ),
+            (
+                "conflicting_duplicate_repo_flag",
+                lambda provenance: {
+                    **provenance,
+                    "drift/dod_receipts/test/command.yaml": provenance[
+                        "drift/dod_receipts/test/command.yaml"
+                    ].replace(
+                        "--repo OmniNode-ai/omnimarket --json",
+                        "--repo OmniNode-ai/omnimarket --repo attacker/omnimarket --json",
+                    ),
+                },
+                "binding_unparseable_receipt",
+            ),
+        ],
+    )
+    def test_ambiguous_network_or_receipt_binding_fails_closed(
+        self,
+        label: str,
+        mutate: Callable[[dict[str, str]], dict[str, str]],
+        reason: str,
+    ) -> None:
+        result, recorder, _fetcher = self._run(
+            state="open", merged_at=None, provenance=mutate(self._provenance("a" * 40))
+        )
+        assert result.exit_code == 1, f"{label}: {result.output}"  # type: ignore[attr-defined]
+        assert f"publish_declined: {reason}" in result.output  # type: ignore[attr-defined]
+        assert recorder.brokers == []
+
+    @pytest.mark.parametrize(
         ("label", "provenance", "reason"),
         [
             ("missing", {}, "binding_artifact_cardinality_mismatch"),
@@ -1214,6 +1256,36 @@ class TestLiveAuthorityAndAdversarialBindings:
         assert any("page=2" in url for url in urls)
         module._MAX_GITHUB_PAGES = 1  # type: ignore[attr-defined]
         assert module._list_changed_paths(companion, token="", fetch=paged) is None  # type: ignore[attr-defined]
+
+    def test_duplicate_companion_number_across_pages_declines_without_publish(
+        self,
+    ) -> None:
+        module = _load_publisher()
+        fallback = _FetchRecorder(None)
+        page_one = [_companion_payload(number=8001 + index) for index in range(100)]
+
+        def paged(url: str, token: str) -> object | None:
+            if "/pulls?head=" not in url:
+                return fallback(url, token)
+            if url.endswith("page=1"):
+                return page_one
+            if url.endswith("page=2"):
+                return [_companion_payload(number=8001)]
+            raise AssertionError(f"unexpected companion page: {url}")
+
+        module._github_get_json = paged  # type: ignore[attr-defined]
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        result = CliRunner().invoke(
+            module.main,  # type: ignore[attr-defined]
+            ["--lane", "dev"],
+            env=_required_pr_env(
+                PR_BODY="Evidence-Source: OCC#8001\n", RUNNER_IS_TRUSTED="true"
+            ),
+        )
+        assert result.exit_code == 1, result.output
+        assert "publish_declined: resolution_malformed_payload" in result.output
+        assert recorder.brokers == []
 
 
 @pytest.mark.unit
