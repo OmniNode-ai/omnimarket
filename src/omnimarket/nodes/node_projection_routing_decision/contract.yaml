@@ -13,19 +13,35 @@ description: >
   (routing-decision.v1 -> agent_routing_decisions); it does NOT own the table
   DDL (omnibase_infra migration 021 is the DDL owner).
 
+# Legacy single-handler declaration. Auto-wiring reads it ONLY when
+# handler_routing declares no handlers (omnibase_infra
+# runtime/auto_wiring/discovery.py), which is never the case here, so
+# this block is inert for dispatch. Kept because the class is still the
+# node's typed projection surface: ProjectionRoutingDecision is what the golden-chain
+# tests drive and what the standalone runner's SQL mirrors.
 handler:
   module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision
   class: HandlerProjectionRoutingDecision
 
+# OMN-17519. agent_routing_decisions is a TENANT-domain relation
+# (schema: tenant, below), granted in the onex-dev topology to principal
+# tenant_projection_writer ONLY. Per the 2026-09-02 operator ruling the
+# dedicated writer Deployment owns it, not the shared omninode-runtime.
+#
+# RoutingDecisionProjectionRunner is that writer, run from
+# omninode_infra k8s/onex-dev/runtime/deployment-omnimarket-projection-routing-decision-writer.yaml
+# as `python -m ...handlers.handler_routing_decision`.
+#
+# The in-process HandlerProjectionRoutingDecision entry is REMOVED for the same
+# mechanical reason as node_projection_pattern_learning: with a single
+# subscribe topic, _topics_for_handler_entry's `if len(topics) == 1` short
+# circuit assigned that topic to BOTH entries, so the shared runtime dispatched
+# the in-process sibling and resolved tenant_projection:ONEX_TENANT_DB_URL --
+# unbound on onex-dev -- crash-looping omninode-runtime under
+# ONEX_WIRING_STRICT_MODE=1 (deploy run 33638367122, 2026-09-02).
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: projection_routing_decision
-      handler:
-        name: HandlerProjectionRoutingDecision
-        module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision
-      handler_module: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision
-      event_model: omnimarket.nodes.node_projection_routing_decision.handlers.handler_projection_routing_decision.ModelRoutingDecisionEvent
     - operation: routing_decision_projection_runner
       handler:
         name: RoutingDecisionProjectionRunner

@@ -11,19 +11,45 @@ description: >
   pattern_learning chain (OMN-13124): the tail table had no consumer for
   pattern-stored.v1, so the sweep timed out. This reducer is the consumer.
 
+# Legacy single-handler declaration. Auto-wiring reads it ONLY when
+# handler_routing declares no handlers (omnibase_infra
+# runtime/auto_wiring/discovery.py), which is never the case here, so
+# this block is inert for dispatch. Kept because the class is still the
+# node's typed projection surface: ProjectionPatternLearning is what the golden-chain
+# tests drive and what the standalone runner's SQL mirrors.
 handler:
   module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning
   class: HandlerProjectionPatternLearning
 
+# OMN-17519. pattern_learning_artifacts is a TENANT-domain relation
+# (schema: tenant, below), granted in the onex-dev topology to principal
+# tenant_projection_writer ONLY -- the shared runtime's own principal
+# omninode_runtime holds no grant on it. Per the 2026-09-02 operator ruling,
+# a projection that needs the tenant-domain database is owned by its dedicated
+# writer Deployment (OMN-15905 shape), not by omninode-runtime.
+#
+# PatternLearningProjectionRunner is that writer: a BaseProjectionRunner with
+# its own consume loop, run from
+# omninode_infra k8s/onex-dev/runtime/deployment-omnimarket-projection-pattern-learning-writer.yaml
+# as `python -m ...handlers.handler_pattern_learning`.
+#
+# The in-process HandlerProjectionPatternLearning entry that used to sit here
+# was the pre-OMN-15905 sibling and is REMOVED, not merely deprioritized. It
+# could not simply be left in place: this contract declares exactly ONE
+# subscribe topic, and _topics_for_handler_entry short-circuits
+# `if len(topics) == 1: return topics` before the multi-handler ambiguity
+# guard, so BOTH entries were assigned that topic. The runner no-ops in the
+# shared runtime (OMN-16874 standalone-runner branch) but the in-process
+# sibling was genuinely dispatched, which made omninode-runtime resolve
+# tenant_projection:ONEX_TENANT_DB_URL -- bound on no onex-dev pod -- and under
+# ONEX_WIRING_STRICT_MODE=1 that took the entire boot down (deploy run
+# 33638367122, 2026-09-02, CrashLoopBackOff). node_projection_savings and
+# node_projection_delegation keep both entries only because their 5 and 9
+# subscribe topics let the ambiguity guard starve the in-process sibling; with
+# one topic there is no such starvation to rely on.
 handler_routing:
   routing_strategy: operation_match
   handlers:
-    - operation: projection_pattern_learning
-      handler:
-        name: HandlerProjectionPatternLearning
-        module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning
-      handler_module: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning
-      event_model: omnimarket.nodes.node_projection_pattern_learning.handlers.handler_projection_pattern_learning.ModelPatternStoredEvent
     - operation: pattern_learning_projection_runner
       handler:
         name: PatternLearningProjectionRunner
