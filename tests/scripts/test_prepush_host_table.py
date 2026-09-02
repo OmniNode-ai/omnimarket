@@ -941,10 +941,10 @@ def _fake_ps(bin_dir: Path, *lines: str) -> None:
 #: first is the ssh wrapper shell, the second is the leg. A count that returns
 #: 2 here is counting the shell that spawned the leg as a second leg.
 _ONE_LEG_PS = (
-    "zsh -c cd '/Users/Shared/onex-prepush/runs/omnibase_core-e69568dd5e02-80404'"
+    "zsh -c cd '/Users/Shared/onex-prepush/runs/omnibase_core-e69568dd5e02-80404'"  # onex-allow-local-path OMN-17606 reason="verbatim argv of a real remote leg, captured off h105; a normalized path stops reproducing the signal"  # test-literal-ok: same, for the structural gate
     " || exit 96; chmod +x prepush_smart_tests.sh || exit 97;"
-    " ./prepush_smart_tests.sh '/Users/Shared/onex-prepush/runs/x' '/uv' 'sha' '1'",
-    "bash ./prepush_smart_tests.sh /Users/Shared/onex-prepush/runs/x /uv sha 1",
+    " ./prepush_smart_tests.sh '/Users/Shared/onex-prepush/runs/x' '/uv' 'sha' '1'",  # onex-allow-local-path OMN-17606 reason="verbatim argv of a real remote leg, captured off h105; a normalized path stops reproducing the signal"  # test-literal-ok: same, for the structural gate
+    "bash ./prepush_smart_tests.sh /Users/Shared/onex-prepush/runs/x /uv sha 1",  # onex-allow-local-path OMN-17606 reason="verbatim argv of a real remote leg, captured off h105; a normalized path stops reproducing the signal"  # test-literal-ok: same, for the structural gate
 )
 
 
