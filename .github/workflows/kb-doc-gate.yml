@@ -34,4 +34,4 @@ jobs:
     # `origin/dev...HEAD` diff has the merge base it requires.
     uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@96dd18962cc7b02f9ae7beb43c13a1ed9df7b559
     with:
-      mode: transition
+      mode: diff
