@@ -49,14 +49,26 @@ dependencies = [
     # dispatch (OCC autobind write-EFFECT). omnibase_infra pins core==0.46.13
     # exactly; the floor here is raised to that same proven version so the
     # combination cannot be resolved again.
-    "omnibase-core>=0.47.1,<0.48.0",
+    # OMN-17549: floor raised 0.47.1 -> 0.47.2 in lockstep with the
+    # omnibase-infra floor below. omnibase-infra 0.38.16 declares
+    # `omnibase-core==0.47.2` exactly, so >=0.47.1 named a combination the
+    # resolver can never satisfy while pretending 0.47.1 was still allowed.
+    "omnibase-core>=0.47.2,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
     # omnibase_compat.contracts.pr_occ_stamp.
     "omnibase-compat==0.5.6",
     "omnibase-spi>=0.23.3,<0.24.0",
-    "omnibase-infra>=0.38.15,<0.39.0",
+    # OMN-17549: floor raised 0.38.15 -> 0.38.16. 0.38.16 carries the OMN-17379
+    # fail-closed projection guard -- a projection handler that consumes an
+    # event and writes no row raises ProjectionNotMaterializedError instead of
+    # letting the offset advance. `tests/chains/
+    # test_event_chain_gate_projection_write.py` asserts that guard directly, so
+    # a floor that still permitted 0.38.15 would let the resolver pick the
+    # permissive release those assertions are written against and turn a real
+    # incompatibility back into a green suite.
+    "omnibase-infra>=0.38.16,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -617,9 +629,13 @@ override-dependencies = [
     # uv actually resolves for transitive consumers (e.g. omninode-memory's
     # stale hard-pins), so leaving it at 0.46.8 would still floor-resolve
     # uv.lock to the pre-run_id release even after the direct pin was raised.
-    "omnibase-core>=0.47.1,<0.48.0",
+    # OMN-17549: core 0.47.1 -> 0.47.2 and infra 0.38.15 -> 0.38.16, bumped
+    # here in lockstep with the dependencies-list pins for the reason the
+    # OMN-16858 note above records -- this override, not the direct pin, is
+    # what uv actually resolves for transitive consumers.
+    "omnibase-core>=0.47.2,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
-    "omnibase-infra>=0.38.15,<0.39.0",
+    "omnibase-infra>=0.38.16,<0.39.0",
     "omnibase-compat==0.5.6",
 ]
 

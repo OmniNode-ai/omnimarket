@@ -12,6 +12,7 @@ Coverage:
 
 from __future__ import annotations
 
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -388,6 +389,36 @@ def test_baseline_rejects_unknown_kind(tmp_path: Path) -> None:
 # =============================================================================
 
 
+def _describe_omniclaude_checkout(omniclaude_root: Path) -> str:
+    """Name the omniclaude clone this assertion actually read, and its commit.
+
+    OMN-17549. ``resolve_omniclaude_root`` takes the first sibling checkout on
+    disk that has the two hook files, at whatever commit that checkout happens
+    to sit at. Nothing pins it, so this assertion's verdict is a function of a
+    tree the repo under test does not control: the same omnimarket commit
+    passed on one host and failed on ``.201`` with three topics reported
+    registry-only, purely because that host's omniclaude clone predated the
+    commits registering them (omniclaude #61 / #1751). The failure message said
+    nothing about which clone answered, so a stale sibling read as repo drift
+    and the proposed fix was to rebaseline three live registrations.
+
+    Reporting the path and HEAD does not pin the clone -- it makes a
+    stale-sibling red attributable on sight instead of re-derivable only by
+    hand.
+    """
+    try:
+        head = subprocess.run(
+            ["git", "-C", str(omniclaude_root), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=15,
+        ).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        head = "(not a resolvable git checkout)"
+    return f"{omniclaude_root} @ {head}"
+
+
 @pytest.mark.unit
 def test_live_registries_have_no_unbaselined_drift() -> None:
     """The shipped omnimarket YAML and omniclaude hook registry must agree.
@@ -395,6 +426,14 @@ def test_live_registries_have_no_unbaselined_drift() -> None:
     Skips only when the omniclaude clone is not resolvable (e.g. an isolated
     CI shard without the sibling checkout); the dedicated Event Registry Drift
     CI job clones omniclaude explicitly and always runs this assertion.
+
+    The comparison is against an UNPINNED sibling checkout, so the failure
+    message names it (OMN-17549 -- see the disposition block at the end of
+    ``scripts/validation/event_registry_drift_baseline.txt``). Before deciding
+    a reported drift is repo drift, check that the clone named below is at
+    omniclaude ``dev`` HEAD; a clone behind it reports live registrations as
+    registry-only, and baselining those would suppress a correct registration
+    on every host to silence one host's stale checkout.
     """
     repo_root = resolve_repo_root()
     try:
@@ -414,5 +453,10 @@ def test_live_registries_have_no_unbaselined_drift() -> None:
         f"topic_registry_only={sorted(report.topic_report.registry_only)}, "
         f"event_source_only={sorted(report.structural_report.event_source_only)}, "
         f"event_registry_only={sorted(report.structural_report.event_registry_only)}, "
-        f"field_diffs={report.structural_report.field_diffs}"
+        f"field_diffs={report.structural_report.field_diffs}. "
+        "The omniclaude side of this comparison was read from "
+        f"{_describe_omniclaude_checkout(omniclaude_root)} -- confirm that "
+        "clone is at omniclaude dev HEAD before treating this as repo drift, "
+        "and do NOT baseline a topic that clone is merely too old to declare "
+        "(OMN-17549)."
     )

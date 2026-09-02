@@ -56,13 +56,54 @@ node that happened to be diagnosed first.
 
 RESOLVED (OMN-16997, 2026-08-30). The fix ``01261b796`` (#2976, 2026-08-28)
 shipped in ``omnibase-infra`` **0.38.15**, and this repo now declares
-``omnibase-infra>=0.38.15,<0.39.0``. Both seam rows PASS against the released
+``omnibase-infra>=0.38.16,<0.39.0``. Both seam rows PASS against the released
 wheel, so the strict ``xfail`` tripwire that guarded this gate has been deleted
 rather than left as a standing excuse — exactly the action its own reason string
 instructed on the first XPASS. This is the automated notice OMN-16976 AC2 asked
 for, and it has now fired and been acted on. The gate below is a plain
 assertion again: if the tenant-authority seam ever refuses these writes a
 second time, these rows go RED directly.
+
+The second tripwire fired too (OMN-17549, 2026-09-02), and it is deleted here
+for the same reason. ``_xfail_pending_tenant_registry_grant`` held the
+``projection-delegation-write`` row at ``xfail(strict)`` while
+``node_projection_delegation``'s OMN-16804 read of ``tenant_registry_mirror``
+had no topology TABLE grant. On ``omnibase-infra`` 0.38.15 that row died at
+wiring with::
+
+    ValueError: Projection binding 'omninode_runtime_service' principal
+    'omninode_runtime' lacks declared read privileges: SELECT on table
+    omninode_internal.tenant_registry_mirror
+
+0.38.16 ships the grant (``tenant_registry_mirror`` is in the
+``omninode_runtime`` TABLE grant block of every topology instance), so all
+three rows XPASS — which under ``strict=True`` is RED, which is exactly the
+mechanical signal the marker's own reason string demanded. The marker is
+deleted, not renewed.
+
+What 0.38.16 also changes, and why this file gained a fourth gate row.
+
+0.38.16 carries the OMN-17379 fail-closed projection guard. Before it, the
+auto-wired projection dispatch callback caught every handler exception, logged
+one ERROR line, best-effort-DLQ'd and **returned normally** — and a callback
+that returns normally IS an ack, so the offset advanced past an event that
+produced no row. That is how ``pr_merged_events`` acknowledged 230 merged PRs
+into nothing while its consumer group reported ``Stable / TOTAL-LAG 0``. From
+0.38.16 a *write-path* failure (dead connection, insufficient privilege,
+missing relation, a wiring bug that denies the handler its adapter) raises
+``ProjectionNotMaterializedError`` out of the subscriber callback so the offset
+is withheld and the record is redelivered; a *content* failure (a
+``ValidationError`` on a malformed payload) still DLQs and advances, because
+redelivery can never repair the event.
+
+Nothing in this file asserted that. Every row here is one-sided — it names a
+refusal that must not happen — so the whole suite would have stayed green if
+0.38.16 had gone back to silently acking a write that produced no row. That is
+the same false-green shape the file was written against, one layer down, so
+``test_a_write_that_produces_no_row_fails_closed`` asserts the guard directly:
+the discard-port write fails, the callback RAISES, nothing lands on the DLQ,
+and no terminal is emitted. It fails on 0.38.15, which is why the floor in
+``pyproject.toml`` is ``>=0.38.16`` rather than ``>=0.38.15`` (OMN-17549).
 
 Why no existing test caught it.
 
@@ -112,6 +153,7 @@ from omnibase_core.services.service_handler_resolver import ServiceHandlerResolv
 from omnibase_core.services.service_local_handler_ownership_query import (
     ServiceLocalHandlerOwnershipQuery,
 )
+from omnibase_infra.errors.error_projection import ProjectionNotMaterializedError
 from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_infra.protocols import ProtocolEventBusLike
 from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
@@ -260,13 +302,35 @@ PROJECTION_CHAIN_CASES = (
 
 @dataclass
 class ProjectionChainRun:
-    """What one projection chain execution produced, for assertion."""
+    """What one projection chain execution produced, for assertion.
+
+    Attributes:
+        prepared: the real ``PreparedWiring`` for every handler the contract
+            declares, in declaration order.
+        handlers_entered: handler class names the real dispatch actually
+            invoked, read out of the runtime's own log lines.
+        dlq_failure_reasons: ``failure_reason`` of every envelope the dispatch
+            routed to the contract's own DLQ topic.
+        quarantine_messages: raw bytes of everything that reached the platform
+            quarantine sink.
+        terminal_messages: raw bytes published on the contract's terminal
+            topic. OMN-13360 gates that terminal on ``rows_upserted >= 1``, so
+            an empty tuple is the correct outcome for a failed write.
+        not_materialized_failures: the ``ProjectionNotMaterializedError``
+            messages that escaped the subscriber callback (OMN-17379). Read
+            from the exception the in-memory bus records when a callback
+            raises, so this is an observation of the real consume boundary
+            rather than an injected spy. Non-empty means the offset was
+            withheld; empty means the callback returned normally, which IS an
+            ack.
+    """
 
     prepared: tuple[PreparedWiring, ...]
     handlers_entered: tuple[str, ...]
     dlq_failure_reasons: tuple[str, ...]
     quarantine_messages: tuple[bytes, ...]
     terminal_messages: tuple[bytes, ...]
+    not_materialized_failures: tuple[str, ...]
 
 
 def _bind_unreachable_dsns(
@@ -474,54 +538,26 @@ async def _run_projection_chain(
         except (ValueError, AttributeError):
             failure_reasons.append(raw.decode("utf-8", errors="replace"))
 
+    # OMN-17379's whole mechanism is that the subscriber callback RAISES
+    # instead of returning, because a callback that returns normally is an ack
+    # and the offset advances past an event that produced no row. The in-memory
+    # bus records a raising callback with ``logger.exception``, so the
+    # exception object itself is on the log record — the raise is observed at
+    # the real consume boundary, not inferred from a message string.
+    not_materialized = tuple(
+        str(record.exc_info[1])
+        for record in caplog.records
+        if record.exc_info is not None
+        and isinstance(record.exc_info[1], ProjectionNotMaterializedError)
+    )
+
     return ProjectionChainRun(
         prepared=tuple(prepared_wirings),
         handlers_entered=handlers_entered,
         dlq_failure_reasons=tuple(failure_reasons),
         quarantine_messages=tuple(quarantine_messages),
         terminal_messages=tuple(terminal_messages),
-    )
-
-
-def _xfail_pending_tenant_registry_grant(
-    request: pytest.FixtureRequest, case: ProjectionChainCase
-) -> None:
-    """Mark the delegation-write case xfail(strict) pending the OMN-16930/
-    OMN-16804 topology grant, exactly the file's own sanctioned idiom below
-    (see ``test_the_projection_write_is_not_refused_at_the_tenant_authority_seam``)
-    applied here per-case rather than function-wide, because only this one
-    case (``DELEGATION_PROJECTION_CASE``) reads ``tenant_registry_mirror`` —
-    the other case in ``PROJECTION_CHAIN_CASES`` does not touch it and must
-    keep passing.
-
-    node_projection_delegation's OMN-16804 read of tenant_registry_mirror
-    needs a topology TABLE grant (SELECT for tenant_projection_writer on
-    public.tenant_registry_mirror) that omnibase_infra's
-    scripts/generate_application_database_table_grants.py can only generate
-    against a PINNED omnimarket release carrying this contract's db_io
-    declaration (omnimarket#2238 / OMN-16930, unreleased as of this marker).
-    STRICT: this turns RED (XPASS) the moment that release lands and the
-    grant is regenerated (OMN-16804 leg 3) — the mechanical signal to delete
-    this marker and land the pin.
-    """
-    if case.chain_id != DELEGATION_PROJECTION_CASE.chain_id:
-        return
-    request.node.add_marker(
-        pytest.mark.xfail(
-            strict=True,
-            reason=(
-                "OMN-16930/OMN-16804: node_projection_delegation's read of "
-                "tenant_registry_mirror needs a topology TABLE grant -- "
-                "SELECT for tenant_projection_writer on "
-                "public.tenant_registry_mirror -- that "
-                "generate_application_database_table_grants.py can only "
-                "generate against a PINNED omnimarket release carrying this "
-                "contract's db_io declaration (omnimarket#2238, unreleased). "
-                "STRICT: this turns RED (XPASS) the moment that release "
-                "lands and the grant is regenerated (OMN-16804 leg 3) -- the "
-                "mechanical signal to delete this marker."
-            ),
-        )
+        not_materialized_failures=not_materialized,
     )
 
 
@@ -530,7 +566,6 @@ async def test_wiring_does_not_quarantine_the_projection_handlers(
     case: ProjectionChainCase,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
-    request: pytest.FixtureRequest,
 ) -> None:
     """No handler the contract declares may be quarantined before dispatch.
 
@@ -538,7 +573,6 @@ async def test_wiring_does_not_quarantine_the_projection_handlers(
     OMN-16767 hid behind green CI. This is the cheapest half of the gate and
     it must never be allowed to regress.
     """
-    _xfail_pending_tenant_registry_grant(request, case)
     run = await _run_projection_chain(case, monkeypatch, caplog)
 
     quarantined = [
@@ -563,7 +597,6 @@ async def test_delegate_skill_terminal_reaches_the_projection_writer(
     case: ProjectionChainCase,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
-    request: pytest.FixtureRequest,
 ) -> None:
     """The writing handler must actually be entered by the real dispatch.
 
@@ -574,7 +607,6 @@ async def test_delegate_skill_terminal_reaches_the_projection_writer(
     future regression in any of them is attributed correctly instead of being
     re-diagnosed as the write-seam defect.
     """
-    _xfail_pending_tenant_registry_grant(request, case)
     run = await _run_projection_chain(case, monkeypatch, caplog)
 
     assert case.writer_handler_name in run.handlers_entered, (
@@ -592,7 +624,6 @@ async def test_the_projection_write_is_not_refused_at_the_tenant_authority_seam(
     case: ProjectionChainCase,
     monkeypatch: pytest.MonkeyPatch,
     caplog: pytest.LogCaptureFixture,
-    request: pytest.FixtureRequest,
 ) -> None:
     """A delegation terminal must reach the database, not die before it.
 
@@ -617,7 +648,6 @@ async def test_the_projection_write_is_not_refused_at_the_tenant_authority_seam(
       failure is masked from customers because `GET /v1/tenants/me/delegations`
       reads Postgres directly instead of the projection (OMN-16976).
     """
-    _xfail_pending_tenant_registry_grant(request, case)
     run = await _run_projection_chain(case, monkeypatch, caplog)
 
     refusals = [
@@ -630,4 +660,83 @@ async def test_the_projection_write_is_not_refused_at_the_tenant_authority_seam(
         f"the database: {refusals}. The event was routed to {case.dlq_topic} "
         f"while the dispatch reported SUCCESS, so the caller keeps its 202 "
         f"and no row is written. See OMN-16831."
+    )
+
+
+@pytest.mark.parametrize("case", PROJECTION_CHAIN_CASES, ids=lambda case: case.chain_id)
+async def test_a_write_that_produces_no_row_fails_closed(
+    case: ProjectionChainCase,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A write-path failure must raise, not ack (OMN-17379).
+
+    Every other row in this file is one-sided: it names a refusal that must not
+    happen. None of them can tell a projection that wrote a row from one that
+    consumed the event, wrote nothing, logged one ERROR line and returned — and
+    a dispatch callback that returns normally IS an ack, so the offset advances
+    and the fact is gone from the projection forever. That is not hypothetical:
+    ``pr_merged_events`` acknowledged 230 merged PRs into nothing while its
+    consumer group reported ``Stable / TOTAL-LAG 0 / CURRENT-OFFSET == LOG-END``
+    (OMN-17379), and every external surface stayed green for 24 days.
+
+    The DSNs point at the discard port, so the write here is *guaranteed* to
+    fail. That is what makes this row a gate rather than a smoke test: the only
+    question it asks is what the runtime does with a guaranteed write failure.
+
+    Three things are asserted together, because any one of them alone can be
+    satisfied by the silent-ack shape:
+
+    1. ``ProjectionNotMaterializedError`` escaped the subscriber callback. This
+       is the offset-withholding mechanism itself — ``EventBusKafka``
+       classifies that type as offset-unsafe unconditionally and rewinds to the
+       failed message's own offset, which is the only action that works under
+       ``enable_auto_commit=True``.
+    2. Nothing landed on the contract's DLQ topic. DLQ-and-advance is correct
+       for a CONTENT failure (a malformed payload redelivery can never repair)
+       and wrong for a WRITE-PATH failure (the event is valid and still owed a
+       row). An ``OperationalError`` on connect is unambiguously the latter, so
+       a DLQ record here would mean the pre-0.38.16 classification is back.
+    3. No terminal was emitted. OMN-13360 gates
+       ``projection-delegation-applied.v1`` on ``rows_upserted >= 1``; a
+       terminal for a chain that wrote nothing would tell every downstream
+       consumer the projection succeeded.
+
+    This row is the reason ``pyproject.toml`` floors ``omnibase-infra`` at
+    0.38.16 rather than 0.38.15: 0.38.15 has no guard to assert, so this test
+    goes RED on it. A relock that dropped back to the permissive release could
+    not pass this file, which is the point — the incompatibility is asserted
+    instead of being carried as a silently-permissive lock (OMN-17549).
+    """
+    run = await _run_projection_chain(case, monkeypatch, caplog)
+
+    assert case.writer_handler_name in run.handlers_entered, (
+        f"[{case.chain_id}] the real dispatch never entered "
+        f"{case.writer_handler_name}, so this row proves nothing about what the "
+        f"runtime does with a failed write. Fix the wiring assertions above "
+        f"before reading this one."
+    )
+    assert run.not_materialized_failures, (
+        f"[{case.chain_id}] the write to the discard port failed and the "
+        f"subscriber callback returned NORMALLY — that is an ack. The offset "
+        f"advances past an event that produced no row, the projection silently "
+        f"loses the fact, and the consumer group still reports lag 0. "
+        f"omnibase-infra must raise ProjectionNotMaterializedError out of the "
+        f"projection dispatch callback for a write-path failure (OMN-17379). "
+        f"DLQ reasons observed: {run.dlq_failure_reasons or '(none)'}."
+    )
+    assert not run.dlq_failure_reasons, (
+        f"[{case.chain_id}] a write-path failure was routed to "
+        f"{case.dlq_topic} and the callback returned: "
+        f"{run.dlq_failure_reasons}. DLQ-and-advance is correct only for a "
+        f"CONTENT failure the event itself causes. A connection failure is the "
+        f"RUNTIME's defect — the event is valid and still owed a row, so the "
+        f"offset must be withheld and the record redelivered (OMN-17379)."
+    )
+    assert not run.terminal_messages, (
+        f"[{case.chain_id}] {len(run.terminal_messages)} terminal event(s) "
+        f"were published for a chain that wrote zero rows. OMN-13360 gates the "
+        f"terminal on rows_upserted >= 1; emitting one here tells every "
+        f"downstream consumer a projection succeeded when it materialized "
+        f"nothing."
     )

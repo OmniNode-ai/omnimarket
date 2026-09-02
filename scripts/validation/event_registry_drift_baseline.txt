@@ -45,3 +45,49 @@ event_registry_only work.obligation.transferred
 event_registry_only work.obligation.satisfied
 event_registry_only work.obligation.superseded
 event_registry_only work.obligation.abandoned
+
+# --- OMN-17549: three topics reported as registry-only on .201, NOT baselined ---
+# The governed pre-push suite on `.201` reported this drift on 2026-09-02:
+#
+#   topic_registry_only=['onex.cmd.omniintelligence.tool-content.v1',
+#                        'onex.evt.omnimarket.artifact-captured.v1',
+#                        'onex.evt.omnimarket.tool-output-captured.v1']
+#   event_registry_only=['artifact.captured', 'tool.content', 'tool.output.captured']
+#   field_diffs={}
+#
+# Each of the three gets a named disposition here rather than a carve-out line,
+# because a carve-out would suppress a signal that is not debt. Reconciled
+# against omniclaude `origin/dev` @ 8fbb52e08 on 2026-09-02:
+#
+#   onex.cmd.omniintelligence.tool-content.v1 / tool.content
+#     WIRED, no carve-out. TopicBase.TOOL_CONTENT is declared at
+#     src/omniclaude/hooks/topics.py:65 and EVENT_REGISTRY["tool.content"] at
+#     src/omniclaude/hooks/event_registry.py:527, fanning out to that exact
+#     topic (partition_key_field=session_id). Registered since omniclaude #61
+#     (OMN-1702).
+#
+#   onex.evt.omnimarket.artifact-captured.v1 / artifact.captured
+#     WIRED, no carve-out. TopicBase.ARTIFACT_CAPTURED at topics.py:305,
+#     EVENT_REGISTRY["artifact.captured"] at event_registry.py:1343.
+#     Registered since omniclaude #1751 (OMN-13092).
+#
+#   onex.evt.omnimarket.tool-output-captured.v1 / tool.output.captured
+#     WIRED, no carve-out. TopicBase.TOOL_OUTPUT_CAPTURED at topics.py:308,
+#     EVENT_REGISTRY["tool.output.captured"] at event_registry.py:1362.
+#     Registered since omniclaude #1751 (OMN-13092).
+#
+# So none of the three is a dead declaration and none is an unwired consumer:
+# the canonical YAML and the hook registry AGREE at omniclaude dev HEAD, and
+# the live gate is green against it. What produced the red was the OTHER
+# defect this finding exposes -- the assertion resolves whatever omniclaude
+# checkout happens to sit beside the repo, at whatever commit, and its verdict
+# is a function of that clone's state. The `.201` clone was behind the two
+# commits above, so the same omnimarket tree passed on one host and failed on
+# another with nothing in the message naming which clone answered.
+# `test_live_registries_have_no_unbaselined_drift` now reports the resolved
+# omniclaude root and its git HEAD on failure so a stale-sibling red is
+# attributable on sight instead of being re-read as repo drift.
+#
+# Nothing is added to the carve-out list above. Rebaselining these three would
+# have suppressed a live, correct registration on every host to silence one
+# host's stale checkout.
