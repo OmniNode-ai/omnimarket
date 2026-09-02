@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Contractor roster — OMN-17277.
+#
+# The configured set of external contractors whose assigned tickets earn an
+# automatic integration note when a PR citing them merges. Read by
+# node_contractor_integration_note_effect. Editing this file is the ONLY way to
+# add or remove a recipient: the node hardcodes no identity.
+#
+# `linear_user_id` is the Linear user UUID, which is what Linear joins on for
+# `issue.assignee.id`. Display names are user-editable and collide; they appear
+# in the note's prose only.
+#
+# `surfaces` are the charter rows (C1..C6, plan
+# `beta/lakshman-validation-charter-plan.md`) that contractor probes. They are
+# used only when the merging lane did not narrow the impact itself — the note
+# then says which of their surfaces the change MAY touch, and says plainly that
+# it was not narrowed. It never claims a surface was verified.
+#
+# Removing a contractor here stops their notes immediately; it does not delete
+# notes already delivered.
+---
+contractors:
+  - linear_user_id: "df034ef3-16f7-40d8-a138-1bac1d254cbf"
+    display_name: "Lakshman Patel"
+    surfaces: ["C1", "C2", "C3", "C4", "C5", "C6"]
+  - linear_user_id: "bfd7ba49-73f9-4451-9d74-88000637bbf2"
+    display_name: "Daniyal"
+    surfaces: []
+
+# Pin recipe used when a merge is NOT yet in a released tag. Placeholders:
+#   {repo}      owner/repo slug, e.g. OmniNode-ai/omnibase_infra
+#   {repo_name} repo name only,  e.g. omnibase_infra
+#   {repo_url}  https://github.com/{repo}
+#   {merge_sha} the merge commit
+default_pin_recipe:
+  template: 'uv pip install "git+{repo_url}@{merge_sha}"'
+
+# Per-repo overrides for repos whose install verb differs from the default.
+repo_pin_recipes: {}
