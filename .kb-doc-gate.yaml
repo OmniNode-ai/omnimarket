@@ -1,0 +1,40 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# KB doc gate — repo config for omnimarket. OMN-16589 (gate), OMN-17172 (fleet
+# rollout), OMN-16613 (this repo's Wave-4 doc migration).
+#
+# Canonical validator + reusable workflow: scripts/kb_doc_gate.py and
+# .github/workflows/kb-doc-gate-reusable.yml in omniclaude. The default allowed
+# set lives in DEFAULT_ALLOWED in that script; `allowed:` here is ADDITIVE to
+# it, and `mode:` here wins over the `with: mode:` input in this repo's
+# .github/workflows/kb-doc-gate.yml (both are set to strict so the two surfaces
+# cannot disagree).
+
+# strict — fails if ANY tracked markdown outside the allowed set exists on the
+# branch, not just markdown a given PR touched. Flipped on by OMN-16613, which
+# migrated this repo's prose documentation to the knowledge base and deleted
+# the rest: docs/ now holds zero markdown files.
+mode: strict
+
+allowed:
+  # Multi-host agent adapters. Not prose: these are the generator TEMPLATES and
+  # their generated agent-host outputs, all code-referenced.
+  #
+  #   * template_SKILL.md / codex/template.md / gemini/template.md are read at
+  #     runtime by scripts/generate_adapter.py (see the tmpl branches around
+  #     its `ADAPTERS_DIR / <host> / "template..."` selection).
+  #   * aislop_sweep_SKILL.md and gemini/aislop-sweep.md are generated adapter
+  #     outputs asserted by tests/test_generate_adapter.py.
+  #   * scripts/validate_catalog.py scans this whole subtree in its
+  #     skill-LLM-boundary check (_SKILL_LLM_BOUNDARY_PATHS), so the files are
+  #     inputs to a gate, not documentation about one.
+  #
+  # codex/skills/**/SKILL.md is already covered by the default `**/skills/**`.
+  - "src/omnimarket/adapters/**"
+
+  # LLM prompt templates for the ADK type-debt-scout experiment, read as data
+  # by experiments/adk_eval/type_debt_scout_poc/handler_type_debt_scout.py
+  # (_SYSTEM_PROMPT_PATH / _USER_TEMPLATE_PATH). Executable configuration for a
+  # handler, not documentation.
+  - "experiments/adk_eval/type_debt_scout_poc/prompts/**"

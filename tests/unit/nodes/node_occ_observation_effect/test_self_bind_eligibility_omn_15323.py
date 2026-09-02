@@ -7,8 +7,11 @@ the REAL gate predicate — ``omnibase_core.validation.validator_occ_merge_
 eligibility.validate_occ_merge_eligibility``, the exact function
 ``occ-preflight.yml`` executes — over the REAL bytes
 ``HandlerOccObservationEffect._write_sync`` commits, against a REAL
-``onex_change_control`` fixture (contract + receipts copied verbatim from OCC
-``dev``; see ``tests/fixtures/occ_observation_selfbind/README.md``).
+``onex_change_control`` fixture (``tests/fixtures/occ_observation_selfbind/``
+— a trimmed but verbatim slice of ``onex_change_control@dev`` commit
+``5c8188b9337737a2f3a6b50474458bb1bddd5869``, read 2026-07-28; see
+``tests/unit/nodes/node_occ_observation_effect/conftest.py`` for the full
+provenance note).
 
 RED and GREEN come from the SAME handler run, at the two commits it makes:
 

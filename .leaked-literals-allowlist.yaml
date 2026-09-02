@@ -3,7 +3,7 @@
 # This file is the machine-readable registry of all intentional
 # leaked-literal exemptions in this repo.
 #
-# Governance: docs/leaked-literals-governance.md
+# Governance: knowledge-base-internal:reference/omnimarket-leaked-literals-gate.md
 # Gate script: scripts/validation/check_leaked_literals.sh
 #
 # Format:
@@ -29,30 +29,15 @@ exemptions:
     ticket: OMN-10580
     reason: CI workflow that invokes the gate script; references annotation syntax in docs
 
-  - file: docs/leaked-literals-governance.md
-    type: self_exempt
-    ticket: OMN-10580
-    reason: governance doc showing annotation examples; self-referential
-
   - file: docs/audits/2026-05-05-raw-env-usage.csv
     type: self_exempt
     ticket: OMN-10580
     reason: generated audit report containing literal inventory as data rows
 
-  - file: docs/audits/2026-05-05-raw-env-usage.md
-    type: self_exempt
-    ticket: OMN-10580
-    reason: generated audit summary referencing literal patterns as data
-
   - file: docs/audits/2026-05-05-contracts-dir-references.csv
     type: self_exempt
     ticket: OMN-10580
     reason: generated audit report; path references are data rows, not source defaults
-
-  - file: docs/tracking/delegation-cost-projection-lane.md
-    type: self_exempt
-    ticket: OMN-10580
-    reason: tracking doc with config examples and lab address as orientation hints
 
   - file: docs/adr-canary/ground_truth_manifest.yaml
     type: self_exempt

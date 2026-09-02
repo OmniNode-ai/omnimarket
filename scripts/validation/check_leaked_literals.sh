@@ -95,7 +95,7 @@
 # scripts/validation/run_leaked_literals_org_wide.sh. Flipping other repos to
 # *blocking* mode with their own CI wiring is G1-FULL (post-beta).
 #
-# Governance: docs/leaked-literals-governance.md
+# Governance: knowledge-base-internal:reference/omnimarket-leaked-literals-gate.md
 #
 # Filenames with spaces are handled (uses NUL-delimited file enumeration).
 
@@ -143,14 +143,10 @@ SELF_EXEMPT_FILES=(
   "scripts/validation/check_leaked_literals.sh"
   "scripts/audit/raw_env_usage_audit.py"
   ".github/workflows/reject-leaked-literals.yml"
-  "docs/leaked-literals-governance.md"
   ".leaked-literals-allowlist.yaml"
   # Generated audit reports — contain leaked literals as data, not source defaults.
   "docs/audits/2026-05-05-raw-env-usage.csv"
-  "docs/audits/2026-05-05-raw-env-usage.md"
   "docs/audits/2026-05-05-contracts-dir-references.csv"
-  # Tracking docs may reference lab addresses as examples or config hints.
-  "docs/tracking/delegation-cost-projection-lane.md"
   # OMN-16156: ADR-canary ground-truth corpus embeds real merged ADRs'
   # verbatim text ("the full text of the authoritative ADR (inline)" per its
   # own header) as a benchmark fixture. An illustrative IPv4 example inside

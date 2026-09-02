@@ -9,8 +9,16 @@ into it and fails LOUD when the cited contract is absent — the same way the
 real clone would if the evidence ticket were mis-pointed. Seeding an empty repo
 would test a repository shape that cannot exist in production.
 
-The fixture content is copied verbatim from ``onex_change_control@dev``; see
-``tests/fixtures/occ_observation_selfbind/README.md``.
+The fixture content (``tests/fixtures/occ_observation_selfbind/``) is a
+trimmed but verbatim slice of ``onex_change_control@dev`` (commit
+``5c8188b9337737a2f3a6b50474458bb1bddd5869``, read 2026-07-28), carrying only
+the two directories ``occ-preflight / eligibility`` reads:
+``contracts/OMN-14888.yaml`` and
+``drift/dod_receipts/OMN-14888/{dod-OmniNode-ai-omnimarket-pr-1850-ci,occ-observation-pr-5059}/``.
+Nothing was rewritten: every retained byte is the byte that is on ``dev``,
+which is what makes a green run here evidence about the real gate rather than
+about a hand-tuned mock. Refresh from ``dev`` rather than editing in place if
+OCC's receipt/contract schema changes.
 """
 
 from __future__ import annotations

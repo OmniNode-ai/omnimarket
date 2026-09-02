@@ -590,8 +590,11 @@ entries:
     classification: "medium_confidence"
 
   - id: "omnimarket-adr-dispatch-architecture-foreground-only"
-    repo: "omnimarket"
-    path: "docs/decisions/adr-dispatch-architecture-foreground-only-agent-call.md"
+    # OMN-16613 doc scrub: this ADR left omnimarket for the knowledge base.
+    # repo/path now name its current home so this inventory does not cite a
+    # path that no longer exists in any repo.
+    repo: "knowledge-base-internal"
+    path: "reference/decisions/omnimarket-agent-spawn-foreground-only.md"
     title: "Agent() Spawn Is a Foreground-Only Capability"
     status: "Accepted"
     date: "2026-04-27"

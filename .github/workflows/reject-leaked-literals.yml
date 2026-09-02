@@ -28,7 +28,7 @@
 # Provenance: OMN-17288 scrubbed a live tenant slug + UUID from five files here;
 # three hours later omnimarket#2239 reintroduced the slug with every gate green.
 #
-# See docs/leaked-literals-governance.md for the full governance policy.
+# See knowledge-base-internal:reference/omnimarket-leaked-literals-gate.md for the full governance policy.
 #
 # This job is a REQUIRED STATUS CHECK. The job name
 # "Leaked Literals Gate" must match branch protection rules.

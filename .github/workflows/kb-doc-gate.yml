@@ -32,6 +32,15 @@ jobs:
     # 96dd1896 (omniclaude#2052) keeps the validator checkout pinned to
     # `github.job_workflow_sha` and fetches full caller history, so the gate's
     # `origin/dev...HEAD` diff has the merge base it requires.
-    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@96dd18962cc7b02f9ae7beb43c13a1ed9df7b559
+    # OMN-16613 bumped this pin from 96dd1896 to omniclaude dev 6bfba15f:
+    # `strict` mode and the `allowed:` config key both land with
+    # omniclaude#2099 (a78b103e5, OMN-17172), which 96dd1896 predates.
+    # Same commit as the exported pre-commit hook's rev in
+    # .pre-commit-config.yaml, so local and CI cannot disagree.
+    uses: OmniNode-ai/omniclaude/.github/workflows/kb-doc-gate-reusable.yml@6bfba15f7d103ddaa9e949c459e95153b1ca6a94
     with:
-      mode: diff
+      # OMN-16613: omnimarket's Wave-4 doc migration has landed (docs/ carries
+      # zero markdown), so the gate runs tree-wide, not just over the PR diff.
+      # .kb-doc-gate.yaml at the repo root sets the same value and wins over
+      # this input; both are set so the two surfaces cannot disagree.
+      mode: strict
