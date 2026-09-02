@@ -24,9 +24,11 @@ from __future__ import annotations
 import base64
 import importlib.util
 import json
+import os
 import re
 import sys
 import types
+from collections.abc import Callable
 from pathlib import Path
 from uuid import UUID
 
@@ -64,6 +66,20 @@ _LEGACY_AUTOBIND_FIELDS = (
 
 
 def _poisoned_fetch(url: str, token: str) -> object | None:
+    """Provide the mandatory two stable live snapshots; poison all else."""
+    match = re.search(r"/repos/([^/]+/[^/]+)/pulls/(\d+)$", url)
+    if match is not None and match.group(1) != "OmniNode-ai/onex_change_control":
+        repo = match.group(1)
+        number = int(match.group(2))
+        return {
+            "number": number,
+            "body": os.environ.get("PR_BODY", ""),
+            "head": {
+                "sha": os.environ.get("PR_HEAD_SHA", "a" * 40),
+                "repo": {"full_name": repo},
+            },
+            "base": {"repo": {"full_name": repo}},
+        }
     raise AssertionError(
         "the publisher attempted a LIVE GitHub read during a unit test; inject "
         f"the resolution seam with _stub_resolution(module, ...) — url={url!r}"
@@ -119,21 +135,54 @@ class _FetchRecorder:
         self.tokens: list[str] = []
         self._product_repo = "OmniNode-ai/omnimarket"
         self._product_pr_number = 42
+        self._product_head = "a" * 40
+        self._product_body = "Evidence-Source: OCC#8001\n"
 
     def _generated_provenance(self) -> dict[str, object]:
-        contract = (
-            f"check_value: gh api repos/{self._product_repo}/contents/x?ref={'a' * 40} "
+        product_command = (
+            f"gh api repos/{self._product_repo}/contents/x?ref={'a' * 40} "
             f"--jq '.content' # pulls/{self._product_pr_number}\n"
         )
         receipt = f'pr_number: {self._product_pr_number}\ncommit_sha: "{"a" * 40}"\n'
+        receipt += (
+            f"branch: auto/{self._product_repo.replace('/', '-').lower()}-pr-"
+            f"{self._product_pr_number}-occ-autobind\n"
+            "probe_command: >-\n"
+            f"  gh pr view {self._product_pr_number} --repo {self._product_repo} "
+            "--json number,state,headRefName\n"
+            "evidence_item_id: product-proof\n"
+        )
         return {
-            "contracts/test.yaml": contract,
+            "contracts/test.yaml": (
+                "dod_evidence:\n"
+                "  - id: product-proof\n"
+                "    source: generated\n"
+                "    checks:\n"
+                "      - check_type: command\n"
+                f"        check_value: {product_command!r}\n"
+            ),
             "drift/dod_receipts/test/command.yaml": receipt,
         }
 
     def __call__(self, url: str, token: str) -> object | None:
         self.urls.append(url)
         self.tokens.append(token)
+        product_match = re.search(r"/repos/([^/]+/[^/]+)/pulls/(\d+)$", url)
+        if (
+            product_match is not None
+            and product_match.group(1) != "OmniNode-ai/onex_change_control"
+        ):
+            self._product_repo = product_match.group(1)
+            self._product_pr_number = int(product_match.group(2))
+            return {
+                "number": self._product_pr_number,
+                "body": os.environ.get("PR_BODY", self._product_body),
+                "head": {
+                    "sha": self._product_head,
+                    "repo": {"full_name": self._product_repo},
+                },
+                "base": {"repo": {"full_name": self._product_repo}},
+            }
         if "/pulls?head=" in url:
             match = re.search(
                 r"head=OmniNode-ai:auto/omninode-ai-(.+)-pr-(\d+)-occ-autobind",
@@ -142,7 +191,27 @@ class _FetchRecorder:
             if match is not None:
                 self._product_repo = f"OmniNode-ai/{match.group(1)}"
                 self._product_pr_number = int(match.group(2))
-            return self.payload
+            if not isinstance(self.payload, list):
+                return self.payload
+            branch = (
+                f"auto/{self._product_repo.replace('/', '-').lower()}-pr-"
+                f"{self._product_pr_number}-occ-autobind"
+            )
+            normalised: list[object] = []
+            for item in self.payload:
+                if not isinstance(item, dict):
+                    normalised.append(item)
+                    continue
+                copy = dict(item)
+                head = copy.get("head")
+                if isinstance(head, dict):
+                    copy["head"] = {
+                        **head,
+                        "ref": branch,
+                        "repo": {"full_name": "OmniNode-ai/onex_change_control"},
+                    }
+                normalised.append(copy)
+            return normalised
         if re.search(r"/pulls/\d+/files\?", url):
             return [{"filename": path} for path in self._generated_provenance()]
         if "/contents/" in url:
@@ -150,6 +219,8 @@ class _FetchRecorder:
                 if path in url:
                     return {
                         "content": base64.b64encode(content.encode()).decode(),
+                        "encoding": "base64",
+                        "type": "file",
                     }
         return self.payload
 
@@ -167,7 +238,11 @@ def _companion_payload(
         "number": number,
         "state": state,
         "merged_at": merged_at,
-        "head": {"sha": head_sha},
+        "head": {
+            "sha": head_sha,
+            "ref": "auto/omninode-ai-omnimarket-pr-42-occ-autobind",
+            "repo": {"full_name": "OmniNode-ai/onex_change_control"},
+        },
         "merge_commit_sha": merge_commit_sha,
     }
 
@@ -300,17 +375,17 @@ class TestPublisherSideIdempotency:
         assert "already" in result.output
         assert recorder.brokers == []
 
-    def test_already_bound_body_skips_even_in_dry_run(self) -> None:
-        """The skip is a semantic gate, not a transport branch — dry-run output
-        must not advertise a payload that the live path would refuse to send."""
+    def test_dry_run_is_offline_and_never_claims_a_live_skip(self) -> None:
+        """Dry-run validates only the frozen command shape, never live authority."""
         module = _load_publisher()
         _stub_resolution(module, [_companion_payload(number=9)])
         runner = CliRunner()
         env = _required_pr_env(PR_BODY="Evidence-Source: OCC#9")
         result = runner.invoke(module.main, ["--dry-run"], env=env)  # type: ignore[attr-defined]
         assert result.exit_code == 0, result.output
-        assert "SKIP" in result.output
-        assert "{" not in result.output  # no payload emitted
+        assert "SKIP" not in result.output
+        assert "publish_declined: dry_run" in result.output
+        assert "{" in result.output
 
 
 # Bodies whose ONLY occurrence of the literal is prose. Every one of these
@@ -790,7 +865,7 @@ class TestSkipRequiresArtifactResolution:
         )
         runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
         assert len(fetcher.urls) >= 1
-        url = fetcher.urls[0]
+        url = next(url for url in fetcher.urls if "onex_change_control/pulls" in url)
         assert "OmniNode-ai/onex_change_control/pulls" in url
         # Live-verified: OCC#5793's headRefName for omniclaude#1969.
         assert (
@@ -812,13 +887,27 @@ class TestCompanionProvenanceBindsTheProductHead:
 
     @staticmethod
     def _provenance(head: str) -> dict[str, str]:
+        command = (
+            f"gh api repos/OmniNode-ai/omnimarket/contents/x?ref={head} --jq '.content'"
+        )
         return {
-            "contracts/test.yaml": (
-                "check_value: gh api repos/OmniNode-ai/omnimarket/contents/x?ref="
-                f"{head} --jq '.content' # pulls/42\n"
+            "contracts/test.yaml": "\n".join(
+                [
+                    "dod_evidence:",
+                    "  - id: product-proof",
+                    "    source: generated",
+                    "    checks:",
+                    "      - check_type: command",
+                    f"        check_value: {command!r}",
+                ]
             ),
             "drift/dod_receipts/test/command.yaml": (
-                f'pr_number: 42\ncommit_sha: "{head}"\n'
+                "evidence_item_id: product-proof\n"
+                "pr_number: 42\n"
+                f'commit_sha: "{head}"\n'
+                "branch: auto/omninode-ai-omnimarket-pr-42-occ-autobind\n"
+                "probe_command: >-\n"
+                "  gh pr view 42 --repo OmniNode-ai/omnimarket --json number,state\n"
             ),
         }
 
@@ -884,10 +973,90 @@ class TestCompanionProvenanceBindsTheProductHead:
         )  # type: ignore[attr-defined]
         assert recorder.brokers == []
 
+    def test_uppercase_full_heads_normalize_to_the_same_binding(self) -> None:
+        result, recorder, _fetcher = self._run(
+            state="open", merged_at=None, provenance=self._provenance("A" * 40)
+        )
+        assert result.exit_code == 0, result.output  # type: ignore[attr-defined]
+        assert "skipped_bound_to: OCC#8001" in result.output  # type: ignore[attr-defined]
+        assert recorder.brokers == []
+
+    @pytest.mark.parametrize(
+        ("label", "mutate", "reason"),
+        [
+            (
+                "cross_repository_contract",
+                lambda provenance: {
+                    **provenance,
+                    "contracts/test.yaml": provenance["contracts/test.yaml"].replace(
+                        "OmniNode-ai/omnimarket", "attacker/omnimarket"
+                    ),
+                },
+                "binding_product_identity_mismatch",
+            ),
+            (
+                "cross_pr_receipt",
+                lambda provenance: {
+                    **provenance,
+                    "drift/dod_receipts/test/command.yaml": provenance[
+                        "drift/dod_receipts/test/command.yaml"
+                    ]
+                    .replace("pr_number: 42", "pr_number: 43")
+                    .replace("gh pr view 42", "gh pr view 43"),
+                },
+                "binding_product_identity_mismatch",
+            ),
+        ],
+    )
+    def test_cross_bound_artifacts_fail_closed(
+        self,
+        label: str,
+        mutate: Callable[[dict[str, str]], dict[str, str]],
+        reason: str,
+    ) -> None:
+        result, recorder, _fetcher = self._run(
+            state="open", merged_at=None, provenance=mutate(self._provenance("a" * 40))
+        )
+        assert result.exit_code == 1, f"{label}: {result.output}"  # type: ignore[attr-defined]
+        assert f"publish_declined: {reason}" in result.output  # type: ignore[attr-defined]
+        assert recorder.brokers == []
+
+    @pytest.mark.parametrize(
+        ("label", "add_path", "reason"),
+        [
+            (
+                "second_contract",
+                "contracts/second.yaml",
+                "binding_artifact_cardinality_mismatch",
+            ),
+            (
+                "second_matching_receipt",
+                "drift/dod_receipts/test/second-command.yaml",
+                "binding_receipt_cardinality_mismatch",
+            ),
+        ],
+    )
+    def test_duplicate_binding_artifacts_fail_closed(
+        self, label: str, add_path: str, reason: str
+    ) -> None:
+        provenance = self._provenance("a" * 40)
+        source_path = (
+            "contracts/test.yaml"
+            if add_path.startswith("contracts/")
+            else "drift/dod_receipts/test/command.yaml"
+        )
+        provenance[add_path] = provenance[source_path]
+        result, recorder, _fetcher = self._run(
+            state="open", merged_at=None, provenance=provenance
+        )
+        assert result.exit_code == 1, f"{label}: {result.output}"  # type: ignore[attr-defined]
+        assert f"publish_declined: {reason}" in result.output  # type: ignore[attr-defined]
+        assert recorder.brokers == []
+
     @pytest.mark.parametrize(
         ("label", "provenance", "reason"),
         [
-            ("missing", {}, "binding_missing_artifacts"),
+            ("missing", {}, "binding_artifact_cardinality_mismatch"),
             (
                 "unparseable",
                 {
@@ -914,17 +1083,144 @@ class TestCompanionProvenanceBindsTheProductHead:
 
 
 @pytest.mark.unit
-class TestResolutionFailsClosedByPublishing:
-    """AC3 — never skip on an answer the publisher could not obtain.
+class TestLiveAuthorityAndAdversarialBindings:
+    """The event environment is a trigger, never authorization evidence."""
 
-    A redundant command is a cheap already-bound no-op at the handler; a missed
-    mint cost 34 minutes of red on omniclaude#1969 and 54 on
-    omnibase_core#1540. The asymmetry is the whole design.
-    """
+    @staticmethod
+    def _live_pr(repo: str, number: int, head: str, body: str) -> dict[str, object]:
+        return {
+            "number": number,
+            "body": body,
+            "head": {"sha": head, "repo": {"full_name": repo}},
+            "base": {"repo": {"full_name": repo}},
+        }
 
-    def test_api_failure_publishes(self) -> None:
-        """The explicit API-failure path AC3 names: the fetcher returns None
-        for every transport error, non-200, and rate limit."""
+    def test_stale_event_head_declines_before_companion_resolution(self) -> None:
+        module = _load_publisher()
+        fetcher = _stub_resolution(module, [_companion_payload(number=8001)])
+
+        def fetch(url: str, token: str) -> object | None:
+            if url.endswith("/repos/OmniNode-ai/omnimarket/pulls/42"):
+                return self._live_pr(
+                    "OmniNode-ai/omnimarket", 42, "b" * 40, "Evidence-Source: OCC#8001"
+                )
+            return fetcher(url, token)
+
+        module._github_get_json = fetch  # type: ignore[attr-defined]
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        result = CliRunner().invoke(
+            module.main,  # type: ignore[attr-defined]
+            ["--lane", "dev"],
+            env=_required_pr_env(
+                PR_BODY="Evidence-Source: OCC#8001", RUNNER_IS_TRUSTED="true"
+            ),
+        )
+        assert result.exit_code == 1, result.output
+        assert "publish_declined: product_head_changed" in result.output
+        assert recorder.brokers == []
+        assert not any("onex_change_control/pulls?" in url for url in fetcher.urls)
+
+    def test_head_change_during_resolution_declines_before_skip(self) -> None:
+        module = _load_publisher()
+        fetcher = _stub_resolution(module, [_companion_payload(number=8001)])
+        reads = 0
+
+        def fetch(url: str, token: str) -> object | None:
+            nonlocal reads
+            if url.endswith("/repos/OmniNode-ai/omnimarket/pulls/42"):
+                reads += 1
+                head = "a" * 40 if reads == 1 else "b" * 40
+                return self._live_pr(
+                    "OmniNode-ai/omnimarket", 42, head, "Evidence-Source: OCC#8001"
+                )
+            return fetcher(url, token)
+
+        module._github_get_json = fetch  # type: ignore[attr-defined]
+        recorder = _PublishRecorder()
+        module.publish_occ_companion_effect_command = recorder  # type: ignore[attr-defined]
+        result = CliRunner().invoke(
+            module.main,  # type: ignore[attr-defined]
+            ["--lane", "dev"],
+            env=_required_pr_env(
+                PR_BODY="Evidence-Source: OCC#8001", RUNNER_IS_TRUSTED="true"
+            ),
+        )
+        assert result.exit_code == 1, result.output
+        assert "publish_declined: live_product_pr_changed_before_skip" in result.output
+        assert recorder.brokers == []
+
+    def test_forked_live_head_is_not_product_authority(self) -> None:
+        module = _load_publisher()
+
+        def forked(_url: str, _token: str) -> object:
+            return {
+                "number": 42,
+                "body": "",
+                "head": {"sha": "a" * 40, "repo": {"full_name": "attacker/omnimarket"}},
+                "base": {"repo": {"full_name": "OmniNode-ai/omnimarket"}},
+            }
+
+        module._github_get_json = forked  # type: ignore[attr-defined]
+        result = CliRunner().invoke(
+            module.main, ["--lane", "dev"], env=_required_pr_env()
+        )  # type: ignore[attr-defined]
+        assert result.exit_code == 1, result.output
+        assert "publish_declined: live_product_pr_unavailable" in result.output
+
+    def test_malformed_content_envelope_cannot_bind(self) -> None:
+        module = _load_publisher()
+        companion = module._Companion(8001, True, False, "d" * 40, ("d" * 40,))  # type: ignore[attr-defined]
+
+        def fetch(url: str, _token: str) -> object:
+            if "/files?" in url:
+                return [
+                    {"filename": "contracts/test.yaml"},
+                    {"filename": "drift/dod_receipts/test/command.yaml"},
+                ]
+            return {"type": "file", "encoding": "base64", "content": "not base64!"}
+
+        assert (
+            module._companion_product_head_binding(  # type: ignore[attr-defined]
+                companion,
+                repo="OmniNode-ai/omnimarket",
+                pr_number=42,
+                product_head_sha="a" * 40,
+                token="",
+                fetch=fetch,
+            )
+            == "binding_unparseable_content_envelope"
+        )
+
+    def test_file_pagination_reads_past_first_hundred_and_truncation_fails(
+        self,
+    ) -> None:
+        module = _load_publisher()
+        companion = module._Companion(8001, True, False, "d" * 40, ("d" * 40,))  # type: ignore[attr-defined]
+        urls: list[str] = []
+
+        def paged(url: str, _token: str) -> object:
+            urls.append(url)
+            if url.endswith("page=1"):
+                return [
+                    {"filename": f"drift/dod_receipts/x/{index}.yaml"}
+                    for index in range(100)
+                ]
+            return []
+
+        paths = module._list_changed_paths(companion, token="", fetch=paged)  # type: ignore[attr-defined]
+        assert paths is not None
+        assert len(paths) == 100
+        assert any("page=2" in url for url in urls)
+        module._MAX_GITHUB_PAGES = 1  # type: ignore[attr-defined]
+        assert module._list_changed_paths(companion, token="", fetch=paged) is None  # type: ignore[attr-defined]
+
+
+@pytest.mark.unit
+class TestResolutionFailuresDeclineForRetry:
+    """Authority failures must not authorize either skip or publish."""
+
+    def test_api_failure_declines_for_retry(self) -> None:
         module = _load_publisher()
         _stub_resolution(module, None)
         recorder = _PublishRecorder()
@@ -934,10 +1230,9 @@ class TestResolutionFailsClosedByPublishing:
             PR_BODY="Evidence-Source: OCC#5793\n", RUNNER_IS_TRUSTED="true"
         )
         result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
-        assert result.exit_code == 0, result.output
-        assert "SKIP" not in result.output
-        assert "publish_reason: resolution_unavailable" in result.output
-        assert recorder.brokers != []
+        assert result.exit_code == 1, result.output
+        assert "publish_declined: resolution_unavailable" in result.output
+        assert recorder.brokers == []
 
     @pytest.mark.parametrize(
         "payload",
@@ -950,7 +1245,7 @@ class TestResolutionFailsClosedByPublishing:
         ],
         ids=["object", "list_of_str", "number_not_int", "no_number", "empty_string"],
     )
-    def test_malformed_payload_publishes(self, payload: object) -> None:
+    def test_malformed_payload_declines_for_retry(self, payload: object) -> None:
         module = _load_publisher()
         _stub_resolution(module, payload)
         recorder = _PublishRecorder()
@@ -960,9 +1255,9 @@ class TestResolutionFailsClosedByPublishing:
             PR_BODY="Evidence-Source: OCC#5793\n", RUNNER_IS_TRUSTED="true"
         )
         result = runner.invoke(module.main, ["--lane", "dev"], env=env)  # type: ignore[attr-defined]
-        assert result.exit_code == 0, result.output
-        assert "SKIP" not in result.output
-        assert recorder.brokers != []
+        assert result.exit_code == 1, result.output
+        assert "publish_declined: resolution_malformed_payload" in result.output
+        assert recorder.brokers == []
 
     def test_empty_pr_body_publishes_without_resolving(self) -> None:
         module = _load_publisher()  # fetcher stays poisoned

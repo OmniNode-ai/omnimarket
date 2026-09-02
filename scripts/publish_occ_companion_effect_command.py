@@ -52,12 +52,12 @@
 #      fails closed because immutable evidence requires append-only
 #      supersession.
 #
-# Every other outcome PUBLISHES, including every indeterminate one (API error,
-# rate limit, malformed JSON, unparsable stamp, empty PR_BODY). The asymmetry
-# is deliberate and measured: a redundant command is a cheap already-bound
-# no-op at the handler, while a missed mint cost 34 minutes of red on
-# omniclaude#1969 and 54 minutes on omnibase_core#1540. Never skip on an
-# indeterminate result. See product_pr_evidence_citation / resolve_citation.
+# An authority or binding-resolution failure DECLINES nonzero rather than
+# publishing from event-environment data. The environment is only a trigger:
+# a delayed synchronize event, malformed response, or ambiguous artifact must
+# be retried from a fresh live product-PR read. A citation that is absent or
+# resolves to no companion remains eligible for the existing deterministic
+# effect path. See product_pr_evidence_citation / resolve_citation.
 #
 # BROKER / LANE RESOLUTION: identical to publish_occ_autobind_command.py
 # (OMN-14801 overlay-driven lane resolution, OMN-14813 secret-free concrete dev
@@ -95,9 +95,9 @@
 #                                PUBLIC repo so the read works unauthenticated,
 #                                but the shared self-hosted fleet burns the
 #                                60/hr anonymous budget quickly; a token raises
-#                                it. Absent/expired is NOT a failure — the read
-#                                just becomes indeterminate, and indeterminate
-#                                publishes (AC3).
+#                                it. Absent/expired makes authoritative
+#                                resolution unavailable and therefore declines
+#                                for retry; it never authorizes a publish.
 #   KAFKA_BOOTSTRAP_SERVERS   -- injected broker (fail-loud-checked against the
 #                                overlay-declared lane broker when both exist)
 #   KAFKA_SASL_USERNAME       -- SASL username / API key (cloud broker only)
@@ -114,6 +114,7 @@ import importlib.util
 import json
 import os
 import re
+import shlex
 import sys
 import urllib.error
 import urllib.parse
@@ -125,6 +126,7 @@ from types import ModuleType
 from typing import NamedTuple
 
 import click
+import yaml
 
 
 def _load_sibling(module_name: str, filename: str) -> ModuleType:
@@ -375,11 +377,42 @@ class _Companion(NamedTuple):
 
 
 _FULL_SHA_RE = re.compile(r"^[0-9a-f]{40}$", re.IGNORECASE)
-_CONTRACT_REF_RE = re.compile(r"[?&]ref=([0-9a-f]{40})(?:\b|[&\"'])", re.IGNORECASE)
-_RECEIPT_COMMIT_SHA_RE = re.compile(
-    r'^commit_sha:\s*["\']?([0-9a-f]{40})["\']?\s*$', re.IGNORECASE | re.MULTILINE
-)
-_RECEIPT_PR_NUMBER_RE = re.compile(r"^pr_number:\s*(\d+)\s*$", re.MULTILINE)
+_MAX_GITHUB_PAGES = 100
+
+
+class _ProductPr(NamedTuple):
+    repo: str
+    number: int
+    body: str
+    head_sha: str
+
+
+class _Binding(NamedTuple):
+    repo: str
+    pr_number: int
+    head_sha: str
+    evidence_item_id: str
+
+
+def _canonical_repo(value: object) -> str | None:
+    """Return an owner/repository slug only when it is structurally exact."""
+    if not isinstance(value, str):
+        return None
+    pieces = value.split("/")
+    if len(pieces) != 2 or not all(pieces):
+        return None
+    if any(
+        not part.replace("-", "").replace("_", "").replace(".", "").isalnum()
+        for part in pieces
+    ):
+        return None
+    return "/".join(pieces)
+
+
+def _normalised_full_sha(value: object) -> str | None:
+    if not isinstance(value, str) or _FULL_SHA_RE.fullmatch(value) is None:
+        return None
+    return value.lower()
 
 
 def _decode_github_content(payload: object) -> str | None:
@@ -387,12 +420,153 @@ def _decode_github_content(payload: object) -> str | None:
     if not isinstance(payload, dict):
         return None
     encoded = payload.get("content")
-    if not isinstance(encoded, str):
+    if (
+        payload.get("type") != "file"
+        or payload.get("encoding") != "base64"
+        or not isinstance(encoded, str)
+    ):
         return None
     try:
-        return base64.b64decode(encoded, validate=False).decode("utf-8")
-    except (UnicodeDecodeError, ValueError):
+        # GitHub wraps its canonical base64 with LF line endings. Remove ONLY
+        # those transport line endings; validate=True rejects every other
+        # whitespace/alphabet ambiguity instead of silently accepting it.
+        decoded = base64.b64decode(encoded.replace("\n", ""), validate=True)
+        return decoded.decode("utf-8")
+    except (UnicodeDecodeError, ValueError, TypeError):
         return None
+
+
+def _parse_product_ref_check(value: object) -> tuple[str, str] | None:
+    """Parse the one generated ``gh api ...contents...?ref=<sha>`` check.
+
+    ``check_value`` is a shell command, not a structured string to search.
+    Tokenise it, then parse the API path/query as data. This rejects a second
+    ref, a fork URL, abbreviated SHA, or prose that merely resembles a probe.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        tokens = shlex.split(value)
+    except ValueError:
+        return None
+    if len(tokens) < 3 or tokens[:2] != ["gh", "api"]:
+        return None
+    api_path = urllib.parse.urlsplit(tokens[2])
+    path_parts = api_path.path.split("/")
+    if len(path_parts) < 5 or path_parts[0] != "repos":
+        return None
+    # ``repos/<owner>/<repo>/contents/<path>`` has no empty path components.
+    if path_parts[3] != "contents" or not all(path_parts[4:]):
+        return None
+    repo = _canonical_repo(f"{path_parts[1]}/{path_parts[2]}")
+    query = urllib.parse.parse_qs(api_path.query, keep_blank_values=True)
+    if repo is None or set(query) != {"ref"} or len(query["ref"]) != 1:
+        return None
+    head_sha = _normalised_full_sha(query["ref"][0])
+    if head_sha is None:
+        return None
+    return repo, head_sha
+
+
+def _parse_contract_binding(content: str) -> _Binding | None:
+    """Read exactly one generated product evidence declaration from a contract."""
+    try:
+        document = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(document, dict):
+        return None
+    evidence = document.get("dod_evidence")
+    if not isinstance(evidence, list):
+        return None
+
+    candidates: list[tuple[str, str, str]] = []
+    for item in evidence:
+        if not isinstance(item, dict) or item.get("source") != "generated":
+            continue
+        item_id = item.get("id")
+        checks = item.get("checks")
+        if not isinstance(item_id, str) or not item_id or not isinstance(checks, list):
+            return None
+        for check in checks:
+            if not isinstance(check, dict) or check.get("check_type") != "command":
+                continue
+            parsed = _parse_product_ref_check(check.get("check_value"))
+            if parsed is not None:
+                candidates.append((item_id, *parsed))
+    if len(candidates) != 1:
+        return None
+    evidence_item_id, repo, head_sha = candidates[0]
+    return _Binding(repo, 0, head_sha, evidence_item_id)
+
+
+def _parse_receipt_binding(content: str) -> tuple[str, int, str, str] | None:
+    """Parse a receipt's typed fields and its canonical product PR probe."""
+    try:
+        document = yaml.safe_load(content)
+    except yaml.YAMLError:
+        return None
+    if not isinstance(document, dict):
+        return None
+    evidence_item_id = document.get("evidence_item_id")
+    pr_number = document.get("pr_number")
+    head_sha = _normalised_full_sha(document.get("commit_sha"))
+    branch = document.get("branch")
+    probe_command = document.get("probe_command")
+    if (
+        not isinstance(evidence_item_id, str)
+        or not evidence_item_id
+        or not isinstance(pr_number, int)
+        or pr_number <= 0
+        or head_sha is None
+        or not isinstance(branch, str)
+        or not isinstance(probe_command, str)
+    ):
+        return None
+    try:
+        tokens = shlex.split(probe_command)
+    except ValueError:
+        return None
+    if len(tokens) < 6 or tokens[:3] != ["gh", "pr", "view"]:
+        return None
+    if tokens[3] != str(pr_number):
+        return None
+    try:
+        repo_index = tokens.index("--repo")
+    except ValueError:
+        return None
+    if repo_index + 1 >= len(tokens):
+        return None
+    repo = _canonical_repo(tokens[repo_index + 1])
+    if repo is None:
+        return None
+    return evidence_item_id, pr_number, head_sha, branch + "\n" + repo
+
+
+def _list_changed_paths(
+    companion: _Companion,
+    *,
+    token: str,
+    fetch: Callable[[str, str], object | None],
+) -> tuple[str, ...] | None:
+    """Fully enumerate the changed file set; any pagination uncertainty fails."""
+    paths: list[str] = []
+    for page in range(1, _MAX_GITHUB_PAGES + 1):
+        payload = fetch(
+            f"{_GITHUB_API}/repos/{_OCC_REPO}/pulls/{companion.number}/files"
+            f"?per_page=100&page={page}",
+            token,
+        )
+        if not isinstance(payload, list):
+            return None
+        for item in payload:
+            path = item.get("filename") if isinstance(item, dict) else None
+            if not isinstance(path, str) or not path or path in paths:
+                return None
+            paths.append(path)
+        if len(payload) < 100:
+            return tuple(paths)
+    return None
 
 
 def _companion_product_head_binding(
@@ -415,34 +589,23 @@ def _companion_product_head_binding(
     if not _FULL_SHA_RE.fullmatch(product_head_sha):
         return "product_head_invalid"
 
-    files_url = (
-        f"{_GITHUB_API}/repos/{_OCC_REPO}/pulls/{companion.number}/files?per_page=100"
-    )
-    files_payload = fetch(files_url, token)
-    if not isinstance(files_payload, list):
-        return "binding_unparseable_files"
-    filenames: list[str] = []
-    for item in files_payload:
-        filename = item.get("filename") if isinstance(item, dict) else None
-        if not isinstance(filename, str):
-            return "binding_unparseable_files"
-        filenames.append(filename)
-
-    contract_paths = [
+    paths = _list_changed_paths(companion, token=token, fetch=fetch)
+    if paths is None:
+        return "binding_unparseable_or_truncated_files"
+    contract_paths = tuple(
         path
-        for path in filenames
+        for path in paths
         if path.startswith("contracts/") and path.endswith(".yaml")
-    ]
-    receipt_paths = [
+    )
+    receipt_paths = tuple(
         path
-        for path in filenames
+        for path in paths
         if path.startswith("drift/dod_receipts/") and path.endswith(".yaml")
-    ]
-    if not contract_paths or not receipt_paths:
-        return "binding_missing_artifacts"
+    )
+    if len(contract_paths) != 1 or not receipt_paths:
+        return "binding_artifact_cardinality_mismatch"
 
-    contract_heads: list[str] = []
-    matching_receipt_heads: list[str] = []
+    content_by_path: dict[str, str] = {}
     for path in [*contract_paths, *receipt_paths]:
         content_url = (
             f"{_GITHUB_API}/repos/{_OCC_REPO}/contents/"
@@ -450,33 +613,46 @@ def _companion_product_head_binding(
         )
         content = _decode_github_content(fetch(content_url, token))
         if content is None:
-            return "binding_unparseable_content"
-        if path.startswith("contracts/"):
-            # A contract probe must name this product PR before its ref can be
-            # considered provenance for it; an unrelated ref is not evidence.
-            if repo in content and f"pulls/{pr_number}" in content:
-                refs = _CONTRACT_REF_RE.findall(content)
-                if not refs:
-                    return "binding_unparseable_contract"
-                contract_heads.extend(ref.lower() for ref in refs)
-            continue
+            return "binding_unparseable_content_envelope"
+        content_by_path[path] = content
 
-        receipt_pr = _RECEIPT_PR_NUMBER_RE.search(content)
-        if receipt_pr is None or int(receipt_pr.group(1)) != pr_number:
-            continue
-        receipt_sha = _RECEIPT_COMMIT_SHA_RE.search(content)
-        if receipt_sha is None:
+    contract = _parse_contract_binding(content_by_path[contract_paths[0]])
+    if contract is None:
+        return "binding_unparseable_contract"
+    contract_evidence_id, contract_repo, contract_head = (
+        contract.evidence_item_id,
+        contract.repo,
+        contract.head_sha,
+    )
+
+    receipts: list[tuple[str, int, str, str, str]] = []
+    for path in receipt_paths:
+        parsed = _parse_receipt_binding(content_by_path[path])
+        if parsed is None:
             return "binding_unparseable_receipt"
-        matching_receipt_heads.append(receipt_sha.group(1).lower())
+        evidence_item_id, receipt_pr, receipt_head, branch_and_repo = parsed
+        receipt_branch, receipt_repo = branch_and_repo.split("\n", maxsplit=1)
+        if evidence_item_id == contract_evidence_id:
+            receipts.append(
+                (path, receipt_pr, receipt_head, receipt_branch, receipt_repo)
+            )
+    if len(receipts) != 1:
+        return "binding_receipt_cardinality_mismatch"
 
-    if not contract_heads or not matching_receipt_heads:
-        return "binding_missing_product_provenance"
+    _, receipt_pr, receipt_head, receipt_branch, receipt_repo = receipts[0]
     normalized_head = product_head_sha.lower()
-    if all(
-        head == normalized_head for head in [*contract_heads, *matching_receipt_heads]
+    if (
+        contract_repo != repo
+        or receipt_repo != repo
+        or receipt_pr != pr_number
+        or receipt_branch != companion_branch(repo, pr_number)
     ):
-        return "binding_matches_product_head"
-    return "binding_stale_product_head"
+        return "binding_product_identity_mismatch"
+    if contract_head != receipt_head:
+        return "binding_conflicting_heads"
+    if contract_head != normalized_head:
+        return "binding_stale_product_head"
+    return "binding_matches_product_head"
 
 
 def _github_get_json(url: str, token: str) -> object | None:
@@ -507,38 +683,105 @@ def _github_get_json(url: str, token: str) -> object | None:
         return None
 
 
-def _parse_companions(payload: object) -> tuple[_Companion, ...] | None:
+def _read_live_product_pr(
+    repo: str,
+    pr_number: int,
+    *,
+    token: str,
+    fetch: Callable[[str, str], object | None],
+) -> _ProductPr | None:
+    """Read the product PR authority; environment values are only a trigger."""
+    payload = fetch(f"{_GITHUB_API}/repos/{repo}/pulls/{pr_number}", token)
+    if not isinstance(payload, dict) or payload.get("number") != pr_number:
+        return None
+    body = payload.get("body")
+    head = payload.get("head")
+    base = payload.get("base")
+    head_repo = head.get("repo") if isinstance(head, dict) else None
+    base_repo = base.get("repo") if isinstance(base, dict) else None
+    head_repo_name = head_repo.get("full_name") if isinstance(head_repo, dict) else None
+    base_repo_name = base_repo.get("full_name") if isinstance(base_repo, dict) else None
+    head_sha = _normalised_full_sha(head.get("sha") if isinstance(head, dict) else None)
+    if (
+        not isinstance(body, (str, type(None)))
+        or head_repo_name != repo
+        or base_repo_name != repo
+        or head_sha is None
+    ):
+        return None
+    return _ProductPr(repo, pr_number, body or "", head_sha)
+
+
+def _live_product_pr_is_unchanged(
+    snapshot: _ProductPr,
+    *,
+    token: str,
+    fetch: Callable[[str, str], object | None],
+) -> bool:
+    """A second authoritative read closes the synchronize/event TOCTOU gap."""
+    return (
+        _read_live_product_pr(snapshot.repo, snapshot.number, token=token, fetch=fetch)
+        == snapshot
+    )
+
+
+def _parse_companions(
+    payload: object, expected_branch: str
+) -> tuple[_Companion, ...] | None:
     """Normalise the GitHub pulls payload. ``None`` == malformed (indeterminate)."""
     if not isinstance(payload, list):
         return None
     companions: list[_Companion] = []
+    numbers: set[int] = set()
     for item in payload:
         if not isinstance(item, dict):
             return None
         number = item.get("number")
         state = item.get("state")
-        if not isinstance(number, int) or not isinstance(state, str):
+        if (
+            not isinstance(number, int)
+            or number <= 0
+            or number in numbers
+            or not isinstance(state, str)
+            or state.lower() not in {"open", "closed"}
+        ):
             return None
-        merged = bool(item.get("merged_at"))
+        merged_at = item.get("merged_at")
+        if merged_at is not None and not isinstance(merged_at, str):
+            return None
+        merged = merged_at is not None
         head = item.get("head")
         head_sha = head.get("sha") if isinstance(head, dict) else None
-        if not isinstance(head_sha, str) or not _FULL_SHA_RE.fullmatch(head_sha):
+        normalized_head_sha = _normalised_full_sha(head_sha)
+        head_ref = head.get("ref") if isinstance(head, dict) else None
+        head_repo = head.get("repo") if isinstance(head, dict) else None
+        head_repo_name = (
+            head_repo.get("full_name") if isinstance(head_repo, dict) else None
+        )
+        if (
+            normalized_head_sha is None
+            or head_ref != expected_branch
+            or head_repo_name != _OCC_REPO
+        ):
             return None
         merge_sha = item.get("merge_commit_sha")
-        shas = tuple(
-            value.lower()
-            for value in (head_sha, merge_sha)
-            if isinstance(value, str) and value
-        )
+        if merge_sha is not None and _normalised_full_sha(merge_sha) is None:
+            return None
+        shas_list: list[str] = []
+        for value in (head_sha, merge_sha):
+            normalized_sha = _normalised_full_sha(value)
+            if normalized_sha is not None:
+                shas_list.append(normalized_sha)
         companions.append(
             _Companion(
                 number=number,
                 open_or_merged=(state.lower() == "open") or merged,
                 merged=merged,
-                head_sha=head_sha.lower(),
-                shas=shas,
+                head_sha=normalized_head_sha,
+                shas=tuple(shas_list),
             )
         )
+        numbers.add(number)
     return tuple(companions)
 
 
@@ -567,16 +810,28 @@ def resolve_citation(
     fetcher = fetch if fetch is not None else _github_get_json
     owner = _OCC_REPO.split("/")[0]
     branch = companion_branch(repo, pr_number)
-    url = (
-        f"{_GITHUB_API}/repos/{_OCC_REPO}/pulls"
-        f"?head={owner}:{branch}&state=all&per_page=100"
-    )
-    payload = fetcher(url, token)
-    if payload is None:
-        return Resolution(False, "resolution_unavailable", None)
-    companions = _parse_companions(payload)
-    if companions is None:
-        return Resolution(False, "resolution_malformed_payload", None)
+    all_companions: list[_Companion] = []
+    for page in range(1, _MAX_GITHUB_PAGES + 1):
+        url = (
+            f"{_GITHUB_API}/repos/{_OCC_REPO}/pulls"
+            f"?head={owner}:{branch}&state=all&per_page=100&page={page}"
+        )
+        payload = fetcher(url, token)
+        if payload is None:
+            return Resolution(False, "resolution_unavailable", None, fail_closed=True)
+        companions = _parse_companions(payload, branch)
+        if companions is None:
+            return Resolution(
+                False, "resolution_malformed_payload", None, fail_closed=True
+            )
+        all_companions.extend(companions)
+        if len(companions) < 100:
+            break
+    else:
+        return Resolution(
+            False, "resolution_truncated_companion_set", None, fail_closed=True
+        )
+    companions = tuple(all_companions)
     if not companions:
         return Resolution(False, "no_companion_exists_for_this_pr", None)
 
@@ -789,7 +1044,6 @@ def main(dry_run: bool, lane: str | None) -> None:
     repo = os.environ.get("PR_REPO", "")
     pr_number_str = os.environ.get("PR_NUMBER", "")
     pr_head_sha = os.environ.get("PR_HEAD_SHA", "")
-    pr_body = os.environ.get("PR_BODY", "")
     # OMN-16665: only the exact literal "true" enables the override. A loose
     # truthiness read ("false" is a non-empty string) would silently arm the
     # F-17 override on every born-path publish that set the variable at all.
@@ -804,12 +1058,63 @@ def main(dry_run: bool, lane: str | None) -> None:
         )
         sys.exit(1)
 
+    repo = _canonical_repo(repo) or ""
     try:
         # GHA env values are ALWAYS strings; the consumer model requires int.
         pr_number = int(pr_number_str)
     except ValueError:
         click.echo(
             f"ERROR: PR_NUMBER must be an integer, got: {pr_number_str!r}", err=True
+        )
+        sys.exit(1)
+    if pr_number <= 0 or _normalised_full_sha(pr_head_sha) is None or not repo:
+        click.echo(
+            "ERROR: PR_REPO, PR_NUMBER, and PR_HEAD_SHA must be canonical "
+            "owner/repo, positive integer, and full 40-hex SHA values",
+            err=True,
+        )
+        sys.exit(1)
+
+    token = (
+        os.environ.get("GH_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "")
+    ).strip()
+    fetcher = _github_get_json
+
+    # A dry run neither skips nor publishes a command; it is intentionally
+    # offline so validation jobs can exercise the frozen wire shape.
+    if dry_run:
+        correlation_id = str(uuid.uuid4())
+        payload = build_payload(
+            repo=repo,
+            pr_number=pr_number,
+            correlation_id=correlation_id,
+            allow_merged_replay=allow_merged_replay,
+        )
+        click.echo(
+            f"occ-companion-effect command: repo={repo} pr={pr_number} "
+            f"head={pr_head_sha} lane={lane!r} "
+            f"allow_merged_replay={allow_merged_replay}"
+        )
+        click.echo("publish_declined: dry_run")
+        click.echo("(dry-run: skipping Kafka publish)")
+        click.echo(json.dumps(payload, indent=2))
+        sys.exit(0)
+
+    live_pr = _read_live_product_pr(repo, pr_number, token=token, fetch=fetcher)
+    if live_pr is None:
+        click.echo("publish_declined: live_product_pr_unavailable")
+        click.echo(
+            f"ERROR: cannot authoritatively read {repo}#{pr_number}; retry rather "
+            "than using event environment evidence.",
+            err=True,
+        )
+        sys.exit(1)
+    if live_pr.head_sha != pr_head_sha.lower():
+        click.echo("publish_declined: product_head_changed")
+        click.echo(
+            f"ERROR: event head {pr_head_sha} differs from live {live_pr.head_sha}; "
+            "retry from the current synchronized PR.",
+            err=True,
         )
         sys.exit(1)
 
@@ -819,7 +1124,7 @@ def main(dry_run: bool, lane: str | None) -> None:
     # OMN-16710 made it line-anchored; OMN-15615 makes it artifact-resolved —
     # a citation that does not resolve to a live companion of THIS PR is not a
     # binding, and an answer we could not obtain is never a binding.
-    citation = product_pr_evidence_citation(pr_body)
+    citation = product_pr_evidence_citation(live_pr.body)
     if citation is None:
         resolution = Resolution(False, "no_evidence_source_citation", None)
     else:
@@ -827,10 +1132,9 @@ def main(dry_run: bool, lane: str | None) -> None:
             citation,
             repo=repo,
             pr_number=pr_number,
-            product_head_sha=pr_head_sha,
-            token=(
-                os.environ.get("GH_TOKEN", "") or os.environ.get("GITHUB_TOKEN", "")
-            ).strip(),
+            product_head_sha=live_pr.head_sha,
+            token=token,
+            fetch=fetcher,
         )
     if resolution.fail_closed:
         # A cited companion with absent, ambiguous, or stale generated
@@ -840,13 +1144,20 @@ def main(dry_run: bool, lane: str | None) -> None:
         click.echo(f"publish_declined: {resolution.reason}")
         click.echo(
             f"ERROR: {repo}#{pr_number} cites OCC#{resolution.occ_pr_number}, but "
-            f"its generated provenance is not valid for product head {pr_head_sha}. "
+            f"its generated provenance is not valid for product head {live_pr.head_sha}. "
             "Refusing to suppress or replay the publisher; create an append-only "
             "superseding companion when the cited evidence is merged.",
             err=True,
         )
         sys.exit(1)
     if resolution.bound:
+        if not _live_product_pr_is_unchanged(live_pr, token=token, fetch=fetcher):
+            click.echo("publish_declined: live_product_pr_changed_before_skip")
+            click.echo(
+                "ERROR: product PR changed while companion evidence was resolved; retry.",
+                err=True,
+            )
+            sys.exit(1)
         # AC7: the machine-readable verdict names the RESOLVED companion. A
         # skip that cannot name one is the vacuous-SUCCESS shape itself.
         click.echo(f"skipped_bound_to: OCC#{resolution.occ_pr_number}")
@@ -883,12 +1194,6 @@ def main(dry_run: bool, lane: str | None) -> None:
         f"allow_merged_replay={allow_merged_replay}"
     )
 
-    if dry_run:
-        click.echo("publish_declined: dry_run")
-        click.echo("(dry-run: skipping Kafka publish)")
-        click.echo(json.dumps(payload, indent=2))
-        sys.exit(0)
-
     bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "").strip()
     username = os.environ.get("KAFKA_SASL_USERNAME", "")
     password = os.environ.get("KAFKA_SASL_PASSWORD", "")
@@ -901,6 +1206,13 @@ def main(dry_run: bool, lane: str | None) -> None:
     mode, declared_broker = _resolve_lane_broker(overlay, lane)
 
     def _publish_or_die(target_broker: str) -> None:
+        if not _live_product_pr_is_unchanged(live_pr, token=token, fetch=fetcher):
+            click.echo("publish_declined: live_product_pr_changed_before_publish")
+            click.echo(
+                "ERROR: product PR changed while companion evidence was resolved; retry.",
+                err=True,
+            )
+            sys.exit(1)
         try:
             published_id = publish_occ_companion_effect_command(
                 bootstrap_servers=target_broker,
