@@ -73,6 +73,18 @@ event_bus:
     - onex.cmd.ui.renderer-capability-declared.v1
   publish_topics:
     - onex.evt.omnimarket.renderer-capability-projection-snapshot.v1
+  # OMN-17497: this node MUST own its DLQ. With no dlq_topics declared, every
+  # erroring event fell through to the platform-wide quarantine sink
+  # (onex.dlq.omnibase-infra.quarantine.v1) shared by every handler on the
+  # runtime. On onex-dev that sink's publish was itself failing, and because
+  # the Kafka circuit breaker is keyed on the CONNECTION, this node's failures
+  # opened the shared kafka.onex-dev breaker 108 times in two hours and took
+  # the gateway attach/heartbeat/detach path down with it. A node-owned DLQ
+  # keeps this node's failures attributable to this node -- both for triage
+  # (the quarantine sink held 8.88M records as of OMN-16769, so a per-node
+  # failure is unfindable in it) and for blast radius.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-renderer-capability-malformed.v1
 
 externally_consumed_topics:
   - onex.evt.omnimarket.renderer-capability-projection-snapshot.v1
