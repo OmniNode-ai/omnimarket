@@ -42,6 +42,8 @@ from pydantic import ValidationError
 
 from omnimarket.nodes.node_contractor_integration_note_effect.handlers.handler_contractor_integration_note import (
     HandlerContractorIntegrationNote,
+    LinearGraphqlNoteBoundary,
+    resolve_linear_api_key,
 )
 from omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_request import (
     ModelContractorRoster,
@@ -53,10 +55,8 @@ from omnimarket.nodes.node_contractor_integration_note_effect.models.model_integ
 )
 from omnimarket.nodes.node_contractor_integration_note_effect.services.adapters import (
     GitReleaseStateProbe,
-    LinearGraphqlNoteBoundary,
     ProtocolLinearNoteBoundary,
     ProtocolReleaseStateProbe,
-    resolve_linear_api_key,
 )
 
 _log = logging.getLogger(__name__)

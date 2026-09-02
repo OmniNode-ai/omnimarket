@@ -17,27 +17,136 @@ Related:
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
 
+from omnimarket.config.service_endpoints import LINEAR_GRAPHQL_URL
+from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_request import (
     ModelIntegrationNoteRequest,
+    ModelTicketFacts,
 )
 from omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_result import (
     ModelIntegrationNoteResult,
 )
 from omnimarket.nodes.node_contractor_integration_note_effect.services.adapters import (
+    CONTRACT_PATH,
+    LINEAR_SECRET_NAME,
     GitReleaseStateProbe,
-    LinearGraphqlNoteBoundary,
     ProtocolLinearNoteBoundary,
     ProtocolReleaseStateProbe,
-    resolve_linear_api_key,
 )
 from omnimarket.nodes.node_contractor_integration_note_effect.services.note_composer import (
     compose_integration_note,
     extract_ticket_reference,
+    parse_note_keys,
 )
 
 logger = logging.getLogger(__name__)
+_REQUEST_TIMEOUT_SECONDS = 30
+
+
+def resolve_linear_api_key(contract_path: Path = CONTRACT_PATH) -> str:
+    """Resolve the Linear credential through the contract-declared ref."""
+    ref = contract_secret_ref(contract_path, LINEAR_SECRET_NAME)
+    value = os.environ.get(ref)
+    if not value:
+        raise RuntimeError(
+            f"Secret {ref!r} is declared in {contract_path.name} but is unset in "
+            "the environment; refusing to run — an undelivered note must not "
+            "read as a successful one."
+        )
+    return value
+
+
+class LinearGraphqlNoteBoundary:
+    """The Linear GraphQL implementation of the note boundary."""
+
+    def __init__(self, api_key: str, *, endpoint: str = LINEAR_GRAPHQL_URL) -> None:
+        self._api_key = api_key
+        self._endpoint = endpoint
+
+    def _post(self, query: str, variables: dict[str, Any]) -> dict[str, Any]:
+        payload = json.dumps({"query": query, "variables": variables}).encode()
+        request = urllib.request.Request(
+            self._endpoint,
+            data=payload,
+            headers={
+                "Authorization": self._api_key,
+                "Content-Type": "application/json",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(
+            request, timeout=_REQUEST_TIMEOUT_SECONDS
+        ) as response:
+            data = json.loads(response.read())
+        if not isinstance(data, dict):
+            raise RuntimeError("Linear GraphQL returned a non-object response")
+        if data.get("errors"):
+            raise RuntimeError(f"Linear GraphQL error: {data['errors']}")
+        return data
+
+    def fetch_ticket(self, identifier: str) -> ModelTicketFacts | None:
+        query = """
+        query IntegrationNoteTicket($id: String!) {
+          issue(id: $id) {
+            id
+            identifier
+            title
+            assignee { id }
+          }
+        }
+        """
+        try:
+            data = self._post(query, {"id": identifier})
+        except (urllib.error.HTTPError, RuntimeError):
+            return None
+        issue = (data.get("data") or {}).get("issue")
+        if not isinstance(issue, dict):
+            return None
+        assignee = issue.get("assignee") or {}
+        return ModelTicketFacts(
+            issue_id=str(issue["id"]),
+            identifier=str(issue["identifier"]),
+            title=str(issue.get("title") or ""),
+            assignee_linear_user_id=(
+                str(assignee["id"]) if isinstance(assignee, dict) and assignee else None
+            ),
+        )
+
+    def existing_note_keys(self, issue_id: str) -> tuple[str, ...]:
+        query = """
+        query IntegrationNoteComments($id: String!) {
+          issue(id: $id) {
+            comments(first: 250) { nodes { body } }
+          }
+        }
+        """
+        data = self._post(query, {"id": issue_id})
+        issue = (data.get("data") or {}).get("issue") or {}
+        nodes = ((issue.get("comments") or {}).get("nodes")) or []
+        return parse_note_keys(
+            str(node.get("body") or "") for node in nodes if isinstance(node, dict)
+        )
+
+    def post_note(self, issue_id: str, body: str) -> None:
+        query = """
+        mutation IntegrationNoteCreate($issueId: String!, $body: String!) {
+          commentCreate(input: { issueId: $issueId, body: $body }) { success }
+        }
+        """
+        data = self._post(query, {"issueId": issue_id, "body": body})
+        success = ((data.get("data") or {}).get("commentCreate") or {}).get(
+            "success"
+        ) is True
+        if not success:
+            raise RuntimeError(f"Linear refused the integration note for {issue_id}")
 
 
 class HandlerContractorIntegrationNote:
@@ -116,4 +225,8 @@ class HandlerContractorIntegrationNote:
         )
 
 
-__all__ = ["HandlerContractorIntegrationNote"]
+__all__ = [
+    "HandlerContractorIntegrationNote",
+    "LinearGraphqlNoteBoundary",
+    "resolve_linear_api_key",
+]
