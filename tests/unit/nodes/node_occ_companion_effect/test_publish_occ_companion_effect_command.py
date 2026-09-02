@@ -982,6 +982,77 @@ class TestCompanionProvenanceBindsTheProductHead:
         assert recorder.brokers == []
 
     @pytest.mark.parametrize(
+        "suffix",
+        [
+            "--hostname attacker.example",
+            "--hostname=attacker.example",
+            "--method GET",
+        ],
+    )
+    def test_product_proof_rejects_unsupported_gh_options(self, suffix: str) -> None:
+        """Only the generated ``gh api`` grammar can establish product proof."""
+        module = _load_publisher()
+        command = (
+            f"gh api repos/OmniNode-ai/omnimarket/contents/x?ref={'a' * 40} "
+            f"--jq .content {suffix}"
+        )
+        assert module._parse_product_ref_check(command) is None  # type: ignore[attr-defined]
+
+    @pytest.mark.parametrize(
+        "selector",
+        [
+            "--repo OmniNode-ai/omnimarket",
+            "--repo=OmniNode-ai/omnimarket",
+            "-R OmniNode-ai/omnimarket",
+            "-ROmniNode-ai/omnimarket",
+        ],
+    )
+    def test_receipt_proof_accepts_one_supported_repo_selector(
+        self, selector: str
+    ) -> None:
+        """All gh spellings are equivalent, but there must be only one."""
+        module = _load_publisher()
+        content = (
+            "evidence_item_id: product-proof\n"
+            "pr_number: 42\n"
+            f'commit_sha: "{"a" * 40}"\n'
+            "branch: auto/omninode-ai-omnimarket-pr-42-occ-autobind\n"
+            "probe_command: >-\n"
+            f"  gh pr view 42 {selector} --json number,state\n"
+        )
+        assert module._parse_receipt_binding(content) == (  # type: ignore[attr-defined]
+            "product-proof",
+            42,
+            "a" * 40,
+            "auto/omninode-ai-omnimarket-pr-42-occ-autobind\nOmniNode-ai/omnimarket",
+        )
+
+    @pytest.mark.parametrize(
+        "selector_suffix",
+        [
+            "--repo OmniNode-ai/omnimarket -R attacker/omnimarket",
+            "--repo=OmniNode-ai/omnimarket --repo attacker/omnimarket",
+            "-ROmniNode-ai/omnimarket -Rattacker/omnimarket",
+            "--repo OmniNode-ai/omnimarket --repo OmniNode-ai/omnimarket",
+            "--repo OmniNode-ai/omnimarket --hostname attacker.example",
+            "--repo OmniNode-ai/omnimarket --hostname=attacker.example",
+        ],
+    )
+    def test_receipt_proof_rejects_extra_or_unsupported_selectors(
+        self, selector_suffix: str
+    ) -> None:
+        module = _load_publisher()
+        content = (
+            "evidence_item_id: product-proof\n"
+            "pr_number: 42\n"
+            f'commit_sha: "{"a" * 40}"\n'
+            "branch: auto/omninode-ai-omnimarket-pr-42-occ-autobind\n"
+            "probe_command: >-\n"
+            f"  gh pr view 42 {selector_suffix} --json number,state\n"
+        )
+        assert module._parse_receipt_binding(content) is None  # type: ignore[attr-defined]
+
+    @pytest.mark.parametrize(
         ("label", "mutate", "reason"),
         [
             (

@@ -440,19 +440,27 @@ def _parse_product_ref_check(value: object) -> tuple[str, str] | None:
     """Parse the one generated ``gh api ...contents...?ref=<sha>`` check.
 
     ``check_value`` is a shell command, not a structured string to search.
-    Tokenise it, then parse the API path/query as data. This rejects a second
-    ref, a fork URL, abbreviated SHA, or prose that merely resembles a probe.
+    Tokenise it, then parse the API path/query as data. The accepted grammar is
+    deliberately closed: ``gh api <contents-path>?ref=<full-sha> --jq
+    .content`` (with an optional shell comment).  A proof is authority, so an
+    otherwise-valid path paired with an unsupported ``gh`` option must not be
+    accepted merely because that option is unrelated to the path parser.
     """
     if not isinstance(value, str):
         return None
     try:
-        tokens = shlex.split(value)
+        # Honour shell comments.  In particular, the canonical generated
+        # command carries a trailing ``# pulls/<number>`` annotation.  A quoted
+        # ``'#'`` remains an argument and is rejected by the closed grammar.
+        tokens = shlex.split(value, comments=True)
     except ValueError:
         return None
-    if len(tokens) < 3 or tokens[:2] != ["gh", "api"]:
+    if len(tokens) != 5 or tokens[:2] != ["gh", "api"]:
+        return None
+    if tokens[3:] != ["--jq", ".content"]:
         return None
     api_path = urllib.parse.urlsplit(tokens[2])
-    if api_path.scheme or api_path.netloc:
+    if api_path.scheme or api_path.netloc or api_path.fragment:
         return None
     path_parts = api_path.path.split("/")
     if len(path_parts) < 5 or path_parts[0] != "repos":
@@ -526,21 +534,51 @@ def _parse_receipt_binding(content: str) -> tuple[str, int, str, str] | None:
     ):
         return None
     try:
-        tokens = shlex.split(probe_command)
+        # See _parse_product_ref_check: parse comments as a shell would, while
+        # retaining a quoted '#' as an ordinary (and unsupported) argument.
+        tokens = shlex.split(probe_command, comments=True)
     except ValueError:
         return None
-    if len(tokens) < 6 or tokens[:3] != ["gh", "pr", "view"]:
+    if len(tokens) < 7 or tokens[:3] != ["gh", "pr", "view"]:
         return None
     if tokens[3] != str(pr_number):
         return None
-    repo_indexes = [index for index, token in enumerate(tokens) if token == "--repo"]
-    if len(repo_indexes) != 1:
+
+    # Closed ``gh pr view`` proof grammar.  The selector appears exactly once
+    # in any supported gh spelling: ``--repo value``, ``--repo=value``, ``-R
+    # value``, or compact ``-Rvalue``.  We intentionally do not admit other
+    # gh flags (notably ``--hostname``), so parsing a receipt cannot silently
+    # bless a command that changes its authority boundary.
+    repo_values: list[str] = []
+    json_values: list[str] = []
+    index = 4
+    while index < len(tokens):
+        token = tokens[index]
+        if token in {"--repo", "-R"}:
+            index += 1
+            if index >= len(tokens):
+                return None
+            repo_values.append(tokens[index])
+        elif token.startswith("--repo="):
+            repo_values.append(token.removeprefix("--repo="))
+        elif token.startswith("-R") and len(token) > 2:
+            compact_value = token[2:]
+            repo_values.append(compact_value.removeprefix("="))
+        elif token == "--json":
+            index += 1
+            if index >= len(tokens):
+                return None
+            json_values.append(tokens[index])
+        elif token.startswith("--json="):
+            json_values.append(token.removeprefix("--json="))
+        else:
+            return None
+        index += 1
+
+    if len(repo_values) != 1 or len(json_values) != 1:
         return None
-    repo_index = repo_indexes[0]
-    if repo_index + 1 >= len(tokens):
-        return None
-    repo = _canonical_repo(tokens[repo_index + 1])
-    if repo is None:
+    repo = _canonical_repo(repo_values[0])
+    if repo is None or not json_values[0] or json_values[0].startswith("-"):
         return None
     return evidence_item_id, pr_number, head_sha, branch + "\n" + repo
 
