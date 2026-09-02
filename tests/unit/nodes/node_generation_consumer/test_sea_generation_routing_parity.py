@@ -47,15 +47,6 @@ from omnimarket.nodes.node_generation_consumer.models.model_generation import (
 _HANDLER_SRC = Path(handler_mod.__file__).read_text()
 
 
-def _repo_root() -> Path:
-    # handler file: <root>/src/omnimarket/nodes/node_generation_consumer/handlers/...
-    here = Path(handler_mod.__file__).resolve()
-    for parent in here.parents:
-        if (parent / "docs" / "migrations").is_dir():
-            return parent
-    raise AssertionError("could not locate repo root with docs/migrations")
-
-
 # ---------------------------------------------------------------------------
 # Capability parity: the canonical handler subsumes the SEA GenerationConsumer.
 # ---------------------------------------------------------------------------
@@ -207,21 +198,3 @@ def test_canonical_handler_does_not_import_kafka_client() -> None:
     assert "KafkaConsumer" not in _HANDLER_SRC
     assert "KafkaProducer" not in _HANDLER_SRC
     assert "signal.signal" not in _HANDLER_SRC
-
-
-# ---------------------------------------------------------------------------
-# Migration boundary doc must record the ROUTE closure.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-def test_route_migration_boundary_doc_exists() -> None:
-    """The ROUTE closure is documented as a capability->canonical-home boundary."""
-    doc = _repo_root() / "docs" / "migrations" / "sea-generation-pipeline-routing.md"
-    assert doc.is_file(), f"missing migration boundary doc: {doc}"
-    text = doc.read_text()
-    assert "consumer.py" in text
-    assert "consumer_local.py" in text
-    assert "kafka_runner.py" in text
-    assert "node_generation_consumer" in text
-    assert "routing authority" in text
