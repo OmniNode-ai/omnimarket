@@ -33,11 +33,24 @@ description: >
   by a pure service; the handler owns only sequencing and I/O.
 
 handler:
-  # Constructed by the module entrypoint (cli.py) with its two effect
-  # boundaries injected, NOT by the boot resolver — see the event_bus note below.
+  # Both effect boundaries are OPTIONAL constructor parameters defaulting to the
+  # real ones, so the boot resolver can build this handler from the three
+  # known-injectable providers alone (OMN-13551). The module entrypoint (cli.py)
+  # injects them explicitly; a bus dispatch gets the live ones.
   module: omnimarket.nodes.node_contractor_integration_note_effect.handlers.handler_contractor_integration_note
   class: HandlerContractorIntegrationNote
   input_model: omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_request.ModelIntegrationNoteRequest
+
+handler_routing:
+  routing_strategy: operation_match
+  handlers:
+    - operation: post_contractor_integration_note
+      handler:
+        name: HandlerContractorIntegrationNote
+        module: omnimarket.nodes.node_contractor_integration_note_effect.handlers.handler_contractor_integration_note
+      event_model:
+        name: ModelIntegrationNoteRequest
+        module: omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_request
 
 input_model:
   name: ModelIntegrationNoteRequest
@@ -77,6 +90,15 @@ inputs:
     type: object
     description: "Contractor roster and pin recipes, loaded from config/contractor_roster.yaml."
     required: true
+  checkout_path:
+    type: str
+    description: >
+      Path to a checkout of pull_request.repo WITH TAGS FETCHED. Answers
+      "is this merge in a released tag" via `git tag --contains`. Required and
+      carried in the payload, not bound into an adapter: a shallow or absent
+      checkout answers "not released" for the wrong reason, which would send the
+      recipient a pin recipe for something already shipped.
+    required: true
   dry_run:
     type: bool
     description: "Compose and report the note without writing it to Linear."
@@ -102,22 +124,20 @@ outputs:
 
 # ADDRESSING — the command address is real; the bus PRODUCER is not, yet.
 #
-# An EFFECT node is command-addressable by platform rule, so the node declares
-# its own command topic and terminal event. What dispatches that command today
-# is this node's module entrypoint (cli.py), invoked by a GitHub Actions shim
-# (omnibase_infra/.github/workflows/contractor-integration-note.yml) — not a bus
-# producer. That is stated rather than implied: no contract publishes
+# The node declares its own command topic and terminal event, and today what
+# dispatches that command is the module entrypoint (cli.py) invoked by a GitHub
+# Actions shim (omnibase_infra/.github/workflows/contractor-integration-note.yml).
+# Stated rather than implied: NO contract publishes
 # onex.cmd.omnimarket.contractor-integration-note.v1.
 #
 # The obvious producer would be onex.evt.github.pr-merged.v1, and it is
-# deliberately NOT subscribed here. A bus-dispatched shape cannot answer the
-# note's reachability field: that comes from `git tag --contains` against the
-# MERGED repo, and the runtime holds no checkout of it — the workflow does.
-# Subscribing anyway would manufacture the wired-looking-but-unwired path this
-# platform's topic-graph oracle exists to catch. Earning the bus shape needs a
-# release-state probe answerable without a working tree (a tag projection, or a
-# GitHub API read behind a declared credential); recorded here so it is not
-# rediscovered as a mystery.
+# deliberately NOT subscribed. That feed carries no checkout of the merged repo,
+# and `checkout_path` is a required input for a concrete reason (see inputs):
+# a caller that cannot supply one cannot answer the note's reachability field.
+# Bridging that feed to this command means giving the bridge a checkout, or
+# replacing the tag probe with something answerable without a working tree (a
+# tag projection, or a GitHub API read behind a declared credential). Recorded
+# here so the gap is a known cost rather than a rediscovered mystery.
 terminal_event: onex.evt.omnimarket.contractor-integration-note-posted.v1
 
 event_bus:
@@ -127,11 +147,6 @@ event_bus:
     - onex.evt.omnimarket.contractor-integration-note-posted.v1
 
 runtime_dispatch:
-  # Declared instead of a handler_routing entry. The handler takes its two
-  # effect boundaries by constructor injection and is therefore not
-  # boot-resolvable from the three known-injectable providers; listing it under
-  # handler_routing would have the boot resolver quarantine it behind a warning
-  # nobody reads (OMN-13551). The node keeps its real handler either way.
   command_topic: onex.cmd.omnimarket.contractor-integration-note.v1
   terminal_events:
     success: onex.evt.omnimarket.contractor-integration-note-posted.v1

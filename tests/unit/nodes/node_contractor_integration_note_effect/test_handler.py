@@ -9,6 +9,8 @@ mechanism rests on — that it never writes twice for the same merge.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from omnimarket.nodes.node_contractor_integration_note_effect.handlers.handler_contractor_integration_note import (
@@ -70,7 +72,10 @@ def _request(
     dry_run: bool = False,
 ) -> ModelIntegrationNoteRequest:
     return ModelIntegrationNoteRequest(
-        pull_request=pull_request, roster=roster, dry_run=dry_run
+        pull_request=pull_request,
+        roster=roster,
+        checkout_path=Path("/nonexistent-checkout"),
+        dry_run=dry_run,
     )
 
 

@@ -18,6 +18,7 @@ Related:
 from __future__ import annotations
 
 from datetime import datetime
+from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -122,6 +123,17 @@ class ModelIntegrationNoteRequest(BaseModel):
     )
     roster: ModelContractorRoster = Field(
         ..., description="Contractor roster resolved from the checked-in overlay."
+    )
+    checkout_path: Path = Field(
+        ...,
+        description=(
+            "A checkout of pull_request.repo, with tags fetched, used to answer "
+            "'is this merge in a released tag'. Required, and carried in the "
+            "payload rather than bound into an adapter: it is a fact about THIS "
+            "request, and a caller that cannot supply one cannot answer the "
+            "note's reachability field at all — better to fail validation than "
+            "to answer 'not released' from an empty tag list."
+        ),
     )
     dry_run: bool = Field(
         default=False,

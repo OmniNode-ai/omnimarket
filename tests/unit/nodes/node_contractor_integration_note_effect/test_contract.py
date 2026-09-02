@@ -16,6 +16,7 @@ node earlier, at the node's own boundary.
 from __future__ import annotations
 
 import importlib
+import inspect
 from pathlib import Path
 from typing import Any
 
@@ -24,6 +25,9 @@ import yaml
 
 from omnimarket.nodes.contract_topics import contract_secret_ref
 from omnimarket.nodes.node_contractor_integration_note_effect.cli import load_roster
+from omnimarket.nodes.node_contractor_integration_note_effect.models.model_integration_note_request import (
+    ModelIntegrationNoteRequest,
+)
 from omnimarket.nodes.node_contractor_integration_note_effect.services.adapters import (
     CONTRACT_PATH,
     LINEAR_SECRET_NAME,
@@ -129,17 +133,44 @@ def test_terminal_event_is_declared_externally_consumed(
     assert contract["terminal_event"] in contract["externally_consumed_topics"]
 
 
-def test_contract_declares_no_handler_routing(contract: dict[str, Any]) -> None:
-    """The handler takes two injected boundaries and is not boot-resolvable.
+def test_declared_handler_is_boot_resolvable(contract: dict[str, Any]) -> None:
+    """The handler must be constructible from the boot resolver's providers.
 
-    Listing it under handler_routing would have the boot resolver fail to
-    construct it and quarantine it behind a warning nobody reads (OMN-13551), so
-    the node declares runtime_dispatch instead. The `handler:` block stays — the
-    node keeps its real handler; only the false claim that the boot resolver can
-    build it is removed.
+    At boot the runtime walks handler_routing and asks ServiceHandlerResolver to
+    instantiate each declared handler, with only ``event_bus`` / ``container`` /
+    ``ownership_query`` available. A required, default-less parameter makes the
+    handler unresolvable, and it is quarantined behind a boot warning nobody
+    reads (OMN-13551). This asserts the property directly rather than trusting
+    the repo-wide scan to notice later.
     """
-    assert "handler_routing" not in contract
-    assert contract["handler"]["class"] == "HandlerContractorIntegrationNote"
+    routing = contract["handler_routing"]["handlers"]
+    assert len(routing) == 1
+    declared = routing[0]["handler"]
+    module = importlib.import_module(declared["module"])
+    handler_class = getattr(module, declared["name"])
+
+    injectable = {"self", "event_bus", "container", "ownership_query"}
+    unresolvable = [
+        name
+        for name, param in inspect.signature(handler_class.__init__).parameters.items()
+        if name not in injectable and param.default is inspect.Parameter.empty
+    ]
+    assert unresolvable == [], (
+        f"{declared['name']} would quarantine at boot on {unresolvable}"
+    )
+
+
+def test_the_checkout_path_is_a_required_input(contract: dict[str, Any]) -> None:
+    """Reachability is a fact about the request, not about the deployment.
+
+    Carrying the checkout in the payload is what lets the same node answer for a
+    workflow-triggered merge and for anything else that can supply a tree. A
+    caller with no checkout fails validation instead of silently reading an
+    empty tag list as "not released" and shipping a pin recipe for something
+    already released.
+    """
+    assert contract["inputs"]["checkout_path"]["required"] is True
+    assert "checkout_path" in ModelIntegrationNoteRequest.model_fields
 
 
 def test_effect_node_declares_the_effects_runtime_profile(

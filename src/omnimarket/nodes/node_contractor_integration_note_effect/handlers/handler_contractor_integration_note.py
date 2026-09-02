@@ -26,8 +26,11 @@ from omnimarket.nodes.node_contractor_integration_note_effect.models.model_integ
     ModelIntegrationNoteResult,
 )
 from omnimarket.nodes.node_contractor_integration_note_effect.services.adapters import (
+    GitReleaseStateProbe,
+    LinearGraphqlNoteBoundary,
     ProtocolLinearNoteBoundary,
     ProtocolReleaseStateProbe,
+    resolve_linear_api_key,
 )
 from omnimarket.nodes.node_contractor_integration_note_effect.services.note_composer import (
     compose_integration_note,
@@ -42,9 +45,19 @@ class HandlerContractorIntegrationNote:
 
     def __init__(
         self,
-        linear: ProtocolLinearNoteBoundary,
-        releases: ProtocolReleaseStateProbe,
+        linear: ProtocolLinearNoteBoundary | None = None,
+        releases: ProtocolReleaseStateProbe | None = None,
     ) -> None:
+        """Both boundaries are injectable, and default to the real ones.
+
+        Optional rather than required so the runtime's boot resolver can
+        construct this handler from the three known-injectable providers alone
+        (OMN-13551): a required, default-less parameter makes the handler
+        unresolvable and it is quarantined behind a boot warning nobody reads.
+        The default is not a degraded stand-in — it is the live boundary, built
+        from the contract-declared secret, and it fails closed if that secret is
+        unset. Tests and dry runs inject fakes instead.
+        """
         self._linear = linear
         self._releases = releases
 
@@ -52,8 +65,11 @@ class HandlerContractorIntegrationNote:
         self, request: ModelIntegrationNoteRequest
     ) -> ModelIntegrationNoteResult:
         pull_request = request.pull_request
+        linear = self._linear or LinearGraphqlNoteBoundary(resolve_linear_api_key())
+        releases = self._releases or GitReleaseStateProbe(request.checkout_path)
+
         ticket_ref = extract_ticket_reference(pull_request)
-        ticket = self._linear.fetch_ticket(ticket_ref) if ticket_ref else None
+        ticket = linear.fetch_ticket(ticket_ref) if ticket_ref else None
 
         # The release probe and the comment read are only worth their cost once
         # the merge is known to belong to a contractor's ticket. Ordering them
@@ -62,8 +78,8 @@ class HandlerContractorIntegrationNote:
         release_tags: tuple[str, ...] = ()
         existing_keys: tuple[str, ...] = ()
         if ticket is not None:
-            release_tags = self._releases.tags_containing(pull_request.merge_sha)
-            existing_keys = self._linear.existing_note_keys(ticket.issue_id)
+            release_tags = releases.tags_containing(pull_request.merge_sha)
+            existing_keys = linear.existing_note_keys(ticket.issue_id)
 
         decision = compose_integration_note(
             pull_request=pull_request,
@@ -76,7 +92,7 @@ class HandlerContractorIntegrationNote:
         posted = False
         if decision.should_post and not request.dry_run:
             assert ticket is not None  # should_post implies a resolved ticket
-            self._linear.post_note(ticket.issue_id, decision.note_body)
+            linear.post_note(ticket.issue_id, decision.note_body)
             posted = True
             logger.info(
                 "integration note posted: ticket=%s key=%s reachability=%s",

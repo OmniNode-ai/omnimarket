@@ -164,7 +164,11 @@ def _chain(tmp_path: Path) -> tuple[ModelIntegrationNoteRequest, _FakeLinear]:
         )
     )
     return (
-        ModelIntegrationNoteRequest(pull_request=pull_request, roster=roster),
+        ModelIntegrationNoteRequest(
+            pull_request=pull_request,
+            roster=roster,
+            checkout_path=tmp_path,
+        ),
         linear,
     )
 

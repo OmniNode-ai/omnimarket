@@ -168,7 +168,10 @@ def main(argv: list[str] | None = None) -> int:
             raise ValueError(f"{args.pr_json} must contain a JSON object")
         pull_request = parse_pull_request(args.repo, payload)
         request = ModelIntegrationNoteRequest(
-            pull_request=pull_request, roster=roster, dry_run=args.dry_run
+            pull_request=pull_request,
+            roster=roster,
+            checkout_path=args.repo_path,
+            dry_run=args.dry_run,
         )
         # A dry run still READS Linear (assignee, posted keys) to reach a
         # truthful decision, so it wants the key too — but an unset key must
@@ -179,6 +182,9 @@ def main(argv: list[str] | None = None) -> int:
         _log.error("%s", exc)
         return 2
 
+    # Injected explicitly rather than left to the handler's live defaults, so a
+    # dry run reaches a truthful decision on whatever credential it has instead
+    # of failing closed on a rehearsal.
     linear: ProtocolLinearNoteBoundary = LinearGraphqlNoteBoundary(api_key)
     releases: ProtocolReleaseStateProbe = GitReleaseStateProbe(args.repo_path)
 
