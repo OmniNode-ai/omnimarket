@@ -258,7 +258,7 @@ repos:
 
       # OMN-10580: Leaked-literals gate — blocks hardcoded LAN IPs, personal
       # paths, private model IDs from being committed. Add an inline annotation
-      # to exempt a legitimate occurrence (see docs/leaked-literals-governance.md).
+      # to exempt a legitimate occurrence (see knowledge-base-internal:reference/omnimarket-leaked-literals-gate.md).
       #
       # OMN-17369: the scope MUST be `staged`, not `diff`. `diff` enumerates
       # BASE_REF...HEAD — already-committed files — so at pre-commit time it never

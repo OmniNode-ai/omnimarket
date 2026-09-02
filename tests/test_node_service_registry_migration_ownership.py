@@ -14,7 +14,6 @@ CREATE_MIGRATION = NODE_DIR / "migrations/0000_create_node_service_registry.sql"
 NO_FORCE_RLS_MIGRATION = (
     NODE_DIR / "migrations/0004_node_service_registry_no_force_rls.sql"
 )
-OWNERSHIP_DOC = ROOT / "docs/migrations/node-service-registry-ownership.md"
 
 
 def test_metadata_declares_node_service_registry_ddl_owner() -> None:
@@ -61,10 +60,3 @@ def test_force_rls_reversal_targets_public_table() -> None:
         "ALTER TABLE public.node_service_registry NO FORCE ROW LEVEL SECURITY;"
         in content
     )
-
-
-def test_ownership_doc_records_infra_non_owner_status() -> None:
-    content = OWNERSHIP_DOC.read_text()
-
-    assert "`omnimarket.nodes.node_projection_registration` is the DDL owner" in content
-    assert "`omnibase_infra` owns runtime registration storage" in content

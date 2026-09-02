@@ -306,13 +306,19 @@ uv run python scripts/ci/check_node_metadata_dependencies.py
 
 ## Documentation
 
-- [Documentation index](docs/README.md)
-- [Package model](docs/architecture/package-model.md)
-- [Skill, package, and node boundaries](docs/architecture/skill-vs-package-vs-node.md)
-- [Dependency boundary](docs/architecture/dependency-boundary.md)
-- [Build-loop migration](docs/migrations/build-loop.md)
-- [Node catalog](docs/reference/node-catalog.md)
-- [Node metadata reference](docs/reference/node-metadata.md)
-- [Node testing](docs/node-testing.md)
-- [Contributing](CONTRIBUTING.md)
+Current architecture, guides, and reference docs live in the
+[OmniNode knowledge base](https://github.com/OmniNode-ai/knowledge-base):
+
+- [Package model](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-package-model.md)
+- [Skill, package, and node boundaries](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-skill-package-node-boundaries.md)
+- [Dependency boundary](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-dependency-boundary.md)
+- [Build-loop migration boundary](https://github.com/OmniNode-ai/knowledge-base/blob/main/architecture/omnimarket-build-loop-boundary.md)
+- [Node catalog](https://github.com/OmniNode-ai/knowledge-base/blob/main/reference/omnimarket-node-catalog.md)
+- [Node metadata reference](https://github.com/OmniNode-ai/knowledge-base/blob/main/reference/omnimarket-node-metadata.md)
+- [Node testing](https://github.com/OmniNode-ai/knowledge-base/blob/main/guides/omnimarket-node-testing.md)
+
+Governance and operator runbooks that need real infra values live in
+[knowledge-base-internal](https://github.com/OmniNode-ai/knowledge-base-internal).
+
+- [Contributing](.github/CONTRIBUTING.md)
 - [License](LICENSE)
