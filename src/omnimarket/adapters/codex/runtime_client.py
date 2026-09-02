@@ -993,10 +993,13 @@ def _adapter_dispatch_binding(
     request: ModelCodexRuntimeRequestAdapterRequest,
     adapter_command_topic: str,
     contract_route: _ContractDispatchRoute | None,
+    node_contract: ModelNodeContractBinding | None = None,
 ) -> ModelAdapterDispatchBinding:
     """Describe exactly how this adapter selected its terminal subscription."""
 
-    node_contract = _node_contract_binding(request.command_name)
+    resolved_node_contract = node_contract or _node_contract_binding(
+        request.command_name
+    )
     if (
         adapter_command_topic == _DELEGATE_SKILL_COMMAND_TOPIC
         and request.command_name in _DELEGATE_SKILL_COMMAND_NAMES
@@ -1006,7 +1009,7 @@ def _adapter_dispatch_binding(
             requested_response_topic=request.response_topic,
             selected_terminal_topic=_DELEGATE_SKILL_COMPLETED_TOPIC,
             terminal_selection="DIRECT_DELEGATE_SKILL_CONTRACT",
-            node_contract=node_contract,
+            node_contract=resolved_node_contract,
         )
     if request.response_topic != default_response_topic():
         return ModelAdapterDispatchBinding(
@@ -1014,7 +1017,7 @@ def _adapter_dispatch_binding(
             requested_response_topic=request.response_topic,
             selected_terminal_topic=request.response_topic,
             terminal_selection="EXPLICIT_RESPONSE_OVERRIDE",
-            node_contract=node_contract,
+            node_contract=resolved_node_contract,
         )
     if contract_route is not None:
         return ModelAdapterDispatchBinding(
@@ -1022,14 +1025,14 @@ def _adapter_dispatch_binding(
             requested_response_topic=request.response_topic,
             selected_terminal_topic=contract_route.terminal_topic,
             terminal_selection="NODE_CONTRACT",
-            node_contract=node_contract,
+            node_contract=resolved_node_contract,
         )
     return ModelAdapterDispatchBinding(
         adapter_command_topic=adapter_command_topic,
         requested_response_topic=request.response_topic,
         selected_terminal_topic=request.response_topic,
         terminal_selection="UNRESOLVED_DEFAULT_FALLBACK",
-        node_contract=node_contract,
+        node_contract=resolved_node_contract,
     )
 
 
@@ -1300,6 +1303,107 @@ def _input_model_ref(contract: dict[str, Any], *, node_name: str) -> str | None:
     return None
 
 
+def _unresolvable_node_contract(
+    command_name: str,
+    *,
+    reason: str,
+) -> ModelNodeContractBinding:
+    node_name = _node_name_for_command(command_name)
+    return ModelNodeContractBinding(
+        status="UNRESOLVABLE",
+        node_name=node_name,
+        contract_identity=f"src/omnimarket/nodes/{node_name}/contract.yaml",
+        reason=reason,
+    )
+
+
+def _load_compile_input_model(payload_model: str) -> Any:
+    module_name, separator, model_name = payload_model.rpartition(".")
+    if not separator or not module_name or not model_name:
+        raise ValueError("input model reference must contain a module and class")
+    model = getattr(importlib.import_module(module_name), model_name)
+    if not callable(getattr(model, "model_validate", None)):
+        raise TypeError("input model does not expose model_validate")
+    return model
+
+
+def _compile_target_payload(
+    request: ModelCodexRuntimeRequestAdapterRequest,
+    *,
+    contract_route: _ContractDispatchRoute | None,
+    node_contract: ModelNodeContractBinding,
+    correlation_id: UUID,
+) -> tuple[ModelNodeContractBinding, ModelCodexRuntimeRequestAdapterError | None]:
+    """Validate a compile-only payload against its resolved target contract."""
+
+    if node_contract.status != "RESOLVED":
+        return node_contract, ModelCodexRuntimeRequestAdapterError(
+            code="contract_unresolvable",
+            message="Target node contract could not be resolved for compile-only preflight.",
+            details={
+                "node_name": node_contract.node_name,
+                "contract_identity": node_contract.contract_identity,
+                "reason": node_contract.reason,
+            },
+            retryable=False,
+        )
+    if contract_route is None or contract_route.payload_model is None:
+        unresolved = _unresolvable_node_contract(
+            request.command_name,
+            reason="missing_input_model",
+        )
+        return unresolved, ModelCodexRuntimeRequestAdapterError(
+            code="contract_unresolvable",
+            message="Target node contract does not declare an input model.",
+            details={
+                "node_name": unresolved.node_name,
+                "contract_identity": unresolved.contract_identity,
+                "reason": unresolved.reason,
+            },
+            retryable=False,
+        )
+
+    try:
+        input_model = _load_compile_input_model(contract_route.payload_model)
+    except (AttributeError, ImportError, SyntaxError, TypeError, ValueError) as exc:
+        unresolved = _unresolvable_node_contract(
+            request.command_name,
+            reason="input_model_unresolvable",
+        )
+        return unresolved, ModelCodexRuntimeRequestAdapterError(
+            code="contract_unresolvable",
+            message="Target node input model could not be loaded for compile-only preflight.",
+            details={
+                "node_name": unresolved.node_name,
+                "contract_identity": unresolved.contract_identity,
+                "input_model": contract_route.payload_model,
+                "reason": unresolved.reason,
+                "error": str(exc),
+            },
+            retryable=False,
+        )
+
+    stamped_payload = _payload_with_command_correlation_id(
+        input_model,
+        request.payload,
+        correlation_id,
+    )
+    try:
+        input_model.model_validate(stamped_payload)
+    except ValidationError as exc:
+        return node_contract, ModelCodexRuntimeRequestAdapterError(
+            code="payload_invalid",
+            message="Target node payload failed compile-only model validation.",
+            details={
+                "node_name": node_contract.node_name,
+                "input_model": contract_route.payload_model,
+                "errors": json.loads(exc.json(include_url=False)),
+            },
+            retryable=False,
+        )
+    return node_contract, None
+
+
 def _model_ref_from_value(value: object, *, node_name: str) -> str | None:
     if isinstance(value, str):
         if "." in value:
@@ -1561,11 +1665,45 @@ class CodexRuntimeRequestAdapter:
             and contract_route.payload_model is not None
         ):
             command_topic = contract_route.command_topic
+        node_contract = _node_contract_binding(request.command_name)
+        node_contract, compile_error = _compile_target_payload(
+            request,
+            contract_route=contract_route,
+            node_contract=node_contract,
+            correlation_id=command.correlation_id,
+        )
         binding = _adapter_dispatch_binding(
             request=request,
             adapter_command_topic=command_topic,
-            contract_route=contract_route,
+            contract_route=(
+                contract_route if node_contract.status == "RESOLVED" else None
+            ),
+            node_contract=node_contract,
         )
+        if compile_error is not None:
+            return ModelCodexRuntimeRequestAdapterResponse(
+                ok=False,
+                command_name=request.command_name,
+                command_topic=command_topic,
+                response_topic=request.response_topic,
+                correlation_id=command.correlation_id,
+                runtime_selection=request.runtime_selection,
+                runtime_mode="compiled",
+                runtime_evidence=ModelRuntimeEvidence(
+                    schema_version="runtime-evidence/v2",
+                    selected_runtime_mode="compiled",
+                    event_bus_backend="unobserved",
+                    state_store_backend="unobserved",
+                    runtime_observation=ModelRuntimeObservation(
+                        status="UNOBSERVED", reason="compile_only"
+                    ),
+                    adapter_dispatch_binding=binding,
+                    command_topic=command_topic,
+                    terminal_topic=binding.selected_terminal_topic,
+                    details={"runtime_selection": request.runtime_selection},
+                ),
+                error=compile_error,
+            )
         compiled_command = command.model_dump(mode="json", exclude_none=True)
         compiled_dispatch = {
             "status": "compiled",

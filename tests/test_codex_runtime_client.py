@@ -2695,6 +2695,54 @@ async def test_market_plugin_commands_can_target_addressed_runtime(
     )
 
 
+def _valid_compile_payload(command_name: str) -> dict[str, object]:
+    fixed_correlation_id = "11111111-1111-4111-8111-111111111111"
+    if command_name == "coderabbit_triage":
+        return {
+            "repo": "OmniNode-ai/omnimarket",
+            "pr_number": 1,
+            "correlation_id": fixed_correlation_id,
+        }
+    if command_name in {"local_review", "pr_polish"}:
+        return {
+            "correlation_id": fixed_correlation_id,
+            "requested_at": "2026-09-01T00:00:00Z",
+        }
+    if command_name == "pr_lifecycle_orchestrator":
+        return {
+            "dry_run": True,
+            "run_id": "compile-only-test",
+            "correlation_id": fixed_correlation_id,
+        }
+    if command_name == "session_bootstrap":
+        return {
+            "session_id": "compile-only-test",
+            "contract": {
+                "session_id": "compile-only-test",
+                "session_label": "compile-only-test",
+                "phases_expected": [],
+            },
+        }
+    if command_name == "recall_compute":
+        return {"query": "compile-only-test"}
+    if command_name == "observability_sink_effect":
+        return {
+            "correlation_id": fixed_correlation_id,
+            "session_id": "22222222-2222-4222-8222-222222222222",
+            "events": [],
+            "submitted_at": "2026-09-01T00:00:00Z",
+        }
+    if command_name == "ticket_pipeline":
+        return {
+            "correlation_id": fixed_correlation_id,
+            "ticket_id": "OMN-17467",
+            "requested_at": "2026-09-01T00:00:00Z",
+        }
+    if command_name == "adversarial_pipeline_orchestrator":
+        return {"topic": "compile-only-test"}
+    return {"dry_run": True}
+
+
 @pytest.mark.parametrize(
     "command_name",
     [
@@ -2722,9 +2770,10 @@ def test_market_plugin_commands_compile_without_event_bus(
     )
     client = CodexRuntimeRequestAdapter(requester="codex-test")
 
+    payload = _valid_compile_payload(command_name)
     result = client.compile_request(
         command_name=command_name,
-        payload={"dry_run": True},
+        payload=payload,
         timeout_ms=1234,
         response_topic=(
             "onex.evt.omnibase-infra.pattern-b-compile-"
@@ -2747,12 +2796,249 @@ def test_market_plugin_commands_compile_without_event_bus(
     command = result.dispatch_result["command"]
     assert isinstance(command, dict)
     assert command["command_name"] == command_name
-    assert command["payload"] == {"dry_run": True}
+    assert command["payload"] == payload
     assert command["requester"] == "codex-test"
     assert command["timeout_seconds"] == 1.234
     assert command["target_runtime_address"] == (
         "runtime://omninode-pc/stability-test/main"
     )
+
+
+def test_compile_only_rejects_invalid_target_payload_without_event_bus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_event_bus_factory() -> _AdapterTestTransport:
+        raise AssertionError("compile-only preflight must not start the event bus")
+
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        fail_event_bus_factory,
+    )
+
+    result = CodexRuntimeRequestAdapter(requester="codex-test").compile_request(
+        command_name="recall_compute", payload={}
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "payload_invalid"
+    assert result.error.retryable is False
+    assert result.error.details is not None
+    assert result.error.details["errors"][0]["loc"] == ["query"]
+    assert result.dispatch_result is None
+    assert result.output_payloads is None
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.schema_version == "runtime-evidence/v2"
+    assert result.runtime_evidence.runtime_observation.reason == "compile_only"
+    assert (
+        result.runtime_evidence.adapter_dispatch_binding.node_contract.status
+        == "RESOLVED"
+    )
+
+
+def test_compile_only_accepts_valid_target_payload_without_event_bus(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_event_bus_factory() -> _AdapterTestTransport:
+        raise AssertionError("compile-only preflight must not start the event bus")
+
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        fail_event_bus_factory,
+    )
+
+    payload = {"query": "compile-only-test"}
+    result = CodexRuntimeRequestAdapter(requester="codex-test").compile_request(
+        command_name="recall_compute", payload=payload
+    )
+
+    assert result.ok is True
+    assert result.error is None
+    assert result.dispatch_result is not None
+    assert result.dispatch_result["command"]["payload"] == payload
+
+
+def test_compile_only_preserves_native_pr_lifecycle_route() -> None:
+    result = CodexRuntimeRequestAdapter(requester="codex-test").compile_request(
+        command_name="pr_lifecycle_orchestrator",
+        payload=_valid_compile_payload("pr_lifecycle_orchestrator"),
+    )
+
+    assert result.ok is True
+    assert result.command_topic == (
+        "onex.cmd.omnimarket.pr-lifecycle-orchestrator-start.v1"
+    )
+    assert result.runtime_evidence is not None
+    assert result.runtime_evidence.terminal_topic == (
+        "onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1"
+    )
+
+
+def test_compile_target_model_matches_local_runtime_contract_resolution() -> None:
+    compile_route = runtime_client._contract_dispatch_route("recall_compute")
+    local_route = local_runtime_dispatch._resolve_node_route("recall_compute")
+
+    assert compile_route is not None
+    assert compile_route.payload_model == local_route.payload_model_ref
+
+
+def test_compile_only_rejects_missing_contract_without_event_bus(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_event_bus_factory() -> _AdapterTestTransport:
+        raise AssertionError("compile-only preflight must not start the event bus")
+
+    monkeypatch.setattr(runtime_client, "_NODE_ROOT", tmp_path)
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        fail_event_bus_factory,
+    )
+
+    result = CodexRuntimeRequestAdapter().compile_request(
+        command_name="does_not_exist", payload={}
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "contract_unresolvable"
+    assert result.error.details is not None
+    assert result.error.details["reason"] == "missing_contract"
+    assert result.runtime_evidence is not None
+    binding = result.runtime_evidence.adapter_dispatch_binding.node_contract
+    assert binding.status == "UNRESOLVABLE"
+    assert binding.reason == "missing_contract"
+    assert result.dispatch_result is None
+    assert result.output_payloads is None
+
+
+def test_compile_only_rejects_malformed_contract_without_event_bus(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_event_bus_factory() -> _AdapterTestTransport:
+        raise AssertionError("compile-only preflight must not start the event bus")
+
+    monkeypatch.setattr(runtime_client, "_NODE_ROOT", tmp_path)
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        fail_event_bus_factory,
+    )
+    contract_dir = tmp_path / "node_malformed_compile"
+    contract_dir.mkdir()
+    (contract_dir / "contract.yaml").write_text("[unterminated", encoding="utf-8")
+
+    result = CodexRuntimeRequestAdapter().compile_request(
+        command_name="malformed_compile", payload={}
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "contract_unresolvable"
+    assert result.error.details is not None
+    assert result.error.details["reason"] == "malformed_contract"
+    assert result.runtime_evidence is not None
+    assert (
+        result.runtime_evidence.adapter_dispatch_binding.node_contract.reason
+        == "malformed_contract"
+    )
+
+
+def test_compile_only_rejects_unreadable_contract_without_event_bus(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_event_bus_factory() -> _AdapterTestTransport:
+        raise AssertionError("compile-only preflight must not start the event bus")
+
+    monkeypatch.setattr(runtime_client, "_NODE_ROOT", tmp_path)
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        fail_event_bus_factory,
+    )
+    contract_dir = tmp_path / "node_unreadable_compile"
+    contract_dir.mkdir()
+    (contract_dir / "contract.yaml").mkdir()
+
+    result = CodexRuntimeRequestAdapter().compile_request(
+        command_name="unreadable_compile", payload={}
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "contract_unresolvable"
+    assert result.error.details is not None
+    assert result.error.details["reason"] == "contract_unreadable"
+    assert result.runtime_evidence is not None
+    assert (
+        result.runtime_evidence.adapter_dispatch_binding.node_contract.reason
+        == "contract_unreadable"
+    )
+    assert result.dispatch_result is None
+    assert result.output_payloads is None
+
+
+@pytest.mark.parametrize(
+    ("input_model", "reason"),
+    [
+        ("missing_compile_model.Model", "input_model_unresolvable"),
+        ("builtins.str", "input_model_unresolvable"),
+    ],
+)
+def test_compile_only_rejects_unresolvable_input_model_without_event_bus(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    input_model: str,
+    reason: str,
+) -> None:
+    def fail_event_bus_factory() -> _AdapterTestTransport:
+        raise AssertionError("compile-only preflight must not start the event bus")
+
+    monkeypatch.setattr(runtime_client, "_NODE_ROOT", tmp_path)
+    monkeypatch.setattr(
+        runtime_client,
+        "_default_event_bus_factory",
+        fail_event_bus_factory,
+    )
+    contract_dir = tmp_path / "node_input_model_compile"
+    contract_dir.mkdir()
+    (contract_dir / "contract.yaml").write_text(
+        yaml.safe_dump(
+            {
+                "event_bus": {
+                    "subscribe_topics": ["onex.cmd.test.v1"],
+                    "publish_topics": ["onex.evt.test-completed.v1"],
+                },
+                "handler": {
+                    "module": "builtins",
+                    "class": "str",
+                    "input_model": input_model,
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = CodexRuntimeRequestAdapter().compile_request(
+        command_name="input_model_compile", payload={}
+    )
+
+    assert result.ok is False
+    assert result.error is not None
+    assert result.error.code == "contract_unresolvable"
+    assert result.error.details is not None
+    assert result.error.details["reason"] == reason
+    assert result.runtime_evidence is not None
+    assert (
+        result.runtime_evidence.adapter_dispatch_binding.node_contract.reason == reason
+    )
+    assert result.dispatch_result is None
+    assert result.output_payloads is None
 
 
 def test_main_compile_only_outputs_command_without_event_bus(
@@ -2773,7 +3059,7 @@ def test_main_compile_only_outputs_command_without_event_bus(
             "--command-name",
             "pr_lifecycle_orchestrator",
             "--payload",
-            '{"inventory_only":true,"dry_run":true}',
+            '{"run_id":"compile-only-test","inventory_only":true,"dry_run":true}',
             "--response-topic",
             "onex.evt.omnibase-infra.pattern-b-compile-main.v1",
             "--target-runtime-address",
@@ -3223,12 +3509,14 @@ def test_main_compile_only_preserves_payload_null_and_embedded_correlation_id(
     rc = main(
         [
             "--command-name",
-            "pr_lifecycle_orchestrator",
+            "ticket_pipeline",
             "--payload",
             json.dumps(
                 {
                     "correlation_id": correlation_id,
-                    "optional_value": None,
+                    "ticket_id": "OMN-17467",
+                    "requested_at": "2026-09-01T00:00:00Z",
+                    "skip_to": None,
                     "dry_run": True,
                 }
             ),
@@ -3241,7 +3529,7 @@ def test_main_compile_only_preserves_payload_null_and_embedded_correlation_id(
     assert rc == 0
     captured = capsys.readouterr()
     assert f'"correlation_id": "{correlation_id}"' in captured.out
-    assert '"optional_value": null' in captured.out
+    assert '"skip_to": null' in captured.out
 
 
 def test_compile_only_rejects_explicit_empty_response_topic() -> None:
