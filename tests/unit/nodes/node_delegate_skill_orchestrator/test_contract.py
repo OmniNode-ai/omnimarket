@@ -33,6 +33,29 @@ def _load_contract() -> dict[str, Any]:
     return yaml.safe_load(_CONTRACT_PATH.read_text())
 
 
+def _top_level_contract_keys() -> list[str]:
+    document = yaml.compose(_CONTRACT_PATH.read_text())
+    assert isinstance(document, yaml.MappingNode)
+    return [key.value for key, _ in document.value]
+
+
+@pytest.mark.unit
+def test_contract_has_one_complete_inputs_mapping() -> None:
+    """DR-14: duplicate mappings cannot hide request-model fields."""
+
+    top_level_keys = _top_level_contract_keys()
+    assert top_level_keys.count("inputs") == 1
+    assert len(top_level_keys) == len(set(top_level_keys))
+
+    contract_inputs = _load_contract()["inputs"]
+    assert set(contract_inputs) == set(ModelDelegateSkillRequest.model_fields)
+    assert contract_inputs["correlation_id"] == {
+        "type": "uuid",
+        "required": False,
+        "description": "Correlation identifier generated when the caller omits it.",
+    }
+
+
 @pytest.mark.unit
 def test_contract_declares_named_topic_fields() -> None:
     contract = _load_contract()
