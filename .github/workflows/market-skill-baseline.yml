@@ -11,7 +11,9 @@ on:
       - "src/omnimarket/nodes/**/models/**"
       - "scripts/run_market_skill_baseline.py"
       - "tests/test_market_skill_smokes.py"
-      - "docs/reference/2026-04-28-market-skill-baseline.*"
+      # OMN-16613: was `...-market-skill-baseline.*`. The markdown sibling
+      # migrated to the knowledge base; only the JSON baseline remains here.
+      - "docs/reference/2026-04-28-market-skill-baseline.json"
       - ".github/workflows/market-skill-baseline.yml"
   workflow_dispatch:
 

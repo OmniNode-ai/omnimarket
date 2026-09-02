@@ -208,10 +208,18 @@ repos:
         stages: [pre-commit]
 
   # KB doc gate (OMN-16589) — blocks new/regrown non-KB markdown docs.
-  # Pinned to the omniclaude dev commit that merged the exported hook
-  # (OmniNode-ai/omniclaude#2047, merged 2026-08-26).
+  #
+  # OMN-16613 bumped this pin from 82a3394c (omniclaude#2047, the OMN-16589
+  # pilot) to omniclaude dev 6bfba15f. The pilot validator's config parser
+  # accepts only `mode:`/`exemptions:` and rejects the `allowed:` key with
+  # "config error ... unknown key 'allowed'" (exit 2 — the gate did not run).
+  # `allowed:` and `strict` mode both arrive with omniclaude#2099
+  # (a78b103e5, OMN-17172 fleet shape), which 6bfba15f contains. This repo's
+  # .kb-doc-gate.yaml uses both, and the CI caller
+  # (.github/workflows/kb-doc-gate.yml) is pinned to the same commit so the
+  # local and CI verdicts cannot diverge.
   - repo: https://github.com/OmniNode-ai/omniclaude
-    rev: 82a3394c1af183d8aed36fdb7b0fee011d39372a  # pragma: allowlist secret
+    rev: 6bfba15f7d103ddaa9e949c459e95153b1ca6a94  # pragma: allowlist secret
     hooks:
       - id: kb-doc-gate
 

@@ -95,7 +95,7 @@ _CASES: tuple[_Case, ...] = (
     ),
     _Case(
         name="unrelated_path_does_not_match",
-        changed_files=("docs/README.md", "src/omnimarket/enums/enum_foo.py"),
+        changed_files=("README.md", "src/omnimarket/enums/enum_foo.py"),
         ticket_labels=(),
         contract_touches_pipeline=False,
         expected_is_touching=False,
@@ -116,7 +116,7 @@ _CASES: tuple[_Case, ...] = (
     ),
     _Case(
         name="ticket_label_pipeline_matches",
-        changed_files=("docs/README.md",),
+        changed_files=("README.md",),
         ticket_labels=("pipeline",),
         contract_touches_pipeline=False,
         expected_is_touching=True,
@@ -125,7 +125,7 @@ _CASES: tuple[_Case, ...] = (
     ),
     _Case(
         name="ticket_label_migration_case_insensitive",
-        changed_files=("docs/README.md",),
+        changed_files=("README.md",),
         ticket_labels=("Migration",),
         contract_touches_pipeline=False,
         expected_is_touching=True,
@@ -134,7 +134,7 @@ _CASES: tuple[_Case, ...] = (
     ),
     _Case(
         name="ticket_label_projection_matches",
-        changed_files=("docs/README.md",),
+        changed_files=("README.md",),
         ticket_labels=("bug", "projection"),
         contract_touches_pipeline=False,
         expected_is_touching=True,
@@ -143,7 +143,7 @@ _CASES: tuple[_Case, ...] = (
     ),
     _Case(
         name="irrelevant_label_does_not_match",
-        changed_files=("docs/README.md",),
+        changed_files=("README.md",),
         ticket_labels=("bug", "chore"),
         contract_touches_pipeline=False,
         expected_is_touching=False,
@@ -151,7 +151,7 @@ _CASES: tuple[_Case, ...] = (
     ),
     _Case(
         name="contract_flag_only",
-        changed_files=("docs/README.md",),
+        changed_files=("README.md",),
         ticket_labels=(),
         contract_touches_pipeline=True,
         expected_is_touching=True,
@@ -159,7 +159,7 @@ _CASES: tuple[_Case, ...] = (
     ),
     _Case(
         name="path_beats_label_and_contract",
-        changed_files=("migrations/003.sql", "docs/README.md"),
+        changed_files=("migrations/003.sql", "README.md"),
         ticket_labels=("pipeline",),
         contract_touches_pipeline=True,
         expected_is_touching=True,
@@ -169,7 +169,7 @@ _CASES: tuple[_Case, ...] = (
     ),
     _Case(
         name="label_beats_contract_when_no_path",
-        changed_files=("docs/README.md",),
+        changed_files=("README.md",),
         ticket_labels=("pipeline",),
         contract_touches_pipeline=True,
         expected_is_touching=True,
