@@ -173,10 +173,13 @@ def test_cross_reference_finds_top_level_tests_when_repo_root_is_src(
         encoding="utf-8",
     )
 
-    assert CrossReferenceEngine()._has_test_coverage(
-        repo_root=tmp_path / "src",
-        handler_stem="handler_demo",
-    )
+    # OMN-17694: the per-handler ``_has_test_coverage`` rglob was replaced by a
+    # single corpus walk shared with the gate's cache key. The property under
+    # test is unchanged — a sweep rooted at ``src/`` must still find the tests
+    # that live beside it, not under it.
+    corpus = CrossReferenceEngine()._load_coverage_corpus(tmp_path / "src")
+
+    assert any("handler_demo" in content for _, content in corpus)
 
 
 def test_contract_declares_dep_health_output_topics() -> None:
