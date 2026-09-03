@@ -242,3 +242,43 @@ allowlist:
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
   - node_id: version_skew_detector
     reason: OMN-12957 baseline freeze; remediate via OMN-12982 (assign correct runtime lane or document runtime-exempt)
+
+  # ---------------------------------------------------------------------------
+  # OMN-17641 INTERIM BLOCK -- DELETED IN FULL BY THE OMN-17556 PR.
+  #
+  # These eight contracts are NOT OMN-12957 baseline freezes and are NOT part of
+  # the OMN-12982 drain. They declare `runtime_profiles: [tenant-projection]`,
+  # a profile that is deliberately absent from REGISTERED_RUNTIME_PROFILES
+  # because no process boots it yet, so `runtime_profile_unregistered` fires on
+  # all eight. That rule is correct and is not being disputed: the eight really
+  # are orphaned right now. The exemption records that the orphaning is the
+  # intended, temporary state, not an accident.
+  #
+  # Why they were moved: each writes a TENANT-domain table, so its handler
+  # resolves the tenant_projection binding, whose DSN no onex-dev pod supplies.
+  # Under ONEX_WIRING_STRICT_MODE=1 one unresolvable binding is fatal, so all
+  # eight together held omninode-runtime, -effects and -worker in
+  # CrashLoopBackOff and took omnimarket-projection-api down with them.
+  #
+  # Reverting change (OMN-17556, RATIFIED): one consolidated writer boots
+  # RUNTIME_PROFILE=tenant-projection with the credential resolved from the
+  # store at the binding boundary. That PR deletes this whole block, registers
+  # `tenant-projection`, and deletes
+  # tests/unit/runtime/test_omn17641_interim_tenant_projection_profile.py.
+  # ---------------------------------------------------------------------------
+  - node_id: canary_score_reducer
+    reason: OMN-17641 interim tenant-projection move; reverted by OMN-17556 (consolidated tenant-projection writer). Not an OMN-12982 drain entry.
+  - node_id: node_hook_event_capture
+    reason: OMN-17641 interim tenant-projection move; reverted by OMN-17556 (consolidated tenant-projection writer). Not an OMN-12982 drain entry.
+  - node_id: node_projection_cost_summary
+    reason: OMN-17641 interim tenant-projection move; reverted by OMN-17556 (consolidated tenant-projection writer). Not an OMN-12982 drain entry.
+  - node_id: node_projection_delegation_inference_response
+    reason: OMN-17641 interim tenant-projection move; reverted by OMN-17556 (consolidated tenant-projection writer). Not an OMN-12982 drain entry.
+  - node_id: node_projection_dep_health
+    reason: OMN-17641 interim tenant-projection move; reverted by OMN-17556 (consolidated tenant-projection writer). Not an OMN-12982 drain entry.
+  - node_id: projection_context_roi
+    reason: OMN-17641 interim tenant-projection move; reverted by OMN-17556 (consolidated tenant-projection writer). Not an OMN-12982 drain entry.
+  - node_id: projection_pattern_learning
+    reason: OMN-17641 interim tenant-projection move; reverted by OMN-17556 (consolidated tenant-projection writer). Not an OMN-12982 drain entry.
+  - node_id: projection_routing_decision
+    reason: OMN-17641 interim tenant-projection move; reverted by OMN-17556 (consolidated tenant-projection writer). Not an OMN-12982 drain entry.

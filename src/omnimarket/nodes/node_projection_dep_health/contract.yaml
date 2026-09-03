@@ -13,6 +13,18 @@ description: >
   Projects dep-health-sweep-completed events into the dep_health_findings table.
   Upsert keyed by (run_id, finding_type, file_path, symbol). Idempotent.
 
+# OMN-17641 (INTERIM -- reverted by the OMN-17556 PR): this projection writes a
+# TENANT-domain table, so its handler resolves the tenant_projection binding,
+# whose DSN no onex-dev pod supplies. Under ONEX_WIRING_STRICT_MODE=1 that one
+# unresolvable binding kills the whole shared runtime, so the contract is moved
+# to a profile no process runs today: filter_manifest_for_runtime_profile drops
+# it from `main` and `effects` without softening the DSN requirement by one inch.
+# It consumes nothing while this stands. The OMN-17556 consolidated writer boots
+# RUNTIME_PROFILE=tenant-projection and takes ownership; that PR deletes the
+# paired validation/runtime_profiles_allowlist.yaml entry and registers
+# `tenant-projection` in REGISTERED_RUNTIME_PROFILES.
+runtime_profiles: [tenant-projection]
+
 handler:
   module: omnimarket.nodes.node_projection_dep_health.handlers.handler_projection_dep_health
   class: HandlerProjectionDepHealth
