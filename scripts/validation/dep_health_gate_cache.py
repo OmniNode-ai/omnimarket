@@ -83,6 +83,11 @@ SCAN_INPUTS_RELPATH = (
 
 # Entries older than this are pruned opportunistically after a successful write.
 CACHE_MAX_AGE_S = 14 * 24 * 3600
+LOCK_FILE_MODE = 0o600
+"""Owner-only. These lock files gate a fail-closed check under a per-user
+cache root, so no other local account has any reason to read or write them —
+and a world-writable lock is one another account could hold or truncate."""
+
 DEFAULT_LOCK_TIMEOUT_S = 1800.0
 DEFAULT_POLL_S = 0.5
 
@@ -350,7 +355,7 @@ def _is_unheld(lock_path: Path) -> bool:
     description, so the next lane would create a fresh file, take it
     uncontended, and scan the same inputs the holder is already scanning.
     """
-    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o666)
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, LOCK_FILE_MODE)
     try:
         fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -402,7 +407,7 @@ def scan_lock(
     holder dies — a crashed lane cannot wedge every other lane.
     """
     lock_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, 0o666)
+    fd = os.open(str(lock_path), os.O_CREAT | os.O_RDWR, LOCK_FILE_MODE)
     deadline = time.monotonic() + timeout_s
     try:
         while True:
@@ -438,10 +443,23 @@ def scan_slot(
     concurrency stays bounded. Kernel-released on death, like the per-key lock.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    fds = [
-        os.open(str(directory / f"{index}.lock"), os.O_CREAT | os.O_RDWR, 0o666)
-        for index in range(slots)
-    ]
+    # Opened one at a time and unwound on failure: a comprehension that raises
+    # part-way through (EMFILE, say) would leak every descriptor it had already
+    # opened, and this runs on every commit.
+    fds: list[int] = []
+    try:
+        for index in range(slots):
+            fds.append(
+                os.open(
+                    str(directory / f"{index}.lock"),
+                    os.O_CREAT | os.O_RDWR,
+                    LOCK_FILE_MODE,
+                )
+            )
+    except OSError:
+        for fd in fds:
+            os.close(fd)
+        raise
     deadline = time.monotonic() + timeout_s
     held: int | None = None
     try:

@@ -92,21 +92,47 @@ def _collect(repo_root: Path) -> tuple[list[Path], list[Path]]:
 class _RecordingSweep:
     """Counts scans and records how many ran at the same instant."""
 
-    def __init__(self, *, hold_s: float = 0.0) -> None:
+    def __init__(
+        self,
+        *,
+        hold_s: float = 0.0,
+        rendezvous: int | None = None,
+        rendezvous_timeout_s: float = 30.0,
+    ) -> None:
         self.calls = 0
         self.active = 0
         self.peak = 0
         self.hold_s = hold_s
+        self.rendezvous = rendezvous
         self._lock = threading.Lock()
+        # A barrier, not an overlapping sleep: proving "these ran at the same
+        # time" by hoping N threads land inside one 0.5 s window is a race that
+        # a loaded machine loses. Every lane must arrive before any may leave,
+        # so serialization cannot satisfy it and slowness cannot fake it.
+        self._barrier = (
+            threading.Barrier(rendezvous, timeout=rendezvous_timeout_s)
+            if rendezvous is not None
+            else None
+        )
 
     def __call__(self, repo_root: Path, sweep_args: list[str]) -> tuple[int, str]:
         with self._lock:
             self.calls += 1
             self.active += 1
             self.peak = max(self.peak, self.active)
-        time.sleep(self.hold_s)
-        with self._lock:
-            self.active -= 1
+        try:
+            if self._barrier is not None:
+                try:
+                    self._barrier.wait()
+                except threading.BrokenBarrierError:
+                    raise AssertionError(
+                        f"fewer than {self.rendezvous} scans were inside the "
+                        "sweep at once, so the lanes serialized"
+                    ) from None
+            time.sleep(self.hold_s)
+        finally:
+            with self._lock:
+                self.active -= 1
         return 0, '{"status": "clean"}'
 
 
@@ -126,12 +152,12 @@ def _run_all(
     targets: list[Path], cache_root: Path, sweep: Any, **overrides: Any
 ) -> None:
     """Run the gate for every target concurrently and re-raise any failure."""
-    failures: list[BaseException] = []
+    failures: list[Exception] = []
 
     def lane(root: Path) -> None:
         try:
             _run(root, cache_root, sweep, **overrides)
-        except BaseException as exc:
+        except Exception as exc:  # re-raised on the main thread below
             failures.append(exc)
 
     threads = [threading.Thread(target=lane, args=(root,)) for root in targets]
@@ -249,7 +275,7 @@ def test_distinct_keys_do_not_serialize(tmp_path: Path) -> None:
         _make_repo(tmp_path / f"lane_{i}", handler_body=f"import os  # {i}\n")
         for i in range(4)
     ]
-    sweep = _RecordingSweep(hold_s=0.5)
+    sweep = _RecordingSweep(rendezvous=4)
 
     _run_all(lanes, tmp_path / "cache", sweep, max_concurrent_scans=4)
 
