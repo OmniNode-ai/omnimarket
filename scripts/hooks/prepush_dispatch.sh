@@ -792,6 +792,41 @@ EOF
 # repo: two different repos pushing from the same machine must contend for the
 # same lock, so the lock lives under the host's workroot rather than inside any
 # one checkout.
+# prepush_local_row_uv LC_HOST -- the ABSOLUTE uv path the committed table
+# declares for this host, or rc=1 when the host has no capacity row.
+#
+# Its DIRECTORY is what matters (OMN-17549): the table's own column header
+# records that "uv is on NO host's non-interactive PATH", and every host's uv
+# is provisioned into the same directory as that host's other user-installed
+# tools -- `/home/jonah/.local/bin/uv` on h201 sits beside the `shellcheck`
+# the shell-hygiene gate shells out to by bare name. The remote leg already
+# gets that directory for free as `$(dirname "$UV")`; the local leg has to look
+# it up. It is the row's dir rather than `$HOME`'s because a NON-OWNER actor
+# running on that host has a different `$HOME` and would otherwise resolve
+# neither uv nor shellcheck -- which is exactly the run that produced six false
+# reds on 2026-09-02.
+prepush_local_row_uv() {
+  local lc_host row uv
+  lc_host="$1"
+  while IFS= read -r row; do
+    [ -n "$row" ] || continue
+    [ "$(prepush_field "$row" 2)" = "capacity" ] || continue
+    if [ "$(prepush_row_hostname "$row")" = "$lc_host" ]; then
+      uv="$(prepush_field "$row" 6)"
+      case "$uv" in
+        /*)
+          printf '%s' "$uv"
+          return 0
+          ;;
+      esac
+      return 1
+    fi
+  done <<EOF
+$(prepush_table_rows)
+EOF
+  return 1
+}
+
 prepush_local_workroot() {
   local lc_host row
   lc_host="$1"
@@ -929,6 +964,72 @@ prepush_json_escape() {
 # budget: an env indirection here would be a one-word way to force every remote
 # row to read "unreachable" and so to force the local route open.
 PREPUSH_REACH_CONNECT_TIMEOUT=4
+
+# -----------------------------------------------------------------------------
+# PATH parity between the remote leg and every local leg (OMN-17549)
+# -----------------------------------------------------------------------------
+# The remote-leg runner below already restores a developer-shell PATH before it
+# runs the transplanted suite, because a non-interactive ssh session gets a
+# minimal PATH and the suite shells out to tools by BARE NAME (`uv` in the
+# catalog-CLI tests, `shellcheck` in the shell-hygiene gate tests). Only that
+# ONE leg was hardened, and the asymmetry is the defect: the same tree gives a
+# different verdict depending on which leg runs it.
+#
+# Measured 2026-09-02, a collaborator's governed push of a repo that vendors
+# this library, from `.201`, took the OMN-17280 same-host route -- suite run in
+# THIS process, never through the remote wrapper -- and returned six reds in
+# that repo's shell-hygiene gate tests. `shellcheck` IS installed on that
+# host, at `~/.local/bin/shellcheck`; the non-interactive PATH there is
+# `/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin`,
+# which does not carry `~/.local/bin`. Six guaranteed false reds hard-block the
+# push, and the first diagnosis of them was "the tool is absent, deny this repo
+# on this host" -- a denial written against a tool that was installed.
+#
+# The list is IDENTICAL to the remote wrapper's, entry for entry and in the
+# same order, and `test_the_local_leg_and_the_remote_leg_agree_on_path` asserts
+# that mechanically so the two cannot drift. The added entries go AFTER the
+# resolved uv dir and the measured ones, so they can only add resolution and
+# never shadow a tool that already resolves. `${PATH}` stays last, so nothing
+# already on the caller's PATH is dropped.
+#
+# prepush_developer_shell_path [UV_BIN] -- print that PATH. UV_BIN defaults to
+# whatever `uv` resolves to now; when it resolves to nothing the entry is
+# omitted rather than contributing an empty path element (an empty element is
+# `.` to execvp, which would put the repo working directory on PATH). The
+# committed table's uv directory for this host is added alongside it, because
+# `$HOME` is the wrong answer for a NON-OWNER actor: on h201 the row declares
+# `/home/jonah/.local/bin/uv` and `shellcheck` lives beside it, while a
+# collaborator's `${HOME}/.local/bin` holds neither.
+prepush_developer_shell_path() {
+  local uvbin uvdir lc rowuv rowdir
+  uvbin="${1:-}"
+  [ -n "$uvbin" ] || uvbin="$(command -v uv 2> /dev/null || true)"
+  # OMN-17704: the resolved uv path must be ABSOLUTE before its directory goes
+  # at the HEAD of PATH. `command -v` reports the path as resolved, so if the
+  # caller's PATH already carries a relative element (including the
+  # empty-element-means-dot case this function exists to avoid) it can hand
+  # back `./uv`, and `dirname` would then splice a caller-controlled relative
+  # directory in front of every governed pytest run. This is the same `/*`
+  # discipline prepush_local_row_uv already applies to the table's column, and
+  # a non-absolute answer drops the entry rather than contributing it.
+  uvdir=""
+  case "$uvbin" in
+    /*) uvdir="$(dirname "$uvbin"):" ;;
+  esac
+  # The committed table's uv directory for THIS host, which is the local
+  # analogue of the remote leg's `$(dirname "$UV")` and the only entry that
+  # covers a NON-OWNER actor: their `$HOME` is not where the host's tooling was
+  # provisioned. Absent for a host with no capacity row, which contributes
+  # nothing rather than an empty element.
+  rowdir=""
+  lc="${PREPUSH_LC_HOST:-}"
+  [ -n "$lc" ] || lc="$(hostname -s 2> /dev/null | tr '[:upper:]' '[:lower:]')"
+  if [ -n "$lc" ]; then
+    rowuv="$(prepush_local_row_uv "$lc" 2> /dev/null || true)"
+    [ -n "$rowuv" ] && rowdir="$(dirname "$rowuv"):"
+  fi
+  printf '%s' "${uvdir}${rowdir}/opt/homebrew/bin:/usr/local/bin:${HOME:-}/.local/bin:/home/linuxbrew/.linuxbrew/bin:/snap/bin:${HOME:-}/.cargo/bin:${PATH}"
+}
 
 # prepush_remote_reachability LC_HOST REPO -- how many capacity rows THIS ACTOR
 # can actually open an ssh session to, excluding this host itself. Sets

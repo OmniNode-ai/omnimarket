@@ -2198,6 +2198,209 @@ def test_the_remote_wrapper_path_covers_linux_hosts_too() -> None:
     )
 
 
+# `${HOME:-}` and `${PATH}` both contain a `:`, so a naive split on the
+# separator shreds them. Substitute them out, split, then put them back.
+_PATH_TOKENS = (("${HOME:-}", "\x01HOME\x01"), ("${PATH}", "\x01PATH\x01"))
+
+
+def _path_entries(assignment: str) -> list[str]:
+    """The entries of a `"a:b:c"` PATH literal, in order, after the uv prefix."""
+    body = assignment[assignment.index('"') + 1 : assignment.rindex('"')]
+    for real, token in _PATH_TOKENS:
+        body = body.replace(real, token)
+    entries = body.split(":")
+    for real, token in _PATH_TOKENS:
+        entries = [e.replace(token, real) for e in entries]
+    return entries
+
+
+def _remote_path_entries() -> list[str]:
+    """The remote wrapper's PATH entries, with its uv entry dropped."""
+    remote = _remote_wrapper_text()
+    line = next(
+        ln for ln in remote.splitlines() if ln.startswith('PATH="$(dirname "$UV")')
+    )
+    entries = _path_entries(line)
+    assert entries[0] == '$(dirname "$UV")'
+    return entries[1:]
+
+
+def _local_path_entries() -> list[str]:
+    """prepush_developer_shell_path's entries, with both uv entries dropped.
+
+    The local leg splices its two uv directories in as `${uvdir}${rowdir}`
+    PREFIXES rather than as their own entries, precisely so a host with no
+    resolvable uv and no capacity row contributes nothing instead of an empty
+    element.
+    """
+    lib = LIB.read_text(encoding="utf-8")
+    body = lib[lib.index("prepush_developer_shell_path() {") :]
+    line = next(
+        ln.strip() for ln in body.splitlines() if ln.strip().startswith("printf '%s' ")
+    )
+    entries = _path_entries(line[len("printf '%s' ") :])
+    prefix = "${uvdir}${rowdir}"
+    assert entries[0].startswith(prefix)
+    entries[0] = entries[0][len(prefix) :]
+    return entries
+
+
+def test_the_local_leg_restores_a_developer_shell_path_too() -> None:
+    """OMN-17549. The remote leg has restored a developer-shell PATH since
+    OMN-16989; the local leg never did, and that asymmetry is the defect -- the
+    same tree returns a different verdict depending on which leg runs it.
+
+    Measured 2026-09-02: a governed same-host push (the OMN-17280 route, which
+    runs the suite in the hook's own process and never touches the remote
+    wrapper) of THIS repo on `.201` returned six reds in
+    tests/scripts/test_shell_hygiene_gate.py. `shellcheck` was installed there
+    the whole time, at `~/.local/bin/shellcheck`; that host's non-interactive
+    PATH simply omits `~/.local/bin`. Six guaranteed false reds hard-block a
+    push."""
+    hook = HOOK.read_text(encoding="utf-8")
+
+    # Assert the EXECUTABLE form, not the prose. An earlier revision of this
+    # test looked for `PATH="$(prepush_developer_shell_path)"`, which the
+    # OMN-17704 guard moved into an explanatory comment -- the assertion would
+    # then have passed against comment text while the real assignment could be
+    # anything at all. Anchor on the assignment and its guard instead.
+    assert '_prepush_devpath="$(prepush_developer_shell_path)"' in hook
+    assert 'PATH="$_prepush_devpath"' in hook
+    assert "export PATH" in hook
+
+    export_at = hook.index('PATH="$_prepush_devpath"')
+    first_pytest = hook.index("exec uv run pytest")
+    assert export_at < first_pytest, (
+        "PATH must be exported before any local pytest invocation, not after"
+    )
+
+
+def test_the_local_leg_refuses_rather_than_blanking_path() -> None:
+    """OMN-17704. A bare `PATH="$(helper)"` is silent when the helper is
+    undefined: the substitution yields "", PATH becomes the empty string mid-
+    hook AFTER the placement decision, and every later lookup fails for a
+    reason that has nothing to do with the tree under test. The governed hook
+    is a fail-closed surface, so both the missing-helper and empty-result cases
+    must refuse loudly instead."""
+    hook = HOOK.read_text(encoding="utf-8")
+
+    guard_at = hook.index("if ! type prepush_developer_shell_path")
+    assign_at = hook.index('_prepush_devpath="$(prepush_developer_shell_path)"')
+    export_at = hook.index('PATH="$_prepush_devpath"')
+    assert guard_at < assign_at < export_at, (
+        "the helper must be proven defined before it is called, and the result "
+        "proven non-empty before it becomes PATH"
+    )
+    assert '[ -z "$_prepush_devpath" ]' in hook, (
+        "an empty helper result must refuse, never be assigned to PATH"
+    )
+
+
+def test_the_local_leg_only_trusts_an_absolute_uv_path() -> None:
+    """OMN-17704. `command -v` reports the path as resolved, so a relative
+    element already on the caller's PATH can make it answer `./uv`. Its
+    `dirname` would then be spliced at the HEAD of PATH for every governed
+    pytest run -- a caller-controlled directory in front of the system ones.
+    prepush_local_row_uv already enforces `/*` on the table's own column; this
+    pins the same discipline on the resolved binary, and a non-absolute answer
+    must DROP the entry rather than contribute it."""
+    lib = LIB.read_text(encoding="utf-8")
+    start = lib.index("prepush_developer_shell_path() {")
+    body = lib[start : lib.index("\n}", start)]
+
+    uv_case = body.index('case "$uvbin" in')
+    uv_assign = body.index('uvdir="$(dirname "$uvbin"):"')
+    assert uv_case < uv_assign, (
+        "the absolute-path test must gate the assignment, not follow it"
+    )
+    assert '/*) uvdir="$(dirname "$uvbin"):" ;;' in body, (
+        "only an absolute uv path may contribute a PATH entry"
+    )
+
+
+def test_the_local_leg_and_the_remote_leg_agree_on_path() -> None:
+    """The two lists are single-sourced by assertion, not by hope.
+
+    A PATH entry added to one leg and not the other reintroduces exactly the
+    defect OMN-17549 closes: a tool that resolves on the transplanted run and
+    not on the same-host run, or the reverse, with the difference showing up as
+    a test failure about the tree rather than about the host."""
+    remote = _remote_path_entries()
+    local = _local_path_entries()
+
+    # The only sanctioned difference is HOW each leg names the uv directory:
+    # the remote leg is handed the target's uv path as `$UV` (the host table
+    # declares it per row), the local leg resolves whatever `uv` is on this
+    # machine. Both helpers above drop that entry, so what remains must match
+    # entry for entry, in order.
+    assert remote == local, (
+        f"the two legs' PATHs have drifted:\n  remote={remote}\n   local={local}"
+    )
+    assert remote[-1] == "${PATH}", (
+        "the caller's own PATH must stay last, so this can only ADD resolution"
+    )
+
+
+def test_the_local_leg_path_never_contributes_an_empty_entry() -> None:
+    """An empty PATH element is `.` to execvp, so a missing `uv` must drop the
+    entry rather than leave a bare separator -- otherwise the fix for a false
+    red would put the repo working directory on the PATH of every governed
+    suite run."""
+    lib = LIB.read_text(encoding="utf-8")
+    start = lib.index("prepush_developer_shell_path() {")
+    body = lib[start : lib.index("\n}", start)]
+    assert 'uvdir="$(dirname "$uvbin"):"' in body
+    assert 'uvdir=""' in body, "uvdir must default to empty, contributing no entry"
+    assert 'rowdir="$(dirname "$rowuv"):"' in body
+    assert 'rowdir=""' in body, "rowdir must default to empty, contributing no entry"
+
+
+def test_the_local_leg_uses_the_table_uv_dir_not_only_the_actors_home() -> None:
+    """OMN-17549. `${HOME}/.local/bin` is the WRONG answer for a non-owner.
+
+    The remote leg resolves the host's provisioned tooling through
+    `$(dirname "$UV")`, and `$UV` comes from the row -- so it works for any
+    actor. The `.201` row declares an absolute uv path under the PROVISIONING
+    account's home, and that is the directory `shellcheck` lives in; a
+    collaborator's own `/home/<them>/.local/bin` holds neither binary. A local
+    leg that only added `${HOME}/.local/bin` would still have returned the six
+    false reds this ticket is about.
+
+    Upstream states the `.201` path inline in this docstring. This repo's
+    leaked-literals gate (OMN-10580) matches `/home/<user>/...`-shaped strings,
+    so it is asserted against the committed table instead of narrated -- which
+    also makes the claim falsifiable rather than prose.
+    """
+    lib = LIB.read_text(encoding="utf-8")
+    assert "prepush_local_row_uv() {" in lib
+
+    # The row this whole ticket is about. Annotated rather than smuggled past
+    # the gate, exactly as test_the_remote_wrapper_path_covers_linux_hosts_too
+    # annotates the Linuxbrew prefix.
+    row_uv = "/home/jonah/.local/bin/uv"  # onex-allow-local-path OMN-17726 reason="the .201 capacity row's committed uv path, asserted so the non-owner PATH entry is proven from the table rather than described in prose"
+    rows = [
+        r.split("\t")
+        for r in TABLE.read_text(encoding="utf-8").splitlines()
+        if r and not r.startswith("#")
+    ]
+    linux_uvs = [r[5] for r in rows if len(r) > 5 and r[1] == "capacity"]
+    assert row_uv in linux_uvs, (
+        "the .201 capacity row must still declare the absolute uv path this "
+        f"test pins; committed capacity rows declare {linux_uvs}"
+    )
+    start = lib.index("prepush_developer_shell_path() {")
+    body = lib[start : lib.index("\n}", start)]
+    assert "prepush_local_row_uv" in body, (
+        "the local PATH must include the committed table's uv directory for "
+        "this host, not only the invoking actor's $HOME"
+    )
+    # An absolute path is the only shape accepted: a relative uv_abs_path would
+    # put a relative directory on the PATH of every governed suite run.
+    uv_fn = lib[lib.index("prepush_local_row_uv() {") :]
+    uv_fn = uv_fn[: uv_fn.index("\n}")]
+    assert "/*)" in uv_fn, "prepush_local_row_uv must accept absolute paths only"
+
+
 def test_the_remote_leg_ships_the_base_ref_so_the_transplant_can_resolve_it() -> None:
     """``git bundle create <b> HEAD`` carries one ref, so the transplanted clone
     has no ``origin/dev`` -- and this suite SUBPROCESSES the hook, which
