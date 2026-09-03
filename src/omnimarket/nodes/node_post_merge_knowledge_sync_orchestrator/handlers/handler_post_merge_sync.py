@@ -35,12 +35,41 @@ from omnimarket.nodes.node_post_merge_knowledge_sync_orchestrator.models.model_s
 
 _log = logging.getLogger(__name__)
 
-# Evidence output directory — patchable in tests
-EVIDENCE_BASE_DIR: Path = (
-    Path(os.environ.get("OMNI_HOME", str(Path.home() / "Code" / "omni_home")))
-    / ".onex_state"
-    / "knowledge-sync"
-)
+_EVIDENCE_SUBPATH = (".onex_state", "knowledge-sync")
+
+
+def evidence_base_dir() -> Path:
+    """Where this node's durable evidence is written, resolved at CALL time.
+
+    ``OMNI_HOME`` is REQUIRED and has no default (``omni_home/CLAUDE.md`` rule
+    8). The previous form was ``os.environ.get("OMNI_HOME", str(Path.home() /
+    "Code" / "omni_home"))``, which is the exact silent-default shape that rule
+    forbids — and the default was itself the hardcoded-path shape rule 6
+    forbids. It did not merely pick a wrong value; on the lab Macs it picked a
+    directory that EXISTS and is TCC-denied to ``sshd``, so a governed pre-push
+    run of this repo's suite on ``h101`` raised ``PermissionError: [Errno 1]
+    Operation not permitted`` from ``mkdir`` against the pusher's own
+    ``<home>/Code/omni_home/.onex_state/knowledge-sync``
+    in 11 tests that all pass locally (OMN-17459, measured
+    2026-09-01: 17,883 tests, 13m58s, 12 failures, one root cause). A
+    fail-fast would have named the missing variable in one line instead.
+
+    Resolution is LAZY on purpose. As a module-level constant this would raise
+    at IMPORT, and CI runs this suite with no ``OMNI_HOME`` set — so a
+    fail-fast constant would take the whole test module down rather than the
+    one call that actually needs a workspace.
+    """
+    try:
+        root = os.environ["OMNI_HOME"]
+    except KeyError:
+        raise KeyError(
+            "OMNI_HOME is required to resolve the knowledge-sync evidence "
+            "directory and has no default. Set it to the workspace registry "
+            "root — the directory that holds the repo clones — so this node "
+            f"can write {'/'.join(_EVIDENCE_SUBPATH)} beneath it."
+        ) from None
+    return Path(root).joinpath(*_EVIDENCE_SUBPATH)
+
 
 # File name patterns that indicate contract graph changes
 _CONTRACT_FILENAME = "contract.yaml"
@@ -148,7 +177,7 @@ class HandlerPostMergeSyncOrchestrator:
             qdrant_collection_version="",
         )
 
-        evidence_dir = Path(str(EVIDENCE_BASE_DIR))
+        evidence_dir = evidence_base_dir()
         evidence_dir.mkdir(parents=True, exist_ok=True)
         evidence_path = evidence_dir / f"{request.sync_run_id}.json"
 
