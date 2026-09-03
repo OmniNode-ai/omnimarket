@@ -54,6 +54,32 @@ _EVIDENCE_REDUCERS = (
     "node_evidence_dashboard_reducer",
 )
 
+# OMN-17641 INTERIM -- this constant and every use of it is deleted by the
+# OMN-17556 PR. Eight tenant-domain projections were moved onto the
+# ``tenant-projection`` profile, which no process boots today, precisely so the
+# shared runtime stops resolving a DSN it cannot have. Two of the eight are
+# REDUCER_GENERIC, so the invariant below is genuinely violated by them: they
+# start no consumer group and materialize nothing. That is the intended,
+# ticketed state, not the silent OMN-12950 accident this test exists to catch.
+#
+# The exemption is READ FROM the audited allowlist rather than hardcoded here,
+# so there is exactly one place to delete: when OMN-17556 lands the consolidated
+# writer and removes the interim allowlist block, this set becomes empty and the
+# guard tightens back to fail-closed with no edit to this file.
+_INTERIM_TICKET = "OMN-17641"
+_ALLOWLIST_PATH = REPO_ROOT / "validation" / "runtime_profiles_allowlist.yaml"
+
+
+def _interim_orphaned_node_ids() -> frozenset[str]:
+    """Contract names the OMN-17641 interim block deliberately orphans."""
+    raw = yaml.safe_load(_ALLOWLIST_PATH.read_text(encoding="utf-8")) or {}
+    entries = raw.get("allowlist") or []
+    return frozenset(
+        str(entry["node_id"])
+        for entry in entries
+        if _INTERIM_TICKET in str(entry.get("reason", ""))
+    )
+
 
 def _load_contract(path: Path) -> dict[str, Any]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -111,6 +137,19 @@ def test_every_reducer_owned_by_a_deployed_consumer_runtime(
     # Unscoped reducers default to ``main`` ownership, which is a deployed lane.
     if not declared:
         assert runtime_profile_owns_contract(raw, "main") is True
+        return
+
+    # OMN-17641 INTERIM (deleted by the OMN-17556 PR): a reducer named in the
+    # interim allowlist block is deliberately orphaned onto ``tenant-projection``
+    # until the consolidated writer boots that profile. Assert the deliberate
+    # shape instead of the deployed-lane invariant -- the orphaning is checked,
+    # not waived.
+    if str(raw.get("name")) in _interim_orphaned_node_ids():
+        assert declared == ("tenant-projection",), (
+            f"{contract_path.parent.name} carries an {_INTERIM_TICKET} allowlist "
+            f"exemption but declares runtime_profiles={declared}; the exemption "
+            "only covers the interim tenant-projection move."
+        )
         return
 
     owning_profiles = [
