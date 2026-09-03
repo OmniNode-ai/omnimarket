@@ -558,6 +558,11 @@ prepush_select_candidate() {
   PREPUSH_PICK_MODE="$(printf '%s' "$rec" | cut -d'|' -f8)"
   PREPUSH_PICK_SLOT="$(printf '%s' "$rec" | cut -d'|' -f9)"
   [ -n "$PREPUSH_PICK_SLOT" ] || PREPUSH_PICK_SLOT=1
+  # OMN-17564: the TARGET host's nominal core count, carried so the remote leg
+  # can size its own parallelism from the host that will actually run the
+  # suite. Field 11 is appended after tier_rank (field 10) so the existing
+  # `sort -t'|' -k10,10n -k1,1g` ranking key is untouched.
+  PREPUSH_PICK_CORES="$(printf '%s' "$rec" | cut -d'|' -f11)"
   return 0
 }
 
@@ -586,7 +591,7 @@ prepush_select_candidate() {
 # it is a tiebreaker, not the placement key.
 pick_capacity_host() {
   local lc_host repo want_mode row label role name ssh_t uv floor workroot slotmode denied mode
-  local self ratio rc recs="" slots k slot_label tier tier_rank
+  local self ratio rc recs="" slots k slot_label tier tier_rank cores
   lc_host="$1"; repo="$2"; want_mode="${3:-authorizing}"
   PREPUSH_PROBE_LOG=""
   PREPUSH_PICK_LABEL=""
@@ -618,6 +623,10 @@ pick_capacity_host() {
     esac
     name="$(prepush_row_hostname "$row")"
     ssh_t="$(prepush_field "$row" 4)"
+    # OMN-17564: documentation column, and now also the input the remote leg
+    # sizes `-n` from. A row whose value is absent or non-numeric degrades to
+    # one worker in prepush_remote_xdist_workers -- it is never assumed ample.
+    cores="$(prepush_field "$row" 5)"
     uv="$(prepush_field "$row" 6)"
     floor="$(prepush_field "$row" 7)"
     workroot="$(prepush_field "$row" 8)"
@@ -718,7 +727,7 @@ pick_capacity_host() {
         # taken -- can be audited rather than believed.
         PREPUSH_PROBE_LOG="${PREPUSH_PROBE_LOG}${slot_label}=fit(${ratio},${mode},${PREPUSH_PROBE_MEM_MB:-na}MiB,tier=last_resort) "
       fi
-      recs="${recs}${ratio}|${slot_label}|${name}|${ssh_t}|${uv}|${workroot}|${slotmode}|${mode}|${k}|${tier_rank}
+      recs="${recs}${ratio}|${slot_label}|${name}|${ssh_t}|${uv}|${workroot}|${slotmode}|${mode}|${k}|${tier_rank}|${cores}
 "
       k=$((k + 1))
     done
@@ -1167,8 +1176,106 @@ prepush_remote_gc() {
     > /dev/null 2>&1 || true
 }
 
-# prepush_remote_argv -- the EXACT pytest argv this call site would have run
-# locally, one item per line. The two local call sites carry DIFFERENT argv and
+# -----------------------------------------------------------------------------
+# The remote leg's EXECUTION POLICY (OMN-17564)
+# -----------------------------------------------------------------------------
+# THE DEFECT THIS CLOSES, measured live 2026-09-02T15:19Z. The seam shipped the
+# selection across and dropped the execution policy: `prepush_remote_argv`
+# emitted only test PATHS and the wrapper below ran
+# `"$UV" run pytest "${ARGV[@]}" --ignore=tests/integration --tb=short` -- no
+# `-n`, no `--dist`, no `--timeout`. Every dispatched heavy suite therefore ran
+# SINGLE-THREADED with no per-test watchdog, while the LOCAL heavy leg
+# (`PREPUSH_TIMEOUT_FLAGS`, in the repos where that leg is wired) and the
+# upstream `test-parallel` CI job that runs the same suite both carry
+# `--dist loadgroup --timeout=60 --timeout-method=signal` with a worker count.
+#
+# The cost is not the wall clock -- it is SLOT OCCUPANCY. Every capacity row
+# holds an EXCLUSIVE heavy-suite slot for the whole duration of the run, so a
+# 4-5x slower run holds the scarce resource 4-5x longer. Measured: 1.3 tests/s
+# remote vs ~6.8 tests/s locally under `-n4` on the same tree (ledger TERMINAL
+# 2026-09-01T23:56:00Z). At 15:19Z that arithmetic had h101 holding its only
+# slot with ONE core busy of twelve and h201 idle at 0.22x with ~25 free cores,
+# while five lanes queued: the lab was SLOT-starved, not CPU-starved.
+#
+# `--timeout-method=signal` is carried for the same reason OMN-15977 added it
+# locally: a thread-based watchdog cannot kill a CPU-bound pure-Python loop
+# holding the GIL, so before this the OMN-15977 runaway protection covered only
+# local runs and every remote leg ran unwatched.
+#
+# CONSTANTS, not `${VAR:-...}`, matching PREPUSH_OFFBOX_WAIT_BUDGET_SECONDS.
+# An env indirection here would be a one-word bypass of the policy (workers=1
+# restores the defect silently), and the hook forbids PREPUSH_* overrides.
+PREPUSH_REMOTE_POLICY_FLAGS="--dist=loadgroup --timeout=60 --timeout-method=signal"
+
+# The worker CAP. This is PARITY with the local leg, not a new parallelism
+# policy: it is the worker count the LOCAL heavy leg already runs where that
+# leg is wired (`PREPUSH_TIMEOUT_FLAGS="-n4 --dist=loadgroup --timeout=60
+# --timeout-method=signal"`), and the measured 1.3 -> ~6.8 tests/s gap above is
+# exactly the gap `-n4` recovers. It also sits between the upstream CI value
+# (`-n 2`, deliberately reduced from `-n auto` after repeated xdist OOM crashes
+# -- see the comment above upstream's `test-parallel` job) and an
+# unbounded `-n auto`, so a host the picker admitted at only the 4096 MiB
+# PREPUSH_MIN_FREE_MEM_MB floor is never oversubscribed by this leg. Raising it
+# is a separate change and needs its own measurement.
+PREPUSH_REMOTE_XDIST_WORKER_CAP=4
+
+# LIVENESS BOUND for the execution ssh. `ConnectTimeout` governs the HANDSHAKE
+# only: the leg that sat 5h29m against a wedged h105 on 2026-09-02 had already
+# connected -- it just never heard anything again (zero bytes, no
+# WRAPPER_EXIT, no MARKER), and the lane was dead for the rest of the day.
+# Keepalives bound transport silence; the timeout(1) wrapper bounds the whole
+# run, which is the pattern every PROBE ssh in this file already uses.
+#
+# 30s x 10 = 300s of unanswered keepalives before ssh gives up. The run budget
+# is sized off the measured worst case on the slowest fit host -- 3h48m55s for
+# a full heavy lane of the largest suite in this fleet on h201 (parsed from
+# that host's queue-runner.log, 12 completed lanes) -- with headroom, and it
+# only ever
+# fires for a run that has ALREADY exceeded any suite this fleet has recorded.
+PREPUSH_REMOTE_SSH_ALIVE_INTERVAL_SECONDS=30
+PREPUSH_REMOTE_SSH_ALIVE_COUNT_MAX=10
+PREPUSH_REMOTE_EXEC_TIMEOUT_SECONDS=21600
+
+# prepush_remote_xdist_workers -- how many xdist workers the SELECTED host gets:
+# min(that row's `cores`, PREPUSH_REMOTE_XDIST_WORKER_CAP).
+#
+# Resolved from the TARGET, never from the pushing host and never hardcoded: a
+# fixed `-n4` oversubscribes a 2-core row, and the fleet spread is 2..32 cores.
+# An absent or non-numeric `cores` degrades to ONE worker -- i.e. exactly the
+# behavior that shipped before this change -- rather than guessing headroom on
+# a host we cannot size. That is the same fail-closed posture the load, memory
+# and slot probes already carry: unreadable is never "assume ample".
+prepush_remote_xdist_workers() {
+  local cores="${PREPUSH_PICK_CORES:-}"
+  case "$cores" in '' | *[!0-9]*) printf '1'; return 0 ;; esac
+  [ "$cores" -ge 1 ] 2> /dev/null || { printf '1'; return 0; }
+  if [ "$cores" -lt "$PREPUSH_REMOTE_XDIST_WORKER_CAP" ]; then
+    printf '%s' "$cores"
+  else
+    printf '%s' "$PREPUSH_REMOTE_XDIST_WORKER_CAP"
+  fi
+  return 0
+}
+
+# prepush_remote_pytest_flags -- the execution policy, one item per line, in the
+# same shape prepush_remote_argv writes so the two concatenate into one argv
+# file. Deliberately SEPARATE from prepush_remote_argv: that function is the
+# SELECTION and the receipt records its output verbatim under
+# `selection_paths`, so folding flags into it would make an audit of "what did
+# that host actually run" read execution flags as coverage.
+prepush_remote_pytest_flags() {
+  printf '%s\n' "-n$(prepush_remote_xdist_workers)"
+  # shellcheck disable=SC2086
+  printf '%s\n' $PREPUSH_REMOTE_POLICY_FLAGS
+}
+
+# prepush_remote_argv -- the SELECTION this call site would have run locally,
+# one path per line. Execution POLICY (parallelism, the per-test watchdog) is
+# emitted separately by prepush_remote_pytest_flags above and appended to the
+# same argv file; keeping them apart is what lets the receipt record coverage
+# and policy as two distinct facts.
+#
+# The two local call sites carry DIFFERENT selections and
 # conflating them would be a silent coverage downgrade: the heavy site runs
 # $FULL_SUITE_TARGET **plus** ${RUNNABLE_INTEGRATION_PATHS[@]} to satisfy
 # OMN-16825's "an escalation must never run FEWER of the impacted tests than
@@ -1278,7 +1385,7 @@ prepush_remote_run() {
   local heavy_what repo head_sha runid workroot ssh_t uv label rundir
   local bundle argvfile runner localdir marker rc=0 argv_sha log_sha
   local m_exit m_head m_argv m_log m_collected started ended dur
-  local readback wrapper_exit base_ref base_sha slot_idx
+  local readback wrapper_exit base_ref base_sha slot_idx remote_cmd tcmd
   heavy_what="$1"
   # Resolved by the hook before it ever reaches here; empty in a driver that
   # exercises the library alone, which the wrapper handles as "skip".
@@ -1307,10 +1414,20 @@ prepush_remote_run() {
     return 1
   fi
   prepush_remote_argv > "$argvfile"
+  # The "nothing selected" refusal is decided on PATHS ALONE, before any flag is
+  # written (OMN-17564). Appending the policy first would make an empty
+  # selection look runnable: pytest handed nothing but flags falls back to the
+  # transplanted tree's own `testpaths`, silently running a suite nobody
+  # selected and reporting it as this push's evidence.
   if [ ! -s "$argvfile" ]; then
     rm -rf "$localdir"
     return 1
   fi
+  # The execution policy travels WITH the selection, in the same file, so it is
+  # covered by argv_sha -- the marker binds the verdict to the flags the suite
+  # actually ran under, not just to the paths. A host that answered under a
+  # different policy therefore cannot satisfy this dispatch.
+  prepush_remote_pytest_flags >> "$argvfile"
   argv_sha="$(prepush_sha256_file "$argvfile")"
 
   # The remote wrapper is NAMED prepush_smart_tests.sh on purpose. .201's queue
@@ -1463,6 +1580,10 @@ REMOTE
 
   log "remote leg: dispatching ${heavy_what} to ${label} (${PREPUSH_PICK_HOSTNAME}, ratio ${PREPUSH_PICK_RATIO}, mode ${PREPUSH_PICK_MODE})"
   log "remote leg: probed -> ${PREPUSH_PROBE_LOG}"
+  # OMN-17564: the execution policy is on the record, not implied. A run that
+  # is slower than the fleet's measured norm can now be read back to the exact
+  # worker count it was given instead of being guessed at from wall clock.
+  log "remote leg: pytest policy -> $(prepush_remote_pytest_flags | tr '\n' ' ')(${PREPUSH_PICK_CORES:-unknown} cores declared, cap ${PREPUSH_REMOTE_XDIST_WORKER_CAP})"
   started="$(date -u '+%s')"
 
   if ! ssh -n -o ConnectTimeout=6 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$ssh_t" \
@@ -1487,9 +1608,42 @@ REMOTE
   # slot-contended, exit 94) wrapper aborts the remote shell BEFORE `rc=$?`
   # runs, so the one fact this leg needs -- WHY the wrapper stopped -- would be
   # the fact that never gets written. Each step is checked explicitly instead.
-  ssh -n -o ConnectTimeout=6 -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$ssh_t" \
-    "cd '${rundir}' || exit 96; chmod +x prepush_smart_tests.sh || exit 97; ./prepush_smart_tests.sh '${rundir}' '${uv}' '${head_sha}' '${argv_sha}' '$(hostname -s 2> /dev/null || echo unknown):$$' '${workroot}' '${base_ref}' '${base_sha}' '${slot_idx}'; rc=\$?; echo REMOTE_WRAPPER_EXIT=\$rc; echo \$rc > '${rundir}/WRAPPER_EXIT'; exit 0" 2>&1 |
-    sed "s/^/[${label}] /" >&2 || true
+  #
+  # LIVENESS (OMN-17564). This was the ONLY ssh in this file with no bound but
+  # ConnectTimeout, which governs the handshake alone -- so a host that wedged
+  # AFTER connecting held the lane forever (h105, 2026-09-02: 5h29m, zero
+  # bytes, no WRAPPER_EXIT, no MARKER, and the lane never recovered because the
+  # parent chain was alive and nothing would ever time it out). Keepalives
+  # bound transport silence and the timeout(1) wrapper bounds the run, the same
+  # pattern the probe legs above already use.
+  #
+  # Expiry introduces NO new classification: the pipeline just returns, the
+  # readback below finds no MARKER, and the leg is already classified
+  # "NO completion marker ... NO EVIDENCE (not a pass, not a failure)", which
+  # dispatch_to_lab_host treats as a placement miss and walks past. Fail-closed
+  # posture is unchanged -- a genuine remote RED still carries a marker and
+  # still refuses the push.
+  remote_cmd="cd '${rundir}' || exit 96; chmod +x prepush_smart_tests.sh || exit 97; ./prepush_smart_tests.sh '${rundir}' '${uv}' '${head_sha}' '${argv_sha}' '$(hostname -s 2> /dev/null || echo unknown):$$' '${workroot}' '${base_ref}' '${base_sha}' '${slot_idx}'; rc=\$?; echo REMOTE_WRAPPER_EXIT=\$rc; echo \$rc > '${rundir}/WRAPPER_EXIT'; exit 0"
+  tcmd="$(_prepush_timeout_cmd)"
+  if [ -n "$tcmd" ]; then
+    "$tcmd" "$PREPUSH_REMOTE_EXEC_TIMEOUT_SECONDS" \
+      ssh -n -o ConnectTimeout=6 \
+      -o "ServerAliveInterval=${PREPUSH_REMOTE_SSH_ALIVE_INTERVAL_SECONDS}" \
+      -o "ServerAliveCountMax=${PREPUSH_REMOTE_SSH_ALIVE_COUNT_MAX}" \
+      -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$ssh_t" \
+      "$remote_cmd" 2>&1 |
+      sed "s/^/[${label}] /" >&2 || true
+  else
+    # timeout(1) ships on neither Mac in this fleet by default (see
+    # _prepush_timeout_cmd). Its absence degrades to the keepalive bound alone,
+    # which still closes the wedged-host case, rather than refusing to dispatch.
+    ssh -n -o ConnectTimeout=6 \
+      -o "ServerAliveInterval=${PREPUSH_REMOTE_SSH_ALIVE_INTERVAL_SECONDS}" \
+      -o "ServerAliveCountMax=${PREPUSH_REMOTE_SSH_ALIVE_COUNT_MAX}" \
+      -o BatchMode=yes -o StrictHostKeyChecking=accept-new "$ssh_t" \
+      "$remote_cmd" 2>&1 |
+      sed "s/^/[${label}] /" >&2 || true
+  fi
 
   readback="$(ssh -n -o ConnectTimeout=6 -o BatchMode=yes "$ssh_t" \
     "echo \"wrapper_exit=\$(cat '${rundir}/WRAPPER_EXIT' 2>/dev/null)\"; cat '${rundir}/MARKER' 2>/dev/null" 2> /dev/null || true)"
@@ -1527,7 +1681,7 @@ REMOTE
   fi
   log_sha="$m_log"
 
-  prepush_emit_receipt "{\"ts\":\"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\",\"repo\":\"$(prepush_json_escape "$repo")\",\"head_sha\":\"${head_sha}\",\"chosen_host\":\"$(prepush_json_escape "$PREPUSH_PICK_HOSTNAME")\",\"chosen_label\":\"${label}\",\"chosen_slot\":${slot_idx},\"host_mode\":\"${PREPUSH_PICK_MODE}\",\"host_load_ratio\":\"${PREPUSH_PICK_RATIO}\",\"all_probed_ratios\":\"$(prepush_json_escape "$PREPUSH_PROBE_LOG")\",\"selection_paths\":\"$(prepush_json_escape "$(prepush_remote_argv | tr '\n' ' ')")\",\"pytest_exit\":${m_exit},\"collected\":${m_collected:-0},\"duration_s\":${dur},\"suite_log_sha256\":\"${log_sha}\"}"
+  prepush_emit_receipt "{\"ts\":\"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\",\"repo\":\"$(prepush_json_escape "$repo")\",\"head_sha\":\"${head_sha}\",\"chosen_host\":\"$(prepush_json_escape "$PREPUSH_PICK_HOSTNAME")\",\"chosen_label\":\"${label}\",\"chosen_slot\":${slot_idx},\"host_mode\":\"${PREPUSH_PICK_MODE}\",\"host_load_ratio\":\"${PREPUSH_PICK_RATIO}\",\"all_probed_ratios\":\"$(prepush_json_escape "$PREPUSH_PROBE_LOG")\",\"selection_paths\":\"$(prepush_json_escape "$(prepush_remote_argv | tr '\n' ' ')")\",\"pytest_policy\":\"$(prepush_json_escape "$(prepush_remote_pytest_flags | tr '\n' ' ')")\",\"pytest_exit\":${m_exit},\"collected\":${m_collected:-0},\"duration_s\":${dur},\"suite_log_sha256\":\"${log_sha}\"}"
 
   if [ "$m_exit" -ne 0 ]; then
     # The refusal below tells the developer to read the failing output. The

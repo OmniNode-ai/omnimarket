@@ -1363,8 +1363,22 @@ def test_the_verdict_is_read_from_a_marker_not_the_ssh_exit_code() -> None:
     assert "NO EVIDENCE" in lib
     # The streaming pipeline's status belongs to sed(1), and `|| true` follows
     # it, so nothing about the verdict can come from that command's exit code.
-    stream = lib[lib.index("./prepush_smart_tests.sh '${rundir}'") :][:400]
-    assert "|| true" in stream
+    #
+    # OMN-17564 lifted the wrapper invocation into `$remote_cmd` (it is now
+    # issued twice -- once timeout-wrapped, once not, depending on whether
+    # timeout(1) exists on the pusher), so the invocation and the pipeline that
+    # streams it are no longer adjacent and a fixed window after the invocation
+    # would pin nothing. Assert the property directly instead, on EVERY
+    # streaming branch: a branch added later without the discard would
+    # reintroduce exactly the fail-open shape this test exists for.
+    assert "./prepush_smart_tests.sh '${rundir}'" in lib, (
+        "the remote command no longer invokes the wrapper"
+    )
+    streams = [m.start() for m in re.finditer(r'"\$remote_cmd" 2>&1 \|', lib)]
+    assert streams, "no streaming invocation of $remote_cmd found"
+    for idx in streams:
+        window = lib[idx : idx + 200]
+        assert 'sed "s/^/[${label}] /" >&2 || true' in window, window
 
 
 def test_a_shadow_host_verdict_never_authorizes() -> None:

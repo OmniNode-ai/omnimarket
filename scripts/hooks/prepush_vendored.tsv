@@ -65,6 +65,40 @@
 # never silence the guard to make the digests match.
 #
 #path	upstream_repo	upstream_path	upstream_commit	upstream_branch	sha256	copied_at
-scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	c1c9ef19e71b619d0b519a954026f4892352ad23	dev	a591fbddad0430761f82f054b8f8e3ea6696e1b0e0136cfcd71e5a39bad7f0cb	2026-09-02
+# 2026-09-03, OMN-17564 -- SECOND parallel-landing delta on this same file, on
+# top of the OMN-17606 one recorded above. The remote execution leg shipped the
+# SELECTION across the seam and dropped the EXECUTION POLICY: every dispatched
+# heavy suite ran single-threaded with no per-test watchdog, and the execution
+# ssh carried ConnectTimeout only -- which governs the handshake, so a host that
+# wedged AFTER connect held the lane forever (measured: 5h29m, zero bytes, no
+# marker). Both faces are in this file, so the fix is vendored here in the same
+# pass rather than a merge cycle behind upstream.
+#
+# The recorded commit is upstream's OMN-17564 BRANCH commit
+# (jonah/omn-17564-prepush-remote-leg-policy @ d9f76efd6, itself rebased on
+# omnibase_infra dev @ 77ffa91c9), NOT a dev commit -- upstream's push is
+# blocked on lab host saturation, not on review, so recording the branch it is
+# proven on is the honest available provenance. This repo therefore now carries
+# TWO deltas ahead of upstream dev; the digest below is this file's own, and it
+# still does its real job, which is detecting a LOCAL edit to the shipped file.
+#
+# Bytes differ from upstream's OMN-17564 copy by the OMN-17606 slot-probe block
+# recorded above PLUS THREE COMMENT PASSAGES ONLY: upstream's wording names
+# `omnibase_core` three times (as the repo whose local heavy leg already runs
+# `-n4`, and as the source of the 3h48m55s worst-case measurement) and asserts
+# `.github/workflows/ci.yml test-parallel` as "this repo's own CI". Both are
+# false-or-forbidden here -- `test_the_picker_library_is_not_edited_into_a_repo
+# _specific_fork` forbids the repo name inside the shared library, and THIS
+# repo's ci.yml has no test-parallel job at all -- so the same facts are stated
+# repo-neutrally. No executable line differs.
+#
+# RE-SYNC CONDITION: when omnibase_infra's OMN-17606 and OMN-17564 fixes both
+# merge to dev, re-copy the file, collapse both notes into one record, and
+# re-run tests/scripts/test_prepush_host_table.py plus
+# tests/scripts/test_prepush_remote_leg_policy.py. If upstream's wording still
+# names a repo, the fork guard is the authority -- raise it upstream, never
+# silence the guard to make the digests match.
+#
+scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	d9f76efd6ec8708cce18e596e4bfa3a1e6acfb85	jonah/omn-17564-prepush-remote-leg-policy	ed993364265dec27d274eaa118e996906b11b737f85fe2e201955a10ad259b33	2026-09-03
 scripts/hooks/prepush_override_grant.py	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_override_grant.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	6777c592a944fe1964a195bf088c00c7747551e5e9a20705ca49d9e59dbc3f3c	2026-09-01
 scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	1fd00d5c4db005be2151507b9d690d49e4c8cfb34ebffd4ecf771d02962feb11	2026-09-01
