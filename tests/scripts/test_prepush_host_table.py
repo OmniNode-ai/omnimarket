@@ -758,8 +758,7 @@ _SYNTHETIC_TABLE_MULTISLOT = (
 
 
 def test_the_shipped_slots_column_is_pinned(table_repo: Path) -> None:
-    """EVERY row on THIS repo's table declares slots=1 -- deliberately, and
-    deliberately UNLIKE omnibase_infra's table, which declares slots=2 for h105.
+    """h201 declares three slots; every OTHER row on this repo's table stays 1.
 
     The lockdir namespace (``<workroot>/LOCK``, ``LOCK.<k>``) is shared across
     repos, so a per-repo slots value is a self-limit, not a host-wide one:
@@ -768,18 +767,106 @@ def test_the_shipped_slots_column_is_pinned(table_repo: Path) -> None:
     this repo's escalation target is all ~17,700 tests of ``tests/``, and two
     concurrent runs of that on a 10-core M4 was NOT measured by OMN-17435.
 
+    That reasoning is why h200/h101/h105 are still 1 here and it is unchanged.
+    It is an argument about a 10-core M4, and OMN-17752 does not extend to one
+    -- h201 is `.201`, 32 cores and 92 GiB, and the exception is argued from a
+    measurement taken ON THAT HOST rather than inherited from another repo:
+
+    * The per-leg CPU cost is repo-independent. ``prepush_remote_xdist_workers``
+      is ``min(row cores, PREPUSH_REMOTE_XDIST_WORKER_CAP)`` = ``min(32, 4)`` =
+      4 xdist workers plus an idle controller whatever suite is running, so the
+      5.0-cores-per-leg budget OMN-17743 measured holds for an omnimarket leg
+      exactly as for an omnibase_core one. The ~17,700-test target changes the
+      leg's DURATION, not its width.
+    * The baseline it is added to was measured live 2026-09-03T10:57Z-11:03Z:
+      ``docker stats --no-stream`` over all 147 containers totalled 2.46 cores
+      (the 90-runner CI fleet only 0.11 of it, idle since OMN-16688 moved
+      trusted CI to GitHub-hosted runners), ``/proc/loadavg`` sampled 5x/4s gave
+      a mean load1 of 7.03/32 = 0.22x, and subtracting the one in-flight leg
+      (98.7%) leaves ~6.0 of 32 cores. A full complement of three legs lands at
+      21.0 = 0.66x against the 1.0x threshold, keeping 11 cores for the five
+      live runtime-evidence lanes and the interactive collaborator workspace
+      OMN-17485 protects.
+
+    The residual is named rather than assumed away: peak RSS of an OMNIMARKET
+    leg on `.201` is unmeasured -- the 674 MiB figure is an omnibase_core
+    pytest. It is bounded mechanically, not by hope: ``prepush_probe_mem_ok``
+    re-checks ``PREPUSH_MIN_FREE_MEM_MB=4096`` per slot at pick time against the
+    ~57 GiB this host reads available, so three legs would each have to hold
+    ~17 GiB before admission bites.
+
     Widening a row's capacity is exactly the kind of change this file exists to
     force through a reviewed, deliberate test edit (same reasoning as the
-    mode-promotion pins above) -- and here it additionally requires the
-    measurement that has not been taken."""
+    mode-promotion pins above)."""
     slots = {r[0]: r[9] for r in _rows()}
     assert slots == {
         "h200": "1",
-        "h201": "1",
+        "h201": "3",
         "h201c": "1",
         "h101": "1",
         "h105": "1",
     }
+
+
+def test_widening_h201_slots_did_not_promote_its_tier_or_change_its_slot_mode(
+    table_repo: Path,
+) -> None:
+    """OMN-17752 widened h201's slot COUNT and nothing else.
+
+    ``slot_mode=queue`` is load-bearing: `.201` runs the separate
+    ``~/push-lanes/QUEUE`` serializer and ``_PREPUSH_SLOT_PROBE_SH`` reads busy
+    on EVERY slot of this row while that queue is non-empty, so three slots
+    widen concurrency only while the queue is drained -- they do not retire the
+    serializer. ``placement_tier=last_resort`` is equally load-bearing: more
+    slots is not a promotion, and `.201` is still chosen only when no
+    default-tier host is fit, however idle it reads."""
+    row = {r[0]: r for r in _rows()}["h201"]
+    assert row[8] == "queue", row
+    assert row[13] == "last_resort", row
+    assert row[11] == "authorizing", row
+    assert row[12] == "prefer_remote", row
+
+
+def test_h201_third_slot_places_while_the_first_two_are_busy(
+    table_repo: Path,
+) -> None:
+    """OMN-17752: h201's THIRD slot is independently placeable on the REAL
+    shipped table while slots 1 and 2 are both held.
+
+    This is the first multi-slot placement this repo's table has ever offered,
+    and it is the only test in the fleet proving the suffix generalises past
+    ``.2``, that it works for a ``slot_mode=queue`` row (every other multi-slot
+    row anywhere is ``lockdir``), and that a ``placement_tier=last_resort`` row
+    can be reached at all -- which it only is because no default-tier host is
+    fit here: h200/h101/h105 are absent from the override maps and are skipped
+    unreachable, exactly the lab-saturated state that sends work to `.201`."""
+    out = _pick(
+        table_repo,
+        load="h201.3=0.22",
+        slot="h201=busy,h201.2=busy,h201.3=free",
+        uv="h201.3=0.11.5",
+    )
+    assert "PICK=h201.3" in out, out
+    assert "h201=busy" in out, out
+    assert "h201.2=busy" in out, out
+
+
+def test_h201_offers_exactly_three_slots_and_never_a_phantom_fourth(
+    table_repo: Path,
+) -> None:
+    """A fourth concurrent lane targeting `.201` gets no placement, not an
+    ``h201.4``. The candidate count is the declared ``slots`` value and nothing
+    else, which is what keeps a widening bounded by the measurement that
+    justified it."""
+    out = _pick(
+        table_repo,
+        load="h201=0.22,h201.2=0.22,h201.3=0.22",
+        slot="h201=busy,h201.2=busy,h201.3=busy",
+        uv="h201=0.11.5,h201.2=0.11.5,h201.3=0.11.5",
+    )
+    assert "PICK=none" in out, out
+    assert "h201.3=busy" in out, out
+    assert "h201.4" not in out, out
 
 
 def test_slot_one_keeps_the_bare_label_not_a_dot_one_suffix(
