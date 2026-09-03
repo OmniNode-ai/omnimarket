@@ -6,6 +6,9 @@ still run without relying on external wrapper surfaces.
 
 from __future__ import annotations
 
+import subprocess
+from pathlib import Path
+
 import pytest
 
 from omnimarket import market_skill_baseline
@@ -229,3 +232,60 @@ def test_streaming_baseline_prints_each_skill_result(
     )
     assert "[market-skill] ticket_pipeline cli=pass rc=0" in output
     assert "[market-skill] ticket_pipeline runtime_proof=pass rc=0" in output
+
+
+def test_aislop_sweep_smoke_builds_its_own_workspace_and_leaks_no_ambient_one(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """OMN-17459's SECOND call site, pinned so it cannot regress.
+
+    Until omnimarket ``4c3065a5`` this smoke handed the sweep subprocess
+    ``env={"OMNI_HOME": str(OMNI_HOME)}`` -- the module-level value, resolved
+    from the ambient environment or, failing that, from a parent-directory walk
+    for a folder literally named ``omni_home``. On a transplanted single-repo
+    tree neither resolves to a registry the sweep can read, so it emitted
+    nothing parseable and ``test_all_market_skill_cli_smokes_pass`` returned
+    ``JSONDecodeError: Expecting value: line 1 column 1 (char 0)`` on a lab host
+    where the code under test is fine.
+
+    The fix is that the smoke constructs the registry it needs. This test
+    asserts that property against a HOSTILE ambient value, which is what the
+    remote leg's launcher-forwarded path would look like.
+    """
+    hostile = "/nonexistent/somebody-elses/Code/omni_home"
+    monkeypatch.setenv("OMNI_HOME", hostile)
+
+    seen: dict[str, object] = {}
+
+    def _capture(
+        *, command: list[str], env: dict[str, str] | None = None
+    ) -> subprocess.CompletedProcess[str]:
+        # Inspected HERE, while the smoke's TemporaryDirectory is still alive.
+        passed_root = (env or {}).get("OMNI_HOME", "")
+        seen["root"] = passed_root
+        root = Path(passed_root)
+        seen["is_dir"] = root.is_dir()
+        entry = root / "omnimarket"
+        seen["entry_is_symlink"] = entry.is_symlink()
+        seen["entry_target"] = str(entry.resolve()) if entry.exists() else ""
+        return subprocess.CompletedProcess(
+            args=command, returncode=0, stdout="{}", stderr=""
+        )
+
+    monkeypatch.setattr(market_skill_baseline, "_run_command", _capture)
+    market_skill_baseline._smoke_aislop_sweep()
+
+    assert seen["root"], "the sweep was handed no OMNI_HOME at all"
+    assert seen["root"] != hostile, (
+        "the ambient OMNI_HOME leaked into the sweep subprocess"
+    )
+    assert seen["root"] != str(market_skill_baseline.OMNI_HOME), (
+        "the module-level workspace value leaked into the sweep subprocess -- "
+        "this is the exact shape that produced the h101 false red"
+    )
+    assert seen["is_dir"], "the workspace handed to the sweep does not exist"
+    assert seen["entry_is_symlink"], (
+        "the workspace holds no 'omnimarket' entry, so the sweep has nothing "
+        "to scan under --repos omnimarket"
+    )
+    assert seen["entry_target"] == str(market_skill_baseline.REPO_ROOT.resolve())
