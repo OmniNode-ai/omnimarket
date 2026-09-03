@@ -99,6 +99,12 @@
 # names a repo, the fork guard is the authority -- raise it upstream, never
 # silence the guard to make the digests match.
 #
+# SUPERSEDED 2026-09-03 by the OMN-17726 note below: the branch commit this note
+# recorded (d9f76efd6) merged upstream as `a5eac80c3`, which is an ancestor of
+# the `80bffc356` now pinned in the row -- so the delta it describes is no
+# longer a delta. The note is KEPT, not deleted: it is the record of WHY the pin
+# was once an unmerged branch commit, and the RE-SYNC CONDITION below names it.
+#
 # 2026-09-03, OMN-17726 -- THE OMN-17564 DELTA ABOVE IS NO LONGER A DELTA, and
 # this record now names a MERGED dev commit again. Read this note together with
 # the two above; it supersedes their arithmetic, not their history.
