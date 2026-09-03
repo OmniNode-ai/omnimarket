@@ -47,11 +47,15 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
     reduce_delegation_attempts,
 )
 from omnimarket.pricing import resolve_tier_cost
+from omnimarket.projection.discovery import (
+    load_projection_exposures_from_contract,
+)
 from omnimarket.projection.dlq import (
     correlation_id_from_payload,
     dlq_topics_from_contract,
     route_to_dlq,
 )
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.runner import (
     BaseProjectionRunner,
     MessageMeta,
@@ -103,6 +107,16 @@ KNOWN_PROJECTION_TABLES: frozenset[str] = frozenset(
 # the posture ``postgres_sync_database.PostgresSyncProjectionAdapter`` applies
 # to the sync write path this method ports.
 _IDENTIFIER_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
+
+# OMN-17773: the compaction key of a SINGLETON AGGREGATE exposure -- a limit-1
+# SQL view republished whole on every apply. It is produced by the re-read
+# query as a bound literal (`SELECT $1::text AS snapshot_grain, agg.*`), never
+# read off the view, because the view's grain is "the whole projection" and
+# every column it actually has changes on every write. A constant key means
+# the compacted topic holds exactly one live record forever, which is the
+# property OMN-17345 records consumer-flow lacking (it keys on window_start
+# and has grown to 9.09M records).
+SNAPSHOT_GRAIN_COLUMN = "snapshot_grain"
 
 
 class DelegationProjectionRunner(BaseProjectionRunner):
@@ -228,6 +242,114 @@ class DelegationProjectionRunner(BaseProjectionRunner):
         # the bus (the offending envelope routed to this topic, carrying its
         # correlation_id) instead of being logged + dropped silently.
         self._dlq_topics: list[str] = dlq_topics_from_contract(self._contract)
+        self._aggregate_exposures: tuple[ProjectionTableConfig, ...] = (
+            self._resolve_aggregate_exposures(_path)
+        )
+        # OMN-17773: counts writes to the ONE table the singleton aggregates
+        # read. project_event snapshots it around the branch dispatch and
+        # republishes only when it moved, so an event that legitimately
+        # SKIPS (a payload missing required fields returns True without
+        # writing) issues no extra query, and a write to a table the
+        # aggregates do not read -- generation_events, the shadow table, judge
+        # verdicts -- does not republish an unchanged aggregate.
+        self._delegation_writes = 0
+
+    def _resolve_aggregate_exposures(
+        self, contract_path: Path
+    ) -> tuple[ProjectionTableConfig, ...]:
+        """The singleton-aggregate exposures this runner republishes.
+
+        OMN-17773. A bus_backed exposure is only servable if some writer
+        publishes it; an exposure whose flag is flipped without a publish site
+        turns an honest ``not_yet_bus_backed`` refusal into a confident empty
+        page, which is the failure OMN-15864 exists to prevent and the reason
+        the consumer-flow precedent landed its flag and its publish call in one
+        commit.
+
+        This runner has exactly one publish shape: re-read a limit-1 view and
+        republish it keyed on :data:`SNAPSHOT_GRAIN_COLUMN`. So a bus_backed
+        exposure keyed on anything else has no publish site here, and
+        construction fails rather than deploying a writer that silently serves
+        nothing. Converting a per-row exposure means adding its publish call at
+        its own upsert site and widening this resolver -- deliberately not a
+        one-line contract edit.
+        """
+        node_name = str(self._contract.get("name", "projection_delegation"))
+        exposures = load_projection_exposures_from_contract(
+            self._contract, node_name, contract_path
+        )
+        aggregates: list[ProjectionTableConfig] = []
+        for exposure in exposures:
+            if not exposure.bus_backed:
+                continue
+            if exposure.key_columns != (SNAPSHOT_GRAIN_COLUMN,):
+                raise ValueError(
+                    f"projection_api exposure {exposure.topic!r} is bus_backed "
+                    f"with key_columns {list(exposure.key_columns)!r}, but this "
+                    "runner has no publish site for it -- only singleton "
+                    f"aggregates keyed on {SNAPSHOT_GRAIN_COLUMN!r} are "
+                    "republished. Add the publish call at the exposure's own "
+                    "upsert site before flipping bus_backed."
+                )
+            if exposure.limit != 1:
+                raise ValueError(
+                    f"projection_api exposure {exposure.topic!r} is keyed on "
+                    f"{SNAPSHOT_GRAIN_COLUMN!r} (one constant key) but declares "
+                    f"limit {exposure.limit}; a multi-row exposure would "
+                    "collapse onto a single cache entry"
+                )
+            if not _IDENTIFIER_RE.match(exposure.table):
+                raise ValueError(
+                    f"projection_api exposure {exposure.topic!r} names "
+                    f"invalid SQL identifier {exposure.table!r}"
+                )
+            aggregates.append(exposure)
+        return tuple(aggregates)
+
+    async def _publish_aggregate_snapshots(self, meta: MessageMeta) -> None:
+        """Republish every singleton aggregate after a successful apply.
+
+        OMN-17773. These exposures are SQL views over the tables this runner
+        just wrote, so there is no upserted row to hand
+        ``publish_snapshot_delta`` -- the current materialized state is the
+        row, and it is re-read here. The projection API holds no DB handle
+        (OMN-15800 seam B), so this republish is the ONLY way the aggregate
+        becomes visible to a reader.
+
+        A view that returns no row publishes nothing: an aggregate that cannot
+        be measured must stay absent from the page rather than be rendered as
+        a zero.
+        """
+        for exposure in self._aggregate_exposures:
+            # Unqualified relation name, resolved through search_path --
+            # the same way every other statement this runner issues names its
+            # table (_dynamic_upsert, _preserve_existing_evidence_async). The
+            # exposure's `schema` field records the DATABASE, not a physical
+            # schema, and node_projection_consumer_flow's contract says so in
+            # as many words; hard-coding `public.` here would name a relation
+            # the runner never otherwise addresses.
+            #
+            # No tenant GUC: these views aggregate ACROSS tenants by
+            # definition, so scoping the read to one would silently answer a
+            # narrower question than the exposure claims to answer. The grain
+            # is bound as a parameter, never interpolated; the table name is
+            # contract-declared and identifier-validated at construction.
+            rows = await self.db.execute(
+                f"SELECT $1::text AS {SNAPSHOT_GRAIN_COLUMN}, agg.* "
+                f"FROM {exposure.table} agg LIMIT 1",
+                exposure.topic,
+            )
+            if not rows:
+                continue
+            await self.publish_snapshot_delta(
+                exposure,
+                op="upsert",
+                row=rows[0],
+                source_event_id=meta.fallback_id,
+                source_topic=meta.topic,
+                source_partition=meta.partition,
+                source_offset=meta.offset,
+            )
 
     @property
     def poison_dlq_topics(self) -> list[str]:
@@ -338,6 +460,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
     async def project_event(
         self, topic: str, data: dict[str, Any], meta: MessageMeta
     ) -> bool:
+        writes_before = self._delegation_writes
         if topic == self._topic_delegated:
             ok = await self._project_task_delegated(data, meta)
         elif topic == self._topic_shadow:
@@ -364,6 +487,15 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             ok = await self._project_quality_gate_result(data, meta)
         else:
             return False
+
+        if ok and self._delegation_writes > writes_before:
+            # OMN-17773: the singleton aggregates are views over
+            # delegation_events, so their materialized state changed exactly
+            # when this apply wrote that table. Republishing here -- once, at
+            # the dispatch seam, rather than at each of the four upsert call
+            # sites -- is what makes "republished on every apply" a property of
+            # the runner instead of a convention four call sites must remember.
+            await self._publish_aggregate_snapshots(meta)
 
         if ok and self._terminal_topic:
             correlation_id = (
@@ -573,6 +705,8 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             f"ON CONFLICT ({', '.join(conflict_keys)}) {on_conflict}"
         )
         await self.db.execute(query, *values, tenant=tenant)
+        if table == self._table_delegation:
+            self._delegation_writes += 1
 
     async def _preserve_existing_evidence_async(self, row: dict[str, object]) -> None:
         """Async port of ``handler_projection_delegation._preserve_existing_evidence``.

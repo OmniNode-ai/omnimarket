@@ -360,6 +360,39 @@ projection_api:
         - byModel
       freshness_column: latest_projection_updated_at
       limit: 1
+      # OMN-17773 (GOAL row 0 leg b, epic OMN-16776): bus-backed as a
+      # SINGLETON AGGREGATE. This exposure is a limit-1 SQL view, so
+      # publish_snapshot_delta has no per-row upsert to hook -- the writer
+      # (DelegationProjectionRunner, deployed on the dev lane as
+      # omnimarket-projection-delegation-writer since OMN-17448) re-reads the
+      # whole view after every successful apply and republishes it.
+      #
+      # The compaction key is `snapshot_grain`, a constant this exposure's own
+      # re-read query produces (`SELECT $1::text AS snapshot_grain, agg.*`),
+      # bound to the topic name. It is deliberately NOT a column of the view:
+      # the view's grain IS "the whole projection", and every column it does
+      # have changes on every write. Keying on any of them would mint a new
+      # compaction key per apply -- the exact unbounded-log defect OMN-17345
+      # records on consumer-flow, whose key includes window_start and which
+      # has grown to 9.09M records with log-start still 0. One constant key
+      # means this topic holds exactly one live record forever.
+      #
+      # Flag and writer land together, per OMN-15864: the runner refuses to
+      # construct if a bus_backed exposure on this contract is keyed on
+      # anything but the grain column, because it would have no publish site
+      # and would serve a confident empty page instead of an honest refusal.
+      #
+      # No tenant_column: this is a platform-wide operational aggregate with
+      # no per-tenant attribution (counts, a pass rate, an average latency,
+      # a savings total). The PER-ROW exposures over delegation_events below
+      # deliberately stay not_yet_bus_backed -- that table carries three
+      # distinct tenant_id values on the dev lane, and SnapshotCache.get_rows
+      # applies no tenant filter without a declared tenant_column, which is
+      # the live-proven leak node_projection_savings refused to ship for
+      # savings.v1.
+      bus_backed: true
+      key_columns:
+        - snapshot_grain
     - topic: onex.snapshot.projection.delegation.model-routing.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_model_routing
       schema: public
@@ -384,6 +417,39 @@ projection_api:
         - by_tier
       freshness_column: latest_projection_updated_at
       limit: 1
+      # OMN-17773 (GOAL row 0 leg b, epic OMN-16776): bus-backed as a
+      # SINGLETON AGGREGATE. This exposure is a limit-1 SQL view, so
+      # publish_snapshot_delta has no per-row upsert to hook -- the writer
+      # (DelegationProjectionRunner, deployed on the dev lane as
+      # omnimarket-projection-delegation-writer since OMN-17448) re-reads the
+      # whole view after every successful apply and republishes it.
+      #
+      # The compaction key is `snapshot_grain`, a constant this exposure's own
+      # re-read query produces (`SELECT $1::text AS snapshot_grain, agg.*`),
+      # bound to the topic name. It is deliberately NOT a column of the view:
+      # the view's grain IS "the whole projection", and every column it does
+      # have changes on every write. Keying on any of them would mint a new
+      # compaction key per apply -- the exact unbounded-log defect OMN-17345
+      # records on consumer-flow, whose key includes window_start and which
+      # has grown to 9.09M records with log-start still 0. One constant key
+      # means this topic holds exactly one live record forever.
+      #
+      # Flag and writer land together, per OMN-15864: the runner refuses to
+      # construct if a bus_backed exposure on this contract is keyed on
+      # anything but the grain column, because it would have no publish site
+      # and would serve a confident empty page instead of an honest refusal.
+      #
+      # No tenant_column: this is a platform-wide operational aggregate with
+      # no per-tenant attribution (counts, a pass rate, an average latency,
+      # a savings total). The PER-ROW exposures over delegation_events below
+      # deliberately stay not_yet_bus_backed -- that table carries three
+      # distinct tenant_id values on the dev lane, and SnapshotCache.get_rows
+      # applies no tenant filter without a declared tenant_column, which is
+      # the live-proven leak node_projection_savings refused to ship for
+      # savings.v1.
+      bus_backed: true
+      key_columns:
+        - snapshot_grain
     - topic: onex.snapshot.projection.delegation.quality-gate.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: projection_delegation_quality_gate
       schema: public
@@ -411,6 +477,39 @@ projection_api:
         - tokens_to_compliance_by_model
       freshness_column: latest_projection_updated_at
       limit: 1
+      # OMN-17773 (GOAL row 0 leg b, epic OMN-16776): bus-backed as a
+      # SINGLETON AGGREGATE. This exposure is a limit-1 SQL view, so
+      # publish_snapshot_delta has no per-row upsert to hook -- the writer
+      # (DelegationProjectionRunner, deployed on the dev lane as
+      # omnimarket-projection-delegation-writer since OMN-17448) re-reads the
+      # whole view after every successful apply and republishes it.
+      #
+      # The compaction key is `snapshot_grain`, a constant this exposure's own
+      # re-read query produces (`SELECT $1::text AS snapshot_grain, agg.*`),
+      # bound to the topic name. It is deliberately NOT a column of the view:
+      # the view's grain IS "the whole projection", and every column it does
+      # have changes on every write. Keying on any of them would mint a new
+      # compaction key per apply -- the exact unbounded-log defect OMN-17345
+      # records on consumer-flow, whose key includes window_start and which
+      # has grown to 9.09M records with log-start still 0. One constant key
+      # means this topic holds exactly one live record forever.
+      #
+      # Flag and writer land together, per OMN-15864: the runner refuses to
+      # construct if a bus_backed exposure on this contract is keyed on
+      # anything but the grain column, because it would have no publish site
+      # and would serve a confident empty page instead of an honest refusal.
+      #
+      # No tenant_column: this is a platform-wide operational aggregate with
+      # no per-tenant attribution (counts, a pass rate, an average latency,
+      # a savings total). The PER-ROW exposures over delegation_events below
+      # deliberately stay not_yet_bus_backed -- that table carries three
+      # distinct tenant_id values on the dev lane, and SnapshotCache.get_rows
+      # applies no tenant filter without a declared tenant_column, which is
+      # the live-proven leak node_projection_savings refused to ship for
+      # savings.v1.
+      bus_backed: true
+      key_columns:
+        - snapshot_grain
     - topic: onex.snapshot.projection.delegation.judge-verdicts.v1 # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
       table: delegation_judge_verdict_events
       schema: public
@@ -457,6 +556,39 @@ projection_api:
         - by_model
       freshness_column: latest_projection_updated_at
       limit: 1
+      # OMN-17773 (GOAL row 0 leg b, epic OMN-16776): bus-backed as a
+      # SINGLETON AGGREGATE. This exposure is a limit-1 SQL view, so
+      # publish_snapshot_delta has no per-row upsert to hook -- the writer
+      # (DelegationProjectionRunner, deployed on the dev lane as
+      # omnimarket-projection-delegation-writer since OMN-17448) re-reads the
+      # whole view after every successful apply and republishes it.
+      #
+      # The compaction key is `snapshot_grain`, a constant this exposure's own
+      # re-read query produces (`SELECT $1::text AS snapshot_grain, agg.*`),
+      # bound to the topic name. It is deliberately NOT a column of the view:
+      # the view's grain IS "the whole projection", and every column it does
+      # have changes on every write. Keying on any of them would mint a new
+      # compaction key per apply -- the exact unbounded-log defect OMN-17345
+      # records on consumer-flow, whose key includes window_start and which
+      # has grown to 9.09M records with log-start still 0. One constant key
+      # means this topic holds exactly one live record forever.
+      #
+      # Flag and writer land together, per OMN-15864: the runner refuses to
+      # construct if a bus_backed exposure on this contract is keyed on
+      # anything but the grain column, because it would have no publish site
+      # and would serve a confident empty page instead of an honest refusal.
+      #
+      # No tenant_column: this is a platform-wide operational aggregate with
+      # no per-tenant attribution (counts, a pass rate, an average latency,
+      # a savings total). The PER-ROW exposures over delegation_events below
+      # deliberately stay not_yet_bus_backed -- that table carries three
+      # distinct tenant_id values on the dev lane, and SnapshotCache.get_rows
+      # applies no tenant filter without a declared tenant_column, which is
+      # the live-proven leak node_projection_savings refused to ship for
+      # savings.v1.
+      bus_backed: true
+      key_columns:
+        - snapshot_grain
     # OMN-12780 (Wave 1C): expose the full generated output via projection-API.
     # Projection-API is the ONLY valid read path — no raw DB reads, no express reader.
     # contract_yaml + handler_source are the full generated artifacts, never truncated.

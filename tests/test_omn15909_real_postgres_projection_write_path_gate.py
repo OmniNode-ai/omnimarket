@@ -42,6 +42,7 @@ schema so runs never collide.
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -57,6 +58,7 @@ from omnibase_core.models.delegation.wire import EnumTierCostType, ModelTierCost
 
 from omnimarket.adapters.asyncpg_adapter import AsyncpgAdapter
 from omnimarket.nodes.node_projection_delegation.handlers.handler_delegation import (
+    SNAPSHOT_GRAIN_COLUMN,
     DelegationProjectionRunner,
 )
 from omnimarket.projection.runner import MessageMeta
@@ -934,3 +936,103 @@ class TestRlsWriteContextResolver:
             assert [dict(r) for r in landed] == [
                 {"tenant_id": UUID("820272f9-4aaf-5add-a2df-0af942852ab2")}
             ]
+
+
+# ---------------------------------------------------------------------------
+# 4. OMN-17773: the singleton-aggregate republish issues REAL SQL against REAL
+#    SQL VIEWS. A mock DB accepts any statement text and any returned shape,
+#    so it can prove neither that the re-read parses nor that the row it
+#    yields is serializable onto the bus. Both are only enforced by a real
+#    Postgres connection against the real migrated views.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestOmn17773AggregateSnapshotRepublish:
+    async def test_aggregate_reread_runs_against_the_real_migrated_views(
+        self,
+    ) -> None:
+        """Every declared singleton aggregate re-read parses and returns a row.
+
+        The four exposures this covers are SQL VIEWS, not tables -- the write
+        path never creates them, so a typo in a view name, a renamed view, or
+        a migration that drops one is invisible to every mock-DB test in this
+        repo and would surface only as a silent ``UndefinedTableError`` inside
+        the deployed writer's exception handler, leaving the exposure
+        permanently empty on the page while the writer reported healthy.
+        """
+        async with _provisioned_runner() as (runner, _admin_conn, _schema):
+            assert runner._aggregate_exposures, (
+                "the contract must declare at least one singleton aggregate"
+            )
+            for exposure in runner._aggregate_exposures:
+                rows = await runner.db.execute(
+                    f"SELECT $1::text AS {SNAPSHOT_GRAIN_COLUMN}, agg.* "
+                    f"FROM {exposure.table} agg LIMIT 1",
+                    exposure.topic,
+                )
+                assert rows, (
+                    f"{exposure.table} must yield its singleton row; an "
+                    "aggregate view that returns nothing publishes nothing"
+                )
+                assert rows[0][SNAPSHOT_GRAIN_COLUMN] == exposure.topic
+
+    async def test_apply_publishes_serializable_aggregate_snapshots(self) -> None:
+        """A real apply publishes one delta per aggregate, and the row a real
+        Postgres returns survives ``model_dump_json``.
+
+        The views return ``jsonb`` columns (``byTaskType``, ``byModel``,
+        ``by_tier``, ``provenance_summary``) and ``numeric``/``timestamptz``
+        values that asyncpg materializes as ``Decimal`` and ``datetime``. The
+        mock-DB seam test feeds back plain Python literals, so it cannot catch
+        a value the snapshot serializer refuses -- which would raise INSIDE
+        the deployed writer on every event.
+        """
+        published: list[tuple[str, bytes | None, bytes | None]] = []
+
+        class _CapturingProducer:
+            async def send_and_wait(
+                self,
+                topic: str,
+                value: bytes | None = None,
+                key: bytes | None = None,
+                headers: list[tuple[str, bytes]] | None = None,
+            ) -> None:
+                published.append((topic, key, value))
+
+        async with _provisioned_runner() as (runner, _admin_conn, _schema):
+            runner._producer = _CapturingProducer()  # type: ignore[assignment]
+            correlation_id = str(uuid4())
+            data = _real_delegation_completed_payload(
+                correlation_id=correlation_id, tenant_id="beta-business-proof"
+            )
+            meta = MessageMeta(
+                partition=0,
+                offset=17773,
+                fallback_id=correlation_id,
+                topic=runner._topic_delegation_completed,
+            )
+
+            ok = await runner.project_event(
+                runner._topic_delegation_completed, data, meta
+            )
+            assert ok is True
+
+            expected = {e.topic for e in runner._aggregate_exposures}
+            by_topic = {topic: (key, value) for topic, key, value in published}
+            assert expected <= set(by_topic), (
+                f"missing aggregate snapshots: {sorted(expected - set(by_topic))}"
+            )
+            for topic in expected:
+                key, value = by_topic[topic]
+                # One constant compaction key per topic, forever.
+                assert key == topic.encode("utf-8")
+                assert value is not None, "an upsert, not a tombstone"
+                delta = json.loads(value)
+                assert delta["op"] == "upsert"
+                assert delta["key"] == [topic]
+                assert delta["source_offset"] == 17773
+                # The row this apply just created is inside the aggregate.
+                summary_topic = "onex.snapshot.projection.delegation.summary.v1"
+                if topic == summary_topic:
+                    assert delta["row"]["totalDelegations"] >= 1
