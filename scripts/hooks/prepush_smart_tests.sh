@@ -1080,6 +1080,47 @@ scrub_prepush_override_env() {
   unset ENABLE_SMART_TESTS || true
 }
 
+# =============================================================================
+# PATH parity with the remote leg (OMN-17549)
+# =============================================================================
+# Every pytest invocation below this line runs LOCALLY -- on the pusher's own
+# machine, or on a lab host taking the OMN-17280 same-host route. The remote
+# leg has restored a developer-shell PATH before running the transplanted suite
+# since OMN-16989; this leg never did, so the same tree returned a different
+# verdict depending on which leg ran it.
+#
+# Measured 2026-09-02 (OMN-17549): a governed same-host push of THIS repo on
+# `.201` returned six reds in tests/scripts/test_shell_hygiene_gate.py because
+# the non-interactive PATH there omits `~/.local/bin`, which is where that
+# host's `shellcheck` lives. The tool was installed the whole time. Six
+# guaranteed false reds hard-block a push, so this is part of the verdict
+# meaning anything -- not a convenience.
+#
+# Set here, once, AFTER every placement decision and BEFORE any pytest run, so
+# it covers the fail-closed escalation and the impacted-subset run alike. The
+# list is single-sourced with the remote wrapper in prepush_dispatch.sh
+# (prepush_developer_shell_path) and the caller's own `${PATH}` stays last, so
+# this can only add resolution.
+# OMN-17704: refuse loudly rather than assign an empty PATH. A bare
+# `PATH="$(prepush_developer_shell_path)"` is silent if the helper is ever
+# undefined (dispatch failed to source, or a later refactor renamed it): the
+# substitution yields "", PATH becomes the empty string mid-hook AFTER the
+# placement decision, and every later lookup fails for a reason that has
+# nothing to do with the tree under test. This is a fail-closed surface, so
+# silence is the wrong failure mode.
+if ! type prepush_developer_shell_path > /dev/null 2>&1; then
+  die "prepush_developer_shell_path is not defined -- prepush_dispatch.sh did not source, so the governed suite would run on an unrestored PATH" \
+    "This is a hook-integrity failure, not a test failure. Repair the dispatch source; do not work around it by unsetting the check."
+fi
+_prepush_devpath="$(prepush_developer_shell_path)"
+if [ -z "$_prepush_devpath" ]; then
+  die "prepush_developer_shell_path returned an empty PATH" \
+    "Assigning it would blank PATH for every subsequent command in this hook. Repair the helper; do not bypass."
+fi
+PATH="$_prepush_devpath"
+export PATH
+unset _prepush_devpath
+
 if [ "$IS_FULL" = "True" ] || [ "$IS_FULL" = "true" ]; then
   guard_full_suite_host
   if [ "$REMOTE_LAB_RUN_VERDICT" -eq 1 ]; then
