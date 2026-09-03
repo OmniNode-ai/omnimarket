@@ -354,6 +354,183 @@ db_io:
       migration: src/omnimarket/nodes/node_projection_receipt_gate/migrations/0000_create_receipt_gate_projection_table.sql
       access: read_write
       role: receipt_gate_projection_table
+    # OMN-17440 tranche 2: register this repository as the CATALOG owner of the
+    # twenty-four further physical relations whose topology-declared
+    # `omninode_runtime` TABLE grants that ticket's second tranche delivers.
+    # Same reason as the thirteen tranche-1 entries directly above and the
+    # session_replay_snapshots (OMN-16993) / tenant_registry_mirror (OMN-17374)
+    # entries before them: the OMN-15361 SQL ownership gate
+    # (`omnibase_infra/scripts/ci/check_application_database_sql.py`) requires
+    # exactly one ownership declaration for every application relation a CHANGED
+    # deployable SQL file targets, and it resolves those from service manifests
+    # only, never from a node's own contract.yaml. Proven, not assumed: run
+    # against the tranche-2 grant migrations before these entries existed, the
+    # gate printed `application_database_sql_gate=FAIL` and one
+    # `requires exactly one ownership declaration` line per relation below.
+    #
+    # Every entry restates the `schema: omninode_internal` its owning node's
+    # contract.yaml already declares. A `schema: public` restatement of the
+    # PHYSICAL location is rejected by
+    # scripts/generate_application_relation_inventory.py as a conflicting-schema
+    # declaration -- the trap the entries above document. Physically these tables
+    # still live bare in `public` until the governed OMN-15359 cutover (probed
+    # read-only on the .201 dev lane 2026-09-03: `tenant` schema absent,
+    # `platform_catalog` holds only `schema_migrations`), which is why the grant
+    # migrations name `public.<relation>` and the
+    # INTERNAL_TABLES_PHYSICALLY_IN_PUBLIC_UNTIL_OMN15359 bridge resolves the two.
+    #
+    # `access: read_write` matches each contract's declared `access: write` plus
+    # the SELECT PostgreSQL requires alongside INSERT/UPDATE for the adapter's
+    # `INSERT ... ON CONFLICT DO UPDATE`. It is not a widening: it is what the
+    # topology already declares for this principal, which is the very thing the
+    # grant migrations deliver. Zero behavior change here; this only satisfies
+    # the ownership gate so omnibase_infra can vendor the tranche-2 grant files.
+    # `migration:` points at the file that CREATES each relation, per the
+    # convention every entry above follows.
+    - name: deployment_evidence_projection
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_deployment_evidence_reducer/migrations/0001_create_deployment_evidence_projection_tables.sql
+      access: read_write
+      role: deployment_evidence_projection_table
+    - name: deployment_readiness_projection
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_deployment_evidence_reducer/migrations/0001_create_deployment_evidence_projection_tables.sql
+      access: read_write
+      role: deployment_readiness_projection_table
+    - name: evidence_correlation_trace_projection
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_evidence_dashboard_reducer/migrations/0001_create_evidence_dashboard_projection_tables.sql
+      access: read_write
+      role: evidence_correlation_trace_projection_table
+    - name: evidence_dashboard_projection
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_evidence_dashboard_reducer/migrations/0001_create_evidence_dashboard_projection_tables.sql
+      access: read_write
+      role: evidence_dashboard_projection_table
+    - name: evidence_readiness_aggregate_projection
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_evidence_dashboard_reducer/migrations/0001_create_evidence_dashboard_projection_tables.sql
+      access: read_write
+      role: evidence_readiness_aggregate_projection_table
+    - name: llm_delegation_daily_projection
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_llm_delegation_projection/migrations/0001_create_llm_delegation_daily_projection.sql
+      access: read_write
+      role: llm_delegation_daily_projection_table
+    - name: nightly_loop_decisions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_nightly_loop_controller/migrations/001_create_nightly_loop_tables.sql
+      access: read_write
+      role: nightly_loop_decisions_projection_table
+    - name: nightly_loop_iterations
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_nightly_loop_controller/migrations/001_create_nightly_loop_tables.sql
+      access: read_write
+      role: nightly_loop_iterations_projection_table
+    - name: baselines_quality_snapshots
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_baselines_quality/migrations/001_create_baselines_quality_snapshots.sql
+      access: read_write
+      role: baselines_quality_snapshots_projection_table
+    - name: baselines_roi_snapshots
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_baselines_roi/migrations/001_create_baselines_roi_snapshots.sql
+      access: read_write
+      role: baselines_roi_snapshots_projection_table
+    - name: capsule_store
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_capsule_store/migrations/078_create_capsule_store.sql
+      access: read_write
+      role: capsule_store_projection_table
+    - name: cost_by_repo_snapshots
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_cost_by_repo/migrations/0001_create_cost_by_repo_snapshots.sql
+      access: read_write
+      role: cost_by_repo_snapshots_projection_table
+    - name: generation_events
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_delegation/migrations/0008_generation_events.sql
+      access: read_write
+      role: generation_events_projection_table
+    - name: event_chain
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_event_chain/migrations/0001_create_event_chain.sql
+      access: read_write
+      role: event_chain_projection_table
+    - name: llm_call_metrics
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_llm_cost/migrations/0001_create_llm_call_metrics.sql
+      access: read_write
+      role: llm_call_metrics_projection_table
+    - name: llm_routing_decisions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_llm_routing/migrations/0000_create_llm_routing_decisions.sql
+      access: read_write
+      role: llm_routing_decisions_projection_table
+    - name: mcp_tools
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_mcp_tools/migrations/0001_create_mcp_tools.sql
+      access: read_write
+      role: mcp_tools_projection_table
+    - name: node_service_registry
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_registration/migrations/0000_create_node_service_registry.sql
+      access: read_write
+      role: node_service_registry_projection_table
+    - name: sandbox_decisions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_sandbox_decisions/migrations/0001_create_sandbox_decisions.sql
+      access: read_write
+      role: sandbox_decisions_projection_table
+    - name: session_outcomes
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_session_outcome/migrations/0021_session_outcomes.sql
+      access: read_write
+      role: session_outcomes_projection_table
+    - name: swarm_runs
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_swarm/migrations/0001_create_swarm_runs.sql
+      access: read_write
+      role: swarm_runs_projection_table
+    - name: traces
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_traces/migrations/0001_create_traces.sql
+      access: read_write
+      role: traces_projection_table
+    - name: voice_sessions
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_projection_voice_sessions/migrations/0001_create_voice_sessions.sql
+      access: read_write
+      role: voice_sessions_projection_table
+    - name: renderer_capability_projection
+      database_ref: application
+      schema: omninode_internal
+      migration: src/omnimarket/nodes/node_renderer_capability_projection/migrations/0001_create_renderer_capability_projection.sql
+      access: read_write
+      role: renderer_capability_projection_table
 
 database_objects:
   # OMN-17447: the OMN-15361 SQL ownership gate resolves changed deployable
