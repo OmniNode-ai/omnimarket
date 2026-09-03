@@ -17,6 +17,9 @@ from pathlib import Path
 
 import yaml
 from omnibase_core.enums.enum_workflow_result import EnumWorkflowResult
+from omnibase_infra.runtime.auto_wiring.discovery import discover_contracts_from_paths
+from omnibase_infra.runtime.auto_wiring.handler_wiring import _topics_for_handler_entry
+from omnibase_infra.runtime.auto_wiring.models import ModelDiscoveredContract
 
 from omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight import (
     HandlerProjectionOvernightPhaseEnd,
@@ -441,4 +444,139 @@ class TestOvernightDispatchEntrypointRuntimeLocal:
         assert complete_result["rows_upserted"] == 1
         assert (
             complete_db.query("overnight_sessions")[0]["session_status"] == "completed"
+        )
+
+
+class TestOvernightContractRoutingResolvesEveryTopic:
+    """OMN-17562: every subscribe topic must be owned by exactly one handler entry.
+
+    The defect this closes. ``handler_routing`` declared ``routing_strategy:
+    operation_match`` with three entries, each carrying only an ``event_model`` — no
+    ``topic:`` and no ``event_type:``. Against three subscribe topics,
+    ``_topics_for_handler_entry`` (``omnibase_infra`` ``handler_wiring``) then walked
+    every branch to the multi-handler ambiguity guard and returned ``()`` for ALL
+    THREE entries:
+
+      * ``entry.topic`` empty      -> not the topic_match branch
+      * ``entry.event_type`` empty -> not the alias branch
+      * ``event_model`` set        -> not the "no discriminator, take everything" branch
+      * ``len(topics) == 3``       -> not the single-topic branch
+      * ``len(handlers) == 3``     -> not the sole-handler branch
+      * fall through               -> ``return ()``
+
+    Zero dispatch routes registered on any lane, so the contract could never persist a
+    row: ``overnight_sessions`` and ``overnight_session_phases`` measured 0 / 0 on both
+    the .201 dev and stability-test lanes. The consumer still subscribed, so every
+    message was consumed, DLQ'd and COMMITTED at LAG 0 — the OMN-16939 silent-loss
+    mechanism, which is why three ``projection_overnight`` / ``reason: no_route`` rows
+    were frozen into ``config/validation/subscriber_dispatcher_resolution_baseline.yaml``.
+
+    These assertions run through the REAL production helper, not a re-derivation, so
+    they cannot drift from the runtime the way a hand-rolled topic-assignment check can.
+    The authoritative cross-repo enforcement is the OMN-16939 ratchet
+    (``omnibase_infra.validators.subscriber_dispatcher_resolution``, wired as this repo's
+    ``subscriber-dispatcher-resolution`` pre-commit hook and CI job); this is its
+    node-local companion.
+    """
+
+    _CONTRACT = (
+        Path(__file__).resolve().parent.parent
+        / "src/omnimarket/nodes/node_projection_overnight/contract.yaml"
+    )
+
+    # The handler module's own documented topic -> handler mapping
+    # (handler_projection_overnight.py module docstring).
+    _EXPECTED_OWNERS = {
+        "onex.evt.omnimarket.overnight-phase-start.v1": (
+            "HandlerProjectionOvernightSessionStart"
+        ),
+        "onex.evt.omnimarket.overnight-phase-completed.v1": (
+            "HandlerProjectionOvernightPhaseEnd"
+        ),
+        "onex.evt.omnimarket.overnight-session-completed.v1": (
+            "HandlerProjectionOvernightSessionComplete"
+        ),
+    }
+
+    def _discovered(self) -> ModelDiscoveredContract:
+        manifest = discover_contracts_from_paths([self._CONTRACT])
+        assert not manifest.errors, f"contract failed to parse: {manifest.errors}"
+        (contract,) = manifest.contracts
+        return contract
+
+    def test_contract_declares_topic_match_routing(self) -> None:
+        """``topic_match`` + one ``topic:`` per entry is the shape that resolves.
+
+        ``operation_match`` carries no per-entry topic, so the operation names are
+        inert for topic assignment — the runtime never reads them when deciding which
+        entry owns which subscribe topic.
+        """
+        raw = yaml.safe_load(self._CONTRACT.read_text())
+        routing = raw["handler_routing"]
+        assert routing["routing_strategy"] == "topic_match"
+
+        subscribe_topics = raw["event_bus"]["subscribe_topics"]
+        declared = [entry.get("topic") for entry in routing["handlers"]]
+        assert all(declared), (
+            f"every handler entry must declare its own subscribe topic; got {declared}"
+        )
+        assert sorted(declared) == sorted(subscribe_topics), (
+            f"declared entry topics {sorted(declared)} do not cover the contract's "
+            f"subscribe topics {sorted(subscribe_topics)}"
+        )
+
+    def test_each_subscribe_topic_is_owned_by_exactly_one_handler_entry(self) -> None:
+        """No topic is orphaned and no entry is left with zero dispatch routes."""
+        contract = self._discovered()
+        assert contract.event_bus is not None
+        assert contract.handler_routing is not None
+
+        owners: dict[str, list[str]] = {
+            topic: [] for topic in contract.event_bus.subscribe_topics
+        }
+        for entry in contract.handler_routing.handlers:
+            assigned = _topics_for_handler_entry(contract, entry)
+            assert assigned, (
+                f"{entry.handler.name} is assigned zero topics — it registers a "
+                "dispatcher with zero routes, so no message can ever reach it"
+            )
+            for topic in assigned:
+                owners[topic].append(entry.handler.name)
+
+        for topic, names in owners.items():
+            assert len(names) == 1, (
+                f"{topic} is owned by {names or 'NO entry'}; exactly one owner is "
+                "required or the topic is consumed, DLQ'd and committed at LAG 0"
+            )
+
+    def test_topic_owners_match_the_handler_module_documented_mapping(self) -> None:
+        """The route assignment agrees with the handler module's own docstring."""
+        contract = self._discovered()
+        assert contract.handler_routing is not None
+        actual = {
+            topic: entry.handler.name
+            for entry in contract.handler_routing.handlers
+            for topic in _topics_for_handler_entry(contract, entry)
+        }
+        assert actual == self._EXPECTED_OWNERS
+
+    def test_the_no_route_baseline_rows_are_burned_down(self) -> None:
+        """The three OMN-16939 frozen rows must be gone once the routes exist.
+
+        The ratchet is shrink-only in BOTH directions: a fixed entry still listed is
+        STALE and fails the gate, so leaving the rows behind is not a safe no-op.
+        """
+        baseline = yaml.safe_load(
+            (
+                Path(__file__).resolve().parent.parent
+                / "config/validation/subscriber_dispatcher_resolution_baseline.yaml"
+            ).read_text()
+        )
+        stale = [
+            row
+            for row in baseline["known_unresolved_subscriptions"]
+            if row["contract"] == "projection_overnight"
+        ]
+        assert not stale, (
+            f"projection_overnight rows still frozen in the baseline: {stale}"
         )

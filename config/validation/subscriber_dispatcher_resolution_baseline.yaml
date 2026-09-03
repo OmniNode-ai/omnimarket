@@ -256,18 +256,6 @@ known_unresolved_subscriptions:
     topic: onex.evt.omnimarket.pattern-b-dispatch-completed.v1
     category: event
     reason: no_route
-  - contract: projection_overnight
-    topic: onex.evt.omnimarket.overnight-phase-completed.v1
-    category: event
-    reason: no_route
-  - contract: projection_overnight
-    topic: onex.evt.omnimarket.overnight-phase-start.v1
-    category: event
-    reason: no_route
-  - contract: projection_overnight
-    topic: onex.evt.omnimarket.overnight-session-completed.v1
-    category: event
-    reason: no_route
   - contract: projection_tenant_credentials
     topic: onex.evt.omnimarket.credential-registered.v1
     category: event

@@ -13,26 +13,50 @@ handler:
   module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
   class: HandlerProjectionOvernightSessionComplete
 
+# OMN-17562: routes by `topic_match` with one `topic:` per entry, NOT `operation_match`.
+# The prior `operation_match` shape declared three entries carrying only an `event_model`
+# — no `topic:` and no `event_type:` — against three subscribe topics. Every branch of
+# `_topics_for_handler_entry` (omnibase_infra handler_wiring) then fell through to the
+# multi-handler ambiguity guard and returned () for ALL THREE entries: `entry.topic`
+# empty, `entry.event_type` empty, `event_model` set, len(subscribe_topics) == 3 (not the
+# single-topic branch), len(handlers) == 3 (not the sole-handler branch). Zero dispatch
+# routes were registered on any lane, so `overnight_sessions` / `overnight_session_phases`
+# measured 0 rows on both the .201 dev and stability-test lanes while the consumer still
+# subscribed — every message consumed, DLQ'd and COMMITTED at LAG 0 (the OMN-16939
+# silent-loss mechanism, which is why three `no_route` rows were frozen into
+# config/validation/subscriber_dispatcher_resolution_baseline.yaml). The `operation:`
+# names are retained as documentation of each entry's intent; the runtime never reads
+# them for topic assignment.
+#
+# The topic -> handler mapping below is the handler module's own documented mapping
+# (handler_projection_overnight.py module docstring). Shape copied from
+# node_projection_swarm/contract.yaml. `message_category` is declared explicitly on every
+# entry per the OMN-16939 baseline's stated fix shape: without it the category falls back
+# to subscribe_topics[0] and is stamped on every route, so adding a `.cmd.` topic at
+# position 0 would silently make all three routes permanently NO_DISPATCHER.
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
-    - operation: projection_overnight_session_start
+    - topic: onex.evt.omnimarket.overnight-phase-start.v1
+      operation: projection_overnight_session_start
+      message_category: event
       handler:
         name: HandlerProjectionOvernightSessionStart
         module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
-      handler_module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
       event_model: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight.ModelOvernightSessionStartEvent
-    - operation: projection_overnight_phase_end
+    - topic: onex.evt.omnimarket.overnight-phase-completed.v1
+      operation: projection_overnight_phase_end
+      message_category: event
       handler:
         name: HandlerProjectionOvernightPhaseEnd
         module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
-      handler_module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
       event_model: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight.ModelOvernightPhaseEndEvent
-    - operation: projection_overnight_session_complete
+    - topic: onex.evt.omnimarket.overnight-session-completed.v1
+      operation: projection_overnight_session_complete
+      message_category: event
       handler:
         name: HandlerProjectionOvernightSessionComplete
         module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
-      handler_module: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight
       event_model: omnimarket.nodes.node_projection_overnight.handlers.handler_projection_overnight.ModelOvernightSessionCompleteEvent
 
 terminal_event: onex.evt.omnimarket.projection-overnight-applied.v1
