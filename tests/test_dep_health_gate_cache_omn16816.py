@@ -59,10 +59,19 @@ def _make_tree(root: Path) -> Path:
     return root
 
 
+def _scanned(root: Path) -> list[Path]:
+    return [
+        p
+        for p in sorted((root / "src").rglob("*"))
+        if p.is_file() and p.suffix in {".py", ".ts", ".tsx", ".yaml", ".yml"}
+    ]
+
+
 def _key(root: Path, **overrides: Any) -> str:
     kwargs: dict[str, Any] = {
         "repo_root": root,
-        "scan_roots": [root / "src"],
+        "scanned_files": _scanned(root),
+        "coverage_files": [],
         "extra_files": [root / ".onex_state" / "dep_health_baseline.json"],
         "arg_signature": "CRITICAL|delta",
     }
@@ -215,8 +224,8 @@ def _run_gate(
     kwargs: dict[str, Any] = {
         "repo_root": root,
         "cache_root": tmp_path / "cache",
-        "lock_path": tmp_path / "cache" / "scan.lock",
         "run_sweep": sweep,
+        "collect_inputs": lambda repo_root: (_scanned(repo_root), []),
         "lock_timeout_s": 5.0,
     }
     kwargs.update(overrides)
@@ -274,10 +283,14 @@ def test_lock_timeout_fails_closed_without_running_or_skipping(
     """A gate that cannot serialize must block the commit, never wave it through."""
     root = _make_tree(tmp_path / "repo")
     sweep = _RecordingSweep(0, '{"status": "clean"}')
-    lock = tmp_path / "cache" / "scan.lock"
-    lock.parent.mkdir(parents=True, exist_ok=True)
+    cache_root = tmp_path / "cache"
+    key = gate.scan_key_for(
+        repo_root=root, collect_inputs=lambda repo_root: (_scanned(repo_root), [])
+    )
 
-    with gate.scan_lock(lock, timeout_s=5.0, poll_s=0.05):
+    with gate.scan_lock(
+        gate.key_lock_path(cache_root, key), timeout_s=5.0, poll_s=0.05
+    ):
         rc = _run_gate(tmp_path, root, sweep, lock_timeout_s=0.2)
 
     assert rc != 0, "fail-closed: lock exhaustion must not exit 0"

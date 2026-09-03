@@ -23,6 +23,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from omnimarket.nodes.node_dependency_health_sweep.engine import scan_inputs
 from omnimarket.nodes.node_dependency_health_sweep.models.model_dep_health_finding import (
     EnumDepHealthFindingType,
     EnumDepHealthSeverity,
@@ -39,8 +40,8 @@ _DEAD_IMPORT_SKIP_PATH_PARTS = frozenset({"migrations", "fixtures", "fixture"})
 # CLI-like patterns (simple heuristic: file at package root named cli.py / main.py)
 _CLI_NAME_RE = re.compile(r"^(cli|main|run|entrypoint)\.py$")
 
-# Pattern to detect test files that reference a given handler module/class.
-_TEST_FILE_GLOB = ("test_*.py", "*_test.py")
+# Test-file discovery lives in engine.scan_inputs — the dep-health gate's cache
+# key hashes the same set, so the two must not drift apart (OMN-17694).
 
 
 def _is_excluded_from_dead_import(module_path: str) -> bool:
@@ -134,6 +135,11 @@ class CrossReferenceEngine:
         contract_handler_paths: list[str],
     ) -> list[ModelDepHealthFinding]:
         findings: list[ModelDepHealthFinding] = []
+        if not contract_handler_paths:
+            return findings
+
+        # One walk for the whole pass, not one per handler.
+        corpus = self._load_coverage_corpus(repo_root)
 
         for handler_path_str in contract_handler_paths:
             handler_path = Path(handler_path_str)
@@ -144,15 +150,13 @@ class CrossReferenceEngine:
             handler_stem = handler_path.stem  # e.g. "handler_foo"
             handler_module = handler_stem  # used for name-based search
 
-            # Check for any test file that references this handler
-            has_test = self._has_test_coverage(
-                repo_root=repo_root,
-                handler_stem=handler_module,
-            )
-            # Check for golden-chain fixture coverage
-            has_golden_chain = self._has_golden_chain_coverage(
-                repo_root=repo_root,
-                handler_stem=handler_module,
+            # Any test file that references this handler counts as coverage.
+            has_test = any(handler_module in content for _, content in corpus)
+            # Golden-chain fixtures are a subset of the same corpus.
+            has_golden_chain = any(
+                handler_module in content
+                for is_golden_chain, content in corpus
+                if is_golden_chain
             )
 
             if not has_test and not has_golden_chain:
@@ -174,30 +178,24 @@ class CrossReferenceEngine:
 
         return findings
 
-    def _has_test_coverage(self, repo_root: Path, handler_stem: str) -> bool:
-        """Return True if any test file under repo_root references handler_stem."""
-        search_root = repo_root.parent if repo_root.name == "src" else repo_root
-        for pattern in _TEST_FILE_GLOB:
-            for test_file in search_root.rglob(pattern):
-                try:
-                    content = test_file.read_text(errors="replace")
-                except OSError:
-                    continue
-                if handler_stem in content:
-                    return True
-        return False
+    def _load_coverage_corpus(self, repo_root: Path) -> list[tuple[bool, str]]:
+        """Read every test file once, as (is_golden_chain, content) pairs.
 
-    def _has_golden_chain_coverage(self, repo_root: Path, handler_stem: str) -> bool:
-        """Return True if any golden-chain test file references handler_stem."""
-        search_root = repo_root.parent if repo_root.name == "src" else repo_root
-        for test_file in search_root.rglob("test_golden_chain_*.py"):
+        This used to be two methods that each re-walked the whole repository for
+        every handler. With 408 contract handlers that was up to 1224 full
+        traversals — including a 1.4 GB ``.venv`` in a lane worktree — which is
+        where the sweep's 24-42 minute wall clock came from (OMN-17694). The
+        predicate below is unchanged; only the number of walks is.
+        """
+        search_root = scan_inputs.coverage_search_root(repo_root)
+        corpus: list[tuple[bool, str]] = []
+        for test_file in scan_inputs.iter_coverage_corpus_files(search_root):
             try:
                 content = test_file.read_text(errors="replace")
             except OSError:
                 continue
-            if handler_stem in content:
-                return True
-        return False
+            corpus.append((scan_inputs.is_golden_chain_file(test_file), content))
+        return corpus
 
     # ------------------------------------------------------------------
     # Pass 2: Missing topic edge
