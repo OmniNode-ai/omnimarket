@@ -152,6 +152,64 @@ def _git_op_timeout_s() -> float:
     return value
 
 
+# Wall-clock ceiling for a single evidence check's subprocess. Distinct from
+# the OCC git ceiling above: that one bounds the verifier's own plumbing, this
+# one bounds a command the CONTRACT declared.
+#
+# OMN-17795: this ceiling was a hardcoded ``timeout_per_check: int = 30``
+# constructor default with no override, and it was the verifier's largest
+# source of non-reproducibility. Measured over 36 runs (12 tickets x 3
+# back-to-back, 6-way parallel, nothing changed between runs): the OMN-16434
+# auto-minted behaviour-proof check reached VERIFIED exactly once, reading
+# ``OK (19850ms): 16 passed in 1.55s`` — 18.3 s of pytest import/collection
+# overhead against a 30 s ceiling, and 1.55 s of actual product work. The
+# identical command tripped the ceiling on the next two runs of the same
+# ticket. A hand-timed control at load 54 took 77 s wall.
+#
+# The default is unchanged at 30 s deliberately: raising it silently would
+# change every existing verdict's timing envelope on every host at once. What
+# changes is that the bound is now NAMEABLE, so a loaded host can be given a
+# ceiling that matches it instead of manufacturing verdict churn.
+_DEFAULT_CHECK_TIMEOUT_S = 30
+
+# Operator override for the ceiling above, for hosts slower (or more heavily
+# loaded) than the machine a contract's checks were authored on.
+_CHECK_TIMEOUT_ENV = "DOD_VERIFY_CHECK_TIMEOUT_S"
+
+
+def _check_timeout_s() -> float:
+    """Resolve the per-check subprocess ceiling, honouring the operator override.
+
+    Read per call rather than captured at import, and malformed/negative falls
+    back to the default rather than disabling the bound — both for the reasons
+    ``_git_op_timeout_s`` states. An unbounded check subprocess is the failure
+    mode this ceiling exists to prevent, and it is the one this ticket must not
+    introduce while fixing how a trip is RECORDED.
+    """
+    raw = os.environ.get(_CHECK_TIMEOUT_ENV, "").strip()
+    if not raw:
+        return float(_DEFAULT_CHECK_TIMEOUT_S)
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "%s=%r is not a number; using the %ss default.",
+            _CHECK_TIMEOUT_ENV,
+            raw,
+            _DEFAULT_CHECK_TIMEOUT_S,
+        )
+        return float(_DEFAULT_CHECK_TIMEOUT_S)
+    if value <= 0:
+        logger.warning(
+            "%s=%r is not positive; using the %ss default.",
+            _CHECK_TIMEOUT_ENV,
+            raw,
+            _DEFAULT_CHECK_TIMEOUT_S,
+        )
+        return float(_DEFAULT_CHECK_TIMEOUT_S)
+    return value
+
+
 # OMN-15454: a failed OCC ref refresh (git fetch) used to be swallowed at
 # logger.info and the collector proceeded against whatever the local
 # remote-tracking ref already had, while still logging that the run resolved
@@ -1257,8 +1315,23 @@ class EvidenceCollector:
         # results: list[ModelEvidenceCheckResult]
     """
 
-    def __init__(self, timeout_per_check: int = 30) -> None:
-        self._timeout = timeout_per_check
+    def __init__(self) -> None:
+        # OMN-17795: the per-check ceiling is resolved per call from
+        # ``_check_timeout_s()``, not captured here. It used to be a
+        # constructor default that no caller ever passed and no operator could
+        # reach, which is why a contended host silently rewrote verdicts.
+        #
+        # OMN-17795: transient, per-check state — True only when THIS process
+        # killed the last check's subprocess at that ceiling. Set inside the
+        # ``TimeoutExpired`` handler and cleared at the top of every
+        # ``_run_command_check``, so the fact is carried by the runner that
+        # observed it rather than re-derived downstream. Mirrors the existing
+        # ``_current_evidence_item_id`` / ``_last_pr_lookup_error`` idiom.
+        #
+        # It exists precisely so the cause is never grepped out of the
+        # subprocess's own output: a check under test can print any banner it
+        # likes, and a product that forged this one would launder its own red.
+        self._last_check_budget_exceeded: bool = False
         # When set (during a dev-resolved collect), an origin/dev worktree of the
         # OCC repo. Contract-load AND the shell greps run inside it so dev-only
         # contracts + receipts are visible (OMN-13888 scope 6).
@@ -2771,6 +2844,51 @@ class EvidenceCollector:
                     relax_merged_state=relax_merged_state,
                 )
                 if not ok:
+                    # OMN-17795: this process killed the command at its own
+                    # per-check ceiling. The command was cut off mid-flight, so
+                    # what it would have concluded is unknown, and the ceiling
+                    # is the verifier's — recording it FAILED asserts a defect
+                    # the run never looked for, which is the same argument the
+                    # two OMN-16846 causes below already carry.
+                    #
+                    # Read from the runner's own flag, never from ``msg``: the
+                    # check's output is attacker-controlled in the only sense
+                    # that matters here (it is the product under adjudication),
+                    # so a message-grep would let a check mint its own cause.
+                    #
+                    # Still blocking, still never verified, still in the
+                    # denominator — see the enum's own docstring for the
+                    # per-conjunct argument that this opens no flip path.
+                    if self._last_check_budget_exceeded:
+                        logger.error(
+                            "Recording %s as unverifiable: the check exceeded "
+                            "the %ss per-check budget and was killed, so it "
+                            "never reached a verdict. %s",
+                            evidence_id,
+                            _check_timeout_s(),
+                            msg,
+                        )
+                        return ModelEvidenceCheckResult(
+                            evidence_id=evidence_id,
+                            description=description,
+                            status=EnumEvidenceCheckStatus.SKIPPED,
+                            unverifiable_cause=(
+                                EnumEvidenceUnverifiableCause.CHECK_BUDGET_EXCEEDED
+                            ),
+                            message=(
+                                "CHECK_BUDGET_EXCEEDED: this run killed the "
+                                f"command at its {_check_timeout_s()}s "
+                                "per-check ceiling, so the command reached no "
+                                "verdict and this is not a statement about the "
+                                "ticket. The ceiling is the verifier's, not the "
+                                "product's: raise it with "
+                                f"{_CHECK_TIMEOUT_ENV} for this host, or make "
+                                "the check cheaper. This still blocks a "
+                                f"Done-flip. Runner output: {msg}"
+                            ),
+                            proof_class=item_proof_class,
+                            product_clones=tuple(clones),
+                        )
                     # OMN-16846 D1/AC3: the OMN-15620 venv-purity gate fires
                     # in ``pytest_configure`` — the command exits non-zero
                     # having collected nothing and imported no test module, so
@@ -4036,6 +4154,10 @@ class EvidenceCollector:
         for both ``{pr}/{repo}/{ticket_id}`` and ``${PR_NUMBER}/${REPO}/${TICKET_ID}``
         forms before execution. OCC contracts get automatic cwd injection.
         """
+        # OMN-17795: clear the per-check budget flag before every run, so it
+        # can only ever describe THIS invocation.
+        self._last_check_budget_exceeded = False
+
         # Prefer explicit `command` field; fall back to `check_value`
         cmd_str = check.get("command") or check.get("check_value", "")
         if not cmd_str:
@@ -4100,6 +4222,7 @@ class EvidenceCollector:
             cmd_str,
         )
 
+        timeout_s = _check_timeout_s()
         start = time.monotonic()
         try:
             # OMN-15382: list-form + explicit pipefail (not shell=True /
@@ -4110,13 +4233,16 @@ class EvidenceCollector:
                 ["bash", "-o", "pipefail", "-c", cmd_str],
                 capture_output=True,
                 text=True,
-                timeout=self._timeout,
+                timeout=timeout_s,
                 cwd=run_cwd,
                 env=run_env,
             )
             elapsed_ms = int((time.monotonic() - start) * 1000)
         except subprocess.TimeoutExpired:
-            return False, f"Timed out after {self._timeout}s: {cmd_str}"
+            # OMN-17795: record the fact HERE, where it is known first-hand,
+            # rather than letting the caller re-derive it from this message.
+            self._last_check_budget_exceeded = True
+            return False, f"Timed out after {timeout_s}s: {cmd_str}"
         except Exception as exc:
             return False, f"Execution error: {exc}"
 
