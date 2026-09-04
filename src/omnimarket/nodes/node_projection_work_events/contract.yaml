@@ -147,12 +147,15 @@ projection_api:
   # actor did in a session, carrying no tenant-scoped customer data, so
   # publish_snapshot_delta's default tenant_id leaks nothing.
   bus_backed: true
-  consumers: none
-  consumers_reason: >-
-    OMN-17199: this platform-internal work-events snapshot is intentionally
-    exposed for bus-backed runtime/ledger inspection, but no shipped omnidash
-    component or layout renders it yet; reader work must remove this opt-out
-    when a surface is added.
+  # OMN-17874 deleted the `consumers: none` opt-out that omnimarket#2294 added
+  # here. That hatch was correct for the four hours it stood -- it unblocked
+  # three unrelated omnibase_infra PRs whose required exposure-reader context had
+  # gone red on a condition none of them caused -- and its own reason said reader
+  # work must remove it when a surface is added. omnidash#310 added that surface:
+  # the `work-events` component declares this topic in its `dataSources`, so the
+  # OMN-17199 validator now resolves a real reader and fails `stale_opt_out` on
+  # the opt-out standing over it. An opt-out kept past its reader is how an
+  # escape hatch becomes a permanent amnesty entry.
   # The row's own content address. `event_id` is derived by `derive_event_id`
   # from (source_topic, actor_id, emitted_at, payload), so a repeat of a key is
   # by construction a byte-identical replay of the same event and there is no
