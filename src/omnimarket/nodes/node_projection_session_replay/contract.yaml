@@ -145,12 +145,6 @@ projection_api:
   # publish_snapshot_delta's default tenant_id leaks nothing that the table
   # itself scopes.
   bus_backed: true
-  consumers: none
-  consumers_reason: >-
-    OMN-17199: no shipped omnidash component registry entry or dashboard layout
-    currently reads the session replay snapshot topic; keep the bus-backed
-    exposure explicit for projection API/runtime inspection and remove this
-    opt-out when the reader surface is restored.
   key_columns:
     - "snapshot_id"
 
