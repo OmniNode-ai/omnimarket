@@ -4,7 +4,10 @@
 
 from __future__ import annotations
 
+import pytest
+
 from omnimarket.inference.protocol_config import (
+    ModelInferenceProtocolSelection,
     apply_inference_protocol,
     apply_inference_protocol_directives,
     load_inference_protocol_config,
@@ -64,6 +67,73 @@ def test_default_protocol_config_adds_qwen_provider_non_thinking_options() -> No
     assert system_prompt == "You are a production-quality code generation assistant."
     assert prompt.startswith("/no_think\n")
     assert request_options == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_adr_qwen_profile_selection_suppresses_thinking_without_prompt_marker() -> None:
+    system_prompt, prompt, request_options = apply_inference_protocol(
+        system_prompt="A prompt whose wording cannot select an ADR profile.",
+        prompt="Segment this plan into JSON.",
+        model="qwen3.8",
+        selection=ModelInferenceProtocolSelection(
+            profile_id="local-qwen-adr-json-no-think",
+            task_type="adr_json_artifact",
+        ),
+    )
+
+    assert system_prompt == "A prompt whose wording cannot select an ADR profile."
+    assert prompt == "/no_think\nSegment this plan into JSON."
+    assert request_options == {"chat_template_kwargs": {"enable_thinking": False}}
+
+
+def test_adr_qwen_profile_requires_an_adr_system_marker() -> None:
+    system_prompt, prompt, request_options = apply_inference_protocol(
+        system_prompt="You are a summarization assistant.",
+        prompt="Summarize the verified evidence.",
+        model="qwen3.8",
+    )
+
+    assert system_prompt == "You are a summarization assistant."
+    assert prompt == "Summarize the verified evidence."
+    assert request_options == {}
+
+
+def test_explicit_protocol_selection_rejects_unknown_profile() -> None:
+    with pytest.raises(ValueError, match="unknown inference protocol profile"):
+        apply_inference_protocol(
+            system_prompt="A prompt whose wording must not matter.",
+            prompt="Return JSON.",
+            model="Qwen3.6-35B-A3B",
+            selection=ModelInferenceProtocolSelection(
+                profile_id="not-a-real-profile",
+                task_type="adr_json_artifact",
+            ),
+        )
+
+
+def test_explicit_adr_protocol_selection_rejects_inapplicable_model() -> None:
+    with pytest.raises(ValueError, match="does not apply"):
+        apply_inference_protocol(
+            system_prompt="A prompt whose wording must not matter.",
+            prompt="Return JSON.",
+            model="gemini-2.5-flash",
+            selection=ModelInferenceProtocolSelection(
+                profile_id="local-qwen-adr-json-no-think",
+                task_type="adr_json_artifact",
+            ),
+        )
+
+
+def test_explicit_adr_protocol_selection_rejects_unknown_task_profile() -> None:
+    with pytest.raises(ValueError, match="does not apply"):
+        apply_inference_protocol(
+            system_prompt="A prompt whose wording must not matter.",
+            prompt="Return JSON.",
+            model="Qwen3.6-35B-A3B",
+            selection=ModelInferenceProtocolSelection(
+                profile_id="local-qwen-adr-json-no-think",
+                task_type="not-an-adr-json-artifact",
+            ),
+        )
 
 
 def test_default_protocol_config_does_not_no_think_qwen_summarization_task_type() -> (

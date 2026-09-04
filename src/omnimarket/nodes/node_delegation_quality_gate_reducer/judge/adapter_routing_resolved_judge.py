@@ -30,7 +30,11 @@ import asyncio
 import logging
 from typing import Any
 
-from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceAdapter,
+    ModelInferenceJsonObjectResponseFormat,
+)
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
 from omnimarket.inference.provider_quota_policy import classify_quota_response
 from omnimarket.inference.provider_quota_state import (
     quota_domain_disabled,
@@ -158,7 +162,14 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
         user_prompt: str,
         timeout_seconds: float,
         temperature: float | None = None,
+        response_format: ModelInferenceJsonObjectResponseFormat | None = None,
+        protocol_selection: ModelInferenceProtocolSelection | None = None,
     ) -> str:
+        if protocol_selection is not None:
+            raise ValueError(
+                "RoutingResolvedJudgeInferenceAdapter does not support provider "
+                "protocol selection"
+            )
         # Secret resolution (sync ProtocolSecretStore) and the blocking transport
         # both run off the event loop in one worker thread — the sync secret
         # resolver fails closed if called from inside a running loop (same pattern
@@ -169,6 +180,7 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
             user_prompt,
             timeout_seconds,
             temperature,
+            response_format,
         )
 
     def _infer_sync(
@@ -177,6 +189,7 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
         user_prompt: str,
         timeout_seconds: float,
         temperature: float | None,
+        response_format: ModelInferenceJsonObjectResponseFormat | None,
     ) -> str:
         backend = self._resolve_backend()
 
@@ -214,6 +227,8 @@ class RoutingResolvedJudgeInferenceAdapter(ModelInferenceAdapter):
             "max_tokens": backend.max_tokens,
             "temperature": temperature if temperature is not None else 0.2,
         }
+        if response_format is not None:
+            payload["response_format"] = response_format.model_dump(mode="json")
 
         # The caller's timeout is the judge timeout budget; honour the smaller of
         # the caller's value and the backend's contract-resolved ceiling so the

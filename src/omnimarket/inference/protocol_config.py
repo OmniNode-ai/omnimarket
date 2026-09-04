@@ -62,6 +62,22 @@ class ModelInferenceProtocolProfile(BaseModel):
     request_options: dict[str, Any] = Field(default_factory=dict)
 
 
+class ModelInferenceProtocolSelection(BaseModel):
+    """Caller-owned selection of one configured provider protocol profile.
+
+    Most callers intentionally retain the legacy automatic profile matching.
+    A caller that has a durable output contract can instead select one exact
+    profile.  The selected profile is still checked against its declared model,
+    backend, and task applicability constraints before any request is sent.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    profile_id: str = Field(..., min_length=1)
+    task_type: str | None = Field(default=None, min_length=1)
+    backend_id: str | None = Field(default=None, min_length=1)
+
+
 class ModelInferenceProtocolConfig(BaseModel):
     """Root config for provider request-shaping profiles."""
 
@@ -134,11 +150,36 @@ def apply_inference_protocol(
     model: str,
     task_type: str | None = None,
     backend_id: str | None = None,
+    selection: ModelInferenceProtocolSelection | None = None,
     config: ModelInferenceProtocolConfig | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
-    """Return outbound prompt data and provider request options."""
+    """Return outbound prompt data and provider request options.
+
+    With ``selection`` set, only that exact profile is considered.  Unknown,
+    disabled, or inapplicable profiles fail closed instead of quietly falling
+    back to auto-matching a prompt literal.
+    """
 
     resolved_config = config or load_inference_protocol_config()
+    if selection is not None:
+        if task_type is not None or backend_id is not None:
+            raise ValueError(
+                "selection owns task_type and backend_id; do not pass duplicate "
+                "protocol match arguments"
+            )
+        selected_profile = _resolve_selected_profile(
+            selection,
+            system_prompt=system_prompt,
+            model=model,
+            config=resolved_config,
+        )
+        next_system_prompt, next_prompt = _apply_directive(
+            selected_profile.directive,
+            system_prompt=system_prompt,
+            prompt=prompt,
+        )
+        return next_system_prompt, next_prompt, dict(selected_profile.request_options)
+
     next_system_prompt = system_prompt
     next_prompt = prompt
     request_options: dict[str, Any] = {}
@@ -161,6 +202,46 @@ def apply_inference_protocol(
             profile.request_options,
         )
     return next_system_prompt, next_prompt, request_options
+
+
+def _resolve_selected_profile(
+    selection: ModelInferenceProtocolSelection,
+    *,
+    system_prompt: str,
+    model: str,
+    config: ModelInferenceProtocolConfig | None = None,
+) -> ModelInferenceProtocolProfile:
+    """Resolve one profile and prove it applies to the outbound request."""
+
+    resolved_config = config or load_inference_protocol_config()
+    profile = next(
+        (
+            candidate
+            for candidate in resolved_config.profiles
+            if candidate.profile_id == selection.profile_id
+        ),
+        None,
+    )
+    if profile is None:
+        raise ValueError(
+            f"unknown inference protocol profile: {selection.profile_id!r}"
+        )
+    if not profile.enabled:
+        raise ValueError(
+            f"inference protocol profile is disabled: {selection.profile_id!r}"
+        )
+    if not _profile_matches(
+        profile,
+        system_prompt=system_prompt,
+        model=model,
+        task_type=selection.task_type,
+        backend_id=selection.backend_id,
+    ):
+        raise ValueError(
+            "inference protocol profile does not apply to the requested "
+            f"model/task/backend: {selection.profile_id!r}"
+        )
+    return profile
 
 
 def _merge_request_options(
@@ -227,6 +308,7 @@ __all__ = [
     "ModelInferencePromptDirective",
     "ModelInferenceProtocolConfig",
     "ModelInferenceProtocolProfile",
+    "ModelInferenceProtocolSelection",
     "apply_inference_protocol",
     "apply_inference_protocol_directives",
     "load_inference_protocol_config",

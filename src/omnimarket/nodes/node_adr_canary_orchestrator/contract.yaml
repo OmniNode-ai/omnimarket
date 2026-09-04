@@ -25,9 +25,10 @@ description: |
   Subscribes to onex.cmd.omnimarket.adr-canary-requested.v1.
   For each manifest entry, orchestrates the full ADR canary pipeline:
     1. Ingest source documents (delegates to node_adr_document_ingestion_effect via bus cmd)
-    2. Run multi-model extraction (node_adr_decision_extraction_llm_effect, concurrent)
-    3. Grade each extraction with Opus (node_adr_extraction_grader_llm_effect)
-    4. Generate ADR draft (node_adr_draft_generation_compute)
+    2. Segment each ingested document (node_adr_segmentation_llm_effect)
+    3. Run multi-model extraction (node_adr_decision_extraction_llm_effect, concurrent)
+    4. Grade each extraction with Opus (node_adr_extraction_grader_llm_effect)
+    5. Generate ADR draft (node_adr_draft_generation_compute)
   Produces a per-run evidence bundle at output_dir/<run_id>/ and a scorecard.md.
   Emits onex.evt.omnimarket.adr-canary-completed.v1 on completion.
 
@@ -58,7 +59,12 @@ config:
     description: "LLM model key for the extraction grader"
   max_cost_usd:
     default: null
-    description: "Hard budget cap in USD; null = no cap"
+    description: >
+      Hard budget cap in USD; null = no cap. A supplied cap fails closed until
+      the extraction route declares a prospective input/output token bound and
+      a matching omnimarket.cost.cost_pricing entry. Post-call usage evidence
+      normalized by omnimarket.cost.usage_normalizer cannot enforce a cap
+      before an LLM call, so it is not treated as authorization to overspend.
   allow_external_providers:
     default: false
     description: "Allow LLM calls to external (non-local) providers"
@@ -76,6 +82,7 @@ event_bus:
   publish_topics:
     - "onex.evt.omnimarket.adr-canary-completed.v1"
     - "onex.cmd.omnimarket.adr-document-ingestion-requested.v1"
+    - "onex.cmd.omnimarket.adr-segmentation-requested.v1"
     - "onex.cmd.omnimarket.adr-decision-extraction-requested.v1"
     - "onex.cmd.omnimarket.adr-extraction-grading-requested.v1"
     - "onex.cmd.omnimarket.adr-draft-generation-start.v1"
@@ -95,6 +102,9 @@ event_bus:
     "onex.cmd.omnimarket.adr-decision-extraction-requested.v1":
       schema_ref: "omnimarket.nodes.node_adr_decision_extraction_llm_effect.models.model_extraction_request.ModelExtractionRequest"
       description: "Command emitted through the bus-backed extraction protocol adapter."
+    "onex.cmd.omnimarket.adr-segmentation-requested.v1":
+      schema_ref: "omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation_request.ModelSegmentationRequest"
+      description: "Command emitted through the bus-backed segmentation protocol adapter."
     "onex.cmd.omnimarket.adr-extraction-grading-requested.v1":
       schema_ref: "omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_request.ModelGradingRequest"
       description: "Command emitted through the bus-backed grading protocol adapter."
@@ -107,6 +117,10 @@ sub_handler_dependencies:
   - name: ingestion
     protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrIngestion
     default_impl: omnimarket.adapters.adr.AdapterBusAdrIngestion
+    optional: false
+  - name: segmentation
+    protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrSegmentation
+    default_impl: omnimarket.adapters.adr.HandlerBusAdrSegmentation
     optional: false
   - name: extraction
     protocol: omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator.ProtocolAdrExtraction
@@ -144,3 +158,13 @@ tags:
 
 metadata:
   transport_type: kafka
+
+# === COST ENFORCEMENT BOUNDARY ===
+cost_policy:
+  pricing_contract: "omnimarket.cost.cost_pricing"
+  usage_normalizer: "omnimarket.cost.usage_normalizer"
+  enforcement: "fail_closed_when_max_cost_usd_is_supplied_without_a_prospective_bound"
+  rationale: >
+    The current extraction summary preserves post-call output only; it has no
+    contract-owned maximum output tokens or route-to-pricing identity. A later
+    cost calculation cannot prevent an already-issued inference call.

@@ -19,6 +19,15 @@ schema_version: "v1"
 generated_at: "2026-05-23"
 ticket: "OMN-11841"
 
+# Discovery sources are curated private omni_home plan material. This is an
+# explicit source-owner declaration, not a conclusion drawn from root_paths or
+# a git remote; all candidates are restricted to the internal knowledge base.
+source_provenance:
+  source_repository: "OmniNode-ai/omni_home"
+  source_visibility: "private"
+  publication_classification: "restricted"
+kb_destination: "private"
+
 entries:
 
   # ── Contract & Configuration ──────────────────────────────────────────

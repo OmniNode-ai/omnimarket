@@ -25,9 +25,11 @@ import yaml
 
 from omnimarket.models.adr import (
     ModelAdrDocumentRef,
+    ModelAdrDocumentSegment,
     ModelAdrExtractionSummary,
     ModelAdrGradingScores,
     ModelAdrIngestionResult,
+    ModelAdrSegmentationResult,
 )
 from omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import (
     HandlerCanaryOrchestrator,
@@ -61,7 +63,9 @@ class _StubIngestion:
     def __init__(self) -> None:
         self.call_count = 0
 
-    async def ingest(self, root_paths: list[str]) -> ModelAdrIngestionResult:
+    async def ingest(
+        self, *, root_paths: list[str], workspace_root: str
+    ) -> ModelAdrIngestionResult:
         self.call_count += 1
         return ModelAdrIngestionResult(
             documents=[
@@ -72,7 +76,36 @@ class _StubIngestion:
                     source_content_sha256="abc123",
                 )
             ],
-            root_paths=root_paths,
+            root_paths=[workspace_root],
+        )
+
+
+class _StubSegmentation:
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    async def segment(
+        self,
+        *,
+        ingestion: ModelAdrIngestionResult,
+        correlation_id: str,
+    ) -> ModelAdrSegmentationResult:
+        self.call_count += 1
+        return ModelAdrSegmentationResult(
+            success=True,
+            segments=(
+                ModelAdrDocumentSegment(
+                    segment_id="stub-segment",
+                    source_path=ingestion.documents[0].source_path,
+                    source_content_sha256=ingestion.documents[0].source_content_sha256,
+                    start_line=1,
+                    end_line=1,
+                    segment_type="decision",
+                    content="stub decision",
+                    segment_content_sha256="abc123",
+                    confidence=1.0,
+                ),
+            ),
         )
 
 
@@ -83,7 +116,7 @@ class _StubExtraction:
     async def extract(
         self,
         *,
-        ingestion: ModelAdrIngestionResult,
+        segments: tuple[ModelAdrDocumentSegment, ...],
         model_key: str,
         model_id: str,
         correlation_id: str,
@@ -142,17 +175,19 @@ class _StubDraftGen:
 
 
 @pytest.mark.integration
-def test_proof_of_life_full_pipeline() -> None:
+@pytest.mark.asyncio
+async def test_proof_of_life_full_pipeline(kafka_integration_bus: object) -> None:
     """Full pipeline: manifest loads, all stubs invoked, files written, report correct."""
-    import asyncio
-
     ingestion_stub = _StubIngestion()
+    segmentation_stub = _StubSegmentation()
     extraction_stub = _StubExtraction()
     grading_stub = _StubGrading()
     draft_gen_stub = _StubDraftGen()
 
     container: dict[str, object] = {
+        "event_bus": kafka_integration_bus,
         "ingestion": ingestion_stub,
+        "segmentation": segmentation_stub,
         "extraction": extraction_stub,
         "grading": grading_stub,
         "draft_gen": draft_gen_stub,
@@ -167,7 +202,7 @@ def test_proof_of_life_full_pipeline() -> None:
             manifest_path=manifest_abs,
             output_dir=tmpdir,
         )
-        report = asyncio.run(handler.handle(request))
+        report = await handler.handle(request)
 
         # Core report assertions
         assert report.success, f"Report failed: {report.error_message}"
@@ -212,12 +247,13 @@ def test_proof_of_life_full_pipeline() -> None:
 
 
 @pytest.mark.integration
-def test_proof_of_life_dry_run() -> None:
+@pytest.mark.asyncio
+async def test_proof_of_life_dry_run(kafka_integration_bus: object) -> None:
     """Dry-run mode: no stubs called, report returns entries_total == 3."""
-    import asyncio
-
     container: dict[str, object] = {
+        "event_bus": kafka_integration_bus,
         "ingestion": _StubIngestion(),
+        "segmentation": _StubSegmentation(),
         "extraction": _StubExtraction(),
         "grading": _StubGrading(),
         "draft_gen": _StubDraftGen(),
@@ -232,7 +268,7 @@ def test_proof_of_life_dry_run() -> None:
             output_dir=tmpdir,
             dry_run=True,
         )
-        report = asyncio.run(handler.handle(request))
+        report = await handler.handle(request)
 
     assert report.dry_run is True
     assert report.entries_total == _manifest_entry_count()
@@ -240,15 +276,17 @@ def test_proof_of_life_dry_run() -> None:
 
 
 @pytest.mark.integration
-def test_proof_of_life_extraction_failure_path() -> None:
+@pytest.mark.asyncio
+async def test_proof_of_life_extraction_failure_path(
+    kafka_integration_bus: object,
+) -> None:
     """Extraction failure: entry marked failed, pipeline continues for remaining entries."""
-    import asyncio
 
     class _FailingExtraction:
         async def extract(
             self,
             *,
-            ingestion: ModelAdrIngestionResult,
+            segments: tuple[ModelAdrDocumentSegment, ...],
             model_key: str,
             model_id: str,
             correlation_id: str,
@@ -256,7 +294,9 @@ def test_proof_of_life_extraction_failure_path() -> None:
             raise RuntimeError("stub extraction failure")
 
     container: dict[str, object] = {
+        "event_bus": kafka_integration_bus,
         "ingestion": _StubIngestion(),
+        "segmentation": _StubSegmentation(),
         "extraction": _FailingExtraction(),
         "grading": _StubGrading(),
         "draft_gen": _StubDraftGen(),
@@ -270,7 +310,7 @@ def test_proof_of_life_extraction_failure_path() -> None:
             manifest_path=manifest_abs,
             output_dir=tmpdir,
         )
-        report = asyncio.run(handler.handle(request))
+        report = await handler.handle(request)
 
         # Entries complete at the entry level (extraction failure is per model, not per entry)
         assert report.entries_total == _manifest_entry_count()

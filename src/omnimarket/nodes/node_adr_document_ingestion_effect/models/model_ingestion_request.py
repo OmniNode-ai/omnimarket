@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ModelIngestionRequest(BaseModel):
@@ -11,3 +11,10 @@ class ModelIngestionRequest(BaseModel):
 
     root_paths: list[str]
     exclude_patterns: list[str] | None = None
+    workspace_root: str | None = Field(
+        default=None,
+        description=(
+            "Canonical workspace root for relative paths and source-path "
+            "provenance. Expanded roots must remain beneath it when supplied."
+        ),
+    )

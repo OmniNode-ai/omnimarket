@@ -21,6 +21,10 @@ import yaml
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from pydantic import BaseModel
 
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceJsonObjectResponseFormat,
+)
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
 from omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import (
     HandlerCanaryOrchestrator,
 )
@@ -51,6 +55,12 @@ from omnimarket.nodes.node_adr_extraction_grader_llm_effect.handlers.handler_ext
 from omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_request import (
     ModelGradingRequest,
 )
+from omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation import (
+    HandlerSegmentation,
+)
+from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation_request import (
+    ModelSegmentationRequest,
+)
 
 _NODES_ROOT = Path("src/omnimarket/nodes")
 
@@ -66,6 +76,9 @@ class _DeterministicAdrInferenceBridge:
         system_prompt: str,
         user_prompt: str,
         timeout_seconds: float,
+        temperature: float | None = None,
+        response_format: ModelInferenceJsonObjectResponseFormat | None = None,
+        protocol_selection: ModelInferenceProtocolSelection | None = None,
     ) -> str:
         self.calls.append(model_key)
         if model_key == "opus":
@@ -79,23 +92,40 @@ class _DeterministicAdrInferenceBridge:
                 }
             )
 
+        if model_key == "adr_segmentation":
+            return json.dumps(
+                {
+                    "segments": [
+                        {
+                            "start_line": 1,
+                            "end_line": 1,
+                            "segment_type": "decision",
+                            "content": "# ADR: Kafka/Redpanda as Primary Event Bus",
+                            "confidence": 0.99,
+                        }
+                    ]
+                }
+            )
+
         segment_id = _first_segment_id(user_prompt)
         return json.dumps(
-            [
-                {
-                    "decision_type": "architecture_decision",
-                    "statement": "Use Kafka/Redpanda as the primary event bus",
-                    "rationale": (
-                        "Contracts own topic definitions and clients consume "
-                        "materialized projections rather than owning truth."
-                    ),
-                    "source_segment_ids": [segment_id],
-                    "evidence_quotes": [
-                        "We decided to use Kafka/Redpanda as the primary event bus."
-                    ],
-                    "confidence": 0.93,
-                }
-            ]
+            {
+                "extractions": [
+                    {
+                        "decision_type": "architecture_decision",
+                        "statement": "Use Kafka/Redpanda as the primary event bus",
+                        "rationale": (
+                            "Contracts own topic definitions and clients consume "
+                            "materialized projections rather than owning truth."
+                        ),
+                        "source_segment_ids": [segment_id],
+                        "evidence_quotes": [
+                            "We decided to use Kafka/Redpanda as the primary event bus."
+                        ],
+                        "confidence": 0.93,
+                    }
+                ]
+            }
         )
 
 
@@ -205,6 +235,11 @@ async def _wire_adr_subnodes(
         request_fragment="requested",
         completed_fragment="completed",
     )
+    segmentation_request, segmentation_completed = _node_topics(
+        "node_adr_segmentation_llm_effect",
+        request_fragment="requested",
+        completed_fragment="completed",
+    )
     draft_request, draft_completed = _node_topics(
         "node_adr_draft_generation_compute",
         request_fragment="start",
@@ -214,6 +249,10 @@ async def _wire_adr_subnodes(
     ingestion_handler = HandlerDocumentIngestion()
     extraction_handler = HandlerDecisionExtraction(inference_bridge=inference_bridge)
     grading_handler = HandlerExtractionGrader(inference_bridge=inference_bridge)
+    segmentation_handler = HandlerSegmentation(
+        inference_bridge=inference_bridge,
+        segmentation_model_key="adr_segmentation",
+    )
     draft_handler = HandlerADRGeneration()
 
     async def handle_ingestion(request: BaseModel) -> BaseModel:
@@ -228,6 +267,11 @@ async def _wire_adr_subnodes(
 
     async def handle_grading(request: BaseModel) -> BaseModel:
         return await grading_handler.handle(ModelGradingRequest.model_validate(request))
+
+    async def handle_segmentation(request: BaseModel) -> BaseModel:
+        return await segmentation_handler.handle(
+            ModelSegmentationRequest.model_validate(request)
+        )
 
     async def handle_draft(request: BaseModel) -> BaseModel:
         return draft_handler.handle(ModelADRGenerationRequest.model_validate(request))
@@ -248,6 +292,14 @@ async def _wire_adr_subnodes(
             request_model=ModelExtractionRequest,
             handler=handle_extraction,
             group_id="test-adr-extraction-real-handler",
+        ),
+        await _subscribe_async_handler(
+            bus,
+            request_topic=segmentation_request,
+            completed_topic=segmentation_completed,
+            request_model=ModelSegmentationRequest,
+            handler=handle_segmentation,
+            group_id="test-adr-segmentation-real-handler",
         ),
         await _subscribe_async_handler(
             bus,
@@ -294,6 +346,11 @@ def _write_fixture_manifest(tmp_path: Path) -> tuple[Path, Path]:
                     {
                         "id": "event-bus-adr",
                         "root_paths": [str(source_root)],
+                        "source_provenance": {
+                            "source_repository": "OmniNode-ai/omnimarket",
+                            "source_visibility": "public",
+                            "publication_classification": "public",
+                        },
                         "ground_truth_adr": (
                             "# ADR: Kafka/Redpanda as Primary Event Bus\n\n"
                             "Use Kafka/Redpanda as the primary event bus; contracts "
@@ -317,6 +374,45 @@ def _write_fixture_manifest(tmp_path: Path) -> tuple[Path, Path]:
     return source_root, manifest_path
 
 
+def _write_discovery_fixture_manifest(tmp_path: Path) -> tuple[Path, Path]:
+    workspace_root = tmp_path / "omni_home"
+    (workspace_root / "docs" / "plans").mkdir(parents=True)
+    (workspace_root / "docs" / "plans" / "2026-event-bus-plan.md").write_text(
+        "# Event Bus Plan\n\nWe decided to use Kafka/Redpanda as the primary event bus.\n",
+        encoding="utf-8",
+    )
+    manifest_path = tmp_path / "discovery-manifest.yaml"
+    manifest_path.write_text(
+        yaml.safe_dump(
+            {
+                "entries": [
+                    {
+                        "id": "event-bus-discovery",
+                        "root_paths": ["docs/plans/2026-*event-bus*"],
+                        "discovery_mode": True,
+                        "source_provenance": {
+                            "source_repository": "OmniNode-ai/omnimarket",
+                            "source_visibility": "public",
+                            "publication_classification": "public",
+                        },
+                        "models": [
+                            {
+                                "key": "deterministic-local",
+                                "provider": "local",
+                                "model_id": "deterministic-local",
+                                "external": False,
+                            }
+                        ],
+                    }
+                ]
+            },
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return workspace_root, manifest_path
+
+
 async def test_adr_canary_real_bus_backed_chain_reaches_all_subnodes(
     event_bus: EventBusInmemory,
     tmp_path: Path,
@@ -333,6 +429,7 @@ async def test_adr_canary_real_bus_backed_chain_reaches_all_subnodes(
             ModelCanaryCommandPayload(
                 manifest_path=str(manifest_path),
                 output_dir=str(tmp_path / "runs"),
+                workspace_root=str(source_root),
                 model_subset=["deterministic-local"],
                 resume_run_id="OMN-10724-real-chain-proof",
             )
@@ -349,7 +446,7 @@ async def test_adr_canary_real_bus_backed_chain_reaches_all_subnodes(
     assert len(report.model_scores) == 1
     assert report.model_scores[0].model_key == "deterministic-local"
     assert report.model_scores[0].avg_recall == 0.91
-    assert inference_bridge.calls == ["deterministic-local", "opus"]
+    assert inference_bridge.calls == ["adr_segmentation", "deterministic-local", "opus"]
 
     evidence_dir = Path(report.evidence_dir)
     evidence_json = evidence_dir / "event-bus-adr" / "deterministic-local.json"
@@ -366,11 +463,13 @@ async def test_adr_canary_real_bus_backed_chain_reaches_all_subnodes(
 
     draft = draft_markdown.read_text(encoding="utf-8")
     assert "# ADR: Use Kafka/Redpanda as the primary event bus" in draft
-    assert "adr-canary-bus-adapter-v1" in draft
+    assert "**Extraction Model**: fake-deterministic-adr-extractor" in draft
+    assert "adr-canary-orchestrator-v1" in draft
 
     assert (source_root / "docs" / "event-bus.md").exists()
     for node_name, request_fragment, completed_fragment in [
         ("node_adr_document_ingestion_effect", "requested", "completed"),
+        ("node_adr_segmentation_llm_effect", "requested", "completed"),
         ("node_adr_decision_extraction_llm_effect", "requested", "completed"),
         ("node_adr_extraction_grader_llm_effect", "requested", "completed"),
         ("node_adr_draft_generation_compute", "start", "completed"),
@@ -382,6 +481,73 @@ async def test_adr_canary_real_bus_backed_chain_reaches_all_subnodes(
         )
         assert len(await event_bus.get_event_history(topic=request_topic)) == 1
         assert len(await event_bus.get_event_history(topic=completed_topic)) == 1
+
+
+async def test_discovery_glob_reaches_real_handlers_and_writes_decision_artifact(
+    event_bus: EventBusInmemory,
+    tmp_path: Path,
+) -> None:
+    workspace_root, manifest_path = _write_discovery_fixture_manifest(tmp_path)
+    inference_bridge = _DeterministicAdrInferenceBridge()
+
+    await event_bus.start()
+    unsubscribers = await _wire_adr_subnodes(event_bus, inference_bridge)
+    try:
+        report = await HandlerCanaryOrchestrator({"event_bus": event_bus}).handle(
+            ModelCanaryCommandPayload(
+                manifest_path=str(manifest_path),
+                workspace_root=str(workspace_root),
+                output_dir=str(tmp_path / "runs"),
+                model_subset=["deterministic-local"],
+                resume_run_id="OMN-11833-discovery-proof",
+            )
+        )
+    finally:
+        for unsubscribe in unsubscribers:
+            await unsubscribe()
+        await event_bus.close()
+
+    artifact = Path(report.evidence_dir) / "extracted_decisions.json"
+    assert report.success is True
+    assert report.entries_completed == 1
+    assert artifact.exists()
+    decisions = json.loads(artifact.read_text(encoding="utf-8"))
+    assert len(decisions) == 1
+    assert (
+        decisions[0]["draft"]["title"] == "Use Kafka/Redpanda as the primary event bus"
+    )
+    assert decisions[0]["source_provenance"] == {
+        "source_repository": "OmniNode-ai/omnimarket",
+        "source_visibility": "public",
+        "publication_classification": "public",
+    }
+    assert decisions[0]["source_documents"][0]["source_path"] == (
+        "docs/plans/2026-event-bus-plan.md"
+    )
+    score = report.model_scores[0]
+    assert score.entries_extracted == 1
+    assert score.entries_evaluated == 0
+    assert score.entries_grading_not_applicable == 1
+    assert score.entries_failed == 0
+    evidence = json.loads(
+        (
+            Path(report.evidence_dir)
+            / "event-bus-discovery"
+            / "deterministic-local.json"
+        ).read_text(encoding="utf-8")
+    )
+    assert evidence["extraction_success"] is True
+    assert evidence["grading_not_applicable"] is True
+    assert "| deterministic-local | 1 succeeded | N/A |" in Path(
+        report.scorecard_path
+    ).read_text(encoding="utf-8")
+    assert inference_bridge.calls == ["adr_segmentation", "deterministic-local"]
+    grading_request, _ = _node_topics(
+        "node_adr_extraction_grader_llm_effect",
+        request_fragment="requested",
+        completed_fragment="completed",
+    )
+    assert await event_bus.get_event_history(topic=grading_request) == []
 
 
 def test_contract_declares_adr_document_ingestion_completed_topic() -> None:

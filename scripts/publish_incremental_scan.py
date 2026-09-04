@@ -40,6 +40,17 @@ from pathlib import Path
 
 import yaml
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+from pydantic import ValidationError
+
+from omnimarket.models.adr import (
+    EnumAdrKBDestination,
+    EnumAdrPublicationClassification,
+    EnumAdrSourceVisibility,
+    ModelAdrSourceProvenance,
+)
+from omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_request import (
+    ModelCanaryCommandPayload,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -122,6 +133,32 @@ def _parse_args() -> argparse.Namespace:
         "--topic",
         default=None,
         help="Override command topic (default: read from contract.yaml)",
+    )
+    p.add_argument(
+        "--source-repository",
+        required=True,
+        help="Canonical source repository identity supplied by the source owner",
+    )
+    p.add_argument(
+        "--source-visibility",
+        choices=[visibility.value for visibility in EnumAdrSourceVisibility],
+        required=True,
+        help="Explicit source visibility; never inferred from a checkout path",
+    )
+    p.add_argument(
+        "--publication-classification",
+        choices=[
+            classification.value
+            for classification in EnumAdrPublicationClassification
+        ],
+        required=True,
+        help="Explicit source publication sensitivity",
+    )
+    p.add_argument(
+        "--kb-destination",
+        choices=[destination.value for destination in EnumAdrKBDestination],
+        required=True,
+        help="Closed KB destination carried through the typed canary command",
     )
     return p.parse_args()
 
@@ -273,6 +310,40 @@ async def _publish_to_kafka(
         await producer.stop()
 
 
+def _build_canary_command(
+    *,
+    args: argparse.Namespace,
+    repos_root: Path,
+    manifest_path: Path,
+    source_files: list[Path],
+) -> ModelCanaryCommandPayload:
+    """Build the contract-owned incremental canary command without ad-hoc keys."""
+    workspace_root = repos_root.resolve()
+    scoped_files: list[str] = []
+    for source_file in source_files:
+        try:
+            scoped_files.append(
+                source_file.resolve().relative_to(workspace_root).as_posix()
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"incremental source file escapes repos root: {source_file}"
+            ) from exc
+    provenance = ModelAdrSourceProvenance(
+        source_repository=args.source_repository,
+        source_visibility=args.source_visibility,
+        publication_classification=args.publication_classification,
+    )
+    return ModelCanaryCommandPayload(
+        manifest_path=str(manifest_path),
+        workspace_root=str(workspace_root),
+        scoped_files=tuple(scoped_files),
+        source_provenance=provenance,
+        kb_destination=args.kb_destination,
+        dry_run=False,
+    )
+
+
 async def _run(args: argparse.Namespace) -> int:
     repos_root = Path(args.repos_root)
     if not repos_root.is_dir():
@@ -362,6 +433,18 @@ async def _run(args: argparse.Namespace) -> int:
     estimated_tokens = len(all_new_files) * _TOKENS_PER_FILE_EST
     estimated_cost = (estimated_tokens / 1000) * _COST_PER_1K_TOKENS_USD
 
+    manifest_path = _resolve_workspace_config_path(args.manifest, repos_root)
+    try:
+        canary_command = _build_canary_command(
+            args=args,
+            repos_root=repos_root,
+            manifest_path=manifest_path,
+            source_files=all_new_files,
+        )
+    except (ValidationError, ValueError) as exc:
+        logger.error("Refusing invalid incremental canary command: %s", exc)
+        return 1
+
     if args.dry_run:
         print("\n--- Dry Run Report ---")
         print(f"New files to process: {len(all_new_files)}")
@@ -379,16 +462,9 @@ async def _run(args: argparse.Namespace) -> int:
 
     topic = args.topic or _load_command_topic()
 
-    # Publish one scoped canary command covering the modified files
-    manifest_path = _resolve_workspace_config_path(args.manifest, repos_root)
-    file_paths = [str(f) for f in all_new_files]
-    payload = {
-        "manifest_path": str(manifest_path),
-        "scoped_files": file_paths,
-        "dry_run": False,
-        "source": "incremental_scan",
-        "since_timestamp": since_ts,
-    }
+    # Publish exactly the typed canary contract. Scope, source classification,
+    # and closed destination are all validated before the bus boundary.
+    payload = canary_command.model_dump(mode="json")
     envelope_id = str(uuid.uuid4())
 
     logger.info("Publishing scoped canary command for %d files", len(all_new_files))

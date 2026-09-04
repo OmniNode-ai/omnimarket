@@ -21,6 +21,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 import yaml
 
+from omnimarket.models.adr import (
+    EnumAdrKBDestination,
+    ModelAdrSourceProvenance,
+)
 from omnimarket.nodes.node_kb_adr_publisher.handlers.handler_kb_adr_publisher import (
     HandlerKBADRPublisher,
     _next_adr_number,
@@ -29,27 +33,40 @@ from omnimarket.nodes.node_kb_adr_publisher.models.model_publish_request import 
     ModelKBADRPublishRequest,
 )
 
+_SOURCE_PROVENANCE = ModelAdrSourceProvenance(
+    source_repository="OmniNode-ai/omnimarket",
+    source_visibility="public",
+    publication_classification="public",
+)
+
 
 def _decision(idx: int) -> dict[str, Any]:
     return {
-        "status": "Proposed",
-        "date": "2026-07-06T10:00:00+00:00",
-        "title": f"Adopt pattern number {idx}",
-        "context": "Some context.",
-        "decision": "Do the thing.",
-        "consequences": "Trade-offs apply.",
-        "alternatives_considered": [],
-        "supersedes": [],
-        "source_evidence": ["seg-1"],
-        "extraction_metadata": {
-            "model_id": "qwen3-coder-local",
-            "confidence": 0.9,
-            "pipeline_version": "1.0.0",
-            "prompt_template_id": "t",
-            "prompt_template_version": "1.0",
-            "canary_run_id": "canary-run-1",
-            "extracted_at": "2026-07-06T10:00:00+00:00",
+        "draft": {
+            "status": "Proposed",
+            "date": "2026-07-06T10:00:00+00:00",
+            "title": f"Adopt pattern number {idx}",
+            "context": "Some context.",
+            "decision": "Do the thing.",
+            "consequences": "Trade-offs apply.",
+            "alternatives_considered": [],
+            "supersedes": [],
+            "source_evidence": ["seg-1"],
+            "extraction_metadata": {
+                "model_id": "qwen3-coder-local",
+                "confidence": 0.9,
+                "pipeline_version": "1.0.0",
+                "prompt_template_id": "t",
+                "prompt_template_version": "1.0",
+                "canary_run_id": "canary-run-1",
+                "extracted_at": "2026-07-06T10:00:00+00:00",
+            },
         },
+        "source_provenance": _SOURCE_PROVENANCE.model_dump(mode="json"),
+        "kb_destination": "public",
+        "source_documents": [
+            {"source_path": "docs/source.md", "source_content_sha256": "a" * 64}
+        ],
     }
 
 
@@ -108,7 +125,10 @@ async def test_publisher_writes_flat_adrs_with_sequential_numbers(
     with patch("subprocess.run", side_effect=fake_subprocess):
         result = await HandlerKBADRPublisher().handle(
             ModelKBADRPublishRequest(
-                canary_run_dir=str(run_dir), model_key="qwen3-coder-local"
+                canary_run_dir=str(run_dir),
+                model_key="qwen3-coder-local",
+                kb_destination=EnumAdrKBDestination.public,
+                source_provenance=_SOURCE_PROVENANCE,
             )
         )
 

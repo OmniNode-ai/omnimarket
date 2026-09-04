@@ -12,9 +12,117 @@ internally. No node imports another node's private models.
 
 from __future__ import annotations
 
+from enum import StrEnum
 from typing import Any
 
+from omnibase_core.models.adr.model_adr_draft import ModelADRDraft
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+
+class EnumAdrSourceVisibility(StrEnum):
+    """Declared visibility of the repository that owns the extracted source."""
+
+    public = "public"
+    private = "private"
+
+
+class EnumAdrPublicationClassification(StrEnum):
+    """Publication sensitivity declared by the source-owning workflow."""
+
+    public = "public"
+    private = "private"
+    restricted = "restricted"
+    needs_review = "needs_review"
+
+
+class EnumAdrKBDestination(StrEnum):
+    """Closed set of knowledge-base publication destinations."""
+
+    public = "public"
+    private = "private"
+
+
+class ModelAdrSourceProvenance(BaseModel):
+    """Source identity and publication classification stated by the source owner.
+
+    This fact is never inferred from a checkout path, remote URL, or repository
+    name. It must be carried from the manifest into durable candidate evidence
+    and repeated by the publish command so the publisher can detect a mismatch.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_repository: str = Field(
+        ...,
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]*/[A-Za-z0-9][A-Za-z0-9_.-]*$",
+        description="Canonical owner/repository identity supplied by the source owner.",
+    )
+    source_visibility: EnumAdrSourceVisibility
+    publication_classification: EnumAdrPublicationClassification
+
+    @model_validator(mode="after")
+    def _reject_conflicting_classification(self) -> ModelAdrSourceProvenance:
+        if (
+            self.source_visibility is EnumAdrSourceVisibility.private
+            and self.publication_classification
+            is EnumAdrPublicationClassification.public
+        ):
+            raise ValueError(
+                "private source visibility conflicts with public publication classification"
+            )
+        return self
+
+
+class ModelAdrSourceDocumentEvidence(BaseModel):
+    """Hash-pinned, repository-relative source document evidence.
+
+    The publisher deliberately consumes hash-only evidence: source bytes are
+    re-opened and verified by the ingestion/segmentation boundary before LLM
+    extraction, while the publisher may run later on a different machine with
+    no authority to reopen the private source checkout.  The durable SHA-256 is
+    therefore the publication trust boundary, not a claim that the publisher
+    revalidated machine-local files.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    source_path: str = Field(..., min_length=1)
+    source_content_sha256: str = Field(
+        ..., pattern=r"^[a-f0-9]{64}$", description="SHA-256 of the full source bytes."
+    )
+
+    @field_validator("source_path")
+    @classmethod
+    def _require_repository_relative_path(cls, value: str) -> str:
+        from pathlib import PurePosixPath
+
+        path = PurePosixPath(value)
+        if path.is_absolute() or ".." in path.parts:
+            raise ValueError("source_path must be repository-relative")
+        return value
+
+
+class ModelAdrPublicationCandidate(BaseModel):
+    """Durable canary evidence consumed by the KB publisher.
+
+    Legacy evidence may omit provenance, but it is not publishable: the
+    publisher fails closed before any subprocess boundary in that case.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    draft: ModelADRDraft
+    source_provenance: ModelAdrSourceProvenance | None = None
+    kb_destination: EnumAdrKBDestination | None = Field(
+        default=None,
+        description=(
+            "Manifest-owned closed KB destination. Omission is legacy evidence "
+            "and is rejected by the publisher before subprocess execution."
+        ),
+    )
+    source_documents: tuple[ModelAdrSourceDocumentEvidence, ...] = Field(
+        default_factory=tuple
+    )
 
 
 class ModelAdrDocumentRef(BaseModel):
@@ -37,6 +145,57 @@ class ModelAdrIngestionResult(BaseModel):
     root_paths: list[str] = Field(default_factory=list)
 
 
+class ModelAdrDocumentSegment(BaseModel):
+    """Immutable semantic segment passed from segmentation to extraction."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    segment_id: str = Field(..., description="Deterministic segment identifier.")
+    source_path: str = Field(..., description="Workspace-relative source path.")
+    source_content_sha256: str = Field(
+        ..., description="SHA-256 digest of the full source document."
+    )
+    start_line: int = Field(..., ge=1)
+    end_line: int = Field(..., ge=1)
+    segment_type: str = Field(..., description="Semantic segment classification.")
+    content: str = Field(..., description="Verbatim segment content.")
+    segment_content_sha256: str = Field(
+        ..., description="SHA-256 digest of the segment content."
+    )
+    confidence: float = Field(..., ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def _validate_line_span(self) -> ModelAdrDocumentSegment:
+        if self.end_line < self.start_line:
+            raise ValueError("end_line must be greater than or equal to start_line")
+        return self
+
+
+class ModelAdrSegmentationResult(BaseModel):
+    """Entry-level segmentation result returned to the ADR orchestrator."""
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    success: bool = Field(...)
+    segments: tuple[ModelAdrDocumentSegment, ...] = Field(default_factory=tuple)
+    error_code: str | None = Field(default=None)
+    error_message: str | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _validate_success_failure_shape(self) -> ModelAdrSegmentationResult:
+        if self.success:
+            if self.error_code is not None or self.error_message is not None:
+                raise ValueError(
+                    "error_code and error_message must be unset when success=True"
+                )
+            return self
+        if not self.error_code or not self.error_message:
+            raise ValueError(
+                "error_code and error_message are required when success=False"
+            )
+        return self
+
+
 class ModelAdrExtractionSummary(BaseModel):
     """Minimal extraction result the orchestrator needs for grading and draft-gen."""
 
@@ -44,6 +203,14 @@ class ModelAdrExtractionSummary(BaseModel):
 
     success: bool = Field(...)
     model_key: str = Field(...)
+    model_id: str = Field(
+        default="",
+        description="Canonical served model identifier from the manifest route.",
+    )
+    pipeline_version: str = Field(
+        default="",
+        description="Canonical pipeline version that produced this extraction.",
+    )
     extraction_count: int = Field(default=0, ge=0)
     extractions_raw: list[dict[str, object]] = Field(
         default_factory=list,
@@ -114,6 +281,20 @@ class ModelAdrManifestEntry(BaseModel):
     source_directory: str | None = Field(default=None)
     topic_cluster: str | None = Field(default=None)
     rationale: str | None = Field(default=None)
+    source_provenance: ModelAdrSourceProvenance | None = Field(
+        default=None,
+        description=(
+            "Source-owned repository identity and publication classification. "
+            "It is carried into candidate evidence; omission makes publication fail closed."
+        ),
+    )
+    kb_destination: EnumAdrKBDestination | None = Field(
+        default=None,
+        description=(
+            "Manifest-owned closed KB destination. It travels with every "
+            "candidate and must match the publish request."
+        ),
+    )
 
     @model_validator(mode="after")
     def _require_ground_truth_for_benchmark_entries(self) -> ModelAdrManifestEntry:
@@ -161,11 +342,19 @@ class ModelAdrRunRequest(BaseModel):
 
 
 __all__: list[str] = [
+    "EnumAdrKBDestination",
+    "EnumAdrPublicationClassification",
+    "EnumAdrSourceVisibility",
     "ModelAdrDocumentRef",
+    "ModelAdrDocumentSegment",
     "ModelAdrExtractionSummary",
     "ModelAdrGradingScores",
     "ModelAdrIngestionResult",
     "ModelAdrManifestEntry",
     "ModelAdrManifestModel",
+    "ModelAdrPublicationCandidate",
     "ModelAdrRunRequest",
+    "ModelAdrSegmentationResult",
+    "ModelAdrSourceDocumentEvidence",
+    "ModelAdrSourceProvenance",
 ]

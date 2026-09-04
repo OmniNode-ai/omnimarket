@@ -24,7 +24,6 @@ accepted:
 - DISCONNECTED_SUBGRAPH::node_omnigate_check_executor::-
 - DISCONNECTED_SUBGRAPH::node_topic_migration_executor_effect::-
 - ORPHANED_CONSUMER::ab_compare_orchestrator::onex.cmd.omnimarket.ab-compare-start.v1
-- ORPHANED_CONSUMER::adr_segmentation_llm_effect::onex.cmd.omnimarket.adr-segmentation-requested.v1
 - ORPHANED_CONSUMER::authorize::onex.cmd.omnimarket.authorize-start.v1
 - ORPHANED_CONSUMER::autopilot_orchestrator::onex.cmd.omnimarket.autopilot-orchestrator-start.v1
 - ORPHANED_CONSUMER::baseline_capture::onex.cmd.omnimarket.baseline-capture-start.v1

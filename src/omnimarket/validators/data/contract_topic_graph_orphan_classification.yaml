@@ -1,11 +1,11 @@
 generated_by: OMN-15984
-description: 'Companion classification of the 676 ORPHANED_PRODUCER/ORPHANED_CONSUMER entries in contract_topic_graph_baseline.yaml''s
+description: 'Companion classification of the 675 ORPHANED_PRODUCER/ORPHANED_CONSUMER entries in contract_topic_graph_baseline.yaml''s
   accepted: list. NOT read by contract_topic_graph.py''s gate -- the gate''s ratchet matches the flat
   accepted: string keys verbatim; this file is a read-only triage artifact. Regenerate with scripts/classify_contract_graph_orphans.py.'
-source_baseline_entries: 676
+source_baseline_entries: 675
 counts:
   cli_dispatch_reachable: 173
-  genuine_orphan: 507
+  genuine_orphan: 506
   cli_dispatch_reachable_by_signal:
     skill_md_dispatch_command: 20
     skill_md_backing_node: 19
@@ -20,13 +20,6 @@ entries:
   node: ab_compare_orchestrator
   package: omnimarket
   topic: onex.cmd.omnimarket.ab-compare-start.v1
-  tag: genuine_orphan
-  signal: null
-- key: ORPHANED_CONSUMER::adr_segmentation_llm_effect::onex.cmd.omnimarket.adr-segmentation-requested.v1
-  defect: ORPHANED_CONSUMER
-  node: adr_segmentation_llm_effect
-  package: omnimarket
-  topic: onex.cmd.omnimarket.adr-segmentation-requested.v1
   tag: genuine_orphan
   signal: null
 - key: ORPHANED_CONSUMER::authorize::onex.cmd.omnimarket.authorize-start.v1

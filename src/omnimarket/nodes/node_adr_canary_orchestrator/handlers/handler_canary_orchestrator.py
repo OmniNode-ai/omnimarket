@@ -5,11 +5,12 @@
 
 Pipeline per manifest entry:
   1. Ingest source documents via ProtocolAdrIngestion
-  2. For each model: extract via ProtocolAdrExtraction (concurrent, bounded)
-  3. Grade each extraction via ProtocolAdrGrading
-  4. Generate ADR draft via ProtocolAdrDraftGen
-  5. Write evidence JSON to output_dir/<run_id>/<entry_id>/<model_key>.json
-  6. Write scorecard.md to output_dir/<run_id>/scorecard.md
+  2. Segment each ingested document via ProtocolAdrSegmentation
+  3. For each model: extract the immutable shared segments (concurrent, bounded)
+  4. Grade each extraction via ProtocolAdrGrading
+  5. Generate ADR draft via ProtocolAdrDraftGen
+  6. Write evidence JSON to output_dir/<run_id>/<entry_id>/<model_key>.json
+  7. Write scorecard.md to output_dir/<run_id>/scorecard.md
 
 All protocols use shared ADR types from omnimarket.models.adr — no sibling
 node package imports. Sub-node adapters translate shared → private models.
@@ -21,8 +22,10 @@ Topics are read from contract.yaml, never hardcoded.
 from __future__ import annotations
 
 import asyncio
+import fnmatch
 import json
 import logging
+import os
 import random
 import string
 import time
@@ -37,14 +40,20 @@ from omnibase_core.models.adr.model_adr_draft import ModelADRDraft
 from omnibase_core.models.adr.model_adr_extraction_metadata import (
     ModelADRExtractionMetadata,
 )
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, model_validator
 
 from omnimarket.models.adr import (
+    EnumAdrKBDestination,
+    ModelAdrDocumentSegment,
     ModelAdrExtractionSummary,
     ModelAdrGradingScores,
     ModelAdrIngestionResult,
     ModelAdrManifestEntry,
     ModelAdrManifestModel,
+    ModelAdrPublicationCandidate,
+    ModelAdrSegmentationResult,
+    ModelAdrSourceDocumentEvidence,
+    ModelAdrSourceProvenance,
 )
 from omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_report import (
     ModelCanaryReport,
@@ -55,6 +64,8 @@ from omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_request i
 )
 
 logger = logging.getLogger(__name__)
+
+_ADR_CANARY_PIPELINE_VERSION = "adr-canary-orchestrator-v1"
 
 
 # ---------------------------------------------------------------------------
@@ -67,21 +78,35 @@ logger = logging.getLogger(__name__)
 class ProtocolAdrIngestion(Protocol):
     """Consume root_paths; return document references."""
 
-    async def ingest(self, root_paths: list[str]) -> ModelAdrIngestionResult: ...
+    async def ingest(
+        self, *, root_paths: list[str], workspace_root: str
+    ) -> ModelAdrIngestionResult: ...
 
 
 @runtime_checkable
 class ProtocolAdrExtraction(Protocol):
-    """Extract decisions from an ingestion result for a specific model."""
+    """Extract decisions from shared semantic segments for a specific model."""
 
     async def extract(
         self,
         *,
-        ingestion: ModelAdrIngestionResult,
+        segments: tuple[ModelAdrDocumentSegment, ...],
         model_key: str,
         model_id: str,
         correlation_id: str,
     ) -> ModelAdrExtractionSummary: ...
+
+
+@runtime_checkable
+class ProtocolAdrSegmentation(Protocol):
+    """Segment an ingestion result once before model-specific extraction."""
+
+    async def segment(
+        self,
+        *,
+        ingestion: ModelAdrIngestionResult,
+        correlation_id: str,
+    ) -> ModelAdrSegmentationResult: ...
 
 
 @runtime_checkable
@@ -128,10 +153,14 @@ class ModelEvidenceRecord(BaseModel):
     format_compliance: float | None = None
     extraction_success: bool = False
     grading_success: bool = False
+    grading_not_applicable: bool = False
     draft_generated: bool = False
     extraction_error: str | None = None
     grading_error: str | None = None
     latency_ms: int = 0
+    source_provenance: ModelAdrSourceProvenance | None = None
+    kb_destination: EnumAdrKBDestination | None = None
+    source_documents: tuple[ModelAdrSourceDocumentEvidence, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -149,11 +178,42 @@ class ModelGroundTruthManifest(BaseModel):
     schema_version: str | None = None
     generated_at: str | None = None
     ticket: str | None = None
+    source_provenance: ModelAdrSourceProvenance | None = None
+    kb_destination: EnumAdrKBDestination | None = None
+
+    @model_validator(mode="after")
+    def _apply_explicit_manifest_publication_defaults(
+        self,
+    ) -> ModelGroundTruthManifest:
+        """Carry manifest-owned publication facts to entries without inference.
+
+        The defaults are authored directly in a manifest; no filesystem path,
+        checkout name, or git remote participates in this decision. Per-entry
+        facts remain authoritative when a mixed-source manifest needs them.
+        """
+        if self.source_provenance is None and self.kb_destination is None:
+            return self
+        if self.source_provenance is None or self.kb_destination is None:
+            raise ValueError(
+                "manifest source_provenance and kb_destination must be declared together"
+            )
+        entries = [
+            entry.model_copy(
+                update={
+                    "source_provenance": entry.source_provenance
+                    or self.source_provenance,
+                    "kb_destination": entry.kb_destination or self.kb_destination,
+                }
+            )
+            for entry in self.entries
+        ]
+        return self.model_copy(update={"entries": entries})
 
 
 @dataclass(frozen=True, slots=True)
 class _AdrProtocolAdapters:
     ingestion: ProtocolAdrIngestion
+    segmentation: ProtocolAdrSegmentation
     extraction: ProtocolAdrExtraction
     grading: ProtocolAdrGrading
     draft_gen: ProtocolAdrDraftGen
@@ -164,9 +224,10 @@ class _RunModelOutcome:
     """Per-model result: the evidence record plus serialized ADR drafts.
 
     The ``decisions`` list carries fully serialized ``ModelADRDraft`` dicts
-    (``model_dump(mode="json")``). The orchestrator aggregates these across all
-    entries/models into the run-level ``extracted_decisions.json`` that
-    ``HandlerKBADRPublisher`` consumes (OMN-14103).
+    (``model_dump(mode="json")``), each wrapped in a typed publication
+    candidate with source provenance. The orchestrator aggregates these across
+    all entries/models into the run-level ``extracted_decisions.json`` that
+    ``HandlerKBADRPublisher`` consumes.
     """
 
     record: ModelEvidenceRecord
@@ -190,16 +251,18 @@ def _confidence_or_clamped(value: object) -> float:
 def _decisions_from_extraction(
     extraction: ModelAdrExtractionSummary,
     model: ModelAdrManifestModel,
+    entry: ModelAdrManifestEntry,
+    source_documents: tuple[ModelAdrSourceDocumentEvidence, ...],
     run_id: str,
     now: datetime,
 ) -> list[dict[str, object]]:
     """Map each raw extraction dict into a serialized ``ModelADRDraft``.
 
-    The publisher (``HandlerKBADRPublisher``) filters decisions by
-    ``extraction_metadata.model_id``; we set that to ``model.model_id`` so a
-    ``model_key`` argument equal to the model id selects this model's decisions.
-    Fields absent from the raw extraction (consequences, alternatives) are not
-    fabricated — they are left empty or flagged for human review.
+    The publisher filters candidate drafts by ``extraction_metadata.model_id``;
+    we set that to ``model.model_id`` so a ``model_key`` argument equal to the
+    model id selects this model's decisions. Source provenance and hash-pinned,
+    repository-relative documents travel with every candidate. Fields absent
+    from the raw extraction (consequences, alternatives) are not fabricated.
     """
     decisions: list[dict[str, object]] = []
     for raw in extraction.extractions_raw:
@@ -241,9 +304,11 @@ def _decisions_from_extraction(
             supersedes=[],
             source_evidence=source_evidence,
             extraction_metadata=ModelADRExtractionMetadata(
-                model_id=model.model_id,
+                model_id=extraction.model_id or model.model_id,
                 confidence=_confidence_or_clamped(raw.get("confidence")),
-                pipeline_version="adr-canary-orchestrator-v1",
+                pipeline_version=(
+                    extraction.pipeline_version or _ADR_CANARY_PIPELINE_VERSION
+                ),
                 prompt_template_id=str(raw.get("prompt_template_id") or "unknown"),
                 prompt_template_version=str(
                     raw.get("prompt_template_version") or "0.0.0"
@@ -252,8 +317,36 @@ def _decisions_from_extraction(
                 extracted_at=now,
             ),
         )
-        decisions.append(draft.model_dump(mode="json"))
+        candidate = ModelAdrPublicationCandidate(
+            draft=draft,
+            source_provenance=entry.source_provenance,
+            kb_destination=entry.kb_destination,
+            source_documents=source_documents,
+        )
+        decisions.append(candidate.model_dump(mode="json"))
     return decisions
+
+
+def _source_document_evidence(
+    ingestion: ModelAdrIngestionResult,
+) -> tuple[ModelAdrSourceDocumentEvidence, ...]:
+    """Return hash-pinned source evidence, or an empty tuple that cannot publish.
+
+    The canary may still retain extraction evidence from a legacy or malformed
+    ingestion result, but that evidence must never become publishable without
+    repository-relative paths and deterministic source hashes.
+    """
+    try:
+        return tuple(
+            ModelAdrSourceDocumentEvidence(
+                source_path=document.source_path,
+                source_content_sha256=document.source_content_sha256,
+            )
+            for document in ingestion.documents
+        )
+    except ValueError:
+        logger.warning("ADR candidate source evidence is incomplete or non-canonical")
+        return ()
 
 
 # ---------------------------------------------------------------------------
@@ -278,12 +371,22 @@ def _write_scorecard(
         "",
         "## Model Rankings",
         "",
-        "| Model | Entries | Recall | Precision | Fidelity | Format | Latency (ms) |",
-        "|-------|---------|--------|-----------|----------|--------|--------------|",
+        "| Model | Extraction | Grading | Recall | Precision | Fidelity | Format | Latency (ms) |",
+        "|-------|------------|---------|--------|-----------|----------|--------|--------------|",
     ]
 
     def _fmt(v: float | None) -> str:
         return f"{v:.3f}" if v is not None else "—"
+
+    def _grading_status(score: ModelModelScore) -> str:
+        statuses: list[str] = []
+        if score.entries_evaluated:
+            statuses.append(f"{score.entries_evaluated} evaluated")
+        if score.entries_grading_not_applicable:
+            statuses.append("N/A")
+        if score.entries_failed:
+            statuses.append(f"{score.entries_failed} failed")
+        return " / ".join(statuses) or "not run"
 
     for score in sorted(
         scores,
@@ -291,8 +394,8 @@ def _write_scorecard(
         reverse=True,
     ):
         lines.append(
-            f"| {score.model_key} | {score.entries_evaluated} "
-            f"| {_fmt(score.avg_recall)} | {_fmt(score.avg_precision)} "
+            f"| {score.model_key} | {score.entries_extracted} succeeded "
+            f"| {_grading_status(score)} | {_fmt(score.avg_recall)} | {_fmt(score.avg_precision)} "
             f"| {_fmt(score.avg_fidelity)} | {_fmt(score.avg_format_compliance)} "
             f"| {score.total_latency_ms} |"
         )
@@ -326,6 +429,7 @@ class HandlerCanaryOrchestrator:
         adapters = _resolve_adr_protocol_adapters(container)
         self._container = container
         self._ingestion = adapters.ingestion
+        self._segmentation = adapters.segmentation
         self._extraction = adapters.extraction
         self._grading = adapters.grading
         self._draft_gen = adapters.draft_gen
@@ -354,9 +458,12 @@ class HandlerCanaryOrchestrator:
         model: ModelAdrManifestModel,
         run_id: str,
         ingestion: ModelAdrIngestionResult,
+        segments: tuple[ModelAdrDocumentSegment, ...],
         evidence_entry_dir: Path,
+        allow_external_providers: bool,
     ) -> _RunModelOutcome:
-        if model.external and not self._allow_external_providers:
+        source_documents = _source_document_evidence(ingestion)
+        if model.external and not allow_external_providers:
             logger.info(
                 "Skipping external model %s (allow_external_providers=False)", model.key
             )
@@ -366,7 +473,11 @@ class HandlerCanaryOrchestrator:
                     entry_id=entry.id,
                     model_key=model.key,
                     model_id=model.model_id,
+                    grading_not_applicable=entry.ground_truth_adr is None,
                     extraction_error="external_provider_disabled",
+                    source_provenance=entry.source_provenance,
+                    kb_destination=entry.kb_destination,
+                    source_documents=source_documents,
                 ),
                 decisions=[],
             )
@@ -377,6 +488,10 @@ class HandlerCanaryOrchestrator:
             entry_id=entry.id,
             model_key=model.key,
             model_id=model.model_id,
+            grading_not_applicable=entry.ground_truth_adr is None,
+            source_provenance=entry.source_provenance,
+            kb_destination=entry.kb_destination,
+            source_documents=source_documents,
         )
         extraction_proto = self._extraction
         grading_proto = self._grading
@@ -385,7 +500,7 @@ class HandlerCanaryOrchestrator:
         # Step 1: extract
         try:
             extraction = await extraction_proto.extract(
-                ingestion=ingestion,
+                segments=segments,
                 model_key=model.key,
                 model_id=model.model_id,
                 correlation_id=run_id,
@@ -413,13 +528,24 @@ class HandlerCanaryOrchestrator:
             _write_evidence(evidence_entry_dir, model.key, record)
             return _RunModelOutcome(record=record, decisions=[])
 
+        extraction = extraction.model_copy(
+            update={
+                "model_id": model.model_id,
+                "pipeline_version": _ADR_CANARY_PIPELINE_VERSION,
+            }
+        )
         record = record.model_copy(update={"extraction_success": True})
 
         # Structured ADR drafts for the run-level extracted_decisions.json (the
         # publisher input). Derived purely from the extraction — independent of
         # grading — so discovery entries (no ground truth) still produce drafts.
         decisions = _decisions_from_extraction(
-            extraction, model, run_id, datetime.now(UTC)
+            extraction,
+            model,
+            entry,
+            source_documents,
+            run_id,
+            datetime.now(UTC),
         )
 
         # Step 2: grade — skipped for discovery entries that have no ground truth.
@@ -531,25 +657,75 @@ class HandlerCanaryOrchestrator:
                 error_message=f"manifest load failed: {exc}",
             )
 
+        # The extraction protocol currently reports post-call evidence only.
+        # A hard budget needs a prospective, contract-owned upper bound before
+        # the first LLM call; accepting a cap and discovering an overage later
+        # would not enforce it. Fail closed until that accounting contract exists.
+        if request.max_cost_usd is not None:
+            return ModelCanaryReport(
+                run_id=run_id,
+                manifest_path=request.manifest_path,
+                evidence_dir=str(Path(request.output_dir) / run_id),
+                scorecard_path=str(Path(request.output_dir) / run_id / "scorecard.md"),
+                success=False,
+                error_message=(
+                    "max_cost_usd is fail-closed: ADR extraction lacks a "
+                    "prospective metering bound backed by cost_pricing"
+                ),
+            )
+
+        try:
+            workspace_root = _resolve_workspace_root(request.workspace_root)
+        except ValueError as exc:
+            return ModelCanaryReport(
+                run_id=run_id,
+                manifest_path=request.manifest_path,
+                evidence_dir=str(Path(request.output_dir) / run_id),
+                scorecard_path=str(Path(request.output_dir) / run_id / "scorecard.md"),
+                success=False,
+                error_message=str(exc),
+            )
+
         evidence_dir = Path(request.output_dir) / run_id
         evidence_dir.mkdir(parents=True, exist_ok=True)
 
+        try:
+            entries = _select_manifest_entries(
+                manifest.entries,
+                request=request,
+                workspace_root=workspace_root,
+            )
+        except ValueError as exc:
+            return ModelCanaryReport(
+                run_id=run_id,
+                manifest_path=request.manifest_path,
+                evidence_dir=str(evidence_dir),
+                scorecard_path=str(evidence_dir / "scorecard.md"),
+                success=False,
+                error_message=str(exc),
+            )
+
         ingestion_proto = self._ingestion
+        segmentation_proto = self._segmentation
         sem = asyncio.Semaphore(self._max_concurrent_extractions)
 
         all_records: list[ModelEvidenceRecord] = []
         all_decisions: list[dict[str, object]] = []
         entries_completed = 0
         entries_failed = 0
+        allow_external_providers = (
+            self._allow_external_providers and request.allow_external_providers
+        )
 
-        for entry in manifest.entries:
+        for entry in entries:
             evidence_entry_dir = evidence_dir / entry.id
             evidence_entry_dir.mkdir(parents=True, exist_ok=True)
 
             # Ingest documents for this entry
             try:
                 ingestion_result = await ingestion_proto.ingest(
-                    root_paths=entry.root_paths
+                    root_paths=entry.root_paths,
+                    workspace_root=workspace_root,
                 )
             except Exception as exc:
                 logger.error("Ingestion failed for entry %s: %s", entry.id, exc)
@@ -563,15 +739,69 @@ class HandlerCanaryOrchestrator:
                     m for m in entry.models if m.key in request.model_subset
                 ]
 
+            needs_segmentation = any(
+                not model.external or allow_external_providers
+                for model in models_to_run
+            )
+            if needs_segmentation:
+                try:
+                    segmentation_result = await segmentation_proto.segment(
+                        ingestion=ingestion_result,
+                        correlation_id=run_id,
+                    )
+                except Exception as exc:
+                    segmentation_result = ModelAdrSegmentationResult(
+                        success=False,
+                        error_code="SEGMENTATION_PROTOCOL_FAILED",
+                        error_message=f"{type(exc).__name__}: {exc}",
+                    )
+
+                if not segmentation_result.success:
+                    error_message = (
+                        segmentation_result.error_message or "segmentation failed"
+                    )
+                    for model in models_to_run:
+                        model_error = (
+                            "external_provider_disabled"
+                            if model.external and not allow_external_providers
+                            else error_message
+                        )
+                        record = ModelEvidenceRecord(
+                            run_id=run_id,
+                            entry_id=entry.id,
+                            model_key=model.key,
+                            model_id=model.model_id,
+                            grading_not_applicable=entry.ground_truth_adr is None,
+                            extraction_error=model_error,
+                        )
+                        all_records.append(record)
+                        _write_evidence(evidence_entry_dir, model.key, record)
+                    entries_failed += 1
+                    continue
+                segments = segmentation_result.segments
+            else:
+                # Do not invoke the local segmentation model for an entry whose
+                # only selected models are policy-blocked external providers.
+                segments = ()
+
             # Run models concurrently (bounded by semaphore)
             async def _bounded(
                 _entry: ModelAdrManifestEntry = entry,
                 _model: ModelAdrManifestModel = None,  # type: ignore[assignment]
                 _ing: ModelAdrIngestionResult = ingestion_result,
+                _segments: tuple[ModelAdrDocumentSegment, ...] = segments,
                 _edir: Path = evidence_entry_dir,
             ) -> _RunModelOutcome:
                 async with sem:
-                    return await self._run_model(_entry, _model, run_id, _ing, _edir)
+                    return await self._run_model(
+                        _entry,
+                        _model,
+                        run_id,
+                        _ing,
+                        _segments,
+                        _edir,
+                        allow_external_providers,
+                    )
 
             tasks = [asyncio.create_task(_bounded(_model=m)) for m in models_to_run]
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -584,6 +814,8 @@ class HandlerCanaryOrchestrator:
                 else:
                     all_records.append(outcome.record)
                     all_decisions.extend(outcome.decisions)
+                    if outcome.record.extraction_error is not None:
+                        entry_ok = False
 
             if entry_ok:
                 entries_completed += 1
@@ -606,7 +838,7 @@ class HandlerCanaryOrchestrator:
             manifest_path=request.manifest_path,
             scores=model_scores,
             evidence_dir=evidence_dir,
-            entries_total=len(manifest.entries),
+            entries_total=len(entries),
             entries_completed=entries_completed,
             entries_failed=entries_failed,
         )
@@ -615,18 +847,24 @@ class HandlerCanaryOrchestrator:
             "adr-canary complete (run_id=%s, entries=%d/%d)",
             run_id,
             entries_completed,
-            len(manifest.entries),
+            len(entries),
         )
 
         return ModelCanaryReport(
             run_id=run_id,
             manifest_path=request.manifest_path,
-            entries_total=len(manifest.entries),
+            entries_total=len(entries),
             entries_completed=entries_completed,
             entries_failed=entries_failed,
             model_scores=model_scores,
             evidence_dir=str(evidence_dir),
             scorecard_path=str(scorecard_path),
+            success=entries_failed == 0,
+            error_message=(
+                None
+                if entries_failed == 0
+                else f"{entries_failed} manifest entr{'y' if entries_failed == 1 else 'ies'} failed"
+            ),
         )
 
     @classmethod
@@ -664,6 +902,9 @@ def _resolve_adr_protocol_adapters(container: object) -> _AdrProtocolAdapters:
     ingestion = _resolve_container_dependency(
         container, ProtocolAdrIngestion, "ingestion"
     )
+    segmentation = _resolve_container_dependency(
+        container, ProtocolAdrSegmentation, "segmentation"
+    )
     extraction = _resolve_container_dependency(
         container, ProtocolAdrExtraction, "extraction"
     )
@@ -672,17 +913,27 @@ def _resolve_adr_protocol_adapters(container: object) -> _AdrProtocolAdapters:
         container, ProtocolAdrDraftGen, "draft_gen"
     )
 
-    if ingestion is None or extraction is None or grading is None or draft_gen is None:
+    if (
+        ingestion is None
+        or segmentation is None
+        or extraction is None
+        or grading is None
+        or draft_gen is None
+    ):
         from omnimarket.adapters.adr import build_adr_bus_protocol_adapters
 
         bus_adapters = build_adr_bus_protocol_adapters(container)
         ingestion = ingestion or bus_adapters.ingestion
+        segmentation = segmentation or bus_adapters.segmentation
         extraction = extraction or bus_adapters.extraction
         grading = grading or bus_adapters.grading
         draft_gen = draft_gen or bus_adapters.draft_gen
 
     return _AdrProtocolAdapters(
         ingestion=_require_protocol("ingestion", ingestion, ProtocolAdrIngestion),
+        segmentation=_require_protocol(
+            "segmentation", segmentation, ProtocolAdrSegmentation
+        ),
         extraction=_require_protocol("extraction", extraction, ProtocolAdrExtraction),
         grading=_require_protocol("grading", grading, ProtocolAdrGrading),
         draft_gen=_require_protocol("draft_gen", draft_gen, ProtocolAdrDraftGen),
@@ -747,6 +998,7 @@ def _require_protocol(
 ) -> Any:
     method_name = {
         "ingestion": "ingest",
+        "segmentation": "segment",
         "extraction": "extract",
         "grading": "grade",
         "draft_gen": "generate",
@@ -766,6 +1018,98 @@ def _make_run_id() -> str:
     return f"{ts}-{suffix}"
 
 
+def _resolve_workspace_root(request_workspace_root: str | None) -> str:
+    """Return a canonical workspace root for discovery-manifest source paths."""
+    raw_workspace_root = request_workspace_root or os.environ.get("OMNI_HOME")
+    if not raw_workspace_root:
+        raise ValueError(
+            "workspace_root or OMNI_HOME is required to resolve discovery source paths"
+        )
+    workspace_root = Path(raw_workspace_root).expanduser().resolve()
+    if not workspace_root.is_dir():
+        raise ValueError(f"workspace_root is not a directory: {workspace_root}")
+    return str(workspace_root)
+
+
+def _select_manifest_entries(
+    entries: list[ModelAdrManifestEntry],
+    *,
+    request: ModelCanaryCommandPayload,
+    workspace_root: str,
+) -> list[ModelAdrManifestEntry]:
+    """Return manifest entries authorized by an optional typed source scope.
+
+    ``scoped_files`` are already syntax-validated by the command model. This
+    boundary resolves them below the declared workspace and selects only entries
+    whose authored roots cover those files. It never derives source visibility,
+    repository identity, or destination from paths.
+    """
+    if request.source_provenance is None and request.kb_destination is not None:
+        raise ValueError("kb_destination requires explicit source_provenance")
+    if request.source_provenance is not None and request.kb_destination is None:
+        raise ValueError("source_provenance requires explicit kb_destination")
+
+    workspace = Path(workspace_root).resolve()
+    scoped_files = request.scoped_files
+    resolved_scope: tuple[tuple[str, Path], ...] = ()
+    if scoped_files is not None:
+        candidates: list[tuple[str, Path]] = []
+        for source_path in scoped_files:
+            candidate = (workspace / source_path).resolve()
+            try:
+                candidate.relative_to(workspace)
+            except ValueError as exc:
+                raise ValueError(
+                    f"scoped file escapes workspace_root: {source_path}"
+                ) from exc
+            if not candidate.is_file():
+                raise ValueError(f"scoped file is not an existing file: {source_path}")
+            candidates.append((source_path, candidate))
+        resolved_scope = tuple(candidates)
+
+    selected: list[ModelAdrManifestEntry] = []
+    for entry in entries:
+        if request.source_provenance is not None:
+            if entry.source_provenance != request.source_provenance:
+                raise ValueError(
+                    f"manifest entry {entry.id!r} source_provenance conflicts with command"
+                )
+            if entry.kb_destination != request.kb_destination:
+                raise ValueError(
+                    f"manifest entry {entry.id!r} kb_destination conflicts with command"
+                )
+        if not resolved_scope:
+            selected.append(entry)
+            continue
+
+        matched_paths = [
+            source_path
+            for source_path, _ in resolved_scope
+            if _entry_root_covers_source_path(entry.root_paths, source_path)
+        ]
+        if matched_paths:
+            selected.append(entry.model_copy(update={"root_paths": matched_paths}))
+
+    if scoped_files is not None and not selected:
+        raise ValueError("no manifest entry covers the requested scoped_files")
+    return selected
+
+
+def _entry_root_covers_source_path(root_paths: list[str], source_path: str) -> bool:
+    """Return whether an authored manifest root covers a workspace-relative file."""
+    for raw_root in root_paths:
+        normalized_root = raw_root.rstrip("/")
+        if any(token in normalized_root for token in ("*", "?", "[")):
+            if fnmatch.fnmatchcase(source_path, normalized_root):
+                return True
+            continue
+        if source_path == normalized_root or source_path.startswith(
+            normalized_root + "/"
+        ):
+            return True
+    return False
+
+
 def _write_evidence(
     evidence_entry_dir: Path, model_key: str, record: ModelEvidenceRecord
 ) -> None:
@@ -780,8 +1124,12 @@ def _aggregate_scores(records: list[ModelEvidenceRecord]) -> list[ModelModelScor
 
     scores: list[ModelModelScore] = []
     for model_key, recs in sorted(by_model.items()):
+        extracted = [r for r in recs if r.extraction_success]
         evaluated = [r for r in recs if r.grading_success]
-        failed = [r for r in recs if not r.grading_success]
+        grading_not_applicable = [r for r in recs if r.grading_not_applicable]
+        failed = [
+            r for r in recs if not r.grading_not_applicable and not r.grading_success
+        ]
 
         def _avg(vals: list[float | None]) -> float | None:
             clean = [v for v in vals if v is not None]
@@ -790,7 +1138,9 @@ def _aggregate_scores(records: list[ModelEvidenceRecord]) -> list[ModelModelScor
         scores.append(
             ModelModelScore(
                 model_key=model_key,
+                entries_extracted=len(extracted),
                 entries_evaluated=len(evaluated),
+                entries_grading_not_applicable=len(grading_not_applicable),
                 entries_failed=len(failed),
                 avg_recall=_avg([r.recall for r in evaluated]),
                 avg_precision=_avg([r.precision for r in evaluated]),

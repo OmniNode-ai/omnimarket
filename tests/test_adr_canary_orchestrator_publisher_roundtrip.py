@@ -20,13 +20,17 @@ from unittest.mock import AsyncMock
 
 import pytest
 import yaml
-from omnibase_core.models.adr.model_adr_draft import ModelADRDraft
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.models.adr import (
+    EnumAdrKBDestination,
     ModelAdrDocumentRef,
     ModelAdrExtractionSummary,
     ModelAdrGradingScores,
     ModelAdrIngestionResult,
+    ModelAdrPublicationCandidate,
+    ModelAdrSegmentationResult,
+    ModelAdrSourceProvenance,
 )
 from omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import (
     HandlerCanaryOrchestrator,
@@ -43,6 +47,11 @@ from omnimarket.nodes.node_kb_adr_publisher.models.model_publish_request import 
 )
 
 _MODEL_ID = "test/qwen3-coder-30b"
+_SOURCE_PROVENANCE = {
+    "source_repository": "OmniNode-ai/omnimarket",
+    "source_visibility": "public",
+    "publication_classification": "public",
+}
 
 _ORCH_CONTRACT = (
     Path(__file__).resolve().parents[1]
@@ -83,11 +92,17 @@ def _make_orchestrator(
             success=True, recall=0.8, precision=0.8, fidelity=0.8, format_compliance=0.8
         )
     )
+    segmentation = AsyncMock()
+    segmentation.segment = AsyncMock(
+        return_value=ModelAdrSegmentationResult(success=True)
+    )
     draft_gen = AsyncMock()
     draft_gen.generate = AsyncMock(return_value="# draft")
     handler = HandlerCanaryOrchestrator(
         {
+            "event_bus": EventBusInmemory(),
             "ingestion": ingestion,
+            "segmentation": segmentation,
             "extraction": extraction,
             "grading": grading,
             "draft_gen": draft_gen,
@@ -97,10 +112,18 @@ def _make_orchestrator(
     return handler
 
 
-def _write_manifest(tmp_path: Path, *, discovery: bool) -> Path:
+def _write_manifest(
+    tmp_path: Path,
+    *,
+    discovery: bool,
+    source_provenance: dict[str, str] = _SOURCE_PROVENANCE,
+    kb_destination: str = "public",
+) -> Path:
     entry: dict[str, Any] = {
         "id": "entry-1",
         "root_paths": [str(tmp_path)],
+        "source_provenance": source_provenance,
+        "kb_destination": kb_destination,
         "models": [
             {
                 "key": "qwen3-coder",
@@ -124,7 +147,7 @@ def _write_manifest(tmp_path: Path, *, discovery: bool) -> Path:
 def ingestion_result() -> ModelAdrIngestionResult:
     return ModelAdrIngestionResult(
         documents=[
-            ModelAdrDocumentRef(source_path="docs/d.md", source_content_sha256="abc")
+            ModelAdrDocumentRef(source_path="docs/d.md", source_content_sha256="a" * 64)
         ],
         root_paths=["docs"],
     )
@@ -155,7 +178,9 @@ async def test_orchestrator_output_feeds_publisher_input(
 
     report = await orch.handle(
         ModelCanaryCommandPayload(
-            manifest_path=str(manifest_path), output_dir=str(tmp_path / "runs")
+            manifest_path=str(manifest_path),
+            output_dir=str(tmp_path / "runs"),
+            workspace_root=str(tmp_path),
         )
     )
 
@@ -164,18 +189,29 @@ async def test_orchestrator_output_feeds_publisher_input(
 
     decisions = json.loads(decisions_file.read_text(encoding="utf-8"))
     assert len(decisions) == 2
-    # Every decision must be a valid ModelADRDraft — the exact model the
-    # publisher validates. Schema drift between the two nodes fails here.
+    # Every candidate carries a typed draft, explicit source provenance, and a
+    # deterministic source hash. Schema drift between canary and publisher
+    # fails here before the publisher subprocess boundary.
     for decision in decisions:
-        draft = ModelADRDraft.model_validate(decision)
-        assert draft.extraction_metadata.model_id == _MODEL_ID
+        candidate = ModelAdrPublicationCandidate.model_validate(decision)
+        assert candidate.draft.extraction_metadata.model_id == _MODEL_ID
+        assert candidate.source_provenance == ModelAdrSourceProvenance.model_validate(
+            _SOURCE_PROVENANCE
+        )
+        assert candidate.source_documents[0].source_content_sha256 == "a" * 64
 
     # Publisher filter uses extraction_metadata.model_id.
     assert len(_load_decisions(decisions_file, _MODEL_ID)) == 2
 
     result = await HandlerKBADRPublisher().handle(
         ModelKBADRPublishRequest(
-            canary_run_dir=report.evidence_dir, model_key=_MODEL_ID, dry_run=True
+            canary_run_dir=report.evidence_dir,
+            model_key=_MODEL_ID,
+            dry_run=True,
+            kb_destination=EnumAdrKBDestination.public,
+            source_provenance=ModelAdrSourceProvenance.model_validate(
+                _SOURCE_PROVENANCE
+            ),
         )
     )
     assert result.success is True
@@ -194,7 +230,9 @@ async def test_discovery_entry_round_trip_without_grading(
 
     report = await orch.handle(
         ModelCanaryCommandPayload(
-            manifest_path=str(manifest_path), output_dir=str(tmp_path / "runs")
+            manifest_path=str(manifest_path),
+            output_dir=str(tmp_path / "runs"),
+            workspace_root=str(tmp_path),
         )
     )
 
@@ -205,15 +243,76 @@ async def test_discovery_entry_round_trip_without_grading(
     decisions = json.loads(decisions_file.read_text(encoding="utf-8"))
     assert len(decisions) == 2
     for decision in decisions:
-        ModelADRDraft.model_validate(decision)
+        ModelAdrPublicationCandidate.model_validate(decision)
 
     result = await HandlerKBADRPublisher().handle(
         ModelKBADRPublishRequest(
-            canary_run_dir=report.evidence_dir, model_key=_MODEL_ID, dry_run=True
+            canary_run_dir=report.evidence_dir,
+            model_key=_MODEL_ID,
+            dry_run=True,
+            kb_destination=EnumAdrKBDestination.public,
+            source_provenance=ModelAdrSourceProvenance.model_validate(
+                _SOURCE_PROVENANCE
+            ),
         )
     )
     assert result.success is True
     assert result.adr_count == 2
+
+
+@pytest.mark.unit
+async def test_private_manifest_provenance_reaches_private_publisher(
+    tmp_path: Path,
+    ingestion_result: ModelAdrIngestionResult,
+    extraction_summary: ModelAdrExtractionSummary,
+) -> None:
+    """Curated private plan manifests cannot silently turn into public output."""
+    private_provenance = {
+        "source_repository": "OmniNode-ai/omni_home",
+        "source_visibility": "private",
+        "publication_classification": "restricted",
+    }
+    manifest_path = _write_manifest(
+        tmp_path,
+        discovery=True,
+        source_provenance=private_provenance,
+        kb_destination="private",
+    )
+    orch = _make_orchestrator(ingestion_result, extraction_summary, grade=False)
+
+    report = await orch.handle(
+        ModelCanaryCommandPayload(
+            manifest_path=str(manifest_path),
+            output_dir=str(tmp_path / "runs"),
+            workspace_root=str(tmp_path),
+        )
+    )
+    decisions_file = Path(report.evidence_dir) / "extracted_decisions.json"
+    candidates = _load_decisions(decisions_file, _MODEL_ID)
+    assert candidates
+    assert all(
+        candidate.kb_destination is EnumAdrKBDestination.private
+        for candidate in candidates
+    )
+    assert all(
+        candidate.source_provenance
+        == ModelAdrSourceProvenance.model_validate(private_provenance)
+        for candidate in candidates
+    )
+
+    result = await HandlerKBADRPublisher().handle(
+        ModelKBADRPublishRequest(
+            canary_run_dir=report.evidence_dir,
+            model_key=_MODEL_ID,
+            dry_run=True,
+            kb_destination=EnumAdrKBDestination.private,
+            source_provenance=ModelAdrSourceProvenance.model_validate(
+                private_provenance
+            ),
+        )
+    )
+    assert result.success is True
+    assert result.kb_repository == "OmniNode-ai/knowledge-base-internal"
 
 
 @pytest.mark.unit
@@ -230,6 +329,7 @@ def test_orchestrator_declares_all_pipeline_publish_topics() -> None:
     expected = {
         "onex.evt.omnimarket.adr-canary-completed.v1",
         "onex.cmd.omnimarket.adr-document-ingestion-requested.v1",
+        "onex.cmd.omnimarket.adr-segmentation-requested.v1",
         "onex.cmd.omnimarket.adr-decision-extraction-requested.v1",
         "onex.cmd.omnimarket.adr-extraction-grading-requested.v1",
         "onex.cmd.omnimarket.adr-draft-generation-start.v1",

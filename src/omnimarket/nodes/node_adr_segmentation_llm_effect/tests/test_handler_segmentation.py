@@ -8,11 +8,19 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from omnimarket.inference.adapter_inference_bridge import (
+    AdapterInferenceBridge,
     ModelInferenceAdapter,
+    ModelInferenceBridgeConfig,
+    ModelInferenceJsonObjectResponseFormat,
+)
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
+from omnimarket.nodes.node_adr_segmentation_llm_effect.handlers import (
+    handler_segmentation as segmentation_handler_module,
 )
 from omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation import (
     HandlerSegmentation,
@@ -92,7 +100,12 @@ _GOOD_SEGMENTS = [
     },
 ]
 
-_GOOD_RESPONSE = json.dumps(_GOOD_SEGMENTS)
+
+def _segments_response(segments: list[dict[str, object]]) -> str:
+    return json.dumps({"segments": segments})
+
+
+_GOOD_RESPONSE = _segments_response(_GOOD_SEGMENTS)
 
 _LOW_CONFIDENCE_SEGMENTS = [
     {
@@ -104,7 +117,7 @@ _LOW_CONFIDENCE_SEGMENTS = [
     },
 ]
 
-_LOW_CONFIDENCE_RESPONSE = json.dumps(_LOW_CONFIDENCE_SEGMENTS)
+_LOW_CONFIDENCE_RESPONSE = _segments_response(_LOW_CONFIDENCE_SEGMENTS)
 
 
 # OMN-13501 no-faked-boundary: handler-isolation unit double. This is a typed
@@ -131,6 +144,8 @@ class _MockBridge(ModelInferenceAdapter):  # onex-allow-faked-boundary
         user_prompt: str,
         timeout_seconds: float,
         temperature: float | None = None,
+        response_format: ModelInferenceJsonObjectResponseFormat | None = None,
+        protocol_selection: ModelInferenceProtocolSelection | None = None,
     ) -> str:
         if self._call_count >= len(self._responses):
             raise RuntimeError("Unexpected extra infer() call")
@@ -141,6 +156,8 @@ class _MockBridge(ModelInferenceAdapter):  # onex-allow-faked-boundary
                 "user_prompt": user_prompt,
                 "timeout_seconds": timeout_seconds,
                 "temperature": temperature,
+                "response_format": response_format,
+                "protocol_selection": protocol_selection,
             }
         )
         response = self._responses[self._call_count]
@@ -238,7 +255,7 @@ def test_parse_segments_low_confidence_becomes_unknown() -> None:
 
 @pytest.mark.unit
 def test_parse_segments_unknown_type_falls_back_to_unknown() -> None:
-    raw = json.dumps(
+    raw = _segments_response(
         [
             {
                 "start_line": 1,
@@ -261,13 +278,13 @@ def test_parse_segments_invalid_json_returns_none() -> None:
 
 
 @pytest.mark.unit
-def test_parse_segments_not_array_returns_none() -> None:
+def test_parse_segments_missing_segments_envelope_returns_none() -> None:
     assert _parse_segments('{"key": "val"}', _make_request(), 0.4) is None
 
 
 @pytest.mark.unit
 def test_parse_segments_missing_required_field_returns_none() -> None:
-    raw = json.dumps(
+    raw = _segments_response(
         [{"start_line": 1, "end_line": 2, "segment_type": "decision", "content": "x"}]
     )
     # missing "confidence"
@@ -276,7 +293,7 @@ def test_parse_segments_missing_required_field_returns_none() -> None:
 
 @pytest.mark.unit
 def test_parse_segments_invalid_line_range_returns_none() -> None:
-    raw = json.dumps(
+    raw = _segments_response(
         [
             {
                 "start_line": 5,
@@ -292,7 +309,7 @@ def test_parse_segments_invalid_line_range_returns_none() -> None:
 
 @pytest.mark.unit
 def test_parse_segments_out_of_bounds_line_range_returns_none() -> None:
-    raw = json.dumps(
+    raw = _segments_response(
         [
             {
                 "start_line": 1,
@@ -393,7 +410,63 @@ async def test_handle_uses_configured_prompt_threshold_and_temperature() -> None
     assert isinstance(system_prompt, str)
     assert result.success is True
     assert "confidence < 0.55" in system_prompt
+    assert '"segments"' in system_prompt
+    assert "JSON object" in system_prompt
     assert bridge.calls[0]["temperature"] == pytest.approx(0.15)
+    assert (
+        bridge.calls[0]["response_format"] == ModelInferenceJsonObjectResponseFormat()
+    )
+    assert bridge.calls[0]["protocol_selection"] == ModelInferenceProtocolSelection(
+        profile_id="local-qwen-adr-json-no-think",
+        task_type="adr_json_artifact",
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_real_handler_forces_adr_qwen_json_protocol_regardless_of_prompt_wording(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The stable typed profile, never a handler prompt literal, shapes Qwen."""
+
+    bridge = AdapterInferenceBridge(
+        ModelInferenceBridgeConfig(
+            model_configs={
+                "qwen3-coder": {
+                    "transport": "http",
+                    "base_url": "https://inference.example.test",
+                    "model_id": "Qwen3.6-35B-A3B",
+                }
+            }
+        )
+    )
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json.return_value = {"choices": [{"message": {"content": _GOOD_RESPONSE}}]}
+    client = AsyncMock()
+    client.post.return_value = response
+    client_context = MagicMock()
+    client_context.__aenter__ = AsyncMock(return_value=client)
+    client_context.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        segmentation_handler_module,
+        "_SYSTEM_PROMPT_TEMPLATE",
+        "This wording intentionally has no ADR protocol marker.",
+    )
+
+    with patch(
+        "omnimarket.inference.adapter_inference_bridge.httpx.AsyncClient",
+        return_value=client_context,
+    ):
+        result = await HandlerSegmentation(inference_bridge=bridge).handle(
+            _make_request()
+        )
+
+    assert result.success is True
+    payload = client.post.call_args.kwargs["json"]
+    assert payload["messages"][1]["content"].startswith("/no_think\n")
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payload["response_format"] == {"type": "json_object"}
 
 
 # ---------------------------------------------------------------------------
@@ -456,6 +529,21 @@ async def test_handle_repair_llm_failure_returns_parse_failed() -> None:
 
     assert result.success is False
     assert result.error_code == "SEGMENTATION_PARSE_FAILED"
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handle_without_json_repair_makes_one_failed_call() -> None:
+    bridge = _MockBridge(["not json"])
+    handler = HandlerSegmentation(inference_bridge=bridge, json_repair_enabled=False)
+
+    result = await handler.handle(_make_request())
+
+    assert result.success is False
+    assert result.error_code == "SEGMENTATION_PARSE_FAILED"
+    assert bridge.call_count == 1
+    assert result.llm_call_evidence is not None
+    assert result.llm_call_evidence.json_repair_attempted is False
 
 
 # ---------------------------------------------------------------------------
@@ -663,8 +751,8 @@ async def test_handle_in_async_context_does_not_call_sync_resolve_api_key(
     """Preparing the default bridge inside an event loop uses the async resolver.
 
     Regression for F1: the sync ``resolve_api_key`` raised inside a running loop.
-    We assert the async path resolves the OpenRouter key via the async resolver
-    and the sync resolver is never invoked.
+    We assert the async path resolves both configured inference credentials via
+    the async resolver and the sync resolver is never invoked.
     """
     import omnimarket.inference.bridge_config_loader as loader
 
@@ -677,7 +765,7 @@ async def test_handle_in_async_context_does_not_call_sync_resolve_api_key(
         api_key_ref: str | None, *, store: object = None, required: bool = True
     ) -> None:
         async_calls.append(api_key_ref)
-        return  # no OpenRouter key configured on this host
+        return  # no configured inference credential on this host
 
     monkeypatch.setattr(loader, "resolve_api_key", _sync_must_not_run)
     monkeypatch.setattr(loader, "resolve_api_key_async", _fake_async_resolve)
@@ -693,7 +781,7 @@ async def test_handle_in_async_context_does_not_call_sync_resolve_api_key(
     bridge = await handler._ensure_bridge()  # noqa: SLF001 — internal API under test
 
     assert bridge is not None
-    assert async_calls == ["OPENROUTER_API_KEY"]
+    assert async_calls == ["llm.glm.api_key", "llm.openrouter.api_key"]
 
 
 @pytest.mark.unit

@@ -19,15 +19,17 @@ import hashlib
 import json
 import logging
 import time
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
+    ModelInferenceJsonObjectResponseFormat,
 )
 from omnimarket.inference.bridge_config_loader import (
     load_inference_bridge_config_from_env_async,
 )
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
 from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation_request import (
     ModelSegmentationRequest,
 )
@@ -41,6 +43,15 @@ from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation
 logger = logging.getLogger(__name__)
 
 _SEGMENT_TYPES = [t.value for t in EnumSegmentType]
+_JSON_OBJECT_RESPONSE_FORMAT: Final[ModelInferenceJsonObjectResponseFormat] = (
+    ModelInferenceJsonObjectResponseFormat()
+)
+_ADR_JSON_PROTOCOL_SELECTION: Final[ModelInferenceProtocolSelection] = (
+    ModelInferenceProtocolSelection(
+        profile_id="local-qwen-adr-json-no-think",
+        task_type="adr_json_artifact",
+    )
+)
 
 _SYSTEM_PROMPT_TEMPLATE = (
     "You are an expert technical document analyst specializing in architectural decision records "
@@ -68,14 +79,15 @@ _SYSTEM_PROMPT_TEMPLATE = (
     "(confidence < {low_confidence_threshold}). Do NOT use 'implementation_detail' "
     "as a catch-all.\n"
     "\n"
-    "Respond with ONLY a JSON array of segment objects. Each object must have:\n"
+    'Respond with ONLY a JSON object with exactly one key, "segments", whose value is '
+    "an array of segment objects. Each segment object must have:\n"
     '  "start_line": integer (1-based),\n'
     '  "end_line": integer (1-based, inclusive),\n'
     '  "segment_type": one of the types listed above,\n'
     '  "content": verbatim text of that line range,\n'
     '  "confidence": float 0.0-1.0\n'
     "\n"
-    "No prose, no markdown fences, no explanation — only the JSON array."
+    "No prose, no markdown fences, no explanation — only the JSON object."
 )
 
 
@@ -127,6 +139,9 @@ def _parse_segments(
     except json.JSONDecodeError:
         return None
 
+    if not isinstance(data, dict):
+        return None
+    data = data.get("segments")
     if not isinstance(data, list):
         return None
 
@@ -206,12 +221,14 @@ class HandlerSegmentation:
     def __init__(
         self,
         inference_bridge: ModelInferenceAdapter | None = None,
-        segmentation_model_key: str = "adr_segmentation",
+        segmentation_model_key: str = "qwen3-coder",
         segmentation_temperature: float = 0.1,
         segmentation_timeout_seconds: float = 120.0,
         low_confidence_threshold: float = 0.4,
         prompt_template_id: str = "adr_segmentation_v1",
         prompt_template_version: str = "1.0.0",
+        response_format: ModelInferenceJsonObjectResponseFormat = _JSON_OBJECT_RESPONSE_FORMAT,
+        json_repair_enabled: bool = True,
     ) -> None:
         # Construction is pure and sync: when no bridge is injected the default
         # bridge is built lazily on first ``handle`` via ``_ensure_bridge`` so the
@@ -226,6 +243,8 @@ class HandlerSegmentation:
         self._low_confidence_threshold = low_confidence_threshold
         self._prompt_template_id = prompt_template_id
         self._prompt_template_version = prompt_template_version
+        self._response_format = response_format
+        self._json_repair_enabled = json_repair_enabled
 
     async def _ensure_bridge(self) -> ModelInferenceAdapter:
         """Return the inference bridge, building the default one once on demand.
@@ -272,6 +291,8 @@ class HandlerSegmentation:
                 user_prompt=user_prompt,
                 timeout_seconds=self._timeout,
                 temperature=self._temperature,
+                response_format=self._response_format,
+                protocol_selection=_ADR_JSON_PROTOCOL_SELECTION,
             )
         except Exception as exc:
             logger.warning(
@@ -297,13 +318,13 @@ class HandlerSegmentation:
             raw_response, request, self._low_confidence_threshold
         )
 
-        if segments is None:
+        if segments is None and self._json_repair_enabled:
             # JSON repair: one re-prompt with error context
             json_repair_attempted = True
             repair_prompt = (
-                f"Your previous response could not be parsed as a JSON array. "
+                f"Your previous response could not be parsed as the required JSON object. "
                 f"Error: invalid JSON or missing required fields. "
-                f"Please respond with ONLY a valid JSON array using the schema specified. "
+                f"Please respond with ONLY a valid JSON object using the schema specified. "
                 f"Original document:\n\n{user_prompt}"
             )
             try:
@@ -313,6 +334,8 @@ class HandlerSegmentation:
                     user_prompt=repair_prompt,
                     timeout_seconds=self._timeout,
                     temperature=self._temperature,
+                    response_format=self._response_format,
+                    protocol_selection=_ADR_JSON_PROTOCOL_SELECTION,
                 )
                 segments = _parse_segments(
                     repair_response, request, self._low_confidence_threshold
@@ -395,6 +418,12 @@ class HandlerSegmentation:
             ),
             prompt_template_version=str(
                 cfg.get("prompt_template_version", {}).get("default", "1.0.0")
+            ),
+            response_format=ModelInferenceJsonObjectResponseFormat.model_validate(
+                cfg.get("response_format", {}).get("default", {"type": "json_object"})
+            ),
+            json_repair_enabled=bool(
+                cfg.get("json_repair_enabled", {}).get("default", True)
             ),
         )
 

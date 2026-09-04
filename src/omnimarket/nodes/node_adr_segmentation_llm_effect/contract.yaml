@@ -43,7 +43,7 @@ event_bus:
 config:
   segmentation_model_key:
     description: "Logical route key to use for segmentation (must be in AdapterInferenceBridge config)."
-    default: "adr_segmentation"
+    default: "qwen3-coder"
   segmentation_temperature:
     description: "Temperature for the segmentation LLM call."
     default: 0.1
@@ -59,6 +59,13 @@ config:
   prompt_template_version:
     description: "Version of the segmentation prompt template."
     default: "1.0.0"
+  response_format:
+    description: "Caller-owned structured output contract for segmentation inference."
+    default:
+      type: json_object
+  json_repair_enabled:
+    description: "Whether one bounded parse-repair call is permitted after malformed output."
+    default: true
 
 metadata:
   transport_type: kafka

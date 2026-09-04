@@ -12,6 +12,7 @@ and extracts git metadata via subprocess. No writes, no LLM, no network.
 from __future__ import annotations
 
 import asyncio
+import glob
 import hashlib
 import logging
 import os
@@ -49,6 +50,85 @@ def _matches_exclude(path: Path, extra_patterns: list[str] | None) -> bool:
     return False
 
 
+def _workspace_root_for_request(request: ModelIngestionRequest) -> Path | None:
+    """Resolve the explicit workspace root needed by workspace-relative globs.
+
+    Absolute roots remain useful for isolated callers and tests. Relative roots
+    are never interpreted against the process working directory: they require a
+    request-level workspace root or the canonical ``OMNI_HOME`` environment.
+    """
+    has_relative_root = any(
+        not Path(root).expanduser().is_absolute() for root in request.root_paths
+    )
+    raw_workspace_root = request.workspace_root or (
+        os.environ.get("OMNI_HOME") if has_relative_root else None
+    )
+    if raw_workspace_root is None:
+        return None
+    workspace_root = Path(raw_workspace_root).expanduser().resolve()
+    if not workspace_root.is_dir():
+        raise ValueError(f"workspace_root is not a directory: {workspace_root}")
+    return workspace_root
+
+
+def _expand_root_paths(
+    root_paths: list[str], workspace_root: Path | None
+) -> list[tuple[Path, Path]]:
+    """Expand path, directory, and glob roots without consulting ``cwd``.
+
+    A discovery manifest is workspace-scoped. For every match under its
+    canonical workspace root, emit source paths relative to that same root so
+    downstream segmentation can reopen the exact file through one stable base.
+    """
+    expanded: list[tuple[Path, Path]] = []
+    for raw_root in root_paths:
+        raw_path = Path(raw_root).expanduser()
+        if raw_path.is_absolute():
+            pattern = raw_path
+        elif workspace_root is not None:
+            pattern = workspace_root / raw_path
+        else:
+            logger.warning(
+                "Relative root path requires workspace_root or OMNI_HOME, skipping: %s",
+                raw_root,
+            )
+            continue
+
+        matches = sorted(Path(match).resolve() for match in glob.glob(str(pattern)))
+        if not matches:
+            logger.warning("Root path or glob matched nothing, skipping: %s", raw_root)
+            continue
+
+        for match in matches:
+            if not (match.is_file() or match.is_dir()):
+                logger.warning(
+                    "Root path is not a file or directory, skipping: %s", match
+                )
+                continue
+            if workspace_root is not None:
+                try:
+                    match.relative_to(workspace_root)
+                except ValueError as exc:
+                    raise ValueError(
+                        "Ingestion root resolves outside workspace_root: "
+                        f"{match} not under {workspace_root}"
+                    ) from exc
+            source_root = _source_root_for_match(match, workspace_root)
+            expanded.append((match, source_root))
+    return expanded
+
+
+def _source_root_for_match(match: Path, workspace_root: Path | None) -> Path:
+    if workspace_root is not None:
+        try:
+            match.relative_to(workspace_root)
+        except ValueError:
+            pass
+        else:
+            return workspace_root
+    return match if match.is_dir() else match.parent
+
+
 class HandlerDocumentIngestion:
     """EFFECT handler — crawls markdown files and extracts metadata. Read-only."""
 
@@ -67,62 +147,87 @@ class HandlerDocumentIngestion:
         """
         request = payload
         documents: list[ModelDocumentEntry] = []
+        seen_files: set[Path] = set()
+        workspace_root = _workspace_root_for_request(request)
 
-        for root_str in request.root_paths:
-            root = Path(root_str)
-            if not root.exists():
-                logger.warning("Root path does not exist, skipping: %s", root_str)
+        for scan_path, source_root in _expand_root_paths(
+            request.root_paths, workspace_root
+        ):
+            if scan_path.is_file():
+                await self._append_document(
+                    documents,
+                    seen_files,
+                    md_file=scan_path,
+                    scan_root=scan_path.parent,
+                    source_root=source_root,
+                    exclude_patterns=request.exclude_patterns,
+                )
                 continue
-            if not root.is_dir():
-                logger.warning("Root path is not a directory, skipping: %s", root_str)
-                continue
 
-            repo_name = root.name
-
-            for dirpath, dirnames, filenames in os.walk(root, topdown=True):
-                rel_dir = Path(dirpath).relative_to(root)
+            for dirpath, dirnames, filenames in os.walk(scan_path, topdown=True):
+                rel_dir = Path(dirpath).relative_to(scan_path)
                 dirnames[:] = [
-                    d
-                    for d in dirnames
-                    if not _matches_exclude(rel_dir / d, request.exclude_patterns)
+                    name
+                    for name in dirnames
+                    if not _matches_exclude(rel_dir / name, request.exclude_patterns)
                 ]
                 for filename in filenames:
-                    if not filename.endswith(".md"):
-                        continue
-                    md_file = Path(dirpath) / filename
-                    rel = md_file.relative_to(root)
-                    if _matches_exclude(rel, request.exclude_patterns):
-                        continue
-
-                    try:
-                        sha256 = _compute_sha256(md_file)
-                        size = md_file.stat().st_size
-                        (
-                            git_sha,
-                            author,
-                            created_at_raw,
-                            updated_at_raw,
-                        ) = await self._git_metadata(md_file, root)
-
-                        created_at = _parse_iso(created_at_raw)
-                        updated_at = _parse_iso(updated_at_raw)
-
-                        documents.append(
-                            ModelDocumentEntry(
-                                source_path=str(rel),
-                                repo_name=repo_name,
-                                git_sha=git_sha,
-                                author=author,
-                                created_at=created_at,
-                                updated_at=updated_at,
-                                file_size_bytes=size,
-                                source_content_sha256=sha256,
-                            )
+                    if filename.endswith(".md"):
+                        await self._append_document(
+                            documents,
+                            seen_files,
+                            md_file=Path(dirpath) / filename,
+                            scan_root=scan_path,
+                            source_root=source_root,
+                            exclude_patterns=request.exclude_patterns,
                         )
-                    except Exception:
-                        logger.exception("Failed to process file: %s", md_file)
 
         return ModelIngestionResult(documents=documents)
+
+    async def _append_document(
+        self,
+        documents: list[ModelDocumentEntry],
+        seen_files: set[Path],
+        *,
+        md_file: Path,
+        scan_root: Path,
+        source_root: Path,
+        exclude_patterns: list[str] | None,
+    ) -> None:
+        """Add one Markdown file once, preserving a readable canonical source path."""
+        resolved_file = md_file.resolve()
+        if resolved_file in seen_files:
+            return
+        try:
+            rel_scan_path = resolved_file.relative_to(scan_root)
+        except ValueError:
+            logger.warning("File escaped ingestion scan root, skipping: %s", md_file)
+            return
+        if _matches_exclude(rel_scan_path, exclude_patterns):
+            return
+        seen_files.add(resolved_file)
+
+        try:
+            source_path = str(resolved_file.relative_to(source_root))
+            sha256 = _compute_sha256(resolved_file)
+            size = resolved_file.stat().st_size
+            git_sha, author, created_at_raw, updated_at_raw = await self._git_metadata(
+                resolved_file, scan_root
+            )
+            documents.append(
+                ModelDocumentEntry(
+                    source_path=source_path,
+                    repo_name=source_root.name,
+                    git_sha=git_sha,
+                    author=author,
+                    created_at=_parse_iso(created_at_raw),
+                    updated_at=_parse_iso(updated_at_raw),
+                    file_size_bytes=size,
+                    source_content_sha256=sha256,
+                )
+            )
+        except Exception:
+            logger.exception("Failed to process file: %s", resolved_file)
 
     async def _git_metadata(
         self, path: Path, cwd: Path
@@ -200,5 +305,6 @@ def _parse_iso(value: str | None) -> datetime | None:
 __all__ = [
     "HandlerDocumentIngestion",
     "_compute_sha256",
+    "_expand_root_paths",
     "_matches_exclude",
 ]

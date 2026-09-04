@@ -9,7 +9,7 @@ in-process (no Kafka, no real LLM) using protocol-compliant mocks.
 All mock signatures must match the orchestrator protocols exactly:
 - ProtocolAdrGrading.grade() requires `source_summary` kwarg
 - ProtocolAdrExtraction.extract() requires keyword-only args
-- ProtocolAdrIngestion.ingest() requires positional root_paths list
+- ProtocolAdrIngestion.ingest() requires keyword-only root_paths and workspace_root
 - ProtocolAdrDraftGen.generate() requires keyword-only args
 
 [OMN-10727]
@@ -23,12 +23,15 @@ from typing import Any
 
 import pytest
 import yaml
+from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.models.adr import (
     ModelAdrDocumentRef,
+    ModelAdrDocumentSegment,
     ModelAdrExtractionSummary,
     ModelAdrGradingScores,
     ModelAdrIngestionResult,
+    ModelAdrSegmentationResult,
 )
 from omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import (
     HandlerCanaryOrchestrator,
@@ -78,7 +81,9 @@ class _FakeIngestion:
         self._tmp = tmp_path
         (tmp_path / "adr-001.md").write_text(_SOURCE_CONTENT, encoding="utf-8")
 
-    async def ingest(self, root_paths: list[str]) -> ModelAdrIngestionResult:
+    async def ingest(
+        self, *, root_paths: list[str], workspace_root: str
+    ) -> ModelAdrIngestionResult:
         return ModelAdrIngestionResult(
             root_paths=root_paths,
             documents=[
@@ -98,7 +103,7 @@ class _FakeExtraction:
     async def extract(
         self,
         *,
-        ingestion: ModelAdrIngestionResult,
+        segments: tuple[ModelAdrDocumentSegment, ...],
         model_key: str,
         model_id: str,
         correlation_id: str,
@@ -110,6 +115,18 @@ class _FakeExtraction:
             extractions_raw=_EXTRACTION_RAW,
             first_extraction_json=json.dumps(_EXTRACTION_RAW[0]),
         )
+
+
+class _FakeSegmentation:
+    """Correctly-signed mock for ProtocolAdrSegmentation."""
+
+    async def segment(
+        self,
+        *,
+        ingestion: ModelAdrIngestionResult,
+        correlation_id: str,
+    ) -> ModelAdrSegmentationResult:
+        return ModelAdrSegmentationResult(success=True)
 
 
 class _FakeGrading:
@@ -209,6 +226,24 @@ def _make_manifest(tmp_path: Path) -> Path:
 
 
 @pytest.mark.unit
+def test_contract_declares_segmentation_request_topic() -> None:
+    """The orchestrator publishes the command that its segmentation stage uses."""
+    contract_path = (
+        Path(__file__).resolve().parents[3]
+        / "src"
+        / "omnimarket"
+        / "nodes"
+        / "node_adr_canary_orchestrator"
+        / "contract.yaml"
+    )
+    contract = yaml.safe_load(contract_path.read_text(encoding="utf-8"))
+    assert (
+        "onex.cmd.omnimarket.adr-segmentation-requested.v1"
+        in contract["event_bus"]["publish_topics"]
+    )
+
+
+@pytest.mark.unit
 @pytest.mark.asyncio
 async def test_inline_pol_pipeline_completes_through_draft_gen(tmp_path: Path) -> None:
     """Full inline PoL: ingestion → extraction → grading → draft-gen all succeed."""
@@ -217,7 +252,9 @@ async def test_inline_pol_pipeline_completes_through_draft_gen(tmp_path: Path) -
 
     container = _FakeContainer(
         {
+            "event_bus": EventBusInmemory(),
             "ingestion": _FakeIngestion(tmp_path),
+            "segmentation": _FakeSegmentation(),
             "extraction": _FakeExtraction(),
             "grading": _FakeGrading(),
             "draft_gen": _FakeDraftGen(),
@@ -229,6 +266,7 @@ async def test_inline_pol_pipeline_completes_through_draft_gen(tmp_path: Path) -
         ModelCanaryCommandPayload(
             manifest_path=str(manifest_path),
             output_dir=str(output_dir),
+            workspace_root=str(tmp_path),
         )
     )
 
@@ -296,7 +334,9 @@ async def test_inline_pol_scorecard_written(tmp_path: Path) -> None:
 
     container = _FakeContainer(
         {
+            "event_bus": EventBusInmemory(),
             "ingestion": _FakeIngestion(tmp_path),
+            "segmentation": _FakeSegmentation(),
             "extraction": _FakeExtraction(),
             "grading": _FakeGrading(),
             "draft_gen": _FakeDraftGen(),
@@ -308,6 +348,7 @@ async def test_inline_pol_scorecard_written(tmp_path: Path) -> None:
         ModelCanaryCommandPayload(
             manifest_path=str(manifest_path),
             output_dir=str(output_dir),
+            workspace_root=str(tmp_path),
         )
     )
 

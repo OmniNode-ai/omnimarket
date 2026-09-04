@@ -109,6 +109,26 @@ profiles:
       chat_template_kwargs:
         enable_thinking: false
 
+  # OMN-11833: ADR segmentation and decision extraction require a JSON artifact.
+  # Local Qwen otherwise spends the fixed completion budget in hidden reasoning
+  # and can return no parseable JSON. ADR handlers select this profile through
+  # their typed ``adr_json_artifact`` task profile; do not couple its activation
+  # to wording in a prompt.
+  - profile_id: local-qwen-adr-json-no-think
+    enabled: true
+    model_name_patterns:
+      - "*qwen*"
+    task_types:
+      - "adr_json_artifact"
+    directive:
+      placement: user_prefix
+      text: "/no_think"
+      separator: "\n"
+      apply_once: true
+    request_options:
+      chat_template_kwargs:
+        enable_thinking: false
+
   # OMN-12813: SEA generation output-format fix.
   # Suppresses Qwen reasoning prose for the ONEX node generator and forces
   # the model to emit EXACTLY two fenced code blocks with no surrounding text.

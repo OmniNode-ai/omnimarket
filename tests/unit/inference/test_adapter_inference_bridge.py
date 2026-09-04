@@ -27,7 +27,9 @@ import pytest
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceBridgeConfig,
+    ModelInferenceJsonObjectResponseFormat,
 )
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -404,7 +406,9 @@ async def test_call_http_model_temperature_from_argument_overrides_config() -> N
     captured: dict[str, object] = {}
 
     async def fake_post(url: str, **kwargs: object) -> MagicMock:
-        captured.update(kwargs.get("json", {}))  # type: ignore[arg-type]
+        json_payload = kwargs.get("json")
+        if isinstance(json_payload, dict):
+            captured.update(json_payload)
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
         resp.json.return_value = {"choices": [{"message": {"content": "t-from-arg"}}]}
@@ -444,7 +448,9 @@ async def test_call_http_model_temperature_falls_back_to_config() -> None:
     captured: dict[str, object] = {}
 
     async def fake_post(url: str, **kwargs: object) -> MagicMock:
-        captured.update(kwargs.get("json", {}))  # type: ignore[arg-type]
+        json_payload = kwargs.get("json")
+        if isinstance(json_payload, dict):
+            captured.update(json_payload)
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
         resp.json.return_value = {"choices": [{"message": {"content": "t-from-cfg"}}]}
@@ -472,6 +478,120 @@ async def test_call_http_model_temperature_falls_back_to_config() -> None:
 # ---------------------------------------------------------------------------
 # _call_http_model(): successful POST parses choices[0].message.content
 # ---------------------------------------------------------------------------
+
+
+async def test_call_http_model_applies_adr_qwen_protocol_options() -> None:
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "qwen3-coder": {
+                "transport": "http",
+                "base_url": "https://api.example.com",
+                "model_id": "qwen3.8",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+    mock_cm, mock_client = _make_mock_httpx_cm("[]")
+
+    with patch(_HTTP_MODULE, return_value=mock_cm):
+        result = await bridge.infer(
+            model_key="qwen3-coder",
+            system_prompt="A prompt whose wording cannot activate an ADR profile.",
+            user_prompt="Extract JSON from this plan.",
+            timeout_seconds=5.0,
+            protocol_selection=ModelInferenceProtocolSelection(
+                profile_id="local-qwen-adr-json-no-think",
+                task_type="adr_json_artifact",
+            ),
+        )
+
+    assert result == "[]"
+    payload = mock_client.post.call_args.kwargs["json"]
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payload["messages"][1]["content"] == (
+        "/no_think\nExtract JSON from this plan."
+    )
+
+
+async def test_call_http_model_unknown_selected_protocol_fails_closed() -> None:
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "qwen3-coder": {
+                "transport": "http",
+                "base_url": "https://api.example.com",
+                "model_id": "Qwen3.6-35B-A3B",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+
+    with pytest.raises(ValueError, match="unknown inference protocol profile"):
+        await bridge.infer(
+            model_key="qwen3-coder",
+            system_prompt="Any wording.",
+            user_prompt="Return JSON.",
+            timeout_seconds=5.0,
+            protocol_selection=ModelInferenceProtocolSelection(
+                profile_id="not-a-real-profile",
+                task_type="adr_json_artifact",
+            ),
+        )
+
+
+async def test_call_http_model_protocol_request_option_collision_fails_closed() -> None:
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "test-model": {
+                "transport": "http",
+                "base_url": "https://api.example.com",
+                "model_id": "test-model-v1",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+
+    with (
+        patch(
+            "omnimarket.inference.adapter_inference_bridge.apply_inference_protocol",
+            return_value=("system", "user", {"response_format": {"type": "text"}}),
+        ),
+        pytest.raises(ValueError, match="protocol request options cannot override"),
+    ):
+        await bridge.infer(
+            model_key="test-model",
+            system_prompt="system",
+            user_prompt="user",
+            timeout_seconds=5.0,
+        )
+
+
+async def test_call_http_model_forwards_caller_owned_json_object_response_format() -> (
+    None
+):
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "structured": {
+                "transport": "http",
+                "base_url": "https://api.example.com",
+                "model_id": "qwen-test",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+    mock_cm, mock_client = _make_mock_httpx_cm("[]")
+
+    with patch(_HTTP_MODULE, return_value=mock_cm):
+        result = await bridge.infer(
+            model_key="structured",
+            system_prompt="sys",
+            user_prompt="usr",
+            timeout_seconds=5.0,
+            response_format=ModelInferenceJsonObjectResponseFormat(),
+        )
+
+    assert result == "[]"
+    payload = mock_client.post.call_args.kwargs["json"]
+    assert payload["response_format"] == {"type": "json_object"}
 
 
 async def test_call_http_model_success_parses_content() -> None:
@@ -630,7 +750,8 @@ async def test_call_cli_model_does_not_block_event_loop() -> None:
 #
 # 1. base_url already carrying a /v1 suffix must not be double-appended to
 #    ".../v1/v1/chat/completions" (the live-reproduced 404 repro).
-# 2. reasoning-shape responses (message.reasoning populated, content empty)
+# 2. reasoning-shape responses (message.reasoning/reasoning_content populated,
+#    content empty)
 #    must not crash with a bare, undiagnosable KeyError('content').
 # ---------------------------------------------------------------------------
 
@@ -798,6 +919,47 @@ async def test_call_http_model_content_absent_falls_back_to_reasoning() -> None:
     assert result == "reasoning-only text"
 
 
+async def test_call_http_model_content_empty_falls_back_to_reasoning_content() -> None:
+    """Reasoning models may return their output in reasoning_content."""
+    config = ModelInferenceBridgeConfig(
+        model_configs={
+            "reasoning-content-model": {
+                "transport": "http",
+                "base_url": "https://api.example.com",
+                "model_id": "reasoning-content-test",
+            }
+        }
+    )
+    bridge = AdapterInferenceBridge(config)
+    mock_response = MagicMock()
+    mock_response.raise_for_status = MagicMock()
+    mock_response.json.return_value = {
+        "choices": [
+            {
+                "message": {
+                    "content": "",
+                    "reasoning_content": "reasoning_content-only text",
+                }
+            }
+        ]
+    }
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_cm = MagicMock()
+    mock_cm.__aenter__ = AsyncMock(return_value=mock_client)
+    mock_cm.__aexit__ = AsyncMock(return_value=False)
+
+    with patch(_HTTP_MODULE, return_value=mock_cm):
+        result = await bridge.infer(
+            model_key="reasoning-content-model",
+            system_prompt="sys",
+            user_prompt="usr",
+            timeout_seconds=5.0,
+        )
+
+    assert result == "reasoning_content-only text"
+
+
 async def test_call_http_model_no_content_or_reasoning_raises_clear_error() -> None:
     """Neither content nor reasoning present -> a specific, diagnosable
     ValueError, never a bare unhandled KeyError('content')."""
@@ -822,7 +984,7 @@ async def test_call_http_model_no_content_or_reasoning_raises_clear_error() -> N
 
     with (
         patch(_HTTP_MODULE, return_value=mock_cm),
-        pytest.raises(ValueError, match="no content or reasoning"),
+        pytest.raises(ValueError, match="no content, reasoning, or reasoning_content"),
     ):
         await bridge.infer(
             model_key="empty-model",

@@ -40,6 +40,12 @@ from typing import Any
 
 import pytest
 
+from omnimarket.models.adr import (
+    EnumAdrKBDestination,
+    EnumAdrPublicationClassification,
+    EnumAdrSourceVisibility,
+    ModelAdrSourceProvenance,
+)
 from omnimarket.nodes.node_kb_adr_publisher.handlers.handler_kb_adr_publisher import (
     HandlerKBADRPublisher,
 )
@@ -55,29 +61,66 @@ TOPIC_COMMAND = "onex.cmd.omnimarket.kb-adr-publish-requested.v1"
 TOPIC_COMPLETED = "onex.evt.omnimarket.kb-adr-publish-completed.v1"
 
 _PR_URL = "https://github.com/OmniNode-ai/knowledge-base/pull/42"
+_SOURCE_PROVENANCE = ModelAdrSourceProvenance(
+    source_repository="OmniNode-ai/omnimarket",
+    source_visibility="public",
+    publication_classification="public",
+)
 
 
-def _make_decision(model_id: str = "qwen3-coder-local") -> dict[str, Any]:
+def _make_decision(
+    model_id: str = "qwen3-coder-local",
+    *,
+    source_provenance: ModelAdrSourceProvenance = _SOURCE_PROVENANCE,
+    kb_destination: EnumAdrKBDestination = EnumAdrKBDestination.public,
+) -> dict[str, Any]:
     return {
-        "status": "Proposed",
-        "date": "2026-05-23T10:00:00+00:00",
-        "title": f"Use Pydantic for wire DTOs ({model_id})",
-        "context": "Inconsistent DTO definitions across repos.",
-        "decision": "All wire DTOs must be Pydantic BaseModel subclasses.",
-        "consequences": "Easier validation; heavier import overhead.",
-        "alternatives_considered": ["dataclasses", "TypedDict"],
-        "supersedes": [],
-        "source_evidence": ["seg-abc123"],
-        "extraction_metadata": {
-            "model_id": model_id,
-            "confidence": 0.87,
-            "pipeline_version": "1.0.0",
-            "prompt_template_id": "adr-extraction-v3",
-            "prompt_template_version": "3.0.1",
-            "canary_run_id": "canary-2026-05-23-001",
-            "extracted_at": "2026-05-23T10:00:00+00:00",
+        "draft": {
+            "status": "Proposed",
+            "date": "2026-05-23T10:00:00+00:00",
+            "title": f"Use Pydantic for wire DTOs ({model_id})",
+            "context": "Inconsistent DTO definitions across repos.",
+            "decision": "All wire DTOs must be Pydantic BaseModel subclasses.",
+            "consequences": "Easier validation; heavier import overhead.",
+            "alternatives_considered": ["dataclasses", "TypedDict"],
+            "supersedes": [],
+            "source_evidence": ["seg-abc123"],
+            "extraction_metadata": {
+                "model_id": model_id,
+                "confidence": 0.87,
+                "pipeline_version": "1.0.0",
+                "prompt_template_id": "adr-extraction-v3",
+                "prompt_template_version": "3.0.1",
+                "canary_run_id": "canary-2026-05-23-001",
+                "extracted_at": "2026-05-23T10:00:00+00:00",
+            },
         },
+        "source_provenance": source_provenance.model_dump(mode="json"),
+        "kb_destination": kb_destination.value,
+        "source_documents": [
+            {
+                "source_path": "docs/plans/adr-publisher-plan.md",
+                "source_content_sha256": "a" * 64,
+            }
+        ],
     }
+
+
+def _command(
+    run_dir: Path,
+    *,
+    model_key: str = "qwen3-coder-local",
+    dry_run: bool = False,
+    kb_destination: EnumAdrKBDestination = EnumAdrKBDestination.public,
+    source_provenance: ModelAdrSourceProvenance | None = _SOURCE_PROVENANCE,
+) -> ModelKBADRPublishRequest:
+    return ModelKBADRPublishRequest(
+        canary_run_dir=str(run_dir),
+        model_key=model_key,
+        dry_run=dry_run,
+        kb_destination=kb_destination,
+        source_provenance=source_provenance,
+    )
 
 
 def _canary_dir(tmp_path: Path, *, decisions: list[dict[str, Any]] | None) -> Path:
@@ -176,9 +219,7 @@ async def test_missing_decisions_file_over_bus(
         runner = _MockRunner()
         completed, runner = await _drive(
             bus,
-            ModelKBADRPublishRequest(
-                canary_run_dir=str(run_dir), model_key="qwen3-coder-local"
-            ),
+            _command(run_dir),
             runner,
         )
         result = _result(completed)
@@ -207,9 +248,7 @@ async def test_no_matching_decisions_over_bus(
         runner = _MockRunner()
         completed, runner = await _drive(
             bus,
-            ModelKBADRPublishRequest(
-                canary_run_dir=str(run_dir), model_key="qwen3-coder-local"
-            ),
+            _command(run_dir),
             runner,
         )
         result = _result(completed)
@@ -244,11 +283,7 @@ async def test_dry_run_success_over_bus(
         runner = _MockRunner()
         completed, runner = await _drive(
             bus,
-            ModelKBADRPublishRequest(
-                canary_run_dir=str(run_dir),
-                model_key="qwen3-coder-local",
-                dry_run=True,
-            ),
+            _command(run_dir, dry_run=True),
             runner,
         )
         result = _result(completed)
@@ -283,9 +318,7 @@ async def test_full_publish_success_over_bus(
         runner = _MockRunner()
         completed, runner = await _drive(
             bus,
-            ModelKBADRPublishRequest(
-                canary_run_dir=str(run_dir), model_key="qwen3-coder-local"
-            ),
+            _command(run_dir),
             runner,
         )
         result = _result(completed)
@@ -322,9 +355,7 @@ async def test_clone_fault_yields_no_terminal_event_over_bus(
         runner = _MockRunner(fail_on="clone")
         completed, runner = await _drive(
             bus,
-            ModelKBADRPublishRequest(
-                canary_run_dir=str(run_dir), model_key="qwen3-coder-local"
-            ),
+            _command(run_dir),
             runner,
             on_error=lambda: errors.append(1),
         )
@@ -332,6 +363,111 @@ async def test_clone_fault_yields_no_terminal_event_over_bus(
         assert completed == []
         assert errors == [1]
         assert [_MockRunner._token(c) for c in runner.calls] == ["clone"]
+    finally:
+        await bus.close()
+
+
+# ---------------------------------------------------------------------------
+# Publication policy — reject unsafe provenance before the subprocess seam.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+@pytest.mark.parametrize(
+    ("source_visibility", "classification", "error_fragment"),
+    [
+        (
+            EnumAdrSourceVisibility.private,
+            EnumAdrPublicationClassification.private,
+            "private source provenance",
+        ),
+        (
+            EnumAdrSourceVisibility.public,
+            EnumAdrPublicationClassification.restricted,
+            "restricted publication classification",
+        ),
+        (
+            EnumAdrSourceVisibility.public,
+            EnumAdrPublicationClassification.needs_review,
+            "needs_review publication classification",
+        ),
+    ],
+)
+async def test_public_destination_policy_rejection_over_bus_has_no_subprocess(
+    integration_event_bus: Any,
+    tmp_path: Path,
+    source_visibility: EnumAdrSourceVisibility,
+    classification: EnumAdrPublicationClassification,
+    error_fragment: str,
+) -> None:
+    """Unsafe source policy publishes a typed failure without invoking git/gh."""
+    bus = integration_event_bus
+    await bus.start()
+    try:
+        source = ModelAdrSourceProvenance(
+            source_repository="OmniNode-ai/policy-source",
+            source_visibility=source_visibility,
+            publication_classification=classification,
+        )
+        run_dir = _canary_dir(
+            tmp_path,
+            decisions=[_make_decision(source_provenance=source)],
+        )
+        runner = _MockRunner()
+        completed, runner = await _drive(
+            bus,
+            _command(run_dir, source_provenance=source),
+            runner,
+        )
+        result = _result(completed)
+        assert result.success is False
+        assert result.error_code == "PUBLICATION_POLICY_REJECTED"
+        assert result.error is not None
+        assert error_fragment in result.error
+        assert runner.calls == []
+    finally:
+        await bus.close()
+
+
+@pytest.mark.integration
+async def test_private_source_can_publish_to_private_destination_over_bus(
+    integration_event_bus: Any, tmp_path: Path
+) -> None:
+    """The closed private destination is the sole allowed route for private sources."""
+    bus = integration_event_bus
+    await bus.start()
+    try:
+        private_source = ModelAdrSourceProvenance(
+            source_repository="OmniNode-ai/private-source",
+            source_visibility="private",
+            publication_classification="private",
+        )
+        run_dir = _canary_dir(
+            tmp_path,
+            decisions=[
+                _make_decision(
+                    source_provenance=private_source,
+                    kb_destination=EnumAdrKBDestination.private,
+                )
+            ],
+        )
+        runner = _MockRunner()
+        completed, runner = await _drive(
+            bus,
+            _command(
+                run_dir,
+                kb_destination=EnumAdrKBDestination.private,
+                source_provenance=private_source,
+            ),
+            runner,
+        )
+        result = _result(completed)
+        assert result.success is True
+        assert result.kb_destination is EnumAdrKBDestination.private
+        assert result.kb_repository == "OmniNode-ai/knowledge-base-internal"
+        assert ["gh", "repo", "clone", "OmniNode-ai/knowledge-base-internal"] in [
+            call[:4] for call in runner.calls
+        ]
     finally:
         await bus.close()
 
@@ -347,9 +483,7 @@ async def test_deterministic_identical_input_over_bus(
 ) -> None:
     bus_factory = type(integration_event_bus)
     run_dir = _canary_dir(tmp_path, decisions=[_make_decision("qwen3-coder-local")])
-    command = ModelKBADRPublishRequest(
-        canary_run_dir=str(run_dir), model_key="qwen3-coder-local"
-    )
+    command = _command(run_dir)
     payloads: list[str] = []
     for _ in range(2):
         bus = bus_factory(
