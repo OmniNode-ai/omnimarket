@@ -16,6 +16,8 @@ pre-populate evidence_results (tests, event-bus consumers).
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import glob
 import logging
 import os
@@ -118,6 +120,39 @@ _DEFAULT_GIT_OP_TIMEOUT_S = 300
 # Operator override for the ceiling above, for hosts whose OCC clone or disk
 # is slower (or faster) than the machine the default was measured on.
 _GIT_OP_TIMEOUT_ENV = "DOD_VERIFY_GIT_OP_TIMEOUT_S"
+
+# OMN-17816. The shared origin/dev snapshot every concurrent run reads from,
+# instead of one private 32,382-file checkout per run.
+#
+# The ``.occ-dev-wt-`` prefix is load-bearing, not cosmetic: OMN-16826 AC(a)
+# added ``.occ-dev-wt-*/`` to the omni_home .gitignore, and the hygiene tooling
+# keys off the same prefix. A new prefix would put ~32k untracked files back in
+# the omni_home working tree, which is exactly the debris that ticket closed.
+_SHARED_SNAPSHOT_PREFIX = ".occ-dev-wt-shared-"
+
+# Lock files live inside the OCC clone's own .git/, NOT next to the snapshots in
+# OMNI_HOME. A lock file is never deleted (deleting it would let two processes
+# lock two different inodes for one logical resource), so one accumulates per
+# distinct dev SHA — and the OMN-16826 .gitignore rule `.occ-dev-wt-*/` carries a
+# trailing slash, so it matches DIRECTORIES only. Lock files beside the
+# snapshots would therefore be permanently untracked `??` entries in the
+# omni_home working tree: exactly the debris that ticket closed. Everything
+# under .git/ is unreachable by `git add`, and the locks are scoped to the repo
+# they actually guard.
+_SNAPSHOT_LOCK_DIR = "occ-dev-snapshot-locks"
+
+# Appended to a snapshot's lock file name. Held SHARED by every run using that
+# snapshot and taken EXCLUSIVELY (non-blocking) before reaping it, so a
+# superseded snapshot with a live reader is never deleted.
+_SNAPSHOT_LOCK_SUFFIX = ".lock"
+
+# Creation mutex, one per OCC clone. Serializes the checkout itself so N
+# concurrent runs pay for ONE build rather than N racing ones.
+_SNAPSHOT_BUILD_LOCK_NAME = "build.lock"
+
+# A resolved git object name. Guards against handing a ref-resolution failure
+# (which git can report on stdout) to the snapshot path as if it were a SHA.
+_SHA_RE = re.compile(r"[0-9a-f]{40}")
 
 
 def _git_op_timeout_s() -> float:
@@ -1263,6 +1298,10 @@ class EvidenceCollector:
         # OCC repo. Contract-load AND the shell greps run inside it so dev-only
         # contracts + receipts are visible (OMN-13888 scope 6).
         self._occ_dev_root: str | None = None
+        # OMN-17816: fd of this run's SHARED lock on the OCC snapshot it is
+        # reading, released by release_occ_dev_snapshot(). None when this run
+        # is not on the shared path (fallback per-run worktree, or no OCC).
+        self._occ_snapshot_lock_fd: int | None = None
         self._occ_governance_ref = (
             os.environ.get("OCC_GOVERNANCE_REF", _DEFAULT_OCC_GOVERNANCE_REF).strip()
             or _DEFAULT_OCC_GOVERNANCE_REF
@@ -1569,6 +1608,11 @@ class EvidenceCollector:
             return results
         finally:
             self._occ_dev_root = None
+            # OMN-17816: drop the reader lock BEFORE the per-run teardown, so a
+            # shared snapshot becomes reapable the moment this run stops using
+            # it. The two are exclusive — a run is either on the shared path
+            # (created_worktree None) or the per-run one (lock fd None).
+            self.release_occ_dev_snapshot()
             if created_worktree is not None:
                 self._remove_occ_dev_worktree(created_worktree)
 
@@ -1617,6 +1661,22 @@ class EvidenceCollector:
         refresh_outcome = self._refresh_occ_ref(occ)
         omni_home = os.environ.get("OMNI_HOME", "").strip()
         parent = Path(omni_home) if omni_home and Path(omni_home).is_dir() else None
+
+        # OMN-17816: prefer ONE snapshot shared by every run at this SHA over a
+        # private full checkout per run. Falls through to the per-run path below
+        # whenever the SHA cannot be resolved or the shared snapshot cannot be
+        # built — the fallback is the pre-existing behaviour, unchanged, so this
+        # can only ever add a way to succeed, never a new way to fail.
+        target_sha = self._resolve_governance_ref_sha(occ)
+        if parent is not None and target_sha is not None:
+            shared = self._materialize_shared_occ_snapshot(occ, parent, target_sha)
+            if shared is not None:
+                # created_worktree is deliberately None: a SHARED snapshot must
+                # outlive the run that happened to build it. collect()'s
+                # `finally` removes created_worktree when non-None, which would
+                # delete the tree a concurrent run is still reading.
+                return str(shared), None, refresh_outcome, target_sha
+
         try:
             tmp = Path(tempfile.mkdtemp(prefix=".occ-dev-wt-", dir=parent))
         except OSError:
@@ -1657,6 +1717,286 @@ class EvidenceCollector:
             return None, None, refresh_outcome, None
         resolved_sha = self._resolve_worktree_head_sha(tmp)
         return str(tmp), tmp, refresh_outcome, resolved_sha
+
+    def _resolve_governance_ref_sha(self, occ: Path) -> str | None:
+        """Return the 40-char commit the governance ref points at, or None.
+
+        OMN-17816. This is the shared snapshot's key. It is resolved from the
+        clone's ref database (cheap, no checkout) BEFORE any tree is written,
+        which is what makes "has someone already checked this out?" answerable
+        at all — the old code only learned the SHA after paying for the
+        checkout, so it could never reuse one.
+
+        ``None`` on any failure. Every caller treats that as "no shared
+        snapshot" and falls back to the per-run path, so an unresolvable ref
+        cannot turn into a wrong answer here — it turns into the pre-existing
+        behaviour, which then fails closed on its own terms.
+        """
+        try:
+            proc = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(occ),
+                    "rev-parse",
+                    f"{self._occ_governance_ref}^{{commit}}",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_git_op_timeout_s(),
+            )
+        except (subprocess.TimeoutExpired, OSError):
+            return None
+        if proc.returncode != 0:
+            return None
+        sha = proc.stdout.strip()
+        return sha if len(sha) == 40 and _SHA_RE.fullmatch(sha) else None
+
+    def _shared_snapshot_path(self, parent: Path, sha: str) -> Path:
+        """Where the snapshot for ``sha`` lives.
+
+        Keeps the ``.occ-dev-wt-`` prefix deliberately. That prefix is already
+        carried by the ``omni_home`` ``.gitignore`` rule ``.occ-dev-wt-*/``
+        (OMN-16826 AC(a)) and by the hygiene tooling built around it; a new
+        prefix would silently reintroduce the untracked-debris problem that
+        ticket closed.
+        """
+        return parent / f"{_SHARED_SNAPSHOT_PREFIX}{sha[:12]}"
+
+    def _snapshot_lock_path(self, occ: Path, name: str) -> Path | None:
+        """Return the path of lock file ``name`` for clone ``occ``, or None.
+
+        ``None`` when the lock directory cannot be created, which puts the
+        caller back on the unchanged per-run path rather than proceeding
+        unsynchronised — an unlocked shared snapshot is worse than no shared
+        snapshot, because two runs could then check out into the same directory
+        at once.
+        """
+        lock_dir = occ / ".git" / _SNAPSHOT_LOCK_DIR
+        try:
+            lock_dir.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return None
+        return lock_dir / name
+
+    def _open_snapshot_lock(
+        self, path: Path, exclusive: bool, blocking: bool
+    ) -> int | None:
+        """Acquire an ``fcntl`` advisory lock on ``path``; return the fd or None.
+
+        Advisory ``fcntl`` locks are the right primitive here for two reasons
+        the alternatives fail on:
+
+        * they are released by the KERNEL when the holder dies, so a run killed
+          mid-checkout (the exact failure this ticket is about — the 300 s
+          ceiling tripping under load) cannot wedge the next run. A
+          "does the lock file exist?" scheme would wedge permanently after one
+          ``kill -9``;
+        * macOS ships no ``flock(1)`` binary (memory
+          ``reference_macos_no_flock_use_fcntl_shim``), so the lock has to be
+          taken in-process rather than shelled out to.
+
+        The lock FILE is never deleted — deleting it would let two processes
+        hold locks on two different inodes for the same logical resource.
+        """
+        try:
+            fd = os.open(path, os.O_CREAT | os.O_RDWR, 0o644)
+        except OSError:
+            return None
+        flags = fcntl.LOCK_EX if exclusive else fcntl.LOCK_SH
+        if not blocking:
+            flags |= fcntl.LOCK_NB
+        try:
+            fcntl.flock(fd, flags)
+        except OSError:
+            os.close(fd)
+            return None
+        return fd
+
+    def release_occ_dev_snapshot(self) -> None:
+        """Drop this run's reader lock on the shared snapshot.
+
+        Public because ``collect()``'s ``finally`` is not the only caller — the
+        node's own teardown and the tests both need it, and a reader that never
+        releases would block every future prune of that snapshot forever.
+
+        Idempotent: calling it twice, or with no lock held, is a no-op.
+        """
+        fd = self._occ_snapshot_lock_fd
+        self._occ_snapshot_lock_fd = None
+        if fd is None:
+            return
+        with contextlib.suppress(OSError):
+            fcntl.flock(fd, fcntl.LOCK_UN)
+        with contextlib.suppress(OSError):
+            os.close(fd)
+
+    def _snapshot_is_usable(self, snapshot: Path, sha: str) -> bool:
+        """True only if ``snapshot`` is a real worktree checked out at ``sha``.
+
+        All three conditions matter. A directory alone is the shape a killed
+        checkout leaves (OMN-16826 measured 27 of those holding only
+        ``drift/``); a ``.git`` file alone does not prove WHICH commit is in the
+        tree. Handing back a half-written or wrong-SHA tree would be worse than
+        rebuilding it, because the run would report ``origin/dev`` provenance
+        for content that is not ``origin/dev``.
+        """
+        if not snapshot.is_dir() or not (snapshot / ".git").exists():
+            return False
+        return self._resolve_worktree_head_sha(snapshot) == sha
+
+    def _materialize_shared_occ_snapshot(
+        self, occ: Path, parent: Path, sha: str
+    ) -> Path | None:
+        """Return a snapshot of ``sha`` shared with every concurrent run, or None.
+
+        On success this run holds a SHARED (reader) lock on the snapshot, which
+        it keeps until ``release_occ_dev_snapshot``. That lock is what makes the
+        supersession prune safe: a snapshot with a live reader cannot be
+        acquired exclusively, so it is left alone rather than deleted out from
+        under a running verification.
+
+        Returns ``None`` on any failure, which puts the caller back on the
+        unchanged per-run path. Nothing here can produce a *stale* tree: the SHA
+        is part of the path AND re-verified against the checked-out HEAD.
+        """
+        snapshot = self._shared_snapshot_path(parent, sha)
+
+        reader_lock = self._snapshot_lock_path(
+            occ, f"{snapshot.name}{_SNAPSHOT_LOCK_SUFFIX}"
+        )
+        build_lock = self._snapshot_lock_path(occ, _SNAPSHOT_BUILD_LOCK_NAME)
+        if reader_lock is None or build_lock is None:
+            return None
+
+        # Fast path: already built by someone else. Take the reader lock FIRST,
+        # then validate — validating first would race a concurrent prune.
+        reader_fd = self._open_snapshot_lock(
+            reader_lock, exclusive=False, blocking=True
+        )
+        if reader_fd is not None and self._snapshot_is_usable(snapshot, sha):
+            self._occ_snapshot_lock_fd = reader_fd
+            return snapshot
+        if reader_fd is not None:
+            with contextlib.suppress(OSError):
+                fcntl.flock(reader_fd, fcntl.LOCK_UN)
+                os.close(reader_fd)
+
+        # Slow path: build it. ONE process at a time, host-wide, so N concurrent
+        # runs pay for ONE 32k-file checkout instead of N.
+        build_fd = self._open_snapshot_lock(build_lock, exclusive=True, blocking=True)
+        if build_fd is None:
+            return None
+        try:
+            # Re-check under the lock: whoever held it before us may have built
+            # exactly what we need while we waited.
+            if not self._snapshot_is_usable(snapshot, sha):
+                self._prune_superseded_snapshots(occ, parent, keep=snapshot)
+                if snapshot.exists():
+                    # A half-written tree from a killed run. Clear the
+                    # registration too, via the OMN-16826 unlock-first path —
+                    # a bare prune is a silent no-op on a locked entry.
+                    self._cleanup_failed_occ_worktree_add(occ, snapshot)
+                if not self._add_occ_worktree(occ, snapshot, sha):
+                    return None
+                if not self._snapshot_is_usable(snapshot, sha):
+                    self._cleanup_failed_occ_worktree_add(occ, snapshot)
+                    return None
+        finally:
+            with contextlib.suppress(OSError):
+                fcntl.flock(build_fd, fcntl.LOCK_UN)
+                os.close(build_fd)
+
+        reader_fd = self._open_snapshot_lock(
+            reader_lock, exclusive=False, blocking=True
+        )
+        if reader_fd is None:
+            return None
+        self._occ_snapshot_lock_fd = reader_fd
+        return snapshot
+
+    def _add_occ_worktree(self, occ: Path, target: Path, ref: str) -> bool:
+        """Run one ``git worktree add --detach`` into ``target``. True on success.
+
+        Failure and timeout both route through the OMN-16826 cleanup, so a trip
+        of the ceiling leaves neither a directory nor a locked registration —
+        which is what let the registry reach 292 entries before this ticket.
+        """
+        try:
+            proc = subprocess.run(
+                [
+                    "git",
+                    "-C",
+                    str(occ),
+                    "worktree",
+                    "add",
+                    "--detach",
+                    "--force",
+                    str(target),
+                    ref,
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                timeout=_git_op_timeout_s(),
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning(
+                "Timed out materialising the shared OCC snapshot at %s after %ss",
+                target,
+                _git_op_timeout_s(),
+            )
+            self._cleanup_failed_occ_worktree_add(occ, target)
+            return False
+        if proc.returncode != 0:
+            logger.warning(
+                "Could not materialise the shared OCC snapshot at %s: %s",
+                target,
+                proc.stderr.strip(),
+            )
+            self._cleanup_failed_occ_worktree_add(occ, target)
+            return False
+        return True
+
+    def _prune_superseded_snapshots(self, occ: Path, parent: Path, keep: Path) -> None:
+        """Remove shared snapshots for SHAs that are no longer current.
+
+        Without this the registry would still grow — one entry per distinct dev
+        SHA instead of one per run. Slower, same shape of leak.
+
+        A snapshot is removed ONLY if its reader lock can be taken exclusively
+        without blocking. That is the whole safety argument: a run that started
+        at the previous SHA still holds a shared lock, so its tree survives and
+        is reaped by a later pass once it finishes. Best-effort throughout —
+        this is housekeeping on the way to the real work and must never raise
+        over it.
+        """
+        try:
+            candidates = list(parent.glob(f"{_SHARED_SNAPSHOT_PREFIX}*"))
+        except OSError:
+            return
+        for candidate in candidates:
+            if candidate == keep or not candidate.is_dir():
+                continue
+            lock_path = self._snapshot_lock_path(
+                occ, f"{candidate.name}{_SNAPSHOT_LOCK_SUFFIX}"
+            )
+            if lock_path is None:
+                continue
+            fd = self._open_snapshot_lock(lock_path, exclusive=True, blocking=False)
+            if fd is None:
+                logger.info(
+                    "Leaving superseded OCC snapshot %s in place: still in use",
+                    candidate,
+                )
+                continue
+            try:
+                self._remove_occ_dev_worktree(candidate)
+            finally:
+                with contextlib.suppress(OSError):
+                    fcntl.flock(fd, fcntl.LOCK_UN)
+                    os.close(fd)
 
     def _resolve_worktree_head_sha(self, worktree: Path) -> str | None:
         """Return the 40-char commit SHA the worktree actually checked out.
