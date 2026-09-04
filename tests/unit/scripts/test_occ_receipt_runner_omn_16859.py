@@ -347,6 +347,15 @@ def test_the_command_executed_is_the_contracts_declared_check_value(
     replaces. Re-deriving the command here (rather than reading it from the
     contract) would reopen the OCC#5534 laundering channel where one probe
     became the authoritative proof of N distinct bars.
+
+    OMN-17794 added a single prefix line locating the commit: OCC's Receipt
+    Hardening Gate resolves a bare ``commit_sha`` against onex_change_control
+    and would otherwise report this product-repo head as fabricated. The
+    declared bar itself is still carried through byte-for-byte on the line
+    after it, and the prefix is applied identically to both fields -- so what
+    this test protects (the receipt attests to the DECLARED check, and
+    ``probe_command`` is not independently re-derived) is unchanged. See
+    ``test_occ_receipt_runner_commit_binding_omn_17794.py``.
     """
     occ_root = _occ_root(tmp_path, [_item(ITEM, "test_passes", PASSING_CHECK)])
 
@@ -355,8 +364,12 @@ def test_the_command_executed_is_the_contracts_declared_check_value(
     receipt = ModelDodReceipt.model_validate(
         _load(_receipt_dir(occ_root) / "test_passes.yaml")
     )
-    assert receipt.check_value == PASSING_CHECK
-    assert receipt.probe_command == PASSING_CHECK
+    located = f"repos/{REPO}/commits/{HEAD_SHA}\n{PASSING_CHECK}"
+    assert receipt.check_value == located
+    assert receipt.probe_command == located
+    # The declared bar survives byte-for-byte, and the two fields stay equal.
+    assert receipt.check_value.endswith(f"\n{PASSING_CHECK}")
+    assert receipt.probe_command == receipt.check_value
 
 
 # ---------------------------------------------------------------------------
