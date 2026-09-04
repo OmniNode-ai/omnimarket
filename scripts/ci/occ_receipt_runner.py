@@ -390,12 +390,119 @@ def build_supersession_record(
     }
 
 
-def _dump(path: Path, body: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(body, sort_keys=True, default_flow_style=False, width=10_000),
-        encoding="utf-8",
+# OMN-17794 — the receipt bytes must be a shape no formatter can falsify.
+#
+# ``onex_change_control``'s own Pre-commit job runs ``yamlfmt`` v0.21.0 over
+# every file this runner writes, resolved against that repo's ``.yamlfmt``
+# (``max_line_length: 100``, ``indent: 2``, ``include_document_start: true``).
+# Two rewrites were MEASURED against the real binary, and both change a
+# receipt's parsed VALUE rather than only its layout:
+#
+#   1. A multi-line scalar written PLAIN or SINGLE-QUOTED carries its newlines
+#      as blank lines. go-yaml round-trips those through an internal line
+#      marker and writes the marker back as literal text, destroying the
+#      newline. Live on OCC#8132: ``replacement.probe_stdout`` went from
+#      ``'... [100%]\n31 passed in 13.14s'`` to ``'... [100%] <marker> 31
+#      passed in 13.14s'`` — a fabricated token inside captured stdout.
+#   2. A literal block scalar carrying the KEEP chomping indicator (``|+``,
+#      which PyYAML reaches for when a value ends in more than one line break)
+#      loses the ``+``, silently deleting the trailing blank lines.
+#
+# So neither "always block" nor "always quoted" is safe on its own. Each
+# multi-line string is written as a literal block scalar when PyYAML can do so
+# without the keep indicator, and double-quoted otherwise — double-quoted
+# escapes newlines, so there is no real newline for a line marker to replace.
+# ``width``/``explicit_start`` match the OCC config so the emitted file is also
+# a yamlfmt FIXPOINT and the hosted hook does not report "files were modified".
+# (The sibling producer ``occ_evidence_stamp`` already emits the same document
+# shape; this runner, added later by OMN-16859, never got it.)
+_OCC_YAMLFMT_MAX_LINE_LENGTH = 100
+
+# Every character YAML treats as a line break. A value containing any of them
+# is multi-line for the purposes of the rules above.
+_YAML_LINE_BREAKS = "\n\x85\u2028\u2029"
+
+
+class _ForcedStyleDumper(yaml.SafeDumper):
+    """Emit one scalar in one requested style, to measure what PyYAML does."""
+
+
+def _block_scalar_is_safe(value: str) -> bool:
+    """True iff a literal block scalar represents ``value`` formatter-safely.
+
+    Measured, not assumed: PyYAML is asked to emit the value as ``|`` and the
+    result is inspected. The answer is False when PyYAML had to reach for the
+    keep indicator (rule 2 above) or when the block form does not reload to the
+    same string at all — the two cases where a block scalar would either be
+    rewritten by yamlfmt or be lossy on its own.
+    """
+    forced = yaml.dump(
+        value,
+        Dumper=_ForcedStyleDumper,
+        default_style="|",
+        default_flow_style=False,
+        width=_OCC_YAMLFMT_MAX_LINE_LENGTH,
+        allow_unicode=True,
     )
+    header = forced.split("\n", 1)[0]
+    if not header.startswith("|") or "+" in header:
+        return False
+    reloaded: object = yaml.safe_load(forced)
+    return reloaded == value
+
+
+def _receipt_scalar_style(value: str) -> str | None:
+    """The style to write ``value`` in; ``None`` lets PyYAML choose."""
+    if not any(char in value for char in _YAML_LINE_BREAKS):
+        return None
+    return "|" if _block_scalar_is_safe(value) else '"'
+
+
+class _ReceiptDumper(yaml.SafeDumper):
+    """SafeDumper that never emits a formatter-rewritable multi-line scalar."""
+
+
+def _represent_receipt_str(dumper: yaml.SafeDumper, data: str) -> yaml.nodes.ScalarNode:
+    return dumper.represent_scalar(
+        "tag:yaml.org,2002:str", data, style=_receipt_scalar_style(data)
+    )
+
+
+_ReceiptDumper.add_representer(str, _represent_receipt_str)
+
+
+def render_receipt_yaml(body: dict[str, Any]) -> str:
+    """Serialize a receipt body to yamlfmt-stable, value-faithful YAML.
+
+    Fails closed. A receipt is durable evidence, so bytes that do not reload to
+    the object they were built from are never returned: an unrepresentable body
+    raises instead of writing a document that says something else.
+    """
+    text = yaml.dump(
+        body,
+        Dumper=_ReceiptDumper,
+        sort_keys=True,
+        default_flow_style=False,
+        width=_OCC_YAMLFMT_MAX_LINE_LENGTH,
+        explicit_start=True,
+        allow_unicode=True,
+    )
+    reloaded = yaml.safe_load(text)
+    if reloaded != body:
+        raise ValueError(
+            "receipt YAML round-trip failed: the rendered document does not "
+            "reload to the receipt it was built from, so writing it would "
+            "record something that was never observed."
+        )
+    return text
+
+
+def _dump(path: Path, body: dict[str, Any]) -> None:
+    # Render BEFORE mkdir/write: a body that cannot be represented faithfully
+    # must leave no file behind at all.
+    text = render_receipt_yaml(body)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
 
 
 def run(
