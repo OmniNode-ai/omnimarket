@@ -3463,7 +3463,7 @@ def test_the_picker_library_is_not_edited_into_a_repo_specific_fork() -> None:
 # anything.
 #
 # The controlled A/B, read read-only out of two run dirs on the SAME host
-# (h101, /Users/Shared/onex-prepush/runs/) on 2026-09-03:
+# (h101, /Users/Shared/onex-prepush/runs/) on 2026-09-03:  # onex-allow-local-path OMN-17753 reason="cites the shared, TCC-free remote workroot the two A/B run dirs were read out of; a normalized path stops the measurement being reproducible"  # test-literal-ok: same, for the structural gate
 #
 #   omnibase_infra-edeb29875ef7-3319   argv.txt = "tests/unit/"
 #     suite.log:7  "collected 25911 items"
