@@ -226,8 +226,10 @@ class TestWhatMustNotBreak:
     def test_no_machine_specific_absolute_path_is_introduced(self, field: str) -> None:
         """OMN-15710 — a GitHub API path is not a filesystem path."""
         value = str(_receipt()[field])
-        assert "/Users/" not in value
-        assert "/Volumes/" not in value
+        # test-literal-ok: absence is the assertion (same rationale as the
+        # _ABS_PATH_PREFIXES literals in test_occ_receipt_runner_omn_16859.py).
+        assert "/Users/" not in value  # test-literal-ok: absence is the assertion
+        assert "/Volumes/" not in value  # test-literal-ok: absence is the assertion
         assert not value.startswith("/")
 
 
