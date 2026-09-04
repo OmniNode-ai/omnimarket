@@ -652,6 +652,22 @@ def _load_bifrost_endpoints() -> dict[str, BifrostBackendRef]:
     return backends
 
 
+def shipped_house_credential_refs() -> frozenset[str]:
+    """The platform credential names the SHIPPED bifrost contract declares.
+
+    OMN-17434: the one accessor every entry point enforcing the customer-key
+    terminus derives its house set from. ``delta()`` and the bus-less
+    ``LocalDelegationDispatchPort`` read the same loader
+    (:func:`_load_bifrost_endpoints`, honouring the same ``BIFROST_CONTRACT_PATH``
+    / ``BIFROST_OVERLAY_PATH`` bindings) through the same derivation
+    (:func:`house_credential_refs`), so the two surfaces cannot disagree about
+    what counts as OmniNode's credential. A second, hand-typed notion of "is
+    this ours" is exactly the under-claiming hazard the derivation exists to
+    prevent.
+    """
+    return house_credential_refs(_load_bifrost_endpoints())
+
+
 @lru_cache(maxsize=1)
 def _get_task_class_contract() -> dict[str, object] | None:
     """Load task-class contracts from YAML, returning None if not available.
@@ -2209,6 +2225,7 @@ __all__: list[str] = [
     "resolve_task_class_dod_resolution",
     "resolve_task_class_max_escalations",
     "resolve_task_class_response_contract",
+    "shipped_house_credential_refs",
     "sibling_backend_available_in_tier",
     "tier_for_backend",
     "tier_max_retries",
