@@ -58,6 +58,8 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+import yaml
+
 from omnimarket.nodes.contract_topics import contract_subscribe_topics
 from omnimarket.nodes.node_projection_session_replay.models.model_session_replay import (
     ModelProjectionReplayResult,
@@ -65,12 +67,20 @@ from omnimarket.nodes.node_projection_session_replay.models.model_session_replay
     ModelSessionReplayEvent,
     ModelSessionReplayState,
 )
+from omnimarket.projection.discovery import load_projection_exposures_from_contract
 from omnimarket.projection.handler_shim import (
     INJECTED_ENVELOPE_ID_KEY,
     INJECTED_TOPIC_KEY,
     split_projection_input,
 )
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.snapshot_publisher import (
+    KafkaSnapshotDeltaPublisher,
+    ProtocolSnapshotDeltaPublisher,
+    encode_snapshot_delta,
+    resolve_snapshot_bootstrap_servers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -286,7 +296,107 @@ def _rehydrate_state(rows: list[dict[str, object]]) -> ModelSessionReplayState:
 
 
 class HandlerProjectionSessionReplay:
-    """Reducer: accumulate session events into replay snapshot rows."""
+    """Reducer: accumulate session events into replay snapshot rows.
+
+    [OMN-17774] Every row this reducer durably writes is also republished as a
+    keyed snapshot delta onto the exposure's own topic. That republish is the
+    ONLY way the row reaches a reader: the projection API process holds no
+    database handle by design (OMN-15800 seam B), so an exposure becomes visible
+    exactly when — and only when — its writer publishes.
+
+    Whether anything is published is entirely contract-driven.
+    ``encode_snapshot_delta`` returns ``None`` for an exposure that does not
+    declare ``bus_backed``, so the call below is unconditional and the contract
+    alone decides. That is the ordering rule the epic makes explicit: the flag
+    and its writer land together, because a flag ahead of its writer converts an
+    honest refusal into a confident empty.
+    """
+
+    def __init__(
+        self,
+        *,
+        contract_path: Path | None = None,
+        publisher: ProtocolSnapshotDeltaPublisher | None = None,
+    ) -> None:
+        """Load this node's own exposure and bind the republish transport.
+
+        Args:
+            contract_path: Override for the node's ``contract.yaml``. Defaults
+                to the shipped one beside this package.
+            publisher: Transport for encoded snapshot deltas. Injected by tests
+                and by any caller that wants to own the lifecycle; otherwise a
+                per-call Kafka producer is built lazily on first publish, so
+                constructing this handler touches no broker and reads no
+                settings.
+        """
+        path = contract_path or _DEFAULT_CONTRACT_PATH
+        with open(path) as handle:
+            contract: dict[str, object] = yaml.safe_load(handle)
+        exposures = load_projection_exposures_from_contract(
+            contract, str(contract.get("name", "projection_session_replay")), path
+        )
+        self._snapshot_exposure: ProjectionTableConfig | None = next(
+            (exposure for exposure in exposures if exposure.bus_backed), None
+        )
+        self._publisher: ProtocolSnapshotDeltaPublisher | None = publisher
+
+    def _resolve_publisher(self) -> ProtocolSnapshotDeltaPublisher:
+        """Return the bound publisher, building the default one once.
+
+        Built lazily rather than in ``__init__``: the runtime constructs every
+        projection handler at wiring time, including in processes and tests that
+        never publish, and resolving broker settings there would make handler
+        construction depend on transport configuration it may not need.
+        """
+        if self._publisher is None:
+            self._publisher = KafkaSnapshotDeltaPublisher(
+                bootstrap_servers=resolve_snapshot_bootstrap_servers()
+            )
+        return self._publisher
+
+    def _publish_snapshot(
+        self,
+        row: ModelReplaySnapshotRow,
+        *,
+        source_topic: str,
+        source_event_id: str,
+    ) -> bool:
+        """Republish one materialized row as a keyed snapshot delta.
+
+        The ordering coordinates are fixed at partition 0 / offset 0, and that
+        is a decision, not an omission. The runtime's projection dispatch seam
+        injects only ``_db``/``_event_type``/``_topic``/``_envelope_id``
+        (``handler_shim.RUNTIME_INJECTED_KEYS``) — a sync projection handler
+        never sees the source message's Kafka coordinates, so there is no real
+        offset to pass and inventing a monotonic counter here would be a
+        process-local token of exactly the kind OMN-15800 round 3 removed.
+
+        Fixed coordinates are CORRECT for this exposure because its key is
+        ``snapshot_id``, which is content-addressed per source event: one source
+        event owns exactly one key. ``SnapshotCache.apply_message`` therefore
+        only ever compares a key against a delta derived from the SAME source
+        event — a Kafka redelivery — and dropping that as a replay is the
+        intended idempotence, not lost data. It would be wrong for a mutable
+        key grain, which is why
+        ``test_every_distinct_source_event_owns_its_own_key`` asserts the
+        premise rather than trusting it.
+        """
+        exposure = self._snapshot_exposure
+        if exposure is None:
+            return False
+        message = encode_snapshot_delta(
+            exposure,
+            op="upsert",
+            row=_row_to_dict(row),
+            source_event_id=source_event_id,
+            source_topic=source_topic,
+            source_partition=0,
+            source_offset=0,
+            observed_at=datetime.now(tz=UTC).isoformat(),
+        )
+        if message is None:
+            return False
+        return self._resolve_publisher().publish(message)
 
     def accumulate(
         self,
@@ -388,7 +498,16 @@ class HandlerProjectionSessionReplay:
             )
 
         ok = db.upsert(TABLE, CONFLICT_KEY, _row_to_dict(row))
-        return ModelProjectionReplayResult(rows_upserted=1 if ok else 0)
+        if not ok:
+            return ModelProjectionReplayResult(rows_upserted=0)
+        published = self._publish_snapshot(
+            row,
+            source_topic=topic,
+            source_event_id=envelope_id if envelope_id is not None else snapshot_id,
+        )
+        return ModelProjectionReplayResult(
+            rows_upserted=1, snapshot_published=published
+        )
 
     def handle(self, input_data: dict[str, object]) -> dict[str, object]:
         """RuntimeLocal handler protocol shim.

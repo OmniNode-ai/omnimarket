@@ -36,11 +36,8 @@ from omnimarket.projection.dlq import (
     correlation_id_from_payload,
 )
 from omnimarket.projection.envelope import unwrap_envelope
-from omnimarket.projection.models import (
-    ModelProjectionSnapshotDelta,
-    ProjectionTableConfig,
-    snapshot_json_value,
-)
+from omnimarket.projection.models import ProjectionTableConfig
+from omnimarket.projection.snapshot_publisher import encode_snapshot_delta
 
 if TYPE_CHECKING:
     # OMN-15800 AC6: the projection-api process must never load asyncpg --
@@ -668,60 +665,20 @@ class BaseProjectionRunner(ABC):
         supplied for the wrong ``op`` — all are programming errors in the
         calling handler, never a runtime/network condition.
         """
-        if not exposure.bus_backed:
+        message = encode_snapshot_delta(
+            exposure,
+            op=op,
+            row=row,
+            key=key,
+            source_event_id=source_event_id,
+            source_topic=source_topic,
+            source_partition=source_partition,
+            source_offset=source_offset,
+            observed_at=datetime.now(UTC).isoformat(),
+            tenant_id=tenant_id,
+        )
+        if message is None:
             return False
-        if not exposure.key_columns:
-            raise RuntimeError(
-                f"projection_api exposure {exposure.topic!r} is bus_backed "
-                "but declares no key_columns"
-            )
-        if op == "upsert":
-            if row is None:
-                raise RuntimeError(
-                    f"publish_snapshot_delta({exposure.topic!r}, op='upsert') "
-                    "requires a row"
-                )
-            if key is not None:
-                raise RuntimeError(
-                    f"publish_snapshot_delta({exposure.topic!r}, op='upsert') "
-                    "must not carry an explicit key (row is the key source)"
-                )
-            key_source = row
-        else:  # op == "delete"
-            if row is not None:
-                raise RuntimeError(
-                    f"publish_snapshot_delta({exposure.topic!r}, op='delete') "
-                    "must not carry a row"
-                )
-            if key is None:
-                raise RuntimeError(
-                    f"publish_snapshot_delta({exposure.topic!r}, op='delete') "
-                    "requires a key"
-                )
-            key_source = key
-
-        try:
-            key_parts = tuple(
-                str(key_source[column]) for column in exposure.key_columns
-            )
-        except KeyError as exc:
-            raise RuntimeError(
-                f"snapshot delta for {exposure.topic!r} is missing declared "
-                f"key column {exc}"
-            ) from exc
-        # Fail loud rather than silently corrupt the compacted topic
-        # (CodeRabbit, OMN-15800): '|' is the key-part delimiter and
-        # SnapshotCache splits a tombstone's raw key on the same character.
-        # An unescaped '|' inside a key-column value would make the recovered
-        # tombstone key tuple diverge from the upsert's key tuple (a delete
-        # silently misses its row), and could collide two distinct key
-        # tuples onto the same encoded bytes.
-        if any("|" in part for part in key_parts):
-            raise RuntimeError(
-                f"snapshot delta key for {exposure.topic!r} contains the "
-                f"'|' delimiter and cannot be safely encoded: {key_parts!r}"
-            )
-        key_bytes = "|".join(key_parts).encode("utf-8")
 
         producer = await self._ensure_producer()
         if producer is None:
@@ -732,44 +689,11 @@ class BaseProjectionRunner(ABC):
             )
             return False
 
-        headers = [
-            ("tenant_id", tenant_id.encode("utf-8")),
-            ("content_type", b"application/json"),
-            ("schema_version", b"projection_snapshot.v1"),
-        ]
-
-        if op == "delete":
-            await producer.send_and_wait(
-                exposure.topic, value=None, key=key_bytes, headers=headers
-            )
-            return True
-
-        serialized_row = {
-            column: snapshot_json_value(
-                value, decode_json_string=column in exposure.json_columns
-            )
-            for column, value in (row or {}).items()
-        }
-        delta = ModelProjectionSnapshotDelta(
-            topic=exposure.topic,
-            key=key_parts,
-            op="upsert",
-            row=serialized_row,
-            # Display-only metadata (CodeRabbit, OMN-15800 round 3, discussion
-            # r3745850632): never consulted for staleness. The ordering
-            # authority is source_topic/source_partition/source_offset below
-            # -- broker-assigned Kafka coordinates of the SOURCE message,
-            # immune to a wall-clock step or a rebalance to a lagging-clock
-            # replica.
-            observed_at=datetime.now(UTC).isoformat(),
-            source_event_id=source_event_id,
-            source_topic=source_topic,
-            source_partition=source_partition,
-            source_offset=source_offset,
-        )
-        value_bytes = delta.model_dump_json().encode("utf-8")
         await producer.send_and_wait(
-            exposure.topic, value=value_bytes, key=key_bytes, headers=headers
+            message.topic,
+            value=message.value,
+            key=message.key,
+            headers=list(message.headers),
         )
         return True
 
