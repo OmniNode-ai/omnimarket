@@ -29,6 +29,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_verify import (
     HandlerDodVerify,
 )
@@ -125,7 +128,16 @@ def test_fetch_failure_refuses_by_default_ac1(
     # clone — never a "verified" table attributed to origin/dev.
     assert len(results) == 1
     assert results[0].evidence_id == "occ_ref_refresh"
-    assert results[0].status == EnumEvidenceCheckStatus.FAILED
+    # OMN-17796 re-encoded this refusal: the check is SKIPPED (nothing ran, so
+    # nothing failed) and the RUN is UNRESOLVED with a typed cause. Recording
+    # it FAILED asserted a red about a ticket whose contract had not been
+    # loaded, and the autoclose sweep rendered that as "not all ACs are
+    # receipt-proven". The refusal is unchanged — its encoding is not.
+    assert results[0].status == EnumEvidenceCheckStatus.SKIPPED
+    assert results[0].status != EnumEvidenceCheckStatus.VERIFIED
+    assert collector.occ_ref_failure_cause is (
+        EnumDodVerifyUnresolvedCause.OCC_REF_REFRESH_FAILED
+    )
     assert "OCC_REF_REFRESH_FAILED" in (results[0].message or "")
     assert collector.occ_refresh_outcome == EnumOccRefRefreshOutcome.FETCH_FAILED
     assert not any(
