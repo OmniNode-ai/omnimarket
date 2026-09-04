@@ -17,7 +17,6 @@ adapters — no real LLM calls. Verifies:
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -176,8 +175,8 @@ class _StubDraftGen:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_proof_of_life_full_pipeline(kafka_integration_bus: object) -> None:
-    """Full pipeline: manifest loads, all stubs invoked, files written, report correct."""
+async def test_proof_of_life_full_pipeline(tmp_path: Path) -> None:
+    """Exercise the protocol-injected pipeline without a transport dependency."""
     ingestion_stub = _StubIngestion()
     segmentation_stub = _StubSegmentation()
     extraction_stub = _StubExtraction()
@@ -185,7 +184,6 @@ async def test_proof_of_life_full_pipeline(kafka_integration_bus: object) -> Non
     draft_gen_stub = _StubDraftGen()
 
     container: dict[str, object] = {
-        "event_bus": kafka_integration_bus,
         "ingestion": ingestion_stub,
         "segmentation": segmentation_stub,
         "extraction": extraction_stub,
@@ -197,40 +195,40 @@ async def test_proof_of_life_full_pipeline(kafka_integration_bus: object) -> Non
 
     manifest_abs = str(_OMNIMARKET_ROOT / _MANIFEST_PATH)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        request = ModelCanaryCommandPayload(
-            manifest_path=manifest_abs,
-            output_dir=tmpdir,
-        )
-        report = await handler.handle(request)
+    request = ModelCanaryCommandPayload(
+        manifest_path=manifest_abs,
+        workspace_root=str(tmp_path),
+        output_dir=str(tmp_path / "evidence"),
+    )
+    report = await handler.handle(request)
 
-        # Core report assertions
-        assert report.success, f"Report failed: {report.error_message}"
-        expected_entries = _manifest_entry_count()
-        assert report.entries_total == expected_entries
-        assert report.entries_completed == expected_entries
-        assert report.entries_failed == 0
+    # Core report assertions
+    assert report.success, f"Report failed: {report.error_message}"
+    expected_entries = _manifest_entry_count()
+    assert report.entries_total == expected_entries
+    assert report.entries_completed == expected_entries
+    assert report.entries_failed == 0
 
-        # Scorecard written
-        scorecard = Path(report.scorecard_path)
-        assert scorecard.exists(), f"Scorecard not found at {scorecard}"
-        scorecard_text = scorecard.read_text()
-        assert "ADR Canary Scorecard" in scorecard_text
+    # Scorecard written
+    scorecard = Path(report.scorecard_path)
+    assert scorecard.exists(), f"Scorecard not found at {scorecard}"
+    scorecard_text = scorecard.read_text()
+    assert "ADR Canary Scorecard" in scorecard_text
 
-        # Evidence directory populated
-        evidence_dir = Path(report.evidence_dir)
-        assert evidence_dir.is_dir()
+    # Evidence directory populated
+    evidence_dir = Path(report.evidence_dir)
+    assert evidence_dir.is_dir()
 
-        # Representative entry subdirs exist with at least one evidence JSON.
-        for entry_id in _SAMPLE_ENTRY_IDS:
-            entry_dir = evidence_dir / entry_id
-            assert entry_dir.is_dir(), f"Missing evidence dir for entry: {entry_id}"
-            json_files = list(entry_dir.glob("*.json"))
-            assert json_files, f"No evidence JSON files for entry: {entry_id}"
-            for jf in json_files:
-                evidence = json.loads(jf.read_text())
-                assert evidence["extraction_success"] is True
-                assert evidence["grading_success"] is True
+    # Representative entry subdirs exist with at least one evidence JSON.
+    for entry_id in _SAMPLE_ENTRY_IDS:
+        entry_dir = evidence_dir / entry_id
+        assert entry_dir.is_dir(), f"Missing evidence dir for entry: {entry_id}"
+        json_files = list(entry_dir.glob("*.json"))
+        assert json_files, f"No evidence JSON files for entry: {entry_id}"
+        for jf in json_files:
+            evidence = json.loads(jf.read_text())
+            assert evidence["extraction_success"] is True
+            assert evidence["grading_success"] is True
 
     # Stubs were called at least once each
     assert ingestion_stub.call_count >= 3
@@ -248,10 +246,9 @@ async def test_proof_of_life_full_pipeline(kafka_integration_bus: object) -> Non
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_proof_of_life_dry_run(kafka_integration_bus: object) -> None:
+async def test_proof_of_life_dry_run(tmp_path: Path) -> None:
     """Dry-run mode: no stubs called, report returns entries_total == 3."""
     container: dict[str, object] = {
-        "event_bus": kafka_integration_bus,
         "ingestion": _StubIngestion(),
         "segmentation": _StubSegmentation(),
         "extraction": _StubExtraction(),
@@ -262,13 +259,13 @@ async def test_proof_of_life_dry_run(kafka_integration_bus: object) -> None:
     handler = HandlerCanaryOrchestrator(container)
     manifest_abs = str(_OMNIMARKET_ROOT / _MANIFEST_PATH)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        request = ModelCanaryCommandPayload(
-            manifest_path=manifest_abs,
-            output_dir=tmpdir,
-            dry_run=True,
-        )
-        report = await handler.handle(request)
+    request = ModelCanaryCommandPayload(
+        manifest_path=manifest_abs,
+        workspace_root=str(tmp_path),
+        output_dir=str(tmp_path / "evidence"),
+        dry_run=True,
+    )
+    report = await handler.handle(request)
 
     assert report.dry_run is True
     assert report.entries_total == _manifest_entry_count()
@@ -277,9 +274,7 @@ async def test_proof_of_life_dry_run(kafka_integration_bus: object) -> None:
 
 @pytest.mark.integration
 @pytest.mark.asyncio
-async def test_proof_of_life_extraction_failure_path(
-    kafka_integration_bus: object,
-) -> None:
+async def test_proof_of_life_extraction_failure_path(tmp_path: Path) -> None:
     """Extraction failure: entry marked failed, pipeline continues for remaining entries."""
 
     class _FailingExtraction:
@@ -294,7 +289,6 @@ async def test_proof_of_life_extraction_failure_path(
             raise RuntimeError("stub extraction failure")
 
     container: dict[str, object] = {
-        "event_bus": kafka_integration_bus,
         "ingestion": _StubIngestion(),
         "segmentation": _StubSegmentation(),
         "extraction": _FailingExtraction(),
@@ -305,23 +299,23 @@ async def test_proof_of_life_extraction_failure_path(
     handler = HandlerCanaryOrchestrator(container)
     manifest_abs = str(_OMNIMARKET_ROOT / _MANIFEST_PATH)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        request = ModelCanaryCommandPayload(
-            manifest_path=manifest_abs,
-            output_dir=tmpdir,
-        )
-        report = await handler.handle(request)
+    request = ModelCanaryCommandPayload(
+        manifest_path=manifest_abs,
+        workspace_root=str(tmp_path),
+        output_dir=str(tmp_path / "evidence"),
+    )
+    report = await handler.handle(request)
 
-        # Entries complete at the entry level (extraction failure is per model, not per entry)
-        assert report.entries_total == _manifest_entry_count()
-        # Evidence files should exist with extraction_error set
-        evidence_dir = Path(report.evidence_dir)
-        for entry_id in _SAMPLE_ENTRY_IDS:
-            entry_dir = evidence_dir / entry_id
-            assert entry_dir.is_dir()
-            json_files = list(entry_dir.glob("*.json"))
-            assert json_files
-            for jf in json_files:
-                evidence = json.loads(jf.read_text())
-                assert evidence["extraction_success"] is False
-                assert evidence["extraction_error"] is not None
+    # Entries complete at the entry level (extraction failure is per model, not per entry)
+    assert report.entries_total == _manifest_entry_count()
+    # Evidence files should exist with extraction_error set
+    evidence_dir = Path(report.evidence_dir)
+    for entry_id in _SAMPLE_ENTRY_IDS:
+        entry_dir = evidence_dir / entry_id
+        assert entry_dir.is_dir()
+        json_files = list(entry_dir.glob("*.json"))
+        assert json_files
+        for jf in json_files:
+            evidence = json.loads(jf.read_text())
+            assert evidence["extraction_success"] is False
+            assert evidence["extraction_error"] is not None
