@@ -34,122 +34,65 @@
 # the PR body. Editing a vendored file WITHOUT touching this record is the
 # thing that cannot happen quietly.
 #
-# 2026-09-02, OMN-17606 -- THIS COPY CARRIES A FIX THAT IS LANDING UPSTREAM IN
-# PARALLEL, and the row below records that rather than hiding it. Three measured
-# defects in the shared slot probe made `slots>1` placement inert fleet-wide,
-# and on a `slot_mode=queue` row with an EXISTING BUT EMPTY QUEUE file they also
-# made the placement-time stacking guard FAIL-OPEN (an empty `grep -c .` prints
-# 0 AND exits 1, so `|| echo 0` fired too, `q` became two words, and every later
-# field was read shifted). omnimarket is hit by two of the three on every push
-# -- the leg double-count applies to every host in every repo, and the field
-# shift applies to h201, this table's only queue row -- so the fix is applied
-# here in the same pass as omnibase_infra's rather than a merge cycle behind it.
 #
-# The recorded commit is therefore the BASE this copy was taken from
-# (omnibase_infra dev @ c1c9ef19e, whose file digest is the previously pinned
-# e5b849169a5e...fc4e); the bytes below are that file PLUS the four-change
-# OMN-17606 delta, which is landing upstream in parallel on the branch
-# `jonah/omn-17606-slot-probe-correctness`. A digest check of this row against
-# the recorded commit will therefore MISMATCH, deliberately and visibly, until
-# the re-sync below; the digest still does its own job, which is detecting a
-# local edit to the shipped file. The bytes also differ from omnibase_infra's
-# own fixed copy by FOUR COMMENT LINES ONLY: upstream's wording names a
-# vendoring repo by name, which this repo's
-# test_the_picker_library_is_not_edited_into_a_repo_specific_fork forbids inside
-# the shared library, so the same sentence is written repo-neutrally here.
+# 2026-09-04, OMN-17753 -- THE RE-SYNC CONDITION IS MET AND THE NOTES ARE
+# COLLAPSED. This copy is now a VERBATIM re-take of upstream's file, not a
+# cherry-pick, and it carries ZERO executable deltas ahead of omnibase_infra
+# dev for the first time since 2026-09-02.
 #
-# RE-SYNC CONDITION: when omnibase_infra's OMN-17606 fix merges to dev,
-# re-copy the file, update this record, and re-run
-# tests/scripts/test_prepush_host_table.py. If the upstream wording still names
-# a repo at that point, the fork guard is the authority -- raise it upstream,
-# never silence the guard to make the digests match.
+# WHAT RETIRED THE LAST DELTA. The OMN-17606 slot-probe fix -- which omnimarket
+# landed FIRST (#2276) and upstream did not yet have, the one reason a verbatim
+# re-take would have REGRESSED a landed fix -- merged upstream as `8b8fd8966`
+# (#3167). It is an ancestor of the commit pinned below, so the delta the
+# OMN-17606 / OMN-17564 / OMN-17726 notes tracked is now simply IN upstream.
+# Those three notes are deleted rather than kept: their whole content was the
+# arithmetic of a divergence that no longer exists, and the history they record
+# is `git log` of this file.
 #
-#path	upstream_repo	upstream_path	upstream_commit	upstream_branch	sha256	copied_at
-# 2026-09-03, OMN-17564 -- SECOND parallel-landing delta on this same file, on
-# top of the OMN-17606 one recorded above. The remote execution leg shipped the
-# SELECTION across the seam and dropped the EXECUTION POLICY: every dispatched
-# heavy suite ran single-threaded with no per-test watchdog, and the execution
-# ssh carried ConnectTimeout only -- which governs the handshake, so a host that
-# wedged AFTER connect held the lane forever (measured: 5h29m, zero bytes, no
-# marker). Both faces are in this file, so the fix is vendored here in the same
-# pass rather than a merge cycle behind upstream.
+# WHAT THIS RE-TAKE ADDS, both landed upstream since the previous pin
+# (`80bffc356`):
+#   * OMN-17741 (`4053dc3c0`, #3161) -- the wrapper CONSTRUCTS a registry root
+#     on the target host and exports OMNI_HOME to it. `ssh` forwards no
+#     environment, so every dispatched suite previously ran with OMNI_HOME
+#     unset and fell back onto a home-relative default that exists on the lab
+#     Macs and is TCC-denied to `sshd`. The repo name travels as a TENTH
+#     positional; this repo's own tests pad it (see `_run_wrapper`).
+#   * OMN-17787 (`812d0b545`, #3179) -- the collected count is read from a
+#     `--junitxml` report instead of a banner `pytest-xdist` no longer prints,
+#     and a count of ZERO on a green exit is now NO EVIDENCE (rc 1) rather than
+#     an accepted PASS.
 #
-# The recorded commit is upstream's OMN-17564 BRANCH commit
-# (jonah/omn-17564-prepush-remote-leg-policy @ d9f76efd6, itself rebased on
-# omnibase_infra dev @ 77ffa91c9), NOT a dev commit -- upstream's push is
-# blocked on lab host saturation, not on review, so recording the branch it is
-# proven on is the honest available provenance. This repo therefore now carries
-# TWO deltas ahead of upstream dev; the digest below is this file's own, and it
-# still does its real job, which is detecting a LOCAL edit to the shipped file.
+# THE SECOND ONE IS WHY THIS RE-VENDOR IS NOT ROUTINE MAINTENANCE. The
+# reproduction that surfaced it was a push from THIS repo. Branch
+# `jonah/omn-17774-g3-sessions-busback`, two governed pushes on 2026-09-04 --
+# 06:00:48Z (`fadda5b16f3808d74bb150f91ee866fc7bcf55a2`) and 06:59:09Z
+# (`565a236a36f6dc3721a7e8b81727ef4d2d6006ae`) -- each selected
+# `is_full_suite=True reason=changed_test_unnarrowable paths=[tests/]`, the
+# heaviest escalation the selector can order, dispatched to h201.2, and were
+# each answered "REMOTE LAB RUN PASS accepted in place of heavy fail-closed
+# full-suite escalation: h201.2 ran 0 tests green" and then "SKIPPING the local
+# full suite". The zero did not merely mis-log: it SATISFIED the escalation and
+# suppressed the local full suite. Every push from this repo carried that hole
+# until this row moved.
 #
-# Bytes differ from upstream's OMN-17564 copy by the OMN-17606 slot-probe block
-# recorded above PLUS THREE COMMENT PASSAGES ONLY: upstream's wording names
-# `omnibase_core` three times (as the repo whose local heavy leg already runs
-# `-n4`, and as the source of the 3h48m55s worst-case measurement) and asserts
-# `.github/workflows/ci.yml test-parallel` as "this repo's own CI". Both are
-# false-or-forbidden here -- `test_the_picker_library_is_not_edited_into_a_repo
-# _specific_fork` forbids the repo name inside the shared library, and THIS
-# repo's ci.yml has no test-parallel job at all -- so the same facts are stated
-# repo-neutrally. No executable line differs.
+# BYTES: differ from upstream `812d0b545` by COMMENT WORDING ONLY, in five
+# passages, for the reason the deleted notes already recorded -- upstream's
+# prose names a vendoring repo by name, and
+# `test_the_picker_library_is_not_edited_into_a_repo_specific_fork` forbids
+# that token inside the shared library here, so the same facts are stated
+# repo-neutrally. NO EXECUTABLE LINE DIFFERS: verified by stripping comments
+# and blank lines from both files and diffing -- 925 executable lines each,
+# empty diff, with a positive control (the same stripper against the PREVIOUS
+# vendored copy) returning a 37-line diff.
 #
-# RE-SYNC CONDITION: when omnibase_infra's OMN-17606 and OMN-17564 fixes both
-# merge to dev, re-copy the file, collapse both notes into one record, and
-# re-run tests/scripts/test_prepush_host_table.py plus
-# tests/scripts/test_prepush_remote_leg_policy.py. If upstream's wording still
-# names a repo, the fork guard is the authority -- raise it upstream, never
-# silence the guard to make the digests match.
-#
-# SUPERSEDED 2026-09-03 by the OMN-17726 note below: the branch commit this note
-# recorded (d9f76efd6) merged upstream as `a5eac80c3`, which is an ancestor of
-# the `80bffc356` now pinned in the row -- so the delta it describes is no
-# longer a delta. The note is KEPT, not deleted: it is the record of WHY the pin
-# was once an unmerged branch commit, and the RE-SYNC CONDITION below names it.
-#
-# 2026-09-03, OMN-17726 -- THE OMN-17564 DELTA ABOVE IS NO LONGER A DELTA, and
-# this record now names a MERGED dev commit again. Read this note together with
-# the two above; it supersedes their arithmetic, not their history.
-#
-# WHAT WAS ADDED: the OMN-17704 delta (upstream omnibase_infra#3155, squash
-# `80bffc356`, merged 2026-09-03T09:48:36Z) -- `prepush_local_row_uv` and
-# `prepush_developer_shell_path`. That is the half of the fix that lives in the
-# shared library; the other half is the export in THIS repo's own, un-vendored
-# `scripts/hooks/prepush_smart_tests.sh`, which lands in the same commit.
-# Without BOTH, the helper exists and nothing calls it, and the six false
-# `shellcheck` reds a non-owner actor gets on `.201` do not clear. The upstream
-# merge alone could never clear them, because this file is a byte COPY.
-#
-# WHAT RESOLVED ITSELF: the OMN-17564 note above recorded an UNMERGED upstream
-# branch commit because upstream's push was blocked at the time. It has since
-# merged upstream as `a5eac80c3`, and `80bffc356` (recorded below) is a
-# descendant of it -- so the execution-policy delta this file used to carry
-# ahead of upstream dev is now simply IN upstream dev. One of the two recorded
-# deltas is retired by arithmetic, not by an edit.
-#
-# EXACTLY ONE DELTA REMAINS, and it is deliberate: the OMN-17606 slot-probe
-# block recorded at the top. omnimarket landed that fix (#2276) before
-# omnibase_infra did, and upstream dev still carries the three defective probe
-# lines. A verbatim re-copy of `80bffc356` would REGRESS a landed fix, so this
-# copy is a CHERRY-PICK of the OMN-17704 functions onto the existing bytes, not
-# a re-take of the whole file. Every executable line of the two new functions
-# is byte-identical to `80bffc356`, verified by comparing both function bodies
-# with comment and blank lines stripped.
-#
-# Bytes also differ from upstream by COMMENT WORDING ONLY, for the same reason
-# the two notes above already record: upstream's OMN-17549 PATH-parity block
-# names a vendoring repo in its "Measured 2026-09-02" sentence, and
-# `test_the_picker_library_is_not_edited_into_a_repo_specific_fork` forbids that
-# token inside the shared library here, so the same fact is stated
-# repo-neutrally. Upstream's pointer at its own `tests/unit/infra/
-# test_catalog_cli.py` is likewise generalised. No executable line differs.
-#
-# RE-SYNC CONDITION (now single, where it used to be a pair): when
-# omnibase_infra's OMN-17606 fix merges to dev, re-copy the file verbatim,
-# collapse the OMN-17606 / OMN-17564 / OMN-17726 notes into one record, and
-# re-run tests/scripts/test_prepush_host_table.py plus
-# tests/scripts/test_prepush_remote_leg_policy.py. If upstream's wording still
-# names a repo at that point, the fork guard is the authority -- raise it
+# RE-SYNC CONDITION: there is no outstanding delta, so the next update is a
+# plain verbatim re-take whenever upstream moves. Re-copy the file, update BOTH
+# fields in the row below, and re-run tests/scripts/test_prepush_host_table.py
+# plus tests/scripts/test_prepush_remote_leg_policy.py. If upstream's wording
+# still names a repo at that point, the fork guard is the authority -- raise it
 # upstream, never silence the guard to make the digests match.
 #
-scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	80bffc356a0743dd754c59e3d79eaba436f61a04	dev	9f2e3dfcc5e72ff49df7e49168c1dfbe61c3c5d938d44457e90af0dc5b6a03d0	2026-09-03
+#path	upstream_repo	upstream_path	upstream_commit	upstream_branch	sha256	copied_at
+scripts/hooks/prepush_dispatch.sh	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_dispatch.sh	812d0b5451c1b157dd764cc26a83b9c7e12bcf71	dev	948c15bd0f03691b6022df94a221491f3db36862adfa68cfc2c33ecfd2189d21	2026-09-04
 scripts/hooks/prepush_override_grant.py	OmniNode-ai/omnibase_infra	scripts/hooks/prepush_override_grant.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	6777c592a944fe1964a195bf088c00c7747551e5e9a20705ca49d9e59dbc3f3c	2026-09-01
 scripts/hooks/pytest_full_suite_host_guard.py	OmniNode-ai/omnibase_infra	scripts/hooks/pytest_full_suite_host_guard.py	eddf4a9d20a294bed00a3c7e73ab14f73f2c6911	dev	1fd00d5c4db005be2151507b9d690d49e4c8cfb34ebffd4ecf771d02962feb11	2026-09-01

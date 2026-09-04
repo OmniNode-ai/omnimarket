@@ -1902,6 +1902,10 @@ def remote_run_env(tmp_path: Path) -> dict[str, Path]:
     fake_uv = tmp_path / "uv"
     fake_uv.write_text(
         "#!/bin/sh\n"
+        # OMN-17741: record the workspace root the wrapper handed us. Written
+        # on BOTH the `sync` and the pytest invocation, so a wrapper that
+        # establishes the registry too late (after `uv sync`) is still caught.
+        'printf "%s\\n" "${OMNI_HOME:-<unset>}" > "$OMNI_HOME_WITNESS"\n'
         'if [ "$1" = "sync" ]; then exit 0; fi\n'
         # Proof that the target-host slot is held for the DURATION of the run,
         # not merely acquired and dropped before the expensive part.
@@ -1917,6 +1921,7 @@ def remote_run_env(tmp_path: Path) -> dict[str, Path]:
         "rundir": rundir,
         "uv": fake_uv,
         "witness": witness,
+        "omni_home_witness": tmp_path / "omni_home_witness",
         "head": head,  # type: ignore[dict-item]
     }
 
@@ -1926,13 +1931,28 @@ def _run_wrapper(
     *,
     extra_env: dict[str, str] | None = None,
     extra_argv: list[str] | None = None,
+    repo: str = "omnimarket",
 ) -> subprocess.CompletedProcess[str]:
     env = {
         **os.environ,
         "LOCK_PROBE": str(env_info["workroot"] / "LOCK"),
         "LOCK_WITNESS": str(env_info["witness"]),
+        "OMNI_HOME_WITNESS": str(env_info["omni_home_witness"]),
     }
+    # FIDELITY, not tidiness (OMN-17741): `ssh` forwards no environment, so on
+    # a real target host the wrapper starts with OMNI_HOME UNSET. This pytest
+    # process inherits a developer shell where it IS set, and leaking that in
+    # would let a wrapper that establishes nothing pass the registry assertions
+    # on the launcher's value.
+    env.pop("OMNI_HOME", None)
     env.update(extra_env or {})
+    # The wrapper's trailing positionals are optional on the remote side but
+    # POSITIONAL, so they are padded here rather than appended: a caller that
+    # passes only BASE_REF/BASE_SHA must still land the repo name in slot 10.
+    tail = list(extra_argv or [])
+    base_ref = tail[0] if len(tail) > 0 else ""
+    base_sha = tail[1] if len(tail) > 1 else ""
+    slot = tail[2] if len(tail) > 2 and tail[2] else "1"
     return subprocess.run(
         [
             "bash",
@@ -1943,7 +1963,10 @@ def _run_wrapper(
             "argvsha",
             "origin-host:1",
             str(env_info["workroot"]),
-            *(extra_argv or []),
+            base_ref,
+            base_sha,
+            slot,
+            repo,
         ],
         capture_output=True,
         text=True,
@@ -1980,6 +2003,106 @@ def test_the_remote_leg_holds_the_target_hosts_lock_for_the_whole_run(
     )
 
 
+# =============================================================================
+# The transplanted tree needs a registry root (OMN-17741)
+# =============================================================================
+# `ssh` forwards no environment, so the wrapper starts with OMNI_HOME unset on
+# every target host. Code the suite runs that resolves a workspace then either
+# fails, or -- the case actually measured -- falls back to a home-relative
+# default that EXISTS on the lab Macs and is TCC-denied to `sshd`. OMN-17459
+# recorded that shape: a real full suite of a repo that vendors this library,
+# on h101, 17,883 tests in 13m58s, 12 failures, all 12 green locally, one root
+# cause.
+#
+# A false red here HARD-BLOCKS a push (`dispatch_to_lab_host` rc=3 -> `die`,
+# "a remote red is never satisfied by minting an override grant"), so this is
+# part of the verdict meaning anything -- the same standing the PATH-parity
+# block already has.
+#
+# VENDORED (OMN-17753): these arrive here with the library, from
+# omnibase_infra@4053dc3c065b0bc94e98001a28ea9415ffd782cb (#3161). They are
+# re-run against THIS repo's copy of the wrapper text, so a vendoring drift
+# that drops the registry root is caught here and not only upstream.
+
+
+def test_the_remote_wrapper_gives_the_transplanted_tree_a_registry_root(
+    remote_run_env: dict[str, Path],
+) -> None:
+    """The value must be a REAL registry the remote process can write, holding
+    the transplanted repo under its own name -- not an unset variable and not a
+    bare rundir, which contains no directory named for the repo at all."""
+    result = _run_wrapper(remote_run_env, repo="omnimarket")
+    assert result.returncode == 0, result.stderr
+
+    recorded = remote_run_env["omni_home_witness"].read_text().strip()
+    assert recorded != "<unset>", (
+        "the suite ran with no OMNI_HOME: every workspace-resolving call site "
+        "in the transplanted tree is left to guess, and the lab Macs have a "
+        "TCC-denied workspace clone for it to guess wrong onto"
+    )
+    registry = Path(recorded)
+    assert registry == remote_run_env["rundir"] / "omni_home", recorded
+    assert registry.is_dir()
+
+    linked = registry / "omnimarket"
+    assert linked.is_symlink(), "the repo must be reachable under its own name"
+    assert linked.resolve() == (remote_run_env["rundir"] / "tree").resolve()
+    assert (linked / "tests" / "test_a.py").is_file(), (
+        "the registry entry must resolve to the tree that was actually cloned"
+    )
+
+    # Writability is the whole point: the measured failure was PermissionError
+    # on mkdir, not a missing path.
+    (registry / ".onex_state" / "probe").mkdir(parents=True)
+
+
+def test_the_registry_root_is_established_on_target_never_inherited(
+    remote_run_env: dict[str, Path],
+) -> None:
+    """Forwarding the LAUNCHER's OMNI_HOME is strictly worse than leaving it
+    unset: the launcher's workspace clone path exists on every lab Mac and is
+    TCC-denied to `sshd`, so forwarding converts a fail-fast into a
+    PermissionError deep inside a test. Pin that an inherited value loses."""
+    launcher_value = "/nonexistent/launcher/workspace_clone"
+    result = _run_wrapper(
+        remote_run_env,
+        repo="somerepo",
+        extra_env={"OMNI_HOME": launcher_value},
+    )
+    assert result.returncode == 0, result.stderr
+    recorded = remote_run_env["omni_home_witness"].read_text().strip()
+    assert recorded != launcher_value, (
+        "the wrapper forwarded the launcher's workspace path to the target host"
+    )
+    assert recorded == str(remote_run_env["rundir"] / "omni_home")
+    assert (Path(recorded) / "somerepo").is_symlink()
+
+
+def test_the_registry_root_is_named_by_the_dispatch_not_hardcoded() -> None:
+    """One wrapper serves every repo that vendors it, so the repo name has to
+    travel with the dispatch. `prepush_remote_run` already computes it as
+    `basename "$REPO_ROOT"`; assert it is passed through."""
+    lib = LIB.read_text(encoding="utf-8")
+    idx = lib.index('remote_cmd="cd ')
+    invocation = lib[idx : lib.index("\n", idx)]
+    assert "'${repo}'" in invocation, (
+        "the remote command does not pass the repo name to the wrapper: " + invocation
+    )
+    remote = _remote_wrapper_text()
+    assert "REPO_NAME=" in remote, "the wrapper does not bind a repo name positional"
+    for hardcoded in ("omni_home/omnimarket", "omni_home/omnibase_core"):
+        assert hardcoded not in remote
+
+
+def test_the_registry_root_lives_under_the_gc_swept_workroot() -> None:
+    """It must not become a new class of stranded state. `prepush_remote_gc`
+    sweeps `<workroot>/runs`, so the registry belongs inside the rundir."""
+    remote = _remote_wrapper_text()
+    idx = remote.index("OMNI_HOME=")
+    assignment = remote[idx : remote.index("\n", idx)]
+    assert "$RUNDIR/" in assignment, assignment
+
+
 def test_the_remote_leg_releases_the_lock_even_when_the_suite_fails(
     remote_run_env: dict[str, Path],
 ) -> None:
@@ -2006,7 +2129,9 @@ def test_the_remote_wrapper_locks_a_numbered_lockdir_for_slot_two(
         **os.environ,
         "LOCK_PROBE": str(slot2_probe),
         "LOCK_WITNESS": str(remote_run_env["witness"]),
+        "OMNI_HOME_WITNESS": str(remote_run_env["omni_home_witness"]),
     }
+    env.pop("OMNI_HOME", None)
     result = subprocess.run(
         [
             "bash",
@@ -2020,6 +2145,7 @@ def test_the_remote_wrapper_locks_a_numbered_lockdir_for_slot_two(
             "",
             "",
             "2",
+            "omnimarket",
         ],
         capture_output=True,
         text=True,
@@ -3310,3 +3436,441 @@ def test_the_picker_library_is_not_edited_into_a_repo_specific_fork() -> None:
             "belongs in prepush_hosts.tsv or the caller's argv, not in a "
             "branch inside the shared file"
         )
+
+
+# =============================================================================
+# The collected count must be REAL, and acceptance must gate on it (OMN-17787)
+# =============================================================================
+# VENDORED (OMN-17753) from
+# omnibase_infra@812d0b5451c1b157dd764cc26a83b9c7e12bcf71 (#3179), and re-run
+# here against THIS repo's copy of the library. That is not ceremony: the
+# reproduction that surfaced the defect was a push from THIS repo. On branch
+# jonah/omn-17774-g3-sessions-busback, two governed pushes on 2026-09-04 --
+# 06:00:48Z (fadda5b16f3808d74bb150f91ee866fc7bcf55a2) and 06:59:09Z
+# (565a236a36f6dc3721a7e8b81727ef4d2d6006ae) -- selected
+# `is_full_suite=True reason=changed_test_unnarrowable paths=[tests/]`, the
+# HEAVIEST escalation the selector can order, dispatched to h201.2, and were
+# each answered "REMOTE LAB RUN PASS accepted in place of heavy fail-closed
+# full-suite escalation: h201.2 ran 0 tests green" followed by "SKIPPING the
+# local full suite". The zero did not merely mis-log: it satisfied the
+# escalation and suppressed the local full suite. Until this file's copy of
+# the library carries the fix, every push from this repo has that hole.
+#
+# MEASURED upstream, not inferred. `collected=` in the completion marker is the
+# only number in the whole dispatch that can distinguish "the remote host ran
+# the selection green" from "the remote host ran NOTHING and exited 0". It was
+# structurally zero on every parallel dispatch, and nothing compared it to
+# anything.
+#
+# The controlled A/B, read read-only out of two run dirs on the SAME host
+# (h101, /Users/Shared/onex-prepush/runs/) on 2026-09-03:  # onex-allow-local-path OMN-17753 reason="cites the shared, TCC-free remote workroot the two A/B run dirs were read out of; a normalized path stops the measurement being reproducible"  # test-literal-ok: same, for the structural gate
+#
+#   omnibase_infra-edeb29875ef7-3319   argv.txt = "tests/unit/"
+#     suite.log:7  "collected 25911 items"
+#     MARKER       collected=25911     exit=0     963.74s, 25840 passed
+#
+#   omnibase_infra-8d6b361b35ee-65887  argv.txt = "tests/unit/ -n4
+#                                       --dist=loadgroup --timeout=60
+#                                       --timeout-method=signal"
+#     suite.log:11 "4 workers [25953 items]"   <-- no `collected N items` line
+#     MARKER       collected=0         exit=0   299.44s, 25882 passed
+#
+# Same host, same repo, same paths. `pytest-xdist` 3.8.0 replaces the collector
+# banner with the worker banner, so the shipped
+# `sed -n 's/^collected \([0-9][0-9]*\) item.*/\1/p'` matches nothing and the
+# `|| COLLECTED=0` fallback fires. Since OMN-17564 made
+# `-n<k> --dist=loadgroup` the remote policy, that is EVERY parallel dispatch.
+#
+# Why the existing wrapper test never caught it: `remote_run_env`'s fake `uv`
+# echoes `collected 3 items` -- the SERIAL banner. The fixture reproduced the
+# one policy the remote leg no longer uses.
+
+
+def _junit_xml(tests: int) -> str:
+    """A minimal JUnit document in the shape pytest writes it."""
+    return (
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        "<testsuites>"
+        f'<testsuite name="pytest" errors="0" failures="0" skipped="0" '
+        f'tests="{tests}" time="1.234" timestamp="2026-09-03T18:00:00" '
+        f'hostname="stub"></testsuite>'
+        "</testsuites>\n"
+    )
+
+
+def _uv_stub_emitting(*, banner: str, junit_tests: int | None) -> str:
+    """A fake `uv` that reproduces a REAL remote pytest invocation: it prints
+    BANNER on stdout and, when asked for a JUnit report, writes one at exactly
+    the path the wrapper handed it.
+
+    The junit path is recovered from the stub's OWN argv rather than from an
+    env var, so a wrapper that stops passing ``--junitxml`` cannot pass these
+    tests by having the fixture write the file for it.
+    """
+    write_junit = ""
+    if junit_tests is not None:
+        write_junit = (
+            'for a in "$@"; do\n'
+            '  case "$a" in\n'
+            "    --junitxml=*)\n"
+            "      printf '%s' "
+            f"'{_junit_xml(junit_tests)}'"
+            ' > "${a#--junitxml=}" ;;\n'
+            "  esac\n"
+            "done\n"
+        )
+    return (
+        "#!/bin/sh\n"
+        'printf "%s\\n" "${OMNI_HOME:-<unset>}" > "$OMNI_HOME_WITNESS"\n'
+        'if [ "$1" = "sync" ]; then exit 0; fi\n'
+        'printf "%s\\n" "$*" > "$PYTEST_ARGV_WITNESS"\n'
+        'if [ -d "$LOCK_PROBE" ]; then echo held > "$LOCK_WITNESS"; '
+        'else echo free > "$LOCK_WITNESS"; fi\n'
+        + write_junit
+        + f'printf "%s\\n" {banner!r}\n'
+        'exit "${FAKE_UV_EXIT:-0}"\n'
+    )
+
+
+def _marker_field(rundir: Path, field: str) -> str:
+    for line in (rundir / "MARKER").read_text(encoding="utf-8").splitlines():
+        if line.startswith(f"{field}="):
+            return line.split("=", 1)[1]
+    raise AssertionError(
+        f"MARKER carries no {field}=: {(rundir / 'MARKER').read_text()}"
+    )
+
+
+def test_the_wrapper_asks_pytest_for_a_machine_readable_report(
+    remote_run_env: dict[str, Path],
+) -> None:
+    """The count must not be scraped out of a human-readable banner whose shape
+    is decided by whichever plugins happen to be loaded. `--junitxml` is
+    policy-independent: serial and `-n4 --dist=loadgroup` produce the same
+    document."""
+    (remote_run_env["uv"]).write_text(
+        _uv_stub_emitting(banner="4 workers [11 items]", junit_tests=11)
+    )
+    (remote_run_env["uv"]).chmod(0o755)
+    result = _run_wrapper(
+        remote_run_env,
+        extra_env={
+            "PYTEST_ARGV_WITNESS": str(remote_run_env["rundir"] / "pytest_argv.txt")
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    argv = (remote_run_env["rundir"] / "pytest_argv.txt").read_text()
+    assert "--junitxml=" in argv, (
+        "the wrapper does not ask pytest for a machine-readable report: " + argv
+    )
+    assert str(remote_run_env["rundir"]) in argv, (
+        "the JUnit report must land inside the run dir, where the marker and "
+        "suite.log already live and prepush_remote_gc already sweeps: " + argv
+    )
+
+
+def test_the_collected_count_comes_from_the_report_not_the_banner(
+    remote_run_env: dict[str, Path],
+) -> None:
+    """Deliberate mismatch: the JUnit report says 7, the banner says 3. The
+    marker must carry 7. If it carries 3 the count is still banner-derived and
+    still hostage to the execution policy."""
+    (remote_run_env["uv"]).write_text(
+        _uv_stub_emitting(banner="4 workers [3 items]", junit_tests=7)
+    )
+    (remote_run_env["uv"]).chmod(0o755)
+    result = _run_wrapper(
+        remote_run_env,
+        extra_env={
+            "PYTEST_ARGV_WITNESS": str(remote_run_env["rundir"] / "pytest_argv.txt")
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert _marker_field(remote_run_env["rundir"], "collected") == "7", (
+        "the count is not read from the JUnit report"
+    )
+
+
+def test_the_collected_count_is_non_zero_under_the_real_parallel_policy(
+    remote_run_env: dict[str, Path],
+) -> None:
+    """THE REGRESSION PIN. No JUnit report at all, and only the banner
+    `pytest-xdist` actually prints -- the exact bytes measured in h101's
+    ``omnibase_infra-8d6b361b35ee-65887/suite.log`` line 11. The shipped
+    ``^collected N items`` sed cannot match this, so before the fix the marker
+    read ``collected=0`` for a run of 25,882 tests. This is the shape that made
+    this repo's two 2026-09-04 pushes report "ran 0 tests green"."""
+    (remote_run_env["uv"]).write_text(
+        _uv_stub_emitting(banner="4 workers [25953 items]", junit_tests=None)
+    )
+    (remote_run_env["uv"]).chmod(0o755)
+    result = _run_wrapper(
+        remote_run_env,
+        extra_env={
+            "PYTEST_ARGV_WITNESS": str(remote_run_env["rundir"] / "pytest_argv.txt")
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert _marker_field(remote_run_env["rundir"], "collected") == "25953", (
+        "a real xdist run still reports a zero collected count"
+    )
+
+
+def test_the_serial_collector_banner_is_still_understood(
+    remote_run_env: dict[str, Path],
+) -> None:
+    """`.201`'s lane for this repo was measured running SERIAL on 2026-09-03
+    (``/data/omninode/onex-prepush/runs/omnimarket-01f91c5ed6e2-13930``:
+    suite.log line 7 ``collected 18095 items / 2 skipped``, MARKER
+    collected=18095). Reading the report must not cost the pre-existing form."""
+    (remote_run_env["uv"]).write_text(
+        _uv_stub_emitting(banner="collected 18095 items / 2 skipped", junit_tests=None)
+    )
+    (remote_run_env["uv"]).chmod(0o755)
+    result = _run_wrapper(
+        remote_run_env,
+        extra_env={
+            "PYTEST_ARGV_WITNESS": str(remote_run_env["rundir"] / "pytest_argv.txt")
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert _marker_field(remote_run_env["rundir"], "collected") == "18095"
+
+
+def test_a_report_saying_zero_tests_is_carried_through_as_zero(
+    remote_run_env: dict[str, Path],
+) -> None:
+    """A remote leg that EXITS 0 and writes a real JUnit document whose
+    ``<testsuite>`` says ``tests="0"`` -- a genuinely empty run, the case the
+    parsing defect made indistinguishable from a full one.
+
+    The wrapper must carry that ``0`` into the marker unchanged. Specifically
+    it must NOT treat a report of zero as "no report" and fall through to a
+    banner: the fallback chain is keyed on the count being UNREADABLE, not on
+    it being small, and a chain that re-reads a zero off some other line could
+    invent a number for a run that executed nothing. The acceptance branch
+    then refuses that marker as NO EVIDENCE -- proven in
+    ``test_a_green_remote_run_that_collected_nothing_is_no_evidence_not_a_pass``,
+    which is the other half of this chain.
+    """
+    (remote_run_env["uv"]).write_text(
+        _uv_stub_emitting(banner="4 workers [0 items]", junit_tests=0)
+    )
+    (remote_run_env["uv"]).chmod(0o755)
+    result = _run_wrapper(
+        remote_run_env,
+        extra_env={
+            "PYTEST_ARGV_WITNESS": str(remote_run_env["rundir"] / "pytest_argv.txt")
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert _marker_field(remote_run_env["rundir"], "exit") == "0"
+    assert _marker_field(remote_run_env["rundir"], "collected") == "0", (
+        "a report of zero tests must reach the marker as zero, not be treated "
+        "as a missing report and replaced from a banner"
+    )
+
+
+def test_a_banner_only_host_that_ran_nothing_still_reports_zero(
+    remote_run_env: dict[str, Path],
+) -> None:
+    """The degraded path: no JUnit report at all (a host that could not write
+    one), exit 0, and a banner that itself says zero items. The ordered banner
+    fallbacks must land on ``0`` rather than on an empty string that the
+    ``|| COLLECTED=0`` tail would coincidentally also render as ``0`` -- the
+    two are the same number here, which is exactly why the case needs its own
+    pin: it is the one input where a broken fallback chain and a working one
+    agree, so it cannot be inferred from the non-zero tests."""
+    (remote_run_env["uv"]).write_text(
+        _uv_stub_emitting(banner="4 workers [0 items]", junit_tests=None)
+    )
+    (remote_run_env["uv"]).chmod(0o755)
+    result = _run_wrapper(
+        remote_run_env,
+        extra_env={
+            "PYTEST_ARGV_WITNESS": str(remote_run_env["rundir"] / "pytest_argv.txt")
+        },
+    )
+    assert result.returncode == 0, result.stderr
+    assert _marker_field(remote_run_env["rundir"], "collected") == "0"
+
+
+# -----------------------------------------------------------------------------
+# Acceptance must GATE on the count (OMN-17787 defect 2)
+# -----------------------------------------------------------------------------
+# `prepush_remote_run`'s acceptance was exit-code-only. `m_collected` was
+# logged, written into the durable receipt, and never compared to anything, so
+# a remote run that collected genuinely ZERO tests and exited 0 was accepted as
+# a PASS and satisfied the escalation. These drive the SHIPPED function with a
+# stubbed transport, so the assertions run the real acceptance branch.
+
+
+def _remote_run_driver(
+    repo: Path,
+    tmp_path: Path,
+    *,
+    marker_exit: str,
+    marker_collected: str,
+) -> subprocess.CompletedProcess[str]:
+    """Run the shipped `prepush_remote_run` against a stub host that returns a
+    completion marker carrying MARKER_EXIT / MARKER_COLLECTED verbatim."""
+    stub_bin = tmp_path / "stubbin"
+    stub_bin.mkdir(exist_ok=True)
+    (stub_bin / "ssh").write_text(
+        "#!/bin/sh\n"
+        # The readback is the only ssh whose command mentions WRAPPER_EXIT.
+        # Every other leg (mkdir, exec, suite.log tail, gc) is a quiet success.
+        'for a in "$@"; do\n'
+        '  case "$a" in\n'
+        "    *WRAPPER_EXIT*)\n"
+        '      echo "wrapper_exit=0"\n'
+        '      echo "head_sha=$STUB_HEAD_SHA"\n'
+        '      echo "argv_sha=stubargvsha"\n'
+        '      echo "exit=$STUB_EXIT"\n'
+        '      echo "collected=$STUB_COLLECTED"\n'
+        '      echo "log_sha256=stublogsha"\n'
+        '      echo "host=stubhost"\n'
+        "      exit 0 ;;\n"
+        "  esac\n"
+        "done\n"
+        "exit 0\n"
+    )
+    (stub_bin / "ssh").chmod(0o755)
+    (stub_bin / "scp").write_text("#!/bin/sh\nexit 0\n")
+    (stub_bin / "scp").chmod(0o755)
+
+    body = (
+        f'export PATH="{stub_bin}:$PATH"\n'
+        f'export STUB_EXIT="{marker_exit}"\n'
+        f'export STUB_COLLECTED="{marker_collected}"\n'
+        'export STUB_HEAD_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"\n'
+        "PATHS=(tests)\n"
+        "PREPUSH_PICK_LABEL=hb\n"
+        "PREPUSH_PICK_SSH=jonah@hostb\n"
+        "PREPUSH_PICK_UV=/bin/uv\n"
+        f'PREPUSH_PICK_WORKROOT="{tmp_path}/wb"\n'
+        "PREPUSH_PICK_SLOT=1\n"
+        "PREPUSH_PICK_HOSTNAME=hostb\n"
+        "PREPUSH_PICK_MODE=authorizing\n"
+        "PREPUSH_PICK_RATIO=0.10\n"
+        "PREPUSH_PICK_CORES=24\n"
+        "PREPUSH_PROBE_LOG=stub\n"
+        # Not under test here: the argv digest and the reclaim ssh. Pinning the
+        # digest lets the stub host answer with a marker that BINDS, which is
+        # the precondition for reaching the acceptance branch at all.
+        "prepush_sha256_file() { printf 'stubargvsha'; }\n"
+        "prepush_remote_gc() { :; }\n"
+        "rc=0\n"
+        'prepush_remote_run "heavy thing" || rc=$?\n'
+        'echo "RC=$rc"\n'
+    )
+    return _run_driver(repo, body)
+
+
+def _receipt_lines(repo: Path) -> list[str]:
+    path = repo / ".onex_state" / "prepush_distribution" / "receipts.jsonl"
+    if not path.exists():
+        return []
+    return [ln for ln in path.read_text(encoding="utf-8").splitlines() if ln.strip()]
+
+
+def test_a_green_remote_run_that_collected_nothing_is_no_evidence_not_a_pass(
+    tmp_path: Path,
+) -> None:
+    """THE FAIL-CLOSED PIN. exit=0 with collected=0 is indistinguishable from a
+    run that executed nothing, so it cannot authorize a push. rc 1 is NO
+    EVIDENCE: `dispatch_to_lab_host` walks to the next fit host, and if none
+    answers it falls through to the local/grant/refusal ladder. It is
+    deliberately NOT rc 3 -- an empty selection says nothing about the tree, so
+    it must not hard-refuse the push either.
+
+    This is the exact input this repo's 2026-09-04 pushes produced, and the
+    sentence it must no longer print is the one they got."""
+    repo = _repo_with_table(tmp_path, _SYNTHETIC_TABLE)
+    out = _remote_run_driver(repo, tmp_path, marker_exit="0", marker_collected="0")
+    combined = out.stdout + out.stderr
+    assert "RC=1" in combined, combined
+    assert "PASS accepted" not in combined, (
+        "a zero-collection remote run was accepted as a PASS: " + combined
+    )
+    assert "NO EVIDENCE" in combined, combined
+
+
+def test_a_green_remote_run_that_collected_tests_is_still_accepted(
+    tmp_path: Path,
+) -> None:
+    """NON-VACUITY. The gate must not have been bought by refusing everything:
+    the same driver with the count h105 actually ran on 2026-09-03
+    (``omnibase_infra-466b4929e3d8-84130``, suite.log last line "2613 passed,
+    14 skipped, 3 warnings in 182.42s") is still a PASS, and the receipt now
+    carries the real number instead of 0."""
+    repo = _repo_with_table(tmp_path, _SYNTHETIC_TABLE)
+    out = _remote_run_driver(repo, tmp_path, marker_exit="0", marker_collected="2613")
+    combined = out.stdout + out.stderr
+    assert "RC=0" in combined, combined
+    assert "PASS accepted" in combined, combined
+    assert "ran 2613 tests green" in combined, combined
+    receipts = _receipt_lines(repo)
+    assert receipts, "no durable receipt was written"
+    assert '"collected":2613' in receipts[-1], receipts[-1]
+
+
+def test_pytest_reporting_no_tests_collected_is_no_evidence_not_a_red(
+    tmp_path: Path,
+) -> None:
+    """pytest exit 5 is EXIT_NOTESTSCOLLECTED -- nothing to run. That is the
+    same statement about the tree as a missing marker (none), so it is a
+    placement miss, not a failing gate. Before this it returned 3 and `die()`d
+    the push on a selection that simply resolved to nothing on the target."""
+    repo = _repo_with_table(tmp_path, _SYNTHETIC_TABLE)
+    out = _remote_run_driver(repo, tmp_path, marker_exit="5", marker_collected="0")
+    combined = out.stdout + out.stderr
+    assert "RC=1" in combined, combined
+    assert "NO EVIDENCE" in combined, combined
+    assert "RC=3" not in combined
+
+
+def test_a_non_numeric_collected_field_cannot_fall_through_to_a_pass(
+    tmp_path: Path,
+) -> None:
+    """A marker is remote input. `[ "$m_collected" -eq 0 ]` on a non-numeric
+    value is a bash ERROR whose status is 2 -- which reads as "not zero" and
+    would sail straight into the PASS branch. The field is normalized before it
+    is compared, so garbage is 0 and 0 is NO EVIDENCE."""
+    repo = _repo_with_table(tmp_path, _SYNTHETIC_TABLE)
+    out = _remote_run_driver(repo, tmp_path, marker_exit="0", marker_collected="lots")
+    combined = out.stdout + out.stderr
+    assert "RC=1" in combined, combined
+    assert "PASS accepted" not in combined, combined
+    receipts = _receipt_lines(repo)
+    assert receipts, "no durable receipt was written"
+    assert '"collected":0' in receipts[-1], (
+        "a non-numeric count must be normalized before it reaches the receipt, "
+        "or the receipt is not valid JSON: " + receipts[-1]
+    )
+
+
+def test_the_acceptance_branch_names_the_count_it_gates_on() -> None:
+    """A later edit that reverts the comparison must not be able to leave the
+    PASS log sentence intact and silently stop gating.
+
+    THE ASSERTION IS MADE AGAINST COMMENT-STRIPPED SOURCE, and that is the
+    whole point of it. Measured upstream 2026-09-04: deleting the entire
+    acceptance gate left this test PASSING, because the normalization block
+    immediately above it carries a COMMENT that quotes the very string being
+    searched for (``[ "$m_collected" -eq 0 ]`` -- explaining why the value is
+    normalized before it is compared). A guard that a comment can satisfy is
+    the same defect class as the gate this ticket closes: it cannot tell the
+    artifact from a description of the artifact. Executable lines only.
+    """
+    lib = LIB.read_text(encoding="utf-8")
+    run = lib[lib.index("prepush_remote_run() {") :]
+    code = "\n".join(
+        line for line in run.splitlines() if not line.lstrip().startswith("#")
+    )
+    assert "OMN-17787" in run, "the acceptance branch carries no reference to the gate"
+    assert "m_collected" in code
+    assert '[ "$m_collected" -eq 0 ]' in code, (
+        "acceptance no longer compares the collected count to zero on any "
+        "EXECUTABLE line (a comment mentioning the comparison does not count)"
+    )
