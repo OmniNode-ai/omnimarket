@@ -52,10 +52,43 @@ class EnumEvidenceUnverifiableCause(StrEnum):
     the block honestly, so a receipt distinguishes "we looked and it was red"
     from "we were not permitted to look".
 
-    Deliberately narrow: only the two POSITIVELY-identified credential
-    renderings qualify. A timeout, a 5xx, or an OSError stays a substantive
+    Deliberately narrow, and every member POSITIVELY identified — from the
+    endpoint's own rendering, the clone's own git state, the gate's own banner,
+    or this process's own ceiling. A cause is never inferred from a bare
+    non-zero exit, and never grepped out of a subprocess's stdout/stderr: a
+    command under test can print anything, and one that could mint its own
+    cause would launder its own red.
+
+    OMN-17795 overturns one clause of this docstring, on the record rather than
+    silently. It read: *"A timeout, a 5xx, or an OSError stays a substantive
     fail-closed FAILURE, because a transient transport fault is not evidence
-    about a credential and must not become a laundering channel.
+    about a credential and must not become a laundering channel."* That was
+    written for OMN-16788, when this enum held ONLY the two credential
+    renderings and "not evidence about a credential" was therefore decisive.
+    OMN-16846 then added two causes that are not about credentials at all
+    (``PRODUCT_CLONE_STALE``, ``GATE_VENV_IMPURE``) without revisiting it, so
+    the clause had already stopped describing the enum it sits on.
+
+    The measurement that overturned it: 36 runs, 12 tickets x 3 back-to-back,
+    nothing changed between runs. 8 of 12 tickets produced a different verdict
+    digest; OMN-16803 flipped verdict STATUS ``failed`` -> ``skipped`` ->
+    ``failed``. Every delta localised to one check racing between three
+    environmental terminal states, of which two were recorded here and the
+    third — a trip of the verifier's own per-check ceiling — was recorded
+    FAILED. Which state won the race decided the ticket's verdict.
+
+    Why the feared laundering channel does not open. A cause recorded here is
+    strictly MORE blocking than the FAILED it replaces, not less:
+    ``HandlerDodVerify._handle_typed`` refuses VERIFIED while any cause is
+    present; the check keeps its place in the verdict-bearing denominator
+    (it carries no ``unbindable_derived_overlay`` marker, which is the only
+    thing that removes an entry from it); it is not ``non_probative``; and it
+    is not ``behavior_proving``, so the OMN-16821 flip predicate
+    (``verified + non_probative == total AND behavior_proving > 0``) still
+    refuses. A budget trip cannot move a ticket one step closer to Done. The
+    clause's real content — that a fault must not become a way to PASS — is
+    preserved exactly; what changes is that the block is recorded honestly
+    instead of as a defect nobody looked for.
     """
 
     # ``gh: Resource not accessible by integration (HTTP 403)`` on
@@ -95,6 +128,18 @@ class EnumEvidenceUnverifiableCause(StrEnum):
     # identified from the gate's own verbatim refusal banner, never inferred
     # from a bare non-zero exit.
     GATE_VENV_IMPURE = "gate_venv_impure"
+    # OMN-17795. The verifier killed the check's subprocess at its OWN
+    # per-check ceiling (``DOD_VERIFY_CHECK_TIMEOUT_S``, default 30 s). The
+    # command was cut off mid-flight, so what it would have concluded is
+    # unknown — and the ceiling belongs to the verifier, not to the product.
+    # Measured: the one run in 36 where the OMN-16434 behaviour-proof check
+    # survived read ``OK (19850ms): 16 passed in 1.55s`` — 18.3 s of pytest
+    # import/collection against a 30 s ceiling, and 1.55 s of product work;
+    # the identical command tripped on the next two runs of the same ticket.
+    # Set ONLY from ``EvidenceCollector._last_check_budget_exceeded``, which
+    # this process sets inside its own ``TimeoutExpired`` handler. Remedy:
+    # raise the named ceiling for the host, or make the check cheaper.
+    CHECK_BUDGET_EXCEEDED = "check_budget_exceeded"
 
 
 class EnumOccRefRefreshOutcome(StrEnum):
