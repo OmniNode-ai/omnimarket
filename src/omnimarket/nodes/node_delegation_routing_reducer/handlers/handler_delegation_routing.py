@@ -959,6 +959,63 @@ def _shape_override_heuristic(
     return None
 
 
+def _shape_override_deterministic(
+    entry: dict[str, object] | None,
+    shape: EnumRequestedResponseShape,
+) -> tuple[str, ...] | None:
+    """Return the deterministic band declared for ``shape``, or None (OMN-17765).
+
+    The counterpart to :func:`_shape_override_heuristic`, with two deliberate
+    asymmetries.
+
+    **Class-declared only.** This never consults ``default_shape_overrides``.
+    That key applies to every task class at once, so a deterministic sibling
+    there would let a caller drop ``compiles_without_errors`` from a
+    ``code_generation`` request by prefixing a shape directive — a
+    caller-controlled bypass of the deterministic proof surface. Narrowing the
+    floor is a per-class contract decision, taken once by whoever declares it.
+
+    **Never empty.** An empty or non-list ``deterministic`` raises rather than
+    resolving to an empty band: an empty deterministic band would present a
+    degraded verdict as complete truth. A class that declares no ``deterministic``
+    key returns ``None`` — not declared, floor untouched — which is a different
+    fact from declaring an empty one.
+
+    Selection keys off the CALLER's prompt via ``shape``, never off
+    ``llm_response_content``; the constraint at ``handler_quality_gate.py:733``
+    forbids the latter and is untouched here.
+    """
+    if shape is EnumRequestedResponseShape.UNCONSTRAINED:
+        return None
+    if not isinstance(entry, dict):
+        return None
+    dod = entry.get("definition_of_done")
+    if not isinstance(dod, dict):
+        return None
+    overrides = dod.get("shape_overrides")
+    if not isinstance(overrides, dict):
+        return None
+    for_shape = overrides.get(shape.value)
+    if not isinstance(for_shape, dict):
+        return None
+    if "deterministic" not in for_shape:
+        return None
+    declared = for_shape["deterministic"]
+    checks = (
+        tuple(item for item in declared if isinstance(item, str))
+        if isinstance(declared, list)
+        else ()
+    )
+    if not checks:
+        raise ValueError(
+            f"task_class_contracts: shape_overrides.{shape.value}.deterministic "
+            f"is declared but empty or not a list of strings. An empty "
+            f"deterministic band reports a degraded verdict as complete truth; "
+            f"omit the key entirely to keep the class band."
+        )
+    return checks
+
+
 def resolve_requested_shape_for_prompt(prompt: str) -> EnumRequestedResponseShape:
     """Resolve the request-scoped response shape for ``prompt`` (OMN-16932).
 
@@ -1001,10 +1058,18 @@ def resolve_task_class_dod_checks(
     shape = resolve_requested_response_shape(
         prompt, _declared_shape_directives(contract)
     )
-    override = _shape_override_heuristic(contract, entry, shape)
-    if override is None:
-        return dod_deterministic, dod_heuristic
-    return dod_deterministic, override
+    heuristic_override = _shape_override_heuristic(contract, entry, shape)
+    if heuristic_override is not None:
+        dod_heuristic = heuristic_override
+    # OMN-17765: the deterministic band is overridable too, but only where the
+    # CLASS declares it — see _shape_override_deterministic for why this one may
+    # not fall back to `default_shape_overrides`. `None` means not declared and
+    # leaves the class floor untouched; the helper raises rather than returning
+    # an empty band.
+    deterministic_override = _shape_override_deterministic(entry, shape)
+    if deterministic_override is not None:
+        dod_deterministic = deterministic_override
+    return dod_deterministic, dod_heuristic
 
 
 def _response_contract_ref(entry: dict[str, object] | None) -> str | None:
@@ -1824,18 +1889,25 @@ def delta(
         if requested_backend_ref is not None
         else _tier_order_from_contract(config, entry)
     )
-    dod_deterministic, dod_heuristic = _definition_of_done_checks(entry)
     # OMN-16932: a prompt that declares its own answer shape ("Reply with
-    # exactly the word: alive") overrides the CLASS heuristic rubric for this
-    # request. Resolved here, where the prompt and the task-class contract are
-    # both already in hand, so the quality gate stays a pure function over a
-    # declared check set and never has to guess what was asked.
-    requested_shape = resolve_requested_response_shape(
-        request.prompt, _declared_shape_directives(contract)
+    # exactly the word: alive") overrides the CLASS rubric for this request.
+    # Resolved from the prompt and the task-class contract, so the quality gate
+    # stays a pure function over a declared check set and never has to guess
+    # what was asked.
+    #
+    # OMN-17765: this calls the SHARED resolver rather than re-deriving the
+    # bands here. It used to re-derive, and the two sites had drifted: this one
+    # applied the shape override to the heuristic band only and passed
+    # `dod_deterministic` through untouched to ModelRoutingDecision, while
+    # `resolve_task_class_dod_checks` — the bus-LESS local dispatch path — was
+    # the only site a fix would land in. That mattered because THIS is the path
+    # that produced the 28 measured rows, so a fix confined to the other site
+    # would have turned the red test green while the lane kept failing. One
+    # resolver means the two cannot disagree by construction rather than by a
+    # test that has to keep noticing.
+    dod_deterministic, dod_heuristic = resolve_task_class_dod_checks(
+        task_type, request.prompt
     )
-    shape_heuristic = _shape_override_heuristic(contract, entry, requested_shape)
-    if shape_heuristic is not None:
-        dod_heuristic = shape_heuristic
 
     # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
