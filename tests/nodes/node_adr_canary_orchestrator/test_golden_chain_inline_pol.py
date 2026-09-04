@@ -23,8 +23,22 @@ from typing import Any
 
 import pytest
 import yaml
+from omnibase_core.container import ModelONEXContainer
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
+from omnibase_core.protocols.event_bus.protocol_event_bus_subscriber import (
+    ProtocolEventBusSubscriber,
+)
 
+from omnimarket.adapters.adr import (
+    AdapterBusAdrDraftGen,
+    AdapterBusAdrExtraction,
+    AdapterBusAdrGrading,
+    AdapterBusAdrIngestion,
+    HandlerBusAdrSegmentation,
+)
 from omnimarket.models.adr import (
     ModelAdrDocumentRef,
     ModelAdrDocumentSegment,
@@ -35,6 +49,7 @@ from omnimarket.models.adr import (
 )
 from omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import (
     HandlerCanaryOrchestrator,
+    _resolve_adr_protocol_adapters,
 )
 from omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_request import (
     ModelCanaryCommandPayload,
@@ -202,6 +217,17 @@ class _FakeContainer:
             return None
 
 
+class _BrokenContainer:
+    """Container fault double that must not be downgraded to a soft miss."""
+
+    def get_service(
+        self,
+        _protocol_type: object,
+        service_name: str | None = None,
+    ) -> object:
+        raise RuntimeError(f"container failure while resolving {service_name!r}")
+
+
 def _make_manifest(tmp_path: Path) -> Path:
     manifest = {
         "entries": [
@@ -241,6 +267,37 @@ def test_contract_declares_segmentation_request_topic() -> None:
         "onex.cmd.omnimarket.adr-segmentation-requested.v1"
         in contract["event_bus"]["publish_topics"]
     )
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_unregistered_adr_protocols_fall_back_to_shared_bus_adapters() -> None:
+    """Kernel-shaped publisher/subscriber DI must compose all ADR adapters."""
+    container = ModelONEXContainer()
+    event_bus = EventBusInmemory()
+    await container.service_registry.register_instance(
+        ProtocolEventBusPublisher,
+        event_bus,
+    )
+    await container.service_registry.register_instance(
+        ProtocolEventBusSubscriber,
+        event_bus,
+    )
+
+    adapters = _resolve_adr_protocol_adapters(container)
+
+    assert isinstance(adapters.ingestion, AdapterBusAdrIngestion)
+    assert isinstance(adapters.segmentation, HandlerBusAdrSegmentation)
+    assert isinstance(adapters.extraction, AdapterBusAdrExtraction)
+    assert isinstance(adapters.grading, AdapterBusAdrGrading)
+    assert isinstance(adapters.draft_gen, AdapterBusAdrDraftGen)
+
+
+@pytest.mark.unit
+def test_adr_protocol_resolution_propagates_non_registry_failures() -> None:
+    """Only the documented service-not-registered error may trigger fallback."""
+    with pytest.raises(RuntimeError, match="container failure"):
+        _resolve_adr_protocol_adapters(_BrokenContainer())
 
 
 @pytest.mark.unit

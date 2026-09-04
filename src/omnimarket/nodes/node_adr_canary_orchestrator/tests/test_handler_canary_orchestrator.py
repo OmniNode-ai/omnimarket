@@ -902,6 +902,10 @@ class TestAdrBusProtocolAdapters:
     def test_ingestion_adapter_resolves_bus_from_container_and_awaits_response(
         self,
     ) -> None:
+        from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+            ProtocolEventBusPublisher,
+        )
+
         from omnimarket.adapters.adr import AdapterBusAdrIngestion
 
         bus = _FakeRequestResponseBus(
@@ -920,7 +924,9 @@ class TestAdrBusProtocolAdapters:
                 ]
             }
         )
-        adapter = AdapterBusAdrIngestion(FakeContainer({"event_bus": bus}))
+        adapter = AdapterBusAdrIngestion(
+            FakeContainer({ProtocolEventBusPublisher: bus})
+        )
 
         result = asyncio.get_event_loop().run_until_complete(
             adapter.ingest(root_paths=["/tmp/source"], workspace_root="/tmp")

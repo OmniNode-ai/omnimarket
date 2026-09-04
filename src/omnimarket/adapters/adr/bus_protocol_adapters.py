@@ -21,7 +21,11 @@ from typing import Any, Protocol, TypeVar, cast
 from uuid import uuid4
 
 import yaml
+from omnibase_core.errors.error_service_resolution import ServiceResolutionError
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
 from pydantic import BaseModel
 
 from omnimarket.models.adr import (
@@ -84,7 +88,9 @@ _NODES_DIR = _REPO_ROOT / "nodes"
 T = TypeVar("T", bound=BaseModel)
 
 
-class ProtocolAdrEventBus(Protocol):
+class ProtocolAdrRequestResponseBus(Protocol):
+    """Structural request/response capability; never a DI lookup key."""
+
     async def publish(
         self,
         topic: str,
@@ -121,7 +127,7 @@ class _TopicPair:
 class _BusRequestResponseClient:
     def __init__(
         self,
-        event_bus: ProtocolAdrEventBus,
+        event_bus: ProtocolAdrRequestResponseBus,
         *,
         request_topic: str,
         completed_topic: str,
@@ -448,7 +454,7 @@ def build_adr_bus_protocol_adapters(container: object) -> ModelAdrBusProtocolAda
 
 
 def _client(
-    event_bus: ProtocolAdrEventBus,
+    event_bus: ProtocolAdrRequestResponseBus,
     topics: _TopicPair,
     *,
     source_tool: str,
@@ -462,28 +468,27 @@ def _client(
     )
 
 
-def _resolve_event_bus(container: object) -> ProtocolAdrEventBus:
+def _resolve_event_bus(container: object) -> ProtocolAdrRequestResponseBus:
+    """Resolve the kernel-registered bus with request/response capabilities."""
     event_bus = _resolve_container_value(
         container,
-        service_name="event_bus",
-        protocol_type=ProtocolAdrEventBus,
+        protocol_type=ProtocolEventBusPublisher,
     )
-    if event_bus is None or not _has_event_bus_methods(event_bus):
+    if event_bus is None or not _supports_request_response(event_bus):
         raise TypeError(
-            "ADR bus protocol adapters require a DI container that resolves "
-            "'event_bus' with publish and subscribe methods."
+            "ADR bus protocol adapters require the runtime-registered "
+            "ProtocolEventBusPublisher to structurally support subscribe."
         )
-    return cast("ProtocolAdrEventBus", event_bus)
+    return cast("ProtocolAdrRequestResponseBus", event_bus)
 
 
 def _resolve_container_value(
     container: object,
     *,
-    service_name: str,
     protocol_type: type[object],
 ) -> object | None:
     if isinstance(container, dict):
-        return container.get(service_name) or container.get(protocol_type)
+        return container.get(protocol_type)
 
     for method_name in (
         "get_service",
@@ -493,26 +498,18 @@ def _resolve_container_value(
         method = getattr(container, method_name, None)
         if not callable(method):
             continue
-        for args, kwargs in (
-            ((protocol_type,), {"service_name": service_name}),
-            ((protocol_type,), {}),
-            ((service_name,), {}),
-        ):
-            resolved = _call_optional(method, *args, **kwargs)
-            if resolved is not None:
-                return resolved
+        resolved = _call_optional(method, protocol_type)
+        if resolved is not None:
+            return resolved
 
     for method_name in ("resolve", "get"):
         method = getattr(container, method_name, None)
         if not callable(method):
             continue
-        for key in (service_name, protocol_type):
-            resolved = _call_optional(method, key)
-            if resolved is not None:
-                return resolved
+        resolved = _call_optional(method, protocol_type)
+        if resolved is not None:
+            return resolved
 
-    if hasattr(container, service_name):
-        return cast("object", getattr(container, service_name))
     return None
 
 
@@ -523,11 +520,12 @@ def _call_optional(
 ) -> object | None:
     try:
         return method(*args, **kwargs)
-    except (AttributeError, KeyError, LookupError, RuntimeError, TypeError, ValueError):
+    except ServiceResolutionError:
         return None
 
 
-def _has_event_bus_methods(candidate: object) -> bool:
+def _supports_request_response(candidate: object) -> bool:
+    """Check the subscriber capability that request/response needs."""
     return callable(getattr(candidate, "publish", None)) and callable(
         getattr(candidate, "subscribe", None)
     )
@@ -686,7 +684,7 @@ def _draft_decision_type(value: object) -> EnumDraftDecisionType:
 
 
 async def _publish_enveloped(
-    event_bus: ProtocolAdrEventBus,
+    event_bus: ProtocolAdrRequestResponseBus,
     *,
     topic: str,
     payload: BaseModel,
@@ -712,7 +710,7 @@ async def _publish_enveloped(
 
 
 async def _subscribe(
-    event_bus: ProtocolAdrEventBus,
+    event_bus: ProtocolAdrRequestResponseBus,
     topic: str,
     on_message: Callable[[object], Awaitable[None]],
     *,
