@@ -14,6 +14,11 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from omnimarket.enums.enum_dod_band_source import EnumDodBandSource
+from omnimarket.enums.enum_requested_response_shape import (
+    EnumRequestedResponseShape,
+)
+
 
 class ModelRoutingDecision(BaseModel):
     """Routing output: selected model, endpoint, cost tier, and rationale.
@@ -112,6 +117,28 @@ class ModelRoutingDecision(BaseModel):
     dod_heuristic: tuple[str, ...] = Field(
         default=(),
         description="Heuristic definition-of-done checks from the task-class contract.",
+    )
+    # OMN-17765: the shape used to be resolved and then discarded, so only its
+    # EFFECT — the resulting band — reached the payload. A band that was
+    # overridden and one that was never overridden then look identical, which is
+    # why this ticket's 28/24 population split had to be inferred from which
+    # heuristic band appeared rather than read off a field. These three record
+    # the resolution itself; they default to the no-override values so every
+    # existing producer stays valid under `extra="forbid"`.
+    requested_shape: EnumRequestedResponseShape = Field(
+        default=EnumRequestedResponseShape.UNCONSTRAINED,
+        description=(
+            "Response shape the CALLER's prompt declared, or 'unconstrained' "
+            "when it declared none or no prompt was supplied."
+        ),
+    )
+    dod_deterministic_source: EnumDodBandSource = Field(
+        default=EnumDodBandSource.CLASS_DEFINITION_OF_DONE,
+        description="Contract key that supplied dod_deterministic.",
+    )
+    dod_heuristic_source: EnumDodBandSource = Field(
+        default=EnumDodBandSource.CLASS_DEFINITION_OF_DONE,
+        description="Contract key that supplied dod_heuristic.",
     )
     tier_name: str = Field(
         default="",

@@ -40,8 +40,11 @@ from __future__ import annotations
 
 import pytest
 
+from omnimarket.enums.enum_dod_band_source import EnumDodBandSource
+from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
     resolve_task_class_dod_checks,
+    resolve_task_class_dod_resolution,
 )
 
 _SHORT_FORM_PROMPT = (
@@ -149,3 +152,80 @@ def test_both_resolution_sites_agree_on_the_same_input(
 
     assert shared_deterministic == reducer_deterministic
     assert shared_heuristic == reducer_heuristic
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("task_type", "prompt", "shape", "det_source", "heur_source"),
+    [
+        (
+            "test",
+            _SHORT_FORM_PROMPT,
+            EnumRequestedResponseShape.SINGLE_WORD,
+            EnumDodBandSource.CLASS_SHAPE_OVERRIDES,
+            EnumDodBandSource.DEFAULT_SHAPE_OVERRIDES,
+        ),
+        (
+            "test",
+            _TEST_CODE_PROMPT,
+            EnumRequestedResponseShape.UNCONSTRAINED,
+            EnumDodBandSource.CLASS_DEFINITION_OF_DONE,
+            EnumDodBandSource.CLASS_DEFINITION_OF_DONE,
+        ),
+        (
+            "code_generation",
+            _SHORT_FORM_PROMPT,
+            EnumRequestedResponseShape.SINGLE_WORD,
+            EnumDodBandSource.CLASS_DEFINITION_OF_DONE,
+            EnumDodBandSource.DEFAULT_SHAPE_OVERRIDES,
+        ),
+    ],
+)
+def test_the_resolution_records_which_contract_key_supplied_each_band(
+    task_type: str,
+    prompt: str,
+    shape: EnumRequestedResponseShape,
+    det_source: EnumDodBandSource,
+    heur_source: EnumDodBandSource,
+) -> None:
+    """A band that was overridden must be distinguishable from one that was not.
+
+    Reporting only the resulting tuple makes those two identical, which is why
+    this ticket's own 28/24 split had to be inferred from which heuristic band
+    appeared instead of read off a field, and why OMN-17879 has to date its rows
+    against a deploy boundary. Same reasoning as the `skipped` list in
+    `_evaluate_deterministic_checks` (OMN-13850): a check that was not run and
+    one that ran and passed are different facts.
+
+    The `code_generation` row is the one worth reading twice. Its deterministic
+    source stays `class_definition_of_done` even though the prompt DID resolve a
+    shape and DID override the heuristic band -- so "no deterministic override
+    was applied here" is now a readable fact rather than an inference.
+    """
+    resolution = resolve_task_class_dod_resolution(task_type, prompt)
+    assert resolution.requested_shape is shape
+    assert resolution.deterministic_source is det_source
+    assert resolution.heuristic_source is heur_source
+
+
+@pytest.mark.unit
+def test_prompt_none_records_unconstrained_and_no_override() -> None:
+    """The no-prompt path must record that nothing was overridden, not stay blank."""
+    resolution = resolve_task_class_dod_resolution("test", prompt=None)
+    assert resolution.requested_shape is EnumRequestedResponseShape.UNCONSTRAINED
+    assert resolution.deterministic_source is EnumDodBandSource.CLASS_DEFINITION_OF_DONE
+    assert resolution.heuristic_source is EnumDodBandSource.CLASS_DEFINITION_OF_DONE
+
+
+@pytest.mark.unit
+def test_the_tuple_api_and_the_resolution_api_agree() -> None:
+    """`resolve_task_class_dod_checks` is a wrapper and must not drift from it."""
+    for task_type, prompt in (
+        ("test", _SHORT_FORM_PROMPT),
+        ("test", _TEST_CODE_PROMPT),
+        ("code_generation", _SHORT_FORM_PROMPT),
+    ):
+        deterministic, heuristic = resolve_task_class_dod_checks(task_type, prompt)
+        resolution = resolve_task_class_dod_resolution(task_type, prompt)
+        assert deterministic == resolution.deterministic
+        assert heuristic == resolution.heuristic

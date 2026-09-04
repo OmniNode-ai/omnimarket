@@ -62,6 +62,7 @@ from pydantic import TypeAdapter
 from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
     load_bifrost_delegation_config,
 )
+from omnimarket.enums.enum_dod_band_source import EnumDodBandSource
 from omnimarket.enums.enum_requested_response_shape import (
     EnumRequestedResponseShape,
 )
@@ -83,6 +84,9 @@ from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_reque
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
     ModelDelegationConfig,
     parse_delegation_config_yaml,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.models.model_dod_resolution import (
+    ModelDodResolution,
 )
 from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
     ModelRoutingDecision,
@@ -1050,17 +1054,70 @@ def resolve_task_class_dod_checks(
     prompt to offer — resolves ``UNCONSTRAINED`` and returns the class DoD
     unchanged, so every existing caller keeps its current behaviour.
     """
+    resolution = resolve_task_class_dod_resolution(task_type, prompt)
+    return resolution.deterministic, resolution.heuristic
+
+
+def _class_declares_heuristic_for_shape(
+    entry: dict[str, object] | None,
+    shape: EnumRequestedResponseShape,
+) -> bool:
+    """Whether the CLASS (not the contract-wide default) declared this heuristic.
+
+    ``_shape_override_heuristic`` resolves the class block first and falls back
+    to ``default_shape_overrides``, returning the band either way. The two are
+    different contract facts, so provenance has to re-ask which one answered.
+    """
+    if not isinstance(entry, dict):
+        return False
+    dod = entry.get("definition_of_done")
+    if not isinstance(dod, dict):
+        return False
+    overrides = dod.get("shape_overrides")
+    if not isinstance(overrides, dict):
+        return False
+    for_shape = overrides.get(shape.value)
+    return isinstance(for_shape, dict) and isinstance(for_shape.get("heuristic"), list)
+
+
+def resolve_task_class_dod_resolution(
+    task_type: str,
+    prompt: str | None = None,
+) -> ModelDodResolution:
+    """Resolve both DoD bands for ``task_type`` AND record where each came from.
+
+    The provenance-carrying form of :func:`resolve_task_class_dod_checks`, which
+    is now a thin wrapper over it. Callers that only run the gate want the two
+    tuples; callers that record a verdict want to know whether a band was
+    overridden, because "the class band" and "an override that happens to match
+    the class band" are different facts and the tuple alone cannot tell them
+    apart (OMN-17765, following the ``skipped`` precedent of OMN-13850).
+    """
     contract = _get_task_class_contract()
     entry = _task_class_entry(contract, task_type)
     dod_deterministic, dod_heuristic = _definition_of_done_checks(entry)
     if prompt is None:
-        return dod_deterministic, dod_heuristic
+        # No prompt resolves UNCONSTRAINED and returns the class DoD unchanged,
+        # so every pre-OMN-16932 caller keeps its behaviour.
+        return ModelDodResolution(
+            deterministic=dod_deterministic, heuristic=dod_heuristic
+        )
+
     shape = resolve_requested_response_shape(
         prompt, _declared_shape_directives(contract)
     )
+    deterministic_source = EnumDodBandSource.CLASS_DEFINITION_OF_DONE
+    heuristic_source = EnumDodBandSource.CLASS_DEFINITION_OF_DONE
+
     heuristic_override = _shape_override_heuristic(contract, entry, shape)
     if heuristic_override is not None:
         dod_heuristic = heuristic_override
+        heuristic_source = (
+            EnumDodBandSource.CLASS_SHAPE_OVERRIDES
+            if _class_declares_heuristic_for_shape(entry, shape)
+            else EnumDodBandSource.DEFAULT_SHAPE_OVERRIDES
+        )
+
     # OMN-17765: the deterministic band is overridable too, but only where the
     # CLASS declares it — see _shape_override_deterministic for why this one may
     # not fall back to `default_shape_overrides`. `None` means not declared and
@@ -1069,7 +1126,15 @@ def resolve_task_class_dod_checks(
     deterministic_override = _shape_override_deterministic(entry, shape)
     if deterministic_override is not None:
         dod_deterministic = deterministic_override
-    return dod_deterministic, dod_heuristic
+        deterministic_source = EnumDodBandSource.CLASS_SHAPE_OVERRIDES
+
+    return ModelDodResolution(
+        deterministic=dod_deterministic,
+        heuristic=dod_heuristic,
+        requested_shape=shape,
+        deterministic_source=deterministic_source,
+        heuristic_source=heuristic_source,
+    )
 
 
 def _response_contract_ref(entry: dict[str, object] | None) -> str | None:
@@ -1905,9 +1970,9 @@ def delta(
     # would have turned the red test green while the lane kept failing. One
     # resolver means the two cannot disagree by construction rather than by a
     # test that has to keep noticing.
-    dod_deterministic, dod_heuristic = resolve_task_class_dod_checks(
-        task_type, request.prompt
-    )
+    dod_resolution = resolve_task_class_dod_resolution(task_type, request.prompt)
+    dod_deterministic = dod_resolution.deterministic
+    dod_heuristic = dod_resolution.heuristic
 
     # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
@@ -2068,6 +2133,10 @@ def delta(
                 rationale=rationale,
                 dod_deterministic=dod_deterministic,
                 dod_heuristic=dod_heuristic,
+                # OMN-17765: record the resolution, not just its effect.
+                requested_shape=dod_resolution.requested_shape,
+                dod_deterministic_source=dod_resolution.deterministic_source,
+                dod_heuristic_source=dod_resolution.heuristic_source,
                 tier_name=tier.name,
                 # OMN-14402: the raw backend_ref, distinct from selected_backend_id
                 # (a UUID hashed from .id alone, which collides across backends
@@ -2137,6 +2206,7 @@ __all__: list[str] = [
     "is_free_tier",
     "next_eligible_tier",
     "resolve_task_class_dod_checks",
+    "resolve_task_class_dod_resolution",
     "resolve_task_class_max_escalations",
     "resolve_task_class_response_contract",
     "sibling_backend_available_in_tier",
