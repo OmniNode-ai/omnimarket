@@ -322,3 +322,55 @@ def test_the_published_delta_makes_the_row_readable_on_the_page_path() -> None:
     assert row["event_type"] == "tool_call"
     assert row["node_name"] == "Bash"
     assert row["cumulative_tokens"] == 41
+
+
+def test_the_sync_seam_refuses_a_tombstone_rather_than_publishing_a_stand_in() -> None:
+    """A delete the bus surface cannot express must fail loudly, not quietly.
+
+    ``KafkaSnapshotDeltaPublisher`` sends through ``KafkaTransport``, whose
+    ``send`` declares ``value: bytes`` and so has no way to write a genuine
+    null-valued Kafka tombstone. Publishing any stand-in body under a delete's
+    key would leave a live record compaction can never reclaim, and the deleted
+    row would keep being served -- silently, and forever.
+
+    No current caller reaches this: session-replay, the sync seam's only user,
+    is upsert-only. The refusal is asserted anyway so that wiring a deleting
+    exposure onto this seam fails at its first delete instead of quietly
+    corrupting the compacted topic. Such an exposure belongs on the runner
+    path, which owns a producer able to send a null value.
+    """
+    from omnimarket.projection.snapshot_publisher import KafkaSnapshotDeltaPublisher
+
+    publisher = KafkaSnapshotDeltaPublisher(bootstrap_servers="broker:9092")
+    tombstone = ModelSnapshotDeltaMessage(
+        topic="onex.snapshot.projection.session.replay.v1",
+        key=b"snap-1",
+        value=None,
+        headers=(("tenant_id", b"omninode"),),
+    )
+
+    with pytest.raises(RuntimeError, match="tombstone"):
+        publisher.publish(tombstone)
+
+
+def test_the_sync_seam_reports_false_when_no_broker_is_configured() -> None:
+    """An unreachable republish leg is reported, never raised.
+
+    A row that is already durable in Postgres must not fail its source event
+    into the DLQ because the republish leg is unconfigured -- but the caller
+    still has to learn it did not publish, which is why ``handle`` carries the
+    result rather than discarding it. Distinct from the tombstone case above:
+    that one is a programming error in the caller, this one is a runtime
+    condition.
+    """
+    from omnimarket.projection.snapshot_publisher import KafkaSnapshotDeltaPublisher
+
+    publisher = KafkaSnapshotDeltaPublisher(bootstrap_servers="   ")
+    upsert = ModelSnapshotDeltaMessage(
+        topic="onex.snapshot.projection.session.replay.v1",
+        key=b"snap-1",
+        value=b'{"op":"upsert"}',
+        headers=(("tenant_id", b"omninode"),),
+    )
+
+    assert publisher.publish(upsert) is False

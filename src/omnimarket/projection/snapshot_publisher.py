@@ -246,19 +246,44 @@ def encode_snapshot_delta(
 
 
 class KafkaSnapshotDeltaPublisher:
-    """Publish one encoded delta over a producer that lives for that one call.
+    """Publish one encoded delta over a bus transport that lives for that call.
 
     Used by the SYNC projection-handler path. The runtime dispatches those
     handlers on a worker thread with no running event loop, so ``asyncio.run``
     here opens the only loop involved -- and everything loop-bound is opened and
     closed inside it. The runner path keeps its own long-lived producer; it does
     not come through this class.
+
+    The transport is ``KafkaTransport``, the canonical bus surface, and NOT a
+    directly-constructed ``AIOKafkaProducer``. That is a correctness choice as
+    well as a doctrinal one: the transport derives acks, idempotence, max request
+    size, backoff and the whole auth kwarg set from
+    ``ModelKafkaEventBusConfig``, so this seam and every other publisher in the
+    platform cannot disagree about how a message is written. Constructing a raw
+    client here would also trip the imperative-contract guard, which is the gate
+    working -- a projection handler is not a place to re-implement transport.
     """
 
     def __init__(self, *, bootstrap_servers: str) -> None:
         self._bootstrap_servers = bootstrap_servers.strip()
 
     def publish(self, message: ModelSnapshotDeltaMessage) -> bool:
+        if message.value is None:
+            # KafkaTransport.send declares ``value: bytes``: the bus surface has
+            # no way to express a genuine null-valued tombstone. Refusing loudly
+            # is the only safe answer -- publishing some stand-in body under a
+            # delete's key would leave a live record compaction can never
+            # reclaim, and the row would keep serving after its delete. No
+            # current caller reaches this: the sync seam's one user
+            # (session-replay) is upsert-only. An exposure that genuinely
+            # deletes belongs on the runner path, which owns a producer able to
+            # send a null value.
+            raise RuntimeError(
+                f"snapshot delta for {message.topic!r} is a tombstone "
+                "(value=None), which the sync publish seam cannot emit through "
+                "KafkaTransport; a deleting exposure must publish from a "
+                "BaseProjectionRunner instead"
+            )
         if not self._bootstrap_servers:
             logger.warning(
                 "snapshot delta for %s not published: no Kafka brokers resolved "
@@ -269,39 +294,30 @@ class KafkaSnapshotDeltaPublisher:
         return asyncio.run(self._publish(message))
 
     async def _publish(self, message: ModelSnapshotDeltaMessage) -> bool:
-        # Lazy imports (OMN-15800 AC6): the projection-api process imports names
+        # Lazy import (OMN-15800 AC6): the projection-api process imports names
         # from the projection package but must never load asyncpg, which
         # ``omnibase_infra``'s top-level __init__ chain pulls in transitively.
-        from aiokafka import AIOKafkaProducer
-        from omnibase_infra.event_bus.kafka_auth import (
-            build_aiokafka_auth_kwargs_from_env,
-        )
+        from omnibase_infra.event_bus.kafka_transport import KafkaTransport
 
-        producer = AIOKafkaProducer(
-            bootstrap_servers=self._bootstrap_servers,
-            # None must pass through unchanged: aiokafka calls the serializer
-            # unconditionally, including for a tombstone publish (value=None),
-            # so a naive ``v.encode("utf-8")`` would raise on None.
-            value_serializer=lambda v: (
-                v if v is None or isinstance(v, bytes) else v.encode("utf-8")
-            ),
-            **build_aiokafka_auth_kwargs_from_env(),
-        )
+        # topics=() keeps this producer-only: start() then skips the consumer
+        # leg entirely, so no consumer group is created and nothing joins a
+        # rebalance just to send one record.
+        transport = KafkaTransport.from_bootstrap(self._bootstrap_servers, topics=())
         try:
-            await producer.start()
+            await transport.start()
         except Exception as exc:
             logger.warning(
-                "snapshot delta for %s not published: producer failed to start: %s",
+                "snapshot delta for %s not published: transport failed to start: %s",
                 message.topic,
                 exc,
             )
             return False
         try:
-            await producer.send_and_wait(
+            await transport.send(
                 message.topic,
-                value=message.value,
                 key=message.key,
-                headers=list(message.headers),
+                value=message.value,
+                headers=dict(message.headers),
             )
         except Exception as exc:
             logger.warning(
@@ -311,5 +327,5 @@ class KafkaSnapshotDeltaPublisher:
             )
             return False
         finally:
-            await producer.stop()
+            await transport.close()
         return True
