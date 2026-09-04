@@ -138,6 +138,19 @@ class ModelProjectionReplayResult(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     rows_upserted: int = Field(default=0, ge=0)
+    snapshot_published: bool = Field(
+        default=False,
+        description=(
+            "Whether the row's snapshot delta reached the bus (OMN-17774). "
+            "False on a durable write whose republish leg was unavailable, and "
+            "False on an exposure that is not bus_backed at all. The runtime "
+            "gates its terminal event on rows_upserted, not on this, because "
+            "the row IS durable either way -- but a republish that silently "
+            "did not happen is the 'consume, ack, render nothing, log nothing' "
+            "shape epic OMN-16776 exists to close, so it is reported rather "
+            "than swallowed."
+        ),
+    )
     table: str = Field(default="session_replay_snapshots")
 
 
