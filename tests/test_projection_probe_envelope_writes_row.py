@@ -107,7 +107,17 @@ async def test_probe_envelope_upserts_delegation_row() -> None:
     # OMN-15905: the ported evidence-preservation step issues a SELECT before
     # the write (parity with the sync HandlerProjectionDelegation path) --
     # 1 SELECT + 1 INSERT. Assert on the INSERT specifically.
-    assert db.execute.call_count == 2
+    #
+    # OMN-17773: an apply that writes delegation_events now ALSO re-reads each
+    # singleton aggregate view so the runner can republish it on the bus, so a
+    # TOTAL call count no longer measures this write path -- it would make every
+    # future publish site a false failure here. Count the write-path statements
+    # by name instead: the aggregate re-reads are exactly the ones that project
+    # the constant `snapshot_grain` compaction key.
+    write_path_calls = [
+        c for c in db.execute.call_args_list if "snapshot_grain" not in str(c.args[0])
+    ]
+    assert len(write_path_calls) == 2
     insert_calls = [
         c for c in db.execute.call_args_list if "INSERT INTO" in str(c.args[0])
     ]

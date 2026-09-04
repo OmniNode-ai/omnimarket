@@ -8,6 +8,7 @@ and verify the handler calls execute() with the correct arguments.
 from __future__ import annotations
 
 from decimal import Decimal
+from typing import Any
 from unittest.mock import AsyncMock
 
 import pytest
@@ -49,6 +50,24 @@ def mock_db() -> AsyncMock:
     db.connect = AsyncMock()
     db.close = AsyncMock()
     return db
+
+
+def _delegation_write_calls(mock_db: AsyncMock) -> list[Any]:
+    """The delegation_events write statements, ignoring aggregate re-reads.
+
+    OMN-17773 gave ``DelegationProjectionRunner`` a second, unrelated reason
+    to touch the DB on an apply that writes ``delegation_events``: it re-reads
+    each singleton aggregate view and republishes it on the bus. Those reads
+    are not part of what these tests assert, and asserting a TOTAL call count
+    would make every future publish site a false failure here. Select the
+    statements under test by name instead.
+    """
+    return [
+        call
+        for call in mock_db.execute.await_args_list
+        if "delegation_events" in str(call.args[0])
+        and "snapshot_grain" not in str(call.args[0])
+    ]
 
 
 class TestSessionOutcomeHandler:
@@ -186,7 +205,7 @@ class TestDelegationHandler:
         # OMN-15905: the ported evidence-preservation step issues a SELECT
         # before the write (parity with the sync HandlerProjectionDelegation
         # path) -- 1 SELECT + 1 INSERT.
-        assert mock_db.execute.call_count == 2
+        assert len(_delegation_write_calls(mock_db)) == 2
 
     @pytest.mark.asyncio
     async def test_task_delegated_preserves_manifest_pricing_fields(
@@ -215,8 +234,9 @@ class TestDelegationHandler:
 
         assert result is True
         # OMN-15905: SELECT (evidence preservation) + INSERT.
-        assert mock_db.execute.call_count == 2
-        args = mock_db.execute.call_args[0]
+        write_calls = _delegation_write_calls(mock_db)
+        assert len(write_calls) == 2
+        args = write_calls[-1].args
         assert "pricing_manifest_version" in args[0]
         assert "corr-pricing-proof" in args
         # OMN-15905: the ported write path stores the measured actual cost as
@@ -274,8 +294,9 @@ class TestDelegationHandler:
 
         assert result is True
         # OMN-15905: SELECT (evidence preservation) + INSERT.
-        assert mock_db.execute.call_count == 2
-        args = mock_db.execute.call_args[0]
+        write_calls = _delegation_write_calls(mock_db)
+        assert len(write_calls) == 2
+        args = write_calls[-1].args
         assert "ON CONFLICT (correlation_id) DO UPDATE SET" in args[0]
         assert "c65f5188-4250-4b42-8a45-b9e355b207ee" in args
         assert "Qwen3.6-27B-MTP-IQ4_XS.gguf" in args
@@ -457,8 +478,9 @@ class TestDelegationHandler:
 
         assert result is True
         # OMN-15905: SELECT (evidence preservation) + INSERT.
-        assert mock_db.execute.call_count == 2
-        args = mock_db.execute.call_args[0]
+        write_calls = _delegation_write_calls(mock_db)
+        assert len(write_calls) == 2
+        args = write_calls[-1].args
         assert "tokens_input" in args[0]
         assert "quality_gates_checked_jsonb" in args[0]
         assert "quality_gates_failed_jsonb" in args[0]

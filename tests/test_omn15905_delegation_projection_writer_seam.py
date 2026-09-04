@@ -107,6 +107,44 @@ def _mock_db() -> AsyncMock:
     return db
 
 
+def _last_delegation_write(mock_db: AsyncMock) -> Any:
+    """The last statement written to ``delegation_events``.
+
+    OMN-17773: the runner now re-reads the singleton aggregate views after an
+    apply that writes ``delegation_events``, so the LAST awaited statement is
+    an aggregate SELECT, not the write these assertions are about. Select the
+    write by name rather than by position.
+    """
+    writes = [
+        call
+        for call in mock_db.execute.await_args_list
+        if "delegation_events" in str(call.args[0])
+        and "snapshot_grain" not in str(call.args[0])
+    ]
+    assert writes, "expected at least one delegation_events statement"
+    return writes[-1]
+
+
+def _scripted_execute(responses: list[Any]) -> AsyncMock:
+    """Answer the statements under test in order; answer aggregate re-reads empty.
+
+    OMN-17773: an apply that writes ``delegation_events`` now also re-reads
+    each singleton aggregate view so the runner can republish it on the bus.
+    A fixed-length ``side_effect`` list is exhausted by those extra reads, so
+    they are dispatched on the statement text and answered with the no-rows
+    list a real adapter returns -- which also asserts, by construction, that
+    the aggregate re-read is never mistaken for one of the scripted responses.
+    """
+    scripted = iter(responses)
+
+    async def _execute(query: str, *_args: Any, **_kwargs: Any) -> Any:
+        if "snapshot_grain" in query:
+            return []
+        return next(scripted)
+
+    return AsyncMock(side_effect=_execute)
+
+
 def _real_delegation_completed_payload(
     *, correlation_id: str, tenant_id: str
 ) -> dict[str, Any]:
@@ -309,8 +347,8 @@ class TestQualityGateResultWriterParity:
         runner = DelegationProjectionRunner()
         mock_db = _mock_db()
         # Simulate an existing row from an earlier terminal write.
-        mock_db.execute = AsyncMock(
-            side_effect=[
+        mock_db.execute = _scripted_execute(
+            [
                 [
                     {
                         "correlation_id": _CORRELATION_ID,
@@ -333,7 +371,7 @@ class TestQualityGateResultWriterParity:
         ok = asyncio.run(runner.project_event(topic, data, meta))
 
         assert ok is True
-        insert_call = mock_db.execute.await_args_list[-1]
+        insert_call = _last_delegation_write(mock_db)
         sql = str(insert_call.args[0])
         assert "task_type" not in sql, (
             "quality-gate-result UPSERT must not touch task_type -- it is not "
@@ -481,8 +519,8 @@ class TestBudgetStateMaterializationWriterParity:
         runner = DelegationProjectionRunner()
         mock_db = _mock_db()
         original_first_event_at = datetime(2026, 8, 1, tzinfo=UTC)
-        mock_db.execute = AsyncMock(
-            side_effect=[
+        mock_db.execute = _scripted_execute(
+            [
                 [
                     {
                         "tenant_id": _TENANT,
