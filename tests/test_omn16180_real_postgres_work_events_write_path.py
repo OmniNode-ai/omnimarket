@@ -58,6 +58,7 @@ from omnimarket.nodes.node_projection_work_events.handlers.handler_projection_wo
 from omnimarket.nodes.node_projection_work_events.models.model_work_event import (
     ModelWorkEventInbound,
 )
+from omnimarket.projection.snapshot_publisher import ModelSnapshotDeltaMessage
 
 _QUALIFIED = f"{SCHEMA}.{TABLE}"
 _SESSION = "omn16180-real-pg-write-path"
@@ -391,6 +392,123 @@ def test_handle_the_runtime_entrypoint_writes_through_real_column_types() -> Non
         assert stored["event_kind"] == "session.tool"
         assert stored["summary"] == "tool Bash (184 ms)"
         assert json.loads(stored["payload"])["tool_name"] == "Bash"
+    finally:
+
+        async def _cleanup() -> None:
+            conn = await asyncpg.connect(dsn)
+            try:
+                await conn.execute(
+                    f"DELETE FROM {_QUALIFIED} WHERE actor_id = $1", _SESSION
+                )
+            finally:
+                await conn.close()
+
+        asyncio.run(_cleanup())
+
+
+@pytest.mark.integration
+def test_handle_publishes_the_row_the_real_database_actually_stored() -> None:
+    """OMN-17772: the snapshot delta must carry the row Postgres accepted.
+
+    The whole point of the bus-backed exposure is that the read model shows
+    what the ledger holds. Two type conversions sit between those, and neither
+    is observable against ``InmemoryDatabaseAdapter``:
+
+    * ``emitted_at`` is handed to the adapter as a real ``datetime`` (asyncpg
+      refuses a str for TIMESTAMPTZ -- the OMN-15905 class this file exists
+      for) and must be JSON-serialized for the delta;
+    * ``payload`` is a dict against a ``JSONB`` column and must round-trip
+      through ``snapshot_json_value`` without being double-encoded.
+
+    So this asserts field-by-field that what was PUBLISHED equals what was
+    READ BACK OUT OF POSTGRES -- not that a publish merely happened. A delta
+    that disagrees with the stored row is the split-brain the exposure exists
+    to close, and it can only be caught with real column types on one side.
+    """
+    dsn = _dsn_or_skip()
+
+    async def _prepare() -> None:
+        conn = await asyncpg.connect(dsn)
+        try:
+            await _ensure_table_or_skip(conn)
+            await conn.execute(
+                f"DELETE FROM {_QUALIFIED} WHERE actor_id = $1", _SESSION
+            )
+        finally:
+            await conn.close()
+
+    asyncio.run(_prepare())
+
+    published: list[tuple[str, bytes | None, bytes]] = []
+
+    class _CapturingPublisher:
+        """Records the encoded delta; ``encode_snapshot_delta`` builds it.
+
+        Injected through the handler's own constructor seam
+        (``ProtocolSnapshotDeltaPublisher``, OMN-17774) rather than patched
+        onto a module attribute, so this test exercises the same wiring the
+        runtime uses.
+        """
+
+        def publish(self, message: ModelSnapshotDeltaMessage) -> bool:
+            published.append((message.topic, message.value, message.key))
+            return True
+
+    emitted = "2026-08-30T03:14:09.123456+00:00"
+    handler = HandlerProjectionWorkEvents(publisher=_CapturingPublisher())
+    adapter = _RealPostgresUpsertAdapter(dsn)
+    payload: dict[str, object] = _event(emitted, "Bash").model_dump(mode="json")
+    payload["_db"] = adapter
+    payload["_topic"] = TOPIC_TOOL_EXECUTED
+    payload["_event_type"] = "tool-executed"
+
+    result = handler.handle(payload)
+
+    assert result["rows_upserted"] == 1, result
+    assert len(published) == 1, "one delta per accepted row"
+    topic, value, key = published[0]
+    assert topic == "onex.snapshot.projection.work.events.v1"
+    assert value is not None
+
+    async def _readback() -> asyncpg.Record | None:
+        conn = await asyncpg.connect(dsn)
+        try:
+            return await conn.fetchrow(
+                f"SELECT event_id, emitted_at, event_kind, actor_kind, actor_id, "
+                f"summary, source_topic, payload FROM {_QUALIFIED} "
+                "WHERE actor_id = $1",
+                _SESSION,
+            )
+        finally:
+            await conn.close()
+
+    try:
+        stored = asyncio.run(_readback())
+        assert stored is not None, "handle() reported success but wrote no row"
+        delta = json.loads(value)
+        row = delta["row"]
+
+        assert key.decode("utf-8") == stored["event_id"], (
+            "the message key must be the stored row's own content address"
+        )
+        assert delta["key"] == [stored["event_id"]]
+        assert row["event_id"] == stored["event_id"]
+        assert row["event_kind"] == stored["event_kind"]
+        assert row["actor_kind"] == stored["actor_kind"]
+        assert row["actor_id"] == stored["actor_id"]
+        assert row["summary"] == stored["summary"]
+        assert row["source_topic"] == stored["source_topic"]
+        # TIMESTAMPTZ out of Postgres vs the published ISO string: the same
+        # instant, compared as instants so a server timezone cannot hide a
+        # shift behind a string mismatch.
+        assert datetime.fromisoformat(str(row["emitted_at"])).astimezone(UTC) == stored[
+            "emitted_at"
+        ].astimezone(UTC)
+        # JSONB out vs the published payload: a real mapping on both sides,
+        # never a JSON string that was encoded twice.
+        assert isinstance(row["payload"], dict)
+        assert row["payload"] == json.loads(stored["payload"])
+        assert row["payload"]["tool_name"] == "Bash"
     finally:
 
         async def _cleanup() -> None:

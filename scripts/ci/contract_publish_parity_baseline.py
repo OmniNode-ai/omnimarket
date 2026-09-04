@@ -114,7 +114,6 @@ PARITY_DEBT: tuple[str, ...] = (
     "node_projection_overnight",
     "node_projection_sandbox_decisions",
     "node_projection_traces",
-    "node_projection_work_events",
     "node_push_validation_effect",
     "node_quality_scoring_compute",
     "node_rebase_effect",

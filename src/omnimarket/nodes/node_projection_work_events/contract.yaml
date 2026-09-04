@@ -103,7 +103,21 @@ projection_api:
   expose: true
   topic: "onex.snapshot.projection.work.events.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
   table: "work_events"
-  schema: "omninode_internal"
+  # OMN-17772. This field previously read "omninode_internal", and the exposure
+  # loader's ALLOWED_SCHEMAS is {omnidash_analytics, public} -- so this contract
+  # was EXCLUDED at discovery on every projection-api boot, with the reason
+  # logged verbatim and the exposure absent from GET /projections entirely. The
+  # page could not even refuse it; it was invisible, which is strictly worse
+  # than a refusal. `public` is prohibited for application relations by
+  # OMN-15361, so this field records the DATABASE the read model lives in. The
+  # physical relation is omninode_internal.work_events inside that database,
+  # declared exactly that way in db_io above, in the migration, and in the
+  # handler's TABLE/SCHEMA constants. On a bus_backed exposure the serving path
+  # reads bus_backed + key_columns and never this pair (OMN-15800), so nothing
+  # resolves against it; it is a record, and it is an accurate one at the
+  # granularity this field allows. Identical to the declaration
+  # node_projection_consumer_flow already carries for the same reason.
+  schema: "omnidash_analytics"
   columns:
     - "event_id"
     - "emitted_at"
@@ -119,6 +133,29 @@ projection_api:
   order_by: "emitted_at DESC"
   freshness_column: "emitted_at"
   limit: 500
+  # Declared bus_backed WITH its publish call site in the same change
+  # (OMN-17772). The epic's ordering constraint is explicit that bus_backed
+  # must not be flipped on a topic whose writer is not deployed and producing:
+  # flipping ahead of the writer converts an honest error into a confident
+  # zero (OMN-15864 enforces this mechanically). This node's writer IS
+  # deployed and subscribed on the .201 dev lane -- consumer group
+  # `local.omnimarket.projection_work_events.consume.1.0.0` is registered on
+  # all four declared topics -- so the flag follows the writer, not the other
+  # way round.
+  #
+  # No tenant_column: a work event is a platform-internal record of what an
+  # actor did in a session, carrying no tenant-scoped customer data, so
+  # publish_snapshot_delta's default tenant_id leaks nothing.
+  bus_backed: true
+  # The row's own content address. `event_id` is derived by `derive_event_id`
+  # from (source_topic, actor_id, emitted_at, payload), so a repeat of a key is
+  # by construction a byte-identical replay of the same event and there is no
+  # intra-key ordering for the snapshot cache to preserve. That is what lets
+  # this node publish from the runtime's DB-injection arm, which -- unlike the
+  # runner arm -- is handed no Kafka MessageMeta to source real ordering
+  # coordinates from (see the handler's _REPLAY_* constants).
+  key_columns:
+    - "event_id"
 
 metadata:
   transport_type: kafka

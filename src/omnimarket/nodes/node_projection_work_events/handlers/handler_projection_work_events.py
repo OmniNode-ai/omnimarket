@@ -25,7 +25,10 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
+
+import yaml
 
 from omnimarket.nodes.contract_topics import contract_subscribe_topics
 from omnimarket.nodes.node_projection_work_events.models.model_work_event import (
@@ -38,7 +41,17 @@ from omnimarket.nodes.node_projection_work_events.models.model_work_event import
     WorkEventProjectionError,
     derive_event_id,
 )
+from omnimarket.projection.discovery import (
+    load_projection_exposures_from_contract,
+)
+from omnimarket.projection.models import ProjectionTableConfig
 from omnimarket.projection.protocol_database import DatabaseAdapter
+from omnimarket.projection.snapshot_publisher import (
+    KafkaSnapshotDeltaPublisher,
+    ProtocolSnapshotDeltaPublisher,
+    encode_snapshot_delta,
+    resolve_snapshot_bootstrap_servers,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -154,7 +167,111 @@ def _projected_payload(event: ModelWorkEventInbound) -> dict[str, object]:
 
 
 class HandlerProjectionWorkEvents:
-    """Pure reducer: one work event in, one work_events row out."""
+    """Pure reducer: one work event in, one work_events row out.
+
+    [OMN-17772] Every row this reducer durably writes is also republished as a
+    keyed snapshot delta on the exposure's own topic. Until that republish
+    existed the exposure could not be ``bus_backed``, and the serving path --
+    which holds no database handle by design -- had nothing to read.
+
+    :meth:`accumulate` and :meth:`project` stay exactly as pure as they were.
+    The publish happens in :meth:`handle`, after the write has already
+    succeeded, so the reduction itself still has no I/O and no transport
+    dependency.
+    """
+
+    def __init__(
+        self,
+        *,
+        contract_path: Path | None = None,
+        publisher: ProtocolSnapshotDeltaPublisher | None = None,
+    ) -> None:
+        """Load this node's own exposure and bind the republish transport.
+
+        The exposure is read from the contract, never assembled from literals:
+        ``bus_backed`` and ``key_columns`` are the contract's to declare, and
+        :func:`encode_snapshot_delta` returns ``None`` for an exposure that is
+        not bus-backed. That is what lets the publish call site below be
+        unconditional -- turning the exposure off is a contract edit, not a code
+        edit, and cannot leave a stale branch behind.
+
+        Args:
+            contract_path: Override for the node's ``contract.yaml``. Defaults
+                to the shipped one beside this package.
+            publisher: Transport for encoded snapshot deltas. Injected by tests
+                and by any caller that wants to own the lifecycle; otherwise a
+                per-call Kafka producer is built lazily on first publish, so
+                constructing this handler touches no broker and reads no
+                settings.
+        """
+        path = contract_path or _DEFAULT_CONTRACT_PATH
+        with open(path) as handle:
+            contract: dict[str, object] = yaml.safe_load(handle)
+        exposures = load_projection_exposures_from_contract(
+            contract, str(contract.get("name", "projection_work_events")), path
+        )
+        self._snapshot_exposure: ProjectionTableConfig | None = next(
+            (exposure for exposure in exposures if exposure.bus_backed), None
+        )
+        self._publisher: ProtocolSnapshotDeltaPublisher | None = publisher
+
+    def _resolve_publisher(self) -> ProtocolSnapshotDeltaPublisher:
+        """Return the bound publisher, building the default one once.
+
+        Built lazily rather than in ``__init__``: the runtime constructs every
+        projection handler at wiring time, including in processes and tests that
+        never publish, and resolving broker settings there would make handler
+        construction depend on transport configuration it may not need.
+        """
+        if self._publisher is None:
+            self._publisher = KafkaSnapshotDeltaPublisher(
+                bootstrap_servers=resolve_snapshot_bootstrap_servers()
+            )
+        return self._publisher
+
+    def _publish_snapshot(
+        self,
+        row_dict: dict[str, object],
+        *,
+        source_topic: str,
+        source_event_id: str,
+    ) -> bool:
+        """Republish one written row as a keyed snapshot delta.
+
+        The ordering coordinates are fixed at partition 0 / offset 0, and that
+        is a decision rather than an omission. The runtime's projection dispatch
+        seam injects only ``_db``/``_event_type``/``_topic``/``_envelope_id``
+        (``handler_shim.RUNTIME_INJECTED_KEYS``), so a sync projection handler
+        never sees the source message's Kafka coordinates; inventing a
+        monotonic counter here would be a process-local token of exactly the
+        kind OMN-15800 round 3 removed.
+
+        Fixed coordinates are CORRECT for THIS exposure because its key is
+        ``event_id``, which ``derive_event_id`` content-addresses over
+        ``(source_topic, actor_id, emitted_at, payload)``. Two rows sharing a
+        key are therefore the same event byte for byte, so
+        ``SnapshotCache.apply_message`` only ever compares a key against a delta
+        derived from the SAME source event -- a redelivery -- and dropping that
+        as a replay is the intended idempotence, not lost data. It would be
+        wrong for a mutable key grain, which is why the golden chain asserts the
+        premise rather than trusting it.
+        """
+        exposure = self._snapshot_exposure
+        if exposure is None:
+            return False
+        message = encode_snapshot_delta(
+            exposure,
+            op="upsert",
+            row=row_dict,
+            source_event_id=source_event_id,
+            source_topic=source_topic,
+            source_partition=0,
+            source_offset=0,
+            observed_at=datetime.now(tz=UTC).isoformat(),
+        )
+        if message is None:
+            return False
+        return self._resolve_publisher().publish(message)
 
     def accumulate(self, event: ModelWorkEventInbound, topic: str) -> ModelWorkEventRow:
         """Reduce one inbound event to its row. Pure -- no I/O, no state.
@@ -194,15 +311,15 @@ class HandlerProjectionWorkEvents:
             payload=payload,
         )
 
-    def project(
-        self,
-        event: ModelWorkEventInbound,
-        db: DatabaseAdapter,
-        topic: str,
-    ) -> ModelProjectionWorkEventsResult:
-        """Project one event into ``omninode_internal.work_events``."""
-        row = self.accumulate(event, topic)
-        row_dict: dict[str, object] = {
+    @staticmethod
+    def _row_dict(row: ModelWorkEventRow) -> dict[str, object]:
+        """The wire-safe mapping written to the table AND published as the delta.
+
+        One construction site, so the durable row and the republished snapshot
+        row can never disagree about what was projected -- a second copy is how
+        a writer and its own read model drift apart.
+        """
+        return {
             "event_id": row.event_id,
             # A ``datetime``, never ``.isoformat()``. asyncpg refuses a str for a
             # TIMESTAMPTZ parameter outright ("expected a datetime.date or
@@ -218,6 +335,15 @@ class HandlerProjectionWorkEvents:
             "source_topic": row.source_topic,
             "payload": row.payload,
         }
+
+    def project(
+        self,
+        event: ModelWorkEventInbound,
+        db: DatabaseAdapter,
+        topic: str,
+    ) -> ModelProjectionWorkEventsResult:
+        """Project one event into ``omninode_internal.work_events``."""
+        row_dict = self._row_dict(self.accumulate(event, topic))
         ok = db.upsert(TABLE, CONFLICT_KEY, row_dict)
         return ModelProjectionWorkEventsResult(rows_upserted=1 if ok else 0)
 
@@ -237,6 +363,15 @@ class HandlerProjectionWorkEvents:
         ``_topic`` is REQUIRED and has no default: defaulting it would let a
         mis-routed message be projected under the wrong kind, which is the
         silent-corruption mode this projection exists to avoid.
+
+        The snapshot delta is published only AFTER the durable write reports
+        success (OMN-17772). Publishing first, or publishing regardless, would
+        put a row on the read model's topic that no table holds -- the page
+        would show a work event the ledger cannot produce. A publish that
+        returns False is logged and does NOT fail the handler: the durable row
+        landed and the runtime's terminal event asserts exactly that, and
+        reporting the write as failed because the republish leg was unavailable
+        would be the opposite lie.
         """
         db_raw = request.pop("_db", None)
         if not isinstance(db_raw, DatabaseAdapter):
@@ -246,8 +381,29 @@ class HandlerProjectionWorkEvents:
             raise WorkEventProjectionError(
                 "handle() requires the source topic in request['_topic']"
             )
+        envelope_id = request.pop("_envelope_id", None)
         event = ModelWorkEventInbound(**request)
-        result = self.project(event, db_raw, topic_raw)
+
+        row_dict = self._row_dict(self.accumulate(event, topic_raw))
+        ok = db_raw.upsert(TABLE, CONFLICT_KEY, row_dict)
+        result = ModelProjectionWorkEventsResult(rows_upserted=1 if ok else 0)
+        if ok:
+            source_event_id = str(
+                event.correlation_id or envelope_id or row_dict["event_id"]
+            )
+            published = self._publish_snapshot(
+                row_dict,
+                source_topic=topic_raw,
+                source_event_id=source_event_id,
+            )
+            if not published:
+                logger.warning(
+                    "work_events snapshot delta not published for event_id=%s "
+                    "on topic=%s; the row is durable and the read model will "
+                    "re-converge on the next delta for this key",
+                    row_dict["event_id"],
+                    topic_raw,
+                )
         return result.model_dump(mode="json")
 
 
