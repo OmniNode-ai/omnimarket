@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
 
-"""Render ModelADRDraft into knowledge-base frontmatter + markdown format."""
+"""Render extracted decisions into their contract-selected KB artifact format."""
 
 from __future__ import annotations
 
@@ -16,10 +16,10 @@ from omnibase_core.models.adr.model_adr_draft import ModelADRDraft
 
 @dataclass(frozen=True, slots=True)
 class ModelKBRenderResult:
-    """Paths written by the renderer."""
+    """Paths written by a destination-specific renderer."""
 
     adr_path: Path
-    evidence_path: Path
+    evidence_path: Path | None
 
 
 def render_adr_to_kb(
@@ -46,6 +46,27 @@ def render_adr_to_kb(
     return ModelKBRenderResult(adr_path=adr_path, evidence_path=evidence_path)
 
 
+def render_decision_to_private_kb(
+    draft: ModelADRDraft,
+    output_dir: Path,
+) -> ModelKBRenderResult:
+    """Render an internal-KB decision record without public ADR schema artifacts.
+
+    ``knowledge-base-internal`` records settled internal decisions in
+    ``reference/decisions/<slug>.md``.  That repository has no ``adrs/``
+    convention, public frontmatter schema, or companion evidence sidecars.
+    The publisher deliberately keeps its public ADR renderer separate so a
+    caller cannot accidentally impose the public layout on the private KB.
+    """
+    decision_path = output_dir / f"{_decision_slug(draft.title)}.md"
+    if decision_path.exists():
+        raise FileExistsError(
+            f"private KB decision already exists: {decision_path.name}"
+        )
+    decision_path.write_text(_render_private_decision_markdown(draft), encoding="utf-8")
+    return ModelKBRenderResult(adr_path=decision_path, evidence_path=None)
+
+
 def _slug(adr_id: str, title: str) -> str:
     # Preserve the ADR-NNNN prefix case — the knowledge-base flat convention is
     # uppercase (adrs/ADR-0009-...md); only the title portion is lowercased.
@@ -53,6 +74,12 @@ def _slug(adr_id: str, title: str) -> str:
     title_part = re.sub(r"[^a-z0-9-]", "-", title.lower())[:50].strip("-")
     title_part = re.sub(r"-{2,}", "-", title_part)
     return f"{id_part}-{title_part}"
+
+
+def _decision_slug(title: str) -> str:
+    """Return the unnumbered slug used by internal ``reference/decisions``."""
+    slug = re.sub(r"[^a-z0-9-]", "-", title.lower())[:80].strip("-")
+    return re.sub(r"-{2,}", "-", slug)
 
 
 def _render_markdown(draft: ModelADRDraft, adr_id: str) -> str:
@@ -98,6 +125,24 @@ def _render_markdown(draft: ModelADRDraft, adr_id: str) -> str:
     return header + "\n".join(sections)
 
 
+def _render_private_decision_markdown(draft: ModelADRDraft) -> str:
+    """Render the simple Markdown convention used by the internal KB."""
+    sections: list[str] = [f"# ADR: {draft.title}", "", "## Status", "", "Proposed", ""]
+    sections += ["## Context", "", draft.context, ""]
+    sections += ["## Decision", "", draft.decision, ""]
+
+    if draft.alternatives_considered:
+        sections += ["## Alternatives Considered", ""]
+        sections.extend(
+            f"{index}. {alternative}"
+            for index, alternative in enumerate(draft.alternatives_considered, 1)
+        )
+        sections.append("")
+
+    sections += ["## Consequences", "", draft.consequences, ""]
+    return "\n".join(sections)
+
+
 def _render_evidence(draft: ModelADRDraft, adr_id: str) -> str:
     meta = draft.extraction_metadata
     evidence = {
@@ -114,4 +159,8 @@ def _render_evidence(draft: ModelADRDraft, adr_id: str) -> str:
     return json.dumps(evidence, indent=2)
 
 
-__all__ = ["ModelKBRenderResult", "render_adr_to_kb"]
+__all__ = [
+    "ModelKBRenderResult",
+    "render_adr_to_kb",
+    "render_decision_to_private_kb",
+]

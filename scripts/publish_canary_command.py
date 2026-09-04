@@ -69,10 +69,10 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Publish adr-canary-requested.v1 command")
     p.add_argument(
         "--manifest-path",
-        default="docs/adr-canary/ground_truth_manifest.yaml",
+        default="src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml",
     )
     p.add_argument("--model-subset", default=None)
-    p.add_argument("--output-dir", default="docs/adr-canary-runs/")
+    p.add_argument("--output-dir", default=".onex_state/adr-canary-runs/")
     p.add_argument("--dry-run", action="store_true")
     p.add_argument("--resume-run-id", default=None)
     p.add_argument("--max-cost-usd", type=float, default=None)

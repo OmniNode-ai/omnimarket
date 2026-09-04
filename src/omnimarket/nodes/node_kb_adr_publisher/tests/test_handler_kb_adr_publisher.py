@@ -6,8 +6,8 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Any
+from pathlib import Path, PurePosixPath
+from typing import Any, cast
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,7 +18,10 @@ from omnimarket.models.adr import (
     ModelAdrSourceProvenance,
 )
 from omnimarket.nodes.node_kb_adr_publisher.handlers.handler_kb_adr_publisher import (
+    _KB_DESTINATION_LAYOUTS,
+    EnumKBArtifactLayout,
     HandlerKBADRPublisher,
+    ModelKBDestinationLayout,
     _load_decisions,
 )
 from omnimarket.nodes.node_kb_adr_publisher.models.model_publish_request import (
@@ -35,12 +38,14 @@ _SOURCE_PROVENANCE = ModelAdrSourceProvenance(
 )
 
 
-def _make_decision(model_id: str = "qwen3-coder-local") -> dict[str, Any]:
+def _make_decision(
+    model_id: str = "qwen3-coder-local", *, ordinal: int = 0
+) -> dict[str, Any]:
     return {
         "draft": {
             "status": "Proposed",
             "date": "2026-05-23T10:00:00+00:00",
-            "title": f"Use Pydantic for wire DTOs ({model_id})",
+            "title": f"Use Pydantic for wire DTOs ({model_id}, {ordinal})",
             "context": "Inconsistent DTO definitions across repos.",
             "decision": "All wire DTOs must be Pydantic BaseModel subclasses.",
             "consequences": "Easier validation; heavier import overhead.",
@@ -95,9 +100,9 @@ def canary_run_dir(tmp_path: Path) -> Path:
 @pytest.fixture
 def decisions_file(canary_run_dir: Path) -> Path:
     decisions = [
-        _make_decision("qwen3-coder-local"),
-        _make_decision("qwen3-coder-local"),
-        _make_decision("deepseek-r1-local"),
+        _make_decision("qwen3-coder-local", ordinal=1),
+        _make_decision("qwen3-coder-local", ordinal=2),
+        _make_decision("deepseek-r1-local", ordinal=3),
     ]
     f = canary_run_dir / "extracted_decisions.json"
     f.write_text(json.dumps(decisions), encoding="utf-8")
@@ -451,24 +456,27 @@ async def test_public_source_can_publish_to_private_contract_destination(
         decision["kb_destination"] = "private"
     decisions_file.write_text(json.dumps(decisions), encoding="utf-8")
     calls: list[list[str]] = []
+    private_artifacts: dict[str, str] = {}
 
     def fake_subprocess(cmd: list[str], **kwargs: Any) -> MagicMock:
+        nonlocal private_artifacts
         calls.append(cmd)
         if "clone" in cmd:
             Path(cmd[-1]).mkdir(parents=True, exist_ok=True)
+        if "add" in cmd and "-C" in cmd:
+            kb_dir = Path(cmd[cmd.index("-C") + 1])
+            artifact_dir = kb_dir / "reference" / "decisions"
+            private_artifacts = {
+                path.relative_to(kb_dir).as_posix(): path.read_text(encoding="utf-8")
+                for path in artifact_dir.glob("*.md")
+            }
         response = MagicMock()
         response.stdout = (
             "https://github.com/OmniNode-ai/knowledge-base-internal/pull/7\n"
         )
         return response
 
-    with (
-        patch("subprocess.run", side_effect=fake_subprocess),
-        patch(
-            "omnimarket.nodes.node_kb_adr_publisher.handlers.handler_kb_adr_publisher.render_adr_to_kb"
-        ) as mock_render,
-    ):
-        mock_render.return_value = MagicMock(adr_path=tmp_path / "fake.md")
+    with patch("subprocess.run", side_effect=fake_subprocess):
         result = await HandlerKBADRPublisher().handle(
             _publish_request(
                 canary_run_dir,
@@ -480,6 +488,59 @@ async def test_public_source_can_publish_to_private_contract_destination(
     assert ["gh", "repo", "clone", "OmniNode-ai/knowledge-base-internal"] in [
         call[:4] for call in calls
     ]
+    assert private_artifacts
+    assert all(path.startswith("reference/decisions/") for path in private_artifacts)
+    assert all("/adrs/" not in path for path in private_artifacts)
+    assert all(not body.startswith("---\n") for body in private_artifacts.values())
+    assert not any(command[-1] == "scripts/validate.py" for command in calls)
+
+
+@pytest.mark.unit
+async def test_missing_destination_layout_rejects_before_subprocess(
+    canary_run_dir: Path,
+    decisions_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = MagicMock()
+    monkeypatch.delitem(_KB_DESTINATION_LAYOUTS, EnumAdrKBDestination.public)
+
+    result = await HandlerKBADRPublisher(run=runner).handle(
+        _publish_request(canary_run_dir)
+    )
+
+    assert result.success is False
+    assert result.error_code == "PUBLICATION_POLICY_REJECTED"
+    assert result.error is not None
+    assert "artifact layout" in result.error
+    runner.assert_not_called()
+
+
+@pytest.mark.unit
+async def test_unknown_destination_layout_rejects_before_subprocess(
+    canary_run_dir: Path,
+    decisions_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = MagicMock()
+    monkeypatch.setitem(
+        _KB_DESTINATION_LAYOUTS,
+        EnumAdrKBDestination.public,
+        ModelKBDestinationLayout(
+            repository="OmniNode-ai/knowledge-base",
+            artifact_directory=PurePosixPath("adrs"),
+            artifact_layout=cast(EnumKBArtifactLayout, "unknown"),
+        ),
+    )
+
+    result = await HandlerKBADRPublisher(run=runner).handle(
+        _publish_request(canary_run_dir)
+    )
+
+    assert result.success is False
+    assert result.error_code == "PUBLICATION_POLICY_REJECTED"
+    assert result.error is not None
+    assert "unknown artifact layout" in result.error
+    runner.assert_not_called()
 
 
 @pytest.mark.unit
@@ -548,6 +609,30 @@ async def test_public_sanitization_rejects_before_any_subprocess(
 
     assert result.success is False
     assert result.error_code == "SANITIZATION_REJECTED"
+    runner.assert_not_called()
+
+
+@pytest.mark.unit
+async def test_public_lab_named_run_rejects_before_any_subprocess(
+    tmp_path: Path,
+    decisions_file: Path,
+) -> None:
+    """A public branch or PR may not carry a lab identifier."""
+    lab_run_dir = tmp_path / "lab-canary-run"
+    lab_run_dir.mkdir()
+    (lab_run_dir / "extracted_decisions.json").write_text(
+        decisions_file.read_text(encoding="utf-8"), encoding="utf-8"
+    )
+
+    runner = MagicMock()
+    result = await HandlerKBADRPublisher(run=runner).handle(
+        _publish_request(lab_run_dir)
+    )
+
+    assert result.success is False
+    assert result.error_code == "SANITIZATION_REJECTED"
+    assert result.error is not None
+    assert "no_lab_identifiers" in result.error
     runner.assert_not_called()
 
 

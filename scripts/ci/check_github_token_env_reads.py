@@ -96,7 +96,6 @@ def _scan_file(path: Path) -> list[str]:
     for node in ast.walk(tree):
         lineno: int | None = None
         end_lineno: int = 0
-        arg_name: str = ""
         detail: str = ""
 
         # os.environ["GH_PAT"] — Subscript
@@ -111,7 +110,6 @@ def _scan_file(path: Path) -> list[str]:
             if key in _GITHUB_TOKEN_ENV_NAMES:
                 lineno = node.lineno
                 end_lineno = getattr(node, "end_lineno", node.lineno)
-                arg_name = key
                 detail = f"os.environ[{key!r}]"
 
         elif isinstance(node, ast.Call):
@@ -135,7 +133,6 @@ def _scan_file(path: Path) -> list[str]:
                 if key in _GITHUB_TOKEN_ENV_NAMES:
                     lineno = node.lineno
                     end_lineno = getattr(node, "end_lineno", node.lineno)
-                    arg_name = key
                     call_form = "os.getenv" if is_getenv else "os.environ.get"
                     detail = f"{call_form}({key!r})"
 

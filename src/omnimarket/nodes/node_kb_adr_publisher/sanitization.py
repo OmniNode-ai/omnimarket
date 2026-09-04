@@ -3,7 +3,8 @@
 
 """Deterministic preflight sanitization for ADR publication candidates.
 
-The patterns are policy data in ``docs/adr-canary/sanitization_gate.yaml``.
+The patterns are policy data in
+``src/omnimarket/configs/adr_canary_sanitization_gate.v1.yaml``.
 This module deliberately does not duplicate them: public publication fails
 before the publisher subprocess seam when the checked-in policy is malformed
 or a blocking rule matches. The public KB's own validator is invoked again on
@@ -24,21 +25,23 @@ from omnimarket.models.adr import (
 
 _SANITIZATION_CONFIG_PATH = (
     Path(__file__).resolve().parents[4]
-    / "docs"
-    / "adr-canary"
-    / "sanitization_gate.yaml"
+    / "src"
+    / "omnimarket"
+    / "configs"
+    / "adr_canary_sanitization_gate.v1.yaml"
 )
 
 
 def validate_candidate_preflight(
     candidate: ModelAdrPublicationCandidate,
     destination: EnumAdrKBDestination,
+    publication_context: tuple[str, ...] = (),
 ) -> tuple[str, ...]:
     """Return deterministic blocking findings for a candidate's rendered surface.
 
-    Only generated ADR fields are scanned. Hash-only provenance is publication
-    evidence, not generated ADR content, and is validated separately by the
-    publisher policy boundary.
+    Generated ADR fields and the strings that become a branch or PR surface
+    are scanned. Hash-only provenance is publication evidence, not generated
+    ADR content, and is validated separately by the publisher policy boundary.
     """
     try:
         raw = yaml.safe_load(_SANITIZATION_CONFIG_PATH.read_text(encoding="utf-8"))
@@ -54,7 +57,10 @@ def validate_candidate_preflight(
     # turn a credential marker such as ``api_key: \"...\"`` into a sequence
     # containing literal backslashes and let the policy regex miss it.
     rendered_surface = "\n".join(
-        _iter_text_values(candidate.draft.model_dump(mode="json"))
+        [
+            *_iter_text_values(candidate.draft.model_dump(mode="json")),
+            *publication_context,
+        ]
     )
     findings: list[str] = []
     for check in checks:

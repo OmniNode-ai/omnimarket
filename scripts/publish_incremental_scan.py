@@ -101,12 +101,12 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--manifest",
         type=str,
-        default="docs/adr-canary/discovery_manifest.yaml",
+        default="src/omnimarket/configs/adr_canary_discovery_manifest.v1.yaml",
     )
     p.add_argument(
         "--rejected-manifest",
         type=str,
-        default="docs/adr-canary/rejected_manifest.yaml",
+        default="src/omnimarket/configs/adr_canary_rejected_manifest.v1.yaml",
     )
     p.add_argument(
         "--state-dir",
@@ -148,8 +148,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--publication-classification",
         choices=[
-            classification.value
-            for classification in EnumAdrPublicationClassification
+            classification.value for classification in EnumAdrPublicationClassification
         ],
         required=True,
         help="Explicit source publication sensitivity",

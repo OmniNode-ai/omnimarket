@@ -4,9 +4,8 @@
 """Handler for KB ADR publisher — EFFECT node.
 
 Reads extracted_decisions.json from the canary run directory, filters by
-model_key, renders ADRs via kb_adr_renderer adapter, clones the KB repo,
-creates a branch, writes flat adrs/ADR-NNNN-<slug>.md files, and opens a
-PR for human review.
+model_key, renders destination-specific decision artifacts, clones the
+contract-pinned KB repo, creates a branch, and opens a PR for human review.
 
 [OMN-11808]
 """
@@ -18,12 +17,17 @@ import logging
 import re
 import subprocess
 import tempfile
-from pathlib import Path
+from dataclasses import dataclass
+from enum import StrEnum
+from pathlib import Path, PurePosixPath
 from typing import Any, Final, Protocol
 
 from pydantic import ValidationError
 
-from omnimarket.adapters.adr.kb_adr_renderer import render_adr_to_kb
+from omnimarket.adapters.adr.kb_adr_renderer import (
+    render_adr_to_kb,
+    render_decision_to_private_kb,
+)
 from omnimarket.models.adr import (
     EnumAdrKBDestination,
     EnumAdrPublicationClassification,
@@ -42,9 +46,34 @@ from omnimarket.nodes.node_kb_adr_publisher.sanitization import (
 
 logger = logging.getLogger(__name__)
 
-_KB_REPOSITORIES: Final[dict[EnumAdrKBDestination, str]] = {
-    EnumAdrKBDestination.public: "OmniNode-ai/knowledge-base",
-    EnumAdrKBDestination.private: "OmniNode-ai/knowledge-base-internal",
+
+class EnumKBArtifactLayout(StrEnum):
+    """Closed artifact layouts owned by the KB destination contract."""
+
+    public_flat_adr = "public_flat_adr"
+    private_reference_decision = "private_reference_decision"
+
+
+@dataclass(frozen=True, slots=True)
+class ModelKBDestinationLayout:
+    """Pinned repository and filesystem layout for one KB destination."""
+
+    repository: str
+    artifact_directory: PurePosixPath
+    artifact_layout: EnumKBArtifactLayout
+
+
+_KB_DESTINATION_LAYOUTS: Final[dict[EnumAdrKBDestination, ModelKBDestinationLayout]] = {
+    EnumAdrKBDestination.public: ModelKBDestinationLayout(
+        repository="OmniNode-ai/knowledge-base",
+        artifact_directory=PurePosixPath("adrs"),
+        artifact_layout=EnumKBArtifactLayout.public_flat_adr,
+    ),
+    EnumAdrKBDestination.private: ModelKBDestinationLayout(
+        repository="OmniNode-ai/knowledge-base-internal",
+        artifact_directory=PurePosixPath("reference/decisions"),
+        artifact_layout=EnumKBArtifactLayout.private_reference_decision,
+    ),
 }
 _SUBPROCESS_TIMEOUT_SECONDS: Final = 120
 
@@ -95,8 +124,8 @@ def _publication_policy_error(
         return "kb_destination is required and must be a contract-owned destination"
     if request_source is None:
         return "source_provenance is required for publication"
-    if destination not in _KB_REPOSITORIES:
-        return "kb_destination is not an approved knowledge-base destination"
+    if destination not in _KB_DESTINATION_LAYOUTS:
+        return "kb_destination has no approved artifact layout"
 
     for candidate in candidates:
         evidence_source = candidate.source_provenance
@@ -204,11 +233,19 @@ class HandlerKBADRPublisher:
             )
 
         assert request.kb_destination is not None
+        run_id = canary_run_dir.name
+        assert request.source_provenance is not None
         sanitization_findings = tuple(
             finding
             for candidate in model_decisions
             for finding in validate_candidate_preflight(
-                candidate, request.kb_destination
+                candidate,
+                request.kb_destination,
+                publication_context=(
+                    run_id,
+                    request.model_key,
+                    request.source_provenance.source_repository,
+                ),
             )
         )
         if sanitization_findings:
@@ -225,7 +262,25 @@ class HandlerKBADRPublisher:
         source_provenance = request.source_provenance
         assert destination is not None
         assert source_provenance is not None
-        kb_repository = _KB_REPOSITORIES[destination]
+        layout = _KB_DESTINATION_LAYOUTS.get(destination)
+        if layout is None:
+            return ModelKBADRPublishResult(
+                success=False,
+                error_code="PUBLICATION_POLICY_REJECTED",
+                error="kb_destination has no approved artifact layout",
+                kb_destination=destination,
+            )
+        if layout.artifact_layout not in {
+            EnumKBArtifactLayout.public_flat_adr,
+            EnumKBArtifactLayout.private_reference_decision,
+        }:
+            return ModelKBADRPublishResult(
+                success=False,
+                error_code="PUBLICATION_POLICY_REJECTED",
+                error="kb_destination has an unknown artifact layout",
+                kb_destination=destination,
+            )
+        kb_repository = layout.repository
 
         logger.info(
             "Found %d decisions from model key %r for %s KB publication",
@@ -236,7 +291,9 @@ class HandlerKBADRPublisher:
 
         if request.dry_run:
             for candidate in model_decisions:
-                logger.info("  Would create ADR: %s", candidate.draft.title)
+                logger.info(
+                    "  Would create decision artifact: %s", candidate.draft.title
+                )
             logger.info("Dry-run complete — no files written, no PR created.")
             return ModelKBADRPublishResult(
                 success=True,
@@ -245,7 +302,6 @@ class HandlerKBADRPublisher:
                 kb_repository=kb_repository,
             )
 
-        run_id = canary_run_dir.name
         branch = f"canary/{run_id}/{request.model_key}"
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -258,11 +314,13 @@ class HandlerKBADRPublisher:
                 timeout=_SUBPROCESS_TIMEOUT_SECONDS,
             )
 
-            # Knowledge-base convention: flat adrs/ADR-NNNN-<slug>.md with
-            # status: proposed frontmatter — no adrs/proposed/ subdirectory.
-            adrs_dir = kb_dir / "adrs"
-            adrs_dir.mkdir(parents=True, exist_ok=True)
-            next_num = _next_adr_number(adrs_dir)
+            artifact_dir = kb_dir / layout.artifact_directory
+            artifact_dir.mkdir(parents=True, exist_ok=True)
+            next_num = (
+                _next_adr_number(artifact_dir)
+                if layout.artifact_layout is EnumKBArtifactLayout.public_flat_adr
+                else None
+            )
 
             self._run(
                 ["git", "-C", str(kb_dir), "checkout", "-b", branch],
@@ -272,11 +330,28 @@ class HandlerKBADRPublisher:
 
             rendered_count = 0
             for offset, candidate in enumerate(model_decisions):
-                adr_id = f"ADR-{next_num + offset:04d}"
                 draft = candidate.draft
-                result = render_adr_to_kb(
-                    draft=draft, adr_id=adr_id, output_dir=adrs_dir
-                )
+                if layout.artifact_layout is EnumKBArtifactLayout.public_flat_adr:
+                    assert next_num is not None
+                    adr_id = f"ADR-{next_num + offset:04d}"
+                    result = render_adr_to_kb(
+                        draft=draft, adr_id=adr_id, output_dir=artifact_dir
+                    )
+                elif (
+                    layout.artifact_layout
+                    is EnumKBArtifactLayout.private_reference_decision
+                ):
+                    result = render_decision_to_private_kb(
+                        draft=draft, output_dir=artifact_dir
+                    )
+                else:
+                    return ModelKBADRPublishResult(
+                        success=False,
+                        error_code="PUBLICATION_POLICY_REJECTED",
+                        error="kb_destination has an unknown artifact layout",
+                        kb_destination=destination,
+                        kb_repository=kb_repository,
+                    )
                 logger.info("  Rendered: %s", result.adr_path.name)
                 rendered_count += 1
 
@@ -291,6 +366,11 @@ class HandlerKBADRPublisher:
                     timeout=_SUBPROCESS_TIMEOUT_SECONDS,
                 )
 
+            artifact_label = (
+                "ADRs"
+                if layout.artifact_layout is EnumKBArtifactLayout.public_flat_adr
+                else "decision records"
+            )
             logger.info("Committing %d rendered ADRs ...", rendered_count)
             self._run(
                 ["git", "-C", str(kb_dir), "add", "-A"],
@@ -304,7 +384,7 @@ class HandlerKBADRPublisher:
                     str(kb_dir),
                     "commit",
                     "-m",
-                    f"feat: propose {rendered_count} ADRs from canary run {run_id}",
+                    f"feat: propose {rendered_count} {artifact_label} from canary run {run_id}",
                 ],
                 check=True,
                 timeout=_SUBPROCESS_TIMEOUT_SECONDS,
@@ -315,6 +395,14 @@ class HandlerKBADRPublisher:
                 timeout=_SUBPROCESS_TIMEOUT_SECONDS,
             )
 
+            artifact_description = (
+                "All ADRs written to `adrs/` as `ADR-NNNN-<slug>.md` with "
+                "`status: proposed` frontmatter, pending human review.\n"
+                "Change status to `accepted` after review.\n"
+                if layout.artifact_layout is EnumKBArtifactLayout.public_flat_adr
+                else "All decision records written to `reference/decisions/<slug>.md` "
+                "for internal review.\n"
+            )
             pr_body = (
                 "## Canary Extraction Results\n\n"
                 f"- **Run ID**: `{run_id}`\n"
@@ -323,14 +411,10 @@ class HandlerKBADRPublisher:
                 f"- **Source classification**: `{source_provenance.publication_classification.value}`\n"
                 f"- **KB destination**: `{destination.value}`\n"
                 f"- **Decisions extracted**: {rendered_count}\n\n"
-                "All ADRs written to `adrs/` as `ADR-NNNN-<slug>.md` with "
-                "`status: proposed` frontmatter, pending human review.\n"
-                "Change status to `accepted` after review.\n\n"
+                f"{artifact_description}\n"
                 "## Test plan\n"
-                "- [ ] Each proposed ADR has valid frontmatter "
-                "(schemas/frontmatter.schema.json)\n"
-                "- [ ] No internal references in content\n"
-                "- [ ] Companion evidence JSON present for each ADR\n"
+                "- [ ] Destination-specific artifact convention is satisfied\n"
+                "- [ ] No secrets in content\n"
             )
 
             pr_result = self._run(
@@ -341,7 +425,7 @@ class HandlerKBADRPublisher:
                     "--repo",
                     kb_repository,
                     "--title",
-                    f"feat: {rendered_count} proposed ADRs from canary run {run_id}",
+                    f"feat: {rendered_count} proposed {artifact_label} from canary run {run_id}",
                     "--body",
                     pr_body,
                 ],

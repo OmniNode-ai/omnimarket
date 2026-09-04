@@ -46,10 +46,10 @@ dod_evidence:
 # === NODE CONFIGURATION ===
 config:
   manifest_path:
-    default: "docs/adr-canary/ground_truth_manifest.yaml"
+    default: "src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml"
     description: "Path to the ground truth manifest (relative to repo root)"
   output_dir:
-    default: "docs/adr-canary-runs/"
+    default: ".onex_state/adr-canary-runs/"
     description: "Base output directory for canary run evidence bundles"
   max_concurrent_extractions:
     default: 4

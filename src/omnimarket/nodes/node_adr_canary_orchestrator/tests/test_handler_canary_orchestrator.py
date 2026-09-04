@@ -214,9 +214,12 @@ def _make_handler(
 class TestModelCanaryCommandPayload:
     def test_defaults(self) -> None:
         payload = ModelCanaryCommandPayload()
-        assert payload.manifest_path == "docs/adr-canary/ground_truth_manifest.yaml"
+        assert (
+            payload.manifest_path
+            == "src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml"
+        )
         assert payload.model_subset is None
-        assert payload.output_dir == "docs/adr-canary-runs/"
+        assert payload.output_dir == ".onex_state/adr-canary-runs/"
         assert payload.dry_run is False
         assert payload.resume_run_id is None
         assert payload.max_cost_usd is None
@@ -382,7 +385,7 @@ class TestWriteScorecard:
         ]
         path = _write_scorecard(
             run_id="20260508-120000-abcdef",
-            manifest_path="docs/adr-canary/ground_truth_manifest.yaml",
+            manifest_path="src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml",
             scores=scores,
             evidence_dir=tmp_path,
             entries_total=2,
@@ -400,7 +403,7 @@ class TestWriteScorecard:
     def test_renders_discovery_grading_as_not_applicable(self, tmp_path: Path) -> None:
         path = _write_scorecard(
             run_id="20260508-120000-abcdef",
-            manifest_path="docs/adr-canary/discovery_manifest.yaml",
+            manifest_path="src/omnimarket/configs/adr_canary_discovery_manifest.v1.yaml",
             scores=[
                 ModelModelScore(
                     model_key="qwen3-coder",

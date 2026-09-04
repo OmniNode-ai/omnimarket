@@ -26,14 +26,20 @@ def test_resolve_workspace_config_path_prefers_cwd(tmp_path, monkeypatch):
     repos_root = tmp_path / "workspace"
     repo_root = tmp_path / "omnimarket"
     repos_root.mkdir()
-    local_manifest = repo_root / "docs" / "adr-canary" / "rejected_manifest.yaml"
+    local_manifest = (
+        repo_root
+        / "src"
+        / "omnimarket"
+        / "configs"
+        / "adr_canary_rejected_manifest.v1.yaml"
+    )
     local_manifest.parent.mkdir(parents=True)
     local_manifest.write_text("rejected_entries: []\n", encoding="utf-8")
 
     monkeypatch.chdir(repo_root)
 
     resolved = module._resolve_workspace_config_path(
-        "docs/adr-canary/rejected_manifest.yaml", repos_root
+        "src/omnimarket/configs/adr_canary_rejected_manifest.v1.yaml", repos_root
     )
 
     assert resolved == local_manifest
