@@ -241,15 +241,35 @@ class ModelDelegateSkillResponse(BaseModel):
         return self
 
 
-# HTTP 429 / RESOURCE_EXHAUSTED as providers phrase it. Matched only as a
+# Provider status classes as they appear in raw refusal text. Matched only as a
 # FALLBACK, after the typed ``failure_class`` on the attempt ladder: the string
 # match exists because the bus dispatch port reports the provider's raw error
-# text without classifying it, and a quota refusal that reaches the terminal
+# text without classifying it, and a refusal that reaches the terminal
 # unclassified is exactly the case this ticket exists to stop mislabelling.
-_QUOTA_ERROR_PATTERN = re.compile(
-    r"\b429\b|resource_exhausted|quota exceeded|quota_exceeded|rate limit exceeded",
+#
+# Status and quota body are separate patterns (OMN-16998). Previously one regex
+# alternated between them, so quota *wording* alone was sufficient to claim a
+# capacity refusal -- and, having no member for anything else, an HTTP 401 fell
+# through to the quota label. B7 is measured from this field, so the two must be
+# corroborated independently.
+_AUTH_STATUS_PATTERN = re.compile(r"\b(?:401|403)\b")
+_QUOTA_STATUS_PATTERN = re.compile(r"\b429\b")
+_QUOTA_BODY_PATTERN = re.compile(
+    r"resource_exhausted|quota exceeded|quota_exceeded|rate limit exceeded",
     re.IGNORECASE,
 )
+
+
+def _typed_cause_claim(
+    attempts: Sequence[ModelDelegateSkillAttemptRecord],
+) -> EnumDelegationTerminalFailureCause | None:
+    """Return the first attempt's ``failure_class`` that names an enum member."""
+    known = {member.value for member in EnumDelegationTerminalFailureCause}
+    for attempt in attempts:
+        raw = (attempt.failure_class or "").strip().lower()
+        if raw in known:
+            return EnumDelegationTerminalFailureCause(raw)
+    return None
 
 
 def resolve_terminal_failure_cause(
@@ -259,25 +279,53 @@ def resolve_terminal_failure_cause(
 ) -> EnumDelegationTerminalFailureCause | None:
     """Classify a delegation's terminal failure cause from its attempt ladder.
 
-    Typed evidence first: an attempt whose ``failure_class`` already equals a
-    known enum value is authoritative. Only when no attempt is classified does
-    this fall back to matching the provider's raw error text, so a port that
-    learns to classify its own failures immediately takes precedence over the
-    regex without any change here.
+    The cause names the status class the provider actually reported. Resolution
+    order (OMN-16998):
 
-    Returns ``None`` when nothing in the ladder or the outer error names a
-    cause the enum can express — an unclassified failure stays unclassified
-    rather than being coerced into the nearest member.
+    1. **Typed evidence.** An attempt whose ``failure_class`` equals a known
+       enum value is authoritative, so a port that learns to classify its own
+       failures takes precedence over text matching without a change here.
+    2. **Observed status.** 401/403 resolve to ``AUTH_FAILED``; a 429 carrying a
+       recognised quota body resolves to ``PROVIDER_QUOTA_EXHAUSTED``.
+    3. **Observed failure, unrecognised shape.** Anything else the ladder or the
+       outer error actually reported resolves to ``PROVIDER_ERROR``.
+
+    One invariant overrides step 1: **no path returns the quota cause without a
+    429 in the observed response.** An uncorroborated typed quota claim degrades
+    to ``PROVIDER_ERROR`` rather than entering the over-quota metric, which is
+    measured from this field.
+
+    Returns ``None`` only when nothing was observed at all. Silence is not a
+    provider error — and a successful response is forbidden from carrying a
+    cause, so manufacturing one from silence would make success unconstructible.
     """
-    known = {member.value for member in EnumDelegationTerminalFailureCause}
-    for attempt in attempts:
-        raw = (attempt.failure_class or "").strip().lower()
-        if raw in known:
-            return EnumDelegationTerminalFailureCause(raw)
-    texts = [attempt.error_message for attempt in attempts]
-    texts.append(error_message)
-    if any(text and _QUOTA_ERROR_PATTERN.search(text) for text in texts):
+    observed = [
+        text
+        for text in (*(attempt.error_message for attempt in attempts), error_message)
+        if text
+    ]
+    # Status and body must corroborate each other within a single reported
+    # failure: a 429 on one rung and quota wording on another are not one event.
+    quota_corroborated = any(
+        _QUOTA_STATUS_PATTERN.search(text) and _QUOTA_BODY_PATTERN.search(text)
+        for text in observed
+    )
+
+    typed_claim = _typed_cause_claim(attempts)
+    if typed_claim is not None:
+        if (
+            typed_claim is EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+            and not quota_corroborated
+        ):
+            return EnumDelegationTerminalFailureCause.PROVIDER_ERROR
+        return typed_claim
+
+    if any(_AUTH_STATUS_PATTERN.search(text) for text in observed):
+        return EnumDelegationTerminalFailureCause.AUTH_FAILED
+    if quota_corroborated:
         return EnumDelegationTerminalFailureCause.PROVIDER_QUOTA_EXHAUSTED
+    if observed:
+        return EnumDelegationTerminalFailureCause.PROVIDER_ERROR
     return None
 
 
