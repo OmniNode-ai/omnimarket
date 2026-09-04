@@ -116,10 +116,31 @@ task_model_overrides:
 # byte-for-byte the prior behaviour.
 #
 # `definition_of_done.shape_overrides.<shape>` replaces the HEURISTIC band for
-# that shape. The deterministic band is never overridden: a structural floor
-# (response_non_empty, compiles_without_errors) is a property of the artifact,
-# not of how long the caller asked the answer to be. A class that declares no
-# override for the resolved shape falls back to `default_shape_overrides` below.
+# that shape. A class that declares no override for the resolved shape falls
+# back to `default_shape_overrides` below.
+#
+# OMN-16932 also said the deterministic band is never overridden, because a
+# structural floor is a property of the artifact rather than of how long the
+# caller asked the answer to be. That general principle stands. What OMN-17765
+# narrows is the pair of examples this comment used to give for it:
+# `compiles_without_errors` is a property of a CODE artifact and
+# `uses_pytest_mark_unit` of a TEST artifact, so neither is artifact-agnostic in
+# the way the sentence implied. `response_non_empty` is the one that genuinely
+# holds for any artifact.
+#
+# So a class MAY now declare `shape_overrides.<shape>.deterministic`, and where
+# it does, that tuple IS the deterministic band for the request -- no merge with
+# the class band, no union, no stricter-of-the-two. A class that declares no
+# `deterministic` key keeps its class band untouched: a missing key means NOT
+# DECLARED and never "drop the floor".
+#
+# Two hard limits, both enforced in `_shape_override_deterministic`:
+#   - Per task class ONLY. `default_shape_overrides` has no `deterministic` key
+#     and must not gain one -- it applies to every class at once, so a
+#     deterministic sibling there is a caller-controlled bypass of the
+#     deterministic proof surface.
+#   - Never empty. An empty or non-list `deterministic` is a contract error, not
+#     "no floor" -- an empty band presents a degraded verdict as complete truth.
 response_shape_directives:
   exact_literal:
     - "reply with exactly the word"
@@ -431,6 +452,33 @@ task_classes:
         - no_refusal
         - covers_edge_cases
         - covers_error_paths
+      # OMN-17765: `test` names two different things -- the routing/pricing
+      # class, which the caller cannot touch, and the artifact kind, which a
+      # prompt can and does declare otherwise. A prompt resolving `single_word`
+      # or `exact_literal` has declared the answer is not a test artifact, so
+      # `uses_pytest_mark_unit` and `compiles_without_errors` cannot apply to
+      # it: the gate returned "TASK_MISMATCH: missing @pytest.mark.unit" for 28
+      # liveness probes on the dev lane, which is not merely strict but false --
+      # a one-word reply to a one-word request does not mismatch its task.
+      #
+      # Declared HERE and never in `default_shape_overrides`: that key applies
+      # to every class at once, so a deterministic sibling there would let any
+      # caller drop `compiles_without_errors` from `code_generation` by
+      # prefixing a shape directive. The floor is narrowed for the classes that
+      # declare it, never made caller-controllable.
+      #
+      # `heuristic` is deliberately absent from these entries. A class block
+      # with no `heuristic` key falls through to `default_shape_overrides`
+      # below, so OMN-16932's short-form heuristic band is unchanged.
+      shape_overrides:
+        single_word:
+          deterministic:
+            - response_non_empty
+            - final_artifact_only
+        exact_literal:
+          deterministic:
+            - response_non_empty
+            - final_artifact_only
     quality_gate:
       score_source: quality_gate_graded_score
       required_bar: 0.8
