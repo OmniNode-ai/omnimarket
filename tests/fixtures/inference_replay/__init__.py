@@ -34,7 +34,11 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from omnimarket.inference.adapter_inference_bridge import ModelInferenceAdapter
+from omnimarket.inference.adapter_inference_bridge import (
+    ModelInferenceAdapter,
+    ModelInferenceJsonObjectResponseFormat,
+)
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
 
 _FIXTURE_DIR = Path(__file__).resolve().parent
 
@@ -95,6 +99,8 @@ class RecordedReplayInferenceAdapter(ModelInferenceAdapter):
         user_prompt: str,
         timeout_seconds: float,
         temperature: float | None = None,
+        response_format: ModelInferenceJsonObjectResponseFormat | None = None,
+        protocol_selection: ModelInferenceProtocolSelection | None = None,
     ) -> str:
         if model_key in _DELEGATION_TIER_NAMES:
             raise ValueError(

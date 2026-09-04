@@ -57,6 +57,13 @@ config:
   prompt_template_version:
     description: "Version of the extraction prompt template."
     default: "1.0.0"
+  response_format:
+    description: "Caller-owned structured output contract for decision extraction inference."
+    default:
+      type: json_object
+  json_repair_enabled:
+    description: "Whether one bounded parse-repair call is permitted after malformed output."
+    default: true
 
 metadata:
   transport_type: kafka

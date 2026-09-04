@@ -10,6 +10,16 @@
 # allow_external_providers defaults to false — only local models run unless
 # the canary command is published with allow_external_providers=true.
 
+# Publication authority is curator-supplied policy, never inferred from these
+# workspace paths or from a checkout remote. The source corpus is private
+# OmniNode workspace material and its extracted proposals remain restricted to
+# the internal KB.
+source_provenance:
+  source_repository: "OmniNode-ai/omni_home"
+  source_visibility: "private"
+  publication_classification: "restricted"
+kb_destination: "private"
+
 entries:
   - id: kafka-required-infrastructure
     root_paths:

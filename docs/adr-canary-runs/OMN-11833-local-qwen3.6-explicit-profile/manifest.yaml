@@ -1,0 +1,13 @@
+# One local-only, single-attempt ADR discovery canary for OMN-11833.
+# The command supplies the canonical workspace_root; this relative path is
+# intentionally resolved there rather than from this ticket worktree.
+entries:
+  - id: omn-39-registry-resolve-impls
+    root_paths:
+      - docs/plans/2026-04-19-omn-39-registry-resolve-impls.md
+    discovery_mode: true
+    models:
+      - key: qwen3-coder
+        provider: local
+        model_id: Qwen3.6-35B-A3B
+        external: false

@@ -32,11 +32,14 @@ description: |
   Emits adr-document-ingestion-completed.v1 with a list of ModelDocumentEntry
   records ready for downstream segmentation and extraction nodes.
 
+  When workspace_root is supplied, every expanded root must resolve beneath it
+  and source_path is relative to that canonical workspace root.
+
   Read-only invariants:
     - No filesystem writes
     - No LLM calls
     - No network I/O
-    - source_path is always relative to root_path
+    - source_path is always relative to workspace_root when workspace_root is supplied
 
 # === DOD EVIDENCE ===
 dod_evidence:
@@ -82,7 +85,7 @@ config: {}
 input_state:
   object_type: "object"
   required: ["root_paths"]
-  optional: ["exclude_patterns"]
+  optional: ["exclude_patterns", "workspace_root"]
 
 output_state:
   object_type: "object"
@@ -92,7 +95,7 @@ output_state:
 actions:
   - name: "ingest_documents"
     description: "Walk root_paths for .md files and extract metadata"
-    inputs: ["root_paths", "exclude_patterns"]
+    inputs: ["root_paths", "exclude_patterns", "workspace_root"]
     outputs: ["documents"]
 
 # === DEPENDENCIES ===

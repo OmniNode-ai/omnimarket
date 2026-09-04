@@ -17,7 +17,6 @@ adapters — no real LLM calls. Verifies:
 from __future__ import annotations
 
 import json
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -25,9 +24,11 @@ import yaml
 
 from omnimarket.models.adr import (
     ModelAdrDocumentRef,
+    ModelAdrDocumentSegment,
     ModelAdrExtractionSummary,
     ModelAdrGradingScores,
     ModelAdrIngestionResult,
+    ModelAdrSegmentationResult,
 )
 from omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import (
     HandlerCanaryOrchestrator,
@@ -61,7 +62,9 @@ class _StubIngestion:
     def __init__(self) -> None:
         self.call_count = 0
 
-    async def ingest(self, root_paths: list[str]) -> ModelAdrIngestionResult:
+    async def ingest(
+        self, *, root_paths: list[str], workspace_root: str
+    ) -> ModelAdrIngestionResult:
         self.call_count += 1
         return ModelAdrIngestionResult(
             documents=[
@@ -72,7 +75,36 @@ class _StubIngestion:
                     source_content_sha256="abc123",
                 )
             ],
-            root_paths=root_paths,
+            root_paths=[workspace_root],
+        )
+
+
+class _StubSegmentation:
+    def __init__(self) -> None:
+        self.call_count = 0
+
+    async def segment(
+        self,
+        *,
+        ingestion: ModelAdrIngestionResult,
+        correlation_id: str,
+    ) -> ModelAdrSegmentationResult:
+        self.call_count += 1
+        return ModelAdrSegmentationResult(
+            success=True,
+            segments=(
+                ModelAdrDocumentSegment(
+                    segment_id="stub-segment",
+                    source_path=ingestion.documents[0].source_path,
+                    source_content_sha256=ingestion.documents[0].source_content_sha256,
+                    start_line=1,
+                    end_line=1,
+                    segment_type="decision",
+                    content="stub decision",
+                    segment_content_sha256="abc123",
+                    confidence=1.0,
+                ),
+            ),
         )
 
 
@@ -83,7 +115,7 @@ class _StubExtraction:
     async def extract(
         self,
         *,
-        ingestion: ModelAdrIngestionResult,
+        segments: tuple[ModelAdrDocumentSegment, ...],
         model_key: str,
         model_id: str,
         correlation_id: str,
@@ -142,17 +174,18 @@ class _StubDraftGen:
 
 
 @pytest.mark.integration
-def test_proof_of_life_full_pipeline() -> None:
-    """Full pipeline: manifest loads, all stubs invoked, files written, report correct."""
-    import asyncio
-
+@pytest.mark.asyncio
+async def test_proof_of_life_full_pipeline(tmp_path: Path) -> None:
+    """Exercise the protocol-injected pipeline without a transport dependency."""
     ingestion_stub = _StubIngestion()
+    segmentation_stub = _StubSegmentation()
     extraction_stub = _StubExtraction()
     grading_stub = _StubGrading()
     draft_gen_stub = _StubDraftGen()
 
     container: dict[str, object] = {
         "ingestion": ingestion_stub,
+        "segmentation": segmentation_stub,
         "extraction": extraction_stub,
         "grading": grading_stub,
         "draft_gen": draft_gen_stub,
@@ -162,40 +195,40 @@ def test_proof_of_life_full_pipeline() -> None:
 
     manifest_abs = str(_OMNIMARKET_ROOT / _MANIFEST_PATH)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        request = ModelCanaryCommandPayload(
-            manifest_path=manifest_abs,
-            output_dir=tmpdir,
-        )
-        report = asyncio.run(handler.handle(request))
+    request = ModelCanaryCommandPayload(
+        manifest_path=manifest_abs,
+        workspace_root=str(tmp_path),
+        output_dir=str(tmp_path / "evidence"),
+    )
+    report = await handler.handle(request)
 
-        # Core report assertions
-        assert report.success, f"Report failed: {report.error_message}"
-        expected_entries = _manifest_entry_count()
-        assert report.entries_total == expected_entries
-        assert report.entries_completed == expected_entries
-        assert report.entries_failed == 0
+    # Core report assertions
+    assert report.success, f"Report failed: {report.error_message}"
+    expected_entries = _manifest_entry_count()
+    assert report.entries_total == expected_entries
+    assert report.entries_completed == expected_entries
+    assert report.entries_failed == 0
 
-        # Scorecard written
-        scorecard = Path(report.scorecard_path)
-        assert scorecard.exists(), f"Scorecard not found at {scorecard}"
-        scorecard_text = scorecard.read_text()
-        assert "ADR Canary Scorecard" in scorecard_text
+    # Scorecard written
+    scorecard = Path(report.scorecard_path)
+    assert scorecard.exists(), f"Scorecard not found at {scorecard}"
+    scorecard_text = scorecard.read_text()
+    assert "ADR Canary Scorecard" in scorecard_text
 
-        # Evidence directory populated
-        evidence_dir = Path(report.evidence_dir)
-        assert evidence_dir.is_dir()
+    # Evidence directory populated
+    evidence_dir = Path(report.evidence_dir)
+    assert evidence_dir.is_dir()
 
-        # Representative entry subdirs exist with at least one evidence JSON.
-        for entry_id in _SAMPLE_ENTRY_IDS:
-            entry_dir = evidence_dir / entry_id
-            assert entry_dir.is_dir(), f"Missing evidence dir for entry: {entry_id}"
-            json_files = list(entry_dir.glob("*.json"))
-            assert json_files, f"No evidence JSON files for entry: {entry_id}"
-            for jf in json_files:
-                evidence = json.loads(jf.read_text())
-                assert evidence["extraction_success"] is True
-                assert evidence["grading_success"] is True
+    # Representative entry subdirs exist with at least one evidence JSON.
+    for entry_id in _SAMPLE_ENTRY_IDS:
+        entry_dir = evidence_dir / entry_id
+        assert entry_dir.is_dir(), f"Missing evidence dir for entry: {entry_id}"
+        json_files = list(entry_dir.glob("*.json"))
+        assert json_files, f"No evidence JSON files for entry: {entry_id}"
+        for jf in json_files:
+            evidence = json.loads(jf.read_text())
+            assert evidence["extraction_success"] is True
+            assert evidence["grading_success"] is True
 
     # Stubs were called at least once each
     assert ingestion_stub.call_count >= 3
@@ -212,12 +245,12 @@ def test_proof_of_life_full_pipeline() -> None:
 
 
 @pytest.mark.integration
-def test_proof_of_life_dry_run() -> None:
+@pytest.mark.asyncio
+async def test_proof_of_life_dry_run(tmp_path: Path) -> None:
     """Dry-run mode: no stubs called, report returns entries_total == 3."""
-    import asyncio
-
     container: dict[str, object] = {
         "ingestion": _StubIngestion(),
+        "segmentation": _StubSegmentation(),
         "extraction": _StubExtraction(),
         "grading": _StubGrading(),
         "draft_gen": _StubDraftGen(),
@@ -226,13 +259,13 @@ def test_proof_of_life_dry_run() -> None:
     handler = HandlerCanaryOrchestrator(container)
     manifest_abs = str(_OMNIMARKET_ROOT / _MANIFEST_PATH)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        request = ModelCanaryCommandPayload(
-            manifest_path=manifest_abs,
-            output_dir=tmpdir,
-            dry_run=True,
-        )
-        report = asyncio.run(handler.handle(request))
+    request = ModelCanaryCommandPayload(
+        manifest_path=manifest_abs,
+        workspace_root=str(tmp_path),
+        output_dir=str(tmp_path / "evidence"),
+        dry_run=True,
+    )
+    report = await handler.handle(request)
 
     assert report.dry_run is True
     assert report.entries_total == _manifest_entry_count()
@@ -240,15 +273,15 @@ def test_proof_of_life_dry_run() -> None:
 
 
 @pytest.mark.integration
-def test_proof_of_life_extraction_failure_path() -> None:
+@pytest.mark.asyncio
+async def test_proof_of_life_extraction_failure_path(tmp_path: Path) -> None:
     """Extraction failure: entry marked failed, pipeline continues for remaining entries."""
-    import asyncio
 
     class _FailingExtraction:
         async def extract(
             self,
             *,
-            ingestion: ModelAdrIngestionResult,
+            segments: tuple[ModelAdrDocumentSegment, ...],
             model_key: str,
             model_id: str,
             correlation_id: str,
@@ -257,6 +290,7 @@ def test_proof_of_life_extraction_failure_path() -> None:
 
     container: dict[str, object] = {
         "ingestion": _StubIngestion(),
+        "segmentation": _StubSegmentation(),
         "extraction": _FailingExtraction(),
         "grading": _StubGrading(),
         "draft_gen": _StubDraftGen(),
@@ -265,23 +299,23 @@ def test_proof_of_life_extraction_failure_path() -> None:
     handler = HandlerCanaryOrchestrator(container)
     manifest_abs = str(_OMNIMARKET_ROOT / _MANIFEST_PATH)
 
-    with tempfile.TemporaryDirectory() as tmpdir:
-        request = ModelCanaryCommandPayload(
-            manifest_path=manifest_abs,
-            output_dir=tmpdir,
-        )
-        report = asyncio.run(handler.handle(request))
+    request = ModelCanaryCommandPayload(
+        manifest_path=manifest_abs,
+        workspace_root=str(tmp_path),
+        output_dir=str(tmp_path / "evidence"),
+    )
+    report = await handler.handle(request)
 
-        # Entries complete at the entry level (extraction failure is per model, not per entry)
-        assert report.entries_total == _manifest_entry_count()
-        # Evidence files should exist with extraction_error set
-        evidence_dir = Path(report.evidence_dir)
-        for entry_id in _SAMPLE_ENTRY_IDS:
-            entry_dir = evidence_dir / entry_id
-            assert entry_dir.is_dir()
-            json_files = list(entry_dir.glob("*.json"))
-            assert json_files
-            for jf in json_files:
-                evidence = json.loads(jf.read_text())
-                assert evidence["extraction_success"] is False
-                assert evidence["extraction_error"] is not None
+    # Entries complete at the entry level (extraction failure is per model, not per entry)
+    assert report.entries_total == _manifest_entry_count()
+    # Evidence files should exist with extraction_error set
+    evidence_dir = Path(report.evidence_dir)
+    for entry_id in _SAMPLE_ENTRY_IDS:
+        entry_dir = evidence_dir / entry_id
+        assert entry_dir.is_dir()
+        json_files = list(entry_dir.glob("*.json"))
+        assert json_files
+        for jf in json_files:
+            evidence = json.loads(jf.read_text())
+            assert evidence["extraction_success"] is False
+            assert evidence["extraction_error"] is not None

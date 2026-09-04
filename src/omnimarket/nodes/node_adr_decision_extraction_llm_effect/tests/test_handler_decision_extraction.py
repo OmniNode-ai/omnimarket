@@ -6,12 +6,20 @@
 from __future__ import annotations
 
 import json
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pydantic import ValidationError
 
 from omnimarket.inference.adapter_inference_bridge import (
+    AdapterInferenceBridge,
     ModelInferenceAdapter,
+    ModelInferenceBridgeConfig,
+    ModelInferenceJsonObjectResponseFormat,
+)
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
+from omnimarket.nodes.node_adr_decision_extraction_llm_effect.handlers import (
+    handler_decision_extraction as extraction_handler_module,
 )
 from omnimarket.nodes.node_adr_decision_extraction_llm_effect.handlers.handler_decision_extraction import (
     HandlerDecisionExtraction,
@@ -134,7 +142,7 @@ def _extraction_payload(
 def _good_response(items: list[dict[str, object]] | None = None) -> str:
     if items is None:
         items = [_extraction_payload()]
-    return json.dumps(items)
+    return json.dumps({"extractions": items})
 
 
 # OMN-13501 no-faked-boundary: handler-isolation unit double. This is a typed
@@ -153,6 +161,8 @@ class _MockBridge(ModelInferenceAdapter):  # onex-allow-faked-boundary
     def __init__(self, responses: list[str | Exception]) -> None:
         self._responses = list(responses)
         self._call_count = 0
+        self.response_formats: list[ModelInferenceJsonObjectResponseFormat | None] = []
+        self.protocol_selections: list[ModelInferenceProtocolSelection | None] = []
 
     async def infer(
         self,
@@ -161,7 +171,11 @@ class _MockBridge(ModelInferenceAdapter):  # onex-allow-faked-boundary
         user_prompt: str,
         timeout_seconds: float,
         temperature: float | None = None,
+        response_format: ModelInferenceJsonObjectResponseFormat | None = None,
+        protocol_selection: ModelInferenceProtocolSelection | None = None,
     ) -> str:
+        self.response_formats.append(response_format)
+        self.protocol_selections.append(protocol_selection)
         response = self._responses[min(self._call_count, len(self._responses) - 1)]
         self._call_count += 1
         if isinstance(response, Exception):
@@ -176,7 +190,7 @@ class _MockBridge(ModelInferenceAdapter):  # onex-allow-faked-boundary
 
 @pytest.mark.unit
 def test_parse_extractions_valid_array() -> None:
-    raw = json.dumps([_extraction_payload()])
+    raw = _good_response()
     result = _parse_extractions(raw)
     assert result is not None
     assert len(result) == 1
@@ -184,13 +198,13 @@ def test_parse_extractions_valid_array() -> None:
 
 
 @pytest.mark.unit
-def test_parse_extractions_empty_array() -> None:
-    assert _parse_extractions("[]") == []
+def test_parse_extractions_empty_envelope() -> None:
+    assert _parse_extractions('{"extractions": []}') == []
 
 
 @pytest.mark.unit
 def test_parse_extractions_strips_markdown_fence() -> None:
-    raw = "```json\n" + json.dumps([_extraction_payload()]) + "\n```"
+    raw = "```json\n" + _good_response() + "\n```"
     result = _parse_extractions(raw)
     assert result is not None
     assert len(result) == 1
@@ -202,7 +216,7 @@ def test_parse_extractions_invalid_json_returns_none() -> None:
 
 
 @pytest.mark.unit
-def test_parse_extractions_object_not_array_returns_none() -> None:
+def test_parse_extractions_object_missing_envelope_returns_none() -> None:
     assert _parse_extractions(json.dumps({"key": "value"})) is None
 
 
@@ -320,13 +334,69 @@ async def test_handle_architecture_decision() -> None:
         statement="Use PostgreSQL as primary database.",
         source_segment_ids=["seg-aaa"],
     )
-    bridge = _MockBridge([json.dumps([payload])])
+    bridge = _MockBridge([_good_response([payload])])
     handler = HandlerDecisionExtraction(inference_bridge=bridge)
     result = await handler.handle(_make_request(segments=[_SEG_1]))
 
     assert result.success is True
     assert len(result.extractions) == 1
     assert result.extractions[0].decision_type == EnumDecisionType.architecture_decision
+    assert bridge.response_formats == [ModelInferenceJsonObjectResponseFormat()]
+    assert bridge.protocol_selections == [
+        ModelInferenceProtocolSelection(
+            profile_id="local-qwen-adr-json-no-think",
+            task_type="adr_json_artifact",
+        )
+    ]
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_real_handler_forces_adr_qwen_json_protocol_regardless_of_prompt_wording(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The handler explicitly selects its profile instead of matching a prompt."""
+
+    bridge = AdapterInferenceBridge(
+        ModelInferenceBridgeConfig(
+            model_configs={
+                "qwen3-coder": {
+                    "transport": "http",
+                    "base_url": "https://inference.example.test",
+                    "model_id": "Qwen3.6-35B-A3B",
+                }
+            }
+        )
+    )
+    response = MagicMock()
+    response.raise_for_status = MagicMock()
+    response.json.return_value = {
+        "choices": [{"message": {"content": _good_response()}}]
+    }
+    client = AsyncMock()
+    client.post.return_value = response
+    client_context = MagicMock()
+    client_context.__aenter__ = AsyncMock(return_value=client)
+    client_context.__aexit__ = AsyncMock(return_value=False)
+    monkeypatch.setattr(
+        extraction_handler_module,
+        "_SYSTEM_PROMPT",
+        "This wording intentionally has no ADR protocol marker.",
+    )
+
+    with patch(
+        "omnimarket.inference.adapter_inference_bridge.httpx.AsyncClient",
+        return_value=client_context,
+    ):
+        result = await HandlerDecisionExtraction(inference_bridge=bridge).handle(
+            _make_request(segments=[_SEG_1])
+        )
+
+    assert result.success is True
+    payload = client.post.call_args.kwargs["json"]
+    assert payload["messages"][1]["content"].startswith("/no_think\n")
+    assert payload["chat_template_kwargs"] == {"enable_thinking": False}
+    assert payload["response_format"] == {"type": "json_object"}
 
 
 @pytest.mark.unit
@@ -337,7 +407,7 @@ async def test_handle_architecture_pivot() -> None:
         statement="Replaced Celery with Kafka after message loss incidents.",
         source_segment_ids=["seg-ddd"],
     )
-    bridge = _MockBridge([json.dumps([payload])])
+    bridge = _MockBridge([_good_response([payload])])
     handler = HandlerDecisionExtraction(inference_bridge=bridge)
     result = await handler.handle(_make_request(segments=[_SEG_PIVOT]))
 
@@ -353,7 +423,7 @@ async def test_handle_doctrine_formation() -> None:
         statement="All services must use connection pooling.",
         source_segment_ids=["seg-bbb"],
     )
-    bridge = _MockBridge([json.dumps([payload])])
+    bridge = _MockBridge([_good_response([payload])])
     handler = HandlerDecisionExtraction(inference_bridge=bridge)
     result = await handler.handle(_make_request(segments=[_SEG_2]))
 
@@ -369,7 +439,7 @@ async def test_handle_operational_lesson() -> None:
         statement="Redis OOM'd under load — cap key TTLs.",
         source_segment_ids=["seg-ccc"],
     )
-    bridge = _MockBridge([json.dumps([payload])])
+    bridge = _MockBridge([_good_response([payload])])
     handler = HandlerDecisionExtraction(inference_bridge=bridge)
     result = await handler.handle(_make_request(segments=[_SEG_3]))
 
@@ -385,7 +455,7 @@ async def test_handle_supersession() -> None:
         statement="This ADR supersedes ADR-003.",
         source_segment_ids=["seg-fff"],
     )
-    bridge = _MockBridge([json.dumps([payload])])
+    bridge = _MockBridge([_good_response([payload])])
     handler = HandlerDecisionExtraction(inference_bridge=bridge)
     result = await handler.handle(_make_request(segments=[_SEG_SUPERSESSION]))
 
@@ -401,7 +471,7 @@ async def test_handle_rejected_approach() -> None:
         statement="Redis Streams was abandoned after testing.",
         source_segment_ids=["seg-eee"],
     )
-    bridge = _MockBridge([json.dumps([payload])])
+    bridge = _MockBridge([_good_response([payload])])
     handler = HandlerDecisionExtraction(inference_bridge=bridge)
     result = await handler.handle(_make_request(segments=[_SEG_REJECTED]))
 
@@ -412,7 +482,7 @@ async def test_handle_rejected_approach() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_handle_empty_extractions_is_valid() -> None:
-    bridge = _MockBridge(["[]"])
+    bridge = _MockBridge(['{"extractions": []}'])
     handler = HandlerDecisionExtraction(inference_bridge=bridge)
     result = await handler.handle(_make_request())
 
@@ -429,7 +499,7 @@ async def test_handle_empty_extractions_is_valid() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_handle_json_repair_succeeds_on_second_attempt() -> None:
-    good = json.dumps([_extraction_payload(source_segment_ids=["seg-aaa"])])
+    good = _good_response([_extraction_payload(source_segment_ids=["seg-aaa"])])
     bridge = _MockBridge(["not valid json", good])
     handler = HandlerDecisionExtraction(inference_bridge=bridge)
     result = await handler.handle(_make_request(segments=[_SEG_1]))
@@ -463,6 +533,24 @@ async def test_handle_repair_llm_call_fails() -> None:
     assert result.success is False
     assert result.error_code == "EXTRACTION_REPAIR_LLM_FAILED"
     assert result.retryable is True
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_handle_without_json_repair_makes_one_failed_call() -> None:
+    bridge = _MockBridge(["not valid json"])
+    handler = HandlerDecisionExtraction(
+        inference_bridge=bridge,
+        json_repair_enabled=False,
+    )
+
+    result = await handler.handle(_make_request())
+
+    assert result.success is False
+    assert result.error_code == "EXTRACTION_PARSE_FAILED"
+    assert bridge.response_formats == [ModelInferenceJsonObjectResponseFormat()]
+    assert result.llm_call_evidence is not None
+    assert result.llm_call_evidence.json_repair_attempted is False
 
 
 # ---------------------------------------------------------------------------
@@ -533,8 +621,8 @@ async def test_handle_records_evidence_on_success() -> None:
 @pytest.mark.asyncio
 async def test_handle_extraction_id_is_deterministic() -> None:
     payload = _extraction_payload(source_segment_ids=["seg-aaa"])
-    bridge1 = _MockBridge([json.dumps([payload])])
-    bridge2 = _MockBridge([json.dumps([payload])])
+    bridge1 = _MockBridge([_good_response([payload])])
+    bridge2 = _MockBridge([_good_response([payload])])
     handler1 = HandlerDecisionExtraction(inference_bridge=bridge1)
     handler2 = HandlerDecisionExtraction(inference_bridge=bridge2)
 
@@ -550,8 +638,8 @@ async def test_handle_extraction_id_is_deterministic() -> None:
 @pytest.mark.asyncio
 async def test_handle_extraction_id_differs_by_model_key() -> None:
     payload = _extraction_payload(source_segment_ids=["seg-aaa"])
-    bridge1 = _MockBridge([json.dumps([payload])])
-    bridge2 = _MockBridge([json.dumps([payload])])
+    bridge1 = _MockBridge([_good_response([payload])])
+    bridge2 = _MockBridge([_good_response([payload])])
     handler = HandlerDecisionExtraction(inference_bridge=bridge1)
     handler2 = HandlerDecisionExtraction(inference_bridge=bridge2)
 
@@ -576,7 +664,7 @@ async def test_handle_extraction_id_differs_by_model_key() -> None:
 @pytest.mark.unit
 @pytest.mark.asyncio
 async def test_handle_invalid_items_are_skipped() -> None:
-    items = [
+    items: list[dict[str, object]] = [
         _extraction_payload(source_segment_ids=["seg-aaa"]),
         {
             "decision_type": "bad_type",
@@ -586,12 +674,67 @@ async def test_handle_invalid_items_are_skipped() -> None:
         },
         {"incomplete": True},
     ]
-    bridge = _MockBridge([json.dumps(items)])
+    bridge = _MockBridge([_good_response(items)])
     handler = HandlerDecisionExtraction(inference_bridge=bridge)
     result = await handler.handle(_make_request(segments=[_SEG_1]))
 
     assert result.success is True
     assert len(result.extractions) == 1
+
+
+# ---------------------------------------------------------------------------
+# Default bridge construction uses the async environment/config loader
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_init_defers_default_bridge_construction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Omitting the bridge must not construct an empty config synchronously."""
+    import omnimarket.nodes.node_adr_decision_extraction_llm_effect.handlers.handler_decision_extraction as hd
+
+    def _boom() -> None:  # pragma: no cover - asserts non-invocation
+        raise AssertionError("async bridge config loader must not run in __init__")
+
+    monkeypatch.setattr(hd, "load_inference_bridge_config_from_env_async", _boom)
+
+    handler = HandlerDecisionExtraction()
+
+    assert handler._bridge is None  # noqa: SLF001 — internal state under test
+
+
+@pytest.mark.unit
+@pytest.mark.asyncio
+async def test_default_bridge_uses_async_environment_config_loader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The omitted bridge is built from the async env/config loader on demand."""
+    import omnimarket.nodes.node_adr_decision_extraction_llm_effect.handlers.handler_decision_extraction as hd
+
+    expected_config = object()
+    loader_calls = 0
+    built_configs: list[object] = []
+
+    async def _fake_loader() -> object:
+        nonlocal loader_calls
+        loader_calls += 1
+        return expected_config
+
+    def _fake_bridge(config: object) -> ModelInferenceAdapter:
+        built_configs.append(config)
+        return _MockBridge([_good_response()])
+
+    monkeypatch.setattr(hd, "load_inference_bridge_config_from_env_async", _fake_loader)
+    monkeypatch.setattr(hd, "AdapterInferenceBridge", _fake_bridge)
+
+    handler = HandlerDecisionExtraction()
+    result = await handler.handle(_make_request(segments=[_SEG_1]))
+
+    assert result.success is True
+    assert loader_calls == 1
+    assert built_configs == [expected_config]
+    assert handler._bridge is not None  # noqa: SLF001 — internal state under test
 
 
 # ---------------------------------------------------------------------------

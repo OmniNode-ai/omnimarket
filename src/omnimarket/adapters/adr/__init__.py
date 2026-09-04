@@ -8,6 +8,7 @@ from omnimarket.adapters.adr.bus_protocol_adapters import (
     AdapterBusAdrExtraction,
     AdapterBusAdrGrading,
     AdapterBusAdrIngestion,
+    HandlerBusAdrSegmentation,
     ModelAdrBusProtocolAdapters,
     build_adr_bus_protocol_adapters,
 )
@@ -21,6 +22,7 @@ __all__ = [
     "AdapterBusAdrExtraction",
     "AdapterBusAdrGrading",
     "AdapterBusAdrIngestion",
+    "HandlerBusAdrSegmentation",
     "ModelAdrBusProtocolAdapters",
     "ModelKBRenderResult",
     "build_adr_bus_protocol_adapters",

@@ -18,6 +18,11 @@
 mode: strict
 
 allowed:
+  # Sanitized, hash-pinned OMN-11833 extraction evidence retained with the
+  # implementation. This is a single reproducibility bundle, not a general
+  # docs/ carve-out; all ordinary Markdown remains KB-owned.
+  - "docs/adr-canary-runs/OMN-11833-local-qwen3.6-explicit-profile/**"
+
   # Multi-host agent adapters. Not prose: these are the generator TEMPLATES and
   # their generated agent-host outputs, all code-referenced.
   #

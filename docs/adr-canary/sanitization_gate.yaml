@@ -2,9 +2,12 @@
 # ticket: OMN-11841
 # epic: OMN-11833
 #
-# All checks must pass before a discovery extraction is published.
-# The gate runs on the generated artifact (proposed ADR YAML), NOT the source doc.
-# Source docs may contain private detail; generated artifacts must be clean.
+# Pattern checks with a destinations list are enforced by the typed publisher
+# preflight before *any* publisher subprocess. The public KB then runs its
+# canonical artifact validator after render and before git mutation for
+# structural/frontmatter checks. Source docs may contain private detail;
+# generated public artifacts must be clean. Private publication permits private
+# references but every destination still enforces no_secrets.
 
 schema_version: "v1"
 generated_at: "2026-05-23"
@@ -22,6 +25,7 @@ sanitization_checks:
       - "(?i)ghp_[a-zA-Z0-9]{36}"
       - "(?i)xoxb-[0-9]+-[0-9]+"
     applies_to: [generated_adr, proposed_adr]
+    destinations: [public, private]
 
   - name: no_internal_topology
     description: "No private IPs, internal hostnames, or internal port mappings"
@@ -35,6 +39,23 @@ sanitization_checks:
     applies_to: [generated_adr, proposed_adr]
     exemptions:
       - "localhost:9092 in context of Kafka bootstrap development defaults (non-blocking, note in artifact)"
+    destinations: [public]
+
+  - name: no_machine_local_paths
+    description: "Public ADRs must not contain machine-local absolute paths"
+    severity: blocking
+    patterns:
+      - "(?<![A-Za-z0-9:/])/(?:[^/\\s]+/){2,}[^/\\s]+"
+    applies_to: [generated_adr, proposed_adr]
+    destinations: [public]
+
+  - name: no_private_omni_home_references
+    description: "Public ADRs must not name the private omni_home source repository"
+    severity: blocking
+    patterns:
+      - "(?i)(github\\.com/)?OmniNode-ai/omni_home"
+    applies_to: [generated_adr, proposed_adr]
+    destinations: [public]
 
   - name: no_accepted_status
     description: "Discovery proposals must use Status: Proposed — never Status: Accepted"
@@ -86,6 +107,7 @@ sanitization_checks:
       - "OMN-[0-9]+"
     applies_to: [generated_adr]
     action: "strip_or_generalize"
+    destinations: [public]
     note: >
       ADR bodies should reference decision context, not ticket URLs or PR numbers.
       The pipeline must rewrite or strip these before publishing the artifact.

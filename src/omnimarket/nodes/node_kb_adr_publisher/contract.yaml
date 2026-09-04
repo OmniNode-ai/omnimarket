@@ -7,8 +7,8 @@
 # [OMN-11808]
 
 name: "node_kb_adr_publisher"
-contract_version: {major: 1, minor: 0, patch: 0}
-node_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 1, minor: 1, patch: 0}
+node_version: {major: 1, minor: 1, patch: 0}
 uuid: "d4e5f6a7-b8c9-0123-def0-123456789abc"
 node_type: effect
 input_model: "ModelKBADRPublishRequest"
@@ -27,8 +27,12 @@ description: |
   Subscribes to kb-adr-publish-requested.v1 commands. Reads
   extracted_decisions.json from the canary run directory, filters by
   model_key, renders each ModelADRDraft via render_adr_to_kb adapter,
-  clones OmniNode-ai/knowledge-base, creates a branch, writes ADR files
-  into adrs/proposed/, and opens a PR for human review.
+  validates source-owned repository provenance and a closed KB destination
+  before any publish subprocess. It clones only the contract-pinned public or
+  private knowledge base, creates a branch, writes ADR files into flat
+  adrs/ADR-NNNN-<slug>.md paths with proposed frontmatter, and opens a PR for
+  human review. Private sources may publish only to the private KB; private,
+  restricted, and needs-review evidence may never publish to the public KB.
   Emits kb-adr-publish-completed.v1 with PR URL and ADR count.
   dry_run=true exits cleanly without filesystem writes, git ops, or gh CLI.
 
@@ -74,8 +78,8 @@ config: {}
 # === INPUT/OUTPUT STATE ===
 input_state:
   object_type: "object"
-  required: ["canary_run_dir", "model_key"]
-  optional: ["kb_repo", "dry_run"]
+  required: ["canary_run_dir", "model_key", "kb_destination", "source_provenance"]
+  optional: ["dry_run"]
 
 output_state:
   object_type: "object"
@@ -84,9 +88,43 @@ output_state:
 # === ACTIONS ===
 actions:
   - name: "publish_adrs"
-    description: "Render ADRs and open PR against knowledge-base repo"
-    inputs: ["canary_run_dir", "model_key", "kb_repo", "dry_run"]
-    outputs: ["success", "adr_count", "pr_url", "branch", "error"]
+    description: "Render ADRs and open a policy-authorized KB PR"
+    inputs: ["canary_run_dir", "model_key", "kb_destination", "source_provenance", "dry_run"]
+    outputs: ["success", "adr_count", "pr_url", "branch", "kb_destination", "kb_repository", "error_code", "error"]
+
+# === PUBLICATION AUTHORITY ===
+publication_policy:
+  source_provenance:
+    required: true
+    identity_fields: ["source_repository", "source_visibility", "publication_classification"]
+    candidate_match_required: true
+    source_document_hashes_required: true
+    infer_from_git_remote: false
+    infer_from_checkout_path: false
+  destinations:
+    public:
+      repository: "OmniNode-ai/knowledge-base"
+    private:
+      repository: "OmniNode-ai/knowledge-base-internal"
+  rules:
+    - "private source visibility permits only private destination"
+    - "public source visibility permits public or private destination"
+    - "private, restricted, and needs_review classifications prohibit public destination"
+    - "missing, unknown, malformed, or conflicting provenance rejects before subprocess"
+  source_hash_trust_boundary:
+    verification_point: "ingestion-to-segmentation before LLM extraction"
+    verifier: "HandlerBusAdrSegmentation"
+    publisher_input: "hash-only durable candidate evidence"
+    rationale: >
+      The publisher may not have authority to reopen a private source checkout.
+      It trusts source hashes only after the earlier source-byte verifier rejects
+      mismatches; it never receives machine-local source paths as authority.
+  sanitization:
+    policy_config: "docs/adr-canary/sanitization_gate.yaml"
+    preflight: "typed candidate draft scan before any publisher subprocess"
+    public_artifact_validator: "uv run python scripts/validate.py in checked-out public KB"
+    public_validator_order: "after render, before git add/commit/push/pr"
+    private_destination: "private references allowed; secrets remain blocking"
 
 # === DEPENDENCIES ===
 dependencies:

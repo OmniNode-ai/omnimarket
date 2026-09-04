@@ -326,7 +326,7 @@ class TestHandlerDocumentIngestion:
         assert result.documents == []
 
     @pytest.mark.asyncio
-    async def test_file_root_path_skipped(self, tmp_path: Path) -> None:
+    async def test_file_root_path_is_ingested(self, tmp_path: Path) -> None:
         file_path = tmp_path / "not_a_dir.md"
         file_path.write_text("# content", encoding="utf-8")
         valid_root = tmp_path / "valid_dir"
@@ -340,8 +340,51 @@ class TestHandlerDocumentIngestion:
                 ModelIngestionRequest(root_paths=[str(file_path), str(valid_root)])
             )
 
-        assert len(result.documents) == 1
-        assert result.documents[0].source_path == "real.md"
+        assert len(result.documents) == 2
+        assert {doc.source_path for doc in result.documents} == {
+            "not_a_dir.md",
+            "real.md",
+        }
+
+    @pytest.mark.asyncio
+    async def test_workspace_relative_glob_resolves_to_workspace_relative_source(
+        self, tmp_path: Path
+    ) -> None:
+        workspace = tmp_path / "omni_home"
+        _write_md(workspace / "docs" / "plans" / "2026-contract-first.md")
+        _write_md(workspace / "docs" / "plans" / "2025-contract-first.md")
+        handler = HandlerDocumentIngestion()
+
+        with patch.object(
+            handler, "_git_metadata", AsyncMock(return_value=(None, None, None, None))
+        ):
+            result = await handler.handle(
+                ModelIngestionRequest(
+                    root_paths=["docs/plans/2026-*contract*"],
+                    workspace_root=str(workspace),
+                )
+            )
+
+        assert [doc.source_path for doc in result.documents] == [
+            "docs/plans/2026-contract-first.md"
+        ]
+
+    @pytest.mark.asyncio
+    async def test_workspace_root_rejects_absolute_root_outside_workspace(
+        self, tmp_path: Path
+    ) -> None:
+        workspace = tmp_path / "omni_home"
+        workspace.mkdir()
+        external_docs = tmp_path / "external_docs"
+        _write_md(external_docs / "outside.md")
+
+        with pytest.raises(ValueError, match="outside workspace_root"):
+            await HandlerDocumentIngestion().handle(
+                ModelIngestionRequest(
+                    root_paths=[str(external_docs)],
+                    workspace_root=str(workspace),
+                )
+            )
 
     @pytest.mark.asyncio
     async def test_nonexistent_root_path_skipped(self, tmp_path: Path) -> None:

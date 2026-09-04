@@ -21,7 +21,17 @@ class ModelModelScore(BaseModel):
     model_key: str = Field(
         ..., description="Model key (e.g. 'qwen3-coder', 'deepseek-r1')."
     )
+    entries_extracted: int = Field(
+        default=0,
+        ge=0,
+        description="Entries where this model completed decision extraction.",
+    )
     entries_evaluated: int = Field(default=0, ge=0)
+    entries_grading_not_applicable: int = Field(
+        default=0,
+        ge=0,
+        description="Discovery entries intentionally not sent to the grader.",
+    )
     entries_failed: int = Field(default=0, ge=0)
 
     avg_recall: float | None = Field(default=None, ge=0.0, le=1.0)

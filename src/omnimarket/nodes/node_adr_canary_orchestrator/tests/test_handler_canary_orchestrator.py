@@ -12,7 +12,7 @@ import asyncio
 import json
 from collections.abc import Awaitable, Callable, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -20,9 +20,11 @@ import yaml
 
 from omnimarket.models.adr import (
     ModelAdrDocumentRef,
+    ModelAdrDocumentSegment,
     ModelAdrExtractionSummary,
     ModelAdrGradingScores,
     ModelAdrIngestionResult,
+    ModelAdrSegmentationResult,
 )
 from omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orchestrator import (
     HandlerCanaryOrchestrator,
@@ -159,6 +161,26 @@ def _make_handler(
     ingestion_handler = AsyncMock()
     ingestion_handler.ingest = AsyncMock(return_value=ingestion_result)
 
+    segmentation_handler = AsyncMock()
+    segmentation_handler.segment = AsyncMock(
+        return_value=ModelAdrSegmentationResult(
+            success=True,
+            segments=(
+                ModelAdrDocumentSegment(
+                    segment_id="segment-1",
+                    source_path="docs/decisions/adr-001.md",
+                    source_content_sha256="source-sha",
+                    start_line=1,
+                    end_line=1,
+                    segment_type="decision",
+                    content="We decided to use Kafka.",
+                    segment_content_sha256="segment-sha",
+                    confidence=1.0,
+                ),
+            ),
+        )
+    )
+
     extraction_handler = AsyncMock()
     extraction_handler.extract = AsyncMock(return_value=extraction_result)
 
@@ -172,6 +194,7 @@ def _make_handler(
         FakeContainer(
             {
                 "ingestion": ingestion_handler,
+                "segmentation": segmentation_handler,
                 "extraction": extraction_handler,
                 "grading": grader_handler,
                 "draft_gen": draft_gen_handler,
@@ -250,7 +273,9 @@ class TestAggregateScores:
         assert len(scores) == 1
         s = scores[0]
         assert s.model_key == "qwen3"
+        assert s.entries_extracted == 1
         assert s.entries_evaluated == 1
+        assert s.entries_grading_not_applicable == 0
         assert s.entries_failed == 0
         assert s.avg_recall == pytest.approx(0.8)
         assert s.total_latency_ms == 500
@@ -285,9 +310,33 @@ class TestAggregateScores:
         assert len(scores) == 2
         by_key = {s.model_key: s for s in scores}
         assert by_key["model-a"].entries_evaluated == 1
+        assert by_key["model-a"].entries_extracted == 1
         assert by_key["model-b"].entries_evaluated == 0
         assert by_key["model-b"].entries_failed == 1
         assert by_key["model-b"].avg_recall is None
+
+    def test_discovery_extraction_is_not_a_grading_failure(self) -> None:
+        scores = _aggregate_scores(
+            [
+                ModelEvidenceRecord(
+                    run_id="r1",
+                    entry_id="discovery-entry",
+                    model_key="local-model",
+                    model_id="local-model-v1",
+                    extraction_success=True,
+                    grading_not_applicable=True,
+                    latency_ms=123,
+                )
+            ]
+        )
+
+        assert len(scores) == 1
+        score = scores[0]
+        assert score.entries_extracted == 1
+        assert score.entries_evaluated == 0
+        assert score.entries_grading_not_applicable == 1
+        assert score.entries_failed == 0
+        assert score.avg_recall is None
 
     def test_avg_across_entries(self) -> None:
         records = [
@@ -321,6 +370,7 @@ class TestWriteScorecard:
         scores = [
             ModelModelScore(
                 model_key="qwen3-coder",
+                entries_extracted=2,
                 entries_evaluated=2,
                 entries_failed=0,
                 avg_recall=0.85,
@@ -342,8 +392,30 @@ class TestWriteScorecard:
         assert path.exists()
         content = path.read_text()
         assert "qwen3-coder" in content
+        assert "2 succeeded" in content
+        assert "2 evaluated" in content
         assert "0.850" in content
         assert "ADR Canary Scorecard" in content
+
+    def test_renders_discovery_grading_as_not_applicable(self, tmp_path: Path) -> None:
+        path = _write_scorecard(
+            run_id="20260508-120000-abcdef",
+            manifest_path="docs/adr-canary/discovery_manifest.yaml",
+            scores=[
+                ModelModelScore(
+                    model_key="qwen3-coder",
+                    entries_extracted=1,
+                    entries_grading_not_applicable=1,
+                    total_latency_ms=1200,
+                )
+            ],
+            evidence_dir=tmp_path,
+            entries_total=1,
+            entries_completed=1,
+            entries_failed=0,
+        )
+
+        assert "| qwen3-coder | 1 succeeded | N/A |" in path.read_text()
 
 
 def _stub_handler() -> HandlerCanaryOrchestrator:
@@ -352,6 +424,7 @@ def _stub_handler() -> HandlerCanaryOrchestrator:
         FakeContainer(
             {
                 "ingestion": AsyncMock(),
+                "segmentation": AsyncMock(),
                 "extraction": AsyncMock(),
                 "grading": AsyncMock(),
                 "draft_gen": AsyncMock(),
@@ -364,6 +437,7 @@ class TestHandlerCanaryOrchestrator:
     def test_constructor_resolves_protocols_from_container(self) -> None:
         services = {
             "ingestion": AsyncMock(),
+            "segmentation": AsyncMock(),
             "extraction": AsyncMock(),
             "grading": AsyncMock(),
             "draft_gen": AsyncMock(),
@@ -371,6 +445,7 @@ class TestHandlerCanaryOrchestrator:
         handler = HandlerCanaryOrchestrator(FakeContainer(services))
 
         assert handler._ingestion is services["ingestion"]  # noqa: SLF001
+        assert handler._segmentation is services["segmentation"]  # noqa: SLF001
         assert handler._extraction is services["extraction"]  # noqa: SLF001
         assert handler._grading is services["grading"]  # noqa: SLF001
         assert handler._draft_gen is services["draft_gen"]  # noqa: SLF001
@@ -380,6 +455,7 @@ class TestHandlerCanaryOrchestrator:
         payload = ModelCanaryCommandPayload(
             manifest_path=str(minimal_manifest),
             output_dir=str(tmp_path / "runs"),
+            workspace_root=str(tmp_path),
             dry_run=True,
         )
         result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
@@ -398,6 +474,39 @@ class TestHandlerCanaryOrchestrator:
         result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
         assert result.success is False
         assert result.error_message is not None
+
+    def test_max_cost_fails_closed_before_ingestion(
+        self,
+        tmp_path: Path,
+        minimal_manifest: Path,
+        mock_ingestion_result: Any,
+        mock_extraction_result: Any,
+        mock_grading_result: Any,
+        mock_draft_result: Any,
+    ) -> None:
+        handler = _make_handler(
+            tmp_path,
+            mock_ingestion_result,
+            mock_extraction_result,
+            mock_grading_result,
+            mock_draft_result,
+        )
+
+        result = asyncio.get_event_loop().run_until_complete(
+            handler.handle(
+                ModelCanaryCommandPayload(
+                    manifest_path=str(minimal_manifest),
+                    output_dir=str(tmp_path / "runs"),
+                    workspace_root=str(tmp_path),
+                    max_cost_usd=0.01,
+                )
+            )
+        )
+
+        assert result.success is False
+        assert result.error_message is not None
+        assert "fail-closed" in result.error_message
+        cast(AsyncMock, handler._ingestion).ingest.assert_not_awaited()  # noqa: SLF001
 
     def test_full_pipeline_success(
         self,
@@ -418,6 +527,7 @@ class TestHandlerCanaryOrchestrator:
         payload = ModelCanaryCommandPayload(
             manifest_path=str(minimal_manifest),
             output_dir=str(tmp_path / "runs"),
+            workspace_root=str(tmp_path),
         )
 
         result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
@@ -427,6 +537,108 @@ class TestHandlerCanaryOrchestrator:
         assert result.success is True
         assert result.scorecard_path.endswith("scorecard.md")
         assert Path(result.scorecard_path).exists()
+
+    def test_segments_once_before_multi_model_extraction(self, tmp_path: Path) -> None:
+        manifest_path = tmp_path / "manifest.yaml"
+        manifest_path.write_text(
+            yaml.safe_dump(
+                {
+                    "entries": [
+                        {
+                            "id": "discovery-entry",
+                            "root_paths": [str(tmp_path)],
+                            "discovery_mode": True,
+                            "models": [
+                                {
+                                    "key": "local-a",
+                                    "model_id": "local-a",
+                                    "external": False,
+                                },
+                                {
+                                    "key": "local-b",
+                                    "model_id": "local-b",
+                                    "external": False,
+                                },
+                            ],
+                        }
+                    ]
+                }
+            ),
+            encoding="utf-8",
+        )
+        ingestion = AsyncMock()
+        ingestion.ingest = AsyncMock(
+            return_value=ModelAdrIngestionResult(
+                documents=[
+                    ModelAdrDocumentRef(
+                        source_path="docs/decision.md",
+                        source_content_sha256="source-sha",
+                    )
+                ],
+                root_paths=[str(tmp_path)],
+            )
+        )
+        segments = (
+            ModelAdrDocumentSegment(
+                segment_id="segment-1",
+                source_path="docs/decision.md",
+                source_content_sha256="source-sha",
+                start_line=1,
+                end_line=1,
+                segment_type="decision",
+                content="We decided to use Kafka.",
+                segment_content_sha256="segment-sha",
+                confidence=1.0,
+            ),
+        )
+        segmentation = AsyncMock()
+        segmentation.segment = AsyncMock(
+            return_value=ModelAdrSegmentationResult(success=True, segments=segments)
+        )
+        extraction = AsyncMock()
+        extraction.extract = AsyncMock(
+            side_effect=lambda **kwargs: ModelAdrExtractionSummary(
+                success=True,
+                model_key=str(kwargs["model_key"]),
+            )
+        )
+        handler = HandlerCanaryOrchestrator(
+            FakeContainer(
+                {
+                    "ingestion": ingestion,
+                    "segmentation": segmentation,
+                    "extraction": extraction,
+                    "grading": AsyncMock(),
+                    "draft_gen": AsyncMock(),
+                }
+            )
+        )
+
+        result = asyncio.get_event_loop().run_until_complete(
+            handler.handle(
+                ModelCanaryCommandPayload(
+                    manifest_path=str(manifest_path),
+                    output_dir=str(tmp_path / "runs"),
+                    workspace_root=str(tmp_path),
+                )
+            )
+        )
+
+        assert result.success is True
+        segmentation.segment.assert_awaited_once()
+        assert extraction.extract.await_count == 2
+        extraction_segments = [
+            call.kwargs["segments"] for call in extraction.extract.await_args_list
+        ]
+        assert all(
+            candidate is extraction_segments[0] for candidate in extraction_segments
+        )
+        assert extraction_segments[0] == segments
+        assert {score.entries_extracted for score in result.model_scores} == {1}
+        assert {
+            score.entries_grading_not_applicable for score in result.model_scores
+        } == {1}
+        assert {score.entries_failed for score in result.model_scores} == {0}
 
     def test_external_provider_blocked(self, tmp_path: Path) -> None:
         manifest = {
@@ -457,6 +669,7 @@ class TestHandlerCanaryOrchestrator:
             FakeContainer(
                 {
                     "ingestion": mock_ingest,
+                    "segmentation": AsyncMock(),
                     "extraction": AsyncMock(),
                     "grading": AsyncMock(),
                     "draft_gen": AsyncMock(),
@@ -470,11 +683,14 @@ class TestHandlerCanaryOrchestrator:
                 ModelCanaryCommandPayload(
                     manifest_path=str(manifest_path),
                     output_dir=str(tmp_path / "runs"),
+                    workspace_root=str(tmp_path),
                 )
             )
         )
 
         assert isinstance(result, ModelCanaryReport)
+        assert result.success is False
+        assert result.entries_failed == 1
         assert result.model_scores[0].entries_evaluated == 0
 
     def test_model_subset_filter(self, tmp_path: Path) -> None:
@@ -541,6 +757,7 @@ class TestHandlerCanaryOrchestrator:
             FakeContainer(
                 {
                     "ingestion": mock_ingest,
+                    "segmentation": AsyncMock(),
                     "extraction": mock_extract,
                     "grading": mock_grader,
                     "draft_gen": mock_draft,
@@ -553,6 +770,7 @@ class TestHandlerCanaryOrchestrator:
                 ModelCanaryCommandPayload(
                     manifest_path=str(manifest_path),
                     output_dir=str(tmp_path / "runs"),
+                    workspace_root=str(tmp_path),
                     model_subset=["model-a"],
                 )
             )
@@ -572,6 +790,7 @@ class TestHandlerCanaryOrchestrator:
         }
         mocks = {
             "ingestion": AsyncMock(),
+            "segmentation": AsyncMock(),
             "extraction": AsyncMock(),
             "grading": AsyncMock(),
             "draft_gen": AsyncMock(),
@@ -586,6 +805,7 @@ class TestHandlerCanaryOrchestrator:
     def test_from_contract_defaults(self) -> None:
         mocks = {
             "ingestion": AsyncMock(),
+            "segmentation": AsyncMock(),
             "extraction": AsyncMock(),
             "grading": AsyncMock(),
             "draft_gen": AsyncMock(),
@@ -616,6 +836,7 @@ class TestHandlerCanaryOrchestrator:
         payload = ModelCanaryCommandPayload(
             manifest_path=str(minimal_manifest),
             output_dir=str(tmp_path / "runs"),
+            workspace_root=str(tmp_path),
         )
 
         result = asyncio.get_event_loop().run_until_complete(handler.handle(payload))
@@ -699,10 +920,10 @@ class TestAdrBusProtocolAdapters:
         adapter = AdapterBusAdrIngestion(FakeContainer({"event_bus": bus}))
 
         result = asyncio.get_event_loop().run_until_complete(
-            adapter.ingest(["/tmp/source"])
+            adapter.ingest(root_paths=["/tmp/source"], workspace_root="/tmp")
         )
 
-        assert result.root_paths == ["/tmp/source"]
+        assert result.root_paths == ["/tmp"]
         assert result.documents[0].source_path == "docs/adr.md"
         assert bus.published[0][0] == (
             "onex.cmd.omnimarket.adr-document-ingestion-requested.v1"
@@ -710,3 +931,4 @@ class TestAdrBusProtocolAdapters:
         payload = bus.published[0][1]["payload"]
         assert isinstance(payload, dict)
         assert payload["root_paths"] == ["/tmp/source"]
+        assert payload["workspace_root"] == "/tmp"

@@ -31,6 +31,17 @@ from pathlib import Path
 
 import yaml
 from omnibase_infra.event_bus.kafka_auth import build_aiokafka_auth_kwargs_from_env
+from pydantic import ValidationError
+
+from omnimarket.models.adr import (
+    EnumAdrKBDestination,
+    EnumAdrPublicationClassification,
+    EnumAdrSourceVisibility,
+    ModelAdrSourceProvenance,
+)
+from omnimarket.nodes.node_kb_adr_publisher.models.model_publish_request import (
+    ModelKBADRPublishRequest,
+)
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -65,7 +76,30 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--model-key", required=True, help="Model key to filter extractions")
     p.add_argument(
-        "--kb-repo", default="OmniNode-ai/knowledge-base", help="Target KB repo slug"
+        "--kb-destination",
+        choices=[destination.value for destination in EnumAdrKBDestination],
+        required=True,
+        help="Contract-owned knowledge-base destination",
+    )
+    p.add_argument(
+        "--source-repository",
+        required=True,
+        help="Canonical source owner/repository identity supplied by the source owner",
+    )
+    p.add_argument(
+        "--source-visibility",
+        choices=[visibility.value for visibility in EnumAdrSourceVisibility],
+        required=True,
+        help="Explicit source visibility; never inferred from a path or remote",
+    )
+    p.add_argument(
+        "--publication-classification",
+        choices=[
+            classification.value
+            for classification in EnumAdrPublicationClassification
+        ],
+        required=True,
+        help="Explicit publication sensitivity supplied by the source owner",
     )
     p.add_argument(
         "--dry-run", action="store_true", help="Pass dry_run=true in payload"
@@ -79,19 +113,36 @@ def _parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def _build_publish_request(args: argparse.Namespace) -> ModelKBADRPublishRequest:
+    """Build and validate the exact typed bus payload before contacting Kafka."""
+    provenance = ModelAdrSourceProvenance(
+        source_repository=args.source_repository,
+        source_visibility=args.source_visibility,
+        publication_classification=args.publication_classification,
+    )
+    return ModelKBADRPublishRequest(
+        canary_run_dir=args.canary_run_dir,
+        model_key=args.model_key,
+        kb_destination=args.kb_destination,
+        source_provenance=provenance,
+        dry_run=args.dry_run,
+    )
+
+
 async def _publish(args: argparse.Namespace) -> int:
     topic = args.topic or _load_command_topic()
+
+    try:
+        request = _build_publish_request(args)
+    except (ValidationError, ValueError) as exc:
+        logger.error("Refusing invalid KB ADR publication payload: %s", exc)
+        return 1
 
     if not args.bootstrap:
         logger.error("KAFKA_BOOTSTRAP_SERVERS not set and --bootstrap not provided")
         return 1
 
-    payload = {
-        "canary_run_dir": args.canary_run_dir,
-        "model_key": args.model_key,
-        "kb_repo": args.kb_repo,
-        "dry_run": args.dry_run,
-    }
+    payload = request.model_dump(mode="json")
 
     envelope = {
         "event_id": str(uuid.uuid4()),

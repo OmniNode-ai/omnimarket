@@ -12,7 +12,9 @@ from pydantic import ValidationError
 
 from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceAdapter,
+    ModelInferenceJsonObjectResponseFormat,
 )
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
 from omnimarket.nodes.node_adr_extraction_grader_llm_effect.handlers.handler_extraction_grader import (
     HandlerExtractionGrader,
     _parse_scores,
@@ -78,6 +80,8 @@ class _MockBridge(ModelInferenceAdapter):  # onex-allow-faked-boundary
         user_prompt: str,
         timeout_seconds: float,
         temperature: float | None = None,
+        response_format: ModelInferenceJsonObjectResponseFormat | None = None,
+        protocol_selection: ModelInferenceProtocolSelection | None = None,
     ) -> str:
         if isinstance(self._response, Exception):
             raise self._response

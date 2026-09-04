@@ -29,6 +29,10 @@ from omnimarket.models.adr import (
     ModelAdrExtractionSummary,
     ModelAdrGradingScores,
     ModelAdrIngestionResult,
+    ModelAdrSegmentationResult,
+)
+from omnimarket.models.adr import (
+    ModelAdrDocumentSegment as ModelSharedAdrDocumentSegment,
 )
 from omnimarket.nodes.node_adr_decision_extraction_llm_effect.models.model_extraction_request import (
     ModelDocumentSegment as ModelExtractionDocumentSegment,
@@ -67,6 +71,12 @@ from omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading
 from omnimarket.nodes.node_adr_extraction_grader_llm_effect.models.model_grading_result import (
     ModelGradingResult,
 )
+from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation_request import (
+    ModelSegmentationRequest,
+)
+from omnimarket.nodes.node_adr_segmentation_llm_effect.models.model_segmentation_result import (
+    ModelSegmentationResult,
+)
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _NODES_DIR = _REPO_ROOT / "nodes"
@@ -95,6 +105,7 @@ class ProtocolAdrEventBus(Protocol):
 @dataclass(frozen=True, slots=True)
 class ModelAdrBusProtocolAdapters:
     ingestion: AdapterBusAdrIngestion
+    segmentation: HandlerBusAdrSegmentation
     extraction: AdapterBusAdrExtraction
     grading: AdapterBusAdrGrading
     draft_gen: AdapterBusAdrDraftGen
@@ -174,13 +185,18 @@ class AdapterBusAdrIngestion:
             source_tool="AdapterBusAdrIngestion",
         )
 
-    async def ingest(self, root_paths: list[str]) -> ModelAdrIngestionResult:
+    async def ingest(
+        self, *, root_paths: list[str], workspace_root: str
+    ) -> ModelAdrIngestionResult:
         result = await self._client.request(
-            ModelIngestionRequest(root_paths=root_paths),
+            ModelIngestionRequest(
+                root_paths=root_paths,
+                workspace_root=workspace_root,
+            ),
             ModelIngestionResult,
         )
         return ModelAdrIngestionResult(
-            root_paths=root_paths,
+            root_paths=[workspace_root],
             documents=[
                 ModelAdrDocumentRef(
                     source_path=doc.source_path,
@@ -191,6 +207,90 @@ class AdapterBusAdrIngestion:
                 for doc in result.documents
             ],
         )
+
+
+class HandlerBusAdrSegmentation:
+    """Resolve ingested documents through the ADR segmentation effect over the bus."""
+
+    def __init__(self, container: object) -> None:
+        self._client = _client(
+            _resolve_event_bus(container),
+            _topic_pair(
+                "node_adr_segmentation_llm_effect",
+                request_fragment="requested",
+                completed_fragment="completed",
+            ),
+            source_tool="HandlerBusAdrSegmentation",
+        )
+
+    async def segment(
+        self,
+        *,
+        ingestion: ModelAdrIngestionResult,
+        correlation_id: str,
+    ) -> ModelAdrSegmentationResult:
+        """Segment each ingested document once for a canary entry.
+
+        The orchestrator fans the resulting immutable shared segments out to each
+        extraction model. A missing, changed, or failed source is a typed entry
+        failure; silently omitting it would make downstream extraction claims
+        incomplete provenance.
+        """
+        segments: list[ModelSharedAdrDocumentSegment] = []
+        for document in ingestion.documents:
+            content = _read_document_content(ingestion.root_paths, document.source_path)
+            if content is None:
+                return ModelAdrSegmentationResult(
+                    success=False,
+                    error_code="SOURCE_DOCUMENT_UNREADABLE",
+                    error_message=(
+                        "Could not reopen ingested document through its canonical "
+                        f"workspace root: {document.source_path}"
+                    ),
+                )
+            content_sha256 = hashlib.sha256(content.encode()).hexdigest()
+            if content_sha256 != document.source_content_sha256:
+                return ModelAdrSegmentationResult(
+                    success=False,
+                    error_code="SOURCE_DOCUMENT_HASH_MISMATCH",
+                    error_message=(
+                        f"Ingested document changed before segmentation: "
+                        f"{document.source_path}"
+                    ),
+                )
+            result = await self._client.request(
+                ModelSegmentationRequest(
+                    source_path=document.source_path,
+                    source_content=content,
+                    source_content_sha256=document.source_content_sha256,
+                    correlation_id=correlation_id,
+                ),
+                ModelSegmentationResult,
+            )
+            if not result.success:
+                error = result.error_message or "segmentation returned failure"
+                return ModelAdrSegmentationResult(
+                    success=False,
+                    error_code=result.error_code or "SEGMENTATION_FAILED",
+                    error_message=(
+                        f"Segmentation failed for {document.source_path}: {error}"
+                    ),
+                )
+            segments.extend(
+                ModelSharedAdrDocumentSegment(
+                    segment_id=segment.segment_id,
+                    source_path=segment.source_path,
+                    source_content_sha256=segment.source_content_sha256,
+                    start_line=segment.start_line,
+                    end_line=segment.end_line,
+                    segment_type=segment.segment_type.value,
+                    content=segment.content,
+                    segment_content_sha256=segment.segment_content_sha256,
+                    confidence=segment.confidence,
+                )
+                for segment in result.segments
+            )
+        return ModelAdrSegmentationResult(success=True, segments=tuple(segments))
 
 
 class AdapterBusAdrExtraction:
@@ -210,12 +310,11 @@ class AdapterBusAdrExtraction:
     async def extract(
         self,
         *,
-        ingestion: ModelAdrIngestionResult,
+        segments: tuple[ModelSharedAdrDocumentSegment, ...],
         model_key: str,
         model_id: str,
         correlation_id: str,
     ) -> ModelAdrExtractionSummary:
-        segments = _segments_from_ingestion(ingestion)
         if not segments:
             return ModelAdrExtractionSummary(
                 success=False,
@@ -225,7 +324,18 @@ class AdapterBusAdrExtraction:
             )
 
         request = ModelExtractionRequest(
-            segments=segments,
+            segments=[
+                ModelExtractionDocumentSegment(
+                    segment_id=segment.segment_id,
+                    source_path=segment.source_path,
+                    start_line=segment.start_line,
+                    end_line=segment.end_line,
+                    segment_type=segment.segment_type,
+                    content=segment.content,
+                    confidence=segment.confidence,
+                )
+                for segment in segments
+            ],
             model_key=model_key,
             model_config_overrides={"model_id": model_id},
             correlation_id=str(uuid4()),
@@ -241,6 +351,7 @@ class AdapterBusAdrExtraction:
         return ModelAdrExtractionSummary(
             success=result.success,
             model_key=result.model_key,
+            model_id=model_id,
             extraction_count=len(result.extractions),
             extractions_raw=cast("list[dict[str, object]]", raw_extractions),
             first_extraction_json=first_extraction_json,
@@ -329,6 +440,7 @@ def build_adr_bus_protocol_adapters(container: object) -> ModelAdrBusProtocolAda
     """Build all ADR canary protocol adapters from node contract topics."""
     return ModelAdrBusProtocolAdapters(
         ingestion=AdapterBusAdrIngestion(container),
+        segmentation=HandlerBusAdrSegmentation(container),
         extraction=AdapterBusAdrExtraction(container),
         grading=AdapterBusAdrGrading(container),
         draft_gen=AdapterBusAdrDraftGen(container),
@@ -472,38 +584,25 @@ def _single_topic(topics: list[str], fragment: str, contract_path: Path) -> str:
     return matches[0]
 
 
-def _segments_from_ingestion(
-    ingestion: ModelAdrIngestionResult,
-) -> list[ModelExtractionDocumentSegment]:
-    segments: list[ModelExtractionDocumentSegment] = []
-    for doc in ingestion.documents:
-        content = _read_document_content(ingestion.root_paths, doc.source_path)
-        if content is None:
-            continue
-        line_count = max(1, len(content.splitlines()))
-        digest = hashlib.sha256(f"{doc.source_path}\n{content}".encode()).hexdigest()
-        segments.append(
-            ModelExtractionDocumentSegment(
-                segment_id=digest,
-                source_path=doc.source_path,
-                start_line=1,
-                end_line=line_count,
-                segment_type="document",
-                content=content,
-                confidence=1.0,
-            )
-        )
-    return segments
-
-
 def _read_document_content(root_paths: list[str], source_path: str) -> str | None:
+    relative_source_path = Path(source_path)
+    if relative_source_path.is_absolute():
+        return None
     for root in root_paths:
-        candidate = Path(root) / source_path
+        root_path = Path(root).resolve()
+        candidate = (root_path / relative_source_path).resolve()
+        try:
+            candidate.relative_to(root_path)
+        except ValueError:
+            continue
         if candidate.is_file():
-            return candidate.read_text(encoding="utf-8")
-    candidate = Path(source_path)
-    if candidate.is_file():
-        return candidate.read_text(encoding="utf-8")
+            # Preserve original line endings so re-encoding this UTF-8 content
+            # verifies the byte-level hash recorded by ingestion.
+            try:
+                with candidate.open(encoding="utf-8", newline="") as source_file:
+                    return source_file.read()
+            except (OSError, UnicodeError):
+                return None
     return None
 
 
@@ -531,7 +630,11 @@ def _draft_extraction_from_summary(
         rationale_bullets=rationale_bullets,
         consequences=[],
         alternatives_considered=[],
-        model_id=str(raw.get("extraction_model_id") or extraction.model_key),
+        model_id=str(
+            extraction.model_id
+            or raw.get("extraction_model_id")
+            or extraction.model_key
+        ),
         confidence=_float_or_zero(raw.get("confidence")),
         provenance=ModelExtractionProvenance(
             source_doc_paths=[str(item) for item in source_paths]
@@ -539,7 +642,9 @@ def _draft_extraction_from_summary(
             else [],
             prompt_template_id=str(raw.get("prompt_template_id") or ""),
             prompt_template_version=str(raw.get("prompt_template_version") or ""),
-            pipeline_version="adr-canary-bus-adapter-v1",
+            pipeline_version=(
+                extraction.pipeline_version or "adr-canary-bus-adapter-v1"
+            ),
             timestamp=datetime.now(UTC).isoformat(),
         ),
         canary_run_id=run_id,

@@ -34,7 +34,9 @@ import yaml
 
 from omnimarket.inference.adapter_inference_bridge import (
     ModelInferenceAdapter,
+    ModelInferenceJsonObjectResponseFormat,
 )
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
 from omnimarket.nodes.node_adr_segmentation_llm_effect.handlers.handler_segmentation import (
     HandlerSegmentation,
 )
@@ -148,7 +150,12 @@ async def test_golden_chain_llm_failure_yields_typed_failure_evt() -> None:
             user_prompt: str,
             timeout_seconds: float,
             temperature: float | None = None,
+            response_format: ModelInferenceJsonObjectResponseFormat | None = None,
+            protocol_selection: ModelInferenceProtocolSelection | None = None,
         ) -> str:
+            assert response_format is not None
+            assert response_format.type == "json_object"
+            assert protocol_selection is not None
             raise ConnectionError("broker unreachable")
 
     handler = HandlerSegmentation(inference_bridge=_FailingBridge())

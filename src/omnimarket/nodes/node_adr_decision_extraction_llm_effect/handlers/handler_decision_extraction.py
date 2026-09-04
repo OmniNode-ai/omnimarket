@@ -14,17 +14,22 @@ JSON repair policy: one re-prompt on invalid JSON. Second failure = failed.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
 import time
-from typing import Any, Literal
+from typing import Any, Final, Literal
 
 from omnimarket.inference.adapter_inference_bridge import (
     AdapterInferenceBridge,
     ModelInferenceAdapter,
-    ModelInferenceBridgeConfig,
+    ModelInferenceJsonObjectResponseFormat,
 )
+from omnimarket.inference.bridge_config_loader import (
+    load_inference_bridge_config_from_env_async,
+)
+from omnimarket.inference.protocol_config import ModelInferenceProtocolSelection
 from omnimarket.nodes.node_adr_decision_extraction_llm_effect.models.model_extraction_request import (
     ModelExtractionRequest,
 )
@@ -40,6 +45,15 @@ logger = logging.getLogger(__name__)
 _EXTRACTION_VERSION = "1"
 _PROMPT_TEMPLATE_ID = "adr_decision_extraction_v1"
 _PROMPT_TEMPLATE_VERSION = "1.0.0"
+_JSON_OBJECT_RESPONSE_FORMAT: Final[ModelInferenceJsonObjectResponseFormat] = (
+    ModelInferenceJsonObjectResponseFormat()
+)
+_ADR_JSON_PROTOCOL_SELECTION: Final[ModelInferenceProtocolSelection] = (
+    ModelInferenceProtocolSelection(
+        profile_id="local-qwen-adr-json-no-think",
+        task_type="adr_json_artifact",
+    )
+)
 
 _DECISION_TYPE_DESCRIPTIONS = {
     EnumDecisionType.architecture_decision: (
@@ -85,7 +99,8 @@ _SYSTEM_PROMPT = (
     "- Do NOT extract items with confidence < 0.3.\n"
     "- An empty array [] is valid if no qualifying items are found.\n"
     "\n"
-    "Respond with ONLY a JSON array. Each element must have exactly these fields:\n"
+    'Respond with ONLY a JSON object with exactly one key, "extractions", whose value '
+    "is an array. Each extraction object must have exactly these fields:\n"
     '  "decision_type": one of the taxonomy values above,\n'
     '  "statement": concise statement of the decision/pivot/lesson/doctrine,\n'
     '  "rationale": supporting rationale from the source text (string or null),\n'
@@ -93,12 +108,12 @@ _SYSTEM_PROMPT = (
     '  "evidence_quotes": list of verbatim quote strings from the source,\n'
     '  "confidence": float 0.0-1.0\n'
     "\n"
-    "No prose, no markdown fences, no explanation — only the JSON array."
+    "No prose, no markdown fences, no explanation — only the JSON object."
 )
 
 _JSON_REPAIR_PROMPT = (
     "Your previous response was not valid JSON. "
-    "Return ONLY the JSON array described in the system prompt — "
+    "Return ONLY the JSON object described in the system prompt — "
     "no prose, no markdown fences, no explanation."
 )
 
@@ -150,6 +165,9 @@ def _parse_extractions(raw: str) -> list[dict[str, Any]] | None:
         data = json.loads(text)
     except json.JSONDecodeError:
         return None
+    if not isinstance(data, dict):
+        return None
+    data = data.get("extractions")
     if not isinstance(data, list):
         return None
     return data
@@ -193,13 +211,31 @@ class HandlerDecisionExtraction:
         extraction_timeout_seconds: float = 120.0,
         prompt_template_id: str = _PROMPT_TEMPLATE_ID,
         prompt_template_version: str = _PROMPT_TEMPLATE_VERSION,
+        response_format: ModelInferenceJsonObjectResponseFormat = _JSON_OBJECT_RESPONSE_FORMAT,
+        json_repair_enabled: bool = True,
     ) -> None:
-        self._bridge: ModelInferenceAdapter = (
-            inference_bridge or AdapterInferenceBridge(ModelInferenceBridgeConfig())
-        )
+        # Construction is pure and sync: when no bridge is injected the default
+        # bridge is built lazily on first ``handle`` via ``_ensure_bridge`` so the
+        # async secret-store resolution never runs inside this sync constructor.
+        # The runtime auto-wiring boot path constructs handlers inside a running
+        # event loop, where the sync secret resolver fails closed.
+        self._bridge: ModelInferenceAdapter | None = inference_bridge
+        self._bridge_lock = asyncio.Lock()
         self._extraction_timeout_seconds = extraction_timeout_seconds
         self._prompt_template_id = prompt_template_id
         self._prompt_template_version = prompt_template_version
+        self._response_format = response_format
+        self._json_repair_enabled = json_repair_enabled
+
+    async def _ensure_bridge(self) -> ModelInferenceAdapter:
+        """Return the inference bridge, building the default one once on demand."""
+        if self._bridge is not None:
+            return self._bridge
+        async with self._bridge_lock:
+            if self._bridge is None:
+                bridge_config = await load_inference_bridge_config_from_env_async()
+                self._bridge = AdapterInferenceBridge(bridge_config)
+            return self._bridge
 
     async def handle(self, request: ModelExtractionRequest) -> ModelExtractionResult:
         logger.info(
@@ -216,13 +252,16 @@ class HandlerDecisionExtraction:
 
         # Resolve model_id for deterministic extraction_id computation
         model_id = request.model_key  # fallback; bridge resolves actual ID at call time
+        bridge = await self._ensure_bridge()
 
         try:
-            raw_response = await self._bridge.infer(
+            raw_response = await bridge.infer(
                 model_key=request.model_key,
                 system_prompt=_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 timeout_seconds=self._extraction_timeout_seconds,
+                response_format=self._response_format,
+                protocol_selection=_ADR_JSON_PROTOCOL_SELECTION,
             )
         except Exception as exc:
             logger.warning(
@@ -244,7 +283,7 @@ class HandlerDecisionExtraction:
 
         raw_items = _parse_extractions(raw_response)
 
-        if raw_items is None:
+        if raw_items is None and self._json_repair_enabled:
             # One repair attempt
             json_repair_attempted = True
             logger.info(
@@ -252,11 +291,13 @@ class HandlerDecisionExtraction:
                 request.model_key,
             )
             try:
-                repaired_response = await self._bridge.infer(
+                repaired_response = await bridge.infer(
                     model_key=request.model_key,
                     system_prompt=_SYSTEM_PROMPT,
                     user_prompt=_JSON_REPAIR_PROMPT,
                     timeout_seconds=self._extraction_timeout_seconds,
+                    response_format=self._response_format,
+                    protocol_selection=_ADR_JSON_PROTOCOL_SELECTION,
                 )
             except Exception as exc:
                 latency_ms = int((time.monotonic() - t0) * 1000)
@@ -294,7 +335,11 @@ class HandlerDecisionExtraction:
                 model_key=request.model_key,
                 success=False,
                 error_code="EXTRACTION_PARSE_FAILED",
-                error_message="Could not parse JSON extraction array after repair attempt.",
+                error_message=(
+                    "Could not parse JSON extraction object after repair attempt."
+                    if json_repair_attempted
+                    else "Could not parse JSON extraction object on first attempt."
+                ),
                 model_id=model_id,
                 retryable=False,
                 llm_call_evidence=ModelLLMCallEvidence(
@@ -391,6 +436,12 @@ class HandlerDecisionExtraction:
                 cfg.get("prompt_template_version", {}).get(
                     "default", _PROMPT_TEMPLATE_VERSION
                 )
+            ),
+            response_format=ModelInferenceJsonObjectResponseFormat.model_validate(
+                cfg.get("response_format", {}).get("default", {"type": "json_object"})
+            ),
+            json_repair_enabled=bool(
+                cfg.get("json_repair_enabled", {}).get("default", True)
             ),
         )
 
