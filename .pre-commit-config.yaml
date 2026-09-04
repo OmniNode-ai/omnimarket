@@ -202,8 +202,11 @@ repos:
         # baseline) — the topic literals in its message text are evidence
         # ABOUT imperative code, not imperative code publishing/subscribing
         # to a topic itself. Same class as the other allowlist/registry data
-        # files already excluded below.
-        exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|scripts/ci/check_no_hardcoded_topics\\.py|scripts/publish_pr_merged_event\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py|src/omnimarket/nodes/node_.*/contracts/.*\\.yaml|src/omnimarket/nodes/node_compliance_sweep/data/compliance_sweep_baseline\\.yaml|src/dep_health_allowlist\\.yaml|docs/adr-canary/.*|src/omnimarket/cli/.*)$"
+        # files already excluded below. The ADR ground-truth corpus is also
+        # excluded at its exact packaged-config path because it quotes
+        # authoritative historical ADR text; the discovery and policy configs
+        # remain checked.
+        exclude: "^(src/omnimarket/nodes/node_emit_daemon/registries/claude_code\\.yaml|scripts/lint_no_hardcoded_topics\\.py|scripts/ci/check_no_hardcoded_topics\\.py|scripts/publish_pr_merged_event\\.py|src/omnimarket/logging/structured_logger\\.py|src/omnimarket/nodes/node_.*/handlers/handler_.*\\.py|src/omnimarket/nodes/node_.*/handlers/overseer_tick\\.py|src/omnimarket/nodes/node_.*/models/model_.*\\.py|src/omnimarket/nodes/node_.*/__main__\\.py|src/omnimarket/nodes/node_.*/contracts/.*\\.yaml|src/omnimarket/nodes/node_compliance_sweep/data/compliance_sweep_baseline\\.yaml|src/dep_health_allowlist\\.yaml|src/omnimarket/configs/adr_canary_ground_truth_manifest\\.v1\\.yaml|src/omnimarket/cli/.*)$"
       - id: no-untracked-todos
         stages: [pre-commit]
 

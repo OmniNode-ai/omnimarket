@@ -11,7 +11,7 @@ It does NOT import any handlers or adapters.
 
 Usage:
     uv run python scripts/publish_kb_adr_command.py \\
-        --canary-run-dir docs/adr-canary-runs/<run_id>/ \\
+        --canary-run-dir .onex_state/adr-canary-runs/<run_id>/ \\
         --model-key qwen3-coder-local \\
         [--dry-run]
 
@@ -95,8 +95,7 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument(
         "--publication-classification",
         choices=[
-            classification.value
-            for classification in EnumAdrPublicationClassification
+            classification.value for classification in EnumAdrPublicationClassification
         ],
         required=True,
         help="Explicit publication sensitivity supplied by the source owner",

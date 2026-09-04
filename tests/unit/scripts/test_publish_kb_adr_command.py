@@ -27,7 +27,7 @@ def _load_script_module():
 
 def _args(**overrides: object) -> argparse.Namespace:
     payload: dict[str, object] = {
-        "canary_run_dir": "docs/adr-canary-runs/run-1",
+        "canary_run_dir": ".onex_state/adr-canary-runs/run-1",
         "model_key": "test/qwen3",
         "kb_destination": "private",
         "source_repository": "OmniNode-ai/omni_home",
@@ -65,7 +65,7 @@ def test_publish_command_does_not_accept_arbitrary_kb_repo(monkeypatch) -> None:
         [
             "publish_kb_adr_command.py",
             "--canary-run-dir",
-            "docs/adr-canary-runs/run-1",
+            ".onex_state/adr-canary-runs/run-1",
             "--model-key",
             "test/qwen3",
             "--kb-repo",

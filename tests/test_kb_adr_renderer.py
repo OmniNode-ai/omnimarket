@@ -19,6 +19,7 @@ from omnibase_core.models.adr.model_adr_extraction_metadata import (
 from omnimarket.adapters.adr.kb_adr_renderer import (
     ModelKBRenderResult,
     render_adr_to_kb,
+    render_decision_to_private_kb,
 )
 
 
@@ -63,6 +64,7 @@ def test_render_creates_both_files(
 
     assert isinstance(result, ModelKBRenderResult)
     assert result.adr_path.exists()
+    assert result.evidence_path is not None
     assert result.evidence_path.exists()
 
 
@@ -145,6 +147,7 @@ def test_evidence_json_contains_extraction_metadata(
     output_dir.mkdir(parents=True)
     result = render_adr_to_kb(sample_draft, "ADR-0042", output_dir)
 
+    assert result.evidence_path is not None
     evidence = json.loads(result.evidence_path.read_text(encoding="utf-8"))
 
     assert evidence["adr_id"] == "ADR-0042"
@@ -196,5 +199,37 @@ def test_slug_in_filename(sample_draft: ModelADRDraft, output_dir: Path) -> None
 
     assert "ADR-0042" in result.adr_path.name
     assert result.adr_path.suffix == ".md"
+    assert result.evidence_path is not None
     assert result.evidence_path.suffix == ".json"
     assert "ADR-0042" in result.evidence_path.name
+
+
+def test_private_decision_uses_internal_reference_convention(
+    sample_draft: ModelADRDraft, tmp_path: Path
+) -> None:
+    output_dir = tmp_path / "reference" / "decisions"
+    output_dir.mkdir(parents=True)
+
+    result = render_decision_to_private_kb(sample_draft, output_dir)
+
+    assert result.adr_path.parent == output_dir
+    assert result.adr_path.name == "use-pydantic-for-all-wire-dtos.md"
+    assert result.evidence_path is None
+    body = result.adr_path.read_text(encoding="utf-8")
+    assert body.startswith("# ADR: Use Pydantic for all wire DTOs\n")
+    assert not body.startswith("---\n")
+    assert "## Status\n\nProposed" in body
+    assert "## Context" in body
+    assert "## Decision" in body
+    assert "## Consequences" in body
+
+
+def test_private_decision_rejects_an_existing_path(
+    sample_draft: ModelADRDraft, tmp_path: Path
+) -> None:
+    output_dir = tmp_path / "reference" / "decisions"
+    output_dir.mkdir(parents=True)
+    render_decision_to_private_kb(sample_draft, output_dir)
+
+    with pytest.raises(FileExistsError, match="private KB decision already exists"):
+        render_decision_to_private_kb(sample_draft, output_dir)

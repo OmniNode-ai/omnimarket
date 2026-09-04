@@ -37,7 +37,7 @@ from omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_request i
     ModelCanaryCommandPayload,
 )
 
-_MANIFEST_PATH = "docs/adr-canary/ground_truth_manifest.yaml"
+_MANIFEST_PATH = "src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml"
 _OMNIMARKET_ROOT = Path(__file__).parents[
     4
 ]  # tests/integration/nodes/node_adr_canary_orchestrator/ -> omnimarket root

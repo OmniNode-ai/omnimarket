@@ -57,6 +57,14 @@ sanitization_checks:
     applies_to: [generated_adr, proposed_adr]
     destinations: [public]
 
+  - name: no_lab_identifiers
+    description: "Lab-naming material is internal and may never reach the public KB"
+    severity: blocking
+    patterns:
+      - "(?i)\\blab\\b"
+    applies_to: [generated_adr, proposed_adr]
+    destinations: [public]
+
   - name: no_accepted_status
     description: "Discovery proposals must use Status: Proposed — never Status: Accepted"
     severity: blocking
@@ -136,6 +144,6 @@ sanitization_checks:
     severity: blocking
     check_type: uniqueness
     check_against:
-      - "docs/adr-canary/ground_truth_manifest.yaml"
-      - "docs/adr-canary/rejected_manifest.yaml"
+      - "src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml"
+      - "src/omnimarket/configs/adr_canary_rejected_manifest.v1.yaml"
     applies_to: [generated_adr, proposed_adr]

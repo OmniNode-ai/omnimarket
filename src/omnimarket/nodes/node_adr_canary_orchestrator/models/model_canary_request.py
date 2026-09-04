@@ -24,7 +24,7 @@ class ModelCanaryCommandPayload(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     manifest_path: str = Field(
-        default="docs/adr-canary/ground_truth_manifest.yaml",
+        default="src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml",
         description=(
             "Path to the ground truth manifest YAML, relative to the repo root "
             "or absolute. All manifest entries are evaluated unless model_subset filters them."
@@ -66,7 +66,7 @@ class ModelCanaryCommandPayload(BaseModel):
         ),
     )
     output_dir: str = Field(
-        default="docs/adr-canary-runs/",
+        default=".onex_state/adr-canary-runs/",
         description="Base directory for canary run evidence bundles.",
     )
     dry_run: bool = Field(

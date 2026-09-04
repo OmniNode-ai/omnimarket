@@ -153,7 +153,7 @@ SELF_EXEMPT_FILES=(
   # one embedded ADR's edge-case table is not a real leak, and editing embedded
   # ADR text to annotate it would corrupt the ground-truth fidelity the file
   # exists to provide.
-  "docs/adr-canary/ground_truth_manifest.yaml"
+  "src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml"
   # OMN-17435: the pre-push lab picker family. Three distinct reasons, none of
   # them "annotating it was inconvenient":
   #

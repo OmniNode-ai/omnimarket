@@ -14,9 +14,9 @@ capabilities:
   requires_docker: false
   side_effect_class: effectful
 entry_flags:
-  manifest_path: "Path to ground truth manifest YAML (default: docs/adr-canary/ground_truth_manifest.yaml)"
+  manifest_path: "Path to ground truth manifest YAML (default: src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml)"
   model_subset: "Comma-separated model keys to evaluate (default: all models in manifest)"
-  output_dir: "Base directory for canary run evidence bundles (default: docs/adr-canary-runs/)"
+  output_dir: "Base directory for canary run evidence bundles (default: .onex_state/adr-canary-runs/)"
   dry_run: "Log what would run without making LLM calls"
   resume_run_id: "Resume an interrupted canary run by run_id"
   max_cost_usd: "Hard budget cap in USD (default: no cap)"

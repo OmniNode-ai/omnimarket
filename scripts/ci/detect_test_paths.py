@@ -8,18 +8,13 @@ import argparse
 import sys
 from pathlib import Path
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
-
-from scripts.ci.test_selection_loader import (
-    ModelAdjacencyMap,
-    load_adjacency_map,
-)
+from scripts.ci.test_selection_loader import ModelAdjacencyMap, load_adjacency_map
 from scripts.ci.test_selection_models import (
     EnumFullSuiteReason,
     ModelTestSelection,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 SRC_PREFIX = "src/omnimarket/"
 TEST_PREFIX = "tests/"

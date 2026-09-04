@@ -29,9 +29,11 @@ description: |
   model_key, renders each ModelADRDraft via render_adr_to_kb adapter,
   validates source-owned repository provenance and a closed KB destination
   before any publish subprocess. It clones only the contract-pinned public or
-  private knowledge base, creates a branch, writes ADR files into flat
-  adrs/ADR-NNNN-<slug>.md paths with proposed frontmatter, and opens a PR for
-  human review. Private sources may publish only to the private KB; private,
+  private knowledge base, creates a branch, and writes destination-specific
+  artifacts: public proposals are flat adrs/ADR-NNNN-<slug>.md files with
+  proposed frontmatter; private proposals are
+  reference/decisions/<slug>.md internal decision records. It then opens a PR
+  for human review. Private sources may publish only to the private KB; private,
   restricted, and needs-review evidence may never publish to the public KB.
   Emits kb-adr-publish-completed.v1 with PR URL and ADR count.
   dry_run=true exits cleanly without filesystem writes, git ops, or gh CLI.
@@ -104,8 +106,12 @@ publication_policy:
   destinations:
     public:
       repository: "OmniNode-ai/knowledge-base"
+      artifact_layout: "public_flat_adr"
+      artifact_directory: "adrs"
     private:
       repository: "OmniNode-ai/knowledge-base-internal"
+      artifact_layout: "private_reference_decision"
+      artifact_directory: "reference/decisions"
   rules:
     - "private source visibility permits only private destination"
     - "public source visibility permits public or private destination"
@@ -120,8 +126,8 @@ publication_policy:
       It trusts source hashes only after the earlier source-byte verifier rejects
       mismatches; it never receives machine-local source paths as authority.
   sanitization:
-    policy_config: "docs/adr-canary/sanitization_gate.yaml"
-    preflight: "typed candidate draft scan before any publisher subprocess"
+    policy_config: "src/omnimarket/configs/adr_canary_sanitization_gate.v1.yaml"
+    preflight: "typed candidate and branch/PR-surface scan before any publisher subprocess"
     public_artifact_validator: "uv run python scripts/validate.py in checked-out public KB"
     public_validator_order: "after render, before git add/commit/push/pr"
     private_destination: "private references allowed; secrets remain blocking"

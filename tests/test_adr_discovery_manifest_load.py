@@ -22,13 +22,15 @@ from omnimarket.nodes.node_adr_canary_orchestrator.handlers.handler_canary_orche
 )
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_CANARY_DOCS = _REPO_ROOT / "docs" / "adr-canary"
+_CANARY_CONFIGS = _REPO_ROOT / "src" / "omnimarket" / "configs"
 
 
 @pytest.mark.unit
 def test_discovery_manifest_loads_all_entries() -> None:
     raw = yaml.safe_load(
-        (_CANARY_DOCS / "discovery_manifest.yaml").read_text(encoding="utf-8")
+        (_CANARY_CONFIGS / "adr_canary_discovery_manifest.v1.yaml").read_text(
+            encoding="utf-8"
+        )
     )
     manifest = ModelGroundTruthManifest.model_validate(raw)
 
@@ -43,7 +45,9 @@ def test_discovery_manifest_loads_all_entries() -> None:
 @pytest.mark.unit
 def test_ground_truth_manifest_still_loads_strict() -> None:
     raw = yaml.safe_load(
-        (_CANARY_DOCS / "ground_truth_manifest.yaml").read_text(encoding="utf-8")
+        (_CANARY_CONFIGS / "adr_canary_ground_truth_manifest.v1.yaml").read_text(
+            encoding="utf-8"
+        )
     )
     manifest = ModelGroundTruthManifest.model_validate(raw)
 
