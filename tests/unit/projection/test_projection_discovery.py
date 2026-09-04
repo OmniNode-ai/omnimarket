@@ -918,7 +918,15 @@ class TestOmn15800ExposureParity:
     and live_events.v1 vanished with only a logger.error line as evidence.
     """
 
-    def test_live_topic_count_is_59(self) -> None:
+    def test_live_topic_count_is_60(self) -> None:
+        # 60 as of OMN-17772: +1 for node_projection_work_events'
+        # onex.snapshot.projection.work.events.v1. That contract had declared a
+        # full projection_api section since OMN-16180 and was EXCLUDED on every
+        # load for declaring `schema: omninode_internal`, which is not in
+        # ALLOWED_SCHEMAS -- so the exposure appeared nowhere at all, not even
+        # as a refusal. This ratchet is precisely what caught the count moving,
+        # which is what it is for.
+        #
         # 59 as of OMN-16777: +1 for node_projection_consumer_flow's
         # onex.snapshot.projection.consumer-flow.v1 exposure. 58 as of
         # OMN-16316 (+1 for tenant-credentials.v1); 57 as of the
@@ -928,7 +936,13 @@ class TestOmn15800ExposureParity:
         # class guards silently EXCLUDED exposures, so a computed expectation
         # would have moved with the bug and proven nothing.
         topic_map = build_projection_topic_map()
-        assert len(topic_map) == 59
+        assert len(topic_map) == 60
+        assert "onex.snapshot.projection.work.events.v1" in topic_map
+        # Still excluded for the identical reason, and deliberately left so:
+        # node_projection_open_obligations declares `schema: omninode_internal`
+        # too. Its conversion is not in OMN-17772's scope; recording it here
+        # keeps the remaining instance visible instead of forgotten.
+        assert "onex.snapshot.projection.work.open-obligations.v1" not in topic_map
 
     def test_all_four_evidence_pipeline_exposures_present(self) -> None:
         topic_map = build_projection_topic_map()

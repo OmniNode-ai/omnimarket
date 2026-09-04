@@ -63,6 +63,10 @@ TOPIC_CONSUMER_FLOW = "onex.snapshot.projection.consumer-flow.v1"
 TOPIC_REGISTRATION = "onex.snapshot.projection.registration.v1"
 TOPIC_LIVE_EVENTS = "onex.snapshot.projection.live-events.v1"
 TOPIC_SESSION_REPLAY = "onex.snapshot.projection.session.replay.v1"
+# OMN-17772. Absent from the catalog entirely until this exposure stopped
+# being excluded at discovery for declaring an unservable schema -- the page
+# could not even refuse it, which is strictly worse than a refusal.
+TOPIC_WORK_EVENTS = "onex.snapshot.projection.work.events.v1"
 TOPIC_SKILL_EXECUTIONS = "onex.snapshot.projection.skill-executions.v1"
 TOPIC_DELEGATION_SAVINGS = "onex.snapshot.projection.delegation.savings.v1"
 TOPIC_COST_SAVINGS_OVERVIEW = "onex.snapshot.projection.cost.savings-overview.v1"
@@ -218,6 +222,7 @@ class ModelMorningPage(BaseModel):
     savings: ModelSavingsPanel
     registry: ModelProjectionRead
     live_events: ModelProjectionRead
+    work_events: ModelProjectionRead
     sessions: ModelProjectionRead
     skill_executions: ModelProjectionRead
     inventory: tuple[ModelInventoryRow, ...]
@@ -574,6 +579,9 @@ def build_morning_page(
         live_events=read_projection(
             TOPIC_LIVE_EVENTS, topic_map, cache, limit=_LIST_ROW_CAP
         ),
+        work_events=read_projection(
+            TOPIC_WORK_EVENTS, topic_map, cache, limit=_LIST_ROW_CAP
+        ),
         sessions=read_projection(
             TOPIC_SESSION_REPLAY, topic_map, cache, limit=_LIST_ROW_CAP
         ),
@@ -852,6 +860,12 @@ def render_morning_page(page: ModelMorningPage) -> str:
             page.live_events,
             "live events",
             "the most recent platform events on the live-events exposure",
+        ),
+        _render_rows_panel(
+            page.work_events,
+            "work events",
+            "what actors actually did — the L1 work-ledger rung of OMN-16176, "
+            "one content-addressed row per session event",
         ),
         _render_rows_panel(
             page.sessions,
