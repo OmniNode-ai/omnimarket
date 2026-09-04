@@ -58,6 +58,15 @@
 #   - OMN-17373: OpenAI has no delegation backend, so `openai` is deliberately
 #     ABSENT below — declaring it here would mint a route to a backend that
 #     does not exist.
+#   - OMN-17353: this file is EXACTLY the handler-backed set, both directions.
+#     Every house-keyed rung in bifrost_delegation.yaml (a backend carrying a
+#     `secret_ref: llm.<provider>.<field>`) must appear below either under
+#     `providers` or under `not_offered` (with a reason and the ticket that
+#     owns lifting it), and every row below must be backed by such a rung.
+#     tests/test_omn17353_provider_catalogue.py fails on a rung that is
+#     neither, on a row nothing backs, on any Claude/Anthropic row in either
+#     list, and on any row carrying a secret_ref.
+#   - OMN-17932: gemini / glm / vertex are the declared not-offered providers.
 
 schema_version: "byok_provider_backends.v1"
 
@@ -86,3 +95,26 @@ providers:
     # defaults (30000 / DELEGATION_MAX_TOKENS_HARD_LIMIT) when either is null.
     timeout_ms: 300000
     max_tokens: 65536
+
+# House-keyed platform providers a customer may NOT (yet) bring a key for.
+# Silence is not allowed: a rung the platform ships a house key for is either
+# offered above or declared here with the ticket that owns lifting it.
+# Claude/Anthropic may not appear in this list either — it is never a
+# delegation target, so there is nothing to decline.
+not_offered:
+  - provider: gemini
+    reason: >-
+      The platform's gemini rungs (gemini-2.5-flash / -lite) are paid slugs;
+      a BYOK default must be zero-cost on the customer's account until a
+      per-tenant model choice exists.
+    ticket: OMN-17932
+  - provider: glm
+    reason: >-
+      The platform's z.ai rung (glm-5.3-flash) is a paid slug; same zero-cost
+      rule as gemini.
+    ticket: OMN-17932
+  - provider: vertex
+    reason: >-
+      Vertex authenticates with a short-lived access token
+      (llm.vertex.access_token), not an API key a customer can register.
+    ticket: OMN-17932
