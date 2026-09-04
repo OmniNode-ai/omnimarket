@@ -53,9 +53,11 @@ Invariants this module holds
 * **A failing check produces FAIL.** The status is derived from a real exit
   status. There is no path here that reports an outcome nothing produced.
 * **No machine-specific path escapes.** The runner executes in a CI workspace
-  whose absolute path is unreproducible. ``check_value`` is copied verbatim
-  from the contract and ``working_dir`` is left None, so OCC's Receipt Honesty
-  Gate (ABS_PATH) cannot fire on the very receipt meant to unblock the PR.
+  whose absolute path is unreproducible. The contract's declared
+  ``check_value`` is carried through verbatim (prefixed only by the
+  product-repo reference for the receipt's own ``commit_sha`` — OMN-17794) and
+  ``working_dir`` is left None, so OCC's Receipt Honesty Gate (ABS_PATH) cannot
+  fire on the very receipt meant to unblock the PR.
 """
 
 from __future__ import annotations
@@ -297,6 +299,47 @@ def _receipt_stdout(executed: ExecutedCheck) -> str:
     return f"[truncated to last {_MAX_STDOUT_CHARS} chars]\n{keep}"
 
 
+# OMN-17794 — the receipt must say WHICH repository its commit_sha lives in.
+#
+# ``commit_sha`` carries no repo attribution of its own. OCC's Receipt
+# Hardening Gate therefore resolves it against
+# ``_DEFAULT_COMMIT_SHA_REPO = "OmniNode-ai/onex_change_control"`` unless the
+# receipt names another repository in a *contract-bound* field. This runner
+# always executes in a PRODUCT repo checkout and always stamps that product
+# repo's head, so without an explicit citation the gate looks for a product
+# commit inside OCC, does not find it, and reports the commit as fabricated:
+#
+#   replacement [COMMIT_SHA_EXISTS] commit_sha '138956373a…' does not resolve
+#   to a real, remote-reachable commit
+#
+# Measured live on OCC#8145 (this change's own companion). The gate's own
+# message names the remedy — "embed a 'repos/<owner>/<repo>/...' reference in
+# check_value/probe_command so the gate can resolve it there" — and its
+# ``_REPO_HINT_RE`` accepts exactly the ``repos/<owner>/<repo>/`` path form.
+#
+# The ``commits/<sha>`` suffix is not decoration: it is the gate's TIER-1
+# disambiguator. When a receipt cites more than one trusted repository the
+# authority is the one whose own command segment binds the receipt's
+# ``commit_sha`` via ``repos/<owner>/<repo>/commits/<sha>``. Emitting that
+# exact form means a contract whose check text already names some other repo
+# resolves to the product repo anyway, instead of refusing as ambiguous.
+#
+# Both ``check_value`` and ``probe_command`` receive the SAME prefix, so their
+# equality — the property OMN-15459 S2 family-binding relies on — is preserved,
+# and the contract's declared check text is carried through unchanged on the
+# following line rather than rewritten. S1 (no byte-identical
+# ``replacement.check_value`` across items in a cohort) is likewise unharmed:
+# the prefix makes values more distinct, never less.
+def bind_command_to_product_repo(check_value: str, *, repo: str, head_sha: str) -> str:
+    """Prefix a declared check with the product-repo reference for its commit.
+
+    The declared text is preserved verbatim on the line after the reference —
+    the receipt still attests to the contract's bar, it just also says where
+    that bar was executed.
+    """
+    return f"repos/{repo}/commits/{head_sha}\n{check_value}"
+
+
 def build_receipt(
     executed: ExecutedCheck,
     *,
@@ -310,26 +353,35 @@ def build_receipt(
 ) -> dict[str, Any]:
     """Render the receipt body for one executed check.
 
-    ``probe_command`` IS ``check_value``, verbatim from the contract. That
-    equality is the whole point: the receipt attests to the declared bar, not
-    to a re-derived approximation of it. Re-deriving would reopen the OCC#5534
-    laundering channel where one probe became the authoritative proof of N
-    distinct bars, and it would break the OMN-15459 S2 family-binding rule that
-    this construction satisfies for free.
+    ``probe_command`` IS ``check_value``. That equality is the whole point: the
+    receipt attests to the declared bar, not to a re-derived approximation of
+    it. Re-deriving would reopen the OCC#5534 laundering channel where one
+    probe became the authoritative proof of N distinct bars, and it would break
+    the OMN-15459 S2 family-binding rule that this construction satisfies for
+    free.
+
+    Both carry the contract's declared check text verbatim, prefixed by the
+    product-repo reference for this receipt's ``commit_sha`` (OMN-17794 — see
+    ``bind_command_to_product_repo``). The prefix is applied identically to
+    both fields, so the equality above is preserved exactly; the declared bar
+    itself is never rewritten.
     """
     stamped = run_timestamp or datetime.now(tz=UTC)
+    bound_command = bind_command_to_product_repo(
+        executed.check_value, repo=repo, head_sha=head_sha
+    )
     return {
         "schema_version": RECEIPT_SCHEMA_VERSION,
         "ticket_id": executed.ticket_id,
         "evidence_item_id": executed.evidence_item_id,
         "check_type": executed.check_type,
-        "check_value": executed.check_value,
+        "check_value": bound_command,
         "status": executed.status.value,
         "run_timestamp": stamped.strftime("%Y-%m-%dT%H:%M:%SZ"),
         "commit_sha": head_sha,
         "runner": RUNNER,
         "verifier": VERIFIER,
-        "probe_command": executed.check_value,
+        "probe_command": bound_command,
         "probe_stdout": _receipt_stdout(executed),
         "actual_output": (
             f"{executed.status.value}: declared check executed in the "
