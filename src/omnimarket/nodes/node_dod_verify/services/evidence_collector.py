@@ -154,6 +154,15 @@ _SNAPSHOT_BUILD_LOCK_NAME = "build.lock"
 # (which git can report on stdout) to the snapshot path as if it were a SHA.
 _SHA_RE = re.compile(r"[0-9a-f]{40}")
 
+# OMN-17796: the two governance-ref refusal codes, named once. Each is both the
+# head of the operator-facing message and the value the handler classifies on,
+# so the string an operator reads and the type a consumer branches on cannot
+# drift apart. They are spelled to match the ``EnumDodVerifyUnresolvedCause``
+# members of the same name, which is what lets ``from_error_code`` map them
+# with no second table.
+_OCC_REF_REFRESH_FAILED_CODE = "OCC_REF_REFRESH_FAILED"
+_OCC_WORKTREE_UNAVAILABLE_CODE = "OCC_WORKTREE_UNAVAILABLE"
+
 
 def _git_op_timeout_s() -> float:
     """Resolve the git-subprocess ceiling, honouring the operator override.
@@ -1331,6 +1340,17 @@ class EvidenceCollector:
         # earliest failure is the one that determines what could not be looked
         # at; later ones are usually its consequence.
         self._sticky_lookup_failure_code: str | None = None
+        # OMN-17796: the GOVERNANCE-REF counterpart of the sticky code above,
+        # kept as its own field rather than folded into it because the two
+        # carry different scopes and therefore earn different handler policies.
+        # A PR/repo lookup failure is discovered PER ITEM, while checks are
+        # already running, so its arm is guarded by ``verified == 0`` to avoid
+        # stealing a real red that ran beside it. This one is resolved BEFORE
+        # the contract is loaded: if it is set, no evidence item was read at
+        # all and nothing in the run is attributable to the ref the run
+        # reports, so its arm fires unconditionally. Merging the two fields
+        # would force one guard onto both scopes and lose that distinction.
+        self._occ_ref_failure_code: str | None = None
         # OMN-15382 (F2): set by ``_resolve_pr_bindings`` when it found NO
         # trustworthy binding but SOME evidence the item is PR-related (a PASS
         # receipt recording a pr_number that could not be consistently paired
@@ -1450,15 +1470,19 @@ class EvidenceCollector:
                     _ALLOW_STALE_OCC_REF_ENV,
                     _ALLOW_STALE_OCC_REF_ENV,
                 )
+                self._occ_ref_failure_code = _OCC_REF_REFRESH_FAILED_CODE
                 return [
                     ModelEvidenceCheckResult(
                         evidence_id="occ_ref_refresh",
                         description=(
                             f"OCC ref refresh failed for {self._occ_governance_ref}"
                         ),
-                        status=EnumEvidenceCheckStatus.FAILED,
+                        # OMN-17796: SKIPPED, not FAILED. See the worktree
+                        # twin below for the full argument; this refusal has
+                        # the same scope and gets the same encoding.
+                        status=EnumEvidenceCheckStatus.SKIPPED,
                         message=(
-                            "OCC_REF_REFRESH_FAILED: git fetch of "
+                            f"{_OCC_REF_REFRESH_FAILED_CODE}: git fetch of "
                             f"{self._occ_governance_ref} failed (after retrying "
                             "the ref-lock race once) — the local clone's "
                             "freshness is UNKNOWN, so this run refuses rather "
@@ -1493,6 +1517,7 @@ class EvidenceCollector:
                     _git_op_timeout_s(),
                     _ALLOW_STALE_OCC_REF_ENV,
                 )
+                self._occ_ref_failure_code = _OCC_WORKTREE_UNAVAILABLE_CODE
                 return [
                     ModelEvidenceCheckResult(
                         evidence_id="occ_worktree_unavailable",
@@ -1500,9 +1525,31 @@ class EvidenceCollector:
                             "OCC worktree could not be materialised at "
                             f"{self._occ_governance_ref}"
                         ),
-                        status=EnumEvidenceCheckStatus.FAILED,
+                        # OMN-17796: SKIPPED, not FAILED — and the run-level
+                        # verdict this produces is UNRESOLVED, not FAILED.
+                        #
+                        # FAILED asserted a red about a ticket whose contract
+                        # had not been loaded when this returned. Measured
+                        # 2026-09-03: 12 of 36 runs collapsed here and every
+                        # one emitted the SAME verdict_content_sha256 across
+                        # six unrelated tickets — a verdict that does not
+                        # depend on the ticket is not a verdict about it — and
+                        # the autoclose sweep's gap sentence, whose first
+                        # branch is ``failed_count > 0``, rendered it as "1
+                        # failed — not all ACs are receipt-proven."
+                        #
+                        # This is NOT a relaxation. The entry stays in the
+                        # verdict-bearing denominator (no supersession, no
+                        # unbindable-overlay marker), so the OMN-16821
+                        # equality still fails; nothing verified, so that leg
+                        # fails too; and the handler's OCC arm sets an
+                        # error_message, which RuntimeLocal reads as an
+                        # unambiguous failure. The pre-fix record set NO
+                        # error_message at all, so the fail-closed signal is
+                        # strictly stronger now, not weaker.
+                        status=EnumEvidenceCheckStatus.SKIPPED,
                         message=(
-                            "OCC_WORKTREE_UNAVAILABLE: git worktree add of "
+                            f"{_OCC_WORKTREE_UNAVAILABLE_CODE}: git worktree add of "
                             f"{self._occ_governance_ref} failed or timed out "
                             f"(ceiling {_git_op_timeout_s()}s, override with "
                             f"{_GIT_OP_TIMEOUT_ENV}). The only remaining "
@@ -3381,6 +3428,25 @@ class EvidenceCollector:
         rendered message string.
         """
         return self._sticky_lookup_failure_code
+
+    @property
+    def occ_ref_failure_code(self) -> str | None:
+        """The governance-ref refusal code this run hit, verbatim (OMN-17796).
+
+        ``None`` unless ``collect()`` refused on the OCC ref itself. Read by
+        the handler AFTER ``collect()`` returns, exactly as
+        ``lookup_failure_code`` and ``occ_refresh_outcome`` are — typed
+        provenance the collector already holds, never a rendered message
+        parsed back out.
+        """
+        return self._occ_ref_failure_code
+
+    @property
+    def occ_ref_failure_cause(self) -> EnumDodVerifyUnresolvedCause | None:
+        """``occ_ref_failure_code`` mapped onto the OMN-17022 taxonomy."""
+        if self._occ_ref_failure_code is None:
+            return None
+        return EnumDodVerifyUnresolvedCause.from_error_code(self._occ_ref_failure_code)
 
     @property
     def lookup_failure_cause(self) -> EnumDodVerifyUnresolvedCause | None:

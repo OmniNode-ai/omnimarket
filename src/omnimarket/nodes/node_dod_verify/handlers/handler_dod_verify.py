@@ -33,6 +33,10 @@ from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     ModelDodVerifyState,
     ModelEvidenceCheckResult,
 )
+from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
+    _ALLOW_STALE_OCC_REF_ENV,
+    _GIT_OP_TIMEOUT_ENV,
+)
 
 if TYPE_CHECKING:
     from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
@@ -106,6 +110,11 @@ class HandlerDodVerify:
         # never performed a lookup at all.
         lookup_failure_cause: EnumDodVerifyUnresolvedCause | None = None
         lookup_failure_code: str | None = None
+        # OMN-17796: the run-wide sibling of the two above. Set when collect()
+        # refused on the OCC governance ref itself, which happens BEFORE the
+        # contract is loaded.
+        occ_ref_failure_cause: EnumDodVerifyUnresolvedCause | None = None
+        occ_ref_failure_code: str | None = None
         if evidence_results is None:
             collector = self._make_collector()
             evidence_results = collector.collect(
@@ -123,6 +132,9 @@ class HandlerDodVerify:
             # already holds, never a message string parsed back out.
             lookup_failure_cause = collector.lookup_failure_cause
             lookup_failure_code = collector.lookup_failure_code
+            # OMN-17796: read the same way, for the same reason.
+            occ_ref_failure_cause = collector.occ_ref_failure_cause
+            occ_ref_failure_code = collector.occ_ref_failure_code
 
         checks = evidence_results
 
@@ -214,7 +226,27 @@ class HandlerDodVerify:
         # keeps the raw tally; only this comparison uses the narrowed one.
         verdict_bearing_skipped = skipped - unbindable_overlays
         unresolved_cause: EnumDodVerifyUnresolvedCause | None = None
-        if lookup_failure_cause is not None and verified == 0:
+        if occ_ref_failure_cause is not None:
+            # OMN-17796. The OCC governance ref — the thing every contract in
+            # this corpus is READ FROM — could not be resolved, so ``collect()``
+            # returned before loading a contract at all. The old encoding sent
+            # this down the ``elif failed > 0`` arm and emitted
+            # ``FAILED / total_checks=1 / failed_count=1`` with no
+            # ``error_message``: a substantive red about a ticket the run never
+            # opened. Measured 2026-09-03, 12 of 36 runs, one identical
+            # ``verdict_content_sha256`` across six unrelated tickets.
+            #
+            # Deliberately NOT guarded by ``verified == 0``, unlike the
+            # per-item arm below. That guard exists so a binding failure
+            # discovered mid-run cannot steal a real red that ran beside it —
+            # a per-item concern. This cause is run-wide and antecedent: if the
+            # governance ref did not resolve, nothing produced under it is
+            # attributable to the ref the receipt names, INCLUDING a check that
+            # happened to pass. Firing unconditionally is therefore strictly
+            # stricter than the arm it replaces, not a relaxation of it.
+            overall = EnumDodVerifyStatus.UNRESOLVED
+            unresolved_cause = occ_ref_failure_cause
+        elif lookup_failure_cause is not None and verified == 0:
             # OMN-17022 (off-rails A15). The run could not resolve the PR or
             # repo binding its checks are written against, and NOTHING verified.
             # Every check that needed the binding returned ``(False, "cannot
@@ -296,7 +328,28 @@ class HandlerDodVerify:
             overall = EnumDodVerifyStatus.VERIFIED
 
         error_message: str | None = None
-        if unresolved_cause is not None:
+        if occ_ref_failure_cause is not None:
+            # OMN-17796: its own remedy text, because OMN-17022's below is the
+            # WRONG instruction for this cause on both counts — it names the
+            # PR/repo binding, and it states that "a retry reproduces it
+            # exactly", which is true of a credential defect and false of a
+            # contention-driven git ceiling trip, where another attempt on a
+            # quieter host is precisely the right move.
+            error_message = (
+                f"VERIFICATION_UNRESOLVED: {occ_ref_failure_cause.value} — the "
+                f"OCC governance ref {occ_governance_ref} could not be "
+                f"resolved ({occ_ref_failure_code}), so no contract was loaded "
+                f"and 0 evidence checks for {command.ticket_id} were "
+                "evaluated. This is a fact about the verifier's host, not a "
+                "verdict about the ticket: the same refusal is produced for "
+                "every ticket on a host in this state. Remedy is to re-run "
+                "when the OCC clone is not under contention, or to raise the "
+                f"git-op ceiling with {_GIT_OP_TIMEOUT_ENV}; "
+                f"{_ALLOW_STALE_OCC_REF_ENV}=1 proceeds against the "
+                "main-tracking working tree instead, and marks every result "
+                "un-attributable."
+            )
+        elif unresolved_cause is not None:
             # OMN-17022: a distinct, machine-checkable reason code, sitting
             # alongside CONTRACT_MISSING / NO_PROBATIVE_EVIDENCE /
             # EVIDENCE_UNVERIFIABLE. The remedy named here is a binding or a

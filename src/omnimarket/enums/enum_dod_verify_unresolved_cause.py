@@ -41,6 +41,21 @@ class EnumDodVerifyUnresolvedCause(StrEnum):
     #: fault is not a property of the evidence, so another bounded attempt
     #: can legitimately reach a different answer.
     RUN_ERROR_OR_TIMEOUT = "run_error_or_timeout"
+    #: OMN-17796. The OCC **governance ref** could not be materialised as a
+    #: worktree — ``git worktree add --detach origin/dev`` failed, or blew the
+    #: ``DOD_VERIFY_GIT_OP_TIMEOUT_S`` ceiling under contention on the single
+    #: shared clone. Distinct in KIND from every cause above it: those are
+    #: per-item, discovered while checks run; this one is resolved BEFORE the
+    #: contract is loaded, so when it fires no evidence item has been read at
+    #: all and nothing in the run is attributable to the ref the run reports.
+    #: Named to match the code the collector already emits, so
+    #: :meth:`from_error_code` resolves it with no second mapping table.
+    OCC_WORKTREE_UNAVAILABLE = "occ_worktree_unavailable"
+    #: OMN-17796, the twin one branch earlier: the ``git fetch`` of the
+    #: governance ref itself failed (OMN-15454's refusal), so the local clone's
+    #: freshness is UNKNOWN. Same scope, same consequence, same encoding —
+    #: leaving it on the old arm would leave an identical armed path.
+    OCC_REF_REFRESH_FAILED = "occ_ref_refresh_failed"
     #: ``gh`` could not resolve the ticket's PR (no ``REPO`` binding, an
     #: unreadable repo, an unauthenticated credential). OMN-14993's class.
     #: Deterministic in the verifier's configuration, not in the network:
@@ -64,9 +79,20 @@ class EnumDodVerifyUnresolvedCause(StrEnum):
         """Whether a bounded retry may be scheduled for this cause.
 
         Encoded on the member so a caller that forgot to branch cannot retry
-        a credential/resolution defect. Only the run-fault class is eligible.
+        a credential/resolution defect. Only the classes whose fault lives in
+        the RUN — the verifier's own process or host — are eligible; every
+        binding/credential class reproduces exactly and stays refused.
+
+        OMN-17796 added the two OCC governance-ref causes on that same test.
+        They are load- and lock-dependent facts about the machine (the trip
+        measured 2026-09-03 was a 300 s ``git worktree add`` ceiling under
+        6-way parallelism on one shared clone), and the collector has already
+        spent its one in-run retry by the time the cause is set — so the next
+        attempt has to be a scheduled one, which is exactly what eligibility
+        authorises. Eligible does not mean "will succeed": it means another
+        bounded attempt can legitimately reach a different answer.
         """
-        return self is EnumDodVerifyUnresolvedCause.RUN_ERROR_OR_TIMEOUT
+        return self in _RETRY_ELIGIBLE_CAUSES
 
     @classmethod
     def from_error_code(cls, error_code: str) -> EnumDodVerifyUnresolvedCause:
@@ -89,6 +115,18 @@ class EnumDodVerifyUnresolvedCause(StrEnum):
         except ValueError:
             return cls.UNKNOWN
 
+
+#: The single place eligibility is declared. Membership is opt-IN, so a member
+#: added later without a considered retry policy is non-retryable by default —
+#: the fail-closed direction, matching :meth:`from_error_code`'s treatment of
+#: an unrecognised code.
+_RETRY_ELIGIBLE_CAUSES: frozenset[EnumDodVerifyUnresolvedCause] = frozenset(
+    {
+        EnumDodVerifyUnresolvedCause.RUN_ERROR_OR_TIMEOUT,
+        EnumDodVerifyUnresolvedCause.OCC_WORKTREE_UNAVAILABLE,
+        EnumDodVerifyUnresolvedCause.OCC_REF_REFRESH_FAILED,
+    }
+)
 
 #: Causes for which a bounded retry is refused outright. Derived from
 #: :attr:`EnumDodVerifyUnresolvedCause.retry_eligible` so the two can never

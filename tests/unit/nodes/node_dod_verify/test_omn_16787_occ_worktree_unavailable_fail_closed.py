@@ -35,6 +35,9 @@ from pathlib import Path
 
 import pytest
 
+from omnimarket.enums.enum_dod_verify_unresolved_cause import (
+    EnumDodVerifyUnresolvedCause,
+)
 from omnimarket.nodes.node_dod_verify.models.model_dod_verify_state import (
     EnumEvidenceCheckStatus,
     EnumOccRefRefreshOutcome,
@@ -169,7 +172,15 @@ def test_worktree_materialisation_failure_refuses_by_default_ac1(
 
     assert len(results) == 1
     assert results[0].evidence_id == "occ_worktree_unavailable"
-    assert results[0].status == EnumEvidenceCheckStatus.FAILED
+    # OMN-17796 re-encoded this refusal: the check is SKIPPED (nothing ran, so
+    # nothing failed) and the RUN is UNRESOLVED with a typed cause, because
+    # FAILED asserted a red about a ticket whose contract had not been loaded.
+    # The refusal itself — this test's subject — is unchanged.
+    assert results[0].status == EnumEvidenceCheckStatus.SKIPPED
+    assert results[0].status != EnumEvidenceCheckStatus.VERIFIED
+    assert collector.occ_ref_failure_cause is (
+        EnumDodVerifyUnresolvedCause.OCC_WORKTREE_UNAVAILABLE
+    )
     assert "OCC_WORKTREE_UNAVAILABLE" in (results[0].message or "")
     # Names the ref it could not materialise, and the override that would
     # proceed anyway — an operator must not have to read the source to act.
@@ -281,7 +292,11 @@ def test_git_op_timeout_is_operator_configurable_and_times_out_closed_ac4(
 
     assert len(results) == 1
     assert results[0].evidence_id == "occ_worktree_unavailable"
-    assert results[0].status == EnumEvidenceCheckStatus.FAILED
+    # OMN-17796: SKIPPED check, UNRESOLVED run — see AC1 above.
+    assert results[0].status == EnumEvidenceCheckStatus.SKIPPED
+    assert collector.occ_ref_failure_cause is (
+        EnumDodVerifyUnresolvedCause.OCC_WORKTREE_UNAVAILABLE
+    )
     assert not any(r.evidence_id == "dod-on-dev" for r in results)
 
 
