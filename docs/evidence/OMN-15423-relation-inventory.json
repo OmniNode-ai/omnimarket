@@ -1566,7 +1566,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_baselines_quality"
+        "node_projection_baselines_quality",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_baselines_quality/migrations/001_create_baselines_quality_snapshots.sql",
@@ -1577,6 +1578,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_baselines_quality/contract.yaml"
       ],
       "current_schema": [
@@ -1611,15 +1613,19 @@
       "owner_declaration": "node_projection_baselines_quality",
       "partitioning": [],
       "producer": "node_projection_baselines_quality",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_baselines_quality"
+        "node_projection_baselines_quality",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_projection_baselines_roi"
+        "node_projection_baselines_roi",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_baselines_roi/migrations/001_create_baselines_roi_snapshots.sql",
@@ -1630,6 +1636,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_baselines_roi/contract.yaml"
       ],
       "current_schema": [
@@ -1664,10 +1671,13 @@
       "owner_declaration": "node_projection_baselines_roi",
       "partitioning": [],
       "producer": "node_projection_baselines_roi",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_baselines_roi"
+        "node_projection_baselines_roi",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -1858,7 +1868,8 @@
     {
       "accessor_nodes": [
         "node_capsule_effectiveness_feedback_reducer",
-        "node_projection_capsule_store"
+        "node_projection_capsule_store",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_capsule_store/migrations/078_create_capsule_store.sql"
@@ -1870,6 +1881,7 @@
         "capsule_store_scored_effectiveness_non_null"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_capsule_effectiveness_feedback_reducer/contract.yaml",
         "src/omnimarket/nodes/node_projection_capsule_store/contract.yaml"
       ],
@@ -1909,12 +1921,14 @@
       "producer": "node_projection_capsule_store",
       "readers": [
         "node_capsule_effectiveness_feedback_reducer",
-        "node_projection_capsule_store"
+        "node_projection_capsule_store",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
         "node_capsule_effectiveness_feedback_reducer",
-        "node_projection_capsule_store"
+        "node_projection_capsule_store",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -2094,7 +2108,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_cost_by_repo"
+        "node_projection_cost_by_repo",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_cost_by_repo/migrations/0001_create_cost_by_repo_snapshots.sql"
@@ -2108,6 +2123,7 @@
         "uq_cost_by_repo_repo_window_minute"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_cost_by_repo/contract.yaml"
       ],
       "current_schema": [
@@ -2143,10 +2159,13 @@
       "owner_declaration": "node_projection_cost_by_repo",
       "partitioning": [],
       "producer": "node_projection_cost_by_repo",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_cost_by_repo"
+        "node_projection_cost_by_repo",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -2497,7 +2516,8 @@
     },
     {
       "accessor_nodes": [
-        "node_deployment_evidence_reducer"
+        "node_deployment_evidence_reducer",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_deployment_evidence_reducer/migrations/0001_create_deployment_evidence_projection_tables.sql"
@@ -2507,6 +2527,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_deployment_evidence_reducer/contract.yaml"
       ],
       "current_schema": [
@@ -2541,15 +2562,19 @@
       "owner_declaration": "node_deployment_evidence_reducer",
       "partitioning": [],
       "producer": "node_deployment_evidence_reducer",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_deployment_evidence_reducer"
+        "node_deployment_evidence_reducer",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_deployment_evidence_reducer"
+        "node_deployment_evidence_reducer",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_deployment_evidence_reducer/migrations/0001_create_deployment_evidence_projection_tables.sql"
@@ -2559,6 +2584,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_deployment_evidence_reducer/contract.yaml"
       ],
       "current_schema": [
@@ -2592,15 +2618,19 @@
       "owner_declaration": "node_deployment_evidence_reducer",
       "partitioning": [],
       "producer": "node_deployment_evidence_reducer",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_deployment_evidence_reducer"
+        "node_deployment_evidence_reducer",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_projection_event_chain"
+        "node_projection_event_chain",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_event_chain/migrations/0001_create_event_chain.sql"
@@ -2613,6 +2643,7 @@
         "pk_event_chain"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_event_chain/contract.yaml"
       ],
       "current_schema": [
@@ -2647,16 +2678,19 @@
       "partitioning": [],
       "producer": "node_projection_event_chain",
       "readers": [
-        "node_projection_event_chain"
+        "node_projection_event_chain",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_event_chain"
+        "node_projection_event_chain",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_evidence_dashboard_reducer"
+        "node_evidence_dashboard_reducer",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_evidence_dashboard_reducer/migrations/0001_create_evidence_dashboard_projection_tables.sql"
@@ -2666,6 +2700,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_evidence_dashboard_reducer/contract.yaml"
       ],
       "current_schema": [
@@ -2701,15 +2736,19 @@
       "owner_declaration": "node_evidence_dashboard_reducer",
       "partitioning": [],
       "producer": "node_evidence_dashboard_reducer",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_evidence_dashboard_reducer"
+        "node_evidence_dashboard_reducer",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_evidence_dashboard_reducer"
+        "node_evidence_dashboard_reducer",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_evidence_dashboard_reducer/migrations/0001_create_evidence_dashboard_projection_tables.sql"
@@ -2719,6 +2758,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_evidence_dashboard_reducer/contract.yaml"
       ],
       "current_schema": [
@@ -2755,15 +2795,19 @@
       "owner_declaration": "node_evidence_dashboard_reducer",
       "partitioning": [],
       "producer": "node_evidence_dashboard_reducer",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_evidence_dashboard_reducer"
+        "node_evidence_dashboard_reducer",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_evidence_dashboard_reducer"
+        "node_evidence_dashboard_reducer",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_evidence_dashboard_reducer/migrations/0001_create_evidence_dashboard_projection_tables.sql"
@@ -2773,6 +2817,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_evidence_dashboard_reducer/contract.yaml"
       ],
       "current_schema": [
@@ -2809,11 +2854,13 @@
       "partitioning": [],
       "producer": "node_evidence_dashboard_reducer",
       "readers": [
-        "node_evidence_dashboard_reducer"
+        "node_evidence_dashboard_reducer",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_evidence_dashboard_reducer"
+        "node_evidence_dashboard_reducer",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -2930,7 +2977,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_delegation"
+        "node_projection_delegation",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_delegation/migrations/0008_generation_events.sql"
@@ -2940,6 +2988,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_delegation/contract.yaml"
       ],
       "current_schema": [
@@ -2983,11 +3032,13 @@
       "producer": "node_projection_delegation",
       "readers": [
         "node_generation_consumer",
-        "node_projection_replay_check_compute"
+        "node_projection_replay_check_compute",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_delegation"
+        "node_projection_delegation",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -3235,7 +3286,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_llm_cost"
+        "node_projection_llm_cost",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_llm_cost/migrations/0001_create_llm_call_metrics.sql"
@@ -3252,6 +3304,7 @@
         "usage_raw_size_limit"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_llm_cost/contract.yaml"
       ],
       "current_schema": [
@@ -3293,11 +3346,13 @@
       "partitioning": [],
       "producer": "node_projection_llm_cost",
       "readers": [
-        "node_generation_consumer"
+        "node_generation_consumer",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_llm_cost"
+        "node_projection_llm_cost",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -3370,7 +3425,8 @@
     },
     {
       "accessor_nodes": [
-        "node_llm_delegation_projection"
+        "node_llm_delegation_projection",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_llm_delegation_projection/migrations/0001_create_llm_delegation_daily_projection.sql"
@@ -3382,6 +3438,7 @@
         "uq_llm_delegation_daily_agg"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_llm_delegation_projection/contract.yaml"
       ],
       "current_schema": [
@@ -3419,16 +3476,19 @@
       "partitioning": [],
       "producer": "node_llm_delegation_projection",
       "readers": [
-        "node_llm_delegation_projection"
+        "node_llm_delegation_projection",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_llm_delegation_projection"
+        "node_llm_delegation_projection",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_projection_llm_routing"
+        "node_projection_llm_routing",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_llm_routing/migrations/0000_create_llm_routing_decisions.sql"
@@ -3441,6 +3501,7 @@
         "uq_llm_routing_decisions_correlation"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_llm_routing/contract.yaml"
       ],
       "current_schema": [
@@ -3481,11 +3542,13 @@
       "partitioning": [],
       "producer": "node_projection_llm_routing",
       "readers": [
-        "node_session_orchestrator"
+        "node_session_orchestrator",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_llm_routing"
+        "node_projection_llm_routing",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -3548,7 +3611,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_mcp_tools"
+        "node_projection_mcp_tools",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_mcp_tools/migrations/0001_create_mcp_tools.sql"
@@ -3558,6 +3622,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_mcp_tools/contract.yaml"
       ],
       "current_schema": [
@@ -3595,11 +3660,13 @@
       "producer": "node_projection_mcp_tools",
       "readers": [
         "node_contract_registry",
-        "node_generation_consumer"
+        "node_generation_consumer",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_mcp_tools"
+        "node_projection_mcp_tools",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -3711,7 +3778,8 @@
     },
     {
       "accessor_nodes": [
-        "node_nightly_loop_controller"
+        "node_nightly_loop_controller",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_nightly_loop_controller/migrations/001_create_nightly_loop_tables.sql"
@@ -3721,6 +3789,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_nightly_loop_controller/contract.yaml"
       ],
       "current_schema": [
@@ -3757,15 +3826,19 @@
       "owner_declaration": "node_nightly_loop_controller",
       "partitioning": [],
       "producer": "node_nightly_loop_controller",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_nightly_loop_controller"
+        "node_nightly_loop_controller",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_nightly_loop_controller"
+        "node_nightly_loop_controller",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_nightly_loop_controller/migrations/001_create_nightly_loop_tables.sql"
@@ -3775,6 +3848,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_nightly_loop_controller/contract.yaml"
       ],
       "current_schema": [
@@ -3809,15 +3883,19 @@
       "owner_declaration": "node_nightly_loop_controller",
       "partitioning": [],
       "producer": "node_nightly_loop_controller",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_nightly_loop_controller"
+        "node_nightly_loop_controller",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_projection_registration"
+        "node_projection_registration",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_registration/migrations/0000_create_node_service_registry.sql"
@@ -3827,6 +3905,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_registration/contract.yaml"
       ],
       "current_schema": [
@@ -3875,11 +3954,13 @@
         "node_projection_registration",
         "node_projection_routing_decision",
         "node_projection_savings",
-        "node_projection_session_outcome"
+        "node_projection_session_outcome",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_registration"
+        "node_projection_registration",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -4469,7 +4550,8 @@
     },
     {
       "accessor_nodes": [
-        "node_renderer_capability_projection"
+        "node_renderer_capability_projection",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_renderer_capability_projection/migrations/0001_create_renderer_capability_projection.sql"
@@ -4481,6 +4563,7 @@
         "uq_renderer_capability_renderer_id"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_renderer_capability_projection/contract.yaml"
       ],
       "current_schema": [
@@ -4515,16 +4598,19 @@
       "partitioning": [],
       "producer": "node_renderer_capability_projection",
       "readers": [
-        "node_renderer_capability_projection"
+        "node_renderer_capability_projection",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_renderer_capability_projection"
+        "node_renderer_capability_projection",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_projection_sandbox_decisions"
+        "node_projection_sandbox_decisions",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_sandbox_decisions/migrations/0001_create_sandbox_decisions.sql"
@@ -4534,6 +4620,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_sandbox_decisions/contract.yaml"
       ],
       "current_schema": [
@@ -4569,11 +4656,13 @@
       "partitioning": [],
       "producer": "node_projection_sandbox_decisions",
       "readers": [
-        "node_projection_sandbox_decisions"
+        "node_projection_sandbox_decisions",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_sandbox_decisions"
+        "node_projection_sandbox_decisions",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -4737,7 +4826,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_session_outcome"
+        "node_projection_session_outcome",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_session_outcome/migrations/0021_session_outcomes.sql"
@@ -4747,6 +4837,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_session_outcome/contract.yaml"
       ],
       "current_schema": [
@@ -4789,11 +4880,13 @@
         "node_projection_registration",
         "node_projection_routing_decision",
         "node_projection_savings",
-        "node_session_orchestrator"
+        "node_session_orchestrator",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_session_outcome"
+        "node_projection_session_outcome",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -4918,7 +5011,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_swarm"
+        "node_projection_swarm",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_swarm/migrations/0001_create_swarm_runs.sql"
@@ -4928,6 +5022,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_swarm/contract.yaml"
       ],
       "current_schema": [
@@ -4960,10 +5055,13 @@
       "owner_declaration": "node_projection_swarm",
       "partitioning": [],
       "producer": "node_projection_swarm",
-      "readers": [],
+      "readers": [
+        "service:omnimarket_projection_migration_runner"
+      ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_swarm"
+        "node_projection_swarm",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
@@ -5131,7 +5229,8 @@
     },
     {
       "accessor_nodes": [
-        "node_projection_traces"
+        "node_projection_traces",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_traces/migrations/0001_create_traces.sql"
@@ -5144,6 +5243,7 @@
         "non_negative_traces_event_count"
       ],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_traces/contract.yaml"
       ],
       "current_schema": [
@@ -5184,16 +5284,19 @@
         "node_build_loop_orchestrator",
         "node_generation_consumer",
         "node_occ_companion_compute",
-        "node_projection_traces"
+        "node_projection_traces",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_traces"
+        "node_projection_traces",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {
       "accessor_nodes": [
-        "node_projection_voice_sessions"
+        "node_projection_voice_sessions",
+        "service:omnimarket_projection_migration_runner"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_projection_voice_sessions/migrations/0001_create_voice_sessions.sql"
@@ -5203,6 +5306,7 @@
       "classification_status": "classified",
       "constraints": [],
       "contract_sources": [
+        "scripts/application-relation-ownership.yaml",
         "src/omnimarket/nodes/node_projection_voice_sessions/contract.yaml"
       ],
       "current_schema": [
@@ -5238,11 +5342,13 @@
       "partitioning": [],
       "producer": "node_projection_voice_sessions",
       "readers": [
-        "node_projection_voice_sessions"
+        "node_projection_voice_sessions",
+        "service:omnimarket_projection_migration_runner"
       ],
       "target_schema": "omninode_internal",
       "writers": [
-        "node_projection_voice_sessions"
+        "node_projection_voice_sessions",
+        "service:omnimarket_projection_migration_runner"
       ]
     },
     {

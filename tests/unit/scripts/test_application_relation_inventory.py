@@ -112,10 +112,29 @@ def test_migration_owner_is_distinct_from_additional_accessors() -> None:
         if row["kind"] == "table" and row["name"] == "capsule_store"
     )
     assert capsule["owner_declaration"] == "node_projection_capsule_store"
+    # OMN-17440 tranche 2 adds the third entry. `capsule_store` gained a
+    # `db_io:` ownership declaration in scripts/application-relation-ownership.yaml
+    # so the OMN-15361 SQL ownership gate can resolve the topology-declared
+    # `omninode_runtime` TABLE grant that tranche delivers, and the generator
+    # renders every manifest declaration as an accessor attributed to
+    # `service:omnimarket_projection_migration_runner`. Every tranche-1 relation
+    # already reads this way (`contract_registry`, `receipt_gate_rows`,
+    # `gate_activity` each carry it), so this is the shape of a declared
+    # relation, not a change of meaning for this one.
+    #
+    # The assertion this test exists to make is UNWEAKENED and in fact sharper:
+    # `owner_declaration` is still exactly the migration owner
+    # `node_projection_capsule_store`, and it is still distinct from the other
+    # accessors -- there are now two of those rather than one.
     assert capsule["accessor_nodes"] == [
         "node_capsule_effectiveness_feedback_reducer",
         "node_projection_capsule_store",
+        "service:omnimarket_projection_migration_runner",
     ]
+    assert capsule["owner_declaration"] not in (
+        "node_capsule_effectiveness_feedback_reducer",
+        "service:omnimarket_projection_migration_runner",
+    )
 
 
 def test_declared_table_without_authoritative_ddl_is_blocked() -> None:
