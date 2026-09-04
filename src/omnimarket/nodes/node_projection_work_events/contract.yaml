@@ -147,6 +147,12 @@ projection_api:
   # actor did in a session, carrying no tenant-scoped customer data, so
   # publish_snapshot_delta's default tenant_id leaks nothing.
   bus_backed: true
+  consumers: none
+  consumers_reason: >-
+    OMN-17199: this platform-internal work-events snapshot is intentionally
+    exposed for bus-backed runtime/ledger inspection, but no shipped omnidash
+    component or layout renders it yet; reader work must remove this opt-out
+    when a surface is added.
   # The row's own content address. `event_id` is derived by `derive_event_id`
   # from (source_topic, actor_id, emitted_at, payload), so a repeat of a key is
   # by construction a byte-identical replay of the same event and there is no
