@@ -1544,6 +1544,10 @@ prepush_remote_run() {
 set -uo pipefail
 RUNDIR="$1"; UV="$2"; HEAD_SHA="$3"; ARGV_SHA="$4"; ORIGIN="$5"; WORKROOT="$6"
 BASE_REF="${7:-}"; BASE_SHA="${8:-}"; SLOT_INDEX="${9:-1}"
+# The repo this bundle carries, so the registry root below can name it. Passed
+# rather than derived: RUNDIR's basename is `<repo>-<sha12>-<pid>` and repo
+# names contain both separators, so splitting it back apart is guesswork.
+REPO_NAME="${10:-}"
 cd "$RUNDIR" || exit 90
 # Re-arm BOTH guards explicitly. ssh forwards neither, so without this the
 # remote repo's own suite -- which subprocesses this very hook from
@@ -1658,15 +1662,84 @@ git checkout -q "$HEAD_SHA" 2> /dev/null || true
 if [ -n "$BASE_REF" ] && [ -n "$BASE_SHA" ] && git rev-parse --verify --quiet "${BASE_SHA}^{commit}" > /dev/null 2>&1; then
   git update-ref "refs/remotes/origin/${BASE_REF#origin/}" "$BASE_SHA" 2> /dev/null || true
 fi
+# THE TRANSPLANTED TREE NEEDS A REGISTRY ROOT (OMN-17741).
+# `ssh` forwards no environment, so without this the suite runs with OMNI_HOME
+# UNSET on every target host. Code that resolves a workspace then either fails,
+# or -- the case actually measured -- falls back to a home-relative default
+# that EXISTS on the lab Macs and is TCC-denied to `sshd`. OMN-17459 recorded
+# that shape: a real full suite of a repo that vendors this library, on h101,
+# 17,883 tests in 13m58s, 12 failures, ALL 12 green locally, one root cause.
+# Same standing as the PATH block above -- a false red here HARD-BLOCKS a push,
+# so this is part of the verdict meaning anything, not a convenience.
+#
+# The value is CONSTRUCTED HERE, never forwarded. Exporting the launcher's
+# `$OMNI_HOME` would be strictly worse than leaving it unset: that path exists
+# on every lab Mac and is TCC-denied, so forwarding converts a fail-fast into a
+# PermissionError deep inside a test. What is true of a transplant is that it
+# contains exactly ONE repo, so a one-entry registry naming that repo is an
+# honest workspace root and a lie about nothing. It is the same shape a
+# vendoring repo's own `_smoke_aislop_sweep` already builds for itself (a
+# tmpdir plus a symlink to the repo under its own name).
+#
+# It lives under $RUNDIR, so `prepush_remote_gc` already sweeps it and this
+# adds no new class of stranded state. Failure to build it exits 98 -- an
+# unhandled wrapper exit produces no MARKER, which the dispatcher classifies as
+# "NO EVIDENCE" and walks past to the next fit host. That is the correct
+# classification: a workspace that could not be created on the TARGET says
+# nothing about the tree under test.
+[ -n "$REPO_NAME" ] || { echo "NO_REPO_NAME_FOR_REGISTRY_ROOT" >&2; exit 98; }
+rm -rf "$RUNDIR/omni_home" 2> /dev/null || true
+mkdir -p "$RUNDIR/omni_home" || { echo "REGISTRY_ROOT_MKDIR_FAILED" >&2; exit 98; }
+ln -s "$RUNDIR/tree" "$RUNDIR/omni_home/$REPO_NAME" || { echo "REGISTRY_ROOT_LINK_FAILED" >&2; exit 98; }
+OMNI_HOME="$RUNDIR/omni_home"
+export OMNI_HOME
+
 "$UV" sync --all-extras > "$RUNDIR/sync.log" 2>&1 || { echo "UV_SYNC_FAILED" >&2; exit 93; }
-"$UV" run pytest "${ARGV[@]}" --ignore=tests/integration --tb=short > "$RUNDIR/suite.log" 2>&1
+# THE COLLECTED COUNT IS READ FROM A MACHINE-READABLE REPORT (OMN-17787).
+# `--junitxml` is asked for HERE, next to the invocation, because the count it
+# yields is the only number in the whole dispatch that separates "this host ran
+# the selection green" from "this host ran NOTHING and exited 0".
+#
+# THE DEFECT THIS CLOSES, measured 2026-09-03 by reading two run dirs on the
+# SAME host (h101, /Users/Shared/onex-prepush/runs/) read-only:
+#
+#   omnibase_infra-edeb29875ef7-3319   argv "tests/unit/"
+#     suite.log:7  `collected 25911 items`      MARKER collected=25911  963.74s
+#   omnibase_infra-8d6b361b35ee-65887  argv "tests/unit/ -n4 --dist=loadgroup
+#                                            --timeout=60 --timeout-method=signal"
+#     suite.log:11 `4 workers [25953 items]`    MARKER collected=0      299.44s
+#
+# Same host, same repo, same paths, 25,882 tests passed in the second one.
+# `pytest-xdist` 3.8.0 REPLACES the collector banner with the worker banner, so
+# the `^collected N items` sed below matched nothing and the `|| COLLECTED=0`
+# fallback fired. Since OMN-17564 made `-n<k> --dist=loadgroup` the remote
+# policy, that was EVERY parallel dispatch -- including the OMN-17742 run this
+# was found in, which logged "h105 ran 0 tests green" over a suite.log whose
+# last line reads "2613 passed, 14 skipped, 3 warnings in 182.42s".
+#
+# A banner is a HUMAN-READABLE artifact whose shape is decided by whichever
+# plugins are loaded; the JUnit document is not, and it is identical serial and
+# parallel. The two banner forms are kept as ordered fallbacks so a host that
+# somehow cannot write the report degrades to the pre-OMN-17787 accuracy rather
+# than to a zero -- and a zero is now NO EVIDENCE at the acceptance branch, so
+# every path here fails CLOSED.
+#
+# The report lands in $RUNDIR beside MARKER/suite.log, so `prepush_remote_gc`
+# already sweeps it on the same 3-day rule and this strands no new state.
+"$UV" run pytest "${ARGV[@]}" --ignore=tests/integration --tb=short \
+  --junitxml="$RUNDIR/junit.xml" > "$RUNDIR/suite.log" 2>&1
 rc=$?
 if command -v sha256sum > /dev/null 2>&1; then
   LOGSHA=$(sha256sum "$RUNDIR/suite.log" | cut -d" " -f1)
 else
   LOGSHA=$(shasum -a 256 "$RUNDIR/suite.log" | cut -d" " -f1)
 fi
-COLLECTED=$(sed -n 's/^collected \([0-9][0-9]*\) item.*/\1/p' "$RUNDIR/suite.log" | tail -1)
+COLLECTED=""
+if [ -s "$RUNDIR/junit.xml" ]; then
+  COLLECTED=$(sed -n 's/.*<testsuite [^>]*tests="\([0-9][0-9]*\)".*/\1/p' "$RUNDIR/junit.xml" | head -1)
+fi
+[ -n "$COLLECTED" ] || COLLECTED=$(sed -n 's/^[0-9][0-9]* workers \[\([0-9][0-9]*\) item.*/\1/p' "$RUNDIR/suite.log" | tail -1)
+[ -n "$COLLECTED" ] || COLLECTED=$(sed -n 's/^collected \([0-9][0-9]*\) item.*/\1/p' "$RUNDIR/suite.log" | tail -1)
 [ -n "$COLLECTED" ] || COLLECTED=0
 {
   echo "head_sha=$HEAD_SHA"
@@ -1724,7 +1797,7 @@ REMOTE
   # dispatch_to_lab_host treats as a placement miss and walks past. Fail-closed
   # posture is unchanged -- a genuine remote RED still carries a marker and
   # still refuses the push.
-  remote_cmd="cd '${rundir}' || exit 96; chmod +x prepush_smart_tests.sh || exit 97; ./prepush_smart_tests.sh '${rundir}' '${uv}' '${head_sha}' '${argv_sha}' '$(hostname -s 2> /dev/null || echo unknown):$$' '${workroot}' '${base_ref}' '${base_sha}' '${slot_idx}'; rc=\$?; echo REMOTE_WRAPPER_EXIT=\$rc; echo \$rc > '${rundir}/WRAPPER_EXIT'; exit 0"
+  remote_cmd="cd '${rundir}' || exit 96; chmod +x prepush_smart_tests.sh || exit 97; ./prepush_smart_tests.sh '${rundir}' '${uv}' '${head_sha}' '${argv_sha}' '$(hostname -s 2> /dev/null || echo unknown):$$' '${workroot}' '${base_ref}' '${base_sha}' '${slot_idx}' '${repo}'; rc=\$?; echo REMOTE_WRAPPER_EXIT=\$rc; echo \$rc > '${rundir}/WRAPPER_EXIT'; exit 0"
   tcmd="$(_prepush_timeout_cmd)"
   if [ -n "$tcmd" ]; then
     "$tcmd" "$PREPUSH_REMOTE_EXEC_TIMEOUT_SECONDS" \
@@ -1774,6 +1847,15 @@ REMOTE
   m_argv="$(printf '%s\n' "$marker" | sed -n 's/^argv_sha=//p')"
   m_exit="$(printf '%s\n' "$marker" | sed -n 's/^exit=//p')"
   m_collected="$(printf '%s\n' "$marker" | sed -n 's/^collected=//p')"
+  # OMN-17787: the marker is REMOTE input, so the count is normalized to a
+  # number BEFORE it is compared or interpolated. `[ "$m_collected" -eq 0 ]` on
+  # a non-numeric value is a bash ERROR whose status is 2 -- which reads as
+  # "not zero" and falls straight through into the PASS branch -- and the same
+  # value is interpolated unquoted into the receipt's JSON below, where garbage
+  # produces a receipt that will not parse.
+  case "$m_collected" in
+    '' | *[!0-9]*) m_collected=0 ;;
+  esac
   m_log="$(printf '%s\n' "$marker" | sed -n 's/^log_sha256=//p')"
   if [ "$m_head" != "$head_sha" ] || [ "$m_argv" != "$argv_sha" ] || [ -z "$m_exit" ] || [ -z "$m_log" ]; then
     log "remote leg: marker from ${label} does not bind to this tree/argv -- NO EVIDENCE"
@@ -1783,6 +1865,33 @@ REMOTE
   log_sha="$m_log"
 
   prepush_emit_receipt "{\"ts\":\"$(date -u '+%Y-%m-%dT%H:%M:%SZ')\",\"repo\":\"$(prepush_json_escape "$repo")\",\"head_sha\":\"${head_sha}\",\"chosen_host\":\"$(prepush_json_escape "$PREPUSH_PICK_HOSTNAME")\",\"chosen_label\":\"${label}\",\"chosen_slot\":${slot_idx},\"host_mode\":\"${PREPUSH_PICK_MODE}\",\"host_load_ratio\":\"${PREPUSH_PICK_RATIO}\",\"all_probed_ratios\":\"$(prepush_json_escape "$PREPUSH_PROBE_LOG")\",\"selection_paths\":\"$(prepush_json_escape "$(prepush_remote_argv | tr '\n' ' ')")\",\"pytest_policy\":\"$(prepush_json_escape "$(prepush_remote_pytest_flags | tr '\n' ' ')")\",\"pytest_exit\":${m_exit},\"collected\":${m_collected:-0},\"duration_s\":${dur},\"suite_log_sha256\":\"${log_sha}\"}"
+
+  # A COUNT OF ZERO IS NO EVIDENCE, NOT A PASS (OMN-17787).
+  #
+  # Acceptance used to be exit-code-only: `m_collected` was logged, written into
+  # the durable receipt, and never compared to anything. A remote run that
+  # collected genuinely ZERO tests and exited 0 was therefore accepted as a
+  # PASS and satisfied the escalation -- and the sentence it printed,
+  # "${label} ran 0 tests green", is byte-identical to the one the xdist
+  # parsing defect produced for a run of 2,613 real tests. The gate could not
+  # tell the two apart, so it treated both as evidence.
+  #
+  # NO EVIDENCE (rc 1), deliberately, and NOT a refusal (rc 3): an empty
+  # selection says nothing about the tree. `dispatch_to_lab_host` walks to the
+  # next fit host on rc 1 and, if none answers, falls through to the
+  # local/same-host/grant ladder that ends in die() -- so this is fail-CLOSED
+  # without turning a placement miss into a red gate.
+  #
+  # pytest exit 5 is EXIT_NOTESTSCOLLECTED and is folded in here for the same
+  # reason: it means nothing ran, which is the same statement about the tree as
+  # a missing marker. It used to return 3 and die() the push. Every OTHER
+  # non-zero exit stays a RED -- a collection ERROR is exit 2, not 5, and must
+  # still refuse.
+  if [ "$m_collected" -eq 0 ] && { [ "$m_exit" -eq 0 ] || [ "$m_exit" -eq 5 ]; }; then
+    log "remote leg: ${label} recorded ZERO collected tests (pytest exit ${m_exit}) on ${head_sha} -- NO EVIDENCE (not a pass, not a failure). A green exit over an empty run cannot be told apart from a green exit over ${heavy_what}, so it does not satisfy it; trying the next fit host."
+    prepush_remote_gc "$ssh_t" "$rundir" "$workroot"
+    return 1
+  fi
 
   if [ "$m_exit" -ne 0 ]; then
     # The refusal below tells the developer to read the failing output. The
