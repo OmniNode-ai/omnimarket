@@ -61,6 +61,7 @@ from omnimarket.nodes.node_projection_delegation.models.model_attempt_reduction 
 from omnimarket.pricing import recompute_actual_cost_and_savings
 from omnimarket.projection.protocol_database import DatabaseAdapter
 from omnimarket.projection.tenant_isolation import (
+    TenantRequiredError,
     house_tenant_write_stamp,
     require_tenant_id,
 )
@@ -774,18 +775,44 @@ def _resolve_judge_verdict_tenant_id(
 ) -> str:
     """Resolve tenant_id for a judge-verdict row via a correlation_id join.
 
-    Looks up delegation_events by the same correlation_id (same node, same
-    write path) and returns its tenant_id when found. Falls back to
-    DEFAULT_TENANT when no matching delegation_events row exists yet (late
-    or out-of-order projection, or a genuine correlation-id gap -- see
-    migration 0025's join-completeness caveat).
+    OMN-17627: returns the producer-recorded tenant from the matching
+    delegation_events row, or raises. It never falls back to DEFAULT_TENANT.
+    The ratified OMN-16831/OMN-16804 rule is that tenant attribution is
+    producer-recorded or verified, never invented, so a verdict nobody can
+    attribute refuses the write rather than claiming the house tenant.
+
+    This supersedes the OMN-14894 tranche-2 default, whose stated goal was
+    that the row is "never silently tenant-less". Refusing serves that goal
+    too: the async writer routes a refused verdict to the contract-declared
+    DLQ, so it stays durably recoverable on the bus instead of being either
+    invented or dropped.
+
+    The multiple-match arm is DEFENSIVE -- delegation_events.correlation_id is
+    NOT NULL UNIQUE (migration 0007, lines 11 and 138), so it cannot fire on
+    any real store. It exists because ``matches[0]`` silently picking a winner
+    would be the wrong answer if that constraint ever went away.
     """
     matches = db.query(TABLE, filters={"correlation_id": str(event.correlation_id)})
-    if matches:
-        tenant_id = matches[0].get("tenant_id")
-        if isinstance(tenant_id, str) and tenant_id.strip():
-            return tenant_id
-    return DEFAULT_TENANT
+    if not matches:
+        raise TenantRequiredError(
+            f"{JUDGE_VERDICT_TABLE} write refused: no delegation_events row "
+            f"joins correlation_id {event.correlation_id} (OMN-17627). Late or "
+            "out-of-order arrival is not attribution -- refusing rather than "
+            "stamping the house tenant."
+        )
+    attributions: set[str] = set()
+    for match in matches:
+        candidate = match.get("tenant_id")
+        if isinstance(candidate, str) and candidate.strip():
+            attributions.add(candidate)
+    if len(attributions) != 1:
+        raise TenantRequiredError(
+            f"{JUDGE_VERDICT_TABLE} write refused: correlation_id "
+            f"{event.correlation_id} resolved {len(attributions)} usable tenant "
+            f"attributions across {len(matches)} delegation_events row(s) "
+            "(OMN-17627). Missing, blank, malformed and conflicting all refuse."
+        )
+    return attributions.pop()
 
 
 def _judge_verdict_projection_row(
