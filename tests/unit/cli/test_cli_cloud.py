@@ -54,12 +54,12 @@ def _isolate_cli_env(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv(name, raising=False)
 
 
-def _ack() -> ModelCloudDelegationAck:
+def _ack(*, correlation_id: uuid.UUID) -> ModelCloudDelegationAck:
     return ModelCloudDelegationAck.model_validate(
         {
             "workflow_id": _WORKFLOW_ID,
             "envelope_id": str(uuid.uuid4()),
-            "correlation_id": str(uuid.uuid4()),
+            "correlation_id": str(correlation_id),
             "workflow_type": "delegation-inference",
             "status": "published",
         }
@@ -67,6 +67,7 @@ def _ack() -> ModelCloudDelegationAck:
 
 
 def _status(status: str) -> ModelCloudDelegationStatus:
+    """Identity is a placeholder here; the fake gateway stamps it on the way out."""
     return ModelCloudDelegationStatus.model_validate(
         {
             "workflow_id": _WORKFLOW_ID,
@@ -85,7 +86,16 @@ def _receipt(
     *,
     result_content: str | None = "A delegation receipt proves what ran.",
     status: str = "completed",
+    terminal_model_used: str = "gemini-2.5-flash-lite",
 ) -> ModelCloudDelegationReceipt:
+    """Receipt CONTENT. Its identity is a placeholder — see ``_FakeTransport``.
+
+    ``workflow_id``/``correlation_id`` are stamped by the fake gateway on the
+    way out, exactly as the real one does (``routers/workflows.py`` mints one
+    correlation id per submission, writes it on the ``gateway_workflows`` row,
+    and the receipt renderer copies it back off that row). A test that wants a
+    receipt which does NOT bind to its submission asks for that explicitly.
+    """
     return ModelCloudDelegationReceipt.model_validate(
         {
             "workflow_id": _WORKFLOW_ID,
@@ -95,7 +105,7 @@ def _receipt(
             "status": status,
             "submitted_at": "2026-08-29T15:00:00Z",
             "completed_at": "2026-08-29T15:00:08Z",
-            "terminal_model_used": "gemini-2.5-flash-lite",
+            "terminal_model_used": terminal_model_used,
             "terminal_total_tokens": 99,
             "terminal_latency_ms": 1083,
             "result_content": result_content,
@@ -108,7 +118,15 @@ def _receipt(
 
 
 class _FakeTransport:
-    """Stands in for ``TransportCloudDelegation`` at the constructor seam."""
+    """Stands in for ``TransportCloudDelegation`` at the constructor seam.
+
+    It behaves like a CORRECT gateway by default: the ack, the terminal status
+    and the receipt all carry the one ``correlation_id`` this submission was
+    given, because that is what the real gateway does. The four
+    ``*_workflow_id`` / ``*_correlation_id`` knobs are how a test asks it to
+    behave like a broken or confused one — answering with another run's
+    envelope — which is the case the command must refuse rather than file.
+    """
 
     def __init__(
         self,
@@ -119,6 +137,10 @@ class _FakeTransport:
         submit_error: Exception | None = None,
         terminal_status: str = "completed",
         receipt: ModelCloudDelegationReceipt | None = None,
+        receipt_workflow_id: uuid.UUID | None = None,
+        receipt_correlation_id: uuid.UUID | None = None,
+        status_workflow_id: uuid.UUID | None = None,
+        status_correlation_id: uuid.UUID | None = None,
     ) -> None:
         self.base_url = base_url
         self.api_key = api_key
@@ -126,6 +148,11 @@ class _FakeTransport:
         self._submit_error = submit_error
         self._terminal_status = terminal_status
         self._receipt = receipt if receipt is not None else _receipt()
+        self._correlation_id = uuid.uuid4()
+        self._receipt_workflow_id_override = receipt_workflow_id
+        self._receipt_correlation_id = receipt_correlation_id
+        self._status_workflow_id = status_workflow_id
+        self._status_correlation_id = status_correlation_id
         self.submitted: dict[str, Any] | None = None
 
     def __enter__(self) -> _FakeTransport:
@@ -144,12 +171,17 @@ class _FakeTransport:
             "task_type": task_type,
             "max_tokens": max_tokens,
         }
-        return _ack()
+        return _ack(correlation_id=self._correlation_id)
 
     def poll_until_terminal(
         self, workflow_id: str, *, attempts: int, interval_seconds: float
     ) -> ModelCloudDelegationStatus:
-        return _status(self._terminal_status)
+        return _status(self._terminal_status).model_copy(
+            update={
+                "workflow_id": self._status_workflow_id or uuid.UUID(workflow_id),
+                "correlation_id": self._status_correlation_id or self._correlation_id,
+            }
+        )
 
     def receipt(
         self, workflow_id: str, *, runner_identity: str
@@ -159,7 +191,13 @@ class _FakeTransport:
         # path by the real transport; the value that arrives here IS the path
         # segment, so normalisation has to be asserted on it, not inferred.
         self.receipt_workflow_id = workflow_id
-        return self._receipt
+        return self._receipt.model_copy(
+            update={
+                "workflow_id": self._receipt_workflow_id_override
+                or uuid.UUID(workflow_id),
+                "correlation_id": self._receipt_correlation_id or self._correlation_id,
+            }
+        )
 
 
 def _factory(**overrides: Any) -> tuple[Any, list[_FakeTransport]]:
@@ -225,6 +263,10 @@ def test_delegate_prints_the_result_and_saves_it_to_disk(tmp_path: Path) -> None
     receipt_doc = json.loads((run_dir / "receipt.json").read_text())
     assert receipt_doc["terminal_model_used"] == "gemini-2.5-flash-lite"
     assert receipt_doc["projection_row_hash"] == "31266a6d"
+    # ...and it is THIS run's receipt: the model name above is only the route
+    # that answered if the receipt binds to the submission that was made.
+    assert receipt_doc["workflow_id"] == _WORKFLOW_ID
+    assert receipt_doc["correlation_id"] == str(made[0]._correlation_id)
 
     run_doc = json.loads((run_dir / "run.json").read_text())
     assert run_doc["workflow_id"] == _WORKFLOW_ID
@@ -445,6 +487,118 @@ def test_a_quota_failed_run_exits_nonzero_and_still_saves_the_receipt(
     assert (run_dir / "receipt.json").exists()
     # an empty result.txt would misrepresent "no content" as "an empty answer"
     assert not (run_dir / "result.txt").exists()
+
+
+# ---------------------------------------------------------------------------
+# the receipt has to be about the submission that was made (OMN-17938)
+#
+# Everything above proves the command COPIES the gateway's answer faithfully.
+# None of it can fail when the answer is about a different run: the run
+# directory is named from the ack, the fields inside come from the response,
+# and nothing in between compares the two. These are the tests that can.
+# ---------------------------------------------------------------------------
+
+_OTHER_WORKFLOW_ID = uuid.UUID("11111111-2222-3333-4444-555555555555")
+
+
+def _delegate(tmp_path: Path, home: Path, factory: Any, out: Path) -> Any:
+    return CliRunner().invoke(
+        cloud_group,
+        [
+            "delegate",
+            "Summarize what a delegation receipt proves.",
+            "--task-type",
+            "summarization",
+            "--output-dir",
+            str(out),
+            "--onex-home",
+            str(home),
+            "--poll-interval",
+            "0",
+        ],
+        obj={"transport_factory": factory},
+    )
+
+
+def test_delegate_refuses_a_receipt_for_a_different_workflow(tmp_path: Path) -> None:
+    """A receipt filed under another run's id is not evidence about this one."""
+    home = _logged_in(tmp_path)
+    out = tmp_path / "runs"
+    factory, _made = _factory(receipt_workflow_id=_OTHER_WORKFLOW_ID)
+
+    result = _delegate(tmp_path, home, factory, out)
+
+    assert result.exit_code != 0
+    assert str(_OTHER_WORKFLOW_ID) in result.stderr
+    assert _WORKFLOW_ID in result.stderr
+    # nothing is written: a mislabelled receipt on disk outlives the session
+    # that could have explained it.
+    assert not (out / _WORKFLOW_ID).exists()
+    assert not (out / str(_OTHER_WORKFLOW_ID)).exists()
+
+
+def test_delegate_refuses_a_receipt_carrying_another_runs_correlation_id(
+    tmp_path: Path,
+) -> None:
+    """The relabelled-stale-answer shape, and the one the workflow id misses.
+
+    Same workflow id, a correlation id from some earlier submission, and a
+    different model on the receipt. Copied faithfully, this reports the route
+    that answered SOMETHING ELSE as the route that answered this prompt.
+    """
+    home = _logged_in(tmp_path)
+    out = tmp_path / "runs"
+    stale_correlation_id = uuid.uuid4()
+    factory, _made = _factory(
+        receipt_correlation_id=stale_correlation_id,
+        receipt=_receipt(terminal_model_used="a-route-that-answered-something-else"),
+    )
+
+    result = _delegate(tmp_path, home, factory, out)
+
+    assert result.exit_code != 0
+    assert str(stale_correlation_id) in result.stderr
+    assert "a-route-that-answered-something-else" not in result.stdout
+    assert not (out / _WORKFLOW_ID).exists()
+
+
+def test_delegate_refuses_a_terminal_status_for_a_different_submission(
+    tmp_path: Path,
+) -> None:
+    """``run.json``'s terminal_status comes from this envelope — same rule."""
+    home = _logged_in(tmp_path)
+    out = tmp_path / "runs"
+    other_correlation_id = uuid.uuid4()
+    factory, _made = _factory(status_correlation_id=other_correlation_id)
+
+    result = _delegate(tmp_path, home, factory, out)
+
+    assert result.exit_code != 0
+    assert str(other_correlation_id) in result.stderr
+    assert not (out / _WORKFLOW_ID).exists()
+
+
+def test_delegate_still_saves_a_bound_receipt_that_reports_failure(
+    tmp_path: Path,
+) -> None:
+    """Positive control for the three refusals above.
+
+    A terminal ``failed`` run binds to its submission perfectly well; the
+    refusal is about identity, never about the disposition. Without this, a
+    check that rejected everything would look identical to a correct one.
+    """
+    home = _logged_in(tmp_path)
+    out = tmp_path / "runs"
+    factory, _made = _factory(
+        terminal_status="failed",
+        receipt=_receipt(result_content=None, status="failed"),
+    )
+
+    result = _delegate(tmp_path, home, factory, out)
+
+    assert result.exit_code != 0
+    assert "NOT retried" in result.stderr
+    assert (out / _WORKFLOW_ID / "receipt.json").exists()
 
 
 # ---------------------------------------------------------------------------
