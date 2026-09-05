@@ -37,11 +37,17 @@ The two proofs this ticket owes:
     and its siblings — the typed refusal, its error code, and its remediation.
 (b) ``test_no_house_credential_is_reachable_on_the_customer_path`` — the
     mechanical one. It plants every house credential the shipped bifrost
-    contract names into the environment, walks every task class the routing
-    ladder declares, and fails if ANY of them yields a decision a customer's
+    contract names into the environment, walks every task class a delegation
+    request can carry, and fails if ANY of them yields a decision a customer's
     work could execute on. It fails if a house credential would execute
     customer work, which is the assertion the ruling actually asks for; it
     does not merely assert that today's code takes today's branch.
+
+    OMN-17940 corrected its denominator and its swallow — see
+    ``_declared_customer_task_types`` and the narrowed ``except`` arm. This
+    test remains the "no DECISION reaches a customer" half; the "and the
+    refusal is TYPED, on every class and both surfaces" half lives in
+    ``tests/test_omn17940_refusal_over_every_task_class.py``.
 """
 
 from __future__ import annotations
@@ -50,9 +56,11 @@ import textwrap
 from collections.abc import Iterator
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import get_args
 from uuid import uuid4
 
 import pytest
+from omnibase_infra.errors import ProtocolConfigurationError
 
 from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
     ModelDelegationRequest,
@@ -186,6 +194,33 @@ def _request(
         prompt="x" * 100,
         emitted_at=datetime.now(tz=UTC),
         tenant_id=tenant_id,
+    )
+
+
+def _declared_customer_task_types() -> frozenset[str]:
+    """Every task class a customer delegation request can actually CARRY.
+
+    OMN-17940 replaced the previous derivation — the union of ``use_for``
+    labels across ``routing_tiers.yaml`` — which was wrong in BOTH directions
+    and, being the same SIZE as the right answer, looked correct:
+
+    * it MISSED ``agent_delegation``, which no model's ``use_for`` names but
+      which ``ModelDelegationRequest`` admits and the task-class contract
+      declares. That is the one class whose contract block says it resolves no
+      backend on any tier, so it is precisely where "does the customer get the
+      refusal, or a config error about OUR ``bifrost_overrides.yaml``?" is
+      decided — and the sweep could never reach it;
+    * it INCLUDED ``simple_tasks``, a ``use_for`` capability tag that is not in
+      the request Literal at all. That case raised ``ValidationError`` inside
+      the loop and was swallowed by the old blanket ``except Exception``, so it
+      exercised nothing.
+
+    ``use_for`` is a per-model capability tag, not a request vocabulary. The
+    vocabulary is the wire contract, read off the model here so a class added
+    to it is swept the day it lands.
+    """
+    return frozenset(
+        get_args(ModelDelegationRequest.model_fields["task_type"].annotation)
     )
 
 
@@ -387,12 +422,8 @@ def test_no_house_credential_is_reachable_on_the_customer_path() -> None:
     # defence-in-depth, so a re-added field would be caught here too.
     assert "llm.glm.api_key" in house_refs
 
-    # Every ``use_for`` task class declared anywhere in the shipped ladder.
-    declared_task_types: set[str] = {"code_generation"}
-    for tier in routing._get_config().tiers:
-        for model in tier.models:
-            declared_task_types.update(getattr(model, "use_for", ()) or ())
-    assert len(declared_task_types) > 1, "ladder declared no task classes to walk"
+    declared_task_types = _declared_customer_task_types()
+    assert len(declared_task_types) > 1, "no task classes to walk"
 
     leaked: list[str] = []
     for task_type in sorted(declared_task_types):
@@ -403,9 +434,17 @@ def test_no_house_credential_is_reachable_on_the_customer_path() -> None:
             )
         except CustomerKeyRefusedError:
             continue
-        except Exception:
+        except ProtocolConfigurationError:
             # An unroutable task class is not a leak; it never reaches a
             # provider at all. Only a returned DECISION is a leak.
+            #
+            # OMN-17940: this arm was `except Exception`, which scored ANY
+            # failure as a pass — including the pydantic ValidationError this
+            # very loop raised on `simple_tasks`, a `use_for` label that
+            # `ModelDelegationRequest` does not admit (see
+            # `_declared_customer_task_types` below). Narrowed to the one
+            # error the ladder actually raises for an unserved class, so a
+            # regression can no longer hide in the swallow.
             continue
         leaked.append(
             f"task_type={task_type!r} would execute on "
