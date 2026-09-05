@@ -553,3 +553,66 @@ def test_discovery_on_a_tree_with_no_receipts_yields_nothing(tmp_path: Path) -> 
     returns rows for a seeded tree, so a zero here is a measured zero.
     """
     assert backfill.discover_candidate_tickets(tmp_path, limit=10) == ()
+
+
+# ---------------------------------------------------------------------------
+# Repo resolution — both live check_value shapes, `--repo` winning ties.
+# ---------------------------------------------------------------------------
+
+
+def test_the_repo_is_recovered_from_a_gh_api_path_as_well_as_from_repo() -> None:
+    """Both shapes appear in the live corpus and both must resolve.
+
+    MEASURED on OCC dev across the 3,880 candidate contracts: 537 name the repo
+    as `--repo <owner>/<name>`, and a further 277 name it ONLY inside a
+    `gh api repos/<owner>/<name>/contents/...` path. Accepting only the first
+    form refused those 277 as REFUSED_NO_PRODUCT_PR — fail-closed, so no wrong
+    mint, but 34% of the resolvable corpus was unreachable for a PARSING reason
+    rather than an evidentiary one. Found by the first live CI run of the
+    scheduled workflow (17 of 25 discovered candidates refused that way).
+    """
+    assert (
+        backfill.repo_from_check_value(
+            "gh pr view 3014 --repo OmniNode-ai/omnibase_infra --json number,state"
+        )
+        == "OmniNode-ai/omnibase_infra"
+    )
+    assert (
+        backfill.repo_from_check_value(
+            "gh api repos/OmniNode-ai/omnimarket/contents/src/x.py?ref=abc "
+            "--jq '.content'"
+        )
+        == "OmniNode-ai/omnimarket"
+    )
+    assert backfill.repo_from_check_value("uv run pytest tests/ -q") is None
+
+
+def test_an_explicit_repo_flag_wins_over_an_api_path_in_the_same_check() -> None:
+    """`--repo` is the explicit statement of where the PR lives.
+
+    An api path in the same command may reference some OTHER repo's contents,
+    so resolving to it would bind the behavior proof to the wrong repository —
+    and `cwd` is derived from that repo name, so the minted check would run in
+    a checkout that does not contain the test.
+    """
+    assert (
+        backfill.repo_from_check_value(
+            "gh api repos/OmniNode-ai/omnibase_core/contents/x.py "
+            "&& gh pr view 1 --repo OmniNode-ai/omnimarket"
+        )
+        == "OmniNode-ai/omnimarket"
+    )
+
+
+def test_an_api_path_contract_now_resolves_end_to_end() -> None:
+    """The refusal that motivated this becomes a resolution, on the real path."""
+    contract = _CONTRACT_WITHOUT_BEHAVIOR_PROOF.replace(
+        'check_value: "gh pr view 3014 --repo OmniNode-ai/omnibase_infra '
+        '--json number,state"',
+        'check_value: "gh api repos/OmniNode-ai/omnibase_infra/contents/'
+        "src/omnibase_infra/thing.py?ref=abc --jq '.content'\"",
+    )
+    data = yaml.safe_load(contract)
+    assert backfill.product_pr_from_contract(data) == backfill.ProductPrRef(
+        repo="OmniNode-ai/omnibase_infra", pr_number=3014
+    )

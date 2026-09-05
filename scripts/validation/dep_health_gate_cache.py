@@ -582,6 +582,12 @@ def run_gate(
             ):
                 waited_s = time.monotonic() - waited_at
                 returncode, output = run_sweep(root, sweep_args)
+            # Publish before releasing the per-key lock. Otherwise a waiter can
+            # acquire the lock in the gap between unlock and os.replace(), miss
+            # the entry, and repeat the same scan.
+            if use_cache and returncode in (0, 1):
+                write_cache_entry(entry_path, returncode=returncode, output=output)
+                prune_cache(cache_root)
     except ScanLockTimeoutError as exc:
         # Fail CLOSED. This gate blocks; a lock it cannot take is not a licence
         # to skip the scan.
@@ -597,10 +603,6 @@ def run_gate(
     # rc 0/1 are verdicts (clean / new findings) and are safe to replay.
     # rc >= 2 is an engine or infrastructure failure — caching it would make a
     # transient failure permanent for every lane sharing the key.
-    if use_cache and returncode in (0, 1):
-        write_cache_entry(entry_path, returncode=returncode, output=output)
-        prune_cache(cache_root)
-
     _emit(
         output,
         cache_state=f"cache miss (scanned, waited {waited_s:.1f}s)",
