@@ -260,7 +260,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # configured external contractor -- the mechanism replacing the manual
     # announcement that left omnibase_infra#3120 unannounced for five hours on
     # 2026-09-01): 394 -> 395.
-    assert summary["node_dirs"] == 395
+    # OMN-17201 adds node_projection_hook_ledger (REDUCER; leg 5 of the
+    # hook->cloud chain -- the cloud-side sink that consumes the four governed
+    # omniclaude hook classes off the CLOUD bus as tenant-prefixed wire topics
+    # and materializes public.hook_events, the table the already-deployed read
+    # route GET /v1/projections/hook-events/by-correlation serves): 395 -> 396.
+    assert summary["node_dirs"] == 396
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -340,7 +345,15 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # module entrypoint does. Declaring a topic to raise `routable` would
     # manufacture the wired-looking-but-unwired path this very inventory
     # exists to detect: 391 -> 392.
-    assert summary["entry_points"] == 392
+    # OMN-17201 adds the node_projection_hook_ledger entry point (see the
+    # node_dirs comment above). It is routable via its four contract-declared
+    # subscribe topics -- the bare canonical omniclaude hook classes. Note the
+    # contract declares those CANONICAL topics while the deployed writer
+    # subscribes to their tenant-prefixed CLOUD WIRE forms, resolved through
+    # resolve_physical_topic (OMN-15792); a contract may not declare a
+    # tenant-prefixed topic at all, so the canonical set is what this
+    # inventory sees and it is the correct thing for it to see: 392 -> 393.
+    assert summary["entry_points"] == 393
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

@@ -3051,7 +3051,8 @@
     },
     {
       "accessor_nodes": [
-        "node_hook_event_capture"
+        "node_hook_event_capture",
+        "node_projection_hook_ledger"
       ],
       "authoritative_sources": [
         "src/omnimarket/nodes/node_hook_event_capture/migrations/0001_create_hook_events.sql"
@@ -3066,7 +3067,8 @@
         "uq_hook_events_tenant_event_sha"
       ],
       "contract_sources": [
-        "src/omnimarket/nodes/node_hook_event_capture/contract.yaml"
+        "src/omnimarket/nodes/node_hook_event_capture/contract.yaml",
+        "src/omnimarket/nodes/node_projection_hook_ledger/contract.yaml"
       ],
       "current_schema": [
         "public"
@@ -3102,11 +3104,13 @@
       "partitioning": [],
       "producer": "node_hook_event_capture",
       "readers": [
-        "node_hook_event_capture"
+        "node_hook_event_capture",
+        "node_projection_hook_ledger"
       ],
       "target_schema": "public",
       "writers": [
-        "node_hook_event_capture"
+        "node_hook_event_capture",
+        "node_projection_hook_ledger"
       ]
     },
     {

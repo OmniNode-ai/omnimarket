@@ -918,7 +918,15 @@ class TestOmn15800ExposureParity:
     and live_events.v1 vanished with only a logger.error line as evidence.
     """
 
-    def test_live_topic_count_is_60(self) -> None:
+    def test_live_topic_count_is_61(self) -> None:
+        # 61 as of OMN-17201: +1 for node_projection_hook_ledger's
+        # onex.snapshot.projection.hook.ledger.v1 -- the cloud-side hook-event
+        # ledger (leg 5 of the hook->cloud chain), a NEW exposure over
+        # public.hook_events. It is bus_backed: false and declares no
+        # tenant_column, deliberately: the pair is illegal together, and that
+        # table is FORCE ROW LEVEL SECURITY, so the database is its scoping
+        # surface rather than the exposure layer.
+        #
         # 60 as of OMN-17772: +1 for node_projection_work_events'
         # onex.snapshot.projection.work.events.v1. That contract had declared a
         # full projection_api section since OMN-16180 and was EXCLUDED on every
@@ -936,7 +944,7 @@ class TestOmn15800ExposureParity:
         # class guards silently EXCLUDED exposures, so a computed expectation
         # would have moved with the bug and proven nothing.
         topic_map = build_projection_topic_map()
-        assert len(topic_map) == 60
+        assert len(topic_map) == 61
         assert "onex.snapshot.projection.work.events.v1" in topic_map
         # Still excluded for the identical reason, and deliberately left so:
         # node_projection_open_obligations declares `schema: omninode_internal`
