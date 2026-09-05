@@ -26,6 +26,27 @@ def _make_meta(partition: int = 0, offset: int = 0) -> MessageMeta:
     )
 
 
+def _credential_call(mock_db: AsyncMock) -> tuple[object, ...]:
+    """The single ``db.execute`` call targeting ``tenant_inference_credentials``.
+
+    OMN-17372 gave this projection a SECOND write target
+    (``delegation_routing_tenant_overlay``, the route that actually selects the
+    customer's key), so ``assert_awaited_once`` / ``call_args`` no longer name
+    the credentials write unambiguously. Selecting by target keeps every
+    assertion below about the catalog write specifically, and asserts there is
+    still exactly one of them.
+    """
+    calls = [
+        call
+        for call in mock_db.execute.await_args_list
+        if "INSERT INTO tenant_inference_credentials" in str(call.args[0])
+    ]
+    assert len(calls) == 1, (
+        f"expected exactly one tenant_inference_credentials write, got {len(calls)}"
+    )
+    return tuple(calls[0].args)
+
+
 @pytest.fixture
 def mock_db() -> AsyncMock:
     db = AsyncMock()
@@ -56,8 +77,14 @@ class TestContractShape:
             handler_tenant_credentials_projection as mod,
         )
 
+        # OMN-17372 added the routing-overlay write target; the guard's job is
+        # unchanged -- a role mapping to anything outside this set still fails
+        # construction.
         assert (
-            frozenset({"tenant_inference_credentials"}) == mod.KNOWN_PROJECTION_TABLES
+            frozenset(
+                {"tenant_inference_credentials", "delegation_routing_tenant_overlay"}
+            )
+            == mod.KNOWN_PROJECTION_TABLES
         )
 
 
@@ -77,8 +104,7 @@ class TestCredentialRegistered:
         result = await runner.project_event(TOPIC_REGISTERED, data, _make_meta())
 
         assert result is True
-        mock_db.execute.assert_awaited_once()
-        args = mock_db.execute.call_args[0]
+        args = _credential_call(mock_db)
         assert "INSERT INTO tenant_inference_credentials" in args[0]
         assert "ON CONFLICT (api_key_ref)" in args[0]
         assert args[1:] == (
@@ -182,8 +208,7 @@ class TestCredentialRevoked:
         result = await runner.project_event(TOPIC_REVOKED, data, _make_meta())
 
         assert result is True
-        mock_db.execute.assert_awaited_once()
-        args = mock_db.execute.call_args[0]
+        args = _credential_call(mock_db)
         assert "INSERT INTO tenant_inference_credentials" in args[0]
         assert "ON CONFLICT (api_key_ref) DO UPDATE" in args[0]
         assert "revoked_at = COALESCE(" in args[0]
@@ -216,8 +241,7 @@ class TestCredentialRevoked:
         result = await runner.project_event(TOPIC_REVOKED, data, _make_meta())
 
         assert result is True
-        mock_db.execute.assert_awaited_once()
-        args = mock_db.execute.call_args[0]
+        args = _credential_call(mock_db)
         assert "INSERT INTO tenant_inference_credentials" in args[0]
         assert "ON CONFLICT (api_key_ref) DO UPDATE" in args[0]
         assert args[1:] == ("cred_never_seen", "omninode")
@@ -287,8 +311,7 @@ class TestHandleDefBEntrypoint:
         )
 
         assert result == {"projected": True}
-        mock_db.execute.assert_awaited_once()
-        args = mock_db.execute.call_args[0]
+        args = _credential_call(mock_db)
         assert "INSERT INTO tenant_inference_credentials" in args[0]
         assert args[1:] == (
             "cred_omninode_openrouter_abc123",
@@ -313,8 +336,6 @@ class TestHandleDefBEntrypoint:
         )
 
         assert result == {"projected": True}
-        mock_db.execute.assert_awaited_once()
         assert (
-            "INSERT INTO tenant_inference_credentials"
-            in (mock_db.execute.call_args[0][0])
+            "INSERT INTO tenant_inference_credentials" in _credential_call(mock_db)[0]
         )

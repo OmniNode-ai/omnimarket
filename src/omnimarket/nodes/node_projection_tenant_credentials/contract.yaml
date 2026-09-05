@@ -8,9 +8,19 @@ description: >
   Ingress+projection for BYOK inference-credential refs (OMN-16316). Consumes
   credential-registered / credential-revoked events published by the gateway
   value->ref thin-publisher (omnimarket.projection.credential_publisher) and
-  materializes tenant_inference_credentials. The gateway handler never writes
-  this table directly (OMN-15800) -- only this projection touches the
-  database.
+  materializes TWO read models from that one event stream:
+  tenant_inference_credentials (the ref catalog the customer sees) and
+  delegation_routing_tenant_overlay (the route that actually selects the
+  customer's key -- OMN-17372). The gateway handler never writes either table
+  directly (OMN-15800) -- only this projection touches the database.
+  OMN-17372 blocker b3: before this node wrote the overlay row, registering a
+  key and EXECUTING on it were two disjoint tables joined by nothing --
+  delegation_routing_tenant_overlay had a creating migration, a GRANT, and no
+  writer of any kind, so a customer could register an OpenRouter key and still
+  have no route that selects it. The overlay row is derived from the same
+  event, in the same consumer, rather than from a second imperative API call:
+  a registration that is durable in the ref catalog and absent from the route
+  is the exact split this closes.
 
 handler:
   module: omnimarket.nodes.node_projection_tenant_credentials.handlers.handler_tenant_credentials_projection
@@ -37,8 +47,11 @@ terminal_event: onex.evt.omnimarket.tenant-credential-projection-applied.v1
 golden_path:
   - "Gateway value->ref exchange calls ProtocolSecretStore.set_secret, then publishes credential-registered to onex.evt.omnimarket.credential-registered.v1"
   - "This node consumes credential-registered, INSERTs into tenant_inference_credentials"
+  - "OMN-17372: the same consume resolves the declared BYOK backend for the event's provider (configs/byok_provider_backends.v1.yaml) and UPSERTs one delegation_routing_tenant_overlay row for (tenant_id, '*') carrying the tenant's own api_key_ref as secret_ref -- an undeclared provider mints no row"
+  - "A delegation for that tenant now resolves via tenant_overlay_resolver -> delta() -> cost_tier tenant_byok, on the customer's own key"
   - "Gateway revoke publishes credential-revoked to onex.evt.omnimarket.credential-revoked.v1"
   - "This node consumes credential-revoked, sets revoked_at on the matching row"
+  - "OMN-17372: the same consume NULLs secret_ref on any overlay row of that tenant pointing at the revoked ref -- the row is kept, so a revoked tenant does NOT fall back to the platform house ladder"
   - "GET /v1/tenants/me/inference-credentials renders from this table's bus-backed snapshot, excluding revoked_at IS NOT NULL rows by default"
 
 dod_evidence:
@@ -50,6 +63,14 @@ dod_evidence:
     description: revoking a ref this projection never saw persists a tombstone row instead of silently doing nothing
   - test: tests/test_omn16316_real_postgres_tenant_credentials_write_path.py::TestRealPostgresWritePath::test_revoke_before_register_out_of_order_keeps_credential_revoked
     description: "OMN-16324 -- real-Postgres proof that a credential-revoked event landing before its matching credential-registered event (two separate Kafka topics, no cross-topic ordering guarantee) leaves the credential revoked instead of being silently un-revoked"
+  - test: tests/test_omn17372_byok_routing_overlay_bridge.py::TestOverlayWrite::test_credential_registered_upserts_the_routing_overlay_row
+    description: "OMN-17372 b3 -- a credential-registered event for a declared provider UPSERTs one tenant-scoped delegation_routing_tenant_overlay row carrying the tenant's own api_key_ref as secret_ref"
+  - test: tests/test_omn17372_byok_routing_overlay_bridge.py::TestOverlayWrite::test_undeclared_provider_mints_no_route
+    description: "OMN-17372 ruling 3 -- a provider absent from the BYOK catalog catalogues the credential but writes NO overlay row, so it can never inherit a platform backend's house secret_ref"
+  - test: tests/test_omn17372_byok_routing_overlay_bridge.py::TestRoutingResolvesTenantByok::test_registered_key_routes_a_delegation_at_cost_tier_tenant_byok
+    description: "OMN-17372 b3 end-to-end over the real reducer -- the row this projection writes resolves through resolve_tenant_overlay into delta() and yields cost_tier tenant_byok on the tenant's own ref"
+  - test: tests/test_omn17372_byok_routing_overlay_bridge.py::TestRevocation::test_revocation_nulls_the_overlay_secret_ref_and_keeps_the_row
+    description: "OMN-17372 -- revoking the credential NULLs the overlay row's secret_ref and KEEPS the row, so a revoked tenant does not silently fall back to the platform house ladder"
 
 db_io:
   db_tables:
@@ -59,6 +80,32 @@ db_io:
       migration: "0000_create_tenant_inference_credentials.sql"
       access: write
       role: credentials
+    # OMN-17372 blocker b3. Created and owned by node_delegation_routing_reducer
+    # (migrations/0001) and already granted SELECT, INSERT, UPDATE to
+    # tenant_projection_writer by node_projection_delegation_inference_response's
+    # 0004 grant migration -- this declaration adds a WRITER, not a relation, so
+    # it ships no new SQL and needs no vendored migration companion.
+    #
+    # Why this node and not a new one: the overlay row is a second read model
+    # derived from the SAME credential-registered/-revoked stream this consumer
+    # already subscribes to, in a process already deployed on onex-dev
+    # (deployment-omnimarket-projection-tenant-credentials-writer.yaml) with the
+    # same OMNIDASH_ANALYTICS_DB_URL binding. A separate node would need its own
+    # Deployment, its own consumer group, and its own re-solution of the
+    # OMN-16324 cross-topic ordering problem this handler already solves -- and
+    # an undeployed consumer is exactly the failure mode that kept BYOK intake
+    # silently broken (see that manifest's own header).
+    #
+    # No DELETE is declared or used: revocation NULLs secret_ref rather than
+    # dropping the row, both because DELETE is not in the grant and because
+    # dropping the row would return a revoked tenant to the platform house
+    # ladder, which OMN-17372 ruling 3 forbids.
+    - name: delegation_routing_tenant_overlay
+      database_ref: application
+      schema: tenant
+      migration: "../node_delegation_routing_reducer/migrations/0001_create_delegation_routing_tenant_overlay.sql"
+      access: write
+      role: routing_overlay
 
 event_bus:
   subscribe_topics:
