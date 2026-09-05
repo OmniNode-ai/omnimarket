@@ -518,6 +518,40 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             )
 
         row = _judge_verdict_projection_row(event)
+
+        # OMN-17627: this writer named 18 columns and tenant_id was not one of
+        # them, so the column DEFAULT 'omninode' (migration 0025) attributed
+        # every row it wrote -- the same defect OMN-16831 (option D) item 4
+        # closed for generation_events, here in the handler that actually runs
+        # on the lane. The sync twin resolved by correlation join and fell back
+        # to DEFAULT_TENANT; this path never even attempted the join.
+        #
+        # Attribution is producer-recorded or the write is refused. A refused
+        # verdict goes to the contract-declared DLQ rather than being dropped,
+        # so OMN-14894's "never silently tenant-less" goal survives the removal
+        # of its house default: unattributable is now loud and recoverable
+        # instead of quietly stamped 'omninode'.
+        attribution_rows = await self.db.execute(
+            f"SELECT tenant_id FROM {self._table_delegation} WHERE correlation_id = $1",
+            str(event.correlation_id),
+        )
+        attributions = {
+            str(candidate["tenant_id"])
+            for candidate in attribution_rows or []
+            if isinstance(candidate.get("tenant_id"), str)
+            and str(candidate["tenant_id"]).strip()
+        }
+        if len(attributions) != 1:
+            return await self._route_malformed_to_dlq(
+                data,
+                "judge verdict tenant attribution unresolved (OMN-17627): "
+                f"correlation_id {event.correlation_id} matched "
+                f"{len(attribution_rows or [])} delegation row(s) yielding "
+                f"{len(attributions)} usable attribution(s) -- refusing rather "
+                "than letting the tenant column default absorb the write",
+            )
+        tenant_id = attributions.pop()
+
         await self.db.execute(
             f"""
             INSERT INTO {self._table_judge_verdict} (
@@ -525,13 +559,15 @@ class DelegationProjectionRunner(BaseProjectionRunner):
               judge_model, judge_model_version, judge_provider,
               rubric_id, rubric_hash, prompt_hash, input_hash,
               temperature, judge_node_version, reasoning_hash,
-              verdict, actual_score, failure_kind, failure_message
+              verdict, actual_score, failure_kind, failure_message,
+              tenant_id
             ) VALUES (
               $1, $2, $3, $4,
               $5, $6, $7,
               $8, $9, $10, $11,
               $12, $13, $14,
-              $15, $16, $17, $18
+              $15, $16, $17, $18,
+              $19
             )
             ON CONFLICT (event_hash) DO NOTHING
             """,
@@ -553,6 +589,7 @@ class DelegationProjectionRunner(BaseProjectionRunner):
             row["actual_score"],
             row["failure_kind"],
             row["failure_message"],
+            tenant_id,
         )
         return True
 

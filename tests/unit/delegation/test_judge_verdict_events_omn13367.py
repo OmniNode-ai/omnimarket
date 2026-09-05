@@ -21,6 +21,9 @@ from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_del
     JUDGE_VERDICT_TABLE,
     HandlerProjectionDelegation,
 )
+from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
+    TABLE as DELEGATION_TABLE,
+)
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -288,6 +291,15 @@ def test_sync_projection_writes_judge_verdict_row() -> None:
         actual_score=0.88,
     )
     db = InmemoryDatabaseAdapter()
+    # OMN-17627: a judge verdict now requires an attributable parent -- an
+    # unjoinable one refuses the write rather than stamping the house tenant.
+    # This test's subject is the projected row's shape, so it seeds the join
+    # rather than asserting anything about tenancy.
+    db.upsert(
+        DELEGATION_TABLE,
+        "correlation_id",
+        {"correlation_id": str(event.correlation_id), "tenant_id": "tenant-fixture"},
+    )
     payload = event.model_dump(mode="json")
     payload["_db"] = db
     payload["_event_type"] = "onex.evt.omnibase-infra.delegation-judge-verdict.v1"
@@ -331,6 +343,15 @@ def test_judge_verdict_projection_tolerates_topic_metadata_key_omn14855() -> Non
         actual_score=0.9,
     )
     db = InmemoryDatabaseAdapter()
+    # OMN-17627: a judge verdict now requires an attributable parent -- an
+    # unjoinable one refuses the write rather than stamping the house tenant.
+    # This test's subject is the projected row's shape, so it seeds the join
+    # rather than asserting anything about tenancy.
+    db.upsert(
+        DELEGATION_TABLE,
+        "correlation_id",
+        {"correlation_id": str(event.correlation_id), "tenant_id": "tenant-fixture"},
+    )
     payload = event.model_dump(mode="json")
     payload["_db"] = db
     payload["_event_type"] = "onex.evt.omnibase-infra.delegation-judge-verdict.v1"

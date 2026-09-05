@@ -5,8 +5,9 @@
 Two tables:
   - delegation_judge_verdict_events: tenant_id resolved via a correlation_id
     join to delegation_events (same node, same migration family as
-    tranche-1), falling back to DEFAULT_TENANT when unmatched (migration
-    0025/0026).
+    tranche-1). The original DEFAULT_TENANT fallback (migration 0025/0026)
+    was superseded by OMN-17627: an unjoinable verdict now refuses the write
+    rather than stamping the house tenant.
   - projection_delegation_inference_response_text: re-keyed from a single
     global singleton to one row per tenant_id (migration 0002/0003 under
     node_projection_delegation_inference_response), closing a confirmed
@@ -34,9 +35,6 @@ from omnimarket.events.delegation_judge_verdict import (
     build_delegation_judge_verdict_event,
 )
 from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
-    DEFAULT_TENANT as DELEGATION_DEFAULT_TENANT,
-)
-from omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation import (
     JUDGE_VERDICT_TABLE,
     HandlerProjectionDelegation,
 )
@@ -51,6 +49,7 @@ from omnimarket.nodes.node_projection_delegation_inference_response.handlers.han
 )
 from omnimarket.projection.postgres_sync_database import PostgresSyncProjectionAdapter
 from omnimarket.projection.protocol_database import InmemoryDatabaseAdapter
+from omnimarket.projection.tenant_isolation import TenantRequiredError
 
 _NODE_DIR = Path(__file__).resolve().parent.parent / "src" / "omnimarket" / "nodes"
 _DELEGATION_MIGRATIONS = _NODE_DIR / "node_projection_delegation" / "migrations"
@@ -148,20 +147,29 @@ def test_judge_verdict_resolves_tenant_from_matching_delegation_event() -> None:
 
 
 @pytest.mark.unit
-def test_judge_verdict_falls_back_to_default_tenant_when_unmatched() -> None:
-    """No matching delegation_events row -> DEFAULT_TENANT, never omitted.
+def test_judge_verdict_refuses_when_unmatched() -> None:
+    """No matching delegation_events row -> refuse the write (OMN-17627).
 
-    Mirrors the live join-completeness gap surfaced on this ticket (2/4
-    stability-test rows had no matching delegation_events correlation_id).
+    SUPERSEDES this file's original assertion, which required DEFAULT_TENANT
+    here so the row was "never silently tenant-less". OMN-16831/OMN-16804
+    ratified the stronger rule -- attribution is producer-recorded or
+    verified, never invented -- and a house-stamped row is an invented one.
+
+    Both goals hold under refusal: the async writer routes a refused verdict
+    to the contract-declared DLQ, so it is neither invented nor silently lost.
+
+    Still mirrors the live join-completeness gap this ticket surfaced (2 of 4
+    stability-test rows had no matching delegation_events correlation_id) --
+    what changed is that the gap now refuses instead of absorbing.
     """
     db = InmemoryDatabaseAdapter()
     handler = HandlerProjectionDelegation()
     event = _build_verdict(uuid4())
-    result = handler.project_judge_verdict(event, db)  # type: ignore[arg-type]
 
-    assert result.rows_upserted == 1
-    rows = db.query(JUDGE_VERDICT_TABLE)
-    assert rows[0]["tenant_id"] == DELEGATION_DEFAULT_TENANT
+    with pytest.raises(TenantRequiredError):
+        handler.project_judge_verdict(event, db)  # type: ignore[arg-type]
+
+    assert db.query(JUDGE_VERDICT_TABLE) == []
 
 
 # ---------------------------------------------------------------------------
