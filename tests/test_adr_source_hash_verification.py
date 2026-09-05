@@ -6,7 +6,14 @@
 from __future__ import annotations
 
 import pytest
+from omnibase_core.container import ModelONEXContainer
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
+from omnibase_core.protocols.event_bus.protocol_event_bus_subscriber import (
+    ProtocolEventBusSubscriber,
+)
 
 from omnimarket.adapters.adr.bus_protocol_adapters import HandlerBusAdrSegmentation
 from omnimarket.models.adr import ModelAdrDocumentRef, ModelAdrIngestionResult
@@ -18,7 +25,17 @@ async def test_changed_source_bytes_fail_before_segmentation_request(tmp_path) -
     source = tmp_path / "docs" / "plan.md"
     source.parent.mkdir()
     source.write_text("# Changed plan\n", encoding="utf-8", newline="")
-    handler = HandlerBusAdrSegmentation({"event_bus": EventBusInmemory()})
+    event_bus = EventBusInmemory()
+    container = ModelONEXContainer()
+    await container.service_registry.register_instance(
+        ProtocolEventBusPublisher,
+        event_bus,
+    )
+    await container.service_registry.register_instance(
+        ProtocolEventBusSubscriber,
+        event_bus,
+    )
+    handler = HandlerBusAdrSegmentation(container)
 
     result = await handler.segment(
         ingestion=ModelAdrIngestionResult(
