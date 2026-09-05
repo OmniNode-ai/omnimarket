@@ -140,6 +140,80 @@ def _role_dsn(role: str) -> str:
     )
 
 
+class _FreshConnAdapter:
+    """Opens its own connection per statement, so it is event-loop agnostic.
+
+    ``handle()`` is the SYNC canonical entrypoint and drives its coroutine with
+    ``asyncio.run()``, i.e. on a loop it creates and destroys itself. An asyncpg
+    connection is bound to the loop that opened it, so a connection held across
+    that boundary raises "attached to a different loop" from the protocol.
+    Connecting per statement removes the coupling without weakening what is
+    proven: every statement still meets the real column types, the real CHECKs
+    and the real UNIQUE key.
+    """
+
+    def __init__(self, dsn: str) -> None:
+        self._dsn = dsn
+
+    async def execute(
+        self, sql: str, *args: Any, tenant: str | None = None
+    ) -> list[dict[str, Any]]:
+        conn = await asyncpg.connect(self._dsn)
+        try:
+            async with conn.transaction():
+                if tenant is not None:
+                    await conn.execute(
+                        "SELECT set_config('app.tenant_id', $1, true)", tenant
+                    )
+                rows = await conn.fetch(sql, *args)
+            return [dict(r) for r in rows]
+        finally:
+            await conn.close()
+
+
+def _superuser_dsn() -> str:
+    pw = os.environ.get(
+        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+    )
+    host = os.environ.get("INTEGRATION_POSTGRES_HOST", "localhost")
+    port = int(os.environ.get("INTEGRATION_POSTGRES_PORT", "5432"))
+    user = os.environ.get("INTEGRATION_POSTGRES_USER", "postgres")
+    db = os.environ.get("INTEGRATION_POSTGRES_DB", "omnibase_infra")
+    return f"postgresql://{quote_plus(user)}:{quote_plus(pw)}@{host}:{port}/{db}"
+
+
+def _superuser_dsn_or_skip() -> str:
+    """The superuser DSN, or skip -- the sync counterpart of _connect_or_skip."""
+    pw = os.environ.get(
+        "INTEGRATION_POSTGRES_PASSWORD", os.environ.get("POSTGRES_PASSWORD", "")
+    )
+    if not pw:
+        pytest.skip(
+            "POSTGRES_PASSWORD not set -- skipping hook-ledger real-DB write proof"
+        )
+    return _superuser_dsn()
+
+
+async def _apply(dsn: str, sql: str) -> None:
+    conn = await asyncpg.connect(dsn)
+    try:
+        await conn.execute(sql)
+    finally:
+        await conn.close()
+
+
+async def _count_by_correlation(dsn: str, correlation_id: str) -> int:
+    conn = await asyncpg.connect(dsn)
+    try:
+        value = await conn.fetchval(
+            "SELECT count(*) FROM public.hook_events WHERE correlation_id = $1",
+            correlation_id,
+        )
+        return int(value)
+    finally:
+        await conn.close()
+
+
 def _cloud_record(*, tenant_slug: str, correlation_id: str) -> dict[str, Any]:
     body = {
         "session_id": correlation_id,
@@ -337,59 +411,69 @@ async def test_real_postgres_keeps_two_tenants_hook_events_on_separate_rows() ->
 
 
 @pytest.mark.integration
-async def test_real_postgres_canonical_handle_path_reports_a_true_row_count() -> None:
+def test_real_postgres_canonical_handle_path_reports_a_true_row_count() -> None:
     """The definition-B entrypoint, against the real UNIQUE constraint.
 
     OMN-14355 made ``handle`` a typed request/response pair. Its
     ``rows_upserted`` is only meaningful if it reflects what the DATABASE
     actually did -- and only a real ``ON CONFLICT DO NOTHING`` can tell a first
     write from a suppressed duplicate. An in-memory double would happily report
-    1 twice, which is precisely the ``handle() did not raise`` degradation the
+    1 twice, which is precisely the "handle() did not raise" degradation the
     terminal applied-event exists to avoid (OMN-13360).
 
-    Runs on the superuser connection deliberately: the subject here is the row
-    count and the typed contract, not RLS (which the unprivileged-role test
-    above owns).
+    DELIBERATELY A SYNC TEST. ``handle`` is the sync canonical entrypoint and
+    drives its coroutine with ``asyncio.run()``, i.e. on a loop it creates and
+    destroys itself. An asyncpg connection is bound to the loop that opened it,
+    so anything held open across that boundary raises "attached to a different
+    loop" from the protocol -- which is exactly what an earlier async revision
+    of this test did on CI. Every loop here is opened and closed inside one
+    call, and the adapter connects per statement, so no connection ever crosses
+    one. That is a property of the harness, not of the node.
+
+    Runs as the superuser deliberately: the subject is the row count and the
+    typed contract, not RLS -- the unprivileged-role test above owns that.
     """
-    conn = await _connect_or_skip()
-    try:
-        await conn.execute(_MIGRATION.read_text())
+    dsn = _superuser_dsn_or_skip()
+    asyncio.run(_apply(dsn, _MIGRATION.read_text()))
 
-        tenant = "beta-gateway-canary"
-        correlation_id = str(uuid4())
-        wire_topic = resolve_physical_topic(_CANONICAL, tenant_slug=tenant)
-        runner = _runner(conn)
-        request = ModelHookLedgerProjectionRequest(
-            wire_topic=wire_topic,
-            record=_cloud_record(tenant_slug=tenant, correlation_id=correlation_id),
-            partition=0,
-            offset=1,
-        )
+    tenant = "beta-gateway-canary"
+    correlation_id = str(uuid4())
+    wire_topic = resolve_physical_topic(_CANONICAL, tenant_slug=tenant)
 
-        first = await asyncio.to_thread(runner.handle, request)
-        assert first.projected is True
-        assert first.rows_upserted == 1
-        assert first.tenant_id == tenant
-        assert first.correlation_id == correlation_id
+    runner = HandlerHookLedgerProjection.__new__(HandlerHookLedgerProjection)
+    runner._load_contract()
+    runner._db = _FreshConnAdapter(dsn)  # type: ignore[assignment]
 
-        # Byte-identical redelivery at DIFFERENT coordinates.
-        again = ModelHookLedgerProjectionRequest(
+    async def _publish(topic: str, value: bytes) -> None:
+        return None
+
+    runner._publish_fn = _publish  # type: ignore[assignment]
+
+    request = ModelHookLedgerProjectionRequest(
+        wire_topic=wire_topic,
+        record=_cloud_record(tenant_slug=tenant, correlation_id=correlation_id),
+        partition=0,
+        offset=1,
+    )
+    first = runner.handle(request)
+    assert first.projected is True
+    assert first.rows_upserted == 1
+    assert first.tenant_id == tenant
+    assert first.correlation_id == correlation_id
+
+    # Byte-identical redelivery at DIFFERENT coordinates.
+    second = runner.handle(
+        ModelHookLedgerProjectionRequest(
             wire_topic=wire_topic,
             record=_cloud_record(tenant_slug=tenant, correlation_id=correlation_id),
             partition=4,
             offset=9999,
         )
-        second = await asyncio.to_thread(runner.handle, again)
-        assert second.projected is True
-        assert second.rows_upserted == 0, (
-            "a suppressed duplicate must report zero rows, not one"
-        )
-        assert second.event_sha == first.event_sha
+    )
+    assert second.projected is True
+    assert second.rows_upserted == 0, (
+        "a suppressed duplicate must report zero rows, not one"
+    )
+    assert second.event_sha == first.event_sha
 
-        count = await conn.fetchval(
-            "SELECT count(*) FROM public.hook_events WHERE correlation_id = $1",
-            correlation_id,
-        )
-        assert count == 1
-    finally:
-        await conn.close()
+    assert asyncio.run(_count_by_correlation(dsn, correlation_id)) == 1
