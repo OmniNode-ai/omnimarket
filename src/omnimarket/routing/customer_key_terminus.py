@@ -89,6 +89,32 @@ CUSTOMER_KEY_REMEDIATION: Final[str] = (
     "inference and never runs customer work on a platform credential."
 )
 
+# The same refusal in the ONEX code shape the consume boundary recovers
+# (OMN-17930, OMN-17372 AC2). ``omnibase_infra``'s
+# ``boundary_failure_terminal._first_onex_code`` attributes a failed record by
+# reading an ``error_code`` attribute, or a message token, that fullmatches
+# ``ONEX_[A-Z0-9_]+`` — the dotted public code above can never match it, and the
+# public code is a pinned customer contract that must not bend to an infra
+# regex. So the refusal carries BOTH: the dotted code for gateway/CLI surfaces,
+# and this alias for the boundary, so the delegation terminal says
+# ``CustomerKeyRefusedError: ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT`` instead
+# of a bare class name. Pinned by
+# ``tests/test_omn17372_refusal_code_survives_boundary.py``.
+CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE: Final[
+    Literal["ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT"]
+] = "ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT"
+
+# The remediation as it may cross the consume boundary. On the live path the
+# exception OBJECT does not survive ``MessageDispatchEngine.dispatch``: only
+# ``sanitize_error_message(exc)`` text does, and that helper collapses the
+# whole message to ``[REDACTED - potentially sensitive data]`` on any of its
+# ``SENSITIVE_PATTERNS`` substrings. ``CUSTOMER_KEY_REMEDIATION`` above carries
+# ``inference-credentials`` and ``platform credential`` — both match
+# ``credential`` — so it is right for the typed payload and wrong for the
+# boundary. This phrasing says the same thing with no such token, and the
+# boundary test runs the REAL sanitizer over it for every refusal reason.
+_BOUNDARY_REMEDIATION: Final[str] = "Register a provider key for this tenant and retry."
+
 
 class EnumDelegationSurface(StrEnum):
     """Which entry point is resolving this delegation.
@@ -111,6 +137,23 @@ class EnumCustomerKeyRefusalReason(StrEnum):
     # work with an OmniNode platform credential. Not actionable by the
     # customer — this is a routing/overlay misconfiguration on our side.
     HOUSE_CREDENTIAL_ON_CUSTOMER_PATH = "house_credential_on_customer_path"
+
+
+# Per-reason phrasing for the message that crosses the consume boundary. The
+# enum VALUES themselves are not safe there: ``house_credential_on_customer_path``
+# carries ``credential`` and would collapse the whole message under
+# ``sanitize_error_message`` (see ``_BOUNDARY_REMEDIATION``). Every member must
+# be mapped — an unmapped reason is a KeyError at raise time, never a silent
+# fallback to a phrase the sanitizer would redact.
+_BOUNDARY_REASON_PHRASES: Final[Mapping[EnumCustomerKeyRefusalReason, str]] = {
+    EnumCustomerKeyRefusalReason.NO_PROVIDER_KEY_REGISTERED: (
+        "no provider key is registered for this tenant"
+    ),
+    EnumCustomerKeyRefusalReason.HOUSE_CREDENTIAL_ON_CUSTOMER_PATH: (
+        "the resolved route would run on a platform-owned key, which customer "
+        "work may never use"
+    ),
+}
 
 
 class ModelCustomerKeyRefusal(BaseModel):
@@ -166,6 +209,26 @@ class ModelCustomerKeyRefusal(BaseModel):
             f"{self.reason.value}. {self.remediation}"
         )
 
+    @property
+    def boundary_message(self) -> str:
+        """The line that survives the consume boundary (OMN-17930).
+
+        Leads with the ONEX-shaped alias in the ``[CODE]`` position the infra
+        classifier's token scan reads (the same position
+        ``ProtocolConfigurationError`` renders ``[ONEX_CORE_041_…]`` in), then
+        the public dotted code, then a reason and remediation phrased so the
+        engine's ``sanitize_error_message`` passes it through intact. Carries
+        reference NAMES nowhere: ``attempted_api_key_ref`` is a safe name in
+        the typed payload, but the literal ``api_key`` inside it is itself a
+        sanitizer trigger, so it stays off this line.
+        """
+        return (
+            f"[{CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE}] {self.error_code}: "
+            f"delegation refused for tenant {self.tenant_id!r} "
+            f"(task_type={self.task_type!r}, surface={self.surface.value}): "
+            f"{_BOUNDARY_REASON_PHRASES[self.reason]}. {_BOUNDARY_REMEDIATION}"
+        )
+
 
 class CustomerKeyRefusedError(Exception):
     """Raised instead of returning a route a customer must not execute.
@@ -176,9 +239,15 @@ class CustomerKeyRefusedError(Exception):
     exception cannot be ignored into a house-key call.
     """
 
+    # Read by ``omnibase_infra``'s ``boundary_failure_terminal._first_onex_code``
+    # when the exception object reaches the boundary intact; the same alias
+    # leads the message for the engine-flattened path (OMN-17930).
+    error_code: str
+
     def __init__(self, refusal: ModelCustomerKeyRefusal) -> None:
         self.refusal = refusal
-        super().__init__(refusal.message)
+        self.error_code = CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE
+        super().__init__(refusal.boundary_message)
 
     @classmethod
     def for_missing_key(
@@ -379,6 +448,7 @@ def enforce_customer_key_terminus(
 __all__: list[str] = [
     "CUSTOMER_KEY_REMEDIATION",
     "CUSTOMER_PROVIDER_KEY_ABSENT_ERROR_CODE",
+    "CUSTOMER_PROVIDER_KEY_ABSENT_ONEX_CODE",
     "CustomerKeyRefusedError",
     "EnumCustomerKeyRefusalReason",
     "EnumDelegationSurface",
