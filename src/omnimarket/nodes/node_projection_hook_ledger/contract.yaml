@@ -51,7 +51,7 @@ description: >
 handler:
   module: omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_projection
   class: HandlerHookLedgerProjection
-  input_model: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event.ModelHookLedgerInbound
+  input_model: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event.ModelHookLedgerProjectionRequest
 
 handler_routing:
   routing_strategy: topic_match

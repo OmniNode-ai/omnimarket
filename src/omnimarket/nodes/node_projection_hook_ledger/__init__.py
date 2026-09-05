@@ -13,11 +13,15 @@ from omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_p
 )
 from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
     HookLedgerProjectionError,
+    ModelHookLedgerProjectionRequest,
+    ModelHookLedgerProjectionResult,
     derive_hook_ledger_row,
 )
 
 __all__ = [
     "HandlerHookLedgerProjection",
     "HookLedgerProjectionError",
+    "ModelHookLedgerProjectionRequest",
+    "ModelHookLedgerProjectionResult",
     "derive_hook_ledger_row",
 ]

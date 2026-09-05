@@ -30,6 +30,7 @@ WHY A REAL DATABASE AND NOT A DOUBLE
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import json
 import os
@@ -46,6 +47,9 @@ from omnibase_infra.nodes.node_bus_forwarder_effect.services.service_gateway_top
 
 from omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_projection import (
     HandlerHookLedgerProjection,
+)
+from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
+    ModelHookLedgerProjectionRequest,
 )
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.runner import MessageMeta
@@ -329,4 +333,63 @@ async def test_real_postgres_keeps_two_tenants_hook_events_on_separate_rows() ->
             await conn.execute(f'REVOKE ALL ON public.hook_events FROM "{role}"')
             await conn.execute(f'REVOKE USAGE ON SCHEMA public FROM "{role}"')
             await conn.execute(f'DROP ROLE IF EXISTS "{role}"')
+        await conn.close()
+
+
+@pytest.mark.integration
+async def test_real_postgres_canonical_handle_path_reports_a_true_row_count() -> None:
+    """The definition-B entrypoint, against the real UNIQUE constraint.
+
+    OMN-14355 made ``handle`` a typed request/response pair. Its
+    ``rows_upserted`` is only meaningful if it reflects what the DATABASE
+    actually did -- and only a real ``ON CONFLICT DO NOTHING`` can tell a first
+    write from a suppressed duplicate. An in-memory double would happily report
+    1 twice, which is precisely the ``handle() did not raise`` degradation the
+    terminal applied-event exists to avoid (OMN-13360).
+
+    Runs on the superuser connection deliberately: the subject here is the row
+    count and the typed contract, not RLS (which the unprivileged-role test
+    above owns).
+    """
+    conn = await _connect_or_skip()
+    try:
+        await conn.execute(_MIGRATION.read_text())
+
+        tenant = "beta-gateway-canary"
+        correlation_id = str(uuid4())
+        wire_topic = resolve_physical_topic(_CANONICAL, tenant_slug=tenant)
+        runner = _runner(conn)
+        request = ModelHookLedgerProjectionRequest(
+            wire_topic=wire_topic,
+            record=_cloud_record(tenant_slug=tenant, correlation_id=correlation_id),
+            partition=0,
+            offset=1,
+        )
+
+        first = await asyncio.to_thread(runner.handle, request)
+        assert first.projected is True
+        assert first.rows_upserted == 1
+        assert first.tenant_id == tenant
+        assert first.correlation_id == correlation_id
+
+        # Byte-identical redelivery at DIFFERENT coordinates.
+        again = ModelHookLedgerProjectionRequest(
+            wire_topic=wire_topic,
+            record=_cloud_record(tenant_slug=tenant, correlation_id=correlation_id),
+            partition=4,
+            offset=9999,
+        )
+        second = await asyncio.to_thread(runner.handle, again)
+        assert second.projected is True
+        assert second.rows_upserted == 0, (
+            "a suppressed duplicate must report zero rows, not one"
+        )
+        assert second.event_sha == first.event_sha
+
+        count = await conn.fetchval(
+            "SELECT count(*) FROM public.hook_events WHERE correlation_id = $1",
+            correlation_id,
+        )
+        assert count == 1
+    finally:
         await conn.close()

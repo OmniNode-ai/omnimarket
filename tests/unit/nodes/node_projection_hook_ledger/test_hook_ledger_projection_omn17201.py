@@ -533,3 +533,80 @@ def test_a_topic_outside_the_declared_wire_set_is_never_projected() -> None:
     ok = asyncio.run(runner.project_event(foreign, _envelope_record(), meta))
     assert ok is False
     assert db.rows == []
+
+
+# ---------------------------------------------------------------------------
+# OMN-14355 -- the node is born canonical (definition B)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_handle_is_the_canonical_definition_b_shape_not_a_dict_in_dict_out() -> None:
+    """A new node must be born canonical; the 95 baselined siblings are debt.
+
+    The ratchet's baseline may only SHRINK, so adding this node to it would be
+    using an allowlist as a fix. This pins the shape instead.
+    """
+    import inspect
+
+    from omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_projection import (
+        HandlerHookLedgerProjection,
+    )
+    from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
+        ModelHookLedgerProjectionRequest,
+        ModelHookLedgerProjectionResult,
+    )
+
+    hints = inspect.get_annotations(HandlerHookLedgerProjection.handle, eval_str=True)
+    assert hints["request"] is ModelHookLedgerProjectionRequest
+    assert hints["return"] is ModelHookLedgerProjectionResult
+
+
+@pytest.mark.unit
+def test_handle_reports_the_real_row_count_not_an_inferred_one() -> None:
+    """rows_upserted must fall to 0 for a duplicate the UNIQUE key suppressed.
+
+    Inferring it from "handle() did not raise" is the OMN-13360 defect the
+    terminal applied-event exists to avoid.
+    """
+    from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
+        ModelHookLedgerProjectionRequest,
+    )
+
+    request = ModelHookLedgerProjectionRequest(
+        wire_topic=WIRE_TOPIC, record=_envelope_record(), partition=3, offset=77
+    )
+
+    runner, _db, published = _runner()
+    fresh = runner.handle(request)
+    assert fresh.projected is True
+    assert fresh.rows_upserted == 1
+    assert fresh.correlation_id == "corr-abc123"
+    assert len(published) == 1
+
+    dup_runner, _dup_db, dup_published = _runner(returns_row=False)
+    dup = dup_runner.handle(request)
+    assert dup.rows_upserted == 0
+    assert dup_published == []
+
+
+@pytest.mark.unit
+def test_handle_refuses_a_topic_outside_the_declared_wire_set() -> None:
+    from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
+        ModelHookLedgerProjectionRequest,
+    )
+
+    runner, db, _published = _runner()
+    result = runner.handle(
+        ModelHookLedgerProjectionRequest(
+            wire_topic=(
+                "tenant-beta-gateway-canary.onex.evt.omniclaude.tool-output-captured.v1"
+            ),
+            record=_envelope_record(),
+            partition=0,
+            offset=0,
+        )
+    )
+    assert result.projected is False
+    assert result.rows_upserted == 0
+    assert db.rows == []

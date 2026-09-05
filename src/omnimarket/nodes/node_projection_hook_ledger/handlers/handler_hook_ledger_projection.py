@@ -33,6 +33,8 @@ from omnibase_infra.nodes.node_bus_forwarder_effect.services.service_gateway_top
 
 from omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event import (
     HookLedgerProjectionError,
+    ModelHookLedgerProjectionRequest,
+    ModelHookLedgerProjectionResult,
     derive_hook_ledger_row,
 )
 from omnimarket.projection.runner import BaseProjectionRunner, MessageMeta
@@ -204,22 +206,36 @@ class HandlerHookLedgerProjection(BaseProjectionRunner):
             offset=meta.offset,
         )
 
-        # tenant= is LOAD-BEARING, not decoration. public.hook_events carries
-        # ENABLE + FORCE ROW LEVEL SECURITY (the owning node's migration 0002)
-        # with a WITH CHECK predicate of
-        # `tenant_id = current_setting('app.tenant_id', true)`. FORCE means the
-        # table owner is not exempt either, so a write on a connection that
-        # never set the GUC is refused -- every row, silently, forever. The
-        # adapter sets it with the parameterized set_config form inside the
-        # same transaction as the statement; SET LOCAL semantics only hold
-        # inside one. That migration's own header quotes the defect this
-        # avoids (OMN-15301: "the projection writer never sets app.tenant_id"),
-        # and OMN-15306 is the same no-op with autocommit dropping the GUC
-        # before the statement ran.
-        #
-        # It is passed NOW rather than when the migration is un-fenced,
-        # because the alternative is a writer that works until the day someone
-        # lifts the fence and then refuses every insert.
+        rows = await self._upsert(row)
+        # ON CONFLICT DO NOTHING returns zero rows for a redelivery, so zero is
+        # a SUPPRESSED DUPLICATE, not a failure -- the offset is still
+        # committed and no applied-event is asserted.
+        if rows:
+            await self._publish_applied(row)
+        return True
+
+    async def _upsert(self, row: dict[str, Any]) -> int:
+        """Write one row; return how many actually landed (0 for a duplicate).
+
+        The single write seam both entrypoints go through, so the Kafka path
+        and the canonical typed path cannot drift.
+
+        tenant= is LOAD-BEARING, not decoration. public.hook_events carries
+        ENABLE + FORCE ROW LEVEL SECURITY (the owning node's migration 0002)
+        with a WITH CHECK predicate of
+        ``tenant_id = current_setting('app.tenant_id', true)``. FORCE means the
+        table owner is not exempt either, so a write on a connection that never
+        set the GUC is refused -- every row, silently, forever. The adapter sets
+        it with the parameterized set_config form inside the same transaction as
+        the statement; SET LOCAL semantics only hold inside one. That
+        migration's own header quotes the defect this avoids (OMN-15301: "the
+        projection writer never sets app.tenant_id"), and OMN-15306 is the same
+        no-op with autocommit dropping the GUC before the statement ran.
+
+        It is passed NOW rather than when the migration is un-fenced, because
+        the alternative is a writer that works until the day someone lifts the
+        fence and then refuses every insert.
+        """
         written = await self.db.execute(
             _UPSERT_SQL,
             row["tenant_id"],
@@ -234,24 +250,36 @@ class HandlerHookLedgerProjection(BaseProjectionRunner):
             row["batch_sha"],
             tenant=row["tenant_id"],
         )
-        # ON CONFLICT DO NOTHING returns zero rows for a redelivery, so an
-        # empty result is a SUPPRESSED DUPLICATE, not a failure -- the offset
-        # is still committed and no applied-event is asserted.
-        if written:
-            await self._publish_applied(row)
-        return True
+        return len(written)
 
-    def handle(self, input_data: dict[str, Any]) -> dict[str, Any]:
-        """RuntimeLocal handler-protocol shim; delegates to ``project_event``."""
-        topic = str(input_data.pop("_topic", ""))
-        meta = MessageMeta(
-            partition=int(input_data.pop("_partition", 0)),
-            offset=int(input_data.pop("_offset", 0)),
-            fallback_id=str(input_data.pop("_fallback_id", "")),
-            topic=topic,
+    def handle(
+        self, request: ModelHookLedgerProjectionRequest
+    ) -> ModelHookLedgerProjectionResult:
+        """Canonical definition-B entrypoint: typed request in, typed result out.
+
+        OMN-14355 requires a new node to be born canonical. The Kafka path
+        (``project_event``) and this path are the SAME code -- this is a typed
+        façade over it, not a second implementation, so the two cannot drift.
+        """
+        if request.wire_topic not in self._wire_topics:
+            return ModelHookLedgerProjectionResult(projected=False, rows_upserted=0)
+
+        row = derive_hook_ledger_row(
+            wire_topic=request.wire_topic,
+            data=request.record,
+            partition=request.partition,
+            offset=request.offset,
         )
-        projected = asyncio.run(self.project_event(topic, input_data, meta))
-        return {"projected": projected}
+        rows = asyncio.run(self._upsert(row))
+        if rows:
+            asyncio.run(self._publish_applied(row))
+        return ModelHookLedgerProjectionResult(
+            projected=True,
+            rows_upserted=rows,
+            tenant_id=row["tenant_id"],
+            event_sha=row["event_sha"],
+            correlation_id=row["correlation_id"],
+        )
 
 
 __all__ = ["HandlerHookLedgerProjection", "HookLedgerProjectionError"]

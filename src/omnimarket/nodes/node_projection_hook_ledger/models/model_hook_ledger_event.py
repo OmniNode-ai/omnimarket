@@ -46,6 +46,60 @@ class HookLedgerProjectionError(ValueError):
     """
 
 
+class ModelHookLedgerProjectionRequest(BaseModel):
+    """The typed request the canonical handler takes (definition B).
+
+    OMN-14355: a new node must be born canonical --
+    ``handle(request: ModelX) -> ModelY`` over a TYPED payload, never
+    ``handle(input_data: dict[str, Any]) -> dict[str, Any]``. The 95 baselined
+    siblings that still carry the dict shape are known debt the ratchet allows
+    to shrink and never to grow; adding this node to that baseline would be
+    using an allowlist as a fix, so the shape is correct here instead.
+
+    ``record`` stays an open mapping ON PURPOSE and that is not a loophole: it
+    is the producer's verbatim hook body, whose four classes are independently
+    versioned and gain fields without a release of this node. The typing that
+    matters -- the delivery coordinates and the wire topic that resolves tenancy
+    -- is exactly what a dict-shaped handle left unchecked.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    wire_topic: str = Field(
+        min_length=1,
+        description="The physical, tenant-prefixed cloud topic the record arrived on.",
+    )
+    record: dict[str, Any] = Field(
+        description="The unwrapped cloud envelope record, verbatim."
+    )
+    partition: int = Field(ge=0, description="Source partition of this delivery.")
+    offset: int = Field(ge=0, description="Source offset of this delivery.")
+
+
+class ModelHookLedgerProjectionResult(BaseModel):
+    """The typed response the canonical handler returns (definition B).
+
+    ``rows_upserted`` is a real count rather than ``None`` for the same reason
+    ``node_projection_work_events`` returns one: the terminal applied-event is
+    a deterministic-truth assertion that a durable row LANDED, so a zero-row
+    path must be able to suppress it (OMN-13360). Collapsing this to a bare
+    boolean would degrade that event into "handle() did not raise".
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    projected: bool = Field(
+        description="False when the topic is outside the declared wire set."
+    )
+    rows_upserted: int = Field(
+        ge=0,
+        description="1 for a new row; 0 for a duplicate the UNIQUE key suppressed.",
+    )
+    tenant_id: str | None = Field(default=None)
+    event_sha: str | None = Field(default=None)
+    correlation_id: str | None = Field(default=None)
+
+
 class ModelHookLedgerInbound(BaseModel):
     """The producer-side hook body this ledger accepts.
 
