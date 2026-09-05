@@ -131,6 +131,7 @@ from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegatio
     resolve_task_class_dod_checks,
     resolve_task_class_max_escalations,
     resolve_task_class_response_contract,
+    shipped_house_credential_refs,
     tier_for_backend,
     tier_max_retries,
 )
@@ -150,6 +151,10 @@ from omnimarket.projection.sqlite_database import SqliteDatabaseAdapter
 from omnimarket.projection.tenant_isolation import (
     HOUSE_TENANT_SLUG,
     TenantContextMissingError,
+)
+from omnimarket.routing.customer_key_terminus import (
+    EnumDelegationSurface,
+    enforce_customer_key_terminus,
 )
 from omnimarket.routing.delegation_backend_resolution import (
     ModelResolvedDelegationBackend,
@@ -715,6 +720,26 @@ class LocalDelegationDispatchPort:
         local_retry_counts: dict[str, int] = {}
 
         while True:
+            # OMN-17434: the single point on this bus-less port where a
+            # backend becomes EXECUTABLE — the initial resolution (pinned or
+            # tier-derived), every escalation hop, and every same-tier retry
+            # all pass through here before the effect is handed a credential.
+            # This port never calls ``delta()``, so the OMN-17082 terminus
+            # inside the routing authority does not cover it; the same guard
+            # is applied here, on the CUSTOMER_LOCAL surface: a customer's
+            # uncredentialed local rung is the honest terminus (nothing of
+            # OmniNode's is involved on their own machine), a house-credentialed
+            # backend is a typed refusal, and house/untenanted work is untouched.
+            enforce_customer_key_terminus(
+                tenant_id=resolved_tenant_id,
+                task_type=task_type,
+                correlation_id=correlation_id,
+                surface=EnumDelegationSurface.CUSTOMER_LOCAL,
+                api_key_ref=backend.secret_ref,
+                api_key_env=backend.api_key_env,
+                backend_ref=backend.backend_id,
+                house_refs=shipped_house_credential_refs(),
+            )
             attempt_outcome = await self._run_single_attempt(
                 backend=backend,
                 prompt=prompt,
