@@ -134,6 +134,7 @@ __all__ = [
     "legacy_whole_file_receipts",
     "main",
     "product_pr_from_contract",
+    "repo_from_check_value",
     "run",
 ]
 
@@ -162,7 +163,35 @@ VERIFIER = "github-actions merged-pr diff derivation"
 # therefore taken from the item's own `check_value`, where it appears as a
 # `--repo <owner>/<name>` argument and is unambiguous by construction.
 _PRODUCT_PR_ID_RE = re.compile(r"^dod-.+-pr-(?P<pr>\d+)$")
+
+# Two check_value shapes carry the repo, and BOTH are common in the live corpus.
+# MEASURED on OCC dev over the 3,880 candidate contracts (have receipts, no
+# behavior-proof receipt): 537 name it as `--repo <owner>/<name>`, and a further
+# 277 name it ONLY inside a `gh api repos/<owner>/<name>/contents/...` path.
+# Accepting just the first form refused those 277 as REFUSED_NO_PRODUCT_PR — a
+# fail-closed refusal rather than a wrong mint, but 34% of the resolvable corpus
+# left unreachable for a parsing reason rather than an evidentiary one. Found by
+# the first live CI run of the scheduled workflow, which reported 17 of 25
+# discovered candidates as REFUSED_NO_PRODUCT_PR; two of them were then read by
+# hand and only one was genuinely PR-less.
+#
+# `--repo` is tried FIRST and wins: on a contract carrying both, it is the
+# explicit statement of which repo the PR lives in, whereas an api path may
+# reference some other repo's contents.
 _REPO_ARG_RE = re.compile(r"--repo\s+(?P<repo>[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)")
+_REPO_API_PATH_RE = re.compile(r"\brepos/(?P<repo>[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)/")
+
+
+def repo_from_check_value(check_value: str) -> str | None:
+    """The product repo a check names, from either shape, `--repo` first."""
+    explicit = _REPO_ARG_RE.search(check_value)
+    if explicit is not None:
+        return explicit.group("repo")
+    api_path = _REPO_API_PATH_RE.search(check_value)
+    if api_path is not None:
+        return api_path.group("repo")
+    return None
+
 
 # Conclusions that do not mean "this merge was proven red". `skipped` and
 # `neutral` are how a conditional job reports that it had nothing to do.
@@ -277,13 +306,10 @@ def product_pr_from_contract(contract_data: Any) -> ProductPrRef | None:
             value = check.get("check_value")
             if not isinstance(value, str):
                 continue
-            repo_match = _REPO_ARG_RE.search(value)
-            if repo_match is None:
+            repo = repo_from_check_value(value)
+            if repo is None:
                 continue
-            return ProductPrRef(
-                repo=repo_match.group("repo"),
-                pr_number=int(match.group("pr")),
-            )
+            return ProductPrRef(repo=repo, pr_number=int(match.group("pr")))
     return None
 
 
