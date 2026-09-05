@@ -69,11 +69,10 @@ TERMINAL_CLOSEOUT_PHASES: frozenset[EnumCloseoutPhase] = frozenset(
 
 
 class EnumProofClass(StrEnum):
-    """How a proof-matrix cell is weighted in the recommendation.
+    """Canonical classification used to select the requested proof matrix.
 
-    ``REQUIRED`` cells must pass for a ``CUSTOMER_BETA`` recommendation;
-    ``STRETCH`` cells inform but do not block; ``RESEARCH`` cells are exploratory
-    and never block.
+    A required-only run selects ``REQUIRED`` cells. A full run also selects
+    ``STRETCH`` and ``RESEARCH`` cells; every selected cell must be proven.
     """
 
     REQUIRED = "required"
@@ -237,6 +236,9 @@ class ModelCloseoutReceipt(BaseModel):
     runtime_lane: EnumRuntimeLane = Field(
         ..., description="Lane the closeout ran against."
     )
+    proof_set: EnumProofSet = Field(
+        ..., description="Requested proof scope preserved from the closeout start."
+    )
     final_phase: EnumCloseoutPhase = Field(
         ..., description="Terminal FSM phase (completed | blocked | failed)."
     )
@@ -264,39 +266,42 @@ class ModelCloseoutReceipt(BaseModel):
     )
 
     def recompute_recommendation(self) -> EnumCloseoutRecommendation:
-        """Roll the per-cell verdicts up into a recommendation.
+        """Adjudicate the requested canonical matrix using declared proof evidence.
 
-        - Any REQUIRED cell FAILED, or a REQUIRED cell missing/not-PASS ->
-          ``HOLD`` is too strong only for a hard failure; a partial run caps at
-          ``INTERNAL_INTEGRATION`` (below).
-        - ``HOLD`` when any REQUIRED cell explicitly FAILED.
-        - ``CUSTOMER_BETA`` requires the FULL matrix proven: every canonical
-          matrix cell (``PROOF_MATRIX_CELLS``) has a non-FAIL verdict present and
-          every REQUIRED cell PASSED. A ``required``-only proof set therefore caps
-          at ``INTERNAL_INTEGRATION`` because the stretch / research cells were
-          never proven.
-        - ``INTERNAL_INTEGRATION`` otherwise (required cells green but full matrix
-          not proven).
+        Missing, contradictory or unobserved proof holds. Caller-supplied cell
+        classes cannot weaken the canonical requirements. A successful required
+        run is bounded to internal integration; customer-beta requires a full
+        requested matrix. These recommendations do not establish deployment,
+        artifact or customer identity bindings beyond this receipt's schema.
         """
-        verdict_by_cell = {v.cell: v for v in self.cell_verdicts}
-        required = [
-            v for v in self.cell_verdicts if v.proof_class is EnumProofClass.REQUIRED
-        ]
-        if any(v.verdict is EnumProofVerdict.FAIL for v in required):
+        if self.final_phase is not EnumCloseoutPhase.COMPLETED:
             return EnumCloseoutRecommendation.HOLD
-
-        # Customer-beta needs the whole canonical matrix proven (no FAIL, and
-        # every cell has a verdict present). A required-only run is missing the
-        # stretch/research cells -> caps below.
-        full_matrix_proven = all(
-            (cell := spec.cell) in verdict_by_cell
-            and verdict_by_cell[cell].verdict
-            in (EnumProofVerdict.PASS, EnumProofVerdict.SKIP)
+        canonical = {spec.cell: spec for spec in PROOF_MATRIX_CELLS}
+        observed: set[str] = set()
+        proof_correlations: set[UUID] = set()
+        for cell in self.cell_verdicts:
+            spec = canonical.get(cell.cell)
+            if (
+                spec is None
+                or cell.cell in observed
+                or cell.proof_class is not spec.proof_class
+                or cell.verdict is not EnumProofVerdict.PASS
+                or cell.correlation_id is None
+                or cell.correlation_id in proof_correlations
+                or not (cell.terminal_event and cell.terminal_event.strip())
+                or not (cell.projection_readback and cell.projection_readback.strip())
+            ):
+                return EnumCloseoutRecommendation.HOLD
+            observed.add(cell.cell)
+            proof_correlations.add(cell.correlation_id)
+        expected = {
+            spec.cell
             for spec in PROOF_MATRIX_CELLS
-        )
-        all_required_passed = bool(required) and all(
-            v.verdict is EnumProofVerdict.PASS for v in required
-        )
-        if full_matrix_proven and all_required_passed:
+            if self.proof_set is EnumProofSet.FULL
+            or spec.proof_class is EnumProofClass.REQUIRED
+        }
+        if not observed or not expected.issubset(observed):
+            return EnumCloseoutRecommendation.HOLD
+        if self.proof_set is EnumProofSet.FULL:
             return EnumCloseoutRecommendation.CUSTOMER_BETA
         return EnumCloseoutRecommendation.INTERNAL_INTEGRATION
