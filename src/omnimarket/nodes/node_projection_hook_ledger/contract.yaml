@@ -189,8 +189,40 @@ config:
       # The one attached gateway tenant on the onex-dev cloud plane today.
       # This is the same slug the forwarder's own attached tenant identity
       # carries, which is why the wire topics it produces resolve to it.
+      #
+      # OMN-17201: this was `beta-gateway-canary` and that tenant does not
+      # exist. The row in `omninode_cloud.public.tenants` reads
+      # `beta-gateway-canary-79afa7263852` (tenant_id
+      # 79afa726-3852-464f-b7a4-d4b8b9c75ee7) and every wire topic on
+      # `omninode-dev-msk` carries that full prefix -- read back live
+      # 2026-09-05, nine tenant-prefixed topics, all of them the long form.
+      # The short spelling resolved to four topics that have never existed on
+      # any broker, which is the silent-zero this block's own fail-closed note
+      # warns about: had the topics been provisioned under the short name the
+      # writer would have reported Ready and ingested nothing forever.
+      #
+      # The value is CHECKED, not merely retyped:
+      # tests/unit/nodes/node_projection_hook_ledger/
+      # test_hook_ledger_tenant_slug_omn17201.py resolves every slug declared
+      # here through the repo's record of reviewed tenant identities and
+      # asserts it lands on the tenant UUID whose wire topics were actually
+      # provisioned. Asserting equality with a second copy of the string would
+      # have passed on a wrong value copied twice.
+      #
+      # FOLLOW-UP, deliberately not done here (commented on OMN-17201): derive
+      # this from the tenant registry (`tenant_registry_mirror`, materialized
+      # by node_projection_tenant_registry from onex.tenant.events -- the same
+      # registry the topic provisioner reads a slug from) instead of declaring
+      # it. Two things block a one-PR derivation. The registry holds every
+      # tenant -- 51 on this plane -- and only this one has hook wire topics,
+      # so derivation without a "gateway-attached" predicate would subscribe to
+      # ~200 topics that do not exist and reproduce the crash-loop from the
+      # other side. And the slug is needed by `topics` before the runner holds
+      # a database connection, so a registry lookup is a BaseProjectionRunner
+      # lifecycle change, not a query. Gating an outage fix on either would be
+      # the wrong trade.
       tenant_slugs:
-        - beta-gateway-canary
+        - beta-gateway-canary-79afa7263852
 
 db_io:
   db_tables:

@@ -193,7 +193,7 @@ def _envelope_record(
     *,
     correlation_id: str = "corr-abc123",
     emitted_at: str = "2026-09-05T04:00:00+00:00",
-    tenant_slug: str = "beta-gateway-canary",
+    tenant_slug: str = "beta-gateway-canary-79afa7263852",
     extra_payload: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The shape the cloud bus actually carries: an unwrapped ModelEventEnvelope.
@@ -228,7 +228,13 @@ def _envelope_record(
     }
 
 
-WIRE_TOPIC = "tenant-beta-gateway-canary.onex.evt.omniclaude.prompt-submitted.v1"
+# OMN-17201: the LIVE wire prefix. The short `tenant-beta-gateway-canary.`
+# spelling this file used to carry names no tenant in
+# omninode_cloud.public.tenants, so every topic built from it was one no
+# broker has ever held.
+WIRE_TOPIC = (
+    "tenant-beta-gateway-canary-79afa7263852.onex.evt.omniclaude.prompt-submitted.v1"
+)
 
 
 def _row(**kw: Any) -> dict[str, Any]:
@@ -326,7 +332,7 @@ def test_a_gateway_tenant_tag_that_disagrees_with_the_wire_topic_is_refused() ->
 
 @pytest.mark.unit
 def test_the_wire_topic_tenant_becomes_the_row_tenant() -> None:
-    assert _row()["tenant_id"] == "beta-gateway-canary"
+    assert _row()["tenant_id"] == "beta-gateway-canary-79afa7263852"
 
 
 @pytest.mark.unit
@@ -492,7 +498,7 @@ def test_the_write_sets_the_rls_tenant_guc_or_force_rls_refuses_every_row() -> N
     runner, db, _published = _runner()
     meta = MessageMeta(partition=3, offset=77, fallback_id="f", topic=WIRE_TOPIC)
     asyncio.run(runner.project_event(WIRE_TOPIC, _envelope_record(), meta))
-    assert db.tenants == ["beta-gateway-canary"]
+    assert db.tenants == ["beta-gateway-canary-79afa7263852"]
 
 
 @pytest.mark.unit
@@ -528,7 +534,10 @@ def test_a_topic_outside_the_declared_wire_set_is_never_projected() -> None:
     from omnimarket.projection.runner import MessageMeta
 
     runner, db, _published = _runner()
-    foreign = "tenant-beta-gateway-canary.onex.evt.omniclaude.tool-output-captured.v1"
+    foreign = (
+        "tenant-beta-gateway-canary-79afa7263852"
+        ".onex.evt.omniclaude.tool-output-captured.v1"
+    )
     meta = MessageMeta(partition=0, offset=0, fallback_id="f", topic=foreign)
     ok = asyncio.run(runner.project_event(foreign, _envelope_record(), meta))
     assert ok is False
@@ -600,7 +609,8 @@ def test_handle_refuses_a_topic_outside_the_declared_wire_set() -> None:
     result = runner.handle(
         ModelHookLedgerProjectionRequest(
             wire_topic=(
-                "tenant-beta-gateway-canary.onex.evt.omniclaude.tool-output-captured.v1"
+                "tenant-beta-gateway-canary-79afa7263852"
+                ".onex.evt.omniclaude.tool-output-captured.v1"
             ),
             record=_envelope_record(),
             partition=0,
