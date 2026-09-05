@@ -92,7 +92,9 @@ from omnibase_core.errors.model_onex_error import ModelOnexError
 from pydantic import SecretStr
 
 from omnimarket.cloud.model_cloud_delegation import (
+    ModelCloudDelegationAck,
     ModelCloudDelegationReceipt,
+    ModelCloudDelegationStatus,
 )
 from omnimarket.cloud.store_tenant_api_credential import (
     StoreTenantApiCredential,
@@ -133,6 +135,46 @@ _LOGIN_HINT: Final[str] = (
 def _fail(message: str) -> click.ClickException:
     """Build the one exception shape this module raises for operator errors."""
     return click.ClickException(message)
+
+
+def _assert_binds_to_submission(
+    document: ModelCloudDelegationReceipt | ModelCloudDelegationStatus,
+    *,
+    kind: str,
+    ack: ModelCloudDelegationAck,
+) -> None:
+    """Refuse a gateway answer that is not about the submission just made.
+
+    The run directory is named from the ack; every field written into it comes
+    from the response. Nothing else compares the two, so without this an answer
+    about another workflow is saved under this run's id and its
+    ``terminal_model_used`` is printed as the route that answered this prompt —
+    a relabelled stale answer, indistinguishable on disk from a real one.
+
+    Equality is the correct assertion against a correct server, not a guess:
+    the gateway mints one ``correlation_id`` per submission
+    (``routers/workflows.py`` — ``submission.correlation_id or uuid.uuid4()``),
+    writes it on the ``gateway_workflows`` row, returns it on the 202, and the
+    receipt renderer reads both ids back off that same row. An inequality is
+    therefore always a defect somewhere, never a legitimate shape.
+
+    Raised BEFORE anything is written. A mislabelled receipt on disk outlives
+    the session that could have explained it, and reads later as evidence.
+    """
+    if (
+        document.workflow_id == ack.workflow_id
+        and document.correlation_id == ack.correlation_id
+    ):
+        return
+    raise _fail(
+        f"the gateway answered with a {kind} for a different submission. "
+        f"Submitted workflow {ack.workflow_id} (correlation "
+        f"{ack.correlation_id}); the {kind} names workflow "
+        f"{document.workflow_id} (correlation {document.correlation_id}). "
+        "Nothing was written — a receipt filed under another run's id is not "
+        "evidence about this one. Re-run the delegation, or fetch that other "
+        f"workflow deliberately with 'onex cloud receipt {document.workflow_id}'."
+    )
 
 
 def _store(onex_home: Path | None) -> StoreTenantApiCredential:
@@ -526,6 +568,12 @@ def cloud_delegate(
             receipt = client.receipt(workflow_id, runner_identity=identity)
     except ModelOnexError as exc:
         raise _fail(str(exc)) from exc
+
+    # Both envelopes, before the first byte is written: the status carries the
+    # terminal disposition that lands in run.json, the receipt carries the
+    # route and the hashes.
+    _assert_binds_to_submission(status, kind="terminal status", ack=ack)
+    _assert_binds_to_submission(receipt, kind="receipt", ack=ack)
 
     written = _write_run_files(
         output_dir=output_dir,
