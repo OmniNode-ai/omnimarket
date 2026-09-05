@@ -571,3 +571,92 @@ def test_the_contract_governs_every_field_the_live_hooks_emit() -> None:
         assert (fields | enrichment) <= declared, (
             f"{topic}: undeclared live fields {(fields | enrichment) - declared}"
         )
+
+
+# ---------------------------------------------------------------------------
+# OMN-17969: the secret scrub must see a value that is not a string
+# ---------------------------------------------------------------------------
+#
+# `_matches_secret` early-returned None for any non-str value, so a credential
+# nested in a list or a dict under a `capture_verbatim` field crossed the seam
+# unchanged and was stamped `raw`. The scrub is the ONE control that runs on
+# top of `capture_verbatim`, and the contract says so in terms: "Applied ON TOP
+# of every class, including capture_verbatim." The sibling class matcher in the
+# same module already canonicalises a non-str candidate before matching.
+#
+# The three shapes below are the ones a widened producer (OMN-17206 tool args,
+# OMN-17207 diff bodies) would actually emit: a list, a nested dict, and a dict
+# whose VALUE alone is secret-shaped with no key framing to help.
+
+# Documentation-reserved host (RFC 2606 `.invalid`) and AWS's own published
+# example key id -- neither resolves to anything and neither is a live value.
+NESTED_URL_SECRET = "postgresql://onex:pgpw2026@db.example.invalid:5432/onex"
+NESTED_AWS_KEY_ID = "AKIA" + "IOSFODNN7EXAMPLE"
+
+NESTED_VERBATIM_SHAPES: list[tuple[str, Any]] = [
+    ("list", ["/repo/omnimarket", NESTED_URL_SECRET]),
+    ("nested_dict", {"env": {"DATABASE_URL": NESTED_URL_SECRET}}),
+    ("dict_with_aws_key_shaped_value", {"profile": "default", "id": NESTED_AWS_KEY_ID}),
+]
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("shape", "value"),
+    NESTED_VERBATIM_SHAPES,
+    ids=[shape for shape, _ in NESTED_VERBATIM_SHAPES],
+)
+def test_secret_nested_under_a_verbatim_field_is_scrubbed(
+    shape: str, value: Any
+) -> None:
+    """A container under a `capture_verbatim` field is not exempt from the scrub."""
+    contract = load_contract()
+    assert contract.topics[TOOL_TOPIC].fields["working_directory"] is (
+        EnumCaptureClass.CAPTURE_VERBATIM
+    ), "fixture must ride a verbatim field or it proves nothing"
+
+    out = redact_capture(
+        {"session_id": "s-1", "tool_name": "Grep", "working_directory": value},
+        TOOL_TOPIC,
+    )
+
+    assert str(out["working_directory"]).startswith("sha256:"), (
+        f"{shape}: a nested credential crossed unchanged"
+    )
+    assert out["redaction_state"] == EnumRedactionState.SECRET_DETECTED.value
+    rendered = _rendered(out)
+    for literal in (NESTED_URL_SECRET, NESTED_AWS_KEY_ID, "pgpw2026"):
+        assert literal not in rendered
+
+
+@pytest.mark.unit
+def test_a_match_anywhere_in_a_container_redacts_the_whole_field() -> None:
+    """Fail-closed: one bad leaf does not get to travel with its clean siblings."""
+    out = redact_capture(
+        {
+            "session_id": "s-1",
+            "tool_name": "Grep",
+            "working_directory": {
+                "cwd": "/repo/omnimarket",
+                "branch": "jonah/omn-17969",
+                "leaked": {"deep": [NESTED_URL_SECRET]},
+            },
+        },
+        TOOL_TOPIC,
+    )
+    rendered = _rendered(out)
+    assert str(out["working_directory"]).startswith("sha256:")
+    assert "/repo/omnimarket" not in rendered
+    assert "jonah/omn-17969" not in rendered
+
+
+@pytest.mark.unit
+def test_a_benign_container_under_a_verbatim_field_still_crosses_verbatim() -> None:
+    """Positive control: the widened scrub does not degrade into hash-everything."""
+    benign = {"cwd": "/repo/omnimarket", "parts": ["repo", "omnimarket"], "depth": 2}
+    out = redact_capture(
+        {"session_id": "s-1", "tool_name": "Grep", "working_directory": benign},
+        TOOL_TOPIC,
+    )
+    assert out["working_directory"] == benign
+    assert out["redaction_state"] == EnumRedactionState.RAW.value
