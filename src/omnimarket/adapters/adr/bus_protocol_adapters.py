@@ -474,6 +474,8 @@ def _resolve_event_bus(container: object) -> ProtocolAdrRequestResponseBus:
         container,
         protocol_type=ProtocolEventBusPublisher,
     )
+    if event_bus is None and isinstance(container, dict):
+        event_bus = container.get("event_bus")
     if event_bus is None or not _supports_request_response(event_bus):
         raise TypeError(
             "ADR bus protocol adapters require the runtime-registered "
