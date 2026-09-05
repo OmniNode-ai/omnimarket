@@ -1,0 +1,250 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# occ-behavior-proof-backfill.yml — OMN-17943.
+#
+# THE GAP THIS CLOSES
+# `handler_evidence_autoclose_sweep.py` short-circuits on
+# `if behavior_proving_count <= 0` BEFORE every other conjunct and returns an
+# unconditional gap. That count is a property of the CONTRACT, not of the work:
+# a contract declaring no behavior-class dod_evidence item is pinned at zero
+# forever, however well the merged code is tested.
+#
+# The behavior-proof item (OMN-16434) landed 2026-08-28 and only 297 of 8,615
+# OCC contracts declare it. Measured 2026-09-05 across the two beta sprint
+# projects: of 238 open tickets, 125 carry OCC receipts and only 81 carry a
+# behavior-proof receipt. The other 44 predate the minter — never judged and
+# refused, just born before the judge existed — and nothing goes back for them.
+# OMN-16859 owns the forward half; this is the retroactive half.
+#
+# WHY THIS IS ENFORCEMENT AND NOT A REPORT
+# It applies on its schedule. A dry-run-only sweep of the same corpus is a
+# detector, and a detector that is not wired to act gets read once and ignored.
+# What bounds it is not a human in the loop, it is the REFUSAL SET in
+# scripts/ci/occ_behavior_proof_backfill.py: a testless diff, a legacy
+# whole-file receipt binding, an unmerged PR and an unrecognised contract shape
+# each mint nothing. Every mint is also landed through an ordinary OCC PR, so
+# OCC's own gates (receipt honesty, contract compliance, yamlfmt) adjudicate
+# the bytes before they reach dev. This job cannot write to OCC dev directly.
+#
+# WHY THE BATCH IS BOUNDED (--limit)
+# A governance PR nobody can read is a governance PR nobody checks. Five mints
+# per run keeps each PR reviewable; discovery is newest-first and stable, and
+# an applied batch removes its own tickets from the next run's candidates, so
+# the corpus drains over successive runs rather than in one unreviewable dump.
+#
+# SAFETY
+#   * Never touches the product repos. Reads their PRs through `gh` only.
+#   * Never writes to OCC `dev`. It pushes a branch and opens a PR.
+#   * `continue-on-error: true`, not in required_status_checks, not referenced
+#     by any `needs:`. It is a remediator, not a gate — a failure here must
+#     never block an unrelated merge.
+#   * Credential is the existing least-privilege OnexBot-OCC-Writer App
+#     (org secrets ONEXBOT_OCC_APP_ID / ONEXBOT_OCC_PRIVATE_KEY), scoped to
+#     onex_change_control only, minted per-run. No new secret, no new bot, and
+#     the org-wide CROSS_REPO_PAT is explicitly NOT an acceptable substitute
+#     (OMN-15350 / OMN-14955).
+#
+# Ticket: OMN-17943 (parent OMN-16106).
+
+name: OCC Behavior-Proof Backfill
+
+on:
+  schedule:
+    # 05:20 UTC daily — after the evidence-autoclose sweep's own cadence, so a
+    # backfill lands in time to be read by the next closer run rather than
+    # racing the one already in flight.
+    - cron: "20 5 * * *"
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: "Write the mints and open an OCC PR (false = report only)"
+        type: boolean
+        default: false
+      limit:
+        description: "Maximum mints in this run"
+        default: "5"
+      discover_limit:
+        description: "How many candidates to consider (not to mint)"
+        default: "40"
+
+concurrency:
+  # Two runs would discover the same head of the candidate list and open two
+  # PRs minting the same items. NOT cancel-in-progress: a cancelled run that
+  # already pushed would leave an orphan branch behind.
+  group: occ-behavior-proof-backfill
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    name: backfill diff-derived behavior proofs
+    runs-on: >-
+      ${{
+        fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
+    continue-on-error: true
+    timeout-minutes: 45
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+
+      - name: Mint OCC write token (OnexBot-OCC-Writer App)
+        id: occ-app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: OmniNode-ai
+          repositories: onex_change_control
+
+      - name: Clone onex_change_control dev
+        env:
+          OCC_TOKEN: ${{ steps.occ-app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          # Shallow: this job only ever appends to the tip of a fresh branch.
+          git clone --depth 1 --branch dev \
+            "https://x-access-token:${OCC_TOKEN}@github.com/OmniNode-ai/onex_change_control.git" \
+            "${RUNNER_TEMP}/occ"
+          echo "OCC dev tip: $(git -C "${RUNNER_TEMP}/occ" rev-parse HEAD)"
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4
+        with:
+          version: "latest"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Install dependencies
+        # `--locked`, not `--all-extras`: the extras pull adaptive-classifier ->
+        # torch/CUDA (~2GB) and blow the timeout. This script needs yaml, the
+        # core receipt-gate helpers and the omnimarket producer module, all of
+        # which the base env carries.
+        run: |
+          set -euo pipefail
+          attempt=1
+          until uv sync --locked; do
+            if [ "$attempt" -ge 3 ]; then
+              echo "::error::uv sync --locked failed after 3 attempts"
+              exit 1
+            fi
+            sleep $((attempt == 1 ? 15 : 30))
+            attempt=$((attempt + 1))
+          done
+
+      - name: Backfill
+        id: backfill
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # The scheduled run applies; a manual dispatch reports unless asked.
+          APPLY: >-
+            ${{ github.event_name == 'schedule'
+                || inputs.apply == true }}
+          LIMIT: ${{ inputs.limit || '5' }}
+          DISCOVER_LIMIT: ${{ inputs.discover_limit || '40' }}
+        run: |
+          set -euo pipefail
+          apply_flag=""
+          if [ "$APPLY" = "true" ]; then apply_flag="--apply"; fi
+          # stderr is NOT redirected. A sweep whose errors are discarded returns
+          # zero rows and reads exactly like a clean result.
+          uv run python scripts/ci/occ_behavior_proof_backfill.py \
+            --occ-root "${RUNNER_TEMP}/occ" \
+            --discover \
+            --discover-limit "$DISCOVER_LIMIT" \
+            --limit "$LIMIT" \
+            --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --json-out "${RUNNER_TEMP}/backfill_summary.json" \
+            $apply_flag
+
+      - name: Summarise
+        if: always()
+        run: |
+          set -euo pipefail
+          summary="${RUNNER_TEMP}/backfill_summary.json"
+          if [ ! -f "$summary" ]; then
+            echo "::warning::no summary written — the backfill did not complete."
+            exit 0
+          fi
+          {
+            echo "### OCC behavior-proof backfill"
+            echo
+            echo '```json'
+            jq '{dry_run, tickets_scanned, written, would_write, counts}' "$summary"
+            echo '```'
+            echo
+            echo "| ticket | decision | status | product PR |"
+            echo "| --- | --- | --- | --- |"
+            jq -r '.outcomes[] | "| \(.ticket_id) | \(.decision) | \(.receipt_status // "-") | \(.repo)#\(.pr_number) |"' "$summary"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Open the OCC PR
+        id: pr
+        env:
+          GH_TOKEN: ${{ steps.occ-app-token.outputs.token }}
+          OCC_TOKEN: ${{ steps.occ-app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          cd "${RUNNER_TEMP}/occ"
+
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "::notice::Nothing minted — every candidate was already declared or refused."
+            exit 0
+          fi
+
+          # The backfill APPENDS an item to a contract and ADDS a receipt. It
+          # must never delete or rename anything, and it must never touch a
+          # receipt that already exists: an edited receipt is rewritten
+          # evidence, which is the failure this whole mechanism exists to avoid.
+          if git status --porcelain | grep -qE '^( D|D |R |RM)'; then
+            echo "::error::Refusing to push: the tree carries a DELETED or RENAMED file."
+            git status --porcelain
+            exit 1
+          fi
+          if git status --porcelain -- drift/ | grep -qE '^( M|M |MM)'; then
+            echo "::error::Refusing to push: an existing receipt under drift/ was MODIFIED. OCC evidence is append-only."
+            git status --porcelain -- drift/
+            exit 1
+          fi
+
+          branch="auto/behavior-proof-backfill-${GITHUB_RUN_ID}"
+          git config user.name "onexbot-occ-writer[bot]"
+          git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
+          git checkout -b "$branch"
+          git add -A
+          # Separate -m flags, not one embedded multi-line string: a
+          # continuation line at column 0 would terminate this YAML block scalar
+          # and make the whole workflow unparseable.
+          git commit \
+            -m "evidence(OMN-17943): backfill diff-derived behavior proofs onto contracts that predate the minter" \
+            -m "Each item is rendered by the FORWARD producer's own render_behavior_proof_dod_evidence_item over targets derived from the product PR's merged diff, so a backfilled item and a newly-minted one cannot disagree. Receipt status is derived from a live readback of the PR's own CI at its head sha; anything short of green is PENDING, which is non-PASS. A testless diff, a legacy whole-file receipt binding and an unmerged PR each mint nothing." \
+            -m "Ticket: OMN-17943"
+
+          git push "https://x-access-token:${OCC_TOKEN}@github.com/OmniNode-ai/onex_change_control.git" \
+            "HEAD:${branch}"
+
+          # The body cites the ticket for the Receipt Gate and carries the run's
+          # own decision table, so a reviewer reads what was refused as well as
+          # what was minted.
+          {
+            echo "Backfills the diff-derived behavior-proof dod_evidence item onto OCC contracts that predate the OMN-16434 minter, so the evidence closer's behavior_proving_count is no longer pinned at 0 by construction."
+            echo
+            echo "Produced by \`occ-behavior-proof-backfill\` run ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}."
+            echo
+            echo "| ticket | decision | status | product PR |"
+            echo "| --- | --- | --- | --- |"
+            jq -r '.outcomes[] | "| \(.ticket_id) | \(.decision) | \(.receipt_status // "-") | \(.repo)#\(.pr_number) |"' "${RUNNER_TEMP}/backfill_summary.json"
+            echo
+            echo "Ticket: OMN-17943"
+          } > "${RUNNER_TEMP}/pr_body.md"
+
+          gh pr create --repo OmniNode-ai/onex_change_control \
+            --base dev --head "$branch" \
+            --title "evidence(OMN-17943): backfill diff-derived behavior proofs onto pre-minter contracts" \
+            --body-file "${RUNNER_TEMP}/pr_body.md"
