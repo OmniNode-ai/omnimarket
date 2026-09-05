@@ -33,6 +33,7 @@ import pytest
 import yaml
 
 from omnimarket.nodes.node_event_emit_effect.enrichment import (
+    TOPIC_SCOPED_TRANSFORM_REGISTRY,
     UNCONDITIONAL_ENRICHMENT_FIELDS,
     apply_transform,
     default_clock,
@@ -426,9 +427,19 @@ def test_fan_out_topics_carry_different_payloads(tmp_path: Path) -> None:
     assert isinstance(evt, dict)
 
     assert cmd["prompt"] == "hello world"  # untransformed rule
-    assert "prompt" not in evt  # strip_prompt dropped it
+    assert "prompt" not in evt  # dropped: never_capture
+    # OMN-17209 replaced strip_prompt here with the contract-resolved
+    # redact_capture. The two properties this test exists for are unchanged --
+    # the two fan-out topics of one event carry DIFFERENT payloads, and the
+    # prompt does not reach the observability topic. Two things did change,
+    # both declared in contracts/capture_redaction.yaml: prompt_preview is now
+    # reduced to its shape rather than truncated to 100 chars (OMN-16019 named
+    # the preview as the residual disclosure surface), and prompt_length is
+    # still derived from the dropped prompt, now via a declared derivation
+    # rather than a hardcoded branch inside the transform.
     assert evt["prompt_length"] == len("hello world")
-    assert evt["prompt_preview"] == "hello"
+    assert evt["prompt_preview"] == {"type": "str", "length": len("hello")}
+    assert evt["redaction_state"] == "redacted"
 
 
 def test_strip_body_transform_matches_daemon() -> None:
@@ -449,7 +460,17 @@ def test_unknown_transform_refuses_rather_than_falling_back() -> None:
 
 
 def test_transform_registry_covers_every_declared_registry_transform() -> None:
-    """No registry fan-out rule may name a transform this node cannot apply."""
+    """No registry fan-out rule may name a transform this node cannot apply.
+
+    OMN-17209 split the resolvable set in two. ``TRANSFORM_REGISTRY`` holds the
+    field-level rewrites, whose posture is correct for any topic declaring
+    them; ``TOPIC_SCOPED_TRANSFORM_REGISTRY`` holds ``redact_capture``, which
+    resolves a per-topic policy and is meaningless without a topic. A rule may
+    name a transform from EITHER, so the applicable set is their union --
+    asserting against ``TRANSFORM_REGISTRY`` alone would fail on a name this
+    node applies correctly. The property under test is unchanged: every
+    declared name must resolve to something this node can actually run.
+    """
     from omnimarket.nodes.node_event_emit_effect.enrichment import TRANSFORM_REGISTRY
 
     registry = yaml.safe_load(default_registry_path().read_text(encoding="utf-8"))
@@ -459,12 +480,18 @@ def test_transform_registry_covers_every_declared_registry_transform() -> None:
         for rule in (event_def.get("fan_out") or [])
         if rule.get("transform") is not None
     }
-    assert declared <= set(TRANSFORM_REGISTRY)
+    applicable = set(TRANSFORM_REGISTRY) | set(TOPIC_SCOPED_TRANSFORM_REGISTRY)
+    assert declared <= applicable
+    # The two registries are disjoint: a name in both would make the
+    # dispatch order in ``apply_transform`` load-bearing and silent.
+    assert not (set(TRANSFORM_REGISTRY) & set(TOPIC_SCOPED_TRANSFORM_REGISTRY))
 
 
 def test_resolved_topics_carry_their_transform_name() -> None:
     topics = {t.topic: t.transform_name for t in resolve_event_type("prompt.submitted")}
-    assert topics["onex.evt.omniclaude.prompt-submitted.v1"] == "strip_prompt"
+    # OMN-17209: strip_prompt on this rule was superseded by the
+    # contract-resolved redact_capture (contracts/capture_redaction.yaml).
+    assert topics["onex.evt.omniclaude.prompt-submitted.v1"] == "redact_capture"
 
 
 # ---------------------------------------------------------------------------

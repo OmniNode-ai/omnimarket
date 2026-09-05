@@ -486,7 +486,9 @@ class HandlerEventEmitEffect:
         )
         messages: list[tuple[str, JsonType, str | None]] = []
         for target in targets:
-            transformed = apply_transform(target.transform_name, enriched)
+            transformed = apply_transform(
+                target.transform_name, enriched, topic=target.topic
+            )
             key = (
                 request.partition_key
                 if request.partition_key is not None

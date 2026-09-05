@@ -34,6 +34,7 @@ import pytest
 import yaml
 
 from omnimarket.nodes.node_event_emit_effect.enrichment import (
+    TOPIC_SCOPED_TRANSFORM_REGISTRY,
     TRANSFORM_REGISTRY,
     apply_transform,
 )
@@ -168,7 +169,13 @@ def test_every_transform_declared_in_the_registry_resolves() -> None:
             name = rule.get("transform")
             if name is None:
                 continue
-            assert name in TRANSFORM_REGISTRY, (
+            # OMN-17209 added TOPIC_SCOPED_TRANSFORM_REGISTRY: transforms whose
+            # posture is resolved from the target topic. A name in either
+            # registry resolves; a name in neither refuses at publish time,
+            # which is what this gate exists to catch at commit time.
+            assert (
+                name in TRANSFORM_REGISTRY or name in TOPIC_SCOPED_TRANSFORM_REGISTRY
+            ), (
                 f"{event_type} -> {rule['topic']} declares transform {name!r}, "
                 "which has no implementation; it would refuse at publish time."
             )
@@ -325,12 +332,15 @@ def test_the_one_production_override_caller_still_resolves() -> None:
 def test_resolve_override_transform_prefers_the_topics_own_declaration() -> None:
     """Topic-declared posture beats the event's, because the topic is what is
     actually being written to."""
+    # OMN-17209 replaced strip_prompt on this rule with the contract-resolved
+    # redact_capture. What this test asserts is unchanged: the TOPIC's own
+    # declaration wins over the event's other fan-out rule.
     assert (
         resolve_override_transform(
             "onex.evt.omniclaude.prompt-submitted.v1",
             "prompt.submitted",
         )
-        == "strip_prompt"
+        == "redact_capture"
     )
     # Same event, its other fan-out topic, which declares no transform.
     assert (

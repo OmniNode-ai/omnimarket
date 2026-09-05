@@ -18,7 +18,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
+from functools import partial
 from pathlib import Path
+from typing import Protocol
 
 import yaml
 from pydantic import BaseModel
@@ -29,6 +31,7 @@ from omnimarket.nodes.node_emit_daemon.models.model_daemon_health_event import (
 from omnimarket.nodes.node_emit_daemon.models.model_durability import (
     EnumDurabilityTier,
 )
+from omnimarket.nodes.node_event_emit_effect.redaction import redact_capture
 
 logger = logging.getLogger(__name__)
 
@@ -90,6 +93,31 @@ TRANSFORM_REGISTRY: dict[str, PayloadTransform] = {
     "passthrough": transform_passthrough,
     "strip_prompt": transform_strip_prompt,
     "strip_body": transform_strip_body,
+}
+
+
+class TopicScopedTransform(Protocol):
+    """A transform whose posture is resolved from the TARGET topic.
+
+    Declared as a Protocol rather than a bare ``Callable[[JsonDict, str], ...]``
+    because the binding below supplies ``topic`` as a KEYWORD argument, and a
+    bare ``Callable`` types its parameters as positional-only -- ``mypy
+    --strict`` rejects the keyword against it (`call-arg`). Naming the
+    parameter here is what makes ``partial(fn, topic=...)`` type-check, and it
+    also pins the parameter NAME as part of the contract: a future transform
+    that called its second parameter something else would be a type error
+    rather than a runtime ``TypeError`` at daemon start.
+    """
+
+    def __call__(self, payload: dict[str, object], topic: str) -> dict[str, object]: ...
+
+
+#: OMN-17209: transforms bound to their fan-out rule's TOPIC at parse time.
+#: Their capture policy lives in
+#: ``node_event_emit_effect/contracts/capture_redaction.yaml`` and is resolved
+#: per topic, so there is no single callable to put in TRANSFORM_REGISTRY.
+TOPIC_SCOPED_TRANSFORM_REGISTRY: dict[str, TopicScopedTransform] = {
+    "redact_capture": redact_capture,
 }
 
 PAYLOAD_MODEL_REGISTRY: dict[str, PayloadModel] = {
@@ -199,17 +227,37 @@ class EventRegistry:
 
             fan_out_rules: list[FanOutRule] = []
             for rule_def in event_def.get("fan_out", []):
+                topic = rule_def["topic"]
                 transform_name = rule_def.get("transform")
                 transform_fn: PayloadTransform | None = None
                 if transform_name and transform_name != "passthrough":
-                    transform_fn = TRANSFORM_REGISTRY.get(transform_name)
-                    if transform_fn is None:
-                        logger.warning(
-                            f"Unknown transform '{transform_name}' for "
-                            f"{event_type}, using passthrough"
+                    # OMN-17209: a topic-scoped transform resolves its capture
+                    # policy from the TARGET topic, so it is bound to this
+                    # rule's own topic here. Binding at parse time is what lets
+                    # the daemon keep the single-argument PayloadTransform
+                    # signature that FanOutRule.apply_transform and every
+                    # existing caller depend on.
+                    #
+                    # This module imports node_event_emit_effect, never the
+                    # reverse: the node forbids importing this package because
+                    # R5 (OMN-15974) deletes it, and deleting it removes this
+                    # import with it. Both registries resolve the SAME callable
+                    # so the OMN-16048 62/62 byte-parity bar stays green -- a
+                    # node-only redaction layer would read as a parity break
+                    # rather than as a control.
+                    if transform_name in TOPIC_SCOPED_TRANSFORM_REGISTRY:
+                        transform_fn = partial(
+                            TOPIC_SCOPED_TRANSFORM_REGISTRY[transform_name],
+                            topic=topic,
                         )
+                    else:
+                        transform_fn = TRANSFORM_REGISTRY.get(transform_name)
+                        if transform_fn is None:
+                            logger.warning(
+                                f"Unknown transform '{transform_name}' for "
+                                f"{event_type}, using passthrough"
+                            )
 
-                topic = rule_def["topic"]
                 # Tier is a required, contract-driven per-topic property. Fail
                 # fast on any fan-out rule that does not declare a valid tier.
                 if "tier" not in rule_def:
@@ -338,12 +386,14 @@ class EventRegistry:
 __all__: list[str] = [
     "EVENT_PAYLOAD_MODEL_REGISTRY",
     "PAYLOAD_MODEL_REGISTRY",
+    "TOPIC_SCOPED_TRANSFORM_REGISTRY",
     "TRANSFORM_REGISTRY",
     "EventRegistration",
     "EventRegistry",
     "FanOutRule",
     "PayloadModel",
     "PayloadTransform",
+    "TopicScopedTransform",
     "transform_passthrough",
     "transform_strip_body",
     "transform_strip_prompt",

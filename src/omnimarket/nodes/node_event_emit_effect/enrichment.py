@@ -50,7 +50,11 @@ from collections.abc import Callable, Mapping
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from omnimarket.nodes.node_event_emit_effect.errors import UnknownTransformError
+from omnimarket.nodes.node_event_emit_effect.errors import (
+    TopicScopedTransformError,
+    UnknownTransformError,
+)
+from omnimarket.nodes.node_event_emit_effect.redaction import redact_capture
 
 JsonDict = dict[str, object]
 
@@ -207,8 +211,22 @@ TRANSFORM_REGISTRY: dict[str, Callable[[JsonDict], JsonDict]] = {
     "strip_body": transform_strip_body,
 }
 
+#: Transforms whose posture is resolved from the TARGET TOPIC, not from the
+#: payload alone (OMN-17209). Kept in a separate registry rather than widening
+#: every transform's signature: the three above are field-level rewrites that
+#: are correct for any topic declaring them, while ``redact_capture`` reads a
+#: per-topic field allowlist out of ``contracts/capture_redaction.yaml`` and
+#: has no meaning without one. Separating them also leaves the daemon-side
+#: ``PayloadTransform`` signature -- and every existing caller of these three
+#: -- byte-unchanged, which is what keeps the OMN-16048 62/62 parity bar green.
+TOPIC_SCOPED_TRANSFORM_REGISTRY: dict[str, Callable[[JsonDict, str], JsonDict]] = {
+    "redact_capture": redact_capture,
+}
 
-def apply_transform(transform_name: str | None, payload: JsonDict) -> JsonDict:
+
+def apply_transform(
+    transform_name: str | None, payload: JsonDict, *, topic: str | None = None
+) -> JsonDict:
     """Apply the named registry transform, refusing an unresolvable name.
 
     ``None`` and ``passthrough`` resolve to a shallow copy. ``None`` is the
@@ -225,14 +243,30 @@ def apply_transform(transform_name: str | None, payload: JsonDict) -> JsonDict:
     ``fan_out[].transform`` in ``topics.yaml`` resolves, so this branch can
     only fire on a name that was never publishable in the first place.
 
+    ``topic`` is required only for a name in
+    ``TOPIC_SCOPED_TRANSFORM_REGISTRY`` (OMN-17209): those resolve a per-topic
+    capture policy and have no topic-independent posture to fall back on. The
+    three field-level transforms ignore it, so every existing caller keeps
+    working unchanged.
+
     Raises:
         UnknownTransformError: ``transform_name`` has no implementation.
+        TopicScopedTransformError: a topic-scoped name was called with no
+            ``topic``.
     """
     if transform_name is None:
         return dict(payload)
+    topic_scoped = TOPIC_SCOPED_TRANSFORM_REGISTRY.get(transform_name)
+    if topic_scoped is not None:
+        if topic is None:
+            raise TopicScopedTransformError(transform_name=transform_name)
+        return topic_scoped(payload, topic)
     transform = TRANSFORM_REGISTRY.get(transform_name)
     if transform is None:
-        raise UnknownTransformError(transform_name, tuple(TRANSFORM_REGISTRY))
+        raise UnknownTransformError(
+            transform_name,
+            tuple(TRANSFORM_REGISTRY) + tuple(TOPIC_SCOPED_TRANSFORM_REGISTRY),
+        )
     if transform is transform_passthrough:
         return dict(payload)
     return transform(payload)
@@ -269,6 +303,7 @@ __all__: list[str] = [
     "ENRICHMENT_FIELDS",
     "SCHEMA_VERSION",
     "SESSION_ID_ENV_VAR",
+    "TOPIC_SCOPED_TRANSFORM_REGISTRY",
     "TRANSFORM_REGISTRY",
     "UNCONDITIONAL_ENRICHMENT_FIELDS",
     "JsonDict",

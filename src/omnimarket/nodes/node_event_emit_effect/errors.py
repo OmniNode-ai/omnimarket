@@ -145,10 +145,77 @@ class NonMappingPayloadError(EmitRedactionError):
         )
 
 
+class MalformedRedactionContractError(EmitRedactionError):
+    """The capture redaction contract cannot be resolved (OMN-17209).
+
+    A missing key, an unknown capture class, a pattern that does not compile,
+    an output class with no stated reason, or a governed topic with an empty
+    field policy. All of them mean the same thing: nobody can say what this
+    publish is allowed to carry, so it does not happen.
+
+    Deliberately NOT recoverable by falling back to "hash everything". A
+    record hashed by accident is indistinguishable on the wire from one hashed
+    by a reviewed decision, and the difference is the whole control.
+    """
+
+    def __init__(self, *, source: str, detail: str) -> None:
+        self.source = source
+        self.detail = detail
+        super().__init__(
+            f"Capture redaction contract at {source} is unusable: {detail}. "
+            "Refusing to publish -- the contract is the redaction posture, so "
+            "an unresolvable contract is an unknown posture, not a default one."
+        )
+
+
+class UngovernedTopicError(EmitRedactionError):
+    """A fan-out rule names ``redact_capture`` for a topic the contract omits.
+
+    The permissive reading -- apply the fail-closed default to every field --
+    would publish a record that LOOKS redacted while no one has reviewed what
+    it carries, and would silently hash the partition key. Refuse instead, and
+    make the author add the topic to ``contracts/capture_redaction.yaml``.
+    """
+
+    def __init__(
+        self, *, topic: str, governed: tuple[str, ...], contract_path: str
+    ) -> None:
+        self.topic = topic
+        self.governed = governed
+        self.contract_path = contract_path
+        super().__init__(
+            f"Topic {topic!r} names the redact_capture transform but is not "
+            f"governed by {contract_path} (governed: {', '.join(governed)}). "
+            "Refusing to publish -- declare the topic's per-field capture "
+            "classes in the contract rather than relying on the default."
+        )
+
+
+class TopicScopedTransformError(EmitRedactionError):
+    """A topic-scoped transform was invoked with no target topic (OMN-17209).
+
+    ``redact_capture`` resolves its policy from the TOPIC it is publishing to,
+    because the contract is declared per topic. A caller that reaches
+    ``apply_transform`` without one has lost the fan-out target somewhere
+    upstream; guessing a topic would pick a policy at random.
+    """
+
+    def __init__(self, *, transform_name: str) -> None:
+        self.transform_name = transform_name
+        super().__init__(
+            f"Transform {transform_name!r} is topic-scoped and was called with "
+            "topic=None. Refusing to publish -- its capture policy is resolved "
+            "per topic, so there is no topic-independent posture to fall back on."
+        )
+
+
 __all__: list[str] = [
     "AmbiguousTransformError",
     "EmitRedactionError",
+    "MalformedRedactionContractError",
     "NonMappingPayloadError",
+    "TopicScopedTransformError",
+    "UngovernedTopicError",
     "UnknownTransformError",
     "UnresolvableTransformError",
 ]
