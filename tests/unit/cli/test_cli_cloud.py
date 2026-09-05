@@ -155,6 +155,10 @@ class _FakeTransport:
         self, workflow_id: str, *, runner_identity: str
     ) -> ModelCloudDelegationReceipt:
         self.runner_identity = runner_identity
+        # Recorded because the workflow id is interpolated into the gateway URL
+        # path by the real transport; the value that arrives here IS the path
+        # segment, so normalisation has to be asserted on it, not inferred.
+        self.receipt_workflow_id = workflow_id
         return self._receipt
 
 
@@ -529,3 +533,179 @@ def test_delegate_offers_only_the_gateway_declared_task_types() -> None:
     assert "summarization" in choices
     assert "code_generation" in choices
     assert "chat" not in choices
+
+
+# ---------------------------------------------------------------------------
+# malformed invocation (OMN-17937) — every wrong invocation names its own fault
+#
+# Two separate properties live here, and they fail for different reasons.
+#
+# The workflow id is the sharp one. All three models in
+# ``omnimarket.cloud.model_cloud_delegation`` type it ``uuid.UUID``; the CLI was
+# the only surface that widened it back to ``str``, and that string reached two
+# sinks unvalidated — the gateway URL path (f-string interpolated in
+# ``TransportCloudDelegation.receipt``) and the local output path
+# (``output_dir / workflow_id``, then ``mkdir(parents=True)`` and a write). So
+# these assert ORDER and CONTAINMENT, not just an exit code: the refusal has to
+# land before credential resolution, before the network, and before any
+# directory is created.
+#
+# The rest are a ratchet over behaviour click already gets right. That is the
+# point: nothing asserted it, so a later catch-all subcommand, a widened
+# ``Choice`` or a dropped ``IntRange`` would degrade a customer-facing error
+# message silently. Gate row 12 / R-DELEG-25.
+# ---------------------------------------------------------------------------
+
+
+def _assert_named_failure(result: Any) -> str:
+    """Every operator error exits non-zero, is named, and shows no traceback."""
+    assert result.exit_code != 0
+    text = result.stderr or result.output
+    assert "Error:" in text, text
+    assert "Traceback" not in text, text
+    # click raises SystemExit for a usage error and ClickException is caught by
+    # the runner; any OTHER exception type reaching here is an unhandled crash.
+    assert result.exception is None or isinstance(result.exception, SystemExit), (
+        result.exception
+    )
+    return text
+
+
+def test_receipt_refuses_a_non_uuid_workflow_id_before_resolving_a_credential(
+    tmp_path: Path,
+) -> None:
+    """The id is a URL path segment, so it is validated first — not after auth.
+
+    Proven by the message: an empty ``--onex-home`` would otherwise produce the
+    'no credential configured' refusal, and that refusal arriving instead of a
+    named argument error is exactly the ordering defect.
+    """
+    factory, made = _factory()
+    output_dir = tmp_path / "runs"
+
+    result = CliRunner().invoke(
+        cloud_group,
+        [
+            "receipt",
+            "not-a-uuid",
+            "--output-dir",
+            str(output_dir),
+            "--onex-home",
+            str(tmp_path / "empty"),
+        ],
+        obj={"transport_factory": factory},
+    )
+
+    text = _assert_named_failure(result)
+    assert "WORKFLOW_ID" in text, text
+    assert "UUID" in text, text
+    assert "onex cloud login" not in text, text
+    assert made == []
+    assert not output_dir.exists()
+
+
+def test_receipt_refuses_a_traversing_workflow_id_and_writes_nothing_outside(
+    tmp_path: Path,
+) -> None:
+    """``output_dir / workflow_id`` is a real traversal sink, so prove containment.
+
+    A credential IS configured and the transport IS faked here, deliberately:
+    with the id unvalidated the command runs to completion and writes its
+    receipt outside the directory the operator named.
+    """
+    home = _logged_in(tmp_path)
+    factory, _made = _factory()
+    output_dir = tmp_path / "sandbox" / "runs"
+    escaped = tmp_path / "sandbox" / "escaped"
+
+    result = CliRunner().invoke(
+        cloud_group,
+        [
+            "receipt",
+            "../escaped",
+            "--output-dir",
+            str(output_dir),
+            "--onex-home",
+            str(home),
+        ],
+        obj={"transport_factory": factory},
+    )
+
+    _assert_named_failure(result)
+    assert not escaped.exists(), f"wrote outside --output-dir: {escaped}"
+
+
+def test_receipt_normalises_a_non_canonical_workflow_id_on_both_sinks(
+    tmp_path: Path,
+) -> None:
+    """A legal but non-canonical spelling must not vary the URL or the path.
+
+    ``uuid.UUID`` accepts braced and upper-case forms; both denote the same
+    workflow, so both have to reach the gateway and the disk in the one
+    canonical hyphenated lower-case spelling.
+    """
+    home = _logged_in(tmp_path)
+    factory, made = _factory()
+    output_dir = tmp_path / "runs"
+
+    result = CliRunner().invoke(
+        cloud_group,
+        [
+            "receipt",
+            "{" + _WORKFLOW_ID.upper() + "}",
+            "--output-dir",
+            str(output_dir),
+            "--onex-home",
+            str(home),
+        ],
+        obj={"transport_factory": factory},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert made[0].receipt_workflow_id == _WORKFLOW_ID
+    assert (output_dir / _WORKFLOW_ID / "receipt.json").is_file()
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [
+        pytest.param(
+            ["frobnicate"],
+            "No such command",
+            id="unknown_subcommand",
+        ),
+        pytest.param(
+            ["delegate", "p", "--task-type", "chat"],
+            "is not one of",
+            id="task_type_outside_the_gateway_taxonomy",
+        ),
+        pytest.param(
+            ["delegate", "p", "--task-type", "summarization", "--max-tokens", "0"],
+            "is not in the range",
+            id="max_tokens_below_the_declared_floor",
+        ),
+        pytest.param(
+            ["delegate", "p", "--task-type", "summarization", "--max-tokens", "abc"],
+            "is not a valid integer range",
+            id="max_tokens_not_an_integer",
+        ),
+        pytest.param(
+            ["delegate", "p", "--task-type", "summarization", "--bogus", "1"],
+            "No such option",
+            id="unknown_option",
+        ),
+        pytest.param(
+            ["delegate", "p"],
+            "Missing option",
+            id="required_task_type_omitted",
+        ),
+    ],
+)
+def test_a_malformed_invocation_fails_with_a_named_error(
+    argv: list[str], expected: str
+) -> None:
+    """Never a traceback and never a silent success — each fault names itself."""
+    result = CliRunner().invoke(cloud_group, argv, obj={})
+
+    text = _assert_named_failure(result)
+    assert expected in text, text

@@ -83,6 +83,7 @@ from __future__ import annotations
 import json
 import socket
 import sys
+import uuid
 from pathlib import Path
 from typing import Any, Final
 
@@ -572,7 +573,7 @@ def cloud_delegate(
 
 
 @cloud_group.command("receipt")
-@click.argument("workflow_id")
+@click.argument("workflow_id", type=click.UUID)
 @click.option(
     "--output-dir",
     "output_dir",
@@ -613,7 +614,7 @@ def cloud_delegate(
 @click.pass_context
 def cloud_receipt(
     ctx: click.Context,
-    workflow_id: str,
+    workflow_id: uuid.UUID,
     output_dir: Path,
     base_url: str | None,
     api_key_file: Path | None,
@@ -629,7 +630,26 @@ def cloud_receipt(
 
     Writes ``receipt.json`` (and ``result.txt`` when the run produced content)
     under ``<output-dir>/<workflow_id>/`` and prints the generated output.
+
+    WHY THE ARGUMENT IS TYPED ``click.UUID`` AND NOT LEFT A STRING
+        This id is not just looked up — it is interpolated into the gateway URL
+        path by ``TransportCloudDelegation.receipt`` and joined onto the
+        operator's ``--output-dir`` here, where the result is ``mkdir``'d and
+        written to. An unvalidated string is therefore URL path structure and a
+        filesystem path at once, and ``../`` in it escapes the directory the
+        operator named. Typing it closes both, in the one place both start.
+
+        It also makes the CLI agree with the contract: all three models in
+        ``omnimarket.cloud.model_cloud_delegation`` already type this field
+        ``uuid.UUID``, so the string form was the CLI widening its own models.
+
+        Normalising through ``str(uuid.UUID)`` is the half that matters as much
+        as rejecting: a braced or upper-case spelling is legal and denotes the
+        same workflow, so it must reach the gateway and the disk in the single
+        canonical hyphenated lower-case form rather than minting a second
+        directory for the same run.
     """
+    canonical_workflow_id = str(workflow_id)
     resolved_base_url, api_key = _resolve_credential(
         onex_home=onex_home, base_url=base_url, api_key_file=api_key_file
     )
@@ -638,11 +658,11 @@ def cloud_receipt(
 
     try:
         with transport_factory(base_url=resolved_base_url, api_key=api_key) as client:
-            receipt = client.receipt(workflow_id, runner_identity=identity)
+            receipt = client.receipt(canonical_workflow_id, runner_identity=identity)
     except ModelOnexError as exc:
         raise _fail(str(exc)) from exc
 
-    run_dir = output_dir / workflow_id
+    run_dir = output_dir / canonical_workflow_id
     run_dir.mkdir(parents=True, exist_ok=True)
     receipt_path = run_dir / "receipt.json"
     receipt_path.write_text(
