@@ -47,11 +47,22 @@ from typing import Literal, Protocol, cast
 
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 from omnibase_spi.protocols.services import ProtocolSecretStore
-from pydantic import BaseModel, ConfigDict, Field, SecretStr, ValidationError
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    ValidationError,
+    field_validator,
+)
 
 from omnimarket.events.topics import (
     CREDENTIAL_REGISTERED_TOPIC_V1,
     CREDENTIAL_REVOKED_TOPIC_V1,
+)
+from omnimarket.routing.byok_provider_backends import (
+    ByokCatalogError,
+    customer_provider_catalogue,
 )
 
 _SOURCE_TOOL = "omnimarket-tenant-credential-intake"
@@ -127,6 +138,23 @@ class CredentialStoreWriteRejectedError(CredentialStoreError):
     """
 
 
+class ProviderCatalogueUnavailableError(RuntimeError):
+    """The customer provider catalogue could not be read, so intake cannot judge.
+
+    Deliberately NOT a ``ValueError``. ``ByokCatalogError`` is one, and pydantic
+    converts a ``ValueError`` raised inside a validator into a
+    ``ValidationError`` -- which the onex-api route surfaces to the caller as a
+    422 "your provider is invalid". A catalogue we cannot load is OUR fault, not
+    the customer's, and reporting it as bad input both blames the wrong party
+    and hides the real failure. Raised as a ``RuntimeError`` instead so it
+    escapes validation untouched and reaches the route's generic handler, which
+    maps it to a 503.
+
+    Fail-CLOSED: intake refuses while the catalogue is unreadable rather than
+    admitting a provider it cannot check.
+    """
+
+
 class ModelInferenceCredentialCreateRequest(BaseModel):
     """Typed body of ``POST /v1/tenants/me/inference-credentials``."""
 
@@ -156,6 +184,51 @@ class ModelInferenceCredentialCreateRequest(BaseModel):
             "set_secret(); never logged, never re-serialized, never returned."
         ),
     )
+
+    @field_validator("provider", mode="after")
+    @classmethod
+    def _provider_must_be_on_the_customer_catalogue(cls, provider: str) -> str:
+        """Refuse a provider that is not on the customer-facing catalogue.
+
+        ``mode="after"`` so the field's own ``pattern`` runs FIRST: the charset
+        constraint is what keeps ``provider`` safe to interpolate into
+        ``api_key_ref`` (an Infisical path segment and a Kafka message key), and
+        a path-traversing value must be refused on those grounds before it is
+        ever compared against the catalogue.
+
+        ``customer_provider_catalogue()`` (OMN-17353) is the single authority
+        for this set, and its own docstring already declared that intake
+        surfaces validate against it -- this is that contract, wired. Placing it
+        on the MODEL rather than in the onex-api route handler is deliberate:
+        the model is what onex-api imports, so the route, this package's tests
+        and any future client inherit one refusal instead of re-implementing it.
+
+        Membership is EXACT, not case-folded. Catalogue ids are normalised to
+        lower case on load, while the field's charset pattern admits upper case,
+        so folding here would let ``OpenRouter`` and ``openrouter`` both pass and
+        mint two different ``api_key_ref`` values -- and therefore two different
+        secret paths -- for one provider.
+        """
+        try:
+            offered = customer_provider_catalogue()
+        except ByokCatalogError as exc:
+            raise ProviderCatalogueUnavailableError(
+                "BYOK intake cannot validate the submitted provider: the "
+                "customer provider catalogue could not be loaded. Refusing the "
+                "registration rather than storing a key for a provider that "
+                f"was never checked. Underlying error type: {type(exc).__name__}."
+            ) from exc
+
+        if provider not in offered:
+            raise ValueError(
+                f"{provider!r} is not a provider a key may be registered for. "
+                f"Offered: {', '.join(offered)}. A provider the platform holds "
+                "a house key for but does not offer to customers is declared "
+                "not-offered in the catalogue with the ticket that owns lifting "
+                "it; registering a key here for anything else would store a "
+                "credential that can never be routed."
+            )
+        return provider
 
 
 class ModelInferenceCredentialResponse(BaseModel):

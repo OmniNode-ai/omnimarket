@@ -106,10 +106,26 @@ def test_create_request_rejects_unsafe_provider_charset(bad_provider: str) -> No
         _make_request(provider=bad_provider)
 
 
-def test_create_request_accepts_hyphen_and_underscore_provider() -> None:
-    """The safe-charset pattern must not regress legitimate provider ids."""
-    req = _make_request(provider="open-router_v2")
-    assert req.provider == "open-router_v2"
+def test_create_request_charset_pattern_admits_hyphen_and_underscore() -> None:
+    """The safe-charset pattern must not regress legitimate provider ids.
+
+    Since OMN-17939 the field carries a SECOND constraint -- membership in
+    ``customer_provider_catalogue()`` -- so a well-formed id is no longer
+    accepted outright, and asserting acceptance would now be asserting the
+    catalogue's contents rather than the charset. The original guarantee is
+    pinned directly instead: a hyphen/underscore id must get past the PATTERN
+    and be refused only on membership. Pydantic discriminates the two --
+    ``string_pattern_mismatch`` vs the validator's ``value_error`` -- so this
+    fails if the charset ever narrows to exclude ``-`` or ``_``.
+    """
+    with pytest.raises(ValidationError) as excinfo:
+        _make_request(provider="open-router_v2")
+
+    error_types = {error["type"] for error in excinfo.value.errors()}
+    assert error_types == {"value_error"}, (
+        "'open-router_v2' was refused by the charset pattern, not by the "
+        f"catalogue check; the safe-charset pattern has regressed: {error_types}"
+    )
 
 
 def test_credential_registered_event_never_carries_a_secret_field() -> None:
