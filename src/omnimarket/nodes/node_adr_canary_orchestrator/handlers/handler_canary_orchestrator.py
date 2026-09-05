@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol, runtime_checkable
 
 import yaml
+from omnibase_core.errors.error_service_resolution import ServiceResolutionError
 from omnibase_core.models.adr.model_adr_draft import ModelADRDraft
 from omnibase_core.models.adr.model_adr_extraction_metadata import (
     ModelADRExtractionMetadata,
@@ -960,7 +961,6 @@ def _resolve_container_dependency(
         for args, kwargs in (
             ((protocol_type,), {"service_name": service_name}),
             ((protocol_type,), {}),
-            ((service_name,), {}),
         ):
             resolved = _call_optional(method, *args, **kwargs)
             if resolved is not None:
@@ -970,10 +970,9 @@ def _resolve_container_dependency(
         method = getattr(container, method_name, None)
         if not callable(method):
             continue
-        for key in (service_name, protocol_type):
-            resolved = _call_optional(method, key)
-            if resolved is not None:
-                return resolved
+        resolved = _call_optional(method, protocol_type)
+        if resolved is not None:
+            return resolved
 
     if hasattr(container, service_name):
         return getattr(container, service_name)
@@ -987,7 +986,10 @@ def _call_optional(
 ) -> object | None:
     try:
         return method(*args, **kwargs)
-    except (AttributeError, KeyError, LookupError, RuntimeError, TypeError, ValueError):
+    except ServiceResolutionError:
+        # A missing optional protocol is a documented soft miss. The caller
+        # can then construct the contract-declared bus adapter fallback.
+        # Never treat unrelated container failures as an absent service.
         return None
 
 
