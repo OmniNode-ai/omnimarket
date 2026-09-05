@@ -38,11 +38,24 @@ different wrong fix:
 
 from __future__ import annotations
 
+import textwrap
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from pathlib import Path
+from uuid import uuid4
+
 import pytest
 
 from omnimarket.enums.enum_dod_band_source import EnumDodBandSource
 from omnimarket.enums.enum_requested_response_shape import EnumRequestedResponseShape
+from omnimarket.nodes.node_delegation_orchestrator.models.model_delegation_request import (
+    ModelDelegationRequest,
+)
+from omnimarket.nodes.node_delegation_routing_reducer.handlers import (
+    handler_delegation_routing as routing,
+)
 from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
+    delta,
     resolve_task_class_dod_checks,
     resolve_task_class_dod_resolution,
 )
@@ -51,6 +64,80 @@ _SHORT_FORM_PROMPT = (
     "Reply with the single word: alive. This is an automated liveness probe"
 )
 _TEST_CODE_PROMPT = "Write a pytest unit test asserting that an empty list is falsy."
+
+# A self-contained routable contract, so `delta()` reaches a decision in CI.
+# Both `test` and `code_generation` are declared because the parity check below
+# is parametrised over both -- a contract covering only one would make the other
+# case unroutable and silently skip the very comparison it exists to make.
+_BIFROST_ROUTABLE = textwrap.dedent(
+    """\
+    config_version: "2.0.0"
+    schema_version: "bifrost_delegation.v1"
+    backends:
+      - backend_id: local-coder
+        endpoint_url: "http://local.test:8000/v1/chat/completions"
+        model_name: qwen-coder
+        tier: local
+        timeout_ms: 30000
+        max_tokens: 8192
+        capabilities: [code_generation, test]
+    routing_rules:
+      - rule_id: "c0ffee00-0011-4000-8000-000000000901"
+        priority: 10
+        task_class: code_generation
+        task_class_contract_version: "1.0.0"
+        backend_policy_version: "2.0.0"
+        match_operation_types: [chat_completion]
+        match_capabilities: [code_generation]
+        backend_ids: [local-coder]
+        fallback_policy:
+          action: escalate_to_next_tier
+          max_retries: 1
+          on_exhaust: return_error
+        shadow_policy_id: "c0ffee00-0012-4000-8000-000000000901"
+      - rule_id: "c0ffee00-0011-4000-8000-000000000902"
+        priority: 10
+        task_class: test
+        task_class_contract_version: "1.0.0"
+        backend_policy_version: "2.0.0"
+        match_operation_types: [chat_completion]
+        match_capabilities: [test]
+        backend_ids: [local-coder]
+        fallback_policy:
+          action: escalate_to_next_tier
+          max_retries: 1
+          on_exhaust: return_error
+        shadow_policy_id: "c0ffee00-0012-4000-8000-000000000902"
+    default_backends:
+      - local-coder
+    circuit_breaker:
+      failure_threshold: 5
+      window_seconds: 30
+    failover:
+      max_attempts: 3
+      backoff_base_ms: 500
+    shadow_mode:
+      enabled: false
+      policy_version: "test"
+      log_sample_rate: 1.0
+      comparison_logging_enabled: true
+      max_shadow_latency_ms: 5.0
+    """
+)
+
+
+@pytest.fixture
+def routable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Iterator[None]:
+    """Point routing at a contract where both parametrised task types route."""
+    contract_path = tmp_path / "bifrost_delegation.yaml"
+    contract_path.write_text(_BIFROST_ROUTABLE)
+    monkeypatch.setenv("BIFROST_CONTRACT_PATH", str(contract_path))
+    monkeypatch.delenv("BIFROST_OVERLAY_PATH", raising=False)
+    routing._load_bifrost_endpoints.cache_clear()
+    try:
+        yield
+    finally:
+        routing._load_bifrost_endpoints.cache_clear()
 
 
 @pytest.mark.unit
@@ -110,6 +197,7 @@ def test_a_shape_directive_cannot_drop_the_code_generation_floor() -> None:
         ("code_generation", _SHORT_FORM_PROMPT),
     ],
 )
+@pytest.mark.usefixtures("routable")
 def test_both_resolution_sites_agree_on_the_same_input(
     task_type: str, prompt: str
 ) -> None:
@@ -122,36 +210,40 @@ def test_both_resolution_sites_agree_on_the_same_input(
     rows, so a fix landing only here would have gone green while the lane was
     unchanged -- a false green on the ticket filed to catch false greens.
 
-    The reducer now calls this resolver, so the two agree by construction. This
-    asserts the property directly against the reducer's own resolution so the
-    seam cannot silently reopen if someone re-inlines it.
-    """
-    from omnimarket.nodes.node_delegation_routing_reducer.handlers.handler_delegation_routing import (
-        _definition_of_done_checks,
-        _get_task_class_contract,
-        _shape_override_deterministic,
-        _shape_override_heuristic,
-        _task_class_entry,
-        resolve_requested_shape_for_prompt,
-    )
+    **This calls the reducer rather than reconstructing it (OMN-17907).** The
+    first version of this test composed `_definition_of_done_checks` and the two
+    override helpers by hand and compared the shared resolver against that
+    composition. That asserts the test's own re-implementation, not production:
+    with `delta()` reverted to the pre-fix band, this file reported 13 passed
+    and the whole delegation+routing suite reported 933 passed. A guard that
+    cannot see the revert it names is not a guard.
 
+    `dod_deterministic` on the decision is the value the quality gate actually
+    receives, so reading it off `delta()`'s output is the property itself rather
+    than a proxy for it.
+    """
     shared_deterministic, shared_heuristic = resolve_task_class_dod_checks(
         task_type, prompt
     )
 
-    contract = _get_task_class_contract()
-    entry = _task_class_entry(contract, task_type)
-    reducer_deterministic, reducer_heuristic = _definition_of_done_checks(entry)
-    shape = resolve_requested_shape_for_prompt(prompt)
-    heuristic_override = _shape_override_heuristic(contract, entry, shape)
-    if heuristic_override is not None:
-        reducer_heuristic = heuristic_override
-    deterministic_override = _shape_override_deterministic(entry, shape)
-    if deterministic_override is not None:
-        reducer_deterministic = deterministic_override
+    decision = delta(
+        ModelDelegationRequest(
+            correlation_id=uuid4(),
+            task_type=task_type,
+            prompt=prompt,
+            emitted_at=datetime.now(tz=UTC),
+        )
+    )
 
-    assert shared_deterministic == reducer_deterministic
-    assert shared_heuristic == reducer_heuristic
+    assert shared_deterministic == decision.dod_deterministic
+    assert shared_heuristic == decision.dod_heuristic
+
+    # The bands alone would still match if both sites regressed together. The
+    # provenance is what pins WHICH contract key answered, so a reducer that
+    # reached the right tuple by the wrong route is still caught.
+    resolution = resolve_task_class_dod_resolution(task_type, prompt)
+    assert resolution.deterministic_source == decision.dod_deterministic_source
+    assert resolution.heuristic_source == decision.dod_heuristic_source
 
 
 @pytest.mark.unit
