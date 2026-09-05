@@ -1,0 +1,33 @@
+name: node_projection_hook_ledger
+version: "1.0.0"
+description: "Projects the four governed omniclaude hook classes off the CLOUD bus into public.hook_events -- leg 5 of the hook->cloud chain (OMN-17201)"
+omnibase_core_compat: ">=0.47.2,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_projection_hook_ledger: "omnimarket.nodes.node_projection_hook_ledger"
+capabilities:
+  standalone: true
+  full_runtime: true
+  # Owns its own DB connection (BaseProjectionRunner) AND its own Kafka
+  # producer, for the terminal applied-event and for the POISON DLQ. Same
+  # requires_network / requires_secrets shape as its sibling writers.
+  requires_network: true
+  requires_repo: false
+  requires_secrets: true
+  requires_docker: false
+  side_effect_class: write
+dependencies:
+  - "omnibase_core>=0.47.2"
+  # Declared because this node imports the SINGLE runtime topic resolver
+  # (resolve_physical_topic / resolve_tenant_from_wire_topic, OMN-15792) from
+  # omnibase_infra rather than re-deriving the tenant wire prefix locally. A
+  # second implementation of that transform is the structural root cause
+  # OMN-15792 exists to remove, so the dependency is deliberate, not
+  # incidental.
+  - "omnibase-infra>=0.38.16"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["hook-ledger", "projection", "reducer", "cloud", "observability"]
+pack: "data"
+display_name: "Cloud Hook-Event Ledger Projection"
+node_role: "reducer"

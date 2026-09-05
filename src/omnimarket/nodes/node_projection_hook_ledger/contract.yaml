@@ -1,0 +1,275 @@
+---
+name: projection_hook_ledger
+contract_version: {major: 1, minor: 0, patch: 0}
+node_type: reducer
+node_version: {major: 1, minor: 0, patch: 0}
+
+description: >
+  OMN-17201, leg 5 of the hook->cloud chain. Projects the four governed
+  omniclaude hook-event classes, AS THEY ARRIVE ON THE CLOUD BUS, into
+  public.hook_events -- the cloud-side process ledger.
+
+  WHY THIS NODE EXISTS. The chain is hooks -> local bus -> gateway relay ->
+  cloud gateway -> MSK -> cloud projection. Legs 1-4 each have a ticket and
+  each proves its own leg; leg 5 had no owner at all, so the whole chain
+  terminated in nothing. Nothing consumed the hook classes off the cloud
+  broker and no table was declared to receive them.
+
+  WHY public.hook_events AND NOT A NEW TABLE. The cloud read route that this
+  ticket's own live-readback criterion consumes already exists and already
+  selects from hook_events: GET /v1/projections/hook-events/by-correlation
+  (omninode_infra docker/onex-api/routers/ledger_projection.py, OMN-17205).
+  That route was written for a writer that did not exist yet -- its third
+  data state is literally `projection_absent`, added so a missing sink could
+  not read as a successful empty answer. This node is that writer. A new
+  table would be the parallel schema this ticket's scope forbids AND would be
+  unreadable by the probe that has to prove it.
+
+  WHY NOT event_ledger. Prohibited by name in this ticket's scope: a
+  hand-maintained 26-topic allowlist of which only 6 ever produced a row, and
+  an in-tree record of holding zero rows while 1,028,463 events flowed past
+  (OMN-16176). It cannot be the authority for the process ledger.
+
+  RELATIONSHIP TO node_hook_event_capture. That node writes the same table
+  from the workflow-submission spool path (OMN-16090), which the 2026-08-29
+  ruling retires once the relay carries hook events (OMN-16980). This node is
+  its bus-fed replacement, not a competitor: both dedupe on the table's own
+  UNIQUE (tenant_id, event_sha), and rows from this path are distinguishable
+  by source='gateway-relay'. This node declares no migration of its own --
+  it points at the owning node's, the same shape
+  node_projection_tenant_credentials already uses for
+  delegation_routing_tenant_overlay.
+
+  RELATIONSHIP TO node_projection_work_events. That node is the .201-LOCAL L1
+  work ledger over the same four canonical classes. This is the same
+  projection at cloud scale, reconciled with it rather than parallel to it:
+  same four subscribe classes, same one-event-one-row purity, same
+  content-addressed idempotency. It differs only where the plane differs --
+  the cloud wire carries a tenant prefix and the cloud sink is the table the
+  cloud read route serves.
+
+handler:
+  module: omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_projection
+  class: HandlerHookLedgerProjection
+  input_model: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event.ModelHookLedgerProjectionRequest
+
+handler_routing:
+  routing_strategy: topic_match
+  handlers:
+    - topic: onex.evt.omniclaude.session-started.v1
+      operation: hook_ledger_session_started_projected
+      event_model:
+        name: ModelHookLedgerInbound
+        module: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event
+      handler:
+        name: HandlerHookLedgerProjection
+        module: omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_projection
+    - topic: onex.evt.omniclaude.prompt-submitted.v1
+      operation: hook_ledger_prompt_submitted_projected
+      event_model:
+        name: ModelHookLedgerInbound
+        module: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event
+      handler:
+        name: HandlerHookLedgerProjection
+        module: omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_projection
+    - topic: onex.evt.omniclaude.tool-executed.v1
+      operation: hook_ledger_tool_executed_projected
+      event_model:
+        name: ModelHookLedgerInbound
+        module: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event
+      handler:
+        name: HandlerHookLedgerProjection
+        module: omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_projection
+    - topic: onex.evt.omniclaude.session-ended.v1
+      operation: hook_ledger_session_ended_projected
+      event_model:
+        name: ModelHookLedgerInbound
+        module: omnimarket.nodes.node_projection_hook_ledger.models.model_hook_ledger_event
+      handler:
+        name: HandlerHookLedgerProjection
+        module: omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_projection
+
+descriptor:
+  node_archetype: reducer
+  purity: effectful
+  idempotent: true
+  timeout_ms: 30000
+  # This node runs ONLY as its own dedicated standalone writer Deployment
+  # (omninode_infra k8s/onex-dev/runtime/
+  # deployment-omnimarket-projection-hook-ledger-writer.yaml), the OMN-15905
+  # "Shape A" BaseProjectionRunner process -- never inside the shared runtime
+  # kernel. Pinning the profile is what keeps it out of `main` and `effects`:
+  # its subscribe topics are tenant-prefixed CLOUD WIRE topics, which the
+  # shared kernel's canonical-topic dispatch does not address, and because
+  # node_projection_work_events already claims the same four BARE canonical
+  # topics in that kernel -- a second claimant there would be a dispatch
+  # ambiguity, not a second reader.
+  #
+  # EMPTY, not a bespoke profile name. An invented profile no process boots
+  # trips `runtime_profile_unregistered` and needs an allowlist exemption to
+  # say the orphaning is intended (the OMN-17641 block records eight of those).
+  # An empty list states the same fact -- no shared-kernel profile runs this --
+  # without an unregistered name or an exemption entry. Precedent: the three
+  # node_swarm_*_compute contracts.
+  runtime_profiles: []
+
+idempotency:
+  enabled: true
+  strategy: snapshot_upsert
+  hash_fields:
+    - tenant_id
+    - event_sha
+
+# CANONICAL topics, deliberately. A contract may only declare bare canonical
+# topics -- validate_canonical_topic in the shared resolver REJECTS a
+# tenant-prefixed string outright, and the topic-naming lint agrees. The
+# PHYSICAL wire topics this node actually subscribes to are resolved at
+# runtime from these four plus config.hook_ledger.cloud_wire_scope below,
+# through resolve_physical_topic -- THE single runtime topic resolver
+# (OMN-15792). The runner never re-derives the tenant prefix itself.
+event_bus:
+  subscribe_topics:
+    - onex.evt.omniclaude.session-started.v1
+    - onex.evt.omniclaude.prompt-submitted.v1
+    - onex.evt.omniclaude.tool-executed.v1
+    - onex.evt.omniclaude.session-ended.v1
+  # A terminal deterministic-truth assertion -- "a durable row landed" -- and
+  # NOT a re-emission of the hook classes. It is published only when the
+  # INSERT actually returned a row, so a duplicate suppressed by the table's
+  # own UNIQUE (tenant_id, event_sha) publishes nothing. That is the whole
+  # point of returning a real count rather than None: a zero-row path must be
+  # able to suppress the event, or the assertion degrades into "handle() did
+  # not raise".
+  #
+  # An earlier revision of this contract declared no publish topic at all and
+  # the node-orphan-graph gate correctly refused it as CONSUMER_ONLY. The
+  # answer was to publish a real event, not to mark the node experimental --
+  # a lifecycle downgrade would have silenced the gate while leaving the node
+  # exactly as unobservable as it was.
+  publish_topics:
+    - onex.evt.omnimarket.projection-hook-ledger-applied.v1
+  # Load-bearing, not ceremony. Every refusal in this node's row derivation
+  # raises a ValueError subclass, which the shared classifier resolves as
+  # POISON. Without a declared DLQ the base runner RE-RAISES a poison record
+  # instead of quarantining it, and the offset is never committed -- one
+  # undeliverable record then wedges the whole leg behind it. OMN-17382 is the
+  # live record of exactly that: 925 consecutive failures over 7h45m on a
+  # sibling leg, 177 real records stuck behind a single foreign-tenant probe
+  # record, with the container still reporting healthy.
+  dlq_topics:
+    - onex.dlq.omnimarket.projection-hook-ledger-malformed.v1
+
+# The applied-event is consumed by the observability plane (event ledger,
+# dashboards), not by another omnimarket node. Declaring that here is the
+# sanctioned way to satisfy the contract-topic-graph gate; adding it to that
+# gate's baseline is NOT, because the baseline is frozen pre-existing debt
+# that may only shrink.
+externally_consumed_topics:
+  - onex.evt.omnimarket.projection-hook-ledger-applied.v1
+
+# The cloud plane's tenant wire scope. Contract-declared, never env-sourced:
+# an env var here would be a second config authority over the one thing that
+# decides which tenants' hook lanes this ledger ingests, and a typo in it
+# would present as a healthy writer reading an empty topic set.
+#
+# FAIL-CLOSED: an empty list is refused at startup rather than resolving to
+# zero subscriptions. A writer that subscribes to nothing reports Stable with
+# LAG 0 and is indistinguishable from a working one -- the exact silent-zero
+# class OMN-15797 records on this surface.
+#
+# KNOWN LIMITATION, stated rather than hidden: onboarding a second gateway
+# tenant is a contract change here, because a Kafka consumer cannot enumerate
+# tenant prefixes it was never told about and BaseProjectionRunner subscribes
+# to an explicit topic list, not a pattern. Declared-not-discovered is the
+# correct posture for a governed sink, but it does not scale to many tenants;
+# a pattern-subscribe seam is follow-up work, not something to fake here.
+config:
+  hook_ledger:
+    cloud_wire_scope:
+      # The one attached gateway tenant on the onex-dev cloud plane today.
+      # This is the same slug the forwarder's own attached tenant identity
+      # carries, which is why the wire topics it produces resolve to it.
+      tenant_slugs:
+        - beta-gateway-canary
+
+db_io:
+  db_tables:
+    - name: hook_events
+      database_ref: application
+      # PHYSICAL schema, not the logical domain. The owning node's contract
+      # records at length why this is `public` and not `tenant`: the 0001
+      # migration creates the table unqualified, no live database in this
+      # topology has a `tenant` schema, and this value is passed straight
+      # into schema-qualified SQL with no logical->physical translation.
+      schema: public
+      # No migrations/ directory on this node. The table is owned and created
+      # by node_hook_event_capture; declaring a second migration for it would
+      # be two creators of one relation. Precedent:
+      # node_projection_tenant_credentials -> delegation_routing_tenant_overlay.
+      migration: "../node_hook_event_capture/migrations/0001_create_hook_events.sql"
+      # WRITE, not read_write. Idempotency is enforced by the table's own
+      # UNIQUE (tenant_id, event_sha) through ON CONFLICT, so this handler
+      # never SELECTs first. That matters: OMN-16690 records that declaring
+      # `write` while the handler reads is refused fail-closed at the runtime
+      # read seam and quarantines every event while the caller still sees a
+      # 202. The declaration matches what the handler actually does.
+      access: write
+      role: hook_events
+
+projection_api:
+  expose: true
+  topic: "onex.snapshot.projection.hook.ledger.v1"  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  table: "hook_events"
+  # The DATABASE the read model lives in, at the granularity this field
+  # allows -- same declaration and same reason node_projection_work_events
+  # and node_projection_consumer_flow already carry. The exposure loader's
+  # ALLOWED_SCHEMAS is {omnidash_analytics, public}; the physical relation is
+  # public.hook_events, declared exactly that way in db_io above.
+  schema: "public"
+  columns:
+    - "correlation_id"
+    - "event_id"
+    - "event_type"
+    - "occurred_at"
+    - "run_id"
+    - "source"
+    - "tenant_id"
+    - "captured_at"
+  order_by: "occurred_at DESC"
+  freshness_column: "occurred_at"
+  limit: 200
+  # `payload` is deliberately NOT an exposed column. It is a verbatim event
+  # body -- a Claude Code tool invocation, prompt fragment or file path. The
+  # cloud read route already withholds it unless the caller explicitly opts
+  # in, precisely so a correlation-id read cannot spray event bodies into a
+  # terminal or a pasted issue; exposing it here would route around that.
+  #
+  # NOT bus_backed. The epic's ordering constraint is explicit that
+  # bus_backed must not be flipped on a topic whose writer is not deployed
+  # and producing, because that converts an honest error into a confident
+  # zero (OMN-15864 enforces it mechanically). This writer is not deployed
+  # anywhere yet. The flag follows the writer, never the other way round.
+  bus_backed: false
+  # NO tenant_column, and that is a correctness statement rather than an
+  # omission. ProjectionTableConfig hard-refuses `tenant_column` on an exposure
+  # that is not bus_backed -- only the bus-fed serving path can scope rows --
+  # so declaring both here would raise out of build_projection_topic_map and
+  # take EVERY exposure in the repo down with it, not just this one.
+  #
+  # Nothing is left unscoped by dropping it. `tenant_column` exists for
+  # exposures whose table has no RLS (node_projection_tenant_credentials says
+  # exactly that: "this table carries no RLS in v1 ... nothing else was scoping
+  # it"). public.hook_events is the opposite case: migration 0002 puts
+  # ENABLE + FORCE ROW LEVEL SECURITY on it with a fail-closed policy
+  # (`tenant_id = current_setting('app.tenant_id', true)`, which is NULL and
+  # therefore matches nothing when the GUC is unset), and the SQL read path
+  # sets that GUC per read inside one transaction (OMN-16092). The database
+  # enforces the boundary, which is strictly stronger than an exposure-layer
+  # filter.
+  #
+  # When this writer is deployed and producing, the exposure can move to
+  # bus_backed: true and declare tenant_column then -- the flag follows the
+  # writer (OMN-15864), and the pair is only legal together.
+
+metadata:
+  transport_type: kafka
