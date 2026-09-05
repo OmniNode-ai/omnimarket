@@ -53,6 +53,7 @@ from omnimarket.events.runtime_closeout import (
     EnumProofClass,
     EnumProofSet,
     ModelCloseoutReceipt,
+    ModelProofCellVerdict,
 )
 from omnimarket.events.runtime_deployment import (
     EnumRedeployPhase,
@@ -251,7 +252,11 @@ class HandlerRuntimeCloseoutOrchestrator:
     def _on_proof_matrix(
         self, envelope: ModelEventEnvelope[Any], correlation_id: UUID
     ) -> list[ModelEventEnvelope[Any]]:
-        """proof-matrix-done -> terminal closeout-completed receipt."""
+        """Adjudicate a bound proof-matrix fact before emitting the terminal receipt."""
+        if envelope.correlation_id is None:
+            raise ValueError(
+                "proof-matrix terminal requires an envelope correlation_id"
+            )
         fact, start = _coerce_proof_matrix(envelope.payload, correlation_id)
         return self._completed(
             correlation_id=correlation_id,
@@ -269,7 +274,7 @@ class HandlerRuntimeCloseoutOrchestrator:
         correlation_id: UUID,
         start: ModelCloseoutStartCommand,
         final_phase: EnumCloseoutPhase,
-        cell_verdicts: tuple[Any, ...] = (),
+        cell_verdicts: tuple[ModelProofCellVerdict, ...] = (),
         error_message: str | None = None,
         rollback_plan: str = "",
         residual_risk: str = "",
@@ -278,16 +283,27 @@ class HandlerRuntimeCloseoutOrchestrator:
         receipt = ModelCloseoutReceipt(
             correlation_id=correlation_id,
             runtime_lane=start.runtime_lane,
+            proof_set=start.proof_set,
             final_phase=final_phase,
             cell_verdicts=cell_verdicts,
             rollback_plan=rollback_plan or _rollback_plan(start.rollback_target),
             residual_risk=residual_risk,
             error_message=error_message,
         )
-        if final_phase is EnumCloseoutPhase.COMPLETED:
-            recommendation = receipt.recompute_recommendation()
-        else:
-            recommendation = EnumCloseoutRecommendation.HOLD
+        recommendation = receipt.recompute_recommendation()
+        if (
+            final_phase is EnumCloseoutPhase.COMPLETED
+            and recommendation is EnumCloseoutRecommendation.HOLD
+        ):
+            receipt = receipt.model_copy(
+                update={
+                    "final_phase": EnumCloseoutPhase.BLOCKED,
+                    "error_message": (
+                        "proof matrix did not satisfy the requested canonical cells "
+                        "and correlation/terminal/readback evidence requirements"
+                    ),
+                }
+            )
         receipt = receipt.model_copy(update={"recommendation": recommendation})
         return [
             ModelEventEnvelope(
@@ -374,9 +390,24 @@ def _coerce_proof_matrix(
     payload: Any, correlation_id: UUID
 ) -> tuple[ModelCloseoutProofMatrixFact, ModelCloseoutStartCommand]:
     mapping = _require_mapping(payload, "closeout-proof-matrix-completed")
+    start_raw = mapping.get("start")
+    if start_raw is None:
+        raise ValueError("proof-matrix terminal requires an explicit echoed start")
+    start_data = _as_dict(start_raw)
+    required_context = {"correlation_id", "runtime_lane", "proof_set"}
+    missing_context = required_context.difference(start_data)
+    if missing_context:
+        raise ValueError(
+            f"proof-matrix terminal start missing context: {sorted(missing_context)}"
+        )
+    start = ModelCloseoutStartCommand.model_validate(start_data)
     fact_raw = mapping.get("proof_matrix", mapping)
     fact = ModelCloseoutProofMatrixFact.model_validate(_as_dict(fact_raw))
-    return fact, _start_from(mapping, correlation_id)
+    if start.correlation_id != correlation_id or fact.correlation_id != correlation_id:
+        raise ValueError(
+            "proof-matrix terminal start, fact and envelope run IDs must match"
+        )
+    return fact, start
 
 
 def _require_mapping(payload: Any, label: str) -> Mapping[str, Any]:

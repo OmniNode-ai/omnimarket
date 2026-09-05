@@ -29,6 +29,7 @@ from omnibase_core.enums.enum_node_kind import EnumNodeKind
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
 
 from omnimarket.events.runtime_closeout import (
+    PROOF_MATRIX_CELLS,
     EnumCloseoutPhase,
     EnumCloseoutRecommendation,
     EnumProofClass,
@@ -65,6 +66,112 @@ from omnimarket.nodes.node_runtime_closeout_orchestrator.models.model_closeout_s
 )
 
 _DIGEST = "sha256:00c10de7"
+
+
+def _proved_cells(
+    proof_set: EnumProofSet = EnumProofSet.REQUIRED,
+) -> tuple[ModelProofCellVerdict, ...]:
+    return tuple(
+        ModelProofCellVerdict(
+            cell=spec.cell,
+            proof_class=spec.proof_class,
+            verdict=EnumProofVerdict.PASS,
+            correlation_id=uuid4(),
+            terminal_event=f"onex.evt.omnimarket.{spec.cell}-completed.v1",
+            projection_readback=f"projection://runtime-proof/{spec.cell}",
+        )
+        for spec in PROOF_MATRIX_CELLS
+        if proof_set is EnumProofSet.FULL or spec.proof_class is EnumProofClass.REQUIRED
+    )
+
+
+def _unproved_cells(
+    case: str, proof_set: EnumProofSet
+) -> tuple[ModelProofCellVerdict, ...]:
+    cells = _proved_cells(proof_set)
+    if case == "empty":
+        return ()
+    if case == "missing_required":
+        return cells[1:]
+    if case == "missing_stretch":
+        return tuple(cell for cell in cells if cell.cell != "context")
+    if case == "unknown":
+        return (*cells, cells[0].model_copy(update={"cell": "unregistered"}))
+    if case == "duplicate":
+        return (*cells, cells[0])
+    if case == "conflicting_duplicate":
+        return (
+            cells[0].model_copy(update={"verdict": EnumProofVerdict.FAIL}),
+            *cells,
+        )
+    if case == "shared_cid":
+        return (
+            cells[0],
+            cells[1].model_copy(update={"correlation_id": cells[0].correlation_id}),
+            *cells[2:],
+        )
+    if case == "reclassified":
+        return (
+            cells[0].model_copy(update={"proof_class": EnumProofClass.RESEARCH}),
+            *cells[1:],
+        )
+    if case == "reclassified_required_skip":
+        return (
+            cells[0].model_copy(
+                update={
+                    "proof_class": EnumProofClass.RESEARCH,
+                    "verdict": EnumProofVerdict.SKIP,
+                }
+            ),
+            *cells[1:],
+        )
+    if case.startswith("stretch_"):
+        verdict = EnumProofVerdict(case.removeprefix("stretch_"))
+        return tuple(
+            cell.model_copy(update={"verdict": verdict})
+            if cell.cell == "context"
+            else cell
+            for cell in cells
+        )
+    if case in ("fail", "pending", "skip"):
+        return (
+            cells[0].model_copy(update={"verdict": EnumProofVerdict(case)}),
+            *cells[1:],
+        )
+    field, value = {
+        "missing_cid": ("correlation_id", None),
+        "missing_terminal": ("terminal_event", None),
+        "blank_terminal": ("terminal_event", " \t"),
+        "missing_readback": ("projection_readback", None),
+        "blank_readback": ("projection_readback", " \t"),
+    }[case]
+    return (cells[0].model_copy(update={field: value}), *cells[1:])
+
+
+_UNPROVED_CASES = (
+    "empty",
+    "missing_required",
+    "fail",
+    "pending",
+    "skip",
+    "unknown",
+    "duplicate",
+    "conflicting_duplicate",
+    "shared_cid",
+    "reclassified",
+    "missing_cid",
+    "missing_terminal",
+    "blank_terminal",
+    "missing_readback",
+    "blank_readback",
+)
+_FULL_UNPROVED_CASES = (
+    "missing_stretch",
+    "stretch_fail",
+    "stretch_pending",
+    "stretch_skip",
+    "reclassified_required_skip",
+)
 
 
 def test_runtime_closeout_declared_topic_literals_match_handler_constants() -> None:
@@ -282,23 +389,7 @@ class TestRuntimeCloseoutOrchestratorGoldenChain:
         start = ModelCloseoutStartCommand(
             correlation_id=corr, runtime_lane=EnumRuntimeLane.DEV
         )
-        verdicts = (
-            ModelProofCellVerdict(
-                cell="delegation",
-                proof_class=EnumProofClass.REQUIRED,
-                verdict=EnumProofVerdict.PASS,
-            ),
-            ModelProofCellVerdict(
-                cell="sea",
-                proof_class=EnumProofClass.REQUIRED,
-                verdict=EnumProofVerdict.PASS,
-            ),
-            ModelProofCellVerdict(
-                cell="gate_zero",
-                proof_class=EnumProofClass.REQUIRED,
-                verdict=EnumProofVerdict.PASS,
-            ),
-        )
+        verdicts = _proved_cells()
         fact = ModelCloseoutProofMatrixFact(correlation_id=corr, cell_verdicts=verdicts)
         envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
             payload={
@@ -316,6 +407,139 @@ class TestRuntimeCloseoutOrchestratorGoldenChain:
         # all required cells PASS and no failed/pending -> internal-integration
         # (full matrix not proven under the required proof set).
         assert receipt.recommendation is EnumCloseoutRecommendation.INTERNAL_INTEGRATION
+
+    @pytest.mark.parametrize("proof_set", tuple(EnumProofSet))
+    @pytest.mark.parametrize("case", _UNPROVED_CASES)
+    async def test_unproved_matrix_never_completes(
+        self, case: str, proof_set: EnumProofSet
+    ) -> None:
+        await self._assert_matrix_holds(_unproved_cells(case, proof_set), proof_set)
+
+    @pytest.mark.parametrize("case", _FULL_UNPROVED_CASES)
+    async def test_full_matrix_requires_every_requested_cell(self, case: str) -> None:
+        await self._assert_matrix_holds(
+            _unproved_cells(case, EnumProofSet.FULL), EnumProofSet.FULL
+        )
+
+    async def _assert_matrix_holds(
+        self,
+        cells: tuple[ModelProofCellVerdict, ...],
+        proof_set: EnumProofSet,
+    ) -> None:
+        corr = uuid4()
+        start = ModelCloseoutStartCommand(
+            correlation_id=corr,
+            runtime_lane=EnumRuntimeLane.DEV,
+            proof_set=proof_set,
+        )
+        fact = ModelCloseoutProofMatrixFact(correlation_id=corr, cell_verdicts=cells)
+        envelope = ModelEventEnvelope(
+            payload={"start": start, "proof_matrix": fact},
+            correlation_id=corr,
+            event_type="onex.evt.omnimarket.closeout-proof-matrix-completed.v1",
+        )
+        output = await HandlerRuntimeCloseoutOrchestrator().handle(envelope)
+        assert [event.event_type for event in output.events] == [
+            TOPIC_CLOSEOUT_COMPLETED
+        ]
+        receipt = output.events[0].payload
+        assert isinstance(receipt, ModelCloseoutReceipt)
+        assert receipt.final_phase in (
+            EnumCloseoutPhase.BLOCKED,
+            EnumCloseoutPhase.FAILED,
+        )
+        assert receipt.recommendation is EnumCloseoutRecommendation.HOLD
+        assert receipt.recompute_recommendation() is EnumCloseoutRecommendation.HOLD
+        assert receipt.error_message
+
+    @pytest.mark.parametrize("proof_set", tuple(EnumProofSet))
+    async def test_complete_matrix_preserves_context_and_replays(
+        self, proof_set: EnumProofSet
+    ) -> None:
+        corr = uuid4()
+        lane = EnumRuntimeLane.STABILITY_TEST
+        start = ModelCloseoutStartCommand(
+            correlation_id=corr, runtime_lane=lane, proof_set=proof_set
+        )
+        fact = ModelCloseoutProofMatrixFact(
+            correlation_id=corr, cell_verdicts=_proved_cells(proof_set)
+        )
+        envelope = ModelEventEnvelope(
+            payload={
+                "start": start.model_dump(mode="json"),
+                "proof_matrix": fact.model_dump(mode="json"),
+            },
+            correlation_id=corr,
+            event_type="onex.evt.omnimarket.closeout-proof-matrix-completed.v1",
+        )
+        handler = HandlerRuntimeCloseoutOrchestrator()
+        first = (await handler.handle(envelope)).events[0].payload
+        replay = (await handler.handle(envelope)).events[0].payload
+        assert isinstance(first, ModelCloseoutReceipt)
+        assert first == replay
+        assert first.correlation_id == corr
+        assert first.runtime_lane is lane
+        assert first.proof_set is proof_set
+        assert first.final_phase is EnumCloseoutPhase.COMPLETED
+        expected = (
+            EnumCloseoutRecommendation.CUSTOMER_BETA
+            if proof_set is EnumProofSet.FULL
+            else EnumCloseoutRecommendation.INTERNAL_INTEGRATION
+        )
+        assert first.recommendation is expected
+        assert first.recompute_recommendation() is expected
+
+    @pytest.mark.parametrize(
+        "case",
+        [
+            "missing_start",
+            "missing_start_cid",
+            "missing_lane",
+            "missing_proof_set",
+            "wrong_start_cid",
+            "wrong_fact_cid",
+            "missing_fact_cid",
+            "missing_envelope_cid",
+            "customer_lane_is_not_compose_dev",
+        ],
+    )
+    async def test_proof_terminal_rejects_unbound_context(self, case: str) -> None:
+        corr = uuid4()
+        start = ModelCloseoutStartCommand(
+            correlation_id=corr,
+            runtime_lane=EnumRuntimeLane.DEV,
+            proof_set=EnumProofSet.REQUIRED,
+        ).model_dump(mode="json")
+        fact = ModelCloseoutProofMatrixFact(
+            correlation_id=corr, cell_verdicts=_proved_cells()
+        ).model_dump(mode="json")
+        payload = {"start": start, "proof_matrix": fact}
+        if case == "missing_start":
+            payload.pop("start")
+        elif case in ("missing_start_cid", "missing_lane", "missing_proof_set"):
+            field = {
+                "missing_start_cid": "correlation_id",
+                "missing_lane": "runtime_lane",
+                "missing_proof_set": "proof_set",
+            }[case]
+            start.pop(field)
+        elif case == "wrong_start_cid":
+            start["correlation_id"] = str(uuid4())
+        elif case == "wrong_fact_cid":
+            fact["correlation_id"] = str(uuid4())
+        elif case == "missing_fact_cid":
+            fact.pop("correlation_id")
+        elif case == "customer_lane_is_not_compose_dev":
+            start["runtime_lane"] = "onex-dev"
+        envelope = ModelEventEnvelope(
+            payload=payload,
+            correlation_id=None if case == "missing_envelope_cid" else corr,
+            event_type="onex.evt.omnimarket.closeout-proof-matrix-completed.v1",
+        )
+        with pytest.raises(
+            ValueError, match=r"proof-matrix terminal|correlation_id|runtime_lane"
+        ):
+            await HandlerRuntimeCloseoutOrchestrator().handle(envelope)
 
     async def test_orchestrator_emits_no_projections_or_result(self) -> None:
         """ORCHESTRATOR output constraint: events/intents only."""
@@ -337,6 +561,7 @@ class TestCloseoutReceiptRecommendation:
         receipt = ModelCloseoutReceipt(
             correlation_id=uuid4(),
             runtime_lane=EnumRuntimeLane.DEV,
+            proof_set=EnumProofSet.REQUIRED,
             final_phase=EnumCloseoutPhase.COMPLETED,
             cell_verdicts=(
                 ModelProofCellVerdict(
@@ -349,28 +574,67 @@ class TestCloseoutReceiptRecommendation:
         assert receipt.recompute_recommendation() is EnumCloseoutRecommendation.HOLD
 
     def test_full_pass_customer_beta(self) -> None:
-        verdicts = tuple(
-            ModelProofCellVerdict(
-                cell=spec_cell,
-                proof_class=spec_class,
-                verdict=EnumProofVerdict.PASS,
-            )
-            for spec_cell, spec_class in (
-                ("delegation", EnumProofClass.REQUIRED),
-                ("sea", EnumProofClass.REQUIRED),
-                ("gate_zero", EnumProofClass.REQUIRED),
-                ("context", EnumProofClass.STRETCH),
-                ("savings", EnumProofClass.STRETCH),
-                ("cross_feature", EnumProofClass.RESEARCH),
-            )
-        )
         receipt = ModelCloseoutReceipt(
             correlation_id=uuid4(),
             runtime_lane=EnumRuntimeLane.DEV,
+            proof_set=EnumProofSet.FULL,
             final_phase=EnumCloseoutPhase.COMPLETED,
-            cell_verdicts=verdicts,
+            cell_verdicts=_proved_cells(EnumProofSet.FULL),
         )
         assert (
             receipt.recompute_recommendation()
             is EnumCloseoutRecommendation.CUSTOMER_BETA
         )
+
+    def test_required_scope_caps_recommendation_with_extra_canonical_proof(
+        self,
+    ) -> None:
+        receipt = ModelCloseoutReceipt(
+            correlation_id=uuid4(),
+            runtime_lane=EnumRuntimeLane.DEV,
+            proof_set=EnumProofSet.REQUIRED,
+            final_phase=EnumCloseoutPhase.COMPLETED,
+            cell_verdicts=_proved_cells(EnumProofSet.FULL),
+        )
+        assert (
+            receipt.recompute_recommendation()
+            is EnumCloseoutRecommendation.INTERNAL_INTEGRATION
+        )
+
+    @pytest.mark.parametrize("proof_set", tuple(EnumProofSet))
+    @pytest.mark.parametrize("case", _UNPROVED_CASES)
+    def test_unproved_receipt_holds(self, case: str, proof_set: EnumProofSet) -> None:
+        receipt = ModelCloseoutReceipt(
+            correlation_id=uuid4(),
+            runtime_lane=EnumRuntimeLane.DEV,
+            proof_set=proof_set,
+            final_phase=EnumCloseoutPhase.COMPLETED,
+            cell_verdicts=_unproved_cells(case, proof_set),
+        )
+        assert receipt.recompute_recommendation() is EnumCloseoutRecommendation.HOLD
+
+    @pytest.mark.parametrize("case", _FULL_UNPROVED_CASES)
+    def test_full_receipt_requires_every_requested_cell(self, case: str) -> None:
+        receipt = ModelCloseoutReceipt(
+            correlation_id=uuid4(),
+            runtime_lane=EnumRuntimeLane.DEV,
+            proof_set=EnumProofSet.FULL,
+            final_phase=EnumCloseoutPhase.COMPLETED,
+            cell_verdicts=_unproved_cells(case, EnumProofSet.FULL),
+        )
+        assert receipt.recompute_recommendation() is EnumCloseoutRecommendation.HOLD
+
+    @pytest.mark.parametrize(
+        "phase", [EnumCloseoutPhase.BLOCKED, EnumCloseoutPhase.FAILED]
+    )
+    def test_non_success_phase_holds_even_with_full_proof(
+        self, phase: EnumCloseoutPhase
+    ) -> None:
+        receipt = ModelCloseoutReceipt(
+            correlation_id=uuid4(),
+            runtime_lane=EnumRuntimeLane.DEV,
+            proof_set=EnumProofSet.FULL,
+            final_phase=phase,
+            cell_verdicts=_proved_cells(EnumProofSet.FULL),
+        )
+        assert receipt.recompute_recommendation() is EnumCloseoutRecommendation.HOLD
