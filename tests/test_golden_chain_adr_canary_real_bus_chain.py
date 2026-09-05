@@ -18,7 +18,14 @@ from pathlib import Path
 from typing import Any, Protocol
 
 import yaml
+from omnibase_core.container import ModelONEXContainer
 from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
+from omnibase_core.protocols.event_bus.protocol_event_bus_publisher import (
+    ProtocolEventBusPublisher,
+)
+from omnibase_core.protocols.event_bus.protocol_event_bus_subscriber import (
+    ProtocolEventBusSubscriber,
+)
 from pydantic import BaseModel
 
 from omnimarket.inference.adapter_inference_bridge import (
@@ -320,6 +327,22 @@ async def _wire_adr_subnodes(
     ]
 
 
+async def _kernel_shaped_bus_container(
+    event_bus: EventBusInmemory,
+) -> ModelONEXContainer:
+    """Register the shared bus under the same DI keys as the runtime kernel."""
+    container = ModelONEXContainer()
+    await container.service_registry.register_instance(
+        ProtocolEventBusPublisher,
+        event_bus,
+    )
+    await container.service_registry.register_instance(
+        ProtocolEventBusSubscriber,
+        event_bus,
+    )
+    return container
+
+
 def _write_fixture_manifest(tmp_path: Path) -> tuple[Path, Path]:
     source_root = tmp_path / "fixture_repo"
     docs_dir = source_root / "docs"
@@ -423,7 +446,9 @@ async def test_adr_canary_real_bus_backed_chain_reaches_all_subnodes(
     await event_bus.start()
     unsubscribers = await _wire_adr_subnodes(event_bus, inference_bridge)
     try:
-        handler = HandlerCanaryOrchestrator({"event_bus": event_bus})
+        handler = HandlerCanaryOrchestrator(
+            await _kernel_shaped_bus_container(event_bus)
+        )
 
         report = await handler.handle(
             ModelCanaryCommandPayload(
@@ -493,7 +518,10 @@ async def test_discovery_glob_reaches_real_handlers_and_writes_decision_artifact
     await event_bus.start()
     unsubscribers = await _wire_adr_subnodes(event_bus, inference_bridge)
     try:
-        report = await HandlerCanaryOrchestrator({"event_bus": event_bus}).handle(
+        handler = HandlerCanaryOrchestrator(
+            await _kernel_shaped_bus_container(event_bus)
+        )
+        report = await handler.handle(
             ModelCanaryCommandPayload(
                 manifest_path=str(manifest_path),
                 workspace_root=str(workspace_root),
