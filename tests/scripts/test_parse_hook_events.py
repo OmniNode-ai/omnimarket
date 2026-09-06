@@ -18,7 +18,7 @@ import multiprocessing
 import os
 import socket
 import stat
-import time
+import threading
 from collections import Counter
 from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
@@ -336,6 +336,22 @@ def _emit_from_another_process(config_path: str, sink_path: str, worker: int) ->
         timestamp=datetime(2026, 9, 1, 9, 0, tzinfo=UTC),
     )
     emit_hook_events(_VERBOSE_OUTPUT.splitlines(), context, Path(sink_path))
+
+
+def _hold_sink_lock(
+    sink_path: str,
+    lock_acquired: multiprocessing.synchronize.Event,
+    release_lock: multiprocessing.synchronize.Event,
+) -> None:
+    """Hold an advisory lock in another process until the parent releases it."""
+    descriptor = os.open(sink_path, os.O_CREAT | os.O_RDWR, mode=0o600)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        lock_acquired.set()
+        release_lock.wait(timeout=30)
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
 
 
 def test_sink_keeps_jsonl_rows_valid_under_cross_process_appends(
@@ -659,18 +675,45 @@ def test_sink_unlock_error_still_attempts_close(
 def test_held_sink_lock_drops_telemetry_without_blocking(
     tmp_path: Path,
 ) -> None:
-    """A held lock drops the whole payload promptly rather than delaying a hook."""
+    """A held external lock drops a payload before its owner releases it.
+
+    The generous timeout protects the test harness from a stuck implementation
+    without treating scheduler delay under a loaded CI machine as hook latency.
+    The lock holder stays alive until after ``emit_hook_events`` returns, which
+    directly proves the writer did not wait to acquire its advisory lock.
+    """
     sink_path = tmp_path / "hook_events.jsonl"
-    descriptor = os.open(sink_path, os.O_CREAT | os.O_RDWR, mode=0o600)
-    try:
-        fcntl.flock(descriptor, fcntl.LOCK_EX)
-        started_at = time.monotonic()
+    lock_acquired = multiprocessing.Event()
+    release_lock = multiprocessing.Event()
+    holder = multiprocessing.Process(
+        target=_hold_sink_lock,
+        args=(str(sink_path), lock_acquired, release_lock),
+    )
+    emission_finished = threading.Event()
+    emitter: threading.Thread | None = None
+
+    def _emit() -> None:
         emit_hook_events(_VERBOSE_OUTPUT.splitlines(), _context(tmp_path), sink_path)
-        assert time.monotonic() - started_at < 0.5
+        emission_finished.set()
+
+    holder.start()
+    try:
+        assert lock_acquired.wait(timeout=5)
+        emitter = threading.Thread(target=_emit)
+        emitter.start()
+        assert emission_finished.wait(timeout=5)
+        emitter.join(timeout=1)
+        assert not emitter.is_alive()
+        assert holder.is_alive()
         assert sink_path.read_text(encoding="utf-8") == ""
     finally:
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
-        os.close(descriptor)
+        release_lock.set()
+        if emitter is not None:
+            emitter.join(timeout=5)
+        holder.join(timeout=5)
+        if holder.is_alive():
+            holder.terminate()
+            holder.join(timeout=5)
 
 
 def test_sink_abandons_a_zero_progress_write_without_changing_the_gate(
