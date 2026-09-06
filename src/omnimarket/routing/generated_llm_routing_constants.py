@@ -14,7 +14,30 @@ from enum import StrEnum, unique
 MODEL_REGISTRY_VERSION = "1.3.0"
 PRICING_MANIFEST_VERSION = "2026-06-11-gemini-25-flash-lite"
 REGISTRY_OBSERVED_AT = "2026-06-11T00:00:00Z"
-GENERATED_FROM = ("src/omnimarket/data/model_registry/model_registry_v1.yaml",)
+MODEL_REGISTRY_SHA256 = (
+    "8811f33bd5e49cd9696f0c0434b29cac2e3d68af8029f1453fcf2b8ff674876e"
+)
+MODEL_REGISTRY_RAW_SHA256 = (
+    "d4524447fc07d04f591c34c44c0da3e37114d0f4bc08a75d1c4cdb3610f013a2"
+)
+ROUTING_TIERS_SHA256 = (
+    "e2cb1701d89b5e69310a007a2c3c48f761a1496bfd10e827e7c917366aaa89a1"
+)
+BIFROST_DELEGATION_SHA256 = (
+    "0162e5806548b22eed1a92d83c587d8dd98f7c9c2b0b9b7c21b592750b1c01ac"
+)
+ENDPOINT_REGISTRY_SHA256 = (
+    "4a9eb375b56eae9898a409784378a3f468fa5388fc5a5d0c088decd7fe9343d6"
+)
+ROUTE_CONTRACT_BUNDLE_SHA256 = (
+    "58823fb6ea1795b8835f756d99075a55b1d05027bc0cfefd3c0bbd1c5ef7c74f"
+)
+GENERATED_FROM = (
+    "src/omnimarket/configs/routing_tiers.yaml",
+    "src/omnimarket/configs/bifrost_delegation.yaml",
+    "src/omnimarket/nodes/node_swarm_registry_compute/contracts/endpoint_registry.yaml",
+    "src/omnimarket/data/model_registry/model_registry_v1.yaml",
+)
 
 
 @unique
@@ -54,12 +77,18 @@ LOGICAL_MODEL_KEYS: tuple[str, ...] = tuple(item.value for item in EnumLogicalMo
 LLM_ENDPOINT_REFS: tuple[str, ...] = tuple(item.value for item in EnumLlmEndpointRef)
 
 __all__ = [
+    "BIFROST_DELEGATION_SHA256",
+    "ENDPOINT_REGISTRY_SHA256",
     "GENERATED_FROM",
     "LLM_ENDPOINT_REFS",
     "LOGICAL_MODEL_KEYS",
+    "MODEL_REGISTRY_RAW_SHA256",
+    "MODEL_REGISTRY_SHA256",
     "MODEL_REGISTRY_VERSION",
     "PRICING_MANIFEST_VERSION",
     "REGISTRY_OBSERVED_AT",
+    "ROUTE_CONTRACT_BUNDLE_SHA256",
+    "ROUTING_TIERS_SHA256",
     "EnumLlmEndpointRef",
     "EnumLogicalModelKey",
 ]

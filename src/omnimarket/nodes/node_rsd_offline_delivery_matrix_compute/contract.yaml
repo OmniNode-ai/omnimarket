@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# ONEX Node Contract - RSD Offline Delivery Matrix Compute (OMN-17984, C0)
+#
+# Direct invocation only. It receives its complete route-contract view by value,
+# has no event-bus declarations, and therefore cannot dispatch or authorize an
+# effect.
+name: "node_rsd_offline_delivery_matrix_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >
+  Pure offline C0 validation of exact supplied routing, Bifrost, endpoint, and
+  model-registry contract bytes against generated build-time pins. It derives
+  all facts from those snapshots and returns only permanently non-authorizing
+  diagnostics. Task-class selection is explicitly outside C0 scope.
+input_model:
+  name: "ModelRsdOfflineDeliveryMatrixInput"
+  module: "omnimarket.nodes.node_rsd_offline_delivery_matrix_compute.models.model_rsd_offline_delivery_matrix"
+  description: "Self-contained pinned raw contract bytes and requested tuple identifiers."
+output_model:
+  name: "ModelRsdOfflineDeliveryMatrixOutput"
+  module: "omnimarket.nodes.node_rsd_offline_delivery_matrix_compute.models.model_rsd_offline_delivery_matrix"
+  description: "Diagnostic hashes and identities with effects permanently disabled."
+handler:
+  module: "omnimarket.nodes.node_rsd_offline_delivery_matrix_compute.handlers.handler_rsd_offline_delivery_matrix"
+  class: "HandlerRsdOfflineDeliveryMatrix"
+  input_model: "omnimarket.nodes.node_rsd_offline_delivery_matrix_compute.models.model_rsd_offline_delivery_matrix.ModelRsdOfflineDeliveryMatrixInput"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_rsd_offline_delivery_matrix_compute.handlers.handler_rsd_offline_delivery_matrix:HandlerRsdOfflineDeliveryMatrix"
+  handlers:
+    - operation: "validate_rsd_offline_delivery_matrix"
+      handler:
+        name: "HandlerRsdOfflineDeliveryMatrix"
+        module: "omnimarket.nodes.node_rsd_offline_delivery_matrix_compute.handlers.handler_rsd_offline_delivery_matrix"
+metadata:
+  transport_type: inmemory
+  description: "Offline-only C0 route-contract tuple validator; no route authority or effect capability."
+  author: "OmniNode Team"
+  created: "2026-09-06"
+  tags: ["compute", "offline-validation", "routing-contract", "rsd", "OMN-17984"]
+  related_tickets: ["OMN-17984"]
+provenance_pins:
+  authority: "omnimarket.routing.generated_llm_routing_constants"
+  bundle: "ROUTE_CONTRACT_BUNDLE_SHA256"
