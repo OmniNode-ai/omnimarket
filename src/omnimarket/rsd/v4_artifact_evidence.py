@@ -31,6 +31,11 @@ from pydantic import (
     model_validator,
 )
 
+from omnimarket.rsd.oci_repository import (
+    oci_repository_reference_v1,
+    validate_oci_repository_reference_v1,
+    validate_oci_repository_v1,
+)
 from omnimarket.rsd.v4_static_profile import (
     ContainerBootstrapStaticProfileTrustAnchorV4,
     ContainerBootstrapStaticRoleProfileEnvelopeV4,
@@ -44,7 +49,6 @@ _OID = r"^[0-9a-f]{40}$"
 _IDENTIFIER = r"^[A-Za-z][A-Za-z0-9_.-]{0,127}$"
 _PATH = r"^/[A-Za-z0-9._/-]{1,240}$"
 _RELATIVE_PATH = r"^[A-Za-z0-9._@+-]+(?:/[A-Za-z0-9._@+-]+)*$"
-_REPOSITORY = r"^example\.invalid/[a-z0-9][a-z0-9._/-]{0,180}$"
 _STATIC_V4_ARG = r"^[A-Za-z0-9._/:=@+,%=-]{1,256}$"
 _MAX_OCI_LAYERS = 32
 _MAX_STATIC_V4_ARG_ITEMS = 64
@@ -447,8 +451,8 @@ class ContainerBootstrapWrapperArchiveInspectionV4(_Model):
 
 class ContainerBootstrapOciEvidenceV4(_Model):
     schema_version: Literal["rsd.container-bootstrap-oci-evidence.v4"]
-    derived_repository: str = Field(pattern=_REPOSITORY)
-    derived_reference: str = Field(min_length=80, max_length=280)
+    derived_repository: str = Field(max_length=240)
+    derived_reference: str = Field(max_length=312)
     base_image_policy_sha256: str = Field(pattern=_SHA256)
     base_resolution_attestation_sha256: str = Field(pattern=_SHA256)
     base_registry_index_digest_sha256: str = Field(pattern=_SHA256)
@@ -514,6 +518,16 @@ class ContainerBootstrapOciEvidenceV4(_Model):
             raise ValueError("OCI sequence is invalid")
         return _items(value, field=str(info.field_name), max_items=max_items)
 
+    @field_validator("derived_repository")
+    @classmethod
+    def canonical_repository(cls, value: str) -> str:
+        return validate_oci_repository_v1(value)
+
+    @field_validator("derived_reference")
+    @classmethod
+    def canonical_reference(cls, value: str) -> str:
+        return validate_oci_repository_reference_v1(value)
+
     @field_validator("entrypoint", "cmd")
     @classmethod
     def bounded_argv(
@@ -536,7 +550,9 @@ class ContainerBootstrapOciEvidenceV4(_Model):
 
     @model_validator(mode="after")
     def exact_oci(self) -> Self:
-        expected_reference = f"{self.derived_repository}@sha256:{self.linux_amd64_manifest_digest_sha256}"
+        expected_reference = oci_repository_reference_v1(
+            self.derived_repository, self.linux_amd64_manifest_digest_sha256
+        )
         layer_digests = tuple(layer.digest_sha256 for layer in self.ordered_layers)
         diff_ids = tuple(layer.diff_id_sha256 for layer in self.ordered_layers)
         try:
