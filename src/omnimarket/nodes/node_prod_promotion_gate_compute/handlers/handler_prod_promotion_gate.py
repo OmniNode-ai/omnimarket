@@ -43,13 +43,13 @@ from omnimarket.nodes.node_prod_promotion_gate_compute.models.model_prod_promoti
 HANDLER_ID = "prod-promotion-gate-compute"
 
 
-def evaluate_gate(
+def _decide_gate(
     command: ModelProdPromotionGateCommand,
 ) -> ModelProdPromotionGateDecision:
     """Decide whether a redeploy may proceed for the command's lane.
 
-    Pure function — the public, directly-testable surface. Non-prod lanes are
-    allowed unconditionally; prod runs the full / same-digest promotion gate.
+    Pure. Non-prod lanes are allowed unconditionally; prod runs the full /
+    same-digest promotion gate. Callers use ``evaluate_gate``, which wraps this.
     """
     rollback_target = command.rollback_target or command.previous_image
 
@@ -119,6 +119,24 @@ def evaluate_gate(
             non_main_lineage=command.non_main_lineage,
             evaluated_at=command.evaluated_at,
         )
+    )
+
+
+def evaluate_gate(
+    command: ModelProdPromotionGateCommand,
+) -> ModelProdPromotionGateDecision:
+    """Decide, then echo the command's deploy context onto the decision.
+
+    The public, directly-testable surface. The gate reads NOTHING from
+    ``deploy_context`` — echoing it (OMN-16939) is what lets the stateless
+    orchestrator issue the deploy against the request that started it, now that the
+    four-field decision is the only thing that rides back over the bus. Split from
+    ``_decide_gate`` so the echo happens on EVERY branch: the gate has seven return
+    points, and an echo added per-branch is one refactor away from silently dropping
+    the context on the branch nobody edited.
+    """
+    return _decide_gate(command).model_copy(
+        update={"deploy_context": command.deploy_context}
     )
 
 

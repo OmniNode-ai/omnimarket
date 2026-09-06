@@ -934,6 +934,80 @@ class ModelProdPromotionInputs(BaseModel):
     )
 
 
+class EnumRedeployScope(StrEnum):
+    """Scope of a runtime rebuild command."""
+
+    FULL = "full"
+    RUNTIME = "runtime"
+    CORE = "core"
+
+
+class EnumBuildSource(StrEnum):
+    """Artifact source accepted by the deploy-agent wire contract."""
+
+    WORKSPACE = "workspace"
+    RELEASE = "release"
+
+
+class ModelRedeployDeployContext(BaseModel):
+    """The deploy request, carried across the prod-promotion-gate hop (OMN-16939).
+
+    The gate COMPUTE is a pure ``command -> decision`` node and the redeploy
+    ORCHESTRATOR holds no state, so before this model existed everything the deploy
+    agent needs but the four-field decision does not carry — ``git_ref``,
+    ``build_source``, ``scope``, ``services``, ``image_ref``, ``smoke_test`` — was
+    simply gone by the time the decision rode back. The orchestrator then rebuilt a
+    DEFAULTED start and would have asked the agent to rebuild ``origin/main`` from a
+    ``release`` artifact, whatever ref the post-merge trigger actually published.
+
+    Echoing it is still pure: the gate copies the field it was handed and decides
+    nothing from it.
+    """
+
+    model_config = ConfigDict(frozen=True, extra="forbid")
+
+    scope: EnumRedeployScope = Field(
+        default=EnumRedeployScope.FULL, description="Rebuild scope."
+    )
+    git_ref: str = Field(
+        default="origin/main", description="Git ref the deploy agent pulls."
+    )
+    runtime_lane: EnumRuntimeLane = Field(
+        default=EnumRuntimeLane.DEV, description="Target runtime lane."
+    )
+    build_source: EnumBuildSource = Field(
+        default=EnumBuildSource.RELEASE, description="Artifact source for the agent."
+    )
+    services: tuple[str, ...] = Field(
+        default_factory=tuple,
+        description="Optional service filter. Empty = scope default.",
+    )
+    image_ref: str | None = Field(default=None, description="Mutable image reference.")
+    image_digest: str | None = Field(
+        default=None, description="Pinned image digest. Required for prod."
+    )
+    promotion_batch_id: str | None = Field(
+        default=None,
+        description="Promotion batch shared with OCC evidence; required for prod.",
+    )
+    requested_by: str = Field(
+        default="node_redeploy_orchestrator",
+        description="Identity label emitted in the command.",
+    )
+    smoke_test: bool = Field(
+        default=False,
+        description="Run a post-deploy smoke probe (fails closed -> rollback).",
+    )
+    previous_image: str = Field(
+        default=DEFAULT_PREVIOUS_IMAGE,
+        description="Previous known-good image to restore on rollback.",
+    )
+    rollback_target: str | None = Field(
+        default=None,
+        description="Known previous-good digest for the rollback path.",
+    )
+
+
 class ModelProdPromotionGateDecision(BaseModel):
     """Result of the production promotion gate."""
 
@@ -950,6 +1024,14 @@ class ModelProdPromotionGateDecision(BaseModel):
     )
     reason: str = Field(
         ..., min_length=1, description="Human-readable gate decision reason."
+    )
+    deploy_context: ModelRedeployDeployContext | None = Field(
+        default=None,
+        description=(
+            "The deploy request echoed back from the gate command (OMN-16939), so a "
+            "stateless orchestrator can issue the deploy against the request that "
+            "started it. None means the decision was minted without one."
+        ),
     )
 
 
@@ -1201,21 +1283,6 @@ def _grant_blocked(
 # ---------------------------------------------------------------------------
 # Deploy-agent Kafka wire DTOs (round-tripped with the external .201 agent)
 # ---------------------------------------------------------------------------
-
-
-class EnumRedeployScope(StrEnum):
-    """Scope of a runtime rebuild command."""
-
-    FULL = "full"
-    RUNTIME = "runtime"
-    CORE = "core"
-
-
-class EnumBuildSource(StrEnum):
-    """Artifact source accepted by the deploy-agent wire contract."""
-
-    WORKSPACE = "workspace"
-    RELEASE = "release"
 
 
 class EnumPhaseResult(StrEnum):
@@ -1483,6 +1550,15 @@ class ModelProdPromotionGateCommand(BaseModel):
             "Deterministic evaluation timestamp stamped by the orchestrator/"
             "runtime; threaded into the gate so the compute never calls "
             "datetime.now(). Required for the prod grant expiry check."
+        ),
+    )
+    deploy_context: ModelRedeployDeployContext | None = Field(
+        default=None,
+        description=(
+            "The originating deploy request (OMN-16939). The gate decides nothing "
+            "from it and echoes it verbatim onto the decision, because the pure "
+            "COMPUTE hop would otherwise drop git_ref / build_source / scope and the "
+            "stateless orchestrator would deploy a defaulted request."
         ),
     )
     prod_health: ModelProdHealthFact | None = Field(
@@ -1910,6 +1986,7 @@ __all__ = [
     "ModelReadinessProjectionFact",
     "ModelRedeployCommand",
     "ModelRedeployCompletedEvent",
+    "ModelRedeployDeployContext",
     "ModelRedeployPhaseEvent",
     "ModelRedeployResult",
     "ModelRedeployRolledBackEvent",

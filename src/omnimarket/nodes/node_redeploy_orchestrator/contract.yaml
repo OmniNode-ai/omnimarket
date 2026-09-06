@@ -24,18 +24,54 @@ description: >
   readiness-gate-start command and the terminal redeploy-completed event. No
   in-process handler construction, no FSM loop, no I/O.
 
+# OMN-16939. routing_strategy is topic_match with ONE entry per topic, each declaring
+# its own message_category, because handler_wiring derives an entry's category ONCE —
+# explicit message_category, else _derive_message_category(subscribe_topics[0]) — and
+# stamps it on every route that entry registers. subscribe_topics[0] here is a .cmd.
+# topic, so the previous single operation_match entry registered all nine routes under
+# 'command' and every .evt. topic (arriving as 'event') matched zero routes: consumed,
+# DLQ'd and COMMITTED on every message, at LAG 0, forever. Measured on the .201 dev lane
+# 2026-09-06: 30 gate decisions in, 30 to the DLQ, redeploy-deploy-publish at
+# high-watermark 0. Setting `topic:` alone is NOT enough — that picks WHICH topic an
+# entry owns; `message_category:` picks which category it registers under.
+#
+# The four topics below are the redeploy FSM's merge-to-rebuild path. The remaining
+# subscribe topics (readiness-gate outcomes, rolled-back, runtime-booted,
+# runtime-manifest-published) deliberately have NO entry and stay on the OMN-16939
+# burn-down baseline: the handler has no branch for them, so routing them would send
+# them down the redeploy-start path — and a runtime-booted event doing that is an
+# unbounded redeploy loop. They need handler branches first, not a category.
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
-    - operation: "redeploy.orchestrate"
+    - topic: onex.cmd.omnimarket.redeploy-start.v1
+      message_category: command
+      operation: "redeploy.orchestrate"
       handler:
         name: HandlerRedeployOrchestrator
         module: omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator
-      description: "Route a redeploy lifecycle event to the next bus command."
-      input_model:
-        name: ModelRedeployStartCommand
-        module: omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command
-        description: "Start command + prod-promotion facts."
+      description: "Start command: route to the grant resolver (prod) or the gate (non-prod)."
+    - topic: onex.evt.omnimarket.runtime-image-built.v1
+      message_category: event
+      operation: "redeploy.orchestrate"
+      handler:
+        name: HandlerRedeployOrchestrator
+        module: omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator
+      description: "OMN-13655 cloud CI build-complete: coerce to a start and route to the gate."
+    - topic: onex.evt.omnimarket.prod-promotion-grant-resolved.v1
+      message_category: event
+      operation: "redeploy.orchestrate"
+      handler:
+        name: HandlerRedeployOrchestrator
+        module: omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator
+      description: "OMN-13439 Phase 2b: thread the out-of-band grant into the gate command."
+    - topic: onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
+      message_category: event
+      operation: "redeploy.orchestrate"
+      handler:
+        name: HandlerRedeployOrchestrator
+        module: omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator
+      description: "Gate decision: emit the deploy-publish command, or complete BLOCKED."
 
 handler:
   module: omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator
