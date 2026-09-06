@@ -177,6 +177,30 @@ def _assert_binds_to_submission(
     )
 
 
+def _failure_attribution_lines(
+    receipt: ModelCloudDelegationReceipt,
+) -> tuple[str, ...]:
+    """The gateway's typed explanation of a failed run, as printable lines.
+
+    OMN-17372. A keyless customer's delegation is refused by name, with a
+    stable code, before any provider is contacted; a provider outage is a
+    different situation with a different correct response. Until the gateway
+    carried the attribution both rendered here as the same two words, so this
+    prints whichever of the four fields the gateway actually supplied and
+    invents nothing for the ones it did not. ``code`` leads because it is the
+    field a script routes on.
+    """
+    labelled = (
+        ("code", receipt.terminal_failure_code),
+        ("class", receipt.terminal_failure_class),
+        ("reason", receipt.terminal_failure_reason),
+        ("do", receipt.terminal_remediation),
+    )
+    return tuple(
+        f"{label:>8}: {value}" for label, value in labelled if value is not None
+    )
+
+
 def _store(onex_home: Path | None) -> StoreTenantApiCredential:
     return StoreTenantApiCredential(onex_home=onex_home or (Path.home() / ".onex"))
 
@@ -417,6 +441,13 @@ def _write_run_files(
                 "latency_ms": receipt.terminal_latency_ms,
                 "projection_row_hash": receipt.projection_row_hash,
                 "terminal_event_hash": receipt.terminal_event_hash,
+                # OMN-17372: why a failed run failed, in the file that ties a
+                # receipt back to its request. None on a success, and None on a
+                # failure whose gateway carried no attribution.
+                "failure_code": receipt.terminal_failure_code,
+                "failure_class": receipt.terminal_failure_class,
+                "failure_reason": receipt.terminal_failure_reason,
+                "remediation": receipt.terminal_remediation,
             },
             indent=2,
             sort_keys=True,
@@ -600,18 +631,41 @@ def cloud_delegate(
     )
 
     if status.status != "completed":
-        # A terminal failure with no content is the quota-dead shape: the
-        # submit was accepted, the runtime could not answer. Named, never
-        # retried, and never reported as an empty success.
+        # OMN-17372: the gateway's own attribution, printed before the exit
+        # message so the operator sees the code and what to do about it even
+        # when the message itself scrolls past.
+        for line in _failure_attribution_lines(receipt):
+            click.echo(line, err=True)
+
+        # A terminal failure with no content used to be reported as the
+        # quota-dead shape unconditionally: the submit was accepted, the
+        # runtime could not answer. That is still the honest reading when the
+        # gateway named no cause -- but when it DID, the remediation is the
+        # detail, because "returned no content" is true of our pipeline and
+        # false of the customer's problem.
         detail = (
-            "the runtime returned no content"
-            if receipt.result_content is None
-            else "the runtime returned partial content"
+            receipt.terminal_remediation
+            if receipt.terminal_remediation is not None
+            else (
+                "the runtime returned no content"
+                if receipt.result_content is None
+                else "the runtime returned partial content"
+            )
+        )
+        # The remediation arrives already terminated; the two fallback phrases
+        # do not. One sentence either way, never "retry.." and never "content
+        # The receipt".
+        if not detail.endswith("."):
+            detail = f"{detail}."
+        named_code = (
+            f" [{receipt.terminal_failure_code}]"
+            if receipt.terminal_failure_code is not None
+            else ""
         )
         raise _fail(
             f"delegation {workflow_id} reached terminal status "
-            f"'{status.status}' — {detail}. The receipt above records what the "
-            f"platform did; it was NOT retried."
+            f"'{status.status}'{named_code} — {detail} The receipt above "
+            f"records what the platform did; it was NOT retried."
         )
 
 
