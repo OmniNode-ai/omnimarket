@@ -27,9 +27,10 @@ import logging
 import os
 import time
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from omnibase_core.models.dispatch.model_handler_output import ModelHandlerOutput
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
@@ -137,6 +138,38 @@ def _sign_envelope(payload: dict[str, Any]) -> dict[str, Any]:
     return {**body_dict, "_signature": signature}
 
 
+def _headers_for(topic: str, correlation_id: Any) -> Any:
+    """Stamp the FSM run's correlation onto the envelope header (OMN-16939).
+
+    A raw ``bus.publish`` with no ``headers`` lets the bus mint a FRESH
+    ``correlation_id`` for the envelope, so the wire record carries a
+    correlation that belongs to nothing. Measured on the dev lane 2026-09-06,
+    ``onex.cmd.deploy.rebuild-requested.v1`` offset 0: payload
+    ``correlation_id`` ``86d5da00-aeb8-47c2-afce-11333f47406c`` against header
+    ``correlation_id`` ``ce9eaa2e-6719-44aa-b441-5555e2def0c8``. Anyone
+    correlating the deploy agent's work by header -- which is what every
+    tracing surface does -- could not find the FSM run that asked for it.
+    """
+    # Lazily imported, matching the established omnimarket pattern
+    # (node_emit_daemon.kafka_publish, node_event_emit_effect): omnibase_infra
+    # is a runtime dependency, not a module-scope import of this package.
+    from omnibase_infra.event_bus.models import ModelEventHeaders
+
+    return ModelEventHeaders(
+        source=HANDLER_ID,
+        event_type=topic,
+        timestamp=datetime.now(UTC),
+        correlation_id=_as_uuid(correlation_id),
+    )
+
+
+def _as_uuid(value: Any) -> UUID:
+    """Coerce a correlation id to UUID, failing loud on a non-UUID value."""
+    if isinstance(value, UUID):
+        return value
+    return UUID(str(value))
+
+
 def _rollback_reason(
     result: ModelRedeployResult | None, smoke_test: bool
 ) -> str | None:
@@ -222,7 +255,7 @@ class HandlerDeployPublishMonitor:
         emitted: list[ModelEventEnvelope[Any]] = []
         reason = _rollback_reason(result, command.smoke_test)
         if reason is not None:
-            rolled_back = await self.rollback(
+            rolled_back = self.rollback(
                 correlation_id=command.correlation_id,
                 runtime_lane=command.runtime_lane,
                 restored_image=command.rollback_target,
@@ -277,6 +310,7 @@ class HandlerDeployPublishMonitor:
             TOPIC_DEPLOY_REFUSED,
             key=str(command.correlation_id).encode(),
             value=json.dumps(refused.model_dump(mode="json")).encode(),
+            headers=_headers_for(TOPIC_DEPLOY_REFUSED, command.correlation_id),
         )
         logger.warning(
             "Prod deploy refused at the EFFECT boundary",
@@ -362,6 +396,7 @@ class HandlerDeployPublishMonitor:
             TOPIC_REBUILD_REQUESTED,
             key=corr_id.encode(),
             value=json.dumps(command_payload).encode(),
+            headers=_headers_for(TOPIC_REBUILD_REQUESTED, command.correlation_id),
         )
         logger.info(
             "Redeploy command published",
@@ -450,7 +485,7 @@ class HandlerDeployPublishMonitor:
             health_checks=list(completed.health_checks),
         )
 
-    async def rollback(
+    def rollback(
         self,
         correlation_id: Any,
         runtime_lane: Any,
@@ -458,24 +493,40 @@ class HandlerDeployPublishMonitor:
         failure_reason: str,
         failed_phase: EnumRedeployPhase,
     ) -> ModelRedeployRolledBackEvent:
-        """Publish the rolled-back event over the bus and return it.
+        """Build the rolled-back fact. Does NOT publish it (OMN-16939).
 
-        The image restore itself is the deploy agent's job; this records and
-        announces the rollback decision on the contract-declared topic.
+        The image restore itself is the deploy agent's job; this records the
+        rollback decision, and ``handle`` returns it as a handler-output event
+        so the RUNTIME publishes it exactly once on the contract-declared topic.
+
+        This method used to ALSO ``self._bus.publish`` the bare payload while
+        ``handle`` returned the same fact for the runtime to publish, so every
+        logical rollback produced TWO broker records on
+        ``onex.evt.omnimarket.redeploy-rolled-back.v1`` a few milliseconds apart
+        -- one bare payload, one full envelope. Measured on the dev lane
+        2026-09-06: offsets 0 (bare, 21:06:49.853307Z) and 1 (envelope,
+        21:06:49.859946Z) for correlation 86d5da00, and the same pairing for
+        every other correlation on the topic.
+
+        That duplicate is not cosmetic. ``node_redeploy_orchestrator``
+        subscribes to this topic and terminalizes each arrival, so two
+        rolled-back records became TWO ``redeploy-completed`` terminals per
+        logical run -- observed at offsets 6378/6379, 6380/6381 and 6382/6383,
+        each pair carrying a distinct ``envelope_timestamp`` because the
+        orchestrator genuinely ran twice.
+
+        The in-memory-bus tests passed throughout because the in-memory bus has
+        no dispatch-result applier: it only ever saw the direct publish, so
+        "exactly one record on the topic" was true in the test and false on the
+        runtime. The tests now assert the handler publishes NOTHING itself.
         """
-        event = ModelRedeployRolledBackEvent(
+        return ModelRedeployRolledBackEvent(
             correlation_id=correlation_id,
             runtime_lane=runtime_lane,
             restored_image=restored_image,
             failure_reason=failure_reason,
             failed_phase=failed_phase,
         )
-        await self._bus.publish(
-            TOPIC_ROLLED_BACK,
-            key=str(correlation_id).encode(),
-            value=json.dumps(event.model_dump(mode="json")).encode(),
-        )
-        return event
 
 
 def _coerce_command(payload: Any) -> ModelDeployPublishCommand:

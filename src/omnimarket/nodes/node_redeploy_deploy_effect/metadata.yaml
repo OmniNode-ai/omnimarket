@@ -15,6 +15,9 @@ capabilities:
   side_effect_class: external_io
 dependencies:
   - "omnibase_core>=0.39.0"
+  # OMN-16939: the effect stamps an infra ModelEventHeaders on the commands it
+  # publishes so the wire header correlation equals the payload correlation.
+  - "omnibase-infra>=0.38.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["effect", "deploy", "runtime", "kafka", "rollback", "publish-monitor", "OMN-13211"]
