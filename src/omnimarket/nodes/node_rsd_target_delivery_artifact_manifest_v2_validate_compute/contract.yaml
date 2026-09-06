@@ -1,0 +1,35 @@
+name: "node_rsd_target_delivery_artifact_manifest_v2_validate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Pure offline verification of supplied B1, V4 static, and V5 worker evidence
+  reconstructed into a signed B2 V2 manifest. It has no route root, signer,
+  map issuance, filesystem, environment, network, attach, replay, or effect surface.
+input_model:
+  name: "ModelRsdTargetDeliveryArtifactManifestV2Input"
+  module: "omnimarket.nodes.node_rsd_target_delivery_artifact_manifest_v2_validate_compute.models.model_rsd_target_delivery_artifact_manifest_v2"
+output_model:
+  name: "ModelRsdTargetDeliveryArtifactManifestV2Output"
+  module: "omnimarket.nodes.node_rsd_target_delivery_artifact_manifest_v2_validate_compute.models.model_rsd_target_delivery_artifact_manifest_v2"
+handler:
+  module: "omnimarket.nodes.node_rsd_target_delivery_artifact_manifest_v2_validate_compute.handlers.handler_rsd_target_delivery_artifact_manifest_v2"
+  class: "HandlerRsdTargetDeliveryArtifactManifestV2"
+  input_model: "omnimarket.nodes.node_rsd_target_delivery_artifact_manifest_v2_validate_compute.models.model_rsd_target_delivery_artifact_manifest_v2.ModelRsdTargetDeliveryArtifactManifestV2Input"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_rsd_target_delivery_artifact_manifest_v2_validate_compute.handlers.handler_rsd_target_delivery_artifact_manifest_v2:HandlerRsdTargetDeliveryArtifactManifestV2"
+  handlers:
+    - operation: "validate_rsd_target_delivery_artifact_manifest_v2"
+      handler:
+        name: "HandlerRsdTargetDeliveryArtifactManifestV2"
+        module: "omnimarket.nodes.node_rsd_target_delivery_artifact_manifest_v2_validate_compute.handlers.handler_rsd_target_delivery_artifact_manifest_v2"
+metadata:
+  transport_type: inmemory
+  description: "Offline B2 V2 validator; permanently non-authorizing."
+  author: "OmniNode Team"
+  created: "2026-09-06"
+  tags: ["compute", "offline-validation", "rsd", "b2", "v2"]
+  related_tickets: ["OMN-17983"]
