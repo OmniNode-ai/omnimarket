@@ -262,6 +262,7 @@ def _attestation(
     run_id: str,
     envelope: Any,
     source_snapshot: str | None = None,
+    derived_repository: str = "example.invalid/rsd/v4-wrapper",
 ) -> evidence.ContainerBootstrapArtifactWorkerAttestationV4:
     profile = envelope.static_role_profile
     layer = evidence.ContainerBootstrapOciLayerDescriptorV4(
@@ -362,8 +363,8 @@ def _attestation(
     index_digest = hashlib.sha256(index_bytes).hexdigest()
     oci = evidence.ContainerBootstrapOciEvidenceV4(
         schema_version="rsd.container-bootstrap-oci-evidence.v4",
-        derived_repository="example.invalid/rsd/v4-wrapper",
-        derived_reference=f"example.invalid/rsd/v4-wrapper@sha256:{manifest_digest}",
+        derived_repository=derived_repository,
+        derived_reference=f"{derived_repository}@sha256:{manifest_digest}",
         base_image_policy_sha256=profile.static_launch_plan.base_image_policy_sha256,
         base_resolution_attestation_sha256=(
             profile.static_launch_plan.base_resolution_attestation_sha256
@@ -936,6 +937,32 @@ def test_rejects_same_worker_same_run_and_mutable_oci_reference() -> None:
                 "derived_reference": "example.invalid/rsd/v4-wrapper:latest",
             }
         )
+
+
+def test_oci_evidence_uses_canonical_repository_and_digest_reference_grammar() -> None:
+    _, policy, envelope, _, signing_keys = _closure()
+    repository = "registry.example:443/rsd/generic-wrapper"
+    attestation = _attestation(
+        signing_key=signing_keys[0],
+        anchor=policy.worker_trust_anchors[0],
+        run_id="generic-repository-run",
+        envelope=envelope,
+        derived_repository=repository,
+    )
+    assert attestation.oci.derived_repository == repository
+    assert attestation.oci.derived_reference == (
+        f"{repository}@sha256:{attestation.oci.linux_amd64_manifest_digest_sha256}"
+    )
+    for field, value in (
+        ("derived_repository", "Registry.example/rsd/generic-wrapper"),
+        ("derived_repository", "registry.example:0443/rsd/generic-wrapper"),
+        ("derived_reference", f"{repository}:latest"),
+        ("derived_reference", f"{repository}@sha256:{'0' * 64}"),
+    ):
+        with pytest.raises(ValueError, match=r"."):
+            evidence.ContainerBootstrapOciEvidenceV4(
+                **{**attestation.oci.model_dump(mode="python"), field: value}
+            )
 
 
 def test_rejects_nonfinal_wrapper_layer_and_reused_authority_root() -> None:
@@ -1572,6 +1599,9 @@ def test_type_specific_parser_limits_are_closed_before_unparsable_documents() ->
 
 
 def test_fixed_public_vector_exercises_complete_graph_without_regeneration() -> None:
+    assert hashlib.sha256(_VECTOR.read_bytes()).hexdigest() == (
+        "248bdc9d3aedb18f7b84feb93e28faaa6d6082602d1f0a03e4d4095da75b1a68"
+    )
     vector = _strict_vector()
     envelope = static_v4.parse_container_bootstrap_static_role_profile_envelope_v4_canonical_json(
         _decoded(vector["profile_envelope_canonical_json_utf8_base64"])
