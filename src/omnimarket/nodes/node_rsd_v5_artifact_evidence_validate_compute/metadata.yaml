@@ -1,0 +1,19 @@
+name: node_rsd_v5_artifact_evidence_validate_compute
+version: "1.0.0"
+description: "Pure offline V5 worker-evidence closure validation."
+pack: pipeline
+node_role: compute
+display_name: "RSD V5 Artifact Evidence Validate Compute"
+omnibase_core_compat: ">=0.47.2,<0.48.0"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "offline-validation", "rsd", "v5"]
