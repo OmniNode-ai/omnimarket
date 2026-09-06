@@ -1,0 +1,41 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: "node_rsd_offline_c0_validate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version:
+  major: 1
+  minor: 0
+  patch: 0
+node_version: "1.0.0"
+description: >
+  Pure, offline C0 validation of a canonical ModelRoutingDecision against
+  supplied routing-contract evidence and golden-chain provenance. It selects no
+  route and has no transport, external registry, secret, filesystem, or network
+  access.
+input_model:
+  name: "ModelRsdOfflineC0Input"
+  module: "omnimarket.nodes.node_rsd_offline_c0_validate_compute.models.model_rsd_offline_c0"
+output_model:
+  name: "ModelRsdOfflineC0Output"
+  module: "omnimarket.nodes.node_rsd_offline_c0_validate_compute.models.model_rsd_offline_c0"
+handler:
+  module: "omnimarket.nodes.node_rsd_offline_c0_validate_compute.handlers.handler_rsd_offline_c0"
+  class: "HandlerRsdOfflineC0"
+  input_model: "omnimarket.nodes.node_rsd_offline_c0_validate_compute.models.model_rsd_offline_c0.ModelRsdOfflineC0Input"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_rsd_offline_c0_validate_compute.handlers.handler_rsd_offline_c0:HandlerRsdOfflineC0"
+  handlers:
+    - operation: "validate_rsd_offline_c0"
+      handler:
+        name: "HandlerRsdOfflineC0"
+        module: "omnimarket.nodes.node_rsd_offline_c0_validate_compute.handlers.handler_rsd_offline_c0"
+metadata:
+  transport_type: inmemory
+  description: "Offline C0 diagnostic validator; it is permanently non-authorizing and effect-free."
+  author: "OmniNode Team"
+  created: "2026-09-06"
+  tags: ["compute", "offline-validation", "rsd", "OMN-17984"]
+  related_tickets: ["OMN-17984"]

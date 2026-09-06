@@ -1,0 +1,23 @@
+name: node_rsd_offline_c0_validate_compute
+version: "1.0.0"
+description: "Pure offline C0 validation of canonical delegation-route evidence."
+pack: pipeline
+node_role: compute
+display_name: "RSD Offline C0 Validate Compute"
+omnibase_core_compat: ">=0.39.0,<1.0.0"
+entry_points:
+  onex.nodes:
+    node_rsd_offline_c0_validate_compute: "omnimarket.nodes.node_rsd_offline_c0_validate_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies:
+  - "omnibase_core>=0.39.0"
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "offline-validation", "rsd"]
