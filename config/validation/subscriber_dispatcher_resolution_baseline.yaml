@@ -111,35 +111,33 @@ known_unresolved_subscriptions:
   - contract: node_redeploy_orchestrator
     topic: onex.evt.omnibase-infra.runtime-booted.v1
     category: event
-    reason: category_mismatch
+    reason: no_route
   - contract: node_redeploy_orchestrator
     topic: onex.evt.omnibase-infra.runtime-manifest-published.v1
     category: event
-    reason: category_mismatch
-  - contract: node_redeploy_orchestrator
-    topic: onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_redeploy_orchestrator
-    topic: onex.evt.omnimarket.prod-promotion-grant-resolved.v1
-    category: event
-    reason: category_mismatch
+    reason: no_route
   - contract: node_redeploy_orchestrator
     topic: onex.evt.omnimarket.readiness-gate-blocked.v1
     category: event
-    reason: category_mismatch
+    reason: no_route
   - contract: node_redeploy_orchestrator
     topic: onex.evt.omnimarket.readiness-gate-completed.v1
     category: event
-    reason: category_mismatch
+    reason: no_route
+  # node_redeploy_orchestrator: the four topics of the merge-to-rebuild path
+  # (redeploy-start, runtime-image-built, prod-promotion-grant-resolved,
+  # prod-promotion-gate-evaluated) were burned down 2026-09-06 with per-topic
+  # topic_match entries carrying explicit message_category. The five below are NOT the
+  # same fix: HandlerRedeployOrchestrator has no branch for any of them, so giving them
+  # a route sends them down the redeploy-start path — and a runtime-booted event doing
+  # that is an unbounded redeploy loop. They need handler branches (terminal
+  # redeploy-completed for the readiness/rolled-back outcomes, a no-op for the two
+  # attestations) BEFORE they get a category. Their reason is now no_route rather than
+  # category_mismatch because no entry claims them at all.
   - contract: node_redeploy_orchestrator
     topic: onex.evt.omnimarket.redeploy-rolled-back.v1
     category: event
-    reason: category_mismatch
-  - contract: node_redeploy_orchestrator
-    topic: onex.evt.omnimarket.runtime-image-built.v1
-    category: event
-    reason: category_mismatch
+    reason: no_route
   - contract: node_runtime_closeout_orchestrator
     topic: onex.evt.omnimarket.closeout-fitness-gated.v1
     category: event

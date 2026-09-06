@@ -38,6 +38,7 @@ a passing gate decision).
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
@@ -59,6 +60,7 @@ from omnimarket.events.runtime_deployment import (
     ModelProdPromotionGrantResolvedEvent,
     ModelRedeployCommand,
     ModelRedeployCompletedEvent,
+    ModelRedeployDeployContext,
     ModelRuntimeImageBuilt,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
@@ -67,6 +69,22 @@ from omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_com
 )
 
 HANDLER_ID = "redeploy-orchestrator"
+
+# The event NAME, with no ``onex.evt.<producer>.`` prefix and no ``.v<n>`` suffix.
+# ``envelope.event_type`` reaches this handler in whichever of the two live wire forms
+# the producer used: the auto-wiring consume boundary prefers the event body's own
+# ``event_type``, which the runtime stamps as the ALIAS (``omnimarket.<event-name>``),
+# and falls back to the full topic (``onex.evt.omnimarket.<event-name>.v1``) only when
+# the body carries none. Matching on ``.v1``-suffixed strings therefore missed every
+# real gate decision on the bus while the pre-existing golden chain — which fed the
+# full topic form — stayed green (OMN-16939).
+_EVENT_VERSION_SUFFIX = re.compile(r"\.v\d+$")
+
+
+def _event_name(event_type: str) -> str:
+    """Reduce either live ``event_type`` wire form to the bare event name."""
+    return _EVENT_VERSION_SUFFIX.sub("", event_type.strip()).rpartition(".")[2]
+
 
 _CONTRACT = Path(__file__).resolve().parent.parent / "contract.yaml"
 _PUBLISH = contract_publish_topics(_CONTRACT)
@@ -111,14 +129,14 @@ class HandlerRedeployOrchestrator:
         ``prod-promotion-gate-evaluated`` -> deploy-publish command (allowed) or
         redeploy-completed:BLOCKED (denied).
         """
-        event_type = envelope.event_type or ""
+        event_name = _event_name(envelope.event_type or "")
         correlation_id = envelope.correlation_id or uuid4()
 
-        if event_type.endswith("prod-promotion-grant-resolved.v1"):
+        if event_name == "prod-promotion-grant-resolved":
             events = self._on_grant_resolved(envelope, correlation_id)
-        elif event_type.endswith("prod-promotion-gate-evaluated.v1"):
+        elif event_name == "prod-promotion-gate-evaluated":
             events = self._on_gate_evaluated(envelope, correlation_id)
-        elif event_type.endswith("runtime-image-built.v1"):
+        elif event_name == "runtime-image-built":
             # OMN-13655: cloud CI build-complete event — coerce into a start command
             # and route through the prod-promotion gate. This is the canonical path
             # that replaces the imperative git/gh/docker-driven cloud-redeploy skill.
@@ -248,9 +266,15 @@ class HandlerRedeployOrchestrator:
         non-prod lanes both are ``None`` and the gate allows trivially.
         ``requested_by`` is threaded for audit provenance (dual-control is NOT
         enforced — OMN-14814: solo CODEOWNER self-approval is allowed).
+
+        ``deploy_context`` carries the deploy request itself across the gate hop
+        (OMN-16939): the COMPUTE is pure and this orchestrator is stateless, so
+        without it ``git_ref`` / ``build_source`` / ``scope`` are gone by the time the
+        decision rides back and the deploy is issued against defaults.
         """
         gate_command = ModelProdPromotionGateCommand(
             correlation_id=start.correlation_id,
+            deploy_context=_deploy_context(start),
             runtime_lane=start.runtime_lane,
             requested_image_digest=start.image_digest,
             promotion_batch_id=start.promotion_batch_id,
@@ -388,6 +412,52 @@ class HandlerRedeployOrchestrator:
         return self._emit_gate_evaluate(start, grant=None, evaluated_at=None)
 
 
+def _deploy_context(start: ModelRedeployStartCommand) -> ModelRedeployDeployContext:
+    """The deploy request, in the shape that survives the gate hop."""
+    return ModelRedeployDeployContext(
+        scope=start.scope,
+        git_ref=start.git_ref,
+        runtime_lane=start.runtime_lane,
+        build_source=start.build_source,
+        services=start.services,
+        image_ref=start.image_ref,
+        image_digest=start.image_digest,
+        promotion_batch_id=start.promotion_batch_id,
+        requested_by=start.requested_by,
+        smoke_test=start.smoke_test,
+        previous_image=start.previous_image,
+        rollback_target=start.rollback_target,
+    )
+
+
+def _start_from_context(
+    context: ModelRedeployDeployContext,
+    decision: ModelProdPromotionGateDecision,
+    correlation_id: UUID,
+) -> ModelRedeployStartCommand:
+    """Rebuild the originating request from the context the gate echoed back.
+
+    The gate's own resolved digest and rollback target win over the echoed request:
+    for prod they are the stability-proven values the promotion is bound to, and for
+    the other lanes they are what the gate carried through unchanged.
+    """
+    return ModelRedeployStartCommand(
+        correlation_id=correlation_id,
+        scope=context.scope,
+        git_ref=context.git_ref,
+        runtime_lane=context.runtime_lane,
+        build_source=context.build_source,
+        services=context.services,
+        image_ref=context.image_ref,
+        image_digest=decision.image_digest or context.image_digest,
+        promotion_batch_id=context.promotion_batch_id,
+        requested_by=context.requested_by,
+        smoke_test=context.smoke_test,
+        previous_image=context.previous_image,
+        rollback_target=decision.rollback_target or context.rollback_target,
+    )
+
+
 def _coerce_start(payload: Any, correlation_id: UUID) -> ModelRedeployStartCommand:
     """Coerce the start payload into a ``ModelRedeployStartCommand``."""
     if isinstance(payload, ModelRedeployStartCommand):
@@ -423,11 +493,13 @@ def _coerce_gate_result(
 ]:
     """Coerce the gate-evaluated payload into (decision, start, gate command).
 
-    The runtime delivers the gate-evaluated event whose payload carries the
-    ``ModelProdPromotionGateDecision`` (under ``decision``), the echoed original
-    start request (under ``start``), and — for prod — the echoed gate command
-    (under ``command``) that carries the out-of-band-resolved promotion grant +
-    ``evaluated_at``. The orchestrator threads that verified grant into the deploy
+    What the bus actually delivers is the FLAT ``ModelProdPromotionGateDecision``
+    the pure COMPUTE returned, whose ``deploy_context`` echoes the originating
+    request — that is the live shape and the one the deploy command is rebuilt from
+    (OMN-16939). The ``{"decision": ..., "start": ..., "command": ...}`` wrapper
+    remains accepted for a producer that composes one: ``start`` wins over the echoed
+    context when both are present, and ``command`` is where the out-of-band-resolved
+    promotion grant + ``evaluated_at`` ride for prod. The orchestrator threads that verified grant into the deploy
     command so the deploy EFFECT can re-verify target binding (OMN-13440). The gate
     command is ``None`` when not echoed (non-prod, or a digest-only deploy).
     """
@@ -444,6 +516,8 @@ def _coerce_gate_result(
     start_raw = mapping.get("start")
     if start_raw is not None:
         start = ModelRedeployStartCommand.model_validate(_as_dict(start_raw))
+    elif decision.deploy_context is not None:
+        start = _start_from_context(decision.deploy_context, decision, correlation_id)
     else:
         # Minimal start when only the decision rode through (digest-only deploy).
         start = ModelRedeployStartCommand(
