@@ -127,17 +127,16 @@ known_unresolved_subscriptions:
   # node_redeploy_orchestrator: the four topics of the merge-to-rebuild path
   # (redeploy-start, runtime-image-built, prod-promotion-grant-resolved,
   # prod-promotion-gate-evaluated) were burned down 2026-09-06 with per-topic
-  # topic_match entries carrying explicit message_category. The five below are NOT the
+  # topic_match entries carrying explicit message_category, and redeploy-rolled-back
+  # followed once the handler gained a terminal branch for it (proven live the same
+  # day: the deploy agent was down, the effect rolled back, and the rollback fact was
+  # DLQ'd with no terminal emitted). The four below are NOT the
   # same fix: HandlerRedeployOrchestrator has no branch for any of them, so giving them
   # a route sends them down the redeploy-start path — and a runtime-booted event doing
   # that is an unbounded redeploy loop. They need handler branches (terminal
   # redeploy-completed for the readiness/rolled-back outcomes, a no-op for the two
   # attestations) BEFORE they get a category. Their reason is now no_route rather than
   # category_mismatch because no entry claims them at all.
-  - contract: node_redeploy_orchestrator
-    topic: onex.evt.omnimarket.redeploy-rolled-back.v1
-    category: event
-    reason: no_route
   - contract: node_runtime_closeout_orchestrator
     topic: onex.evt.omnimarket.closeout-fitness-gated.v1
     category: event
