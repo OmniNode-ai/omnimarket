@@ -533,18 +533,65 @@ _STAGE_TOOLCHAIN_BIN = ".onex-toolchain-bin"
 _TOOLCHAIN_PROBE_TIMEOUT_S = 180.0
 
 
-def _resolve_pinned_pnpm(version: str) -> tuple[list[str] | None, str | None]:
+def _pnpm_config_flags() -> list[str]:
+    """Settings EVERY pnpm invocation in a stage must carry, as CLI flags.
+
+    CLI flags rather than ``npm_config_*`` environment variables, and that is a
+    measured choice rather than a stylistic one: pnpm 11 no longer reads the
+    npm-style root keys (omniweb's own ``pnpm-workspace.yaml`` records the same
+    migration), so the environment form is silently ignored. Verified against
+    the real omniweb tree on the operator Mac, 2026-09-06 -- the env form left
+    the failure below unchanged; the flag form ran the suite 16/16.
+
+    Carried by the shim so they reach the CONTRACT's own command line, which
+    this runner must never rewrite:
+
+    * ``verifyDepsBeforeRun=false`` -- pnpm 11 re-derives the modules tree
+      before ``pnpm run`` by spawning its own ``pnpm install``. That nested
+      install resolved the DEFAULT store, judged this tree foreign, and asked
+      to purge it; with no TTY that is
+      ``ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY``, reported as the behaviour
+      check FAILING -- precisely the verifier-defect-as-product-defect this
+      ticket removes. The re-derivation is also redundant: the tree was just
+      built by ``pnpm install --frozen-lockfile`` from this exact lockfile, on
+      the BUILD budget, and re-doing it inside the check would put a
+      registry-touching install under the per-check ceiling.
+    * ``confirmModulesPurge=false`` -- a stage is ephemeral and disposable, and
+      a scheduled run has nobody to answer a prompt.
+    * ``storeDir`` -- one content-addressed store for every stage. A store is
+      immutable and content-keyed, so sharing it is a cache hit rather than
+      shared mutable state; what is keyed per (project, lockfile) is the
+      modules tree materialised FROM it, which is what a verdict resolves
+      against.
+    """
+    store = _hermetic_node_root() / "pnpm-store"
+    return [
+        f"--config.storeDir={store}",
+        "--config.verifyDepsBeforeRun=false",
+        "--config.confirmModulesPurge=false",
+    ]
+
+
+def _resolve_pinned_pnpm(
+    version: str, project_root: Path
+) -> tuple[list[str] | None, str | None]:
     """Resolve an argv prefix that runs EXACTLY the pinned pnpm.
 
     Two accepted sources, in order:
 
     * ``corepack pnpm@<version>`` -- the mechanism the ``packageManager`` field
-      exists for, and the one CI provisions (``actions/setup-node`` + ``corepack
-      enable``). It fetches the pinned version if the host does not have it.
-    * a PATH ``pnpm`` whose ``--version`` matches the pin EXACTLY. This is the
-      operator-machine path, where corepack is absent from Node 25 onward.
+      exists for, and the one CI provisions (``actions/setup-node`` +
+      ``corepack enable``). It fetches the pinned version if the host lacks it.
+    * a PATH ``pnpm`` that reports the pinned version WHEN RUN INSIDE THE
+      PROJECT. The cwd is load-bearing rather than incidental: pnpm 10+ honours
+      ``packageManager`` itself (the ``manage-package-manager-versions``
+      setting, on by default) and self-switches to the pinned release, so the
+      same binary reports 10.30.3 outside the project and 11.5.3 inside it.
+      Probing from this process's own cwd measured the wrong thing and rejected
+      a host that could in fact honour the pin -- observed on the operator Mac
+      2026-09-06, where corepack is absent because Node 25 no longer ships it.
 
-    A near-miss is not accepted. "The host has some pnpm" is precisely the
+    A near-miss is never accepted. "The host has some pnpm" is precisely the
     undeclared state this mechanism removes, and a lockfile written by one
     major is not guaranteed to be honoured identically by another.
 
@@ -586,6 +633,7 @@ def _resolve_pinned_pnpm(version: str) -> tuple[list[str] | None, str | None]:
                 capture_output=True,
                 text=True,
                 timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                cwd=str(project_root),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             tried.append(f"pnpm at {pnpm} could not report its version: {exc}")
@@ -594,7 +642,8 @@ def _resolve_pinned_pnpm(version: str) -> tuple[list[str] | None, str | None]:
             if proc.returncode == 0 and found == version:
                 return [pnpm], None
             tried.append(
-                f"pnpm at {pnpm} is {found or 'unreadable'}, not the pinned {version}"
+                f"pnpm at {pnpm} reports {found or 'nothing'} inside "
+                f"{project_root}, not the pinned {version}"
             )
     else:
         tried.append("pnpm is not on PATH")
@@ -5139,7 +5188,7 @@ class EvidenceCollector:
             self._hermetic_node_envs[project_root] = result
             return result
 
-        runner, runner_err = _resolve_pinned_pnpm(version)
+        runner, runner_err = _resolve_pinned_pnpm(version, project_root)
         if runner is None:
             result = (None, f"{_HERMETIC_ENV_FAILURE_MARKER} {runner_err}")
             self._hermetic_node_envs[project_root] = result
@@ -5181,23 +5230,17 @@ class EvidenceCollector:
 
         modules = stage / "node_modules"
         if not modules.is_dir():
-            # The pnpm STORE is deliberately shared across projects and
-            # lockfiles: it is content-addressed and immutable, so sharing it
-            # is a cache hit rather than shared mutable state. What is keyed
-            # per (project, lockfile) is the MODULES TREE materialised from it,
-            # which is the thing a verdict is resolved against.
-            store = _hermetic_node_root() / "pnpm-store"
             build_env = dict(os.environ)
-            # corepack must not block on an interactive "download pnpm?"
-            # prompt inside a scheduled job nobody is watching.
-            build_env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
+            # Non-interactive for the same reason corepack is: a scheduled run
+            # has nobody to answer a prompt, so a prompt is an indefinite hang
+            # reported as nothing at all.
             build_env["CI"] = "1"
+            build_env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
             argv = [
                 *runner,
+                *_pnpm_config_flags(),
                 "install",
                 "--frozen-lockfile",
-                "--store-dir",
-                str(store),
                 "--reporter=append-only",
             ]
             try:
@@ -5294,13 +5337,18 @@ class EvidenceCollector:
         version that adjudicates is whichever pnpm the host happens to have --
         the pin would govern the install and not the run, which is the half
         that produces the verdict. The shim makes the pin govern both.
+
+        It also carries ``_pnpm_config_flags()``, which is the only place they
+        CAN be carried: the check's command line belongs to the contract and
+        this runner must never rewrite it.
         """
         bin_dir = stage / _STAGE_TOOLCHAIN_BIN
         bin_dir.mkdir(parents=True, exist_ok=True)
         shim = bin_dir / "pnpm"
+        argv = [*runner, *_pnpm_config_flags()]
         shim.write_text(
             "#!/usr/bin/env bash\n"
-            "exec " + " ".join(shlex.quote(part) for part in runner) + ' "$@"\n'
+            "exec " + " ".join(shlex.quote(part) for part in argv) + ' "$@"\n'
         )
         shim.chmod(0o755)
         return bin_dir
