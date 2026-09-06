@@ -21,7 +21,7 @@
 # See routing_tiers.yaml for tier escalation ladder.
 #
 # Tickets: OMN-10637, OMN-10638, OMN-10657, OMN-12815, OMN-13170, OMN-13343, OMN-13351, OMN-15155, OMN-16442
-config_version: "2.6.0"
+config_version: "2.7.0"
 schema_version: "bifrost_delegation.v1"
 # Backend definitions — endpoint_url values are merged from the overlay at load time.
 # model_name is null here; resolved at deploy time via bifrost_overrides.yaml overlay.
@@ -461,26 +461,42 @@ backends:
   # `llm.*` mappings from the lane secret-resolver config. Guarded by
   # `scripts/ci/check_backend_secret_discipline.py` here and
   # `tests/k8s/test_no_house_inference_credentials.py` there.
-  - backend_id: openrouter-glm-flash
-    # OMN-12815: COMPLETE endpoint URL incl. the full chat path, posted VERBATIM.
-    endpoint_url: "https://openrouter.ai/api/v1/chat/completions"
-    model_name: "thudm/glm-4-9b-chat:free"
-    secret_ref: llm.openrouter.api_key
-    # OMN-17372: this backend's `api_key_env: OPENROUTER_API_KEY` was deleted
-    # along with every other one in this file. A customer reaches OpenRouter on
-    # THEIR key, resolved per-tenant from the managed store; the house env var
-    # this field named is no longer mounted on the customer plane at all.
-    tier: cheap_cloud
-    timeout_ms: 60000
-    # OMN-13161: GLM-4-9B (free OpenRouter tier) — modest 8192 output budget.
-    max_tokens: 8192
-    capabilities:
-      - code_generation
-      - reasoning
-      - research
-    extra_headers:
-      HTTP-Referer: "https://omninode.ai"
-      X-Title: "OmniNode ONEX Build Loop"
+  # OMN-17988: the `openrouter-glm-flash` backend (tier cheap_cloud, model_name
+  # "thudm/glm-4-9b-chat:free") was DELETED — retired, not repointed.
+  #
+  # The slug is dead and has been for weeks. OMN-15638 live-probed it on
+  # 2026-08-01 and got HTTP 400, verbatim "thudm/glm-4-9b-chat:free is not a
+  # valid model ID"; re-probed 2026-09-06 against GET
+  # https://openrouter.ai/api/v1/models (http=200, 430 models, 18 of them
+  # `:free`) the slug is ABSENT from the catalog entirely. Positive control on
+  # the same response: `nvidia/nemotron-3-ultra-550b-a55b:free`, pinned by
+  # `openrouter-qwen3-coder-480b` below, IS present — so the zero is a real
+  # absence, not an unparsed or empty catalog.
+  #
+  # Retired rather than repointed to a live free slug, for two reasons that
+  # both have to hold before a rung earns a place on the ladder:
+  #
+  #   1. NOTHING SELECTS IT. No entry in routing_tiers.yaml and no task class in
+  #      task_class_contracts.v1.yaml names this backend_id. It has been a
+  #      definition with no caller.
+  #   2. ITS ROLE IS ALREADY FILLED, DIRECTLY. task_class_contracts.v1.yaml
+  #      records that the former openrouter-glm-flash override was repointed to
+  #      the direct z.ai GLM backend: we hold a direct GLM key, so GLM routes
+  #      direct rather than paying aggregator markup — OpenRouter is for FREE
+  #      models only. Re-adding a GLM-through-OpenRouter rung would walk that
+  #      routing-cost decision back.
+  #
+  # A rung whose slug 404s is not free capacity, it is a burned escalation
+  # attempt: task classes order free-before-paid (OMN-14225), so a dead rung
+  # costs a failed call and its latency AHEAD of the working Gemini rung on
+  # every escalation that leaves the local tier. That is why this is a deletion
+  # and not a TODO.
+  #
+  # Do NOT restore this backend_id against another OpenRouter GLM slug. If a
+  # cheap_cloud OpenRouter rung is ever wanted again, add it against a slug
+  # confirmed present in a live GET /v1/models readback AND wire it into
+  # routing_tiers.yaml in the same change, so it cannot land as another
+  # definition nothing selects.
   # OpenRouter cheap-frontier-direct — free frontier-class model (OMN-12492;
   # slug repointed OMN-15638).
   #

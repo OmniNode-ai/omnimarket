@@ -8,8 +8,8 @@ in omnimarket scope, is:
 
   1. The committed bifrost contract carries the COMPLETE verbatim ``endpoint_url``
      (full chat path) for every cloud backend (``cloud-glm``,
-     ``cloud-gemini-flash``, ``openrouter-glm-flash``,
-     ``openrouter-qwen3-coder-480b``) plus a declared API-key reference.
+     ``cloud-gemini-flash``, ``openrouter-qwen3-coder-480b``) plus a declared
+     API-key reference. (``openrouter-glm-flash`` was retired by OMN-17988.)
   2. Cloud-backend routability must NOT depend on the host process environment
      carrying the secret VALUE. The secret VALUE is resolved fail-closed at the
      effect boundary via the secret store (HG2). Reading ``os.environ`` to decide
@@ -73,7 +73,11 @@ _CLOUD_BACKENDS: dict[str, tuple[str, str]] = {
     "cloud-gemini-flash": (_GEMINI_URL, "llm.gemini.api_key"),
     # OMN-13351: Gemini ceiling backend, replacing the dead Anthropic cloud-sonnet.
     "cloud-gemini-pro": (_GEMINI_URL, "llm.gemini.api_key"),
-    "openrouter-glm-flash": (_OPENROUTER_URL, "llm.openrouter.api_key"),
+    # OMN-17988: `openrouter-glm-flash` was RETIRED from the committed contract
+    # (dead slug "thudm/glm-4-9b-chat:free", ABSENT from a 2026-09-06 live
+    # GET /v1/models readback; selected by no tier and no task class). It is
+    # removed from this map rather than kept with a skip, so the parametrized
+    # cases below assert over exactly the cloud backends the contract declares.
     "openrouter-qwen3-coder-480b": (_OPENROUTER_URL, "llm.openrouter.api_key"),
 }
 
