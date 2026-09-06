@@ -1,0 +1,21 @@
+name: "node_rsd_v4_artifact_evidence_validate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: "Pure, offline validation of supplied V4 artifact evidence; non-authorizing and effect-free."
+input_model:
+  name: "ModelV4ArtifactEvidenceValidationInput"
+  module: "omnimarket.nodes.node_rsd_v4_artifact_evidence_validate_compute.models.model_v4_artifact_evidence"
+output_model:
+  name: "ModelV4ArtifactEvidenceValidationOutput"
+  module: "omnimarket.nodes.node_rsd_v4_artifact_evidence_validate_compute.models.model_v4_artifact_evidence"
+handler:
+  module: "omnimarket.nodes.node_rsd_v4_artifact_evidence_validate_compute.handlers.handler_v4_artifact_evidence"
+  class: "HandlerV4ArtifactEvidence"
+  input_model: "omnimarket.nodes.node_rsd_v4_artifact_evidence_validate_compute.models.model_v4_artifact_evidence.ModelV4ArtifactEvidenceValidationInput"
+metadata:
+  transport_type: inmemory
+  description: "No source, OCI, network, signer, route, delivery, replay, or runtime authority."
+  tags: ["compute", "offline-validation", "rsd", "v4-artifact", "OMN-17982"]

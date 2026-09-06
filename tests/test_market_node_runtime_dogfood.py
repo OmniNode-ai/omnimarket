@@ -47,6 +47,13 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     "node_rsd_v5_oci_safe_config_validate_compute",
     # The V5 worker-evidence closure validator is likewise inventory-only.
     "node_rsd_v5_artifact_evidence_validate_compute",
+    # The V4 artifact-evidence verifier is likewise an offline inventory
+    # surface only: supplied signed claims are validated without collection,
+    # build, delivery, replay, runtime, or live-effect authority.
+    "node_rsd_v4_artifact_evidence_validate_compute",
+    # B1 keeps its historical-map comparison private to offline evidence
+    # verification; the inventory surface has no live route or entry point.
+    "node_rsd_b1_projection_binding_validate_compute",
 }
 
 
@@ -280,7 +287,12 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # pure offline validation of supplied redacted OCI safe-config evidence,
     # with no runtime, network, repository, secret, Docker, or side-effect
     # capability): 396 -> 397.
-    assert summary["node_dirs"] == 399
+    # OMN-17982 adds the offline-only V4 profile validator: 396 -> 397, then
+    # its offline-only V4 artifact-evidence verifier: 397 -> 398; OMN-17983
+    # adds the offline-only B1 projection-binding verifier: 398 -> 399.
+    # OMN-17982 adds V4 static, V5 safe-config, V5 worker, and V4 artifact;
+    # OMN-17983 adds B1: 396 -> 401, all offline-only inventory validators.
+    assert summary["node_dirs"] == 401
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
