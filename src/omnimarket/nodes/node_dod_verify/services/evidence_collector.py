@@ -20,6 +20,7 @@ import contextlib
 import fcntl
 import glob
 import hashlib
+import json
 import logging
 import os
 import re
@@ -445,6 +446,243 @@ def _hermetic_venv_path(project_root: Path) -> Path:
     digest.update(str(project_root).encode("utf-8"))
     digest.update((project_root / "uv.lock").read_bytes())
     return _hermetic_venv_root() / f"{project_root.name}-{digest.hexdigest()[:12]}"
+
+
+# ---------------------------------------------------------------------------
+# OMN-17863: the same mechanism for a JS project
+# ---------------------------------------------------------------------------
+#
+# The uv path above exists because a behaviour check was borrowing a shared,
+# composed environment. A JS behaviour check has the identical problem plus a
+# worse one, and the worse one is what OMN-17863 ran into: there is no Node
+# toolchain on the sweep runner at all, so ``pnpm test:audit-verdict`` is
+# ``command not found`` -> exit 127 -> ``failed=1``. That records the
+# VERIFIER's missing runtime as a PRODUCT defect, and it is indistinguishable
+# in a receipt from the product genuinely failing its own behaviour proof --
+# which is the same conflation OMN-17863 is about one layer up, where an
+# unreachable advisory registry was indistinguishable from an advisory.
+#
+# Locally the failure inverts rather than disappearing: ``pnpm`` IS on PATH,
+# so the check runs -- against whatever ``node_modules`` the shared canonical
+# clone happens to carry, which is whatever the last install on that machine
+# left rather than what ``pnpm-lock.yaml`` declares. An adjudication resolved
+# from undeclared state is not lock-exact and is not a proof.
+#
+# So a pnpm check gets what a uv check gets: its own lock-exact tree, built
+# from the project's own lockfile under the pnpm version the project's own
+# ``packageManager`` field pins, keyed by (project root, lockfile bytes), with
+# the canonical clone neither installed into nor read from.
+#
+# WHY A STAGED COPY rather than a redirected modules directory. pnpm will put
+# its modules anywhere (``--modules-dir``), but Node -- and every bundler-based
+# runner above it -- resolves a bare import by walking UP from the importing
+# file's real path. A ``node_modules`` outside the tree is therefore simply not
+# found: the install succeeds and every import then fails, which is a strictly
+# worse outcome than the bug being fixed because it reads as a product error.
+# Symlinking the source in has the same defect for the same reason (module
+# identity is the realpath). The source is copied into the stage instead and
+# the modules live inside it, so the resolver works and the clone is untouched.
+_HERMETIC_NODE_ROOT_ENV = "DOD_VERIFY_HERMETIC_NODE_ROOT"
+
+# Same budget separation as the uv sync, for the same reason and read from the
+# same variable: a cold pnpm store is a download, and charging a download to
+# the 30s/180s per-check ceiling manufactures a CHECK_BUDGET_EXCEEDED that says
+# nothing about the product (OMN-17795).
+#
+# Routed into the stage only when the command actually invokes ``pnpm`` -- at
+# the start of the string or of a pipeline/list segment. A ``gh api`` or
+# ``./verify.sh`` check has no modules tree to redirect, so staging it would
+# silently move its working directory and re-root every relative path in it.
+_PNPM_INVOCATION_RE = re.compile(
+    r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)pnpm\s", re.MULTILINE
+)
+
+# Never copied into the stage. ``node_modules`` because the stage builds its
+# own and inheriting the clone's is the exact defect this closes; ``.git``
+# because a 28MB history is pure copy cost for a check that reads a worktree;
+# the build outputs because they are regenerable and large.
+_STAGE_SKIPPED_ENTRIES = frozenset(
+    {
+        "node_modules",
+        ".git",
+        ".next",
+        ".turbo",
+        ".venv",
+        "dist",
+        "coverage",
+        "playwright-report",
+        "test-results",
+    }
+)
+
+# ``packageManager`` is the project's own pin (the field corepack reads), so
+# the version is resolved from the product rather than from this file. A
+# project that does not pin one cannot be given a lock-exact toolchain, which
+# is a typed non-result rather than a licence to use whatever is on PATH.
+_PACKAGE_MANAGER_RE = re.compile(r"^pnpm@(?P<version>[^+\s]+)")
+
+# Directory inside a stage holding the pinned-pnpm shim. Prefixed and kept out
+# of the copy so it can never collide with a real project directory, and
+# preserved across a source refresh because it is keyed to the same lockfile
+# the stage is.
+_STAGE_TOOLCHAIN_BIN = ".onex-toolchain-bin"
+
+# How long a toolchain PROBE may take. corepack may have to download the pinned
+# pnpm on first use, which is a network fetch; it is still bounded so a hung
+# probe cannot consume the whole build budget silently.
+_TOOLCHAIN_PROBE_TIMEOUT_S = 180.0
+
+
+def _resolve_pinned_pnpm(version: str) -> tuple[list[str] | None, str | None]:
+    """Resolve an argv prefix that runs EXACTLY the pinned pnpm.
+
+    Two accepted sources, in order:
+
+    * ``corepack pnpm@<version>`` -- the mechanism the ``packageManager`` field
+      exists for, and the one CI provisions (``actions/setup-node`` + ``corepack
+      enable``). It fetches the pinned version if the host does not have it.
+    * a PATH ``pnpm`` whose ``--version`` matches the pin EXACTLY. This is the
+      operator-machine path, where corepack is absent from Node 25 onward.
+
+    A near-miss is not accepted. "The host has some pnpm" is precisely the
+    undeclared state this mechanism removes, and a lockfile written by one
+    major is not guaranteed to be honoured identically by another.
+
+    Returns ``(argv_prefix, None)`` or ``(None, reason)``.
+    """
+    tried: list[str] = []
+
+    corepack = shutil.which("corepack")
+    if corepack is not None:
+        probe_env = dict(os.environ)
+        probe_env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
+        argv = [corepack, f"pnpm@{version}"]
+        try:
+            proc = subprocess.run(
+                [*argv, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                env=probe_env,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            tried.append(f"corepack at {corepack} could not run pnpm@{version}: {exc}")
+        else:
+            if proc.returncode == 0 and proc.stdout.strip() == version:
+                return argv, None
+            detail = (proc.stderr or proc.stdout or "").strip()[:200]
+            tried.append(
+                f"corepack at {corepack} did not yield pnpm {version} "
+                f"(exit {proc.returncode}, reported {proc.stdout.strip()!r}): {detail}"
+            )
+    else:
+        tried.append("corepack is not on PATH")
+
+    pnpm = shutil.which("pnpm")
+    if pnpm is not None:
+        try:
+            proc = subprocess.run(
+                [pnpm, "--version"],
+                capture_output=True,
+                text=True,
+                timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            tried.append(f"pnpm at {pnpm} could not report its version: {exc}")
+        else:
+            found = proc.stdout.strip()
+            if proc.returncode == 0 and found == version:
+                return [pnpm], None
+            tried.append(
+                f"pnpm at {pnpm} is {found or 'unreadable'}, not the pinned {version}"
+            )
+    else:
+        tried.append("pnpm is not on PATH")
+
+    return None, (
+        f"no resolvable pnpm honours this project's `packageManager` pin "
+        f"pnpm@{version}, so the behaviour check has no lock-exact toolchain "
+        f"to run under and NOTHING was executed against the product. "
+        f"Provision Node + corepack on this host (the sweep does this with "
+        f"actions/setup-node). Tried: " + "; ".join(tried)
+    )
+
+
+def _pnpm_project_root(start: Path) -> Path | None:
+    """Nearest ancestor of ``start`` (inclusive) that is a locked pnpm project.
+
+    Both files are required, for the reason ``_uv_project_root`` requires both
+    of its own: without a lockfile there is no declared set to install exactly,
+    so there is no lock-exact tree for that directory and the routing must not
+    claim one.
+    """
+    try:
+        candidate = start.resolve()
+    except OSError:
+        return None
+    for directory in (candidate, *candidate.parents):
+        if (directory / "pnpm-lock.yaml").is_file() and (
+            directory / "package.json"
+        ).is_file():
+            return directory
+    return None
+
+
+def _hermetic_node_root() -> Path:
+    """Directory the per-project staged trees are built under."""
+    raw = os.environ.get(_HERMETIC_NODE_ROOT_ENV, "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path.home() / ".cache" / "onex" / "dod-verify-node"
+
+
+def _hermetic_node_stage_path(project_root: Path) -> Path:
+    """Deterministic stage path for one locked JS project.
+
+    Keyed by the project's absolute path AND its ``pnpm-lock.yaml`` bytes, so
+    two projects never share a tree, a lock change mints a new path rather than
+    mutating one a concurrent lane is mid-check in, and an unchanged lock
+    reuses the installed tree -- which is what makes the steady-state cost a
+    source copy instead of a reinstall.
+    """
+    digest = hashlib.sha256()
+    digest.update(str(project_root).encode("utf-8"))
+    digest.update((project_root / "pnpm-lock.yaml").read_bytes())
+    return _hermetic_node_root() / f"{project_root.name}-{digest.hexdigest()[:12]}"
+
+
+def _pinned_pnpm_version(project_root: Path) -> tuple[str | None, str | None]:
+    """Read the pnpm version this project pins in ``packageManager``.
+
+    Returns ``(version, None)`` or ``(None, reason)``. A missing or non-pnpm
+    pin is a reason, never a default: silently falling back to whatever pnpm is
+    on PATH would reintroduce the undeclared-state problem this whole mechanism
+    exists to remove.
+    """
+    manifest = project_root / "package.json"
+    try:
+        raw = manifest.read_text(encoding="utf-8")
+    except OSError as exc:
+        return None, f"could not read {manifest}: {exc}"
+    try:
+        parsed = json.loads(raw)
+    except ValueError as exc:
+        return None, f"{manifest} is not valid JSON: {exc}"
+    if not isinstance(parsed, dict):
+        return None, f"{manifest} does not contain a JSON object"
+    pin = parsed.get("packageManager")
+    if not isinstance(pin, str) or not pin.strip():
+        return None, (
+            f"{manifest} declares no `packageManager` pin, so there is no "
+            "version to honour and no lock-exact toolchain to build"
+        )
+    match = _PACKAGE_MANAGER_RE.match(pin.strip())
+    if match is None:
+        return None, (
+            f"{manifest} pins `packageManager: {pin.strip()}`, which is not a "
+            "pnpm pin; only pnpm projects are staged by this runner"
+        )
+    return match.group("version"), None
 
 
 # OMN-14207: live GitHub PR-state verification.
@@ -1539,6 +1777,12 @@ class EvidenceCollector:
         # two is non-None, and a failure is remembered so a broken environment
         # is not re-attempted once per check.
         self._hermetic_uv_envs: dict[Path, tuple[Path | None, str | None]] = {}
+        # OMN-17863: the JS sibling of the memo above. Same shape, same
+        # per-run-once contract -- a project's stage is built at most once
+        # per collector, and a build FAILURE is memoised too so a second
+        # check in the same project reports the same typed non-result
+        # instead of paying the whole install budget again to fail again.
+        self._hermetic_node_envs: dict[Path, tuple[Path | None, str | None]] = {}
         # When set (during a dev-resolved collect), an origin/dev worktree of the
         # OCC repo. Contract-load AND the shell greps run inside it so dev-only
         # contracts + receipts are visible (OMN-13888 scope 6).
@@ -4852,6 +5096,215 @@ class EvidenceCollector:
         self._hermetic_uv_envs[project_root] = result
         return result
 
+    def _ensure_hermetic_node_env(
+        self, project_root: Path
+    ) -> tuple[Path | None, str | None]:
+        """Build (once) a lock-exact staged tree for a JS ``project_root``.
+
+        Returns ``(stage, None)`` on success and ``(None, message)`` on
+        failure, where the message carries ``_HERMETIC_ENV_FAILURE_MARKER`` so
+        the caller records the same typed SKIPPED the uv path records rather
+        than asserting a product defect the run never looked for.
+
+        Three things happen, in this order, all on the BUILD budget:
+
+        1. the pnpm the project itself pins is resolved -- corepack first
+           because that is the mechanism the ``packageManager`` field exists
+           for, then a PATH pnpm whose version matches exactly. Nothing else is
+           accepted: using an unpinned pnpm would put undeclared state back
+           into the adjudication;
+        2. the source tree is copied into a stage keyed by (project root,
+           lockfile bytes), every entry except the installed modules tree
+           replaced, so a stale file from a previous run cannot survive into a
+           verdict; and
+        3. ``pnpm install --frozen-lockfile`` populates the stage's own
+           ``node_modules`` if it is not already there. ``--frozen-lockfile``
+           is the exactness: pnpm refuses rather than resolving when the
+           manifest and the lockfile disagree.
+
+        The canonical clone is read (copied FROM) and never written: no
+        install, no lockfile rewrite, no modules tree. That is the whole
+        separation, and it is asserted rather than asserted-about by
+        ``test_a_pnpm_check_executes_in_a_lock_exact_stage_not_the_shared_clone``.
+        """
+        cached = self._hermetic_node_envs.get(project_root)
+        if cached is not None:
+            return cached
+
+        result: tuple[Path | None, str | None]
+
+        version, pin_err = _pinned_pnpm_version(project_root)
+        if version is None:
+            result = (None, f"{_HERMETIC_ENV_FAILURE_MARKER} {pin_err}")
+            self._hermetic_node_envs[project_root] = result
+            return result
+
+        runner, runner_err = _resolve_pinned_pnpm(version)
+        if runner is None:
+            result = (None, f"{_HERMETIC_ENV_FAILURE_MARKER} {runner_err}")
+            self._hermetic_node_envs[project_root] = result
+            return result
+
+        try:
+            stage = _hermetic_node_stage_path(project_root)
+        except OSError as exc:
+            result = (
+                None,
+                f"{_HERMETIC_ENV_FAILURE_MARKER} could not read "
+                f"{project_root / 'pnpm-lock.yaml'} to key the stage: {exc}",
+            )
+            self._hermetic_node_envs[project_root] = result
+            return result
+
+        timeout_s = _hermetic_sync_timeout_s()
+        logger.info(
+            "OMN-17863: staging lock-exact behaviour-check tree for %s at %s "
+            "(pnpm %s via %s)",
+            project_root,
+            stage,
+            version,
+            runner[0],
+        )
+
+        try:
+            stage.mkdir(parents=True, exist_ok=True)
+            self._refresh_node_stage_source(project_root, stage)
+            bin_dir = self._write_pnpm_shim(stage, runner)
+        except OSError as exc:
+            result = (
+                None,
+                f"{_HERMETIC_ENV_FAILURE_MARKER} could not stage {project_root} "
+                f"at {stage}: {exc}",
+            )
+            self._hermetic_node_envs[project_root] = result
+            return result
+
+        modules = stage / "node_modules"
+        if not modules.is_dir():
+            # The pnpm STORE is deliberately shared across projects and
+            # lockfiles: it is content-addressed and immutable, so sharing it
+            # is a cache hit rather than shared mutable state. What is keyed
+            # per (project, lockfile) is the MODULES TREE materialised from it,
+            # which is the thing a verdict is resolved against.
+            store = _hermetic_node_root() / "pnpm-store"
+            build_env = dict(os.environ)
+            # corepack must not block on an interactive "download pnpm?"
+            # prompt inside a scheduled job nobody is watching.
+            build_env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
+            build_env["CI"] = "1"
+            argv = [
+                *runner,
+                "install",
+                "--frozen-lockfile",
+                "--store-dir",
+                str(store),
+                "--reporter=append-only",
+            ]
+            try:
+                proc = subprocess.run(
+                    argv,
+                    capture_output=True,
+                    text=True,
+                    timeout=timeout_s,
+                    cwd=str(stage),
+                    env=build_env,
+                )
+            except subprocess.TimeoutExpired:
+                result = (
+                    None,
+                    f"{_HERMETIC_ENV_FAILURE_MARKER} `pnpm install "
+                    f"--frozen-lockfile` for {project_root} exceeded its "
+                    f"{timeout_s}s build ceiling "
+                    f"({_HERMETIC_SYNC_TIMEOUT_ENV} raises it). No check ran.",
+                )
+                self._hermetic_node_envs[project_root] = result
+                return result
+            except OSError as exc:
+                result = (
+                    None,
+                    f"{_HERMETIC_ENV_FAILURE_MARKER} could not spawn `pnpm "
+                    f"install --frozen-lockfile` for {project_root}: {exc}",
+                )
+                self._hermetic_node_envs[project_root] = result
+                return result
+
+            if proc.returncode != 0:
+                detail = (proc.stderr or proc.stdout or "").strip()[:600]
+                result = (
+                    None,
+                    f"{_HERMETIC_ENV_FAILURE_MARKER} `pnpm install "
+                    f"--frozen-lockfile` for {project_root} exited "
+                    f"{proc.returncode}: {detail}",
+                )
+                self._hermetic_node_envs[project_root] = result
+                return result
+
+            # Assert the tree exists rather than trusting the exit status --
+            # the same lesson as the uv path's interpreter assertion.
+            if not modules.is_dir():
+                result = (
+                    None,
+                    f"{_HERMETIC_ENV_FAILURE_MARKER} `pnpm install "
+                    f"--frozen-lockfile` reported success for {project_root} "
+                    f"but {modules} is absent.",
+                )
+                self._hermetic_node_envs[project_root] = result
+                return result
+
+        logger.info("OMN-17863: staged tree ready at %s (pnpm shim %s)", stage, bin_dir)
+        result = (stage, None)
+        self._hermetic_node_envs[project_root] = result
+        return result
+
+    @staticmethod
+    def _refresh_node_stage_source(project_root: Path, stage: Path) -> None:
+        """Replace the stage's source with the clone's, keeping the modules.
+
+        Deleting first is what makes the stage EXACT rather than merely
+        up-to-date: a file the product deleted must not survive in the tree an
+        adjudication runs against, and a copy-over-the-top would leave it
+        there indefinitely. The installed modules tree and the toolchain shim
+        are the two things kept, because both are keyed to the lockfile that
+        keyed this stage in the first place.
+        """
+        keep = {"node_modules", _STAGE_TOOLCHAIN_BIN}
+        for entry in stage.iterdir():
+            if entry.name in keep:
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+        shutil.copytree(
+            project_root,
+            stage,
+            symlinks=True,
+            ignore_dangling_symlinks=True,
+            dirs_exist_ok=True,
+            ignore=lambda _src, names: [
+                n for n in names if n in _STAGE_SKIPPED_ENTRIES
+            ],
+        )
+
+    @staticmethod
+    def _write_pnpm_shim(stage: Path, runner: list[str]) -> Path:
+        """Put the PINNED pnpm on the check's PATH as plain ``pnpm``.
+
+        The check's own command is ``pnpm test:...``, so without this the
+        version that adjudicates is whichever pnpm the host happens to have --
+        the pin would govern the install and not the run, which is the half
+        that produces the verdict. The shim makes the pin govern both.
+        """
+        bin_dir = stage / _STAGE_TOOLCHAIN_BIN
+        bin_dir.mkdir(parents=True, exist_ok=True)
+        shim = bin_dir / "pnpm"
+        shim.write_text(
+            "#!/usr/bin/env bash\n"
+            "exec " + " ".join(shlex.quote(part) for part in runner) + ' "$@"\n'
+        )
+        shim.chmod(0o755)
+        return bin_dir
+
     def _run_command_check(
         self,
         check: dict[str, Any],
@@ -4963,11 +5416,51 @@ class EvidenceCollector:
             run_env.pop("PYTHONPATH", None)
             run_env.pop("VIRTUAL_ENV", None)
 
+        # OMN-17863, the JS sibling of the block above. Same argument, same
+        # typed failure, one structural difference: a Node modules tree cannot
+        # be redirected out of the project the way UV_PROJECT_ENVIRONMENT
+        # redirects a venv, because resolution walks up from the importing
+        # file's real path. So the tree is STAGED and the check's cwd moves to
+        # the stage -- see the module comment above _HERMETIC_NODE_ROOT_ENV.
+        #
+        # Deliberately mutually exclusive with the uv routing rather than
+        # additive: a command that resolved a hermetic uv environment is a
+        # Python check, and moving its working directory would re-root every
+        # relative path in it for no benefit.
+        node_stage_path: Path | None = None
+        if (
+            hermetic_env_path is None
+            and run_cwd is not None
+            and _PNPM_INVOCATION_RE.search(cmd_str) is not None
+        ):
+            node_project_root = _pnpm_project_root(Path(run_cwd))
+            if node_project_root is not None:
+                node_stage_path, node_err = self._ensure_hermetic_node_env(
+                    node_project_root
+                )
+                if node_err is not None:
+                    return False, node_err
+        if node_stage_path is not None:
+            if run_env is None:
+                run_env = dict(os.environ)
+            # The pinned pnpm shim first, so the version that adjudicates is
+            # the version the project pinned rather than whatever the host has.
+            run_env["PATH"] = os.pathsep.join(
+                [
+                    str(node_stage_path / _STAGE_TOOLCHAIN_BIN),
+                    run_env.get("PATH", os.environ.get("PATH", "")),
+                ]
+            )
+            run_env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
+            run_cwd = str(node_stage_path)
+
         logger.info(
-            "Running command check (cwd=%s, CONTRACT_REPO_DIR=%s, uv env=%s): %s",
+            "Running command check (cwd=%s, CONTRACT_REPO_DIR=%s, uv env=%s, "
+            "node stage=%s): %s",
             run_cwd or "<inherit>",
             contract_repo_dir or "<unset>",
             hermetic_env_path or "<project default>",
+            node_stage_path or "<not a staged JS project>",
             cmd_str,
         )
 
