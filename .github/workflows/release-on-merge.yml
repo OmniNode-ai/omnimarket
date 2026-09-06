@@ -135,14 +135,47 @@ jobs:
       tag_sha: ${{ github.sha }}
       workflows_touched: ${{ steps.scope.outputs.workflows_touched }}
     steps:
-      # persist-credentials stays at its default TRUE here (unlike `decide`)
-      # because the "released tree scope" step below fetches origin/main on a
-      # private repo. The persisted header is explicitly unset immediately
-      # before the app-token push — see that step.
+      # OMN-18010 — the App token is minted BEFORE the checkout, on purpose,
+      # and handed to actions/checkout as `token:`. That is what makes the tag
+      # push below authenticate as the App.
+      #
+      # The first attempt did the opposite: it minted the token late, embedded
+      # it in a push URL, and dropped the persisted credential with
+      # `git config --local --unset-all http.https://github.com/.extraheader`.
+      # That is the pre-v4 shape and it is now a no-op. Measured live in run
+      # 34059788335 (v0.4.19, 2026-09-06T21:02:43Z): actions/checkout v7 does
+      # NOT write the header into `.git/config` at all — it writes it to a
+      # generated credentials file under the runner temp directory and points
+      # git at it with `git config --file <that file>
+      # http.https://github.com/.extraheader ...`. The `--local --unset-all`
+      # therefore removed nothing, the header still won over the URL
+      # credentials, and the push failed with
+      # `remote: Permission to OmniNode-ai/omnimarket.git denied to
+      # github-actions[bot].` — after `decide` had already resolved 0.4.19.
+      #
+      # Letting checkout own the credential removes the whole question: there is
+      # exactly ONE credential in the repo config, it is the App's, and the code
+      # below pushes to plain `origin`. It is also how `arm-dev` and
+      # `reopen-dev` below already work, so the file now has one pattern rather
+      # than two.
+      - name: Mint onexbot-occ-writer app token (tag push identity)
+        id: app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      # persist-credentials stays at its default TRUE here (unlike `decide`):
+      # the "released tree scope" step below fetches origin/main on a private
+      # repo, and the tag push needs the App credential in the repo config.
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           ref: ${{ github.sha }}
           fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
 
       - name: Assert clean working tree
         run: |
@@ -202,21 +235,10 @@ jobs:
             exit 1
           }
 
-      - name: Mint onexbot-occ-writer app token (tag push identity)
-        id: app-token
-        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
-        with:
-          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
-          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
-          owner: ${{ github.repository_owner }}
-          repositories: ${{ github.event.repository.name }}
-          permission-contents: write
-
       - name: Create and push the release tag
         id: tag
         env:
           DECIDED_VERSION: ${{ needs.decide.outputs.version }}
-          APP_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           set -euo pipefail
           case "$DECIDED_VERSION" in
@@ -233,12 +255,11 @@ jobs:
           git config user.name "onexbot-occ-writer[bot]"
           git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
           git tag -a "$TAG" -m "Release ${TAG}"
-          # OMN-17272: actions/checkout persists the job's GITHUB_TOKEN as an
-          # http.<origin>.extraheader Authorization header, and that header
-          # OVERRIDES the token embedded in the push URL below — the push would
-          # silently authenticate as github-actions[bot] instead of the App.
-          git config --local --unset-all "http.https://github.com/.extraheader" || true
-          git push "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${TAG}"
+          # `origin` carries the App credential because the checkout at the top
+          # of this job was given the App token. No URL-embedded token, and no
+          # attempt to strip a persisted header — see the checkout comment for
+          # why that shape does not work under actions/checkout v7.
+          git push origin "refs/tags/${TAG}"
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "Tagged ${GITHUB_SHA} as ${TAG}"
 

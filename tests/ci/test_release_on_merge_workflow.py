@@ -45,8 +45,11 @@ WORKFLOW_PATH = REPO_ROOT / ".github" / "workflows" / "release-on-merge.yml"
 LEGACY_RELEASE_PATH = REPO_ROOT / ".github" / "workflows" / "release.yml"
 
 # PyYAML parses the bare key `on` as the boolean True (YAML 1.1), so the trigger
-# block is addressed by that key, not by the string "on".
-ON_KEY = True
+# block is addressed by that key, not by the string "on". Typed `Any` because a
+# `dict[str, Any]` subscripted by a `bool` is a mypy --strict index error, and
+# the alternative (re-typing every workflow mapping as `dict[Any, Any]`) would
+# lose the key typing everywhere else in this module for one lookup.
+ON_KEY: Any = True
 
 SELF_PUSH_MARKER = "[release-on-merge]"
 _SHA_PIN = re.compile(r"^[0-9a-fA-F]{40}$")
@@ -70,6 +73,22 @@ def raw() -> str:
 # ---------------------------------------------------------------------------
 # Trigger
 # ---------------------------------------------------------------------------
+
+
+def _executable_lines(raw: str) -> str:
+    """The workflow with every comment line removed.
+
+    Both of the assertions below are about what the workflow DOES, and this
+    file's own prose has to be free to name the broken shape it is pinning
+    against — the comment in `release-on-merge.yml` that records why the
+    `--unset-all` shape was removed would otherwise trip the very test that
+    forbids it. Dropping lines whose first non-space character is `#` covers
+    YAML comments and the shell comments inside `run:` blocks alike; neither
+    class executes.
+    """
+    return "\n".join(
+        line for line in raw.splitlines() if not line.lstrip().startswith("#")
+    )
 
 
 def test_workflow_file_exists() -> None:
@@ -266,19 +285,76 @@ def test_every_action_reference_is_sha_pinned(raw: str) -> None:
     assert not unpinned, f"unpinned action refs in release-on-merge.yml: {unpinned}"
 
 
-def test_the_persisted_checkout_header_is_dropped_before_the_app_token_push(
-    raw: str,
-) -> None:
-    # OMN-17272: actions/checkout persists the job's GITHUB_TOKEN as an
-    # http.<origin>.extraheader Authorization header, and that header OVERRIDES
-    # the token in the push URL — the push would authenticate as
-    # github-actions[bot], which the OMN-16289 main ruleset declines.
-    assert (
-        'git config --local --unset-all "http.https://github.com/.extraheader"' in raw
+def test_no_job_tries_to_strip_a_persisted_checkout_header(raw: str) -> None:
+    """The `--unset-all extraheader` shape is a NO-OP under actions/checkout v7.
+
+    Measured live, run 34059788335 (2026-09-06T21:02:43Z, release of 0.4.19):
+    checkout v7 does not write the Authorization header into ``.git/config`` at
+    all. It writes it to a generated credentials file under the runner temp
+    directory and points git at it with ``git config --file <that file>
+    http.https://github.com/.extraheader ...`` — so ``git config --local
+    --unset-all http.https://github.com/.extraheader`` removes nothing, the
+    header still wins over any URL-embedded credential, and the tag push failed
+    with ``remote: Permission to OmniNode-ai/omnimarket.git denied to
+    github-actions[bot].``
+
+    The shape is worse than useless: it reads as protection while protecting
+    nothing, and the failure only surfaces on a real release. Pinned so it
+    cannot come back.
+    """
+    assert "--unset-all" not in _executable_lines(raw), (
+        "stripping the persisted checkout credential is a no-op under "
+        "actions/checkout v7 — hand the App token to checkout as `token:` "
+        "instead and push to plain `origin`"
     )
-    unset_at = raw.index("--unset-all")
-    push_at = raw.index('git push "https://x-access-token:')
-    assert unset_at < push_at, "the extraheader must be dropped BEFORE the push"
+
+
+def test_no_push_embeds_a_token_in_the_remote_url(raw: str) -> None:
+    """Every push authenticates through the checkout credential, not a URL.
+
+    A URL-embedded token loses to the persisted header (see the test above), so
+    the only credential that can actually be in force is the one checkout was
+    given. Keeping that single-sourced is what makes the identity of a push
+    readable from the checkout step rather than from a shell line.
+    """
+    executable = _executable_lines(raw)
+    assert "x-access-token:" not in executable
+    assert "@github.com/${GITHUB_REPOSITORY}" not in executable
+
+
+@pytest.mark.parametrize("job_id", ["release", "arm-dev", "reopen-dev"])
+def test_every_pushing_job_checks_out_with_the_app_token(
+    workflow: dict[str, Any], job_id: str
+) -> None:
+    """The App token is minted BEFORE the checkout and handed to it.
+
+    `release` pushes the tag, `arm-dev` and `reopen-dev` push a branch (and
+    `reopen-dev` attempts dev itself). All three must carry the App identity,
+    and the only shape that survives checkout v7 is `token:` on the checkout.
+    Order matters: a mint placed after the checkout cannot influence it.
+    """
+    steps = workflow["jobs"][job_id]["steps"]
+    mint_index = next(
+        i
+        for i, step in enumerate(steps)
+        if str(step.get("uses", "")).startswith("actions/create-github-app-token@")
+    )
+    checkout_index = next(
+        i
+        for i, step in enumerate(steps)
+        if str(step.get("uses", "")).startswith("actions/checkout@")
+    )
+    assert mint_index < checkout_index, (
+        f"{job_id}: the App token must be minted before the checkout it feeds"
+    )
+    token = steps[checkout_index].get("with", {}).get("token", "")
+    assert "steps.app-token.outputs.token" in token, (
+        f"{job_id}: checkout must be given the App token, got {token!r}"
+    )
+
+
+def test_the_release_job_pushes_the_tag_to_plain_origin(raw: str) -> None:
+    assert 'git push origin "refs/tags/${TAG}"' in raw
 
 
 def test_the_publish_is_idempotent_and_retries_only_transient_faults(raw: str) -> None:
