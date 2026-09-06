@@ -50,8 +50,7 @@ this repository:
 - [Node testing pattern](https://github.com/OmniNode-ai/knowledge-base/blob/main/guides/omnimarket-node-testing.md) — including how to add a node to the harness
 - [Skill-backing node pattern](https://github.com/OmniNode-ai/knowledge-base/blob/main/guides/omnimarket-skill-backing-node-pattern.md)
 
-Governance policy and operator runbooks that carry real infrastructure values
-live in [knowledge-base-internal](https://github.com/OmniNode-ai/knowledge-base-internal).
+Governance policy and operator runbooks are not part of this repository.
 
 ## Repository Layout
 
