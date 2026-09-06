@@ -16,12 +16,21 @@ import math
 import re
 import time
 from datetime import UTC, datetime, timedelta
-from typing import Literal, NoReturn, Self, cast
+from functools import lru_cache
+from typing import Any, Literal, NoReturn, Self, cast
 from urllib.parse import urlsplit
 
 from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    ValidationError,
+    field_validator,
+    model_validator,
+)
 
 from omnimarket.rsd.v4_static_policy import (
     ContainerAttachTicketTrustAnchorV1,
@@ -54,6 +63,10 @@ _HOSTNAME = r"^[a-z0-9][a-z0-9-]{14,61}[a-z0-9]$"
 _STATIC_PATH = r"^/[A-Za-z0-9._/-]{1,240}$"
 
 _STATIC_ARG = r"^[A-Za-z0-9._/:=@+,%=-]{1,256}$"
+
+_MAX_STATIC_ARG_ITEMS = 64
+_MAX_STATIC_ARG_BYTES = 256
+_MAX_STATIC_ARG_VECTOR_BYTES = _MAX_STATIC_ARG_ITEMS * _MAX_STATIC_ARG_BYTES
 
 _TIMESTAMP = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$")
 
@@ -191,6 +204,208 @@ class _Model(BaseModel):
     )
 
 
+_MISSING_MODEL_STATE = object()
+
+
+@lru_cache(maxsize=512)
+def _exact_field_validator(
+    expected: type[BaseModel], name: str
+) -> tuple[object, TypeAdapter[Any]]:
+    annotation = expected.model_fields[name].rebuild_annotation()
+    return annotation, TypeAdapter(annotation)
+
+
+def _same_exact_runtime_value(
+    original: object,
+    normalized: object,
+    *,
+    active_pairs: set[tuple[int, int]] | None = None,
+) -> bool:
+    if type(original) is not type(normalized):
+        return False
+    if original is normalized:
+        return True
+    if type(original) not in (tuple, list, dict, set, frozenset) and not isinstance(
+        original, BaseModel
+    ):
+        return original == normalized
+    pairs = set() if active_pairs is None else active_pairs
+    pair = (id(original), id(normalized))
+    if pair in pairs:
+        return False
+    pairs.add(pair)
+    try:
+        if isinstance(original, BaseModel):
+            if type(normalized) is not type(original):
+                return False
+            original_state = getattr(original, "__dict__", _MISSING_MODEL_STATE)
+            normalized_state = getattr(normalized, "__dict__", _MISSING_MODEL_STATE)
+            if type(original_state) is not dict or type(normalized_state) is not dict:
+                return False
+            if set(original_state) != set(normalized_state):
+                return False
+            return all(
+                _same_exact_runtime_value(
+                    cast(dict[str, object], original_state)[name],
+                    cast(dict[str, object], normalized_state)[name],
+                    active_pairs=pairs,
+                )
+                for name in original_state
+            )
+        if type(original) is tuple:
+            original_tuple_items = cast(tuple[object, ...], original)
+            normalized_tuple_items = cast(tuple[object, ...], normalized)
+            return len(original_tuple_items) == len(normalized_tuple_items) and all(
+                _same_exact_runtime_value(a, b, active_pairs=pairs)
+                for a, b in zip(
+                    original_tuple_items, normalized_tuple_items, strict=True
+                )
+            )
+        if type(original) is list:
+            original_list_items = cast(list[object], original)
+            normalized_list_items = cast(list[object], normalized)
+            return len(original_list_items) == len(normalized_list_items) and all(
+                _same_exact_runtime_value(a, b, active_pairs=pairs)
+                for a, b in zip(original_list_items, normalized_list_items, strict=True)
+            )
+        if type(original) is dict:
+            left_items = tuple(cast(dict[object, object], original).items())
+            right_items = tuple(cast(dict[object, object], normalized).items())
+            return len(left_items) == len(right_items) and all(
+                _same_exact_runtime_value(a, b, active_pairs=pairs)
+                and _same_exact_runtime_value(c, d, active_pairs=pairs)
+                for (a, c), (b, d) in zip(left_items, right_items, strict=True)
+            )
+        original_set_items: list[object] = list(
+            cast(set[object] | frozenset[object], original)
+        )
+        normalized_set_items: list[object] = list(
+            cast(set[object] | frozenset[object], normalized)
+        )
+        if len(original_set_items) != len(normalized_set_items):
+            return False
+        unmatched = list(normalized_set_items)
+        for item in original_set_items:
+            for index, candidate in enumerate(unmatched):
+                if _same_exact_runtime_value(item, candidate, active_pairs=pairs):
+                    unmatched.pop(index)
+                    break
+            else:
+                return False
+        return not unmatched
+    finally:
+        pairs.remove(pair)
+
+
+def _assert_exact_field_annotation(
+    expected: type[BaseModel], name: str, value: object
+) -> None:
+    try:
+        annotation, adapter = _exact_field_validator(expected, name)
+        if isinstance(annotation, type) and issubclass(annotation, BaseModel):
+            if type(value) is not annotation:
+                raise ValueError("canonical model is invalid")
+            return
+        normalized = adapter.validate_python(value, strict=True)
+        if not _same_exact_runtime_value(value, normalized):
+            raise ValueError("canonical model is invalid")
+    except (KeyError, RecursionError, TypeError, ValidationError, ValueError):
+        raise ValueError("canonical model is invalid") from None
+
+
+def _assert_exact_value(
+    value: object,
+    *,
+    active_path: set[int],
+    completed_ids: set[int],
+) -> None:
+    try:
+        if isinstance(value, BaseModel):
+            _assert_exact_model_state(
+                value, type(value), active_path=active_path, completed_ids=completed_ids
+            )
+            return
+        if type(value) not in (tuple, list, dict, set, frozenset):
+            return
+        value_id = id(value)
+        if value_id in active_path:
+            raise ValueError("canonical model is invalid")
+        if value_id in completed_ids:
+            return
+        active_path.add(value_id)
+        try:
+            values = (
+                cast(dict[object, object], value).items()
+                if type(value) is dict
+                else ((item, None) for item in cast(tuple[object, ...], value))
+            )
+            for item, maybe_value in values:
+                _assert_exact_value(
+                    item, active_path=active_path, completed_ids=completed_ids
+                )
+                if maybe_value is not None:
+                    _assert_exact_value(
+                        maybe_value,
+                        active_path=active_path,
+                        completed_ids=completed_ids,
+                    )
+        finally:
+            active_path.remove(value_id)
+        completed_ids.add(value_id)
+    except RecursionError:
+        raise ValueError("canonical model is invalid") from None
+
+
+def _assert_exact_model_state(
+    value: object,
+    expected: type[BaseModel],
+    *,
+    active_path: set[int] | None = None,
+    completed_ids: set[int] | None = None,
+) -> BaseModel:
+    """Reject constructed, hidden, deleted, cyclic, or type-drifted state."""
+    active = set() if active_path is None else active_path
+    completed = set() if completed_ids is None else completed_ids
+    try:
+        if type(value) is not expected:
+            raise ValueError("canonical model is invalid")
+        model_id = id(value)
+        if model_id in active:
+            raise ValueError("canonical model is invalid")
+        if model_id in completed:
+            return value
+        active.add(model_id)
+        try:
+            fields = set(expected.model_fields)
+            state = getattr(value, "__dict__", _MISSING_MODEL_STATE)
+            extra = getattr(value, "__pydantic_extra__", _MISSING_MODEL_STATE)
+            hidden = getattr(
+                value, "__pydantic_" + "pri" + "vate__", _MISSING_MODEL_STATE
+            )
+            fields_set = getattr(value, "__pydantic_fields_set__", _MISSING_MODEL_STATE)
+            if (
+                type(state) is not dict
+                or set(cast(dict[str, object], state)) != fields
+                or extra is not None
+                or hidden is not None
+                or type(fields_set) is not set
+                or not cast(set[str], fields_set).issubset(fields)
+            ):
+                raise ValueError("canonical model is invalid")
+            for name in fields:
+                field_value = cast(dict[str, object], state)[name]
+                _assert_exact_value(
+                    field_value, active_path=active, completed_ids=completed
+                )
+                _assert_exact_field_annotation(expected, name, field_value)
+        finally:
+            active.remove(model_id)
+        completed.add(model_id)
+        return value
+    except (KeyError, RecursionError):
+        raise ValueError("canonical model is invalid") from None
+
+
 def _fail(
     phase: Literal[
         "projection", "profile", "ticket", "signature", "freshness", "binding", "replay"
@@ -260,6 +475,7 @@ def _canonical_model_bytes(
 
     payload: object | None = None
     try:
+        _assert_exact_model_state(model, type(model))
         payload = model.model_dump(
             mode="json", exclude=exclude or set(), warnings="error"
         )
@@ -392,6 +608,7 @@ def _strict_canonical_model[T: _Model](value: T, expected: type[T]) -> T:
 
     if type(value) is not expected:
         raise ValueError("canonical model is invalid")
+    _assert_exact_model_state(value, expected)
     canonical: T | None = None
     try:
         payload = json.loads(
@@ -1193,12 +1410,35 @@ def parse_container_bootstrap_static_delivery_route_v4_canonical_json(
 
 def _static_argument_items(value: object, *, field: str) -> tuple[str, ...]:
     items = _items(value, field=field)
-    if not items or any(
-        type(item) is not str or re.fullmatch(_STATIC_ARG, item) is None
-        for item in items
+    if (
+        not 1 <= len(items) <= _MAX_STATIC_ARG_ITEMS
+        or any(
+            type(item) is not str or re.fullmatch(_STATIC_ARG, item) is None
+            for item in items
+        )
+        or sum(len(cast(str, item).encode("ascii")) for item in items)
+        > _MAX_STATIC_ARG_VECTOR_BYTES
     ):
         raise ValueError("container bootstrap V4 static argv is invalid")
     return tuple(cast(str, item) for item in items)
+
+
+def _canonical_static_absolute_path(value: str) -> str:
+    """Return one exact V4 path spelling accepted by the static profile."""
+    if (
+        type(value) is not str
+        or not value.isascii()
+        or re.fullmatch(_STATIC_PATH, value) is None
+        or not value.startswith("/usr/local/libexec/")
+        or "\\" in value
+        or "%" in value
+        or "//" in value
+        or value.endswith("/")
+    ):
+        raise ValueError("container bootstrap V4 static launch path is invalid")
+    if any(part in ("", ".", "..") for part in value.split("/")[1:]):
+        raise ValueError("container bootstrap V4 static launch path is invalid")
+    return value
 
 
 def _merged_argv_sha256(
@@ -1228,9 +1468,9 @@ class ContainerBootstrapStaticLaunchPlanV4(_Model):
     base_linux_amd64_manifest_digest_sha256: str = Field(pattern=_SHA256)
     base_config_digest_sha256: str = Field(pattern=_SHA256)
     wrapper_executable_path: str = Field(pattern=_STATIC_PATH)
-    wrapper_argv_prefix: tuple[str, ...] = Field(max_length=64)
-    base_entrypoint: tuple[str, ...] = Field(max_length=64)
-    base_command: tuple[str, ...] = Field(max_length=64)
+    wrapper_argv_prefix: tuple[str, ...] = Field(max_length=_MAX_STATIC_ARG_ITEMS)
+    base_entrypoint: tuple[str, ...] = Field(max_length=_MAX_STATIC_ARG_ITEMS)
+    base_command: tuple[str, ...] = Field(max_length=_MAX_STATIC_ARG_ITEMS)
     entrypoint_command_merge: Literal["exec_wrapper_then_base_entrypoint_and_cmd_v4"]
     merged_argv_sha256: str = Field(pattern=_SHA256)
 
@@ -1245,16 +1485,7 @@ class ContainerBootstrapStaticLaunchPlanV4(_Model):
     @field_validator("wrapper_executable_path")
     @classmethod
     def canonical_wrapper_path(cls, value: str) -> str:
-        if (
-            type(value) is not str
-            or re.fullmatch(_STATIC_PATH, value) is None
-            or "//" in value
-            or "/../" in value
-            or value.endswith("/..")
-            or not value.startswith("/usr/local/libexec/")
-        ):
-            raise ValueError("container bootstrap V4 static launch path is invalid")
-        return value
+        return _canonical_static_absolute_path(value)
 
     @model_validator(mode="after")
     def exact_static_launch(self) -> Self:
@@ -1667,16 +1898,7 @@ class ContainerBootstrapStaticRoleProfileV4(_Model):
     @field_validator("wrapper_executable_path")
     @classmethod
     def canonical_wrapper_path(cls, value: str) -> str:
-        if (
-            type(value) is not str
-            or re.fullmatch(_STATIC_PATH, value) is None
-            or "//" in value
-            or "/../" in value
-            or value.endswith("/..")
-            or not value.startswith("/usr/local/libexec/")
-        ):
-            raise ValueError("container bootstrap V4 executable path is invalid")
-        return value
+        return _canonical_static_absolute_path(value)
 
     @model_validator(mode="after")
     def exact_static_role_profile(self) -> Self:
