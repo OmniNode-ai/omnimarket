@@ -33,7 +33,6 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
     Ed25519PrivateKey,
     Ed25519PublicKey,
 )
-from omnimarket.rsd.historical_target_delivery_map_v1 import TargetDeliveryMapV1
 from pydantic import BaseModel
 from yaml.events import AliasEvent
 from yaml.nodes import MappingNode, Node, ScalarNode, SequenceNode
@@ -47,6 +46,7 @@ from omnimarket.rsd import (
 )
 from omnimarket.rsd import target_delivery_artifact_manifest_v2 as manifest_v2
 from omnimarket.rsd import v4_static_profile as static_v4
+from omnimarket.rsd.historical_target_delivery_map_v1 import TargetDeliveryMapV1
 
 _ROOT = Path(__file__).parents[3] / "src/omnimarket/rsd/vectors"
 _VECTOR = _ROOT / "target_delivery_artifact_manifest_v2_public_vector.yaml"
@@ -521,7 +521,7 @@ def _assert_redacted(value: object) -> None:
         "/" + "Volumes/",
         "localhost",
         "127.0.0.1",
-        "192.168.",
+        "192.168.",  # test-literal-ok: verifies private-address redaction
         "token=",
         "password=",
         "APP_BUILD_VARIANT",
