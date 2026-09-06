@@ -616,12 +616,43 @@ def _resolve_pinned_pnpm(
             tried.append(f"corepack at {corepack} could not run pnpm@{version}: {exc}")
         else:
             if proc.returncode == 0 and proc.stdout.strip() == version:
-                return argv, None
-            detail = (proc.stderr or proc.stdout or "").strip()[:200]
-            tried.append(
-                f"corepack at {corepack} did not yield pnpm {version} "
-                f"(exit {proc.returncode}, reported {proc.stdout.strip()!r}): {detail}"
-            )
+                try:
+                    ready = subprocess.run(
+                        [
+                            *argv,
+                            *_pnpm_config_flags(),
+                            "exec",
+                            "node",
+                            "-e",
+                            "process.exit(0)",
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=_TOOLCHAIN_PROBE_TIMEOUT_S,
+                        cwd=str(project_root),
+                        env=probe_env,
+                    )
+                except (OSError, subprocess.TimeoutExpired) as exc:
+                    tried.append(
+                        f"corepack at {corepack} reported pnpm {version} but "
+                        f"could not run it inside {project_root}: {exc}"
+                    )
+                else:
+                    if ready.returncode == 0:
+                        return argv, None
+                    ready_detail = (ready.stderr or ready.stdout or "").strip()[:200]
+                    tried.append(
+                        f"corepack at {corepack} reported pnpm {version} but "
+                        f"the pinned runner was not executable inside "
+                        f"{project_root} (exit {ready.returncode}): "
+                        f"{ready_detail}"
+                    )
+            else:
+                detail = (proc.stderr or proc.stdout or "").strip()[:200]
+                tried.append(
+                    f"corepack at {corepack} did not yield pnpm {version} "
+                    f"(exit {proc.returncode}, reported {proc.stdout.strip()!r}): {detail}"
+                )
     else:
         tried.append("corepack is not on PATH")
 
@@ -1482,8 +1513,16 @@ def _split_shell_words(s: str) -> list[str]:
     return words
 
 
-def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str | None:
+def _invalid_check_value_reason(
+    cmd_str: str, *, cwd: str | None = None, path: str | None = None
+) -> str | None:
     """Return a reason string when ``cmd_str`` looks like prose, not a command.
+
+    ``path`` is the PATH the command will ACTUALLY run with, when the runner is
+    about to supply one the ambient environment does not have (OMN-17863: the
+    staged pnpm shim). Resolving against ``os.environ`` there would reject a
+    perfectly good command because the toolchain that answers it is provisioned
+    by this runner rather than by the host.
 
     Tokenizes with ``_split_shell_words`` (OMN-15597) — a
     command-substitution-aware scan that yields the SHELL's own first
@@ -1643,7 +1682,7 @@ def _invalid_check_value_reason(cmd_str: str, *, cwd: str | None = None) -> str 
             f"first token {first!r} is not a resolvable executable relative "
             f"to cwd {str(base)!r} — this looks like prose, not a command"
         )
-    if shutil.which(first) is not None:
+    if shutil.which(first, path=path) is not None:
         return None
     return (
         f"first token {first!r} is not a resolvable executable or a "
@@ -5413,6 +5452,48 @@ class EvidenceCollector:
         if cwd_err is not None:
             return False, cwd_err
 
+        # OMN-17863, the JS sibling of the uv block below. Same argument, same
+        # typed failure, two structural differences.
+        #
+        # First, a Node modules tree cannot be redirected out of the project
+        # the way UV_PROJECT_ENVIRONMENT redirects a venv, because resolution
+        # walks up from the importing file's real path. So the tree is STAGED
+        # and the check's cwd moves to the stage -- see the module comment
+        # above _HERMETIC_NODE_ROOT_ENV.
+        #
+        # Second, this runs BEFORE the shape guard while the uv block runs
+        # after it, and the ordering is load-bearing rather than incidental.
+        # `uv` is ambient wherever this runner runs; `pnpm` is not, and the
+        # guard's last predicate is a PATH lookup. Ordered the other way, a
+        # pnpm check on a host with no pnpm is rejected as
+        # INVALID_CHECK_VALUE_NOT_A_COMMAND -> FAILED, which is the exact
+        # verifier-defect-as-product-defect this ticket removes, arriving one
+        # step earlier than the exit 127 it was written against. Measured on
+        # omnimarket CI (run 34034066290, job 101488803404), where the runner
+        # has neither pnpm nor corepack. Staging first means an unbuildable
+        # toolchain returns its typed marker, and a buildable one hands the
+        # guard the PATH the command will actually resolve against.
+        node_stage_path: Path | None = None
+        if run_cwd is not None and _PNPM_INVOCATION_RE.search(cmd_str) is not None:
+            node_project_root = _pnpm_project_root(Path(run_cwd))
+            if node_project_root is not None:
+                node_stage_path, node_err = self._ensure_hermetic_node_env(
+                    node_project_root
+                )
+                if node_err is not None:
+                    return False, node_err
+        staged_path: str | None = None
+        if node_stage_path is not None:
+            # The pinned pnpm shim first, so the version that adjudicates is
+            # the version the project pinned rather than whatever the host has.
+            staged_path = os.pathsep.join(
+                [
+                    str(node_stage_path / _STAGE_TOOLCHAIN_BIN),
+                    os.environ.get("PATH", ""),
+                ]
+            )
+            run_cwd = str(node_stage_path)
+
         # OMN-15382: reject prose masquerading as a command BEFORE ever
         # shelling out (see module-level comment above
         # _invalid_check_value_reason for the two bug mechanisms this closes).
@@ -5420,7 +5501,9 @@ class EvidenceCollector:
         # relative-script + cwd: check (e.g. "./verify.sh" with
         # cwd: "${OMNI_HOME}/.../subdir") resolves against the check's
         # declared cwd instead of this process's actual cwd/PATH.
-        invalid_reason = _invalid_check_value_reason(cmd_str, cwd=run_cwd)
+        invalid_reason = _invalid_check_value_reason(
+            cmd_str, cwd=run_cwd, path=staged_path
+        )
         if invalid_reason is not None:
             return False, f"INVALID_CHECK_VALUE_NOT_A_COMMAND: {invalid_reason}"
 
@@ -5443,8 +5526,22 @@ class EvidenceCollector:
         # lock-exact environment instead. Non-uv commands are untouched, so
         # the routing reaches exactly the commands that resolve a uv
         # environment and nothing else.
+        if staged_path is not None:
+            if run_env is None:
+                run_env = dict(os.environ)
+            run_env["PATH"] = staged_path
+            run_env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
+
         hermetic_env_path: Path | None = None
-        if run_cwd is not None and _UV_INVOCATION_RE.search(cmd_str) is not None:
+        # Deliberately mutually exclusive with the JS staging above rather than
+        # additive: a command that resolves a hermetic uv environment is a
+        # Python check, and moving its working directory would re-root every
+        # relative path in it for no benefit.
+        if (
+            node_stage_path is None
+            and run_cwd is not None
+            and _UV_INVOCATION_RE.search(cmd_str) is not None
+        ):
             project_root = _uv_project_root(Path(run_cwd))
             if project_root is not None:
                 hermetic_env_path, hermetic_err = self._ensure_hermetic_uv_env(
@@ -5463,44 +5560,6 @@ class EvidenceCollector:
             run_env["UV_NO_SYNC"] = "1"
             run_env.pop("PYTHONPATH", None)
             run_env.pop("VIRTUAL_ENV", None)
-
-        # OMN-17863, the JS sibling of the block above. Same argument, same
-        # typed failure, one structural difference: a Node modules tree cannot
-        # be redirected out of the project the way UV_PROJECT_ENVIRONMENT
-        # redirects a venv, because resolution walks up from the importing
-        # file's real path. So the tree is STAGED and the check's cwd moves to
-        # the stage -- see the module comment above _HERMETIC_NODE_ROOT_ENV.
-        #
-        # Deliberately mutually exclusive with the uv routing rather than
-        # additive: a command that resolved a hermetic uv environment is a
-        # Python check, and moving its working directory would re-root every
-        # relative path in it for no benefit.
-        node_stage_path: Path | None = None
-        if (
-            hermetic_env_path is None
-            and run_cwd is not None
-            and _PNPM_INVOCATION_RE.search(cmd_str) is not None
-        ):
-            node_project_root = _pnpm_project_root(Path(run_cwd))
-            if node_project_root is not None:
-                node_stage_path, node_err = self._ensure_hermetic_node_env(
-                    node_project_root
-                )
-                if node_err is not None:
-                    return False, node_err
-        if node_stage_path is not None:
-            if run_env is None:
-                run_env = dict(os.environ)
-            # The pinned pnpm shim first, so the version that adjudicates is
-            # the version the project pinned rather than whatever the host has.
-            run_env["PATH"] = os.pathsep.join(
-                [
-                    str(node_stage_path / _STAGE_TOOLCHAIN_BIN),
-                    run_env.get("PATH", os.environ.get("PATH", "")),
-                ]
-            )
-            run_env["COREPACK_ENABLE_DOWNLOAD_PROMPT"] = "0"
-            run_cwd = str(node_stage_path)
 
         logger.info(
             "Running command check (cwd=%s, CONTRACT_REPO_DIR=%s, uv env=%s, "

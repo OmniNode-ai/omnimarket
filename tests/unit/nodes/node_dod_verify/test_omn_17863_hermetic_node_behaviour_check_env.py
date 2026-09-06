@@ -63,6 +63,7 @@ from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     EvidenceCollector,
     _hermetic_node_stage_path,
     _pnpm_project_root,
+    _resolve_pinned_pnpm,
 )
 
 pytestmark = pytest.mark.unit
@@ -441,6 +442,61 @@ def test_an_unsatisfiable_lockfile_is_skipped_with_a_named_cause(
     )
 
 
+def test_a_host_with_no_pnpm_at_all_is_skipped_not_rejected_as_prose(
+    collector: EvidenceCollector,
+    tmp_path: Path,
+    node_root: Path,
+    probe_out: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The ordering between the staging and the OMN-15382 shape guard.
+
+    The guard's last predicate is a PATH lookup, so on a host with no pnpm
+    ``pnpm run ...`` is "not a resolvable executable" and the check is FAILED
+    as ``INVALID_CHECK_VALUE_NOT_A_COMMAND`` — the same
+    verifier-defect-as-product-defect this ticket removes, arriving one step
+    earlier than the exit 127 it was written against, and NOT caught by any
+    fixture on a developer machine that happens to have pnpm.
+
+    Found by CI rather than by design: omnimarket run 34034066290, job
+    101488803404, whose runner has neither pnpm nor corepack. PATH is narrowed
+    here so the case is deterministic on every host, including one that has
+    pnpm.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    _write_pnpm_project(
+        project, pinned_version="11.5.3", lockfile="lockfileVersion: '9.0'\n"
+    )
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+
+    result = collector._check_evidence_item(
+        {
+            "id": "dod-behaviour",
+            "description": "behaviour proof",
+            "checks": [
+                {
+                    "check_type": "test_passes",
+                    "check_value": "pnpm run test:probe",
+                    "cwd": str(project),
+                }
+            ],
+        },
+        "OMN-17863",
+    )
+
+    assert result.status is EnumEvidenceCheckStatus.SKIPPED
+    assert (
+        result.unverifiable_cause
+        is EnumEvidenceUnverifiableCause.HERMETIC_ENV_UNAVAILABLE
+    )
+    assert result.message is not None
+    assert "INVALID_CHECK_VALUE_NOT_A_COMMAND" not in result.message
+    # The refusal names the verifier's missing toolchain, not the product.
+    assert "corepack is not on PATH" in result.message
+    assert "pnpm is not on PATH" in result.message
+
+
 def test_an_unhonourable_package_manager_pin_is_skipped_not_failed(
     collector: EvidenceCollector, tmp_path: Path, node_root: Path, probe_out: Path
 ) -> None:
@@ -481,6 +537,57 @@ def test_an_unhonourable_package_manager_pin_is_skipped_not_failed(
     )
     assert result.message is not None
     assert "0.0.0-omn17863-no-such-release" in result.message
+
+
+def test_corepack_version_probe_must_also_execute_the_pinned_runner(
+    tmp_path: Path,
+    node_root: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A version echo is not enough proof that the pinned pnpm can run.
+
+    CI found this shape first: the unavailable package-manager release reached
+    the command path and was reported FAILED instead of as a toolchain
+    non-result. The resolver must refuse it while it still owns the evidence,
+    before any product command can run.
+    """
+    project = tmp_path / "project"
+    project.mkdir()
+    version = "0.0.0-omn17863-no-such-release"
+    monkeypatch.setattr(ec_mod.shutil, "which", lambda name: f"/fake/{name}")
+
+    def fake_run(
+        argv: list[str],
+        *,
+        capture_output: bool,
+        text: bool,
+        timeout: float,
+        cwd: str | None = None,
+        env: dict[str, str] | None = None,
+        check: bool = False,
+    ) -> subprocess.CompletedProcess[str]:
+        del capture_output, text, timeout, cwd, env, check
+        if argv == ["/fake/corepack", f"pnpm@{version}", "--version"]:
+            return subprocess.CompletedProcess(argv, 0, stdout=version + "\n")
+        if argv[:2] == ["/fake/corepack", f"pnpm@{version}"]:
+            return subprocess.CompletedProcess(
+                argv,
+                1,
+                stderr="No matching package manager release found",
+            )
+        if argv == ["/fake/pnpm", "--version"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="10.30.3\n")
+        raise AssertionError(f"unexpected subprocess invocation: {argv}")
+
+    monkeypatch.setattr(ec_mod.subprocess, "run", fake_run)
+
+    runner, reason = _resolve_pinned_pnpm(version, project)
+
+    assert runner is None
+    assert reason is not None
+    assert "reported pnpm" in reason
+    assert "not executable" in reason
+    assert version in reason
 
 
 @_requires_pnpm
