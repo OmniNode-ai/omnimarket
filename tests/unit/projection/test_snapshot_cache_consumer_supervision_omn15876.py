@@ -103,6 +103,19 @@ class _FakeConsumer:
             raise RuntimeError("assignment blew up")
         return frozenset({self._tp})
 
+    def highwater(self, tp: TopicPartition) -> int | None:
+        """aiokafka's synchronous, zero-RPC end-offset accessor (OMN-15876).
+
+        The real ``AIOKafkaConsumer`` has this; a fake without it is fake
+        drift, not a defect in the subject. This models the same EMPTY topic
+        the rest of this fake models -- highwater 0 with no record ever
+        delivered, which the zero-RPC fast path deliberately declines to act
+        on (it has no consumed position for the partition), leaving this
+        fake's failure injection on ``end_offsets``/``position`` exercising
+        exactly the RPC-backed path it was written for.
+        """
+        return 0
+
     async def end_offsets(
         self, partitions: list[TopicPartition]
     ) -> dict[TopicPartition, int]:
@@ -151,6 +164,13 @@ def _fast_poll(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(module, "_BOOTSTRAP_POLL_INTERVAL_SECONDS", 0.0)
     monkeypatch.setattr(module, "_BOOTSTRAP_POLL_MAX_ATTEMPTS", 1)
+    # OMN-15876: the RPC-backed catch-up check is rate-limited in the consume
+    # loop so its cost cannot scale with a replay's batch count. These tests
+    # are about the SUPERVISION semantics of that check -- that a transient
+    # failure is retried on a later pass rather than ending consumption -- so
+    # the interval is collapsed here. Retry-on-a-later-pass is still what is
+    # asserted; only the wait between passes is removed.
+    monkeypatch.setattr(module, "_BOOTSTRAP_RPC_CHECK_MIN_INTERVAL_SECONDS", 0.0)
 
 
 async def test_an_exception_escaping_the_loop_is_recorded_not_silent() -> None:
