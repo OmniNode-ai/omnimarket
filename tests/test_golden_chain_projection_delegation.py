@@ -120,8 +120,22 @@ class TestDelegationProjection:
             == "omnimarket.nodes.node_projection_delegation.handlers.handler_projection_delegation"
         )
         assert contract["handler"]["class"] == "HandlerProjectionDelegation"
-        assert contract["descriptor"]["runtime_profiles"] == ["effects"]
-        assert runtime_profile_owns_contract(contract, "effects") is True
+        # OMN-17985: this assertion is INVERTED from its previous form, which
+        # pinned ["effects"]. The contract is owned by its own standalone writer
+        # Deployment (omnimarket-projection-delegation-writer, RUNTIME_PROFILE=
+        # projection-writer-delegation), and while it named `effects` the shared
+        # effects runtime ALSO claimed it -- two processes over one subscription
+        # set. Naming the writer's own profile is what makes ownership
+        # single-valued, and it only became declarable once omnibase_core 0.47.5
+        # registered the name.
+        assert contract["descriptor"]["runtime_profiles"] == [
+            "projection-writer-delegation"
+        ]
+        assert (
+            runtime_profile_owns_contract(contract, "projection-writer-delegation")
+            is True
+        )
+        assert runtime_profile_owns_contract(contract, "effects") is False
         assert runtime_profile_owns_contract(contract, "main") is False
         topics = contract["event_bus"]["subscribe_topics"]
         # OMN-13629: the legacy compat task-delegated.v1 secondary path was dropped;

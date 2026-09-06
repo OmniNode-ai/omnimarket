@@ -39,7 +39,15 @@ descriptor:
   purity: effectful
   idempotent: true
   timeout_ms: 30000
-  runtime_profiles: [effects]
+  # OMN-17985: this contract is owned by its OWN standalone writer Deployment
+  # (RUNTIME_PROFILE=projection-writer-live-events on onex-dev), not by the shared main/effects
+  # runtime. The name became declarable when omnibase_core 0.47.5 registered it
+  # in REGISTERED_RUNTIME_PROFILES and CONSUMER_ATTACHED_RUNTIME_PROFILES; the
+  # writer is consumer-attached as measured fact -- it joined its group and the
+  # coordinator issued it partitions. Declaring it here is what makes ownership
+  # single-valued: without it this contract ALSO fell to a shared runtime, so
+  # two processes claimed the same subscriptions.
+  runtime_profiles: [projection-writer-live-events]
 
 terminal_event: onex.evt.omnimarket.projection-live-events-applied.v1
 

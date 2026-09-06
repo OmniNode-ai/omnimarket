@@ -2,6 +2,15 @@
 name: projection_tenant_credentials
 contract_version: {major: 1, minor: 0, patch: 0}
 node_type: reducer
+# OMN-17985: this contract is owned by its OWN standalone writer Deployment
+# (RUNTIME_PROFILE=projection-writer-tenant-credentials on onex-dev), not by the shared main runtime it
+# fell to while it declared nothing. The name became declarable when
+# omnibase_core 0.47.5 registered it in REGISTERED_RUNTIME_PROFILES and
+# CONSUMER_ATTACHED_RUNTIME_PROFILES; the writer is consumer-attached as
+# measured fact -- it joined its group and the coordinator issued it
+# partitions. Declaring it here is what makes ownership single-valued.
+runtime_profiles:
+  - projection-writer-tenant-credentials
 node_version: {major: 1, minor: 0, patch: 0}
 input_model: omnimarket.projection.credential_publisher.ModelCredentialRegisteredEvent
 description: >
