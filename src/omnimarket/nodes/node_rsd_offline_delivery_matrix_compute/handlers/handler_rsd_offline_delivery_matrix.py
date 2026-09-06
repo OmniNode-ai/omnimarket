@@ -11,6 +11,13 @@ from decimal import Decimal, InvalidOperation
 from typing import Any, Literal, NoReturn, cast
 
 import yaml
+from omnibase_core.models.delegation.wire import (
+    EnumTierCostType,
+    ModelDelegationConfig,
+    ModelRoutingTier,
+    ModelTierCost,
+    ModelTierModel,
+)
 from pydantic import ValidationError
 
 from omnimarket.models.delegation.llm_cost_routing.model_llm_model_registry import (
@@ -19,12 +26,10 @@ from omnimarket.models.delegation.llm_cost_routing.model_llm_model_registry impo
 from omnimarket.models.delegation.wire.model_bifrost_delegation_config import (
     ModelBifrostDelegationConfig,
 )
+from omnimarket.models.rsd.model_endpoint_contract import ModelRsdEndpointContract
 from omnimarket.nodes.node_rsd_offline_delivery_matrix_compute.models.model_rsd_offline_delivery_matrix import (
     ModelRsdOfflineDeliveryMatrixInput,
     ModelRsdOfflineDeliveryMatrixOutput,
-)
-from omnimarket.nodes.node_swarm_registry_compute.models.model_registry_endpoint import (
-    ModelRegistryEndpoint,
 )
 from omnimarket.routing.generated_llm_routing_constants import (
     BIFROST_DELEGATION_SHA256,
@@ -46,6 +51,10 @@ __all__ = [
 
 _MAX_DEPTH = 16
 _MAX_NODES = 4096
+# Routing counts are carried by bounded runtime/API integer fields. Monetary
+# values share the delegation budget store's NUMERIC(18, 6) business bound.
+_MAX_ROUTING_INTEGER = 2_147_483_647
+_MAX_USD_AMOUNT = Decimal("999999999999.999999")
 _CANONICAL_INT = re.compile(r"^(?:0|[1-9][0-9]*)$")
 _CANONICAL_NUMBER = re.compile(r"^(?:0|[1-9][0-9]*)(?:\.[0-9]+)?$")
 _CANONICAL_PRICING_DECIMAL = re.compile(r"^(?:0|[1-9][0-9]*)\.[0-9]{2}$")
@@ -192,21 +201,33 @@ def _nonblank(value: object) -> bool:
 
 
 def _positive_int(value: object) -> bool:
-    return type(value) is int and value > 0
+    return type(value) is int and 0 < value <= _MAX_ROUTING_INTEGER
 
 
 def _nonnegative_int(value: object) -> bool:
-    return type(value) is int and value >= 0
+    return type(value) is int and 0 <= value <= _MAX_ROUTING_INTEGER
 
 
 def _finite_number(value: object) -> bool:
-    return type(value) is int or (type(value) is float and math.isfinite(value))
+    """Accept only finite, business-bounded numeric primitives.
+
+    YAML yields ``int``/``float`` only, but this guard also safely rejects
+    direct Decimal or oversized integer probes before any float conversion.
+    """
+
+    if type(value) is int:
+        return -_MAX_USD_AMOUNT <= Decimal(value) <= _MAX_USD_AMOUNT
+    if type(value) is not float or not math.isfinite(value):
+        return False
+    try:
+        decimal = Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return False
+    return decimal.is_finite() and -_MAX_USD_AMOUNT <= decimal <= _MAX_USD_AMOUNT
 
 
 def _nonnegative_number(value: object) -> bool:
-    return (type(value) is int and value >= 0) or (
-        type(value) is float and math.isfinite(value) and value >= 0
-    )
+    return _finite_number(value) and cast(int | float, value) >= 0
 
 
 def _canonical_pricing_decimal(value: object) -> bool:
@@ -214,9 +235,9 @@ def _canonical_pricing_decimal(value: object) -> bool:
         return False
     try:
         decimal = Decimal(str(value))
-    except InvalidOperation:
+    except (InvalidOperation, OverflowError, ValueError):
         return False
-    return decimal.is_finite() and decimal >= Decimal("0")
+    return decimal.is_finite() and Decimal("0") <= decimal <= _MAX_USD_AMOUNT
 
 
 def _string_list(value: object, *, unique: bool = False) -> bool:
@@ -238,6 +259,58 @@ def _exact_mapping(
     ):
         _fail()
     return mapping
+
+
+def _strict_use_for(value: object) -> tuple[str, ...]:
+    """Accept only the canonical scalar-or-list task-class representation."""
+
+    if _nonblank(value):
+        return (cast(str, value),)
+    if type(value) is not list or not all(_nonblank(item) for item in value):
+        _fail()
+    # The canonical DTO intentionally permits repeated task-class entries, so
+    # preserve that representation rather than imposing a C0-only policy.
+    return tuple(cast(list[str], value))
+
+
+def _strict_tier_cost(value: object) -> ModelTierCost:
+    """Prevalidate a cost row, then apply the canonical delegation DTO rules."""
+
+    cost = _exact_mapping(value, frozenset({"cost_type"}), _COST_FIELDS)
+    cost_type = cost["cost_type"]
+    if type(cost_type) is not str:
+        _fail()
+    try:
+        enum_cost_type = EnumTierCostType(cost_type)
+    except ValueError:
+        _fail()
+
+    raw_rate = cost.get("rate_per_1k_usd", 0.0)
+    raw_cap = cost.get("monthly_cap_usd")
+    raw_overage = cost.get("overage_rate_per_1k_usd", 0.0)
+    if (
+        not _nonnegative_number(raw_rate)
+        or (raw_cap is not None and not _nonnegative_number(raw_cap))
+        or not _nonnegative_number(raw_overage)
+    ):
+        _fail()
+    try:
+        typed = ModelTierCost.model_validate(
+            {
+                "cost_type": enum_cost_type,
+                "rate_per_1k_usd": float(cast(int | float, raw_rate)),
+                "monthly_cap_usd": (
+                    None if raw_cap is None else float(cast(int | float, raw_cap))
+                ),
+                "overage_rate_per_1k_usd": float(cast(int | float, raw_overage)),
+            },
+            strict=True,
+        )
+        return ModelTierCost.model_validate(
+            typed.model_dump(mode="python"), strict=True
+        )
+    except (OverflowError, TypeError, ValidationError, ValueError):
+        _fail()
 
 
 def _validate_tree(
@@ -334,6 +407,7 @@ def _routing_selection(
     tier_names: set[str] = set()
     model_identities: set[tuple[str, str, str]] = set()
     matches: list[tuple[str, int]] = []
+    canonical_tiers: list[ModelRoutingTier] = []
     for tier_value in cast(list[object], document["tiers"]):
         tier = _exact_mapping(tier_value, _TIER_REQUIRED, _TIER_FIELDS)
         if (
@@ -341,20 +415,19 @@ def _routing_selection(
             or not _nonnegative_number(tier["cost_per_1k_tokens"])
             or type(tier["models"]) is not list
             or type(tier["eval_before_accept"]) is not bool
-            or type(tier["max_retries"]) is not int
+            or not _nonnegative_int(tier["max_retries"])
+            or (
+                "eval_model" in tier
+                and tier["eval_model"] is not None
+                and not _nonblank(tier["eval_model"])
+            )
         ):
             _fail()
         tier_name = cast(str, tier["name"])
         if tier_name in tier_names:
             _fail()
         tier_names.add(tier_name)
-        cost = _exact_mapping(tier["cost"], frozenset({"cost_type"}), _COST_FIELDS)
-        if not _nonblank(cost["cost_type"]) or any(
-            not _nonnegative_number(value)
-            for key, value in cost.items()
-            if key != "cost_type"
-        ):
-            _fail()
+        typed_models: list[ModelTierModel] = []
         for row_value in cast(list[object], tier["models"]):
             row = _exact_mapping(row_value, _MODEL_REQUIRED, _MODEL_FIELDS)
             if (
@@ -367,10 +440,28 @@ def _routing_selection(
                 row["fast_path_threshold_tokens"]
             ):
                 _fail()
+            use_for = _strict_use_for(row["use_for"])
             identity = (tier_name, cast(str, row["backend_id"]), cast(str, row["id"]))
             if identity in model_identities:
                 _fail()
             model_identities.add(identity)
+            try:
+                typed_models.append(
+                    ModelTierModel.model_validate(
+                        {
+                            "id": row["id"],
+                            "backend_ref": row["backend_id"],
+                            "max_context_tokens": row["max_context_tokens"],
+                            "use_for": use_for,
+                            "fast_path_threshold_tokens": row.get(
+                                "fast_path_threshold_tokens"
+                            ),
+                        },
+                        strict=True,
+                    )
+                )
+            except (OverflowError, TypeError, ValidationError, ValueError):
+                _fail()
             if (
                 tier_name == selected.tier_name
                 and row["backend_id"] == selected.backend_id
@@ -378,6 +469,34 @@ def _routing_selection(
                 matches.append(
                     (cast(str, row["id"]), cast(int, row["max_context_tokens"]))
                 )
+        try:
+            canonical_tiers.append(
+                ModelRoutingTier.model_validate(
+                    {
+                        "name": tier_name,
+                        "models": tuple(typed_models),
+                        "eval_before_accept": tier["eval_before_accept"],
+                        "eval_model": tier.get("eval_model"),
+                        "cost_per_1k_tokens": float(
+                            cast(int | float, tier["cost_per_1k_tokens"])
+                        ),
+                        "cost": _strict_tier_cost(tier["cost"]),
+                        "max_retries": tier["max_retries"],
+                    },
+                    strict=True,
+                )
+            )
+        except (OverflowError, TypeError, ValidationError, ValueError):
+            _fail()
+    try:
+        canonical = ModelDelegationConfig.model_validate(
+            {"tiers": tuple(canonical_tiers)}, strict=True
+        )
+        ModelDelegationConfig.model_validate(
+            canonical.model_dump(mode="python"), strict=True
+        )
+    except (OverflowError, TypeError, ValidationError, ValueError):
+        _fail()
     if len(matches) != 1:
         _fail()
     return matches[0]
@@ -458,7 +577,7 @@ def _validate_bifrost_document(document: dict[str, object]) -> list[dict[str, ob
         )
         if (
             not _nonblank(rule["rule_id"])
-            or type(rule["priority"]) is not int
+            or not _nonnegative_int(rule["priority"])
             or not _nonblank(rule["task_class"])
             or not _nonblank(rule["task_class_contract_version"])
             or not _nonblank(rule["backend_policy_version"])
@@ -467,7 +586,7 @@ def _validate_bifrost_document(document: dict[str, object]) -> list[dict[str, ob
             or not _string_list(rule["backend_ids"], unique=True)
             or not _nonblank(rule["shadow_policy_id"])
             or not _nonblank(fallback["action"])
-            or type(fallback["max_retries"]) is not int
+            or not _nonnegative_int(fallback["max_retries"])
             or not _nonblank(fallback["on_exhaust"])
         ):
             _fail()
@@ -615,7 +734,7 @@ def _validate_bifrost_document(document: dict[str, object]) -> list[dict[str, ob
         ModelBifrostDelegationConfig.model_validate(
             typed.model_dump(mode="python"), strict=True
         )
-    except (TypeError, ValidationError, ValueError):
+    except (OverflowError, TypeError, ValidationError, ValueError):
         _fail()
     return backends
 
@@ -644,7 +763,7 @@ def _derive_endpoint(
         _fail()
     ids: set[str] = set()
     matches: list[dict[str, object]] = []
-    typed_endpoints: list[ModelRegistryEndpoint] = []
+    typed_endpoints: list[ModelRsdEndpointContract] = []
     for value in cast(list[object], document["endpoints"]):
         endpoint = _exact_mapping(value, _ENDPOINT_REQUIRED, _ENDPOINT_FIELDS)
         if (
@@ -680,13 +799,13 @@ def _derive_endpoint(
         if model_id == served_model:
             matches.append(endpoint)
         try:
-            typed_endpoint = ModelRegistryEndpoint.model_validate(endpoint)
+            typed_endpoint = ModelRsdEndpointContract.model_validate(endpoint)
             typed_endpoints.append(
-                ModelRegistryEndpoint.model_validate(
+                ModelRsdEndpointContract.model_validate(
                     typed_endpoint.model_dump(mode="python"), strict=True
                 )
             )
-        except (TypeError, ValidationError, ValueError):
+        except (OverflowError, TypeError, ValidationError, ValueError):
             _fail()
     if len(matches) != 1:
         _fail()
@@ -744,7 +863,7 @@ def _strict_registry_document(document: dict[str, object]) -> ModelLlmModelRegis
         return ModelLlmModelRegistry.model_validate(
             registry.model_dump(mode="python"), strict=True
         )
-    except (TypeError, ValidationError, ValueError):
+    except (OverflowError, TypeError, ValidationError, ValueError):
         _fail()
 
 
@@ -760,7 +879,7 @@ def _revalidate(
         return ModelRsdOfflineDeliveryMatrixInput.model_validate(
             request.model_dump(mode="python"), strict=True
         )
-    except (AttributeError, TypeError, ValidationError, ValueError):
+    except (AttributeError, OverflowError, TypeError, ValidationError, ValueError):
         _fail()
 
 

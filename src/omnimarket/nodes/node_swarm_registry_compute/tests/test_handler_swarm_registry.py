@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from omnimarket.models.rsd.model_endpoint_contract import ModelRsdEndpointContract
 from omnimarket.nodes.node_swarm_registry_compute.handlers.handler_swarm_registry import (
     HandlerSwarmRegistry,
     _load_registry,
@@ -116,6 +117,37 @@ def _request(
         else _all_healthy(),
         registry_hash=registry_hash,
     )
+
+
+@pytest.mark.unit
+def test_shared_endpoint_contract_preserves_registry_fixture_wire_shape() -> None:
+    """The shared DTO retains the former registry-row serialization contract."""
+
+    legacy_registry_fixture = {
+        "id": "code-ep",
+        "base_url": "http://localhost:8000/v1",
+        "model_id": "some-coder",
+        "provider": "vllm",
+        "capabilities": ["code_generation", "refactoring", "analysis"],
+        "context_window": 100000,
+        "cost_basis": "local",
+    }
+    assert ModelRsdEndpointContract.model_validate(legacy_registry_fixture).model_dump(
+        mode="json"
+    ) == {
+        "id": "code-ep",
+        "base_url": "http://localhost:8000/v1",
+        "model_id": "some-coder",
+        "provider": "vllm",
+        "capabilities": ["code_generation", "refactoring", "analysis"],
+        "context_window": 100000,
+        "context_window_source": "unknown",
+        "cost_basis": "local",
+        "health_check_path": "/health",
+        "declared_by": "",
+        "declared_at": "",
+        "endpoint_ref": "",
+    }
 
 
 # ---------------------------------------------------------------------------

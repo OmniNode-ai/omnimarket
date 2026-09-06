@@ -9,13 +9,11 @@ from urllib.parse import urlparse
 
 import yaml
 
-from omnimarket.nodes.node_swarm_registry_compute.models.enums import (
-    EnumEndpointStatus,
-    EnumSwarmCapability,
+from omnimarket.models.rsd.model_endpoint_contract import (
+    EnumRsdEndpointCapability,
+    ModelRsdEndpointContract,
 )
-from omnimarket.nodes.node_swarm_registry_compute.models.model_registry_endpoint import (
-    ModelRegistryEndpoint,
-)
+from omnimarket.nodes.node_swarm_registry_compute.models.enums import EnumEndpointStatus
 from omnimarket.nodes.node_swarm_registry_compute.models.model_swarm_endpoint_selection_request import (
     ModelEndpointHealth,
     ModelSubtask,
@@ -26,20 +24,22 @@ from omnimarket.nodes.node_swarm_registry_compute.models.model_swarm_endpoint_se
     ModelSwarmEndpointSelectionResult,
 )
 
-_VALID_CAPABILITIES: frozenset[str] = frozenset(c.value for c in EnumSwarmCapability)
+_VALID_CAPABILITIES: frozenset[str] = frozenset(
+    capability.value for capability in EnumRsdEndpointCapability
+)
 
 _DEFAULT_REGISTRY_PATH = (
     Path(__file__).parent.parent / "contracts" / "endpoint_registry.yaml"
 )
 
 
-def _load_registry(path: Path) -> tuple[list[ModelRegistryEndpoint], str]:
+def _load_registry(path: Path) -> tuple[list[ModelRsdEndpointContract], str]:
     raw = path.read_text()
     data: dict[str, object] = yaml.safe_load(raw)
     registry_hash = hashlib.sha256(raw.encode()).hexdigest()
 
     seen_ids: set[str] = set()
-    endpoints: list[ModelRegistryEndpoint] = []
+    endpoints: list[ModelRsdEndpointContract] = []
     raw_endpoints = cast(list[dict[str, object]], data.get("endpoints", []))
 
     for ep_data in raw_endpoints:
@@ -60,7 +60,7 @@ def _load_registry(path: Path) -> tuple[list[ModelRegistryEndpoint], str]:
         if invalid:
             raise ValueError(f"Unknown capabilities for endpoint {ep_id!r}: {invalid}")
 
-        endpoints.append(ModelRegistryEndpoint.model_validate(ep_data))
+        endpoints.append(ModelRsdEndpointContract.model_validate(ep_data))
 
     return endpoints, registry_hash
 
@@ -69,7 +69,7 @@ def _is_healthy(health: ModelEndpointHealth | None) -> bool:
     return health is not None and health.endpoint_status == EnumEndpointStatus.reachable
 
 
-def _fits_context(endpoint: ModelRegistryEndpoint, estimated_tokens: int) -> bool:
+def _fits_context(endpoint: ModelRsdEndpointContract, estimated_tokens: int) -> bool:
     if endpoint.context_window is None:
         return True
     return endpoint.context_window >= estimated_tokens
@@ -77,7 +77,7 @@ def _fits_context(endpoint: ModelRegistryEndpoint, estimated_tokens: int) -> boo
 
 def _select_for_subtask(
     subtask: ModelSubtask,
-    endpoints: list[ModelRegistryEndpoint],
+    endpoints: list[ModelRsdEndpointContract],
     endpoint_health: dict[str, ModelEndpointHealth],
 ) -> tuple[str | None, str]:
     """Return (endpoint_id, reason) or (None, reason) if unroutable."""

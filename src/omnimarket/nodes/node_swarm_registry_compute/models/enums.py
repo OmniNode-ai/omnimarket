@@ -5,19 +5,6 @@ from __future__ import annotations
 from enum import StrEnum
 
 
-class EnumSwarmCapability(StrEnum):
-    CODE_GENERATION = "code_generation"
-    STRUCTURED_OUTPUT = "structured_output"
-    REFACTORING = "refactoring"
-    REASONING = "reasoning"
-    ANALYSIS = "analysis"
-    MATH = "math"
-    PLANNING = "planning"
-    SYNTHESIS = "synthesis"
-    GENERAL = "general"
-    EMBEDDINGS = "embeddings"
-
-
 class EnumEndpointStatus(StrEnum):
     reachable = "reachable"
     unreachable = "unreachable"
@@ -33,5 +20,4 @@ class EnumModelStatus(StrEnum):
 __all__ = [
     "EnumEndpointStatus",
     "EnumModelStatus",
-    "EnumSwarmCapability",
 ]

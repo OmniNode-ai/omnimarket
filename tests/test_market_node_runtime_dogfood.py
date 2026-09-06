@@ -265,7 +265,10 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # omniclaude hook classes off the CLOUD bus as tenant-prefixed wire topics
     # and materializes public.hook_events, the table the already-deployed read
     # route GET /v1/projections/hook-events/by-correlation serves): 395 -> 396.
-    assert summary["node_dirs"] == 396
+    # OMN-17984 adds node_rsd_offline_delivery_matrix_compute (COMPUTE; a
+    # pinned, direct-invoked offline contract validator addressable through
+    # its declared runtime_dispatch CLI route): 396 -> 397.
+    assert summary["node_dirs"] == 397
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -353,7 +356,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # resolve_physical_topic (OMN-15792); a contract may not declare a
     # tenant-prefixed topic at all, so the canonical set is what this
     # inventory sees and it is the correct thing for it to see: 392 -> 393.
-    assert summary["entry_points"] == 393
+    # OMN-17984 registers the offline C0 validator's runtime_dispatch route:
+    # 393 -> 394.
+    assert summary["entry_points"] == 394
     assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299

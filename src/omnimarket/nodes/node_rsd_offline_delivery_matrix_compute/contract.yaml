@@ -39,6 +39,14 @@ handler_routing:
       handler:
         name: "HandlerRsdOfflineDeliveryMatrix"
         module: "omnimarket.nodes.node_rsd_offline_delivery_matrix_compute.handlers.handler_rsd_offline_delivery_matrix"
+runtime_dispatch:
+  # Direct `onex run-node` invocation is the only current transport. This
+  # declaration makes that CLI route dogfood-addressable without claiming an
+  # event-bus consumer or granting any dispatch/effect capability.
+  command_topic: onex.cmd.omnimarket.rsd-offline-delivery-matrix-validate.v1
+  terminal_events:
+    success: onex.evt.omnimarket.rsd-offline-delivery-matrix-validated.v1
+    failure: onex.evt.omnimarket.rsd-offline-delivery-matrix-failed.v1
 metadata:
   transport_type: inmemory
   description: "Offline-only C0 route-contract tuple validator; no route authority or effect capability."

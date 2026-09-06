@@ -15,6 +15,7 @@ from omnimarket.nodes.node_rsd_offline_delivery_matrix_compute.handlers.handler_
     _derive_bifrost_backend,
     _derive_endpoint,
     _parse_yaml,
+    _routing_selection,
     _strict_registry_document,
     validate_rsd_offline_delivery_matrix,
 )
@@ -205,6 +206,136 @@ def test_optional_endpoint_and_bifrost_fields_follow_canonical_dtos() -> None:
         _derive_bifrost_backend(bifrost_document, selected)["backend_id"]
         == selected.backend_id
     )
+
+
+@pytest.mark.unit
+def test_routing_rows_apply_canonical_delegation_cost_semantics() -> None:
+    document = _parse_yaml(_ROUTING.read_bytes())
+    local_tier = document["tiers"][0]
+    local_tier["cost"] = {
+        "cost_type": "budgeted",
+        "rate_per_1k_usd": 0.01,
+        "monthly_cap_usd": 10.0,
+        "overage_rate_per_1k_usd": 0.02,
+    }
+    assert _routing_selection(document, _request().route_contract.selected_route) == (
+        "Qwen3.6-35B-A3B",
+        65536,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda tier: tier.__setitem__("max_retries", -1),
+        lambda tier: tier.__setitem__("eval_before_accept", "true"),
+        lambda tier: tier.__setitem__("eval_model", 1),
+        lambda tier: tier["models"][0].__setitem__("use_for", ["code_generation", 1]),
+        lambda tier: tier["models"][0].__setitem__("fast_path_threshold_tokens", -1),
+        lambda tier: tier.__setitem__("cost_per_1k_tokens", float("nan")),
+        lambda tier: tier.__setitem__(
+            "cost", {"cost_type": "free_local", "rate_per_1k_usd": 0.01}
+        ),
+        lambda tier: tier.__setitem__("cost", {"cost_type": "metered"}),
+        lambda tier: tier.__setitem__(
+            "cost",
+            {
+                "cost_type": "budgeted",
+                "rate_per_1k_usd": 0.01,
+                "monthly_cap_usd": 1.0,
+            },
+        ),
+        lambda tier: tier.__setitem__("cost", {"cost_type": "unknown"}),
+    ],
+)
+def test_routing_rows_reject_noncanonical_or_invalid_semantics(
+    mutation: object,
+) -> None:
+    document = _parse_yaml(_ROUTING.read_bytes())
+    local_tier = document["tiers"][0]
+    mutation(local_tier)
+    with pytest.raises(RsdOfflineDeliveryMatrixValidationError):
+        _routing_selection(document, _request().route_contract.selected_route)
+
+
+@pytest.mark.unit
+def test_routing_use_for_preserves_canonical_scalar_and_repeated_list_semantics() -> (
+    None
+):
+    document = _parse_yaml(_ROUTING.read_bytes())
+    local_model = document["tiers"][0]["models"][0]
+    local_model["use_for"] = "code_generation"
+    assert _routing_selection(document, _request().route_contract.selected_route) == (
+        "Qwen3.6-35B-A3B",
+        65536,
+    )
+
+    local_model["use_for"] = ["code_generation", "code_generation"]
+    assert _routing_selection(document, _request().route_contract.selected_route) == (
+        "Qwen3.6-35B-A3B",
+        65536,
+    )
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("oversized", [10**400, Decimal("1e400"), 1e308])
+def test_routing_rejects_oversized_flat_cost_with_stable_failure(
+    oversized: object,
+) -> None:
+    document = _parse_yaml(_ROUTING.read_bytes())
+    document["tiers"][0]["cost_per_1k_tokens"] = oversized
+    with pytest.raises(RsdOfflineDeliveryMatrixValidationError) as exc_info:
+        _routing_selection(document, _request().route_contract.selected_route)
+    assert str(exc_info.value) == "offline delivery matrix validation failed"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    "field", ["rate_per_1k_usd", "monthly_cap_usd", "overage_rate_per_1k_usd"]
+)
+@pytest.mark.parametrize("oversized", [10**400, Decimal("1e400"), 1e308])
+def test_routing_rejects_oversized_typed_cost_fields_with_stable_failure(
+    field: str,
+    oversized: object,
+) -> None:
+    document = _parse_yaml(_ROUTING.read_bytes())
+    cost = {
+        "cost_type": "budgeted",
+        "rate_per_1k_usd": 0.01,
+        "monthly_cap_usd": 10.0,
+        "overage_rate_per_1k_usd": 0.02,
+    }
+    cost[field] = oversized
+    document["tiers"][0]["cost"] = cost
+    with pytest.raises(RsdOfflineDeliveryMatrixValidationError) as exc_info:
+        _routing_selection(document, _request().route_contract.selected_route)
+    assert str(exc_info.value) == "offline delivery matrix validation failed"
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize(
+    ("container", "field"),
+    [
+        ("tier", "max_retries"),
+        ("model", "max_context_tokens"),
+        ("model", "fast_path_threshold_tokens"),
+    ],
+)
+def test_routing_rejects_oversized_integer_route_fields(
+    container: str,
+    field: str,
+) -> None:
+    document = _parse_yaml(_ROUTING.read_bytes())
+    target = (
+        document["tiers"][0]
+        if container == "tier"
+        else document["tiers"][0]["models"][0]
+    )
+    target[field] = 10**400
+    with pytest.raises(RsdOfflineDeliveryMatrixValidationError) as exc_info:
+        _routing_selection(document, _request().route_contract.selected_route)
+    assert str(exc_info.value) == "offline delivery matrix validation failed"
 
 
 @pytest.mark.unit
