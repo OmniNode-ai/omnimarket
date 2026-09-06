@@ -493,17 +493,49 @@ async def readiness(
     topic_map: dict[str, ProjectionTableConfig] = Depends(get_topic_map),  # noqa: B008
 ) -> JSONResponse:
     """Fail closed unless every bus_backed exposure's SnapshotCache has
-    finished its initial bootstrap replay (OMN-15800; replaces the removed
-    ``SELECT 1`` Postgres probe)."""
+    finished its initial bootstrap replay AND the consumer feeding that cache
+    is still alive (OMN-15800; replaces the removed ``SELECT 1`` Postgres
+    probe; OMN-15876 adds the liveness half and the two diagnostic fields).
+
+    OMN-15876 makes this endpoint answer a question it could previously only
+    pose. ``bootstrapped=False`` had exactly one rendering for two unrelated
+    conditions -- "assigned, still replaying" and "never assigned a partition,
+    so this can never become True" -- and telling them apart cost five
+    consecutive staging rollout failures plus a bespoke read-only probe
+    workflow. ``assigned_partitions`` is the discriminator: on a broker with
+    auto-create off, ``0`` for a topic means the broker offered no partition
+    for that name, which is a MISSING DEPENDENCY, not slow progress.
+
+    ``consumer_failure`` closes the fail-OPEN half. The cache's consume task
+    is fire-and-forget; when an exception ended it, asyncio never logged the
+    traceback (the Task is strongly referenced for the process lifetime, so it
+    is never collected) and this endpoint would answer 200 the moment every
+    topic's INITIAL replay had finished -- serving a frozen cache as live
+    state. A dead consumer now refuses readiness on its own, whatever the
+    per-topic map says.
+
+    The gate is not weakened in any direction: every condition here is a new
+    reason to refuse, never a new reason to allow.
+    """
     bus_backed_topics = sorted(t for t, cfg in topic_map.items() if cfg.bus_backed)
     bootstrap_status = {
         topic: cache.is_bootstrapped(topic) for topic in bus_backed_topics
     }
-    ready = bool(bus_backed_topics) and all(bootstrap_status.values())
+    assigned_partitions = {
+        topic: cache.assigned_partition_count(topic) for topic in bus_backed_topics
+    }
+    consumer_failure = cache.consume_failure
+    ready = (
+        bool(bus_backed_topics)
+        and all(bootstrap_status.values())
+        and consumer_failure is None
+    )
     return JSONResponse(
         {
             "status": "ready" if ready else "not_ready",
             "bus_backed_topics": bootstrap_status,
+            "assigned_partitions": assigned_partitions,
+            "consumer_failure": consumer_failure,
         },
         status_code=200 if ready else 503,
     )

@@ -167,6 +167,13 @@ def _make_cache(
     topic queried) or a per-topic dict for multi-topic tests."""
     cache = MagicMock()
     cache.is_bootstrapped = MagicMock(return_value=bootstrapped)
+    # OMN-15876: /ready now also reads the consumer's liveness and per-topic
+    # partition assignment. A bare MagicMock would answer a truthy sentinel
+    # for consume_failure and a non-serializable one for the partition count,
+    # so the default fake states the HEALTHY shape explicitly; tests that
+    # exercise the failure direction override these.
+    cache.consume_failure = None
+    cache.assigned_partition_count = MagicMock(return_value=1)
 
     if isinstance(rows_by_topic, dict):
         cache.get_rows = MagicMock(
@@ -464,6 +471,46 @@ class TestReadyRoute:
             resp = client.get("/ready")
         assert resp.status_code == 503
         assert resp.json()["status"] == "not_ready"
+
+    def test_not_ready_when_the_consume_loop_died_even_if_all_bootstrapped(
+        self,
+    ) -> None:
+        """OMN-15876, the fail-OPEN half.
+
+        Every topic finished its INITIAL replay, then the consume task died.
+        Pre-fix this answered 200 while serving a cache that had silently
+        stopped updating -- a frozen read model rendered as live state. A
+        dead consumer must refuse readiness on its own.
+        """
+        cache = _make_cache([], bootstrapped=True)
+        cache.consume_failure = "IllegalStateError: Partition ... is not assigned"
+        with _with_cache(cache) as client:
+            resp = client.get("/ready")
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["status"] == "not_ready"
+        assert body["consumer_failure"] == (
+            "IllegalStateError: Partition ... is not assigned"
+        )
+
+    def test_ready_body_names_the_partition_assignment_per_topic(self) -> None:
+        """OMN-15876, the discriminator.
+
+        ``bootstrapped=False`` renders identically for "assigned, still
+        replaying" and "never assigned a partition, so this can NEVER become
+        True". On a broker with auto-create off the second means the topic
+        does not exist. Five consecutive staging rollouts failed on a body
+        that could not tell them apart.
+        """
+        cache = _make_cache([], bootstrapped=False)
+        cache.assigned_partition_count = MagicMock(return_value=0)
+        with _with_cache(cache) as client:
+            resp = client.get("/ready")
+        assert resp.status_code == 503
+        body = resp.json()
+        assert body["assigned_partitions"], "no per-topic assignment map in the body"
+        assert all(count == 0 for count in body["assigned_partitions"].values())
+        assert set(body["assigned_partitions"]) == set(body["bus_backed_topics"])
 
     def test_not_ready_when_no_topic_is_bus_backed(self) -> None:
         topic = "onex.snapshot.projection.not-converted.v1"
