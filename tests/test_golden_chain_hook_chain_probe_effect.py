@@ -15,8 +15,10 @@ the union testable:
     asserted to produce distinct blockers.
 
 AC2's LIVE half was re-derived on 2026-09-06 (OMN-17556), when the
-``omnibase-infra`` 0.38.16 -> 0.38.18 pin bump landed OMN-16979 and made the
-allowlist denial it pinned false. The classifier tests below still drive the
+``omnibase-infra`` 0.38.16 -> 0.38.19 pin bump landed OMN-16979 and made the
+allowlist denial it pinned false; its downstream half was re-derived again the
+same day when OMN-17201 (omnimarket#2331) raised the emit seam's redaction floor
+and opened the outbound leg that re-derivation had found still closed. The classifier tests below still drive the
 2026-08-30 shape as a FIXTURE -- that is a test of the classifier's rules given
 an observation, and those rules are unchanged. What moved is what the live
 contracts say, and that is re-derived from both ends of the seam in
@@ -500,28 +502,44 @@ class TestTheLiveChainSeamAdmitsWhatTheUpstreamSeamActuallyStamps:
         assert stamped[policy.state_field] == "redacted"
         assert policy.admits(stamped)
 
-    def test_the_traced_topic_is_still_blocked_but_by_the_gate_not_the_allowlist(
+    def test_the_traced_topic_crosses_the_gate_that_used_to_refuse_it(
         self,
     ) -> None:
-        """The traced topic's real, current blocker -- derived, not assumed.
+        """The traced topic's real, current disposition -- derived, not assumed.
 
-        ``tool-executed.v1`` declares EVERY field ``capture_verbatim``: the
-        contract's own reason says each one "is a name, a count or an
-        identifier -- no tool argument and no tool output", verified against a
-        live .201 stability-lane payload. Nothing is dropped, hashed or
-        reshaped, and on a clean record no secret pattern fires -- so
-        ``redact_capture``'s state never escalates above its ``raw`` floor.
+        This assertion has been re-derived once already and is now re-derived a
+        second time, by the mechanism the previous revision predicted. That
+        revision pinned the opposite outcome: ``tool-executed.v1`` declares
+        EVERY field ``capture_verbatim``, so nothing was dropped, hashed or
+        reshaped and ``redact_capture``'s state never escalated above its
+        ``raw`` floor -- and ``raw`` is the one state the forwarder can never
+        admit. It said in terms that the remedy was "a product decision about
+        what state a fully-reviewed verbatim record should carry ... When that
+        decision lands, this assertion is the thing that goes RED and says so."
 
-        ``raw`` is the one state the forwarder can never admit. So the composed
-        live chain is: the topic IS on the allowlist and IS governed, and a
-        clean record on it is still DROPPED at the trust boundary. The blocker
-        moved from ALLOWLIST_DENIED to the redaction gate; it did not clear.
+        It landed, on this repo's own dev, as OMN-17201 (omnimarket#2331,
+        commit ``8da9201d``): ``EnumRedactionState.REDACTED`` is now the FLOOR
+        that ``redact_capture`` stamps, on the grounds that ``raw`` means "no
+        posture was applied" and after this transform that is never true. The
+        commit is explicit that it moves neither ``governed_topics`` nor
+        ``admitted_states`` -- the gate is byte-unchanged and still refuses
+        ``raw``.
 
-        This is pinned rather than reported because the fix is a product
-        decision about what state a fully-reviewed verbatim record should carry
-        (OMN-13152's ``restricted`` is the candidate), not a test edit. When
-        that decision lands, this assertion is the thing that goes RED and says
-        so.
+        So the composed live chain is re-derived end to end, from both real
+        objects rather than from either side's own fixture:
+
+          * ``policy.governs(traced_topic)`` -> True (OMN-16979 widening,
+            read from the packaged forwarder contract).
+          * ``redact_capture(clean record)[state_field]`` -> ``redacted``
+            (OMN-17201 floor, run through the real transform).
+          * ``policy.admits(stamped)`` -> True. The outbound leg is OPEN.
+
+        The counter-assertion below is what keeps this row from degrading into
+        a restatement of whatever ships: the same record with ``raw`` written
+        back into the state field is still refused, so the gate is proven to be
+        discriminating rather than permissive. A change that re-lowers the emit
+        floor to ``raw``, or that removes ``raw`` from the structural refusal,
+        turns this test RED.
         """
         from omnimarket.nodes.node_event_emit_effect.redaction import redact_capture
         from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
@@ -548,9 +566,16 @@ class TestTheLiveChainSeamAdmitsWhatTheUpstreamSeamActuallyStamps:
             },
             traced_topic,
         )
-        assert stamped[policy.state_field] == "raw"
+        assert stamped[policy.state_field] == "redacted"
         # Asked of the REAL gate object, not re-implemented here.
-        assert not policy.admits(stamped)
+        assert policy.admits(stamped)
+
+        # Counter-assertion: the gate still discriminates. The pre-OMN-17201
+        # state written back into the same record is refused, so the True above
+        # is an admission decision and not a gate that admits anything.
+        refused = dict(stamped)
+        refused[policy.state_field] = "raw"
+        assert not policy.admits(refused)
 
 
 class TestHookEdgeLaneIsResolvedFromTheHooksOwnAuthority:
