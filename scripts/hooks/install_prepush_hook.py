@@ -268,7 +268,10 @@ def _precommit_python() -> str:
             ).returncode
             == 0
         ):
-            return str(Path(candidate).resolve())
+            # A virtualenv launcher is commonly a symlink to a base interpreter.
+            # Resolving it discards the virtualenv's site-packages, including the
+            # locked pre-commit installation this adapter must use.
+            return candidate
     raise HookInstallError("pre-commit interpreter is unavailable for preparation")
 
 

@@ -69,8 +69,8 @@ def _scrub_git_location_env() -> dict[str, str]:
     return env
 
 
-def _load_module():
-    spec = importlib.util.spec_from_file_location("check_release_identity", _SCRIPT)
+def _load_module(path: Path = _SCRIPT):
+    spec = importlib.util.spec_from_file_location("check_release_identity", path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -209,7 +209,7 @@ def _isolated_checkout(tmp_path: Path, *, published_tag: str) -> Path:
     return root
 
 
-def _run_gate(root: Path) -> subprocess.CompletedProcess[str]:
+def _run_gate(root: Path, *args: str) -> subprocess.CompletedProcess[str]:
     """Run the gate against ``root`` only.
 
     The scrub is load-bearing, not ceremony: GIT_DIR / GIT_WORK_TREE override
@@ -220,7 +220,7 @@ def _run_gate(root: Path) -> subprocess.CompletedProcess[str]:
     """
     scrubbed_git_env = _scrub_git_location_env()
     return subprocess.run(
-        [sys.executable, str(root / "scripts" / _SCRIPT.name)],
+        [sys.executable, str(root / "scripts" / _SCRIPT.name), *args],
         capture_output=True,
         text=True,
         check=False,
@@ -261,6 +261,66 @@ def test_live_invocation_fails_when_version_is_not_ahead(tmp_path):
 
     assert result.returncode == 1, result.stdout
     assert "is NOT ahead of the latest published version" in result.stderr
+
+
+@pytest.mark.unit
+def test_staged_mode_enforces_src_and_exempts_dev_only_metadata(tmp_path):
+    """The local hook judges the exact staged snapshot, not the full tree."""
+    root = _isolated_checkout(tmp_path, published_tag="v99.0.0")
+    scrubbed_git_env = _scrub_git_location_env()
+    source = root / "src" / "omnimarket" / "changed\nname.py"
+    source.parent.mkdir(parents=True)
+    source.write_text("value = 1\n", encoding="utf-8")
+    subprocess.run(
+        ["git", "add", str(source.relative_to(root))],
+        cwd=root,
+        check=True,
+        env=scrubbed_git_env,
+    )
+    staged_module = _load_module(root / "scripts" / _SCRIPT.name)
+
+    assert staged_module._staged_files() == [str(source.relative_to(root))]
+
+    source_result = _run_gate(root, "--staged")
+
+    assert source_result.returncode == 1, source_result.stdout
+    assert "is NOT ahead of the latest published version" in source_result.stderr
+
+    subprocess.run(
+        ["git", "reset", "--hard", "HEAD"],
+        cwd=root,
+        check=True,
+        env=scrubbed_git_env,
+    )
+    with (root / "pyproject.toml").open("a", encoding="utf-8") as pyproject:
+        pyproject.write("\n# test-only development metadata\n")
+    subprocess.run(
+        ["git", "add", "pyproject.toml"],
+        cwd=root,
+        check=True,
+        env=scrubbed_git_env,
+    )
+
+    metadata_result = _run_gate(root, "--staged")
+
+    assert metadata_result.returncode == 0, metadata_result.stderr
+    assert "no packaged src/** change" in metadata_result.stdout
+
+
+@pytest.mark.unit
+def test_staged_mode_fails_closed_when_git_cannot_read_index(tmp_path):
+    """A broken Git index is an error, never an exemption from the gate."""
+    root = tmp_path / "not-a-repository"
+    (root / "scripts").mkdir(parents=True)
+    shutil.copy2(_SCRIPT, root / "scripts" / _SCRIPT.name)
+    shutil.copy2(
+        _SCRIPT.resolve().parents[1] / "pyproject.toml", root / "pyproject.toml"
+    )
+
+    result = _run_gate(root, "--staged")
+
+    assert result.returncode == 2
+    assert result.stderr.startswith("ERROR:")
 
 
 @pytest.mark.unit

@@ -1222,13 +1222,13 @@ repos:
       # way omnibase_core (OMN-13411) and omnibase_infra (OMN-13412) already
       # are. Without it omnimarket's dev sat at 0.4.8 — the same version as the
       # published v0.4.8 wheel — while carrying seven commits of src/ changes,
-      # so "omnimarket 0.4.8" named two different code states. The script does
-      # its own diff/tag resolution, so pass_filenames=false: it inspects the
-      # whole worktree, not a per-file list. SYNC with ci.yml job
-      # `release-identity-gate`.
+      # so "omnimarket 0.4.8" named two different code states. Local commits
+      # inspect the staged index; CI keeps the PR-base comparison. The script
+      # owns the Git diff/tag resolution, so pass_filenames remains false. SYNC
+      # with ci.yml job `release-identity-gate`.
       - id: check-release-identity
         name: No code merged onto a published version without a bump (OMN-16344)
-        entry: uv run python scripts/check_release_identity.py
+        entry: uv run python scripts/check_release_identity.py --staged
         language: system
         files: ^(src/.*\.py|pyproject\.toml)$
         pass_filenames: false

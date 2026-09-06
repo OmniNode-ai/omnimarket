@@ -109,6 +109,16 @@ def _install(repo: Path) -> Path:
     return installer.install(cwd=repo)
 
 
+def test_precommit_python_preserves_virtualenv_launcher(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = Path(sys.executable)
+    assert launcher.is_symlink()
+    monkeypatch.setattr(installer.shutil, "which", lambda _name: None)
+
+    assert installer._precommit_python() == str(launcher)
+
+
 def test_committed_sha_is_checked_when_staged_and_unstaged_edits_mask_it(
     tmp_path: Path,
 ) -> None:
