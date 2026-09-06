@@ -61,6 +61,17 @@ than the gap:
     The contract has no ``dod_evidence`` block, or names no product PR. Fail
     closed rather than guess where an item belongs in a governance artifact.
 
+Two ways in: discovery, and an explicit batch
+---------------------------------------------
+``--discover`` walks the OCC tree newest-first and is what the schedule uses.
+``--tickets "OMN-1 OMN-2 …"`` judges exactly the ids given, in order, and is
+the operator-driven path for a held set someone has already triaged. The batch
+path deliberately IGNORES the refusal ledger: naming a ticket explicitly is a
+decision to re-judge it. Discovery honours the ledger, because its whole
+problem is a bounded window that a known answer must not occupy. Both paths
+share one judgement function, so a batch cannot mint something discovery would
+have refused.
+
 Status is derived, never assumed
 --------------------------------
 ``PASS`` requires a live readback saying the product PR is MERGED and its merge
@@ -122,23 +133,31 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
 )
 
 __all__ = [
+    "LEDGERED_REFUSALS",
+    "REFUSAL_LEDGER_RELPATH",
     "BackfillOutcome",
     "EnumBackfillDecision",
     "ProductPrFacts",
     "ProductPrRef",
     "append_dod_evidence_item",
     "build_backfill_receipt",
+    "contract_product_pr_refs",
     "decide",
     "derive_receipt_status",
     "discover_candidate_tickets",
     "legacy_whole_file_receipts",
+    "load_refusal_ledger",
     "main",
     "product_pr_from_contract",
+    "refusal_fingerprint",
+    "refusal_is_current",
     "repo_from_check_value",
     "run",
+    "write_refusal_ledger",
 ]
 
 RECEIPT_SCHEMA_VERSION = "1.0.0"
+REFUSAL_LEDGER_SCHEMA_VERSION = "1.0.0"
 
 # `runner` and `verifier` MUST differ: ModelDodReceipt's Centralized Transition
 # Policy silently downgrades a PASS to ADVISORY when they match, and ADVISORY is
@@ -147,6 +166,34 @@ RECEIPT_SCHEMA_VERSION = "1.0.0"
 # `check_receipt_hardening.DENYLISTED_VERIFIERS` (checked against OCC dev).
 RUNNER = "omnimarket-ci occ-behavior-proof-backfill"
 VERIFIER = "github-actions merged-pr diff derivation"
+
+# WHERE A REFUSAL IS REMEMBERED (OMN-17943 defect B).
+#
+# ``discover_candidate_tickets`` excluded a ticket only once it HAD a
+# behavior-proof receipt. A REFUSED ticket therefore never left the candidate
+# window: it was re-judged, re-refused and re-reported on every run, forever,
+# and — because discovery is newest-first and bounded — it also DISPLACED the
+# tickets behind it. Measured live 2026-09-06 on OCC dev: the top-40 window
+# produced would_write=0 (22 REFUSED_NO_BEHAVIOUR_IN_DIFF, 10
+# REFUSED_NO_PRODUCT_PR, 8 REFUSED_LEGACY_WHOLE_FILE_BINDING) across 3,887
+# candidates, while the nearest mintable ticket (OMN-16558) sat at rank 189 and
+# could not be reached by any number of scheduled runs. The scheduled job was
+# structurally incapable of draining the corpus.
+#
+# The fix is a durable, human-readable refusal ledger committed alongside the
+# mints. A refusal is recorded WITH THE FACTS IT WAS JUDGED AGAINST, and the
+# skip holds only while those facts are unchanged — a new merged product PR on
+# the contract, or the repair of a legacy whole-file receipt binding, changes
+# the fingerprint and re-qualifies the ticket automatically. Nothing is
+# permanently written off; the window simply stops being occupied by answers
+# that are already known.
+#
+# It is NOT under ``drift/dod_receipts/`` on purpose: it is operational state,
+# not evidence, and the receipt-honesty / receipt-hardening hooks scope
+# themselves to that subtree. It sits beside ``drift/occ_rerun_state.yaml`` and
+# ``drift/occ_dependency_edges.yaml``, which are the same kind of thing.
+REFUSAL_LEDGER_RELPATH = "drift/behavior_proof_backfill_refusals.yaml"
+
 
 # `dod-<owner>-<repo>-pr-<n>` is the id the autobind gives the binding item, so
 # the contract already names its own product PR. Reading it from there avoids a
@@ -210,6 +257,27 @@ class EnumBackfillDecision(StrEnum):
     REFUSED_PR_NOT_MERGED = "REFUSED_PR_NOT_MERGED"
     REFUSED_NO_BEHAVIOUR_IN_DIFF = "REFUSED_NO_BEHAVIOUR_IN_DIFF"
     REFUSED_LEGACY_WHOLE_FILE_BINDING = "REFUSED_LEGACY_WHOLE_FILE_BINDING"
+
+
+# Which decisions are durable enough to remember.
+#
+# ``REFUSED_PR_NOT_MERGED`` is deliberately EXCLUDED: it is the one refusal
+# that flips without any change to the fingerprint (the PR merges; the contract
+# and the receipts are untouched), so ledgering it would suppress a ticket that
+# has since become mintable. It stays cheap to re-judge every run.
+#
+# ``REFUSED_ALREADY_DECLARED`` IS included: a contract that declares the item
+# but has no receipt directory is discovered forever otherwise, and that is a
+# large share of the live window.
+LEDGERED_REFUSALS = frozenset(
+    {
+        EnumBackfillDecision.REFUSED_ALREADY_DECLARED,
+        EnumBackfillDecision.REFUSED_CONTRACT_SHAPE,
+        EnumBackfillDecision.REFUSED_NO_PRODUCT_PR,
+        EnumBackfillDecision.REFUSED_NO_BEHAVIOUR_IN_DIFF,
+        EnumBackfillDecision.REFUSED_LEGACY_WHOLE_FILE_BINDING,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -345,6 +413,149 @@ def legacy_whole_file_receipts(
     return tuple(stale)
 
 
+def contract_product_pr_refs(contract_data: Any) -> tuple[str, ...]:
+    """Every product PR this contract names, as ``<owner>/<repo>#<n>``, sorted.
+
+    A SET, not the single first match :func:`product_pr_from_contract` returns:
+    the refusal ledger has to notice when the autobind adds a SECOND consumer
+    PR to a contract it already refused, because that new merged diff can carry
+    the pytest target the first one lacked. Sorted so the fingerprint is stable
+    across contract reorderings that change no facts.
+    """
+    if not isinstance(contract_data, dict):
+        return ()
+    items = contract_data.get("dod_evidence")
+    if not isinstance(items, list):
+        return ()
+    refs: set[str] = set()
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        raw_id = item.get("id")
+        if not isinstance(raw_id, str) or raw_id.endswith("-ci"):
+            continue
+        match = _PRODUCT_PR_ID_RE.match(raw_id)
+        if match is None:
+            continue
+        checks = item.get("checks")
+        if not isinstance(checks, list):
+            continue
+        for check in checks:
+            if not isinstance(check, dict):
+                continue
+            value = check.get("check_value")
+            if not isinstance(value, str):
+                continue
+            repo = repo_from_check_value(value)
+            if repo is None:
+                continue
+            refs.add(f"{repo}#{int(match.group('pr'))}")
+            break
+    return tuple(sorted(refs))
+
+
+def refusal_fingerprint(
+    contract_data: Any, receipts: Mapping[str, Mapping[str, Any]]
+) -> dict[str, list[str]]:
+    """The facts a refusal was judged against, as a comparable record.
+
+    Exactly two inputs can turn any ledgered refusal into a mint, so exactly
+    two are fingerprinted:
+
+    ``product_prs``
+        A new merged product PR on the contract is a new diff, and a diff is
+        the only thing ``REFUSED_NO_BEHAVIOUR_IN_DIFF`` and
+        ``REFUSED_NO_PRODUCT_PR`` were decided from. A MERGED PR's diff is
+        immutable, so the same set means the same answer.
+
+    ``legacy_binding_receipts``
+        ``REFUSED_LEGACY_WHOLE_FILE_BINDING`` is decided from exactly this
+        list. Repairing those bindings (minting ``contract_entry_sha256`` onto
+        them) empties it and re-qualifies the ticket with no manual step.
+
+    Deliberately NOT fingerprinted: the contract's byte content. Appending an
+    unrelated evidence item, or reflowing prose, must not re-open a refusal
+    that no new fact supports — that would put every ledgered ticket back in
+    the window on the next yamlfmt pass.
+    """
+    return {
+        "product_prs": list(contract_product_pr_refs(contract_data)),
+        "legacy_binding_receipts": list(legacy_whole_file_receipts(receipts)),
+    }
+
+
+def refusal_is_current(
+    entry: Mapping[str, Any], fingerprint: Mapping[str, list[str]]
+) -> bool:
+    """True when a recorded refusal still answers the facts on disk.
+
+    A malformed or partial entry is NOT current: an unreadable ledger must
+    degrade to re-judging the ticket, never to suppressing it silently.
+    """
+    judged = entry.get("judged_against")
+    if not isinstance(judged, Mapping):
+        return False
+    for key, values in fingerprint.items():
+        recorded = judged.get(key)
+        if not isinstance(recorded, list) or list(recorded) != list(values):
+            return False
+    return True
+
+
+def load_refusal_ledger(occ_root: Path) -> dict[str, dict[str, Any]]:
+    """The refusal ledger as a mapping, or empty when absent/unreadable.
+
+    Fails OPEN by design, and this is the safe direction: an empty ledger means
+    every candidate is re-judged, which is what the mechanism did before the
+    ledger existed. Failing closed would suppress the whole corpus on one bad
+    parse.
+    """
+    path = occ_root / REFUSAL_LEDGER_RELPATH
+    try:
+        body = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:
+        if path.exists():
+            print(
+                f"::warning::refusal ledger at {path} is unreadable: {exc}",
+                file=sys.stderr,
+            )
+        return {}
+    if not isinstance(body, dict):
+        return {}
+    entries = body.get("refusals")
+    if not isinstance(entries, dict):
+        return {}
+    return {
+        str(key): dict(value)
+        for key, value in entries.items()
+        if isinstance(value, dict)
+    }
+
+
+def write_refusal_ledger(
+    occ_root: Path, ledger: Mapping[str, Mapping[str, Any]]
+) -> Path:
+    """Write the ledger back, sorted, and return the path written."""
+    path = occ_root / REFUSAL_LEDGER_RELPATH
+    body = {
+        "schema_version": REFUSAL_LEDGER_SCHEMA_VERSION,
+        "produced_by": (
+            "omnimarket scripts/ci/occ_behavior_proof_backfill.py (OMN-17943). "
+            "Operational state, not evidence: each entry records why a ticket "
+            "was refused and the facts it was judged against, so a bounded "
+            "discovery window is not re-occupied by answers already known. An "
+            "entry stops applying the moment its judged_against facts change."
+        ),
+        "refusals": {key: dict(ledger[key]) for key in sorted(ledger)},
+    }
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        yaml.safe_dump(body, sort_keys=True, default_flow_style=False, width=100),
+        encoding="utf-8",
+    )
+    return path
+
+
 def derive_receipt_status(pr_facts: ProductPrFacts) -> str:
     """``PASS`` only for a merged PR whose merge checks concluded successfully.
 
@@ -430,6 +641,24 @@ def build_backfill_receipt(
     by the product PR's own CI before it merged, and this receipt records the
     observation of that fact.
 
+    ``commit_sha`` IS THE HEAD SHA, not the merge commit (OMN-17943 fix).
+    ``ModelDodReceipt.commit_sha`` asserts "the code state this check ran
+    against" (``check_receipt_hardening``, COMMIT_SHA_EXISTENCE docstring), and
+    the check this receipt records — the product PR's own check-runs, read by
+    ``probe_command`` and justifying :func:`derive_receipt_status` — ran against
+    the PR's HEAD sha. The squash commit on ``dev`` is a different tree that no
+    check in this receipt was run against.
+
+    Binding it to the merge commit while probing the head was not merely
+    imprecise, it was mechanically refused: ``check_receipt_hardening``
+    ``_product_ref_binds_commit`` extracts every ``/commits/<sha>`` and
+    ``?ref=<sha>`` from ``check_value``/``probe_command`` and requires
+    ``commit_sha`` to be among them, so the generated receipt failed
+    ``[COMMIT_SHA_REPOSITORY]`` on every mint — the only merged output (OCC#8344)
+    needed a hand edit to land, which is exactly the state a generator must not
+    leave its reviewers in. The merge commit is not lost: ``actual_output``
+    names it, as the separate fact it is.
+
     No ``contract_sha256``. See the module docstring.
     """
     stamped = run_timestamp or datetime.now(tz=UTC)
@@ -442,7 +671,7 @@ def build_backfill_receipt(
         "contract_entry_sha256": contract_entry_sha256,
         "status": status,
         "run_timestamp": stamped.strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "commit_sha": pr_facts.merge_commit_sha,
+        "commit_sha": pr_facts.head_sha,
         "runner": RUNNER,
         "verifier": VERIFIER,
         "probe_command": (
@@ -455,10 +684,12 @@ def build_backfill_receipt(
         "actual_output": (
             f"{status}: the declared targets are derived from the merged diff of "
             f"{pr_facts.repo}#{pr_facts.pr_number}; the PR's own CI at head "
-            f"{pr_facts.head_sha} concluded "
-            f"{pr_facts.checks_conclusion or 'UNREADABLE'}; it merged as "
-            f"{pr_facts.merge_commit_sha}. This receipt records that observation "
-            "— it does not claim the pytest run was executed by the backfill. "
+            f"{pr_facts.head_sha} — which is this receipt's commit_sha, the code "
+            f"state the recorded check ran against — concluded "
+            f"{pr_facts.checks_conclusion or 'UNREADABLE'}; it subsequently "
+            f"merged as {pr_facts.merge_commit_sha}, a different tree no check "
+            "here was run against. This receipt records that observation — it "
+            "does not claim the pytest run was executed by the backfill. "
             f"Run: {run_url}"
         ),
         "exit_code": 0,
@@ -700,7 +931,13 @@ def resolve_pr_facts(ref: ProductPrRef) -> ProductPrFacts | None:
     )
 
 
-def discover_candidate_tickets(occ_root: Path, *, limit: int) -> tuple[str, ...]:
+def discover_candidate_tickets(
+    occ_root: Path,
+    *,
+    limit: int,
+    ledger: Mapping[str, Mapping[str, Any]] | None = None,
+    skipped: list[str] | None = None,
+) -> tuple[str, ...]:
     """Tickets that HAVE OCC receipts and no behavior-proof receipt.
 
     "Has receipts" is the filter that separates a contract the pipeline already
@@ -714,6 +951,17 @@ def discover_candidate_tickets(occ_root: Path, *, limit: int) -> tuple[str, ...]
     problem. It is also stable across runs, so a bounded run is resumable
     instead of re-deciding the same head of the list forever — each applied
     batch removes its own tickets from the next run's candidates.
+
+    A ticket with a CURRENT ledgered refusal is skipped and does not consume a
+    window slot (OMN-17943 defect B). "Current" is decided by
+    :func:`refusal_is_current` against a freshly computed
+    :func:`refusal_fingerprint`, so a new merged product PR or a repaired
+    legacy binding re-qualifies the ticket automatically and no refusal is ever
+    permanent. Skipped ids are appended to ``skipped`` when given, so a run
+    reports what the ledger suppressed rather than hiding it.
+
+    The fingerprint is computed ONLY for candidates carrying a ledger entry,
+    and only until the window fills — the walk stays O(window), not O(corpus).
     """
     base = occ_root / "drift" / "dod_receipts"
     if not base.is_dir():
@@ -733,7 +981,30 @@ def discover_candidate_tickets(occ_root: Path, *, limit: int) -> tuple[str, ...]
             continue
         candidates.append((int(name[4:]), name))
     candidates.sort(reverse=True)
-    return tuple(name for _, name in candidates[:limit])
+
+    entries = ledger or {}
+    selected: list[str] = []
+    for _, name in candidates:
+        if len(selected) >= limit:
+            break
+        entry = entries.get(name)
+        if entry is not None:
+            contract_path = occ_root / "contracts" / f"{name}.yaml"
+            try:
+                contract_data = yaml.safe_load(
+                    contract_path.read_text(encoding="utf-8")
+                )
+            except (OSError, yaml.YAMLError):
+                contract_data = None
+            fingerprint = refusal_fingerprint(
+                contract_data, _load_receipts(occ_root, name)
+            )
+            if refusal_is_current(entry, fingerprint):
+                if skipped is not None:
+                    skipped.append(name)
+                continue
+        selected.append(name)
+    return tuple(selected)
 
 
 def _load_receipts(occ_root: Path, ticket_id: str) -> dict[str, dict[str, Any]]:
@@ -759,10 +1030,24 @@ def run(
     apply: bool,
     run_url: str,
     limit: int,
+    ledger_skipped: Sequence[str] = (),
 ) -> dict[str, Any]:
-    """Plan (and optionally write) the backfill for each ticket, in order."""
+    """Plan (and optionally write) the backfill for each ticket, in order.
+
+    Also maintains the refusal ledger (:data:`REFUSAL_LEDGER_RELPATH`): a
+    ledgerable refusal is recorded with the facts it was judged against, and
+    ANY other outcome — a mint, or a transient ``REFUSED_PR_NOT_MERGED`` —
+    clears the ticket's entry, so a stale suppression cannot outlive the
+    judgement that produced it. The ledger is written only under ``--apply``,
+    for the same reason the mints are: a dry run reports, it does not change
+    what the next run will see.
+    """
     outcomes: list[BackfillOutcome] = []
     written = 0
+    ledger = load_refusal_ledger(occ_root)
+    ledger_before = {key: dict(value) for key, value in ledger.items()}
+    recorded = 0
+    cleared = 0
 
     for ticket_id in tickets:
         contract_path = occ_root / "contracts" / f"{ticket_id}.yaml"
@@ -798,6 +1083,17 @@ def run(
         )
         outcomes.append(outcome)
 
+        if outcome.decision in LEDGERED_REFUSALS:
+            ledger[ticket_id] = {
+                "decision": outcome.decision.value,
+                "reason": outcome.reason,
+                "judged_at": datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "judged_against": refusal_fingerprint(contract_data, receipts),
+            }
+            recorded += 1
+        elif ledger.pop(ticket_id, None) is not None:
+            cleared += 1
+
         if outcome.decision is not EnumBackfillDecision.MINT:
             continue
         if written >= limit:
@@ -832,6 +1128,12 @@ def run(
     for outcome in outcomes:
         counts[outcome.decision.value] = counts.get(outcome.decision.value, 0) + 1
 
+    ledger_changed = ledger != ledger_before
+    ledger_written = False
+    if apply and ledger_changed:
+        write_refusal_ledger(occ_root, ledger)
+        ledger_written = True
+
     return {
         "dry_run": not apply,
         "tickets_scanned": len(tickets),
@@ -839,6 +1141,15 @@ def run(
         "would_write": written if not apply else 0,
         "limit": limit,
         "counts": counts,
+        "refusal_ledger": {
+            "path": REFUSAL_LEDGER_RELPATH,
+            "recorded": recorded,
+            "cleared": cleared,
+            "changed": ledger_changed,
+            "written": ledger_written,
+            "entries": len(ledger),
+            "skipped_by_ledger": list(ledger_skipped),
+        },
         "outcomes": [outcome.as_report_row() for outcome in outcomes],
     }
 
@@ -862,7 +1173,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--tickets",
         default="",
-        help="Whitespace- or comma-separated OMN ids to consider.",
+        help=(
+            "BATCH MODE. Whitespace- or comma-separated OMN ids to consider, "
+            "judged in the order given and NOT filtered by the refusal ledger. "
+            "This is the operator-driven path: an explicit list is a decision "
+            "to re-judge exactly these tickets, so a previous refusal never "
+            "suppresses one (it is still re-recorded or cleared by the result). "
+            "Mutually exclusive with --discover; --limit still bounds the mints."
+        ),
     )
     parser.add_argument(
         "--discover",
@@ -896,10 +1214,21 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--json-out", type=Path, default=None)
     args = parser.parse_args(argv)
 
+    ledger_skipped: list[str] = []
     if args.discover:
         tickets = discover_candidate_tickets(
-            args.occ_root, limit=int(args.discover_limit)
+            args.occ_root,
+            limit=int(args.discover_limit),
+            ledger=load_refusal_ledger(args.occ_root),
+            skipped=ledger_skipped,
         )
+        if ledger_skipped:
+            print(
+                f"::notice::{len(ledger_skipped)} candidate(s) skipped by a "
+                f"current ledgered refusal: {', '.join(ledger_skipped[:20])}"
+                f"{' …' if len(ledger_skipped) > 20 else ''}",
+                file=sys.stderr,
+            )
     else:
         tickets = _tickets_from(args.tickets)
     if not tickets:
@@ -912,6 +1241,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         apply=bool(args.apply),
         run_url=str(args.run_url),
         limit=int(args.limit),
+        ledger_skipped=ledger_skipped,
     )
     rendered = json.dumps(report, indent=2, sort_keys=True)
     print(rendered)

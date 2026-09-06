@@ -52,6 +52,7 @@ generously is a machine for manufacturing evidence:
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -401,7 +402,7 @@ def test_the_minted_receipt_carries_an_entry_hash_and_never_a_whole_file_hash() 
     assert receipt["contract_entry_sha256"] == "sha256:" + "c" * 64
     assert receipt["evidence_item_id"] == BEHAVIOR_PROOF_EVIDENCE_ID
     assert receipt["check_type"] == "test_passes"
-    assert receipt["commit_sha"] == _MERGE_SHA
+    assert receipt["commit_sha"] == _HEAD_SHA
     assert receipt["runner"] != receipt["verifier"]
 
 
@@ -414,9 +415,11 @@ def test_the_ci_readback_probes_the_pr_head_not_the_squash_commit() -> None:
     after the code landed. Probing the merge commit marked three of four live
     candidates PENDING for reasons that had nothing to do with their tests.
 
-    ``commit_sha`` stays the MERGE commit on purpose: that is the commit that
-    exists on the default branch and that OCC's commit resolver can reach. The
-    two shas answer two different questions and the receipt names both.
+    ``commit_sha`` is that SAME head sha (OMN-17943): the receipt field means
+    "the code state this check ran against", and the check recorded here ran
+    against the head. The merge commit is a different tree that no check in
+    this receipt touched; ``actual_output`` names it as the separate fact it
+    is, so nothing is lost by not binding to it.
     """
     receipt = backfill.build_backfill_receipt(
         ticket_id="OMN-15425",
@@ -428,7 +431,7 @@ def test_the_ci_readback_probes_the_pr_head_not_the_squash_commit() -> None:
     )
     assert _HEAD_SHA in receipt["probe_command"]
     assert _MERGE_SHA not in receipt["probe_command"]
-    assert receipt["commit_sha"] == _MERGE_SHA
+    assert receipt["commit_sha"] == _HEAD_SHA
     assert _HEAD_SHA in receipt["actual_output"]
     assert _MERGE_SHA in receipt["actual_output"]
 
@@ -616,3 +619,375 @@ def test_an_api_path_contract_now_resolves_end_to_end() -> None:
     assert backfill.product_pr_from_contract(data) == backfill.ProductPrRef(
         repo="OmniNode-ai/omnibase_infra", pr_number=3014
     )
+
+
+# ---------------------------------------------------------------------------
+# OMN-17943 defect A — the generated receipt must satisfy the OCC Receipt
+# Hardening Gate's repository-authority binding without a hand edit.
+# ---------------------------------------------------------------------------
+
+# Copied VERBATIM from onex_change_control
+# `scripts/validation/check_receipt_hardening.py::_PRODUCT_REF_SHA_RE`, which is
+# the gate that refused every mint this backfill produced.
+#
+# Vendored rather than imported on purpose, and the reason is worth stating
+# because a reader will otherwise assume laziness: `onex_change_control` is not
+# a dependency of omnimarket and is not importable here or in omnimarket CI
+# (`uv run python -c "import onex_change_control"` fails on a synced tree), so
+# there is no in-process handle on the real validator from this repo. What this
+# test pins is therefore the RULE, restated from its source; the end-to-end
+# proof that the real gate accepts these bytes is the gate's own verdict on the
+# generated OCC PR, and the mirror of this assertion lives next to the
+# validator in OCC so a change to the regex fails there.
+_PRODUCT_REF_SHA_RE = re.compile(r"(?:/commits/|[?&]ref=)([0-9a-fA-F]{40})\b")
+
+
+def _hardening_binding_violation(receipt: dict[str, Any]) -> str | None:
+    """Re-statement of `_product_ref_binds_commit` over a generated receipt.
+
+    The gate collects every full SHA exposed by a `/commits/<sha>` or
+    `?ref=<sha>` segment of `check_value`/`probe_command` and requires the
+    receipt's own `commit_sha` to be among them when the set is non-empty.
+    """
+    exposed = set()
+    for field in ("check_value", "probe_command"):
+        value = receipt.get(field)
+        if isinstance(value, str):
+            exposed.update(
+                m.group(1).lower() for m in _PRODUCT_REF_SHA_RE.finditer(value)
+            )
+    if not exposed:
+        return None
+    if str(receipt["commit_sha"]).lower() in exposed:
+        return None
+    return (
+        "[COMMIT_SHA_REPOSITORY] product command/ref exposes a full SHA that "
+        f"does not bind receipt commit_sha; exposed={sorted(exposed)!r} "
+        f"commit_sha={receipt['commit_sha']!r}"
+    )
+
+
+def test_the_generated_receipt_binds_the_commit_its_own_probe_ran_against() -> None:
+    """The generated receipt passes the hardening binding rule, unedited.
+
+    THIS IS THE REGRESSION. Before OMN-17943 the generator wrote
+    `commit_sha = merge_commit_sha` while `probe_command` cited
+    `/commits/<head_sha>/check-runs`, so every mint failed
+    `[COMMIT_SHA_REPOSITORY]` and the only merged output (OCC#8344) needed a
+    hand commit to land — a generator that cannot produce a landable artifact
+    is a generator nobody can run unattended.
+
+    Asserted as a violation-or-None so the failure message names both shas,
+    which is what a reader needs to tell a binding bug from a fixture typo.
+    """
+    receipt = backfill.build_backfill_receipt(
+        ticket_id="OMN-15425",
+        pr_facts=_pr_facts(),
+        test_paths=("tests/unit/test_thing_omn_15425.py",),
+        contract_entry_sha256="sha256:" + "c" * 64,
+        status="PASS",
+        run_url="https://github.com/OmniNode-ai/omnimarket/actions/runs/1",
+    )
+
+    assert _hardening_binding_violation(receipt) is None
+
+
+def test_the_binding_rule_restatement_actually_catches_the_old_shape() -> None:
+    """Positive control for the check above.
+
+    A predicate that returns None for everything would make the test above
+    pass while proving nothing. Feed it the exact pre-fix shape — head sha in
+    the probe, merge sha in `commit_sha` — and it must report the violation the
+    live gate reported.
+    """
+    receipt = backfill.build_backfill_receipt(
+        ticket_id="OMN-15425",
+        pr_facts=_pr_facts(),
+        test_paths=("tests/unit/test_thing_omn_15425.py",),
+        contract_entry_sha256="sha256:" + "c" * 64,
+        status="PASS",
+        run_url="https://github.com/OmniNode-ai/omnimarket/actions/runs/1",
+    )
+    pre_fix = {**receipt, "commit_sha": _MERGE_SHA}
+
+    violation = _hardening_binding_violation(pre_fix)
+    assert violation is not None
+    assert "COMMIT_SHA_REPOSITORY" in violation
+
+
+# ---------------------------------------------------------------------------
+# OMN-17943 defect B — a refused ticket must stop occupying the window.
+# ---------------------------------------------------------------------------
+
+
+def _seed_occ_tree(root: Path, ticket: str, *, contract_text: str) -> None:
+    """One ticket with a receipt directory and a contract — a live candidate."""
+    receipts = root / "drift" / "dod_receipts" / ticket / "dod-x"
+    receipts.mkdir(parents=True, exist_ok=True)
+    (receipts / "command.yaml").write_text(
+        "---\ncontract_entry_sha256: 'sha256:" + "b" * 64 + "'\n", encoding="utf-8"
+    )
+    contracts = root / "contracts"
+    contracts.mkdir(parents=True, exist_ok=True)
+    (contracts / f"{ticket}.yaml").write_text(contract_text, encoding="utf-8")
+
+
+def _contract_naming_pr(ticket: str, repo: str, pr: int) -> str:
+    return f"""\
+---
+schema_version: "1.0.0"
+ticket_id: "{ticket}"
+dod_evidence:
+  - id: "dod-{repo.replace("/", "-")}-pr-{pr}"
+    description: "PR #{pr} on {repo}."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view {pr} --repo {repo} --json number,state"
+"""
+
+
+def test_a_ledgered_refusal_frees_its_window_slot_for_a_mintable_ticket(
+    tmp_path: Path,
+) -> None:
+    """Three refused tickets ahead of one mintable one; the window yields the mintable one.
+
+    This is the live shape of defect B, reproduced at fixture scale. On OCC dev
+    on 2026-09-06 the newest-first top-40 window was FULLY occupied by refusals
+    (22 testless diffs, 10 with no product PR, 8 legacy bindings) across 3,887
+    candidates, and the nearest mintable ticket sat at rank 189 — unreachable
+    by any number of scheduled runs, because a refusal never left the window.
+
+    Discovery is newest-first, so the three refused ids are the HIGH numbers:
+    without the ledger they would take every slot.
+    """
+    for ticket, pr in (("OMN-900", 1), ("OMN-800", 2), ("OMN-700", 3)):
+        _seed_occ_tree(
+            tmp_path,
+            ticket,
+            contract_text=_contract_naming_pr(ticket, "OmniNode-ai/omnimarket", pr),
+        )
+    _seed_occ_tree(
+        tmp_path,
+        "OMN-100",
+        contract_text=_contract_naming_pr("OMN-100", "OmniNode-ai/omnimarket", 4),
+    )
+
+    ledger = {}
+    for ticket, pr in (("OMN-900", 1), ("OMN-800", 2), ("OMN-700", 3)):
+        ledger[ticket] = {
+            "decision": "REFUSED_NO_BEHAVIOUR_IN_DIFF",
+            "reason": "no pytest collection target in the merged diff.",
+            "judged_at": "2026-09-06T00:00:00Z",
+            "judged_against": {
+                "product_prs": [f"OmniNode-ai/omnimarket#{pr}"],
+                "legacy_binding_receipts": [],
+            },
+        }
+
+    skipped: list[str] = []
+    window = backfill.discover_candidate_tickets(
+        tmp_path, limit=1, ledger=ledger, skipped=skipped
+    )
+
+    assert window == ("OMN-100",)
+    assert skipped == ["OMN-900", "OMN-800", "OMN-700"]
+
+
+def test_without_the_ledger_the_same_window_is_all_refusals(tmp_path: Path) -> None:
+    """Positive control: the fixture really does starve the window unaided.
+
+    Without this, the test above could pass because the tree was seeded wrong
+    rather than because the ledger did anything.
+    """
+    for ticket, pr in (("OMN-900", 1), ("OMN-800", 2), ("OMN-700", 3)):
+        _seed_occ_tree(
+            tmp_path,
+            ticket,
+            contract_text=_contract_naming_pr(ticket, "OmniNode-ai/omnimarket", pr),
+        )
+    _seed_occ_tree(
+        tmp_path,
+        "OMN-100",
+        contract_text=_contract_naming_pr("OMN-100", "OmniNode-ai/omnimarket", 4),
+    )
+
+    assert backfill.discover_candidate_tickets(tmp_path, limit=1) == ("OMN-900",)
+
+
+def test_a_new_merged_product_pr_re_qualifies_a_ledgered_refusal(
+    tmp_path: Path,
+) -> None:
+    """The skip lasts exactly as long as the facts it was judged against.
+
+    A second consumer PR on the contract is a NEW merged diff, and a new diff
+    can carry the pytest target the first one lacked. Nothing is written off
+    permanently and no human has to remember to clear the entry.
+    """
+    contract = _contract_naming_pr("OMN-900", "OmniNode-ai/omnimarket", 1)
+    _seed_occ_tree(tmp_path, "OMN-900", contract_text=contract)
+    ledger = {
+        "OMN-900": {
+            "decision": "REFUSED_NO_BEHAVIOUR_IN_DIFF",
+            "reason": "no pytest collection target in the merged diff.",
+            "judged_at": "2026-09-06T00:00:00Z",
+            "judged_against": {
+                "product_prs": ["OmniNode-ai/omnimarket#1"],
+                "legacy_binding_receipts": [],
+            },
+        }
+    }
+
+    assert backfill.discover_candidate_tickets(tmp_path, limit=5, ledger=ledger) == ()
+
+    (tmp_path / "contracts" / "OMN-900.yaml").write_text(
+        contract
+        + """\
+  - id: "dod-OmniNode-ai-omnimarket-pr-2"
+    description: "PR #2 on OmniNode-ai/omnimarket."
+    source: "generated"
+    checks:
+      - check_type: "command"
+        check_value: "gh pr view 2 --repo OmniNode-ai/omnimarket --json number,state"
+""",
+        encoding="utf-8",
+    )
+
+    assert backfill.discover_candidate_tickets(tmp_path, limit=5, ledger=ledger) == (
+        "OMN-900",
+    )
+
+
+def test_repairing_a_legacy_binding_re_qualifies_a_ledgered_refusal(
+    tmp_path: Path,
+) -> None:
+    """`REFUSED_LEGACY_WHOLE_FILE_BINDING` clears when the binding is repaired.
+
+    The repair is minting `contract_entry_sha256` onto the legacy receipt —
+    the entry-hash-first branch of `_contract_hash_violation` then never
+    reaches the whole-file fallback, so appending an item no longer restales
+    it. The fingerprint notices with no manual step.
+    """
+    _seed_occ_tree(
+        tmp_path,
+        "OMN-900",
+        contract_text=_contract_naming_pr("OMN-900", "OmniNode-ai/omnimarket", 1),
+    )
+    legacy = tmp_path / "drift" / "dod_receipts" / "OMN-900" / "dod-x" / "legacy.yaml"
+    legacy.write_text(
+        "---\ncontract_sha256: 'sha256:" + "a" * 64 + "'\n", encoding="utf-8"
+    )
+    legacy_rel = "drift/dod_receipts/OMN-900/dod-x/legacy.yaml"
+    ledger = {
+        "OMN-900": {
+            "decision": "REFUSED_LEGACY_WHOLE_FILE_BINDING",
+            "reason": "1 existing receipt(s) bind this contract by whole-file hash.",
+            "judged_at": "2026-09-06T00:00:00Z",
+            "judged_against": {
+                "product_prs": ["OmniNode-ai/omnimarket#1"],
+                "legacy_binding_receipts": [legacy_rel],
+            },
+        }
+    }
+
+    assert backfill.discover_candidate_tickets(tmp_path, limit=5, ledger=ledger) == ()
+
+    legacy.write_text(
+        "---\ncontract_sha256: 'sha256:"
+        + "a" * 64
+        + "'\ncontract_entry_sha256: 'sha256:"
+        + "b" * 64
+        + "'\n",
+        encoding="utf-8",
+    )
+
+    assert backfill.discover_candidate_tickets(tmp_path, limit=5, ledger=ledger) == (
+        "OMN-900",
+    )
+
+
+def test_a_run_records_its_refusals_and_writes_the_ledger_only_on_apply(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dry run reports; an applied run persists. Never the other way round.
+
+    Persisting from a dry run would let a REPORT change what the next run is
+    allowed to see, which is the one property a dry run must not have.
+    """
+    _seed_occ_tree(
+        tmp_path,
+        "OMN-900",
+        contract_text=_contract_naming_pr("OMN-900", "OmniNode-ai/omnimarket", 1),
+    )
+    # No network: the PR is unresolvable, which routes to REFUSED_NO_PRODUCT_PR
+    # (a ledgered decision) rather than to a mint.
+    monkeypatch.setattr(backfill, "resolve_pr_facts", lambda _ref: None)
+
+    dry = backfill.run(
+        occ_root=tmp_path,
+        tickets=("OMN-900",),
+        apply=False,
+        run_url="",
+        limit=5,
+    )
+    assert dry["refusal_ledger"]["recorded"] == 1
+    assert dry["refusal_ledger"]["written"] is False
+    assert not (tmp_path / backfill.REFUSAL_LEDGER_RELPATH).exists()
+
+    applied = backfill.run(
+        occ_root=tmp_path,
+        tickets=("OMN-900",),
+        apply=True,
+        run_url="",
+        limit=5,
+    )
+    assert applied["refusal_ledger"]["written"] is True
+
+    reloaded = backfill.load_refusal_ledger(tmp_path)
+    assert reloaded["OMN-900"]["decision"] == "REFUSED_NO_PRODUCT_PR"
+    assert reloaded["OMN-900"]["judged_against"]["product_prs"] == [
+        "OmniNode-ai/omnimarket#1"
+    ]
+
+
+def test_an_explicit_ticket_batch_is_never_suppressed_by_the_ledger(
+    tmp_path: Path,
+) -> None:
+    """`--tickets` re-judges exactly what it is given.
+
+    Naming a ticket explicitly IS the decision to re-judge it, so the operator
+    batch path must not silently drop an id that discovery would have skipped —
+    a batch that returns fewer rows than ids given is unreadable as evidence.
+    """
+    _seed_occ_tree(
+        tmp_path,
+        "OMN-900",
+        contract_text=_contract_naming_pr("OMN-900", "OmniNode-ai/omnimarket", 1),
+    )
+    backfill.write_refusal_ledger(
+        tmp_path,
+        {
+            "OMN-900": {
+                "decision": "REFUSED_NO_BEHAVIOUR_IN_DIFF",
+                "reason": "no pytest collection target.",
+                "judged_at": "2026-09-06T00:00:00Z",
+                "judged_against": {
+                    "product_prs": ["OmniNode-ai/omnimarket#1"],
+                    "legacy_binding_receipts": [],
+                },
+            }
+        },
+    )
+
+    assert (
+        backfill.discover_candidate_tickets(
+            tmp_path, limit=5, ledger=backfill.load_refusal_ledger(tmp_path)
+        )
+        == ()
+    )
+    assert backfill._tickets_from("OMN-900") == ("OMN-900",)
+
+    report = backfill.run(
+        occ_root=tmp_path, tickets=("OMN-900",), apply=False, run_url="", limit=5
+    )
+    assert [row["ticket_id"] for row in report["outcomes"]] == ["OMN-900"]
