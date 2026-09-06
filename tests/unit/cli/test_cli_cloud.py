@@ -804,6 +804,88 @@ def test_receipt_fetches_and_saves_an_existing_run(tmp_path: Path) -> None:
     assert "A delegation receipt proves what ran." in result.stdout
 
 
+def test_receipt_refuses_a_body_for_a_workflow_other_than_the_one_asked_for(
+    tmp_path: Path,
+) -> None:
+    """The fetch path needs the same binding the delegate path already has.
+
+    ``delegate`` compares the gateway's answer against the ack it just got
+    (:606-607). ``receipt`` has no ack — its whole input is the id on the
+    command line — so the id IS the submission here, and comparing the body's
+    ``workflow_id`` against it is the same assertion with the only field a
+    bare fetch can compare.
+
+    Without it the run directory is named from the ARGUMENT while every field
+    inside ``receipt.json`` comes from the RESPONSE, so a gateway answering
+    about another workflow is saved under the id that was asked for, and its
+    ``terminal_model_used`` is printed as the route that ran this workflow.
+    That file is indistinguishable on disk from a real one and outlives the
+    session that could have explained it.
+
+    Correlation id is deliberately NOT compared: there is no ack to compare it
+    to, and the id the body carries is the correct one for the workflow it
+    names. Asserting it here would reject every legitimate fetch.
+    """
+    home = _logged_in(tmp_path)
+    out = tmp_path / "runs"
+    factory, _made = _factory(receipt_workflow_id=_OTHER_WORKFLOW_ID)
+
+    result = CliRunner().invoke(
+        cloud_group,
+        [
+            "receipt",
+            _WORKFLOW_ID,
+            "--output-dir",
+            str(out),
+            "--onex-home",
+            str(home),
+        ],
+        obj={"transport_factory": factory},
+    )
+
+    assert result.exit_code != 0
+    # both ids are named: which was asked for, and which came back.
+    assert _WORKFLOW_ID in result.stderr, result.stderr
+    assert str(_OTHER_WORKFLOW_ID) in result.stderr, result.stderr
+    # nothing is written under EITHER id.
+    assert not (out / _WORKFLOW_ID).exists()
+    assert not (out / str(_OTHER_WORKFLOW_ID)).exists()
+    # and the run's content never reaches stdout as though it were this run's.
+    assert "A delegation receipt proves what ran." not in result.stdout
+
+
+def test_receipt_refusal_does_not_fire_on_a_non_canonically_spelled_argument(
+    tmp_path: Path,
+) -> None:
+    """Positive control for the refusal above, on its sharpest false-positive.
+
+    ``uuid.UUID`` accepts a braced upper-case spelling of the SAME workflow.
+    A comparison written against the raw argument string rather than the parsed
+    id would refuse this correct fetch, which is a worse defect than the one
+    being fixed: it breaks a legitimate command. Without this control, a check
+    that rejected everything would look identical to a correct one.
+    """
+    home = _logged_in(tmp_path)
+    out = tmp_path / "runs"
+    factory, _made = _factory()
+
+    result = CliRunner().invoke(
+        cloud_group,
+        [
+            "receipt",
+            "{" + _WORKFLOW_ID.upper() + "}",
+            "--output-dir",
+            str(out),
+            "--onex-home",
+            str(home),
+        ],
+        obj={"transport_factory": factory},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert (out / _WORKFLOW_ID / "receipt.json").is_file()
+
+
 # ---------------------------------------------------------------------------
 # login / status / logout
 # ---------------------------------------------------------------------------
