@@ -14,6 +14,7 @@ Regression coverage:
 from __future__ import annotations
 
 import importlib.util
+import subprocess
 import sys
 from pathlib import Path
 
@@ -443,6 +444,81 @@ def test_changed_nodes_uses_exact_segment_not_prefix_substring(
     )
     assert long_node in directly_modified
     assert short_node not in directly_modified
+
+
+@pytest.mark.unit
+def test_changed_nodes_uses_explicit_pr_range_not_a_newer_target_tip(
+    scc_module: object, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A target branch advancing after PR creation cannot select its nodes.
+
+    The PR head changes only ``node_pr_change``.  A separate descendant of the
+    same base changes ``node_newer_target``.  The explicit BASE..HEAD range
+    must select only the PR node even while the newer target branch exists.
+    """
+
+    def git(*args: str) -> str:
+        return subprocess.run(
+            ["git", *args],
+            cwd=tmp_path,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+
+    git("init", "-q")
+    git("config", "user.email", "state-coverage@example.test")
+    git("config", "user.name", "State Coverage Test")
+    nodes_dir = tmp_path / "src" / "omnimarket" / "nodes"
+    for name in ("node_pr_change", "node_newer_target"):
+        node_dir = nodes_dir / name
+        node_dir.mkdir(parents=True)
+        (node_dir / "contract.yaml").write_text("node_type: effect\n")
+    git("add", ".")
+    git("commit", "-qm", "base")
+    base_sha = git("rev-parse", "HEAD")
+
+    git("switch", "-qc", "pr-head")
+    pr_test = tmp_path / "tests" / "node_pr_change" / "test_coverage.py"
+    pr_test.parent.mkdir(parents=True)
+    pr_test.write_text("def test_pr_change() -> None:\n    assert True\n")
+    git("add", ".")
+    git("commit", "-qm", "pr node change")
+    pr_head_sha = git("rev-parse", "HEAD")
+
+    git("switch", "-qc", "newer-target", base_sha)
+    newer_handler = nodes_dir / "node_newer_target" / "handlers" / "handler_target.py"
+    newer_handler.parent.mkdir()
+    newer_handler.write_text("TARGET_ADVANCED = True\n")
+    git("add", ".")
+    git("commit", "-qm", "target node change")
+    newer_target_sha = git("rev-parse", "HEAD")
+    git("switch", "-q", "pr-head")
+
+    monkeypatch.setattr(scc_module, "REPO_ROOT", tmp_path)  # type: ignore[attr-defined]
+    monkeypatch.setattr(scc_module, "NODES_DIR", nodes_dir)  # type: ignore[attr-defined]
+    nodes, directly_modified, _contract_touched = scc_module._get_changed_nodes(  # type: ignore[attr-defined]
+        newer_target_sha, pr_head_sha
+    )
+
+    assert [node.name for node in nodes] == ["node_pr_change"]
+    assert directly_modified == {"node_pr_change"}
+
+
+@pytest.mark.unit
+def test_state_coverage_workflow_uses_immutable_event_range() -> None:
+    """The CI invocation must not resolve a moving target branch by name."""
+    workflow = (
+        REPO_ROOT / ".github" / "workflows" / "state-coverage-gate.yml"
+    ).read_text()
+
+    assert "github.event.pull_request.base.sha" in workflow
+    assert "github.event.pull_request.head.sha" in workflow
+    assert "github.event.merge_group.base_sha" in workflow
+    assert "github.event.merge_group.head_sha" in workflow
+    assert '--check-changed "$BASE_SHA" --head-ref "$HEAD_SHA" --strict' in workflow
+    assert 'git fetch --no-tags origin "$BASE_SHA"' in workflow
+    assert "origin/$BASE_REF" not in workflow
 
 
 # ---------------------------------------------------------------------------
