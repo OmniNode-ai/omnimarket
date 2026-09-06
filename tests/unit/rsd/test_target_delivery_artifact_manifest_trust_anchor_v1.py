@@ -45,6 +45,25 @@ def test_anchor_canonical_json_round_trips_exactly() -> None:
 
 
 @pytest.mark.unit
+def test_anchor_serializer_rejects_hidden_deleted_and_bogus_model_state() -> None:
+    anchor = _anchor()
+    hidden = anchor.model_copy()
+    object.__setattr__(hidden, "__pydantic_private__", {"unexpected": True})
+    with pytest.raises(TargetDeliveryArtifactManifestError, match="validation failed"):
+        target_delivery_artifact_manifest_trust_anchor_v1_canonical_json(hidden)
+
+    deleted = anchor.model_copy()
+    del deleted.__dict__["algorithm"]
+    with pytest.raises(TargetDeliveryArtifactManifestError, match="validation failed"):
+        target_delivery_artifact_manifest_trust_anchor_v1_canonical_json(deleted)
+
+    bogus_fields = anchor.model_copy()
+    object.__setattr__(bogus_fields, "__pydantic_fields_set__", {"not_a_field"})
+    with pytest.raises(TargetDeliveryArtifactManifestError, match="validation failed"):
+        target_delivery_artifact_manifest_trust_anchor_v1_canonical_json(bogus_fields)
+
+
+@pytest.mark.unit
 @pytest.mark.parametrize(
     "payload",
     [

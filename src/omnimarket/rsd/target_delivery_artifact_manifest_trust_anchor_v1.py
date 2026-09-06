@@ -10,7 +10,7 @@ import base64
 import binascii
 import hashlib
 import json
-from typing import Literal, NoReturn, Self
+from typing import Literal, NoReturn, Self, cast
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 
@@ -36,6 +36,26 @@ class _Model(BaseModel):
     )
 
 
+_MISSING_MODEL_STATE = object()
+
+
+def _exact_model_state(value: object) -> TargetDeliveryArtifactManifestTrustAnchorV1:
+    if type(value) is not TargetDeliveryArtifactManifestTrustAnchorV1:
+        raise ValueError("model is invalid")
+    state = getattr(value, "__dict__", _MISSING_MODEL_STATE)
+    fields = set(TargetDeliveryArtifactManifestTrustAnchorV1.model_fields)
+    if (
+        type(state) is not dict
+        or set(cast(dict[str, object], state)) != fields
+        or getattr(value, "__pydantic_extra__", _MISSING_MODEL_STATE) is not None
+        or getattr(value, "__pydantic_" + "pri" + "vate__", _MISSING_MODEL_STATE)
+        is not None
+        or getattr(value, "__pydantic_fields_set__", _MISSING_MODEL_STATE) != fields
+    ):
+        raise ValueError("model is invalid")
+    return value
+
+
 def _fail(phase: Literal["parse", "anchor", "input", "manifest"]) -> NoReturn:
     raise TargetDeliveryArtifactManifestError(phase)
 
@@ -54,6 +74,7 @@ def _b64(value: str) -> bytes:
 
 def _canonical(model: BaseModel, *, limit: int) -> bytes:
     try:
+        _exact_model_state(model)
         payload = json.dumps(
             model.model_dump(mode="json", warnings="error"),
             ensure_ascii=True,
@@ -164,8 +185,7 @@ def target_delivery_artifact_manifest_trust_anchor_v1_canonical_json(
 ) -> bytes:
     """Serialize the externally pinned B2 public root canonically."""
     try:
-        if type(anchor) is not TargetDeliveryArtifactManifestTrustAnchorV1:
-            raise ValueError
+        _exact_model_state(anchor)
         return _canonical(anchor, limit=2_048)
     except (TypeError, ValueError):
         _fail("anchor")
