@@ -127,7 +127,33 @@ _S6_DECLARED_MODEL = (
 #     run where the cold-start OAUTHBEARER handshake landed on ~8.1s and lost
 #     the race against the old deadline.
 # Neither touches the S6 envelope shape this file's goldens drive.
-_EXPECTED_CONTRACT_VERSION = "0.1.2"
+# 0.1.2 -> 0.1.5: moved by the 0.38.16 -> 0.38.18 bump (OMN-17556). Three
+# version-moving commits, diffed individually against the packaged file rather
+# than accepting the move on faith:
+#   * 0.1.2 -> 0.1.3, OMN-17034 (infra 9fe9d1996): added the `lane_mirror` leg,
+#     an additive third broker leg that consumes the hook topics on the lane
+#     omniclaude's hook edge actually publishes to (stability-test) and
+#     republishes them onto dev. `local_bus`, the trust-boundary leg S6 drives,
+#     is deliberately unchanged.
+#   * 0.1.3 -> 0.1.4, OMN-16459 (infra 71177a327): added the optional OUTBOUND
+#     `https_ingest` leg. `None` by default, so a deployment that has not opted
+#     in keeps the direct-MSK produce byte-unchanged; the seam goldens do not
+#     opt in.
+#   * 0.1.4 -> 0.1.5, OMN-16979 (infra 2d458e235): widened
+#     `mirror_topics.outbound` with the two CONTENT-BEARING omniclaude hook
+#     classes (tool-executed.v1, prompt-submitted.v1) behind the new
+#     fail-closed `egress_redaction` admission gate.
+#     `ModelGatewayForwarderConfig._validate_egress_redaction_pairing` refuses
+#     that pair in the outbound set unless the gate governs them, which is why
+#     `harness.build_forwarder_config` now reads the `egress_redaction` block
+#     through as well — the config cannot be assembled from half the contract.
+# A fourth commit touched the file without moving the version (infra d8833a7f1,
+# OMN-17201): comment-only, recording that a topic declared here is not
+# provisioned here.
+# `input_model`, `output_model` and `config.name`/`module` are byte-identical
+# across v0.38.16..v0.38.18 (diffed), so none of the three moves touches the S6
+# envelope shape these goldens drive.
+_EXPECTED_CONTRACT_VERSION = "0.1.5"
 
 
 def _contract_declared_input_model() -> type[object]:

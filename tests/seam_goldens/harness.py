@@ -89,6 +89,9 @@ from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_canary_
 from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_cloud_bus_config import (
     ModelGatewayCloudBusConfig,
 )
+from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_egress_redaction import (
+    ModelGatewayEgressRedaction,
+)
 from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_forwarder_config import (
     ModelGatewayForwarderConfig,
 )
@@ -143,6 +146,7 @@ __all__ = [
     "consumer_projection",
     "gateway_cloud_leg",
     "gateway_contract_version",
+    "gateway_egress_redaction",
     "gateway_mirror_topics",
     "load_gateway_contract",
     "local_typed_envelope",
@@ -406,12 +410,45 @@ def gateway_canary() -> ModelGatewayCanaryConfig:
     )
 
 
+@lru_cache(maxsize=1)
+def gateway_egress_redaction() -> ModelGatewayEgressRedaction:
+    """The contract-declared egress-redaction admission policy (OMN-16979).
+
+    ``mirror_topics.outbound`` in infra 0.38.18 carries the two content-bearing
+    omniclaude hook classes (``tool-executed.v1``, ``prompt-submitted.v1``), and
+    ``ModelGatewayForwarderConfig._validate_egress_redaction_pairing`` refuses
+    that pair in the outbound set unless ``egress_redaction.governed_topics``
+    names them. The widening and its gate are declared together in the same
+    packaged contract, so they are read together here rather than the gate being
+    typed into the harness — a config assembled from a half-read contract is not
+    the deployed declaration, and the model says so by refusing to construct.
+
+    Read from the wheel like every other wire-relevant value: a wheel bump that
+    changes the admitted states, the state field, or the governed set moves this
+    object and the goldens observe the change.
+    """
+
+    raw = _gateway_forwarder_block()["egress_redaction"]
+    if not isinstance(raw, dict):
+        raise TypeError("gateway contract egress_redaction block is not a mapping")
+    admitted = raw["admitted_states"]
+    governed = raw["governed_topics"]
+    if not isinstance(admitted, list) or not isinstance(governed, list):
+        raise TypeError("gateway contract egress_redaction sets are not lists")
+    return ModelGatewayEgressRedaction(
+        state_field=str(raw["state_field"]),
+        admitted_states=tuple(str(state) for state in admitted),
+        governed_topics=tuple(str(topic) for topic in governed),
+    )
+
+
 def build_forwarder_config(*, dedupe_store_path: Path) -> ModelGatewayForwarderConfig:
     """Assemble the real forwarder config from the real packaged contract.
 
-    Every wire-relevant value (mirror topics, the four cloud ``@ref`` pins, the
-    SASL mechanism) is read out of the packaged contract rather than typed
-    here, so the goldens exercise the deployed declaration. Only the tenant
+    Every wire-relevant value (mirror topics, the egress-redaction admission
+    policy, the four cloud ``@ref`` pins, the SASL mechanism) is read out of the
+    packaged contract rather than typed here, so the goldens exercise the
+    deployed declaration. Only the tenant
     identity and the dedupe path are supplied by the test — they are per-deploy
     values with no contract-declared default.
     """
@@ -436,6 +473,7 @@ def build_forwarder_config(*, dedupe_store_path: Path) -> ModelGatewayForwarderC
         local_transport_flavor="containerized",
         mirror_topics=gateway_mirror_topics(),
         canary=gateway_canary(),
+        egress_redaction=gateway_egress_redaction(),
         dedupe_store_path=dedupe_store_path,
     )
 
