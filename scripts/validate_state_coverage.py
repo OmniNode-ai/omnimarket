@@ -28,6 +28,7 @@ Exit codes:
 Flags:
   --check-all             Validate every node_* directory (used locally)
   --check-changed <ref>   Validate only nodes modified since <ref> (used by CI)
+  --head-ref <ref>        Bind changed-node selection to an explicit end ref
   --strict                Promote baselined WARN violations to FAIL for
                            directly-modified nodes (use with --check-changed)
   --json                  Output machine-readable JSON to stdout
@@ -379,7 +380,39 @@ def validate_node(
     )
 
 
-def _get_changed_nodes(git_ref: str) -> tuple[list[Path], set[str], set[str]]:
+def _resolve_changed_base(git_ref: str, head_ref: str | None) -> str:
+    """Return the unique merge-base for an explicit changed-files range.
+
+    A pull request's event base SHA can advance independently of its head
+    before a queued job starts.  Diffing that moving target directly against
+    the PR head selects target-only files in reverse.  The merge-base is the
+    only common baseline for the PR's own change set.
+    """
+    if head_ref is None:
+        return git_ref
+
+    proc = subprocess.run(
+        ["git", "merge-base", "--all", git_ref, head_ref],
+        capture_output=True,
+        text=True,
+        check=False,
+        cwd=REPO_ROOT,
+    )
+    bases = [line for line in proc.stdout.splitlines() if line]
+    if proc.returncode != 0 or len(bases) != 1:
+        detail = proc.stderr.strip() or "no unique merge-base"
+        print(
+            "state-coverage-gate: could not resolve one immutable merge-base "
+            f"for {git_ref} and {head_ref}: {detail}",
+            file=sys.stderr,
+        )
+        raise SystemExit(1)
+    return bases[0]
+
+
+def _get_changed_nodes_for_range(
+    base_ref: str, head_ref: str | None
+) -> tuple[list[Path], set[str], set[str]]:
     """Return (node directories to validate, directly-modified node names,
     contract-touched node names).
 
@@ -394,8 +427,11 @@ def _get_changed_nodes(git_ref: str) -> tuple[list[Path], set[str], set[str]]:
     that node's unrelated, pre-existing baselined state-coverage debt purely
     because both ratchets share a file.
     """
+    diff_args = ["git", "diff", "--name-only", base_ref]
+    if head_ref is not None:
+        diff_args.append(head_ref)
     proc = subprocess.run(
-        ["git", "diff", "--name-only", git_ref],
+        diff_args,
         capture_output=True,
         text=True,
         check=False,
@@ -453,6 +489,20 @@ def _get_changed_nodes(git_ref: str) -> tuple[list[Path], set[str], set[str]]:
         if node_dir.is_dir():
             nodes.append(node_dir)
     return nodes, directly_modified, contract_touched
+
+
+def _get_changed_nodes(
+    git_ref: str, head_ref: str | None = None
+) -> tuple[list[Path], set[str], set[str]]:
+    """Return changed nodes for ``git_ref...head_ref`` or legacy ``git_ref``.
+
+    ``head_ref`` upgrades selection from an implicit working-tree end to an
+    immutable, merge-base-derived range.  The legacy one-ref form retains its
+    existing local-command behavior.
+    """
+    return _get_changed_nodes_for_range(
+        _resolve_changed_base(git_ref, head_ref), head_ref
+    )
 
 
 def _read_contract_at_ref(rel_path: str, git_ref: str) -> dict[str, Any] | None:
@@ -537,11 +587,16 @@ def _resolve_strict_eligible(
     return eligible
 
 
-def collect_nodes(*, changed_ref: str | None) -> tuple[list[Path], set[str] | None]:
+def collect_nodes(
+    *, changed_ref: str | None, changed_head_ref: str | None = None
+) -> tuple[list[Path], set[str] | None]:
     if changed_ref is not None:
-        nodes, directly_modified, contract_touched = _get_changed_nodes(changed_ref)
+        comparison_ref = _resolve_changed_base(changed_ref, changed_head_ref)
+        nodes, directly_modified, contract_touched = _get_changed_nodes_for_range(
+            comparison_ref, changed_head_ref
+        )
         strict_eligible = _resolve_strict_eligible(
-            directly_modified, contract_touched, changed_ref
+            directly_modified, contract_touched, comparison_ref
         )
         return nodes, strict_eligible
     all_nodes = sorted(
@@ -553,11 +608,14 @@ def collect_nodes(*, changed_ref: str | None) -> tuple[list[Path], set[str] | No
 def run(
     *,
     changed_ref: str | None,
+    changed_head_ref: str | None = None,
     strict: bool,
     output_json: bool,
 ) -> int:
     baseline = _load_baseline()
-    nodes, strict_eligible = collect_nodes(changed_ref=changed_ref)
+    nodes, strict_eligible = collect_nodes(
+        changed_ref=changed_ref, changed_head_ref=changed_head_ref
+    )
 
     if not nodes:
         msg = {
@@ -645,6 +703,14 @@ def main() -> int:
         help="validate only nodes changed since GIT_REF (e.g. origin/main)",
     )
     parser.add_argument(
+        "--head-ref",
+        metavar="GIT_REF",
+        help=(
+            "end ref for --check-changed; binds selection to an immutable "
+            "merge-base(BASE, HEAD)..HEAD range"
+        ),
+    )
+    parser.add_argument(
         "--strict",
         action="store_true",
         help=(
@@ -657,9 +723,13 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    if args.head_ref is not None and args.check_changed is None:
+        parser.error("--head-ref requires --check-changed")
+
     changed_ref = args.check_changed if not args.check_all else None
     return run(
         changed_ref=changed_ref,
+        changed_head_ref=args.head_ref,
         strict=args.strict,
         output_json=args.output_json,
     )

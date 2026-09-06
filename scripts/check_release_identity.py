@@ -37,6 +37,8 @@ Modes
                       and always enforces the version-ahead invariant.
 * ``--changed-file``  Explicit changed-file list (repeatable / newline list on
                       stdin via ``-``). Overrides ``--base`` diffing.
+* ``--staged``        Inspect the staged index with Git's NUL-delimited path
+                      output. The local pre-commit hook uses this mode.
 
 Usage::
 
@@ -52,6 +54,7 @@ Exit codes:
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 import sys
 import tomllib
@@ -78,13 +81,30 @@ def _read_pyproject_version() -> Version:
 
 
 def _git(args: list[str]) -> str:
-    return subprocess.run(
+    result = subprocess.run(
         ["git", *args],
         cwd=_REPO_ROOT,
         capture_output=True,
         text=True,
         check=False,
-    ).stdout.strip()
+    )
+    if result.returncode:
+        raise ValueError(result.stderr.strip() or f"git {' '.join(args)} failed")
+    return result.stdout.strip()
+
+
+def _staged_files() -> list[str]:
+    """Return staged paths without losing whitespace or newline characters."""
+    result = subprocess.run(
+        ["git", "diff", "--cached", "--name-only", "-z"],
+        cwd=_REPO_ROOT,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode:
+        stderr = os.fsdecode(result.stderr).strip()
+        raise ValueError(stderr or "git diff --cached --name-only -z failed")
+    return [path for path in os.fsdecode(result.stdout).split("\0") if path]
 
 
 def _latest_published_version() -> Version | None:
@@ -124,17 +144,23 @@ def _packaged_source_changed(base: str | None, explicit: list[str]) -> bool:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument(
+    selector = parser.add_mutually_exclusive_group()
+    selector.add_argument(
         "--base",
         default=None,
         help="Git ref to diff against (e.g. origin/dev) to detect src/ changes.",
     )
-    parser.add_argument(
+    selector.add_argument(
         "--changed-file",
         dest="changed_files",
         action="append",
         default=[],
         help="Explicit changed file (repeatable). Overrides --base diffing.",
+    )
+    selector.add_argument(
+        "--staged",
+        action="store_true",
+        help="Inspect staged paths from Git's NUL-delimited index diff.",
     )
     args = parser.parse_args(argv)
 
@@ -144,16 +170,17 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         pyproject_version = _read_pyproject_version()
+        if args.staged:
+            explicit = _staged_files()
+        latest = _latest_published_version()
+        if latest is None:
+            print("OK: no published tag yet — release-identity bump not required.")
+            return 0
+        changed = _packaged_source_changed(args.base, explicit)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
 
-    latest = _latest_published_version()
-    if latest is None:
-        print("OK: no published tag yet — release-identity bump not required.")
-        return 0
-
-    changed = _packaged_source_changed(args.base, explicit)
     if not changed:
         print(
             "OK: no packaged src/** change in this diff — version bump not required "

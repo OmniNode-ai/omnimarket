@@ -486,6 +486,12 @@ def test_a_host_with_no_pnpm_at_all_is_skipped_not_rejected_as_prose(
     empty_path_dir = tmp_path / "empty-path"
     empty_path_dir.mkdir()
     monkeypatch.setenv("PATH", str(empty_path_dir))
+    original_which = ec_mod.shutil.which
+    monkeypatch.setattr(
+        ec_mod.shutil,
+        "which",
+        lambda name: None if name in {"corepack", "pnpm"} else original_which(name),
+    )
 
     result = collector._check_evidence_item(
         {
