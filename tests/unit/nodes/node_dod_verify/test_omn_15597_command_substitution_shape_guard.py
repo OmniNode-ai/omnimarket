@@ -552,9 +552,20 @@ class TestVerdictIsPlatformIndependentForBuiltins:
 
     @pytest.fixture
     def no_path_lookup(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # The stub's signature tracks the real callee's. OMN-17863 gave
+        # `_invalid_check_value_reason` an optional `path` it forwards to
+        # `shutil.which`, so a one-positional-argument stub raises TypeError
+        # instead of standing in for the lookup — a stub that no longer
+        # matches the function it replaces stops testing the thing it names.
+        # `path` is accepted and IGNORED: this fixture's whole claim is that
+        # the verdict does not depend on a PATH lookup at all.
+        def fake_which(_cmd: str, path: str | None = None) -> None:
+            del path
+            return
+
         monkeypatch.setattr(
             "omnimarket.nodes.node_dod_verify.services.evidence_collector.shutil.which",
-            lambda _cmd: None,
+            fake_which,
         )
 
     @pytest.mark.parametrize(
@@ -1270,13 +1281,20 @@ class TestAc5PinnedCorpusReCensus:
         ``-d)``, ``/``) are not in that set, so a tokenizer regression is
         still rejected and still fails this class.
         """
-        monkeypatch.setattr(
-            shutil,
-            "which",
-            lambda cmd: (
-                f"/usr/bin/{cmd}" if cmd in TOKENIZER_DAMAGE_PATH_COMMANDS else None
-            ),
-        )
+
+        # `path` is accepted and ignored for the same reason the sibling
+        # stub above accepts it: OMN-17863 gave the guard an optional
+        # `path` it forwards, and a stub whose signature no longer matches
+        # the function it replaces raises TypeError instead of standing in
+        # for it. The pinned corpus resolves by NAME, so the search path is
+        # irrelevant to this oracle.
+        def fake_which(cmd: str, path: str | None = None) -> str | None:
+            del path
+            if cmd in TOKENIZER_DAMAGE_PATH_COMMANDS:
+                return f"/usr/bin/{cmd}"
+            return None
+
+        monkeypatch.setattr(shutil, "which", fake_which)
 
     def test_pinned_corpus_is_the_ticket_census_point_under_the_committed_oracle(
         self,
