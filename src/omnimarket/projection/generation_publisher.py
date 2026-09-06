@@ -176,7 +176,12 @@ def _build_event_bus(settings: Settings | None = None) -> ProtocolGenerationEven
             "KAFKA_BOOTSTRAP_SERVERS (or KAFKA_BROKER) is required to publish a "
             "node-generation request; the projection API has no broker configured."
         )
-    config = ModelKafkaEventBusConfig(bootstrap_servers=bootstrap)
+    # Same transport-auth seam as credential_publisher._build_event_bus
+    # (OMN-17372): without apply_environment_overrides() this bus is PLAINTEXT
+    # and cannot reach an MSK IAM listener.
+    config = ModelKafkaEventBusConfig(
+        bootstrap_servers=bootstrap
+    ).apply_environment_overrides()
     # EventBusKafka satisfies the start/close/publish_envelope shape we need.
     return cast(ProtocolGenerationEventBus, EventBusKafka(config))
 
