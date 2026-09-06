@@ -24,6 +24,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from aiokafka import AIOKafkaConsumer, TopicPartition
+from aiokafka.errors import IllegalStateError
 
 from omnimarket.projection.models import (
     ModelProjectionSnapshotDelta,
@@ -223,6 +224,19 @@ class SnapshotCache:
         self._consumer: AIOKafkaConsumer | None = None
         self._consume_task: asyncio.Task[None] | None = None
         self._running = False
+        # OMN-15876. The consume loop is a fire-and-forget task; before this
+        # field existed, an exception escaping it ended consumption FOREVER
+        # with no visible trace anywhere. asyncio only logs an unretrieved
+        # task exception when the Task object is garbage collected, and
+        # ``self._consume_task`` holds a strong reference for the life of the
+        # process -- so it is never collected and the traceback is never
+        # emitted. Meanwhile ``/health`` stays 200 (it never consults this
+        # object's consumer at all), uvicorn keeps serving, and any topic that
+        # had already reached ``bootstrap_complete`` keeps being SERVED at 200
+        # from a cache that has silently stopped updating. That is the
+        # fail-open half of the same defect: this field makes the death a
+        # first-class, reportable fact instead of an absence.
+        self._consume_failure: str | None = None
 
     @property
     def bus_backed_topics(self) -> frozenset[str]:
@@ -234,6 +248,41 @@ class SnapshotCache:
     def is_bootstrapped(self, topic: str) -> bool:
         state = self._state.get(topic)
         return state is not None and state.bootstrap_complete
+
+    def assigned_partition_count(self, topic: str) -> int:
+        """How many partitions of ``topic`` this consumer has ever been
+        assigned.
+
+        OMN-15876. ``bootstrap_complete`` cannot be set for a topic whose
+        assignment is empty (see
+        :meth:`_mark_bootstrap_complete_when_caught_up`), so ``0`` here is the
+        difference between "the broker has no partition for this name --
+        typically the topic does not exist, since auto-create is off on the
+        managed cluster" and "assigned, still replaying". Those two produce an
+        IDENTICAL ``bootstrapped=False`` and cost this platform five
+        consecutive staging rollouts and a bespoke probe workflow to tell
+        apart. Reported by ``/ready`` so the next reader gets it for free.
+        """
+        state = self._state.get(topic)
+        return len(state.assigned_partitions) if state is not None else 0
+
+    @property
+    def consume_failure(self) -> str | None:
+        """Why this cache stopped consuming, or ``None`` while it is healthy.
+
+        OMN-15876. Reported by ``/ready`` and, when set, makes readiness fail
+        closed REGARDLESS of the per-topic bootstrap map: a process whose
+        consumer is dead cannot be serving live state, and reporting 200
+        because every topic happened to finish its initial replay before the
+        loop died would be exactly the fail-open answer this endpoint exists
+        to refuse.
+        """
+        if self._consume_failure is not None:
+            return self._consume_failure
+        task = self._consume_task
+        if self._running and task is not None and task.done():
+            return "consume loop exited while the cache was still running"
+        return None
 
     def latest_event_at(self, topic: str) -> datetime | None:
         state = self._state.get(topic)
@@ -420,6 +469,40 @@ class SnapshotCache:
         self._consume_task = asyncio.ensure_future(self._consume_loop())
 
     async def _consume_loop(self) -> None:
+        """Supervise :meth:`_run_consume_loop` (OMN-15876).
+
+        The loop below awaits ``getmany()``, ``end_offsets()`` and
+        ``position()``. Every one of them can raise: ``position()`` raises
+        ``IllegalStateError`` the instant a partition read out of
+        ``assignment()`` is revoked by a rebalance before the await lands on
+        it (aiokafka ``consumer.py``: "Raises IllegalStateError: partition is
+        not assigned"), ``end_offsets()`` raises ``KafkaTimeoutError`` on a
+        slow broker, and ``getmany()`` surfaces broker-side authorization and
+        fetch errors. Before this wrapper, ANY of those ended consumption for
+        the life of the process, silently -- no traceback, no restart, no
+        change to ``/health``, and a ``/ready`` body indistinguishable from a
+        replay still in progress.
+
+        This does NOT swallow the failure into a healthy-looking process: it
+        records it on :attr:`consume_failure`, which ``/ready`` reads and
+        fails closed on. A cancelled task is a normal shutdown and is
+        re-raised untouched.
+        """
+        try:
+            await self._run_consume_loop()
+        except asyncio.CancelledError:
+            raise
+        except (
+            Exception
+        ) as exc:  # OMN-15876: terminal boundary, recorded on consume_failure
+            self._consume_failure = f"{type(exc).__name__}: {exc}"
+            logger.exception(
+                "SnapshotCache: consume loop terminated; this cache has "
+                "STOPPED consuming and /ready will fail closed until the "
+                "process is replaced (OMN-15876)"
+            )
+
+    async def _run_consume_loop(self) -> None:
         assert self._consumer is not None
         # Poll (not a one-shot check) so a topic with ZERO messages still
         # reaches bootstrap_complete=True: aiokafka assigns partitions lazily
@@ -457,10 +540,25 @@ class SnapshotCache:
         # crash). Batching bounds RPC overhead by (batch count), not
         # (message count), independent of backlog size.
         while self._running:
-            batches = await self._consumer.getmany(
-                timeout_ms=int(_BOOTSTRAP_POLL_INTERVAL_SECONDS * 1000),
-                max_records=_CONSUME_BATCH_MAX_RECORDS,
-            )
+            try:
+                batches = await self._consumer.getmany(
+                    timeout_ms=int(_BOOTSTRAP_POLL_INTERVAL_SECONDS * 1000),
+                    max_records=_CONSUME_BATCH_MAX_RECORDS,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # transient fetch error, retried next poll
+                # A fetch error is a reason to retry the NEXT poll, not to end
+                # consumption for the life of the process (OMN-15876). Nothing
+                # is marked bootstrapped on this path, so a persistent failure
+                # keeps /ready at 503 -- the fail-closed direction.
+                logger.warning(
+                    "SnapshotCache: getmany() raised; retrying after %.1fs (OMN-15876)",
+                    _BOOTSTRAP_POLL_INTERVAL_SECONDS,
+                    exc_info=True,
+                )
+                await asyncio.sleep(_BOOTSTRAP_POLL_INTERVAL_SECONDS)
+                continue
             if not self._running:
                 break
             for _tp, messages in batches.items():
@@ -480,14 +578,56 @@ class SnapshotCache:
 
     async def _mark_bootstrap_complete_when_caught_up(self) -> None:
         """Mark each assigned partition bootstrap-complete once its consumer
-        position has caught up to the end offset observed at that moment."""
+        position has caught up to the end offset observed at that moment.
+
+        OMN-15876 -- every broker round trip here is an await, and the
+        assignment read on the first line can be revoked by a rebalance while
+        any of them is in flight. A partition that is gone by the time
+        ``position()`` reaches it raises ``IllegalStateError``; a slow broker
+        makes ``end_offsets()`` raise ``KafkaTimeoutError``. Both are now
+        skipped or retried on the NEXT pass rather than ending the consume
+        loop, and both leave the affected topic un-bootstrapped, so readiness
+        stays refused. Nothing here can mark a topic ready that is not.
+        """
         assert self._consumer is not None
         partitions: frozenset[TopicPartition] = self._consumer.assignment()
         if not partitions:
             return
-        end_offsets = await self._consumer.end_offsets(list(partitions))
+        try:
+            end_offsets = await self._consumer.end_offsets(list(partitions))
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # transient, retried on the next pass
+            logger.warning(
+                "SnapshotCache: end_offsets() raised during the bootstrap "
+                "catch-up check; no topic is marked bootstrapped on this "
+                "pass (OMN-15876)",
+                exc_info=True,
+            )
+            return
         for tp in partitions:
-            position = await self._consumer.position(tp)
+            try:
+                position = await self._consumer.position(tp)
+            except IllegalStateError:
+                # Revoked between the assignment read above and this await.
+                # Skipping is the conservative direction: this partition is
+                # neither counted as assigned nor as caught up.
+                logger.debug(
+                    "SnapshotCache: %s was revoked mid-check; skipping (OMN-15876)",
+                    tp,
+                )
+                continue
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # transient, retried next pass
+                logger.warning(
+                    "SnapshotCache: position(%s) raised during the bootstrap "
+                    "catch-up check; skipping this partition on this pass "
+                    "(OMN-15876)",
+                    tp,
+                    exc_info=True,
+                )
+                continue
             state = self._state.get(tp.topic)
             if state is None:
                 continue
