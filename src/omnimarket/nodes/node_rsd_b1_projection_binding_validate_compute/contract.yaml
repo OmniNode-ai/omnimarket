@@ -1,0 +1,21 @@
+name: "node_rsd_b1_projection_binding_validate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: "Pure, offline validation of supplied historical map-to-V4 projection binding; non-authorizing and effect-free."
+input_model:
+  name: "ModelB1ProjectionBindingValidationInput"
+  module: "omnimarket.nodes.node_rsd_b1_projection_binding_validate_compute.models.model_b1_projection_binding"
+output_model:
+  name: "ModelB1ProjectionBindingValidationOutput"
+  module: "omnimarket.nodes.node_rsd_b1_projection_binding_validate_compute.models.model_b1_projection_binding"
+handler:
+  module: "omnimarket.nodes.node_rsd_b1_projection_binding_validate_compute.handlers.handler_b1_projection_binding"
+  class: "HandlerB1ProjectionBinding"
+  input_model: "omnimarket.nodes.node_rsd_b1_projection_binding_validate_compute.models.model_b1_projection_binding.ModelB1ProjectionBindingValidationInput"
+metadata:
+  transport_type: inmemory
+  description: "No map issuance, source, route selection, signer, delivery, replay, runtime, network, or effect authority."
+  tags: ["compute", "offline-validation", "rsd", "b1", "OMN-17983"]
