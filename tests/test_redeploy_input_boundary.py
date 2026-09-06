@@ -275,6 +275,12 @@ class TestRedeployOrchestratorContractTopicIdentity:
             TOPIC_GRANT_RESOLVE == "onex.cmd.omnimarket.prod-promotion-grant-resolve.v1"
         )
 
+    def test_prod_gate_evaluate_topic_matches_contract_literal(self) -> None:
+        assert (
+            TOPIC_PROD_GATE_EVALUATE
+            == "onex.cmd.omnimarket.prod-promotion-gate-evaluate.v1"
+        )
+
     def test_reserved_future_output_topics_still_declared(self) -> None:
         """OMN-12577 readiness-handoff outputs are declared but NOT YET emitted.
 
