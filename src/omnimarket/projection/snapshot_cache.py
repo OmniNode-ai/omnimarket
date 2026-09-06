@@ -18,6 +18,7 @@ import asyncio
 import contextlib
 import logging
 import os
+import time
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -70,6 +71,16 @@ _CONSUME_BATCH_MAX_RECORDS = 500
 # that hang into a recorded, retried transient. Timing out leaves the topic
 # un-bootstrapped, so the readiness gate stays refused -- the safe direction.
 _BOOTSTRAP_RPC_TIMEOUT_SECONDS = 30.0
+# OMN-15876: the shortest interval between two RPC-backed bootstrap catch-up
+# checks inside the consume loop. The zero-RPC fast path
+# (_mark_bootstrap_complete_from_fetch_metadata) settles every partition that
+# is delivering records, so this slower authority only has to answer the case
+# the fast path cannot see -- a partition delivering NOTHING (an empty topic,
+# or a compacted partition whose retained head sits entirely below the log
+# start offset). Bounding it by elapsed time makes the RPC count a function of
+# how long the replay takes, never of how many records it contains, which is
+# the property the 600s progressDeadlineSeconds needs.
+_BOOTSTRAP_RPC_CHECK_MIN_INTERVAL_SECONDS = 5.0
 
 
 def _default_group_id() -> str:
@@ -141,6 +152,15 @@ class _TopicCacheState:
     latest_event_at: datetime | None = None
     assigned_partitions: set[int] = field(default_factory=set)
     eof_seen: set[int] = field(default_factory=set)
+    # OMN-15876: the offset this cache would read NEXT on each partition,
+    # derived from the offsets of the records it has actually applied
+    # (``msg.offset + 1``). This is the same quantity
+    # ``AIOKafkaConsumer.position()`` returns, obtained without the await --
+    # it is what lets the bootstrap catch-up check run with zero broker round
+    # trips while a replay is in flight. A partition absent from this map has
+    # delivered no record yet, which is NOT the same as being at offset 0 and
+    # is never treated as caught up.
+    next_position: dict[int, int] = field(default_factory=dict)
 
 
 class _SortWrapper:
@@ -247,6 +267,9 @@ class SnapshotCache:
         # fail-open half of the same defect: this field makes the death a
         # first-class, reportable fact instead of an absence.
         self._consume_failure: str | None = None
+        # OMN-15876: monotonic stamp of the last RPC-backed catch-up check, so
+        # that check is bounded by elapsed time rather than by batch count.
+        self._last_rpc_bootstrap_check: float | None = None
 
     @property
     def bus_backed_topics(self) -> frozenset[str]:
@@ -575,16 +598,146 @@ class SnapshotCache:
                 for msg in messages:
                     headers = list(msg.headers or [])
                     self.apply_message(msg.topic, msg.key, msg.value, headers)
-            # Run the catch-up check whenever any topic remains
-            # un-bootstrapped -- including an EMPTY batch. A late partition
-            # assignment (aiokafka assigns lazily post-group-join; can land
-            # after the initial bounded poll window above has already
-            # exhausted) on a topic with zero traffic would otherwise never
-            # get a chance to be marked bootstrap_complete: getmany() keeps
-            # returning {} forever and this loop would never call the check
-            # again (CodeRabbit, PR #2051, PRRT_kwDOR6jjtc6YWuL5).
-            if any(not state.bootstrap_complete for state in self._state.values()):
-                await self._mark_bootstrap_complete_when_caught_up()
+                if messages:
+                    last = messages[-1]
+                    state = self._state.get(last.topic)
+                    if state is not None:
+                        # The offsets are the consumer's own, in order, so the
+                        # last record of the batch carries the highest one.
+                        state.next_position[last.partition] = last.offset + 1
+            if all(state.bootstrap_complete for state in self._state.values()):
+                continue
+            # OMN-15876: settle everything that CAN be settled without a
+            # broker round trip first. Every partition that is actively
+            # delivering records is answerable from the consumer's own fetch
+            # metadata, and that is the whole of a fresh pod's replay.
+            self._mark_bootstrap_complete_from_fetch_metadata()
+            # Then the RPC-backed authority, for the partitions the fast path
+            # cannot answer -- ones delivering no records at all. It must
+            # still run on an EMPTY batch: a late partition assignment
+            # (aiokafka assigns lazily post-group-join; can land after the
+            # initial bounded poll window above has already exhausted) on a
+            # topic with zero traffic would otherwise never get a chance to be
+            # marked bootstrap_complete, because getmany() keeps returning {}
+            # forever (CodeRabbit, PR #2051, PRRT_kwDOR6jjtc6YWuL5). What it
+            # must NOT do is run once per batch of a large replay: that is the
+            # O(backlog) round-trip cost measured at 123 end_offsets() calls
+            # for onex-dev's 60,724-record live-events backlog.
+            if self._has_partition_the_fast_path_cannot_settle():
+                now = time.monotonic()
+                last_check = self._last_rpc_bootstrap_check
+                if (
+                    last_check is None
+                    or now - last_check >= _BOOTSTRAP_RPC_CHECK_MIN_INTERVAL_SECONDS
+                ):
+                    self._last_rpc_bootstrap_check = now
+                    await self._mark_bootstrap_complete_when_caught_up()
+
+    def _record_partition_progress(
+        self, tp: TopicPartition, *, position: int, end_offset: int
+    ) -> None:
+        """Fold one partition's (position, end offset) reading into the state.
+
+        The single place a partition is marked assigned, marked caught up, and
+        a topic marked bootstrap-complete -- shared by the zero-RPC fast path
+        and the RPC-backed authority so the two can never drift into two
+        different definitions of "caught up".
+        """
+        state = self._state.get(tp.topic)
+        if state is None:
+            return
+        state.assigned_partitions.add(tp.partition)
+        if position >= end_offset:
+            state.eof_seen.add(tp.partition)
+        if state.assigned_partitions and state.eof_seen == state.assigned_partitions:
+            state.bootstrap_complete = True
+
+    def _has_partition_the_fast_path_cannot_settle(self) -> bool:
+        """Is there an un-bootstrapped partition only a broker round trip can
+        answer? (OMN-15876)
+
+        The zero-RPC fast path needs two facts per partition: a highwater
+        aiokafka has learned from some fetch response, and a consumed position,
+        which it derives from applied record offsets. A partition that has
+        delivered NOTHING has no position -- an empty topic, a compacted
+        partition whose retained head sits entirely below the log start, or a
+        partition assigned so late that no fetch has landed on it yet. Those
+        are exactly the cases ``position()`` exists to answer, and the only
+        cases worth a round trip.
+
+        Gating on this rather than on "the last batch was empty" matters for a
+        multi-partition topic: one busy partition would otherwise keep the
+        topic looking like it was making progress forever while a silent
+        sibling partition was never settled, and the topic would never reach
+        ``bootstrap_complete`` -- ``/ready`` refusing permanently, which is
+        fail-closed but not correct. Once a round trip has seeded a position
+        for such a partition, the fast path can carry it from then on, so the
+        total number of round trips is bounded by the partition count and not
+        by the size of the backlog.
+        """
+        consumer = self._consumer
+        if consumer is None:
+            return False
+        for tp in consumer.assignment():
+            state = self._state.get(tp.topic)
+            if state is None or state.bootstrap_complete:
+                continue
+            if (
+                state.next_position.get(tp.partition) is None
+                or consumer.highwater(tp) is None
+            ):
+                return True
+        return False
+
+    def _mark_bootstrap_complete_from_fetch_metadata(self) -> None:
+        """Zero-RPC bootstrap catch-up check (OMN-15876).
+
+        Both quantities the check needs are already in hand during a replay:
+
+        * the end offset is ``AIOKafkaConsumer.highwater(tp)``, a SYNCHRONOUS
+          accessor aiokafka refreshes from every ``FetchResponse``
+          (``aiokafka/consumer/fetcher.py``: ``tp_state.highwater = highwater``).
+          It is strictly fresher than a periodic ``end_offsets()`` call, and it
+          costs nothing;
+        * the position is ``msg.offset + 1`` of the last record applied on that
+          partition, recorded by the consume loop.
+
+        So a fresh pod's entire replay -- the case that took 20-63 minutes live
+        on onex-dev, at 123 ``end_offsets()`` round trips for a 60,724-record
+        backlog -- needs no broker round trip at all.
+
+        This method can only ever mark a partition caught up EARLIER-refusing,
+        never earlier-accepting (GATE-DIRECTION LAW):
+
+        * an unknown highwater (``None`` -- aiokafka has not yet had a fetch
+          response for that partition) is skipped, not assumed;
+        * a partition that has delivered no record has no entry in
+          ``next_position`` and is skipped, not assumed to be at offset 0;
+        * a highwater above the applied position leaves the topic
+          un-bootstrapped, so ``/ready`` keeps refusing.
+
+        It is synchronous by construction. Nothing here awaits, so nothing here
+        can stall the consume loop -- which is what the per-batch
+        ``asyncio.wait_for(..., 30.0)`` pair it replaces was doing.
+        """
+        consumer = self._consumer
+        if consumer is None:
+            return
+        for tp in consumer.assignment():
+            state = self._state.get(tp.topic)
+            if state is None or state.bootstrap_complete:
+                continue
+            highwater = consumer.highwater(tp)
+            if highwater is None:
+                # Not yet learned from any fetch response. Unknown is refused.
+                continue
+            position = state.next_position.get(tp.partition)
+            if position is None:
+                # This partition has delivered nothing yet. The RPC-backed
+                # authority below owns that case -- an empty topic is legitimately
+                # bootstrapped, but only ``position()`` can say so.
+                continue
+            self._record_partition_progress(tp, position=position, end_offset=highwater)
 
     async def _mark_bootstrap_complete_when_caught_up(self) -> None:
         """Mark each assigned partition bootstrap-complete once its consumer
@@ -647,14 +800,14 @@ class SnapshotCache:
             state = self._state.get(tp.topic)
             if state is None:
                 continue
-            state.assigned_partitions.add(tp.partition)
-            if position >= end_offsets.get(tp, 0):
-                state.eof_seen.add(tp.partition)
-            if (
-                state.assigned_partitions
-                and state.eof_seen == state.assigned_partitions
-            ):
-                state.bootstrap_complete = True
+            # Feed the fast path too: a position read here is the same
+            # quantity the consume loop derives from applied record offsets,
+            # and seeding it lets a partition that has delivered nothing so
+            # far be settled without another round trip later.
+            state.next_position[tp.partition] = position
+            self._record_partition_progress(
+                tp, position=position, end_offset=end_offsets.get(tp, 0)
+            )
 
     async def stop(self) -> None:
         self._running = False

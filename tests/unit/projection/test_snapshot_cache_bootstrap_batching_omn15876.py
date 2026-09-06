@@ -137,6 +137,16 @@ class _FakeConsumer:
             return frozenset()
         return frozenset({self._tp})
 
+    def highwater(self, tp: TopicPartition) -> int | None:
+        """aiokafka's synchronous, zero-RPC end-offset accessor (OMN-15876).
+
+        Real ``AIOKafkaConsumer`` populates this from every ``FetchResponse``
+        and serves it without a broker round trip; the bootstrap catch-up fast
+        path reads it. Returns the same end offset this fake's ``end_offsets``
+        RPC returns, so the two paths cannot disagree about where the log ends.
+        """
+        return self._end_offset
+
     async def end_offsets(
         self, partitions: list[TopicPartition]
     ) -> dict[TopicPartition, int]:
