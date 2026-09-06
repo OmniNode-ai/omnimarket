@@ -127,8 +127,8 @@ def test_cheap_frontier_zero_cost_declaration_matches_a_free_slug() -> None:
 
 
 @pytest.mark.unit
-def test_cheap_frontier_does_not_pin_a_known_retired_slug() -> None:
-    """Ratchet: slugs proven dead against the live provider stay out of this tier.
+def test_no_openrouter_backend_pins_a_known_retired_slug() -> None:
+    """Ratchet: slugs proven dead against the live provider stay out of the contract.
 
     Live-probed 2026-08-01 through the configured endpoint + key — recorded
     observations with the provider's verbatim refusal, not guesses. A ratchet is
@@ -136,15 +136,18 @@ def test_cheap_frontier_does_not_pin_a_known_retired_slug() -> None:
     probe drives the real provider), but it does stop a revert or a copy-paste
     from resurrecting one that already burned us.
 
-    Scoped to ``cheap_frontier`` because that is the tier this repair owns. The
-    same probe found ``thudm/glm-4-9b-chat:free`` — pinned by the
-    ``openrouter-glm-flash`` backend on the ``cheap_cloud`` tier — is ALSO dead
-    (HTTP 400, "thudm/glm-4-9b-chat:free is not a valid model ID"). That is a
-    different tier with different declared economics, so repointing it is a
-    separate routing decision, reported on OMN-15638 rather than made here.
-    Widening this assertion to every OpenRouter backend is the right follow-up
-    once that decision lands — do it by deleting the tier filter, not by adding
-    an allowlist entry.
+    OMN-17988: the ``cheap_frontier`` tier filter is DELETED, which is the
+    follow-up this docstring previously prescribed ("do it by deleting the tier
+    filter, not by adding an allowlist entry"). OMN-15638 scoped the ratchet to
+    ``cheap_frontier`` and deferred the ``openrouter-glm-flash`` /
+    ``thudm/glm-4-9b-chat:free`` decision as "a separate routing decision"; that
+    decision is made in this commit — the backend is retired, so the tier filter
+    has nothing left to protect and every OpenRouter rung is now covered.
+
+    The narrow scope is exactly why this stayed green for five weeks while a
+    dead slug sat in the contract: a ratchet that guards one tier reports
+    success about the tier it guards, not about the file. Re-adding any tier
+    filter here re-opens that blind spot.
     """
     retired: dict[str, str] = {
         # HTTP 404: "This model is unavailable for free. The paid version is
@@ -157,7 +160,7 @@ def test_cheap_frontier_does_not_pin_a_known_retired_slug() -> None:
     offenders = [
         f"{backend_id} pins {b['model_name']!r} ({retired[b['model_name']]})"
         for backend_id, b in _bifrost_backends().items()
-        if b.get("tier") == "cheap_frontier" and b.get("model_name") in retired
+        if b.get("model_name") in retired
     ]
     assert not offenders, "retired OpenRouter slug(s) re-pinned: " + "; ".join(
         offenders

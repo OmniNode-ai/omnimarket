@@ -32,6 +32,11 @@ handler_routing:
       handler:
         name: "HandlerRsdOfflineC0"
         module: "omnimarket.nodes.node_rsd_offline_c0_validate_compute.handlers.handler_rsd_offline_c0"
+runtime_dispatch:
+  command_topic: "onex.cmd.omnimarket.rsd-offline-czero-validate.v1"
+  terminal_events:
+    success: "onex.evt.omnimarket.rsd-offline-czero-validated.v1"
+    failure: "onex.evt.omnimarket.rsd-offline-czero-validation-failed.v1"
 metadata:
   transport_type: inmemory
   description: "Offline C0 diagnostic validator; it is permanently non-authorizing and effect-free."

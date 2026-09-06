@@ -11,7 +11,7 @@ from omnibase_core.models.runtime.golden_chain.model_golden_chain_fixture import
 )
 from pydantic import BaseModel, ConfigDict, Field
 
-from omnimarket.nodes.node_delegation_routing_reducer.models.model_routing_decision import (
+from omnimarket.models.delegation.wire.model_routing_decision import (
     ModelRoutingDecision,
 )
 

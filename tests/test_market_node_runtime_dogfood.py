@@ -294,7 +294,11 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # adds the offline-only B1 projection-binding verifier: 398 -> 399.
     # OMN-17982 adds V4 static, V5 safe-config, V5 worker, and V4 artifact;
     # OMN-17983 adds B1 and B2: 396 -> 402, all offline-only validators.
-    assert summary["node_dirs"] == 402
+    # OMN-17984 adds node_rsd_offline_c0_validate_compute (COMPUTE; pure,
+    # non-authorizing offline validation that one already-made delegation
+    # routing decision matches explicit route-contract bytes and golden-chain
+    # provenance): 396 -> 397.
+    assert summary["node_dirs"] == 403
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -382,7 +386,9 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # resolve_physical_topic (OMN-15792); a contract may not declare a
     # tenant-prefixed topic at all, so the canonical set is what this
     # inventory sees and it is the correct thing for it to see: 392 -> 393.
-    assert summary["entry_points"] == 393
+    # OMN-17984 adds the offline C0 validation compute entry point, routable via
+    # its runtime_dispatch.command_topic: 393 -> 394.
+    assert summary["entry_points"] == 394
     assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
