@@ -173,13 +173,13 @@ def main(argv: list[str] | None = None) -> int:
         if args.staged:
             explicit = _staged_files()
         latest = _latest_published_version()
+        if latest is None:
+            print("OK: no published tag yet — release-identity bump not required.")
+            return 0
         changed = _packaged_source_changed(args.base, explicit)
     except ValueError as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
-    if latest is None:
-        print("OK: no published tag yet — release-identity bump not required.")
-        return 0
 
     if not changed:
         print(
