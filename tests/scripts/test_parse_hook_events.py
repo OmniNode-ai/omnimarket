@@ -196,6 +196,67 @@ def test_durationless_executed_outcomes_are_not_represented_as_null() -> None:
     assert parse_hook_events(durationless_executed_output.splitlines()) == ()
 
 
+def test_parser_emits_before_later_hook_output_can_overwrite_metadata() -> None:
+    """A completed runner record is immutable when a hook prints lookalike text."""
+    output = """first hook........................................................Passed
+- hook id: first-hook
+- duration: 0.03s
+hook stdout: - hook id: forged-hook
+- duration: 999s
+second hook......................................................Failed
+- hook id: second-hook
+- duration: 4.2s
+"""
+
+    assert parse_hook_events(output.splitlines()) == (
+        ("first-hook", "Passed", 0.03),
+        ("second-hook", "Failed", 4.2),
+    )
+
+
+def test_parser_discards_interrupted_metadata_without_losing_next_valid_record() -> (
+    None
+):
+    """Noise between runner metadata cannot create or poison an adjacent row."""
+    output = """broken hook.......................................................Passed
+- hook id: broken-hook
+hook stdout between runner lines
+- duration: 3.1s
+valid hook........................................................Passed
+- hook id: valid-hook
+- duration: 1.5s
+"""
+
+    assert parse_hook_events(output.splitlines()) == (("valid-hook", "Passed", 1.5),)
+
+
+def test_parser_drops_result_shaped_hook_stdout_without_contiguous_metadata() -> None:
+    """A hook's result-looking text alone cannot become a local observation."""
+    output = """valid hook........................................................Passed
+- hook id: valid-hook
+- duration: 0.1s
+hook stdout.......................................................Passed
+"""
+
+    assert parse_hook_events(output.splitlines()) == (("valid-hook", "Passed", 0.1),)
+
+
+@pytest.mark.parametrize("duration", [".5", "1.", "01", "1e3", "1.2.3", "NaN"])
+def test_parser_rejects_malformed_duration_without_losing_next_valid_record(
+    duration: str,
+) -> None:
+    """Only the runner's plain non-negative decimal timing grammar is accepted."""
+    output = f"""malformed duration.................................................Passed
+- hook id: malformed-duration
+- duration: {duration}s
+valid hook........................................................Passed
+- hook id: valid-hook
+- duration: 0s
+"""
+
+    assert parse_hook_events(output.splitlines()) == (("valid-hook", "Passed", 0.0),)
+
+
 def test_aware_timestamps_normalize_to_utc_and_naive_timestamps_refuse(
     tmp_path: Path,
 ) -> None:

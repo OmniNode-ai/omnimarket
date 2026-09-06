@@ -33,7 +33,7 @@ _RESULT = re.compile(
     r"^(?P<name>.*?)\.{3,}(?P<no_files>\(no files to check\))?(?P<outcome>Passed|Failed|Skipped)$"
 )
 _HOOK_ID = re.compile(r"^- hook id:\s*(?P<hook_id>\S+)$")
-_DURATION = re.compile(r"^- duration:\s*(?P<duration>[\d.]+)s$")
+_DURATION = re.compile(r"^- duration:\s*(?P<duration>(?:0|[1-9]\d*)(?:\.\d+)?)s$")
 _ANSI_CSI = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 _ENV_FINGERPRINT = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _CACHE_STATES = frozenset(("cold", "warm", "unknown"))
@@ -341,45 +341,70 @@ def git_blob_sha(path: Path) -> str:
 def parse_hook_events(
     lines: Iterable[str],
 ) -> tuple[tuple[str, HookOutcome, float | None], ...]:
-    """Extract truthful hook observations from verbose pre-commit output.
+    """Extract contiguous runner-shaped observations from verbose pre-commit output.
 
     ANSI CSI sequences are presentation only and are discarded before parsing.
     A durationless row is retained only for the explicit no-files marker: it
     records a non-execution, not a zero-duration execution.
+
+    The runner writes the result, hook id, and duration contiguously before it
+    prints arbitrary hook output.  Emit an executed observation as soon as the
+    complete three-line runner sequence is seen, so later hook output cannot
+    replace its metadata.  This is intentionally a local diagnostic parser:
+    unframed stdout cannot distinguish a hook that counterfeits an entire
+    runner-shaped sequence from the runner itself.
     """
     events: list[tuple[str, HookOutcome, float | None]] = []
     current: _PendingHookEvent | None = None
-
-    def finish_current() -> None:
-        if current is None or current.hook_id is None:
-            return
-        if current.duration_s is None and (
-            current.outcome != "Skipped" or not current.no_files_to_check
-        ):
-            return
-        events.append((current.hook_id, current.outcome, current.duration_s))
+    expecting: Literal["hook_id", "duration", "next_result"] | None = None
 
     for raw_line in lines:
         line = _ANSI_CSI.sub("", raw_line).rstrip("\r\n")
         result_match = _RESULT.match(line)
         if result_match:
-            finish_current()
+            if current is not None and expecting == "next_result":
+                assert current.hook_id is not None
+                events.append((current.hook_id, current.outcome, None))
             current = _PendingHookEvent(
                 outcome=cast(HookOutcome, result_match["outcome"]),
                 no_files_to_check=result_match["no_files"] is not None,
             )
+            expecting = "hook_id"
             continue
-        if current is None:
+        if current is None or expecting is None:
             continue
-        hook_id_match = _HOOK_ID.match(line)
-        if hook_id_match:
-            current.hook_id = hook_id_match["hook_id"]
-            continue
-        duration_match = _DURATION.match(line)
-        if duration_match:
-            current.duration_s = float(duration_match["duration"])
 
-    finish_current()
+        if expecting == "hook_id":
+            hook_id_match = _HOOK_ID.match(line)
+            if hook_id_match:
+                current.hook_id = hook_id_match["hook_id"]
+                expecting = "next_result" if current.no_files_to_check else "duration"
+            else:
+                current = None
+                expecting = None
+            continue
+
+        if expecting == "duration":
+            duration_match = _DURATION.match(line)
+            if duration_match:
+                assert current.hook_id is not None
+                events.append(
+                    (
+                        current.hook_id,
+                        current.outcome,
+                        float(duration_match["duration"]),
+                    )
+                )
+            current = None
+            expecting = None
+            continue
+
+        current = None
+        expecting = None
+
+    if current is not None and expecting == "next_result":
+        assert current.hook_id is not None
+        events.append((current.hook_id, current.outcome, None))
     return tuple(events)
 
 
