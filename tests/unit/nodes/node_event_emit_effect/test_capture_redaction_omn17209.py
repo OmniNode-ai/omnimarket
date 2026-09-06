@@ -256,7 +256,12 @@ def test_benign_record_crosses_verbatim_per_its_allowlist() -> None:
     assert out["interrupted"] is False
     assert out["working_directory"] == "omni_home"
     assert out["session_id"] == "9787a4a3-ec49-4819-8bdc-5044efb94550"
-    assert out["redaction_state"] == EnumRedactionState.RAW.value
+    # OMN-17201: REDACTED is the floor for anything this transform processed,
+    # so a record that lost nothing still says a posture was applied. The
+    # point of this control is the four verbatim values above, which are
+    # unchanged; `raw` here meant the record could never cross the OMN-16979
+    # egress gate, which refuses that state structurally.
+    assert out["redaction_state"] == EnumRedactionState.REDACTED.value
 
 
 @pytest.mark.unit
@@ -659,4 +664,6 @@ def test_a_benign_container_under_a_verbatim_field_still_crosses_verbatim() -> N
         TOOL_TOPIC,
     )
     assert out["working_directory"] == benign
-    assert out["redaction_state"] == EnumRedactionState.RAW.value
+    # OMN-17201: see the note on the benign-record control above -- the
+    # verbatim value is the assertion; the floor is REDACTED.
+    assert out["redaction_state"] == EnumRedactionState.REDACTED.value
