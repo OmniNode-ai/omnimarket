@@ -39,14 +39,16 @@ node you touched.
 - Current architecture, guides, and reference material live in the public
   [OmniNode knowledge base](https://github.com/OmniNode-ai/knowledge-base)
   (`architecture/`, `guides/`, `reference/`), not in this repo. Governance,
-  runbook, and operator-facing content that needs real infra values lives in
-  [knowledge-base-internal](https://github.com/OmniNode-ai/knowledge-base-internal)
-  instead. Open a docs PR against the relevant knowledge base repo, not
-  against `omnimarket/docs/`.
-- Dated point-in-time artifacts (evidence bundles, audit snapshots, execution
-  tracking) that remain in this repo stay under `docs/evidence/`,
-  `docs/audits/`, or `docs/tracking/` — the org's docs taxonomy classifies
-  these as Bucket-D snapshots that record a specific moment rather than a
-  durable fact, so they are not migrated. Scrub them the same as any other
-  tracked file, and promote any durable, current fact they contain into the
-  knowledge base rather than leaving it only in the snapshot.
+  runbook, and operator-facing content is not part of this repository. Open a
+  docs PR against the knowledge base, not against `omnimarket/docs/`.
+- Dated point-in-time artifacts do not belong in this repository at all, and
+  the `docs/evidence/`, `docs/audits/` and `docs/tracking/` directories are
+  being retired rather than sanctioned. This bullet used to say the opposite,
+  and that sentence is why those directories grew: a contributor following this
+  guide produced exactly the material now being removed from them.
+  - Evidence and DoD receipts go to the change-control repository, which is
+    already where the receipt gate resolves them from.
+  - Tracking, status, plans, deep dives, handoffs and reports go to the
+    internal documentation home for their class.
+  - Nothing dated is added under `docs/`. If you find yourself wanting to,
+    the artifact has a home and this repository is not it.
