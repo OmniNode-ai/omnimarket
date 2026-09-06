@@ -45,15 +45,26 @@ class TestOmn12492LocalModelFacts:
     """Local model entries carry correct live-probed facts after OMN-12492 refresh."""
 
     def test_qwen3_coder_30b_model_name_updated(self, registry) -> None:  # type: ignore[no-untyped-def]
-        """qwen3-coder-30b routing key reflects qwen3.8 served at .201:8000 (OMN-16492).
+        """qwen3-coder-30b routing key reflects the id served at .201:8000.
 
-        Live probe 2026-08-23 (OMN-16419): GET /v1/models -> id "qwen3.8",
-        owned_by "sglang", max_model_len 122880.
+        OMN-16999 live re-probe 2026-09-05: GET /v1/models -> http=200, id
+        "Qwen3.6-35B-A3B", owned_by "vllm", max_model_len 131072. This supersedes
+        the OMN-16419/OMN-16492 readback of 2026-08-23 (id "qwen3.8", owned_by
+        "sglang", max_model_len 122880) — the endpoint was redeployed
+        SGLang -> vLLM and serves the pre-OMN-16419 id again.
+
+        The routing KEY ("qwen3-coder-30b") is deliberately stable across all of
+        this; only ``model_name``, the wire value POSTed as "model", tracks the
+        endpoint. Asserting a served id here is fixture-internal consistency, not
+        evidence — the assertion that pins this value to a recorded probe lives in
+        omnibase_infra tests/unit/runtime/test_bifrost_served_model_probe_fixture.py.
         """
         model = registry.get_model("qwen3-coder-30b")
-        assert model.model_name == "qwen3.8"
+        assert model.model_name == "Qwen3.6-35B-A3B"
         assert model.endpoint_env == "LLM_CODER_URL"
-        assert model.context_window == 122880
+        # 122880 was the SGLang deployment's max_model_len; the vLLM redeploy
+        # reports 131072 (OMN-16999 probe above).
+        assert model.context_window == 131072
 
     def test_deepseek_r1_14b_model_name_updated(self, registry) -> None:  # type: ignore[no-untyped-def]
         """deepseek-r1-14b is a stale slot: .201:8001 is dead (OMN-16442), the

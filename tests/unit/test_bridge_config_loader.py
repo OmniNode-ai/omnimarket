@@ -9,6 +9,9 @@ import pytest
 from omnimarket.inference.bridge_config_loader import (
     load_inference_bridge_config_from_env,
 )
+from omnimarket.inference.registry_context_windows import (
+    get_context_window_for_endpoint_env,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -135,10 +138,20 @@ def test_context_window_preserved(monkeypatch: pytest.MonkeyPatch) -> None:
     ):
         monkeypatch.delenv(var, raising=False)
     cfg = load_inference_bridge_config_from_env()
-    # OMN-16492: qwen3-coder-30b is qwen3.8 on .201:8000 via SGLang; live probe
-    # 2026-08-23 GET /v1/models -> max_model_len 122880 (was 131072 under the
-    # retired Qwen3.6-35B-A3B/vLLM serving, OMN-12492).
-    assert cfg.model_configs["qwen3-coder"]["context_window"] == 122_880
+    # The value is the model registry's, not this test's: the loader reads it
+    # through ``get_context_window_for_endpoint_env("LLM_CODER_URL")``, which
+    # resolves ``qwen3-coder-30b`` out of ``model_registry_v1.yaml``. Restating
+    # it here as a literal is what made this test fail on a routing repoint it
+    # has nothing to do with, so assert against the registry instead.
+    #
+    # OMN-16999: .201:8000 was redeployed SGLang -> vLLM and serves
+    # "Qwen3.6-35B-A3B" at max_model_len 131072 again. Live probe 2026-09-05,
+    # http=200. That SUPERSEDES the OMN-16492 note this replaced, which pinned
+    # 122880 from the 2026-08-23 SGLang readback -- the second flip of this one
+    # value in two weeks.
+    assert cfg.model_configs["qwen3-coder"][
+        "context_window"
+    ] == get_context_window_for_endpoint_env("LLM_CODER_URL", fallback=-1)
 
 
 @pytest.mark.unit
