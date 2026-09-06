@@ -1,0 +1,22 @@
+name: node_rsd_v5_oci_safe_config_validate_compute
+version: "1.0.0"
+description: "Pure offline V5 OCI safe-config validation."
+pack: pipeline
+node_role: compute
+display_name: "RSD V5 OCI Safe Config Validate Compute"
+omnibase_core_compat: ">=0.47.2,<0.48.0"
+entry_points:
+  onex.nodes:
+    node_rsd_v5_oci_safe_config_validate_compute: "omnimarket.nodes.node_rsd_v5_oci_safe_config_validate_compute"
+capabilities:
+  standalone: true
+  full_runtime: false
+  requires_network: false
+  requires_repo: false
+  requires_secrets: false
+  requires_docker: false
+  side_effect_class: none
+dependencies: []
+authors: ["OmniNode Platform Team"]
+license: "MIT"
+tags: ["compute", "offline-validation", "rsd", "v5"]
