@@ -60,6 +60,16 @@ _BOOTSTRAP_POLL_MAX_ATTEMPTS = 40  # ~20s to observe a partition assignment
 # pod's bootstrap replay, independent of how large the topic's retained
 # backlog is.
 _CONSUME_BATCH_MAX_RECORDS = 500
+# OMN-15876: hard ceiling on each bootstrap-check broker round trip. aiokafka's
+# own docstring for end_offsets() says it "may block indefinitely if the
+# partition does not exist", and position() loops until the partition has a
+# valid position. An await that never returns is the one failure mode a
+# try/except cannot catch, and it is INDISTINGUISHABLE from a slow replay in
+# every surface this platform had: same 503, same per-topic map, no log line,
+# no restart (the readinessProbe only marks NotReady). Bounding the call turns
+# that hang into a recorded, retried transient. Timing out leaves the topic
+# un-bootstrapped, so the readiness gate stays refused -- the safe direction.
+_BOOTSTRAP_RPC_TIMEOUT_SECONDS = 30.0
 
 
 def _default_group_id() -> str:
@@ -594,7 +604,10 @@ class SnapshotCache:
         if not partitions:
             return
         try:
-            end_offsets = await self._consumer.end_offsets(list(partitions))
+            end_offsets = await asyncio.wait_for(
+                self._consumer.end_offsets(list(partitions)),
+                timeout=_BOOTSTRAP_RPC_TIMEOUT_SECONDS,
+            )
         except asyncio.CancelledError:
             raise
         except Exception:  # transient, retried on the next pass
@@ -607,7 +620,10 @@ class SnapshotCache:
             return
         for tp in partitions:
             try:
-                position = await self._consumer.position(tp)
+                position = await asyncio.wait_for(
+                    self._consumer.position(tp),
+                    timeout=_BOOTSTRAP_RPC_TIMEOUT_SECONDS,
+                )
             except IllegalStateError:
                 # Revoked between the assignment read above and this await.
                 # Skipping is the conservative direction: this partition is

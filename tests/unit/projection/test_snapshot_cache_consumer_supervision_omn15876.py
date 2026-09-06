@@ -254,3 +254,46 @@ async def test_a_finished_task_is_reported_while_the_cache_still_runs() -> None:
     assert cache.consume_failure == (
         "consume loop exited while the cache was still running"
     )
+
+
+async def test_a_hanging_broker_call_is_bounded_and_retried(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The one failure mode a try/except cannot catch.
+
+    aiokafka's own ``end_offsets`` docstring says it "may block indefinitely
+    if the partition does not exist", and ``position()`` loops until the
+    partition has a valid position. A permanently-awaited coroutine renders
+    EXACTLY like a slow replay -- same 503, same per-topic map, no log line,
+    no restart, because the readinessProbe only marks NotReady. Bounding the
+    call makes the hang a recorded transient; the topic stays un-bootstrapped
+    while it hangs, which is the fail-closed direction.
+    """
+    import omnimarket.projection.snapshot_cache as module
+
+    monkeypatch.setattr(module, "_BOOTSTRAP_RPC_TIMEOUT_SECONDS", 0.05)
+
+    class _HangingConsumer(_FakeConsumer):
+        def __init__(self) -> None:
+            super().__init__()
+            self.hangs = 0
+
+        async def end_offsets(
+            self, partitions: list[TopicPartition]
+        ) -> dict[TopicPartition, int]:
+            self.end_offsets_calls += 1
+            if self.end_offsets_calls <= 2:
+                self.hangs += 1
+                await asyncio.sleep(3600)
+            return {self._tp: 0}
+
+    cache = _make_cache()
+    fake = _HangingConsumer()
+    cache._consumer = fake  # type: ignore[assignment]
+    cache._running = True
+
+    await _drive(cache, until=lambda: cache.is_bootstrapped(_TOPIC), timeout=10.0)
+
+    assert fake.hangs == 2, "the hanging call was not actually exercised"
+    assert cache.is_bootstrapped(_TOPIC)
+    assert cache.consume_failure is None
