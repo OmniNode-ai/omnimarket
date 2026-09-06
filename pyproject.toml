@@ -108,6 +108,7 @@ dependencies = [
     # that transitivity holding -- it is a boring, already-resolved validator,
     # not a new addition to the resolved dependency set.
     "jsonschema>=4.18.0",
+    "cryptography>=50.0.1,<51.0.0",
 ]
 
 [project.optional-dependencies]

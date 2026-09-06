@@ -1,0 +1,21 @@
+name: "node_rsd_v4_static_profile_validate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: "Pure verification of an already-supplied V4 static profile envelope; non-authorizing and effect-free."
+input_model:
+  name: "ModelV4StaticProfileValidationInput"
+  module: "omnimarket.nodes.node_rsd_v4_static_profile_validate_compute.models.model_v4_static_profile"
+output_model:
+  name: "ModelV4StaticProfileValidationOutput"
+  module: "omnimarket.nodes.node_rsd_v4_static_profile_validate_compute.models.model_v4_static_profile"
+handler:
+  module: "omnimarket.nodes.node_rsd_v4_static_profile_validate_compute.handlers.handler_v4_static_profile"
+  class: "HandlerV4StaticProfile"
+  input_model: "omnimarket.nodes.node_rsd_v4_static_profile_validate_compute.models.model_v4_static_profile.ModelV4StaticProfileValidationInput"
+metadata:
+  transport_type: inmemory
+  description: "No routing, map authority, signing, ticket, replay, runtime, or secret-delivery capability."
+  tags: ["compute", "offline-validation", "rsd", "OMN-17982"]

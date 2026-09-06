@@ -34,10 +34,14 @@ NATIVE_NON_ADDRESSABLE_NODES = {
     "node_projection_dep_health",
 }
 
-OMN_14151_LEGACY_ARM_SURFACES = {
+EXPECTED_MISSING_ENTRY_POINTS = {
     "node_auto_merge_effect",
     "node_merge_sweep_auto_merge_arm_effect",
     "node_merge_sweep_triage_orchestrator",
+    # OMN-17982 validates a supplied historical V4 profile offline.  It is
+    # discoverable inventory metadata, but deliberately has no addressable
+    # runtime entry point, bus route, or live side-effect capability.
+    "node_rsd_v4_static_profile_validate_compute",
 }
 
 
@@ -265,7 +269,8 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # omniclaude hook classes off the CLOUD bus as tenant-prefixed wire topics
     # and materializes public.hook_events, the table the already-deployed read
     # route GET /v1/projections/hook-events/by-correlation serves): 395 -> 396.
-    assert summary["node_dirs"] == 396
+    # OMN-17982 adds the offline-only V4 profile validator: 396 -> 397.
+    assert summary["node_dirs"] == 397
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:
@@ -354,7 +359,7 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # tenant-prefixed topic at all, so the canonical set is what this
     # inventory sees and it is the correct thing for it to see: 392 -> 393.
     assert summary["entry_points"] == 393
-    assert set(summary["missing_entry_points"]) == OMN_14151_LEGACY_ARM_SURFACES
+    assert set(summary["missing_entry_points"]) == EXPECTED_MISSING_ENTRY_POINTS
     assert summary["dangling_entry_points"] == []
     assert summary["routable"] >= 299
     # OMN-14648's report-only projection is non-addressable: 4 -> 5.
