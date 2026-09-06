@@ -140,6 +140,18 @@ class EnumEvidenceUnverifiableCause(StrEnum):
     # this process sets inside its own ``TimeoutExpired`` handler. Remedy:
     # raise the named ceiling for the host, or make the check cheaper.
     CHECK_BUDGET_EXCEEDED = "check_budget_exceeded"
+    # OMN-16846 D1, local path. The verifier could not BUILD the lock-exact
+    # environment a behaviour check runs in (``uv`` unresolvable, the sync
+    # exceeded its own build ceiling, or it exited non-zero), so the command
+    # never ran. That is a fact about the verifier's setup, not about the
+    # product -- and the fallback it refuses is the shared canonical venv,
+    # which the workspace reconciler composes an undeclared ``onex.nodes``
+    # provider into and which GATE_VENV_IMPURE above records the refusal of.
+    # Set only from this process's own subprocess result, never grepped out of
+    # a check's stdout. Strictly more blocking than the FAILED it replaces:
+    # like every member here it is neither verified nor non_probative nor
+    # behavior_proving, so the OMN-16821 flip predicate still refuses.
+    HERMETIC_ENV_UNAVAILABLE = "hermetic_env_unavailable"
 
 
 class EnumOccRefRefreshOutcome(StrEnum):
