@@ -106,11 +106,14 @@ descriptor:
   # ambiguity, not a second reader.
   #
   # EMPTY, not a bespoke profile name. An invented profile no process boots
-  # trips `runtime_profile_unregistered` and needs an allowlist exemption to
-  # say the orphaning is intended (the OMN-17641 block records eight of those).
-  # An empty list states the same fact -- no shared-kernel profile runs this --
-  # without an unregistered name or an exemption entry. Precedent: the three
-  # node_swarm_*_compute contracts.
+  # trips `runtime_profile_unregistered` and needs an allowlist exemption to say
+  # the orphaning is intended. An empty list states the same fact -- no
+  # shared-kernel profile runs this -- without an unregistered name or an
+  # exemption entry. Precedent: the three node_swarm_*_compute contracts.
+  # Contrast the eight TENANT-domain projections, which name the REGISTERED
+  # `tenant-projection` profile because a real consolidated writer boots it
+  # (OMN-17556); this node's dedicated writer boots no shared-kernel profile at
+  # all, so there is no name for it to carry.
   runtime_profiles: []
 
 idempotency:

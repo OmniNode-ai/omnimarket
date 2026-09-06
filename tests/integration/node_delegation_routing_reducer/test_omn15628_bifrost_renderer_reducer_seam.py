@@ -26,7 +26,13 @@ import pytest
 import yaml
 from omnibase_infra.errors import ProtocolConfigurationError
 from omnibase_infra.runtime.models import (
+    enum_bifrost_lane_locale as _locale,
+)
+from omnibase_infra.runtime.models import (
     model_bifrost_lane_backend_binding as _binding,
+)
+from omnibase_infra.runtime.models import (
+    model_bifrost_lane_overlay as _overlay,
 )
 from omnibase_infra.runtime.render_bifrost_delegation_contract import (
     render_bifrost_delegation_contract,
@@ -159,10 +165,30 @@ def _render_source(tmp_path: Path) -> Path:
 # moved, from env var to overlay.
 #
 # ModelBifrostLaneOverlay is strict: schema_version is pinned, and `backends`
-# must declare EXACTLY the active local backend ids (local-coder and
-# local-heavy-reasoning), so both appear here even though only local-coder is
-# asserted on.
-_OVERLAY_SCHEMA_VERSION = "bifrost_lane_overlay.v2"
+# must declare EXACTLY the active local backend ids, so every one appears here
+# even though only local-coder is asserted on.
+#
+# OMN-17556: omnibase-infra 0.38.19 (via OMN-17502) moves the overlay schema
+# v2 -> v3 and makes `locale` a REQUIRED field with no default, so a v2 file is
+# structurally not a v3 file and this fixture's overlay stopped validating. The
+# three fixture values below are adopted, not worked around:
+#
+#   * schema_version is READ from the installed model rather than retyped, the
+#     same idiom the endpoint/model/context values above already use. This
+#     file's subject is the renderer -> reducer PATH seam, not the overlay
+#     version; a pinned literal here breaks the seam proof on every upstream
+#     schema bump for a reason that has nothing to do with the seam, and the
+#     overlay is still validated in full by the renderer on every run, so an
+#     invalid fixture cannot pass silently.
+#   * locale is `lab`: this fixture declares the full active local backend set,
+#     which is exactly what EnumBifrostLaneLocale.LAB requires and what
+#     .CLOUD forbids (a cloud lane must declare ZERO local backends).
+#   * serving is emitted per backend from the authorized probe table, which is
+#     the sole authority on liveness -- local-ds-v4-flash is currently dark, and
+#     the binding model rejects an overlay that claims otherwise. It is derived,
+#     not typed, so a probe-table flip propagates instead of rotting.
+_OVERLAY_SCHEMA_VERSION = _overlay._SCHEMA_VERSION
+_OVERLAY_LOCALE = _locale.EnumBifrostLaneLocale.LAB.value
 
 
 def _render_overlay(tmp_path: Path, *, coder_endpoint_url: str) -> Path:
@@ -173,6 +199,7 @@ def _render_overlay(tmp_path: Path, *, coder_endpoint_url: str) -> Path:
             {
                 "schema_version": _OVERLAY_SCHEMA_VERSION,
                 "lane": "seam-test",
+                "locale": _OVERLAY_LOCALE,
                 "backends": [
                     {
                         "backend_id": backend_key,
@@ -198,6 +225,7 @@ def _render_overlay(tmp_path: Path, *, coder_endpoint_url: str) -> Path:
                         ].context_window,
                         "max_tokens": 4096,
                         "timeout_ms": 30000,
+                        "serving": _binding._AUTHORIZED_BINDINGS[backend_key].serving,
                     }
                     for backend_key in _ACTIVE_BACKEND_IDS
                 ],

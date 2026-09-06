@@ -105,6 +105,44 @@ the discard-port write fails, the callback RAISES, nothing lands on the DLQ,
 and no terminal is emitted. It fails on 0.38.15, which is why the floor in
 ``pyproject.toml`` is ``>=0.38.16`` rather than ``>=0.38.15`` (OMN-17549).
 
+What 0.38.18 changes, and why the delegation row now gates a different shape
+(OMN-17556).
+
+The ``omnibase-infra`` 0.38.16 -> 0.38.18 bump carries ``350889286``
+(OMN-17519, #3136), which added ``_projection_dispatch_owned_elsewhere``. On a
+contract declaring two or more handler entries, auto-wiring assigns each
+subscribe topic to exactly one entry; an entry assigned none registers a
+dispatcher with zero routes and can never be reached in this process. From
+0.38.18 such an entry gets ``_make_undispatched_projection_callback`` and NO
+projection database, instead of the full callback and a tenant-domain pool.
+
+``projection_delegation`` is the case OMN-17519 names by name: the standalone
+``DelegationProjectionRunner`` declares no ``event_model`` and so takes all nine
+subscribe topics, and ``HandlerProjectionDelegation`` gets zero. That is not
+news to this repo — ``DelegationProjectionRunner``'s own docstring has called
+its sibling "the shared-kernel handler that the two-handler dispatch ambiguity
+starves of routes" since OMN-15905. What changed is that infra stopped building
+a write path for the starved entry, which under ``ONEX_WIRING_STRICT_MODE`` had
+been taking the whole boot down on onex-dev.
+
+So this is an infra CONTRACT change adopted here, not an infra regression, and
+the two delegation rows are not neutralised: they now assert the shape that
+ships, from the typed per-entry fact 0.38.18 exposes for exactly this purpose
+(``PreparedWiring.dispatch_is_noop``). A revert of OMN-17519, or an omnimarket
+change that gave ``HandlerProjectionDelegation`` routes again, turns both rows
+RED.
+
+One consequence is stated rather than hidden: the OMN-17379 fail-closed guard
+is now proven in this file by the inference-response row alone, because it is
+the only case here whose writer auto-wiring actually dispatches. A second
+in-process row would restore the two-contract coverage, and the candidates are
+the single-entry tenant-classified projections (``projection_cost_summary``,
+``projection_context_roi``, ``projection_dep_health``). It is not added here
+because every ``wire_payload`` in this file is copied from a REAL observed
+event — the file argues against shape-only fixtures in the comment above
+``DELEGATION_PROJECTION_CASE`` — and no observed terminal for those contracts
+was available in this session.
+
 Why no existing test caught it.
 
 Every projection test in this repo injects its own database adapter. An
@@ -205,9 +243,17 @@ class ProjectionChainCase:
             one the contract actually subscribes to — asserted, not assumed.
         dlq_topic: the contract's own ``event_bus.dlq_topics[0]``, where the
             projection dispatch callback routes an erroring event.
-        writer_handler_name: the class the dispatch must actually reach for a
-            row to be possible. Named so the non-vacuity assertion cannot pass
-            on a chain that never entered a writer at all.
+        writer_handler_name: the class that owns this contract's write. For an
+            in-process contract it is the class the dispatch must actually
+            reach for a row to be possible, so the non-vacuity assertion cannot
+            pass on a chain that never entered a writer at all.
+        in_process_write_path: whether the SHARED runtime's auto-wiring
+            dispatches ``writer_handler_name`` at all. False is the OMN-15905
+            dedicated-writer shape, made mechanical by OMN-17519 in
+            ``omnibase-infra`` 0.38.18 — see the module docstring.
+        topic_owning_entry: on a dedicated-writer contract, the sibling entry
+            that auto-wiring assigns every subscribe topic to. ``None`` for an
+            in-process contract, where the writer owns its own topics.
         wire_payload: the envelope's ``payload`` as JSON-safe primitives,
             exactly as it arrives off the wire.
     """
@@ -218,6 +264,8 @@ class ProjectionChainCase:
     dlq_topic: str
     writer_handler_name: str
     wire_payload: dict[str, object]
+    in_process_write_path: bool = True
+    topic_owning_entry: str | None = None
 
     @property
     def contract_path(self) -> Path:
@@ -235,6 +283,17 @@ DELEGATION_PROJECTION_CASE = ProjectionChainCase(
     entry_topic="onex.evt.omnimarket.delegate-skill-completed.v1",
     dlq_topic="onex.dlq.omnimarket.projection-delegation-malformed.v1",
     writer_handler_name="HandlerProjectionDelegation",
+    # OMN-17556, adopted from omnibase-infra 0.38.18. `projection_delegation`
+    # declares TWO handler entries and the standalone `DelegationProjectionRunner`
+    # (no `event_model`) takes every subscribe topic, so `HandlerProjectionDelegation`
+    # is assigned none. omnimarket has said so since OMN-15905 -- the runner's own
+    # docstring calls its sibling "the shared-kernel handler that the two-handler
+    # dispatch ambiguity starves of routes" -- but until 0.38.18 the shared runtime
+    # still BUILT the full projection callback for that starved entry and opened a
+    # tenant-domain database for it. infra `350889286` (OMN-17519, #3136) stopped
+    # doing that. This row now gates the shape that actually ships.
+    in_process_write_path=False,
+    topic_owning_entry="DelegationProjectionRunner",
     wire_payload={
         "correlation_id": "7a300828-4000-4000-8000-000000000001",
         "session_id": "7a300828-4000-4000-8000-000000000001",
@@ -606,8 +665,56 @@ async def test_delegate_skill_terminal_reaches_the_projection_writer(
     DO work today — subscription, topic addressing, payload matching — so a
     future regression in any of them is attributed correctly instead of being
     re-diagnosed as the write-seam defect.
+
+    On a DEDICATED-WRITER contract (``in_process_write_path=False``) the same
+    question has the opposite correct answer, and it is asserted just as
+    strictly. OMN-17519 made "this entry is never dispatched here" a typed
+    per-entry fact — ``PreparedWiring.dispatch_is_noop`` — so the shape is read
+    off the real wiring rather than inferred from the absence of a log line,
+    which is what would let a genuine wiring regression pass as the sanctioned
+    pattern.
     """
     run = await _run_projection_chain(case, monkeypatch, caplog)
+
+    if not case.in_process_write_path:
+        by_name = {w.handler_name: w for w in run.prepared}
+        writer = by_name.get(case.writer_handler_name)
+        assert writer is not None, (
+            f"[{case.chain_id}] the contract no longer declares "
+            f"{case.writer_handler_name}; prepared entries: {sorted(by_name)}"
+        )
+        assert writer.dispatch_is_noop, (
+            f"[{case.chain_id}] {case.writer_handler_name} is now dispatched "
+            f"in the shared runtime. The OMN-15905 dedicated-writer separation "
+            f"has been undone, or infra reverted OMN-17519 — either way this "
+            f"process would open a tenant-domain database for rows the "
+            f"dedicated writer owns, which is the OMN-17519 boot failure."
+        )
+        unreachable_detail = (
+            f"[{case.chain_id}] {case.writer_handler_name} was assigned routes "
+            f"{writer.route_ids} — a no-op dispatcher that CAN be reached "
+            f"silently swallows events"
+        )
+        assert not writer.routes, unreachable_detail
+        assert not writer.route_ids, unreachable_detail
+        owner = by_name.get(str(case.topic_owning_entry))
+        assert owner is not None, (
+            f"[{case.chain_id}] the declared topic owner "
+            f"{case.topic_owning_entry} is not among the prepared entries: "
+            f"{sorted(by_name)}"
+        )
+        assert case.writer_handler_name not in run.handlers_entered, (
+            f"[{case.chain_id}] {case.writer_handler_name} was entered by the "
+            f"real dispatch despite being wired as a no-op — the "
+            f"undispatchable-entry warning is now the only thing standing "
+            f"between a starved handler and a silent write of nothing"
+        )
+        assert str(case.topic_owning_entry) in run.handlers_entered, (
+            f"[{case.chain_id}] neither entry was reached. Handlers observed: "
+            f"{run.handlers_entered or '(none)'}. The contract is orphaned in "
+            f"this process, which is a defect and NOT the OMN-15905 pattern."
+        )
+        return
 
     assert case.writer_handler_name in run.handlers_entered, (
         f"[{case.chain_id}] the real dispatch never entered "
@@ -707,8 +814,40 @@ async def test_a_write_that_produces_no_row_fails_closed(
     goes RED on it. A relock that dropped back to the permissive release could
     not pass this file, which is the point — the incompatibility is asserted
     instead of being carried as a silently-permissive lock (OMN-17549).
+
+    A DEDICATED-WRITER contract (``in_process_write_path=False``) owes this
+    process no row at all, so there is no write here to fail closed and the
+    OMN-17379 guard is not the property under gate. The property that IS under
+    gate is the other half of the same doctrine, and it is the one an
+    undispatchable entry can still get wrong: having written nothing, the
+    shared runtime must CLAIM nothing. A terminal or a DLQ record from a no-op
+    dispatcher is a false statement about a row the dedicated writer still
+    owns, and it is exactly the false-green shape this file exists to catch —
+    OMN-13360's terminal gate read from the wrong side.
     """
     run = await _run_projection_chain(case, monkeypatch, caplog)
+
+    if not case.in_process_write_path:
+        assert case.writer_handler_name not in run.handlers_entered
+        assert not run.terminal_messages, (
+            f"[{case.chain_id}] {len(run.terminal_messages)} terminal event(s) "
+            f"were published by a process whose auto-wiring dispatches this "
+            f"contract's writer NOWHERE. Every downstream consumer is told a "
+            f"projection succeeded that this process never even attempted; the "
+            f"row is owed by the dedicated "
+            f"{case.topic_owning_entry} writer deployment (OMN-15905)."
+        )
+        assert not run.dlq_failure_reasons, (
+            f"[{case.chain_id}] a no-op dispatcher routed the event to "
+            f"{case.dlq_topic}: {run.dlq_failure_reasons}. DLQ-and-advance "
+            f"declares the event unfixable by redelivery, which this process "
+            f"is in no position to judge — it did not run the write path."
+        )
+        assert not run.quarantine_messages, (
+            f"[{case.chain_id}] {len(run.quarantine_messages)} message(s) "
+            f"reached {QUARANTINE_TOPIC} from a no-op dispatch path"
+        )
+        return
 
     assert case.writer_handler_name in run.handlers_entered, (
         f"[{case.chain_id}] the real dispatch never entered "

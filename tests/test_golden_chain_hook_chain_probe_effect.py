@@ -13,11 +13,25 @@ the union testable:
     NEVER a generic timeout. A probe that cannot tell "denied by allowlist"
     apart from "no consumer" does not satisfy the ticket, so both shapes are
     asserted to produce distinct blockers.
+
+AC2's LIVE half was re-derived on 2026-09-06 (OMN-17556), when the
+``omnibase-infra`` 0.38.16 -> 0.38.19 pin bump landed OMN-16979 and made the
+allowlist denial it pinned false; its downstream half was re-derived again the
+same day when OMN-17201 (omnimarket#2331) raised the emit seam's redaction floor
+and opened the outbound leg that re-derivation had found still closed. The classifier tests below still drive the
+2026-08-30 shape as a FIXTURE -- that is a test of the classifier's rules given
+an observation, and those rules are unchanged. What moved is what the live
+contracts say, and that is re-derived from both ends of the seam in
+``TestLiveForwarderPolicyIsReadFromTheForwardersOwnContract`` and
+``TestTheLiveChainSeamAdmitsWhatTheUpstreamSeamActuallyStamps`` below.
 """
 
 from __future__ import annotations
 
 import pytest
+from omnibase_infra.nodes.node_bus_forwarder_effect.models.model_gateway_egress_redaction import (
+    ModelGatewayEgressRedaction,
+)
 
 from omnimarket.nodes.node_hook_chain_probe_effect.chain_classifier import (
     classify_chain,
@@ -328,23 +342,240 @@ class TestLiveForwarderPolicyIsReadFromTheForwardersOwnContract:
         assert outbound, "forwarder contract declares an outbound mirror set"
         assert transport
 
-    def test_the_traced_hook_topic_is_denied_by_the_live_allowlist_today(self) -> None:
-        """AC2, pinned against the real contract rather than a fixture."""
+    def test_the_traced_hook_topic_is_admitted_by_the_live_allowlist_today(
+        self,
+    ) -> None:
+        """AC2, re-derived from the live chain after OMN-16979 landed.
+
+        The previous revision of this test asserted the opposite -- that the
+        traced topic was ABSENT from the forwarder's outbound mirror set -- and
+        its own failure message instructed that the expectation be re-derived
+        from the live chain rather than flipped, once OMN-16979 shipped. It has
+        shipped: infra ``2d458e235`` widened ``mirror_topics.outbound`` with the
+        two content-bearing hook classes and moved the packaged contract to
+        0.1.5, first released in the ``omnibase-infra`` 0.38.18 wheel this repo
+        now pins.
+
+        So the denial this test was written to pin no longer exists, and the
+        re-derivation is: the widening did not make the traced topic cross
+        unconditionally. It made it cross CONDITIONALLY, behind the new
+        fail-closed ``egress_redaction`` admission gate declared in the very
+        same contract block (packaged ``contract.yaml`` lines 90-91 for the
+        widening, 133-141 for the gate). ``ModelGatewayForwarderConfig``
+        ``._validate_egress_redaction_pairing`` refuses the pair in the outbound
+        set without that governance, so the two cannot drift apart.
+
+        What the gate requires is asserted here from the contract, not restated:
+        a payload key (``state_field``), the states that may cross
+        (``admitted_states``), and the governed set. ``raw`` is structurally
+        inadmissible -- ``ModelGatewayEgressRedaction`` refuses it in
+        ``admitted_states`` at construction, because it is ``ArtifactStore``'s
+        default (OMN-13152) so a policy admitting it would gate nothing.
+        """
         from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
             _load_forwarder_policy,
             _load_probe_config,
+            _read_forwarder_contract,
         )
 
-        outbound, _transport, _detail = _load_forwarder_policy(
+        module = "omnibase_infra.nodes.node_bus_forwarder_effect"
+        outbound, _transport, _detail = _load_forwarder_policy(module)
+        traced_topic = _load_probe_config()["hook_topic"]
+
+        # Leg 1 of the derivation: the allowlist denial is gone.
+        assert traced_topic in outbound, (
+            "the traced hook topic left the forwarder outbound mirror set -- "
+            "the OMN-16979 widening regressed, and this expectation must be "
+            "re-derived from the live contract rather than reverted"
+        )
+
+        # Leg 2: admission is governed, not unconditional. Read straight off
+        # the packaged contract, so a wheel that drops the gate fails here.
+        contract = _read_forwarder_contract(module)
+        assert not isinstance(contract, str), contract
+        policy = contract["config"]["gateway_forwarder"]["egress_redaction"]
+        assert traced_topic in policy["governed_topics"], (
+            "the traced hook topic is mirrored outbound but not named in "
+            "egress_redaction.governed_topics -- the pairing validator that "
+            "makes the widening safe is no longer holding"
+        )
+        assert policy["state_field"] == "redaction_state"
+        assert "raw" not in policy["admitted_states"]
+        assert set(policy["admitted_states"]) == {
+            "redacted",
+            "restricted",
+            "secret_detected",
+        }
+
+
+class TestTheLiveChainSeamAdmitsWhatTheUpstreamSeamActuallyStamps:
+    """The other half of the AC2 re-derivation: what the producer really emits.
+
+    The forwarder gate is only half the live chain. It admits a record on a
+    governed topic if and only if that record carries an admitted state under
+    ``state_field``, and the ONLY thing that stamps that field is this repo's
+    own emit seam -- ``node_event_emit_effect``'s per-topic transform over
+    ``contracts/capture_redaction.yaml`` (OMN-16019 / OMN-17209). Both halves
+    are in this repo's dependency closure, so the composed answer is derivable
+    here rather than assumed, which is what the previous test's own message
+    asked for.
+
+    Deriving it turns up a fact worth pinning: the two governed topics do NOT
+    behave the same way, and one of them still does not cross.
+    """
+
+    @staticmethod
+    def _forwarder_policy() -> ModelGatewayEgressRedaction:
+        """The live gate, as the real model rather than as a raw mapping.
+
+        Constructing it here is not ceremony: ``ModelGatewayEgressRedaction``
+        is where ``raw`` is refused structurally and where ``governed_topics``
+        is validated against the canonical topic grammar, so a contract this
+        cannot construct is one the forwarder would also refuse. The
+        assertions below then ask the real object rather than re-reading YAML.
+        """
+        from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
+            _read_forwarder_contract,
+        )
+
+        contract = _read_forwarder_contract(
             "omnibase_infra.nodes.node_bus_forwarder_effect"
         )
-        traced_topic = _load_probe_config()["hook_topic"]
-        assert traced_topic not in outbound, (
-            "the traced hook topic is now admitted by the forwarder outbound "
-            "mirror set -- OMN-16979 has landed and this probe's AC2 expectation "
-            "must be re-derived from the live chain, not left asserting a denial "
-            "that no longer exists"
+        assert not isinstance(contract, str), contract
+        policy = contract["config"]["gateway_forwarder"]["egress_redaction"]
+        assert isinstance(policy, dict)
+        return ModelGatewayEgressRedaction(
+            state_field=str(policy["state_field"]),
+            admitted_states=tuple(str(state) for state in policy["admitted_states"]),
+            governed_topics=tuple(str(topic) for topic in policy["governed_topics"]),
         )
+
+    def test_the_two_contracts_name_the_same_state_field(self) -> None:
+        """A field-name disagreement would drop every record silently.
+
+        ``ModelGatewayEgressRedaction.admits`` reads exactly one key. If the
+        producer stamps under a different name the boundary sees ``None``,
+        which is an unadmitted state, so every governed record is dropped with
+        a warning and no error anywhere. Neither side can detect that alone --
+        only this comparison can.
+        """
+        from omnimarket.nodes.node_event_emit_effect.redaction import load_contract
+
+        assert (
+            load_contract().redaction_state_field
+            == self._forwarder_policy().state_field
+        )
+
+    def test_prompt_submitted_is_stamped_into_an_admitted_state(self) -> None:
+        """The class that DOES cross, proved by running the real transform.
+
+        ``prompt-submitted.v1`` declares ``prompt``/``prompt_b64`` as
+        ``never_capture`` and ``prompt_preview`` as ``capture_shape_only``, so
+        the transform drops or reshapes a field and escalates the record to
+        ``redacted`` -- which the forwarder admits.
+        """
+        from omnimarket.nodes.node_event_emit_effect.redaction import (
+            redact_capture,
+        )
+
+        topic = "onex.evt.omniclaude.prompt-submitted.v1"
+        policy = self._forwarder_policy()
+        assert policy.governs(topic)
+
+        stamped = redact_capture(
+            {
+                "session_id": "s-omn17556",
+                "prompt": "a prompt body that must never cross",
+                "prompt_preview": "a prompt body th",
+                "hook_source": "UserPromptSubmit",
+                "working_directory": "/w",
+                "correlation_id": "c",
+                "causation_id": "c0",
+                "emitted_at": "2026-09-06T00:00:00Z",
+                "entity_id": "e",
+                "schema_version": "1.0.0",
+            },
+            topic,
+        )
+        assert "prompt" not in stamped
+        assert "prompt_b64" not in stamped
+        assert stamped[policy.state_field] == "redacted"
+        assert policy.admits(stamped)
+
+    def test_the_traced_topic_crosses_the_gate_that_used_to_refuse_it(
+        self,
+    ) -> None:
+        """The traced topic's real, current disposition -- derived, not assumed.
+
+        This assertion has been re-derived once already and is now re-derived a
+        second time, by the mechanism the previous revision predicted. That
+        revision pinned the opposite outcome: ``tool-executed.v1`` declares
+        EVERY field ``capture_verbatim``, so nothing was dropped, hashed or
+        reshaped and ``redact_capture``'s state never escalated above its
+        ``raw`` floor -- and ``raw`` is the one state the forwarder can never
+        admit. It said in terms that the remedy was "a product decision about
+        what state a fully-reviewed verbatim record should carry ... When that
+        decision lands, this assertion is the thing that goes RED and says so."
+
+        It landed, on this repo's own dev, as OMN-17201 (omnimarket#2331,
+        commit ``8da9201d``): ``EnumRedactionState.REDACTED`` is now the FLOOR
+        that ``redact_capture`` stamps, on the grounds that ``raw`` means "no
+        posture was applied" and after this transform that is never true. The
+        commit is explicit that it moves neither ``governed_topics`` nor
+        ``admitted_states`` -- the gate is byte-unchanged and still refuses
+        ``raw``.
+
+        So the composed live chain is re-derived end to end, from both real
+        objects rather than from either side's own fixture:
+
+          * ``policy.governs(traced_topic)`` -> True (OMN-16979 widening,
+            read from the packaged forwarder contract).
+          * ``redact_capture(clean record)[state_field]`` -> ``redacted``
+            (OMN-17201 floor, run through the real transform).
+          * ``policy.admits(stamped)`` -> True. The outbound leg is OPEN.
+
+        The counter-assertion below is what keeps this row from degrading into
+        a restatement of whatever ships: the same record with ``raw`` written
+        back into the state field is still refused, so the gate is proven to be
+        discriminating rather than permissive. A change that re-lowers the emit
+        floor to ``raw``, or that removes ``raw`` from the structural refusal,
+        turns this test RED.
+        """
+        from omnimarket.nodes.node_event_emit_effect.redaction import redact_capture
+        from omnimarket.nodes.node_hook_chain_probe_effect.live_probes import (
+            _load_probe_config,
+        )
+
+        traced_topic = str(_load_probe_config()["hook_topic"])
+        policy = self._forwarder_policy()
+        assert policy.governs(traced_topic)
+
+        stamped = redact_capture(
+            {
+                "session_id": "s-omn17556",
+                "tool_name": "Bash",
+                "duration_ms": 12,
+                "interrupted": False,
+                "hook_source": "PostToolUse",
+                "working_directory": "/w",
+                "correlation_id": "c",
+                "causation_id": "c0",
+                "emitted_at": "2026-09-06T00:00:00Z",
+                "entity_id": "e",
+                "schema_version": "1.0.0",
+            },
+            traced_topic,
+        )
+        assert stamped[policy.state_field] == "redacted"
+        # Asked of the REAL gate object, not re-implemented here.
+        assert policy.admits(stamped)
+
+        # Counter-assertion: the gate still discriminates. The pre-OMN-17201
+        # state written back into the same record is refused, so the True above
+        # is an admission decision and not a gate that admits anything.
+        refused = dict(stamped)
+        refused[policy.state_field] = "raw"
+        assert not policy.admits(refused)
 
 
 class TestHookEdgeLaneIsResolvedFromTheHooksOwnAuthority:
