@@ -71,6 +71,16 @@ class ModelCloudDelegationStatus(BaseModel):
     terminal_model_used: str | None = None
     terminal_total_tokens: int | None = None
     terminal_latency_ms: int | None = None
+    # OMN-17372: WHY a `failed` status failed. Before these, a tenant with no
+    # registered provider key -- refused by name, with a code, before any
+    # provider was contacted -- and a tenant hitting a provider outage got
+    # byte-identical answers here. `terminal_failure_code` is the field to
+    # route on; it is a stable server contract. All four default to None so an
+    # older gateway, or a success, parses unchanged.
+    terminal_failure_class: str | None = None
+    terminal_failure_code: str | None = None
+    terminal_failure_reason: str | None = None
+    terminal_remediation: str | None = None
 
 
 class ModelCloudDelegationReceipt(BaseModel):
@@ -94,6 +104,14 @@ class ModelCloudDelegationReceipt(BaseModel):
     terminal_total_tokens: int
     terminal_latency_ms: int
     result_content: str | None
+    # OMN-17372, same four as on the status above. Defaulted rather than
+    # required: a receipt fetched from a gateway that predates them must still
+    # parse -- a client that refuses to read an older server's receipt turns a
+    # missing explanation into no receipt at all.
+    terminal_failure_class: str | None = None
+    terminal_failure_code: str | None = None
+    terminal_failure_reason: str | None = None
+    terminal_remediation: str | None = None
     event_count: int
     projection_row_hash: str
     terminal_event_hash: str

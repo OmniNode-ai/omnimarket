@@ -87,6 +87,10 @@ def _receipt(
     result_content: str | None = "A delegation receipt proves what ran.",
     status: str = "completed",
     terminal_model_used: str = "gemini-2.5-flash-lite",
+    terminal_failure_class: str | None = None,
+    terminal_failure_code: str | None = None,
+    terminal_failure_reason: str | None = None,
+    terminal_remediation: str | None = None,
 ) -> ModelCloudDelegationReceipt:
     """Receipt CONTENT. Its identity is a placeholder — see ``_FakeTransport``.
 
@@ -109,6 +113,10 @@ def _receipt(
             "terminal_total_tokens": 99,
             "terminal_latency_ms": 1083,
             "result_content": result_content,
+            "terminal_failure_class": terminal_failure_class,
+            "terminal_failure_code": terminal_failure_code,
+            "terminal_failure_reason": terminal_failure_reason,
+            "terminal_remediation": terminal_remediation,
             "event_count": 4,
             "projection_row_hash": "31266a6d",
             "terminal_event_hash": "9fe84da7",
@@ -487,6 +495,173 @@ def test_a_quota_failed_run_exits_nonzero_and_still_saves_the_receipt(
     assert (run_dir / "receipt.json").exists()
     # an empty result.txt would misrepresent "no content" as "an empty answer"
     assert not (run_dir / "result.txt").exists()
+
+
+# ---------------------------------------------------------------------------
+# a failed run says WHY, and the customer can act on it (OMN-17372 AC2)
+#
+# The quota test above is the case where the gateway named no cause. These are
+# the cases where it did: the CLI must print the code and the remediation, exit
+# non-zero, and write both into the run's own files -- otherwise the typed
+# refusal the platform already produced stops at the terminal window.
+# ---------------------------------------------------------------------------
+
+_REFUSAL_CODE = "ONEX_MARKET_CUSTOMER_PROVIDER_KEY_ABSENT"
+_REFUSAL_REMEDIATION = "Register a provider key for this tenant and retry."
+# The remediation variant that names an endpoint is redacted by the producer's
+# own sanitizer by design; it must never reach a customer surface, here least
+# of all -- the CLI writes what it prints to disk.
+_REDACTED_REMEDIATION_FRAGMENT = "/v1/tenants/me/inference-credentials"
+
+
+def _refused_receipt() -> ModelCloudDelegationReceipt:
+    return _receipt(
+        result_content=None,
+        status="failed",
+        terminal_model_used="none",
+        terminal_failure_class="CustomerKeyRefusedError",
+        terminal_failure_code=_REFUSAL_CODE,
+        terminal_failure_reason=(
+            f"[{_REFUSAL_CODE}] delegation.customer_provider_key.absent: "
+            "delegation refused for tenant 'operator-ledger-probe' "
+            "(task_type='summarization', surface=cloud): no provider key is "
+            f"registered for this tenant. {_REFUSAL_REMEDIATION}"
+        ),
+        terminal_remediation=_REFUSAL_REMEDIATION,
+    )
+
+
+def _run_refused(tmp_path: Path, out: Path) -> Any:
+    home = _logged_in(tmp_path)
+    factory, _made = _factory(terminal_status="failed", receipt=_refused_receipt())
+    return CliRunner().invoke(
+        cloud_group,
+        [
+            "delegate",
+            "p",
+            "--task-type",
+            "summarization",
+            "--output-dir",
+            str(out),
+            "--onex-home",
+            str(home),
+            "--poll-interval",
+            "0",
+        ],
+        obj={"transport_factory": factory},
+    )
+
+
+def test_a_refused_run_prints_the_code_and_the_remediation_and_exits_nonzero(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "runs"
+    result = _run_refused(tmp_path, out)
+
+    assert result.exit_code != 0
+    assert _REFUSAL_CODE in result.stderr
+    assert "CustomerKeyRefusedError" in result.stderr
+    assert _REFUSAL_REMEDIATION in result.stderr
+    assert "NOT retried" in result.stderr
+
+
+def test_a_refused_run_does_not_report_it_as_an_empty_answer(
+    tmp_path: Path,
+) -> None:
+    """ "the runtime returned no content" is true of us, false of the customer."""
+    out = tmp_path / "runs"
+    result = _run_refused(tmp_path, out)
+
+    assert "the runtime returned no content" not in result.stderr
+
+
+def test_a_refused_run_writes_the_attribution_into_receipt_and_run_json(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "runs"
+    result = _run_refused(tmp_path, out)
+    assert result.exit_code != 0
+
+    run_dir = out / _WORKFLOW_ID
+    receipt_doc = json.loads((run_dir / "receipt.json").read_text())
+    assert receipt_doc["terminal_failure_code"] == _REFUSAL_CODE
+    assert receipt_doc["terminal_failure_class"] == "CustomerKeyRefusedError"
+    assert receipt_doc["terminal_remediation"] == _REFUSAL_REMEDIATION
+
+    run_doc = json.loads((run_dir / "run.json").read_text())
+    assert run_doc["failure_code"] == _REFUSAL_CODE
+    assert run_doc["failure_class"] == "CustomerKeyRefusedError"
+    assert run_doc["remediation"] == _REFUSAL_REMEDIATION
+    assert _REFUSAL_CODE in run_doc["failure_reason"]
+
+
+def test_the_redacted_remediation_variant_never_reaches_the_customer(
+    tmp_path: Path,
+) -> None:
+    out = tmp_path / "runs"
+    result = _run_refused(tmp_path, out)
+
+    written = (out / _WORKFLOW_ID / "receipt.json").read_text() + (
+        out / _WORKFLOW_ID / "run.json"
+    ).read_text()
+    assert _REDACTED_REMEDIATION_FRAGMENT not in result.stderr
+    assert _REDACTED_REMEDIATION_FRAGMENT not in written
+
+
+def test_a_successful_run_prints_no_failure_attribution(tmp_path: Path) -> None:
+    """Nothing to explain, and nothing invented to explain it with."""
+    home = _logged_in(tmp_path)
+    out = tmp_path / "runs"
+    factory, _made = _factory()
+
+    result = CliRunner().invoke(
+        cloud_group,
+        [
+            "delegate",
+            "p",
+            "--task-type",
+            "summarization",
+            "--output-dir",
+            str(out),
+            "--onex-home",
+            str(home),
+            "--poll-interval",
+            "0",
+        ],
+        obj={"transport_factory": factory},
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "code:" not in result.stderr
+    run_doc = json.loads((out / _WORKFLOW_ID / "run.json").read_text())
+    assert run_doc["failure_code"] is None
+    assert run_doc["remediation"] is None
+
+
+def test_an_older_gateway_answer_without_the_attribution_still_parses(
+    tmp_path: Path,
+) -> None:
+    """A client that refuses an older server's receipt files no receipt at all."""
+    legacy = {
+        "workflow_id": _WORKFLOW_ID,
+        "tenant_id": str(uuid.uuid4()),
+        "correlation_id": str(uuid.uuid4()),
+        "workflow_type": "delegation-inference",
+        "status": "failed",
+        "submitted_at": "2026-08-29T15:00:00Z",
+        "completed_at": "2026-08-29T15:00:08Z",
+        "terminal_model_used": "none",
+        "terminal_total_tokens": 0,
+        "terminal_latency_ms": 694,
+        "result_content": None,
+        "event_count": 1,
+        "projection_row_hash": "31266a6d",
+        "terminal_event_hash": "9fe84da7",
+        "verifier": "my-laptop",
+    }
+    parsed = ModelCloudDelegationReceipt.model_validate(legacy)
+    assert parsed.terminal_failure_code is None
+    assert parsed.terminal_remediation is None
 
 
 # ---------------------------------------------------------------------------
