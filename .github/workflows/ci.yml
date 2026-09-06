@@ -2102,7 +2102,13 @@ jobs:
   # ============================================================================
   customer-path-boundary:
     name: Customer Path Boundary (OMN-18012)
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
     timeout-minutes: 30
     steps:
       - name: Checkout code
@@ -2157,7 +2163,13 @@ jobs:
   # ============================================================================
   js-toolchain-hermetic:
     name: JS Toolchain Hermetic (OMN-18012)
-    runs-on: ubuntu-latest
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+            github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["self-hosted","omnibase-ci"]')
+      }}
     timeout-minutes: 20
     steps:
       - name: Checkout code
