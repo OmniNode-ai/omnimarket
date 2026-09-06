@@ -52,7 +52,10 @@ from omnimarket.nodes.node_projection_hook_ledger.handlers.handler_hook_ledger_p
 from omnimarket.projection.envelope import unwrap_envelope
 from omnimarket.projection.runner import MessageMeta
 
-TENANT_SLUG = "beta-gateway-canary"
+# OMN-17201: the LIVE tenant slug. `beta-gateway-canary` names no row in
+# omninode_cloud.public.tenants, so every wire topic built from it was one
+# the broker has never held and the writer now refuses it at startup.
+TENANT_SLUG = "beta-gateway-canary-79afa7263852"
 _SESSION = "5bc4e084-6a53-4f69-936e-998985adbcf5"
 
 #: Verbatim bytes off the stability-lane broker, 2026-08-29/30.

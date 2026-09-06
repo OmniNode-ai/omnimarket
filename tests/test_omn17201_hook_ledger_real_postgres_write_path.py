@@ -259,7 +259,7 @@ async def test_real_postgres_accepts_every_bound_parameter_and_lands_one_row() -
         await conn.execute(_MIGRATION.read_text())
         await conn.execute(_RLS_MIGRATION.read_text())
 
-        tenant = "beta-gateway-canary"
+        tenant = "beta-gateway-canary-79afa7263852"
         correlation_id = str(uuid4())
         wire_topic = resolve_physical_topic(_CANONICAL, tenant_slug=tenant)
         runner = _runner(conn)
@@ -299,7 +299,7 @@ async def test_real_postgres_redelivery_is_suppressed_by_the_unique_key() -> Non
         await conn.execute(_MIGRATION.read_text())
         await conn.execute(_RLS_MIGRATION.read_text())
 
-        tenant = "beta-gateway-canary"
+        tenant = "beta-gateway-canary-79afa7263852"
         correlation_id = str(uuid4())
         wire_topic = resolve_physical_topic(_CANONICAL, tenant_slug=tenant)
         runner = _runner(conn)
@@ -363,7 +363,7 @@ async def test_real_postgres_keeps_two_tenants_hook_events_on_separate_rows() ->
         correlation_id = str(uuid4())
         runner = _runner(role_conn)
 
-        for tenant in ("beta-gateway-canary", "beta-second-tenant"):
+        for tenant in ("beta-gateway-canary-79afa7263852", "beta-second-tenant"):
             wire_topic = resolve_physical_topic(_CANONICAL, tenant_slug=tenant)
             runner._wire_topics = (*runner._wire_topics, wire_topic)
             meta = MessageMeta(partition=0, offset=1, fallback_id="", topic=wire_topic)
@@ -380,7 +380,7 @@ async def test_real_postgres_keeps_two_tenants_hook_events_on_separate_rows() ->
         # Read each tenant's row under ITS OWN GUC, on the SAME unprivileged
         # connection. Under FORCE RLS there is no single read that sees both,
         # and that is the isolation being proven.
-        for tenant in ("beta-gateway-canary", "beta-second-tenant"):
+        for tenant in ("beta-gateway-canary-79afa7263852", "beta-second-tenant"):
             await role_conn.execute(
                 "SELECT set_config('app.tenant_id', $1, false)", tenant
             )
@@ -436,7 +436,7 @@ def test_real_postgres_canonical_handle_path_reports_a_true_row_count() -> None:
     dsn = _superuser_dsn_or_skip()
     asyncio.run(_apply(dsn, _MIGRATION.read_text()))
 
-    tenant = "beta-gateway-canary"
+    tenant = "beta-gateway-canary-79afa7263852"
     correlation_id = str(uuid4())
     wire_topic = resolve_physical_topic(_CANONICAL, tenant_slug=tenant)
 
