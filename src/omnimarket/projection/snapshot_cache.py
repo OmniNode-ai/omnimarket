@@ -81,6 +81,17 @@ _BOOTSTRAP_RPC_TIMEOUT_SECONDS = 30.0
 # how long the replay takes, never of how many records it contains, which is
 # the property the 600s progressDeadlineSeconds needs.
 _BOOTSTRAP_RPC_CHECK_MIN_INTERVAL_SECONDS = 5.0
+# OMN-15876: how far past ``exposure.limit * 4`` the cache is allowed to grow
+# before a capacity trim runs. The trim is O(rows log rows); running it on
+# EVERY record once the cap is reached makes a replay O(records x cap log cap),
+# which is what the live consumer-flow backlog could not finish. Letting the
+# dict overshoot by this factor and then trimming back to the cap in one pass
+# costs one sort per ``cap`` records instead of one per record -- the eviction
+# work becomes amortized O(1). Memory stays bounded by a constant factor of the
+# declared cap, and a larger retained set can only make the served answer more
+# complete, never less: ``get_rows`` orders the FULL retained set and truncates
+# to ``exposure.limit`` afterwards.
+_ROW_CAP_SLACK_FACTOR = 2
 
 
 def _default_group_id() -> str:
@@ -396,12 +407,27 @@ class SnapshotCache:
 
         exposure = self._exposures[topic]
         max_rows = exposure.limit * 4
-        if len(state.rows) > max_rows:
+        if len(state.rows) > max_rows * _ROW_CAP_SLACK_FACTOR:
             # Evict by RECENCY (lowest observed_at first), never by the
             # exposure's display order_by_spec (CodeRabbit, OMN-15800): for an
             # ASC-ordered exposure, sorting-then-truncating-to-head would keep
             # the OLDEST rows forever and evict the row this call just wrote.
             # Retention and display ordering are separate concerns.
+            #
+            # OMN-15876: this runs once per ``max_rows`` records, not once per
+            # record. Live on onex-dev, ``consumer-flow.v1`` retained
+            # 1,293,082 records (log start 0, high-water 1,293,082) and puts
+            # ``window_start`` inside its compaction key, so every record mints
+            # a NEW key: the cap was exceeded within the first 2,000 records
+            # and every one of the remaining ~1.29M paid a full 2,000-row sort
+            # plus a dict rebuild. Measured at 0.55 ms/record on an
+            # unthrottled machine, that is ~12 minutes of pure CPU before the
+            # pod's 500m CFS limit is applied -- against a pod that was killed
+            # by its own liveness probe long before finishing, restarting the
+            # replay from the log start each time (the consumer group carries a
+            # fresh per-process discriminator and reads
+            # ``auto_offset_reset="earliest"``). Trimming on the overshoot
+            # instead makes the eviction cost independent of the backlog.
             # observed_at (wall-clock, display-only metadata) is a globally
             # comparable soft-LRU signal here -- capacity eviction is not the
             # correctness-critical authority path (that's the offset-keyed
