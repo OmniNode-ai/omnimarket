@@ -461,8 +461,33 @@ def _response_from_result(
         result.get("terminal_failure_cause")
     )
     terminal_failure_cause = explicit_terminal_failure_cause or terminal_failure_cause
+    score_vs_required_bar = _as_quality_score_comparison(
+        result.get("score_vs_required_bar")
+    )
+    failed_acceptance_criteria = tuple(
+        _as_str_list(result.get("failed_acceptance_criteria"))
+    )
     if terminal_failure_cause is not None:
         quality_gate_passed = False
+        # OMN-17979: the downgrade above is what makes a quality-failed response
+        # at or above its bar, and the wire model REQUIRES such a response to
+        # name the criterion it failed. Pre-fix it named nothing, so the
+        # response could not be constructed and the command terminalized as an
+        # auto-wiring boundary failure instead of a delegation terminal. The
+        # criterion is stated from the typed cause plus the evidence actually
+        # observed -- the validator's premise satisfied with a real reason, not
+        # relaxed and not filled with a placeholder.
+        if (
+            score_vs_required_bar is EnumQualityScoreComparison.AT_OR_ABOVE_BAR
+            and not failed_acceptance_criteria
+        ):
+            observed = error_message or "; ".join(
+                attempt.error_message for attempt in attempts if attempt.error_message
+            )
+            criterion = f"terminal_failure_cause:{terminal_failure_cause.value}"
+            failed_acceptance_criteria = (
+                f"{criterion} ({observed})" if observed else criterion,
+            )
     actual_cost_usd = _measured_cost_usd(result)
     cost_savings_usd = (
         max(
@@ -501,12 +526,8 @@ def _response_from_result(
         quality_gate_passed=quality_gate_passed,
         quality_score=_as_float(result.get("quality_score")),
         required_quality_bar=_as_optional_float(result.get("required_quality_bar")),
-        score_vs_required_bar=_as_quality_score_comparison(
-            result.get("score_vs_required_bar")
-        ),
-        failed_acceptance_criteria=tuple(
-            _as_str_list(result.get("failed_acceptance_criteria"))
-        ),
+        score_vs_required_bar=score_vs_required_bar,
+        failed_acceptance_criteria=failed_acceptance_criteria,
         terminal_failure_cause=terminal_failure_cause,
         quality_gates_failed=quality_failures,
         error_message=error_message,
