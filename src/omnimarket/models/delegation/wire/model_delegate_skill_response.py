@@ -272,6 +272,20 @@ def _typed_cause_claim(
     return None
 
 
+def _ladder_records_an_acceptance(
+    attempts: Sequence[ModelDelegateSkillAttemptRecord],
+) -> bool:
+    """Whether any rung on the ladder was ACCEPTED, ending the escalation.
+
+    ``quality_gate_passed`` is the uniform field for this across both ladder
+    sources: the dispatch-port path reports it directly, and the
+    escalation-history path derives it from the typed
+    ``acceptance_decision is ACCEPT`` (OMN-16932). Acceptance terminates the
+    ladder, so at most one rung can carry it.
+    """
+    return any(attempt.quality_gate_passed for attempt in attempts)
+
+
 def resolve_terminal_failure_cause(
     attempts: Sequence[ModelDelegateSkillAttemptRecord],
     *,
@@ -282,6 +296,14 @@ def resolve_terminal_failure_cause(
     The cause names the status class the provider actually reported. Resolution
     order (OMN-16998):
 
+    0. **An abandoned rung is not the terminal (OMN-17979).** When the ladder
+       records an ACCEPTED rung, the escalation ended in acceptance and the
+       earlier rungs are escalation history, not the terminal's cause. Their
+       refusal text is real, and it stays legible on ``attempts[]`` — it simply
+       does not classify the outcome of a run that went on to succeed. The one
+       exception is fail-closed: an outer ``error_message`` is the run's own
+       report about itself, so a ladder that accepted a rung while the run still
+       reported an error is classified rather than excused.
     1. **Typed evidence.** An attempt whose ``failure_class`` equals a known
        enum value is authoritative, so a port that learns to classify its own
        failures takes precedence over text matching without a change here.
@@ -295,10 +317,19 @@ def resolve_terminal_failure_cause(
     to ``PROVIDER_ERROR`` rather than entering the over-quota metric, which is
     measured from this field.
 
-    Returns ``None`` only when nothing was observed at all. Silence is not a
-    provider error — and a successful response is forbidden from carrying a
-    cause, so manufacturing one from silence would make success unconstructible.
+    Returns ``None`` when nothing was observed at all, and when the ladder
+    accepted a rung. Silence is not a provider error, and neither is a rung the
+    ladder climbed past — a successful response is forbidden from carrying a
+    cause, so manufacturing one from either would make success unconstructible.
+    That was the live OMN-17979 defect: an escalated run whose local rung 404'd
+    and whose next rung answered at 1.0 against a 0.8 bar acquired a
+    ``PROVIDER_ERROR`` here, which downgraded ``quality_gate_passed`` while the
+    accepted rung's score and comparison stayed, and the resulting response
+    could not be constructed at all.
     """
+    if not error_message and _ladder_records_an_acceptance(attempts):
+        return None
+
     observed = [
         text
         for text in (*(attempt.error_message for attempt in attempts), error_message)
