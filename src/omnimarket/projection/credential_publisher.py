@@ -332,7 +332,16 @@ def _build_event_bus() -> ProtocolCredentialEventBus:
             "KAFKA_BOOTSTRAP_SERVERS (or KAFKA_BROKER) is required to publish a "
             "credential-registered/-revoked event; no broker configured."
         )
-    config = ModelKafkaEventBusConfig(bootstrap_servers=bootstrap)
+    # apply_environment_overrides() is what carries the broker's TRANSPORT auth
+    # (KAFKA_SECURITY_PROTOCOL / KAFKA_SASL_MECHANISM / KAFKA_MSK_REGION) into
+    # the config. Without it this model defaults to PLAINTEXT with no SASL
+    # mechanism, so on an MSK IAM-only listener (9098) the broker closes the
+    # connection and bus.start() raises ONEX_CORE_205_SERVICE_UNAVAILABLE --
+    # surfacing as a 503 on POST /v1/tenants/me/inference-credentials with the
+    # customer's key ALREADY written to the secret store (OMN-17372).
+    config = ModelKafkaEventBusConfig(
+        bootstrap_servers=bootstrap
+    ).apply_environment_overrides()
     return cast(ProtocolCredentialEventBus, EventBusKafka(config))
 
 
