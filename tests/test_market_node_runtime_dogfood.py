@@ -42,6 +42,9 @@ EXPECTED_MISSING_ENTRY_POINTS = {
     # discoverable inventory metadata, but deliberately has no addressable
     # runtime entry point, bus route, or live side-effect capability.
     "node_rsd_v4_static_profile_validate_compute",
+    # OMN-17982 V5 is deliberately offline-only: its pure validator has no
+    # command/terminal route, event bus, runtime, or effect capability.
+    "node_rsd_v5_oci_safe_config_validate_compute",
 }
 
 
@@ -269,8 +272,13 @@ def test_market_node_runtime_dogfood_inventory_classifies_all_entry_points() -> 
     # omniclaude hook classes off the CLOUD bus as tenant-prefixed wire topics
     # and materializes public.hook_events, the table the already-deployed read
     # route GET /v1/projections/hook-events/by-correlation serves): 395 -> 396.
-    # OMN-17982 adds the offline-only V4 profile validator: 396 -> 397.
-    assert summary["node_dirs"] == 397
+    # OMN-17982 adds the offline-only V4 profile and V5 safe-config validators:
+    # 396 -> 398.
+    # OMN-17982 adds node_rsd_v5_oci_safe_config_validate_compute (COMPUTE;
+    # pure offline validation of supplied redacted OCI safe-config evidence,
+    # with no runtime, network, repository, secret, Docker, or side-effect
+    # capability): 396 -> 397.
+    assert summary["node_dirs"] == 398
     # OMN-14151 deliberately removes request/response entry points from the
     # three legacy arm surfaces; the new arm-gate compute node is the single
     # active route. OMN-14608's reducer entry point brings the count back up:

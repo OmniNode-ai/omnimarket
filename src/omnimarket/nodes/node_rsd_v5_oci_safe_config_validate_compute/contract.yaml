@@ -1,0 +1,37 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: "node_rsd_v5_oci_safe_config_validate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Pure offline validation of V5 OCI safe-config evidence against supplied
+  canonical config bytes. It has no map, signer, authority, filesystem,
+  environment, network, attach, replay, or effect surface.
+input_model:
+  name: "ModelRsdV5OciSafeConfigInput"
+  module: "omnimarket.nodes.node_rsd_v5_oci_safe_config_validate_compute.models.model_rsd_v5_oci_safe_config"
+output_model:
+  name: "ModelRsdV5OciSafeConfigOutput"
+  module: "omnimarket.nodes.node_rsd_v5_oci_safe_config_validate_compute.models.model_rsd_v5_oci_safe_config"
+handler:
+  module: "omnimarket.nodes.node_rsd_v5_oci_safe_config_validate_compute.handlers.handler_rsd_v5_oci_safe_config"
+  class: "HandlerRsdV5OciSafeConfig"
+  input_model: "omnimarket.nodes.node_rsd_v5_oci_safe_config_validate_compute.models.model_rsd_v5_oci_safe_config.ModelRsdV5OciSafeConfigInput"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_rsd_v5_oci_safe_config_validate_compute.handlers.handler_rsd_v5_oci_safe_config:HandlerRsdV5OciSafeConfig"
+  handlers:
+    - operation: "validate_rsd_v5_oci_safe_config"
+      handler:
+        name: "HandlerRsdV5OciSafeConfig"
+        module: "omnimarket.nodes.node_rsd_v5_oci_safe_config_validate_compute.handlers.handler_rsd_v5_oci_safe_config"
+metadata:
+  transport_type: inmemory
+  description: "Offline V5 OCI safe-config validator; permanently non-authorizing."
+  author: "OmniNode Team"
+  created: "2026-09-06"
+  tags: ["compute", "offline-validation", "rsd", "v5"]
+  related_tickets: ["OMN-17982"]
