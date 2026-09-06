@@ -1,0 +1,35 @@
+name: "node_rsd_v5_artifact_evidence_validate_compute"
+lifecycle: experimental
+node_type: "COMPUTE_GENERIC"
+runtime_profiles: [main]
+contract_version: {major: 1, minor: 0, patch: 0}
+node_version: "1.0.0"
+description: >
+  Pure offline verification of supplied V5 worker attestations, V4 static
+  profile evidence, and V5 safe-config evidence. It has no route root, signer,
+  map, filesystem, environment, network, attach, replay, or effect surface.
+input_model:
+  name: "ModelRsdV5ArtifactEvidenceInput"
+  module: "omnimarket.nodes.node_rsd_v5_artifact_evidence_validate_compute.models.model_rsd_v5_artifact_evidence"
+output_model:
+  name: "ModelRsdV5ArtifactEvidenceOutput"
+  module: "omnimarket.nodes.node_rsd_v5_artifact_evidence_validate_compute.models.model_rsd_v5_artifact_evidence"
+handler:
+  module: "omnimarket.nodes.node_rsd_v5_artifact_evidence_validate_compute.handlers.handler_rsd_v5_artifact_evidence"
+  class: "HandlerRsdV5ArtifactEvidence"
+  input_model: "omnimarket.nodes.node_rsd_v5_artifact_evidence_validate_compute.models.model_rsd_v5_artifact_evidence.ModelRsdV5ArtifactEvidenceInput"
+handler_routing:
+  routing_strategy: "operation_match"
+  default_handler: "omnimarket.nodes.node_rsd_v5_artifact_evidence_validate_compute.handlers.handler_rsd_v5_artifact_evidence:HandlerRsdV5ArtifactEvidence"
+  handlers:
+    - operation: "validate_rsd_v5_artifact_evidence"
+      handler:
+        name: "HandlerRsdV5ArtifactEvidence"
+        module: "omnimarket.nodes.node_rsd_v5_artifact_evidence_validate_compute.handlers.handler_rsd_v5_artifact_evidence"
+metadata:
+  transport_type: inmemory
+  description: "Offline V5 worker-evidence validator; permanently non-authorizing."
+  author: "OmniNode Team"
+  created: "2026-09-06"
+  tags: ["compute", "offline-validation", "rsd", "v5"]
+  related_tickets: ["OMN-17982"]
