@@ -54,7 +54,23 @@ dependencies = [
     # omnibase-infra floor below. omnibase-infra 0.38.16 declares
     # `omnibase-core==0.47.2` exactly, so >=0.47.1 named a combination the
     # resolver can never satisfy while pretending 0.47.1 was still allowed.
-    "omnibase-core>=0.47.2,<0.48.0",
+    # OMN-17556: floor raised 0.47.2 -> 0.47.3. `tenant-projection` is in
+    # omnibase_core.constants.constants_runtime_profiles.REGISTERED_RUNTIME_PROFILES
+    # (and CONSUMER_ATTACHED_RUNTIME_PROFILES) only from 0.47.3, and this repo's
+    # eight TENANT-domain projection contracts now stand on that registration
+    # with no allowlist exemption behind them. A resolve below 0.47.3 re-orphans
+    # all eight silently, so the floor states the requirement rather than
+    # leaving it to the lock. The published omnibase-infra 0.38.18 wheel
+    # declares `omnibase-core==0.47.3` exactly; the [tool.uv]
+    # override-dependencies block below is what actually decides the resolve for
+    # transitive consumers, and it is raised in the same lockstep.
+    # OMN-17980: floor raised 0.47.3 -> 0.47.4. 0.47.3 shipped a RuntimeLocal
+    # regression in which a dispatch's terminal event lost its correlation to
+    # the request that produced it; 0.47.4 is the fix, and omnibase-infra
+    # 0.38.19 declares `omnibase-core==0.47.4` exactly. Holding the floor at
+    # 0.47.3 would let a resolver pick the regressed core underneath the infra
+    # release that was cut specifically to carry the fix.
+    "omnibase-core>=0.47.4,<0.48.0",
     # OMN-14189 imports the shared OCC PR stamp renderer/parser + models from
     # omnibase-compat 0.5.6 (relocated core->compat under OMN-14223 so the gate
     # and this emitter share one zero-dep vocabulary): the single seam
@@ -69,7 +85,21 @@ dependencies = [
     # a floor that still permitted 0.38.15 would let the resolver pick the
     # permissive release those assertions are written against and turn a real
     # incompatibility back into a green suite.
-    "omnibase-infra>=0.38.16,<0.39.0",
+    # OMN-17556: floor raised 0.38.16 -> 0.38.18. The runtime-side profile
+    # registry is `omnibase_infra.runtime.runtime_profile._PROFILES`, which is
+    # NOT derived from the core constant above -- 0.38.16 resolved against core
+    # 0.47.3 still omits `tenant-projection`, verified by running
+    # `tests/validation/test_reducer_runtime_profile_consumer_ownership.py`
+    # against that combination and getting
+    # "deployed-consumer profiles not registered in _PROFILES:
+    # ['tenant-projection']". So the core floor alone does not carry this repo's
+    # eight TENANT-domain contracts; 0.38.18 is the first release whose
+    # `_PROFILES` names the profile their consolidated writer boots.
+    # OMN-17980: floor raised 0.38.18 -> 0.38.19. 0.38.19 is the release cut to
+    # carry the fixed omnibase-core 0.47.4 (it declares that version exactly);
+    # 0.38.18 pins the regressed 0.47.3, so the two floors move together or the
+    # core floor above is unsatisfiable.
+    "omnibase-infra>=0.38.19,<0.39.0",
     "click>=8.1.0",
     "pydantic>=2.12.5,<3.0.0",
     "pydantic-settings>=2.0.0,<3.0.0",
@@ -635,9 +665,20 @@ override-dependencies = [
     # here in lockstep with the dependencies-list pins for the reason the
     # OMN-16858 note above records -- this override, not the direct pin, is
     # what uv actually resolves for transitive consumers.
-    "omnibase-core>=0.47.2,<0.48.0",
+    # OMN-17556: core 0.47.2 -> 0.47.3 and infra 0.38.16 -> 0.38.18. These lines
+    # are the ones that matter: the published omnibase-infra 0.38.18 declares
+    # `omnibase-core==0.47.3` exactly, and an infra override still admitting
+    # 0.38.16 would let the resolver pick a release whose
+    # `runtime_profile._PROFILES` has no `tenant-projection` entry -- the exact
+    # combination the RED run above reproduced.
+    # OMN-17980: core 0.47.3 -> 0.47.4 and infra 0.38.18 -> 0.38.19, in the same
+    # lockstep and for the same reason -- this override, not the direct pin, is
+    # what decides the resolve for transitive consumers, so an override still
+    # admitting 0.47.3 would keep resolving the regressed core underneath a
+    # correctly-pinned direct dependency.
+    "omnibase-core>=0.47.4,<0.48.0",
     "omnibase-spi>=0.23.3,<0.24.0",
-    "omnibase-infra>=0.38.16,<0.39.0",
+    "omnibase-infra>=0.38.19,<0.39.0",
     "omnibase-compat==0.5.6",
 ]
 
