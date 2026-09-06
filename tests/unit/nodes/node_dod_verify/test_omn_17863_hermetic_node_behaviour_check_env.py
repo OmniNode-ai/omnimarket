@@ -468,7 +468,9 @@ def test_a_host_with_no_pnpm_at_all_is_skipped_not_rejected_as_prose(
     _write_pnpm_project(
         project, pinned_version="11.5.3", lockfile="lockfileVersion: '9.0'\n"
     )
-    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    tool_free_path = tmp_path / "no-tools"
+    tool_free_path.mkdir()
+    monkeypatch.setenv("PATH", str(tool_free_path))
 
     result = collector._check_evidence_item(
         {
