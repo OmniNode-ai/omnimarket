@@ -114,7 +114,15 @@ descriptor:
   # `tenant-projection` profile because a real consolidated writer boots it
   # (OMN-17556); this node's dedicated writer boots no shared-kernel profile at
   # all, so there is no name for it to carry.
-  runtime_profiles: []
+  # OMN-17985: this contract is owned by its OWN standalone writer Deployment
+  # (RUNTIME_PROFILE=projection-writer-hook-ledger on onex-dev), not by the shared main/effects
+  # runtime. The name became declarable when omnibase_core 0.47.5 registered it
+  # in REGISTERED_RUNTIME_PROFILES and CONSUMER_ATTACHED_RUNTIME_PROFILES; the
+  # writer is consumer-attached as measured fact -- it joined its group and the
+  # coordinator issued it partitions. Declaring it here is what makes ownership
+  # single-valued: without it this contract ALSO fell to a shared runtime, so
+  # two processes claimed the same subscriptions.
+  runtime_profiles: [projection-writer-hook-ledger]
 
 idempotency:
   enabled: true
