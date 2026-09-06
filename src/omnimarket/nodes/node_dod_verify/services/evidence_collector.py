@@ -19,6 +19,7 @@ from __future__ import annotations
 import contextlib
 import fcntl
 import glob
+import hashlib
 import logging
 import os
 import re
@@ -291,6 +292,160 @@ _VENV_PURITY_REFUSAL_MARKERS = (
     "OMN-15620 venv-purity gate",
     "Canonical venv is IMPURE",
 )
+
+# ---------------------------------------------------------------------------
+# OMN-16846 D1, LOCAL path: the hermetic behaviour-check environment
+# ---------------------------------------------------------------------------
+#
+# The refusal above is CORRECT and must keep firing; what was wrong is that a
+# behaviour check ever ran in an environment capable of tripping it.
+#
+# Two requirements collide on the operator's machine and neither is wrong:
+#
+#   * ``scripts/reconcile-workspace-venvs.sh`` composes ``omnimarket`` into
+#     ``$OMNI_HOME/omnibase_infra/.venv`` on a <=600s tick (its "layer 2"),
+#     DELIBERATELY, because ``scripts/onex`` execs that venv's entrypoint and
+#     ``node_dod_verify`` itself lives in omnimarket. omnimarket is absent
+#     from infra's ``uv.lock`` on purpose: the layer graph is
+#     compat -> core -> spi -> infra and omnimarket sits ABOVE infra, so
+#     declaring it would publish a dependency cycle.
+#   * ``omnibase_infra/tests/conftest.py`` calls ``assert_venv_purity()`` at
+#     ``pytest_configure`` and refuses any undeclared ``onex.nodes`` provider,
+#     because two providers of one node identity manufacture
+#     DUPLICATE_REGISTRATION false REDs across the suite (OMN-15620: 25
+#     failed / 33 passed vs 58 passed clean, same tree).
+#
+# A ``test_passes`` check is ``uv run pytest ...`` with
+# ``cwd: ${OMNI_HOME}/<repo>``, so it inherits that shared, composed venv and
+# is refused before collection. Measured on this host 2026-09-06, same tree,
+# same command (``uv run pytest tests/unit/gateway/test_gateway_token_minter.py
+# -q``, the OMN-15922 behaviour proof): shared venv -> exit 1, zero tests
+# collected, GATE_VENV_IMPURE; lock-exact ephemeral env -> 19 passed in 1.32s.
+#
+# The fix is neither to declare the composition nor to allowlist the provider
+# --- both keep two node providers in one interpreter, which is the state the
+# 25 manufactured failures were measured in. It is to stop borrowing a shared,
+# composed environment for an adjudication: the check gets its OWN lock-exact
+# environment, built by ``uv sync --frozen`` (exact mode) into a path keyed by
+# the project root and its ``uv.lock`` content, and the shared venv is neither
+# read nor written. This is the same separation ``.github/workflows/
+# evidence-autoclose-sweep.yml`` already proved in CI (``UV_PROJECT_ENVIRONMENT
+# =${RUNNER_TEMP}/dispatch-venv``, OMN-16846 CI half, run 33210339910:
+# behavior_proving 0 -> 3), applied to the check side instead of the dispatch
+# side.
+#
+# The purity gate is NOT weakened by this: it still runs, inside the ephemeral
+# environment, and passes there honestly because that environment contains
+# exactly what ``uv.lock`` declares. Nothing is added to its declared set and
+# no override env var is set.
+_UV_PROJECT_ENVIRONMENT_ENV = "UV_PROJECT_ENVIRONMENT"
+
+# Where the per-project ephemeral environments live. Overridable so a CI job
+# or a constrained host can place them on a chosen volume; this is a PATH
+# setting, never a bypass -- there is no value of it that returns a check to
+# the shared venv.
+_HERMETIC_VENV_ROOT_ENV = "DOD_VERIFY_HERMETIC_VENV_ROOT"
+
+# ``uv sync`` of a cache-warm project is seconds (measured: 3.0s for
+# omnibase_infra's full lock on the operator Mac at load1 60). A COLD uv cache
+# has to download the whole graph, which is minutes, and that must not be
+# charged to the per-check ceiling -- so the build has its own budget and the
+# check itself then runs with ``UV_NO_SYNC=1``.
+_HERMETIC_SYNC_TIMEOUT_ENV = "DOD_VERIFY_HERMETIC_SYNC_TIMEOUT_S"
+_DEFAULT_HERMETIC_SYNC_TIMEOUT_S = 900
+
+# Emitted when the ephemeral environment cannot be built. Recorded SKIPPED
+# with a typed cause, never FAILED: a verifier that could not build its own
+# environment has made no statement about the product. Same rule as
+# GATE_VENV_IMPURE above.
+_HERMETIC_ENV_FAILURE_MARKER = "HERMETIC_ENV_UNAVAILABLE:"
+
+# A command is routed into the hermetic environment only when it actually
+# invokes ``uv`` -- at the start of the string or of a pipeline/list segment.
+# Anything else (``gh api ...``, ``grep``, ``./verify.sh``) is unaffected, so
+# the blast radius of this routing is exactly the commands that resolve a uv
+# project environment.
+_UV_INVOCATION_RE = re.compile(r"(?:^|[;&|(]\s*|\bthen\s+|\bdo\s+)uv\s", re.MULTILINE)
+
+
+def _hermetic_sync_timeout_s() -> float:
+    """Resolve the ceiling for BUILDING an ephemeral environment.
+
+    Separate from ``_check_timeout_s`` on purpose: the build is the verifier's
+    own setup cost, not the product's, and charging a cold uv cache to the
+    30s per-check ceiling would turn a slow download into a fake verdict --
+    exactly the confusion OMN-17795 had to unpick. Malformed or non-positive
+    falls back to the default rather than disabling the bound.
+    """
+    raw = os.environ.get(_HERMETIC_SYNC_TIMEOUT_ENV, "").strip()
+    if not raw:
+        return float(_DEFAULT_HERMETIC_SYNC_TIMEOUT_S)
+    try:
+        value = float(raw)
+    except ValueError:
+        logger.warning(
+            "%s=%r is not a number; using the %ss default.",
+            _HERMETIC_SYNC_TIMEOUT_ENV,
+            raw,
+            _DEFAULT_HERMETIC_SYNC_TIMEOUT_S,
+        )
+        return float(_DEFAULT_HERMETIC_SYNC_TIMEOUT_S)
+    if value <= 0:
+        logger.warning(
+            "%s=%r is not positive; using the %ss default.",
+            _HERMETIC_SYNC_TIMEOUT_ENV,
+            raw,
+            _DEFAULT_HERMETIC_SYNC_TIMEOUT_S,
+        )
+        return float(_DEFAULT_HERMETIC_SYNC_TIMEOUT_S)
+    return value
+
+
+def _uv_project_root(start: Path) -> Path | None:
+    """Nearest ancestor of ``start`` (inclusive) that is a locked uv project.
+
+    Both files are required. ``pyproject.toml`` alone is not enough: without a
+    ``uv.lock`` there is no declared set to sync exactly, so there is no such
+    thing as a lock-exact environment for that directory and the routing must
+    not claim one.
+    """
+    try:
+        candidate = start.resolve()
+    except OSError:
+        return None
+    for directory in (candidate, *candidate.parents):
+        if (directory / "uv.lock").is_file() and (
+            directory / "pyproject.toml"
+        ).is_file():
+            return directory
+    return None
+
+
+def _hermetic_venv_root() -> Path:
+    """Directory the per-project ephemeral environments are built under."""
+    raw = os.environ.get(_HERMETIC_VENV_ROOT_ENV, "").strip()
+    if raw:
+        return Path(raw).expanduser()
+    return Path.home() / ".cache" / "onex" / "dod-verify-venvs"
+
+
+def _hermetic_venv_path(project_root: Path) -> Path:
+    """Deterministic environment path for one locked project.
+
+    Keyed by the project's absolute path AND its ``uv.lock`` bytes, so:
+
+    * two projects never share one environment (a check with
+      ``cwd: ${OMNI_HOME}/omnimarket`` cannot borrow omnibase_infra's);
+    * a lock change produces a NEW path rather than mutating a live one out
+      from under a concurrent lane; and
+    * an unchanged lock reuses the environment, which is what makes the
+      steady-state cost a cache-warm no-op instead of a rebuild per check.
+    """
+    digest = hashlib.sha256()
+    digest.update(str(project_root).encode("utf-8"))
+    digest.update((project_root / "uv.lock").read_bytes())
+    return _hermetic_venv_root() / f"{project_root.name}-{digest.hexdigest()[:12]}"
+
 
 # OMN-14207: live GitHub PR-state verification.
 #
@@ -1376,6 +1531,14 @@ class EvidenceCollector:
         # subprocess's own output: a check under test can print any banner it
         # likes, and a product that forged this one would launder its own red.
         self._last_check_budget_exceeded: bool = False
+        # OMN-16846 D1 (local path): memo of the lock-exact ephemeral
+        # environment built for each uv project root a check's ``cwd`` names.
+        # Per-run rather than module-global so one collector builds each
+        # environment at most once and nothing leaks between runs. Maps the
+        # resolved project root to ``(env_path, error)`` -- exactly one of the
+        # two is non-None, and a failure is remembered so a broken environment
+        # is not re-attempted once per check.
+        self._hermetic_uv_envs: dict[Path, tuple[Path | None, str | None]] = {}
         # When set (during a dev-resolved collect), an origin/dev worktree of the
         # OCC repo. Contract-load AND the shell greps run inside it so dev-only
         # contracts + receipts are visible (OMN-13888 scope 6).
@@ -3286,6 +3449,32 @@ class EvidenceCollector:
                     # (behavior_proving=0) purely because of a venv shape.
                     # Still blocking, never counted verified — the change is in
                     # HOW the block is recorded, not WHETHER it blocks.
+                    # OMN-16846 D1/AC3, applied to the local path's own
+                    # setup failure: the lock-exact environment could not be
+                    # built, so the command never executed and made no
+                    # statement about the product. Positively identified from
+                    # this process's own marker, emitted by
+                    # ``_ensure_hermetic_uv_env`` -- never grepped out of a
+                    # check's output, which a product under test could forge.
+                    if msg.startswith(_HERMETIC_ENV_FAILURE_MARKER):
+                        logger.error(
+                            "Recording %s as unverifiable: the lock-exact "
+                            "behaviour-check environment could not be built, "
+                            "so the check never executed. %s",
+                            evidence_id,
+                            msg,
+                        )
+                        return ModelEvidenceCheckResult(
+                            evidence_id=evidence_id,
+                            description=description,
+                            status=EnumEvidenceCheckStatus.SKIPPED,
+                            unverifiable_cause=(
+                                EnumEvidenceUnverifiableCause.HERMETIC_ENV_UNAVAILABLE
+                            ),
+                            message=msg,
+                            proof_class=item_proof_class,
+                            product_clones=tuple(clones),
+                        )
                     if self._is_venv_purity_refusal(msg):
                         logger.error(
                             "Recording %s as unverifiable: the OMN-15620 "
@@ -4540,6 +4729,129 @@ class EvidenceCollector:
         """True only for the OMN-15620 gate's own verbatim refusal banner."""
         return all(marker in message for marker in _VENV_PURITY_REFUSAL_MARKERS)
 
+    def _ensure_hermetic_uv_env(
+        self, project_root: Path
+    ) -> tuple[Path | None, str | None]:
+        """Build (once) a lock-exact uv environment for ``project_root``.
+
+        ``uv sync --frozen`` in EXACT mode: it installs precisely what
+        ``uv.lock`` declares and removes anything else, which is the whole
+        point -- the resulting interpreter cannot contain an undeclared
+        ``onex.nodes`` provider, so the OMN-15620 purity gate runs inside it
+        and passes on the facts rather than being bypassed.
+
+        The shared canonical venv is neither read nor written by this: the
+        environment path is handed to uv via ``UV_PROJECT_ENVIRONMENT``, which
+        redirects the project environment wholesale. Verified on the operator
+        Mac 2026-09-06 -- the omnimarket dist-info mtime in
+        ``$OMNI_HOME/omnibase_infra/.venv`` was byte-identical either side of
+        a full sync into the ephemeral path.
+
+        Returns ``(path, None)`` on success and ``(None, message)`` on failure,
+        where the message carries ``_HERMETIC_ENV_FAILURE_MARKER`` so the
+        caller records a typed SKIPPED rather than asserting a product defect
+        the run never looked for.
+        """
+        cached = self._hermetic_uv_envs.get(project_root)
+        if cached is not None:
+            return cached
+
+        result: tuple[Path | None, str | None]
+        try:
+            env_path = _hermetic_venv_path(project_root)
+        except OSError as exc:
+            result = (
+                None,
+                f"{_HERMETIC_ENV_FAILURE_MARKER} could not read "
+                f"{project_root / 'uv.lock'} to key the environment: {exc}",
+            )
+            self._hermetic_uv_envs[project_root] = result
+            return result
+
+        # Inherit the caller env so a proxy/credential/cache setting still
+        # applies, then overlay the three things that decide WHICH
+        # interpreter uv builds and populates.
+        build_env = dict(os.environ)
+        build_env[_UV_PROJECT_ENVIRONMENT_ENV] = str(env_path)
+        # An inherited PYTHONPATH pointing at the shared venv's site-packages
+        # would re-expose the composed provider inside this interpreter and
+        # trip the purity gate again -- the same reason every governed script
+        # in this fleet runs `env -u PYTHONPATH`.
+        build_env.pop("PYTHONPATH", None)
+        # An inherited VIRTUAL_ENV disagreeing with the target makes uv warn
+        # about a mismatch it did not cause; drop it rather than explain it.
+        build_env.pop("VIRTUAL_ENV", None)
+        # Never inherit an ambient no-sync: the CI half of this ticket had
+        # exactly that (OMN-16902 D2), producing an EMPTY environment and
+        # `Failed to spawn: pytest` in 12ms.
+        build_env.pop("UV_NO_SYNC", None)
+
+        # Resolved from PATH by the OS rather than pre-checked here: a
+        # missing `uv` raises OSError below and lands on the same typed
+        # non-result as any other build failure, instead of needing a second
+        # branch that says the same thing.
+        argv = ["uv", "sync", "--frozen", "--project", str(project_root)]
+        timeout_s = _hermetic_sync_timeout_s()
+        logger.info(
+            "OMN-16846: building lock-exact behaviour-check environment for %s at %s",
+            project_root,
+            env_path,
+        )
+        try:
+            env_path.parent.mkdir(parents=True, exist_ok=True)
+            proc = subprocess.run(
+                argv,
+                capture_output=True,
+                text=True,
+                timeout=timeout_s,
+                cwd=str(project_root),
+                env=build_env,
+            )
+        except subprocess.TimeoutExpired:
+            result = (
+                None,
+                f"{_HERMETIC_ENV_FAILURE_MARKER} `uv sync --frozen` for "
+                f"{project_root} exceeded its {timeout_s}s build ceiling "
+                f"({_HERMETIC_SYNC_TIMEOUT_ENV} raises it). No check ran.",
+            )
+            self._hermetic_uv_envs[project_root] = result
+            return result
+        except OSError as exc:
+            result = (
+                None,
+                f"{_HERMETIC_ENV_FAILURE_MARKER} could not spawn `uv sync "
+                f"--frozen` for {project_root}: {exc}",
+            )
+            self._hermetic_uv_envs[project_root] = result
+            return result
+
+        if proc.returncode != 0:
+            detail = (proc.stderr or proc.stdout or "").strip()[:600]
+            result = (
+                None,
+                f"{_HERMETIC_ENV_FAILURE_MARKER} `uv sync --frozen` for "
+                f"{project_root} exited {proc.returncode}: {detail}",
+            )
+            self._hermetic_uv_envs[project_root] = result
+            return result
+
+        # Assert the interpreter exists rather than trusting the exit status --
+        # the same lesson `reconcile-workspace-venvs.sh` records about repairs
+        # that witness themselves (OMN-17307).
+        interpreter = env_path / "bin" / "python"
+        if not interpreter.is_file():
+            result = (
+                None,
+                f"{_HERMETIC_ENV_FAILURE_MARKER} `uv sync --frozen` reported "
+                f"success for {project_root} but {interpreter} is absent.",
+            )
+            self._hermetic_uv_envs[project_root] = result
+            return result
+
+        result = (env_path, None)
+        self._hermetic_uv_envs[project_root] = result
+        return result
+
     def _run_command_check(
         self,
         check: dict[str, Any],
@@ -4621,10 +4933,41 @@ class EvidenceCollector:
             run_env = dict(os.environ)
             run_env["CONTRACT_REPO_DIR"] = contract_repo_dir
 
+        # OMN-16846 D1, local path. A check that invokes `uv` inside a locked
+        # project resolves that project's environment -- on an operator
+        # machine that is the SHARED canonical venv, which the workspace
+        # reconciler deliberately composes the skill-dispatch provider into
+        # and which the OMN-15620 purity gate therefore refuses before
+        # collection. Borrowing it was the defect; the check gets its own
+        # lock-exact environment instead. Non-uv commands are untouched, so
+        # the routing reaches exactly the commands that resolve a uv
+        # environment and nothing else.
+        hermetic_env_path: Path | None = None
+        if run_cwd is not None and _UV_INVOCATION_RE.search(cmd_str) is not None:
+            project_root = _uv_project_root(Path(run_cwd))
+            if project_root is not None:
+                hermetic_env_path, hermetic_err = self._ensure_hermetic_uv_env(
+                    project_root
+                )
+                if hermetic_err is not None:
+                    return False, hermetic_err
+        if hermetic_env_path is not None:
+            if run_env is None:
+                run_env = dict(os.environ)
+            run_env[_UV_PROJECT_ENVIRONMENT_ENV] = str(hermetic_env_path)
+            # Already synced above, on its own budget. Re-resolving here would
+            # charge the project's whole dependency graph to the per-check
+            # ceiling and manufacture a CHECK_BUDGET_EXCEEDED that says
+            # nothing about the product.
+            run_env["UV_NO_SYNC"] = "1"
+            run_env.pop("PYTHONPATH", None)
+            run_env.pop("VIRTUAL_ENV", None)
+
         logger.info(
-            "Running command check (cwd=%s, CONTRACT_REPO_DIR=%s): %s",
+            "Running command check (cwd=%s, CONTRACT_REPO_DIR=%s, uv env=%s): %s",
             run_cwd or "<inherit>",
             contract_repo_dir or "<unset>",
+            hermetic_env_path or "<project default>",
             cmd_str,
         )
 
