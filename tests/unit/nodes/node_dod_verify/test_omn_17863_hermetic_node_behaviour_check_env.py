@@ -462,13 +462,30 @@ def test_a_host_with_no_pnpm_at_all_is_skipped_not_rejected_as_prose(
     101488803404, whose runner has neither pnpm nor corepack. PATH is narrowed
     here so the case is deterministic on every host, including one that has
     pnpm.
+
+    OMN-17556: the narrowing has to be to an EMPTY directory, not to
+    ``/usr/bin:/bin``. ``_resolve_pnpm_toolchain`` resolves corepack before
+    pnpm, and a host with a system corepack at ``/usr/bin/corepack`` still
+    resolves one under the old narrowing -- so the refusal named the corepack
+    ATTEMPT rather than the absent lookup this case is about, and the
+    "deterministic on every host" premise in the paragraph above was false.
+    Measured on the lab pre-push host h201.2, whose ``/usr/bin/corepack``
+    exists and is broken: the message read "corepack at /usr/bin/corepack did
+    not yield pnpm 11.5.3 (exit 1 ...) TypeError
+    [ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING]" instead of "corepack is not on
+    PATH", and this row failed there while passing on a developer machine that
+    has no ``/usr/bin/corepack``. Both lookups are ``shutil.which``, so an
+    empty directory is the only PATH value that holds neither binary on every
+    host.
     """
     project = tmp_path / "project"
     project.mkdir()
     _write_pnpm_project(
         project, pinned_version="11.5.3", lockfile="lockfileVersion: '9.0'\n"
     )
-    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    empty_path_dir = tmp_path / "empty-path"
+    empty_path_dir.mkdir()
+    monkeypatch.setenv("PATH", str(empty_path_dir))
 
     result = collector._check_evidence_item(
         {
