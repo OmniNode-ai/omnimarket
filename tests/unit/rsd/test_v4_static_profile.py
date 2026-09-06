@@ -18,6 +18,7 @@ from omnimarket.nodes.node_rsd_v4_static_profile_validate_compute.models.model_v
 )
 from omnimarket.rsd.v4_static_profile import (
     ContainerAttachStaticV4Error,
+    container_bootstrap_static_launch_plan_v4_sha256,
     container_bootstrap_static_role_profile_envelope_v4_sha256,
     parse_container_bootstrap_static_role_profile_envelope_v4_canonical_json,
 )
@@ -163,3 +164,42 @@ def test_duplicate_key_json_and_active_authority_symbols_are_refused() -> None:
         "ContainerAttachRequestV4",
     ):
         assert forbidden not in source
+
+
+@pytest.mark.unit
+def test_latest_static_launch_hardening_rejects_constructed_argv_and_paths() -> None:
+    envelope = parse_container_bootstrap_static_role_profile_envelope_v4_canonical_json(
+        _vector_bytes("profile_envelope_canonical_json_utf8_base64")
+    )
+    plan = envelope.static_role_profile.static_launch_plan
+    oversized = plan.model_copy(update={"base_command": tuple("x" for _ in range(65))})
+    with pytest.raises(ValueError, match="container attach V4 verification failed"):
+        container_bootstrap_static_launch_plan_v4_sha256(oversized)
+
+    ambiguous_path = plan.model_copy(
+        update={"wrapper_executable_path": "/usr/local/libexec/./wrapper"}
+    )
+    with pytest.raises(ValueError, match="container attach V4 verification failed"):
+        container_bootstrap_static_launch_plan_v4_sha256(ambiguous_path)
+
+
+@pytest.mark.unit
+def test_latest_static_hardening_rejects_hidden_deleted_and_cyclic_state() -> None:
+    envelope = parse_container_bootstrap_static_role_profile_envelope_v4_canonical_json(
+        _vector_bytes("profile_envelope_canonical_json_utf8_base64")
+    )
+
+    hidden = envelope.static_role_profile.static_launch_plan.model_copy()
+    object.__setattr__(hidden, "__pydantic_extra__", {"unexpected": True})
+    with pytest.raises(ValueError, match="container attach V4 verification failed"):
+        container_bootstrap_static_launch_plan_v4_sha256(hidden)
+
+    deleted = envelope.static_role_profile.static_launch_plan.model_copy()
+    del deleted.__dict__["base_command"]
+    with pytest.raises(ValueError, match="container attach V4 verification failed"):
+        container_bootstrap_static_launch_plan_v4_sha256(deleted)
+
+    cyclic = envelope.static_role_profile.static_launch_plan.model_copy()
+    object.__setattr__(cyclic, "base_command", (cyclic,))
+    with pytest.raises(ValueError, match="container attach V4 verification failed"):
+        container_bootstrap_static_launch_plan_v4_sha256(cyclic)
