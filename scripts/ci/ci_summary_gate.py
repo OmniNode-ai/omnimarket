@@ -245,6 +245,14 @@ STRICT_GATE_JOBS: tuple[str, ...] = (
     # v0.4.8 tag, through seven commits of src/ changes precisely because no
     # surface made it RED.
     "Release Identity Gate",
+    # OMN-18012: the two boundary jobs. THIS LINE IS HALF THE MECHANISM, same
+    # as "Event Chain Gate" above -- the default-deny sweep fails CI Summary
+    # when a job FAILS, but an unregistered job that is `skipped` or absent
+    # yields SUCCESS, and a silently-absent boundary test is the exact failure
+    # mode these jobs exist to end. Both are unconditional in ci.yml (no
+    # needs/if), so a skip is anomalous and never a legitimate opt-out.
+    "Customer Path Boundary (OMN-18012)",  # customer-path-boundary
+    "JS Toolchain Hermetic (OMN-18012)",  # js-toolchain-hermetic
 )
 
 # Skippable aggregate gates: present + completed + success OR skipped.
