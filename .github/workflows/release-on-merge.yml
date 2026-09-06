@@ -1,0 +1,661 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+name: Release on Merge
+
+# =============================================================================
+# OMN-18010 — release on merge. omnimarket is the pilot repo.
+#
+# WHAT FAILED, MEASURED
+# ---------------------
+# A release here is a manual, ticket-driven step with no merge trigger, "Done"
+# is measured at merge rather than at release, and nothing audits the distance
+# between dev and the last tag. omnimarket#2304 merged 2026-09-05 and sat
+# unreleased with its release ticket in Backlog; #2334 did the same; a PRD
+# scoring pass found five landed-but-not-deployed items at once.
+#
+# WHY A PUSH TO dev IS A SAFE RELEASE TRIGGER
+# -------------------------------------------
+# omnimarket is squash-only with no merge queue (verified: allow_merge_commit
+# false, allow_rebase_merge false, mergeQueue(branch:"dev") null). A squash merge
+# to dev therefore produces exactly ONE push whose head is a merge commit GitHub
+# only created after all 32 required contexts reported success. The green-ness of
+# the released commit is established BY CONSTRUCTION; this workflow does not
+# re-derive it.
+#
+# The `paths:` filter below is the cheap pre-check, not the decision: a single
+# push can carry several commits, so scripts/ci/decide_release_on_merge.py
+# re-derives the changed set over github.event.before..github.sha.
+#
+# WHY THE WHOLE CHAIN IS ONE RUN
+# ------------------------------
+# Tag creation and publish MUST be chained here rather than left to release.yml's
+# `push: tags:` trigger. App-token and GITHUB_TOKEN pushes suppress downstream
+# push-triggered workflows on this org (memory
+# reference_app_token_pushes_are_ci_suppressed); today's tag pushes only fire
+# release.yml because a user-owned PAT pushes them by hand. That suppression is
+# also what stops this workflow's own tag push from double-firing release.yml —
+# and if it ever did fire, `uv publish --check-url` is idempotent.
+#
+# release.yml IS DELIBERATELY LEFT INTACT. It remains the manual path
+# (`push: tags:` + workflow_dispatch) for a hand-cut or re-dispatched release,
+# and is the recovery path if this workflow tags but fails to publish.
+#
+# THE VERSION IS NOT COMPUTED HERE, IN THE STEADY STATE
+# -----------------------------------------------------
+# ci.yml's release-identity-gate (OMN-16344, scripts/check_release_identity.py)
+# already refuses any src/** PR whose [project].version is not strictly ahead of
+# the highest published tag. So by the time a source merge lands, dev's version
+# IS the next release version and this run simply TAGS THE MERGE SHA at it — no
+# bump commit before the tag, no rebase, no race.
+#
+# DEVIATION FROM THE DESIGN, STATED RATHER THAN IMPLIED
+# -----------------------------------------------------
+# The design's recovery path was a "C1" bump commit pushed straight to dev before
+# tagging. That is not available on omnimarket: dev carries 32 required status
+# checks with enforce_admins true and restrictions null, so a direct push to dev
+# is refused for EVERY identity, App tokens included — a pushed commit has no
+# passing checks at push time. The `arm-dev` job below is the same intent through
+# the only mechanism the branch protection permits: it opens a bump PR and arms
+# auto-merge, and that PR's own merge re-enters this workflow and releases. Its
+# title deliberately does NOT carry the [release-on-merge] marker, precisely so
+# it does re-enter. `reopen-dev` attempts the direct push first and falls back to
+# the same PR shape, so this file stays portable to a repo with a laxer dev.
+# =============================================================================
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - 'src/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+permissions:
+  contents: read
+
+# Serialize per repository and NEVER cancel: a cancelled run can leave a pushed
+# tag with nothing published behind it.
+concurrency:
+  group: release-on-merge-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Decide — the entire decision surface, unit-tested in
+  # tests/unit/scripts/test_decide_release_on_merge.py rather than only
+  # observable by merging something.
+  # ---------------------------------------------------------------------------
+  decide:
+    name: Decide
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+      skip_reason: ${{ steps.decide.outputs.skip_reason }}
+      version: ${{ steps.decide.outputs.version }}
+      needs_bump: ${{ steps.decide.outputs.needs_bump }}
+      latest_tag: ${{ steps.decide.outputs.latest_tag }}
+    steps:
+      # fetch-depth: 0 is REQUIRED, not incidental — the decision resolves the
+      # highest published version from the tag list, and a shallow checkout
+      # carries no tags, which would make every run look like a first release.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Decide whether this merge releases
+        id: decide
+        env:
+          BEFORE_SHA: ${{ github.event.before }}
+          AFTER_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          python3 scripts/ci/decide_release_on_merge.py \
+            --before "$BEFORE_SHA" --after "$AFTER_SHA" | tee decision.json
+          {
+            echo "### Release-on-merge decision"
+            echo ""
+            echo '```json'
+            cat decision.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------------
+  # Release — tag the merge sha, build, publish, cut the GitHub Release.
+  # ---------------------------------------------------------------------------
+  release:
+    name: Release
+    needs: decide
+    if: needs.decide.outputs.skip != 'true' && needs.decide.outputs.needs_bump != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      version: ${{ steps.tag.outputs.tag }}
+      tag_sha: ${{ github.sha }}
+      workflows_touched: ${{ steps.scope.outputs.workflows_touched }}
+    steps:
+      # persist-credentials stays at its default TRUE here (unlike `decide`)
+      # because the "released tree scope" step below fetches origin/main on a
+      # private repo. The persisted header is explicitly unset immediately
+      # before the app-token push — see that step.
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+
+      - name: Assert clean working tree
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"
+
+      - name: Validate the decided version matches pyproject.toml
+        env:
+          DECIDED_VERSION: ${{ needs.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          PKG_VERSION=$(python3 -c "
+          import tomllib
+          with open('pyproject.toml', 'rb') as f:
+              d = tomllib.load(f)
+          v = d.get('project', {}).get('version')
+          if not v:
+              raise SystemExit('ERROR: missing [project].version in pyproject.toml')
+          print(v)
+          ")
+          if [ "$DECIDED_VERSION" != "$PKG_VERSION" ]; then
+            echo "ERROR: decided version ${DECIDED_VERSION} does not match pyproject.toml ${PKG_VERSION}"
+            exit 1
+          fi
+          echo "Version validated: $PKG_VERSION"
+
+      - name: Determine whether the released tree changes workflows
+        id: scope
+        run: |
+          set -euo pipefail
+          # main IS the last release (OMN-16289), so main..HEAD is exactly what
+          # the sync-main fast-forward will carry. GitHub refuses a protected-ref
+          # update that adds or edits a workflow unless the pushing App token
+          # carries the Workflows scope, so sync-main below has to know.
+          git fetch --quiet origin main
+          if git diff --name-only origin/main..HEAD -- .github/workflows | grep -q .; then
+            echo "workflows_touched=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "workflows_touched=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Build wheel + sdist
+        run: uv build
+
+      # Build and verify BEFORE the tag push: a build failure must not leave a
+      # tag behind with nothing published against it.
+      - name: Verify dist artifacts exist
+        run: |
+          ls -la dist/
+          ls dist/*.whl dist/*.tar.gz >/dev/null 2>&1 || {
+            echo "ERROR: expected wheel + sdist in dist/"
+            exit 1
+          }
+
+      - name: Mint onexbot-occ-writer app token (tag push identity)
+        id: app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      - name: Create and push the release tag
+        id: tag
+        env:
+          DECIDED_VERSION: ${{ needs.decide.outputs.version }}
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          set -euo pipefail
+          case "$DECIDED_VERSION" in
+            ''|*[!0-9.]*)
+              echo "::error::decided version is not a bare X.Y.Z version"
+              exit 1
+              ;;
+          esac
+          TAG="v${DECIDED_VERSION}"
+          if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            echo "::error::${TAG} already exists locally — refusing to re-tag"
+            exit 1
+          fi
+          git config user.name "onexbot-occ-writer[bot]"
+          git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
+          git tag -a "$TAG" -m "Release ${TAG}"
+          # OMN-17272: actions/checkout persists the job's GITHUB_TOKEN as an
+          # http.<origin>.extraheader Authorization header, and that header
+          # OVERRIDES the token embedded in the push URL below — the push would
+          # silently authenticate as github-actions[bot] instead of the App.
+          git config --local --unset-all "http.https://github.com/.extraheader" || true
+          git push "https://x-access-token:${APP_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "refs/tags/${TAG}"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "Tagged ${GITHUB_SHA} as ${TAG}"
+
+      # OMN-15603 (ported from omnibase_core's release.yml): resumable, retried
+      # publish. --check-url makes the upload idempotent — uv queries the PyPI
+      # simple index and skips every file already present, so a retry
+      # re-transfers only what is still missing. The URL must be the simple
+      # index ROOT; uv appends the package name itself.
+      #
+      # The loop READS the failure instead of retrying every non-zero exit. A
+      # 4xx (bad token, malformed metadata, rejected filename) is deterministic:
+      # retrying it burns the full backoff and then reports a permanent fault in
+      # the language of a transient one.
+      - name: Publish to PyPI
+        run: |
+          set -uo pipefail
+          attempt=1
+          max_attempts=3
+          backoff=15
+          publish_log="$(mktemp)"
+
+          is_retryable() {
+            grep -Eqi \
+              -e 'status code 5[0-9][0-9]' \
+              -e '(internal server error|bad gateway|service unavailable|gateway time-?out)' \
+              -e '(error sending request|connection (reset|closed|refused)|operation timed out|timed out|broken pipe)' \
+              "$1"
+          }
+
+          while true; do
+            if uv publish \
+              --check-url https://pypi.org/simple/ \
+              --token "$UV_PUBLISH_TOKEN" \
+              dist/*.whl dist/*.tar.gz 2>&1 | tee "$publish_log"
+            then
+              exit 0
+            fi
+            if ! is_retryable "$publish_log"; then
+              echo "ERROR: uv publish failed with a non-retryable error (no 5xx or transport fault in the output); not retrying" >&2
+              exit 1
+            fi
+            if [ "$attempt" -ge "$max_attempts" ]; then
+              echo "ERROR: uv publish failed after ${max_attempts} attempts" >&2
+              exit 1
+            fi
+            echo "uv publish attempt ${attempt}/${max_attempts} failed with a retryable 5xx/transport fault; retrying in ${backoff}s" >&2
+            sleep "$backoff"
+            attempt=$((attempt + 1))
+            backoff=$((backoff * 3))
+          done
+        env:
+          UV_PUBLISH_TOKEN: ${{ secrets.PYPI_TOKEN }}
+
+      - name: Generate checksums
+        run: sha256sum dist/*.whl dist/*.tar.gz > dist/SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+          generate_release_notes: true
+
+  # ---------------------------------------------------------------------------
+  # arm-dev — the recovery path when dev has drifted level with (or behind) the
+  # highest published tag, so this merge cannot be released without a bump.
+  #
+  # This should never fire in the steady state: ci.yml's release-identity-gate
+  # keeps dev ahead for every src/** PR. It fires when a merge touched only
+  # uv.lock/pyproject.toml, or after a run that tagged but failed to publish.
+  #
+  # KNOWN RESIDUAL, stated rather than discovered later: this PR is opened by an
+  # App identity and cites OMN-18010, so it is subject to the Receipt Gate like
+  # any other PR. If the gate declines an automation PR, the bump waits for a
+  # human — the release is deferred, never wedged, and the release-staleness
+  # gate (the third deliverable of this epic) is what surfaces the wait.
+  # ---------------------------------------------------------------------------
+  arm-dev:
+    name: Arm dev for release
+    needs: decide
+    if: needs.decide.outputs.skip != 'true' && needs.decide.outputs.needs_bump == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Mint onexbot-occ-writer app token (bump PR identity)
+        id: app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Set dev to the version this merge would be released as
+        id: bump
+        env:
+          TARGET: ${{ needs.decide.outputs.version }}
+        run: |
+          set -euo pipefail
+          DECISION="$(python3 scripts/ci/post_release_dev_bump.py --set "$TARGET")"
+          echo "$DECISION"
+          ACTION="$(printf '%s' "$DECISION" | python3 -c 'import json,sys; print(json.load(sys.stdin)["action"])')"
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "branch=automation/arm-dev-${TARGET}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Arm dev for release"
+            echo ""
+            echo '```json'
+            echo "$DECISION"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ACTION" = "bump" ]; then
+            python3 scripts/ci/post_release_dev_bump.py --set "$TARGET" --apply
+            # uv.lock carries this package's own version, so it must move with
+            # pyproject.toml or the lockfile-drift gate fails the bump PR.
+            uv lock
+          fi
+
+      - name: Open the bump PR and arm auto-merge
+        if: steps.bump.outputs.action == 'bump'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          TARGET: ${{ needs.decide.outputs.version }}
+          BRANCH: ${{ steps.bump.outputs.branch }}
+          LATEST_TAG: ${{ needs.decide.outputs.latest_tag }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          EXISTING=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq 'length')
+          if [ "${EXISTING:-0}" -gt 0 ]; then
+            echo "A bump PR for $BRANCH is already open -- not opening another."
+            exit 0
+          fi
+          git config user.name "onexbot-occ-writer[bot]"
+          git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add pyproject.toml uv.lock
+          # NOTE: this subject deliberately does NOT carry the release-on-merge
+          # self-push marker. Its merge MUST re-enter this workflow, which is
+          # how the deferred release actually happens.
+          git commit -m "chore(OMN-18010): arm dev at ${TARGET} for release-on-merge"
+          git push origin "$BRANCH"
+          gh pr create --repo "$REPO" --base dev --head "$BRANCH" \
+            --title "chore(OMN-18010): arm dev at ${TARGET} for release-on-merge" \
+            --body "$(printf '%s\n' \
+              "## Summary" \
+              "" \
+              "Automated recovery step for release-on-merge (OMN-18010). dev's \`[project].version\` was not strictly ahead of the highest published tag (\`${LATEST_TAG}\`), so the merge that triggered this could not be released without a bump." \
+              "" \
+              "This PR sets \`[project].version\` to \`${TARGET}\` and re-locks \`uv.lock\`. Merging it re-enters the release-on-merge workflow, which then releases \`v${TARGET}\`." \
+              "" \
+              "## Ticket" \
+              "" \
+              "OMN-18010 — release on merge for every publishing repo." \
+              "" \
+              "## Triggered by" \
+              "" \
+              "${RUN_URL}" \
+              "" \
+              "## Test plan" \
+              "" \
+              "- [ ] the release-identity gate is green on this PR (that IS the behaviour under test)" \
+              "- [ ] CI passes (lockfile resolves)")"
+          gh pr merge --repo "$REPO" --squash --auto "$BRANCH"
+          echo "::warning::dev had drifted level with ${LATEST_TAG}; opened a bump PR to ${TARGET}. This merge releases once that PR lands."
+
+  # ---------------------------------------------------------------------------
+  # reopen-dev — the release train's own disarm step (ported from
+  # omnibase_infra, OMN-13912).
+  #
+  # Publishing X.Y.Z from dev HEAD leaves dev's [project].version EQUAL to the
+  # highest published tag, which ARMS the release-identity gate against dev
+  # itself. Measured on omnibase_infra: ~2h06m armed after v0.38.10 and ~1h38m
+  # after v0.38.11, each disarmed only when an unrelated PR happened to bump.
+  # Under release-on-merge that window would recur on EVERY merge, so the event
+  # that arms the gate performs its own disarm.
+  #
+  # Gated on `needs.release.outputs.version` rather than on job success ON
+  # PURPOSE: that output is set by the tag step, i.e. after the tag landed, and
+  # coupling the disarm to overall job success would let an unrelated later
+  # failure leave dev wedged.
+  # ---------------------------------------------------------------------------
+  reopen-dev:
+    name: Reopen dev for the next version
+    needs: release
+    if: always() && needs.release.outputs.version != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Mint onexbot-occ-writer app token (dev reopen identity)
+        id: app-token
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          permission-pull-requests: write
+
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: dev
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - uses: astral-sh/setup-uv@94527f2e458b27549849d47d273a16bec83a01e9 # v7
+        with:
+          python-version: '3.12'
+
+      - name: Decide and apply the dev version bump
+        id: bump
+        env:
+          RELEASED_VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          set -euo pipefail
+          # Decide first WITHOUT writing, so the decision is recorded even when
+          # it is a no-op (dev already ahead => the gate is already disarmed).
+          DECISION="$(python3 scripts/ci/post_release_dev_bump.py --released "$RELEASED_VERSION")"
+          echo "$DECISION"
+          ACTION="$(printf '%s' "$DECISION" | python3 -c 'import json,sys; print(json.load(sys.stdin)["action"])')"
+          TARGET="$(printf '%s' "$DECISION" | python3 -c 'import json,sys; print(json.load(sys.stdin)["target_version"])')"
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "target=$TARGET" >> "$GITHUB_OUTPUT"
+          echo "branch=automation/post-release-dev-bump-${TARGET}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Post-release dev version bump"
+            echo ""
+            echo '```json'
+            echo "$DECISION"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ACTION" = "bump" ]; then
+            python3 scripts/ci/post_release_dev_bump.py --released "$RELEASED_VERSION" --apply
+            uv lock
+          fi
+
+      - name: Push the reopen commit to dev, falling back to a PR
+        if: steps.bump.outputs.action == 'bump'
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          REPO: ${{ github.repository }}
+          RELEASED_VERSION: ${{ needs.release.outputs.version }}
+          TARGET: ${{ steps.bump.outputs.target }}
+          BRANCH: ${{ steps.bump.outputs.branch }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          git config user.name "onexbot-occ-writer[bot]"
+          git config user.email "onexbot-occ-writer[bot]@users.noreply.github.com"
+          git add pyproject.toml uv.lock
+          # The [release-on-merge] marker is what stops this commit — which
+          # touches pyproject.toml and uv.lock, and so matches this workflow's
+          # own paths filter — from re-entering the trigger and releasing an
+          # empty version once per merge, forever.
+          git commit -m "chore(release): open dev for v${TARGET} [release-on-merge]
+
+          Disarms the OMN-16344 release-identity gate that publishing
+          ${RELEASED_VERSION} armed against dev.
+
+          Triggered-by: ${RUN_URL}"
+
+          # Preferred: straight to dev. The PR route leaves the gate armed for
+          # the whole life of the PR, and under release-on-merge that window
+          # recurs on every merge. omnimarket's dev carries 32 required status
+          # checks with enforce_admins true, so this push is expected to be
+          # REFUSED here and the fallback is the live path; the attempt stays so
+          # this file is portable to a repo with a laxer dev.
+          if git push origin "HEAD:dev" 2>push.log; then
+            echo "dev reopened at ${TARGET} by direct push."
+            exit 0
+          fi
+          cat push.log >&2
+          echo "::warning::direct push to dev was refused (branch protection); falling back to a bump PR. dev stays ARMED until it merges."
+
+          EXISTING=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq 'length')
+          if [ "${EXISTING:-0}" -gt 0 ]; then
+            echo "A bump PR for $BRANCH is already open -- not opening another."
+            exit 0
+          fi
+          git branch -f "$BRANCH" HEAD
+          git push origin "refs/heads/${BRANCH}"
+          gh pr create --repo "$REPO" --base dev --head "$BRANCH" \
+            --title "chore(OMN-18010): post-release dev version bump to ${TARGET} [release-on-merge]" \
+            --body "$(printf '%s\n' \
+              "## Summary" \
+              "" \
+              "Automated post-release disarm step (OMN-18010, porting OMN-13912). Publishing \`${RELEASED_VERSION}\` left dev's \`[project].version\` equal to the highest published tag, which ARMS the OMN-16344 release-identity gate (\`scripts/check_release_identity.py\`) against every subsequent dev PR that touches \`src/**\`." \
+              "" \
+              "This PR bumps \`[project].version\` to \`${TARGET}\` and re-locks \`uv.lock\`, so the gate is disarmed by the same flow that armed it rather than by whichever unrelated PR trips it first." \
+              "" \
+              "The title carries the release-on-merge marker on purpose: this commit touches \`pyproject.toml\`, so without the marker its own merge would re-enter the release workflow and publish an empty version." \
+              "" \
+              "## Ticket" \
+              "" \
+              "OMN-18010 — release on merge for every publishing repo." \
+              "" \
+              "## Triggered by" \
+              "" \
+              "${RUN_URL}" \
+              "" \
+              "## Test plan" \
+              "" \
+              "- [ ] the release-identity gate is green on this PR (that IS the behaviour under test)" \
+              "- [ ] CI passes (lockfile resolves)")"
+          gh pr merge --repo "$REPO" --squash --auto "$BRANCH"
+
+      - name: Report no-op
+        if: steps.bump.outputs.action == 'noop'
+        run: |
+          echo "dev is already ahead of ${{ needs.release.outputs.version }} -- release-identity is disarmed, no bump needed."
+
+  # ---------------------------------------------------------------------------
+  # sync-main — OMN-16289: main IS the last release. Fast-forward it to the
+  # released commit through the refs API.
+  #
+  # A SEPARATE job with job-level continue-on-error, not a step in `release`:
+  # omnibase_core run 34030901325 published v0.47.4 successfully, then failed on
+  # the main-sync app-token mint, which failed the whole release job and
+  # SKIPPED Dependency Cascade. Every post-release job here therefore needs
+  # `release` and NOTHING needs `sync-main`.
+  #
+  # STANDING OPERATOR ITEM (an agent cannot do this, and it needs no new
+  # secret): the onexbot-occ-writer App installation does not currently hold
+  # Workflows:write, which is why core's and infra's main-sync steps fail while
+  # omnimarket's — which only ever asks for Contents:write — succeeds. Proven in
+  # omnibase_infra run 34037128862: the same run's dev-bump mint, asking for
+  # contents+PRs only, SUCCEEDED. So the Workflows scope is requested here ONLY
+  # when the released tree actually touches .github/workflows/**, and the job is
+  # continue-on-error so that a refused mint cannot retroactively fail a release
+  # that already published.
+  # ---------------------------------------------------------------------------
+  sync-main:
+    name: Sync main to the release tag
+    needs: release
+    if: always() && needs.release.outputs.version != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - name: Mint sync-main push token (contents only)
+        id: token-contents
+        if: needs.release.outputs.workflows_touched != 'true'
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+
+      - name: Mint sync-main push token (contents + workflows)
+        id: token-workflows
+        if: needs.release.outputs.workflows_touched == 'true'
+        uses: actions/create-github-app-token@d72941d797fd3113feb6b93fd0dec494b13a2547 # v1
+        with:
+          app-id: ${{ secrets.ONEXBOT_OCC_APP_ID }}
+          private-key: ${{ secrets.ONEXBOT_OCC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: write
+          # The released tree edits a workflow file, so the protected-ref update
+          # needs this scope (OMN-17272).
+          permission-workflows: write
+
+      # This step intentionally does not check out or execute repository code:
+      # it receives only the validated tag and commit SHA from the release job,
+      # then updates refs/heads/main through the GitHub API. The workflow
+      # GITHUB_TOKEN is NOT an authorizable identity for the OMN-16289 main
+      # ruleset (GH006, proven live on omnibase_core 2026-08-21).
+      - name: Sync main to release tag
+        env:
+          RELEASE_TAG: ${{ needs.release.outputs.version }}
+          TAG_SHA: ${{ needs.release.outputs.tag_sha }}
+          SYNC_MAIN_TOKEN: ${{ steps.token-contents.outputs.token || steps.token-workflows.outputs.token }}
+        run: |
+          set -euo pipefail
+          case "$RELEASE_TAG" in
+            ''|*[!A-Za-z0-9.+_-]*)
+              echo "::error::release tag contains unsupported characters"
+              exit 1
+              ;;
+          esac
+          case "$TAG_SHA" in
+            [0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]) ;;
+            *)
+              echo "::error::release SHA is not a full commit SHA"
+              exit 1
+              ;;
+          esac
+          python3 - <<'PY' > update-main-ref.json
+          import json
+          import os
+
+          print(json.dumps({"sha": os.environ["TAG_SHA"], "force": False}))
+          PY
+          curl -fsS \
+            -X PATCH \
+            -H "Authorization: Bearer ${SYNC_MAIN_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY}/git/refs/heads/main" \
+            --data @update-main-ref.json
+          echo "main fast-forwarded to $TAG_SHA ($RELEASE_TAG)"
