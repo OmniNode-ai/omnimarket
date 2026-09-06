@@ -17,8 +17,10 @@ segment and a Kafka message key. That stops path traversal; it does not stop
 membership drift. Any syntactically-safe token was accepted, so a customer could
 register a key for a provider that can never route:
 
-* a provider we declared NOT OFFERED (``gemini`` / ``glm`` / ``vertex``, each
-  carrying a reason and the ticket that owns lifting it — OMN-17932),
+* a provider we declared NOT OFFERED (``gemini`` / ``vertex``, each carrying a
+  reason and the ticket that owns lifting it — OMN-17932; ``glm`` was on that
+  list too until OMN-17932 lifted it into ``providers`` on 2026-09-06, which is
+  why it now appears in the ACCEPTED direction below and not the refused one),
 * a provider with no delegation backend at all (``openai`` — OMN-17373),
 * a bare typo (``openrooter``).
 
@@ -99,7 +101,6 @@ def test_every_catalogue_id_is_still_accepted() -> None:
         "openrooter",  # a plain typo of the one offered id
         "openai",  # no delegation backend at all (OMN-17373)
         "gemini",  # declared not_offered (OMN-17932)
-        "glm",  # declared not_offered (OMN-17932)
         "vertex",  # declared not_offered (OMN-17932)
     ],
 )
