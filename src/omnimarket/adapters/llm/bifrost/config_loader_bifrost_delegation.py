@@ -230,46 +230,7 @@ def load_bifrost_delegation_config(
         )
         data = deep_merge_bifrost_delegation_config(data, overlay_data)
 
-    try:
-        config = ModelBifrostDelegationConfig.model_validate(data)
-    except ValidationError as exc:
-        msg = f"Bifrost delegation config schema validation failed: {exc}"
-        raise ValueError(msg) from exc
-
-    declared_backend_ids = {b.backend_id for b in config.backends}
-
-    unknown_defaults = set(config.default_backends) - declared_backend_ids
-    if unknown_defaults:
-        msg = f"default_backends references undeclared backend(s): {sorted(unknown_defaults)}"
-        raise ValueError(msg)
-
-    for rule in config.routing_rules:
-        unknown_rule_backends = set(rule.backend_ids) - declared_backend_ids
-        if unknown_rule_backends:
-            msg = (
-                f"Rule {rule.rule_id!s} ({rule.task_class!r}) references "
-                f"undeclared backend(s): {sorted(unknown_rule_backends)}"
-            )
-            raise ValueError(msg)
-
-    _reject_backends_off_a_declared_provider_surface(config, source=str(resolved))
-
-    rule_ids = [rule.rule_id for rule in config.routing_rules]
-    if len(rule_ids) != len(set(rule_ids)):
-        counts: dict[object, int] = {}
-        for rid in rule_ids:
-            counts[rid] = counts.get(rid, 0) + 1
-        duplicates = [rid for rid, count in counts.items() if count > 1]
-        msg = f"Duplicate rule_id(s) detected: {duplicates}"
-        raise ValueError(msg)
-
-    logger.info(
-        "Loaded bifrost delegation config v%s: %d backends, %d rules",
-        config.config_version,
-        len(config.backends),
-        len(config.routing_rules),
-    )
-    return config
+    return _validate_bifrost_delegation_config(data, source=str(resolved))
 
 
 def reject_backends_off_a_declared_provider_surface(
@@ -377,6 +338,91 @@ def _read_yaml_mapping(path: Path) -> dict[str, Any]:
     return data
 
 
+def _read_yaml_mapping_bytes(payload: bytes, *, source: str) -> dict[str, Any]:
+    """Parse an explicit in-memory YAML mapping for offline contract checks."""
+    try:
+        raw = payload.decode("utf-8")
+        data = yaml.safe_load(raw)
+    except (UnicodeDecodeError, yaml.YAMLError) as exc:
+        msg = f"Expected UTF-8 YAML mapping from {source}"
+        raise ValueError(msg) from exc
+    if not isinstance(data, dict):
+        msg = f"Expected YAML mapping at root for {source}, got {type(data).__name__}"
+        raise ValueError(msg)
+    return data
+
+
+def load_bifrost_delegation_config_payload(
+    contract_payload: bytes,
+    overlay_payload: bytes | None,
+    *,
+    contract_source: str,
+    overlay_source: str | None = None,
+) -> ModelBifrostDelegationConfig:
+    """Validate explicit Bifrost contract bytes with the canonical merge rules.
+
+    This is the in-memory counterpart to :func:`load_bifrost_delegation_config`.
+    It deliberately accepts neither paths nor environment-derived defaults, so
+    offline validators can replay a supplied contract/overlay pair without
+    resolving a deployment binding.
+    """
+    base = _read_yaml_mapping_bytes(contract_payload, source=contract_source)
+    if overlay_payload is not None:
+        if overlay_source is None:
+            raise ValueError(
+                "overlay_source is required when overlay_payload is supplied"
+            )
+        overlay = _read_yaml_mapping_bytes(overlay_payload, source=overlay_source)
+        reject_overlay_only_backend_ids(
+            base.get("backends") or [],
+            overlay.get("backends") or [],
+            overlay_source=overlay_source,
+        )
+        base = deep_merge_bifrost_delegation_config(base, overlay)
+    return _validate_bifrost_delegation_config(base, source=contract_source)
+
+
+def _validate_bifrost_delegation_config(
+    data: dict[str, Any], *, source: str
+) -> ModelBifrostDelegationConfig:
+    """Apply the canonical schema and cross-reference checks to resolved data."""
+    try:
+        config = ModelBifrostDelegationConfig.model_validate(data)
+    except ValidationError as exc:
+        msg = f"Bifrost delegation config schema validation failed: {exc}"
+        raise ValueError(msg) from exc
+
+    declared_backend_ids = {backend.backend_id for backend in config.backends}
+    unknown_defaults = set(config.default_backends) - declared_backend_ids
+    if unknown_defaults:
+        msg = f"default_backends references undeclared backend(s): {sorted(unknown_defaults)}"
+        raise ValueError(msg)
+    for rule in config.routing_rules:
+        unknown_rule_backends = set(rule.backend_ids) - declared_backend_ids
+        if unknown_rule_backends:
+            msg = (
+                f"Rule {rule.rule_id!s} ({rule.task_class!r}) references "
+                f"undeclared backend(s): {sorted(unknown_rule_backends)}"
+            )
+            raise ValueError(msg)
+    _reject_backends_off_a_declared_provider_surface(config, source=source)
+    rule_ids = [rule.rule_id for rule in config.routing_rules]
+    if len(rule_ids) != len(set(rule_ids)):
+        counts: dict[object, int] = {}
+        for rule_id in rule_ids:
+            counts[rule_id] = counts.get(rule_id, 0) + 1
+        duplicates = [rule_id for rule_id, count in counts.items() if count > 1]
+        msg = f"Duplicate rule_id(s) detected: {duplicates}"
+        raise ValueError(msg)
+    logger.info(
+        "Loaded Bifrost delegation config v%s: %d backends, %d rules",
+        config.config_version,
+        len(config.backends),
+        len(config.routing_rules),
+    )
+    return config
+
+
 def deep_merge_bifrost_delegation_config(
     default_config: dict[str, Any],
     overlay_config: dict[str, Any],
@@ -462,6 +508,7 @@ __all__: list[str] = [
     "ProviderSurfaceMismatchError",
     "deep_merge_bifrost_delegation_config",
     "load_bifrost_delegation_config",
+    "load_bifrost_delegation_config_payload",
     "reject_backends_off_a_declared_provider_surface",
     "reject_overlay_only_backend_ids",
 ]
