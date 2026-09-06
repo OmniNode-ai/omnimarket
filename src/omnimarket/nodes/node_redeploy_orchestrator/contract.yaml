@@ -35,8 +35,8 @@ description: >
 # high-watermark 0. Setting `topic:` alone is NOT enough — that picks WHICH topic an
 # entry owns; `message_category:` picks which category it registers under.
 #
-# The four topics below are the redeploy FSM's merge-to-rebuild path. The remaining
-# subscribe topics (readiness-gate outcomes, rolled-back, runtime-booted,
+# The five topics below are the redeploy FSM's merge-to-rebuild path plus its failure
+# outcome. The remaining subscribe topics (readiness-gate outcomes, runtime-booted,
 # runtime-manifest-published) deliberately have NO entry and stay on the OMN-16939
 # burn-down baseline: the handler has no branch for them, so routing them would send
 # them down the redeploy-start path — and a runtime-booted event doing that is an
@@ -72,6 +72,13 @@ handler_routing:
         name: HandlerRedeployOrchestrator
         module: omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator
       description: "Gate decision: emit the deploy-publish command, or complete BLOCKED."
+    - topic: onex.evt.omnimarket.redeploy-rolled-back.v1
+      message_category: event
+      operation: "redeploy.orchestrate"
+      handler:
+        name: HandlerRedeployOrchestrator
+        module: omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator
+      description: "Rollback fact: emit the terminal redeploy-completed:ROLLED_BACK."
 
 handler:
   module: omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator

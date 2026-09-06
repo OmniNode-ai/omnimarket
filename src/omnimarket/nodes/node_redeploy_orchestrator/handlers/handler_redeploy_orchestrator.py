@@ -61,6 +61,7 @@ from omnimarket.events.runtime_deployment import (
     ModelRedeployCommand,
     ModelRedeployCompletedEvent,
     ModelRedeployDeployContext,
+    ModelRedeployRolledBackEvent,
     ModelRuntimeImageBuilt,
 )
 from omnimarket.nodes.contract_topics import contract_publish_topics
@@ -128,11 +129,14 @@ class HandlerRedeployOrchestrator:
         out-of-band resolved grant + evaluated_at stamped (NEVER from the start).
         ``prod-promotion-gate-evaluated`` -> deploy-publish command (allowed) or
         redeploy-completed:BLOCKED (denied).
+        ``redeploy-rolled-back`` -> redeploy-completed:ROLLED_BACK (terminal).
         """
         event_name = _event_name(envelope.event_type or "")
         correlation_id = envelope.correlation_id or uuid4()
 
-        if event_name == "prod-promotion-grant-resolved":
+        if event_name == "redeploy-rolled-back":
+            events = self._on_rolled_back(envelope, correlation_id)
+        elif event_name == "prod-promotion-grant-resolved":
             events = self._on_grant_resolved(envelope, correlation_id)
         elif event_name == "prod-promotion-gate-evaluated":
             events = self._on_gate_evaluated(envelope, correlation_id)
@@ -380,6 +384,45 @@ class HandlerRedeployOrchestrator:
             )
         ]
 
+    def _on_rolled_back(
+        self, envelope: ModelEventEnvelope[Any], correlation_id: UUID
+    ) -> list[ModelEventEnvelope[Any]]:
+        """Terminalize a rolled-back deploy (OMN-16939).
+
+        The deploy EFFECT publishes this fact when a deploy it published never
+        completed, or completed and then failed post-deploy health. It is the
+        redeploy workflow's failure outcome, and it is where the run has to end:
+        the orchestrator owns the terminal event, so with no branch here the fact
+        was consumed, matched nothing and was DLQ'd, and the run simply stopped
+        with no terminal at all. Live on the .201 dev lane 2026-09-06 for
+        correlation 86d5da00: the deploy command reached the agent's topic, the
+        agent was not running, the effect rolled back and published this event,
+        and `redeploy-completed` stayed flat. Nothing downstream — the closeout
+        orchestrator included — could tell that run from one still in flight.
+
+        ``failure_reason`` is carried verbatim so the terminal says WHY, rather
+        than reporting a bare failed phase (OMN-16812 / OMN-17432 are the general
+        form of that complaint at the boundary; this is the redeploy-specific
+        instance the orchestrator can answer itself).
+        """
+        rolled_back = _coerce_rolled_back(envelope.payload, correlation_id)
+        completed = ModelRedeployCompletedEvent(
+            correlation_id=rolled_back.correlation_id,
+            final_phase=EnumRedeployPhase.ROLLED_BACK,
+            phases_completed=0,
+            error_message=(
+                f"rolled back to {rolled_back.restored_image} after "
+                f"{rolled_back.failed_phase.value}: {rolled_back.failure_reason}"
+            ),
+        )
+        return [
+            ModelEventEnvelope(
+                payload=completed,
+                correlation_id=rolled_back.correlation_id,
+                event_type=TOPIC_REDEPLOY_COMPLETED,
+            )
+        ]
+
     def _on_image_built(
         self, envelope: ModelEventEnvelope[Any], correlation_id: UUID
     ) -> list[ModelEventEnvelope[Any]]:
@@ -573,6 +616,23 @@ def _coerce_grant_resolved(
             ),
         )
     return resolved, start
+
+
+def _coerce_rolled_back(
+    payload: Any, correlation_id: UUID
+) -> ModelRedeployRolledBackEvent:
+    """Coerce the rolled-back payload into a ``ModelRedeployRolledBackEvent``."""
+    if isinstance(payload, ModelRedeployRolledBackEvent):
+        return payload
+    mapping = _as_mapping(payload)
+    if mapping is None:
+        raise TypeError(
+            f"redeploy-rolled-back payload must be a mapping or model; got "
+            f"{type(payload).__name__}"
+        )
+    data = dict(mapping)
+    data.setdefault("correlation_id", str(correlation_id))
+    return ModelRedeployRolledBackEvent.model_validate(data)
 
 
 def _coerce_image_built(payload: Any, correlation_id: UUID) -> ModelRuntimeImageBuilt:

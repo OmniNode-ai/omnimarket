@@ -56,16 +56,20 @@ from omnibase_infra.validators.subscriber_dispatcher_resolution import scan
 
 from omnimarket.events.runtime_deployment import (
     EnumBuildSource,
+    EnumRedeployPhase,
     EnumRedeployScope,
     EnumRuntimeLane,
     ModelDeployPublishCommand,
     ModelProdPromotionGateCommand,
+    ModelRedeployCompletedEvent,
+    ModelRedeployRolledBackEvent,
 )
 from omnimarket.nodes.node_prod_promotion_gate_compute.handlers.handler_prod_promotion_gate import (
     HandlerProdPromotionGate,
 )
 from omnimarket.nodes.node_redeploy_orchestrator.handlers.handler_redeploy_orchestrator import (
     TOPIC_DEPLOY_PUBLISH,
+    TOPIC_REDEPLOY_COMPLETED,
     HandlerRedeployOrchestrator,
 )
 from omnimarket.nodes.node_redeploy_orchestrator.models.model_redeploy_start_command import (
@@ -81,18 +85,20 @@ _GATE_EVALUATED_TOPIC = "onex.evt.omnimarket.prod-promotion-gate-evaluated.v1"
 _GRANT_RESOLVED_TOPIC = "onex.evt.omnimarket.prod-promotion-grant-resolved.v1"
 _IMAGE_BUILT_TOPIC = "onex.evt.omnimarket.runtime-image-built.v1"
 _START_TOPIC = "onex.cmd.omnimarket.redeploy-start.v1"
+_ROLLED_BACK_TOPIC = "onex.evt.omnimarket.redeploy-rolled-back.v1"
 
-# Every topic the redeploy FSM traverses between a merge and a lane rebuild. Each one
-# must resolve; the orchestrator's remaining subscribe topics (readiness-gate outcomes,
-# rolled-back, runtime-booted, runtime-manifest-published) have no handler branch and
-# stay on the OMN-16939 burn-down baseline — wiring them without a branch would route
-# them into the redeploy-start path, and a runtime-booted event doing that is an
-# unbounded redeploy loop.
+# Every topic the redeploy FSM traverses between a merge and a lane rebuild, plus the
+# rollback fact that terminalizes the run when the rebuild does not happen. Each one must
+# resolve; the orchestrator's remaining subscribe topics (readiness-gate outcomes,
+# runtime-booted, runtime-manifest-published) have no handler branch and stay on the
+# OMN-16939 burn-down baseline — wiring them without a branch would route them into the
+# redeploy-start path, and a runtime-booted event doing that is an unbounded redeploy loop.
 _FSM_PATH_TOPICS = (
     _START_TOPIC,
     _IMAGE_BUILT_TOPIC,
     _GRANT_RESOLVED_TOPIC,
     _GATE_EVALUATED_TOPIC,
+    _ROLLED_BACK_TOPIC,
 )
 
 # A scan that collapses returns zero findings and reads exactly like a clean tree, so
@@ -268,3 +274,38 @@ def test_deploy_command_carries_the_git_ref_the_merge_asked_for() -> None:
     assert publish.build_source is EnumBuildSource.WORKSPACE
     assert publish.runtime_lane is EnumRuntimeLane.DEV
     assert publish.requested_by == "gha/omnibase_infra/pr-3243"
+
+
+@pytest.mark.unit
+def test_a_rolled_back_deploy_terminalizes_the_run() -> None:
+    """RED before the fix: the rollback fact was consumed, matched nothing, and DLQ'd.
+
+    Proven on the .201 dev lane 2026-09-06 for correlation `86d5da00`, the first real
+    post-merge run that got this far: the deploy command reached the agent's topic, the
+    agent was not running, `node_redeploy_deploy_effect` rolled back and published this
+    fact, and the runtime answered `No dispatcher registered for category 'event' and
+    message type 'omnimarket.redeploy-rolled-back'`. `redeploy-completed` stayed flat, so
+    nothing downstream could tell a failed run from one still in flight.
+    """
+    rolled_back = ModelRedeployRolledBackEvent(
+        correlation_id=uuid4(),
+        runtime_lane=EnumRuntimeLane.DEV,
+        restored_image="omninode-runtime:v2.3.1",
+        failure_reason="deploy agent did not answer within the monitor deadline",
+        failed_phase=EnumRedeployPhase.REBUILD,
+    )
+    envelope = ModelEventEnvelope[object](
+        payload=rolled_back.model_dump(mode="json"),
+        correlation_id=rolled_back.correlation_id,
+        event_type="omnimarket.redeploy-rolled-back",
+    )
+
+    output = asyncio.run(HandlerRedeployOrchestrator().handle(envelope))
+
+    assert [e.event_type for e in output.events] == [TOPIC_REDEPLOY_COMPLETED]
+    completed = ModelRedeployCompletedEvent.model_validate(output.events[0].payload)
+    assert completed.final_phase is EnumRedeployPhase.ROLLED_BACK
+    assert completed.correlation_id == rolled_back.correlation_id
+    # The terminal says WHY, not just that a phase failed.
+    assert "deploy agent did not answer" in (completed.error_message or "")
+    assert "omninode-runtime:v2.3.1" in (completed.error_message or "")
