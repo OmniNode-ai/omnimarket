@@ -56,11 +56,11 @@ tiers:
     models:
       # OMN-16419: was "Qwen3.6-35B-A3B" — repointed to match the corrected
       # bifrost_delegation.yaml local-coder model_name (live-verified served id
-      # "qwen3.8" at .201:8000). Keeping this id in sync with the backend's
+      # "Qwen3.6-35B-A3B" at .201:8000). Keeping this id in sync with the backend's
       # model_name is required for the task_model_overrides id-match escape
       # hatch in task_class_contracts.v1.yaml to resolve (see that file's
       # header comment) — a mismatch here would strand routing.
-      - id: qwen3.8
+      - id: Qwen3.6-35B-A3B
         backend_id: local-coder
         max_context_tokens: 65536
         # OMN-13599 (SUPERSEDED by OMN-16442 for `test`): local-coder was the
@@ -116,15 +116,15 @@ tiers:
       # before/after resolution table on OMN-16442 and
       # test_no_task_type_loses_its_last_local_backend_omn16442.
       # OMN-16419: was "Qwen3.6-35B-A3B" — same repoint as local-coder above
-      # (same .201:8000 SGLang endpoint, live-verified served id "qwen3.8").
+      # (same .201:8000 SGLang endpoint, live-verified served id "Qwen3.6-35B-A3B").
       # OMN-16442 re-probe 2026-08-28: GET .201:8000/v1/models still reports
-      # id "qwen3.8" with max_model_len 122880. The endpoint currently permits
+      # id "Qwen3.6-35B-A3B" with max_model_len 131072. The endpoint currently permits
       # ONE running generation request, so concurrency must be queued ABOVE
       # the model server — a second concurrent delegation to this backend
       # queues rather than parallelizes. local-coder and local-heavy-reasoning
       # are the SAME physical endpoint, so that single-slot budget is shared
       # across both rungs.
-      - id: qwen3.8
+      - id: Qwen3.6-35B-A3B
         backend_id: local-heavy-reasoning
         max_context_tokens: 8192
         use_for:

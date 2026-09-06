@@ -30,7 +30,7 @@ MODEL_OPENROUTER_QWEN3_CODER_480B: str = "openrouter-qwen3-coder-480b"
 # OMN-16419: was "Qwen3.6-35B-A3B" — repointed to the live-verified SGLang served
 # id at .201:8000 (config now matches GET /v1/models; see
 # omnimarket/src/omnimarket/configs/bifrost_delegation.yaml).
-MODEL_QWEN3_35B_A3B: str = "qwen3.8"
+MODEL_QWEN3_35B_A3B: str = "Qwen3.6-35B-A3B"
 MODEL_QWEN3_27B_MTP: str = "Qwen3.6-27B-MTP-IQ4_XS.gguf"
 
 # Convenience aliases for the most common test pairings

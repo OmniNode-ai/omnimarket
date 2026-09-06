@@ -19,9 +19,15 @@ schema_version: "1.0.0"
 price_unit: USD_PER_TOKEN
 entries:
   # --- Local / owned-GPU backends (zero marginal API cost) -----------------
-  # OMN-16492: live served id at .201:8000 since the 2026-08-23 reboot (SGLang,
-  # per OMN-16419 live probe). The Qwen3.6-35B-A3B row below is retained — cost
-  # keys are historical and pre-repoint events still resolve against it.
+  # Cost keys here are HISTORICAL, not a live binding. Both .201:8000 served ids
+  # are listed on purpose so events minted under either one still resolve a
+  # price: "qwen3.8" (SGLang, the OMN-16419 2026-08-23 readback) and
+  # "Qwen3.6-35B-A3B" (vLLM, live again per the OMN-16999 2026-09-05 re-probe:
+  # http=200, served ids exactly {"Qwen3.6-35B-A3B"}, max_model_len 131072).
+  # DO NOT repoint a row here when the endpoint's served id changes — ADD one.
+  # Repointing rewrites the price of already-emitted events and, because the
+  # contract is unique-by-(provider, model_id), collapses the two rows into a
+  # duplicate that fails ModelCostPricingContract validation outright.
   - provider: local
     model_id: qwen3.8
     input_token_price: "0"

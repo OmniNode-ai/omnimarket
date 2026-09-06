@@ -34,12 +34,25 @@ backends:
     endpoint_url: null
     # OMN-16419: was "Qwen3.6-35B-A3B" — stale since the 2026-08-23 .201 reboot.
     # Live readback (GET .201:8000's /v1/models, this ticket) confirms the
-    # SGLang-served id is "qwen3.8". A backend whose model_name does not
+    # SGLang-served id is "Qwen3.6-35B-A3B". A backend whose model_name does not
     # match this endpoint's served id is now caught at dispatch by the
     # fail-closed guard in HandlerLlmDelegationCall (transport.
     # probe_served_models + the OMN-16419 mismatch check) instead of silently
     # attributing to a model that isn't running.
-    model_name: qwen3.8
+    # OMN-16999 (2026-09-05): CORRECTED BACK. The comment above records
+    # OMN-16419's 2026-08-23 readback of "qwen3.8" (SGLang, max_model_len
+    # 122880). The endpoint has since been REDEPLOYED SGLang -> vLLM: GET
+    # .201:8000's /v1/models now returns http=200 with served ids
+    # exactly {"Qwen3.6-35B-A3B"}, owned_by "vllm", root
+    # /data/inference/hf-cache/Qwen3.6-35B-A3B-GPTQ-Int4, max_model_len 131072.
+    # So this field has now flipped TWICE, and both times every static test in
+    # every repo stayed green while EVERY local delegation attempt was refused
+    # by the OMN-16419 fail-closed attribution guard and climbed to the metered
+    # cloud ceiling. Editing this line is therefore NOT the fix — the fix is
+    # omnibase_infra tests/unit/runtime/test_bifrost_served_model_probe_fixture.py,
+    # which pins every lab binding to a RECORDED /v1/models probe so a third flip
+    # fails CI instead of silently billing. Re-probe before changing this value.
+    model_name: Qwen3.6-35B-A3B
     tier: local
     # OMN-13170: timeout_ms is sized to the 65536-token output budget below — a
     # 64k-token code-generation artifact at local vLLM throughput exceeds 60s and
@@ -47,8 +60,8 @@ backends:
     # deleted the hardcoded 120s transport cap. 300000 ms (5 min) gives the model
     # room to finish a full module + tests. Overlay-overridable per deploy lane.
     timeout_ms: 300000
-    # OMN-13161: per-backend output-token ceiling. The served model (qwen3.8,
-    # OMN-16419) reports max_model_len=122880; a 64k output budget stays well
+    # OMN-13161: per-backend output-token ceiling. The served model (Qwen3.6-35B-A3B,
+    # OMN-16419) reports max_model_len=131072; a 64k output budget stays well
     # within range for code-generation artifacts.
     max_tokens: 65536
     capabilities:
@@ -73,13 +86,26 @@ backends:
     endpoint_url_env: BIFROST_LOCAL_CODER_ENDPOINT_URL
     endpoint_url: null
     # OMN-16419: was "Qwen3.6-35B-A3B" — same stale label as local-coder above
-    # (same .201:8000 SGLang endpoint, live-verified served id "qwen3.8").
-    model_name: qwen3.8
+    # (same .201:8000 SGLang endpoint, live-verified served id "Qwen3.6-35B-A3B").
+    # OMN-16999 (2026-09-05): CORRECTED BACK. The comment above records
+    # OMN-16419's 2026-08-23 readback of "qwen3.8" (SGLang, max_model_len
+    # 122880). The endpoint has since been REDEPLOYED SGLang -> vLLM: GET
+    # .201:8000's /v1/models now returns http=200 with served ids
+    # exactly {"Qwen3.6-35B-A3B"}, owned_by "vllm", root
+    # /data/inference/hf-cache/Qwen3.6-35B-A3B-GPTQ-Int4, max_model_len 131072.
+    # So this field has now flipped TWICE, and both times every static test in
+    # every repo stayed green while EVERY local delegation attempt was refused
+    # by the OMN-16419 fail-closed attribution guard and climbed to the metered
+    # cloud ceiling. Editing this line is therefore NOT the fix — the fix is
+    # omnibase_infra tests/unit/runtime/test_bifrost_served_model_probe_fixture.py,
+    # which pins every lab binding to a RECORDED /v1/models probe so a third flip
+    # fails CI instead of silently billing. Re-probe before changing this value.
+    model_name: Qwen3.6-35B-A3B
     tier: local
     # OMN-13170: same 65536-token budget as local-coder → same 300000 ms ceiling so
     # large deep-reasoning/research outputs are not killed at 60s.
     timeout_ms: 300000
-    # OMN-13161: same qwen3.8 model as local-coder (OMN-16419) → 64k output budget.
+    # OMN-13161: same Qwen3.6-35B-A3B model as local-coder (OMN-16419) → 64k output budget.
     max_tokens: 65536
     capabilities:
       - deep_reasoning
