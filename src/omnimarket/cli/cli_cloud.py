@@ -177,6 +177,40 @@ def _assert_binds_to_submission(
     )
 
 
+def _assert_receipt_is_for(
+    receipt: ModelCloudDelegationReceipt, *, requested: uuid.UUID
+) -> None:
+    """Refuse a fetched receipt that is not about the workflow that was asked for.
+
+    The same rule as ``_assert_binds_to_submission``, for the path that has no
+    ack to bind to. ``cloud receipt`` is handed one id on the command line and
+    nothing else, so that id IS the submission here: the run directory is named
+    from it while every field written inside comes from the response. Without
+    this comparison a gateway answering about another workflow is filed under
+    the requested id, and its ``terminal_model_used`` is printed as the route
+    that ran this workflow — a relabelled answer, indistinguishable on disk
+    from a real one once the session that could explain it is gone.
+
+    Only ``workflow_id`` is compared, and that is not an omission. A bare fetch
+    carries no correlation id of its own to compare against; the one on the
+    body is the correct one for the workflow it names, so asserting it would
+    refuse every legitimate fetch. ``requested`` is the PARSED ``uuid.UUID``,
+    not the argument string, so a braced or upper-case spelling of the same
+    workflow compares equal rather than being refused.
+
+    Raised BEFORE the run directory is created and before anything is written.
+    """
+    if receipt.workflow_id == requested:
+        return
+    raise _fail(
+        f"the gateway returned a receipt for a different workflow. Asked for "
+        f"{requested}; the receipt names {receipt.workflow_id}. Nothing was "
+        "written — a receipt filed under another run's id is not evidence "
+        "about this one. Fetch that workflow deliberately with 'onex cloud "
+        f"receipt {receipt.workflow_id}'."
+    )
+
+
 def _failure_attribution_lines(
     receipt: ModelCloudDelegationReceipt,
 ) -> tuple[str, ...]:
@@ -763,6 +797,8 @@ def cloud_receipt(
             receipt = client.receipt(canonical_workflow_id, runner_identity=identity)
     except ModelOnexError as exc:
         raise _fail(str(exc)) from exc
+
+    _assert_receipt_is_for(receipt, requested=workflow_id)
 
     run_dir = output_dir / canonical_workflow_id
     run_dir.mkdir(parents=True, exist_ok=True)
