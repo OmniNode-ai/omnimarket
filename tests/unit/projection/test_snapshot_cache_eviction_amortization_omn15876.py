@@ -6,17 +6,14 @@ MEASURED LIVE on onex-dev (dev-system ``i-06169517a92b45f86``), 2026-09-06,
 read-only in-pod broker offsets from
 ``omnimarket-projection-live-events-writer-7748cbfbb5-vr74h``:
 
-===============================================  =========  ==========  =========
-topic                                            log_start         hwm    records
-===============================================  =========  ==========  =========
-onex.snapshot.projection.consumer-flow.v1                0   1,293,082  1,293,082
-onex.snapshot.projection.live-events.v1            179,145     268,911     89,766
-onex.snapshot.projection.registration.v1            39,876      73,369     33,493
-onex.snapshot.projection.delegation.* (x4)               0           2          2
-onex.snapshot.projection.session.replay.v1               0           0          0
-onex.snapshot.projection.tenant-credentials.v1           0           0          0
-onex.snapshot.projection.work.events.v1                  0           0          0
-===============================================  =========  ==========  =========
+topic                                            log_start        hwm    records
+onex.snapshot.projection.consumer-flow.v1                0  1,293,082  1,293,082
+onex.snapshot.projection.live-events.v1            179,145    268,911     89,766
+onex.snapshot.projection.registration.v1            39,876     73,369     33,493
+onex.snapshot.projection.delegation.* (x4)               0          2          2
+onex.snapshot.projection.session.replay.v1               0          0          0
+onex.snapshot.projection.tenant-credentials.v1           0          0          0
+onex.snapshot.projection.work.events.v1                  0          0          0
 
 The ``/ready`` bus_backed map splits on exactly that ordering: the seven
 topics holding 0 or 2 records are ``true`` within seconds, ``registration``
