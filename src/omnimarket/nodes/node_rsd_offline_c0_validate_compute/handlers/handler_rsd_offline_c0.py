@@ -19,7 +19,7 @@ from omnimarket.adapters.llm.bifrost.config_loader_bifrost_delegation import (
 from omnimarket.models.delegation.llm_cost_routing.model_llm_model_registry import (
     ModelLlmModelRegistry,
 )
-from omnimarket.nodes.node_delegation_routing_reducer.models.model_delegation_config import (
+from omnimarket.models.delegation.wire import (
     parse_delegation_config_yaml,
 )
 from omnimarket.nodes.node_rsd_offline_c0_validate_compute.models.model_rsd_offline_c0 import (
