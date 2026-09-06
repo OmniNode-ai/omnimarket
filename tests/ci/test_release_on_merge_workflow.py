@@ -429,3 +429,20 @@ def test_release_yml_still_serves_the_manual_tag_path() -> None:
     triggers = legacy[ON_KEY]
     assert "tags" in triggers["push"]
     assert "workflow_dispatch" in triggers
+
+
+def test_the_manual_release_path_publishes_idempotently() -> None:
+    """release.yml's publish must tolerate files that are already on PyPI.
+
+    The design assumed the App-token tag push from release-on-merge would be
+    suppressed the way App-token branch pushes are on this org. Measured false:
+    the v0.4.20 tag push fired release.yml as run 34067071382 while
+    release-on-merge run 34066508864 was still publishing the same two files.
+    Two `uv publish` calls for one version overlapped and both reported
+    success, which is luck rather than a property. `--check-url` against the
+    simple index ROOT makes the upload idempotent, so the loser of that race
+    skips instead of taking a 400 and reporting a red release for an artifact
+    that is already live.
+    """
+    raw_legacy = LEGACY_RELEASE_PATH.read_text(encoding="utf-8")
+    assert "--check-url https://pypi.org/simple/" in raw_legacy
