@@ -26,8 +26,16 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+
+# OMN-16939: the infra in-memory bus, not the core one. The deploy effect
+# stamps an infra ``ModelEventHeaders`` on the rebuild command so the wire
+# record's header correlation equals its payload correlation; the core bus
+# models ``schema_version`` as a ModelSemVer and rejects that header. The
+# runtime bus for this node is ``EventBusKafka`` (infra), so the infra
+# in-memory bus is the double with matching model parity -- proving the chain
+# on a bus that cannot carry the runtime's own headers proves nothing.
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.events.runtime_deployment import (
     TERMINAL_PHASES,

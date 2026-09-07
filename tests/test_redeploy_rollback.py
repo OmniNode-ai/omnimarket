@@ -12,7 +12,15 @@ failed is NOT a rollback (the artifact never went live).
 Each test injects a specific failure mode and asserts:
   1. the previous image is restored;
   2. the rolled-back event is emitted with the correct failure reason;
-  3. the effect handler returns a rolled-back EFFECT event envelope.
+  3. the effect handler returns a rolled-back EFFECT event envelope;
+  4. the handler publishes NOTHING to the rolled-back topic itself -- the
+     runtime publishes the handler-output event, exactly once (OMN-16939).
+
+(4) is the assertion this file was missing. It previously asserted
+``len(rollback_events) == 1`` against the handler's OWN direct publish, which
+was true in-memory and wrong on the runtime: there the direct publish and the
+returned envelope both reached the topic, so every logical rollback landed
+twice and the orchestrator terminalized twice.
 """
 
 from __future__ import annotations
@@ -22,8 +30,8 @@ from uuid import uuid4
 
 import pytest
 from omnibase_core.enums.enum_node_kind import EnumNodeKind
-from omnibase_core.event_bus.event_bus_inmemory import EventBusInmemory
 from omnibase_core.models.events.model_event_envelope import ModelEventEnvelope
+from omnibase_infra.event_bus.event_bus_inmemory import EventBusInmemory
 
 from omnimarket.events.runtime_deployment import (
     DEFAULT_PREVIOUS_IMAGE,
@@ -116,8 +124,8 @@ class TestDeployEffectRollback:
         assert isinstance(rolled, ModelRedeployRolledBackEvent)
         assert rolled.restored_image == DEFAULT_PREVIOUS_IMAGE
         assert "smoke" in rolled.failure_reason.lower()
-        assert len(rollback_events) == 1
-        assert rollback_events[0]["restored_image"] == DEFAULT_PREVIOUS_IMAGE
+        # OMN-16939: the handler must publish NOTHING to this topic itself.
+        assert rollback_events == []
 
         await bus.close()
 
@@ -170,7 +178,7 @@ class TestDeployEffectRollback:
         assert isinstance(rolled, ModelRedeployRolledBackEvent)
         assert rolled.restored_image == DEFAULT_PREVIOUS_IMAGE
         assert "health" in rolled.failure_reason.lower()
-        assert len(rollback_events) == 1
+        assert rollback_events == []
 
         await bus.close()
 
@@ -200,7 +208,7 @@ class TestDeployEffectRollback:
         assert isinstance(rolled, ModelRedeployRolledBackEvent)
         assert rolled.restored_image == DEFAULT_PREVIOUS_IMAGE
         assert "timed out" in rolled.failure_reason.lower()
-        assert len(rollback_events) == 1
+        assert rollback_events == []
 
         await bus.close()
 
