@@ -840,12 +840,18 @@ class TestGenericProjectionSinceCursor:
         assert body["rows"][0]["projection_cursor"] == "5"
 
     def test_since_returns_next_cursor(self) -> None:
+        # OMN-17215: a third row and a limit of two make this page genuinely
+        # truncated. Both assertions below are unchanged; only the fixture moved,
+        # because a cursor is now owed on truncation rather than on non-emptiness.
         rows = [
             {"projection_cursor": "7", "event_id": "e7", "repo": "r", "branch": "b"},
             {"projection_cursor": "9", "event_id": "e9", "repo": "r", "branch": "b"},
+            {"projection_cursor": "11", "event_id": "e11", "repo": "r", "branch": "b"},
         ]
+        cfg = _PR_MERGED_CURSOR_MAP[_PR_MERGED_TOPIC]
+        truncating = {_PR_MERGED_TOPIC: cfg.model_copy(update={"limit": 2})}
         cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
-        with _with_cache(cache, _PR_MERGED_CURSOR_MAP) as client:
+        with _with_cache(cache, truncating) as client:
             resp = client.get(f"/projection/{_PR_MERGED_TOPIC}", params={"since": "0"})
         body = resp.json()
         assert resp.status_code == 200
@@ -869,3 +875,57 @@ class TestGenericProjectionSinceCursor:
             )
         assert resp.status_code == 422
         assert resp.json()["filter"] == "since"
+
+
+@pytest.mark.unit
+class TestNextCursorSignalsTruncation:
+    """OMN-17215 AC3: ``next_cursor`` must distinguish "this is the complete
+    set" from "this is page 1 of N".
+
+    The condition it is guarded by tests whether the page is *non-empty*, not
+    whether it is *truncated*, so a complete result that happens to have rows
+    still advertises a cursor. A client that follows it fetches an empty page
+    and cannot tell "done" from "more".
+    """
+
+    @staticmethod
+    def _map_with_limit(limit: int) -> dict[str, ProjectionTableConfig]:
+        cfg = _PR_MERGED_CURSOR_MAP[_PR_MERGED_TOPIC]
+        return {
+            _PR_MERGED_TOPIC: cfg.model_copy(update={"limit": limit}),
+        }
+
+    def test_complete_page_has_null_next_cursor(self) -> None:
+        """Two rows under a limit of 500 is the whole set — nothing follows it."""
+        rows = [
+            {"projection_cursor": "7", "event_id": "e7", "repo": "r", "branch": "b"},
+            {"projection_cursor": "9", "event_id": "e9", "repo": "r", "branch": "b"},
+        ]
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(cache, _PR_MERGED_CURSOR_MAP) as client:
+            resp = client.get(f"/projection/{_PR_MERGED_TOPIC}", params={"since": "0"})
+        body = resp.json()
+        assert resp.status_code == 200
+        assert body["row_count"] == 2
+        assert body["row_count"] < body["row_limit"]
+        assert body["next_cursor"] is None
+
+    def test_truncated_page_still_returns_next_cursor(self) -> None:
+        """Positive control: the fix must not null the cursor unconditionally.
+
+        Three rows under a limit of two IS truncated, so the cursor is owed and
+        must name the last row actually served.
+        """
+        rows = [
+            {"projection_cursor": "1", "event_id": "e1", "repo": "r", "branch": "b"},
+            {"projection_cursor": "2", "event_id": "e2", "repo": "r", "branch": "b"},
+            {"projection_cursor": "3", "event_id": "e3", "repo": "r", "branch": "b"},
+        ]
+        cache = _make_cache(rows, latest_ts=_ts(timedelta(minutes=1)))
+        with _with_cache(cache, self._map_with_limit(2)) as client:
+            resp = client.get(f"/projection/{_PR_MERGED_TOPIC}", params={"since": "0"})
+        body = resp.json()
+        assert resp.status_code == 200
+        assert body["row_count"] == 2
+        assert body["row_count"] == body["row_limit"]
+        assert body["next_cursor"] == "2"

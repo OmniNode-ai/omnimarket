@@ -786,8 +786,11 @@ async def projection_query(
         else compute_freshness(latest_ts, cfg.expected_event_interval_seconds)
     )
 
+    # OMN-17215: the test is truncation, not non-emptiness. A complete page that
+    # happens to carry rows owes no cursor — advertising one sends the caller
+    # after a page that is empty and indistinguishable from "more data".
     next_cursor: str | None = None
-    if cfg.cursor_column is not None and serialisable_rows:
+    if cfg.cursor_column is not None and len(filtered_rows) > effective_limit:
         last_cursor_val = serialisable_rows[-1].get(cfg.cursor_column)
         if last_cursor_val is not None:
             next_cursor = str(last_cursor_val)
