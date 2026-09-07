@@ -276,6 +276,8 @@ def test_publish_pr_merged_event_correct_topic_and_payload(
         bootstrap_servers="broker:9092",
         username="user",
         password="secret",
+        security_protocol="PLAINTEXT",
+        sasl_mechanism="",
         repo="OmniNode-ai/omnimarket",
         branch=PUBLISH_BRANCH,
         pr_number=99,
@@ -307,7 +309,12 @@ def test_publish_pr_merged_event_sasl_config_when_creds_present(
     publisher_module: types.ModuleType,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """SASL_SSL transport is used when SASL credentials are supplied (cloud broker)."""
+    """A lane that DECLARES SASL_SSL/PLAIN gets exactly that transport.
+
+    OMN-18012: the protocol arrives as an argument resolved from the lane
+    overlay. It is no longer selected by this function because two credential
+    strings happened to be non-empty.
+    """
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
 
@@ -315,6 +322,8 @@ def test_publish_pr_merged_event_sasl_config_when_creds_present(
         bootstrap_servers=BROKER_ENDPOINT,
         username="apikey",
         password="apisecret",
+        security_protocol="SASL_SSL",
+        sasl_mechanism="PLAIN",
         repo="OmniNode-ai/omnimarket",
         branch="main",
         pr_number=1,
@@ -347,6 +356,8 @@ def test_publish_pr_merged_event_plaintext_when_no_creds(
         bootstrap_servers=LOCAL_LANE_ENDPOINT,
         username="",
         password="",
+        security_protocol="PLAINTEXT",
+        sasl_mechanism="",
         repo="OmniNode-ai/omnimarket",
         branch="main",
         pr_number=2,
@@ -356,8 +367,9 @@ def test_publish_pr_merged_event_plaintext_when_no_creds(
 
     cfg = _FakeProducer.instances[0].config
     assert cfg["bootstrap.servers"] == LOCAL_LANE_ENDPOINT
-    # No SASL/SSL keys when credentials are absent (plaintext LAN broker).
-    assert "security.protocol" not in cfg
+    # The declared protocol is stated explicitly rather than left to librdkafka's
+    # own default, and a lane that declares no SASL carries no SASL keys.
+    assert cfg["security.protocol"] == "PLAINTEXT"
     assert "sasl.mechanisms" not in cfg
     assert "sasl.username" not in cfg
     assert "sasl.password" not in cfg
@@ -416,7 +428,17 @@ def test_cli_publishes_when_broker_set(
     """CLI publishes when the lane is 'from-secret' and a broker secret is set."""
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
-    _override_overlay(publisher_module, {"lanes": {"dev": {"broker": "from-secret"}}})
+    _override_overlay(
+        publisher_module,
+        {
+            "lanes": {
+                "dev": {
+                    "broker": "from-secret",
+                    "security_protocol": "PLAINTEXT",
+                }
+            }
+        },
+    )
 
     monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
     monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-publish")
@@ -455,7 +477,15 @@ def test_cli_publishes_local_lane_plaintext_no_sasl(
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
     _override_overlay(
-        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+        publisher_module,
+        {
+            "lanes": {
+                "dev": {
+                    "broker": LOCAL_LANE_ENDPOINT,
+                    "security_protocol": "PLAINTEXT",
+                }
+            }
+        },
     )
 
     monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
@@ -478,7 +508,10 @@ def test_cli_publishes_local_lane_plaintext_no_sasl(
     assert len(_FakeProducer.instances) == 1
     cfg = _FakeProducer.instances[0].config
     assert cfg["bootstrap.servers"] == LOCAL_LANE_ENDPOINT
-    assert "security.protocol" not in cfg
+    # OMN-18012: the lane declares PLAINTEXT, so the producer states PLAINTEXT.
+    # Previously the absence of the key was the assertion, which is the same
+    # thing an inference reaching the wrong conclusion silently produces.
+    assert cfg["security.protocol"] == "PLAINTEXT"
     record = _FakeProducer.instances[0].produced[0]
     assert record["topic"] == "onex.evt.github.pr-merged.v1"
     assert record["value"]["pr_number"] == 201
@@ -523,6 +556,8 @@ def test_publish_raises_when_flush_leaves_message_undelivered(
             bootstrap_servers=BROKER_ENDPOINT,
             username="",
             password="",
+            security_protocol="PLAINTEXT",
+            sasl_mechanism="",
             repo="OmniNode-ai/omnimarket",
             branch=PUBLISH_BRANCH,
             pr_number=2249,
@@ -554,6 +589,8 @@ def test_publish_raises_when_no_delivery_callback_ran(
             bootstrap_servers=BROKER_ENDPOINT,
             username="",
             password="",
+            security_protocol="PLAINTEXT",
+            sasl_mechanism="",
             repo="OmniNode-ai/omnimarket",
             branch=PUBLISH_BRANCH,
             pr_number=2250,
@@ -579,6 +616,8 @@ def test_publish_returns_broker_assigned_partition_and_offset(
         bootstrap_servers=LOCAL_LANE_ENDPOINT,
         username="",
         password="",
+        security_protocol="PLAINTEXT",
+        sasl_mechanism="",
         repo="OmniNode-ai/omnimarket",
         branch=PUBLISH_BRANCH,
         pr_number=2251,
@@ -603,7 +642,15 @@ def test_cli_fails_loud_when_broker_unresolvable_on_trusted_runner(
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
     _override_overlay(
-        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+        publisher_module,
+        {
+            "lanes": {
+                "dev": {
+                    "broker": LOCAL_LANE_ENDPOINT,
+                    "security_protocol": "PLAINTEXT",
+                }
+            }
+        },
     )
     _FakeProducer.undelivered = True
     _trusted_env(monkeypatch, pr_number="2249")
@@ -648,7 +695,15 @@ def test_cli_fails_loud_when_no_lane_supplied_on_trusted_runner(
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
     _override_overlay(
-        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+        publisher_module,
+        {
+            "lanes": {
+                "dev": {
+                    "broker": LOCAL_LANE_ENDPOINT,
+                    "security_protocol": "PLAINTEXT",
+                }
+            }
+        },
     )
     _trusted_env(monkeypatch)
 
@@ -675,7 +730,15 @@ def test_cli_fails_loud_on_lane_bus_drift_on_trusted_runner(
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
     _override_overlay(
-        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+        publisher_module,
+        {
+            "lanes": {
+                "dev": {
+                    "broker": LOCAL_LANE_ENDPOINT,
+                    "security_protocol": "PLAINTEXT",
+                }
+            }
+        },
     )
     _trusted_env(monkeypatch)
     monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", BROKER_ENDPOINT)
@@ -724,7 +787,15 @@ def test_cli_skips_gracefully_on_untrusted_fork_runner(
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
     _override_overlay(
-        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+        publisher_module,
+        {
+            "lanes": {
+                "dev": {
+                    "broker": LOCAL_LANE_ENDPOINT,
+                    "security_protocol": "PLAINTEXT",
+                }
+            }
+        },
     )
     _trusted_env(monkeypatch, pr_number="202")
     monkeypatch.setenv("RUNNER_IS_TRUSTED", "false")
@@ -774,7 +845,15 @@ def test_cli_writes_publish_receipt_to_step_summary(
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
     _override_overlay(
-        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+        publisher_module,
+        {
+            "lanes": {
+                "dev": {
+                    "broker": LOCAL_LANE_ENDPOINT,
+                    "security_protocol": "PLAINTEXT",
+                }
+            }
+        },
     )
     _FakeProducer.next_offset = 98
     _trusted_env(monkeypatch, pr_number="2250")
@@ -805,7 +884,15 @@ def test_no_step_summary_receipt_when_publish_fails(
     fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
     _override_overlay(
-        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+        publisher_module,
+        {
+            "lanes": {
+                "dev": {
+                    "broker": LOCAL_LANE_ENDPOINT,
+                    "security_protocol": "PLAINTEXT",
+                }
+            }
+        },
     )
     _FakeProducer.undelivered = True
     _trusted_env(monkeypatch, pr_number="2251")
@@ -836,3 +923,129 @@ def test_committed_overlay_declares_a_concrete_dev_lane_broker(
     mode, broker = publisher_module.resolve_lane_broker(overlay, "dev")  # type: ignore[attr-defined]
     assert mode == "concrete"
     assert ":" in broker
+
+
+# ---------------------------------------------------------------------------
+# OMN-18012: the transport is DECLARED by the lane, never inferred from creds
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+def test_cli_uses_the_lane_declared_sasl_transport(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The live dev-lane shape: SASL over PLAINTEXT, SCRAM-SHA-256, no TLS.
+
+    The regression this pins: the old ``_kafka_producer_config`` selected
+    ``SASL_SSL`` / ``PLAIN`` whenever both credentials were present. When the
+    dev-lane Redpanda external listener began requiring SASL/SCRAM-SHA-256 over
+    an unencrypted listener and the org secrets were injected fleet-wide, that
+    inference produced an SSL handshake against a broker that speaks none.
+    """
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(
+        publisher_module,
+        {
+            "lanes": {
+                "dev": {
+                    "broker": LOCAL_LANE_ENDPOINT,
+                    "security_protocol": "SASL_PLAINTEXT",
+                    "sasl_mechanism": "SCRAM-SHA-256",
+                }
+            }
+        },
+    )
+
+    monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
+    monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-sasl")
+    monkeypatch.setenv("PR_NUMBER", "2387")
+    monkeypatch.setenv("PR_MERGED_AT", "2026-09-07T18:20:00Z")
+    monkeypatch.delenv("PR_TICKET", raising=False)
+    monkeypatch.setenv("RUNNER_IS_TRUSTED", "true")
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.setenv("KAFKA_SASL_USERNAME", "ci-principal")
+    monkeypatch.setenv("KAFKA_SASL_PASSWORD", "ci-secret")
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "dev"],
+    )
+
+    assert result.exit_code == 0, result.output
+    cfg = _FakeProducer.instances[0].config
+    assert cfg["security.protocol"] == "SASL_PLAINTEXT"
+    assert cfg["sasl.mechanisms"] == "SCRAM-SHA-256"
+    assert cfg["sasl.username"] == "ci-principal"
+
+
+@pytest.mark.unit
+def test_cli_fails_closed_on_a_sasl_lane_with_no_credentials(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A declared SASL lane with no principal reds; it never downgrades."""
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(
+        publisher_module,
+        {
+            "lanes": {
+                "dev": {
+                    "broker": LOCAL_LANE_ENDPOINT,
+                    "security_protocol": "SASL_PLAINTEXT",
+                    "sasl_mechanism": "SCRAM-SHA-256",
+                }
+            }
+        },
+    )
+
+    monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
+    monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-nocreds")
+    monkeypatch.setenv("PR_NUMBER", "2388")
+    monkeypatch.setenv("PR_MERGED_AT", "2026-09-07T18:25:00Z")
+    monkeypatch.delenv("PR_TICKET", raising=False)
+    monkeypatch.setenv("RUNNER_IS_TRUSTED", "true")
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+    monkeypatch.delenv("KAFKA_SASL_USERNAME", raising=False)
+    monkeypatch.delenv("KAFKA_SASL_PASSWORD", raising=False)
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "dev"],
+    )
+
+    assert result.exit_code == 1
+    assert "cannot be published to without credentials" in result.output
+    assert not _FakeProducer.instances
+
+
+@pytest.mark.unit
+def test_cli_refuses_a_publishing_lane_that_declares_no_transport(
+    publisher_module: types.ModuleType,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An undeclared transport is a wiring gap, not an invitation to guess."""
+    fake_confluent = types.SimpleNamespace(Producer=_FakeProducer)
+    monkeypatch.setitem(sys.modules, "confluent_kafka", fake_confluent)
+    _override_overlay(
+        publisher_module, {"lanes": {"dev": {"broker": LOCAL_LANE_ENDPOINT}}}
+    )
+
+    monkeypatch.setenv("PR_REPO", "OmniNode-ai/omnimarket")
+    monkeypatch.setenv("PR_BRANCH", f"{BRANCH_OWNER}/{BRANCH_TICKET.lower()}-undecl")
+    monkeypatch.setenv("PR_NUMBER", "2389")
+    monkeypatch.setenv("PR_MERGED_AT", "2026-09-07T18:30:00Z")
+    monkeypatch.delenv("PR_TICKET", raising=False)
+    monkeypatch.setenv("RUNNER_IS_TRUSTED", "true")
+    monkeypatch.delenv("KAFKA_BOOTSTRAP_SERVERS", raising=False)
+
+    result = CliRunner().invoke(
+        publisher_module.main,  # type: ignore[attr-defined]
+        ["--lane", "dev"],
+    )
+
+    assert result.exit_code == 1
+    assert "does not declare security_protocol" in result.output
+    assert not _FakeProducer.instances

@@ -12,15 +12,24 @@
 # private copies of that decision WILL diverge, and a divergence in a fail-closed
 # gate is exactly how a publisher goes green-but-silent -- the OMN-17378 class.
 #
-# CURRENT CONSUMERS: `publish_pr_merged_event.py` only.
+# CURRENT CONSUMERS: `publish_pr_merged_event.py` and
+# `trigger_rebuild_on_merge.py` (the latter for the lane-declared TRANSPORT
+# added by OMN-18012; its broker still comes from its own env contract).
 # `publish_occ_autobind_command.py` still carries its own private copy of this
-# logic (`_MODE_*`, `_resolve_lane_broker`, `_is_trusted_runner`). Porting it
+# logic (`_MODE_*`, `_resolve_lane_broker`, `_is_trusted_runner`, and now
+# `_resolve_lane_security` / `_kafka_producer_config`). Porting it
 # here is DELIBERATELY out of scope for OMN-17378: that publisher is live,
 # gated and working, its module-level private names are referenced by 78 tests
 # in tests/unit/nodes/node_occ_companion_effect/, and folding it into this
 # change would expand the blast radius of an urgent outage fix onto the one
 # publisher that is NOT broken. The consolidation is tracked as its own
 # follow-up on OMN-17378 so the duplication is recorded rather than silent.
+# OMN-18012 keeps that boundary and adds the missing safeguard: the transport
+# half of the duplication is pinned by
+# tests/unit/scripts/test_ci_bus_lane_transport.py, which asserts the two
+# implementations return the same answer on the real checked-in overlay and
+# refuse the same malformed declarations. Duplication nobody compares is how a
+# fail-closed gate drifts into a green no-op.
 #
 # IMPORTABLE FROM A THIN CI SCRIPT: this is a sibling module in `scripts/`, NOT a
 # package import. `python scripts/<publisher>.py` puts `scripts/` on sys.path[0],
@@ -120,3 +129,162 @@ def is_trusted_runner() -> bool:
         )
         sys.exit(1)
     return raw == "true"
+
+
+# --- Lane-declared transport (OMN-18012) -------------------------------------
+#
+# The overlay declares `security_protocol` and, for a SASL protocol,
+# `sasl_mechanism` beside each lane's broker. A CI publisher READS them here; it
+# never derives them from the shape of its environment. Credential PRESENCE is
+# not a statement about transport: on 2026-09-07 the .201 dev-lane Redpanda
+# EXTERNAL listener began requiring SASL/SCRAM-SHA-256 over PLAINTEXT -- no TLS
+# at all -- while the KAFKA_SASL_* org secrets were injected, and every publisher
+# that inferred `SASL_SSL`/`PLAIN` from that presence died on an SSL handshake
+# against a listener that speaks none.
+SECURITY_PROTOCOL_KEY = "security_protocol"
+SASL_MECHANISM_KEY = "sasl_mechanism"
+SASL_PROTOCOLS = frozenset({"SASL_PLAINTEXT", "SASL_SSL"})
+NON_SASL_PROTOCOLS = frozenset({"PLAINTEXT", "SSL"})
+VALID_PROTOCOLS = SASL_PROTOCOLS | NON_SASL_PROTOCOLS
+
+
+class LaneSecurityError(ValueError):
+    """The lane overlay does not declare a usable transport for this lane.
+
+    Raised instead of guessing. Every call site turns this into a loud exit 1
+    naming the lane, because a publisher that guesses its transport is the
+    OMN-18012 outage.
+    """
+
+
+def resolve_lane_security(
+    overlay: dict[str, object], lane: str | None
+) -> tuple[str, str]:
+    """Resolve a lane id to its DECLARED ``(security_protocol, sasl_mechanism)``.
+
+    Reads the overlay and nothing else. An undeclared, malformed or
+    contradictory declaration raises :class:`LaneSecurityError` so the caller
+    fails loud rather than publishing over a transport nobody chose.
+
+    Only called on the branches that actually publish (a concrete ``host:port``
+    or a ``from-secret`` lane). An ``inmemory`` / unresolvable lane publishes
+    nothing cross-process, so it is never asked for a transport.
+    """
+    lane_key = "" if lane is None else lane.strip()
+    lanes_obj = overlay.get("lanes")
+    lanes = lanes_obj if isinstance(lanes_obj, dict) else {}
+    entry = lanes.get(lane_key)
+    if not isinstance(entry, dict):
+        raise LaneSecurityError(
+            f"lane {lane_key!r} declares no transport in "
+            f"config/{LANE_OVERLAY_PATH.name}: the lane entry is not a mapping, "
+            f"so it carries no {SECURITY_PROTOCOL_KEY!r}. A publishing lane MUST "
+            f"declare {SECURITY_PROTOCOL_KEY} (one of {sorted(VALID_PROTOCOLS)}) "
+            f"and, for a SASL protocol, {SASL_MECHANISM_KEY}. Refusing to guess "
+            "the transport (OMN-18012)."
+        )
+
+    protocol_raw = entry.get(SECURITY_PROTOCOL_KEY)
+    protocol = "" if protocol_raw is None else str(protocol_raw).strip().upper()
+    if not protocol:
+        raise LaneSecurityError(
+            f"lane {lane_key!r} does not declare {SECURITY_PROTOCOL_KEY} in "
+            f"config/{LANE_OVERLAY_PATH.name}. Declare one of "
+            f"{sorted(VALID_PROTOCOLS)} beside the lane's broker. Refusing to "
+            "guess the transport -- inferring TLS from the presence of "
+            "credentials is exactly the OMN-18012 outage."
+        )
+    if protocol not in VALID_PROTOCOLS:
+        raise LaneSecurityError(
+            f"lane {lane_key!r} declares {SECURITY_PROTOCOL_KEY}={protocol!r} in "
+            f"config/{LANE_OVERLAY_PATH.name}, which is not a librdkafka "
+            f"security protocol. Valid values: {sorted(VALID_PROTOCOLS)}."
+        )
+
+    mechanism_raw = entry.get(SASL_MECHANISM_KEY)
+    mechanism = "" if mechanism_raw is None else str(mechanism_raw).strip()
+    if protocol in SASL_PROTOCOLS and not mechanism:
+        raise LaneSecurityError(
+            f"lane {lane_key!r} declares {SECURITY_PROTOCOL_KEY}={protocol} but no "
+            f"{SASL_MECHANISM_KEY} in config/{LANE_OVERLAY_PATH.name}. A SASL "
+            "protocol needs its mechanism declared (e.g. SCRAM-SHA-256). Refusing "
+            "to guess it (OMN-18012)."
+        )
+    if protocol not in SASL_PROTOCOLS and mechanism:
+        raise LaneSecurityError(
+            f"lane {lane_key!r} declares {SASL_MECHANISM_KEY}={mechanism!r} beside a "
+            f"non-SASL {SECURITY_PROTOCOL_KEY}={protocol} in "
+            f"config/{LANE_OVERLAY_PATH.name}. That is a contradictory "
+            "declaration: fix the overlay rather than let the publisher pick a "
+            "half of it."
+        )
+    return (protocol, mechanism)
+
+
+def build_producer_config(
+    bootstrap_servers: str,
+    username: str,
+    secret: str,
+    security_protocol: str,
+    sasl_mechanism: str,
+) -> dict[str, str | int | float | bool]:
+    """Build a librdkafka producer config from the LANE-DECLARED transport.
+
+    ``security_protocol`` / ``sasl_mechanism`` come from
+    :func:`resolve_lane_security` and are required arguments: a default here
+    would be the guess this function exists to delete. ``secret`` is the SASL
+    password for ``username``; it is only ever placed in the returned config.
+    """
+    protocol = security_protocol.strip().upper()
+    mechanism = sasl_mechanism.strip()
+    if protocol not in VALID_PROTOCOLS:
+        raise LaneSecurityError(
+            f"{SECURITY_PROTOCOL_KEY}={security_protocol!r} is not a librdkafka "
+            f"security protocol. Valid values: {sorted(VALID_PROTOCOLS)}."
+        )
+
+    config: dict[str, str | int | float | bool] = {
+        "bootstrap.servers": bootstrap_servers,
+        "security.protocol": protocol,
+    }
+
+    if protocol not in SASL_PROTOCOLS:
+        if username or secret:
+            # Not an error: the declared transport is authoritative and dropping
+            # credentials it cannot carry is safe. It IS drift worth naming, so
+            # say so rather than let a silently-unauthenticated publish look
+            # identical to a correctly-configured one.
+            click.echo(
+                "WARNING: SASL credentials are present in the environment but "
+                f"the lane declares {SECURITY_PROTOCOL_KEY}={protocol}, which "
+                "carries none. Publishing unauthenticated per the lane "
+                "declaration and IGNORING the injected credentials. If the "
+                "broker now requires SASL, the lane overlay is stale -- fix "
+                f"config/{LANE_OVERLAY_PATH.name}, never the inference "
+                "(OMN-18012).",
+                err=True,
+            )
+        return config
+
+    if not mechanism:
+        raise LaneSecurityError(
+            f"{SECURITY_PROTOCOL_KEY}={protocol} requires a "
+            f"{SASL_MECHANISM_KEY}; none was declared for this lane."
+        )
+    if not username or not secret:
+        raise LaneSecurityError(
+            f"the lane declares {SECURITY_PROTOCOL_KEY}={protocol} / "
+            f"{SASL_MECHANISM_KEY}={mechanism}, but KAFKA_SASL_USERNAME and/or "
+            "KAFKA_SASL_PASSWORD are not set in this job's environment. A SASL "
+            "lane cannot be published to without credentials. Wire them through "
+            "the calling workflow (`secrets: inherit`) rather than downgrading "
+            "the declared transport."
+        )
+    config.update(
+        {
+            "sasl.mechanisms": mechanism,
+            "sasl.username": username,
+            "sasl.password": secret,
+        }
+    )
+    return config
