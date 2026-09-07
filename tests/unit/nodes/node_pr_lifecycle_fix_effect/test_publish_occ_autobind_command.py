@@ -155,7 +155,15 @@ class TestFailClosedOnTrustedRunner:
     # from whatever the shipped dev lane declares (OMN-14813).
     _FROM_SECRET: dict[str, object] = {
         "default": "inmemory",
-        "lanes": {"dev": {"broker": "from-secret"}},
+        "lanes": {
+            "dev": {
+                "broker": "from-secret",
+                # OMN-18012: a publishing lane declares its transport. This
+                # fixture lane is plaintext, so the credential-free env below
+                # is consistent with it.
+                "security_protocol": "PLAINTEXT",
+            }
+        },
     }
 
     def test_missing_broker_on_trusted_runner_fails_loudly(self) -> None:
@@ -226,6 +234,10 @@ class TestFailClosedOnTrustedRunner:
         assert "Delivery error" in result.output
 
 
+# Every producer config built during a test, in order (OMN-18012).
+_BUILT_PRODUCER_CONFIGS: list[dict[str, object]] = []
+
+
 class _FakeProducer:
     """Minimal confluent_kafka.Producer stand-in.
 
@@ -238,6 +250,11 @@ class _FakeProducer:
     def __init__(self, remaining: int, config: dict[str, object] | None = None) -> None:
         self._remaining = remaining
         self.produced: list[dict[str, object]] = []
+        # OMN-18012: the producer config IS the artifact under test for the
+        # transport-selection bug — the old code built a sasl_ssl:// producer
+        # against a PLAINTEXT listener and only librdkafka ever saw it.
+        self.config: dict[str, object] = dict(config or {})
+        _BUILT_PRODUCER_CONFIGS.append(self.config)
 
     def produce(self, **kwargs: object) -> None:
         self.produced.append(kwargs)
@@ -259,6 +276,7 @@ def _install_fake_confluent_kafka(
     fake_mod = types.ModuleType("confluent_kafka")
     fake_mod.Producer = lambda config=None: _FakeProducer(remaining, config)  # type: ignore[attr-defined]
     monkeypatch.setitem(sys.modules, "confluent_kafka", fake_mod)
+    _BUILT_PRODUCER_CONFIGS.clear()
 
 
 @pytest.mark.unit
@@ -287,6 +305,8 @@ class TestFailClosedOnUndeliveredFlush:
                 repo="OmniNode-ai/omnimarket",
                 pr_number=1774,
                 ticket="OMN-14637",
+                security_protocol="PLAINTEXT",
+                sasl_mechanism="",
             )
 
     def test_fully_flushed_message_returns_correlation_id(
@@ -303,6 +323,8 @@ class TestFailClosedOnUndeliveredFlush:
             repo="OmniNode-ai/omnimarket",
             pr_number=1774,
             ticket="OMN-14637",
+            security_protocol="PLAINTEXT",
+            sasl_mechanism="",
         )
         assert isinstance(correlation_id, str)
         assert correlation_id
@@ -325,10 +347,11 @@ def _override_overlay(module: object, overlay: dict[str, object]) -> None:
 
 
 class _PublishRecorder:
-    """Records the broker the publisher would actually publish to (no I/O)."""
+    """Records the broker AND the lane-declared transport the publisher would use."""
 
     def __init__(self) -> None:
         self.brokers: list[str] = []
+        self.transports: list[tuple[str, str]] = []
 
     def __call__(
         self,
@@ -339,8 +362,11 @@ class _PublishRecorder:
         repo: str,
         pr_number: int,
         ticket: str,
+        security_protocol: str,
+        sasl_mechanism: str,
     ) -> str:
         self.brokers.append(bootstrap_servers)
+        self.transports.append((security_protocol, sasl_mechanism))
         return f"cid-{pr_number}"
 
 
@@ -412,7 +438,12 @@ class TestLaneDivergenceGuard:
 
     _CONCRETE: dict[str, object] = {
         "default": "inmemory",
-        "lanes": {"dev": {"broker": "declared:19092"}},
+        "lanes": {
+            "dev": {
+                "broker": "declared:19092",
+                "security_protocol": "PLAINTEXT",  # OMN-18012 overlay contract
+            }
+        },
     }
 
     def test_divergent_secret_on_trusted_fails_loud(self) -> None:
@@ -510,7 +541,12 @@ class TestLaneInMemoryAndNegativeFixtures:
         module = _load_publisher()
         _override_overlay(
             module,
-            {"default": "inmemory", "lanes": {"dev": {"broker": "from-secret"}}},
+            {
+                "default": "inmemory",
+                "lanes": {
+                    "dev": {"broker": "from-secret", "security_protocol": "PLAINTEXT"}
+                },
+            },
         )
         runner = CliRunner()
         env = _trusted_pr_env(KAFKA_BOOTSTRAP_SERVERS="x:1")
@@ -550,3 +586,177 @@ class TestLaneInMemoryAndNegativeFixtures:
         result = runner.invoke(module.main, [], env=env)  # type: ignore[attr-defined]
         assert result.exit_code == 1, result.output
         assert "--lane was not supplied" in result.output
+
+
+@pytest.mark.unit
+class TestLaneDeclaredTransport:
+    """OMN-18012: the transport is DECLARED per lane, never inferred from creds.
+
+    THE OUTAGE THIS PINS. OMN-18012 Phase B enabled SASL/SCRAM-SHA-256 on the
+    .201 dev-lane Redpanda EXTERNAL listener
+    (``omninode-pc.tail75df5e.ts.net:19092``) at ~16:40Z on 2026-09-07. That
+    listener is SASL over PLAINTEXT — authenticated, NOT encrypted. The
+    ``KAFKA_SASL_{USERNAME,PASSWORD}`` org secrets were injected at 18:14Z, and
+    the publisher's old rule — ``if username and password: security.protocol =
+    SASL_SSL; sasl.mechanisms = PLAIN`` — read credential PRESENCE as a statement
+    that the broker speaks TLS. omnibase_infra run 34150470410 (attempt 2, job
+    "occ-autobind / Publish occ-autobind command") is the receipt:
+
+        [thrd:sasl_ssl://omninode-pc.tail75df5e.ts.net:19092/bootstrap]:
+        SSL handshake failed: Disconnected: SSL connection closed by peer:
+        connecting to a PLAINTEXT broker listener?           (x93)
+        Delivery error: Kafka delivery timed out: 1 message(s) still undelivered
+
+    Because this publisher is the born path for every OCC evidence companion, no
+    companion was minted in any OCC-gated repo while that held. The parent
+    revision of this module FAILS ``test_dev_lane_credentials_select_sasl_plaintext_not_ssl``
+    with exactly ``SASL_SSL``/``PLAIN`` — that is the positive control for these
+    tests being real.
+    """
+
+    def test_shipped_dev_lane_declares_sasl_plaintext_scram(self) -> None:
+        """The committed overlay is the truth: SASL over PLAINTEXT, SCRAM-SHA-256."""
+        module = _load_publisher()
+        overlay = module._load_lane_overlay()  # type: ignore[attr-defined]
+        assert module._resolve_lane_security(overlay, "dev") == (  # type: ignore[attr-defined]
+            "SASL_PLAINTEXT",
+            "SCRAM-SHA-256",
+        )
+
+    def test_dev_lane_credentials_select_sasl_plaintext_not_ssl(self) -> None:
+        """RED reproduction: creds + the dev lane must NOT produce sasl_ssl://.
+
+        The parent implementation ignores the lane entirely and returns
+        ``security.protocol=SASL_SSL`` / ``sasl.mechanisms=PLAIN`` here.
+        """
+        module = _load_publisher()
+        overlay = module._load_lane_overlay()  # type: ignore[attr-defined]
+        protocol, mechanism = module._resolve_lane_security(overlay, "dev")  # type: ignore[attr-defined]
+        config = module._kafka_producer_config(  # type: ignore[attr-defined]
+            "omninode-pc.tail75df5e.ts.net:19092",  # onex-allow-test-fixture OMN-16156 reason="the real committed dev-lane broker; asserts the transport chosen for it"
+            "scram-principal",
+            "not-a-real-secret",
+            protocol,
+            mechanism,
+        )
+        assert config["security.protocol"] == "SASL_PLAINTEXT"
+        assert config["sasl.mechanisms"] == "SCRAM-SHA-256"
+        # The specific wrong answers the parent gives, named so a regression
+        # cannot re-land quietly.
+        assert config["security.protocol"] != "SASL_SSL"
+        assert config["sasl.mechanisms"] != "PLAIN"
+
+    def test_undeclared_transport_fails_fast(self) -> None:
+        """A publishing lane with no security_protocol is a hard error, not a guess."""
+        module = _load_publisher()
+        overlay = {"lanes": {"dev": {"broker": "declared:19092"}}}
+        with pytest.raises(module.LaneSecurityError, match="security_protocol"):  # type: ignore[attr-defined]
+            module._resolve_lane_security(overlay, "dev")  # type: ignore[attr-defined]
+
+    def test_scalar_lane_entry_fails_fast(self) -> None:
+        """A bare `dev: <broker>` entry carries no transport — refuse it."""
+        module = _load_publisher()
+        with pytest.raises(module.LaneSecurityError, match="not a mapping"):  # type: ignore[attr-defined]
+            module._resolve_lane_security({"lanes": {"dev": "declared:19092"}}, "dev")  # type: ignore[attr-defined]
+
+    def test_unknown_protocol_fails_fast(self) -> None:
+        module = _load_publisher()
+        overlay = {"lanes": {"dev": {"broker": "b:1", "security_protocol": "TLS"}}}
+        with pytest.raises(module.LaneSecurityError, match="not a librdkafka"):  # type: ignore[attr-defined]
+            module._resolve_lane_security(overlay, "dev")  # type: ignore[attr-defined]
+
+    def test_sasl_protocol_without_mechanism_fails_fast(self) -> None:
+        module = _load_publisher()
+        overlay = {
+            "lanes": {"dev": {"broker": "b:1", "security_protocol": "SASL_PLAINTEXT"}}
+        }
+        with pytest.raises(module.LaneSecurityError, match="sasl_mechanism"):  # type: ignore[attr-defined]
+            module._resolve_lane_security(overlay, "dev")  # type: ignore[attr-defined]
+
+    def test_mechanism_beside_non_sasl_protocol_fails_fast(self) -> None:
+        """A contradictory declaration is fixed in the overlay, not half-applied."""
+        module = _load_publisher()
+        overlay = {
+            "lanes": {
+                "dev": {
+                    "broker": "b:1",
+                    "security_protocol": "PLAINTEXT",
+                    "sasl_mechanism": "SCRAM-SHA-256",
+                }
+            }
+        }
+        with pytest.raises(module.LaneSecurityError, match="contradictory"):  # type: ignore[attr-defined]
+            module._resolve_lane_security(overlay, "dev")  # type: ignore[attr-defined]
+
+    def test_sasl_lane_without_credentials_fails_fast(self) -> None:
+        """A SASL lane with no creds fails loud — never a silent unauthenticated try."""
+        module = _load_publisher()
+        with pytest.raises(module.LaneSecurityError, match="KAFKA_SASL_USERNAME"):  # type: ignore[attr-defined]
+            module._kafka_producer_config(  # type: ignore[attr-defined]
+                "b:1", "", "", "SASL_PLAINTEXT", "SCRAM-SHA-256"
+            )
+
+    def test_plaintext_lane_ignores_credentials_and_says_so(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Declared PLAINTEXT wins over injected creds — loudly, never silently."""
+        module = _load_publisher()
+        config = module._kafka_producer_config(  # type: ignore[attr-defined]
+            "b:1", "user", "pw", "PLAINTEXT", ""
+        )
+        assert config == {"bootstrap.servers": "b:1", "security.protocol": "PLAINTEXT"}
+        assert "sasl.username" not in config
+        assert "WARNING" in capsys.readouterr().err
+
+    def test_cli_builds_a_sasl_plaintext_producer_for_the_dev_lane(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """End-to-end wiring: main() -> overlay -> real producer config.
+
+        Pins the whole path, not just the helper: the CLI on the trusted runner
+        with the dev lane and SASL credentials must hand librdkafka a
+        SASL_PLAINTEXT/SCRAM-SHA-256 config for the committed dev broker.
+        """
+        module = _load_publisher()
+        _install_fake_confluent_kafka(monkeypatch, remaining=0)
+        runner = CliRunner()
+        result = runner.invoke(
+            module.main,  # type: ignore[attr-defined]
+            ["--lane", "dev"],
+            env=_trusted_pr_env(
+                KAFKA_SASL_USERNAME="scram-principal",
+                KAFKA_SASL_PASSWORD="not-a-real-secret",
+            ),
+        )
+        assert result.exit_code == 0, result.output
+        assert len(_BUILT_PRODUCER_CONFIGS) == 1
+        built = _BUILT_PRODUCER_CONFIGS[0]
+        assert built["security.protocol"] == "SASL_PLAINTEXT"
+        assert built["sasl.mechanisms"] == "SCRAM-SHA-256"
+        assert (
+            built["bootstrap.servers"]
+            == "omninode-pc.tail75df5e.ts.net:19092"  # onex-allow-test-fixture OMN-16156 reason="the real committed dev-lane broker resolved from config"
+        )
+        # The declaration is announced in the job log so a future misroute is
+        # readable without re-deriving it from an rdkafka thread name.
+        assert "security_protocol=SASL_PLAINTEXT" in result.output
+
+    def test_cli_fails_loud_when_the_lane_declares_no_transport(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Negative control: an undeclared transport reds the job, exit 1, named lane."""
+        module = _load_publisher()
+        _install_fake_confluent_kafka(monkeypatch, remaining=0)
+        _override_overlay(
+            module,
+            {"default": "inmemory", "lanes": {"dev": {"broker": "declared:19092"}}},
+        )
+        runner = CliRunner()
+        result = runner.invoke(
+            module.main,  # type: ignore[attr-defined]
+            ["--lane", "dev"],
+            env=_trusted_pr_env(KAFKA_BOOTSTRAP_SERVERS="declared:19092"),
+        )
+        assert result.exit_code == 1, result.output
+        assert "security_protocol" in result.output
+        assert _BUILT_PRODUCER_CONFIGS == []
