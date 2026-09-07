@@ -18,10 +18,12 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
+from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     PACKAGE_INDEX_JSON_URL,
-    git_release_tags_containing,
     pypi_release_files,
+)
+from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
+    git_release_tags_containing,
 )
 from omnimarket.nodes.node_dod_verify.services.released_evidence import (
     PUBLISHING_REPO_DISTRIBUTIONS,

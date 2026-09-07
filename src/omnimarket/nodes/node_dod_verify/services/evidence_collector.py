@@ -29,8 +29,6 @@ import shutil
 import subprocess
 import tempfile
 import time
-import urllib.error
-import urllib.request
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Final, cast
@@ -48,6 +46,7 @@ from omnimarket.enums.enum_dod_verify_unresolved_cause import (
 )
 from omnimarket.nodes.node_dod_verify.handlers.handler_dod_evidence_github_effect import (
     HandlerDodEvidenceGithubEffect,
+    pypi_release_files,
 )
 from omnimarket.nodes.node_dod_verify.models.model_dod_evidence_github_lookup import (
     EnumDodEvidenceGithubOperation,
@@ -1846,21 +1845,6 @@ class _SupersessionResolution:
 # --------------------------------------------------------------------------- #
 
 _DEFAULT_GIT_TIMEOUT_S: Final[float] = 120.0
-_DEFAULT_INDEX_TIMEOUT_S: Final[float] = 20.0
-
-# The package index this org publishes to. Read from one place so a test can
-# assert the URL shape without a network call.
-PACKAGE_INDEX_JSON_URL: Final[str] = (
-    # url-authority-ok: the public PyPI JSON API is a GOVERNANCE-plane read for
-    # this verification probe, exactly as api.github.com is in
-    # node_prod_promotion_grant_resolver_effect. It carries no model routing
-    # authority, it is never a runtime dependency of any node, and it is the
-    # index these repos' own release.yml publishes to (`uv publish --check-url
-    # https://pypi.org/simple/`). Resolving it from a routing contract would
-    # make the released check depend on the very control plane whose contents
-    # it is auditing.
-    "https://pypi.org/pypi/{distribution}/{version}/json"  # url-authority-ok: governance-plane index read, no routing authority
-)
 
 
 def git_release_tags_containing(
@@ -1925,38 +1909,6 @@ def git_release_tags_containing(
     if proc.returncode != 0:
         return None
     return tuple(line.strip() for line in proc.stdout.splitlines() if line.strip())
-
-
-def pypi_release_files(
-    distribution: str,
-    version: str,
-    *,
-    timeout_s: float = _DEFAULT_INDEX_TIMEOUT_S,
-) -> frozenset[str] | None:
-    """Read the distribution file types the index serves for one version.
-
-    ``frozenset()`` on a definite 404 (the index does not have that version);
-    ``None`` on any other failure, which is INDETERMINATE and never certifies.
-    """
-    url = PACKAGE_INDEX_JSON_URL.format(distribution=distribution, version=version)
-    try:
-        with urllib.request.urlopen(url, timeout=timeout_s) as response:
-            if response.status != 200:
-                return None
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        return frozenset() if exc.code == 404 else None
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-        return None
-    urls = payload.get("urls")
-    if not isinstance(urls, list):
-        return None
-    types = {
-        entry["packagetype"]
-        for entry in urls
-        if isinstance(entry, dict) and isinstance(entry.get("packagetype"), str)
-    }
-    return frozenset(types)
 
 
 class EvidenceCollector:
