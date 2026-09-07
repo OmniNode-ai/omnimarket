@@ -98,3 +98,15 @@ metadata:
     - "OMN-13616"
     - "OMN-13613"
     - "OMN-13604"
+
+# OMN-18013 — this node's ENTRY command, declared rather than implied.
+#
+# The topic was already in event_bus.subscribe_topics but no contract in the corpus
+# published it, so the contract graph read it as an ORPHANED_CONSUMER: a subscriber
+# nothing can ever reach. It is in fact the CLI/skill dispatcher's publish target, which
+# contract_topic_graph and the golden-chain publisher fixture both already accept as a
+# declared producer (`is_reachable`: `any(n.command_topic == topic ...)`). Declaring it
+# makes that reachability a fact in the contract instead of tribal knowledge, and lets a
+# golden chain build its input from the publisher side rather than hand-typing a topic.
+runtime_dispatch:
+  command_topic: onex.cmd.omnimarket.regression-suite-start.v1

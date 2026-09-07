@@ -25,6 +25,7 @@ from typing import Any
 
 import pytest
 
+from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 from tests.integration.e2e_probe.test_delegation_e2e_probe import (
     _wait_for_terminal_event,
 )
@@ -120,7 +121,9 @@ async def test_wait_for_terminal_event_returns_matching_event(
     correlation_id = str(uuid.uuid4())
     _OneShotConsumer._pending = {
         "correlation_id": correlation_id,
-        "event_type": "onex.evt.omnimarket.projection-delegation-applied.v1",
+        "event_type": publisher_event_type(
+            "onex.evt.omnimarket.projection-delegation-applied.v1"
+        ),
         "payload": {"projected": True, "correlation_id": correlation_id},
     }
     monkeypatch.setattr(_CONSUMER_PATH, _OneShotConsumer)

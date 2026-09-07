@@ -15,6 +15,11 @@ capabilities:
   side_effect_class: orchestration
 dependencies:
   - "omnibase_core>=0.39.0"
+  # OMN-18013: the handler resolves the event type it matches from its own
+  # contract via derive_event_type_alias_for_topic, the single source for that
+  # alias on both sides of the wire, instead of hand-typing a version-suffixed
+  # literal the bus never carries.
+  - "omnibase-infra>=0.32.0"
 authors: ["OmniNode Platform Team"]
 license: "MIT"
 tags: ["orchestrator", "closeout", "runtime", "kafka", "deploy", "proof-matrix", "OMN-13413"]

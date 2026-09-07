@@ -37,6 +37,7 @@ from omnimarket.nodes.node_regression_test_orchestrator.models.model_regression_
     EnumRegressionDifficulty,
     ModelRegressionTask,
 )
+from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 
 _EXP_ID = UUID("11111111-1111-1111-1111-111111111111")
 _RUN_ID = UUID("22222222-2222-2222-2222-222222222222")
@@ -202,7 +203,9 @@ def test_handle_accepts_mapping_payload_on_run_node_path() -> None:
     envelope: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
         payload=payload,
         correlation_id=_CORR_ID,
-        event_type="onex.cmd.omnimarket.regression-suite-start.v1",
+        event_type=publisher_event_type(
+            "onex.cmd.omnimarket.regression-suite-start.v1"
+        ),
     )
     output = asyncio.run(handler.handle(envelope))
     assert isinstance(output.events[0].payload, ModelExperimentResult)

@@ -43,6 +43,7 @@ from omnimarket.nodes.evidence_pipeline_native import (
 from omnimarket.nodes.node_readiness_gate_orchestrator import (
     HandlerReadinessGateOrchestrator,
 )
+from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 
 NODE_MIGRATIONS = (
     Path(__file__).resolve().parents[1]
@@ -91,7 +92,9 @@ def _enveloped(model: object) -> dict[str, object]:
     return {
         "payload": model.model_dump(mode="json"),  # type: ignore[attr-defined]
         "partition_key": None,
-        "event_type": "onex.cmd.omnimarket.readiness-gate-start.v1",
+        "event_type": publisher_event_type(
+            "onex.cmd.omnimarket.readiness-gate-start.v1"
+        ),
     }
 
 
@@ -150,7 +153,9 @@ def _materialized(model: object) -> dict[str, object]:
         "payload": model.model_dump(mode="json"),  # type: ignore[attr-defined]
         "__bindings": {},
         "__debug_trace": {
-            "event_type": "onex.cmd.omnimarket.evidence-pipeline-start.v1",
+            "event_type": publisher_event_type(
+                "onex.cmd.omnimarket.evidence-pipeline-start.v1"
+            ),
             "partition_key": None,
         },
     }

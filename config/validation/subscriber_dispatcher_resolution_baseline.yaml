@@ -1,109 +1,54 @@
 # SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
 # SPDX-License-Identifier: MIT
-# OMN-16939 — frozen burn-down baseline for the subscriber-dispatcher-resolution ratchet.
+# OMN-16939 / OMN-18013 — subscriber-dispatcher-resolution burn-down baseline.
 #
-# INVARIANT (omnibase_infra.validators.subscriber_dispatcher_resolution):
-#   every declared event_bus.subscribe_topic MUST resolve to a REGISTERED DISPATCHER for
-#   that topic's own real (category, message type). A topic that does not resolve is
-#   consumed, DLQ'd and COMMITTED on every message — the consumer group reads Stable /
-#   MEMBERS 1 / LAG 0 forever while 100% of the traffic is lost, because the offset
-#   advances after DLQ-routing so lag can never rise.
+# STATUS 2026-09-06: 43 of the original 50 rows are GONE. Every row this repo owns has
+# been burned down in OMN-18013 — 38 by giving the topic its own `topic_match` entry
+# carrying an explicit `message_category:`, and 12 subscribe declarations by DELETING a
+# subscription that no handler in the node had a branch for (a declared subscription with
+# no dispatcher is consumed, DLQ'd and COMMITTED on every message while the consumer group
+# reads Stable / MEMBERS 1 / LAG 0 — strictly worse than not declaring it).
 #
-#   Live-proven 2026-08-29 on the .201 dev lane: node_pr_lifecycle_state_reducer took
-#   174 messages in and DLQ'd 174 over six hours on pr-lifecycle-fix-completed, and
-#   delegation-escalation-triggered was DLQ'ing at 128 per 40 minutes.
+# THE FIVE ROWS BELOW ARE NOT THIS LANE'S TO FIX. They belong to the redeploy-FSM lane
+# (ledger CLAIM docs/tracking/ROLLING_WORK_LEDGER.md:3904, lane=dev-lane-fsm-residuals,
+# tickets OMN-16939 / OMN-17888), which is live in its own worktree on
+# node_redeploy_orchestrator and node_redeploy_deploy_effect. Two lanes editing the same
+# FSM contract is how a merge silently drops a handler branch, so this lane fenced them.
 #
-# REASON CODES
-#   no_route                 no handler_routing entry is assigned the topic by
-#                            _topics_for_handler_entry, so zero routes exist for it.
-#   category_mismatch        a route exists but was stamped with a category that differs
-#                            from the topic's real one (the OMN-14605 mechanism: the
-#                            category is derived ONCE per entry, falling back to
-#                            subscribe_topics[0], then stamped on every route).
-#   message_type_unindexed   category agrees but the dispatcher is not indexed under the
-#                            topic's message type.
+# They are also not a category fix. HandlerRedeployOrchestrator has NO branch for any of
+# the four orchestrator topics, so routing them sends them down the redeploy-start path —
+# and a runtime-booted event doing that is an unbounded redeploy loop. They need handler
+# branches BEFORE they get a category. That is why their reason is `no_route`, not
+# `category_mismatch`: no entry claims them at all.
+#
+# THIS FILE IS DELETED, AND `--baseline` REMOVED FROM EVERY INVOCATION, THE MOMENT THOSE
+# FIVE ROWS LAND. `tests/validators/test_subscriber_dispatcher_baseline_is_peer_only.py`
+# holds it to exactly these five (contract, topic) pairs so no new row can be added and
+# the file cannot be re-frozen as a general exemption list.
 #
 # THIS IS A RATCHET, NOT AN EXEMPTION. It is SHRINK-ONLY:
-#   * a (contract, topic) NOT listed here that fails to resolve   -> FAIL (no new
-#     instances, ever);
-#   * a (contract, topic) listed here that now resolves           -> FAIL until removed
-#     (a fixed entry still listed is STALE = FAIL, so the list cannot rot).
-#
-# FIX SHAPE: give the topic a per-topic `topic_match` entry carrying an explicit
-# `message_category:` (plus an `event_model:` where several topics share one handler).
-# Setting `topic:` ALONE IS NOT ENOUGH — the category still falls back to
-# subscribe_topics[0]. node_swarm_subtask_state_reducer had the full per-topic split with
-# per-topic event_models and was still 100% NO_DISPATCHER on all four of its event topics
-# until the category was declared. `topic:` picks WHICH topic an entry owns;
-# `message_category:` picks which category it registers under. They are independent.
-#
-# SCOPE: omnimarket (src/omnimarket). The checker itself lives in omnibase_infra
-# (omnibase_infra.validators.subscriber_dispatcher_resolution) and is invoked here through
-# the installed omnibase-infra dependency, so this gate cannot drift from the runtime
-# wiring it mirrors.
-#
-# node_swarm_fanout_orchestrator's three delegation topics stay listed: OMN-14605 recorded
-# that its fix is a REARCHITECTURE, not a mechanical split (OMN-14606 / OMN-14607). It is
-# the remaining live source of delegation-escalation-triggered DLQ traffic.
-#
-# Burn-down under OMN-16939. End state is an empty list.
+#   * a (contract, topic) NOT listed here that fails to resolve   -> FAIL, always;
+#   * a (contract, topic) listed here that now resolves           -> FAIL until removed.
 known_unresolved_subscriptions:
-  - contract: build_loop_orchestrator
-    topic: onex.evt.omnimarket.overseer-verifier-completed.v1
+  # node_e2e_orchestrator is NOT runtime-wired: it has no handler class and no
+  # handler_routing block, and runs as its own standalone aiokafka consumer process
+  # (`python -m omnimarket.nodes.node_e2e_orchestrator.consumer`, group E2E_ORCH_GROUP,
+  # module-level async functions rather than a handler). Its event_bus.subscribe_topics
+  # declaration therefore makes the RUNTIME open a second, dispatcher-less subscription
+  # for the same two topics. Removing the declaration was tried and rejected: the
+  # node-orphan-graph gate (scripts/validate_node_drift.py::_orphan_node_classification)
+  # then classifies the node PRODUCER_ONLY and hard-fails, because a live node contract
+  # must declare both sides. The real fix is to extract a handler class from consumer.py
+  # and wire it -- a node refactor, not a category or alias fix, and out of scope for
+  # OMN-18013's five gate items. Recorded as a residual on OMN-18013.
+  - contract: node_e2e_orchestrator
+    topic: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
     category: event
-    reason: category_mismatch
-  - contract: data_flow_sweep
-    topic: onex.evt.omniintelligence.pattern-learned.v1
+    reason: no_route
+  - contract: node_e2e_orchestrator
+    topic: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
     category: event
-    reason: category_mismatch
-  - contract: golden_chain_sweep
-    topic: onex.evt.omniclaude.session-outcome.v1
-    category: event
-    reason: category_mismatch
-  - contract: golden_chain_sweep
-    topic: onex.evt.omniintelligence.pattern-stored.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_content_ingestion_effect
-    topic: onex.evt.omnimarket.content-discovered.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_evidence_dashboard_effect
-    topic: onex.evt.omnimarket.evidence-collected.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_evidence_dashboard_effect
-    topic: onex.evt.omnimarket.evidence-extracted.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_evidence_dashboard_effect
-    topic: onex.evt.omnimarket.evidence-pipeline-completed.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_evidence_dashboard_effect
-    topic: onex.evt.omnimarket.evidence-validated.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_evidence_dashboard_effect
-    topic: onex.evt.omnimarket.occ-pr-created.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_evidence_dashboard_effect
-    topic: onex.evt.omnimarket.readiness-gate-blocked.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_evidence_dashboard_effect
-    topic: onex.evt.omnimarket.readiness-gate-completed.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_intelligence_reducer
-    topic: onex.evt.omnimarket.intent-outcome-labeled.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_readiness_gate_orchestrator
-    topic: onex.evt.omnimarket.readiness-scored.v1
-    category: event
-    reason: category_mismatch
+    reason: no_route
   - contract: node_redeploy_deploy_effect
     topic: onex.evt.deploy.rebuild-completed.v1
     category: event
@@ -122,142 +67,5 @@ known_unresolved_subscriptions:
     reason: no_route
   - contract: node_redeploy_orchestrator
     topic: onex.evt.omnimarket.readiness-gate-completed.v1
-    category: event
-    reason: no_route
-  # node_redeploy_orchestrator: the four topics of the merge-to-rebuild path
-  # (redeploy-start, runtime-image-built, prod-promotion-grant-resolved,
-  # prod-promotion-gate-evaluated) were burned down 2026-09-06 with per-topic
-  # topic_match entries carrying explicit message_category, and redeploy-rolled-back
-  # followed once the handler gained a terminal branch for it (proven live the same
-  # day: the deploy agent was down, the effect rolled back, and the rollback fact was
-  # DLQ'd with no terminal emitted). The four below are NOT the
-  # same fix: HandlerRedeployOrchestrator has no branch for any of them, so giving them
-  # a route sends them down the redeploy-start path — and a runtime-booted event doing
-  # that is an unbounded redeploy loop. They need handler branches (terminal
-  # redeploy-completed for the readiness/rolled-back outcomes, a no-op for the two
-  # attestations) BEFORE they get a category. Their reason is now no_route rather than
-  # category_mismatch because no entry claims them at all.
-  - contract: node_runtime_closeout_orchestrator
-    topic: onex.evt.omnimarket.closeout-fitness-gated.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_runtime_closeout_orchestrator
-    topic: onex.evt.omnimarket.closeout-preflight-completed.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_runtime_closeout_orchestrator
-    topic: onex.evt.omnimarket.closeout-proof-matrix-completed.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_runtime_closeout_orchestrator
-    topic: onex.evt.omnimarket.redeploy-completed.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_swarm_fanout_orchestrator
-    topic: onex.evt.omnimarket.delegation-all-tiers-failed.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_swarm_fanout_orchestrator
-    topic: onex.evt.omnimarket.delegation-call-completed.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_swarm_fanout_orchestrator
-    topic: onex.evt.omnimarket.delegation-escalation-triggered.v1
-    category: event
-    reason: category_mismatch
-  - contract: platform_readiness
-    topic: onex.evt.baselines.computation-completed.v1
-    category: event
-    reason: category_mismatch
-  - contract: platform_readiness
-    topic: onex.evt.model-router.routing-decision.v1
-    category: event
-    reason: category_mismatch
-  - contract: platform_readiness
-    topic: onex.evt.omnimarket.build-loop-dod-checked.v1
-    category: event
-    reason: category_mismatch
-  - contract: platform_readiness
-    topic: onex.evt.savings.estimation-completed.v1
-    category: event
-    reason: category_mismatch
-  - contract: projection_live_events
-    topic: onex.cmd.omnibase-infra.delegation-request.v1
-    category: command
-    reason: category_mismatch
-  - contract: projection_live_events
-    topic: onex.cmd.omnimarket.delegate-skill.v1
-    category: command
-    reason: category_mismatch
-  - contract: projection_live_events
-    topic: onex.cmd.omnimarket.node-deploy.v1
-    category: command
-    reason: category_mismatch
-  - contract: projection_live_events
-    topic: onex.cmd.omnimarket.node-generation-requested.v1
-    category: command
-    reason: category_mismatch
-  - contract: projection_live_events
-    topic: onex.cmd.omnimarket.tool-reuse-match-requested.v1
-    category: command
-    reason: category_mismatch
-  - contract: swarm_supervisor_orchestrator
-    topic: onex.evt.omnimarket.worker-heartbeat.v1
-    category: event
-    reason: category_mismatch
-  - contract: node_e2e_orchestrator
-    topic: onex.evt.omnimarket.build-loop-orchestrator-completed.v1
-    category: event
-    reason: no_route
-  - contract: node_e2e_orchestrator
-    topic: onex.evt.omnimarket.pr-lifecycle-orchestrator-completed.v1
-    category: event
-    reason: no_route
-  - contract: node_generation_consumer
-    topic: onex.evt.omnimarket.tool-reuse-matched.v1
-    category: event
-    reason: no_route
-  - contract: node_generation_consumer
-    topic: onex.evt.omnimarket.tool-reuse-no-match.v1
-    category: event
-    reason: no_route
-  - contract: node_intelligence_orchestrator
-    topic: onex.cmd.omnimarket.code-analysis.v1
-    category: command
-    reason: no_route
-  - contract: node_intelligence_orchestrator
-    topic: onex.cmd.omnimarket.document-ingestion.v1
-    category: command
-    reason: no_route
-  - contract: node_intelligence_orchestrator
-    topic: onex.cmd.omnimarket.pattern-learning.v1
-    category: command
-    reason: no_route
-  - contract: node_intelligence_orchestrator
-    topic: onex.evt.omnimarket.intent-drift-detected.v1
-    category: event
-    reason: no_route
-  - contract: node_kreuzberg_parse_effect
-    topic: onex.evt.omnimemory.document-changed.v1
-    category: event
-    reason: no_route
-  - contract: node_kreuzberg_parse_effect
-    topic: onex.evt.omnimemory.document-discovered.v1
-    category: event
-    reason: no_route
-  - contract: pattern_b_broker
-    topic: onex.cmd.omniclaude.delegate-task.v1
-    category: command
-    reason: no_route
-  - contract: pattern_b_broker
-    topic: onex.evt.omnimarket.pattern-b-dispatch-completed.v1
-    category: event
-    reason: no_route
-  - contract: projection_tenant_credentials
-    topic: onex.evt.omnimarket.credential-registered.v1
-    category: event
-    reason: no_route
-  - contract: projection_tenant_credentials
-    topic: onex.evt.omnimarket.credential-revoked.v1
     category: event
     reason: no_route

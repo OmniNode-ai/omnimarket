@@ -18,9 +18,10 @@ handler:
   class: HandlerSwarmDispatchOrchestrator
 
 handler_routing:
-  routing_strategy: operation_match
+  routing_strategy: topic_match
   handlers:
-    - operation: swarm_dispatch_orchestrator
+    - topic: onex.cmd.omnimarket.swarm-dispatch.v1
+      operation: swarm_dispatch_orchestrator
       handler:
         name: HandlerSwarmDispatchOrchestrator
         module: omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch
@@ -29,11 +30,40 @@ handler_routing:
         module: omnimarket.nodes.node_swarm_dispatch_orchestrator.models.model_swarm_dispatch_request
       message_category: "COMMAND"
       event_type: "omnimarket.swarm-dispatch"
-    - handler:
-        name: HandlerSwarmDispatchOrchestrator
-        module: omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch
+    # OMN-18013: the fsm.events entry declared no `topic:`, so
+    # _topics_for_handler_entry gave it EVERY subscribe topic including the .cmd.
+    # one, and the entry's single category is stamped on all of them. One entry per
+    # phase-completion EVENT instead, each naming its own topic and category.
+    - topic: onex.evt.omnimarket.swarm-endpoint-health-completed.v1
       message_category: "EVENT"
       operation: "fsm.events"
+      handler:
+        name: HandlerSwarmDispatchOrchestrator
+        module: omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch
+    - topic: onex.evt.omnimarket.swarm-decomposition-completed.v1
+      message_category: "EVENT"
+      operation: "fsm.events"
+      handler:
+        name: HandlerSwarmDispatchOrchestrator
+        module: omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch
+    - topic: onex.evt.omnimarket.swarm-endpoints-selected.v1
+      message_category: "EVENT"
+      operation: "fsm.events"
+      handler:
+        name: HandlerSwarmDispatchOrchestrator
+        module: omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch
+    - topic: onex.evt.omnimarket.swarm-fanout-completed.v1
+      message_category: "EVENT"
+      operation: "fsm.events"
+      handler:
+        name: HandlerSwarmDispatchOrchestrator
+        module: omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch
+    - topic: onex.evt.omnimarket.swarm-aggregation-completed.v1
+      message_category: "EVENT"
+      operation: "fsm.events"
+      handler:
+        name: HandlerSwarmDispatchOrchestrator
+        module: omnimarket.nodes.node_swarm_dispatch_orchestrator.handlers.handler_swarm_dispatch
 
 descriptor:
   node_archetype: orchestrator

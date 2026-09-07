@@ -26,6 +26,7 @@ from omnimarket.intelligence.events import ModelUserCorrectionEvent
 from omnimarket.nodes.node_user_correction_observer_effect.handler_user_correction_observer import (
     HandlerUserCorrectionObserver,
 )
+from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 
 _VALID_HASH = "sha256:" + "c" * 64
 _VALID_FACTOR_HASH = "sha256:" + "d" * 64
@@ -65,7 +66,9 @@ async def test_golden_chain_republishes_correction_on_contract_topic() -> None:
     inbound: ModelEventEnvelope[ModelUserCorrectionEvent] = ModelEventEnvelope(
         payload=correction,
         correlation_id=correlation_id,
-        event_type="onex.cmd.omnimarket.user-correction-observed.v1",
+        event_type=publisher_event_type(
+            "onex.cmd.omnimarket.user-correction-observed.v1"
+        ),
     )
 
     handler = HandlerUserCorrectionObserver()
@@ -96,7 +99,9 @@ async def test_golden_chain_accepts_dict_payload() -> None:
     inbound: ModelEventEnvelope[dict[str, object]] = ModelEventEnvelope(
         payload=correction.model_dump(mode="json"),
         correlation_id=uuid4(),
-        event_type="onex.cmd.omnimarket.user-correction-observed.v1",
+        event_type=publisher_event_type(
+            "onex.cmd.omnimarket.user-correction-observed.v1"
+        ),
     )
 
     handler = HandlerUserCorrectionObserver()

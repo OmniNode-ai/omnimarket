@@ -52,12 +52,17 @@ def test_intelligence_orchestrator_contract_declares_runtime_topics() -> None:
     data = yaml.safe_load(CONTRACT_PATH.read_text())
     event_bus = data["event_bus"]
 
+    # OMN-18013: the four other topics this list used to carry —
+    # code-analysis, document-ingestion, pattern-learning and intent-drift-detected —
+    # were declared subscriptions with NO handler. This node's only handlers are
+    # HandlerReceiveIntent / HandlerReceiveIntents, both keyed to the intent-received
+    # alias, so those four resolved to zero dispatchers: every message on them was
+    # consumed, DLQ'd and COMMITTED while the consumer group read Stable / LAG 0. This
+    # assertion previously proved only that the list had not changed, which is exactly
+    # what kept four dead subscriptions alive. Re-declare one only together with the
+    # handler that consumes it.
     assert event_bus["subscribe_topics"] == [
-        "onex.cmd.omnimarket.code-analysis.v1",
-        "onex.cmd.omnimarket.document-ingestion.v1",
-        "onex.cmd.omnimarket.pattern-learning.v1",
         "onex.cmd.omnimarket.intent-received.v1",
-        "onex.evt.omnimarket.intent-drift-detected.v1",
     ]
 
     consumed_topics = {entry["topic"]: entry for entry in data["consumed_events"]}

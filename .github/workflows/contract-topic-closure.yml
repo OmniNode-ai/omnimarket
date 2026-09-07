@@ -1,0 +1,166 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# contract-topic-closure.yml — OMN-18013
+#
+# Three wired gates that make a topic/category/event-type mismatch IMPOSSIBLE rather than
+# merely detectable. Operator ruling 2026-09-06 (firm): topics are declared in every
+# contract, so nothing downstream may re-derive them from list position, and nothing may
+# hand-type the event type it matches on.
+#
+#   mixed-category-routing         handler_wiring stamps ONE category per handler_routing
+#                                  entry (explicit message_category, else
+#                                  _derive_message_category(subscribe_topics[0])). An entry
+#                                  spanning .cmd. and .evt. leaves the off-category topics
+#                                  permanently unroutable — consumed, DLQ'd and COMMITTED
+#                                  at LAG 0. OMN-14605 shipped this over src/omnibase_infra
+#                                  only and deferred the other repos to a "Lane B" fan-out
+#                                  that never landed; this is that fan-out.
+#
+#   handler-event-type-source      The consume boundary stamps the ALIAS
+#                                  <producer>.<event-name>, which carries no version
+#                                  segment. HandlerRuntimeCloseoutOrchestrator matched
+#                                  `event_type.endswith("redeploy-completed.v1")` on four
+#                                  branches, so every real message fell through and the
+#                                  orchestrator restarted the closeout instead of advancing
+#                                  it — under four green golden-chain tests.
+#
+#   no-literal-event-type-in-tests A golden chain that hand-types its own event type is
+#                                  green on a shape the bus does not carry. Tests name the
+#                                  TOPIC and
+#                                  omnimarket.testing.publisher_contract_fixture derives
+#                                  the alias the runtime derives -- after proving some
+#                                  contract DECLARES a publisher for it, so a chain cannot
+#                                  be written against an edge the graph does not have. Its
+#                                  fence is a pinned (path, topic) pair list, not a
+#                                  baseline: a pair that no longer occurs FAILS, a fenced
+#                                  file gives no licence to a new topic in it, and there is
+#                                  no writer that can add to it.
+#
+#   no-baseline-refreeze           A burned-down baseline may not come back, and a baseline
+#                                  still held open for another lane may not grow past that
+#                                  lane's rows.
+#
+# ENFORCEMENT SURFACE: omnimarket's dev branch requires the `CI Summary` umbrella, and
+# CI Summary asserts these four contexts by name in
+# scripts/ci/ci_summary_gate.py::EXPECTED_EXTERNAL_CONTEXTS (layer 4, resolved against the
+# head SHA's check-runs). A context missing, still running, or not `success` there fails
+# the umbrella. That is the same mechanism subscriber-dispatcher-resolution and
+# dispatcher-route-coverage use in this repo — see the module docstring of ci_summary_gate.
+#
+# [OMN-18013]
+
+name: Contract Topic Closure
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main]
+  merge_group:
+
+permissions:
+  contents: read
+
+jobs:
+  mixed-category-routing:
+    name: mixed-category-routing
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
+    timeout-minutes: 15
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@v4
+
+      # The checker imports the REAL production wiring helpers
+      # (_topics_for_handler_entry, derive_entry_message_category), so it cannot drift
+      # from the runtime it mirrors. omnimarket's installed omnibase-infra pin does not
+      # carry it yet, so infra's source tree goes on PYTHONPATH.
+      - name: Checkout omnibase_infra (validator source)
+        uses: actions/checkout@v4
+        with:
+          repository: OmniNode-ai/omnibase_infra
+          # dev, not main: main is release-synced, so a validator that has landed on the
+          # integration branch would otherwise not be visible until the next release.
+          ref: dev
+          path: omnibase_infra
+          token: ${{ secrets.OMNI_GITHUB_TOKEN || github.token }}
+          sparse-checkout: |
+            src/omnibase_infra
+          sparse-checkout-cone-mode: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Sync omnimarket environment
+        run: uv sync --all-extras
+
+      # Fail-closed: the shim exits non-zero when no omnibase_infra source tree carrying
+      # the validator resolves, so a broken checkout cannot silently no-op the gate.
+      - name: Run mixed-category-routing gate
+        run: bash scripts/ci/check_mixed_category_routing.sh
+
+  handler-event-type-source:
+    name: handler-event-type-source
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Sync omnimarket environment
+        run: uv sync --all-extras
+      - name: Run handler-event-type-source gate
+        run: uv run python -m omnimarket.validators.handler_event_type_source
+
+  no-literal-event-type-in-tests:
+    name: no-literal-event-type-in-tests
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Sync omnimarket environment
+        run: uv sync --all-extras
+      - name: Run no-literal-event-type-in-tests gate
+        run: uv run python -m omnimarket.validators.no_literal_event_type_in_tests
+
+  no-baseline-refreeze:
+    name: no-baseline-refreeze
+    runs-on: >-
+      ${{
+        (github.event_name == 'pull_request' &&
+         github.event.pull_request.head.repo.full_name != github.repository)
+        && fromJSON(vars.OMNI_PUBLIC_PR_RUNS_ON_JSON || '["ubuntu-latest"]')
+        || fromJSON(vars.OMNI_TRUSTED_CI_RUNS_ON_JSON || '["ubuntu-latest"]')
+      }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout omnimarket
+        uses: actions/checkout@v4
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+      - name: Sync omnimarket environment
+        run: uv sync --all-extras
+      - name: Run no-baseline-refreeze gate
+        run: uv run python -m omnimarket.validators.no_baseline_refreeze

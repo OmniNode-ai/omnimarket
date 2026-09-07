@@ -402,8 +402,17 @@ EXPECTED_EXTERNAL_CONTEXTS: tuple[str, ...] = (
     "deploy-gate / deploy-gate",
     "dispatcher-route-coverage",
     "fsm-handler-drift",
+    # OMN-18013 (contract-topic-closure.yml): the four wired gates that make a
+    # topic/category/event-type mismatch impossible rather than detectable. They live
+    # in their own workflow file, so the in-run poller (layers 1-3) never sees them —
+    # this L4 assertion is their enforcement surface on omnimarket dev, exactly as it
+    # is for subscriber-dispatcher-resolution below.
+    "handler-event-type-source",
     "imperative-contract-guard / Imperative Contract Guard",
     "main-target-guard",
+    "mixed-category-routing",
+    "no-baseline-refreeze",
+    "no-literal-event-type-in-tests",
     "node-drift-gate",
     "node-migration-vendor-parity-gate",
     "non-dev-base-guard",

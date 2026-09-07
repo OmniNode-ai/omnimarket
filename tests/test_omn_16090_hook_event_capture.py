@@ -43,6 +43,7 @@ from omnimarket.nodes.node_hook_event_capture.models.model_hook_event_capture_re
     ModelCapturedHookEvent,
     ModelHookEventCaptureRequest,
 )
+from omnimarket.testing.publisher_contract_fixture import publisher_event_type
 
 pytestmark = pytest.mark.unit
 
@@ -88,7 +89,7 @@ def _pin_interim_tenant_settings(monkeypatch: pytest.MonkeyPatch) -> None:
 def _event(seed: str = "e0", **overrides: Any) -> dict[str, Any]:
     """An event shaped from the real spool corpus."""
     event: dict[str, Any] = {
-        "event_type": "onex.evt.omniclaude.skill-started.v1",
+        "event_type": publisher_event_type("onex.evt.omniclaude.skill-started.v1"),
         "event_sha": _sha(seed),
         "occurred_at": "2026-08-09T15:35:58.797727+00:00",
         "payload_json": json.dumps({"skill_name": "node_dod_verify"}),

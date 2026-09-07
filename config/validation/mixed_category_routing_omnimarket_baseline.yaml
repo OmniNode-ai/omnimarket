@@ -1,0 +1,36 @@
+# SPDX-FileCopyrightText: 2025 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+# OMN-14605 / OMN-18013 — mixed-category routing baseline, omnimarket side.
+#
+# INVARIANT (omnibase_infra.validators.mixed_category_routing): handler_wiring derives a
+# handler_routing entry's message category EXACTLY ONCE — an explicit
+# entry.message_category, else _derive_message_category(subscribe_topics[0]) — and stamps
+# that one category onto EVERY ModelDispatchRoute the entry registers. So an entry whose
+# _topics_for_handler_entry-assigned topics span both .cmd. and .evt. leaves the
+# off-category topics PERMANENTLY unroutable: MessageDispatchEngine filters on the real
+# per-topic category (message_dispatch_engine.py:1262) before any handler runs.
+#
+# OMN-14605 shipped this gate over src/omnibase_infra only; its own header deferred the
+# other repos to a "Lane B" fan-out that never landed, so omnimarket — where both
+# OMN-16939 live victims sat — had no gate at all. OMN-18013 fans it out here.
+#
+# STATUS 2026-09-06: omnimarket went from 22 mixed-category entries to ONE. Every entry
+# this repo owns was split into per-topic `topic_match` entries carrying an explicit
+# `message_category:`.
+#
+# THE ONE ROW BELOW IS NOT THIS LANE'S TO FIX. node_redeploy_deploy_effect belongs to the
+# redeploy-FSM lane (ledger CLAIM docs/tracking/ROLLING_WORK_LEDGER.md:3904,
+# lane=dev-lane-fsm-residuals, tickets OMN-16939 / OMN-17888), live in its own worktree on
+# that contract. Two lanes splitting the same handler entry is how a merge silently drops
+# a branch.
+#
+# THIS FILE IS DELETED, AND `--baseline` REMOVED FROM THE HOOK AND THE CI JOB, THE MOMENT
+# THAT ROW LANDS. omnimarket.validators.no_baseline_refreeze pins it to exactly this row
+# so it cannot grow back into a general exemption list.
+#
+# SHRINK-ONLY: an entry not listed here that is mixed-category FAILS; an entry listed here
+# that is no longer mixed-category FAILS until it is removed.
+known_mixed_category_entries:
+  - contract: node_redeploy_deploy_effect
+    handler: HandlerDeployPublishMonitor
+    operation: redeploy.deploy.publish_monitor
