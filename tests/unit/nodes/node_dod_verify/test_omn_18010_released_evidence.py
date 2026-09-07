@@ -18,8 +18,12 @@ from __future__ import annotations
 
 import pytest
 
-from omnimarket.nodes.node_dod_verify.services.released_evidence import (
+from omnimarket.nodes.node_dod_verify.services.evidence_collector import (
     PACKAGE_INDEX_JSON_URL,
+    git_release_tags_containing,
+    pypi_release_files,
+)
+from omnimarket.nodes.node_dod_verify.services.released_evidence import (
     PUBLISHING_REPO_DISTRIBUTIONS,
     REQUIRED_INDEX_PACKAGE_TYPES,
     EnumReleasedOutcome,
@@ -27,11 +31,9 @@ from omnimarket.nodes.node_dod_verify.services.released_evidence import (
     aggregate_outcome,
     distribution_for_repo,
     evaluate_released,
-    git_release_tags_containing,
     is_closing_outcome,
     is_publishing_repo,
     parse_released_check_value,
-    pypi_release_files,
     version_from_release_tag,
 )
 

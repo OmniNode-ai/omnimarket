@@ -35,20 +35,19 @@ than in most checks, because the failure mode being closed is precisely
 
 Purity
 ------
-Everything in this module except the two ``*_probe`` production wirings at the
-bottom is pure logic over injected :class:`typing.Protocol` probes, so the unit
-tests run with recorded fixtures and no network at all.
+This module is PURE. It performs no subprocess call, no network read, no
+filesystem access and no env read: every answer it needs arrives through an
+injected :class:`typing.Protocol` probe, so the unit tests run against recorded
+fixtures with no I/O at all. The production wirings of those two probes live in
+``evidence_collector.py``, which is where this node's I/O belongs — a module
+that mixed the two would be a freestanding hybrid, which the imperative-contract
+guard correctly refuses.
 """
 
 from __future__ import annotations
 
-import json
 import re
-import subprocess
-import urllib.error
-import urllib.request
 from enum import StrEnum
-from pathlib import Path
 from typing import Final, Protocol
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -527,128 +526,9 @@ def parse_released_check_value(
     return tuple(citations), None
 
 
-# --------------------------------------------------------------------------- #
-# Production probe wirings (the only I/O in this module)
-# --------------------------------------------------------------------------- #
-
-_DEFAULT_GIT_TIMEOUT_S: Final[float] = 120.0
-_DEFAULT_INDEX_TIMEOUT_S: Final[float] = 20.0
-
-# The package index this org publishes to. Read from one place so a test can
-# assert the URL shape without a network call.
-PACKAGE_INDEX_JSON_URL: Final[str] = (
-    # url-authority-ok: the public PyPI JSON API is a GOVERNANCE-plane read for
-    # this verification probe, exactly as api.github.com is in
-    # node_prod_promotion_grant_resolver_effect. It carries no model routing
-    # authority, it is never a runtime dependency of any node, and it is the
-    # index these repos' own release.yml publishes to (`uv publish --check-url
-    # https://pypi.org/simple/`). Resolving it from a routing contract would
-    # make the released check depend on the very control plane whose contents
-    # it is auditing.
-    "https://pypi.org/pypi/{distribution}/{version}/json"  # url-authority-ok: governance-plane index read, no routing authority
-)
-
-
-def git_release_tags_containing(
-    clone_root: Path,
-    commit_sha: str,
-    *,
-    timeout_s: float = _DEFAULT_GIT_TIMEOUT_S,
-) -> tuple[str, ...] | None:
-    """``git tag --list 'v*' --contains <sha>`` against a staged clone.
-
-    Returns the containing tag names, ``()`` when the sha is known to the clone
-    but no tag contains it, and ``None`` when the lookup could not be resolved
-    at all — a missing clone, an unknown sha (tags or objects not fetched), a
-    git failure or a timeout. The caller treats ``None`` as INDETERMINATE.
-
-    The distinction is load-bearing: a clone whose tags were never fetched
-    would otherwise report "no containing tag" and be read as
-    merged-unreleased, converting a probe failure into a finding.
-    """
-    if not clone_root.is_dir():
-        return None
-    try:
-        # Prove the object exists in this clone first. Without this an unknown
-        # sha makes ``git tag --contains`` fail, and a caller that only read
-        # stdout would see an empty list.
-        known = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(clone_root),
-                "cat-file",
-                "-e",
-                f"{commit_sha}^{{commit}}",
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout_s,
-        )
-        if known.returncode != 0:
-            return None
-        proc = subprocess.run(
-            [
-                "git",
-                "-C",
-                str(clone_root),
-                "tag",
-                "--list",
-                "v*",
-                "--contains",
-                commit_sha,
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=timeout_s,
-        )
-    except subprocess.TimeoutExpired:
-        return None
-    except OSError:
-        return None
-    if proc.returncode != 0:
-        return None
-    return tuple(line.strip() for line in proc.stdout.splitlines() if line.strip())
-
-
-def pypi_release_files(
-    distribution: str,
-    version: str,
-    *,
-    timeout_s: float = _DEFAULT_INDEX_TIMEOUT_S,
-) -> frozenset[str] | None:
-    """Read the distribution file types the index serves for one version.
-
-    ``frozenset()`` on a definite 404 (the index does not have that version);
-    ``None`` on any other failure, which is INDETERMINATE and never certifies.
-    """
-    url = PACKAGE_INDEX_JSON_URL.format(distribution=distribution, version=version)
-    try:
-        with urllib.request.urlopen(url, timeout=timeout_s) as response:
-            if response.status != 200:
-                return None
-            payload = json.loads(response.read().decode("utf-8"))
-    except urllib.error.HTTPError as exc:
-        return frozenset() if exc.code == 404 else None
-    except (urllib.error.URLError, TimeoutError, OSError, json.JSONDecodeError):
-        return None
-    urls = payload.get("urls")
-    if not isinstance(urls, list):
-        return None
-    types = {
-        entry["packagetype"]
-        for entry in urls
-        if isinstance(entry, dict) and isinstance(entry.get("packagetype"), str)
-    }
-    return frozenset(types)
-
-
 __all__: list[str] = [
     "CLOSING_RELEASED_OUTCOMES",
     "CUSTOMER_FACING_LABEL",
-    "PACKAGE_INDEX_JSON_URL",
     "PUBLISHING_REPO_DISTRIBUTIONS",
     "RELEASED_OUTCOME_PRECEDENCE",
     "REQUIRED_INDEX_PACKAGE_TYPES",
@@ -662,10 +542,8 @@ __all__: list[str] = [
     "distribution_for_repo",
     "evaluate_citation",
     "evaluate_released",
-    "git_release_tags_containing",
     "is_closing_outcome",
     "is_publishing_repo",
     "parse_released_check_value",
-    "pypi_release_files",
     "version_from_release_tag",
 ]
