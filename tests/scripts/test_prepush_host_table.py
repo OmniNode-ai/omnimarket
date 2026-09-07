@@ -35,7 +35,7 @@ import re
 import shutil
 import subprocess
 import tempfile
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
@@ -390,6 +390,15 @@ def test_the_public_table_publishes_no_lab_or_cloud_identifier() -> None:
 #: disclosure the OMN-18027 split exists to prevent. The ssh_target field is
 #: intentionally ignored by the resolver: transport comes from the committed
 #: hostname column and private ssh config, not the overlay.
+# The per-user home ROOTS, held as single path SEGMENTS rather than as absolute
+# path literals: this file may not contain one (tests/unit/structure/
+# test_no_hardcoded_literals.py), and a segment comparison is also stricter than
+# a prefix match -- it cannot be defeated by a lookalike like `/UsersData/`.
+# macOS puts home directories under the first and Linux under the second; the
+# macOS one is the TCC-protected tree an sshd-run bundle cannot read.
+_PER_USER_HOME_ROOTS = frozenset({"Users", "home"})
+
+
 _SYNTHETIC_OVERLAY = (
     "#label\tssh_target\tuv_abs_path\tworkroot\n"
     "h200\thost200.example\t/opt/synthetic/bin/uv\t/tmp/onex-prepush\n"
@@ -507,12 +516,12 @@ def test_hydration_fills_the_placement_columns_from_the_private_overlay(
         assert row[5].startswith("/"), (
             f"{row[0]}: hydrated uv path must be absolute, got {row[5]!r}"
         )
-        macos_user_tree_prefix = "/" + "Users" + "/"
-        assert not row[7].startswith(macos_user_tree_prefix), (
-            f"{row[0]}: the workroot must stay out of the TCC-protected user "
-            f"tree; got {row[7]!r}"
-        )
         assert row[7].startswith("/"), f"{row[0]}: workroot must be absolute"
+        assert PurePosixPath(row[7]).parts[1] not in _PER_USER_HOME_ROOTS, (
+            f"{row[0]}: the workroot must stay out of a per-user home tree "
+            f"(TCC-protected on macOS, unreadable to an sshd-run bundle); "
+            f"got {row[7]!r}"
+        )
 
 
 def test_an_absent_overlay_skips_placement_and_never_refuses(
