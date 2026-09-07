@@ -991,3 +991,69 @@ def test_an_explicit_ticket_batch_is_never_suppressed_by_the_ledger(
         occ_root=tmp_path, tickets=("OMN-900",), apply=False, run_url="", limit=5
     )
     assert [row["ticket_id"] for row in report["outcomes"]] == ["OMN-900"]
+
+
+# ---------------------------------------------------------------------------
+# The ledger is committed into OCC, so it has to survive OCC's formatter.
+# ---------------------------------------------------------------------------
+
+
+def test_the_refusal_ledger_renders_yamlfmt_stable() -> None:
+    """A plain PyYAML dump of this file fails OCC's yamlfmt hook every run.
+
+    MEASURED on OCC#8493: the receipts rendered through the shared serializer
+    passed untouched (they carry no lists), and yamlfmt rewrote ONLY the
+    ledger — adding the `---` document start and indenting every block
+    sequence one level under its key. OCC's `.yamlfmt` sets `indent: 2` and
+    `include_document_start: true`; PyYAML emits neither by default.
+
+    A generator whose output the destination repo reformats is a generator
+    whose PR cannot land unattended, which is the same class of defect as the
+    receipt binding this ticket already fixed.
+    """
+    rendered = backfill.render_refusal_ledger_yaml(
+        {
+            "refusals": {
+                "OMN-900": {
+                    "decision": "REFUSED_NO_BEHAVIOUR_IN_DIFF",
+                    "judged_against": {
+                        "legacy_binding_receipts": [],
+                        "product_prs": ["OmniNode-ai/omnimarket#1"],
+                    },
+                }
+            }
+        }
+    )
+
+    assert rendered.startswith("---\n")
+    assert "\n        - OmniNode-ai/omnimarket#1\n" in rendered
+    # Never flush with the key — that is exactly what yamlfmt rewrites.
+    assert "\n      - OmniNode-ai/omnimarket#1\n" not in rendered
+
+
+def test_the_ledger_render_reloads_to_exactly_what_it_was_built_from() -> None:
+    """Fail-closed, the same contract the receipt serializer carries.
+
+    Bytes that do not reload to the object they were built from are never
+    written: a ledger that says something other than what was judged would
+    suppress the wrong tickets on the next discovery run. The guard runs on
+    every render; this asserts the property it guards, and that an
+    unrepresentable body is refused outright rather than written partially.
+    """
+    body = {
+        "refusals": {
+            "OMN-900": {
+                "decision": "REFUSED_NO_BEHAVIOUR_IN_DIFF",
+                "reason": "no pytest collection target in the merged diff.",
+                "judged_against": {
+                    "legacy_binding_receipts": ["drift/dod_receipts/OMN-900/x/y.yaml"],
+                    "product_prs": ["OmniNode-ai/omnimarket#1"],
+                },
+            }
+        }
+    }
+
+    assert yaml.safe_load(backfill.render_refusal_ledger_yaml(body)) == body
+
+    with pytest.raises(yaml.YAMLError):
+        backfill.render_refusal_ledger_yaml({"refusals": {"OMN-900": object()}})
