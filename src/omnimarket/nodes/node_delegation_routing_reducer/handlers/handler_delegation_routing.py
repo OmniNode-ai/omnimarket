@@ -1728,17 +1728,37 @@ def _decision_from_tenant_overlay(
     task_type: str,
     overlay: ModelTenantRoutingOverlayBackend,
     estimated_tokens: int,
+    dod_resolution: ModelDodResolution,
 ) -> ModelRoutingDecision:
     """Build a ``ModelRoutingDecision`` directly from a tenant overlay row.
 
     OMN-15631 v1(a) AC6: a matching (tenant_id, task_type) overlay row
-    WHOLESALE-REPLACES the platform-resolved backend for that pair — tier
-    iteration, task-class contract policy, and ROI suppression are not
-    consulted (those govern platform routing STRUCTURE, which stays
+    WHOLESALE-REPLACES the platform-resolved BACKEND for that pair — endpoint,
+    model, credential ref, timeout, max_tokens and cost tier all come from the
+    row, and tier iteration, task-class ROUTING policy and ROI suppression are
+    not consulted (those govern platform routing STRUCTURE, which stays
     platform-fixed in v1(a); see ``tenant_overlay_resolver`` module docstring
     for the full precedence writeup). ``max_context_tokens`` uses the
     platform's shared hard-limit constant — the overlay table does not carry
     a per-backend context window in v1(a).
+
+    OMN-17372: the ACCEPTANCE contract is neither the backend nor the routing
+    structure, and is therefore NOT overlay-replaced. ``dod_resolution`` is
+    resolved once in ``delta`` from the task-class contract and the CALLER's
+    prompt, and is threaded onto this decision byte-identically to the platform
+    site. The overlay decides WHERE the work runs and WHOSE key pays; it must
+    never decide WHAT counts as done. It is not overlay-controllable by
+    construction: the overlay table carries no DoD column and must not gain
+    one, for the same reason ``_shape_override_deterministic`` refuses a
+    ``default_shape_overrides.deterministic`` sibling — acceptance the caller
+    can write is a caller-controlled bypass of the acceptance surface.
+
+    Dropping it was not a cosmetic omission. With both bands empty the quality
+    gate's ``has_contract_dod`` is False, so every keyed customer delegation
+    was graded by ``_run_legacy_checks``, which applies a 60-character floor no
+    contract declares and then appends ``_NO_ADEQUACY_AUTHORITY_REASON`` — a
+    correct answer scoring 1.000 against a 0.800 bar was still terminalized
+    ``failed`` (live workflows 40ac8467 and 5ad9b033, 2026-09-07).
     """
     system_prompt = _SYSTEM_PROMPTS.get(
         task_type,
@@ -1787,6 +1807,14 @@ def _decision_from_tenant_overlay(
         rationale=rationale,
         tier_name=TENANT_OVERLAY_TIER_NAME,
         selected_backend_ref=overlay.backend_id,
+        # OMN-17372: the same five fields the platform site threads, from the
+        # same single resolution — so the two sites cannot disagree about what
+        # counts as done for a given (task_type, prompt).
+        dod_deterministic=dod_resolution.deterministic,
+        dod_heuristic=dod_resolution.heuristic,
+        requested_shape=dod_resolution.requested_shape,
+        dod_deterministic_source=dod_resolution.deterministic_source,
+        dod_heuristic_source=dod_resolution.heuristic_source,
     )
 
 
@@ -1849,12 +1877,29 @@ def delta(
     Endpoint URLs are resolved from the bifrost contract overlay, not endpoint env vars.
 
     When ``tenant_overlay`` is set (OMN-15631 v1(a) — per-tenant delegation
-    routing), it WHOLESALE-REPLACES the platform-resolved backend for this
+    routing), it WHOLESALE-REPLACES the platform-resolved BACKEND for this
     exact ``(request.tenant_id, request.task_type)`` pair: tier iteration,
-    task-class contract policy, and ROI suppression are skipped entirely, and
-    the decision is built directly from the overlay row (see
-    ``_decision_from_tenant_overlay``). ``tenant_overlay`` is a pure INPUT —
-    resolved by the caller at its own I/O boundary via
+    task-class ROUTING policy, and ROI suppression are skipped entirely, and
+    the decision's backend binding is built directly from the overlay row (see
+    ``_decision_from_tenant_overlay``).
+
+    OMN-17372 draws the boundary that wording blurred. THREE things are
+    resolved in this function and they are not the same thing:
+
+    * the BACKEND — endpoint, model, credential ref, timeout, max_tokens, cost
+      tier. Overlay-replaced in full when a row matches.
+    * routing STRUCTURE — tier ladder, escalation policy, pricing ceiling,
+      cloud routing policy, ROI suppression. Platform-fixed in v1(a); an
+      overlay short-circuits it rather than replacing it.
+    * the ACCEPTANCE contract — the DoD bands and the caller's requested
+      response shape. Neither of the above. Resolved ONCE, from the task-class
+      contract and the caller's own prompt, ABOVE the overlay branch, and
+      threaded onto whichever decision this call returns. Never
+      overlay-controllable and never tenant-scoped: the overlay decides where
+      the work runs and whose key pays, not what counts as done.
+
+    ``tenant_overlay`` is a pure INPUT — resolved by the caller at its own I/O
+    boundary via
     ``omnimarket.routing.tenant_overlay_resolver.resolve_tenant_overlay``,
     mirroring how ``roi_overlay`` is threaded in — ``delta`` itself never
     touches the database (REDUCER_GENERIC purity, ``requires_network:
@@ -1890,6 +1935,35 @@ def delta(
     task_type = request.task_type
     estimated_tokens = _estimate_prompt_tokens(request.prompt)
 
+    # OMN-16932: a prompt that declares its own answer shape ("Reply with
+    # exactly the word: alive") overrides the CLASS rubric for this request.
+    # Resolved from the prompt and the task-class contract, so the quality gate
+    # stays a pure function over a declared check set and never has to guess
+    # what was asked.
+    #
+    # OMN-17765: this calls the SHARED resolver rather than re-deriving the
+    # bands here. It used to re-derive, and the two sites had drifted: this one
+    # applied the shape override to the heuristic band only and passed
+    # `dod_deterministic` through untouched to ModelRoutingDecision, while
+    # `resolve_task_class_dod_checks` — the bus-LESS local dispatch path — was
+    # the only site a fix would land in. That mattered because THIS is the path
+    # that produced the 28 measured rows, so a fix confined to the other site
+    # would have turned the red test green while the lane kept failing. One
+    # resolver means the two cannot disagree by construction rather than by a
+    # test that has to keep noticing.
+    #
+    # OMN-17372 hoists that one call ABOVE the tenant-overlay branch — the
+    # THIRD path OMN-17765 missed. That branch returns below without ever
+    # reaching the resolver, so a BYOK decision carried `()` for both bands and
+    # every keyed customer delegation fell to the quality gate's legacy
+    # fallback. Resolved from `task_type` (the REQUEST's, never
+    # `overlay.task_type`, which is the `'*'` BYOK_ALL_TASK_TYPES sentinel on a
+    # bridge row) and the caller's own prompt: ONE resolution per call, read by
+    # both branches, so they cannot re-diverge.
+    dod_resolution = resolve_task_class_dod_resolution(task_type, request.prompt)
+    dod_deterministic = dod_resolution.deterministic
+    dod_heuristic = dod_resolution.heuristic
+
     if tenant_overlay is not None:
         if (
             tenant_overlay.tenant_id != request.tenant_id
@@ -1903,6 +1977,7 @@ def delta(
             task_type=task_type,
             overlay=tenant_overlay,
             estimated_tokens=estimated_tokens,
+            dod_resolution=dod_resolution,
         )
         # OMN-17082. The overlay table is writable DATA: a row whose
         # ``secret_ref`` names a platform credential is house pooling by
@@ -1970,25 +2045,6 @@ def delta(
         if requested_backend_ref is not None
         else _tier_order_from_contract(config, entry)
     )
-    # OMN-16932: a prompt that declares its own answer shape ("Reply with
-    # exactly the word: alive") overrides the CLASS rubric for this request.
-    # Resolved from the prompt and the task-class contract, so the quality gate
-    # stays a pure function over a declared check set and never has to guess
-    # what was asked.
-    #
-    # OMN-17765: this calls the SHARED resolver rather than re-deriving the
-    # bands here. It used to re-derive, and the two sites had drifted: this one
-    # applied the shape override to the heuristic band only and passed
-    # `dod_deterministic` through untouched to ModelRoutingDecision, while
-    # `resolve_task_class_dod_checks` — the bus-LESS local dispatch path — was
-    # the only site a fix would land in. That mattered because THIS is the path
-    # that produced the 28 measured rows, so a fix confined to the other site
-    # would have turned the red test green while the lane kept failing. One
-    # resolver means the two cannot disagree by construction rather than by a
-    # test that has to keep noticing.
-    dod_resolution = resolve_task_class_dod_resolution(task_type, request.prompt)
-    dod_deterministic = dod_resolution.deterministic
-    dod_heuristic = dod_resolution.heuristic
 
     # Contract-declared model ref takes priority over tier-order selection (OMN-10942).
     contract_model_ref = _get_contract_model_ref(task_type, contract=contract)
