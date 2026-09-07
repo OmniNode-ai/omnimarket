@@ -113,6 +113,7 @@ def _close_once(descriptor: int) -> None:
 def _open_directory_at(parent_descriptor: int, component: str) -> int:
     """Open or create one trusted directory component beneath a retained dirfd."""
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
+    descriptor: int | None = None
     try:
         descriptor = _retry_interrupted(
             lambda: os.open(component, flags, dir_fd=parent_descriptor)
@@ -126,12 +127,20 @@ def _open_directory_at(parent_descriptor: int, component: str) -> int:
             lambda: os.open(component, flags, dir_fd=parent_descriptor)
         )
     try:
-        if not stat.S_ISDIR(_retry_interrupted(lambda: os.fstat(descriptor)).st_mode):
+        assert descriptor is not None
+        opened_descriptor = descriptor
+        if not stat.S_ISDIR(
+            _retry_interrupted(lambda: os.fstat(opened_descriptor)).st_mode
+        ):
             raise OSError(f"unsafe hook-event sink parent component: {component}")
-        return descriptor
+        retained_descriptor = descriptor
+        descriptor = None
+        return retained_descriptor
     except Exception:
-        _close_once(descriptor)
         raise
+    finally:
+        if descriptor is not None:
+            _close_once(descriptor)
 
 
 def _open_safe_sink_parent(sink_path: Path) -> tuple[int, str]:
@@ -148,20 +157,26 @@ def _open_safe_sink_parent(sink_path: Path) -> tuple[int, str]:
         raise OSError("hook-event sink requires a filename")
     basename = components.pop()
     root = "/" if is_absolute else "."
-    current_descriptor = _retry_interrupted(
+    current_descriptor: int | None = _retry_interrupted(
         lambda: os.open(
             root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_NONBLOCK
         )
     )
     try:
         for component in components:
+            assert current_descriptor is not None
             next_descriptor = _open_directory_at(current_descriptor, component)
             _close_once(current_descriptor)
             current_descriptor = next_descriptor
-        return current_descriptor, basename
+        assert current_descriptor is not None
+        retained_descriptor = current_descriptor
+        current_descriptor = None
+        return retained_descriptor, basename
     except Exception:
-        _close_once(current_descriptor)
         raise
+    finally:
+        if current_descriptor is not None:
+            _close_once(current_descriptor)
 
 
 def _assert_private_regular_descriptor(descriptor: int) -> None:
@@ -453,6 +468,7 @@ def emit_hook_events(
         parent_descriptor: int | None = None
         descriptor: int | None = None
         locked = False
+        lock_unavailable = False
         try:
             parent_descriptor, basename = _open_safe_sink_parent(sink_path)
             descriptor = _retry_interrupted(
@@ -474,15 +490,17 @@ def emit_hook_events(
                 )
             except OSError as error:
                 if error.errno in (errno.EAGAIN, errno.EWOULDBLOCK):
-                    return
-                raise
-            locked = True
-            remaining = payload
-            while remaining:
-                written = _write_with_eintr(descriptor, remaining)
-                if written <= 0:
-                    raise OSError("hook-event sink write made no progress")
-                remaining = remaining[written:]
+                    lock_unavailable = True
+                else:
+                    raise
+            if not lock_unavailable:
+                locked = True
+                remaining = payload
+                while remaining:
+                    written = _write_with_eintr(descriptor, remaining)
+                    if written <= 0:
+                        raise OSError("hook-event sink write made no progress")
+                    remaining = remaining[written:]
         finally:
             if descriptor is not None:
                 try:

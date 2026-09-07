@@ -460,7 +460,7 @@ def test_sink_parent_swap_cannot_redirect_the_final_open(
     def _swap_parent_before_final_open(
         path: str | bytes | os.PathLike[str] | os.PathLike[bytes],
         flags: int,
-        mode: int = 0o777,
+        mode: int = 0o600,
         *,
         dir_fd: int | None = None,
     ) -> int:
@@ -531,7 +531,7 @@ def test_sink_retries_interrupted_open(
     real_open = os.open
     attempts = 0
 
-    def _interrupted_open(path: Path | str, flags: int, mode: int = 0o777) -> int:
+    def _interrupted_open(path: Path | str, flags: int, mode: int = 0o600) -> int:
         nonlocal attempts
         attempts += 1
         if attempts == 1:
@@ -640,7 +640,11 @@ def test_sink_attempts_interrupted_close_once_without_reusing_the_descriptor(
 
     descriptor = os.open(tmp_path / "events", os.O_CREAT | os.O_RDWR, mode=0o600)
     monkeypatch.setattr(os, "close", _interrupted_close)
-    hook_event_sink._close_once(descriptor)
+    try:
+        hook_event_sink._close_once(descriptor)
+    finally:
+        if attempts == 0:
+            real_close(descriptor)
 
     assert attempts == 1
 
