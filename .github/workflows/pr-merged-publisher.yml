@@ -48,8 +48,10 @@
 #    REJECTED ALTERNATIVE (recorded on OMN-17378): route the publish through a
 #    broker a hosted runner can reach (managed/cloud Kafka, or a relay).
 #    Rejected on evidence, not preference -- (a) no cloud broker is provisioned:
-#    the repo holds no `KAFKA_SASL_*` secret at all, so there is nothing to
-#    authenticate to today; (b) the consumer this feed exists to serve,
+#    no cloud broker exists to authenticate to. (The `KAFKA_SASL_*` pair injected
+#    below is org-scoped, dates from 2026-09-07, and authenticates to THIS LAN
+#    broker's SCRAM listener -- it is not a cloud credential and does not revive
+#    this alternative.) (b) the consumer this feed exists to serve,
 #    node_pr_merged_projection, consumes the dev-lane Redpanda on .201, so
 #    producing to a different broker would turn the check green and leave the
 #    feed just as dead; (c) the fleet path is proven working on this exact
@@ -162,11 +164,26 @@ jobs:
         # All potentially attacker-controlled inputs (branch name, PR title) are
         # passed through environment variables to prevent shell injection.
         #
-        # OMN-17378: SECRET-FREE. `KAFKA_BOOTSTRAP_SERVERS` is no longer injected
-        # and `source ~/.omnibase/.env` is gone — the broker resolves from the
-        # committed `config/ci_bus_lanes.yaml` overlay via `--lane dev`. The
-        # dev lane is plaintext Redpanda, so there are no SASL creds to supply.
+        # OMN-17378: the broker is CONFIG, not a secret. `KAFKA_BOOTSTRAP_SERVERS`
+        # is not injected and `source ~/.omnibase/.env` is gone — the broker
+        # resolves from the committed `config/ci_bus_lanes.yaml` overlay via
+        # `--lane dev`.
+        #
+        # OMN-18012 CORRECTION: this comment used to end "the dev lane is
+        # plaintext Redpanda, so there are no SASL creds to supply". That stopped
+        # being true at ~16:40Z on 2026-09-07, when SASL/SCRAM-SHA-256 was
+        # enabled on the dev-lane Redpanda EXTERNAL listener. The lane now
+        # declares `security_protocol: SASL_PLAINTEXT` /
+        # `sasl_mechanism: SCRAM-SHA-256` in that same overlay, and the publisher
+        # reads the declaration rather than inferring one — so the SCRAM
+        # principal must be supplied, or the publish fails closed instead of
+        # silently attempting plaintext. Same two org secrets
+        # call-occ-autobind.yml already injects for the same lane and the same
+        # broker. The credential is a secret; the transport and the broker are
+        # not.
         env:
+          KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+          KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           DISPATCH_PR_NUMBER: ${{ inputs.pr_number }}

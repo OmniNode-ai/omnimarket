@@ -38,8 +38,9 @@
 #
 # Required environment variables (when not --dry-run):
 #   KAFKA_BOOTSTRAP_SERVERS   -- broker address(es), e.g. host:9092
-#   KAFKA_SASL_USERNAME       -- SASL username / API key
-#   KAFKA_SASL_PASSWORD       -- SASL password / API secret
+#   KAFKA_SASL_USERNAME       -- SASL principal; required when the lane declares
+#                                a SASL_* security_protocol (OMN-18012)
+#   KAFKA_SASL_PASSWORD       -- that principal's secret, same condition
 #   DEPLOY_AGENT_HMAC_SECRET  -- HMAC secret for payload signing
 #
 # Usage:
@@ -66,12 +67,20 @@ from typing import Any
 
 import click
 
-# The RT-5 fail-closed assertion (producer_effect_assertion.py) is co-located in
-# scripts/. Ensure scripts/ is importable when this file is loaded by path
-# (CI / tests via importlib), not only when run as `python scripts/...`.
+# The RT-5 fail-closed assertion (producer_effect_assertion.py) and the shared
+# bus-lane resolver (ci_bus_lanes.py) are co-located in scripts/. Ensure
+# scripts/ is importable when this file is loaded by path (CI / tests via
+# importlib), not only when run as `python scripts/...`.
 _SCRIPTS_DIR = str(Path(__file__).resolve().parent)
 if _SCRIPTS_DIR not in sys.path:
     sys.path.insert(0, _SCRIPTS_DIR)
+
+from ci_bus_lanes import (  # noqa: E402  (needs the sys.path line above)
+    LaneSecurityError,
+    build_producer_config,
+    load_lane_overlay,
+    resolve_lane_security,
+)
 
 # CI publishes the node_redeploy_orchestrator start command; the orchestrator's
 # deploy publish-monitor effect is the sole emitter of the deploy-agent rebuild
@@ -136,14 +145,27 @@ def _kafka_sasl_config(
     bootstrap_servers: str,
     username: str,
     password: str,
+    security_protocol: str,
+    sasl_mechanism: str,
 ) -> dict[str, str | int | float | bool]:
-    return {
-        "bootstrap.servers": bootstrap_servers,
-        "security.protocol": "SASL_SSL",
-        "sasl.mechanisms": "PLAIN",
-        "sasl.username": username,
-        "sasl.password": password,
-    }
+    """Build the transport from the LANE-DECLARED protocol (OMN-18012).
+
+    Delegates to the shared :func:`ci_bus_lanes.build_producer_config`, the one
+    home for this decision across every CI publisher in this repo.
+
+    WHAT THIS REPLACED: an unconditional ``SASL_SSL`` / ``PLAIN`` literal. That
+    is a guess about a broker this script never inspected, and it is the same
+    guess that took the OCC autobind fan-out and the pr-merged publisher down on
+    2026-09-07 against a listener speaking SASL over PLAINTEXT with no TLS. The
+    transport now comes from ``config/ci_bus_lanes.yaml``, beside the broker.
+    """
+    return build_producer_config(
+        bootstrap_servers,
+        username,
+        password,
+        security_protocol,
+        sasl_mechanism,
+    )
 
 
 def build_redeploy_start_envelope(
@@ -183,6 +205,8 @@ def publish_redeploy_start_event(
     bootstrap_servers: str,
     username: str,
     password: str,
+    security_protocol: str,
+    sasl_mechanism: str,
     hmac_secret: str,
     runtime_lane: str,
     source_branch: str,
@@ -196,7 +220,7 @@ def publish_redeploy_start_event(
     delivery failure so the caller can assert a non-zero emit count — a producer
     that delivers nothing must fail closed, never report success.
     """
-    from confluent_kafka import Producer  # type: ignore[import-untyped]
+    from confluent_kafka import Producer
 
     signed = build_redeploy_start_envelope(
         runtime_lane=runtime_lane,
@@ -207,11 +231,19 @@ def publish_redeploy_start_event(
         hmac_secret=hmac_secret,
     )
 
-    producer = Producer(_kafka_sasl_config(bootstrap_servers, username, password))
+    producer = Producer(
+        _kafka_sasl_config(
+            bootstrap_servers,
+            username,
+            password,
+            security_protocol,
+            sasl_mechanism,
+        )
+    )
 
     delivery_error: BaseException | None = None
 
-    def _on_delivery(err: object, _msg: object) -> None:  # type: ignore[misc]
+    def _on_delivery(err: object, _msg: object) -> None:
         nonlocal delivery_error
         if err is not None:
             delivery_error = RuntimeError(str(err))
@@ -238,6 +270,8 @@ def wait_for_rebuild_completion(
     bootstrap_servers: str,
     username: str,
     password: str,
+    security_protocol: str,
+    sasl_mechanism: str,
     correlation_id: str,
     timeout_seconds: float,
 ) -> dict[str, Any]:
@@ -249,10 +283,16 @@ def wait_for_rebuild_completion(
     A timeout raises TimeoutError naming the correlation_id — the durable failed
     correlation receipt for the run.
     """
-    from confluent_kafka import Consumer  # type: ignore[import-untyped]
+    from confluent_kafka import Consumer
 
     consumer_config = {
-        **_kafka_sasl_config(bootstrap_servers, username, password),
+        **_kafka_sasl_config(
+            bootstrap_servers,
+            username,
+            password,
+            security_protocol,
+            sasl_mechanism,
+        ),
         "group.id": f"gha-runtime-rebuild-trigger-{correlation_id[:8]}",
         "auto.offset.reset": "latest",
         "enable.auto.commit": False,
@@ -324,6 +364,16 @@ def wait_for_rebuild_completion(
     help="Correlation ID (auto-generated if not provided)",
 )
 @click.option(
+    "--bus-lane",
+    default="dev",
+    show_default=True,
+    help=(
+        "Control-bus lane id declared in config/ci_bus_lanes.yaml. The lane's "
+        "security_protocol / sasl_mechanism are read from there (OMN-18012); "
+        "the transport is never inferred from the environment."
+    ),
+)
+@click.option(
     "--dry-run",
     is_flag=True,
     default=False,
@@ -349,6 +399,7 @@ def main(
     source_sha: str,
     requested_by: str,
     correlation_id: str,
+    bus_lane: str,
     dry_run: bool,
     wait_for_completion: bool,
     completion_timeout_seconds: float,
@@ -402,6 +453,18 @@ def main(
     bootstrap_servers = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "")
     username = os.environ.get("KAFKA_SASL_USERNAME", "")
     password = os.environ.get("KAFKA_SASL_PASSWORD", "")
+
+    # The transport is DECLARED by the lane in config/ci_bus_lanes.yaml and read
+    # here (OMN-18012). It is never inferred from which credentials happen to be
+    # in the environment: that inference is what published TLS at a listener
+    # speaking SASL over PLAINTEXT on 2026-09-07.
+    try:
+        security_protocol, sasl_mechanism = resolve_lane_security(
+            load_lane_overlay(), bus_lane
+        )
+    except LaneSecurityError as exc:
+        click.echo(f"ERROR: {exc}", err=True)
+        sys.exit(1)
     hmac_secret = os.environ.get("DEPLOY_AGENT_HMAC_SECRET", "")
 
     # A runtime change was detected and this is not a dry run, so the job's
@@ -428,6 +491,8 @@ def main(
             bootstrap_servers=bootstrap_servers,
             username=username,
             password=password,
+            security_protocol=security_protocol,
+            sasl_mechanism=sasl_mechanism,
             hmac_secret=hmac_secret,
             runtime_lane=runtime_lane,
             source_branch=base_branch,
@@ -460,6 +525,8 @@ def main(
                 bootstrap_servers=bootstrap_servers,
                 username=username,
                 password=password,
+                security_protocol=security_protocol,
+                sasl_mechanism=sasl_mechanism,
                 correlation_id=corr_id,
                 timeout_seconds=completion_timeout_seconds,
             )

@@ -428,6 +428,8 @@ def test_wait_for_rebuild_completion_matches_correlation_and_closes(
         bootstrap_servers="broker:9092",
         username="user",
         password="secret",
+        security_protocol="SASL_PLAINTEXT",
+        sasl_mechanism="SCRAM-SHA-256",
         correlation_id="corr-123",
         timeout_seconds=5,
     )
@@ -463,6 +465,8 @@ def test_completion_timeout_yields_failed_correlation_receipt(
             bootstrap_servers="broker:9092",
             username="user",
             password="secret",
+            security_protocol="SASL_PLAINTEXT",
+            sasl_mechanism="SCRAM-SHA-256",
             correlation_id="corr-123",
             timeout_seconds=0,
         )
@@ -543,3 +547,49 @@ def test_cli_wait_for_completion_fails_on_failed_completion(
     assert result.exit_code == 1
     assert "Received rebuild-completed status=failed" in result.output
     assert "bad deploy" in result.output
+
+
+@pytest.mark.unit
+def test_producer_transport_comes_from_the_lane_not_a_literal(
+    trigger_module: Any,
+) -> None:
+    """OMN-18012: `_kafka_sasl_config` reads the lane, it does not assert one.
+
+    This function used to return an unconditional ``SASL_SSL`` / ``PLAIN`` block —
+    a claim about a broker it had never inspected. The dev lane declares SASL
+    over PLAINTEXT with SCRAM-SHA-256, and the config must say exactly that.
+    """
+    config = trigger_module._kafka_sasl_config(
+        "broker:19092",
+        "principal",
+        "secret",
+        "SASL_PLAINTEXT",
+        "SCRAM-SHA-256",
+    )
+
+    assert config["security.protocol"] == "SASL_PLAINTEXT"
+    assert config["sasl.mechanisms"] == "SCRAM-SHA-256"
+    assert config["sasl.username"] == "principal"
+    assert config["bootstrap.servers"] == "broker:19092"
+
+
+@pytest.mark.unit
+def test_producer_transport_honours_a_plaintext_lane(trigger_module: Any) -> None:
+    """A lane that declares no SASL gets no SASL keys, credentials or not."""
+    config = trigger_module._kafka_sasl_config("broker:19092", "", "", "PLAINTEXT", "")
+
+    assert config["security.protocol"] == "PLAINTEXT"
+    assert "sasl.mechanisms" not in config
+    assert "sasl.username" not in config
+
+
+@pytest.mark.unit
+def test_declared_lane_transport_matches_the_checked_in_overlay(
+    trigger_module: Any,
+) -> None:
+    """The lane this script defaults to resolves against committed truth."""
+    protocol, mechanism = trigger_module.resolve_lane_security(
+        trigger_module.load_lane_overlay(), "dev"
+    )
+
+    assert (protocol, mechanism) == ("SASL_PLAINTEXT", "SCRAM-SHA-256")

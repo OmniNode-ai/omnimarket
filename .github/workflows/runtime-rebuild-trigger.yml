@@ -101,7 +101,10 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install --quiet confluent-kafka click
+          # pyyaml: the publisher resolves the lane's declared transport from
+          # the checked-in config/ci_bus_lanes.yaml overlay (OMN-18012) via the
+          # shared scripts/ci_bus_lanes.py module.
+          pip install --quiet confluent-kafka click pyyaml
 
       - name: Trigger node_redeploy if runtime change detected
         # All potentially attacker-controlled inputs (labels, base_ref, sha) are

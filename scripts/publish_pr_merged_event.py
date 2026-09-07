@@ -67,9 +67,17 @@
 # configured broker. If a secret IS supplied anyway it is fail-loud-checked
 # against the overlay (the OMN-14800 silent dev->stability repoint guard).
 #
-# Transport is resolved from the env, never hardcoded: SASL_SSL/PLAIN when SASL
-# credentials are present (a cloud broker); plaintext otherwise (the dev-lane
-# Redpanda, which has no SASL).
+# TRANSPORT IS DECLARED BY THE LANE, NEVER INFERRED (OMN-18012): the same
+# overlay that declares the broker declares `security_protocol` and, for a SASL
+# protocol, `sasl_mechanism` beside it, and this publisher READS them through
+# `ci_bus_lanes.resolve_lane_security`. The previous body chose SASL_SSL/PLAIN
+# whenever both SASL credentials happened to be present in the environment.
+# Credential presence is not a statement about transport: on 2026-09-07 the
+# dev-lane Redpanda external listener began requiring SASL/SCRAM-SHA-256 over
+# PLAINTEXT -- no TLS -- and the KAFKA_SASL_* org secrets were injected
+# fleet-wide, so from ~18:14Z this publisher published plaintext into a listener
+# that had just started demanding SASL and every run died with a delivery
+# timeout on an unpublished pr-merged event.
 #
 # PUBLISH RECEIPT: on success the script writes topic + event_id + partition +
 # offset + broker to $GITHUB_STEP_SUMMARY, so "did it actually publish" is
@@ -87,8 +95,10 @@
 #
 # Optional:
 #   KAFKA_BOOTSTRAP_SERVERS   -- injected broker; checked against the overlay
-#   KAFKA_SASL_USERNAME       -- SASL username / API key (cloud broker only)
-#   KAFKA_SASL_PASSWORD       -- SASL password / API secret (cloud broker only)
+#   KAFKA_SASL_USERNAME       -- SASL principal; REQUIRED when the resolved lane
+#                                declares a SASL_* security protocol, unused
+#                                otherwise (OMN-18012)
+#   KAFKA_SASL_PASSWORD       -- that principal's secret, same condition
 #   PR_TICKET                 -- Linear ticket ID extracted from branch/title
 #   GITHUB_STEP_SUMMARY       -- receipt sink (set by GitHub Actions)
 #
@@ -113,9 +123,12 @@ from ci_bus_lanes import (
     MODE_INMEMORY,
     MODE_NO_LANE,
     MODE_UNKNOWN_LANE,
+    LaneSecurityError,
+    build_producer_config,
     is_trusted_runner,
     load_lane_overlay,
     resolve_lane_broker,
+    resolve_lane_security,
 )
 
 
@@ -182,22 +195,32 @@ def _kafka_producer_config(
     bootstrap_servers: str,
     username: str,
     password: str,
+    security_protocol: str,
+    sasl_mechanism: str,
 ) -> dict[str, str | int | float | bool]:
-    """Resolve the producer transport from the env.
+    """Build the producer transport from the LANE-DECLARED protocol (OMN-18012).
 
-    SASL_SSL/PLAIN when SASL credentials are supplied (cloud broker); plaintext
-    otherwise (the dev-lane Redpanda broker, which has no SASL). The broker
-    endpoint is always taken from ``bootstrap_servers`` — never hardcoded.
+    Delegates to the shared :func:`ci_bus_lanes.build_producer_config` so this
+    publisher and every other CI publisher resolve the transport through ONE
+    implementation. ``security_protocol`` / ``sasl_mechanism`` come from
+    :func:`ci_bus_lanes.resolve_lane_security`, i.e. from the same checked-in
+    overlay that already declares the broker.
+
+    WHAT THIS REPLACED: the previous body set ``security.protocol = SASL_SSL``
+    and ``sasl.mechanisms = PLAIN`` whenever both SASL credentials happened to be
+    present in the environment, and published plaintext otherwise. Credential
+    presence is not a statement about transport. When the dev-lane Redpanda
+    external listener began requiring SASL/SCRAM-SHA-256 over PLAINTEXT on
+    2026-09-07 and the org KAFKA_SASL_* secrets were injected fleet-wide, that
+    inference chose TLS against a listener that speaks none.
     """
-    config: dict[str, str | int | float | bool] = {
-        "bootstrap.servers": bootstrap_servers,
-    }
-    if username and password:
-        config["security.protocol"] = "SASL_SSL"
-        config["sasl.mechanisms"] = "PLAIN"
-        config["sasl.username"] = username
-        config["sasl.password"] = password
-    return config
+    return build_producer_config(
+        bootstrap_servers,
+        username,
+        password,
+        security_protocol,
+        sasl_mechanism,
+    )
 
 
 def build_payload(
@@ -225,6 +248,8 @@ def publish_pr_merged_event(
     bootstrap_servers: str,
     username: str,
     password: str,
+    security_protocol: str,
+    sasl_mechanism: str,
     repo: str,
     branch: str,
     pr_number: int,
@@ -251,7 +276,15 @@ def publish_pr_merged_event(
         event_id=event_id,
     )
 
-    producer = Producer(_kafka_producer_config(bootstrap_servers, username, password))
+    producer = Producer(
+        _kafka_producer_config(
+            bootstrap_servers,
+            username,
+            password,
+            security_protocol,
+            sasl_mechanism,
+        )
+    )
 
     delivery_error: BaseException | None = None
     delivered: tuple[int, int] | None = None
@@ -428,11 +461,22 @@ def main(dry_run: bool, lane: str | None) -> None:
     mode, declared_broker = resolve_lane_broker(overlay, lane)
 
     def _publish_or_die(target_broker: str) -> None:
+        # The transport is DECLARED by the lane, beside the broker, and read
+        # here (OMN-18012). Only the publishing branches reach this closure: an
+        # inmemory / unresolvable lane has already exited, so a lane that must
+        # publish and declares no transport is a wiring gap, not a default.
+        try:
+            security_protocol, sasl_mechanism = resolve_lane_security(overlay, lane)
+        except LaneSecurityError as exc:
+            click.echo(f"ERROR: {exc}", err=True)
+            sys.exit(1)
         try:
             published_id, partition, offset = publish_pr_merged_event(
                 bootstrap_servers=target_broker,
                 username=username,
                 password=password,
+                security_protocol=security_protocol,
+                sasl_mechanism=sasl_mechanism,
                 repo=repo,
                 branch=branch,
                 pr_number=pr_number,
