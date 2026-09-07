@@ -81,7 +81,6 @@ infra_sibling_preflight_fail() {
 # --- end shared preflight ------------------------------------------------------
 
 SCAN_ROOT="${1:-src/omnimarket}"
-BASELINE="${2:-config/validation/subscriber_dispatcher_resolution_baseline.yaml}"
 
 INFRA_SRC=""
 for candidate in \
@@ -114,4 +113,4 @@ fi
 echo "[subscriber-dispatcher-resolution] using validator from ${INFRA_SRC}" >&2
 PYTHONPATH="${INFRA_SRC}${PYTHONPATH:+:${PYTHONPATH}}" \
   uv run python -m omnibase_infra.validators.subscriber_dispatcher_resolution \
-  "${SCAN_ROOT}" --baseline "${BASELINE}"
+  "${SCAN_ROOT}"

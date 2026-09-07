@@ -17,7 +17,7 @@
 # live victims sat — had no gate at all. This is that fan-out.
 #
 # The checker lives in omnibase_infra because it imports the REAL production wiring
-# helpers (_topics_for_handler_entry, derive_entry_message_category) — the same ones
+# helpers (_topics_for_handler_entry, derive_route_message_category) — the same ones
 # _prepare_handler_wiring calls — so the gate cannot drift from the runtime. omnimarket's
 # installed omnibase-infra pin does not carry it yet, so an omnibase_infra SOURCE tree is
 # resolved instead, exactly as check_subscriber_dispatcher_resolution.sh does. Fail-closed:
@@ -47,8 +47,6 @@ infra_sibling_preflight_fail() {
 }
 
 SCAN_ROOT="${1:-src/omnimarket}"
-BASELINE="${2:-config/validation/mixed_category_routing_omnimarket_baseline.yaml}"
-
 INFRA_SRC=""
 for candidate in \
   "./omnibase_infra/src" \
@@ -56,7 +54,7 @@ for candidate in \
   "${OMNI_HOME:-}/omnibase_infra/src" \
   "../omnibase_infra/src" \
   "../../../omnibase_infra/src"; do
-  if [[ -d "${candidate}" && -f "${candidate}/omnibase_infra/validators/mixed_category_routing.py" ]]; then
+  if [[ -d "${candidate}" && -f "${candidate}/omnibase_infra/validators/contract_topic_category.py" ]]; then
     INFRA_SRC="${candidate}"
     break
   fi
@@ -64,16 +62,16 @@ done
 
 if [[ -z "${INFRA_SRC}" ]]; then
   echo "[mixed-category-routing] FAIL: no omnibase_infra source tree carrying" >&2
-  echo "  omnibase_infra/validators/mixed_category_routing.py was found." >&2
+  echo "  omnibase_infra/validators/contract_topic_category.py was found." >&2
   echo "  Looked at ./omnibase_infra/src, OMNIBASE_INFRA_PATH=${OMNIBASE_INFRA_PATH:-<unset>}/src," >&2
   echo "  OMNI_HOME=${OMNI_HOME:-<unset>}/omnibase_infra/src, ../omnibase_infra/src, ../../../omnibase_infra/src." >&2
   echo "  Failing closed (OMN-18013)." >&2
   infra_sibling_preflight_fail "omnibase_infra" \
-    "${OMNIBASE_INFRA_PATH:-}/src/omnibase_infra/validators/mixed_category_routing.py" \
-    "${OMNI_HOME:-}/omnibase_infra/src/omnibase_infra/validators/mixed_category_routing.py"
+    "${OMNIBASE_INFRA_PATH:-}/src/omnibase_infra/validators/contract_topic_category.py" \
+    "${OMNI_HOME:-}/omnibase_infra/src/omnibase_infra/validators/contract_topic_category.py"
 fi
 
 echo "[mixed-category-routing] using validator from ${INFRA_SRC}" >&2
 PYTHONPATH="${INFRA_SRC}${PYTHONPATH:+:${PYTHONPATH}}" \
-  uv run python -m omnibase_infra.validators.mixed_category_routing \
-  "${SCAN_ROOT}" --baseline "${BASELINE}"
+  uv run python -m omnibase_infra.validators.contract_topic_category \
+  --scope omnimarket "${SCAN_ROOT}"

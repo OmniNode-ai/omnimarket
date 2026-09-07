@@ -20,8 +20,8 @@ description: >
   digest + rollback target, or redeploy-completed with final_phase=BLOCKED
   (denied). Non-prod lanes pass the gate trivially, so one dispatch path serves
   dev / stability-test / prod. The orchestrator consumes the deploy effect's
-  completion / rolled-back facts and readiness-gate outcomes; it publishes the
-  readiness-gate-start command and the terminal redeploy-completed event. No
+  completion / rolled-back facts; it publishes the readiness-gate-start command
+  and the terminal redeploy-completed event. No
   in-process handler construction, no FSM loop, no I/O.
 
 # OMN-16939. routing_strategy is topic_match with ONE entry per topic, each declaring
@@ -36,11 +36,9 @@ description: >
 # entry owns; `message_category:` picks which category it registers under.
 #
 # The five topics below are the redeploy FSM's merge-to-rebuild path plus its failure
-# outcome. The remaining subscribe topics (readiness-gate outcomes, runtime-booted,
-# runtime-manifest-published) deliberately have NO entry and stay on the OMN-16939
-# burn-down baseline: the handler has no branch for them, so routing them would send
-# them down the redeploy-start path — and a runtime-booted event doing that is an
-# unbounded redeploy loop. They need handler branches first, not a category.
+# outcome. Readiness-gate outcomes and runtime attestations are not subscribed here:
+# the handler has no branch for them, so declaring them would consume and DLQ live
+# traffic rather than advancing the redeploy FSM.
 handler_routing:
   routing_strategy: topic_match
   handlers:
@@ -115,12 +113,6 @@ event_bus:
     - onex.evt.omnimarket.prod-promotion-gate-evaluated.v1
     # Deploy effect completion + rollback facts.
     - onex.evt.omnimarket.redeploy-rolled-back.v1
-    # OMN-12577 readiness handoff: consume the readiness gate outcome.
-    - onex.evt.omnimarket.readiness-gate-completed.v1
-    - onex.evt.omnimarket.readiness-gate-blocked.v1
-    # OMN-12577 PROBING consumes the LIVE runtime attestation.
-    - onex.evt.omnibase-infra.runtime-booted.v1
-    - onex.evt.omnibase-infra.runtime-manifest-published.v1
   publish_topics:
     # OMN-13439 Phase 2b: resolve the grant from onex_change_control@main first.
     - onex.cmd.omnimarket.prod-promotion-grant-resolve.v1
