@@ -3,56 +3,68 @@
 
 Scans src/**/*.py files only. contract.yaml files are not scanned (not Python).
 
-Allowed locations:
-- Test files (test_*, conftest*)
-- Handler/model files that own their own topic constants (transition state: topics.py
-  files have been deleted; handlers now declare topic strings as module-level constants
-  until runtime contract auto-wiring is fully wired. See OMN-XXXX.)
-- structured_logger.py (platform-wide log-entry topic constant, shared utility)
-- __main__.py (CLI entry points for sweep nodes)
+Allowed:
+- Test files (test_*, conftest*) and the handler/model/CLI transition prefixes below;
+- ``topics.py`` / ``structured_logger.py`` topic-constant registries;
+- any line carrying an inline ``# onex-topic-allow`` / ``# onex-topic-sot`` /
+  ``# onex-topic-doc-example`` annotation with a reason (the established escape hatch);
+- f-string literals containing ``{`` placeholders (dynamic construction, not a literal).
 
 Forbidden:
 - topics.py files in node directories (deleted — contract.yaml is now the source of truth)
 - Any new ad-hoc topic string outside the established handler pattern
 
+Why this file honours the inline annotation (OMN-18013)
+------------------------------------------------------
+This script and its stricter sibling ``scripts/ci/check_no_hardcoded_topics.py`` scan the
+same corpus in the same CI job (ci.yml "Topic-literal guardrail" and "... (annotation
+allowlist)"), but they used to disagree about what is allowed: the sibling honours a
+per-line ``# onex-topic-allow: <reason>`` annotation, while this one knew only whole-file
+basenames. The pre-commit config papered over the gap with an ``exclude:`` regex, but CI
+invokes this script directly over ``src/`` and never consults that regex — so the same
+bytes were green locally and red in CI. That divergence is a defect in the gate, not in
+the code it scans, and closing it is what this module now does.
+
+Aligning on the annotation is a NARROWING, not a loosening: two whole-file allowances
+(``no_baseline_refreeze.py``, ``no_literal_event_type_in_tests.py``) are gone from
+``ALLOWED_FILES`` and replaced by the per-line, reason-bearing annotations those files
+already carry on every literal, and ``contract_topic_graph.py`` needs no entry at all.
+
+NOT in scope, deliberately: the third-party ``no-hardcoded-topics`` pre-commit hook is an
+external repo with no annotation support of any kind, so its ``exclude:`` entries for
+those three files must stay — they are the only mechanism that hook offers. What keeps
+that whole-file exclusion honest is ``tests/ci/test_lint_no_hardcoded_topics_parity.py``,
+which pins that EVERY topic literal inside those files still carries its own reason, so
+the exclusion cannot come to hide an unreasoned one.
+
 NOTE: This is a line-grep guardrail, not full semantic enforcement. It detects
 "onex.evt." and "onex.cmd." string literals in non-exempt production Python.
-A future iteration should replace this with AST-based ast.Constant node
-inspection to more reliably distinguish literals from dynamic construction
-and to handle multiline strings.
+The sibling gate does the AST/tokenizer-accurate pass; this one is the fast fence.
+
+Exit codes: 0 = clean; 1 = violations found; 2 = invocation error (run from repo root).
 """
+
+from __future__ import annotations
 
 import pathlib
 import sys
 
 # Files allowed to contain onex.evt.* / onex.cmd.* literals.
-# NOTE: topics.py is intentionally NOT in this list — those files were deleted.
-# Contract.yaml is the source of truth. Handlers declare inline constants as a
-# transition measure until runtime contract auto-wiring is complete (OMN-XXXX).
+# NOTE: node-level topics.py is intentionally NOT exempt via this set — those files were
+# deleted and contract.yaml is the source of truth. The name is kept for the platform-wide
+# logging registry only.
 ALLOWED_FILES = {
     # Platform-wide log-entry topic constant (shared utility, not a handler)
     "structured_logger.py",
-    # logging/topics.py: platform-wide log-entry topic registry (not a node topics.py)
+    # logging/topics.py: platform-wide log-entry topic registry (not a node topics.py).
     # Node-level topics.py files in src/omnimarket/nodes/node_*/ are banned — see CI gate.
     "topics.py",
-    # OMN-18013: two gate validators whose topic literals ARE the pin. Each holds an
-    # explicit (contract-or-path, topic) fence naming rows another lane owns, and the
-    # gate's whole job is to fail when that list stops matching reality. Reading the
-    # literals out of the file they pin would make the pin self-referential and unable
-    # to detect the drift it exists to detect. Neither file publishes or subscribes to
-    # anything; each line also carries an `# onex-topic-allow:` reason for the sibling
-    # annotation-aware gate (scripts/ci/check_no_hardcoded_topics.py). Listed here as
-    # well because THIS script has no annotation support, and the pre-commit `exclude:`
-    # for the same hook does not reach this CI invocation — that divergence is what
-    # made the local run green and the CI run red.
-    "no_baseline_refreeze.py",
-    "no_literal_event_type_in_tests.py",
 }
 
 # Handler, config model, and CLI entry point files are allowed to declare inline
 # topic string constants as module-level variables. This is the transition state
 # after topics.py deletion — handlers own their own topic constants until
-# runtime contract auto-wiring is complete (OMN-XXXX).
+# runtime contract auto-wiring is complete.
 ALLOWED_PREFIXES = (
     "test_",
     "conftest",
@@ -60,6 +72,15 @@ ALLOWED_PREFIXES = (
     "model_",
     "overseer_tick",
     "__main__",
+)
+
+# The established per-line escape hatch. Kept byte-identical to the sibling gate's
+# markers (scripts/ci/check_no_hardcoded_topics.py::_INLINE_ALLOW_MARKERS) — if the two
+# lists ever drift, the parity test fails.
+INLINE_ALLOW_MARKERS = (
+    "# onex-topic-allow",
+    "# onex-topic-sot",
+    "# onex-topic-doc-example",
 )
 
 # Topic literal patterns to detect (more precise than bare "onex.")
@@ -70,72 +91,94 @@ TOPIC_PATTERNS = tuple(
     q + ".".join(parts) for parts in _ONEX_PREFIXES for q in ('"', "'")
 )
 
-violations = []
-src_root = pathlib.Path("src")
 
-if not src_root.is_dir():
-    print("ERROR: Run this script from the omnimarket repo root (src/ not found)")
-    sys.exit(2)
+def _is_allowed_file(path: pathlib.Path) -> bool:
+    if path.name in ALLOWED_FILES:
+        return True
+    return any(path.name.startswith(p) for p in ALLOWED_PREFIXES)
 
-for py_file in src_root.rglob("*.py"):
-    if any(py_file.name.startswith(p) for p in ALLOWED_PREFIXES):
-        continue
-    if py_file.name in ALLOWED_FILES:
-        continue
 
-    source = py_file.read_text(encoding="utf-8")
-    lines = source.splitlines()
+def scan(src_root: pathlib.Path) -> list[str]:
+    """Return one ``path:line: text`` string per violating line, in path order."""
+    violations: list[str] = []
 
-    # Track whether we are inside a multi-line docstring / triple-quoted string
-    in_triple_double = False
-    in_triple_single = False
+    for py_file in sorted(src_root.rglob("*.py")):
+        if _is_allowed_file(py_file):
+            continue
 
-    for i, line in enumerate(lines, 1):
-        stripped = line.strip()
+        lines = py_file.read_text(encoding="utf-8").splitlines()
 
-        # Toggle triple-quote state (heuristic: count occurrences)
-        # A line with an odd number of """ toggles the docstring state.
-        dq_count = stripped.count('"""')
-        sq_count = stripped.count("'''")
+        # Track whether we are inside a multi-line docstring / triple-quoted string.
+        in_triple_double = False
+        in_triple_single = False
 
-        # Check for violations before updating triple-quote state,
-        # but skip if currently inside a multi-line string.
-        if not in_triple_double and not in_triple_single:
-            has_pattern = any(p in line for p in TOPIC_PATTERNS)
-            if has_pattern:
-                is_comment_or_docstring = (
-                    stripped.startswith("#")
-                    or stripped.startswith('"""')
-                    or stripped.startswith("'''")
-                )
-                # Skip f-strings with format placeholders — dynamic construction,
-                # not a literal topic (e.g. f"onex.evt.omnimarket.{keyword}.v1")
-                is_fstring_dynamic = (
-                    "{" in line
-                    and "}" in line
-                    and any(f in line for f in ('f"onex.', "f'onex."))
-                )
-                if not is_comment_or_docstring and not is_fstring_dynamic:
-                    violations.append(f"{py_file}:{i}: {stripped}")
+        for i, line in enumerate(lines, 1):
+            stripped = line.strip()
 
-        # Update triple-quote state after processing the line
-        if dq_count % 2 == 1:
-            in_triple_double = not in_triple_double
-        if sq_count % 2 == 1:
-            in_triple_single = not in_triple_single
+            # A line with an odd number of """ toggles the docstring state.
+            dq_count = stripped.count('"""')
+            sq_count = stripped.count("'''")
 
-if violations:
-    print(
-        f"ERROR: {len(violations)} hardcoded topic literal(s) found in production Python:"
+            # Check for violations before updating triple-quote state,
+            # but skip if currently inside a multi-line string.
+            if (
+                not in_triple_double
+                and not in_triple_single
+                and _line_is_violation(line, stripped)
+            ):
+                violations.append(f"{py_file}:{i}: {stripped}")
+
+            # Update triple-quote state after processing the line.
+            if dq_count % 2 == 1:
+                in_triple_double = not in_triple_double
+            if sq_count % 2 == 1:
+                in_triple_single = not in_triple_single
+
+    return violations
+
+
+def _line_is_violation(line: str, stripped: str) -> bool:
+    if not any(p in line for p in TOPIC_PATTERNS):
+        return False
+    # The established escape hatch, honoured identically by the sibling gate.
+    if any(marker in line for marker in INLINE_ALLOW_MARKERS):
+        return False
+    # Skip f-strings with format placeholders — dynamic construction,
+    # not a literal topic (e.g. f"onex.evt.omnimarket.{keyword}.v1").
+    is_fstring_dynamic = (
+        "{" in line and "}" in line and any(f in line for f in ('f"onex.', "f'onex."))
     )
-    for v in violations:
-        print(f"  {v}")
-    print()
-    print(
-        "Fix: move topic strings into contract.yaml event_bus.subscribe_topics / publish_topics\n"
-        "and read them via contract loader at runtime.\n"
-        "See: docs/plans/2026-04-08-contract-first-enforcement.md"
-    )
-    sys.exit(1)
+    if is_fstring_dynamic:
+        return False
+    return not stripped.startswith(("#", '"""', "'''"))
 
-print("OK: No hardcoded topic literals found.")
+
+def main() -> int:
+    src_root = pathlib.Path("src")
+    if not src_root.is_dir():
+        print("ERROR: Run this script from the omnimarket repo root (src/ not found)")
+        return 2
+
+    violations = scan(src_root)
+    if violations:
+        print(
+            f"ERROR: {len(violations)} hardcoded topic literal(s) found in production Python:"
+        )
+        for v in violations:
+            print(f"  {v}")
+        print()
+        print(
+            "Fix: move topic strings into contract.yaml event_bus.subscribe_topics / publish_topics\n"
+            "and read them via contract loader at runtime.\n"
+            "If a literal is genuinely required, add an inline `# onex-topic-allow: <reason>`\n"
+            "annotation — the same escape hatch the sibling gate honours.\n"
+            "See: docs/plans/2026-04-08-contract-first-enforcement.md"
+        )
+        return 1
+
+    print("OK: No hardcoded topic literals found.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
