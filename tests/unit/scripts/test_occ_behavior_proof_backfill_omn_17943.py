@@ -52,6 +52,7 @@ generously is a machine for manufacturing evidence:
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sys
 from pathlib import Path
@@ -138,23 +139,42 @@ def _pr_facts(
     )
 
 
-def _receipts(*, legacy_whole_file_only: bool = False) -> dict[str, dict[str, Any]]:
-    """Existing receipts on the contract, keyed by their repo-relative path."""
+def _whole_file_sha(contract_text: str = _CONTRACT_WITHOUT_BEHAVIOR_PROOF) -> str:
+    """The binding a receipt minted against this exact contract would carry.
+
+    ``compute_contract_sha256`` hashes the contract file's raw bytes, so a
+    fixture that wants a LIVE whole-file binding has to hash the same bytes
+    rather than invent a digest. A made-up digest is an ALREADY-STALE binding,
+    which is a different case with a different (and now different-valued)
+    answer.
+    """
+    return "sha256:" + hashlib.sha256(contract_text.encode("utf-8")).hexdigest()
+
+
+def _receipts(
+    *,
+    legacy_whole_file_only: bool = False,
+    binding: str | None = None,
+    evidence_item_id: str = "dod-OmniNode-ai-omnibase_infra-pr-3014",
+) -> dict[str, dict[str, Any]]:
+    """Existing receipts on the contract, keyed by their repo-relative path.
+
+    ``binding`` overrides the whole-file digest so a test can distinguish a
+    LIVE legacy binding (the default: the real hash of the fixture contract)
+    from one that is already stale.
+    """
     body: dict[str, Any] = {
         "schema_version": "1.0.0",
         "ticket_id": "OMN-15425",
-        "evidence_item_id": "dod-OmniNode-ai-omnibase_infra-pr-3014",
+        "evidence_item_id": evidence_item_id,
         "check_type": "command",
         "status": "PASS",
     }
     if legacy_whole_file_only:
-        body["contract_sha256"] = "sha256:" + "a" * 64
+        body["contract_sha256"] = binding if binding is not None else _whole_file_sha()
     else:
         body["contract_entry_sha256"] = "sha256:" + "b" * 64
-    return {
-        "drift/dod_receipts/OMN-15425/dod-OmniNode-ai-omnibase_infra-pr-3014/"
-        "command.yaml": body
-    }
+    return {f"drift/dod_receipts/OMN-15425/{evidence_item_id}/command.yaml": body}
 
 
 # ---------------------------------------------------------------------------
@@ -500,6 +520,176 @@ def test_legacy_whole_file_receipts_are_detected_by_absence_not_by_name() -> Non
         "drift/dod_receipts/OMN-15425/dod-OmniNode-ai-omnibase_infra-pr-3014/"
         "command.yaml",
     )
+
+
+# ---------------------------------------------------------------------------
+# AC2b (OMN-17943 unjam) — the refusal protects LIVE bindings, and only those.
+#
+# Measured on OCC dev at ef6c4d661f: all four contracts the sprint-3 held set
+# was refused on (OMN-16833, OMN-16863, OMN-17277, OMN-15425) carry a
+# whole-file-bound receipt that the sanctioned repair — OCC
+# `migrate_legacy_receipt_entry_binding.py`, landed in onex_change_control#8462
+# — REFUSES to migrate, and refuses for the two reasons below:
+#
+#   REFUSED_ENTRY_NOT_IN_CONTRACT (OMN-16833, OMN-17277, OMN-15425)
+#       the receipt's `evidence_item_id` names a `dod_evidence` item that is
+#       not in the contract at all. `_contract_hash_violation` never reaches
+#       its whole-file fallback for such a receipt in the only way that
+#       matters — nothing resolves it through the contract, so it proves
+#       nothing today and an append cannot take anything away.
+#
+#   REFUSED_BINDING_ALREADY_STALE (OMN-16863)
+#       the receipt's `contract_sha256` no longer equals the hash of the
+#       contract on disk. The binding is ALREADY a mismatch; appending cannot
+#       restale what is stale.
+#
+# So the refusal as first written is over-broad: it protects bindings that
+# are not evidence, and in doing so pins four contracts at
+# behavior_proving_count == 0 permanently, with no repair path — the repair
+# tool itself declines them. The predicate below narrows to LIVE bindings and
+# fails CLOSED whenever the contract facts needed to judge liveness are
+# unavailable.
+# ---------------------------------------------------------------------------
+
+
+def test_an_orphan_whole_file_receipt_does_not_block_the_append() -> None:
+    """A receipt naming an item the contract does not have protects nothing.
+
+    RED before the liveness narrowing: the old predicate keyed on the absence
+    of `contract_entry_sha256` alone, so this receipt refused the append while
+    proving nothing that an append could break.
+    """
+    receipts = _receipts(
+        legacy_whole_file_only=True,
+        evidence_item_id="dod-OmniNode-ai-omnibase_infra-pr-9999",
+    )
+
+    assert (
+        backfill.legacy_whole_file_receipts(
+            receipts,
+            contract_text=_CONTRACT_WITHOUT_BEHAVIOR_PROOF,
+        )
+        == ()
+    )
+
+    outcome = backfill.decide(
+        ticket_id="OMN-15425",
+        contract_text=_CONTRACT_WITHOUT_BEHAVIOR_PROOF,
+        existing_receipts=receipts,
+        behavior_receipt_exists=False,
+        pr_facts=_pr_facts(),
+    )
+    assert outcome.decision is backfill.EnumBackfillDecision.MINT
+
+
+def test_an_already_stale_whole_file_binding_does_not_block_the_append() -> None:
+    """A binding that no longer matches the contract cannot be restaled."""
+    receipts = _receipts(
+        legacy_whole_file_only=True,
+        binding="sha256:" + "a" * 64,
+    )
+
+    assert (
+        backfill.legacy_whole_file_receipts(
+            receipts,
+            contract_text=_CONTRACT_WITHOUT_BEHAVIOR_PROOF,
+        )
+        == ()
+    )
+
+    outcome = backfill.decide(
+        ticket_id="OMN-15425",
+        contract_text=_CONTRACT_WITHOUT_BEHAVIOR_PROOF,
+        existing_receipts=receipts,
+        behavior_receipt_exists=False,
+        pr_facts=_pr_facts(),
+    )
+    assert outcome.decision is backfill.EnumBackfillDecision.MINT
+
+
+def test_a_live_whole_file_binding_is_still_protected() -> None:
+    """The narrowing must not empty the refusal: a real binding still refuses.
+
+    This is the positive control for the two tests above — a zero from the
+    predicate is only meaningful next to a non-zero from the same predicate on
+    an input that differs in exactly the fact being tested.
+    """
+    receipts = _receipts(legacy_whole_file_only=True)
+
+    assert backfill.legacy_whole_file_receipts(
+        receipts,
+        contract_text=_CONTRACT_WITHOUT_BEHAVIOR_PROOF,
+    ) == (
+        "drift/dod_receipts/OMN-15425/dod-OmniNode-ai-omnibase_infra-pr-3014/"
+        "command.yaml",
+    )
+
+    outcome = backfill.decide(
+        ticket_id="OMN-15425",
+        contract_text=_CONTRACT_WITHOUT_BEHAVIOR_PROOF,
+        existing_receipts=receipts,
+        behavior_receipt_exists=False,
+        pr_facts=_pr_facts(),
+    )
+    assert (
+        outcome.decision
+        is backfill.EnumBackfillDecision.REFUSED_LEGACY_WHOLE_FILE_BINDING
+    )
+
+
+def test_liveness_fails_closed_without_the_contract_it_would_be_judged_against() -> (
+    None
+):
+    """No contract text means no liveness proof, so the receipt stays protected.
+
+    An unreadable or unparseable contract must degrade to the pre-narrowing
+    behaviour (protect everything), never to "nothing is live, mint freely".
+    """
+    receipts = _receipts(
+        legacy_whole_file_only=True,
+        binding="sha256:" + "a" * 64,
+        evidence_item_id="dod-OmniNode-ai-omnibase_infra-pr-9999",
+    )
+    path = (
+        "drift/dod_receipts/OMN-15425/dod-OmniNode-ai-omnibase_infra-pr-9999/"
+        "command.yaml"
+    )
+
+    assert backfill.legacy_whole_file_receipts(receipts) == (path,)
+    assert backfill.legacy_whole_file_receipts(receipts, contract_text=None) == (path,)
+    assert backfill.legacy_whole_file_receipts(
+        receipts, contract_text="not: [a, contract"
+    ) == (path,)
+
+
+def test_the_refusal_fingerprint_records_only_live_bindings() -> None:
+    """The ledger must not re-open a refusal on a binding that never mattered.
+
+    `judged_against.legacy_binding_receipts` is one half of the fingerprint a
+    ledgered refusal is re-checked against. Listing dead bindings there would
+    make the ledger claim a ticket is blocked by evidence that does not exist.
+    """
+    import yaml as _yaml
+
+    contract_data = _yaml.safe_load(_CONTRACT_WITHOUT_BEHAVIOR_PROOF)
+    orphan = _receipts(
+        legacy_whole_file_only=True,
+        evidence_item_id="dod-OmniNode-ai-omnibase_infra-pr-9999",
+    )
+    live = _receipts(legacy_whole_file_only=True)
+
+    assert (
+        backfill.refusal_fingerprint(
+            contract_data, orphan, contract_text=_CONTRACT_WITHOUT_BEHAVIOR_PROOF
+        )["legacy_binding_receipts"]
+        == []
+    )
+    assert backfill.refusal_fingerprint(
+        contract_data, live, contract_text=_CONTRACT_WITHOUT_BEHAVIOR_PROOF
+    )["legacy_binding_receipts"] == [
+        "drift/dod_receipts/OMN-15425/dod-OmniNode-ai-omnibase_infra-pr-3014/"
+        "command.yaml",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -868,14 +1058,18 @@ def test_repairing_a_legacy_binding_re_qualifies_a_ledgered_refusal(
     reaches the whole-file fallback, so appending an item no longer restales
     it. The fingerprint notices with no manual step.
     """
-    _seed_occ_tree(
-        tmp_path,
-        "OMN-900",
-        contract_text=_contract_naming_pr("OMN-900", "OmniNode-ai/omnimarket", 1),
-    )
+    contract_text = _contract_naming_pr("OMN-900", "OmniNode-ai/omnimarket", 1)
+    _seed_occ_tree(tmp_path, "OMN-900", contract_text=contract_text)
     legacy = tmp_path / "drift" / "dod_receipts" / "OMN-900" / "dod-x" / "legacy.yaml"
+    # A LIVE legacy binding: it hashes the contract actually on disk and names
+    # a dod_evidence item that contract carries. A fabricated digest or an
+    # absent item is a dead binding, which the liveness narrowing correctly
+    # declines to protect — and would make this test assert the wrong thing.
     legacy.write_text(
-        "---\ncontract_sha256: 'sha256:" + "a" * 64 + "'\n", encoding="utf-8"
+        "---\n"
+        "evidence_item_id: 'dod-OmniNode-ai-omnimarket-pr-1'\n"
+        "contract_sha256: '" + _whole_file_sha(contract_text) + "'\n",
+        encoding="utf-8",
     )
     legacy_rel = "drift/dod_receipts/OMN-900/dod-x/legacy.yaml"
     ledger = {
@@ -893,11 +1087,10 @@ def test_repairing_a_legacy_binding_re_qualifies_a_ledgered_refusal(
     assert backfill.discover_candidate_tickets(tmp_path, limit=5, ledger=ledger) == ()
 
     legacy.write_text(
-        "---\ncontract_sha256: 'sha256:"
-        + "a" * 64
-        + "'\ncontract_entry_sha256: 'sha256:"
-        + "b" * 64
-        + "'\n",
+        "---\n"
+        "evidence_item_id: 'dod-OmniNode-ai-omnimarket-pr-1'\n"
+        "contract_sha256: '" + _whole_file_sha(contract_text) + "'\n"
+        "contract_entry_sha256: 'sha256:" + "b" * 64 + "'\n",
         encoding="utf-8",
     )
 
