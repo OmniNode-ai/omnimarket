@@ -247,6 +247,48 @@ jobs:
             exit 1
           }
 
+      # OMN-18034 — the pin-resolvability gate, placed BEFORE the tag push and
+      # not merely before publish.
+      #
+      # WHAT WENT WRONG, MEASURED 2026-09-07
+      # ------------------------------------
+      # `uv build` packages a wheel from local source and never touches the
+      # index, and local dev/test resolution is short-circuited by
+      # `[tool.uv.sources]` git-rev overrides that plain `pip` never reads. So
+      # a PyPI-facing pin can be unsatisfiable for months while every local
+      # signal stays green. It was: omnimarket 0.4.21, 0.4.22, 0.4.23 and
+      # 0.4.24 are ALL unresolvable from the real index --
+      #
+      #   omnimarket>=0.4.21 requires omnibase-core>=0.47.5 and
+      #   omnibase-infra>=0.38.19,<0.39.0; the only published infra in that
+      #   range is 0.38.19, which pins omnibase-core==0.47.4 exactly.
+      #
+      # `uv pip compile` against the real index confirms all four; 0.4.20 is
+      # the last release a downstream user can install. Every one of those four
+      # was published BY this workflow, which is the point: automating the
+      # release removed the human who would have noticed.
+      #
+      # WHY BEFORE THE TAG
+      # ------------------
+      # A failure here must leave NOTHING behind. Gating only the publish step
+      # would still push the tag, cut dev loose from it, and leave a version
+      # that looks released and is not. Build -> verify -> RESOLVE -> tag ->
+      # publish is the only order in which a red gate is a no-op.
+      #
+      # BUDGET: 900s, derived from a measurement rather than copied. The check
+      # installs the wheel's whole transitive closure with --no-cache, which
+      # for omnimarket is 178 packages / 345 MB (measured 2026-09-07 against
+      # omnimarket==0.4.20, the last resolvable release; 15s wall on a warm
+      # connection). 900s is a ~60x allowance for a cold GitHub-hosted runner
+      # and still clears this job's 60-minute ceiling with room for build and
+      # publish, so a slow install surfaces as this script's own diagnostic
+      # failure rather than an opaque job kill. A timeout is reported as a
+      # THROUGHPUT fault and never as a broken pin (OMN-16047).
+      - name: Verify PyPI dependency-pin resolvability (OMN-18034)
+        env:
+          PYPI_PIN_RESOLVE_TIMEOUT_SECONDS: '900'
+        run: python3 scripts/ci/verify_pypi_pin_resolvability.py dist/
+
       - name: Create and push the release tag
         id: tag
         env:
