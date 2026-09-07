@@ -2153,6 +2153,7 @@ jobs:
         env:
           # A missing docker daemon must be RED here, never a green skip.
           OMN18012_REQUIRE_HARNESS: "1"
+          OMNIMARKET_ALLOW_PYTHONPATH_OVERRIDE: "1"
         run: |
           echo "================================================================"
           echo "Customer Path Boundary (OMN-18012)"
