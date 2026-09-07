@@ -1,0 +1,163 @@
+# SPDX-FileCopyrightText: 2026 OmniNode.ai Inc.
+# SPDX-License-Identifier: MIT
+#
+# Synthetic ground-truth manifest — test fixture only (OMN-18026).
+#
+# This replaces the real 611 KB corpus that used to live at
+# src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml. That file
+# declared itself restricted and then inlined the full text of 60 authoritative
+# ADRs, in a public repository; it now lives in the private knowledge base and
+# is reached through ADR_CANARY_MANIFEST_PATH.
+#
+# Every decision below is INVENTED for a fictional service. No sentence here is
+# quoted from, paraphrased from, or a summary of any real ADR, and the model
+# ids are placeholders that resolve to nothing. What the fixture preserves is
+# the SHAPE: three strict benchmark entries, each with root_paths, an inlined
+# ground_truth_adr with the three required sections, a models list, the two
+# hash fields, and the manifest-level provenance pair — so the strict-schema
+# property stays under test without publishing anything.
+#
+# Deliberately unlike the real corpus in one way that matters: this manifest is
+# classified public/public. A fixture that claimed to be restricted would be
+# the very thing the removal was for.
+
+source_provenance:
+  source_repository: "OmniNode-ai/omnimarket"
+  source_visibility: "public"
+  publication_classification: "public"
+kb_destination: "public"
+
+entries:
+  - id: synthetic-widget-cache-eviction
+    root_paths:
+      - tests/fixtures/adr_canary/sources/widget-cache
+    ground_truth_adr: |
+      # ADR: The widget cache evicts by age, not by size
+
+      **Status:** Accepted
+
+      ## Context
+
+      The fictional widget service keeps rendered widgets in memory so a repeat
+      request does not re-render. Two eviction policies were considered: evict
+      the least recently used entry once the cache exceeds a byte budget, or
+      evict any entry older than a fixed age regardless of pressure.
+
+      ## Decision
+
+      Evict by age. An entry older than the configured age is dropped on the
+      next sweep whether or not the cache is under pressure.
+
+      ## Consequences
+
+      - A stale widget can never be served, which is the property callers
+        actually asked for; a size-based policy makes staleness a function of
+        traffic, so the same widget is fresh on a busy day and stale on a quiet
+        one.
+      - Memory is unbounded in principle. The age bound plus the known request
+        rate gives a ceiling, and that ceiling is the number to watch.
+      - The sweep is a fixed cost paid on a timer rather than a variable cost
+        paid by whichever unlucky request crosses the threshold.
+    models:
+      - key: fixture-model-a
+        provider: fixture
+        model_id: fixture/model-a
+        external: false
+    ground_truth_adr_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000001"
+    source_file_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000002"
+    manifest_schema_version: "v1"
+    expected_decision_types:
+      - architectural
+    expected_keywords:
+      - "cache"
+      - "eviction"
+      - "age"
+
+  - id: synthetic-report-ids-are-opaque
+    root_paths:
+      - tests/fixtures/adr_canary/sources/report-ids
+    ground_truth_adr: |
+      # ADR: Report identifiers are opaque to clients
+
+      **Status:** Accepted
+
+      ## Context
+
+      The fictional reporting service returns an identifier with every report.
+      An earlier draft encoded the tenant, the report kind and a sequence
+      number into that identifier so a client could parse it without a lookup.
+
+      ## Decision
+
+      The identifier is opaque. Clients treat it as a string, compare it only
+      for equality, and read every attribute of a report from the report.
+
+      ## Consequences
+
+      - The identifier's internal format can change without a client release,
+        because no client depends on it.
+      - A client that wants the tenant makes a call it would otherwise have
+        skipped. That is the cost, and it is paid deliberately.
+      - Sequence numbers stop leaking volume. A parseable counter tells anyone
+        holding two identifiers how many reports were produced in between.
+    models:
+      - key: fixture-model-a
+        provider: fixture
+        model_id: fixture/model-a
+        external: false
+      - key: fixture-model-b
+        provider: fixture
+        model_id: fixture/model-b
+        external: false
+    ground_truth_adr_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000003"
+    source_file_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000004"
+    manifest_schema_version: "v1"
+    expected_decision_types:
+      - architectural
+      - security
+    expected_keywords:
+      - "identifier"
+      - "opaque"
+
+  - id: synthetic-retry-is-caller-owned
+    root_paths:
+      - tests/fixtures/adr_canary/sources/retry-policy
+    ground_truth_adr: |
+      # ADR: Retry policy belongs to the caller, not the client library
+
+      **Status:** Accepted
+
+      ## Context
+
+      The fictional client library retried failed requests three times with a
+      fixed backoff. Callers with their own retry loops got nine attempts
+      without asking for them, and callers on a latency budget could not opt
+      out.
+
+      ## Decision
+
+      The library performs no retries. It raises a typed error that says
+      whether the failure is retryable, and the caller decides.
+
+      ## Consequences
+
+      - Total attempts equal what the caller wrote. Nested retry multiplication
+        is not possible.
+      - Every existing caller that relied on the implicit retries must add one
+        explicitly. This is a breaking change and is released as one.
+      - The retryable/not-retryable distinction becomes part of the library's
+        public contract, which is where it should have been.
+    models:
+      - key: fixture-model-b
+        provider: fixture
+        model_id: fixture/model-b
+        external: false
+    ground_truth_adr_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000005"
+    source_file_hash: "sha256:0000000000000000000000000000000000000000000000000000000000000006"
+    manifest_schema_version: "v1"
+    expected_decision_types:
+      - architectural
+    expected_keywords:
+      - "retry"
+      - "caller"
+      - "backoff"

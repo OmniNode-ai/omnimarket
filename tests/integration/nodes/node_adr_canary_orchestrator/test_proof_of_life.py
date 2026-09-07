@@ -37,14 +37,16 @@ from omnimarket.nodes.node_adr_canary_orchestrator.models.model_canary_request i
     ModelCanaryCommandPayload,
 )
 
-_MANIFEST_PATH = "src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml"
+# The real corpus is private and no longer in this repository (OMN-18026); the
+# pipeline shape is proven against a synthetic manifest of invented ADRs.
+_MANIFEST_PATH = "tests/fixtures/adr_canary/ground_truth_manifest_synthetic.v1.yaml"
 _OMNIMARKET_ROOT = Path(__file__).parents[
     4
 ]  # tests/integration/nodes/node_adr_canary_orchestrator/ -> omnimarket root
 _SAMPLE_ENTRY_IDS = [
-    "kafka-required-infrastructure",
-    "vault-to-infisical-migration",
-    "graceful-shutdown-drain-period",
+    "synthetic-widget-cache-eviction",
+    "synthetic-report-ids-are-opaque",
+    "synthetic-retry-is-caller-owned",
 ]
 
 

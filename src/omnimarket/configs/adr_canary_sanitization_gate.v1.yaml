@@ -144,6 +144,10 @@ sanitization_checks:
     severity: blocking
     check_type: uniqueness
     check_against:
-      - "src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml"
+      # The ground-truth corpus left this public repository under OMN-18026 and
+      # is now reached through ADR_CANARY_MANIFEST_PATH. This check declares
+      # intent only — sanitization.py evaluates `patterns` checks and skips a
+      # `check_type: uniqueness` entry, so nothing reads these paths today.
+      - "${ADR_CANARY_MANIFEST_PATH}"
       - "src/omnimarket/configs/adr_canary_rejected_manifest.v1.yaml"
     applies_to: [generated_adr, proposed_adr]

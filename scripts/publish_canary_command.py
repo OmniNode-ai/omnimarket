@@ -13,7 +13,10 @@ Usage:
     uv run python scripts/publish_canary_command.py [options]
 
 Options:
-    --manifest-path PATH       Path to ground_truth_manifest.yaml
+    --manifest-path PATH       Path to the ground truth manifest.
+                               REQUIRED (env: ADR_CANARY_MANIFEST_PATH).
+                               The corpus is private and no longer lives in
+                               this repository -- see OMN-18026.
     --model-subset M1,M2,...   Comma-separated model keys (default: all)
     --output-dir DIR           Output directory for evidence bundles
     --dry-run                  Log without making LLM calls
@@ -69,7 +72,11 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Publish adr-canary-requested.v1 command")
     p.add_argument(
         "--manifest-path",
-        default="src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml",
+        default=None,
+        help=(
+            "Path to the ground truth manifest. Required; falls back to "
+            "ADR_CANARY_MANIFEST_PATH, never to an in-repo path."
+        ),
     )
     p.add_argument("--model-subset", default=None)
     p.add_argument("--output-dir", default=".onex_state/adr-canary-runs/")
@@ -86,7 +93,21 @@ def _parse_args() -> argparse.Namespace:
         default=None,
         help="Override command topic (default: read from contract.yaml)",
     )
-    return p.parse_args()
+    args = p.parse_args()
+    # Fail fast, with no default (CLAUDE.md rule 8). The ground-truth corpus
+    # left this public repository under OMN-18026; an in-repo default would
+    # silently read whatever file later appeared at the remembered path, which
+    # is exactly how the corpus would come back.
+    if not args.manifest_path:
+        args.manifest_path = os.environ.get("ADR_CANARY_MANIFEST_PATH", "")
+    if not args.manifest_path:
+        logger.error(
+            "manifest path is required: pass --manifest-path or set "
+            "ADR_CANARY_MANIFEST_PATH. There is no in-repo default -- the "
+            "corpus is private (OMN-18026)."
+        )
+        sys.exit(2)
+    return args
 
 
 async def _publish(args: argparse.Namespace) -> None:

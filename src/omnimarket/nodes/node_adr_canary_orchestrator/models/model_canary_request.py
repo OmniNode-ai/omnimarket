@@ -24,10 +24,15 @@ class ModelCanaryCommandPayload(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
     manifest_path: str = Field(
-        default="src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml",
+        ...,
+        min_length=1,
         description=(
             "Path to the ground truth manifest YAML, relative to the repo root "
-            "or absolute. All manifest entries are evaluated unless model_subset filters them."
+            "or absolute. All manifest entries are evaluated unless model_subset "
+            "filters them. REQUIRED, with no default: the real corpus is private "
+            "and lives outside this repository (OMN-18026), and a default naming "
+            "an in-repo path would silently re-read whatever file later appeared "
+            "there. Callers resolve it from ADR_CANARY_MANIFEST_PATH."
         ),
     )
     workspace_root: str | None = Field(
