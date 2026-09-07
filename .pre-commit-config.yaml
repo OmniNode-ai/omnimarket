@@ -320,21 +320,20 @@ repos:
         pass_filenames: false
         stages: [pre-commit]
 
-      # OMN-14605 / OMN-18013: a handler_routing entry whose assigned topics span more
-      # than one real message category leaves the off-category topics permanently
-      # unroutable — handler_wiring stamps ONE category per entry and
-      # MessageDispatchEngine filters on the real per-topic category before any handler
-      # runs. OMN-14605 shipped this gate over src/omnibase_infra only and deferred the
-      # other repos to a "Lane B" fan-out that never landed; this is that fan-out. Same
-      # script the 'Mixed Category Routing' CI job runs, so local and CI enforcement
-      # cannot drift.
-      - id: mixed-category-routing
-        name: No handler_routing entry spans two message categories (OMN-14605)
-        language: system
-        entry: bash scripts/ci/check_mixed_category_routing.sh
-        files: ^(src/omnimarket/.*\.(py|yaml)|config/validation/mixed_category_routing_omnimarket_baseline\.yaml|scripts/ci/check_mixed_category_routing\.sh)$
-        pass_filenames: false
-        stages: [pre-commit]
+      # OMN-18013 removed the `mixed-category-routing` hook here. Its checker,
+      # omnibase_infra/validators/mixed_category_routing.py, was DELETED by
+      # omnibase_infra#3281 (41dd3c5ed, 2026-09-07T16:11Z) as part of this same ticket —
+      # the detector was retired in favour of deriving each route's category from its own
+      # topic, and #3281 removed the hook from omnibase_infra's own .pre-commit-config.yaml
+      # in the same change. omnimarket's copy was left behind, and because the hook resolves
+      # its checker from an omnibase_infra SOURCE tree and fails closed, it began refusing
+      # EVERY packaged-source commit in this repo rather than checking anything.
+      #
+      # GAP, recorded not hidden: omnibase_infra replaced it with `contract-topic-category`,
+      # which omnimarket does not have — the validator is absent from src/ and from the
+      # installed omnibase-infra wheel. Removing a hook that cannot execute loses no
+      # coverage (it was already zero), but the successor gate is still owed here.
+      # See OMN-18013 for the measurement.
 
       # OMN-18013: the event type a handler matches is DERIVED from a topic its contract
       # declares, never typed into the handler. The consume boundary stamps the alias
