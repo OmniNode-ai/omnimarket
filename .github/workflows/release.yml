@@ -78,6 +78,27 @@ jobs:
             exit 1
           }
 
+      # OMN-18034 — the same pin-resolvability gate release-on-merge.yml runs,
+      # here too, because this path is NOT dormant. The v0.4.20 tag push fired
+      # this workflow as run 34067071382 while release-on-merge run 34066508864
+      # was publishing the same files (recorded in the Publish step's comment
+      # below). A gate on only one of the two publishing paths is not a gate;
+      # it is a coin flip over which run gets there first.
+      #
+      # Placed before Publish AND before "Set release tag" for the same reason
+      # as in release-on-merge.yml: a red gate must leave nothing behind. On
+      # this path the tag already exists (it is the trigger), so the strongest
+      # available property is that nothing is published and no GitHub Release
+      # is cut.
+      #
+      # See release-on-merge.yml for the measurement behind the 900s budget and
+      # for the four unresolvable releases (0.4.21-0.4.24) that this gate would
+      # have refused.
+      - name: Verify PyPI dependency-pin resolvability (OMN-18034)
+        env:
+          PYPI_PIN_RESOLVE_TIMEOUT_SECONDS: '900'
+        run: python3 scripts/ci/verify_pypi_pin_resolvability.py dist/
+
       # OMN-18010: --check-url makes the upload IDEMPOTENT — uv queries the
       # PyPI simple index and skips every file already present. It is not a
       # nicety here. release-on-merge.yml pushes the release tag with an App

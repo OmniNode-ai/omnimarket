@@ -492,3 +492,117 @@ def test_a_bump_pr_guard_looks_for_the_peer_jobs_branch_too(
             f"{job_id} does not consider {prefix!r} when checking for an "
             f"in-flight bump PR, so it can open a duplicate of the peer job's."
         )
+
+
+# ---------------------------------------------------------------------------
+# The pin-resolvability gate and its ORDER (OMN-18034).
+#
+# A step that exists but runs in the wrong place is the failure this section
+# guards, and it is invisible in review: moving one YAML block down by three
+# entries still reads as "the gate is wired up".
+# ---------------------------------------------------------------------------
+
+PIN_GATE_SCRIPT = "scripts/ci/verify_pypi_pin_resolvability.py"
+
+
+def _step_names(workflow: dict[str, Any], job_id: str) -> list[str]:
+    """Every named step of a job, in file order."""
+    return [
+        str(step["name"])
+        for step in workflow["jobs"][job_id]["steps"]
+        if step.get("name")
+    ]
+
+
+def _index_of_step_running(workflow: dict[str, Any], job_id: str, needle: str) -> int:
+    """Index of the first step whose ``run:`` mentions ``needle``."""
+    steps = workflow["jobs"][job_id]["steps"]
+    for i, step in enumerate(steps):
+        if needle in str(step.get("run", "")):
+            return i
+    raise AssertionError(
+        f"no step in job {job_id!r} runs {needle!r}; steps are "
+        f"{_step_names(workflow, job_id)}"
+    )
+
+
+def test_the_pin_gate_script_is_vendored() -> None:
+    """The workflows invoke it by path; an absent file is a red release, not a skip."""
+    assert (REPO_ROOT / PIN_GATE_SCRIPT).is_file(), (
+        f"{PIN_GATE_SCRIPT} is missing, so both release paths would fail at the "
+        "gate step with a file-not-found rather than a pin verdict."
+    )
+
+
+def test_release_on_merge_verifies_pins_before_it_tags(
+    workflow: dict[str, Any],
+) -> None:
+    """Build -> verify dist -> RESOLVE -> tag -> publish, in that order.
+
+    Gating only the publish would still push the tag first, leaving a version
+    that looks released, has no artifact, and can never be re-cut at that
+    number. A red gate has to be a complete no-op, and it only is if nothing
+    irreversible has happened yet.
+    """
+    gate = _index_of_step_running(workflow, "release", PIN_GATE_SCRIPT)
+    build = _index_of_step_running(workflow, "release", "uv build")
+    tag = _index_of_step_running(workflow, "release", "git push origin")
+    publish = _index_of_step_running(workflow, "release", "uv publish")
+
+    assert build < gate, "the gate needs the wheel `uv build` produces"
+    assert gate < tag, (
+        "the pin gate runs AFTER the tag push, so an unresolvable release "
+        "would still leave a tag behind. Order must be build -> gate -> tag."
+    )
+    assert tag < publish
+
+
+def test_release_yml_verifies_pins_before_it_publishes(
+    workflow: dict[str, Any],
+) -> None:
+    """The manual/tag path is not a hole in the gate.
+
+    It is not dormant either: the v0.4.20 tag push fired release.yml as run
+    34067071382 while release-on-merge was publishing the same files. A gate on
+    one of two publishing paths is a coin flip.
+    """
+    legacy = yaml.safe_load(LEGACY_RELEASE_PATH.read_text(encoding="utf-8"))
+    gate = _index_of_step_running(legacy, "release", PIN_GATE_SCRIPT)
+    build = _index_of_step_running(legacy, "release", "uv build")
+    publish = _index_of_step_running(legacy, "release", "uv publish")
+
+    assert build < gate < publish, (
+        "release.yml must resolve the built wheel's pins after building it and "
+        "before publishing it."
+    )
+
+
+@pytest.mark.parametrize(
+    ("path", "label"),
+    [(WORKFLOW_PATH, "release-on-merge.yml"), (LEGACY_RELEASE_PATH, "release.yml")],
+)
+def test_the_pin_gate_budget_is_set_explicitly(path: Path, label: str) -> None:
+    """The budget is a measurement, not an inherited default.
+
+    The script's built-in default (1800s) is shaped by omnibase_infra's
+    self-hosted fleet. omnimarket releases on ubuntu-latest and its closure is
+    178 packages / 345 MB (measured 2026-09-07 against omnimarket==0.4.20, the
+    last resolvable release). Setting it here keeps the number reviewable
+    alongside the job's own timeout-minutes instead of hidden in a vendored
+    file.
+    """
+    parsed = yaml.safe_load(path.read_text(encoding="utf-8"))
+    steps = parsed["jobs"]["release"]["steps"]
+    gate = next(s for s in steps if PIN_GATE_SCRIPT in str(s.get("run", "")))
+    budget = str(gate.get("env", {}).get("PYPI_PIN_RESOLVE_TIMEOUT_SECONDS", ""))
+    assert budget.isdigit(), (
+        f"{label} does not set PYPI_PIN_RESOLVE_TIMEOUT_SECONDS on the pin gate"
+    )
+    ceiling_minutes = parsed["jobs"]["release"].get("timeout-minutes")
+    if ceiling_minutes is not None:
+        assert int(budget) < int(ceiling_minutes) * 60, (
+            f"{label}: the gate's budget ({budget}s) meets or exceeds the "
+            f"release job's own ceiling ({ceiling_minutes}m), so a slow install "
+            "would be killed as an opaque job timeout instead of reported as "
+            "this script's THROUGHPUT diagnostic (OMN-16047)."
+        )

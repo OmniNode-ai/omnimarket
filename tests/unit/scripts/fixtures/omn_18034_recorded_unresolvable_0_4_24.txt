@@ -1,0 +1,31 @@
+Recorded verbatim from the vendored gate run against the REAL published wheel.
+
+Command (2026-09-07):
+    python3 -m pip download --no-deps --dest <d> omnimarket==0.4.24
+    verify_pin_resolvability(find_single_wheel(<d>))
+
+Published triple at the time of recording:
+    omnimarket      0.4.24  (PyPI index head)
+    omnibase-infra  0.38.19 (index head; pins omnibase-core==0.47.4 exactly)
+    omnibase-core   0.47.5  (index head)
+
+omnimarket 0.4.24 declares omnibase-core>=0.47.5,<0.48.0 AND
+omnibase-infra>=0.38.19,<0.39.0. No published omnibase-infra in that range
+admits omnibase-core 0.47.5, so no resolution exists for any installer.
+0.4.21, 0.4.22 and 0.4.23 fail identically; 0.4.20 is the last release a
+downstream user can install.
+
+---- BEGIN RECORDED uv OUTPUT ----
+Using CPython 3.13.12
+Creating virtual environment at: /tmp/pypi-pin-resolve-RECORDED/venv
+Activate with: source /tmp/pypi-pin-resolve-RECORDED/venv/bin/activate
+Using Python 3.13.12 environment at: /tmp/pypi-pin-resolve-RECORDED/venv
+  × No solution found when resolving dependencies:
+  ╰─▶ Because omnibase-infra>=0.38.19 depends on omnibase-core==0.47.4 and
+      omnimarket==0.4.24 depends on omnibase-core>=0.47.5, we can conclude
+      that omnibase-infra>=0.38.19 and omnimarket==0.4.24 are incompatible.
+      And because omnimarket==0.4.24 depends on omnibase-infra>=0.38.19, we
+      can conclude that omnimarket==0.4.24 cannot be used.
+      And because only omnimarket==0.4.24 is available and you require
+      omnimarket, we can conclude that your requirements are unsatisfiable.
+---- END RECORDED uv OUTPUT ----
