@@ -63,6 +63,39 @@ would DLQ every event on the affected table, which is the loud, visible
 failure mode this classification accepts: a hot silent-retry loop is worse,
 and the DLQ is durably inspectable by SQLSTATE/message, unlike a wedged
 partition.
+
+OMN-17985 addendum: the three TENANT-IDENTITY refusals are POISON.
+``TenantRegistryResolutionError``, ``UnmappedTenantIdentityError`` and
+``TenantRequiredError`` all subclass ``ValueError``, and only pydantic's
+``ValidationError`` was a POISON type, so every one of them fell through to
+the RECOVERABLE default: the offset was never committed, the identical event
+was re-read, and the identical refusal was raised again, forever.
+
+That is not hypothetical. From 2026-09-06T11:04Z a
+``onex.evt.omnibase-infra.delegation-failed.v1`` record carrying the verified
+tenant slug ``operator-ledger-probe`` -- for which ``tenant_registry_mirror``
+holds no row -- wedged the delegation writer's nine partitions on onex-dev for
+over fourteen hours. Each re-read tore the consumer down and rejoined the
+group (~1,600 group generations in sixteen minutes, which a reader mistook for
+healthy membership), ``delegation_events`` / ``delegation_shadow_comparisons``
+/ ``generation_events`` all held 0 rows, and the pod crash-looped. Evidence:
+omninode_infra probe run 34073692873.
+
+Each of these three is a property of the EVENT's identity, not of the
+infrastructure, on exactly the ``InsufficientPrivilegeError`` reasoning above:
+retrying the identical payload against the identical registry state can never
+succeed. ``TenantRegistryResolutionError``'s own class docstring already said
+so -- "the projection runner classifies it POISON and routes the event to
+quarantine ... Quarantine is the correct terminal state for an unattributable
+event" -- the classifier simply never implemented it. Quarantine is not a
+drop: the DLQ envelope carries the full typed refusal and the correlation_id,
+so the event is replayable once the tenant registry projection catches up,
+which is exactly what the refusal text tells the reader to do.
+
+``TenantContextMissingError`` is deliberately NOT reclassified. It is the READ
+side, raised when the ``app.tenant_id`` GUC is unset -- a configuration fault
+that self-heals when the seam is set, and therefore infrastructure, not the
+event. See ``test_read_side_tenant_context_missing_stays_recoverable``.
 """
 
 from __future__ import annotations
@@ -77,6 +110,14 @@ from asyncpg.exceptions import (
     PostgresError,
 )
 from pydantic import ValidationError
+
+from omnimarket.projection.tenant_isolation import (
+    TenantRequiredError,
+    UnmappedTenantIdentityError,
+)
+from omnimarket.projection.tenant_registry_resolution import (
+    TenantRegistryResolutionError,
+)
 
 
 class ProjectionErrorClass(StrEnum):
@@ -118,12 +159,20 @@ _RECOVERABLE_TYPES: tuple[type[BaseException], ...] = (
 # classification wins for these without touching PostgresError's own
 # RECOVERABLE default for every other server error (connection loss, server
 # shutdown, undefined column, etc.).
+# The three TENANT-IDENTITY refusals (OMN-17985) are listed EXPLICITLY by type,
+# never as a bare ``ValueError``. All three subclass it, and widening to that
+# base would quarantine every unrecognised value fault -- the opposite of this
+# module's "an unknown failure is retried, never silently dropped" default.
+# ``TenantContextMissingError`` is a READ-side GUC fault and stays RECOVERABLE.
 _POISON_TYPES: tuple[type[BaseException], ...] = (
     ValidationError,
     PoisonEventError,
     DataError,
     NotNullViolationError,
     InsufficientPrivilegeError,
+    TenantRegistryResolutionError,
+    UnmappedTenantIdentityError,
+    TenantRequiredError,
 )
 
 

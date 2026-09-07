@@ -58,6 +58,27 @@ RETRY_BASE_DELAY = 2.0
 RETRY_MAX_DELAY = 30.0
 MAX_RETRY_ATTEMPTS = 10
 
+
+class ProjectionConsumerExhaustedError(RuntimeError):
+    """The consumer could not be kept up after ``MAX_RETRY_ATTEMPTS`` sessions.
+
+    OMN-17985. This used to be a bare ``return`` out of :meth:`run`, so the
+    process exited **0** and the kubelet recorded
+    ``lastState.terminated reason=Completed exitCode=0`` -- a fatal give-up
+    indistinguishable from a clean shutdown in every surface that reads the
+    termination record. That is a large part of why the delegation writer
+    crash-looped on onex-dev for over fourteen hours while the fleet probe,
+    its Deployment status, and the ticket close-out all reported it healthy
+    (omninode_infra probe runs 34038648216, 34067618777, 34068315477,
+    34073692873).
+
+    Raising instead means the process exits non-zero, the kubelet records
+    ``reason=Error``, and the give-up is visible to anything that reads it.
+    A *requested* shutdown still returns cleanly -- see
+    ``test_a_requested_shutdown_still_returns_cleanly``.
+    """
+
+
 # OMN-15800 AC2 follow-on: a standalone BaseProjectionRunner process (e.g. the
 # onex-dev k8s Deployment for HandlerLiveEventsProjectionRunner) has no HTTP
 # surface, but omninode_infra's own CI gate
@@ -773,6 +794,12 @@ class BaseProjectionRunner(ABC):
                     if not self._running:
                         break
                     await self._handle_message(msg)
+                    # OMN-17985: a session that actually processed a message is
+                    # evidence the consumer works, so earlier failures must not
+                    # count against the budget. Without this reset the counter
+                    # is a LIFETIME one: ten transient broker blips spread over
+                    # a month end the process just as surely as ten in a row.
+                    attempts = 0
 
             except Exception as err:
                 attempts += 1
@@ -790,10 +817,24 @@ class BaseProjectionRunner(ABC):
                     self._consumer = None
                 await asyncio.sleep(delay)
 
-        logger.error("Consumer failed after %d retries", MAX_RETRY_ATTEMPTS)
         self._stop_health_server()
         await self._stop_producer()
         await self._db.close()
+
+        if self._shutdown_requested:
+            # A requested shutdown is a clean exit, and must stay one: making
+            # every exit fatal would turn each SIGTERM into a crash.
+            return
+
+        # OMN-17985: raise rather than return. See
+        # ProjectionConsumerExhaustedError for why exiting 0 here hid a
+        # fourteen-hour crash loop.
+        message = (
+            f"projection consumer for group {self._group_id!r} could not be "
+            f"kept up after {MAX_RETRY_ATTEMPTS} sessions; giving up"
+        )
+        logger.error("%s", message)
+        raise ProjectionConsumerExhaustedError(message)
 
     async def shutdown(self) -> None:
         """Graceful shutdown."""
