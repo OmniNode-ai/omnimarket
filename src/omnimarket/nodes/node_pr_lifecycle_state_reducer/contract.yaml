@@ -185,6 +185,16 @@ state_machine:
 terminal_event: onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
 
 event_bus:
+  # OMN-17810 measurement, .201 dev lane 2026-09-07: of these eight topics
+  # exactly ONE has ever carried a record --
+  # pr-lifecycle-fix-completed.v1 at HIGH-WATERMARK 5064. The other seven,
+  # including the sweep-start command topic below, sit at HIGH-WATERMARK 0.
+  # Only the topics named in
+  # models/model_pr_lifecycle_bus_observation.PROJECTABLE_BUS_TOPICS carry a
+  # PR-scoped observation this node can project into
+  # pr_lifecycle_ledger_entries; a record arriving on any of the others is
+  # REFUSED by that model with a reason naming the topic, and lands on the
+  # node-owned dlq_topic below rather than being folded into a wrong row.
   subscribe_topics:
     - onex.cmd.omnimarket.pr-lifecycle-sweep-start.v1
     # OMN-16939 / AC6: two owners on this topic is CORRECT, not drift. The boot-time
@@ -207,6 +217,15 @@ event_bus:
     - onex.evt.omnimarket.pr-lifecycle-state-reduced.v1
     # OMN-13321 / F5: per-iteration durable PR ledger projection snapshot.
     - onex.snapshot.projection.pr-lifecycle-ledger.v1  # onex-topic-allow: projection snapshot topics use onex.snapshot.* prefix by convention
+  # OMN-17810 / AC4: this contract declared NO dlq_topics, so every projection
+  # failure fell back to the shared platform quarantine sink
+  # (onex.dlq.omnibase-infra.quarantine.v1, HIGH-WATERMARK ~8.9M) with no
+  # per-node attribution -- which is why 100% loss on this leg sat unnoticed
+  # from 2026-08-29 until it was read out of the container log by hand. A
+  # node-owned DLQ topic makes this node's rejected records countable on their
+  # own topic.
+  dlq_topics:
+    - onex.dlq.omnimarket.pr-lifecycle-state-reducer.v1
 
 externally_consumed_topics:
   # Exposed through the generic projection API instead of consumed by another

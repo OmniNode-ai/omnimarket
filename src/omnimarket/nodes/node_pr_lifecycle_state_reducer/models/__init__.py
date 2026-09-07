@@ -2,6 +2,11 @@
 # SPDX-License-Identifier: MIT
 """Models for the PR lifecycle state reducer node."""
 
+from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_bus_observation import (
+    PR_LIFECYCLE_FIX_COMPLETED_TOPIC,
+    PROJECTABLE_BUS_TOPICS,
+    ModelPrLifecycleBusObservation,
+)
 from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_event import (
     EnumPrLifecycleEventTrigger,
     EnumPrLifecyclePhase,
@@ -18,9 +23,12 @@ from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_
 )
 
 __all__ = [
+    "PROJECTABLE_BUS_TOPICS",
+    "PR_LIFECYCLE_FIX_COMPLETED_TOPIC",
     "EnumPrLifecycleEventTrigger",
     "EnumPrLifecycleIntentType",
     "EnumPrLifecyclePhase",
+    "ModelPrLifecycleBusObservation",
     "ModelPrLifecycleEntryFlags",
     "ModelPrLifecycleEvent",
     "ModelPrLifecycleIntent",

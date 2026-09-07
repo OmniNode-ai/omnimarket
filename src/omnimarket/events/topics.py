@@ -137,3 +137,12 @@ CAPSULE_EFFECTIVENESS_HYPOTHESIS_TOPIC_V1 = "onex.evt.omnimarket.capsule-effecti
 # no-hardcoded-topics gate stays green.
 RUNTIME_IMAGE_BUILT_TOPIC_V1 = "onex.evt.omnimarket.runtime-image-built.v1"  # onex-topic-allow: canonical topic registry; declared in node_redeploy_orchestrator contract.yaml subscribe_topics (OMN-13655)
 REDEPLOY_START_CMD_TOPIC_V1 = "onex.cmd.omnimarket.redeploy-start.v1"  # onex-topic-allow: canonical topic registry; declared in node_redeploy_orchestrator contract.yaml subscribe_topics (OMN-13655)
+
+# OMN-17810: the one pr-lifecycle topic node_pr_lifecycle_state_reducer can
+# project into pr_lifecycle_ledger_entries. Its producer
+# (node_pr_lifecycle_fix_effect's terminal event) emits a PR-scoped observation
+# carrying repo, pr_number, block_reason, fix_applied, fix_action and
+# completed_at. The reducer's model references THIS constant (never the
+# literal) so the no-hardcoded-topics gate stays green; both nodes' contract.yaml
+# declare it for runtime wiring.
+PR_LIFECYCLE_FIX_COMPLETED_TOPIC_V1 = "onex.evt.omnimarket.pr-lifecycle-fix-completed.v1"  # onex-topic-allow: canonical topic registry; declared in node_pr_lifecycle_fix_effect contract.yaml publish_topics and node_pr_lifecycle_state_reducer subscribe_topics (OMN-17810)
