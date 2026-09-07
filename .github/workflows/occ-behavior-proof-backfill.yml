@@ -67,6 +67,13 @@ on:
       discover_limit:
         description: "How many candidates to consider (not to mint)"
         default: "40"
+      tickets:
+        # Operator-driven batch. When set, discovery is bypassed entirely and
+        # exactly these ids are judged, in order — the path for a held set
+        # somebody has already triaged. It also bypasses the refusal ledger,
+        # because naming a ticket explicitly IS the decision to re-judge it.
+        description: "OMN ids to judge instead of discovering (space/comma separated)"
+        default: ""
 
 concurrency:
   # Two runs would discover the same head of the candidate list and open two
@@ -148,16 +155,24 @@ jobs:
                 || inputs.apply == true }}
           LIMIT: ${{ inputs.limit || '5' }}
           DISCOVER_LIMIT: ${{ inputs.discover_limit || '40' }}
+          TICKETS: ${{ inputs.tickets || '' }}
         run: |
           set -euo pipefail
           apply_flag=""
           if [ "$APPLY" = "true" ]; then apply_flag="--apply"; fi
+          # An explicit ticket list replaces discovery outright: the two are
+          # mutually exclusive on the CLI, and a batch that silently also ran
+          # discovery would mint outside the set the operator named.
+          if [ -n "$TICKETS" ]; then
+            selection=(--tickets "$TICKETS")
+          else
+            selection=(--discover --discover-limit "$DISCOVER_LIMIT")
+          fi
           # stderr is NOT redirected. A sweep whose errors are discarded returns
           # zero rows and reads exactly like a clean result.
           uv run python scripts/ci/occ_behavior_proof_backfill.py \
             --occ-root "${RUNNER_TEMP}/occ" \
-            --discover \
-            --discover-limit "$DISCOVER_LIMIT" \
+            "${selection[@]}" \
             --limit "$LIMIT" \
             --run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             --json-out "${RUNNER_TEMP}/backfill_summary.json" \
@@ -207,7 +222,12 @@ jobs:
             git status --porcelain
             exit 1
           fi
-          if git status --porcelain -- drift/ | grep -qE '^( M|M |MM)'; then
+          # The refusal ledger is the ONE file under drift/ this job rewrites.
+          # It is operational state (why a ticket was refused, and against what
+          # facts), not evidence: it lives outside drift/dod_receipts/ and no
+          # gate reads it. Every actual receipt stays append-only.
+          ledger="drift/behavior_proof_backfill_refusals.yaml"
+          if git status --porcelain -- drift/ | grep -v " ${ledger}\$" | grep -qE '^( M|M |MM)'; then
             echo "::error::Refusing to push: an existing receipt under drift/ was MODIFIED. OCC evidence is append-only."
             git status --porcelain -- drift/
             exit 1
