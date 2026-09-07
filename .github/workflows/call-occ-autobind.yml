@@ -34,6 +34,15 @@
 #   incident OMN-14800) still fires if a `KAFKA_BOOTSTRAP_SERVERS` secret is ever
 #   re-injected and diverges -- but this workflow no longer injects one.
 #
+# LANE-DECLARED TRANSPORT (OMN-18012, 2026-09-07):
+#   The overlay declares not just the broker but the transport: `dev` carries
+#   `security_protocol: SASL_PLAINTEXT` / `sasl_mechanism: SCRAM-SHA-256` since
+#   Phase B enabled SASL on the dev-lane listener at ~16:40Z. The publisher reads
+#   those instead of inferring TLS from the presence of credentials -- the
+#   inference it replaced dialled `sasl_ssl://` at a listener with no TLS and
+#   killed every OCC mint org-wide. This workflow therefore injects the SASL
+#   CREDENTIALS (and only those) below; the broker stays committed config.
+#
 # TRIGGER COVERAGE (OMN-14989, identical gap to OMN-14987/omnibase_infra):
 # opened/synchronize alone miss two born-path holes. (1) draft->ready_for_review
 # WITHOUT an intervening push never re-fires either event -- GitHub emits a
@@ -166,12 +175,21 @@ jobs:
         # All potentially attacker-controlled inputs (branch name, PR title) are
         # passed through environment variables to prevent shell injection.
         #
-        # OMN-14813: SECRET-FREE. `KAFKA_BOOTSTRAP_SERVERS` (and the dev-lane's
-        # dead SASL creds -- the dev lane is plaintext, no SASL) are no longer
-        # injected. The broker is resolved from the checked-in
-        # config/ci_bus_lanes.yaml overlay, where `dev` declares the concrete
-        # external listener directly. No per-repo `gh secret set` is required for
-        # this fan-out anymore.
+        # BROKER-SECRET-FREE (OMN-14813), SASL-CREDENTIALLED (OMN-18012).
+        # `KAFKA_BOOTSTRAP_SERVERS` is still NOT injected: the broker is resolved
+        # from the checked-in config/ci_bus_lanes.yaml overlay, where `dev`
+        # declares the concrete external listener directly. That half is
+        # permanent -- an opaque broker secret is the OMN-14800 drift surface.
+        #
+        # The SASL credentials are a different thing and are now required. The
+        # comment this replaces called them "the dev-lane's dead SASL creds --
+        # the dev lane is plaintext, no SASL"; that stopped being true at ~16:40Z
+        # on 2026-09-07 when OMN-18012 Phase B enabled SASL/SCRAM-SHA-256 on the
+        # dev-lane listener. The overlay now DECLARES that transport and the
+        # publisher reads the protocol from it, so a credential-free run
+        # fail-fasts (naming the missing variables) instead of publishing
+        # unauthenticated. A credential carries no lane-routing information and
+        # re-creates none of the broker-secret drift surface.
         env:
           PR_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
@@ -179,6 +197,8 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
           # Best-effort ticket extraction; the script also parses the branch ref.
           PR_TICKET: ""
+          KAFKA_SASL_USERNAME: ${{ secrets.KAFKA_SASL_USERNAME }}
+          KAFKA_SASL_PASSWORD: ${{ secrets.KAFKA_SASL_PASSWORD }}
         # OMN-14801/OMN-14813: --lane dev selects the authoring lane from the
         # checked-in config/ci_bus_lanes.yaml overlay. `dev` declares the concrete
         # dev-lane broker there, so the publisher resolves it straight from the
