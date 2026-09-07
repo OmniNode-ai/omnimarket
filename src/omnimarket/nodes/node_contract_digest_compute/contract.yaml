@@ -60,3 +60,7 @@ handler_routing:
 
 metadata:
   transport_type: kafka
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.contract-digest-requested.v1

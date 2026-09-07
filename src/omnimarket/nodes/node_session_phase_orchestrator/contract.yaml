@@ -35,6 +35,7 @@ event_bus:
 
 externally_consumed_topics:
   - onex.cmd.omnimarket.session-halt-required.v1
+  - onex.evt.omnimarket.session-orchestrator-tick-completed.v1
 
 dod_evidence:
   PYTEST:

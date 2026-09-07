@@ -70,3 +70,8 @@ config:
   ONEX_CONFLICT_WORKTREE_ROOT:
     description: "Root directory for worktrees used during conflict resolution."
     required: false
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.pr-conflict-resolved.v1

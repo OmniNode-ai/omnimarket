@@ -276,6 +276,12 @@ event_bus:
 # message. The probe is the real consumer, and it lives outside the contract corpus.
 externally_consumed_topics:
   - onex.evt.omnimarket.build-loop-dod-checked.v1
+  - onex.cmd.omnimarket.delegation-request.v1
+  - onex.evt.omnimarket.build-loop-orchestrator-phase-transition.v1
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_llm_dispatch.py
+  - onex.evt.omnimarket.delegation-attempt.v1
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_build_loop_orchestrator/handlers/adapter_llm_dispatch.py
+  - onex.evt.omnimarket.delegation-metrics.v1
 
 
 fsm:
@@ -347,3 +353,7 @@ metadata:
     - "OMN-7575"
     - "OMN-5113"
     - "OMN-8025"
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.build-loop-orchestrator-start.v1

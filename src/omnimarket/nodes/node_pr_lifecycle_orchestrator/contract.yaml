@@ -382,3 +382,18 @@ config:
   ONEX_OCC_MERGE_SHA:
     description: "Git SHA of the merge commit for OCC post-merge verification."
     required: false
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.pr-lifecycle-fix-dispatched.v1
+  - onex.evt.omnimarket.pr-lifecycle-inventory-collected.v1
+  - onex.evt.omnimarket.pr-lifecycle-ledger-entry-projected.v1
+  - onex.evt.omnimarket.pr-lifecycle-merge-executed.v1
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py
+  - onex.evt.omnimarket.pr-lifecycle-orchestrator-failed.v1
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py
+  - onex.evt.omnimarket.pr-lifecycle-orchestrator-phase-transition.v1
+  - onex.evt.omnimarket.pr-lifecycle-triage-classified.v1
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_pr_lifecycle_orchestrator/handlers/handler_pr_lifecycle_orchestrator.py
+  - onex.evt.omnimarket.pr-lifecycle-verification-completed.v1

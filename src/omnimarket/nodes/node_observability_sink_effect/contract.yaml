@@ -94,3 +94,7 @@ metadata:
   implementation_wave: 5
   related_tickets: ["OMN-12217", "OMN-12325"]
   runtime_smoke_mode: "Set sink_kafka=false and sink_postgres=false for side-effect-free dispatch proof."
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.observability-sink.v1

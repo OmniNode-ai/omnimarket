@@ -103,3 +103,10 @@ descriptor:
     - effects
   idempotent: true
   timeout_ms: 0
+
+# OMN-18013 -- explicit external PRODUCER declaration (contract topic graph closure).
+# Replaces the deleted contract_topic_graph_baseline.yaml external_producers map:
+# the declaration now lives beside the subscription it explains.
+externally_produced_topics:
+  - topic: onex.evt.github.pr-merged.v1
+    producer: "the pr-merged-publisher GHA workflow (scripts/publish_pr_merged_event.py), not a node contract"

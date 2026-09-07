@@ -140,3 +140,16 @@ metadata:
     - "OMN-13205"
     - "OMN-13208"
     - "OMN-13210"
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.pr-review-bot-start.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_pr_review_orchestrator/handlers/handler_pr_review_orchestrator.py
+  - onex.evt.omnimarket.pr-review-bot-completed.v1
+  - onex.evt.omnimarket.pr-review-bot-phase-transition.v1
+  - onex.evt.omnimarket.pr-review-bot-thread-posted.v1
+  - onex.evt.omnimarket.pr-review-bot-thread-verified.v1

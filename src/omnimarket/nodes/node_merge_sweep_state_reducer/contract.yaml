@@ -134,3 +134,11 @@ state_machine:
       description: "Rerun PR stuck."
   terminal_states: [merged, failed, stuck]
   persistence_enabled: false
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  # consumed off-graph by omnimarket/src/omnimarket/nodes/node_merge_sweep_compute/consumer.py
+  - onex.evt.omnimarket.merge-sweep-completed.v1
+  # referenced outside the node graph at omnimarket/src/omnimarket/nodes/node_merge_sweep_state_reducer/handlers/handler_sweep_state.py
+  - onex.evt.omnimarket.merge-sweep-state-reduced.v1
