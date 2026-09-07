@@ -2135,6 +2135,8 @@ jobs:
           uv sync
           uv pip uninstall omnibase-infra
           uv pip install --no-deps -e .sibling/omnibase_infra
+          export PYTHONPATH="${PWD}/.sibling/omnibase_infra/src:${PYTHONPATH:-}"
+          echo "PYTHONPATH=${PYTHONPATH}" >> "$GITHUB_ENV"
           uv run --no-sync python - <<'PY'
           import pathlib
           import omnibase_infra
