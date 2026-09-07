@@ -130,6 +130,18 @@ jobs:
     if: needs.decide.outputs.skip != 'true' && needs.decide.outputs.needs_bump != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # A job-level `permissions:` block REPLACES the workflow-level one, so this
+    # is the only scope GITHUB_TOKEN has in this job. It is here for exactly one
+    # step: `softprops/action-gh-release` authenticates as GITHUB_TOKEN, and
+    # under the workflow-level `contents: read` it returned
+    #   ⚠️ GitHub release failed with status: 403
+    #   {"message":"Resource not accessible by integration"}
+    # in run 34066508864 — AFTER the tag was pushed and 0.4.20 was already live
+    # on PyPI. The tag push itself does not need this: it authenticates as the
+    # App token minted below. This mirrors release.yml, whose release job has
+    # carried `contents: write` since it was written.
+    permissions:
+      contents: write
     outputs:
       version: ${{ steps.tag.outputs.tag }}
       tag_sha: ${{ github.sha }}
