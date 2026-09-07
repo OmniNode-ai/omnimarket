@@ -36,6 +36,13 @@ class EnumDurableEvidenceCheck(StrEnum):
     # check instead of CONTRACT_CITES_MERGE_COMMIT when the contract declares
     # itself receipt-bound (see services/receipt_bound_evidence.py).
     RECEIPT_BOUND = "receipt_bound"
+    # OMN-18010 deliverable 2: released is part of Done. A ticket whose evidence
+    # PRs are merged into a PUBLISHING repo but contained in no release tag whose
+    # version the package index actually serves is NOT Done — the change landed
+    # and shipped nowhere. Reported as a distinct non-closing state
+    # (MERGED_UNRELEASED) rather than folded into the merged-PR check, because
+    # the remediation is different: cut a release, not fix a receipt.
+    RELEASED_ON_PUBLISHING_REPO = "released_on_publishing_repo"
     CONTRACT_ON_OCC_MAIN = "contract_on_occ_main"
     DEFECT_PREVENTION_GATE = "defect_prevention_gate"
     DONE_CLASS_LABEL = "done_class_label"

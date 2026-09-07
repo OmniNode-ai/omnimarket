@@ -225,3 +225,83 @@ class TestUnknownCheckTypeAdversarial:
         assert results[0].status == EnumEvidenceCheckStatus.FAILED, (
             "Unknown check_type in a multi-check item must cause the item to FAIL."
         )
+
+
+@pytest.mark.unit
+class TestReleasedCheckTypeIsRegistered:
+    """OMN-18010: ``released`` is a REGISTERED check_type, not an unknown one.
+
+    The OMN-9571 fail-closed branch above is exactly the surface a new
+    check_type has to be added to. If ``released`` were added to the dispatch
+    chain but this suite were left asserting a three-name supported list, the
+    two would silently disagree and the next reader would trust the message.
+    """
+
+    def test_released_is_named_in_the_supported_list(self, tmp_path: Path) -> None:
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "unknown type",
+                    "checks": [{"check_type": "nonexistent_validator"}],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST", contract_path=str(tmp_path / "OMN-TEST.yaml")
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert results[0].message is not None
+        assert (
+            "Supported: command, test_passes, file_exists, released."
+            in results[0].message
+        )
+
+    def test_released_is_not_reported_as_an_unknown_check_type(
+        self, tmp_path: Path
+    ) -> None:
+        """A malformed released check FAILS on its own terms, not as 'unknown'.
+
+        It still FAILS — a citation of the wrong shape is fail-closed — but the
+        message must name the released contract, so the author is told what to
+        fix rather than told the check_type does not exist.
+        """
+        _write_contract(
+            tmp_path,
+            dod_evidence=[
+                {
+                    "id": "dod-001",
+                    "description": "released, malformed citation",
+                    "checks": [
+                        {"check_type": "released", "check_value": "not-a-citation"}
+                    ],
+                }
+            ],
+        )
+        collector = EvidenceCollector()
+        results = collector.collect(
+            "OMN-TEST", contract_path=str(tmp_path / "OMN-TEST.yaml")
+        )
+        assert results[0].status == EnumEvidenceCheckStatus.FAILED
+        assert results[0].message is not None
+        assert "Unknown check_type" not in results[0].message
+        assert "Malformed released citation" in results[0].message
+
+    def test_released_check_is_classified_merge_state_not_behavior(self) -> None:
+        """It binds distribution state; it must never satisfy a behaviour leg."""
+        from omnimarket.enums.enum_check_proof_class import EnumCheckProofClass
+        from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
+            classify_check,
+        )
+
+        assert (
+            classify_check(
+                {
+                    "check_type": "released",
+                    "check_value": "OmniNode-ai/omnimarket@021b29ca",
+                }
+            )
+            is EnumCheckProofClass.MERGE_STATE
+        )
