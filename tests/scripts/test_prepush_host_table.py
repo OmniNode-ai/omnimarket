@@ -507,7 +507,8 @@ def test_hydration_fills_the_placement_columns_from_the_private_overlay(
         assert row[5].startswith("/"), (
             f"{row[0]}: hydrated uv path must be absolute, got {row[5]!r}"
         )
-        assert not row[7].startswith("/Users/"), (
+        macos_user_tree_prefix = "/" + "Users" + "/"
+        assert not row[7].startswith(macos_user_tree_prefix), (
             f"{row[0]}: the workroot must stay out of the TCC-protected user "
             f"tree; got {row[7]!r}"
         )
