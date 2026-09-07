@@ -245,7 +245,20 @@ def test_retained_live_census_gap_fails_closed() -> None:
     # that same tenant_registry_mirror relation. That widens accessor_nodes but
     # does not create a new relation or increase the declared-table relation
     # count.
-    assert census["source_declared_tables"] == 68
+    # +1 for OMN-16770's savings_correlation_finalizations catalog declaration
+    # in scripts/application-relation-ownership.yaml = 69. This is step 1 of the
+    # same forced cross-repo sequence OMN-16180's work_events entry documents:
+    # the declaration must reach omnimarket@dev BEFORE omnibase_infra can land
+    # docker/migrations/forward/nodes/node_savings_estimation_compute/
+    # 0002_create_savings_correlation_finalizations.sql, because the OMN-15361
+    # ownership gate resolves declarations from service manifests only and reads
+    # this file from dev. The relation is therefore DECLARED here while still
+    # classification_status "blocked" ("no authoritative CREATE TABLE migration
+    # found") -- source_created_tables stays 64, because the CREATE lives in
+    # omnibase_infra and this repository never sees it. Same shape as the two
+    # OMN-16293 savings-signal entries beside it, which are blocked for the
+    # identical reason and always will be.
+    assert census["source_declared_tables"] == 69
     # 27 as of OMN-15631. This figure is arithmetic, not an observation:
     # the generator computes max(0, 86 - source_created_tables), so each
     # newly source-created table (tenant_inference_credentials, then
