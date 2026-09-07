@@ -1,5 +1,5 @@
 name: node_runtime_closeout_orchestrator
-version: "1.0.0"
+version: "2.0.0"
 description: "One-dispatch runtime-closeout orchestrator — dispatches preflight / fitness-gate / deploy / proof-matrix commands over the bus."
 omnibase_core_compat: ">=0.39.0,<1.0.0"
 entry_points:

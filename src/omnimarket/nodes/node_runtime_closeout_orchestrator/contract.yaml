@@ -10,9 +10,9 @@
 # matrix.
 ---
 name: node_runtime_closeout_orchestrator
-contract_version: {major: 1, minor: 0, patch: 0}
+contract_version: {major: 2, minor: 0, patch: 0}
 node_type: orchestrator
-node_version: {major: 1, minor: 0, patch: 0}
+node_version: {major: 2, minor: 0, patch: 0}
 
 description: >
   One-dispatch runtime-closeout orchestrator. On closeout-start it emits the
@@ -27,8 +27,18 @@ description: >
   closeout-completed event carries ModelCloseoutReceipt (SHA/image table,
   migration ledger, per-cell verdicts, rollback plan, residual risk,
   recommendation customer-beta | internal-integration | hold). A failing
-  preflight or fitness gate completes BLOCKED before any deploy. No in-process
-  handler construction, no FSM loop, no I/O.
+  preflight or fitness gate completes BLOCKED before any deploy. An empty,
+  incomplete, conflicting or unobserved proof matrix completes BLOCKED with HOLD.
+  A successful matrix requires canonical cell classifications, distinct known
+  cells and PASS with distinct proof correlations, nonblank terminal and
+  projection readback evidence for every requested cell. A required-only run is bounded to
+  internal-integration; a full run may recommend customer-beta. Proof terminals
+  require an explicit echoed start with matching run correlation and declared
+  runtime lane and proof set. Version 2 requires proof_set on ModelCloseoutReceipt;
+  old readers reject the new field and new readers reject receipts without it.
+  Topics retain their names; activation requires coordinated producer/reader
+  deployment and disposition of retained incompatible receipts. No fallback
+  acceptance is provided. No in-process handler construction, no FSM loop, no I/O.
 
 # Top-level input_model so the event-driven runtime builds the initial command
 # from the caller's `--input` payload (mirrors node_integration_sweep_orchestrator
@@ -55,7 +65,7 @@ handler:
 output_model:
   name: ModelCloseoutReceipt
   module: omnimarket.events.runtime_closeout
-  description: "Terminal closeout receipt (COMPLETED | BLOCKED | FAILED)."
+  description: "Terminal closeout receipt with required proof_set (COMPLETED | BLOCKED | FAILED)."
 
 descriptor:
   node_archetype: orchestrator
@@ -96,8 +106,9 @@ dependencies:
 
 metadata:
   transport_type: kafka
-  description: "One-dispatch runtime-closeout orchestrator"
+  description: "Version 2 requires explicit proof scope and adjudicates observed matrix evidence (OMN-17974)."
   author: "OmniNode Platform Team"
   related_tickets:
     - "OMN-13413"
     - "OMN-13410"
+    - "OMN-17974"
