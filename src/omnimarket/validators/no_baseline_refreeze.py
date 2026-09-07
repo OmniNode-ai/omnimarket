@@ -37,6 +37,14 @@ import yaml
 # class; the fix for a new violation is always the contract, never the list.
 DELETED_BASELINES: tuple[tuple[str, str], ...] = (
     (
+        "src/omnimarket/validators/data/contract_topic_graph_baseline.yaml",
+        "the contract-topic-graph ratchet: 688 accepted defects plus the "
+        "external_producers / external_consumers maps. Burned to zero by OMN-18013 -- "
+        "the graph gate is now HARD --scope with no baseline at all, and external "
+        "producers/consumers are declared IN the contract that consumes or publishes "
+        "them (externally_produced_topics / externally_consumed_topics)",
+    ),
+    (
         "src/omnimarket/validators/data/contract_topic_graph_orphan_classification.yaml",
         "a generated triage artifact that its own header says the gate never reads; "
         "keeping it invites treating a classification as an exemption",

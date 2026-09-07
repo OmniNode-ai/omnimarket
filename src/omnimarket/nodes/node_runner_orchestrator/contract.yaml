@@ -63,3 +63,12 @@ metadata:
   handlers_deferred_until_wave: 4
   related_tickets: ["OMN-12218"]
   skill_source: omniclaude/plugins/onex/skills/runner/
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.runner-action-start.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.runner-action-completed.v1

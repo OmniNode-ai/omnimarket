@@ -113,3 +113,13 @@ metadata:
   related_tickets:
     - "OMN-8050"
     - "OMN-8047"
+
+runtime_dispatch:
+  # OMN-18013 -- the CLI/skill dispatcher is this node's producer. Declared so it is not inferred from subscribe_topics[0].
+  command_topic: onex.cmd.omnimarket.local-supervisor-execute.v1
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.local-supervisor-completed.v1
+  - onex.evt.omnimarket.local-supervisor-escalated.v1

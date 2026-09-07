@@ -128,3 +128,10 @@ projection_api:
 
 metadata:
   transport_type: kafka
+
+# OMN-18013 -- explicit external PRODUCER declaration (contract topic graph closure).
+# Replaces the deleted contract_topic_graph_baseline.yaml external_producers map:
+# the declaration now lives beside the subscription it explains.
+externally_produced_topics:
+  - topic: onex.evt.platform.node-state-change.v1
+    producer: "the runtime host's node registration/heartbeat emitter in omnibase_infra, not a node contract"

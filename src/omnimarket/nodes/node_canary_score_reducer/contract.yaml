@@ -110,3 +110,8 @@ state_machine:
       description: "Re-observe own scores (idempotent)."
   terminal_states: []
   persistence_enabled: false
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.capability-scores-updated.v1

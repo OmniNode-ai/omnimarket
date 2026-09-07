@@ -92,7 +92,6 @@ import argparse
 import importlib.util
 import os
 import re
-import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -165,7 +164,6 @@ _TOPIC_RE = re.compile(r"^onex\.(evt|cmd|intent|dlq)\.[a-z0-9._-]+\.v\d+$")
 # add types speculatively.
 _INGRESS_CATALOG_TYPES = frozenset({"poller"})
 
-DEFAULT_BASELINE = Path(__file__).parent / "data" / "contract_topic_graph_baseline.yaml"
 
 DefectClass = Literal[
     "ORPHANED_CONSUMER",
@@ -188,6 +186,17 @@ class ModelContractNode(BaseModel):
     command_topic: str | None = None
     terminal_topics: tuple[str, ...] = ()
     externally_consumed: tuple[str, ...] = ()
+    # OMN-18013: the mirror of externally_consumed, on the PRODUCE side, and the
+    # in-contract replacement for the deleted baseline's ``external_producers``
+    # map. A topic whose only publisher is not a node contract (the skill CLI,
+    # the onex-api gateway, a GHA workflow, the omniclaude hook daemon, the
+    # runtime's own DLQ machinery) is declared HERE, by the node that consumes
+    # it, next to the subscription it explains -- never in a central file a
+    # ``--write-baseline`` flag can regenerate. Each entry MUST name its
+    # producer; see _parse_externally_produced, which fails closed on a bare
+    # topic string precisely so this cannot decay into an unattributed
+    # allowlist.
+    externally_produced: tuple[tuple[str, str], ...] = ()
     has_dispatch_wiring: bool = False
     runtime_loaded: bool = False
     # OMN-14591: a REAL, positive, machine-checkable signal that this node is
@@ -321,6 +330,56 @@ def _has_top_level_handler(handler: object) -> bool:
     )
 
 
+def _parse_externally_produced(
+    value: object, *, path: Path
+) -> tuple[tuple[str, str], ...]:
+    """Parse ``externally_produced_topics`` into (topic, producer) pairs.
+
+    Shape, and the reason it is not a bare list::
+
+        externally_produced_topics:
+          - topic: onex.evt.platform.log-entry.v1
+            producer: "omnibase_infra runtime logging infrastructure — not a node contract"
+
+    ``externally_consumed_topics`` may be a bare list because the DECLARING node
+    is itself the producer, so provenance is already established by the file the
+    declaration sits in. The produce side has no such anchor: the whole point of
+    the declaration is to name an actor the graph cannot see. A bare topic string
+    here would assert "something, somewhere, publishes this" -- which is exactly
+    the unfalsifiable claim the deleted baseline used to launder, so it is
+    REFUSED rather than accepted. Fails closed: an entry that is not a mapping,
+    or whose ``producer`` is missing or blank, raises.
+    """
+    if value is None:
+        return ()
+    if not isinstance(value, list):
+        raise RuntimeError(
+            f"{path}: externally_produced_topics must be a list of "
+            "{topic, producer} mappings."
+        )
+    out: list[tuple[str, str]] = []
+    for entry in value:
+        if not isinstance(entry, dict):
+            raise RuntimeError(
+                f"{path}: externally_produced_topics entry {entry!r} must be a "
+                "{topic, producer} mapping. A bare topic string is refused: an "
+                "external producer must be NAMED, not assumed."
+            )
+        topic = entry.get("topic")
+        producer = entry.get("producer")
+        if not isinstance(topic, str) or not _TOPIC_RE.match(topic):
+            raise RuntimeError(
+                f"{path}: externally_produced_topics entry has no valid 'topic': {entry!r}"
+            )
+        if not isinstance(producer, str) or not producer.strip():
+            raise RuntimeError(
+                f"{path}: externally_produced_topics entry for {topic} must name a "
+                "non-empty 'producer'. Declared, never assumed."
+            )
+        out.append((topic, producer.strip()))
+    return tuple(out)
+
+
 def parse_contract(
     path: Path,
     package: str,
@@ -418,6 +477,9 @@ def parse_contract(
         terminal_topics=terminal_topics,
         externally_consumed=tuple(
             sorted(set(_collect_topics(data.get("externally_consumed_topics"))))
+        ),
+        externally_produced=_parse_externally_produced(
+            data.get("externally_produced_topics"), path=path
         ),
         # A subscription is wired to a dispatcher by handler_routing (topic/operation
         # match) or by a single top-level handler. Without either, the runtime still
@@ -579,11 +641,23 @@ def build_graph(
         for topic in node.subscribe_topics:
             consumers.setdefault(topic, []).append(node.name)
 
+    # OMN-18013: contract-declared external producers are unioned in on equal
+    # footing with any caller-supplied map. This is what let the central
+    # baseline's ``external_producers`` block be DELETED rather than relocated:
+    # the declaration now lives in the consuming contract, beside the
+    # subscription it explains, and is reviewed with that node.
+    merged_external_producers: dict[str, str] = dict(external_producers or {})
+    for node in nodes:
+        for topic, producer in node.externally_produced:
+            merged_external_producers.setdefault(
+                topic, f"{producer} (declared by {node.name})"
+            )
+
     return ModelTopicGraph(
         nodes=tuple(nodes),
         producers={t: tuple(v) for t, v in producers.items()},
         consumers={t: tuple(v) for t, v in consumers.items()},
-        external_producers=dict(external_producers or {}),
+        external_producers=merged_external_producers,
         external_consumers=dict(external_consumers or {}),
     )
 
@@ -845,171 +919,229 @@ def _find_disconnected_subgraphs(
     return findings
 
 
-class ModelBaseline(BaseModel):
-    """Frozen pre-existing defects. May only ever shrink."""
+# ---------------------------------------------------------------------------
+# OMN-18013 SCOPE FENCE — the replacement for the deleted baseline.
+#
+# This is NOT a baseline, and the difference is mechanical, not rhetorical:
+#
+#   * it lives in CODE, so there is no file a ``--write-baseline`` flag can
+#     regenerate and no YAML a PR can append to as part of "fixing" its own
+#     failure — both of which the deleted baseline permitted;
+#   * it is keyed on the EXACT (defect, node, topic) triple, so it grants no
+#     licence to any other topic on a fenced node;
+#   * a fenced pair that NO LONGER OCCURS is a HARD FAILURE (see
+#     ``_evaluate_fence``), so the list can only ever shrink — it cannot rot
+#     into a stale exemption set the way an ``accepted:`` block does;
+#   * every entry names an OWNER and a REASON, and none of the reasons is
+#     "pre-existing". Each is a concrete blocker that a declaration cannot fix.
+#
+# There is no flag, no environment variable and no file that adds to this.
+# ---------------------------------------------------------------------------
+_PEER_LANE = "lane dev-lane-fsm-residuals (OMN-16939 / OMN-17888)"
 
-    model_config = ConfigDict(extra="forbid")
+SCOPE_FENCE: tuple[tuple[str, str, str | None, str, str], ...] = (
+    # --- owned by the redeploy-FSM lane, live in its own worktree. Two lanes
+    # editing the same FSM contract is how a merge silently drops a handler branch.
+    (
+        "ORPHANED_CONSUMER",
+        "node_redeploy_deploy_effect",
+        "onex.evt.deploy.rebuild-completed.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        _PEER_LANE,
+        "redeploy-FSM contract under concurrent edit by the owning lane",
+    ),
+    (
+        "ORPHANED_PRODUCER",
+        "node_redeploy_deploy_effect",
+        "onex.evt.omnimarket.redeploy-deploy-refused.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        _PEER_LANE,
+        "redeploy-FSM contract under concurrent edit by the owning lane",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_redeploy_fsm_reducer",
+        "onex.evt.omnimarket.redeploy-phase-advance.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        _PEER_LANE,
+        "redeploy-FSM contract under concurrent edit by the owning lane",
+    ),
+    (
+        "ORPHANED_PRODUCER",
+        "node_redeploy_fsm_reducer",
+        "onex.evt.omnimarket.redeploy-fsm-state-updated.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        _PEER_LANE,
+        "redeploy-FSM contract under concurrent edit by the owning lane",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_redeploy_orchestrator",
+        "onex.evt.omnibase-infra.runtime-manifest-published.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        _PEER_LANE,
+        "redeploy-FSM contract under concurrent edit by the owning lane",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_redeploy_orchestrator",
+        "onex.evt.omnimarket.runtime-image-built.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        _PEER_LANE,
+        "redeploy-FSM contract under concurrent edit by the owning lane",
+    ),
+    (
+        "ORPHANED_PRODUCER",
+        "node_redeploy_orchestrator",
+        "onex.evt.omnimarket.redeploy-phase-transition.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        _PEER_LANE,
+        "redeploy-FSM contract under concurrent edit by the owning lane",
+    ),
+    # --- the publishing node does not exist yet. Declaring an external producer
+    # would assert a publisher that is not there; this is product work, not a
+    # contract edit. The closeout chain's three effect nodes are unbuilt.
+    (
+        "ORPHANED_CONSUMER",
+        "node_runtime_closeout_orchestrator",
+        "onex.evt.omnimarket.closeout-fitness-gated.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "no publishing node exists yet — the closeout effect node is unbuilt",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_runtime_closeout_orchestrator",
+        "onex.evt.omnimarket.closeout-preflight-completed.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "no publishing node exists yet — the closeout effect node is unbuilt",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_runtime_closeout_orchestrator",
+        "onex.evt.omnimarket.closeout-proof-matrix-completed.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "no publishing node exists yet — the closeout effect node is unbuilt",
+    ),
+    # --- STARVED subscriptions: no publisher and no emitter anywhere in the
+    # corpus, but real handler_routing/topic_match wiring behind them. Removing
+    # the subscription orphans a live handler, so it is a per-node functional
+    # decision, not a declaration this change can make.
+    (
+        "ORPHANED_CONSUMER",
+        "node_intelligence_orchestrator",
+        "onex.evt.omnimarket.intent-drift-detected.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "starved: no publisher anywhere, but the subscription carries live handler wiring",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_intelligence_reducer",
+        "onex.evt.omnimarket.intent-outcome-labeled.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "starved: no publisher anywhere, but the subscription carries live handler wiring",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_knowledge_context_assembler_reducer",
+        "onex.evt.omnimarket.knowledge-context-fragment-ready.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "starved: no publisher anywhere, but the subscription carries live handler wiring",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_navigation_history_reducer",
+        "onex.evt.omnimemory.navigation-session-completed.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "starved: no publisher anywhere, but the subscription carries live handler wiring",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_pr_arm_gate_compute",
+        "onex.evt.omnimarket.pr-lifecycle-merge-candidate-ready.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "starved: no publisher anywhere, but the subscription carries live handler wiring",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_pr_lifecycle_state_reducer",
+        "onex.evt.omnimarket.pr-lifecycle-failed.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "starved: no publisher anywhere, but the subscription carries live handler wiring",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_pr_review_fsm_reducer",
+        "onex.evt.omnimarket.pr-review-bot-phase-advance.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "starved: no publisher anywhere, but the subscription carries live handler wiring",
+    ),
+    (
+        "ORPHANED_CONSUMER",
+        "node_two_strike_arbiter",
+        "onex.evt.omnimarket.fix-attempt-failed.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
+        "OMN-18013 residual",
+        "starved: no publisher anywhere, but the subscription carries live handler wiring",
+    ),
+    # --- needs a handler class extracted from a standalone consumer.py before
+    # either subscription can resolve. A node refactor, not a declaration.
+    (
+        "DECLARED_BUT_UNWIRED",
+        "node_e2e_orchestrator",
+        None,
+        "OMN-18013 residual",
+        "runs as a standalone aiokafka consumer with no handler class to wire",
+    ),
+)
 
-    external_producers: dict[str, str] = Field(default_factory=dict)
-    external_consumers: dict[str, str] = Field(default_factory=dict)
-    accepted: list[str] = Field(default_factory=list)
+
+def _fence_key(defect: str, node: str | None, topic: str | None) -> str:
+    return f"{defect}::{node or '-'}::{topic or '-'}"
 
 
-def load_baseline(path: Path) -> ModelBaseline:
-    if not path.is_file():
-        return ModelBaseline()
-    data = yaml.safe_load(path.read_text()) or {}
-    return ModelBaseline.model_validate(data)
+FENCED_KEYS: frozenset[str] = frozenset(
+    _fence_key(d, n, t) for d, n, t, _owner, _reason in SCOPE_FENCE
+)
 
 
-def _run_git(args: list[str], cwd: Path) -> str | None:
-    """Run a git command, returning stdout or None on any failure."""
-    try:
-        result = subprocess.run(
-            ["git", *args],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            timeout=30,
-            check=False,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return None
-    if result.returncode != 0:
-        return None
-    return result.stdout.strip()
-
-
-def merge_base_accepted_keys(baseline_path: Path) -> set[str] | None:
-    """Return the ``accepted`` keys frozen in the baseline AT THE MERGE-BASE.
-
-    The PR-controlled baseline on disk cannot be trusted to gate itself: a PR
-    can add a real new defect and its exact key to the baseline in the same
-    commit (by hand, or via ``--write-baseline``), which makes ``new_defects``
-    empty against the PR's own copy -- the advertised shrink-only ratchet is
-    then not enforced at all. This resolves the SAME file's content at the
-    merge-base with the PR's target branch instead, so a key can only ever
-    count as "already accepted" if it predates this PR.
-
-    Returns ``None`` (best-effort, not a hard requirement) when the merge base
-    cannot be determined -- a shallow local clone, a detached/unpushed branch,
-    or ``git`` being unavailable. Callers fall back to trusting the PR-local
-    baseline in that case rather than hard-failing every run on an
-    environment limitation unrelated to the actual defect population.
-    """
-    repo_root = baseline_path.resolve().parent
-    while repo_root != repo_root.parent and not (repo_root / ".git").exists():
-        repo_root = repo_root.parent
-    if not (repo_root / ".git").exists():
-        return None
-
-    rel_path = baseline_path.resolve().relative_to(repo_root).as_posix()
-    target_ref = os.environ.get("GITHUB_BASE_REF", "").strip()
-    candidates = (
-        [f"origin/{target_ref}"] if target_ref else ["origin/dev", "origin/main"]
-    )
-    for candidate in candidates:
-        merge_base = _run_git(["merge-base", "HEAD", candidate], cwd=repo_root)
-        if not merge_base:
-            continue
-        content = _run_git(["show", f"{merge_base}:{rel_path}"], cwd=repo_root)
-        if content is None:
-            continue
-        try:
-            data = yaml.safe_load(content) or {}
-            baseline = ModelBaseline.model_validate(data)
-        except (yaml.YAMLError, ValueError):
-            continue
-        return set(baseline.accepted)
-    return None
-
-
-def evaluate_ratchet(
-    findings: list[ModelGraphFinding],
-    local_accepted: set[str],
-    trusted_accepted: set[str],
+def _evaluate_fence(
+    scoped: list[ModelGraphFinding],
 ) -> tuple[list[ModelGraphFinding], list[str]]:
-    """Split ``findings`` into ``(new_defects, fixed)`` against the ratchet.
+    """Split scoped findings into (unfenced, rotted-fence-keys).
 
-    ``trusted_accepted`` decides what counts as "already accepted" -- it must
-    be the merge-base baseline (or, as a documented fallback, the PR-local
-    one), NEVER a baseline this same run could have just written. A key is a
-    new defect the instant it is not in ``trusted_accepted``, regardless of
-    whether ``local_accepted`` (the PR's own, possibly-just-edited, baseline
-    file) also contains it -- that is what stops a PR from adding a real
-    defect and its baseline entry in the same commit.
-
-    ``fixed`` is evaluated against ``local_accepted`` instead: a key the
-    PR-local baseline still claims to accept, but that no longer corresponds
-    to any current finding, must be removed from the baseline so it cannot
-    silently re-authorize a regression later.
+    A fence entry that matches nothing is REPORTED AS A FAILURE, not silently
+    ignored. That is the whole difference between a fence and a baseline: an
+    ``accepted:`` list that no longer describes reality just sits there, while
+    this one forces its own removal the moment the blocker clears.
     """
-    current = {f.key(): f for f in findings}
-    new_defects = [
-        f for key, f in sorted(current.items()) if key not in trusted_accepted
-    ]
-    fixed = sorted(local_accepted - set(current))
-    return new_defects, fixed
+    present = {f.key() for f in scoped}
+    unfenced = [f for f in scoped if f.key() not in FENCED_KEYS]
+    rotted = sorted(FENCED_KEYS - present)
+    return unfenced, rotted
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE)
     parser.add_argument("--report", action="store_true", help="print the full census")
-    parser.add_argument(
-        "--write-baseline",
-        action="store_true",
-        help="freeze current defects (ratchet reset)",
-    )
     parser.add_argument(
         "--scope",
         action="append",
         metavar="PACKAGE",
+        required=True,
         help=(
-            "HARD mode, repeatable: judge ONLY defects owned by PACKAGE, with NO "
-            "baseline. The graph is still built from every package (a partial graph "
-            "invents false orphans), but a package outside the scope contributes edges "
-            "only. This is what lets one repo be clean while another is still dirty -- "
+            "HARD mode, repeatable, REQUIRED: judge ONLY defects owned by PACKAGE. "
+            "The graph is still built from every package (a partial graph invents "
+            "false orphans), but a package outside the scope contributes edges only. "
+            "This is what lets one repo be clean while another is still dirty -- "
             "without it, no repo can turn the gate hard until every repo has."
         ),
     )
     args = parser.parse_args(argv)
 
-    if args.scope and args.write_baseline:
+    unknown = sorted(set(args.scope) - set(GRAPH_PACKAGES))
+    if unknown:
         parser.error(
-            "--scope is HARD mode and consults no baseline; --write-baseline would "
-            "freeze defects it is not allowed to accept."
+            f"--scope names package(s) that are not in the graph: "
+            f"{', '.join(unknown)}. Known: {', '.join(sorted(GRAPH_PACKAGES))}."
         )
-    if args.scope:
-        unknown = sorted(set(args.scope) - set(GRAPH_PACKAGES))
-        if unknown:
-            parser.error(
-                f"--scope names package(s) that are not in the graph: "
-                f"{', '.join(unknown)}. Known: {', '.join(sorted(GRAPH_PACKAGES))}."
-            )
 
-    baseline = load_baseline(args.baseline)
-    graph = build_graph(
-        external_producers=baseline.external_producers,
-        external_consumers=baseline.external_consumers,
-    )
+    # No baseline is loaded, because none exists. External producers and consumers
+    # are declared IN THE CONTRACTS now (externally_produced_topics /
+    # externally_consumed_topics), beside the subscription or publish they explain.
+    graph = build_graph()
     findings = find_defects(graph)
-
-    if args.write_baseline:
-        args.baseline.parent.mkdir(parents=True, exist_ok=True)
-        args.baseline.write_text(
-            yaml.safe_dump(
-                {
-                    "external_producers": baseline.external_producers,
-                    "external_consumers": baseline.external_consumers,
-                    "accepted": sorted({f.key() for f in findings}),
-                },
-                sort_keys=True,
-                default_flow_style=False,
-            )
-        )
-        sys.stdout.write(f"Froze {len(findings)} defect(s) into {args.baseline}\n")
-        return 0
 
     if args.report:
         sys.stdout.write(
@@ -1022,90 +1154,49 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"  {finding.defect:<22} {finding.node or '-':<45} {finding.topic or ''}\n"
             )
 
-    if args.scope:
-        # HARD mode. The baseline exists only to carry external_producers /
-        # external_consumers into build_graph above; it accepts NOTHING here, so a
-        # scoped repo either has zero defects of its own or the gate fails. There is no
-        # flag that softens this and no per-scope allowlist to add one to.
-        scope = set(args.scope)
-        scoped = [f for f in findings if f.package in scope]
-        if scoped:
-            lines = [
-                "",
-                f"CONTRACT GRAPH GATE FAILED (HARD, --scope {' '.join(sorted(scope))}) "
-                f"— {len(scoped)} static defect(s).",
-                "",
-                "There is no baseline in scope mode. Every one of these must be fixed in",
-                "the contract: give the topic a publisher, give it a subscriber, or",
-                "declare the sink explicitly (event_bus.externally_consumed_topics,",
-                "runtime_dispatch.command_topic, runtime_dispatch.external_trigger).",
-                "",
-            ]
-            for finding in scoped:
-                lines.append(f"  [{finding.defect}] {finding.node} ({finding.package})")
-                if finding.topic:
-                    lines.append(f"      topic: {finding.topic}")
-                lines.append(f"      {finding.detail}")
-                lines.append("")
-            sys.stderr.write("\n".join(lines) + "\n")
-            return 1
-        sys.stdout.write(
-            f"OK: contract graph clean in HARD scope {sorted(scope)} — "
-            f"{len(graph.nodes)} contracts, {len(graph.topics)} topics, "
-            f"{len(graph.edges())} edges, 0 defects in scope, baseline NOT consulted.\n"
-        )
-        return 0
+    scope = set(args.scope)
+    scoped = [f for f in findings if f.package in scope]
+    unfenced, rotted = _evaluate_fence(scoped)
 
-    accepted = set(baseline.accepted)
-
-    # Trust the merge-base's baseline, not this PR's own copy, to decide what
-    # counts as "already accepted" -- otherwise a PR could add a real new
-    # defect and its baseline entry in the same commit and the ratchet would
-    # never see it. Falls back to the PR-local baseline only when the merge
-    # base genuinely cannot be resolved (see merge_base_accepted_keys).
-    trusted_accepted = merge_base_accepted_keys(args.baseline)
-    if trusted_accepted is None:
+    if rotted:
         sys.stderr.write(
-            "::warning::contract-topic-graph could not resolve the merge-base "
-            "baseline (shallow clone or detached checkout) -- falling back to "
-            "the PR-local baseline for this run's new-defect check.\n"
+            "\nCONTRACT GRAPH FENCE HAS ROTTED — "
+            f"{len(rotted)} fenced entr(ies) no longer match any defect.\n\n"
+            "The blocker cleared. DELETE these entries from SCOPE_FENCE in\n"
+            "src/omnimarket/validators/contract_topic_graph.py; a fence that\n"
+            "outlives its reason is the exemption list this gate exists to prevent.\n\n"
+            + "".join(f"  {k}\n" for k in rotted)
+            + "\n"
         )
-        trusted_accepted = accepted
+        return 1
 
-    new_defects, fixed = evaluate_ratchet(findings, accepted, trusted_accepted)
-
-    if new_defects:
+    if unfenced:
         lines = [
             "",
-            f"CONTRACT GRAPH GATE FAILED — {len(new_defects)} new static defect(s).",
+            f"CONTRACT GRAPH GATE FAILED (HARD, --scope {' '.join(sorted(scope))}) "
+            f"— {len(unfenced)} static defect(s).",
             "",
-            "The contract graph proves these are broken WITHOUT running anything:",
+            "There is NO baseline. Every one of these must be fixed in the contract:",
+            "give the topic a publisher, give it a subscriber, or declare the edge",
+            "explicitly -- event_bus.externally_consumed_topics (publish side),",
+            "externally_produced_topics (subscribe side, must NAME the producer),",
+            "runtime_dispatch.command_topic, or runtime_dispatch.external_trigger.",
             "",
         ]
-        for finding in new_defects:
+        for finding in unfenced:
             lines.append(f"  [{finding.defect}] {finding.node} ({finding.package})")
             if finding.topic:
                 lines.append(f"      topic: {finding.topic}")
             lines.append(f"      {finding.detail}")
             lines.append("")
-        lines.append(
-            "Fix the wiring. Do NOT add these to the baseline — the baseline is frozen "
-            "pre-existing debt and may only shrink."
-        )
         sys.stderr.write("\n".join(lines) + "\n")
         return 1
 
-    if fixed:
-        sys.stderr.write(
-            f"\nCONTRACT GRAPH GATE FAILED — {len(fixed)} baselined defect(s) are now FIXED.\n\n"
-            "Remove them from the baseline so the ratchet cannot silently re-authorize a\n"
-            "regression:\n\n" + "\n".join(f"  {key}" for key in fixed) + "\n"
-        )
-        return 1
-
     sys.stdout.write(
-        f"OK: contract graph clean — {len(graph.nodes)} contracts, {len(graph.topics)} topics, "
-        f"{len(graph.edges())} edges, {len(accepted)} baselined defect(s) pending burn-down.\n"
+        f"OK: contract graph CLOSED in HARD scope {sorted(scope)} — "
+        f"{len(graph.nodes)} contracts, {len(graph.topics)} topics, "
+        f"{len(graph.edges())} edges, 0 unfenced defects, "
+        f"{len(SCOPE_FENCE)} fenced (each owned and named), NO baseline exists.\n"
     )
     return 0
 

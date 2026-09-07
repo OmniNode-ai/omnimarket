@@ -92,3 +92,9 @@ dependencies:
 
 metadata:
   transport_type: kafka
+
+# OMN-18013 -- explicit SINK declaration (contract topic graph closure).
+# No node contract subscribes to these; they leave the ONEX node graph here.
+externally_consumed_topics:
+  - onex.evt.omnimarket.ticket-pipeline-completed.v1
+  - onex.evt.omnimarket.ticket-pipeline-phase-transition.v1

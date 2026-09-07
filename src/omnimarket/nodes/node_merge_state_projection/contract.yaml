@@ -116,3 +116,10 @@ descriptor:
     - effects
   idempotent: true
   timeout_ms: 0
+
+# OMN-18013 -- explicit external PRODUCER declaration (contract topic graph closure).
+# Replaces the deleted contract_topic_graph_baseline.yaml external_producers map:
+# the declaration now lives beside the subscription it explains.
+externally_produced_topics:
+  - topic: onex.evt.omnimarket.merge-state-transition.v1
+    producer: "the merge-flow instrumentation publisher (GHA workflow / publisher script), not a node contract"
