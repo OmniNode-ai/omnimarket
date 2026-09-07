@@ -148,6 +148,7 @@ from omnimarket.nodes.node_pr_lifecycle_fix_effect.handlers.occ_evidence_stamp i
     derive_behavior_test_paths,
     render_behavior_proof_dod_evidence_item,
 )
+from omnimarket.occ_content_probe import render_check_value_field  # noqa: E402
 
 __all__ = [
     "LEDGERED_REFUSALS",
@@ -158,6 +159,7 @@ __all__ = [
     "ProductPrRef",
     "append_dod_evidence_item",
     "build_backfill_receipt",
+    "build_self_bind_receipt",
     "contract_product_pr_refs",
     "decide",
     "derive_receipt_status",
@@ -169,9 +171,12 @@ __all__ = [
     "refusal_fingerprint",
     "refusal_is_current",
     "render_refusal_ledger_yaml",
+    "render_self_bind_dod_evidence_item",
     "repo_from_check_value",
     "run",
+    "self_bind_evidence_id",
     "write_refusal_ledger",
+    "write_self_bind",
 ]
 
 RECEIPT_SCHEMA_VERSION = "1.0.0"
@@ -850,6 +855,241 @@ def build_backfill_receipt(
     }
 
 
+# ---------------------------------------------------------------------------
+# The OCC self-bind (OMN-17943 defect D)
+#
+# `occ-preflight / eligibility` — a required context under OCC's CI Summary —
+# refuses an evidence PR that carries no receipt bound to its OWN pr_number,
+# with reason `missing_occ_self_bind`. That bind cannot be part of the first
+# commit: it names a PR number that does not exist until the PR is opened.
+#
+# So the scheduled backfill opened PRs that could never merge. MEASURED on
+# OCC#8525, the 2026-09-07 05:20Z run's own output — `occ-preflight /
+# eligibility` fail, `verify / verify` fail, `CI Summary` fail — while the two
+# human-driven OCC PRs on this ticket (#8344, #8493) each needed a HAND commit
+# to get past it. A remediator whose output only a human can land is not
+# enforcement; it is a detector with extra steps.
+#
+# The self-bind is therefore generated here, on the same terms as every other
+# artifact this tool writes: append-only, entry-hashed, fold-proof, and derived
+# from a live readback rather than asserted.
+# ---------------------------------------------------------------------------
+
+# The repository an OCC evidence PR lives in. Also `check_receipt_hardening`'s
+# `_DEFAULT_COMMIT_SHA_REPO`, which is why the self-bind receipt's `commit_sha`
+# — a commit on the OCC branch — resolves without a repository-authority
+# violation.
+OCC_REPO = "OmniNode-ai/onex_change_control"
+
+# `runner` and `verifier` MUST differ, for the reason RUNNER/VERIFIER differ
+# above: matching names silently downgrade PASS to ADVISORY. Neither is on
+# `check_receipt_hardening.DENYLISTED_VERIFIERS` — "manual", the source value
+# eligibility's own suggested snippet uses for the ITEM, is denylisted as a
+# RECEIPT verifier, so it must not be copied across from the item to here.
+SELF_BIND_RUNNER = "omnimarket-ci occ-behavior-proof-backfill"
+SELF_BIND_VERIFIER = "github-actions occ-pr-readback"
+
+
+def self_bind_evidence_id(pr_number: int) -> str:
+    """The evidence id eligibility resolves the self-bind receipt by."""
+    return f"occ-self-bind-pr-{pr_number}"
+
+
+def self_bind_check_value(pr_number: int) -> str:
+    """The declared bar: read this OCC PR back by number."""
+    return f"gh pr view {pr_number} --repo {OCC_REPO} --json number,state,headRefName"
+
+
+def render_self_bind_dod_evidence_item(*, pr_number: int) -> str:
+    """Render the `occ-self-bind-pr-<n>` dod_evidence item.
+
+    `source: manual` and `status: verified` are not decoration — they are the
+    shape `occc-preflight` names in its own refusal text, and an item that
+    differs in either field leaves `missing_occ_self_bind` standing.
+
+    Every scalar goes through :func:`render_check_value_field`, the shipped
+    fold-proof renderer, rather than a `>-` folded block. A folded scalar past
+    the OCC `.yamlfmt` column budget is RE-WRAPPED by the hosted formatter,
+    which rewrites the committed contract and restales every whole-file
+    `contract_sha256` on it — the same damage
+    :data:`EnumBackfillDecision.REFUSED_LEGACY_WHOLE_FILE_BINDING` exists to
+    prevent, inflicted by the repair instead of by the gap. The hand-written
+    self-binds this replaces (#8344, #8493) both used `>-`.
+    """
+    evidence_id = self_bind_evidence_id(pr_number)
+    return (
+        f'  - id: "{evidence_id}"\n'
+        + render_check_value_field(
+            "description",
+            (
+                f"OCC self-bind for PR #{pr_number} — binds this contract to the "
+                "evidence PR carrying it, by pr_number, so eligibility can "
+                "resolve a PASS receipt for the evidence PR itself."
+            ),
+            indent=4,
+        )
+        + '    source: "manual"\n'
+        + '    status: "verified"\n'
+        + "    checks:\n"
+        + '      - check_type: "command"\n'
+        + render_check_value_field(
+            "check_value", self_bind_check_value(pr_number), indent=8
+        )
+    )
+
+
+def build_self_bind_receipt(
+    *,
+    ticket_id: str,
+    pr_number: int,
+    branch: str,
+    pr_state: str,
+    commit_sha: str,
+    contract_entry_sha256: str,
+    run_timestamp: datetime | None = None,
+) -> dict[str, Any]:
+    """The receipt body for one OCC self-bind.
+
+    ``commit_sha`` is the tip of the OCC branch this PR was opened from — the
+    tree the readback observed. It resolves in ``OCC_REPO``, which is
+    ``check_receipt_hardening``'s default commit-sha authority, so
+    ``COMMIT_SHA_EXISTS`` is satisfied by the push that preceded the PR.
+
+    Neither ``check_value`` nor ``probe_command`` exposes a full 40-hex ref, so
+    ``_product_ref_binds_commit`` imposes no binding obligation here. That is a
+    property worth keeping: a probe that started citing ``/commits/<sha>``
+    would silently acquire the obligation that broke every mint before this
+    ticket.
+
+    No ``contract_sha256``, for the reason the mints carry none: a whole-file
+    hash on a fresh receipt seeds the next generation of legacy bindings.
+    """
+    stamped = run_timestamp or datetime.now(tz=UTC)
+    check_value = self_bind_check_value(pr_number)
+    return {
+        "schema_version": RECEIPT_SCHEMA_VERSION,
+        "ticket_id": ticket_id,
+        "evidence_item_id": self_bind_evidence_id(pr_number),
+        "check_type": "command",
+        "check_value": check_value,
+        "contract_entry_sha256": contract_entry_sha256,
+        "status": "PASS",
+        "run_timestamp": stamped.strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "commit_sha": commit_sha,
+        "runner": SELF_BIND_RUNNER,
+        "verifier": SELF_BIND_VERIFIER,
+        "probe_command": check_value,
+        "probe_stdout": json.dumps(
+            {"headRefName": branch, "number": pr_number, "state": pr_state},
+            sort_keys=True,
+        ),
+        "actual_output": (
+            f"PASS: OCC PR #{pr_number} on {OCC_REPO} reads back {pr_state} at "
+            f"branch {branch}, tip {commit_sha}. This receipt binds {ticket_id} "
+            "to the evidence PR carrying it; it makes no claim about the "
+            "evidence in that PR, which its own receipts carry."
+        ),
+        "exit_code": 0,
+        "pr_number": pr_number,
+        "branch": branch,
+        # Machine-specific and unreproducible; OCC's Receipt Honesty Gate
+        # rejects one.
+        "working_dir": None,
+    }
+
+
+def write_self_bind(
+    *,
+    occ_root: Path,
+    ticket_id: str,
+    pr_number: int,
+    branch: str,
+    pr_state: str,
+    commit_sha: str,
+    run_timestamp: datetime | None = None,
+) -> dict[str, Any]:
+    """Append the self-bind item to the contract and write its PASS receipt.
+
+    Refuses rather than writes in two cases, both fail-closed:
+
+    * the PR does not read back ``OPEN`` — a PASS receipt for a fact nobody
+      observed. There is no PENDING branch: unlike the behavior proof, a
+      non-PASS self-bind satisfies nothing, so writing one adds noise to a
+      governance artifact and closes nothing.
+    * the contract declares no ``dod_evidence`` block — the same refusal
+      :func:`append_dod_evidence_item` raises for a mint. Guessing where a
+      governance item belongs is how a repair corrupts an artifact nobody
+      re-reads.
+
+    Idempotent: a re-run (the workflow can retry) writes nothing a second time.
+    Two items with one id in a contract is not a duplicate,
+    :func:`compute_contract_entry_sha256` cannot resolve it unambiguously —
+    a repair that becomes a corruption.
+    """
+    evidence_id = self_bind_evidence_id(pr_number)
+    contract_path = occ_root / "contracts" / f"{ticket_id}.yaml"
+    if not contract_path.is_file():
+        return {
+            "written": False,
+            "evidence_item_id": evidence_id,
+            "reason": f"no contract at contracts/{ticket_id}.yaml",
+        }
+    if pr_state != "OPEN":
+        return {
+            "written": False,
+            "evidence_item_id": evidence_id,
+            "reason": (
+                f"OCC PR #{pr_number} reads back {pr_state}, not OPEN; refusing "
+                "to write a PASS receipt for a readback that did not observe an "
+                "open PR."
+            ),
+        }
+
+    contract_text = contract_path.read_text(encoding="utf-8")
+    existing = yaml.safe_load(contract_text)
+    if isinstance(existing, dict):
+        items = existing.get("dod_evidence")
+        if isinstance(items, list) and any(
+            isinstance(item, dict) and item.get("id") == evidence_id for item in items
+        ):
+            return {
+                "written": False,
+                "evidence_item_id": evidence_id,
+                "reason": "already declared",
+            }
+
+    new_text = append_dod_evidence_item(
+        contract_text, render_self_bind_dod_evidence_item(pr_number=pr_number)
+    )
+    new_data = yaml.safe_load(new_text)
+    entry_sha = compute_contract_entry_sha256(new_data, evidence_id)
+    receipt = build_self_bind_receipt(
+        ticket_id=ticket_id,
+        pr_number=pr_number,
+        branch=branch,
+        pr_state=pr_state,
+        commit_sha=commit_sha,
+        contract_entry_sha256=entry_sha,
+        run_timestamp=run_timestamp,
+    )
+    # Render before touching the contract, for the reason the mint path does:
+    # a body that cannot be represented faithfully must leave the tree
+    # untouched, not a mutated contract with no receipt behind it.
+    receipt_text = render_receipt_yaml(receipt)
+    contract_path.write_text(new_text, encoding="utf-8")
+    receipt_dir = occ_root / "drift" / "dod_receipts" / ticket_id / evidence_id
+    receipt_dir.mkdir(parents=True, exist_ok=True)
+    (receipt_dir / "command.yaml").write_text(receipt_text, encoding="utf-8")
+    return {
+        "written": True,
+        "evidence_item_id": evidence_id,
+        "contract": f"contracts/{ticket_id}.yaml",
+        "receipt": (f"drift/dod_receipts/{ticket_id}/{evidence_id}/command.yaml"),
+        "contract_entry_sha256": entry_sha,
+        "commit_sha": commit_sha,
+    }
+
+
 def decide(
     *,
     ticket_id: str,
@@ -1367,9 +1607,70 @@ def main(argv: Sequence[str] | None = None) -> int:
             "can read is a governance PR nobody checks."
         ),
     )
+    parser.add_argument(
+        "--self-bind-pr",
+        type=int,
+        default=None,
+        help=(
+            "SELF-BIND MODE. Append the `occ-self-bind-pr-<n>` item and its PASS "
+            "receipt for an OCC PR that is ALREADY OPEN, then exit. Run after "
+            "`gh pr create`, never before: the bind names a PR number that does "
+            "not exist until the PR is opened, which is why `occ-preflight / "
+            "eligibility` refused every unattended run with "
+            "`missing_occ_self_bind`. Requires --self-bind-ticket. Does no "
+            "backfilling: discovery and --tickets are ignored in this mode."
+        ),
+    )
+    parser.add_argument(
+        "--self-bind-ticket",
+        default="",
+        help="The OMN id whose contract carries the OCC PR (self-bind mode).",
+    )
     parser.add_argument("--run-url", default="")
     parser.add_argument("--json-out", type=Path, default=None)
     args = parser.parse_args(argv)
+
+    if args.self_bind_pr is not None:
+        ticket_id = str(args.self_bind_ticket).strip()
+        if not ticket_id:
+            parser.error("--self-bind-pr requires --self-bind-ticket")
+        # The PR facts come from a LIVE readback, never from the caller: the
+        # receipt asserts that this PR is open at this branch tip, and a
+        # caller-supplied state would make it assert whatever it was told.
+        pr_view = _gh_json(
+            [
+                "pr",
+                "view",
+                str(args.self_bind_pr),
+                "--repo",
+                OCC_REPO,
+                "--json",
+                "number,state,headRefName,headRefOid",
+            ]
+        )
+        if not isinstance(pr_view, dict):
+            print(
+                f"::error::could not read OCC PR #{args.self_bind_pr} back; "
+                "refusing to write a self-bind for an unobserved PR.",
+                file=sys.stderr,
+            )
+            return 1
+        report = write_self_bind(
+            occ_root=args.occ_root,
+            ticket_id=ticket_id,
+            pr_number=int(pr_view.get("number", args.self_bind_pr)),
+            branch=str(pr_view.get("headRefName", "")),
+            pr_state=str(pr_view.get("state", "")),
+            commit_sha=str(pr_view.get("headRefOid", "")),
+        )
+        rendered = json.dumps(report, indent=2, sort_keys=True)
+        print(rendered)
+        if args.json_out is not None:
+            args.json_out.parent.mkdir(parents=True, exist_ok=True)
+            args.json_out.write_text(rendered + "\n", encoding="utf-8")
+        # A refusal is reported, not raised: the workflow step that calls this
+        # must not fail a PR that is merely already bound.
+        return 0
 
     ledger_skipped: list[str] = []
     if args.discover:
