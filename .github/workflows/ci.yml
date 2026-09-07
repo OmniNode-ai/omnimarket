@@ -2133,7 +2133,8 @@ jobs:
       - name: Overlay omnibase_infra from dev
         run: |
           uv sync
-          uv pip install --no-deps --reinstall-package omnibase-infra -e .sibling/omnibase_infra
+          uv pip uninstall -y omnibase-infra
+          uv pip install --no-deps -e .sibling/omnibase_infra
           uv run --no-sync python - <<'PY'
           import pathlib
           import omnibase_infra
