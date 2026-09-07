@@ -26,10 +26,14 @@ Related:
 from __future__ import annotations
 
 import logging
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Literal
 from uuid import UUID
 
+from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_bus_observation import (
+    PR_LIFECYCLE_FIX_COMPLETED_TOPIC,
+    ModelPrLifecycleBusObservation,
+)
 from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_event import (
     EnumPrLifecycleEventTrigger,
     EnumPrLifecyclePhase,
@@ -45,7 +49,11 @@ from omnimarket.nodes.node_pr_lifecycle_state_reducer.models.model_pr_lifecycle_
 )
 from omnimarket.projection.pr_ledger_projection import (
     PR_LEDGER_PROJECTION_CONFLICT_KEY,
+    PR_LEDGER_PROJECTION_FRESHNESS_SLA_SECONDS,
     PR_LEDGER_PROJECTION_TABLE,
+    EnumPrLedgerAction,
+    EnumPrLedgerFinalState,
+    ModelPrLedgerProjectionRow,
     build_ledger_rows,
 )
 from omnimarket.projection.protocol_database import ProtocolProjectionDatabaseSync
@@ -239,6 +247,93 @@ def _is_transition_allowed(
 _REPO_HEALTH_CLASSIFIED_TOPIC_SUFFIX = "repo-health-classified.v1"
 _REPO_HEALTH_REPAIR_EMITTED_TOPIC_SUFFIX = "repo-health-repair-emitted.v1"
 
+# ---------------------------------------------------------------------------
+# Runtime projection-arm dispatch (OMN-17810)
+# ---------------------------------------------------------------------------
+#
+# `omnibase_infra`'s `_make_projection_dispatch_callback` calls
+# `handle(input_data: dict)` with the PRODUCER's own JSON payload augmented by
+# three runtime-injected keys. `_db` is the injected projection database
+# adapter; its presence is what distinguishes a runtime bus dispatch from the
+# in-process RuntimeLocal `{"state": ..., "event": ...}` envelope, which never
+# carries it. `_topic` is the topic the record was dispatched from.
+_RUNTIME_DB_KEY = "_db"
+_RUNTIME_TOPIC_KEY = "_topic"
+
+#: In-process RuntimeLocal envelope keys the FSM delta path requires. Absent a
+#: key, the shim raises naming it rather than defaulting it to `{}` — that
+#: default is what turned a hard shape mismatch into a per-message
+#: `ModelPrLifecycleState correlation_id Field required` (OMN-17810 AC3).
+_RUNTIME_LOCAL_REQUIRED_KEYS = ("state", "event")
+
+#: Closed topic -> ledger action map. Its keys ARE the projectable-topic set
+#: `ModelPrLifecycleBusObservation.source_topic` validates against, so a topic
+#: can never be accepted here without an action to record for it.
+_BUS_TOPIC_LEDGER_ACTION: dict[str, EnumPrLedgerAction] = {
+    PR_LIFECYCLE_FIX_COMPLETED_TOPIC: EnumPrLedgerAction.FIX,
+}
+
+#: Ledger outcome per action, split on whether the producer actually dispatched
+#: its action. Derived from the wire only — never inferred later from logs.
+_BUS_ACTION_FINAL_STATE: dict[
+    tuple[EnumPrLedgerAction, bool], EnumPrLedgerFinalState
+] = {
+    (EnumPrLedgerAction.FIX, True): EnumPrLedgerFinalState.FIX_DISPATCHED,
+    (EnumPrLedgerAction.FIX, False): EnumPrLedgerFinalState.SKIPPED,
+}
+
+
+class PrLifecycleReducerInputShapeError(ValueError):
+    """The reducer was handed a dict shape it does not own.
+
+    Raised instead of defaulting a missing key, so a wiring mismatch names the
+    key and the keys that WERE present rather than surfacing later as a
+    validation error on a model built from `{}` (OMN-17810).
+    """
+
+
+class PrLifecycleLedgerWriteError(RuntimeError):
+    """The projection database refused the ledger UPSERT.
+
+    Deliberately NOT a validation error: the event is well-formed and still owed
+    a row, so the runtime withholds the offset and redelivers once the write
+    path is repaired (`_is_projection_content_failure`, OMN-17379).
+    """
+
+
+def build_bus_ledger_row(
+    observation: ModelPrLifecycleBusObservation,
+) -> ModelPrLedgerProjectionRow:
+    """Build the one durable ledger row a bus observation materializes.
+
+    Pure and deterministic: every column is read from the observation or from
+    the declared closed maps above. `sweep_id` is the observation's own
+    correlation id and `iteration` is 0, so a Kafka redelivery of the same
+    record UPSERTs onto the same `(sweep_id, repo, pr_number, iteration)` key
+    instead of appending a duplicate.
+    """
+    action = _BUS_TOPIC_LEDGER_ACTION[observation.source_topic]
+    final_state = _BUS_ACTION_FINAL_STATE[(action, observation.action_applied)]
+    evidence = (
+        observation.evidence
+        if observation.error is None
+        else f"{observation.evidence} | error: {observation.error}"
+    )
+    return ModelPrLedgerProjectionRow(
+        sweep_id=str(observation.correlation_id),
+        iteration=0,
+        found_at=observation.observed_at,
+        repo=observation.repo,
+        pr_number=observation.pr_number,
+        initial_state=observation.initial_state,
+        action_taken=action,
+        evidence=evidence,
+        final_state=final_state,
+        next_check_at=observation.observed_at
+        + timedelta(seconds=PR_LEDGER_PROJECTION_FRESHNESS_SLA_SECONDS),
+    )
+
+
 #: Classification values and their target counter field names.
 _CLASSIFICATION_FIELD: dict[str, str] = {
     "pr_scoped": "pr_scoped_count",
@@ -333,21 +428,106 @@ class HandlerPrLifecycleStateReducer:
     def handler_category(self) -> HandlerCategory:
         return "COMPUTE"
 
+    def project_bus_observation(self, input_data: dict[str, Any]) -> dict[str, Any]:
+        """Runtime projection-arm entry point (OMN-17810).
+
+        `omnibase_infra` selects the projection dispatch arm for this node
+        because its contract declares `db_io.db_tables`, so what arrives here is
+        the PRODUCER's payload plus the runtime-injected `_db` / `_topic` /
+        `_event_type` keys — not the in-process `{"state", "event"}` envelope.
+        This validates that payload into a typed
+        :class:`ModelPrLifecycleBusObservation` and UPSERTs the one
+        `pr_lifecycle_ledger_entries` row it materializes.
+
+        Returns `{"rows_upserted": 1, ...}` so the runtime's OMN-13360
+        deterministic-truth gate emits the terminal event only on a proven
+        write.
+
+        Fail-fast:
+          * a missing `_topic` raises :class:`PrLifecycleReducerInputShapeError`
+            (a wiring defect, so the offset is withheld and the record redelivered);
+          * a topic outside the projectable set, or a payload missing a required
+            field, raises a pydantic `ValidationError` — a CONTENT failure, DLQ'd
+            with the offset advancing, carrying a reason that names the real defect.
+        """
+        if _RUNTIME_TOPIC_KEY not in input_data:
+            raise PrLifecycleReducerInputShapeError(
+                "HandlerPrLifecycleStateReducer received a runtime projection "
+                f"dispatch carrying {_RUNTIME_DB_KEY!r} but no "
+                f"{_RUNTIME_TOPIC_KEY!r}; the runtime must inject the dispatch "
+                f"topic. keys_present={sorted(input_data)}"
+            )
+        topic = input_data[_RUNTIME_TOPIC_KEY]
+        payload = {
+            key: value for key, value in input_data.items() if not key.startswith("_")
+        }
+        observation = ModelPrLifecycleBusObservation.model_validate(
+            {**payload, "source_topic": topic}
+        )
+        row = build_bus_ledger_row(observation)
+        database: ProtocolProjectionDatabaseSync = input_data[_RUNTIME_DB_KEY]
+        upserted = database.upsert(
+            PR_LEDGER_PROJECTION_TABLE,
+            PR_LEDGER_PROJECTION_CONFLICT_KEY,
+            row.to_row(),
+        )
+        if not upserted:
+            raise PrLifecycleLedgerWriteError(
+                f"UPSERT into {PR_LEDGER_PROJECTION_TABLE} returned False for "
+                f"{observation.repo}#{observation.pr_number} "
+                f"(sweep_id={row.sweep_id}); no row was written."
+            )
+        logger.info(
+            "[STATE-REDUCER] projected bus observation topic=%s repo=%s pr=%s "
+            "action=%s final_state=%s sweep_id=%s",
+            topic,
+            observation.repo,
+            observation.pr_number,
+            row.action_taken.value,
+            row.final_state.value,
+            row.sweep_id,
+        )
+        return {
+            "rows_upserted": 1,
+            "table": PR_LEDGER_PROJECTION_TABLE,
+            "topic": topic,
+            "correlation_id": str(observation.correlation_id),
+        }
+
     def handle_dict(self, input_data: dict[str, Any]) -> dict[str, Any]:
         """RuntimeLocal handler protocol shim.
 
-        Dispatches to the appropriate fold function based on the event_topic key,
-        or delegates to delta() for standard PR-lifecycle FSM events.
+        Two disjoint callers reach this method and they carry different shapes:
 
-        Repo-health events (OMN-13585):
+        * the RUNTIME projection arm, whose dict is a producer payload plus the
+          injected `_db` / `_topic` keys — routed to
+          :meth:`project_bus_observation` (OMN-17810);
+        * the IN-PROCESS RuntimeLocal / orchestrator caller, whose dict is the
+          `{"state": ..., "event": ...}` FSM envelope handled below.
+
+        In-process dispatch by `event_topic`:
           - onex.evt.omnimarket.repo-health-classified.v1 → fold_repo_health_classified
           - onex.evt.omnimarket.repo-health-repair-emitted.v1 → fold_repo_health_repair_emitted
 
         All other events → delta() (FSM state transition).
         """
+        if _RUNTIME_DB_KEY in input_data:
+            return self.project_bus_observation(input_data)
+
+        missing = [key for key in _RUNTIME_LOCAL_REQUIRED_KEYS if key not in input_data]
+        if missing:
+            raise PrLifecycleReducerInputShapeError(
+                "HandlerPrLifecycleStateReducer.handle_dict requires the "
+                "in-process RuntimeLocal envelope "
+                "{'state': ..., 'event': ...}; missing required key(s): "
+                f"{missing}. keys_present={sorted(input_data)}. A runtime bus "
+                f"dispatch is identified by the injected {_RUNTIME_DB_KEY!r} "
+                "key and is handled by project_bus_observation()."
+            )
+
         event_topic: str = input_data.get("event_topic", "")
-        state_data = input_data.get("state", {})
-        event_data = input_data.get("event", {})
+        state_data = input_data["state"]
+        event_data = input_data["event"]
         state = ModelPrLifecycleState(**state_data)
 
         if event_topic.endswith(_REPO_HEALTH_CLASSIFIED_TOPIC_SUFFIX):
