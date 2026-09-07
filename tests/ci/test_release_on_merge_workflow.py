@@ -446,3 +446,49 @@ def test_the_manual_release_path_publishes_idempotently() -> None:
     """
     raw_legacy = LEGACY_RELEASE_PATH.read_text(encoding="utf-8")
     assert "--check-url https://pypi.org/simple/" in raw_legacy
+
+
+# ---------------------------------------------------------------------------
+# The two bump-PR producers must not be blind to each other (OMN-18010).
+# ---------------------------------------------------------------------------
+
+ARM_DEV_BRANCH_PREFIX = "automation/arm-dev-"
+REOPEN_BRANCH_PREFIX = "automation/post-release-dev-bump-"
+
+
+def _job_shell(workflow: dict[str, Any], job_id: str) -> str:
+    """Every ``run:`` script in a job, concatenated."""
+    return "\n".join(
+        step["run"] for step in workflow["jobs"][job_id]["steps"] if "run" in step
+    )
+
+
+@pytest.mark.parametrize("job_id", ["arm-dev", "reopen-dev"])
+def test_a_bump_pr_guard_looks_for_the_peer_jobs_branch_too(
+    workflow: dict[str, Any], job_id: str
+) -> None:
+    """Both bump producers must guard on the target VERSION, not their own branch.
+
+    ``arm-dev`` pushes ``automation/arm-dev-<v>``; ``reopen-dev`` pushes
+    ``automation/post-release-dev-bump-<v>``. Both open a PR that sets
+    ``[project].version`` to the same ``<v>``, and each guarded only on its OWN
+    branch name -- so the two were invisible to each other.
+
+    Measured live: release run 34066508864 published v0.4.20 and its
+    ``reopen-dev`` opened #2361 (0.4.20 -> 0.4.21). The next source merge landed
+    at 23:39Z before #2361 had merged, so dev's version was still level with the
+    v0.4.20 tag; run 34067512248 decided ``needs_bump`` and its ``arm-dev``
+    opened #2364 -- a byte-identical 0.4.20 -> 0.4.21 bump, also armed for
+    auto-merge. Whichever lands first, the other can never merge: its diff
+    context (``version = "0.4.20"``) no longer exists, so it is left permanently
+    CONFLICTING with auto-merge still armed.
+
+    That window is not rare -- it is open on every release until the reopen PR
+    merges, which is precisely when merges are most likely to be arriving.
+    """
+    shell = _job_shell(workflow, job_id)
+    for prefix in (ARM_DEV_BRANCH_PREFIX, REOPEN_BRANCH_PREFIX):
+        assert prefix in shell, (
+            f"{job_id} does not consider {prefix!r} when checking for an "
+            f"in-flight bump PR, so it can open a duplicate of the peer job's."
+        )

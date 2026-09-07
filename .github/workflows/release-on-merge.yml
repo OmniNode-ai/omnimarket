@@ -416,9 +416,31 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           set -euo pipefail
-          EXISTING=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq 'length')
-          if [ "${EXISTING:-0}" -gt 0 ]; then
-            echo "A bump PR for $BRANCH is already open -- not opening another."
+          # A bump to ${TARGET} may already be in flight from the PEER job.
+          # arm-dev pushes automation/arm-dev-<v>, reopen-dev pushes
+          # automation/post-release-dev-bump-<v>, and both set [project].version
+          # to the SAME <v>. Guarding on our own branch name alone made the two
+          # invisible to each other: run 34066508864 published v0.4.20 and its
+          # reopen-dev opened #2361 (0.4.20 -> 0.4.21); the next source merge
+          # landed at 23:39Z before #2361 merged, so dev was still level with the
+          # tag, and run 34067512248's arm-dev opened #2364 -- a byte-identical
+          # bump, also auto-merge armed. Whichever lands first leaves the other
+          # permanently CONFLICTING (its diff context version = "0.4.20" is gone)
+          # with auto-merge still armed. So guard on the target VERSION.
+          #
+          # Matched with grep -qxF over the head-branch list rather than a jq
+          # filter: gh's built-in --jq takes no --arg, so a version-scoped jq
+          # program could only be built by interpolating shell into it.
+          if ! OPEN_HEADS="$(gh pr list --repo "$REPO" --base dev --state open \
+            --limit 100 --json headRefName --jq '.[].headRefName')"; then
+            # An unreadable PR list is not evidence that no bump is in flight.
+            echo "::error::could not list open PRs; refusing to open a bump PR that may duplicate one already in flight."
+            exit 1
+          fi
+          if printf '%s\n' "$OPEN_HEADS" | grep -qxF \
+            -e "automation/arm-dev-${TARGET}" \
+            -e "automation/post-release-dev-bump-${TARGET}"; then
+            echo "A bump PR to ${TARGET} is already open -- not opening another."
             exit 0
           fi
           git config user.name "onexbot-occ-writer[bot]"
@@ -563,9 +585,31 @@ jobs:
           cat push.log >&2
           echo "::warning::direct push to dev was refused (branch protection); falling back to a bump PR. dev stays ARMED until it merges."
 
-          EXISTING=$(gh pr list --repo "$REPO" --head "$BRANCH" --state open --json number --jq 'length')
-          if [ "${EXISTING:-0}" -gt 0 ]; then
-            echo "A bump PR for $BRANCH is already open -- not opening another."
+          # A bump to ${TARGET} may already be in flight from the PEER job.
+          # arm-dev pushes automation/arm-dev-<v>, reopen-dev pushes
+          # automation/post-release-dev-bump-<v>, and both set [project].version
+          # to the SAME <v>. Guarding on our own branch name alone made the two
+          # invisible to each other: run 34066508864 published v0.4.20 and its
+          # reopen-dev opened #2361 (0.4.20 -> 0.4.21); the next source merge
+          # landed at 23:39Z before #2361 merged, so dev was still level with the
+          # tag, and run 34067512248's arm-dev opened #2364 -- a byte-identical
+          # bump, also auto-merge armed. Whichever lands first leaves the other
+          # permanently CONFLICTING (its diff context version = "0.4.20" is gone)
+          # with auto-merge still armed. So guard on the target VERSION.
+          #
+          # Matched with grep -qxF over the head-branch list rather than a jq
+          # filter: gh's built-in --jq takes no --arg, so a version-scoped jq
+          # program could only be built by interpolating shell into it.
+          if ! OPEN_HEADS="$(gh pr list --repo "$REPO" --base dev --state open \
+            --limit 100 --json headRefName --jq '.[].headRefName')"; then
+            # An unreadable PR list is not evidence that no bump is in flight.
+            echo "::error::could not list open PRs; refusing to open a bump PR that may duplicate one already in flight."
+            exit 1
+          fi
+          if printf '%s\n' "$OPEN_HEADS" | grep -qxF \
+            -e "automation/arm-dev-${TARGET}" \
+            -e "automation/post-release-dev-bump-${TARGET}"; then
+            echo "A bump PR to ${TARGET} is already open -- not opening another."
             exit 0
           fi
           git branch -f "$BRANCH" HEAD
