@@ -120,7 +120,11 @@ if str(_THIS_DIR) not in sys.path:
 # which passes clean. Deliberately NOT a `type: ignore`: nothing about this
 # module's own types needs suppressing, and an ignore here would also hide a
 # real signature change in the renderer.
-from occ_receipt_runner import render_receipt_yaml  # noqa: E402
+from occ_receipt_runner import (  # noqa: E402
+    _OCC_YAMLFMT_MAX_LINE_LENGTH,
+    _ReceiptDumper,
+    render_receipt_yaml,
+)
 from omnibase_core.validation.validator_receipt_gate import (  # noqa: E402
     compute_contract_entry_sha256,
 )
@@ -151,6 +155,7 @@ __all__ = [
     "product_pr_from_contract",
     "refusal_fingerprint",
     "refusal_is_current",
+    "render_refusal_ledger_yaml",
     "repo_from_check_value",
     "run",
     "write_refusal_ledger",
@@ -532,6 +537,48 @@ def load_refusal_ledger(occ_root: Path) -> dict[str, dict[str, Any]]:
     }
 
 
+class _LedgerDumper(_ReceiptDumper):
+    """The receipt dumper, plus INDENTED block sequences.
+
+    OCC's ``.yamlfmt`` sets ``indent: 2`` and ``include_document_start: true``,
+    and yamlfmt indents a block sequence one level under its key. PyYAML emits
+    a sequence FLUSH with its key and no ``---``, so a plain dump of this
+    ledger fails the repo's yamlfmt hook on every run — measured live on
+    OCC#8493, where the receipts (rendered through the shared serializer, and
+    carrying no lists) passed and only this file was rewritten.
+
+    Inheriting from :class:`_ReceiptDumper` keeps the scalar-style rules that
+    stop the formatter rewriting a multi-line VALUE (OMN-17794); this subclass
+    changes layout only.
+    """
+
+    def increase_indent(self, flow: bool = False, indentless: bool = False) -> None:
+        super().increase_indent(flow=flow, indentless=False)
+
+
+def render_refusal_ledger_yaml(body: Mapping[str, Any]) -> str:
+    """Serialize the ledger to yamlfmt-stable YAML, or refuse to write.
+
+    Same fail-closed contract as :func:`render_receipt_yaml`: bytes that do not
+    reload to the object they were built from are never returned.
+    """
+    text = yaml.dump(
+        dict(body),
+        Dumper=_LedgerDumper,
+        sort_keys=True,
+        default_flow_style=False,
+        width=_OCC_YAMLFMT_MAX_LINE_LENGTH,
+        explicit_start=True,
+        allow_unicode=True,
+    )
+    if yaml.safe_load(text) != body:
+        raise ValueError(
+            "refusal ledger YAML round-trip failed: the rendered document does "
+            "not reload to the ledger it was built from."
+        )
+    return text
+
+
 def write_refusal_ledger(
     occ_root: Path, ledger: Mapping[str, Mapping[str, Any]]
 ) -> Path:
@@ -548,11 +595,11 @@ def write_refusal_ledger(
         ),
         "refusals": {key: dict(ledger[key]) for key in sorted(ledger)},
     }
+    # Render BEFORE mkdir/write, exactly as the receipt writer does: a body
+    # that cannot be represented faithfully must leave no file behind.
+    text = render_refusal_ledger_yaml(body)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        yaml.safe_dump(body, sort_keys=True, default_flow_style=False, width=100),
-        encoding="utf-8",
-    )
+    path.write_text(text, encoding="utf-8")
     return path
 
 
