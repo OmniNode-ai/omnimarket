@@ -109,6 +109,33 @@ def _receipt(
     }
 
 
+# OMN-18010: the released-is-Done probes are REQUIRED gate constructor
+# arguments — there is no unconfigured/skip path. These stubs answer "released"
+# for every input, so the pre-OMN-18010 behaviour of the cases in this file is
+# unchanged and the new check is exercised on its own terms in
+# tests/unit/nodes/node_dod_verify/test_omn_18010_released_gate.py.
+def _released_tags_stub(
+    table: dict[tuple[str, str], tuple[str, ...] | None] | None = None,
+):
+    def probe(repo: str, commit_sha: str) -> tuple[str, ...] | None:
+        if table is not None and (repo, commit_sha) in table:
+            return table[(repo, commit_sha)]
+        return ("v9.9.9",)
+
+    return probe
+
+
+def _released_index_stub(
+    table: dict[tuple[str, str], frozenset[str] | None] | None = None,
+):
+    def probe(distribution: str, version: str) -> frozenset[str] | None:
+        if table is not None and (distribution, version) in table:
+            return table[(distribution, version)]
+        return frozenset({"bdist_wheel", "sdist"})
+
+    return probe
+
+
 def _make_gate(
     *,
     tracked: dict[tuple[str, str, str], bool] | None = None,
@@ -117,6 +144,8 @@ def _make_gate(
     contract_on_main: dict[str, object] | None = None,
     receipts_on_ref: list[dict[str, object]] | None = None,
     occ_governance_ref: str = _DEV_REF,
+    released_tags: dict[tuple[str, str], tuple[str, ...] | None] | None = None,
+    released_index: dict[tuple[str, str], frozenset[str] | None] | None = None,
 ) -> DurableEvidenceGate:
     """Build a DurableEvidenceGate with deterministic in-memory probe stubs.
 
@@ -156,6 +185,8 @@ def _make_gate(
         return receipts_on_ref or []
 
     return DurableEvidenceGate(
+        release_tags_containing=_released_tags_stub(released_tags),
+        index_release_files=_released_index_stub(released_index),
         is_receipt_tracked=is_receipt_tracked,
         gh_pr_view=gh_pr_view,
         pr_commits=pr_commits_probe,
@@ -403,6 +434,9 @@ class TestDurableEvidenceGate:
         assert {c.check for c in result.checks} == {
             EnumDurableEvidenceCheck.RECEIPT_TRACKED,
             EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
+            # OMN-18010: released is part of Done — the merged citation lands in
+            # a publishing repo, so this check is evaluated, not skipped.
+            EnumDurableEvidenceCheck.RELEASED_ON_PUBLISHING_REPO,
             EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
             EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
             EnumDurableEvidenceCheck.DONE_CLASS_LABEL,
@@ -1020,6 +1054,9 @@ class TestDefaultInvocation:
         assert {c.check for c in result.checks} == {
             EnumDurableEvidenceCheck.RECEIPT_TRACKED,
             EnumDurableEvidenceCheck.CONTRACT_CITES_MERGE_COMMIT,
+            # OMN-18010: released is part of Done — the merged citation lands in
+            # a publishing repo, so this check is evaluated, not skipped.
+            EnumDurableEvidenceCheck.RELEASED_ON_PUBLISHING_REPO,
             EnumDurableEvidenceCheck.CONTRACT_ON_OCC_MAIN,
             EnumDurableEvidenceCheck.DEFECT_PREVENTION_GATE,
             EnumDurableEvidenceCheck.DONE_CLASS_LABEL,

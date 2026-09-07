@@ -66,6 +66,12 @@ from omnimarket.nodes.node_dod_verify.services.check_proof_class import (
 from omnimarket.nodes.node_dod_verify.services.durable_evidence_gate import (
     apply_supersessions,
 )
+from omnimarket.nodes.node_dod_verify.services.released_evidence import (
+    evaluate_released,
+    git_release_tags_containing,
+    parse_released_check_value,
+    pypi_release_files,
+)
 from omnimarket.occ_evidence_probative_class import (
     EnumEvidenceProbativeClass,
     classify_check_value,
@@ -3844,6 +3850,22 @@ class EvidenceCollector:
                         product_clones=tuple(clones),
                     )
                 messages.append(msg)
+            elif check_type == "released":
+                # OMN-18010 deliverable 2: released is part of Done. Binds
+                # distribution state, never behaviour — see check_proof_class,
+                # which classifies it MERGE_STATE so it can never satisfy the
+                # behaviour-proving leg of a flip rule.
+                ok, msg = self._run_released_check(check)
+                if not ok:
+                    return ModelEvidenceCheckResult(
+                        evidence_id=evidence_id,
+                        description=description,
+                        status=EnumEvidenceCheckStatus.FAILED,
+                        message=msg,
+                        proof_class=item_proof_class,
+                        product_clones=tuple(clones),
+                    )
+                messages.append(msg)
             elif check_type == "file_exists":
                 ok, msg = self._run_file_exists_check(check, contract_path)
                 if not ok:
@@ -3868,7 +3890,7 @@ class EvidenceCollector:
                     status=EnumEvidenceCheckStatus.FAILED,
                     message=(
                         f"Unknown check_type: {label!r}. "
-                        "Supported: command, test_passes, file_exists."
+                        "Supported: command, test_passes, file_exists, released."
                     ),
                     proof_class=item_proof_class,
                     product_clones=tuple(clones),
@@ -5603,6 +5625,54 @@ class EvidenceCollector:
             return False, f"FAILED ({elapsed_ms}ms): {detail}"
 
         return True, f"OK ({elapsed_ms}ms): {stdout[:200]}"
+
+    def _run_released_check(self, check: dict[str, Any]) -> tuple[bool, str]:
+        """Assert every cited merge is released (OMN-18010 deliverable 2).
+
+        ``check_value`` is one or more ``<owner>/<repo>@<merge-sha>`` citations.
+        For each one that lands in a publishing repo, the merge sha must be
+        contained in a ``vX.Y.Z`` release tag AND the package index must serve
+        that tag's version with both a wheel and an sdist.
+
+        Fail-closed throughout: a missing clone, unfetched tags, an unknown sha,
+        an unreachable index, or a malformed citation is FAILED, never a pass.
+        The check exists because "merged" was being read as "shipped"; a probe
+        that cannot answer must not restore that reading.
+        """
+        raw = check.get("check_value") or check.get("command") or ""
+        if not isinstance(raw, str):
+            return False, (
+                "check_type 'released' requires a string check_value of "
+                f"'<owner>/<repo>@<merge-sha>' citations, got {type(raw).__name__}."
+            )
+        citations, parse_error = parse_released_check_value(raw)
+        if parse_error is not None:
+            return False, parse_error
+
+        omni_home = os.environ.get("OMNI_HOME", "").strip()
+        if not omni_home:
+            return False, (
+                "OMNI_HOME is unset, so the containing-tag lookup has no clone to "
+                "resolve against. Fail-closed (OMN-18010) — an unresolvable probe "
+                "is not evidence that a merge is released."
+            )
+        omni_root = Path(omni_home)
+
+        def tags_probe(repo: str, commit_sha: str) -> tuple[str, ...] | None:
+            # The canonical clone for ``<owner>/<repo>`` is ``$OMNI_HOME/<repo>``.
+            # git_release_tags_containing returns None — not () — when that clone
+            # is absent or does not know the sha, so a stale or missing clone can
+            # never be read as "no tag contains it".
+            return git_release_tags_containing(
+                omni_root / repo.split("/")[-1], commit_sha
+            )
+
+        result = evaluate_released(
+            citations,
+            release_tags_containing=tags_probe,
+            index_release_files=pypi_release_files,
+        )
+        return result.passed, result.message
 
     def _run_file_exists_check(
         self,

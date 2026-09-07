@@ -79,6 +79,14 @@ from omnimarket.nodes.node_dod_verify.services.receipt_bound_evidence import (
     evaluate_receipt_bound,
     is_receipt_bound_contract,
 )
+from omnimarket.nodes.node_dod_verify.services.released_evidence import (
+    EnumReleasedOutcome,
+    IndexReleaseFilesProbe,
+    ModelReleasedCitationInput,
+    ReleaseTagsContainingProbe,
+    evaluate_released,
+    is_publishing_repo,
+)
 from omnimarket.nodes.node_dod_verify.services.runtime_ops_readback import (
     evaluate_runtime_ops_readback,
     is_runtime_ops_receipt_set,
@@ -550,6 +558,8 @@ class DurableEvidenceGate:
         pr_commits: PrCommitsProbe,
         load_contract_on_ref: ContractOnRefLoader,
         load_receipts_on_ref: ReceiptsOnRefLoader,
+        release_tags_containing: ReleaseTagsContainingProbe,
+        index_release_files: IndexReleaseFilesProbe,
         occ_repo_path: str,
         occ_governance_ref: str = DEFAULT_OCC_GOVERNANCE_REF,
     ) -> None:
@@ -558,6 +568,13 @@ class DurableEvidenceGate:
         self._pr_commits = pr_commits
         self._load_contract_on_ref = load_contract_on_ref
         self._load_receipts_on_ref = load_receipts_on_ref
+        # OMN-18010: the two released-is-Done probes are REQUIRED constructor
+        # arguments, not optional ones with a permissive default. An optional
+        # probe that silently skips the check when unconfigured is the
+        # detection-not-enforcement anti-pattern (CLAUDE.md rule 5) and would
+        # reproduce, in this gate, the exact failure it exists to close.
+        self._release_tags_containing = release_tags_containing
+        self._index_release_files = index_release_files
         self._occ_repo_path = occ_repo_path
         self._occ_governance_ref = occ_governance_ref
 
@@ -666,6 +683,10 @@ class DurableEvidenceGate:
         # RUNTIME_OPS, the merged-PR check is structurally unsatisfiable (no PR
         # exists), so the runtime-ops readback guardrails run instead.
         citations = extract_receipt_merge_commits(receipts)
+        # OMN-18010: the squash merge commit each MERGED citation actually
+        # landed as, recorded while Check 2 probes it so the released check
+        # below never re-probes GitHub for the same fact. Keyed (repo, pr).
+        merged_oids: dict[tuple[str, int], str | None] = {}
         receipt_keys: set[tuple[str, str]]
         if is_runtime_ops_receipt_set(receipts):
             pass_receipts = [
@@ -723,6 +744,10 @@ class DurableEvidenceGate:
                     state, merge_commit_oid = self._gh_pr_view(
                         citation.repo, citation.pr_number
                     )
+                    if state == "MERGED":
+                        merged_oids[(citation.repo, citation.pr_number)] = (
+                            merge_commit_oid
+                        )
                     if state != "MERGED":
                         check2_failure = (
                             f"{citation.pr_url} state={state}, expected MERGED. "
@@ -783,6 +808,62 @@ class DurableEvidenceGate:
                         message=check2_failure,
                     )
                 )
+
+        # Check 2b (OMN-18010 deliverable 2 — released is part of Done): every
+        # cited merge that landed in a PUBLISHING repo must be contained in a
+        # release tag whose version the package index actually serves, with both
+        # a wheel and an sdist. Merge is not ship: before this check, a ticket
+        # whose PR merged into omnimarket/omnibase_core/... and was never
+        # released closed anyway (omnimarket#2304, #2334 — merged 2026-09-05,
+        # release ticket still in Backlog when the operator found them).
+        #
+        # The TRIGGER is stated rather than assumed. There is no
+        # ``customer-facing`` label, type or field anywhere in the probe
+        # registry or in ModelTicketContract — so the trigger is "any evidence
+        # PR in a publishing repo", which is strictly broader and cannot be
+        # evaded by omitting a label. See released_evidence.CUSTOMER_FACING_LABEL.
+        #
+        # Scope: only citations Check 2 has PROVEN merged feed this check. A
+        # non-merged citation is already blocking on Check 2 and its release
+        # state is meaningless; re-reporting it here would double-count one
+        # defect as two.
+        released_inputs = tuple(
+            ModelReleasedCitationInput(
+                repo=citation.repo,
+                pr_number=citation.pr_number,
+                # Prefer the squash mergeCommit.oid — that is the commit a tag
+                # can contain. These repos are squash-merge-only, so a receipt's
+                # pre-merge headRefOid has NO ancestry to the tagged commit and
+                # would read as unreleased forever. Fall back to the cited sha
+                # only when GitHub reported no merge commit.
+                merge_sha=(
+                    merged_oids[(citation.repo, citation.pr_number)]
+                    or citation.cited_sha
+                ),
+            )
+            for citation in citations
+            if (citation.repo, citation.pr_number) in merged_oids
+            and is_publishing_repo(citation.repo)
+        )
+        released_result = evaluate_released(
+            released_inputs,
+            release_tags_containing=self._release_tags_containing,
+            index_release_files=self._index_release_files,
+        )
+        checks.append(
+            ModelDurableEvidenceCheckResult(
+                check=EnumDurableEvidenceCheck.RELEASED_ON_PUBLISHING_REPO,
+                passed=released_result.passed,
+                message=(
+                    released_result.message
+                    if released_result.outcome is not EnumReleasedOutcome.NOT_APPLICABLE
+                    else (
+                        "No merged evidence PR lands in a publishing repo, so the "
+                        "released-is-Done check does not apply."
+                    )
+                ),
+            )
+        )
 
         # Check 3: the OCC governance ref contains a contract version declaring
         # the schema-valid evidence checks for the receipt-bound PR commits.
@@ -1010,8 +1091,10 @@ __all__: list[str] = [
     "DurableEvidenceGateError",
     "GhPrViewProbe",
     "GitReceiptTrackedProbe",
+    "IndexReleaseFilesProbe",
     "PrCommitsProbe",
     "ReceiptsOnRefLoader",
+    "ReleaseTagsContainingProbe",
     "apply_supersessions",
     "default_contract_path",
     "default_receipt_dir",
