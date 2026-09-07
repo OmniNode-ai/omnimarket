@@ -211,13 +211,31 @@ def _make_handler(
 # ---------------------------------------------------------------------------
 
 
+# The real ground-truth corpus is private and left this public repository under
+# OMN-18026. Nothing in this module reads a manifest from disk; this constant is
+# only a well-formed value for the required field.
+_SYNTHETIC_MANIFEST_PATH = (
+    "tests/fixtures/adr_canary/ground_truth_manifest_synthetic.v1.yaml"
+)
+
+
 class TestModelCanaryCommandPayload:
+    def test_manifest_path_is_required_with_no_default(self) -> None:
+        """No in-repo default: an unset manifest path refuses (OMN-18026).
+
+        The corpus this node benchmarks against is private and lives outside
+        the repository. A default naming an in-repo path would read whatever
+        file later appeared there without anyone choosing it.
+        """
+        from pydantic import ValidationError
+
+        assert ModelCanaryCommandPayload.model_fields["manifest_path"].is_required()
+        with pytest.raises(ValidationError):
+            ModelCanaryCommandPayload()  # type: ignore[call-arg]
+
     def test_defaults(self) -> None:
-        payload = ModelCanaryCommandPayload()
-        assert (
-            payload.manifest_path
-            == "src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml"
-        )
+        payload = ModelCanaryCommandPayload(manifest_path=_SYNTHETIC_MANIFEST_PATH)
+        assert payload.manifest_path == _SYNTHETIC_MANIFEST_PATH
         assert payload.model_subset is None
         assert payload.output_dir == ".onex_state/adr-canary-runs/"
         assert payload.dry_run is False
@@ -226,13 +244,16 @@ class TestModelCanaryCommandPayload:
         assert payload.allow_external_providers is False
 
     def test_model_subset_specified(self) -> None:
-        payload = ModelCanaryCommandPayload(model_subset=["qwen3-coder", "deepseek-r1"])
+        payload = ModelCanaryCommandPayload(
+            manifest_path=_SYNTHETIC_MANIFEST_PATH,
+            model_subset=["qwen3-coder", "deepseek-r1"],
+        )
         assert payload.model_subset == ["qwen3-coder", "deepseek-r1"]
 
     def test_frozen(self) -> None:
         from pydantic import ValidationError
 
-        payload = ModelCanaryCommandPayload()
+        payload = ModelCanaryCommandPayload(manifest_path=_SYNTHETIC_MANIFEST_PATH)
         with pytest.raises((ValidationError, TypeError)):
             payload.dry_run = True  # type: ignore[misc]
 
@@ -385,7 +406,7 @@ class TestWriteScorecard:
         ]
         path = _write_scorecard(
             run_id="20260508-120000-abcdef",
-            manifest_path="src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml",
+            manifest_path=_SYNTHETIC_MANIFEST_PATH,
             scores=scores,
             evidence_dir=tmp_path,
             entries_total=2,

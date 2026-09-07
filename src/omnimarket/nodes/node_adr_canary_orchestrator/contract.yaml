@@ -46,8 +46,14 @@ dod_evidence:
 # === NODE CONFIGURATION ===
 config:
   manifest_path:
-    default: "src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml"
-    description: "Path to the ground truth manifest (relative to repo root)"
+    required: true
+    env: "ADR_CANARY_MANIFEST_PATH"
+    description: >
+      Path to the ground truth manifest. REQUIRED with no default (OMN-18026):
+      the corpus this node benchmarks against is private and no longer lives in
+      this public repository, so there is no in-repo path that is correct to
+      fall back to. An unset value refuses rather than reading whatever file
+      happens to sit at a remembered path.
   output_dir:
     default: ".onex_state/adr-canary-runs/"
     description: "Base output directory for canary run evidence bundles"

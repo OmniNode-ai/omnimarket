@@ -147,13 +147,6 @@ SELF_EXEMPT_FILES=(
   # Generated audit reports — contain leaked literals as data, not source defaults.
   "docs/audits/2026-05-05-raw-env-usage.csv"
   "docs/audits/2026-05-05-contracts-dir-references.csv"
-  # OMN-16156: ADR-canary ground-truth corpus embeds real merged ADRs'
-  # verbatim text ("the full text of the authoritative ADR (inline)" per its
-  # own header) as a benchmark fixture. An illustrative IPv4 example inside
-  # one embedded ADR's edge-case table is not a real leak, and editing embedded
-  # ADR text to annotate it would corrupt the ground-truth fidelity the file
-  # exists to provide.
-  "src/omnimarket/configs/adr_canary_ground_truth_manifest.v1.yaml"
   # OMN-17435, AS NARROWED BY OMN-18027: the pre-push lab picker family.
   #
   # `scripts/hooks/prepush_hosts.tsv` USED TO BE LISTED HERE, on the reasoning

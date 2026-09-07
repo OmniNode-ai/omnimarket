@@ -89,10 +89,8 @@ _ROLLED_BACK_TOPIC = "onex.evt.omnimarket.redeploy-rolled-back.v1"
 
 # Every topic the redeploy FSM traverses between a merge and a lane rebuild, plus the
 # rollback fact that terminalizes the run when the rebuild does not happen. Each one must
-# resolve; the orchestrator's remaining subscribe topics (readiness-gate outcomes,
-# runtime-booted, runtime-manifest-published) have no handler branch and stay on the
-# OMN-16939 burn-down baseline — wiring them without a branch would route them into the
-# redeploy-start path, and a runtime-booted event doing that is an unbounded redeploy loop.
+# resolve. Readiness-gate outcomes and runtime attestations stay out of subscribe_topics
+# until the handler has explicit branches for them.
 _FSM_PATH_TOPICS = (
     _START_TOPIC,
     _IMAGE_BUILT_TOPIC,

@@ -988,13 +988,6 @@ SCOPE_FENCE: tuple[tuple[str, str, str | None, str, str], ...] = (
     (
         "ORPHANED_CONSUMER",
         "node_redeploy_orchestrator",
-        "onex.evt.omnibase-infra.runtime-manifest-published.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
-        _PEER_LANE,
-        "redeploy-FSM contract under concurrent edit by the owning lane",
-    ),
-    (
-        "ORPHANED_CONSUMER",
-        "node_redeploy_orchestrator",
         "onex.evt.omnimarket.runtime-image-built.v1",  # onex-topic-allow: the fence IS the pin; resolving it through a constant would let the pinned pair drift
         _PEER_LANE,
         "redeploy-FSM contract under concurrent edit by the owning lane",
